@@ -1020,7 +1020,7 @@ class TestSseUsageExtractor:
         assert usage["output_tokens"] == 99
 
     def test_empty_usage_dict_not_reported(self):
-        """Empty proxy_usage (SSE ran but no usage found) should not trigger report."""
+        """Empty model_provider_usage (SSE ran but no usage found) should not trigger report."""
         parse, usage = create_sse_usage_extractor()
         # Only content events, no message_start or message_delta
         parse(b"event: ping\ndata: {}\n\n")
@@ -1122,10 +1122,10 @@ class TestSseUsageExtractor:
 
 
 class TestNdjsonExtractor:
-    """Tests for create_x_ndjson_extractor incremental parser (issue #9534)."""
+    """Tests for create_ndjson_extractor incremental parser (issue #9534)."""
 
     def test_single_line(self):
-        parse, state = usage.create_x_ndjson_extractor()
+        parse, state = usage.x.create_ndjson_extractor()
         parse(b'{"data":{"id":"1"},"includes":{"users":[{"id":"u1"}]}}\n')
         assert state["data_count"] == 1
         assert state["includes"] == {"users": 1}
@@ -1133,7 +1133,7 @@ class TestNdjsonExtractor:
         assert state["lines_failed"] == 0
 
     def test_multiple_lines_aggregate_counts(self):
-        parse, state = usage.create_x_ndjson_extractor()
+        parse, state = usage.x.create_ndjson_extractor()
         parse(b'{"data":{"id":"1"},"includes":{"users":[{"id":"u1"}]}}\n')
         parse(b'{"data":{"id":"2"},"includes":{"users":[{"id":"u2"},{"id":"u3"}]}}\n')
         assert state["data_count"] == 2
@@ -1141,7 +1141,7 @@ class TestNdjsonExtractor:
         assert state["lines_parsed"] == 2
 
     def test_chunked_line_split_mid_json(self):
-        parse, state = usage.create_x_ndjson_extractor()
+        parse, state = usage.x.create_ndjson_extractor()
         parse(b'{"data":{"id":"1"},"include')
         parse(b's":{"users":[{"id":"u1"}]}}\n')
         assert state["data_count"] == 1
@@ -1149,7 +1149,7 @@ class TestNdjsonExtractor:
         assert state["lines_parsed"] == 1
 
     def test_keep_alive_blank_lines(self):
-        parse, state = usage.create_x_ndjson_extractor()
+        parse, state = usage.x.create_ndjson_extractor()
         parse(b"\n\n")
         parse(b'{"data":{"id":"1"}}\n')
         parse(b"\n")
@@ -1158,13 +1158,13 @@ class TestNdjsonExtractor:
         assert state["lines_parsed"] == 2
 
     def test_crlf_line_endings(self):
-        parse, state = usage.create_x_ndjson_extractor()
+        parse, state = usage.x.create_ndjson_extractor()
         parse(b'{"data":{"id":"1"}}\r\n{"data":{"id":"2"}}\r\n')
         assert state["data_count"] == 2
         assert state["lines_parsed"] == 2
 
     def test_malformed_line_increments_failures(self):
-        parse, state = usage.create_x_ndjson_extractor()
+        parse, state = usage.x.create_ndjson_extractor()
         parse(b'{"data":{"id":"1"}}\n')
         parse(b"not json at all\n")
         parse(b'{"data":{"id":"2"}}\n')
@@ -1174,13 +1174,13 @@ class TestNdjsonExtractor:
 
     def test_truncated_trailing_line_not_counted(self):
         """Connection drops mid-line — partial trailing line stays in buf, not counted."""
-        parse, state = usage.create_x_ndjson_extractor()
+        parse, state = usage.x.create_ndjson_extractor()
         parse(b'{"data":{"id":"1"}}\n{"data":{"id":"2"}')  # no trailing \n
         assert state["data_count"] == 1
         assert state["lines_parsed"] == 1
 
     def test_empty_chunks_safe(self):
-        parse, state = usage.create_x_ndjson_extractor()
+        parse, state = usage.x.create_ndjson_extractor()
         parse(b"")
         parse(b'{"data":{"id":"1"}}\n')
         parse(b"")
@@ -1188,8 +1188,8 @@ class TestNdjsonExtractor:
 
     def test_oversized_line_dropped(self):
         """Line > MAX_NDJSON_LINE_BYTES is dropped; subsequent lines parse normally."""
-        parse, state = usage.create_x_ndjson_extractor()
-        big = b"x" * (usage.MAX_NDJSON_LINE_BYTES + 1024)
+        parse, state = usage.x.create_ndjson_extractor()
+        big = b"x" * (usage.x.MAX_NDJSON_LINE_BYTES + 1024)
         parse(big)
         # line_buf should have been reset
         parse(b'{"data":{"id":"after"}}\n')
@@ -1197,7 +1197,7 @@ class TestNdjsonExtractor:
         assert state["lines_parsed"] == 1
 
     def test_includes_multiple_keys(self):
-        parse, state = usage.create_x_ndjson_extractor()
+        parse, state = usage.x.create_ndjson_extractor()
         parse(
             b'{"data":{"id":"1"},"includes":'
             b'{"users":[{"id":"u1"}],'
@@ -1208,13 +1208,13 @@ class TestNdjsonExtractor:
 
     def test_data_array_not_counted(self):
         """Line where top-level ``data`` is an array (not a dict) contributes 0 to data_count."""
-        parse, state = usage.create_x_ndjson_extractor()
+        parse, state = usage.x.create_ndjson_extractor()
         parse(b'{"data":[1,2,3]}\n')
         assert state["data_count"] == 0
         assert state["lines_parsed"] == 1
 
     def test_non_dict_top_level_skipped(self):
-        parse, state = usage.create_x_ndjson_extractor()
+        parse, state = usage.x.create_ndjson_extractor()
         parse(b'"some string"\n')
         parse(b"42\n")
         parse(b'{"data":{"id":"1"}}\n')
@@ -1234,8 +1234,8 @@ class TestResponseHeadersSseParser:
 
         mitm_addon.responseheaders(flow)
 
-        assert "proxy_usage" in flow.metadata
-        assert isinstance(flow.metadata["proxy_usage"], dict)
+        assert "model_provider_usage" in flow.metadata
+        assert isinstance(flow.metadata["model_provider_usage"], dict)
         # Feed SSE data through the callback
         callback = flow.response.stream
         callback(
@@ -1244,8 +1244,8 @@ class TestResponseHeadersSseParser:
             b'{"model":"claude-sonnet-4-6",'
             b'"usage":{"input_tokens":42}}}\n\n'
         )
-        assert flow.metadata["proxy_usage"]["model"] == "claude-sonnet-4-6"
-        assert flow.metadata["proxy_usage"]["input_tokens"] == 42
+        assert flow.metadata["model_provider_usage"]["model"] == "claude-sonnet-4-6"
+        assert flow.metadata["model_provider_usage"]["input_tokens"] == 42
 
     def test_decompresses_gzip_sse_before_parsing(self, real_flow, headers):
         """Compressed SSE streams must be decompressed before usage extraction."""
@@ -1263,7 +1263,7 @@ class TestResponseHeadersSseParser:
 
         mitm_addon.responseheaders(flow)
 
-        assert "proxy_usage" in flow.metadata
+        assert "model_provider_usage" in flow.metadata
         callback = flow.response.stream
         plaintext = (
             b"event: message_start\n"
@@ -1276,8 +1276,8 @@ class TestResponseHeadersSseParser:
         result = callback(compressed)
         assert result == compressed
         # But parser receives decompressed data
-        assert flow.metadata["proxy_usage"]["model"] == "claude-sonnet-4-6"
-        assert flow.metadata["proxy_usage"]["input_tokens"] == 99
+        assert flow.metadata["model_provider_usage"]["model"] == "claude-sonnet-4-6"
+        assert flow.metadata["model_provider_usage"]["input_tokens"] == 99
 
     def test_no_sse_parser_for_non_model_provider(self, real_flow, headers):
         flow = real_flow(with_response=False, host="api.github.com")
@@ -1288,7 +1288,7 @@ class TestResponseHeadersSseParser:
 
         mitm_addon.responseheaders(flow)
 
-        assert "proxy_usage" not in flow.metadata
+        assert "model_provider_usage" not in flow.metadata
 
     def test_no_sse_parser_for_non_sse_response(self, real_flow, headers):
         flow = real_flow(with_response=False, host="api.anthropic.com")
@@ -1299,7 +1299,7 @@ class TestResponseHeadersSseParser:
 
         mitm_addon.responseheaders(flow)
 
-        assert "proxy_usage" not in flow.metadata
+        assert "model_provider_usage" not in flow.metadata
 
     def test_no_sse_parser_without_firewall_name(self, real_flow, headers):
         flow = real_flow(with_response=False, host="api.anthropic.com")
@@ -1310,7 +1310,7 @@ class TestResponseHeadersSseParser:
 
         mitm_addon.responseheaders(flow)
 
-        assert "proxy_usage" not in flow.metadata
+        assert "model_provider_usage" not in flow.metadata
 
 
 class TestResponseUsageReporting:
@@ -1329,7 +1329,7 @@ class TestResponseUsageReporting:
         flow.metadata["original_url"] = "https://api.anthropic.com/v1/messages"
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
-        # No proxy_usage set (no SSE parser) — JSON body in buffer
+        # No model_provider_usage set (no SSE parser) — JSON body in buffer
         body = json.dumps(
             {
                 "id": "msg_1",
@@ -1350,14 +1350,16 @@ class TestResponseUsageReporting:
 
         with (
             mitm_ctx(),
-            patch.object(usage, "_opener") as mock_opener,  # urllib external boundary (#9991)
+            patch.object(
+                usage.webhook, "_opener"
+            ) as mock_opener,  # urllib external boundary (#9991)
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
-            usage.usage_executor.shutdown(wait=True)
+            usage.webhook.usage_executor.shutdown(wait=True)
 
-        # JSON fallback should populate proxy_usage in metadata
-        extracted = flow.metadata["proxy_usage"]
+        # JSON fallback should populate model_provider_usage in metadata
+        extracted = flow.metadata["model_provider_usage"]
         assert extracted["model"] == "claude-sonnet-4-6"
         assert extracted["input_tokens"] == 50
         assert extracted["output_tokens"] == 200
@@ -1467,12 +1469,12 @@ class TestResponseUsageReporting:
 
         with (
             mitm_ctx(),
-            # maybe_report_proxy_usage early-returns on the firewall_name == "github"
+            # report_model_provider_usage early-returns on the firewall_name == "github"
             # filter, so no urllib request should ever reach the external boundary.
-            patch.object(usage, "_opener") as mock_opener,
+            patch.object(usage.webhook, "_opener") as mock_opener,
         ):
             mitm_addon.response(flow)
-            usage.usage_executor.shutdown(wait=True)
+            usage.webhook.usage_executor.shutdown(wait=True)
 
         assert mock_opener.open.call_count == 0  # urllib external boundary (#9991)
 
@@ -1493,7 +1495,7 @@ class TestResponseUsageReporting:
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
         flow.metadata["firewall_billable"] = True
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
-        flow.metadata["proxy_usage"] = {
+        flow.metadata["model_provider_usage"] = {
             "model": "claude-sonnet-4-6",
             "input_tokens": 100,
             "output_tokens": 500,
@@ -1504,14 +1506,16 @@ class TestResponseUsageReporting:
         mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
-            patch.object(usage, "get_api_url", return_value="https://api.vm0.ai"),
+            patch.object(
+                usage.providers.model_provider, "get_api_url", return_value="https://api.vm0.ai"
+            ),
             mitm_ctx(),
-            patch.object(usage, "_opener") as mock_opener,
+            patch.object(usage.webhook, "_opener") as mock_opener,
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
             # Flush the executor to ensure the background POST completes
-            usage.usage_executor.shutdown(wait=True)
+            usage.webhook.usage_executor.shutdown(wait=True)
 
         # Verify the webhook POST reached _opener with correct payload
         mock_opener.open.assert_called_once()  # urllib external boundary (#9991)
@@ -1536,7 +1540,7 @@ class TestResponseUsageReporting:
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
         flow.metadata["firewall_billable"] = True
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
-        flow.metadata["proxy_usage"] = {
+        flow.metadata["model_provider_usage"] = {
             "model": "claude-sonnet-4-6",
             "input_tokens": 80,
         }
@@ -1544,13 +1548,15 @@ class TestResponseUsageReporting:
         mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
-            patch.object(usage, "get_api_url", return_value="https://api.vm0.ai"),
+            patch.object(
+                usage.providers.model_provider, "get_api_url", return_value="https://api.vm0.ai"
+            ),
             mitm_ctx(),
-            patch.object(usage, "_opener") as mock_opener,
+            patch.object(usage.webhook, "_opener") as mock_opener,
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.error(flow)
-            usage.usage_executor.shutdown(wait=True)
+            usage.webhook.usage_executor.shutdown(wait=True)
 
         mock_opener.open.assert_called_once()  # urllib external boundary (#9991)
         req = mock_opener.open.call_args[0][0]
@@ -1561,7 +1567,7 @@ class TestResponseUsageReporting:
     def test_uses_flow_id_when_message_id_missing(
         self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor
     ):
-        """Missing message_id in proxy_usage falls back to flow.id.
+        """Missing message_id in model_provider_usage falls back to flow.id.
 
         Without a stable per-flow key, server-side dedup of usage webhook
         retries fails, which would double-charge.  flow.id is stable
@@ -1577,7 +1583,7 @@ class TestResponseUsageReporting:
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
         flow.metadata["firewall_billable"] = True
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
-        flow.metadata["proxy_usage"] = {
+        flow.metadata["model_provider_usage"] = {
             "model": "claude-sonnet-4-6",
             "input_tokens": 10,
             # no message_id set
@@ -1588,13 +1594,15 @@ class TestResponseUsageReporting:
         mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
-            patch.object(usage, "get_api_url", return_value="https://api.vm0.ai"),
+            patch.object(
+                usage.providers.model_provider, "get_api_url", return_value="https://api.vm0.ai"
+            ),
             mitm_ctx(),
-            patch.object(usage, "_opener") as mock_opener,
+            patch.object(usage.webhook, "_opener") as mock_opener,
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
-            usage.usage_executor.shutdown(wait=True)
+            usage.webhook.usage_executor.shutdown(wait=True)
 
         mock_opener.open.assert_called_once()  # urllib external boundary (#9991)
         req = mock_opener.open.call_args[0][0]
@@ -1604,7 +1612,7 @@ class TestResponseUsageReporting:
     def test_preserves_message_id_from_response(
         self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor
     ):
-        """When proxy_usage already has a message_id, flow.id fallback
+        """When model_provider_usage already has a message_id, flow.id fallback
         must not override it."""
         flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.id = "flow-should-not-win"
@@ -1616,7 +1624,7 @@ class TestResponseUsageReporting:
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
         flow.metadata["firewall_billable"] = True
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
-        flow.metadata["proxy_usage"] = {
+        flow.metadata["model_provider_usage"] = {
             "model": "claude-sonnet-4-6",
             "message_id": "msg_real_anthropic_id",
             "input_tokens": 10,
@@ -1627,13 +1635,15 @@ class TestResponseUsageReporting:
         mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
-            patch.object(usage, "get_api_url", return_value="https://api.vm0.ai"),
+            patch.object(
+                usage.providers.model_provider, "get_api_url", return_value="https://api.vm0.ai"
+            ),
             mitm_ctx(),
-            patch.object(usage, "_opener") as mock_opener,
+            patch.object(usage.webhook, "_opener") as mock_opener,
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
-            usage.usage_executor.shutdown(wait=True)
+            usage.webhook.usage_executor.shutdown(wait=True)
 
         mock_opener.open.assert_called_once()  # urllib external boundary (#9991)
         req = mock_opener.open.call_args[0][0]
@@ -1763,12 +1773,16 @@ class TestErrorHandler:
         flow.metadata["vm_sandbox_token"] = "test-token"
 
         with (
-            patch.object(usage, "get_api_url", return_value="https://app.test"),
-            patch.object(usage, "_opener") as mock_opener,  # urllib external boundary (#9991)
+            patch.object(
+                usage.providers.connectors.x, "get_api_url", return_value="https://app.test"
+            ),
+            patch.object(
+                usage.webhook, "_opener"
+            ) as mock_opener,  # urllib external boundary (#9991)
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.error(flow)
-            usage.usage_executor.shutdown(wait=True)
+            usage.webhook.usage_executor.shutdown(wait=True)
 
         # Connector billing webhook should have been posted to _opener.
         assert mock_opener.open.called
@@ -1817,12 +1831,16 @@ class TestErrorHandler:
         flow.metadata["vm_sandbox_token"] = "test-token"
 
         with (
-            patch.object(usage, "get_api_url", return_value="https://app.test"),
-            patch.object(usage, "_opener") as mock_opener,  # urllib external boundary (#9991)
+            patch.object(
+                usage.providers.connectors.x, "get_api_url", return_value="https://app.test"
+            ),
+            patch.object(
+                usage.webhook, "_opener"
+            ) as mock_opener,  # urllib external boundary (#9991)
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.error(flow)
-            usage.usage_executor.shutdown(wait=True)
+            usage.webhook.usage_executor.shutdown(wait=True)
 
         # 4. Billing must reflect the 2 complete tweets (partial 3rd is dropped)
         payloads = [json.loads(call[0][0].data) for call in mock_opener.open.call_args_list]
@@ -1831,8 +1849,8 @@ class TestErrorHandler:
         assert by_cat["users.read"] == 1
 
 
-class TestMaybeReportProxyUsage:
-    """Tests for maybe_report_proxy_usage helper."""
+class TestReportModelProviderUsage:
+    """Tests for report_model_provider_usage helper."""
 
     def test_reports_usage_for_model_provider(self, real_flow, fresh_usage_executor):
         """Model-provider usage reaches _opener with correct payload."""
@@ -1840,18 +1858,20 @@ class TestMaybeReportProxyUsage:
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
         flow.metadata["firewall_billable"] = True
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
-        flow.metadata["proxy_usage"] = {
+        flow.metadata["model_provider_usage"] = {
             "model": "claude-sonnet-4-6",
             "input_tokens": 100,
         }
 
         with (
-            patch.object(usage, "get_api_url", return_value="https://api.vm0.ai"),
-            patch.object(usage, "_opener") as mock_opener,
+            patch.object(
+                usage.providers.model_provider, "get_api_url", return_value="https://api.vm0.ai"
+            ),
+            patch.object(usage.webhook, "_opener") as mock_opener,
         ):
             mock_opener.open.return_value = MagicMock()
-            usage.maybe_report_proxy_usage(flow, "run-abc-123")
-            usage.usage_executor.shutdown(wait=True)
+            usage.report_model_provider_usage(flow, "run-abc-123")
+            usage.webhook.usage_executor.shutdown(wait=True)
 
         mock_opener.open.assert_called_once()  # urllib external boundary (#9991)
         req = mock_opener.open.call_args[0][0]
@@ -1871,14 +1891,16 @@ class TestMaybeReportProxyUsage:
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
         flow.metadata["firewall_billable"] = False
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
-        flow.metadata["proxy_usage"] = {"input_tokens": 100}
+        flow.metadata["model_provider_usage"] = {"input_tokens": 100}
 
         with (
-            patch.object(usage, "get_api_url", return_value="https://api.vm0.ai"),
-            patch.object(usage, "_opener") as mock_opener,
+            patch.object(
+                usage.providers.model_provider, "get_api_url", return_value="https://api.vm0.ai"
+            ),
+            patch.object(usage.webhook, "_opener") as mock_opener,
         ):
-            usage.maybe_report_proxy_usage(flow, "run-abc-123")
-            usage.usage_executor.shutdown(wait=True)
+            usage.report_model_provider_usage(flow, "run-abc-123")
+            usage.webhook.usage_executor.shutdown(wait=True)
 
         mock_opener.open.assert_not_called()  # urllib external boundary (#9991)
 
@@ -1886,27 +1908,29 @@ class TestMaybeReportProxyUsage:
         """Should NOT reach _opener for non-model-provider requests."""
         flow = real_flow(with_response=False, host="api.github.com")
         flow.metadata["firewall_name"] = "github"
-        flow.metadata["proxy_usage"] = {"input_tokens": 50}
+        flow.metadata["model_provider_usage"] = {"input_tokens": 50}
 
-        with patch.object(usage, "_opener") as mock_opener:
-            usage.maybe_report_proxy_usage(flow, "run-abc-123")
-            usage.usage_executor.shutdown(wait=True)
+        with patch.object(usage.webhook, "_opener") as mock_opener:
+            usage.report_model_provider_usage(flow, "run-abc-123")
+            usage.webhook.usage_executor.shutdown(wait=True)
 
         mock_opener.open.assert_not_called()  # urllib external boundary (#9991)
 
-    def test_skips_when_no_proxy_usage(self, real_flow, fresh_usage_executor):
-        """Should NOT reach _opener when proxy_usage is absent."""
+    def test_skips_when_no_model_provider_usage(self, real_flow, fresh_usage_executor):
+        """Should NOT reach _opener when model_provider_usage is absent."""
         flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
-        # No proxy_usage in metadata
+        # No model_provider_usage in metadata
 
         with (
-            patch.object(usage, "get_api_url", return_value="https://api.vm0.ai"),
-            patch.object(usage, "_opener") as mock_opener,
+            patch.object(
+                usage.providers.model_provider, "get_api_url", return_value="https://api.vm0.ai"
+            ),
+            patch.object(usage.webhook, "_opener") as mock_opener,
         ):
-            usage.maybe_report_proxy_usage(flow, "run-abc-123")
-            usage.usage_executor.shutdown(wait=True)
+            usage.report_model_provider_usage(flow, "run-abc-123")
+            usage.webhook.usage_executor.shutdown(wait=True)
 
         mock_opener.open.assert_not_called()  # urllib external boundary (#9991)
 
@@ -1914,11 +1938,11 @@ class TestMaybeReportProxyUsage:
         """Should NOT reach _opener when run_id is empty."""
         flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
-        flow.metadata["proxy_usage"] = {"input_tokens": 50}
+        flow.metadata["model_provider_usage"] = {"input_tokens": 50}
 
-        with patch.object(usage, "_opener") as mock_opener:
-            usage.maybe_report_proxy_usage(flow, "")
-            usage.usage_executor.shutdown(wait=True)
+        with patch.object(usage.webhook, "_opener") as mock_opener:
+            usage.report_model_provider_usage(flow, "")
+            usage.webhook.usage_executor.shutdown(wait=True)
 
         mock_opener.open.assert_not_called()  # urllib external boundary (#9991)
 
@@ -1928,16 +1952,18 @@ class TestMaybeReportProxyUsage:
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
         flow.metadata["firewall_billable"] = True
         flow.metadata["vm_sandbox_token"] = ""
-        flow.metadata["proxy_usage"] = {"input_tokens": 50}
+        flow.metadata["model_provider_usage"] = {"input_tokens": 50}
         proxy_log = tmp_path / "proxy-run-abc-123.jsonl"
         flow.metadata["vm_proxy_log_path"] = str(proxy_log)
 
         with (
-            patch.object(usage, "get_api_url", return_value="https://api.vm0.ai"),
-            patch.object(usage, "_opener") as mock_opener,
+            patch.object(
+                usage.providers.model_provider, "get_api_url", return_value="https://api.vm0.ai"
+            ),
+            patch.object(usage.webhook, "_opener") as mock_opener,
         ):
-            usage.maybe_report_proxy_usage(flow, "run-abc-123")
-            usage.usage_executor.shutdown(wait=True)
+            usage.report_model_provider_usage(flow, "run-abc-123")
+            usage.webhook.usage_executor.shutdown(wait=True)
 
         mock_opener.open.assert_not_called()  # urllib external boundary (#9991)
         assert proxy_log.exists()
@@ -1949,45 +1975,45 @@ class TestMaybeReportProxyUsage:
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
         flow.metadata["firewall_billable"] = True
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
-        flow.metadata["proxy_usage"] = {"input_tokens": 50}
+        flow.metadata["model_provider_usage"] = {"input_tokens": 50}
         proxy_log = tmp_path / "proxy-run-abc-123.jsonl"
         flow.metadata["vm_proxy_log_path"] = str(proxy_log)
 
         with (
-            patch.object(usage, "get_api_url", return_value=""),
-            patch.object(usage, "_opener") as mock_opener,
+            patch.object(usage.providers.model_provider, "get_api_url", return_value=""),
+            patch.object(usage.webhook, "_opener") as mock_opener,
         ):
-            usage.maybe_report_proxy_usage(flow, "run-abc-123")
-            usage.usage_executor.shutdown(wait=True)
+            usage.report_model_provider_usage(flow, "run-abc-123")
+            usage.webhook.usage_executor.shutdown(wait=True)
 
         mock_opener.open.assert_not_called()  # urllib external boundary (#9991)
         assert proxy_log.exists()
 
 
-class TestIsXStreamPath:
-    """Tests for is_x_stream_path predicate (issue #9534)."""
+class TestIsStreamPath:
+    """Tests for is_stream_path predicate (issue #9534)."""
 
     def test_all_five_stream_endpoints_match(self):
-        assert usage.is_x_stream_path("/2/tweets/search/stream") is True
-        assert usage.is_x_stream_path("/2/tweets/sample/stream") is True
-        assert usage.is_x_stream_path("/2/tweets/sample10/stream") is True
-        assert usage.is_x_stream_path("/2/tweets/compliance/stream") is True
-        assert usage.is_x_stream_path("/2/users/compliance/stream") is True
+        assert usage.x.is_stream_path("/2/tweets/search/stream") is True
+        assert usage.x.is_stream_path("/2/tweets/sample/stream") is True
+        assert usage.x.is_stream_path("/2/tweets/sample10/stream") is True
+        assert usage.x.is_stream_path("/2/tweets/compliance/stream") is True
+        assert usage.x.is_stream_path("/2/users/compliance/stream") is True
 
     def test_stream_rules_is_not_stream(self):
         # Rules management is a regular JSON request/response endpoint.
-        assert usage.is_x_stream_path("/2/tweets/search/stream/rules") is False
+        assert usage.x.is_stream_path("/2/tweets/search/stream/rules") is False
 
     def test_non_stream_paths_do_not_match(self):
-        assert usage.is_x_stream_path("/2/tweets/search/recent") is False
-        assert usage.is_x_stream_path("/2/users/by") is False
-        assert usage.is_x_stream_path("/2/tweets/1") is False
-        assert usage.is_x_stream_path("") is False
-        assert usage.is_x_stream_path("/") is False
+        assert usage.x.is_stream_path("/2/tweets/search/recent") is False
+        assert usage.x.is_stream_path("/2/users/by") is False
+        assert usage.x.is_stream_path("/2/tweets/1") is False
+        assert usage.x.is_stream_path("") is False
+        assert usage.x.is_stream_path("/") is False
 
 
-class TestLogConnectorUsage:
-    """Tests for log_connector_usage helper (issue #9504)."""
+class TestReportConnectorUsage:
+    """Tests for report_connector_usage helper (issue #9504)."""
 
     @pytest.fixture(autouse=True)
     def _sync_executor(self, sync_usage_executor):
@@ -2033,21 +2059,25 @@ class TestLogConnectorUsage:
         return flow
 
     def _call_and_get_billing(self, flow, run_id="run-abc-123"):
-        """Call log_connector_usage and return the webhook payload(s).
+        """Call report_connector_usage and return the webhook payload(s).
 
         Relies on the class-level ``_sync_executor`` autouse fixture to
         route submissions inline; only the urllib boundary is mocked here.
         """
         with (
-            patch.object(usage, "get_api_url", return_value="https://app.test"),
-            patch.object(usage, "_opener") as mock_opener,  # urllib external boundary (#9991)
+            patch.object(
+                usage.providers.connectors.x, "get_api_url", return_value="https://app.test"
+            ),
+            patch.object(
+                usage.webhook, "_opener"
+            ) as mock_opener,  # urllib external boundary (#9991)
         ):
             mock_opener.open.return_value = MagicMock()
-            usage.log_connector_usage(flow, run_id)
+            usage.report_connector_usage(flow, run_id)
         return [json.loads(call[0][0].data) for call in mock_opener.open.call_args_list]
 
     def _call_and_get_single_billing(self, flow, run_id="run-abc-123"):
-        """Call log_connector_usage and return the single webhook payload."""
+        """Call report_connector_usage and return the single webhook payload."""
         payloads = self._call_and_get_billing(flow, run_id)
         assert len(payloads) == 1, f"expected 1 billing record, got {len(payloads)}"
         return payloads[0]
@@ -2434,24 +2464,26 @@ class TestLogConnectorUsage:
         assert self._call_and_get_billing(flow, run_id="") == []
 
     def test_skips_for_model_provider(self, tmp_path, real_flow):
-        """Model providers go through maybe_report_proxy_usage instead —
-        log_connector_usage is X-specific and must early-return on
-        non-x firewalls even when firewall_billable=True."""
+        """Model-provider flows go through report_model_provider_usage instead.
+        The dispatcher has no ``model-provider:*`` entry in ``_HANDLERS``, so
+        it early-returns and never reaches the X parser even when
+        firewall_billable=True."""
         flow = self._make_x_flow(real_flow, tmp_path)
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
         assert self._call_and_get_billing(flow) == []
 
     def test_skips_for_non_x_billable_firewall(self, tmp_path, real_flow):
         """Billable non-x connectors (hypothetical future additions to
-        BILLABLE_CONNECTORS) must NOT reach the X-specific parser.  Catching
-        this at the gate prevents bogus billing records if someone grows the
-        whitelist without also adding per-connector dispatch."""
+        BILLABLE_CONNECTORS) must NOT reach the X parser.  The dispatcher
+        drops when the firewall_name has no registered handler, which
+        prevents bogus billing records if someone grows the whitelist
+        without also registering a handler in ``_HANDLERS``."""
         flow = self._make_x_flow(real_flow, tmp_path)
         flow.metadata["firewall_name"] = "github"
         assert self._call_and_get_billing(flow) == []
 
     def test_skips_when_not_billable(self, tmp_path, real_flow):
-        """Firewalls with firewall_billable=False are not logged."""
+        """Firewalls with firewall_billable=False are not reported."""
         flow = self._make_x_flow(real_flow, tmp_path)
         flow.metadata["firewall_billable"] = False
         assert self._call_and_get_billing(flow) == []
@@ -2515,12 +2547,16 @@ class TestLogConnectorUsage:
         # 3. Simulated disconnect - response() fires and logs via webhook
         with (
             mitm_ctx(),
-            patch.object(usage, "get_api_url", return_value="https://app.test"),
-            patch.object(usage, "_opener") as mock_opener,  # urllib external boundary (#9991)
+            patch.object(
+                usage.providers.connectors.x, "get_api_url", return_value="https://app.test"
+            ),
+            patch.object(
+                usage.webhook, "_opener"
+            ) as mock_opener,  # urllib external boundary (#9991)
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
-            usage.usage_executor.shutdown(wait=True)
+            usage.webhook.usage_executor.shutdown(wait=True)
 
         # 4. Verify billing payloads
         payloads = [json.loads(call[0][0].data) for call in mock_opener.open.call_args_list]
@@ -2532,7 +2568,7 @@ class TestLogConnectorUsage:
 
 
 class TestUsageWebhookDelivery:
-    """Webhook delivery behavior observed through maybe_report_proxy_usage."""
+    """Webhook delivery behavior observed through report_model_provider_usage."""
 
     @staticmethod
     def _model_flow(real_flow, tmp_path):
@@ -2541,19 +2577,21 @@ class TestUsageWebhookDelivery:
         flow.metadata["firewall_billable"] = True
         flow.metadata["vm_sandbox_token"] = "tok"
         flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
-        flow.metadata["proxy_usage"] = {"input_tokens": 100}
+        flow.metadata["model_provider_usage"] = {"input_tokens": 100}
         return flow
 
     def test_succeeds_on_first_attempt(self, tmp_path, real_flow, fresh_usage_executor):
         flow = self._model_flow(real_flow, tmp_path)
-        flow.metadata["proxy_usage"] = {"model": "claude-sonnet-4-6", "input_tokens": 100}
+        flow.metadata["model_provider_usage"] = {"model": "claude-sonnet-4-6", "input_tokens": 100}
         with (
-            patch.object(usage, "get_api_url", return_value="https://api.vm0.ai"),
-            patch.object(usage, "_opener") as mock_opener,
+            patch.object(
+                usage.providers.model_provider, "get_api_url", return_value="https://api.vm0.ai"
+            ),
+            patch.object(usage.webhook, "_opener") as mock_opener,
         ):
             mock_opener.open.return_value = MagicMock()
-            usage.maybe_report_proxy_usage(flow, "run-1")
-            usage.usage_executor.shutdown(wait=True)
+            usage.report_model_provider_usage(flow, "run-1")
+            usage.webhook.usage_executor.shutdown(wait=True)
 
         mock_opener.open.assert_called_once()  # urllib external boundary (#9991)
         req = mock_opener.open.call_args[0][0]
@@ -2574,12 +2612,14 @@ class TestUsageWebhookDelivery:
         http_err.close = MagicMock()
         flow = self._model_flow(real_flow, tmp_path)
         with (
-            patch.object(usage, "get_api_url", return_value="https://api.vm0.ai"),
-            patch.object(usage, "_opener") as mock_opener,
+            patch.object(
+                usage.providers.model_provider, "get_api_url", return_value="https://api.vm0.ai"
+            ),
+            patch.object(usage.webhook, "_opener") as mock_opener,
         ):
             mock_opener.open.side_effect = http_err
-            usage.maybe_report_proxy_usage(flow, "run-1")
-            usage.usage_executor.shutdown(wait=True)
+            usage.report_model_provider_usage(flow, "run-1")
+            usage.webhook.usage_executor.shutdown(wait=True)
 
         # Cleanup must run once per HTTPError — tracks attempt count so the
         # invariant survives future changes to max_retries.
@@ -2588,13 +2628,15 @@ class TestUsageWebhookDelivery:
     def test_adds_vercel_bypass_header(self, tmp_path, real_flow, fresh_usage_executor):
         flow = self._model_flow(real_flow, tmp_path)
         with (
-            patch.object(usage, "get_api_url", return_value="https://api.vm0.ai"),
+            patch.object(
+                usage.providers.model_provider, "get_api_url", return_value="https://api.vm0.ai"
+            ),
             patch.object(auth, "VERCEL_BYPASS", "bypass-secret"),
-            patch.object(usage, "_opener") as mock_opener,
+            patch.object(usage.webhook, "_opener") as mock_opener,
         ):
             mock_opener.open.return_value = MagicMock()
-            usage.maybe_report_proxy_usage(flow, "run-1")
-            usage.usage_executor.shutdown(wait=True)
+            usage.report_model_provider_usage(flow, "run-1")
+            usage.webhook.usage_executor.shutdown(wait=True)
 
         req = mock_opener.open.call_args[0][0]
         assert req.get_header("X-vercel-protection-bypass") == "bypass-secret"
@@ -2602,12 +2644,14 @@ class TestUsageWebhookDelivery:
     def test_retries_on_failure(self, tmp_path, real_flow, fresh_usage_executor):
         flow = self._model_flow(real_flow, tmp_path)
         with (
-            patch.object(usage, "get_api_url", return_value="https://api.vm0.ai"),
-            patch.object(usage, "_opener") as mock_opener,
+            patch.object(
+                usage.providers.model_provider, "get_api_url", return_value="https://api.vm0.ai"
+            ),
+            patch.object(usage.webhook, "_opener") as mock_opener,
         ):
             mock_opener.open.side_effect = [ConnectionError("fail"), MagicMock()]
-            usage.maybe_report_proxy_usage(flow, "run-1")
-            usage.usage_executor.shutdown(wait=True)
+            usage.report_model_provider_usage(flow, "run-1")
+            usage.webhook.usage_executor.shutdown(wait=True)
 
         assert mock_opener.open.call_count == 2  # urllib external boundary (#9991)
 
@@ -2616,12 +2660,14 @@ class TestUsageWebhookDelivery:
         flow = self._model_flow(real_flow, tmp_path)
         proxy_log = Path(flow.metadata["vm_proxy_log_path"])
         with (
-            patch.object(usage, "get_api_url", return_value="https://api.vm0.ai"),
-            patch.object(usage, "_opener") as mock_opener,
+            patch.object(
+                usage.providers.model_provider, "get_api_url", return_value="https://api.vm0.ai"
+            ),
+            patch.object(usage.webhook, "_opener") as mock_opener,
         ):
             mock_opener.open.side_effect = ConnectionError("fail")
-            usage.maybe_report_proxy_usage(flow, "run-1")
-            usage.usage_executor.shutdown(wait=True)
+            usage.report_model_provider_usage(flow, "run-1")
+            usage.webhook.usage_executor.shutdown(wait=True)
 
         assert mock_opener.open.call_count == 2  # urllib external boundary (#9991)
         assert proxy_log.exists()
@@ -2630,13 +2676,15 @@ class TestUsageWebhookDelivery:
     def test_sleeps_between_retries(self, tmp_path, real_flow, fresh_usage_executor):
         flow = self._model_flow(real_flow, tmp_path)
         with (
-            patch.object(usage, "get_api_url", return_value="https://api.vm0.ai"),
-            patch.object(usage, "_opener") as mock_opener,
-            patch.object(usage.time, "sleep") as mock_sleep,
+            patch.object(
+                usage.providers.model_provider, "get_api_url", return_value="https://api.vm0.ai"
+            ),
+            patch.object(usage.webhook, "_opener") as mock_opener,
+            patch.object(usage.webhook.time, "sleep") as mock_sleep,
         ):
             mock_opener.open.side_effect = [ConnectionError("fail"), MagicMock()]
-            usage.maybe_report_proxy_usage(flow, "run-1")
-            usage.usage_executor.shutdown(wait=True)
+            usage.report_model_provider_usage(flow, "run-1")
+            usage.webhook.usage_executor.shutdown(wait=True)
 
         mock_sleep.assert_called_once_with(0.5)  # syscall boundary; pins retry backoff (#9991)
 
@@ -2646,10 +2694,10 @@ class TestUsageWebhookDelivery:
         log, and a forensic "non-retryable" log line so the pool-path
         Future swallow doesn't erase the breadcrumb."""
         proxy_log = tmp_path / "proxy.jsonl"
-        with patch.object(usage, "_opener") as mock_opener:
+        with patch.object(usage.webhook, "_opener") as mock_opener:
             mock_opener.open.side_effect = TypeError("boom")
             with pytest.raises(TypeError, match="boom"):
-                usage._do_post_webhook_attempts(
+                usage.webhook._do_post_webhook_attempts(
                     "https://api.vm0.ai/x",
                     "tok",
                     {"k": "v"},
@@ -2665,15 +2713,17 @@ class TestUsageWebhookDelivery:
     def test_falls_back_to_sync_after_shutdown(self, tmp_path, real_flow, fresh_usage_executor):
         """After executor shutdown, delivery happens synchronously before return."""
         flow = self._model_flow(real_flow, tmp_path)
-        flow.metadata["proxy_usage"] = {"input_tokens": 42}
-        usage.usage_executor.shutdown(wait=True)
+        flow.metadata["model_provider_usage"] = {"input_tokens": 42}
+        usage.webhook.usage_executor.shutdown(wait=True)
 
         with (
-            patch.object(usage, "get_api_url", return_value="https://api.vm0.ai"),
-            patch.object(usage, "_opener") as mock_opener,
+            patch.object(
+                usage.providers.model_provider, "get_api_url", return_value="https://api.vm0.ai"
+            ),
+            patch.object(usage.webhook, "_opener") as mock_opener,
         ):
             mock_opener.open.return_value = MagicMock()
-            usage.maybe_report_proxy_usage(flow, "run-1")
+            usage.report_model_provider_usage(flow, "run-1")
             # Sync fallback: _opener must have been called before the call returned.
             mock_opener.open.assert_called_once()  # urllib external boundary (#9991)
 
@@ -2689,7 +2739,7 @@ class TestDoneHook:
     def test_done_shuts_down_executor(self):
         """done() should call shutdown(wait=True) on the executor."""
         mock_executor = MagicMock()
-        with patch.object(usage, "usage_executor", mock_executor):
+        with patch.object(usage.webhook, "usage_executor", mock_executor):
             mitm_addon.done()
         # concurrent.futures boundary: done() must gracefully shut down the pool (#9991).
         mock_executor.shutdown.assert_called_once_with(wait=True)
@@ -2973,15 +3023,15 @@ class TestUsagePendingCounter:
     """Tests for the dual pending counter (in-flight flows + pending reports)."""
 
     def setup_method(self):
-        usage._in_flight_flows = 0
-        usage._pending_reports = 0
-        usage._pending_path = ""
+        usage.counters._in_flight_flows = 0
+        usage.counters._pending_reports = 0
+        usage.counters._pending_path = ""
 
     def test_increment_decrement_flows(self, tmp_path):
         usage.set_pending_path(str(tmp_path / "usage-pending"))
         usage.increment_flows()
         usage.increment_flows()
-        assert usage._in_flight_flows == 2
+        assert usage.counters._in_flight_flows == 2
         content = (tmp_path / "usage-pending").read_text()
         assert content == "2:0"
 
@@ -2995,31 +3045,31 @@ class TestUsagePendingCounter:
 
     def test_increment_decrement_reports(self, tmp_path):
         usage.set_pending_path(str(tmp_path / "usage-pending"))
-        usage._increment_reports()
-        assert usage._pending_reports == 1
+        usage.counters._increment_reports()
+        assert usage.counters._pending_reports == 1
         content = (tmp_path / "usage-pending").read_text()
         assert content == "0:1"
 
-        usage._decrement_reports()
+        usage.counters._decrement_reports()
         content = (tmp_path / "usage-pending").read_text()
         assert content == "0:0"
 
     def test_decrement_does_not_go_negative(self, tmp_path):
         usage.set_pending_path(str(tmp_path / "usage-pending"))
         usage.decrement_flows()
-        usage._decrement_reports()
-        assert usage._in_flight_flows == 0
-        assert usage._pending_reports == 0
+        usage.counters._decrement_reports()
+        assert usage.counters._in_flight_flows == 0
+        assert usage.counters._pending_reports == 0
 
     def test_no_op_when_path_not_set(self):
         usage.set_pending_path("")
         usage.increment_flows()
         usage.decrement_flows()
-        usage._increment_reports()
-        usage._decrement_reports()
+        usage.counters._increment_reports()
+        usage.counters._decrement_reports()
         # Should not raise — just no file written.
-        assert usage._in_flight_flows == 0
-        assert usage._pending_reports == 0
+        assert usage.counters._in_flight_flows == 0
+        assert usage.counters._pending_reports == 0
 
     def test_report_decrements_after_completion(self, tmp_path, real_flow, fresh_usage_executor):
         """Retry exhaustion still runs the decrement finally-block."""
@@ -3029,17 +3079,19 @@ class TestUsagePendingCounter:
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
         flow.metadata["vm_sandbox_token"] = "tok"
         flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
-        flow.metadata["proxy_usage"] = {"input_tokens": 1}
+        flow.metadata["model_provider_usage"] = {"input_tokens": 1}
 
         with (
-            patch.object(usage, "get_api_url", return_value="https://api.vm0.ai"),
-            patch.object(usage, "_opener") as mock_opener,
+            patch.object(
+                usage.providers.model_provider, "get_api_url", return_value="https://api.vm0.ai"
+            ),
+            patch.object(usage.webhook, "_opener") as mock_opener,
         ):
             mock_opener.open.side_effect = ConnectionError("boom")
-            usage.maybe_report_proxy_usage(flow, "run-1")
-            usage.usage_executor.shutdown(wait=True)
+            usage.report_model_provider_usage(flow, "run-1")
+            usage.webhook.usage_executor.shutdown(wait=True)
 
-        assert usage._pending_reports == 0
+        assert usage.counters._pending_reports == 0
         content = (tmp_path / "usage-pending").read_text()
         assert content == "0:0"
 
@@ -3051,17 +3103,19 @@ class TestUsagePendingCounter:
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
         flow.metadata["vm_sandbox_token"] = "tok"
         flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
-        flow.metadata["proxy_usage"] = {"input_tokens": 1}
+        flow.metadata["model_provider_usage"] = {"input_tokens": 1}
 
         with (
-            patch.object(usage, "get_api_url", return_value="https://api.vm0.ai"),
-            patch.object(usage, "_opener") as mock_opener,
+            patch.object(
+                usage.providers.model_provider, "get_api_url", return_value="https://api.vm0.ai"
+            ),
+            patch.object(usage.webhook, "_opener") as mock_opener,
         ):
             mock_opener.open.return_value = MagicMock()
-            usage.maybe_report_proxy_usage(flow, "run-1")
-            usage.usage_executor.shutdown(wait=True)
+            usage.report_model_provider_usage(flow, "run-1")
+            usage.webhook.usage_executor.shutdown(wait=True)
 
-        assert usage._pending_reports == 0
+        assert usage.counters._pending_reports == 0
         content = (tmp_path / "usage-pending").read_text()
         assert content == "0:0"
 
@@ -3069,7 +3123,7 @@ class TestUsagePendingCounter:
         """If both response() and error() fire for the same flow, decrement only once."""
         usage.set_pending_path(str(tmp_path / "usage-pending"))
         usage.increment_flows()
-        assert usage._in_flight_flows == 1
+        assert usage.counters._in_flight_flows == 1
 
         flow = real_flow(with_response=False)
         flow.metadata["_usage_flow_tracked"] = True
@@ -3080,10 +3134,10 @@ class TestUsagePendingCounter:
             pass
 
         fake_handler(flow)  # first call: pops flag, decrements
-        assert usage._in_flight_flows == 0
+        assert usage.counters._in_flight_flows == 0
 
         fake_handler(flow)  # second call: flag already popped, no decrement
-        assert usage._in_flight_flows == 0  # stays at 0, not -1
+        assert usage.counters._in_flight_flows == 0  # stays at 0, not -1
 
     def test_untracked_flow_not_decremented(self, tmp_path, real_flow):
         """Flows without _usage_flow_tracked should not touch the counter."""
@@ -3098,27 +3152,29 @@ class TestUsagePendingCounter:
             pass
 
         fake_handler(flow)
-        assert usage._in_flight_flows == 1  # unchanged
+        assert usage.counters._in_flight_flows == 1  # unchanged
 
     def test_sync_fallback_decrements_reports(self, tmp_path, real_flow, fresh_usage_executor):
         """When the executor is already shut down, the sync fallback still decrements."""
         usage.set_pending_path(str(tmp_path / "usage-pending"))
         # Shut down the executor so _enqueue_webhook takes the sync fallback.
-        usage.usage_executor.shutdown(wait=True)
+        usage.webhook.usage_executor.shutdown(wait=True)
 
         flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
         flow.metadata["vm_sandbox_token"] = "tok"
         flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
-        flow.metadata["proxy_usage"] = {"input_tokens": 1}
+        flow.metadata["model_provider_usage"] = {"input_tokens": 1}
 
         with (
-            patch.object(usage, "get_api_url", return_value="https://api.vm0.ai"),
-            patch.object(usage, "_opener") as mock_opener,
+            patch.object(
+                usage.providers.model_provider, "get_api_url", return_value="https://api.vm0.ai"
+            ),
+            patch.object(usage.webhook, "_opener") as mock_opener,
         ):
             mock_opener.open.return_value = MagicMock()
-            usage.maybe_report_proxy_usage(flow, "run-1")
+            usage.report_model_provider_usage(flow, "run-1")
 
-        assert usage._pending_reports == 0
+        assert usage.counters._pending_reports == 0
         content = (tmp_path / "usage-pending").read_text()
         assert content == "0:0"

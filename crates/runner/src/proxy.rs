@@ -121,7 +121,19 @@ impl MitmProxy {
             .await
             .map_err(|e| RunnerError::Internal(format!("create addon dir: {e}")))?;
         for (name, content) in ADDON_FILES {
-            tokio::fs::write(config.addon_dir.join(name), content)
+            // Addon file names may include subdirectories (e.g.
+            // "usage/providers/connectors/x.py") after the usage/ package split.
+            // Ensure the parent directory exists before writing.
+            let path = config.addon_dir.join(name);
+            if let Some(parent) = path.parent() {
+                tokio::fs::create_dir_all(parent).await.map_err(|e| {
+                    RunnerError::Internal(format!(
+                        "create addon parent dir {}: {e}",
+                        parent.display()
+                    ))
+                })?;
+            }
+            tokio::fs::write(&path, content)
                 .await
                 .map_err(|e| RunnerError::Internal(format!("write addon {name}: {e}")))?;
         }
@@ -622,7 +634,10 @@ mod tests {
     fn addon_scripts_are_embedded() {
         let files: Vec<&str> = ADDON_FILES.iter().map(|(name, _)| *name).collect();
 
-        // All expected modules must be present.
+        // All expected modules must be present.  `usage/` is a package after
+        // #10381; each submodule must embed under its relative path so the
+        // runtime extractor rebuilds the directory tree before mitmdump loads
+        // the addon.
         for expected in [
             "mitm_addon.py",
             "auth.py",
@@ -630,7 +645,14 @@ mod tests {
             "matching.py",
             "url_utils.py",
             "logging_utils.py",
-            "usage.py",
+            "usage/__init__.py",
+            "usage/counters.py",
+            "usage/extract.py",
+            "usage/webhook.py",
+            "usage/providers/__init__.py",
+            "usage/providers/model_provider.py",
+            "usage/providers/connectors/__init__.py",
+            "usage/providers/connectors/x.py",
         ] {
             assert!(
                 files.contains(&expected),
