@@ -64,18 +64,6 @@ export default [
           ],
         },
       ],
-    },
-  },
-  // Type-aware rules (only for TypeScript files)
-  {
-    files: ["**/*.ts", "**/*.tsx"],
-    languageOptions: {
-      parserOptions: {
-        projectService: true,
-        tsconfigRootDir: import.meta.dirname,
-      },
-    },
-    rules: {
       "ccstate/computed-const-args-package-scope": "error",
     },
   },
