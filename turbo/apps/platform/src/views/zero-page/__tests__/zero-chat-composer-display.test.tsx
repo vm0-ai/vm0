@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
 import { type ConnectorType, zeroUserConnectorsContract } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
+import { mockUploadSuccess } from "../../../mocks/upload-helpers.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
@@ -42,16 +42,12 @@ function mockConnectedConnectors(types: ConnectorType[]) {
 describe("chat-d-015: attachment chips in composer", () => {
   beforeEach(() => {
     server.use(
-      // mockApi cannot be used here: /api/zero/uploads accepts multipart FormData,
-      // which is out of scope for the mockApi helper (Phase 0 of #9707).
-      http.post("*/api/zero/uploads", () => {
-        return HttpResponse.json({
-          id: "upload-1",
-          filename: "test-image.png",
-          contentType: "image/png",
-          size: 1024,
-          url: "https://example.com/test-image.png",
-        });
+      ...mockUploadSuccess({
+        id: "upload-1",
+        filename: "test-image.png",
+        contentType: "image/png",
+        size: 1024,
+        url: "https://example.com/test-image.png",
       }),
     );
     mockChatAPI();

@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.274.0](https://github.com/vm0-ai/vm0/compare/app-v0.273.0...app-v0.274.0) (2026-04-21)
+
+
+### Features
+
+* move thinking indicator inline under latest message ([#10246](https://github.com/vm0-ai/vm0/issues/10246)) ([eb0aa92](https://github.com/vm0-ai/vm0/commit/eb0aa92fbfa49a8f18806dde8669b8bbd17acaaf))
+
+
+### Bug Fixes
+
+* **web:** ts-rest api error triage and observability ([#10402](https://github.com/vm0-ai/vm0/issues/10402)) ([67d7ceb](https://github.com/vm0-ai/vm0/commit/67d7ceb879f70d3428ac895831201ca4124ded97))
+
 ## [0.273.0](https://github.com/vm0-ai/vm0/compare/app-v0.272.0...app-v0.273.0) (2026-04-21)
 
 

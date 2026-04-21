@@ -1,4 +1,5 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import { resetSignal, createDeferredPromise } from "../utils.ts";
 import { currentChatThreadId$ } from "../agent-chat.ts";
 import { zeroClient$ } from "../api-client.ts";
@@ -45,20 +46,47 @@ function createChatAttachment(file: File): ZeroChatAttachment {
   const upload$ = command(async ({ get, set }, signal: AbortSignal) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroUploadsContract);
-    const formData = new FormData();
-    formData.append("file", file);
 
     const uploadSignal = set(resetSignal$, signal);
     const deferred = createDeferredPromise<FileInfo>(uploadSignal);
     set(internalPromise$, deferred.promise);
 
-    const result = await accept(
-      client.upload({ body: formData, fetchOptions: { signal: uploadSignal } }),
+    // Step 1: ask the server to sign a PUT URL for R2. The file body never
+    // travels through the Next.js runtime, which lets us exceed Vercel's
+    // serverless body cap and next dev's multipart parser limits.
+    //
+    // Toast is disabled here so upload errors are surfaced through a single
+    // path in `uploadAttachment$`, which also removes the failed chip.
+    const prepared = await accept(
+      client.prepare({
+        body: {
+          filename: file.name,
+          contentType: file.type,
+          size: file.size,
+        },
+        fetchOptions: { signal: uploadSignal },
+      }),
       [200],
+      { toast: false },
     );
     signal.throwIfAborted();
 
-    deferred.resolve({ id: result.body.id, url: result.body.url });
+    // Step 2: PUT the file bytes straight to R2 using the presigned URL.
+    // Do NOT forward auth headers or cookies — the URL's signature is the
+    // only credential R2 accepts, and adding others trips CORS.
+    const putRes = await fetch(prepared.body.uploadUrl, {
+      method: "PUT",
+      body: file,
+      headers: { "content-type": file.type },
+      signal: uploadSignal,
+    });
+    signal.throwIfAborted();
+
+    if (!putRes.ok) {
+      throw new Error(`storage returned ${putRes.status} ${putRes.statusText}`);
+    }
+
+    deferred.resolve({ id: prepared.body.id, url: prepared.body.url });
   });
 
   return {
@@ -145,7 +173,27 @@ export function createDraftSignals(): DraftSignals {
         return [...prev, attachment];
       });
 
-      await set(attachment.upload$, signal);
+      await set(attachment.upload$, signal).catch((error: unknown) => {
+        // Drop the failed chip so the composer doesn't show an orphan.
+        // `removeAttachment$` may have already removed it on user cancel;
+        // filter is a no-op in that case.
+        set(internalAttachments$, (prev) => {
+          return prev.filter((a) => {
+            return a !== attachment;
+          });
+        });
+
+        // Aborts come from user cancel (X on chip) or external signal
+        // (page navigation) — neither is an error condition.
+        const isAbort = error instanceof Error && error.name === "AbortError";
+        if (isAbort) {
+          return;
+        }
+
+        const message =
+          error instanceof Error ? error.message : "Unknown error";
+        toast.error(`Failed to upload ${file.name}: ${message}`);
+      });
     },
   );
 

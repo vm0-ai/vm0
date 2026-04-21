@@ -21,7 +21,7 @@ Output:
 Notes:
   - Authenticates via ZERO_TOKEN (requires file:write capability)
   - Returned URL is a presigned GET valid for 7 days
-  - Max file size: 10 MB
+  - Max file size: 1 GB
   - Allowed types: png / jpeg / gif / webp / svg / mp4 / webm / mov / pdf / txt / csv / md / json`,
   )
   .action(

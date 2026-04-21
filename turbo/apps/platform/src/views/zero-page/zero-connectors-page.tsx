@@ -258,7 +258,7 @@ function AvailableConnectorCard({
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
-              {connector.helpText ? `: ${connector.helpText}` : ""}
+              {connector.helpText && <span>: {connector.helpText}</span>}
             </>
           ) : (
             (connector.helpText ?? "")

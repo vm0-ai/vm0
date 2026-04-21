@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
 import {
   zeroConnectorsMainContract,
   zeroUserConnectorsContract,
@@ -10,6 +9,7 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
+import { mockUploadSuccess } from "../../../mocks/upload-helpers.ts";
 import {
   mockChatLifecycle,
   sendMessageInUI,
@@ -82,16 +82,12 @@ describe("zero chat composer - file input", () => {
     const user = userEvent.setup();
     mockChatLifecycle();
     server.use(
-      // mockApi cannot be used here: /api/zero/uploads accepts multipart FormData,
-      // which is out of scope for the mockApi helper (Phase 0 of #9707).
-      http.post("*/api/zero/uploads", () => {
-        return HttpResponse.json({
-          id: "upload-1",
-          filename: "test.png",
-          contentType: "image/png",
-          size: 1024,
-          url: "https://example.com/test.png",
-        });
+      ...mockUploadSuccess({
+        id: "upload-1",
+        filename: "test.png",
+        contentType: "image/png",
+        size: 1024,
+        url: "https://example.com/test.png",
       }),
     );
 

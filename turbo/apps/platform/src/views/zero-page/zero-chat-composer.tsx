@@ -109,7 +109,7 @@ import {
 } from "../../signals/voice-io/voice-io-stt.ts";
 import { setBillingDialogOpen$ } from "../../signals/zero-page/billing.ts";
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB — keep in sync with uploads/route.ts
+const MAX_FILE_SIZE = 1024 * 1024 * 1024; // 1 GB — keep in sync with web constants
 
 // ---------------------------------------------------------------------------
 // Props
@@ -666,7 +666,7 @@ export function ZeroChatComposer({
         const file = item.getAsFile();
         if (file) {
           if (file.size > MAX_FILE_SIZE) {
-            toast.error(`${file.name} exceeds the 10 MB limit`);
+            toast.error(`${file.name} exceeds the 1 GB limit`);
             continue;
           }
           e.preventDefault();
@@ -686,7 +686,7 @@ export function ZeroChatComposer({
     }
     for (const file of files) {
       if (file.size > MAX_FILE_SIZE) {
-        toast.error(`${file.name} exceeds the 10 MB limit`);
+        toast.error(`${file.name} exceeds the 1 GB limit`);
         continue;
       }
       detach(uploadAttachment(file, rootSignal), Reason.DomCallback);
@@ -830,7 +830,7 @@ export function ZeroChatComposer({
     }
     for (const file of files) {
       if (file.size > MAX_FILE_SIZE) {
-        toast.error(`${file.name} exceeds the 10 MB limit`);
+        toast.error(`${file.name} exceeds the 1 GB limit`);
         continue;
       }
       detach(uploadAttachment(file, rootSignal), Reason.DomCallback);

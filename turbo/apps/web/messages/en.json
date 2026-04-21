@@ -42,7 +42,7 @@
     },
     "purposeBuilt": {
       "title": "Memory that persists",
-      "description": "Zero remembers context across conversations. No need to repeat yourself — it learns and grows with your team."
+      "description": "Zero remembers context across conversations. No need to repeat yourself - it learns and grows with your team."
     },
     "observable": {
       "title": "Full activity logs",
@@ -61,7 +61,7 @@
     },
     "sessionContinuity": {
       "title": "Proactive assistance",
-      "description": "Zero doesn't just respond — it anticipates what you need and takes initiative to help."
+      "description": "Zero doesn't just respond - it anticipates what you need and takes initiative to help."
     },
     "structuredObservability": {
       "title": "Team collaboration",
@@ -133,7 +133,7 @@
     "needMoreCredits": "Need more credits?",
     "topUpDescription": "Top up anytime at",
     "topUpRate": "1,000 credits per $1",
-    "topUpAutoRecharge": "Set up auto-recharge so your agents never stop — when your balance drops below a threshold, credits are purchased automatically.",
+    "topUpAutoRecharge": "Set up auto-recharge so your agents never stop - when your balance drops below a threshold, credits are purchased automatically.",
     "perCredits": "per 1,000 credits",
     "comparePlans": "Compare plans",
     "featuresHeader": "Features",
@@ -215,7 +215,7 @@
     "consentPreferences": "Consent Preferences",
     "support": "Support",
     "aiDisclaimerHeading": "Please note",
-    "aiDisclaimerInaccuracy": "Zero is powered by large language models. Responses, summaries, and other outputs may be inaccurate, incomplete, or outdated — please verify important information before acting on it.",
+    "aiDisclaimerInaccuracy": "Zero is powered by large language models. Responses, summaries, and other outputs may be inaccurate, incomplete, or outdated - please verify important information before acting on it.",
     "aiDisclaimerPaidPlan": "Using the AI agent inside the Slack app container requires a paid Slack plan. @mentions and direct messages to Zero are available on all Slack plans."
   },
   "skills": {
@@ -306,8 +306,8 @@
     },
     "content": {
       "auto-merge-releases": {
-        "title": "Ship release PRs on your team's schedule — without chasing them",
-        "description": "Tell Zero once when to ship release PRs and which ones to skip. It runs the check on your cadence, skips risky changes, and merges the rest — so you stop being a human cron job.",
+        "title": "Ship release PRs on your team's schedule without chasing them",
+        "description": "Tell Zero once when to ship release PRs and which ones to skip. It runs the check on your cadence, skips risky changes, and merges the rest - so you stop being a human cron job.",
         "timeSaved": "~15 min saved per release",
         "headings": {
           "scenario": "Why chasing release PRs drains the on-call engineer",
@@ -317,11 +317,11 @@
           "integrations": "Required integrations: GitHub and Slack",
           "tips": "Best practices for autonomous release merging"
         },
-        "scenario": "A new release PR opens whenever your main branch picks up enough commits — on most teams that's once or twice a day. Someone has to glance at the diff, confirm CI is green, decide whether the changelog contains anything scary, click Merge, and then babysit the deploy. If they are in a meeting, asleep, or on another continent, the release sits. Commits keep stacking on top, the changelog grows, and the merge gets riskier. You tell Zero once — run the release check once a workday, skip the risky ones, merge during work hours, post to the release channel — and from then on, shipping happens on its own, on your team's clock.",
+        "scenario": "A new release PR opens whenever your main branch picks up enough commits - on most teams that's once or twice a day. Someone has to glance at the diff, confirm CI is green, decide whether the changelog contains anything scary, click Merge, and then babysit the deploy. If they are in a meeting, asleep, or on another continent, the release sits. Commits keep stacking on top, the changelog grows, and the merge gets riskier. You tell Zero once - run the release check once a workday, skip the risky ones, merge during work hours, post to the release channel - and from then on, shipping happens on its own, on your team's clock.",
         "promptVariants": [
           {
             "label": "Detailed",
-            "prompt": "@Zero every weekday at 3pm, check our repo for an open release PR. If it has no DB migration files, enable auto-merge with squash so it ships the moment CI passes — then post an update in #release-notify."
+            "prompt": "@Zero every weekday at 3pm, check our repo for an open release PR. If it has no DB migration files, enable auto-merge with squash so it ships the moment CI passes - then post an update in #release-notify."
           },
           {
             "label": "Quick",
@@ -339,13 +339,13 @@
           },
           {
             "name": "Zero",
-            "text": "Release PR #9565 — all 14 CI checks green, no migration files touched. Enabled auto-merge with squash. It will ship the moment branch protection clears. I'll post back in #release-notify when it's in."
+            "text": "Release PR #9565 - all 14 CI checks green, no migration files touched. Enabled auto-merge with squash. It will ship the moment branch protection clears. I'll post back in #release-notify when it's in."
           }
         ],
         "steps": [
           {
             "title": "Zero checks for release PRs on your cadence",
-            "description": "Zero runs on whatever schedule you set — once a workday for most teams, hourly for high-velocity ones — and queries GitHub for open release PRs on your default branch. Outside that window, it does nothing. No after-hours merges, no weekend surprises."
+            "description": "Zero runs on whatever schedule you set - once a workday for most teams, hourly for high-velocity ones - and queries GitHub for open release PRs on your default branch. Outside that window, it does nothing. No after-hours merges, no weekend surprises."
           },
           {
             "title": "Zero vets each PR against your safety rules",
@@ -364,21 +364,21 @@
           },
           {
             "title": "Escalate the risky ones",
-            "description": "Have Zero flag — not merge — PRs it would otherwise skip.",
+            "description": "Have Zero flag - not merge - PRs it would otherwise skip.",
             "examplePrompt": "@Zero when you find a release PR with a migration file, open a thread in #dev tagging @oncall with the diff link."
           },
           {
             "title": "Crank up the cadence when you're ready",
             "description": "Move from daily to multiple times a day once the policy has proven itself.",
-            "examplePrompt": "@Zero starting next week, run the release auto-merge check twice a day — once in the morning, once after lunch — instead of just at 3pm."
+            "examplePrompt": "@Zero starting next week, run the release auto-merge check twice a day - once in the morning, once after lunch - instead of just at 3pm."
           }
         ],
         "integrations": [
           {
-            "description": "GitHub — Zero lists release PRs, inspects file changes, confirms CI status, and enables auto-merge. Repository write access is required so Zero can trigger the merge."
+            "description": "GitHub - Zero lists release PRs, inspects file changes, confirms CI status, and enables auto-merge. Repository write access is required so Zero can trigger the merge."
           },
           {
-            "description": "Slack — Zero uses your Slack connection to announce merges, flag skipped PRs, and escalate risky ones. Without Slack, Zero can still merge but has nowhere to report."
+            "description": "Slack - Zero uses your Slack connection to announce merges, flag skipped PRs, and escalate risky ones. Without Slack, Zero can still merge but has nowhere to report."
           }
         ],
         "tips": [
@@ -470,7 +470,7 @@
         ]
       },
       "standup-summary": {
-        "title": "Get your standup ready without opening 5 apps",
+        "title": "Get your standup ready without opening multiple apps",
         "description": "Zero pulls from calendar, email, and Linear, then writes a shareable summary you can paste straight into the team thread.",
         "timeSaved": "~20 min saved",
         "headings": {
@@ -881,7 +881,7 @@
       },
       "build-with-v0": {
         "title": "Turn a Slack idea into an interactive prototype instantly",
-        "description": "When an idea sparks mid-conversation, describe it to Zero. It uses v0 to generate a clickable React prototype and posts the live preview link back in the thread — before the discussion moves on.",
+        "description": "When an idea sparks mid-conversation, describe it to Zero. It uses v0 to generate a clickable React prototype and posts the live preview link back in the thread - before the discussion moves on.",
         "timeSaved": "Hours → seconds",
         "headings": {
           "scenario": "Why ideas get lost before anyone can see them",
@@ -891,7 +891,7 @@
           "integrations": "Required integrations: v0",
           "tips": "Best practices for rapid idea prototyping with v0"
         },
-        "scenario": "You're in a Slack thread debating how a feature should work. Someone proposes a new UI pattern — a command palette, a settings panel, a multi-step wizard. Words aren't landing. Sketching on a whiteboard isn't an option. Scheduling a Figma session pushes the decision to next week. You describe the idea to Zero in plain language. It calls v0, generates a fully interactive React prototype, and posts the live preview link right back in the thread — in under a minute. Everyone can click through it before the conversation moves on.",
+        "scenario": "You're in a Slack thread debating how a feature should work. Someone proposes a new UI pattern - a command palette, a settings panel, a multi-step wizard. Words aren't landing. Sketching on a whiteboard isn't an option. Scheduling a Figma session pushes the decision to next week. You describe the idea to Zero in plain language. It calls v0, generates a fully interactive React prototype, and posts the live preview link right back in the thread - in under a minute. Everyone can click through it before the conversation moves on.",
         "promptVariants": [
           {
             "label": "New UI idea",
@@ -903,7 +903,7 @@
           },
           {
             "label": "Iterate",
-            "prompt": "@Zero update the prototype — add a filter tab at the top for 'Agents / Runs / Connectors' and highlight the active item in orange. Regenerate."
+            "prompt": "@Zero update the prototype - add a filter tab at the top for 'Agents / Runs / Connectors' and highlight the active item in orange. Regenerate."
           }
         ],
         "slackPreview": [
@@ -919,11 +919,11 @@
         "steps": [
           {
             "title": "Describe the idea in plain language",
-            "description": "No spec, no wireframe required. Tell Zero what the UI should do — the components, the interactions, the data it surfaces. Paste a rough sketch description or just riff from the thread."
+            "description": "No spec, no wireframe required. Tell Zero what the UI should do - the components, the interactions, the data it surfaces. Paste a rough sketch description or just riff from the thread."
           },
           {
             "title": "Zero generates the prototype via v0",
-            "description": "Zero translates your description into a structured v0 prompt and calls the v0 API. v0 produces a fully interactive React component — real buttons, real states, real navigation."
+            "description": "Zero translates your description into a structured v0 prompt and calls the v0 API. v0 produces a fully interactive React component - real buttons, real states, real navigation."
           },
           {
             "title": "Live preview link posted in Slack",
@@ -934,12 +934,12 @@
           {
             "title": "Refine in the thread",
             "description": "Keep iterating without leaving Slack",
-            "examplePrompt": "@Zero update the prototype — the search input should have an icon on the left, and empty state should show recent items instead of nothing."
+            "examplePrompt": "@Zero update the prototype - the search input should have an icon on the left, and empty state should show recent items instead of nothing."
           },
           {
             "title": "Share for async feedback",
             "description": "Post to a broader channel or DM stakeholders",
-            "examplePrompt": "@Zero share the v0 prototype link to #product with the message: 'Quick prototype of the command palette idea — feedback welcome before Thursday.'"
+            "examplePrompt": "@Zero share the v0 prototype link to #product with the message: 'Quick prototype of the command palette idea - feedback welcome before Thursday.'"
           },
           {
             "title": "Hand off to engineering",
@@ -957,7 +957,7 @@
         ],
         "tips": [
           "Describe behavior, not just appearance. 'Clicking a row expands details below it' gets a more accurate prototype than 'expandable rows'.",
-          "Reference existing UI patterns by name — 'like a VS Code command palette' or 'like Notion's slash menu' — to anchor v0's generation.",
+          "Reference existing UI patterns by name - 'like a VS Code command palette' or 'like Notion's slash menu' - to anchor v0's generation.",
           "Use the iterate prompt immediately after the first result. One round of refinement usually gets you 90% of the way there."
         ]
       },
@@ -1077,7 +1077,7 @@
           },
           {
             "name": "Zero",
-            "text": "Product Health Brief — Apr 13\n\nLinear: 3 in progress, 1 blocked (auth bug, Lancy)\nGitHub: 4 PRs merged overnight, 2 awaiting review\nCalendar: Design review 2pm, investor call 4pm\n\nP0 items: None open"
+            "text": "Product Health Brief - Apr 13\n\nLinear: 3 in progress, 1 blocked (auth bug, Lancy)\nGitHub: 4 PRs merged overnight, 2 awaiting review\nCalendar: Design review 2pm, investor call 4pm\n\nP0 items: None open"
           }
         ],
         "steps": [
@@ -1133,7 +1133,7 @@
       },
       "tech-debt-scan": {
         "title": "Scan your entire codebase for tech debt and file a GitHub issue",
-        "description": "Give Zero a repo. It clones it, runs a full tech debt scan, triages every finding by severity, and files a structured GitHub issue with the complete breakdown — all from one message.",
+        "description": "Give Zero a repo. It clones it, runs a full tech debt scan, triages every finding by severity, and files a structured GitHub issue with the complete breakdown - all from one message.",
         "timeSaved": "~2 hrs saved per audit",
         "headings": {
           "scenario": "Why tech debt piles up untracked",
@@ -1244,7 +1244,7 @@
           },
           {
             "name": "Zero",
-            "text": "Competitor Digest — Week of Apr 13\n\ne2b: Shipped new sandbox pricing, 3 posts on developer use cases\nDaytona: New GitHub integration announced, CEO posted on agentic workflows\nReplit: No major product updates, active community engagement\n\nFull log saved to Notion."
+            "text": "Competitor Digest - Week of Apr 13\n\ne2b: Shipped new sandbox pricing, 3 posts on developer use cases\nDaytona: New GitHub integration announced, CEO posted on agentic workflows\nReplit: No major product updates, active community engagement\n\nFull log saved to Notion."
           }
         ],
         "steps": [
@@ -1329,7 +1329,7 @@
           },
           {
             "name": "Zero",
-            "text": "Competitor Pricing Digest — Apr 14\n\nCursor: Added new Ultra tier at $200/month. Signals growing confidence in a high-willingness-to-pay power-user segment.\nDaytona: Increased startup credit offer from $25K to $50K. Signals aggressive developer acquisition push.\n\nNo changes detected: E2B, Replit\n\nFull report saved to Notion."
+            "text": "Competitor Pricing Digest - Apr 14\n\nCursor: Added new Ultra tier at $200/month. Signals growing confidence in a high-willingness-to-pay power-user segment.\nDaytona: Increased startup credit offer from $25K to $50K. Signals aggressive developer acquisition push.\n\nNo changes detected: E2B, Replit\n\nFull report saved to Notion."
           }
         ],
         "steps": [
@@ -1411,7 +1411,7 @@
           },
           {
             "name": "Zero",
-            "text": "Scheduled. Running weekdays at 08:45.\n\nRun from this morning:\n- Issue #9031: Stripe webhook 422 (23 hits) — assigned to Ethan\n- Issue #9032: Auth token expiry on mobile (11 hits) — assigned to Lancy\n- Issue #9033: CSV export timeout (5 hits) — assigned to Yuma\n\nDeduplicated 4 duplicates across Sentry and Axiom."
+            "text": "Scheduled. Running weekdays at 08:45.\n\nRun from this morning:\n- Issue #9031: Stripe webhook 422 (23 hits) - assigned to Ethan\n- Issue #9032: Auth token expiry on mobile (11 hits) - assigned to Lancy\n- Issue #9033: CSV export timeout (5 hits) - assigned to Yuma\n\nDeduplicated 4 duplicates across Sentry and Axiom."
           }
         ],
         "steps": [
@@ -1474,7 +1474,7 @@
           "integrations": "Required integrations: Resend and Slack",
           "tips": "Best practices for Zero-drafted marketing emails"
         },
-        "scenario": "Thursday afternoon. You owe subscribers a product update. You have three shipped features in Linear, a launch teaser in Notion, and fifteen minutes before your next meeting. You don't want to open a blank doc, copy-paste changelog items, hand-write new copy, log into Resend, upload the HTML, write the subject line, and triple-check the audience tag. You just want a clean email to go out — on-brand, with the right audience — without losing the rest of your day.",
+        "scenario": "Thursday afternoon. You owe subscribers a product update. You have three shipped features in Linear, a launch teaser in Notion, and fifteen minutes before your next meeting. You don't want to open a blank doc, copy-paste changelog items, hand-write new copy, log into Resend, upload the HTML, write the subject line, and triple-check the audience tag. You just want a clean email to go out - on-brand, with the right audience - without losing the rest of your day.",
         "promptVariants": [
           {
             "label": "Detailed",
@@ -1517,12 +1517,12 @@
           {
             "title": "Tweak and re-send",
             "description": "Ask Zero to revise any section and regenerate the preview",
-            "examplePrompt": "@Zero rewrite the opening paragraph — make it punchier and cut the corporate tone."
+            "examplePrompt": "@Zero rewrite the opening paragraph - make it punchier and cut the corporate tone."
           },
           {
             "title": "Segment your audience",
             "description": "Narrow the send to a specific tag or filter before firing",
-            "examplePrompt": "@Zero send this draft only to subscribers tagged 'trial-active' — skip the churned list."
+            "examplePrompt": "@Zero send this draft only to subscribers tagged 'trial-active' - skip the churned list."
           },
           {
             "title": "Make it routine",
@@ -1545,14 +1545,14 @@
           }
         ],
         "tips": [
-          "Name your audience explicitly — 'subscribers', 'trial users', or a specific tag — so Zero doesn't default to a broader list.",
+          "Name your audience explicitly - 'subscribers', 'trial users', or a specific tag - so Zero doesn't default to a broader list.",
           "Always preview before sending. Tell Zero to post the draft in a channel for approval so a human reads it before it reaches your list.",
-          "Chain with the standup use case — run your weekly shipped-items summary first, then feed it into this campaign for a zero-copy newsletter pipeline."
+          "Chain with the standup use case - run your weekly shipped-items summary first, then feed it into this campaign for a zero-copy newsletter pipeline."
         ]
       },
       "managed-agent-workers": {
         "title": "Run and check on your Anthropic Managed Agent workers",
-        "description": "You have purpose-built Managed Agents for code review, tests, tech debt, and builds. Zero becomes your fleet manager — launch them, check status, fetch their output, all from Slack.",
+        "description": "You have purpose-built Managed Agents for code review, tests, tech debt, and builds. Zero becomes your fleet manager - launch them, check status, fetch their output, all from Slack.",
         "timeSaved": "~20 min saved per worker task",
         "headings": {
           "scenario": "Why a fleet of Worker Agents is hard to manage alone",
@@ -1562,7 +1562,7 @@
           "integrations": "Required integrations: Anthropic Managed Agents and GitHub",
           "tips": "Best practices for running a Managed Agent worker fleet"
         },
-        "scenario": "You have invested in building specialized Worker Agents on Anthropic Managed Agents — a Tech Debt Cleaner, a PR Reviewer, a Test Runner, a Build Watcher. Each has its own system prompt, tools, and isolated cloud environment. Running any one of them today means opening the Anthropic console, creating a session, refreshing for status, and copying the output back into your workflow. When several are running at once, you lose track of who is busy, who finished, and whose output you already acted on. You tell Zero to check the fleet. It lists your agents, reports who is active, and streams results back into Slack when a session completes.",
+        "scenario": "You have invested in building specialized Worker Agents on Anthropic Managed Agents - a Tech Debt Cleaner, a PR Reviewer, a Test Runner, a Build Watcher. Each has its own system prompt, tools, and isolated cloud environment. Running any one of them today means opening the Anthropic console, creating a session, refreshing for status, and copying the output back into your workflow. When several are running at once, you lose track of who is busy, who finished, and whose output you already acted on. You tell Zero to check the fleet. It lists your agents, reports who is active, and streams results back into Slack when a session completes.",
         "promptVariants": [
           {
             "label": "Launch a worker",
@@ -1584,7 +1584,7 @@
           },
           {
             "name": "Zero",
-            "text": "Tech Debt Cleaner is active — session sesn_011Ca8 has been running for 14 min on vm0-ai/vm0 main. Currently processing turbo/apps/web/components. Latest output: 7 dead-code imports flagged.\n\nOther workers:\n- PR Reviewer — idle\n- Test Runner — active (2 min in, running voice-chat.test.tsx)\n- Build Watcher — idle\n\nI will post the full Tech Debt Cleaner report here when the session finishes."
+            "text": "Tech Debt Cleaner is active - session sesn_011Ca8 has been running for 14 min on vm0-ai/vm0 main. Currently processing turbo/apps/web/components. Latest output: 7 dead-code imports flagged.\n\nOther workers:\n- PR Reviewer - idle\n- Test Runner - active (2 min in, running voice-chat.test.tsx)\n- Build Watcher - idle\n\nI will post the full Tech Debt Cleaner report here when the session finishes."
           }
         ],
         "steps": [
@@ -1620,21 +1620,21 @@
         ],
         "integrations": [
           {
-            "description": "Anthropic Managed Agents — Zero lists your agents, launches sessions, checks status, and fetches output. Connect it with an Anthropic API key from app.vm0.ai/connectors."
+            "description": "Anthropic Managed Agents - Zero lists your agents, launches sessions, checks status, and fetches output. Connect it with an Anthropic API key from app.vm0.ai/connectors."
           },
           {
-            "description": "GitHub — most worker agents need repo access to run reviews, tests, or builds. Zero uses your GitHub connection to target the right branch or PR."
+            "description": "GitHub - most worker agents need repo access to run reviews, tests, or builds. Zero uses your GitHub connection to target the right branch or PR."
           }
         ],
         "tips": [
           "Give each agent a distinct, human-readable name in the Anthropic console. 'Tech Debt Cleaner' reads far better in Zero's replies than an agent_011 ID.",
           "Keep each agent single-purpose. A worker that reviews PRs and also runs tests will drift on both. Narrow system prompts produce sharper output and easier orchestration.",
-          "Chain workers with conditional prompts — 'when X finishes, launch Y on the output'. A fleet of focused agents becomes a pipeline without any extra infrastructure."
+          "Chain workers with conditional prompts - 'when X finishes, launch Y on the output'. A fleet of focused agents becomes a pipeline without any extra infrastructure."
         ]
       },
       "multilingual-cms-publishing": {
         "title": "Publish multilingual Strapi content from a single Zero prompt",
-        "description": "Tell Zero what to write. Zero drafts your content in English, Chinese, and Japanese — adapted per locale, not just translated — and pushes all three to Strapi as drafts in one shot.",
+        "description": "Tell Zero what to write. Zero drafts your content in English, Chinese, and Japanese - adapted per locale, not just translated - and pushes all three to Strapi as drafts in one shot.",
         "timeSaved": "~60 min saved",
         "headings": {
           "scenario": "Why multilingual CMS publishing eats your afternoon",
@@ -1644,7 +1644,7 @@
           "integrations": "Required integrations: Strapi and Notion",
           "tips": "Best practices for AI-assisted multilingual content publishing"
         },
-        "scenario": "Your product just shipped a new feature. It needs a write-up in three languages — English for the global site, Chinese for the Asia market, Japanese for the Japan blog. Normally that means: write the English version, open a translation tool, copy-paste into Strapi for each locale, fix formatting, check that no fields are missing. Forty-five minutes minimum, just for one post. You give Zero the bullet points and your target locales. Done.",
+        "scenario": "Your product just shipped a new feature. It needs a write-up in three languages - English for the global site, Chinese for the Asia market, Japanese for the Japan blog. Normally that means: write the English version, open a translation tool, copy-paste into Strapi for each locale, fix formatting, check that no fields are missing. Forty-five minutes minimum, just for one post. You give Zero the bullet points and your target locales. Done.",
         "promptVariants": [
           {
             "label": "Detailed",
@@ -1662,11 +1662,11 @@
         "slackPreview": [
           {
             "name": "Scarlett",
-            "text": "@Zero create a product announcement for Permission Isolation — agents only access authorized tools, no cross-agent token leakage. Publish to Strapi in English, Chinese, and Japanese as drafts."
+            "text": "@Zero create a product announcement for Permission Isolation - agents only access authorized tools, no cross-agent token leakage. Publish to Strapi in English, Chinese, and Japanese as drafts."
           },
           {
             "name": "Zero",
-            "text": "Done. Entry #42 created in Strapi with 3 locales:\n• en — \"Introducing Permission Isolation\"\n• zh-Hans — \"权限隔离正式上线\"\n• ja — \"権限の分離機能リリース\"\n\nAll set to Draft. Review: cms.vm0.ai/admin/content-manager/use-cases/42"
+            "text": "Done. Entry #42 created in Strapi with 3 locales:\n• en - \"Introducing Permission Isolation\"\n• zh-Hans - \"权限隔离正式上线\"\n• ja - \"権限の分離機能リリース\"\n\nAll set to Draft. Review: cms.vm0.ai/admin/content-manager/use-cases/42"
           }
         ],
         "steps": [
@@ -1676,7 +1676,7 @@
           },
           {
             "title": "Zero localizes per market",
-            "description": "Zero doesn't just run translations. It adapts each version for the cultural register of the target market — formal structure for Japanese, direct and informative for Chinese, conversational for English — so each post reads as native content, not a translation."
+            "description": "Zero doesn't just run translations. It adapts each version for the cultural register of the target market - formal structure for Japanese, direct and informative for Chinese, conversational for English - so each post reads as native content, not a translation."
           },
           {
             "title": "Zero syncs all locales to Strapi",
@@ -1705,13 +1705,13 @@
             "description": "API token connection to your Strapi instance. Zero needs content-manager permissions to create and update entries across locales."
           },
           {
-            "description": "Optional. Use Notion as your content planning hub — brief, content calendar, or source material that Zero reads before drafting."
+            "description": "Optional. Use Notion as your content planning hub - brief, content calendar, or source material that Zero reads before drafting."
           }
         ],
         "tips": [
           "Give Zero your Strapi collection name and locale codes upfront. 'Publish to the announcements collection in en, zh-Hans, and ja' gets cleaner output than vague instructions.",
-          "Review before publishing. Zero creates Drafts by default — use the Strapi admin link Zero returns to spot-check each locale before going live.",
-          "Feed Zero brand context. Paste your brand voice guidelines or a sample post from the target locale — the output will be noticeably more on-brand."
+          "Review before publishing. Zero creates Drafts by default - use the Strapi admin link Zero returns to spot-check each locale before going live.",
+          "Feed Zero brand context. Paste your brand voice guidelines or a sample post from the target locale - the output will be noticeably more on-brand."
         ]
       },
       "daily-engineering-brief": {
@@ -1748,7 +1748,7 @@
           },
           {
             "name": "Zero",
-            "text": "Scheduled. Running weekdays at 08:30.\n\nRun from this morning:\n*GitHub* — 96 PRs merged today vs 14.3 avg 🔴 572% spike (coordinated test refactor). Issues closed: 71 vs 28.6 avg 🟢.\n*Linear* — 0 issues created this week, 3 in backlog.\n*Sentry* — connector not configured.\n*Plausible* — connector not configured."
+            "text": "Scheduled. Running weekdays at 08:30.\n\nRun from this morning:\n*GitHub* - 96 PRs merged today vs 14.3 avg 🔴 572% spike (coordinated test refactor). Issues closed: 71 vs 28.6 avg 🟢.\n*Linear* - 0 issues created this week, 3 in backlog.\n*Sentry* - connector not configured.\n*Plausible* - connector not configured."
           }
         ],
         "steps": [
@@ -1773,7 +1773,7 @@
           {
             "title": "Drill into an anomaly",
             "description": "Ask Zero to investigate a spike directly from the brief thread",
-            "examplePrompt": "@Zero the 572% PR spike in today's brief — list all those PRs and group them by label or title prefix so I can see what the team was shipping."
+            "examplePrompt": "@Zero the 572% PR spike in today's brief - list all those PRs and group them by label or title prefix so I can see what the team was shipping."
           },
           {
             "title": "Fix a broken connector",
@@ -1810,8 +1810,8 @@
         ]
       },
       "cross-tool-context-query": {
-        "title": "Get a unified status brief on anything without checking five tools",
-        "description": "Ask Zero about a project, feature, or topic. It searches Slack, Notion, Linear, and GitHub simultaneously, then returns a structured brief: current state, owner, blockers, and last activity — all from a single message.",
+        "title": "Get a unified status brief on anything without checking multiple tools",
+        "description": "Ask Zero about a project, feature, or topic. It searches Slack, Notion, Linear, and GitHub simultaneously, then returns a structured brief: current state, owner, blockers, and last activity - all from a single message.",
         "timeSaved": "~15 min saved per status check",
         "headings": {
           "scenario": "Why status updates take longer than they should",
@@ -1833,7 +1833,7 @@
           },
           {
             "label": "Scheduled",
-            "prompt": "@Zero every Monday morning, DM me a status brief on [X] — current state, owner, blockers, last update."
+            "prompt": "@Zero every Monday morning, DM me a status brief on [X] - current state, owner, blockers, last update."
           },
           {
             "label": "Conflict-aware",
@@ -1847,7 +1847,7 @@
           },
           {
             "name": "Zero",
-            "text": "Status — Onboarding Redesign\n\nCurrent state: In development, mobile flow in review\nOwner: Lancy (Linear)\nBlockers: Figma handoff incomplete (Slack, Apr 11)\nLast activity: PR #9241 opened Apr 12 — \"feat: new onboarding step 3\""
+            "text": "Status - Onboarding Redesign\n\nCurrent state: In development, mobile flow in review\nOwner: Lancy (Linear)\nBlockers: Figma handoff incomplete (Slack, Apr 11)\nLast activity: PR #9241 opened Apr 12 - \"feat: new onboarding step 3\""
           }
         ],
         "steps": [
@@ -1857,7 +1857,7 @@
           },
           {
             "title": "Findings synthesized into a structured brief",
-            "description": "Zero extracts state, owner, blockers, and last update from each source. If two sources disagree — for example, Slack says blocked but Linear shows in progress — Zero flags the conflict and cites both."
+            "description": "Zero extracts state, owner, blockers, and last update from each source. If two sources disagree - for example, Slack says blocked but Linear shows in progress - Zero flags the conflict and cites both."
           },
           {
             "title": "Brief returned in the same thread",
@@ -1873,7 +1873,7 @@
           {
             "title": "Schedule recurring briefs",
             "description": "Get a weekly status DM without asking each time",
-            "examplePrompt": "@Zero every Monday morning, DM me a status brief on [X] — current state, owner, blockers, last update."
+            "examplePrompt": "@Zero every Monday morning, DM me a status brief on [X] - current state, owner, blockers, last update."
           },
           {
             "title": "Document the status",
@@ -1896,7 +1896,7 @@
           }
         ],
         "tips": [
-          "Be specific — \"the Stripe integration\" works better than \"the payment feature\". Zero needs enough context to filter results across four sources.",
+          "Be specific - \"the Stripe integration\" works better than \"the payment feature\". Zero needs enough context to filter results across four sources.",
           "Add a time window if the topic is long-running. \"Focus on the last 14 days\" prevents outdated results from burying recent ones.",
           "Pair with Document Decisions to automatically log the brief to Notion after Zero returns it."
         ]
@@ -1913,11 +1913,11 @@
           "integrations": "Required integrations: Gmail, Calendar, and Slack",
           "tips": "Best practices for customer context queries"
         },
-        "scenario": "Your QBR is in an hour. You remember there was a support issue last month, some email threads that stalled, and a feature request filed somewhere. You have 12 minutes and four tools to check. Zero searches all of them at once — email, calendar, Slack, tickets — and comes back with one brief: who they are, what has happened recently, what is unresolved, and exactly what you should bring up in the call.",
+        "scenario": "Your QBR is in an hour. You remember there was a support issue last month, some email threads that stalled, and a feature request filed somewhere. You have 12 minutes and four tools to check. Zero searches all of them at once - email, calendar, Slack, tickets - and comes back with one brief: who they are, what has happened recently, what is unresolved, and exactly what you should bring up in the call.",
         "promptVariants": [
           {
             "label": "Full 360",
-            "prompt": "@Zero build a Customer 360 for [company].\nSearch Gmail (last 90 days), Google Calendar (last 30 days + next 14 days), Slack (last 30 days), Linear, and GitHub. Return: who they are and relationship stage, recent activity, open items, and a 3-bullet executive summary — relationship health, biggest risk, recommended next action."
+            "prompt": "@Zero build a Customer 360 for [company].\nSearch Gmail (last 90 days), Google Calendar (last 30 days + next 14 days), Slack (last 30 days), Linear, and GitHub. Return: who they are and relationship stage, recent activity, open items, and a 3-bullet executive summary - relationship health, biggest risk, recommended next action."
           },
           {
             "label": "Pre-meeting snapshot",
@@ -1929,7 +1929,7 @@
           },
           {
             "label": "Executive summary only",
-            "prompt": "@Zero snapshot on [company] — relationship health, biggest open item, recommended next move. Gmail and Slack, last 30 days only."
+            "prompt": "@Zero snapshot on [company] - relationship health, biggest open item, recommended next move. Gmail and Slack, last 30 days only."
           }
         ],
         "slackPreview": [
@@ -1939,17 +1939,17 @@
           },
           {
             "name": "Zero",
-            "text": "Customer 360 — Acme Corp\n\nOverview: Enterprise, 6 months in, primary contact: James Chen (CTO)\nRecent Activity: 3 email threads Apr 1–10, last meeting Apr 8, 2 open Linear issues\nOpen Items: Unanswered email Apr 9 re: API limits, feature request #812 unassigned\n\nSummary:\n• Health: Engaged but technical blockers slowing adoption\n• Risk: No response to Apr 9 email for 5 days\n• Next: Follow up on API limits today, share #812 resolution timeline"
+            "text": "Customer 360 - Acme Corp\n\nOverview: Enterprise, 6 months in, primary contact: James Chen (CTO)\nRecent Activity: 3 email threads Apr 1–10, last meeting Apr 8, 2 open Linear issues\nOpen Items: Unanswered email Apr 9 re: API limits, feature request #812 unassigned\n\nSummary:\n• Health: Engaged but technical blockers slowing adoption\n• Risk: No response to Apr 9 email for 5 days\n• Next: Follow up on API limits today, share #812 resolution timeline"
           }
         ],
         "steps": [
           {
             "title": "Zero searches all sources in parallel",
-            "description": "Zero queries Gmail for email threads, Google Calendar for past meetings and upcoming touchpoints, Slack for internal discussions, Linear for linked issues, and GitHub for connected PRs — all scoped to the specified customer."
+            "description": "Zero queries Gmail for email threads, Google Calendar for past meetings and upcoming touchpoints, Slack for internal discussions, Linear for linked issues, and GitHub for connected PRs - all scoped to the specified customer."
           },
           {
             "title": "Findings organized by category",
-            "description": "Zero classifies results into relationship stage and overview, recent activity in the last 30 days, and open items — defined as unresolved issues, pending decisions, and unanswered emails. If a source returns nothing, it is omitted."
+            "description": "Zero classifies results into relationship stage and overview, recent activity in the last 30 days, and open items - defined as unresolved issues, pending decisions, and unanswered emails. If a source returns nothing, it is omitted."
           },
           {
             "title": "Executive summary written and returned",
@@ -1991,14 +1991,14 @@
           }
         ],
         "tips": [
-          "Specify whether the target is a person or a company — Zero approaches them differently. A person search focuses on direct communication; a company search casts wider across all contacts at that org.",
+          "Specify whether the target is a person or a company - Zero approaches them differently. A person search focuses on direct communication; a company search casts wider across all contacts at that org.",
           "Add 'do not infer information not found in search results' to your prompt to prevent Zero from filling gaps with assumptions.",
           "Run before QBRs, renewal calls, or first follow-ups. A 30-second read before a call is worth more than 20 minutes of prep after it."
         ]
       },
       "trending-topic-radar": {
         "title": "Catch emerging trends before they become obvious",
-        "description": "Set up a daily scan across X accounts and Slack channels. Zero flags only breakout topics — those appearing across 2 or more sources or showing a sharp velocity spike — and posts a ranked digest to your channel. If nothing qualifies, no post is sent.",
+        "description": "Set up a daily scan across X accounts and Slack channels. Zero flags only breakout topics - those appearing across 2 or more sources or showing a sharp velocity spike - and posts a ranked digest to your channel. If nothing qualifies, no post is sent.",
         "timeSaved": "~1 hr saved daily",
         "headings": {
           "scenario": "Why trend monitoring fails without a signal threshold",
@@ -2008,7 +2008,7 @@
           "integrations": "Required integrations: X (Twitter) and Slack",
           "tips": "Best practices for daily trend monitoring"
         },
-        "scenario": "Your team wants to respond to trends faster. The current process: someone shares a link in Slack, it gets three reacts, and three days later nothing happened. The problem is not attention — it is signal quality. Every source produces noise. Without a threshold, you are reading everything and acting on nothing. Zero watches your sources, applies a velocity filter, and only posts when something is actually breaking out.",
+        "scenario": "Your team wants to respond to trends faster. The current process: someone shares a link in Slack, it gets three reacts, and three days later nothing happened. The problem is not attention - it is signal quality. Every source produces noise. Without a threshold, you are reading everything and acting on nothing. Zero watches your sources, applies a velocity filter, and only posts when something is actually breaking out.",
         "promptVariants": [
           {
             "label": "Set up daily scan",
@@ -2030,11 +2030,11 @@
         "slackPreview": [
           {
             "name": "Zero",
-            "text": "Trend Digest — Apr 14\n\n1. AI sandbox pricing\nX (×3 sources), Slack (#competitive)\nMultiple founder accounts debating usage-based vs. flat pricing for AI sandboxes. E2B CEO post drove most of the signal.\n\n2. Agentic workflows + compliance\nX (@mlejva, @amasad), Slack (#marketing)\nEmergent concern: enterprises asking whether agentic systems generate audit trails. 4 posts across 2 days."
+            "text": "Trend Digest - Apr 14\n\n1. AI sandbox pricing\nX (×3 sources), Slack (#competitive)\nMultiple founder accounts debating usage-based vs. flat pricing for AI sandboxes. E2B CEO post drove most of the signal.\n\n2. Agentic workflows + compliance\nX (@mlejva, @amasad), Slack (#marketing)\nEmergent concern: enterprises asking whether agentic systems generate audit trails. 4 posts across 2 days."
           },
           {
             "name": "Zero",
-            "text": "No digest sent Apr 13 — no topics met the 2-source threshold."
+            "text": "No digest sent Apr 13 - no topics met the 2-source threshold."
           }
         ],
         "steps": [
@@ -2048,7 +2048,7 @@
           },
           {
             "title": "Digest posted or skipped silently",
-            "description": "If qualifying topics are found, Zero posts a ranked digest to your Slack channel — capped at 5 topics, ordered by cross-source breadth then velocity. If nothing meets the threshold, Zero sends nothing."
+            "description": "If qualifying topics are found, Zero posts a ranked digest to your Slack channel - capped at 5 topics, ordered by cross-source breadth then velocity. If nothing meets the threshold, Zero sends nothing."
           }
         ],
         "nextActions": [
@@ -2080,9 +2080,9 @@
           }
         ],
         "tips": [
-          "Seed your X source list with a mix of competitor CEOs, community accounts, and industry thought leaders — monitoring a single account produces false signal.",
+          "Seed your X source list with a mix of competitor CEOs, community accounts, and industry thought leaders - monitoring a single account produces false signal.",
           "Calibrate the threshold after the first week. If too many topics surface, raise it to 3+ sources. If nothing surfaces, lower it or add more accounts.",
-          "Archive digests to Notion weekly to spot meta-trends — topics that keep returning across multiple days often signal a real shift."
+          "Archive digests to Notion weekly to spot meta-trends - topics that keep returning across multiple days often signal a real shift."
         ]
       },
       "content-performance-report": {
@@ -2094,10 +2094,10 @@
           "prompt": "How to set up a recurring content performance report with Zero",
           "steps": "How Zero pulls metrics, scores posts, and writes the narrative",
           "nextActions": "Pull on demand, compare content formats, or create an executive summary",
-          "integrations": "Required integrations: X (Twitter), Slack, and Notion — plus Plausible for traffic correlation",
+          "integrations": "Required integrations: X (Twitter), Slack, and Notion - plus Plausible for traffic correlation",
           "tips": "Best practices for automated content performance reporting"
         },
-        "scenario": "You know you should be reviewing content performance weekly. You have not done it in three weeks because pulling numbers from X, formatting them, and writing a narrative takes 90 minutes you do not have on a Monday morning. Zero does the whole thing on a schedule. It pulls the numbers, runs the scoring formula, writes the narrative, posts it to Slack, and archives the raw data to Notion — all before your first meeting.",
+        "scenario": "You know you should be reviewing content performance weekly. You have not done it in three weeks because pulling numbers from X, formatting them, and writing a narrative takes 90 minutes you do not have on a Monday morning. Zero does the whole thing on a schedule. It pulls the numbers, runs the scoring formula, writes the narrative, posts it to Slack, and archives the raw data to Notion - all before your first meeting.",
         "promptVariants": [
           {
             "label": "Scheduled weekly",
@@ -2109,17 +2109,17 @@
           },
           {
             "label": "Format experiment debrief",
-            "prompt": "@Zero compare the last 4 posts using Template C (Hot Take) vs Template A (Feature Drop) — which format is driving higher engagement and why?"
+            "prompt": "@Zero compare the last 4 posts using Template C (Hot Take) vs Template A (Feature Drop) - which format is driving higher engagement and why?"
           },
           {
             "label": "Executive summary",
-            "prompt": "@Zero one paragraph on last week's X performance — suitable for the Monday leadership brief."
+            "prompt": "@Zero one paragraph on last week's X performance - suitable for the Monday leadership brief."
           }
         ],
         "slackPreview": [
           {
             "name": "Zero",
-            "text": "Content Performance Report — Week of Apr 7\n\nTop performer: 'AI sandbox in 30 seconds' demo post — score 142. Short-form video outperforms text by 3×.\nUnderperformer: 'Feature Drop: new connector library' — score 18. Feature-first framing rarely lands without a use case hook.\nWeek-over-week: +23% total engagement vs. prior week.\nRecommendation: Lead next week's feature drop with a before/after scenario rather than the feature name.\n\nFull report archived to Notion."
+            "text": "Content Performance Report - Week of Apr 7\n\nTop performer: 'AI sandbox in 30 seconds' demo post - score 142. Short-form video outperforms text by 3×.\nUnderperformer: 'Feature Drop: new connector library' - score 18. Feature-first framing rarely lands without a use case hook.\nWeek-over-week: +23% total engagement vs. prior week.\nRecommendation: Lead next week's feature drop with a before/after scenario rather than the feature name.\n\nFull report archived to Notion."
           },
           {
             "name": "Alex",
@@ -2149,12 +2149,12 @@
           {
             "title": "Compare content formats",
             "description": "Evaluate which templates are working at sprint end",
-            "examplePrompt": "@Zero compare the last 4 posts using Template C (Hot Take) vs Template A (Feature Drop) — which format is driving higher engagement and why?"
+            "examplePrompt": "@Zero compare the last 4 posts using Template C (Hot Take) vs Template A (Feature Drop) - which format is driving higher engagement and why?"
           },
           {
             "title": "Brief leadership",
             "description": "One paragraph suitable for the Monday sync",
-            "examplePrompt": "@Zero one paragraph on last week's X performance — suitable for the Monday leadership brief."
+            "examplePrompt": "@Zero one paragraph on last week's X performance - suitable for the Monday leadership brief."
           }
         ],
         "integrations": [
@@ -2172,14 +2172,14 @@
           }
         ],
         "tips": [
-          "Run on Monday, not Sunday — X metrics for posts published in the last 48 hours are not stable yet and will shift by morning.",
-          "Add Plausible to see which posts drove real site visits — a post with a high engagement score but zero traffic clicks is a vanity win, not a growth win.",
+          "Run on Monday, not Sunday - X metrics for posts published in the last 48 hours are not stable yet and will shift by morning.",
+          "Add Plausible to see which posts drove real site visits - a post with a high engagement score but zero traffic clicks is a vanity win, not a growth win.",
           "Use the format experiment debrief at the end of each 2-week sprint to decide which content formats to scale, iterate, or retire."
         ]
       },
       "kb-ingest": {
         "title": "Capture knowledge from Slack without leaving the conversation",
-        "description": "Drop a link in Slack and ask Zero to ingest it. Zero fetches the content, summarizes it, and stores it in your team knowledge base — no context switch required.",
+        "description": "Drop a link in Slack and ask Zero to ingest it. Zero fetches the content, summarizes it, and stores it in your team knowledge base - no context switch required.",
         "timeSaved": "~15 min saved",
         "headings": {
           "scenario": "Why good content gets lost in Slack",
@@ -2189,7 +2189,7 @@
           "integrations": "Required integrations: Slack and GitHub",
           "tips": "Best practices for building a living team knowledge base"
         },
-        "scenario": "Someone shares a good article, a competitor announcement, or a research paper in #news. It gets a few reacts, maybe a comment, and then it's gone. Three weeks later someone asks 'didn't we read something about this?' and nobody can find it. Zero turns any shared link into a permanent entry in your team KB — fetched, summarized, and categorized from a single Slack message.",
+        "scenario": "Someone shares a good article, a competitor announcement, or a research paper in #news. It gets a few reacts, maybe a comment, and then it's gone. Three weeks later someone asks 'didn't we read something about this?' and nobody can find it. Zero turns any shared link into a permanent entry in your team KB - fetched, summarized, and categorized from a single Slack message.",
         "promptVariants": [
           {
             "label": "Basic",
@@ -2197,7 +2197,7 @@
           },
           {
             "label": "With context",
-            "prompt": "@Zero kb ingest https://github.com/example/repo — focus on the architecture section, we might borrow this pattern."
+            "prompt": "@Zero kb ingest https://github.com/example/repo - focus on the architecture section, we might borrow this pattern."
           },
           {
             "label": "Batch",
@@ -2217,7 +2217,7 @@
         "steps": [
           {
             "title": "Zero fetches the content",
-            "description": "Zero retrieves the full text of the linked page — X thread, GitHub repo, blog post, or documentation — and extracts the meaningful content."
+            "description": "Zero retrieves the full text of the linked page - X thread, GitHub repo, blog post, or documentation - and extracts the meaningful content."
           },
           {
             "title": "Zero summarizes and categorizes",
@@ -2254,7 +2254,7 @@
           }
         ],
         "tips": [
-          "Add a note after the URL to give Zero context: 'kb ingest [url] — this is relevant to our sandbox architecture.' The note gets included in the stored file.",
+          "Add a note after the URL to give Zero context: 'kb ingest [url] - this is relevant to our sandbox architecture.' The note gets included in the stored file.",
           "Set up a dedicated #news or #kb-ingest channel so your team has a shared habit of dropping links for Zero to capture.",
           "Pair with a weekly KB compile to turn raw ingested articles into structured, searchable wiki entries."
         ]
@@ -2271,7 +2271,7 @@
           "integrations": "Required integrations: GitHub",
           "tips": "Best practices for AI-assisted code review"
         },
-        "scenario": "PRs pile up. Reviewers are busy. Someone hits 'approve' to clear their queue and a subtle bug ships. Zero gives every PR a thorough read without the queue. Point it at any PR number, and it returns a structured review — critical issues that must be fixed before merge, plus lower-priority suggestions — posted directly in Slack.",
+        "scenario": "PRs pile up. Reviewers are busy. Someone hits 'approve' to clear their queue and a subtle bug ships. Zero gives every PR a thorough read without the queue. Point it at any PR number, and it returns a structured review - critical issues that must be fixed before merge, plus lower-priority suggestions - posted directly in Slack.",
         "promptVariants": [
           {
             "label": "Standard review",
@@ -2279,11 +2279,11 @@
           },
           {
             "label": "Focused review",
-            "prompt": "@Zero review vm0-ai/vm0#9215 — focus on the auth middleware changes and any potential security issues."
+            "prompt": "@Zero review vm0-ai/vm0#9215 - focus on the auth middleware changes and any potential security issues."
           },
           {
             "label": "Re-review after fixes",
-            "prompt": "@Zero re-review vm0-ai/vm0#8886 — I pushed a second commit addressing your P0 feedback."
+            "prompt": "@Zero re-review vm0-ai/vm0#8886 - I pushed a second commit addressing your P0 feedback."
           }
         ],
         "slackPreview": [
@@ -2293,7 +2293,7 @@
           },
           {
             "name": "Zero",
-            "text": "Review for vm0-ai/vm0#8886 — 1 commit reviewed.\n\nP0 (must fix before merge):\n• createPlainSupportThread has 5 paths that return false instead of throwing — silent failures in prod.\n\nP1 (improvement):\n• Error messages don't include the SDK error code — harder to debug from logs."
+            "text": "Review for vm0-ai/vm0#8886 - 1 commit reviewed.\n\nP0 (must fix before merge):\n• createPlainSupportThread has 5 paths that return false instead of throwing - silent failures in prod.\n\nP1 (improvement):\n• Error messages don't include the SDK error code - harder to debug from logs."
           }
         ],
         "steps": [
@@ -2303,7 +2303,7 @@
           },
           {
             "title": "Zero ranks issues by severity",
-            "description": "Findings are classified as P0 (must fix before merge — bugs, security issues, silent failures) or P1 (improvements — better error handling, test coverage, naming)."
+            "description": "Findings are classified as P0 (must fix before merge - bugs, security issues, silent failures) or P1 (improvements - better error handling, test coverage, naming)."
           },
           {
             "title": "Review posted to Slack",
@@ -2319,7 +2319,7 @@
           {
             "title": "Re-review after changes",
             "description": "Verify that P0 feedback was addressed",
-            "examplePrompt": "@Zero re-review #8886, second commit — confirm the P0 is resolved."
+            "examplePrompt": "@Zero re-review #8886, second commit - confirm the P0 is resolved."
           },
           {
             "title": "Check CI status",
@@ -2336,14 +2336,14 @@
           }
         ],
         "tips": [
-          "Include the specific concern in your prompt — 'focus on auth changes' or 'check for race conditions' — to get a more targeted review than a general diff scan.",
+          "Include the specific concern in your prompt - 'focus on auth changes' or 'check for race conditions' - to get a more targeted review than a general diff scan.",
           "Use re-review for iterative PRs. After the author pushes fixes, ask Zero to re-check only the P0 items to confirm they're resolved.",
           "Set a team norm: Zero review before any merge to main. It catches the class of issues that slip through async human review."
         ]
       },
       "api-performance": {
         "title": "Investigate API performance and surface slow endpoints before they page you",
-        "description": "Ask Zero to pull TP95 data from Axiom for any API endpoint. Zero surfaces the slowest events, identifies patterns, and creates a GitHub issue with findings — all from one Slack message.",
+        "description": "Ask Zero to pull TP95 data from Axiom for any API endpoint. Zero surfaces the slowest events, identifies patterns, and creates a GitHub issue with findings - all from one Slack message.",
         "timeSaved": "~45 min saved",
         "headings": {
           "scenario": "Why API slowdowns stay invisible until they become incidents",
@@ -2353,11 +2353,11 @@
           "integrations": "Required integrations: Axiom and GitHub",
           "tips": "Best practices for proactive API performance monitoring"
         },
-        "scenario": "TP95 spikes don't always page you. They sit in your metrics dashboards, quietly degrading user experience while your team is focused on shipping. Zero makes it easy to check any endpoint's performance on demand — pull the last 7 days of TP95 data, see which requests are slow, and get a GitHub issue filed automatically so nothing gets dropped.",
+        "scenario": "TP95 spikes don't always page you. They sit in your metrics dashboards, quietly degrading user experience while your team is focused on shipping. Zero makes it easy to check any endpoint's performance on demand - pull the last 7 days of TP95 data, see which requests are slow, and get a GitHub issue filed automatically so nothing gets dropped.",
         "promptVariants": [
           {
             "label": "TP95 check",
-            "prompt": "@Zero check Axiom for the POST /api/zero/runs endpoint — show me the TP95 for the last 7 days and flag any events over 5s."
+            "prompt": "@Zero check Axiom for the POST /api/zero/runs endpoint - show me the TP95 for the last 7 days and flag any events over 5s."
           },
           {
             "label": "File an issue",
@@ -2371,11 +2371,11 @@
         "slackPreview": [
           {
             "name": "Ethan",
-            "text": "@Zero check Axiom for zero run create API — last 7 days TP95"
+            "text": "@Zero check Axiom for zero run create API - last 7 days TP95"
           },
           {
             "name": "Zero",
-            "text": "POST /api/zero/runs — 7-day TP95 summary:\n\nWorst: 6,857ms on Apr 12\nSlow events (>5s): 14 total\nRoot cause: sync dispatch pipeline blocks the response — it waits for sandbox allocation before returning.\n\nGitHub issue filed: vm0-ai/vm0#9682, assigned to Lancy."
+            "text": "POST /api/zero/runs - 7-day TP95 summary:\n\nWorst: 6,857ms on Apr 12\nSlow events (>5s): 14 total\nRoot cause: sync dispatch pipeline blocks the response - it waits for sandbox allocation before returning.\n\nGitHub issue filed: vm0-ai/vm0#9682, assigned to Lancy."
           }
         ],
         "steps": [
@@ -2389,7 +2389,7 @@
           },
           {
             "title": "GitHub issue created with findings",
-            "description": "Zero files a structured GitHub issue with the metric table, slow event list, and root cause analysis — ready for the engineering team to act on."
+            "description": "Zero files a structured GitHub issue with the metric table, slow event list, and root cause analysis - ready for the engineering team to act on."
           }
         ],
         "nextActions": [
@@ -2418,14 +2418,14 @@
           }
         ],
         "tips": [
-          "Specify a threshold in your prompt — 'flag events over 3 seconds' — so Zero's findings match your SLO, not a generic cutoff.",
+          "Specify a threshold in your prompt - 'flag events over 3 seconds' - so Zero's findings match your SLO, not a generic cutoff.",
           "Ask Zero to check the endpoint right after a deploy to catch regressions before they affect users at scale.",
           "Combine with Daily Error Triage for a complete morning health check: errors from Sentry plus performance from Axiom in one brief."
         ]
       },
       "marketing-analytics": {
         "title": "Analyze your traffic channels and surface growth insights from Plausible",
-        "description": "Ask Zero to pull your Plausible traffic data and tell you what's working. Zero breaks down sources, channels, and trends — then surfaces the insight you actually need to act on.",
+        "description": "Ask Zero to pull your Plausible traffic data and tell you what's working. Zero breaks down sources, channels, and trends - then surfaces the insight you actually need to act on.",
         "timeSaved": "~20 min saved",
         "headings": {
           "scenario": "Why traffic analysis stays on the to-do list",
@@ -2435,11 +2435,11 @@
           "integrations": "Required integrations: Plausible and Slack",
           "tips": "Best practices for marketing analytics with Zero"
         },
-        "scenario": "You know your traffic dashboard exists. You even open it occasionally. But turning raw pageview counts into an actionable insight takes time you don't have. Zero reads your Plausible data and delivers the answer — which channels are growing, which are flat, where the bounce rate spiked — in plain language, in Slack, on demand.",
+        "scenario": "You know your traffic dashboard exists. You even open it occasionally. But turning raw pageview counts into an actionable insight takes time you don't have. Zero reads your Plausible data and delivers the answer - which channels are growing, which are flat, where the bounce rate spiked - in plain language, in Slack, on demand.",
         "promptVariants": [
           {
             "label": "Weekly overview",
-            "prompt": "@Zero based on Plausible traffic, analyze our performance last week — channels, sources, any standout trends."
+            "prompt": "@Zero based on Plausible traffic, analyze our performance last week - channels, sources, any standout trends."
           },
           {
             "label": "Channel deep dive",
@@ -2447,7 +2447,7 @@
           },
           {
             "label": "Scheduled report",
-            "prompt": "@Zero every Monday at 9am, pull last week's Plausible traffic and post a summary to #marketing — top 3 sources, WoW change, and one insight."
+            "prompt": "@Zero every Monday at 9am, pull last week's Plausible traffic and post a summary to #marketing - top 3 sources, WoW change, and one insight."
           }
         ],
         "slackPreview": [
@@ -2457,7 +2457,7 @@
           },
           {
             "name": "Zero",
-            "text": "Last 7 days — Plausible traffic breakdown:\n\nTop sources: Direct (38%), Organic search (29%), X/Twitter (18%)\nWoW: Overall UV +12%, PV +8%\nStandout: X-driven sessions are up 34% WoW — the Apr 13 thread drove a spike. Organic is flat.\n\nRecommendation: The X spike is worth investigating. If that thread's topic drives conversions, consider a follow-up post."
+            "text": "Last 7 days - Plausible traffic breakdown:\n\nTop sources: Direct (38%), Organic search (29%), X/Twitter (18%)\nWoW: Overall UV +12%, PV +8%\nStandout: X-driven sessions are up 34% WoW - the Apr 13 thread drove a spike. Organic is flat.\n\nRecommendation: The X spike is worth investigating. If that thread's topic drives conversions, consider a follow-up post."
           }
         ],
         "steps": [
@@ -2471,7 +2471,7 @@
           },
           {
             "title": "Insights delivered in Slack",
-            "description": "Zero posts a concise summary: top channels, growth rates, and one concrete observation — not just a data dump, but a read."
+            "description": "Zero posts a concise summary: top channels, growth rates, and one concrete observation - not just a data dump, but a read."
           }
         ],
         "nextActions": [
@@ -2500,14 +2500,14 @@
           }
         ],
         "tips": [
-          "Specify the time window explicitly — 'last 7 days' vs 'last 30 days' produces very different reads on channel trends.",
+          "Specify the time window explicitly - 'last 7 days' vs 'last 30 days' produces very different reads on channel trends.",
           "Ask Zero to flag anomalies, not just report numbers. 'Tell me if anything looks unusual' catches spikes you wouldn't notice otherwise.",
           "Pair with Content Performance Report to close the loop: traffic from Plausible plus engagement from X in one session."
         ]
       },
       "production-db-query": {
         "title": "Query live production data in plain English without touching a database client",
-        "description": "Ask Zero a question about your production data. Zero writes the SQL, runs it read-only against your live database, and returns the answer in Slack — no credentials, no client, no risk of a mutating query.",
+        "description": "Ask Zero a question about your production data. Zero writes the SQL, runs it read-only against your live database, and returns the answer in Slack - no credentials, no client, no risk of a mutating query.",
         "timeSaved": "~20 min saved",
         "headings": {
           "scenario": "Why answering a simple data question takes longer than it should",
@@ -2517,7 +2517,7 @@
           "integrations": "Required integrations: vm0 (production database skill)",
           "tips": "Best practices for safe production data access"
         },
-        "scenario": "A stakeholder asks how many users completed onboarding in the last 30 days. It's a simple question, but answering it means opening a DB client, finding the right table, writing a query, making sure you're on read-only credentials, running it, and formatting the result. Zero handles the whole chain — just ask the question in Slack.",
+        "scenario": "A stakeholder asks how many users completed onboarding in the last 30 days. It's a simple question, but answering it means opening a DB client, finding the right table, writing a query, making sure you're on read-only credentials, running it, and formatting the result. Zero handles the whole chain - just ask the question in Slack.",
         "promptVariants": [
           {
             "label": "Count query",
@@ -2525,21 +2525,21 @@
           },
           {
             "label": "Trend query",
-            "prompt": "@Zero query production — show me daily active user counts for the last 14 days, broken down by plan tier."
+            "prompt": "@Zero query production - show me daily active user counts for the last 14 days, broken down by plan tier."
           },
           {
             "label": "Anomaly check",
-            "prompt": "@Zero check production DB — are there any users with a free credit balance above 1000? List the top 10."
+            "prompt": "@Zero check production DB - are there any users with a free credit balance above 1000? List the top 10."
           }
         ],
         "slackPreview": [
           {
             "name": "Lancy",
-            "text": "@Zero check the production database — how many zero run records were created in the last 7 days?"
+            "text": "@Zero check the production database - how many zero run records were created in the last 7 days?"
           },
           {
             "name": "Zero",
-            "text": "Production DB query result (read-only):\n\nzero_runs created in last 7 days: 4,218\nBreakdown: Mon 523, Tue 641, Wed 688, Thu 712, Fri 654\nWeekend: 0 (expected — team usage pattern)\n\nQuery ran in 42ms."
+            "text": "Production DB query result (read-only):\n\nzero_runs created in last 7 days: 4,218\nBreakdown: Mon 523, Tue 641, Wed 688, Thu 712, Fri 654\nWeekend: 0 (expected - team usage pattern)\n\nQuery ran in 42ms."
           }
         ],
         "steps": [
@@ -2549,7 +2549,7 @@
           },
           {
             "title": "Zero runs a read-only query",
-            "description": "Zero executes only SELECT statements against production. No writes, no mutations. Credentials are retrieved securely via Doppler — they never appear in the conversation."
+            "description": "Zero executes only SELECT statements against production. No writes, no mutations. Credentials are retrieved securely via Doppler - they never appear in the conversation."
           },
           {
             "title": "Results returned in Slack",
@@ -2560,7 +2560,7 @@
           {
             "title": "Export to a spreadsheet",
             "description": "Get the full result set in a usable format",
-            "examplePrompt": "@Zero re-run that query and export the results to a Google Sheet named 'DAU by Plan — April 2026'."
+            "examplePrompt": "@Zero re-run that query and export the results to a Google Sheet named 'DAU by Plan - April 2026'."
           },
           {
             "title": "Schedule a recurring count",
@@ -2570,12 +2570,12 @@
           {
             "title": "File an issue from a finding",
             "description": "Escalate an anomaly you discovered",
-            "examplePrompt": "@Zero create a GitHub issue for the users with credit balance above 1000 — title 'Credit balance anomaly', assign to Ethan."
+            "examplePrompt": "@Zero create a GitHub issue for the users with credit balance above 1000 - title 'Credit balance anomaly', assign to Ethan."
           }
         ],
         "integrations": [
           {
-            "description": "vm0's production database skill is required. It provides a read-only connection to your Postgres instance via securely managed credentials — no manual setup needed."
+            "description": "vm0's production database skill is required. It provides a read-only connection to your Postgres instance via securely managed credentials - no manual setup needed."
           },
           {
             "description": "Slack is where you ask the question and receive the result."
@@ -2584,11 +2584,11 @@
         "tips": [
           "Always specify 'production database' or 'prod DB' in your prompt so Zero knows which connection to use if you have multiple environments.",
           "Zero runs only SELECT queries. If you need to modify data, Zero will flag it and ask you to handle it through the appropriate workflow instead.",
-          "For sensitive queries, prefix with 'do not log the results' — Zero will deliver the answer in an ephemeral message visible only to you."
+          "For sensitive queries, prefix with 'do not log the results' - Zero will deliver the answer in an ephemeral message visible only to you."
         ]
       },
       "marketing-content-automation": {
-        "title": "Run a full content pipeline from research to scoring — without a content team",
+        "title": "Run a full content pipeline from research to scoring without a content team",
         "description": "Set up a multi-agent loop: one agent drafts posts daily from competitor and trend research, Zero saves your best inspirations on command, and a monitor agent scores performance every week. The whole pipeline runs in Slack.",
         "timeSaved": "~5 hrs saved per week",
         "headings": {
@@ -2599,7 +2599,7 @@
           "integrations": "Required integrations: Slack, X (Twitter), and Notion",
           "tips": "Best practices for AI-driven content pipelines"
         },
-        "scenario": "Consistent content output is a compounding advantage. But maintaining it manually — researching trends, drafting posts, tracking what performs, retiring what doesn't — consumes hours that compound in the wrong direction. The vm0 marketing content automation pipeline puts three agents to work: a researcher drafts 8+ posts every morning from X and Reddit, Zero saves template inspirations as you find them in Slack, and a monitor scores every post weekly and tells you what to scale.",
+        "scenario": "Consistent content output is a compounding advantage. But maintaining it manually - researching trends, drafting posts, tracking what performs, retiring what doesn't - consumes hours that compound in the wrong direction. The vm0 marketing content automation pipeline puts three agents to work: a researcher drafts 8+ posts every morning from X and Reddit, Zero saves template inspirations as you find them in Slack, and a monitor scores every post weekly and tells you what to scale.",
         "promptVariants": [
           {
             "label": "Save a template inspiration",
@@ -2631,7 +2631,7 @@
           },
           {
             "title": "You review and Zero saves inspirations",
-            "description": "You approve or reject drafts in Notion. When you spot a post worth saving as a template inspiration, you tell Zero in Slack — it saves it with your notes and categorization instantly."
+            "description": "You approve or reject drafts in Notion. When you spot a post worth saving as a template inspiration, you tell Zero in Slack - it saves it with your notes and categorization instantly."
           },
           {
             "title": "Monitor scores performance weekly",
@@ -2642,12 +2642,12 @@
           {
             "title": "Scale a Green template",
             "description": "Double down on what's working",
-            "examplePrompt": "@Zero tell the researcher to generate 5 variants of Template C (Hot Take) for next week — the last 3 scored Green."
+            "examplePrompt": "@Zero tell the researcher to generate 5 variants of Template C (Hot Take) for next week - the last 3 scored Green."
           },
           {
             "title": "Retire a Red template",
             "description": "Remove underperformers from the pipeline",
-            "examplePrompt": "@Zero retire Template D from the researcher — it hasn't scored above Yellow in 4 sprints."
+            "examplePrompt": "@Zero retire Template D from the researcher - it hasn't scored above Yellow in 4 sprints."
           },
           {
             "title": "Add a new competitor to monitor",
@@ -2657,7 +2657,7 @@
         ],
         "integrations": [
           {
-            "description": "Slack is the command interface — you save inspirations, check drafts, and manage the pipeline through Slack messages."
+            "description": "Slack is the command interface - you save inspirations, check drafts, and manage the pipeline through Slack messages."
           },
           {
             "description": "X (Twitter) is the primary research source for the researcher agent and the platform where approved posts are published."
@@ -2667,14 +2667,14 @@
           }
         ],
         "tips": [
-          "Review and approve drafts daily — the pipeline only works if you maintain the habit of publishing approved content. The researcher generates, you curate.",
+          "Review and approve drafts daily - the pipeline only works if you maintain the habit of publishing approved content. The researcher generates, you curate.",
           "Iterate on templates based on monitor data. Treat content like a product: run 2-week sprints, kill what scores Red after 3+ posts, double down on Greens.",
-          "Save template inspirations as you find them in the wild — the best content ideas come from scrolling, not from scheduled research sessions."
+          "Save template inspirations as you find them in the wild - the best content ideas come from scrolling, not from scheduled research sessions."
         ]
       },
       "engineering-brief": {
         "title": "Get an evening engineering brief with PR counts, highlights, and team recognition",
-        "description": "Every evening, Zero pulls GitHub activity, counts PRs merged per engineer, surfaces commit highlights, and picks an MVP of the day — posted to Slack with no manual work.",
+        "description": "Every evening, Zero pulls GitHub activity, counts PRs merged per engineer, surfaces commit highlights, and picks an MVP of the day - posted to Slack with no manual work.",
         "timeSaved": "~30 min saved per day",
         "headings": {
           "scenario": "Why engineering work goes unrecognized without a system",
@@ -2684,7 +2684,7 @@
           "integrations": "Required integrations: Slack and GitHub",
           "tips": "Best practices for team engineering briefs"
         },
-        "scenario": "PRs get merged. Engineers do good work. But without a ritual to surface it, the work is invisible — especially to team members who weren't in those review threads. Zero runs a brief every evening: how many PRs did we merge today, who shipped what, and who had the standout contribution. It creates a shared sense of progress and recognition without any overhead.",
+        "scenario": "PRs get merged. Engineers do good work. But without a ritual to surface it, the work is invisible - especially to team members who weren't in those review threads. Zero runs a brief every evening: how many PRs did we merge today, who shipped what, and who had the standout contribution. It creates a shared sense of progress and recognition without any overhead.",
         "promptVariants": [
           {
             "label": "Set up evening brief",
@@ -2696,13 +2696,13 @@
           },
           {
             "label": "Weekly rollup",
-            "prompt": "@Zero pull this week's engineering activity from GitHub — total PRs, most active engineers, top 5 commits — and post a weekly summary to #all-vm0."
+            "prompt": "@Zero pull this week's engineering activity from GitHub - total PRs, most active engineers, top 5 commits - and post a weekly summary to #all-vm0."
           }
         ],
         "slackPreview": [
           {
             "name": "Zero",
-            "text": "Evening Brief — April 14, 2026\n\nToday the team merged 53 PRs and closed 70+ issues.\n\n🏆 You Liang — 27 PRs. Today's MVP.\n• CI infrastructure full overhaul\n• Flaky test elimination\n\nLancy — 15 PRs. Connector architecture refactor.\nEthan — 8 PRs. Performance improvements."
+            "text": "Evening Brief - April 14, 2026\n\nToday the team merged 53 PRs and closed 70+ issues.\n\n🏆 You Liang - 27 PRs. Today's MVP.\n• CI infrastructure full overhaul\n• Flaky test elimination\n\nLancy - 15 PRs. Connector architecture refactor.\nEthan - 8 PRs. Performance improvements."
           }
         ],
         "steps": [
@@ -2716,7 +2716,7 @@
           },
           {
             "title": "Brief posted to Slack",
-            "description": "Zero posts the evening brief to the specified channel — total PRs, per-engineer counts, commit highlights, and MVP recognition with a short description of why they stood out today."
+            "description": "Zero posts the evening brief to the specified channel - total PRs, per-engineer counts, commit highlights, and MVP recognition with a short description of why they stood out today."
           }
         ],
         "nextActions": [
@@ -2748,14 +2748,14 @@
           }
         ],
         "tips": [
-          "Post to a channel the whole team sees — #all-vm0 or #engineering — not just a leadership channel. The recognition lands differently when it's public.",
+          "Post to a channel the whole team sees - #all-vm0 or #engineering - not just a leadership channel. The recognition lands differently when it's public.",
           "Keep the brief concise: total count, per-engineer, and one standout highlight per MVP. More than 10 lines and people stop reading.",
           "Run the brief at the same time every day. Predictable cadence builds the habit of checking it."
         ]
       },
       "security-compliance": {
         "title": "Research your infrastructure for compliance requirements in one Slack thread",
-        "description": "Ask Zero to audit your infrastructure setup against a compliance requirement. Zero checks your config across GitHub, cloud providers, and documentation — and posts a structured findings brief.",
+        "description": "Ask Zero to audit your infrastructure setup against a compliance requirement. Zero checks your config across GitHub, cloud providers, and documentation - and posts a structured findings brief.",
         "timeSaved": "~2 hrs saved",
         "headings": {
           "scenario": "Why compliance audits take days instead of hours",
@@ -2765,11 +2765,11 @@
           "integrations": "Required integrations: GitHub",
           "tips": "Best practices for AI-assisted compliance research"
         },
-        "scenario": "Your compliance team flags a question: where is customer data stored, and does it meet regional requirements? Answering it means checking your cloud provider configs, reading your deployment settings, cross-referencing documentation, and writing a summary. Zero does all of this from one Slack message — checking your Vercel regions, Cloudflare R2 config, and infrastructure files, then posting a structured brief.",
+        "scenario": "Your compliance team flags a question: where is customer data stored, and does it meet regional requirements? Answering it means checking your cloud provider configs, reading your deployment settings, cross-referencing documentation, and writing a summary. Zero does all of this from one Slack message - checking your Vercel regions, Cloudflare R2 config, and infrastructure files, then posting a structured brief.",
         "promptVariants": [
           {
             "label": "Region audit",
-            "prompt": "@Zero check our infrastructure for data residency — where are our Cloudflare R2 buckets located, what region does Vercel deploy to, and is there any cross-region replication configured?"
+            "prompt": "@Zero check our infrastructure for data residency - where are our Cloudflare R2 buckets located, what region does Vercel deploy to, and is there any cross-region replication configured?"
           },
           {
             "label": "Security review",
@@ -2797,7 +2797,7 @@
           },
           {
             "title": "Zero cross-references against the compliance requirement",
-            "description": "Zero maps each finding against the specific requirement — data residency, access control, encryption — and flags any gaps."
+            "description": "Zero maps each finding against the specific requirement - data residency, access control, encryption - and flags any gaps."
           },
           {
             "title": "Findings brief posted and optionally saved",
@@ -2830,14 +2830,14 @@
           }
         ],
         "tips": [
-          "Be specific about the compliance framework or requirement — 'SOC 2 data residency' produces a more useful brief than 'check if we're compliant.'",
-          "Ask Zero to DM you the sensitive findings rather than posting to a channel — some compliance gaps shouldn't be broadcast publicly.",
+          "Be specific about the compliance framework or requirement - 'SOC 2 data residency' produces a more useful brief than 'check if we're compliant.'",
+          "Ask Zero to DM you the sensitive findings rather than posting to a channel - some compliance gaps shouldn't be broadcast publicly.",
           "Archive findings to Notion immediately. Compliance auditors want documentation of the process, not just the conclusion."
         ]
       },
       "cross-tool-context": {
-        "title": "Get a unified status brief on any project from Slack, Notion, Linear, and GitHub",
-        "description": "Ask Zero about the current status of any project, feature, or topic. Zero searches across your tools in parallel, synthesizes a 4-part brief — state, owner, blockers, last update — and flags if sources disagree.",
+        "title": "Get a unified status brief on any project from multiple platforms",
+        "description": "Ask Zero about the current status of any project, feature, or topic. Zero searches across your tools in parallel, synthesizes a 4-part brief - state, owner, blockers, last update - and flags if sources disagree.",
         "timeSaved": "~25 min saved",
         "headings": {
           "scenario": "Why project status is scattered across four tools",
@@ -2859,7 +2859,7 @@
           },
           {
             "label": "Scheduled",
-            "prompt": "@Zero every Monday morning, DM me a status brief on the mobile SDK project — current state, owner, blockers, last update."
+            "prompt": "@Zero every Monday morning, DM me a status brief on the mobile SDK project - current state, owner, blockers, last update."
           },
           {
             "label": "Conflict-aware",
@@ -2873,17 +2873,17 @@
           },
           {
             "name": "Zero",
-            "text": "Connector Architecture Refactor — Status Brief\n\nState: In progress — environment variables migrated from skill frontmatter to connector definitions. Core refactor merged.\nOwner: Lancy\nBlockers: None active.\nLast update: Apr 14 (GitHub) — PR #9312 merged.\n\nSources agree."
+            "text": "Connector Architecture Refactor - Status Brief\n\nState: In progress - environment variables migrated from skill frontmatter to connector definitions. Core refactor merged.\nOwner: Lancy\nBlockers: None active.\nLast update: Apr 14 (GitHub) - PR #9312 merged.\n\nSources agree."
           }
         ],
         "steps": [
           {
             "title": "Zero searches all sources in parallel",
-            "description": "Zero queries Slack, Notion, Linear, and GitHub simultaneously for the topic within the specified time window — returning raw findings from each source."
+            "description": "Zero queries Slack, Notion, Linear, and GitHub simultaneously for the topic within the specified time window - returning raw findings from each source."
           },
           {
             "title": "Zero synthesizes and flags conflicts",
-            "description": "Zero extracts state, owner, blockers, and last update per source. If sources disagree — e.g., Linear says 'Done' but Slack has an open question from yesterday — Zero flags the conflict explicitly."
+            "description": "Zero extracts state, owner, blockers, and last update per source. If sources disagree - e.g., Linear says 'Done' but Slack has an open question from yesterday - Zero flags the conflict explicitly."
           },
           {
             "title": "4-part brief delivered in Slack",
@@ -2904,7 +2904,7 @@
           {
             "title": "Escalate a blocker",
             "description": "Turn a found blocker into a tracked issue",
-            "examplePrompt": "@Zero the blocker you found — create a GitHub issue for it and assign to the owner."
+            "examplePrompt": "@Zero the blocker you found - create a GitHub issue for it and assign to the owner."
           }
         ],
         "integrations": [
@@ -2922,14 +2922,14 @@
           }
         ],
         "tips": [
-          "Be specific — 'the Stripe integration' works better than 'the payment feature.' Specific terms match across tools; vague ones don't.",
+          "Be specific - 'the Stripe integration' works better than 'the payment feature.' Specific terms match across tools; vague ones don't.",
           "Add a time window for long-running projects: 'focus on the last 14 days' prevents Zero from surfacing stale context as if it's current.",
-          "Pair with Document Decisions to auto-log the brief to Notion — useful for recurring reviews where you want a historical snapshot per week."
+          "Pair with Document Decisions to auto-log the brief to Notion - useful for recurring reviews where you want a historical snapshot per week."
         ]
       },
       "daily-email-triage": {
-        "title": "Triage your inbox in two minutes — not two hours",
-        "description": "Zero reads your Gmail, separates signal from noise, and sends a prioritized Slack summary with action items — so you start the day informed, not buried.",
+        "title": "Triage your inbox in two minutes not two hours",
+        "description": "Zero reads your Gmail, separates signal from noise, and sends a prioritized Slack summary with action items - so you start the day informed, not buried.",
         "timeSaved": "~20 min saved per day",
         "headings": {
           "scenario": "Why email overload kills your morning momentum",
@@ -2939,15 +2939,15 @@
           "integrations": "Required integrations: Gmail and Slack",
           "tips": "Best practices for automated email triage"
         },
-        "scenario": "Monday morning, 8:59 AM. You open Gmail to 200+ unread messages. Most are noise — GitHub notifications, automated alerts, marketing blasts you'll never read. Buried in there: a security alert about exposed credentials in your repo, a failed payment notice from your cloud provider, and a client request that needs a response today. You could spend 30 minutes skimming subject lines, or you could ask Zero to sort the urgent from the ignorable and send you a clean summary in Slack before your first coffee cools down.",
+        "scenario": "Monday morning, 8:59 AM. You open Gmail to 200+ unread messages. Most are noise - GitHub notifications, automated alerts, marketing blasts you'll never read. Buried in there: a security alert about exposed credentials in your repo, a failed payment notice from your cloud provider, and a client request that needs a response today. You could spend 30 minutes skimming subject lines, or you could ask Zero to sort the urgent from the ignorable and send you a clean summary in Slack before your first coffee cools down.",
         "promptVariants": [
           {
             "label": "Detailed",
-            "prompt": "@Zero check my Gmail for emails from the past 24 hours. Flag anything urgent — security alerts, billing issues, client messages. Send me a Slack DM with action items at the top and a summary table of everything else."
+            "prompt": "@Zero check my Gmail for emails from the past 24 hours. Flag anything urgent - security alerts, billing issues, client messages. Send me a Slack DM with action items at the top and a summary table of everything else."
           },
           {
             "label": "Quick",
-            "prompt": "@Zero triage my inbox — what needs my attention today?"
+            "prompt": "@Zero triage my inbox - what needs my attention today?"
           },
           {
             "label": "Scheduled",
@@ -2961,13 +2961,13 @@
           },
           {
             "name": "Zero",
-            "text": "Here's your inbox triage for today:\n\n🔴 **ACTION REQUIRED**\n• **GitHub Security Alert** — Possible passwords detected in `vm0-ai/vm0`. 2 notifications. Anyone with read access can view exposed credentials. Review and rotate immediately.\n• **Cloud Billing** — Payment failed for team plan (renewal due Apr 7). Update your payment method.\n\n⚠️ **May Need Attention**\n• Zoom receipt (account ending 3482) — for your records\n• npm published @vm0/cli@9.123.0 — confirmation\n\n📬 **Skimmable** (~180 automated GitHub notifications, 1 Medium digest)\n\nTotal unread: ~201. Only 2 items need your input."
+            "text": "Here's your inbox triage for today:\n\n🔴 **ACTION REQUIRED**\n• **GitHub Security Alert** - Possible passwords detected in `vm0-ai/vm0`. 2 notifications. Anyone with read access can view exposed credentials. Review and rotate immediately.\n• **Cloud Billing** - Payment failed for team plan (renewal due Apr 7). Update your payment method.\n\n⚠️ **May Need Attention**\n• Zoom receipt (account ending 3482) - for your records\n• npm published @vm0/cli@9.123.0 - confirmation\n\n📬 **Skimmable** (~180 automated GitHub notifications, 1 Medium digest)\n\nTotal unread: ~201. Only 2 items need your input."
           }
         ],
         "steps": [
           {
             "title": "Zero connects to Gmail and pulls recent emails",
-            "description": "Zero authenticates with your Gmail account and fetches emails from the time window you specify — typically the past 24 hours. It reads headers, sender info, and snippets to understand what each message is about."
+            "description": "Zero authenticates with your Gmail account and fetches emails from the time window you specify - typically the past 24 hours. It reads headers, sender info, and snippets to understand what each message is about."
           },
           {
             "title": "Zero categorizes and prioritizes every message",
@@ -2975,7 +2975,7 @@
           },
           {
             "title": "Zero sends a structured Slack summary with action items",
-            "description": "The triage report lands in your Slack DM or a team channel — action items first, attention-needed items next, and a one-line summary of the rest. Each item includes the sender, subject, and why it matters. No more scrolling through 200 emails to find the three that matter."
+            "description": "The triage report lands in your Slack DM or a team channel - action items first, attention-needed items next, and a one-line summary of the rest. Each item includes the sender, subject, and why it matters. No more scrolling through 200 emails to find the three that matter."
           }
         ],
         "nextActions": [
@@ -2987,7 +2987,7 @@
           {
             "title": "Create issues for action items",
             "description": "Turn email action items into tracked GitHub or Linear issues.",
-            "examplePrompt": "@Zero create a GitHub issue for the security alert about exposed passwords — label it security and assign it to me"
+            "examplePrompt": "@Zero create a GitHub issue for the security alert about exposed passwords - label it security and assign it to me"
           },
           {
             "title": "Make it routine",
@@ -2997,31 +2997,31 @@
         ],
         "integrations": [
           {
-            "description": "Gmail — read access to scan incoming emails, headers, and snippets. Zero only reads; it never modifies or deletes your messages."
+            "description": "Gmail - read access to scan incoming emails, headers, and snippets. Zero only reads; it never modifies or deletes your messages."
           },
           {
-            "description": "Slack — used to deliver the triage summary as a DM or channel post. Only needed if you want the report in Slack instead of inline."
+            "description": "Slack - used to deliver the triage summary as a DM or channel post. Only needed if you want the report in Slack instead of inline."
           }
         ],
         "tips": [
-          "Narrow the scope by asking Zero to focus on specific senders, labels, or folders — \"only triage emails from clients and billing\" cuts noise further.",
-          "Pair with the Slack triage use case for full communication coverage — email + Slack triage covers your two busiest inboxes.",
-          "Add context about what counts as urgent for your team. Zero adapts — tell it once that \"GitHub security alerts are always P0\" and it remembers."
+          "Narrow the scope by asking Zero to focus on specific senders, labels, or folders - \"only triage emails from clients and billing\" cuts noise further.",
+          "Pair with the Slack triage use case for full communication coverage - email + Slack triage covers your two busiest inboxes.",
+          "Add context about what counts as urgent for your team. Zero adapts - tell it once that \"GitHub security alerts are always P0\" and it remembers."
         ]
       },
       "auto-test-coverage": {
-        "title": "Auto-write tests for every code change — overnight",
-        "description": "Zero scans merged PRs for untested files, writes tests following your conventions, and opens a PR — so you start each day with better coverage.",
+        "title": "Auto-write tests for every code change overnight",
+        "description": "Zero scans merged PRs for untested files, writes tests following your conventions, and opens a PR - so you start each day with better coverage.",
         "timeSaved": "~45 min saved per day",
         "headings": {
-          "scenario": "Why test coverage always slips — and how to fix it",
+          "scenario": "Why test coverage always slips - and how to fix it",
           "prompt": "How to ask Zero to auto-cover your code",
           "steps": "How Zero writes tests while you sleep",
           "nextActions": "Keep your coverage climbing",
           "integrations": "Required integrations: GitHub and Slack",
           "tips": "Best practices for automated test generation"
         },
-        "scenario": "It's Tuesday morning. CI is red — coverage dropped from 82% to 79% overnight because someone merged a new feature with zero tests. Again. You could stop what you're doing, read their code, and write tests yourself. Or you could have Zero do it every morning at 4 AM, so when you sit down, there's already a test PR waiting for review.",
+        "scenario": "It's Tuesday morning. CI is red - coverage dropped from 82% to 79% overnight because someone merged a new feature with zero tests. Again. You could stop what you're doing, read their code, and write tests yourself. Or you could have Zero do it every morning at 4 AM, so when you sit down, there's already a test PR waiting for review.",
         "promptVariants": [
           {
             "label": "Detailed",
@@ -3043,7 +3043,7 @@
           },
           {
             "name": "Zero",
-            "text": "Scanned 6 merged PRs from the past 24 hours. Found 3 files without test coverage:\n\n| File | PR | Tests Added |\n|------|-----|------------|\n| `sidebar-threads.tsx` | #10149 | 4 test cases |\n| `job-custom-connectors.tsx` | #10148 | 6 test cases |\n| `model-picker.tsx` | #10144 | 3 test cases |\n\nOpened PR #10153 with all 13 new tests. CI is running — I'll update when it passes."
+            "text": "Scanned 6 merged PRs from the past 24 hours. Found 3 files without test coverage:\n\n| File | PR | Tests Added |\n|------|-----|------------|\n| `sidebar-threads.tsx` | #10149 | 4 test cases |\n| `job-custom-connectors.tsx` | #10148 | 6 test cases |\n| `model-picker.tsx` | #10144 | 3 test cases |\n\nOpened PR #10153 with all 13 new tests. CI is running - I'll update when it passes."
           }
         ],
         "steps": [
@@ -3053,7 +3053,7 @@
           },
           {
             "title": "Zero writes tests following your project's conventions",
-            "description": "Zero reads the source file, understands the component or function's interface, checks your existing test patterns (framework, imports, helpers, assertion style), and writes tests that blend in — same structure, same patterns, same quality bar."
+            "description": "Zero reads the source file, understands the component or function's interface, checks your existing test patterns (framework, imports, helpers, assertion style), and writes tests that blend in - same structure, same patterns, same quality bar."
           },
           {
             "title": "Zero opens a PR and posts a summary",
@@ -3079,21 +3079,21 @@
         ],
         "integrations": [
           {
-            "description": "GitHub — read access to scan merged PRs and changed files. Write access to open pull requests with generated tests."
+            "description": "GitHub - read access to scan merged PRs and changed files. Write access to open pull requests with generated tests."
           },
           {
-            "description": "Slack — posts a summary of generated tests and CI results to your team channel."
+            "description": "Slack - posts a summary of generated tests and CI results to your team channel."
           }
         ],
         "tips": [
-          "Be explicit about your test framework and patterns — \"use vitest with @testing-library/react, follow the arrange-act-assert pattern\" produces much better output.",
-          "Run it overnight so the test PR is ready for review when the team starts work. 4 AM is a good default — it runs after any late-night merges.",
+          "Be explicit about your test framework and patterns - \"use vitest with @testing-library/react, follow the arrange-act-assert pattern\" produces much better output.",
+          "Run it overnight so the test PR is ready for review when the team starts work. 4 AM is a good default - it runs after any late-night merges.",
           "Chain with tech-debt-scan for comprehensive code health: tech debt catches anti-patterns, auto-test-coverage catches gaps, together they keep your codebase clean."
         ]
       },
       "daily-user-analysis": {
-        "title": "Daily product analytics — zero manual queries",
-        "description": "Zero queries your production database on a schedule, analyzes user behavior, and posts a structured report to Slack — so you spot trends before they become problems.",
+        "title": "Daily product analytics with zero manual queries",
+        "description": "Zero queries your production database on a schedule, analyzes user behavior, and posts a structured report to Slack - so you spot trends before they become problems.",
         "timeSaved": "~30 min saved per day",
         "headings": {
           "scenario": "Why you're always the last to know when something changes",
@@ -3125,28 +3125,28 @@
           },
           {
             "name": "Zero",
-            "text": "**External User Analysis — Past 24 Hours**\n\n📊 **Overview**: 22 runs across 9 external orgs (95.5% completion rate)\n\n🏆 **Top Orgs**:\n| Org Hash | Runs | Triggers | Connectors Used |\n|----------|------|----------|----------------|\n| `3ce467...` | 9 | web-only | Slack, GitHub |\n| `8767e...` | 6 | web + schedule | 6 connectors |\n| `f2a41...` | 3 | schedule | Slack |\n\n🚩 **Worth Watching**:\n• `8767e...` — Chinese-speaking power user, 6 connectors active, likely evaluating for team rollout\n• `3ce467...` — 9 runs in 24h, all via web UI — new user exploring capabilities\n\n✅ No anomalies. No failures flagged."
+            "text": "**External User Analysis - Past 24 Hours**\n\n📊 **Overview**: 22 runs across 9 external orgs (95.5% completion rate)\n\n🏆 **Top Orgs**:\n| Org Hash | Runs | Triggers | Connectors Used |\n|----------|------|----------|----------------|\n| `3ce467...` | 9 | web-only | Slack, GitHub |\n| `8767e...` | 6 | web + schedule | 6 connectors |\n| `f2a41...` | 3 | schedule | Slack |\n\n🚩 **Worth Watching**:\n• `8767e...` - Chinese-speaking power user, 6 connectors active, likely evaluating for team rollout\n• `3ce467...` - 9 runs in 24h, all via web UI - new user exploring capabilities\n\n✅ No anomalies. No failures flagged."
           }
         ],
         "steps": [
           {
             "title": "Zero connects to your production database",
-            "description": "Zero securely connects to your read-only database using your existing credential management. It never writes to production — only runs SELECT queries against analytics tables."
+            "description": "Zero securely connects to your read-only database using your existing credential management. It never writes to production - only runs SELECT queries against analytics tables."
           },
           {
             "title": "Zero runs analysis queries and detects patterns",
-            "description": "Zero executes a series of queries: total runs by organization, trigger source breakdown (web, CLI, scheduled), connector usage patterns, and anomaly detection — comparing current metrics against trailing averages to flag anything unusual."
+            "description": "Zero executes a series of queries: total runs by organization, trigger source breakdown (web, CLI, scheduled), connector usage patterns, and anomaly detection - comparing current metrics against trailing averages to flag anything unusual."
           },
           {
             "title": "Zero posts a structured report to Slack",
-            "description": "The analysis lands in your analytics channel with clear tables, ranked lists, and flagged items. Power users, churn risks, and adoption patterns are called out explicitly — not buried in a spreadsheet you'll never open."
+            "description": "The analysis lands in your analytics channel with clear tables, ranked lists, and flagged items. Power users, churn risks, and adoption patterns are called out explicitly - not buried in a spreadsheet you'll never open."
           }
         ],
         "nextActions": [
           {
             "title": "Dig deeper into a flagged user",
             "description": "Follow up on a user that Zero flagged as worth watching.",
-            "examplePrompt": "@Zero pull the full run history for org 8767e... — what prompts are they running?"
+            "examplePrompt": "@Zero pull the full run history for org 8767e... - what prompts are they running?"
           },
           {
             "title": "Export the data for a weekly review",
@@ -3161,21 +3161,21 @@
         ],
         "integrations": [
           {
-            "description": "vm0 — provides secure read-only access to your production database. Zero connects via your existing credential vault, runs SELECT queries only, and never exposes raw user data."
+            "description": "vm0 - provides secure read-only access to your production database. Zero connects via your existing credential vault, runs SELECT queries only, and never exposes raw user data."
           },
           {
-            "description": "Slack — delivers the structured analysis report to your team channel. Required if you want automated delivery instead of reading results inline."
+            "description": "Slack - delivers the structured analysis report to your team channel. Required if you want automated delivery instead of reading results inline."
           }
         ],
         "tips": [
-          "Define your key metrics upfront — tell Zero which numbers matter (DAU, runs per org, connector adoption) so it knows what to flag versus what to summarize.",
-          "Always de-identify user data in reports. Zero can hash org IDs and redact emails by default — just tell it to.",
+          "Define your key metrics upfront - tell Zero which numbers matter (DAU, runs per org, connector adoption) so it knows what to flag versus what to summarize.",
+          "Always de-identify user data in reports. Zero can hash org IDs and redact emails by default - just tell it to.",
           "Schedule this alongside your morning brief for a complete picture: system health from the brief, user health from the analysis."
         ]
       },
       "evening-brief": {
-        "title": "Ship a concise end-of-day summary — automatically",
-        "description": "Zero collects today's Slack conversations, merged PRs, and closed issues, then posts a digest to your team channel — so everyone knows what shipped without scrolling through 50 messages.",
+        "title": "Ship a concise end-of-day summary automatically",
+        "description": "Zero collects today's Slack conversations, merged PRs, and closed issues, then posts a digest to your team channel - so everyone knows what shipped without scrolling through 50 messages.",
         "timeSaved": "~15 min saved per day",
         "headings": {
           "scenario": "Why \"what did we ship today?\" is the hardest question at 6 PM",
@@ -3185,7 +3185,7 @@
           "integrations": "Required integrations: Slack and GitHub",
           "tips": "Best practices for automated daily digests"
         },
-        "scenario": "It's 6 PM on Friday. The CEO asks in the all-hands channel: \"What did we ship this week?\" Someone starts scrolling through Slack, someone else opens GitHub, and 15 minutes later you have a rough list that's missing three PRs and misattributes two features. Zero does this automatically — every evening it reads the day's activity, categorizes it by person and project, and posts a clean summary that answers the question before anyone asks.",
+        "scenario": "It's 6 PM on Friday. The CEO asks in the all-hands channel: \"What did we ship this week?\" Someone starts scrolling through Slack, someone else opens GitHub, and 15 minutes later you have a rough list that's missing three PRs and misattributes two features. Zero does this automatically - every evening it reads the day's activity, categorizes it by person and project, and posts a clean summary that answers the question before anyone asks.",
         "promptVariants": [
           {
             "label": "Detailed",
@@ -3207,13 +3207,13 @@
           },
           {
             "name": "Zero",
-            "text": "**Evening Brief — Apr 19**\n\n🚀 **Shipped Today (5 PRs merged)**\n\n| Author | PR | Summary |\n|--------|-----|----------|\n| Ethan | #10149 | Per-run model picker next to send button |\n| Qiqi | #10148 | Batch connectors (15 new integrations) |\n| Qiqi | #10150 | DocuSign OAuth demo environment fix |\n| David | #10153 | Auto-test coverage for changed views |\n| Lancy | #10147 | Voice chat echo cancellation fix |\n\n📋 **Closed Issues**: #9682, #9515, #8030\n\n💬 **Key Discussions**: Pricing tier adjustments, merge queue health, Exa connector approval"
+            "text": "**Evening Brief - Apr 19**\n\n🚀 **Shipped Today (5 PRs merged)**\n\n| Author | PR | Summary |\n|--------|-----|----------|\n| Ethan | #10149 | Per-run model picker next to send button |\n| Qiqi | #10148 | Batch connectors (15 new integrations) |\n| Qiqi | #10150 | DocuSign OAuth demo environment fix |\n| David | #10153 | Auto-test coverage for changed views |\n| Lancy | #10147 | Voice chat echo cancellation fix |\n\n📋 **Closed Issues**: #9682, #9515, #8030\n\n💬 **Key Discussions**: Pricing tier adjustments, merge queue health, Exa connector approval"
           }
         ],
         "steps": [
           {
             "title": "Zero scans today's Slack conversations",
-            "description": "Zero reads messages from your team channels — filtering out bot noise and automated messages — to surface key discussions, decisions, and action items from the day."
+            "description": "Zero reads messages from your team channels - filtering out bot noise and automated messages - to surface key discussions, decisions, and action items from the day."
           },
           {
             "title": "Zero pulls merged PRs and closed issues from GitHub",
@@ -3221,7 +3221,7 @@
           },
           {
             "title": "Zero posts a structured digest to your team channel",
-            "description": "The evening brief lands in your all-hands channel: merged PRs in a table sorted by author, closed issues, and a summary of key Slack discussions. Everyone sees what shipped — without scrolling through 50 messages or opening GitHub."
+            "description": "The evening brief lands in your all-hands channel: merged PRs in a table sorted by author, closed issues, and a summary of key Slack discussions. Everyone sees what shipped - without scrolling through 50 messages or opening GitHub."
           }
         ],
         "nextActions": [
@@ -3243,21 +3243,21 @@
         ],
         "integrations": [
           {
-            "description": "Slack — read access to team channels for conversation history. Write access to post the evening brief digest."
+            "description": "Slack - read access to team channels for conversation history. Write access to post the evening brief digest."
           },
           {
-            "description": "GitHub — read access to query merged PRs and closed issues for the day."
+            "description": "GitHub - read access to query merged PRs and closed issues for the day."
           }
         ],
         "tips": [
-          "Customize which channels Zero monitors — most teams only want 2-3 channels in the brief, not every single one.",
+          "Customize which channels Zero monitors - most teams only want 2-3 channels in the brief, not every single one.",
           "Pair with the morning brief for full daily coverage: morning brief tells you what to watch, evening brief tells you what actually happened.",
-          "Adjust the schedule to your team's rhythm — 6 PM works for most teams, but distribute it later if you have members in later time zones."
+          "Adjust the schedule to your team's rhythm - 6 PM works for most teams, but distribute it later if you have members in later time zones."
         ]
       },
       "cost-optimizer": {
         "title": "Cut AI spending without cutting quality",
-        "description": "Zero audits your agent runs, classifies tasks by complexity, and recommends model switches that save money — so you stop using Opus for tasks that Sonnet handles just fine.",
+        "description": "Zero audits your agent runs, classifies tasks by complexity, and recommends model switches that save money - so you stop using Opus for tasks that Sonnet handles just fine.",
         "timeSaved": "~20 min saved per week",
         "headings": {
           "scenario": "Why your AI bill keeps creeping up",
@@ -3267,7 +3267,7 @@
           "integrations": "Required integrations: vm0 and Slack",
           "tips": "Best practices for AI cost optimization"
         },
-        "scenario": "End of month. The AI infrastructure bill lands: $17K this month, up from $12K last month. You dig in and find that the daily tech debt scan — which runs a few grep scripts and files GitHub issues — is using Claude Opus. The merge queue monitor, which checks if CI is green and posts to Slack, is also on Opus. Neither task needs anything close to Opus. You could audit every schedule manually, or you could ask Zero to classify each task by complexity and recommend which ones to downgrade.",
+        "scenario": "End of month. The AI infrastructure bill lands: $17K this month, up from $12K last month. You dig in and find that the daily tech debt scan - which runs a few grep scripts and files GitHub issues - is using Claude Opus. The merge queue monitor, which checks if CI is green and posts to Slack, is also on Opus. Neither task needs anything close to Opus. You could audit every schedule manually, or you could ask Zero to classify each task by complexity and recommend which ones to downgrade.",
         "promptVariants": [
           {
             "label": "Detailed",
@@ -3289,13 +3289,13 @@
           },
           {
             "name": "Zero",
-            "text": "**Cost Optimization Audit — This Week**\n\n🟢 **Already optimal** (keep as-is):\n• morning-brief (Sonnet) — multi-source aggregation, justified\n• pr-review-merge (Sonnet) — code review when triggered, justified\n\n🟡 **Over-provisioned** (safe to downgrade):\n| Task | Current Model | Recommended | Est. Savings |\n|------|--------------|-------------|-------------|\n| tech-debt-scan | Opus | GLM-5.1 | ~5-10x |\n| merge-queue-monitor | Sonnet | GLM-5.1 | ~3x |\n| standup-summary | Sonnet | GPT-4o mini | ~4x |\n| daily-email-check | Sonnet | GPT-4o mini | ~4x |\n\n🔴 **Needs human review**:\n• auto-test-coverage — writes real code, borderline. Try Sonnet for a week and compare pass rates.\n\n**Estimated monthly savings: $2,400-3,800**"
+            "text": "**Cost Optimization Audit - This Week**\n\n🟢 **Already optimal** (keep as-is):\n• morning-brief (Sonnet) - multi-source aggregation, justified\n• pr-review-merge (Sonnet) - code review when triggered, justified\n\n🟡 **Over-provisioned** (safe to downgrade):\n| Task | Current Model | Recommended | Est. Savings |\n|------|--------------|-------------|-------------|\n| tech-debt-scan | Opus | GLM-5.1 | ~5-10x |\n| merge-queue-monitor | Sonnet | GLM-5.1 | ~3x |\n| standup-summary | Sonnet | GPT-4o mini | ~4x |\n| daily-email-check | Sonnet | GPT-4o mini | ~4x |\n\n🔴 **Needs human review**:\n• auto-test-coverage - writes real code, borderline. Try Sonnet for a week and compare pass rates.\n\n**Estimated monthly savings: $2,400-3,800**"
           }
         ],
         "steps": [
           {
             "title": "Zero audits all agent runs and token usage",
-            "description": "Zero queries your agent run logs, examines what each task actually does — how many turns, what tools it calls, how complex the reasoning is — and calculates the current cost per task."
+            "description": "Zero queries your agent run logs, examines what each task actually does - how many turns, what tools it calls, how complex the reasoning is - and calculates the current cost per task."
           },
           {
             "title": "Zero classifies tasks by complexity tier",
@@ -3325,21 +3325,21 @@
         ],
         "integrations": [
           {
-            "description": "vm0 — provides access to agent run logs, schedule configurations, and model billing data. Zero uses this to analyze what each task does and what it costs."
+            "description": "vm0 - provides access to agent run logs, schedule configurations, and model billing data. Zero uses this to analyze what each task does and what it costs."
           },
           {
-            "description": "Slack — delivers the cost optimization report to your engineering or dev channel."
+            "description": "Slack - delivers the cost optimization report to your engineering or dev channel."
           }
         ],
         "tips": [
-          "Start with low-risk tasks — monitoring, notifications, and daily summaries are safe to downgrade first. Code generation and open-ended reasoning should be last.",
+          "Start with low-risk tasks - monitoring, notifications, and daily summaries are safe to downgrade first. Code generation and open-ended reasoning should be last.",
           "Track quality metrics before and after each switch. If error-triage-daily starts missing issues after a model change, revert immediately.",
-          "Review cost reports weekly, not monthly — small leaks compound fast, and a weekly cadence catches problems before the bill arrives."
+          "Review cost reports weekly, not monthly - small leaks compound fast, and a weekly cadence catches problems before the bill arrives."
         ]
       },
       "merge-queue-monitor": {
         "title": "Catch stuck PRs before they block your release",
-        "description": "Zero monitors your GitHub merge queue, diagnoses why PRs are stuck, and alerts the right people — so your release pipeline never stalls silently.",
+        "description": "Zero monitors your GitHub merge queue, diagnoses why PRs are stuck, and alerts the right people - so your release pipeline never stalls silently.",
         "timeSaved": "~10 min saved per day",
         "headings": {
           "scenario": "Why your release pipeline stalls and nobody notices",
@@ -3371,13 +3371,13 @@
           },
           {
             "name": "Zero",
-            "text": "**Merge Queue Status — vm0-ai/vm0**\n\n⚠️ **1 PR stuck** (queued 2h 14m):\n\n**PR #9842** — feat: add chat thread read indicator\n• Status: CI failing (1 of 14 checks)\n• Failed check: `cli-e2e-03-runner` — timeout after 8 minutes\n• Root cause: Known flaky test (unrelated to PR changes)\n• Blocking: 3 PRs behind it in the queue\n• Author: @Qiqi\n\n**Recommended action**: Re-run the failed check. If it passes, PR should merge within minutes.\n\n3 other PRs in queue — all healthy, waiting their turn."
+            "text": "**Merge Queue Status - vm0-ai/vm0**\n\n⚠️ **1 PR stuck** (queued 2h 14m):\n\n**PR #9842** - feat: add chat thread read indicator\n• Status: CI failing (1 of 14 checks)\n• Failed check: `cli-e2e-03-runner` - timeout after 8 minutes\n• Root cause: Known flaky test (unrelated to PR changes)\n• Blocking: 3 PRs behind it in the queue\n• Author: @Qiqi\n\n**Recommended action**: Re-run the failed check. If it passes, PR should merge within minutes.\n\n3 other PRs in queue - all healthy, waiting their turn."
           }
         ],
         "steps": [
           {
             "title": "Zero checks the merge queue on your schedule",
-            "description": "Zero queries GitHub's merge queue API and examines each queued PR — how long it's been waiting, whether CI is passing, and whether it's blocking other PRs behind it."
+            "description": "Zero queries GitHub's merge queue API and examines each queued PR - how long it's been waiting, whether CI is passing, and whether it's blocking other PRs behind it."
           },
           {
             "title": "Zero diagnoses why stuck PRs are stuck",
@@ -3385,7 +3385,7 @@
           },
           {
             "title": "Zero alerts the right people with actionable context",
-            "description": "Instead of a generic \"PR is stuck\" notification, Zero posts a detailed diagnosis to Slack: which check failed, why it failed, who authored the PR, and what action will unblock it. The right person sees it and acts — no detective work required."
+            "description": "Instead of a generic \"PR is stuck\" notification, Zero posts a detailed diagnosis to Slack: which check failed, why it failed, who authored the PR, and what action will unblock it. The right person sees it and acts - no detective work required."
           }
         ],
         "nextActions": [
@@ -3397,7 +3397,7 @@
           {
             "title": "Whitelist known flaky tests",
             "description": "Tell Zero which tests are known to be flaky so it doesn't over-alert.",
-            "examplePrompt": "@Zero note that cli-e2e-03-runner is a known flaky test — don't alert on it unless it fails 3 times in a row"
+            "examplePrompt": "@Zero note that cli-e2e-03-runner is a known flaky test - don't alert on it unless it fails 3 times in a row"
           },
           {
             "title": "Make it routine",
@@ -3407,14 +3407,14 @@
         ],
         "integrations": [
           {
-            "description": "GitHub — read access to the merge queue, CI check status, and PR details. Optional write access to re-run failed checks."
+            "description": "GitHub - read access to the merge queue, CI check status, and PR details. Optional write access to re-run failed checks."
           },
           {
-            "description": "Slack — posts merge queue alerts with diagnosis details to your engineering channel."
+            "description": "Slack - posts merge queue alerts with diagnosis details to your engineering channel."
           }
         ],
         "tips": [
-          "Set the check frequency to match your team's PR velocity — high-velocity teams need hourly checks, most teams are fine with twice daily.",
+          "Set the check frequency to match your team's PR velocity - high-velocity teams need hourly checks, most teams are fine with twice daily.",
           "Maintain a list of known flaky tests and tell Zero to exclude them from alerts. This prevents alert fatigue and keeps the signal strong.",
           "Chain with auto-merge-releases for a full release pipeline: merge-queue-monitor catches stuck PRs, auto-merge-releases ships the release once the queue clears."
         ]
@@ -3422,7 +3422,7 @@
     },
     "filter": {
       "all": "All",
-      "everyone": "Everyone",
+      "everyone": "Cross-functional",
       "engineering": "Engineering",
       "product": "Product",
       "ops": "Operations"
