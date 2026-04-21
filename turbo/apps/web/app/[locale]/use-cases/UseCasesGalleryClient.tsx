@@ -116,9 +116,9 @@ function UseCaseCard({
 
           {/* Connector logos */}
           <div className="relative flex items-center gap-1.5" style={{ top: 10 }}>
-            {useCase.connectors.map((c) => {
-              return <ConnectorIcon key={c.id} connector={c} />;
-            })}
+            {useCase.connectors.map((c) => (
+              <ConnectorIcon key={c.id} connector={c} />
+            ))}
           </div>
         </div>
 
@@ -189,9 +189,7 @@ export default function UseCasesGalleryClient() {
                   role="tab"
                   aria-selected={isActive}
                   className={`uc-pill${isActive ? " uc-pill--active" : ""}`}
-                  onClick={() => {
-                    setActiveRole(role);
-                  }}
+                  onClick={() => setActiveRole(role)}
                 >
                   {t(`filter.${role}`)}
                 </button>
@@ -204,16 +202,14 @@ export default function UseCasesGalleryClient() {
       {/* Card grid */}
       <section style={{ paddingBottom: "120px" }}>
         <div className="uc-grid">
-          {visibleUseCases.map((uc) => {
-            return (
-              <UseCaseCard
-                key={uc.slug}
-                useCase={uc}
-                title={t(`content.${uc.slug}.title`)}
-                tryItLabel={t("tryIt")}
-              />
-            );
-          })}
+          {visibleUseCases.map((uc) => (
+            <UseCaseCard
+              key={uc.slug}
+              useCase={uc}
+              title={t(`content.${uc.slug}.title`)}
+              tryItLabel={t("tryIt")}
+            />
+          ))}
 
           {/* Coming soon */}
           <div className="flex flex-col justify-between overflow-hidden rounded-[20px] bg-white px-6 pb-7 pt-5">
