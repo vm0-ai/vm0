@@ -3265,7 +3265,8 @@
           "Pair with Draft URL Preview and Blog Cover Art to ship the video, blog post, and hero image as one coordinated release in a single thread."
         ]
       }
-    }
+    },
+    "unfold": "Unfold"
   },
   "landing": {
     "hero": {

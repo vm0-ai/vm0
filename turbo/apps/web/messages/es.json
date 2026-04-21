@@ -3183,7 +3183,8 @@
           "Combínalo con Draft URL Preview y Blog Cover Art para lanzar el vídeo, el post y la imagen hero como un único paquete coordinado en el mismo hilo."
         ]
       }
-    }
+    },
+    "unfold": "Desplegar"
   },
   "landing": {
     "hero": {

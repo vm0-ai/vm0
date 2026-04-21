@@ -18,7 +18,7 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  align-items: center;
+  align-items: flex-start;
   margin-bottom: 48px;
 }
 
@@ -35,7 +35,7 @@
   color: hsl(var(--muted-foreground));
   margin-right: 4px;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
 }
 
 .uc-pill {
@@ -145,7 +145,7 @@
   border-radius: 6px;
   flex-shrink: 0;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: flex-start;
   font-size: 12px;
   font-weight: 600;
@@ -191,7 +191,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  align-items: center;
+  align-items: flex-start;
 }
 
 .uc-tag {
@@ -254,13 +254,13 @@
 .uc-connectors {
   display: flex;
   gap: 6px;
-  align-items: center;
+  align-items: flex-start;
   flex-wrap: wrap;
 }
 
 .uc-connector-badge {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: flex-start;
   width: 36px;
   height: 36px;
@@ -281,7 +281,7 @@
 
 .uc-see-how {
   display: inline-flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 4px;
   font-size: 14px;
   font-weight: 500;
@@ -314,7 +314,7 @@
 
 .uc-detail-back {
   display: inline-flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 6px;
   font-size: 14px;
   color: hsl(var(--muted-foreground));
@@ -486,7 +486,7 @@
 .uc-integration {
   display: flex;
   gap: 14px;
-  align-items: center;
+  align-items: flex-start;
   padding: 12px 0;
 }
 

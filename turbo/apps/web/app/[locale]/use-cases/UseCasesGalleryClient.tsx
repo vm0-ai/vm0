@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Image from "next/image";
+import { IconChevronUp } from "@tabler/icons-react";
 import { useTranslations } from "next-intl";
 import { Link } from "../../../navigation";
 import Footer from "../../components/Footer";
@@ -75,17 +76,17 @@ function UseCaseCard({
   useCase,
   title,
   description,
+  unfoldLabel,
 }: {
   useCase: UseCase;
   title: string;
   description: string;
+  unfoldLabel: string;
 }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+
   return (
-    <Link
-      href={`/use-cases/${useCase.slug}`}
-      className="group block overflow-hidden rounded-[20px] bg-white transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_18px_40px_-18px_rgba(15,23,42,0.18)]"
-      style={{ textDecoration: "none" }}
-    >
+    <div className="group block overflow-hidden rounded-[20px] bg-white transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_18px_40px_-18px_rgba(15,23,42,0.18)]">
       {/* Colorful top area */}
       <div
         className="relative flex items-center justify-between px-6 pb-6 pt-16"
@@ -113,20 +114,39 @@ function UseCaseCard({
 
       {/* Content */}
       <div className="flex flex-col gap-3 px-6 pb-7 pt-5">
-        <h3 className="text-lg font-medium leading-snug tracking-[-0.2px] text-[hsl(var(--foreground))] group-hover:text-[#ed4e01]">
+        <Link
+          href={`/use-cases/${useCase.slug}`}
+          className="text-lg font-medium leading-snug tracking-[-0.2px] text-[hsl(var(--foreground))] hover:text-[#ed4e01]"
+          style={{ textDecoration: "none" }}
+        >
           {title}
-        </h3>
+        </Link>
 
-        {/* Hover-expand drawer: collapsed (grid-rows 0fr) at rest, expanded (1fr) on hover */}
-        <div className="grid grid-rows-[0fr] transition-[grid-template-rows] duration-300 ease-out group-hover:grid-rows-[1fr]">
-          <div className="overflow-hidden">
-            <p className="text-[15px] font-light leading-relaxed text-[hsl(var(--muted-foreground))]">
-              {description}
-            </p>
-          </div>
+        {/* Description - one line with Unfold button */}
+        <div className="flex flex-col gap-2">
+          <p
+            className={`text-[15px] font-light leading-relaxed text-[hsl(var(--muted-foreground))] ${
+              isExpanded ? "" : "line-clamp-1"
+            }`}
+          >
+            {description}
+          </p>
+          <button
+            type="button"
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="flex items-center gap-1 self-start text-[13px] font-medium text-[#ed4e01] transition-all hover:gap-2"
+          >
+            <IconChevronUp
+              size={14}
+              className={`transition-transform duration-200 ${
+                isExpanded ? "rotate-180" : ""
+              }`}
+            />
+            {unfoldLabel}
+          </button>
         </div>
       </div>
-    </Link>
+    </div>
   );
 }
 
@@ -153,7 +173,7 @@ export default function UseCasesGalleryClient() {
         </div>
       </section>
 
-      {/* Role filter chip bar */}
+      {/* Role filter chip bar - left aligned with container */}
       <section style={{ paddingBottom: "32px" }}>
         <div className="uc-filters">
           <div className="uc-filter-row" role="tablist" aria-label={t("role")}>
@@ -207,6 +227,7 @@ export default function UseCasesGalleryClient() {
                   useCase={uc}
                   title={t(`content.${uc.slug}.title`)}
                   description={t(`content.${uc.slug}.description`)}
+                  unfoldLabel={t("unfold")}
                 />
               );
             })}

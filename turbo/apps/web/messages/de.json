@@ -3183,7 +3183,8 @@
           "Kombiniere mit Draft URL Preview und Blog Cover Art, um Video, Blogpost und Hero-Bild als einen abgestimmten Release im selben Thread auszuliefern."
         ]
       }
-    }
+    },
+    "unfold": "Aufklappen"
   },
   "landing": {
     "hero": {

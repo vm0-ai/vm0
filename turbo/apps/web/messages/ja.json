@@ -3265,7 +3265,8 @@
           "Draft URL PreviewとBlog Cover Artと組み合わせれば、動画、ブログ記事、ヒーロー画像を1スレッドで整合性ある1つのリリースとして出せます。"
         ]
       }
-    }
+    },
+    "unfold": "展開する"
   },
   "landing": {
     "hero": {
