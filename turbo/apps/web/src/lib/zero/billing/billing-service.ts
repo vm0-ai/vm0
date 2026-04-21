@@ -448,19 +448,31 @@ const TIER_RANK: Record<OrgTier, number> = {
   team: 2,
 };
 
+type DowngradeResult =
+  | { ok: true; effectiveDate: string | null }
+  | { ok: false; reason: "no_subscription" }
+  | {
+      ok: false;
+      reason: "invalid_target_tier";
+      currentTier: OrgTier;
+      targetTier: "free" | "pro";
+    };
+
 /**
  * Downgrade a subscription to a lower tier.
  *
  * - Team -> Pro: updates the subscription's price via Stripe API (immediate).
  * - Paid -> Free: cancels the subscription at period end.
  *
- * Returns `{ success, effectiveDate }` where effectiveDate is non-null only
- * for cancellations (the date access ends).
+ * Expected client-facing validation failures (no active subscription, target
+ * tier not lower than current) are returned as `{ ok: false, reason }` so the
+ * route layer can map them to 4xx responses. Unexpected failures (Stripe
+ * errors, misconfigured price IDs) continue to throw.
  */
 export async function downgradeSubscription(
   orgId: string,
   targetTier: "free" | "pro",
-): Promise<{ success: boolean; effectiveDate: string | null }> {
+): Promise<DowngradeResult> {
   const db = globalThis.services.db;
 
   const [org] = await db
@@ -474,20 +486,22 @@ export async function downgradeSubscription(
     .limit(1);
 
   if (!org?.stripeSubscriptionId) {
-    throw new Error("Org has no active subscription");
+    return { ok: false, reason: "no_subscription" };
   }
 
   const currentTier = org.tier as OrgTier;
   if (TIER_RANK[targetTier] >= TIER_RANK[currentTier]) {
-    throw new Error(
-      `Cannot downgrade from ${currentTier} to ${targetTier}: target tier is same or higher`,
-    );
+    return {
+      ok: false,
+      reason: "invalid_target_tier",
+      currentTier,
+      targetTier,
+    };
   }
 
   const stripe = getStripe();
 
   if (targetTier === "free") {
-    // Cancel at period end
     await stripe.subscriptions.update(org.stripeSubscriptionId, {
       cancel_at_period_end: true,
     });
@@ -503,10 +517,9 @@ export async function downgradeSubscription(
       targetTier,
       effectiveDate,
     });
-    return { success: true, effectiveDate };
+    return { ok: true, effectiveDate };
   }
 
-  // Team -> Pro: update subscription price
   const subscription = await stripe.subscriptions.retrieve(
     org.stripeSubscriptionId,
   );
@@ -530,7 +543,7 @@ export async function downgradeSubscription(
     from: currentTier,
     to: targetTier,
   });
-  return { success: true, effectiveDate: null };
+  return { ok: true, effectiveDate: null };
 }
 
 /**

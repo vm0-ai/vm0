@@ -678,3 +678,8 @@ export function getBuiltinConnectorDisplayName(
 ): string {
   return CONNECTOR_TYPES[type]?.label ?? type;
 }
+
+export {
+  BILLABLE_CONNECTORS,
+  type BillableConnector,
+} from "./billable-connectors";

@@ -1152,6 +1152,7 @@ fn spawn_job(
                     sandbox_id,
                     &exec_config,
                     &params,
+                    reuse_result,
                     cancel,
                 )
                 .await

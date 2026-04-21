@@ -4,11 +4,8 @@ import { apiErrorSchema } from "./errors";
 
 const c = initContract();
 
-const voiceChatModeSchema = z.enum(["chat", "meeting"]);
-
 const voiceChatSessionBaseSchema = z.object({
   id: z.string(),
-  mode: voiceChatModeSchema,
   status: z.string(),
 });
 
@@ -20,8 +17,6 @@ const voiceChatSessionCreatedSchema = voiceChatSessionBaseSchema.extend({
 
 const createVoiceChatSessionBodySchema = z.object({
   agentId: z.string().min(1),
-  mode: voiceChatModeSchema.optional(),
-  prompt: z.string().min(1).optional(),
 });
 
 const voiceChatTokenBodySchema = z.object({
@@ -112,7 +107,6 @@ export const zeroVoiceChatSessionsContract = c.router({
 
 export type ZeroVoiceChatSessionsContract =
   typeof zeroVoiceChatSessionsContract;
-export type VoiceChatMode = z.infer<typeof voiceChatModeSchema>;
 export type VoiceChatSession = z.infer<typeof voiceChatSessionBaseSchema>;
 export type VoiceChatSessionCreated = z.infer<
   typeof voiceChatSessionCreatedSchema

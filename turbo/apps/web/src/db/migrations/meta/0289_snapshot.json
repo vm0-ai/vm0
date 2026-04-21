@@ -1,5 +1,5 @@
 {
-  "id": "f16a7113-f8ba-4161-be29-676e82c3d51b",
+  "id": "b5cc151e-08c4-4a96-b5b7-f43a79259364",
   "prevId": "39dff07e-d937-4719-980d-ecb39d29b84f",
   "version": "7",
   "dialect": "postgresql",
@@ -8445,33 +8445,21 @@
           "notNull": true,
           "default": "'active'"
         },
-        "conversation_summary": {
-          "name": "conversation_summary",
+        "context": {
+          "name": "context",
           "type": "text",
           "primaryKey": false,
           "notNull": false
         },
-        "working_tasks_summary": {
-          "name": "working_tasks_summary",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "finished_tasks_summary": {
-          "name": "finished_tasks_summary",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "summary_seq": {
-          "name": "summary_seq",
+        "context_seq": {
+          "name": "context_seq",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "default": 0
         },
-        "summary_version": {
-          "name": "summary_version",
+        "context_version": {
+          "name": "context_version",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
@@ -8491,8 +8479,8 @@
           "notNull": true,
           "default": false
         },
-        "last_summary_at": {
-          "name": "last_summary_at",
+        "last_reasoning_at": {
+          "name": "last_reasoning_at",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": false
@@ -8620,10 +8608,9 @@
         },
         "result": {
           "name": "result",
-          "type": "jsonb",
+          "type": "text",
           "primaryKey": false,
-          "notNull": true,
-          "default": "'[]'::jsonb"
+          "notNull": false
         },
         "error": {
           "name": "error",
@@ -9048,6 +9035,34 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_voice_chat_sessions_user_ended_created": {
+          "name": "idx_voice_chat_sessions_user_ended_created",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "status IN ('ended', 'timeout')",
           "concurrently": false,
           "method": "btree",
           "with": {}

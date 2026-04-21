@@ -717,6 +717,20 @@ export {
   type ZeroVariablesByNameContract,
 } from "./zero-secrets";
 export {
+  apiKeysContract,
+  apiKeysByIdContract,
+  apiKeyItemSchema,
+  apiKeyListResponseSchema,
+  createApiKeyRequestSchema,
+  createApiKeyResponseSchema,
+  type ApiKeysContract,
+  type ApiKeysByIdContract,
+  type ApiKeyItem,
+  type ApiKeyListResponse,
+  type CreateApiKeyRequest,
+  type CreateApiKeyResponse,
+} from "./api-keys";
+export {
   zeroCustomConnectorsContract,
   zeroCustomConnectorByIdContract,
   zeroCustomConnectorSecretContract,
@@ -871,22 +885,12 @@ export {
 export {
   zeroVoiceChatSessionsContract,
   type ZeroVoiceChatSessionsContract,
-  type VoiceChatMode,
   type VoiceChatSession,
   type VoiceChatSessionCreated,
   type CreateVoiceChatSessionBody,
   type VoiceChatTokenBody,
   type VoiceChatTokenResponse,
 } from "./zero-voice-chat-sessions";
-export {
-  zeroVoiceChatPrepareTriggerContract,
-  zeroVoiceChatPrepareCompleteContract,
-  zeroVoiceChatPrepareListContract,
-  type ZeroVoiceChatPrepareCompleteContract,
-  type PrepareCompleteBody,
-  type PrepareCompleteResponse,
-  type FreshPreparation,
-} from "./zero-voice-chat-prepare";
 export {
   zeroVoiceIoQuotaContract,
   audioInputQuotaResponseSchema,

@@ -32,7 +32,6 @@ export async function POST(
     return NextResponse.json({
       session: {
         id: session.id,
-        mode: session.mode,
         status: session.status,
       },
     });

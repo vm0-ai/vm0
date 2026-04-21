@@ -18,7 +18,6 @@ export {
   insertVm0ApiKeys,
   createTestVoiceChatSession,
   insertTestVoiceChatSession,
-  insertTestVoiceChatPreparation,
 } from "../db-test-seeders/users";
 export { insertTestVoiceChatCandidateSession } from "../db-test-seeders/voice-chat-candidate";
 
@@ -29,7 +28,6 @@ export {
   getTestVoiceChatSessionStatus,
   getTestVoiceChatSessionHeartbeat,
   getTestVoiceChatEvents,
-  getTestVoiceChatPreparation,
 } from "../db-test-assertions/users";
 export {
   getTestVoiceChatCandidateSession,

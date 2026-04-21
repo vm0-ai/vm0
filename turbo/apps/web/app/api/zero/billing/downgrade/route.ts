@@ -35,7 +35,23 @@ const router = tsr.router(zeroBillingDowngradeContract, {
 
     const result = await downgradeSubscription(org.orgId, body.targetTier);
 
-    return { status: 200 as const, body: result };
+    if (!result.ok) {
+      if (result.reason === "no_subscription") {
+        return createErrorResponse(
+          "CONFLICT",
+          "Org has no active subscription",
+        );
+      }
+      return createErrorResponse(
+        "BAD_REQUEST",
+        `Cannot downgrade from ${result.currentTier} to ${result.targetTier}: target tier is same or higher`,
+      );
+    }
+
+    return {
+      status: 200 as const,
+      body: { success: true, effectiveDate: result.effectiveDate },
+    };
   },
 });
 

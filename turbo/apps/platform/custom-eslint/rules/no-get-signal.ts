@@ -62,6 +62,12 @@ function initMentionsAbortController(init: TSESTree.Expression): boolean {
   return false;
 }
 
+// NOTE: This AST-only implementation tracks signal variable names within the
+// current file only. Signals imported from another module (e.g.
+// `import { signal$ } from './other'`) will NOT be detected — this is an
+// intentional trade-off to avoid type-checker overhead. The performance gain
+// (~32% faster lint) outweighs the small false-negative surface in practice,
+// since AbortSignal states are almost always defined co-located with their use.
 export default createRule({
   name: "no-get-signal",
   defaultOptions: [],

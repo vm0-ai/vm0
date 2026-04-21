@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.275.2](https://github.com/vm0-ai/vm0/compare/app-v0.275.1...app-v0.275.2) (2026-04-21)
+
+
+### Bug Fixes
+
+* **platform:** align custom connector ui with platform conventions ([#10395](https://github.com/vm0-ai/vm0/issues/10395)) ([5c58db3](https://github.com/vm0-ai/vm0/commit/5c58db3e04c843a5c1963fac0ff20df7b988dbed))
+
 ## [0.275.1](https://github.com/vm0-ai/vm0/compare/app-v0.275.0...app-v0.275.1) (2026-04-21)
 
 

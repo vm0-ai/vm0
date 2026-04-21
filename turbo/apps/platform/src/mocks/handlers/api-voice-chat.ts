@@ -7,29 +7,16 @@
  */
 
 import {
-  zeroVoiceChatPrepareTriggerContract,
-  zeroVoiceChatPrepareListContract,
   zeroVoiceChatSessionsContract,
   zeroVoiceChatContextContract,
 } from "@vm0/core";
 import { mockApi } from "../msw-contract.ts";
 
 export const apiVoiceChatHandlers = [
-  mockApi(zeroVoiceChatPrepareTriggerContract.trigger, ({ respond }) => {
-    return respond(200, {
-      preparation: { id: "prep-noop", status: "ready" },
-    });
-  }),
-
-  mockApi(zeroVoiceChatPrepareListContract.list, ({ respond }) => {
-    return respond(200, { preparations: [] });
-  }),
-
   mockApi(zeroVoiceChatSessionsContract.create, ({ respond }) => {
     return respond(200, {
       session: {
         id: "vc-default",
-        mode: "chat",
         status: "preparing",
         runId: "run-default",
         createdAt: "2026-01-01T00:00:00Z",
@@ -50,7 +37,7 @@ export const apiVoiceChatHandlers = [
 
   mockApi(zeroVoiceChatSessionsContract.activate, ({ params, respond }) => {
     return respond(200, {
-      session: { id: params.id, mode: "chat", status: "active" },
+      session: { id: params.id, status: "active" },
     });
   }),
 

@@ -2,10 +2,7 @@ import { initServices } from "../../lib/init-services";
 import { users } from "../../db/schema/user";
 import { userCache } from "../../db/schema/user-cache";
 import { vm0ApiKeys } from "../../db/schema/vm0-api-key";
-import {
-  voiceChatSessions,
-  voiceChatPreparations,
-} from "../../db/schema/voice-chat";
+import { voiceChatSessions } from "../../db/schema/voice-chat";
 
 /**
  * Insert a user row for testing.
@@ -115,38 +112,5 @@ export async function insertTestVoiceChatSession(overrides: {
       lastHeartbeatAt: overrides.lastHeartbeatAt ?? now,
     })
     .returning({ id: voiceChatSessions.id });
-  return row!.id;
-}
-
-/**
- * Insert a voice-chat preparation record.
- * @why-db-direct Voice chat preparations are created by the prepare endpoint which requires real-time infrastructure
- */
-export async function insertTestVoiceChatPreparation(overrides: {
-  orgId: string;
-  userId: string;
-  agentId?: string;
-  mode?: string;
-  prompt?: string;
-  runId?: string;
-  status?: string;
-  directiveContent?: string;
-  createdAt?: Date;
-}): Promise<string> {
-  initServices();
-  const [row] = await globalThis.services.db
-    .insert(voiceChatPreparations)
-    .values({
-      orgId: overrides.orgId,
-      userId: overrides.userId,
-      agentId: overrides.agentId,
-      mode: overrides.mode ?? "chat",
-      prompt: overrides.prompt ?? null,
-      runId: overrides.runId ?? null,
-      status: overrides.status ?? "preparing",
-      directiveContent: overrides.directiveContent ?? null,
-      createdAt: overrides.createdAt ?? new Date(),
-    })
-    .returning({ id: voiceChatPreparations.id });
   return row!.id;
 }

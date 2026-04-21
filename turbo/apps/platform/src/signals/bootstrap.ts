@@ -24,6 +24,7 @@ import { setupAgentsPage$ } from "./agents-page/agents-page-setup.ts";
 import { setupAgentDetailPage$ } from "./agents-page/agent-detail-page-setup.ts";
 import { setupWorksPage$ } from "./works-page/works-page-setup.ts";
 import { setupPreferencesPage$ } from "./preferences-page/preferences-page-setup.ts";
+import { setupApiKeysPage$ } from "./api-keys-page/api-keys-page-setup.ts";
 import { setupSchedulePage$ } from "./schedule-page/schedule-page-setup.ts";
 import { setupScheduleDetailPage$ } from "./schedule-page/schedule-detail-page-setup.ts";
 import { setupAgentChatPage$ } from "./zero-page/agent-chat-page-setup.ts";
@@ -170,6 +171,10 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.settings,
     setup: setupAuthPageWrapper(setupPreferencesPage$),
+  },
+  {
+    path: ROUTES.settingsApiKeys,
+    setup: setupAuthPageWrapper(setupApiKeysPage$),
   },
   {
     path: ROUTES.scheduleDetail,

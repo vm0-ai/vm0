@@ -23,7 +23,10 @@ use crate::kmsg_log;
 use crate::paths::{LogPaths, guest};
 use crate::proxy::{self, ProxyRegistryHandle};
 use crate::telemetry::JobTelemetry;
-use crate::types::{ArtifactEntry, ExecutionContext, ResumeSession, StorageEntry, StorageManifest};
+use crate::types::{
+    ArtifactEntry, ExecutionContext, ResumeSession, SandboxReuseResult, StorageEntry,
+    StorageManifest,
+};
 
 /// Shared configuration for all executions (profile-independent).
 pub struct ExecutorConfig {
@@ -69,12 +72,14 @@ pub async fn execute_job(
     sandbox_id: SandboxId,
     config: &ExecutorConfig,
     params: &JobParams,
+    reuse_result: SandboxReuseResult,
     cancel: CancellationToken,
 ) -> (ExecuteOutcome, JobTelemetry) {
     let run_id = context.run_id;
     let mut telemetry =
         JobTelemetry::new(config.http.clone(), run_id, context.sandbox_token.clone());
 
+    record_reuse_result(&mut telemetry, reuse_result);
     record_api_latency("api_to_vm_start", &context, &mut telemetry);
 
     let outcome = match execute_new_sandbox(
@@ -122,8 +127,8 @@ pub async fn execute_job_reuse(
     let mut telemetry =
         JobTelemetry::new(config.http.clone(), run_id, context.sandbox_token.clone());
 
+    record_reuse_result(&mut telemetry, SandboxReuseResult::Reused);
     record_api_latency("api_to_vm_start", &context, &mut telemetry);
-    telemetry.record("vm_reuse", Duration::ZERO, true, None);
 
     let source_ip = idle_entry.source_ip.clone();
     let prev_storage = idle_entry.storage_fingerprints;
@@ -144,6 +149,26 @@ pub async fn execute_job_reuse(
 
     info!(run_id = %run_id, exit_code = outcome.exit_code, reused = true, "job finished");
     (outcome, telemetry)
+}
+
+/// Emit a single telemetry event capturing the outcome of the reuse decision.
+/// `Reused` emits `sandbox_reuse_hit`; every miss variant (including
+/// `FeatureDisabled`) emits `sandbox_reuse_miss`. Firing on every job makes
+/// the reuse success rate queryable in Axiom as
+/// `countif(op_type == "sandbox_reuse_hit") / countif(op_type startswith "sandbox_reuse_")`.
+/// Miss-reason breakdown lives on the `agent_runs.sandbox_reuse_result`
+/// column in Postgres, so it's not duplicated here. Duration is zero — this
+/// is a marker, not a timing.
+fn record_reuse_result(telemetry: &mut JobTelemetry, result: SandboxReuseResult) {
+    let action_type = match result {
+        SandboxReuseResult::Reused => "sandbox_reuse_hit",
+        SandboxReuseResult::FeatureDisabled
+        | SandboxReuseResult::NoSessionId
+        | SandboxReuseResult::PoolMiss
+        | SandboxReuseResult::ProfileMismatch
+        | SandboxReuseResult::UnparkFailed => "sandbox_reuse_miss",
+    };
+    telemetry.record(action_type, Duration::ZERO, true, None);
 }
 
 fn record_api_latency(action_type: &str, context: &ExecutionContext, telemetry: &mut JobTelemetry) {
@@ -2422,6 +2447,7 @@ mod tests {
             SandboxId::new_v4(),
             &config,
             &default_params(),
+            SandboxReuseResult::NoSessionId,
             cancel,
         )
         .await;
@@ -2445,6 +2471,7 @@ mod tests {
             SandboxId::new_v4(),
             &config,
             &default_params(),
+            SandboxReuseResult::NoSessionId,
             cancel,
         )
         .await;
@@ -2472,6 +2499,7 @@ mod tests {
             SandboxId::new_v4(),
             &config,
             &default_params(),
+            SandboxReuseResult::NoSessionId,
             cancel,
         )
         .await;
@@ -2526,6 +2554,7 @@ mod tests {
             SandboxId::new_v4(),
             &config,
             &default_params(),
+            SandboxReuseResult::NoSessionId,
             cancel,
         )
         .await;
@@ -2583,6 +2612,7 @@ mod tests {
             SandboxId::new_v4(),
             &config,
             &default_params(),
+            SandboxReuseResult::NoSessionId,
             cancel,
         )
         .await;
@@ -2802,6 +2832,7 @@ mod tests {
             SandboxId::new_v4(),
             &config,
             &default_params(),
+            SandboxReuseResult::NoSessionId,
             cancel,
         )
         .await;
@@ -3128,5 +3159,118 @@ mod tests {
         let result = filter_unchanged_storages(&manifest, &prev);
         assert!(result.storages[0].cached);
         assert!(result.storages[0].archive_url.is_none());
+    }
+
+    // -----------------------------------------------------------------------
+    // Reuse-outcome telemetry (issue #10360: sandbox reuse success rate)
+    // -----------------------------------------------------------------------
+
+    fn new_telemetry() -> JobTelemetry {
+        let http = HttpClient::new("http://localhost".to_string()).unwrap();
+        JobTelemetry::new(http, RunId::nil(), "tok".to_string())
+    }
+
+    #[test]
+    fn record_reuse_result_emits_hit_for_reuse() {
+        let mut telemetry = new_telemetry();
+        record_reuse_result(&mut telemetry, SandboxReuseResult::Reused);
+        let ops = telemetry.pending_ops_snapshot();
+        assert_eq!(ops.len(), 1);
+        assert_eq!(ops[0].0, "sandbox_reuse_hit");
+    }
+
+    #[test]
+    fn record_reuse_result_emits_miss_for_every_miss_variant() {
+        let variants = [
+            SandboxReuseResult::FeatureDisabled,
+            SandboxReuseResult::NoSessionId,
+            SandboxReuseResult::PoolMiss,
+            SandboxReuseResult::ProfileMismatch,
+            SandboxReuseResult::UnparkFailed,
+        ];
+        for variant in variants {
+            let mut telemetry = new_telemetry();
+            record_reuse_result(&mut telemetry, variant);
+            let ops = telemetry.pending_ops_snapshot();
+            assert_eq!(ops.len(), 1, "{variant:?}");
+            assert_eq!(ops[0].0, "sandbox_reuse_miss", "{variant:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn execute_job_records_sandbox_reuse_miss_in_telemetry() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let mut factory = MockSandboxFactory::new();
+        factory.startup().await.unwrap();
+
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let (_outcome, telemetry) = execute_job(
+            &factory,
+            minimal_context(),
+            SandboxId::new_v4(),
+            &config,
+            &default_params(),
+            SandboxReuseResult::PoolMiss,
+            cancel,
+        )
+        .await;
+
+        let ops = telemetry.pending_ops_snapshot();
+        let reuse_events: Vec<_> = ops
+            .iter()
+            .filter(|op| op.0.starts_with("sandbox_reuse_"))
+            .collect();
+        assert_eq!(reuse_events.len(), 1);
+        assert_eq!(reuse_events[0].0, "sandbox_reuse_miss");
+    }
+
+    #[tokio::test]
+    async fn execute_job_reuse_records_sandbox_reuse_hit_in_telemetry() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let mut factory = MockSandboxFactory::new();
+        factory.startup().await.unwrap();
+
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let (outcome, _telemetry) = execute_job(
+            &factory,
+            minimal_context(),
+            SandboxId::new_v4(),
+            &config,
+            &default_params(),
+            SandboxReuseResult::NoSessionId,
+            cancel,
+        )
+        .await;
+        let sandbox = outcome.sandbox.expect("sandbox should be alive");
+
+        let idle_entry = crate::idle_pool::IdleEntry {
+            sandbox,
+            factory: std::sync::Arc::new(
+                Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>
+            ),
+            session_id: "test-session".into(),
+            sandbox_id: SandboxId::new_v4(),
+            profile_name: "vm0/default".into(),
+            vcpu: 2,
+            memory_mb: 2048,
+            source_ip: outcome.source_ip,
+            parked_at: std::time::Instant::now(),
+            idle_timeout: std::time::Duration::from_secs(300),
+            storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
+        };
+
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let (_outcome, telemetry) =
+            execute_job_reuse(idle_entry, minimal_context(), &config, cancel).await;
+
+        let ops = telemetry.pending_ops_snapshot();
+        let reuse_events: Vec<_> = ops
+            .iter()
+            .filter(|op| op.0.starts_with("sandbox_reuse_"))
+            .collect();
+        assert_eq!(reuse_events.len(), 1);
+        assert_eq!(reuse_events[0].0, "sandbox_reuse_hit");
     }
 }

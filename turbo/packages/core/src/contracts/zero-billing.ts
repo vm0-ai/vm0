@@ -218,6 +218,7 @@ export const zeroBillingDowngradeContract = c.router({
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
+      409: apiErrorSchema,
       500: apiErrorSchema,
       503: apiErrorSchema,
     },

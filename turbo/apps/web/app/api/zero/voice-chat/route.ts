@@ -7,29 +7,14 @@ import { isFeatureEnabled, FeatureSwitchKey } from "@vm0/core";
 import {
   createSession,
   dispatchSlowBrain,
-  dispatchObservationSlowBrain,
-  writeCachedPreparationEvents,
 } from "../../../../src/lib/zero/voice-chat/session-service";
-import { findFreshPreparation } from "../../../../src/lib/zero/voice-chat/preparation-service";
 import { isApiError } from "../../../../src/lib/shared/errors";
 import { logger } from "../../../../src/lib/shared/logger";
 import { loadFeatureSwitchOverrides } from "../../../../src/lib/zero/user/feature-switches-service";
 
-const bodySchema = z
-  .object({
-    agentId: z.string().min(1),
-    mode: z.enum(["chat", "meeting"]).default("chat"),
-    prompt: z.string().min(1).optional(),
-  })
-  .refine(
-    (data) => {
-      return data.mode !== "meeting" || data.prompt;
-    },
-    {
-      message: "prompt is required for meeting mode",
-      path: ["prompt"],
-    },
-  );
+const bodySchema = z.object({
+  agentId: z.string().min(1),
+});
 
 const log = logger("api:zero:voice-chat");
 
@@ -76,57 +61,18 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
-  const { agentId, mode, prompt } = parsed.data;
+  const { agentId } = parsed.data;
 
   try {
-    const session = await createSession(org.orgId, userId, agentId, {
-      mode,
-      prompt,
-    });
-
-    const preparation = await findFreshPreparation(
-      org.orgId,
-      userId,
-      agentId,
-      mode,
-      prompt,
-    );
-
-    if (preparation) {
-      await writeCachedPreparationEvents(
-        session.id,
-        preparation.directiveContent,
-      );
-      const run = await dispatchObservationSlowBrain(
-        {
-          ...session,
-          agentId,
-        },
-        apiStartTime,
-      );
-
-      return NextResponse.json({
-        session: {
-          id: session.id,
-          mode: session.mode,
-          status: session.status,
-          runId: run.runId,
-          createdAt: session.createdAt,
-          prepared: true,
-        },
-      });
-    }
+    const session = await createSession(org.orgId, userId, agentId);
 
     const run = await dispatchSlowBrain(session, org.orgId, userId, agentId, {
-      mode,
-      prompt,
       apiStartTime,
     });
 
     return NextResponse.json({
       session: {
         id: session.id,
-        mode: session.mode,
         status: session.status,
         runId: run.runId,
         createdAt: session.createdAt,

@@ -91,10 +91,6 @@ export interface VoiceChatCandidateCallbackPayload {
   taskId: string;
 }
 
-export interface VoiceChatPrepareCallbackPayload {
-  preparationId: string;
-}
-
 export interface PhoneCallbackPayload {
   callId: string;
   userId: string;

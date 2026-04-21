@@ -1,20 +1,14 @@
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, inArray, desc, isNotNull } from "drizzle-orm";
 import {
   voiceChatSessions,
   voiceChatEvents,
 } from "../../../db/schema/voice-chat";
+import { agentRuns } from "../../../db/schema/agent-run";
 import { createZeroRun, type CreateZeroRunResult } from "../zero-run-service";
-import { cancelRun } from "../zero-run-cancel";
-import {
-  buildVoiceChatQuickPrepPrompt,
-  buildVoiceChatMeetingPrompt,
-  buildVoiceChatObservationOnlyPrompt,
-} from "../integration-prompt";
+import { buildVoiceChatQuickPrepPrompt } from "../integration-prompt";
 import { conflict, notFound, badRequest, forbidden } from "../../shared/errors";
-import { logger } from "../../shared/logger";
+import { hasAgentSessionId } from "../run-result";
 import { adaptVoiceChatSessionTrigger } from "./adapt-voice-chat-session-trigger";
-
-const log = logger("zero:voice-chat:session");
 
 // ---------------------------------------------------------------------------
 // Session CRUD
@@ -24,7 +18,6 @@ export async function createSession(
   orgId: string,
   userId: string,
   agentId: string,
-  options?: { mode?: "chat" | "meeting"; prompt?: string },
 ) {
   const db = globalThis.services.db;
 
@@ -44,18 +37,13 @@ export async function createSession(
     throw conflict("User already has an active voice-chat session");
   }
 
-  const mode = options?.mode ?? "chat";
-  const status = "preparing";
-
   const [session] = await db
     .insert(voiceChatSessions)
     .values({
       orgId,
       userId,
       agentId,
-      mode,
-      prompt: options?.prompt ?? null,
-      status,
+      status: "preparing",
     })
     .returning();
 
@@ -71,6 +59,47 @@ async function getSession(sessionId: string) {
     .where(eq(voiceChatSessions.id, sessionId))
     .limit(1);
   return session ?? null;
+}
+
+/**
+ * Find the most recent agentSessionId for a user's prior voice chats.
+ *
+ * Joins voice_chat_sessions with agent_runs via runId and scans the last 5
+ * terminated sessions (status IN ('ended', 'timeout')) for this (orgId,
+ * userId) — both graceful-exit paths populate result.agentSessionId via the
+ * agent-complete webhook. Returns the first populated agentSessionId found,
+ * or null when no suitable prior session exists.
+ *
+ * The 5-row scan (same as chat-thread's getLatestSessionIdForThread) tolerates
+ * the race where a just-ended session's run hasn't yet written its result.
+ */
+export async function getPriorVoiceChatAgentSessionId(
+  orgId: string,
+  userId: string,
+): Promise<string | null> {
+  const db = globalThis.services.db;
+
+  const rows = await db
+    .select({ result: agentRuns.result })
+    .from(voiceChatSessions)
+    .innerJoin(agentRuns, eq(voiceChatSessions.runId, agentRuns.id))
+    .where(
+      and(
+        eq(voiceChatSessions.userId, userId),
+        eq(voiceChatSessions.orgId, orgId),
+        inArray(voiceChatSessions.status, ["ended", "timeout"]),
+        isNotNull(voiceChatSessions.runId),
+      ),
+    )
+    .orderBy(desc(voiceChatSessions.createdAt))
+    .limit(5);
+
+  for (const row of rows) {
+    if (hasAgentSessionId(row.result)) {
+      return row.result.agentSessionId;
+    }
+  }
+  return null;
 }
 
 export async function heartbeat(
@@ -112,7 +141,11 @@ export async function endSession(
     throw badRequest("Session is not active");
   }
 
-  // Write session-end event and update status atomically
+  // Write session-end event and update status atomically. Slow-brain sees the
+  // event within its 5s poll window and self-exits via the agent-complete
+  // webhook path — which is what populates `agent_runs.result.agentSessionId`
+  // so the next voice chat can resume this CC session. Hard-cancelling here
+  // would skip that webhook and lose the session id.
   await db.transaction(async (tx) => {
     await tx.insert(voiceChatEvents).values({
       sessionId,
@@ -124,15 +157,6 @@ export async function endSession(
       .set({ status: "ended", endedAt: new Date() })
       .where(eq(voiceChatSessions.id, sessionId));
   });
-
-  // Cancel slow-brain run if active (ignore errors if already terminated)
-  if (session.runId) {
-    try {
-      await cancelRun(session.runId, userId, orgId);
-    } catch {
-      log.debug(`Run ${session.runId} already terminated, skipping cancel`);
-    }
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -144,32 +168,14 @@ export async function dispatchSlowBrain(
   orgId: string,
   userId: string,
   agentId: string,
-  options: {
-    mode?: "chat" | "meeting";
-    prompt?: string;
-    apiStartTime: number;
-  },
+  options: { apiStartTime: number },
 ): Promise<CreateZeroRunResult> {
   const db = globalThis.services.db;
-  const meetingPrompt = options.mode === "meeting" ? options.prompt : undefined;
+  const appendSystemPrompt = buildVoiceChatQuickPrepPrompt(session.id);
+  const prompt = `You are Zero's slow-brain for voice-chat session ${session.id}. Review the agent configuration and user context, then prepare an initial directive before the conversation begins.`;
 
-  const appendSystemPrompt = meetingPrompt
-    ? buildVoiceChatMeetingPrompt(session.id, meetingPrompt)
-    : buildVoiceChatQuickPrepPrompt(session.id);
-
-  const prompt = meetingPrompt
-    ? `You are Zero's slow-brain for voice-chat session ${session.id}. A meeting has been requested. Read the shared context for the meeting prompt and begin preparation.`
-    : `You are Zero's slow-brain for voice-chat session ${session.id}. Review the agent configuration and user context, then prepare an initial directive before the conversation begins.`;
-
-  // Write meeting-prompt event before session-start (meeting mode only)
-  if (meetingPrompt) {
-    await db.insert(voiceChatEvents).values({
-      sessionId: session.id,
-      source: "user",
-      type: "meeting-prompt",
-      content: meetingPrompt,
-    });
-  }
+  const continueFromAgentSessionId =
+    (await getPriorVoiceChatAgentSessionId(orgId, userId)) ?? undefined;
 
   const result = await createZeroRun(
     adaptVoiceChatSessionTrigger({
@@ -178,6 +184,7 @@ export async function dispatchSlowBrain(
       prompt,
       appendSystemPrompt,
       sessionId: session.id,
+      continueFromAgentSessionId,
       apiStartTime: options.apiStartTime,
     }),
   );
@@ -199,78 +206,7 @@ export async function dispatchSlowBrain(
 }
 
 // ---------------------------------------------------------------------------
-// Cached Preparation Events
-// ---------------------------------------------------------------------------
-
-export async function writeCachedPreparationEvents(
-  sessionId: string,
-  directiveContent: string,
-) {
-  const db = globalThis.services.db;
-  await db.insert(voiceChatEvents).values([
-    {
-      sessionId,
-      source: "slow-brain",
-      type: "thinking",
-      content: "Reviewing agent context and preparing initial guidance...",
-    },
-    {
-      sessionId,
-      source: "slow-brain",
-      type: "directive",
-      content: directiveContent,
-    },
-    {
-      sessionId,
-      source: "slow-brain",
-      type: "preparation-ready",
-    },
-  ]);
-}
-
-// ---------------------------------------------------------------------------
-// Observation-Only Slow-Brain Dispatch
-// ---------------------------------------------------------------------------
-
-export async function dispatchObservationSlowBrain(
-  session: {
-    id: string;
-    userId: string;
-    agentId: string;
-  },
-  apiStartTime: number,
-): Promise<CreateZeroRunResult> {
-  const db = globalThis.services.db;
-  const appendSystemPrompt = buildVoiceChatObservationOnlyPrompt(session.id);
-  const prompt = `You are Zero's slow-brain for voice-chat session ${session.id}. Preparation is complete. Start observing the conversation.`;
-
-  const result = await createZeroRun(
-    adaptVoiceChatSessionTrigger({
-      userId: session.userId,
-      agentId: session.agentId,
-      prompt,
-      appendSystemPrompt,
-      sessionId: session.id,
-      apiStartTime,
-    }),
-  );
-
-  await db
-    .update(voiceChatSessions)
-    .set({ runId: result.runId })
-    .where(eq(voiceChatSessions.id, session.id));
-
-  await db.insert(voiceChatEvents).values({
-    sessionId: session.id,
-    source: "system",
-    type: "session-start",
-  });
-
-  return result;
-}
-
-// ---------------------------------------------------------------------------
-// Session Activation (meeting mode: preparing → active)
+// Session Activation (preparing → active)
 // ---------------------------------------------------------------------------
 
 export async function activateSession(

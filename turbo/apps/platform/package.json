@@ -1,6 +1,6 @@
 {
   "name": "@vm0/app",
-  "version": "0.275.1",
+  "version": "0.275.2",
   "private": true,
   "type": "module",
   "scripts": {
@@ -50,7 +50,6 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@typescript-eslint/rule-tester": "^8.58.2",
-    "@typescript-eslint/type-utils": "^8.58.2",
     "@typescript-eslint/utils": "^8.58.2",
     "@vitejs/plugin-react": "^6.0.1",
     "@vm0/eslint-config": "workspace:*",

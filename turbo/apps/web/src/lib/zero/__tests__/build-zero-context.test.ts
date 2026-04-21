@@ -10,6 +10,7 @@ import {
   createTestVariable,
   createTestUserConnector,
   findTestRunnerJobEntry,
+  insertTestConnectorSecret,
 } from "../../../__tests__/api-test-helpers";
 import { getTestZeroAgentId } from "../../../__tests__/db-test-assertions/agents";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route
@@ -137,6 +138,53 @@ describe("Org-Level Runtime Resolution (Zero Layer)", () => {
       await context.mocks.flushAfter();
       const job = await findTestRunnerJobEntry(result.runId);
       expect(job!.executionContext.billableFirewalls).toEqual([]);
+    });
+
+    it("should include billable connector firewall names when attached", async () => {
+      // The x connector is platform-billable: per-call billing is computed
+      // from firewall_billable metadata, so "x" must appear in
+      // billableFirewalls whenever the firewall is attached to the run.
+      // Build-zero-context only attaches connector firewalls when BOTH the
+      // agent authorized the connector (userConnectors row) AND the user
+      // has linked it (connectors row + OAuth tokens), so seed all three.
+      const agentName = uniqueId("x-connector-agent");
+      await createTestCompose(agentName, {
+        skipDefaultApiKey: true,
+      });
+      const connAgentId = await getTestZeroAgentId(user.orgId, agentName);
+
+      await upsertOrgModelProvider(
+        user.orgId,
+        "anthropic-api-key",
+        "org-api-key",
+      );
+      await context.createConnector(user.orgId, {
+        userId: user.userId,
+        type: "x",
+        authMethod: "oauth",
+      });
+      await insertTestConnectorSecret(
+        user.orgId,
+        user.userId,
+        "X_ACCESS_TOKEN",
+        "user-x-access",
+      );
+      await insertTestConnectorSecret(
+        user.orgId,
+        user.userId,
+        "X_REFRESH_TOKEN",
+        "user-x-refresh",
+      );
+      await createTestUserConnector(user.orgId, user.userId, connAgentId, "x");
+
+      const result = await createZeroRun(baseParams({ agentId: connAgentId }));
+      await context.mocks.flushAfter();
+      const job = await findTestRunnerJobEntry(result.runId);
+      expect(job!.executionContext.billableFirewalls).toContain("x");
+      // User-paid model provider → model-provider firewall stays off the list.
+      expect(job!.executionContext.billableFirewalls).not.toContain(
+        "model-provider:anthropic-api-key",
+      );
     });
   });
 
