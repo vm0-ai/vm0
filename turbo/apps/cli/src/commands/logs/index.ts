@@ -66,12 +66,12 @@ function formatMetric(metric: TelemetryMetric): string {
 }
 
 /**
- * Format a denied network request (filtered by permission rule)
+ * Format the firewall tag (name + billable marker) appended to a request line.
  */
 function formatFirewallTag(entry: NetworkLogEntry): string {
   if (!entry.firewall_name) return "";
-  const billable = entry.firewall_billable ? chalk.yellow("$") : "";
-  return ` ${chalk.cyan(`[${entry.firewall_name}${billable ? ` ${billable}` : ""}]`)}`;
+  const billable = entry.firewall_billable ? ` ${chalk.yellow("$")}` : "";
+  return ` ${chalk.cyan(`[${entry.firewall_name}${billable}]`)}`;
 }
 
 /**
