@@ -15,7 +15,6 @@ import {
   uniqueId,
 } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
-import { reloadEnv } from "../../../../../src/env";
 
 vi.mock("@vm0/core", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@vm0/core")>();
@@ -23,10 +22,6 @@ vi.mock("@vm0/core", async (importOriginal) => {
     ...actual,
     isFeatureEnabled: vi.fn().mockReturnValue(true),
   };
-});
-
-vi.hoisted(() => {
-  vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
 });
 
 const { isFeatureEnabled } = await import("@vm0/core");
@@ -341,8 +336,6 @@ describe("POST /api/zero/voice-chat/token", () => {
   beforeEach(() => {
     context.setupMocks();
     mockIsFeatureEnabled.mockReturnValue(true);
-    vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
-    reloadEnv();
   });
 
   it("should return 401 when not authenticated", async () => {
