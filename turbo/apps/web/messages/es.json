@@ -470,7 +470,7 @@
         ]
       },
       "standup-summary": {
-        "title": "Prepara tu standup sin abrir 5 aplicaciones",
+        "title": "Prepara tu standup sin abrir varias aplicaciones",
         "description": "Zero obtiene datos del calendario, correo electrónico y Linear, luego escribe un resumen compartible que puedes pegar directamente en el hilo del equipo.",
         "timeSaved": "~20 min ahorrados",
         "headings": {
@@ -1728,7 +1728,7 @@
         ]
       },
       "cross-tool-context-query": {
-        "title": "Obtén un resumen de estado unificado sobre cualquier tema sin revisar cinco herramientas",
+        "title": "Obtén un resumen de estado unificado sobre cualquier tema sin revisar varias herramientas",
         "description": "Pregúntale a @Zero sobre un proyecto, funcionalidad o tema. Busca en Slack, Notion, Linear y GitHub simultáneamente, luego devuelve un resumen estructurado: estado actual, responsable, bloqueantes y última actividad — todo desde un solo mensaje.",
         "timeSaved": "~15 min ahorrados por consulta de estado",
         "headings": {
@@ -2754,7 +2754,7 @@
         ]
       },
       "cross-tool-context": {
-        "title": "Get a unified status brief on any project from Slack, Notion, Linear, and GitHub",
+        "title": "Get a unified status brief on any project from multiple platforms",
         "description": "Ask Zero about the current status of any project, feature, or topic. Zero searches across your tools in parallel, synthesizes a 4-part brief — state, owner, blockers, last update — and flags if sources disagree.",
         "timeSaved": "~25 min saved",
         "headings": {

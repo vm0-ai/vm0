@@ -470,7 +470,7 @@
         ]
       },
       "standup-summary": {
-        "title": "Get your standup ready without opening 5 apps",
+        "title": "Get your standup ready without opening multiple apps",
         "description": "Zero pulls from calendar, email, and Linear, then writes a shareable summary you can paste straight into the team thread.",
         "timeSaved": "~20 min saved",
         "headings": {
@@ -1810,7 +1810,7 @@
         ]
       },
       "cross-tool-context-query": {
-        "title": "Get a unified status brief on anything without checking five tools",
+        "title": "Get a unified status brief on anything without checking multiple tools",
         "description": "Ask Zero about a project, feature, or topic. It searches Slack, Notion, Linear, and GitHub simultaneously, then returns a structured brief: current state, owner, blockers, and last activity — all from a single message.",
         "timeSaved": "~15 min saved per status check",
         "headings": {
@@ -2836,7 +2836,7 @@
         ]
       },
       "cross-tool-context": {
-        "title": "Get a unified status brief on any project from Slack, Notion, Linear, and GitHub",
+        "title": "Get a unified status brief on any project from multiple platforms",
         "description": "Ask Zero about the current status of any project, feature, or topic. Zero searches across your tools in parallel, synthesizes a 4-part brief — state, owner, blockers, last update — and flags if sources disagree.",
         "timeSaved": "~25 min saved",
         "headings": {

@@ -1728,7 +1728,7 @@
         ]
       },
       "cross-tool-context-query": {
-        "title": "Einheitliches Status-Briefing erhalten, ohne fünf Tools prüfen zu müssen",
+        "title": "Einheitliches Status-Briefing erhalten, ohne mehrere Tools prüfen zu müssen",
         "description": "Frag Zero nach einem Projekt, Feature oder Thema. Es durchsucht Slack, Notion, Linear und GitHub gleichzeitig und liefert ein strukturiertes Briefing: aktueller Stand, Verantwortlicher, Blocker und letzte Aktivität — alles aus einer einzigen Nachricht.",
         "timeSaved": "~15 Min. pro Statusabfrage gespart",
         "headings": {
@@ -2754,7 +2754,7 @@
         ]
       },
       "cross-tool-context": {
-        "title": "Get a unified status brief on any project from Slack, Notion, Linear, and GitHub",
+        "title": "Get a unified status brief on any project from multiple platforms",
         "description": "Ask Zero about the current status of any project, feature, or topic. Zero searches across your tools in parallel, synthesizes a 4-part brief — state, owner, blockers, last update — and flags if sources disagree.",
         "timeSaved": "~25 min saved",
         "headings": {

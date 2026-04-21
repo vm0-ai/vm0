@@ -470,7 +470,7 @@
         ]
       },
       "standup-summary": {
-        "title": "5つのアプリを開かずにスタンドアップを準備",
+        "title": "複数のアプリを開かずにスタンドアップを準備",
         "description": "Zeroがカレンダー、メール、Linearからデータを取得し、チームスレッドにそのまま貼り付けられる共有可能なサマリーを作成します。",
         "timeSaved": "約20分の節約",
         "headings": {
@@ -2836,7 +2836,7 @@
         ]
       },
       "cross-tool-context": {
-        "title": "Get a unified status brief on any project from Slack, Notion, Linear, and GitHub",
+        "title": "Get a unified status brief on any project from multiple platforms",
         "description": "Ask Zero about the current status of any project, feature, or topic. Zero searches across your tools in parallel, synthesizes a 4-part brief — state, owner, blockers, last update — and flags if sources disagree.",
         "timeSaved": "~25 min saved",
         "headings": {
