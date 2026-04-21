@@ -126,7 +126,10 @@ export default createRule({
 
     // Functions known to return Computed/Command: seeded with computed() itself,
     // extended at declaration time for package-scope helper functions.
-    const packageScopeConstantFunctions = new Set<string>(["computed"]);
+    const packageScopeConstantFunctions = new Set<string>([
+      "computed",
+      "command",
+    ]);
 
     function functionDeclarationHasConstantReturn(
       node: TSESTree.FunctionDeclaration,
