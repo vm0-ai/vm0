@@ -30,6 +30,96 @@ function parsePrefixLines(raw: string): string[] {
     });
 }
 
+function CreateFormFields({
+  form,
+  setField,
+}: {
+  form: {
+    displayName: string;
+    prefixesRaw: string;
+    headerName: string;
+    headerTemplate: string;
+  };
+  setField: (field: string, value: string) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-2">
+        <label
+          htmlFor="cc-display-name"
+          className="text-sm font-medium text-foreground"
+        >
+          Display name
+        </label>
+        <Input
+          id="cc-display-name"
+          value={form.displayName}
+          onChange={(e) => {
+            return setField("displayName", e.target.value);
+          }}
+          placeholder="Acme API"
+        />
+      </div>
+      <div className="flex flex-col gap-2">
+        <label
+          htmlFor="cc-prefixes"
+          className="text-sm font-medium text-foreground"
+        >
+          Prefixes
+          <span className="text-muted-foreground font-normal ml-1">
+            (one per line, https only)
+          </span>
+        </label>
+        <textarea
+          id="cc-prefixes"
+          value={form.prefixesRaw}
+          onChange={(e) => {
+            return setField("prefixesRaw", e.target.value);
+          }}
+          placeholder="https://api.acme.com/v1/"
+          rows={3}
+          className="w-full rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10 resize-y min-h-[72px]"
+        />
+      </div>
+      <div className="flex flex-col gap-2">
+        <label
+          htmlFor="cc-header-name"
+          className="text-sm font-medium text-foreground"
+        >
+          Header name
+        </label>
+        <Input
+          id="cc-header-name"
+          value={form.headerName}
+          onChange={(e) => {
+            return setField("headerName", e.target.value);
+          }}
+          placeholder="Authorization"
+        />
+      </div>
+      <div className="flex flex-col gap-2">
+        <label
+          htmlFor="cc-header-template"
+          className="text-sm font-medium text-foreground"
+        >
+          Header template
+          <span className="text-muted-foreground font-normal ml-1">
+            (must contain {`{{secret}}`})
+          </span>
+        </label>
+        <Input
+          id="cc-header-template"
+          value={form.headerTemplate}
+          onChange={(e) => {
+            return setField("headerTemplate", e.target.value);
+          }}
+          placeholder="Bearer {{secret}}"
+        />
+      </div>
+    </div>
+  );
+}
+
 export function CustomConnectorCreateDialog() {
   const form = useGet(customConnectorCreateForm$);
   const setField = useSet(setCustomConnectorCreateField$);
@@ -83,80 +173,7 @@ export function CustomConnectorCreateDialog() {
         <DialogHeader>
           <DialogTitle>New custom connector</DialogTitle>
         </DialogHeader>
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-2">
-            <label
-              htmlFor="cc-display-name"
-              className="text-sm font-medium text-foreground"
-            >
-              Display name
-            </label>
-            <Input
-              id="cc-display-name"
-              value={form.displayName}
-              onChange={(e) => {
-                return setField("displayName", e.target.value);
-              }}
-              placeholder="Acme API"
-            />
-          </div>
-          <div className="flex flex-col gap-2">
-            <label
-              htmlFor="cc-prefixes"
-              className="text-sm font-medium text-foreground"
-            >
-              Prefixes
-              <span className="text-muted-foreground font-normal ml-1">
-                (one per line, https only)
-              </span>
-            </label>
-            <textarea
-              id="cc-prefixes"
-              value={form.prefixesRaw}
-              onChange={(e) => {
-                return setField("prefixesRaw", e.target.value);
-              }}
-              placeholder="https://api.acme.com/v1/"
-              rows={3}
-              className="w-full rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10 resize-y min-h-[72px]"
-            />
-          </div>
-          <div className="flex flex-col gap-2">
-            <label
-              htmlFor="cc-header-name"
-              className="text-sm font-medium text-foreground"
-            >
-              Header name
-            </label>
-            <Input
-              id="cc-header-name"
-              value={form.headerName}
-              onChange={(e) => {
-                return setField("headerName", e.target.value);
-              }}
-              placeholder="Authorization"
-            />
-          </div>
-          <div className="flex flex-col gap-2">
-            <label
-              htmlFor="cc-header-template"
-              className="text-sm font-medium text-foreground"
-            >
-              Header template
-              <span className="text-muted-foreground font-normal ml-1">
-                (must contain {`{{secret}}`})
-              </span>
-            </label>
-            <Input
-              id="cc-header-template"
-              value={form.headerTemplate}
-              onChange={(e) => {
-                return setField("headerTemplate", e.target.value);
-              }}
-              placeholder="Bearer {{secret}}"
-            />
-          </div>
-        </div>
+        <CreateFormFields form={form} setField={setField} />
         <DialogFooter>
           <Button variant="outline" onClick={close} disabled={submitting}>
             Cancel
