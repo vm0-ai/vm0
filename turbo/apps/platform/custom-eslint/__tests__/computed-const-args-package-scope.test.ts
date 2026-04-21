@@ -78,5 +78,10 @@ ruleTester.run("computed-const-args-package-scope", rule, {
       code: "function makeSignal(key: string): Computed<string> { return computed(() => key); } function setup() { const c$ = makeSignal('key'); }",
       errors: [{ messageId: "mustBePackageScope" }],
     },
+    // computed() with enum-member argument inside a function — must be at package scope
+    {
+      code: "function setup() { const theme$ = computed(LocalStorageKey.Theme); }",
+      errors: [{ messageId: "mustBePackageScope" }],
+    },
   ],
 });

@@ -59,5 +59,10 @@ ruleTester.run("no-get-signal", rule, {
       code: "const signal$ = state<AbortSignal | undefined>(undefined); command(({ get }) => { get(signal$); })",
       errors: [{ messageId: "noGetSignal" }],
     },
+    // AbortSignal | null union type
+    {
+      code: "const signal$ = state<AbortSignal | null>(null); command(({ get }) => { get(signal$); })",
+      errors: [{ messageId: "noGetSignal" }],
+    },
   ],
 });
