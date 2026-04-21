@@ -1,7 +1,8 @@
-import { IconInfoCircle, IconSparkles } from "@tabler/icons-react";
+import { IconInfoCircle, IconSparkles, IconTool } from "@tabler/icons-react";
 import type {
   VoiceChatCandidateItem,
   VoiceChatCandidateTask,
+  VoiceChatCandidateTaskStatus,
   VoiceChatCandidateTaskResultEntry,
 } from "@vm0/core";
 import { Markdown } from "../components/markdown.tsx";
@@ -83,6 +84,37 @@ export function VoiceCandidateTaskResultBubble({
             </div>
           )
         )}
+      </div>
+    </div>
+  );
+}
+
+const TOOL_STATUS_LABEL: Record<VoiceChatCandidateTaskStatus, string> = {
+  pending: "calling",
+  queued: "queued",
+  running: "running",
+  done: "done",
+  failed: "failed",
+};
+
+export function VoiceCandidateToolCallBubble({
+  prompt,
+  status,
+}: {
+  prompt: string;
+  status: VoiceChatCandidateTaskStatus;
+}) {
+  return (
+    <div className="flex justify-start">
+      <div className="rounded-xl max-w-[85%] bg-muted/40 border border-dashed border-border px-3 py-2 text-xs leading-relaxed text-muted-foreground font-mono break-words">
+        <div className="flex items-center gap-1.5 mb-0.5">
+          <IconTool size={12} />
+          <span className="font-medium">create_task</span>
+          <span className="text-[10px] uppercase tracking-wider">
+            {TOOL_STATUS_LABEL[status]}
+          </span>
+        </div>
+        <div className="break-words">{prompt}</div>
       </div>
     </div>
   );

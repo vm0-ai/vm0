@@ -31,6 +31,7 @@ import { setVoiceChatCandidateScrollContainer$ } from "../../signals/voice-chat-
 import {
   VoiceCandidateAssistantBubble,
   VoiceCandidateItemBubble,
+  VoiceCandidateToolCallBubble,
   VoiceCandidateUserBubble,
 } from "./voice-chat-candidate-bubbles.tsx";
 
@@ -370,6 +371,15 @@ export function VoiceChatCandidatePage() {
                     <VoiceCandidateAssistantBubble
                       key={entry.key}
                       content={entry.content}
+                    />
+                  );
+                }
+                if (entry.kind === "tool_call") {
+                  return (
+                    <VoiceCandidateToolCallBubble
+                      key={entry.key}
+                      prompt={entry.task.prompt}
+                      status={entry.task.status}
                     />
                   );
                 }

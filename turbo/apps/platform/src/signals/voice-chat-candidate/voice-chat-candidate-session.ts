@@ -227,15 +227,23 @@ type ServerItem = {
   item: VoiceChatCandidateItem;
 };
 
-type VccConversationEntry = StreamingItem | ServerItem;
+type ToolCallItem = {
+  kind: "tool_call";
+  key: string;
+  task: VoiceChatCandidateTask;
+};
+
+type VccConversationEntry = StreamingItem | ServerItem | ToolCallItem;
 
 /**
- * Merged stream: finalized server items (ordered by seq) followed by any
- * in-flight streaming text from the active Realtime turn. Server items are
- * the source of truth; streaming text is a per-turn UX nicety.
+ * Merged stream: finalized server items + create_task tool calls (ordered by
+ * createdAt) followed by any in-flight streaming text from the active
+ * Realtime turn. Server items are the source of truth; streaming text is a
+ * per-turn UX nicety.
  */
 export const vccConversationItems$ = computed((get) => {
   const items = get(internalItems$);
+  const tasksById = get(internalTasksById$);
   const streamingAssistant = get(internalStreamingAssistant$);
   const pendingUserItemId = get(internalPendingUserItemId$);
 
@@ -245,12 +253,29 @@ export const vccConversationItems$ = computed((get) => {
     }),
   );
 
-  const sorted = [...items].sort((a, b) => {
-    return a.seq - b.seq;
+  type Timestamped = { at: number; entry: VccConversationEntry };
+  const timeline: Timestamped[] = [];
+
+  for (const item of items) {
+    timeline.push({
+      at: new Date(item.createdAt).getTime(),
+      entry: { kind: "server", key: item.id, item },
+    });
+  }
+
+  for (const task of Object.values(tasksById)) {
+    timeline.push({
+      at: new Date(task.createdAt).getTime(),
+      entry: { kind: "tool_call", key: `tool-${task.id}`, task },
+    });
+  }
+
+  timeline.sort((a, b) => {
+    return a.at - b.at;
   });
 
-  const entries: VccConversationEntry[] = sorted.map((item) => {
-    return { kind: "server", key: item.id, item };
+  const entries: VccConversationEntry[] = timeline.map((t) => {
+    return t.entry;
   });
 
   if (pendingUserItemId && !seenRealtimeIds.has(pendingUserItemId)) {
