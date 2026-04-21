@@ -89,12 +89,11 @@ export async function findCreditExpiresRecordByStripeInvoiceId(
 
 /**
  * Read the current stripe_session_id stored on the org_promo_redemption row
- * for (orgId, productId, promoCode). Returns undefined if no row exists.
+ * for (orgId, campaignKey). Returns undefined if no row exists.
  */
 export async function findOrgPromoRedemption(params: {
   orgId: string;
-  productId: string;
-  promoCode: string;
+  campaignKey: string;
 }): Promise<{ stripeSessionId: string } | undefined> {
   initServices();
   const [row] = await globalThis.services.db
@@ -103,8 +102,7 @@ export async function findOrgPromoRedemption(params: {
     .where(
       and(
         eq(orgPromoRedemption.orgId, params.orgId),
-        eq(orgPromoRedemption.productId, params.productId),
-        eq(orgPromoRedemption.promoCode, params.promoCode),
+        eq(orgPromoRedemption.campaignKey, params.campaignKey),
       ),
     )
     .limit(1);

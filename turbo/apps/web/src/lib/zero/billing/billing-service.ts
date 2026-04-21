@@ -12,7 +12,7 @@ import {
   getExpiresRecordsSummary,
   getUnsettledExpiredAmount,
 } from "../credit/credit-expires-service";
-import { getOneTimeProduct } from "./one-time-products";
+import { getCampaign } from "./one-time-products";
 import { logger } from "../../shared/logger";
 
 const log = logger("billing");
@@ -154,7 +154,7 @@ export async function createCheckoutSession(
  *
  * One-time purchases (`metadata.purpose === "one_time_purchase"`) are
  * dispatched to {@link handleOneTimePurchaseCompleted}, which grants credits
- * sourced from the server-side {@link ONE_TIME_PRODUCTS} registry.
+ * sourced from the server-side campaign registry.
  */
 export async function handleCheckoutCompleted(
   session: CheckoutSessionInput,
@@ -244,8 +244,8 @@ export async function handleCheckoutCompleted(
 
 /**
  * Grant credits for a completed one-time purchase. The `credits`, `expiresDays`
- * and `source` values are looked up in {@link ONE_TIME_PRODUCTS} — never read
- * from webhook metadata — so an attacker who forges a session metadata can't
+ * and `source` values are looked up via {@link getCampaign} — never read from
+ * webhook metadata — so an attacker who forges a session metadata can't
  * inflate the payout. Idempotent via `createExpiresRecord`'s unique index on
  * `(org_id, stripe_invoice_id)`.
  */
@@ -254,35 +254,35 @@ async function handleOneTimePurchaseCompleted(
 ): Promise<void> {
   const metadata = session.metadata ?? {};
   const orgId = metadata.orgId;
-  const productId = metadata.productId;
+  const campaignKey = metadata.campaignKey;
 
-  if (!orgId || !productId) {
+  if (!orgId || !campaignKey) {
     log.warn("one_time_purchase missing metadata", {
       sessionId: session.id,
       hasOrgId: !!orgId,
-      hasProductId: !!productId,
+      hasCampaignKey: !!campaignKey,
     });
     return;
   }
 
-  const rule = getOneTimeProduct(productId);
-  if (!rule) {
-    log.warn("one_time_purchase unknown productId — skipping", {
+  const campaign = getCampaign(campaignKey);
+  if (!campaign) {
+    log.warn("one_time_purchase unknown campaign — skipping", {
       sessionId: session.id,
-      productId,
+      campaignKey,
     });
     return;
   }
 
   const expiresAt = new Date(
-    Date.now() + rule.expiresDays * 24 * 60 * 60 * 1000,
+    Date.now() + campaign.expiresDays * 24 * 60 * 60 * 1000,
   );
   const db = globalThis.services.db;
   await db.transaction(async (tx) => {
     const inserted = await createExpiresRecord(tx, orgId, {
-      source: rule.source,
+      source: campaign.source,
       stripeInvoiceId: session.id,
-      amount: rule.credits,
+      amount: campaign.credits,
       expiresAt,
     });
     if (!inserted) {
@@ -292,93 +292,52 @@ async function handleOneTimePurchaseCompleted(
       });
       return;
     }
-    await grantOrgCredits(tx, orgId, rule.credits);
+    await grantOrgCredits(tx, orgId, campaign.credits);
     log.info("one_time_purchase credits granted", {
       orgId,
-      productId,
-      credits: rule.credits,
+      campaignKey,
+      credits: campaign.credits,
       sessionId: session.id,
     });
   });
 }
 
 // ---------------------------------------------------------------------------
-// One-time Checkout Session creation (used by /buy/[productId])
+// One-time Checkout Session creation (used by /redeem/[campaign])
 // ---------------------------------------------------------------------------
 
-const oneTimePriceIdCache = new Map<string, string>();
-
 /**
- * Resolve the price id to charge for a one-time product purchase. Prefers the
- * product's `default_price` and falls back to its first active price so a
- * migration between prices doesn't require a code change.
- */
-async function resolveOneTimePriceId(productId: string): Promise<string> {
-  const cached = oneTimePriceIdCache.get(productId);
-  if (cached) return cached;
-
-  const stripe = getStripe();
-  const product = await stripe.products.retrieve(productId);
-  let priceId: string | null = null;
-  if (typeof product.default_price === "string") {
-    priceId = product.default_price;
-  } else if (product.default_price && "id" in product.default_price) {
-    priceId = product.default_price.id;
-  }
-
-  if (!priceId) {
-    log.warn(
-      "product has no default_price; falling back to first active price",
-      {
-        productId,
-      },
-    );
-    const prices = await stripe.prices.list({
-      product: productId,
-      active: true,
-      limit: 1,
-    });
-    priceId = prices.data[0]?.id ?? null;
-  }
-
-  if (!priceId) {
-    throw new Error(`Product ${productId} has no usable price`);
-  }
-
-  oneTimePriceIdCache.set(productId, priceId);
-  return priceId;
-}
-
-/**
- * Create a Stripe Checkout session for a one-time purchase.
+ * Create a Stripe Checkout session for a one-time campaign redemption.
  *
  * The session carries a fixed metadata shape the webhook relies on to
  * dispatch to {@link handleOneTimePurchaseCompleted}. Callers are responsible
- * for checking that `productId`/`promoCode` are whitelisted *before* calling
- * this — see `ONE_TIME_PRODUCTS`.
+ * for checking that `campaignKey` is whitelisted *before* calling this —
+ * see {@link getCampaign}.
  */
 export async function createOneTimeCheckoutSession(params: {
   orgId: string;
-  productId: string;
-  promoCode: string;
+  campaignKey: string;
   successUrl: string;
   cancelUrl: string;
 }): Promise<{ sessionId: string; url: string }> {
+  const campaign = getCampaign(params.campaignKey);
+  if (!campaign) {
+    throw new Error(`Unknown campaign: ${params.campaignKey}`);
+  }
+
   const customerId = await getOrCreateStripeCustomer(params.orgId);
   const stripe = getStripe();
-  const priceId = await resolveOneTimePriceId(params.productId);
 
   const session = await stripe.checkout.sessions.create({
     mode: "payment",
     customer: customerId,
-    line_items: [{ price: priceId, quantity: 1 }],
-    discounts: [{ coupon: params.promoCode }],
+    line_items: [{ price: campaign.priceId, quantity: 1 }],
+    discounts: [{ coupon: campaign.couponId }],
     success_url: params.successUrl,
     cancel_url: params.cancelUrl,
     metadata: {
       orgId: params.orgId,
-      productId: params.productId,
-      promoCode: params.promoCode,
+      campaignKey: params.campaignKey,
       purpose: "one_time_purchase",
     },
   });

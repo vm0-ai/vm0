@@ -8,7 +8,7 @@ import { logger } from "../../shared/logger";
 const log = logger("one-time-purchase");
 
 /**
- * The outcome of a `/buy/[productId]` attempt.
+ * The outcome of a `/redeem/[campaign]` attempt.
  *
  * - `redirect` — send the user to Stripe Checkout at `url`.
  * - `already_granted` — credits are already in the org ledger; the user has
@@ -23,17 +23,16 @@ type RedemptionOutcome =
 
 interface RedemptionParams {
   orgId: string;
-  productId: string;
-  promoCode: string;
+  campaignKey: string;
   successUrl: string;
   cancelUrl: string;
 }
 
 /**
- * Claim-or-resume the Stripe Checkout session for (org, product, promoCode).
+ * Claim-or-resume the Stripe Checkout session for (org, campaign).
  *
- * Only one session per triple can exist thanks to the unique index on
- * `org_promo_redemption`. If we can claim the row we create a fresh Stripe
+ * Only one session per (org, campaign) can exist thanks to the unique index
+ * on `org_promo_redemption`. If we can claim the row we create a fresh Stripe
  * session; otherwise we fall through to resume logic that respects whether
  * the existing session is still open, already completed, or expired.
  */
@@ -57,8 +56,7 @@ export async function startOrResumeRedemption(
     .insert(orgPromoRedemption)
     .values({
       orgId: params.orgId,
-      productId: params.productId,
-      promoCode: params.promoCode,
+      campaignKey: params.campaignKey,
       stripeSessionId: session.sessionId,
     })
     .onConflictDoNothing()
@@ -81,8 +79,7 @@ export async function startOrResumeRedemption(
   if (!winner) {
     log.error("one_time_purchase race inconsistency", {
       orgId: params.orgId,
-      productId: params.productId,
-      promoCode: params.promoCode,
+      campaignKey: params.campaignKey,
     });
     throw new Error(
       "Redemption state is temporarily inconsistent; please retry in a moment",
@@ -101,8 +98,7 @@ async function selectRedemption(
     .where(
       and(
         eq(orgPromoRedemption.orgId, params.orgId),
-        eq(orgPromoRedemption.productId, params.productId),
-        eq(orgPromoRedemption.promoCode, params.promoCode),
+        eq(orgPromoRedemption.campaignKey, params.campaignKey),
       ),
     )
     .limit(1);
@@ -150,13 +146,12 @@ async function resumeExisting(
     .where(
       and(
         eq(orgPromoRedemption.orgId, params.orgId),
-        eq(orgPromoRedemption.productId, params.productId),
-        eq(orgPromoRedemption.promoCode, params.promoCode),
+        eq(orgPromoRedemption.campaignKey, params.campaignKey),
       ),
     );
   log.info("one_time_purchase session refreshed", {
     orgId: params.orgId,
-    productId: params.productId,
+    campaignKey: params.campaignKey,
     oldSessionId: stripeSessionId,
     newSessionId: fresh.sessionId,
   });

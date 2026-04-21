@@ -2,26 +2,24 @@ import { auth } from "@clerk/nextjs/server";
 import { NextResponse, type NextRequest } from "next/server";
 import { initServices } from "../../../src/lib/init-services";
 import { env } from "../../../src/env";
-import {
-  getOneTimeProduct,
-  isAllowedPromoCode,
-} from "../../../src/lib/zero/billing/one-time-products";
+import { getCampaign } from "../../../src/lib/zero/billing/one-time-products";
 import { startOrResumeRedemption } from "../../../src/lib/zero/billing/one-time-purchase-service";
 import { logger } from "../../../src/lib/shared/logger";
 
-const log = logger("route:buy");
+const log = logger("route:redeem");
 
 /**
- * GET /buy/[productId]?promo=<couponId>
+ * GET /redeem/[campaign]
  *
- * One-click promo redemption: authenticated org admin is redirected to a
- * Stripe Checkout session tied to (product, coupon). Guest users are bounced
- * through /sign-in first so they land back here after login.
+ * One-click campaign redemption: authenticated org admin is redirected to a
+ * Stripe Checkout session tied to the campaign (price + coupon). Guest users
+ * are bounced through /sign-in first so they land back here after login.
  *
  * The route is the first of three defense layers against credit inflation:
  *
- *  1. Whitelist check (this handler): `productId` + `promoCode` must be
- *     in `ONE_TIME_PRODUCTS`, otherwise 404 — blocks URL tampering.
+ *  1. Whitelist check (this handler): `campaign` must be resolvable via
+ *     {@link getCampaign} (i.e. both `CAMPAIGN_POLICY` and the env-backed
+ *     Stripe config must have it) — blocks URL tampering.
  *  2. Pre-checkout dedup: `org_promo_redemption` unique index serializes
  *     concurrent admins of the same org to a single Stripe session.
  *  3. Webhook idempotency: `credit_expires_record.stripe_invoice_id`
@@ -29,7 +27,7 @@ const log = logger("route:buy");
  */
 export async function GET(
   req: NextRequest,
-  ctx: { params: Promise<{ productId: string }> },
+  ctx: { params: Promise<{ campaign: string }> },
 ): Promise<NextResponse> {
   initServices();
   const { STRIPE_SECRET_KEY } = env();
@@ -43,16 +41,12 @@ export async function GET(
     );
   }
 
-  const { productId } = await ctx.params;
-  const promoCode = req.nextUrl.searchParams.get("promo") ?? "";
+  const { campaign: campaignKey } = await ctx.params;
 
   // Layer 1: route-level whitelist. Reject before even calling Stripe so an
-  // attacker can't use the endpoint to enumerate product IDs or kick off
-  // checkout for an unintended product/coupon combo.
-  if (
-    !getOneTimeProduct(productId) ||
-    !isAllowedPromoCode(productId, promoCode)
-  ) {
+  // attacker can't use the endpoint to enumerate campaigns or kick off
+  // checkout for an unintended price/coupon combo.
+  if (!getCampaign(campaignKey)) {
     return new NextResponse("Not Found", { status: 404 });
   }
 
@@ -75,8 +69,7 @@ export async function GET(
   const homeUrl = new URL("/", origin).toString();
   const outcome = await startOrResumeRedemption({
     orgId,
-    productId,
-    promoCode,
+    campaignKey,
     successUrl: homeUrl,
     cancelUrl: homeUrl,
   });
@@ -85,8 +78,7 @@ export async function GET(
     case "redirect":
       log.info("one_time_purchase redirecting to Stripe", {
         orgId,
-        productId,
-        promoCode,
+        campaignKey,
       });
       return NextResponse.redirect(outcome.url);
     case "already_granted":

@@ -16,8 +16,6 @@ import { reloadEnv } from "../../../../src/env";
 
 const stripeMocks = vi.hoisted(() => {
   return {
-    productsRetrieve: vi.fn(),
-    pricesList: vi.fn(),
     checkoutSessionsCreate: vi.fn(),
     checkoutSessionsRetrieve: vi.fn(),
     checkoutSessionsExpire: vi.fn(),
@@ -29,8 +27,8 @@ vi.mock("stripe", () => {
   return {
     default: function MockStripe() {
       return {
-        products: { retrieve: stripeMocks.productsRetrieve },
-        prices: { list: stripeMocks.pricesList },
+        products: { retrieve: vi.fn() },
+        prices: { list: vi.fn() },
         checkout: {
           sessions: {
             create: stripeMocks.checkoutSessionsCreate,
@@ -52,15 +50,19 @@ import { GET } from "../route";
 
 const context = testContext();
 
-const PRODUCT_ID = "prod_UNJnvXagfI3NS4";
-const PROMO = "ZERO100";
-const BUY_URL = `http://localhost:3000/buy/${PRODUCT_ID}?promo=${PROMO}`;
+const CAMPAIGN = "ZERO100";
+const PRICE_ID = "price_test_campaign";
+const COUPON_ID = "ZERO100";
+const REDEEM_URL = `http://localhost:3000/redeem/${CAMPAIGN}`;
+const CAMPAIGN_ENV = JSON.stringify({
+  [CAMPAIGN]: { priceId: PRICE_ID, couponId: COUPON_ID },
+});
 
-function params(productId: string) {
-  return Promise.resolve({ productId });
+function params(campaign: string) {
+  return Promise.resolve({ campaign });
 }
 
-describe("GET /buy/[productId]", () => {
+describe("GET /redeem/[campaign]", () => {
   let user: UserContext;
 
   beforeEach(async () => {
@@ -68,20 +70,14 @@ describe("GET /buy/[productId]", () => {
     user = await context.setupUser();
     vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_fake");
     vi.stubEnv("NEXT_PUBLIC_APP_URL", "http://localhost:3000");
+    vi.stubEnv("ZERO_ONE_TIME_CAMPAIGN", CAMPAIGN_ENV);
     reloadEnv();
 
-    stripeMocks.productsRetrieve.mockReset();
-    stripeMocks.pricesList.mockReset();
     stripeMocks.checkoutSessionsCreate.mockReset();
     stripeMocks.checkoutSessionsRetrieve.mockReset();
     stripeMocks.checkoutSessionsExpire.mockReset();
     stripeMocks.customersCreate.mockReset();
 
-    // Default: product has a default_price that's an object.
-    stripeMocks.productsRetrieve.mockResolvedValue({
-      id: PRODUCT_ID,
-      default_price: { id: "price_default" },
-    });
     // If tests seed a Stripe customer on the org, customers.create shouldn't be
     // called; but default the fallback to a known id just in case.
     stripeMocks.customersCreate.mockResolvedValue({ id: "cus_test" });
@@ -90,35 +86,31 @@ describe("GET /buy/[productId]", () => {
   it("redirects unauthenticated users to /sign-in with round-trip redirect_url", async () => {
     mockClerk({ userId: null });
 
-    const response = await GET(createTestRequest(BUY_URL), {
-      params: params(PRODUCT_ID),
+    const response = await GET(createTestRequest(REDEEM_URL), {
+      params: params(CAMPAIGN),
     });
 
     expect(response.status).toBe(307);
     const location = response.headers.get("location");
     expect(location).toContain("/sign-in");
-    expect(location).toContain(
-      encodeURIComponent(`/buy/${PRODUCT_ID}?promo=${PROMO}`),
-    );
+    expect(location).toContain(encodeURIComponent(`/redeem/${CAMPAIGN}`));
   });
 
-  it("returns 404 for an unknown productId", async () => {
+  it("returns 404 for an unknown campaign", async () => {
     const response = await GET(
-      createTestRequest(
-        `http://localhost:3000/buy/prod_UNKNOWN?promo=${PROMO}`,
-      ),
-      { params: params("prod_UNKNOWN") },
+      createTestRequest("http://localhost:3000/redeem/UNKNOWN"),
+      { params: params("UNKNOWN") },
     );
     expect(response.status).toBe(404);
   });
 
-  it("returns 404 when the promo code is not allowed for the product", async () => {
-    const response = await GET(
-      createTestRequest(
-        `http://localhost:3000/buy/${PRODUCT_ID}?promo=UNAUTHORIZED`,
-      ),
-      { params: params(PRODUCT_ID) },
-    );
+  it("returns 404 when the campaign is missing from env config", async () => {
+    vi.stubEnv("ZERO_ONE_TIME_CAMPAIGN", JSON.stringify({}));
+    reloadEnv();
+
+    const response = await GET(createTestRequest(REDEEM_URL), {
+      params: params(CAMPAIGN),
+    });
     expect(response.status).toBe(404);
   });
 
@@ -129,8 +121,8 @@ describe("GET /buy/[productId]", () => {
       orgRole: "org:member",
     });
 
-    const response = await GET(createTestRequest(BUY_URL), {
-      params: params(PRODUCT_ID),
+    const response = await GET(createTestRequest(REDEEM_URL), {
+      params: params(CAMPAIGN),
     });
 
     expect(response.status).toBe(307);
@@ -147,8 +139,8 @@ describe("GET /buy/[productId]", () => {
       url: "https://stripe.test/checkout/cs_fresh_1",
     });
 
-    const response = await GET(createTestRequest(BUY_URL), {
-      params: params(PRODUCT_ID),
+    const response = await GET(createTestRequest(REDEEM_URL), {
+      params: params(CAMPAIGN),
     });
 
     expect(response.status).toBe(307);
@@ -159,12 +151,11 @@ describe("GET /buy/[productId]", () => {
     expect(stripeMocks.checkoutSessionsCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         mode: "payment",
-        line_items: [{ price: "price_default", quantity: 1 }],
-        discounts: [{ coupon: PROMO }],
+        line_items: [{ price: PRICE_ID, quantity: 1 }],
+        discounts: [{ coupon: COUPON_ID }],
         metadata: {
           orgId: user.orgId,
-          productId: PRODUCT_ID,
-          promoCode: PROMO,
+          campaignKey: CAMPAIGN,
           purpose: "one_time_purchase",
         },
       }),
@@ -172,8 +163,7 @@ describe("GET /buy/[productId]", () => {
 
     const row = await findOrgPromoRedemption({
       orgId: user.orgId,
-      productId: PRODUCT_ID,
-      promoCode: PROMO,
+      campaignKey: CAMPAIGN,
     });
     expect(row?.stripeSessionId).toBe("cs_fresh_1");
   });
@@ -185,8 +175,7 @@ describe("GET /buy/[productId]", () => {
 
     await insertOrgPromoRedemption({
       orgId: user.orgId,
-      productId: PRODUCT_ID,
-      promoCode: PROMO,
+      campaignKey: CAMPAIGN,
       stripeSessionId: "cs_open_1",
     });
     stripeMocks.checkoutSessionsRetrieve.mockResolvedValue({
@@ -195,8 +184,8 @@ describe("GET /buy/[productId]", () => {
       url: "https://stripe.test/checkout/cs_open_1",
     });
 
-    const response = await GET(createTestRequest(BUY_URL), {
-      params: params(PRODUCT_ID),
+    const response = await GET(createTestRequest(REDEEM_URL), {
+      params: params(CAMPAIGN),
     });
 
     expect(response.status).toBe(307);
@@ -213,8 +202,7 @@ describe("GET /buy/[productId]", () => {
 
     await insertOrgPromoRedemption({
       orgId: user.orgId,
-      productId: PRODUCT_ID,
-      promoCode: PROMO,
+      campaignKey: CAMPAIGN,
       stripeSessionId: "cs_expired_1",
     });
     stripeMocks.checkoutSessionsRetrieve.mockResolvedValue({
@@ -227,8 +215,8 @@ describe("GET /buy/[productId]", () => {
       url: "https://stripe.test/checkout/cs_fresh_2",
     });
 
-    const response = await GET(createTestRequest(BUY_URL), {
-      params: params(PRODUCT_ID),
+    const response = await GET(createTestRequest(REDEEM_URL), {
+      params: params(CAMPAIGN),
     });
 
     expect(response.status).toBe(307);
@@ -238,8 +226,7 @@ describe("GET /buy/[productId]", () => {
 
     const row = await findOrgPromoRedemption({
       orgId: user.orgId,
-      productId: PRODUCT_ID,
-      promoCode: PROMO,
+      campaignKey: CAMPAIGN,
     });
     expect(row?.stripeSessionId).toBe("cs_fresh_2");
   });
@@ -250,8 +237,7 @@ describe("GET /buy/[productId]", () => {
     });
     await insertOrgPromoRedemption({
       orgId: user.orgId,
-      productId: PRODUCT_ID,
-      promoCode: PROMO,
+      campaignKey: CAMPAIGN,
       stripeSessionId: "cs_granted_1",
     });
     await insertCreditExpiresRecord({
@@ -262,8 +248,8 @@ describe("GET /buy/[productId]", () => {
       expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
     });
 
-    const response = await GET(createTestRequest(BUY_URL), {
-      params: params(PRODUCT_ID),
+    const response = await GET(createTestRequest(REDEEM_URL), {
+      params: params(CAMPAIGN),
     });
 
     expect(response.status).toBe(307);
@@ -280,8 +266,7 @@ describe("GET /buy/[productId]", () => {
     });
     await insertOrgPromoRedemption({
       orgId: user.orgId,
-      productId: PRODUCT_ID,
-      promoCode: PROMO,
+      campaignKey: CAMPAIGN,
       stripeSessionId: "cs_complete_1",
     });
     stripeMocks.checkoutSessionsRetrieve.mockResolvedValue({
@@ -290,8 +275,8 @@ describe("GET /buy/[productId]", () => {
       url: null,
     });
 
-    const response = await GET(createTestRequest(BUY_URL), {
-      params: params(PRODUCT_ID),
+    const response = await GET(createTestRequest(REDEEM_URL), {
+      params: params(CAMPAIGN),
     });
 
     expect(response.status).toBe(307);

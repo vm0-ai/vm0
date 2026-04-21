@@ -40,8 +40,14 @@ import { handleCheckoutCompleted } from "../billing-service";
 
 const context = testContext();
 
-const KNOWN_PRODUCT_ID = "prod_UNJnvXagfI3NS4";
+const KNOWN_CAMPAIGN = "ZERO100";
 const KNOWN_CREDITS = 100_000;
+const CAMPAIGN_ENV = JSON.stringify({
+  [KNOWN_CAMPAIGN]: {
+    priceId: "price_test_campaign",
+    couponId: "ZERO100",
+  },
+});
 
 interface CheckoutInput {
   id: string;
@@ -70,6 +76,7 @@ describe("handleCheckoutCompleted — one-time purchase dispatch", () => {
     context.setupMocks();
     user = await context.setupUser();
     vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_fake");
+    vi.stubEnv("ZERO_ONE_TIME_CAMPAIGN", CAMPAIGN_ENV);
     reloadEnv();
 
     stripeMocks.subscriptionsRetrieve.mockReset();
@@ -78,14 +85,13 @@ describe("handleCheckoutCompleted — one-time purchase dispatch", () => {
     baseCredits = (await getOrgCredits(user.orgId)) ?? 0;
   });
 
-  it("grants credits from ONE_TIME_PRODUCTS when productId is whitelisted", async () => {
+  it("grants credits from campaign registry when campaignKey is whitelisted", async () => {
     const sessionId = `cs_test_${user.userId}_happy`;
     await handleCheckoutCompleted(
       oneTimeSession(sessionId, {
         purpose: "one_time_purchase",
         orgId: user.orgId,
-        productId: KNOWN_PRODUCT_ID,
-        promoCode: "ZERO100",
+        campaignKey: KNOWN_CAMPAIGN,
       }),
     );
 
@@ -99,7 +105,7 @@ describe("handleCheckoutCompleted — one-time purchase dispatch", () => {
     expect(row?.amount).toBe(KNOWN_CREDITS);
     expect(row?.remaining).toBe(KNOWN_CREDITS);
     expect(row?.source).toBe("one_time_purchase");
-    // Expiry window from ONE_TIME_PRODUCTS is 30 days
+    // Expiry window from CAMPAIGN_POLICY is 30 days
     const now = Date.now();
     const expiresMs = row!.expiresAt.getTime() - now;
     expect(expiresMs).toBeGreaterThan(29 * 24 * 60 * 60 * 1000);
@@ -111,8 +117,7 @@ describe("handleCheckoutCompleted — one-time purchase dispatch", () => {
     const payload = oneTimeSession(sessionId, {
       purpose: "one_time_purchase",
       orgId: user.orgId,
-      productId: KNOWN_PRODUCT_ID,
-      promoCode: "ZERO100",
+      campaignKey: KNOWN_CAMPAIGN,
     });
 
     await handleCheckoutCompleted(payload);
@@ -121,14 +126,13 @@ describe("handleCheckoutCompleted — one-time purchase dispatch", () => {
     expect(await getOrgCredits(user.orgId)).toBe(baseCredits + KNOWN_CREDITS);
   });
 
-  it("skips unknown productId without granting credits (defense-in-depth)", async () => {
+  it("skips unknown campaignKey without granting credits (defense-in-depth)", async () => {
     const sessionId = `cs_test_${user.userId}_unknown`;
     await handleCheckoutCompleted(
       oneTimeSession(sessionId, {
         purpose: "one_time_purchase",
         orgId: user.orgId,
-        productId: "prod_NOT_LISTED",
-        promoCode: "ZERO100",
+        campaignKey: "NOT_LISTED",
       }),
     );
 
@@ -146,8 +150,7 @@ describe("handleCheckoutCompleted — one-time purchase dispatch", () => {
     await handleCheckoutCompleted(
       oneTimeSession(sessionId, {
         purpose: "one_time_purchase",
-        productId: KNOWN_PRODUCT_ID,
-        promoCode: "ZERO100",
+        campaignKey: KNOWN_CAMPAIGN,
       }),
     );
 
