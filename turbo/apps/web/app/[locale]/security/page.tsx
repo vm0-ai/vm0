@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Script from "next/script";
-import SecurityPage from "./SecurityPage";
+import { SecurityPage } from "./SecurityPage";
 import type { Locale } from "../../../i18n";
 import { buildLocaleAlternates } from "../../lib/seo/alternates";
 

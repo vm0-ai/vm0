@@ -123,10 +123,6 @@ async function deleteUserSlackConnections(userId: string): Promise<void> {
 
   if (connections.length === 0) return;
 
-  const connectionIds = connections.map((c) => {
-    return c.id;
-  });
-
   // Delete connections (cascades slack_org_thread_sessions)
   await db
     .delete(slackOrgConnections)

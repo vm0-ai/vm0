@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { auth } from "@clerk/nextjs/server";
-import LandingPage from "../components/LandingPage";
+import { LandingPage } from "../components/LandingPage";
 import type { Locale } from "../../i18n";
 import { buildLocaleAlternates } from "../lib/seo/alternates";
 

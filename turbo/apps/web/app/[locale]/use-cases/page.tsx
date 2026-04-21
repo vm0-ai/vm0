@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
-import UseCasesGalleryClient from "./UseCasesGalleryClient";
+import { UseCasesGalleryClient } from "./UseCasesGalleryClient";
 import { USE_CASES } from "./data";
 import type { Locale } from "../../../i18n";
 import { buildLocaleAlternates } from "../../lib/seo/alternates";

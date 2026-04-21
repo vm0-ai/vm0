@@ -30,6 +30,8 @@ import {
   checkRunConcurrencyLimit,
   authorizeCompose,
   validateComposeRequirements,
+  checkOrgCredits,
+  checkModelProviderConfigured,
 } from "./zero-run-policy";
 import {
   enqueueRun,
@@ -38,21 +40,9 @@ import {
 } from "./zero-run-queue-service";
 import { generateZeroToken, generateSandboxToken } from "../auth/sandbox-token";
 import { loadFeatureSwitchOverrides } from "./user/feature-switches-service";
-import {
-  buildZeroExecutionContext,
-  MODEL_PROVIDER_ENV_VARS,
-} from "./build-zero-context";
+import { buildZeroExecutionContext } from "./build-zero-context";
 import { getOrgMetadata } from "./org/org-metadata-service";
-import {
-  isConcurrentRunLimit,
-  insufficientCredits,
-  noModelProvider,
-} from "../shared/errors";
-import { modelProviders } from "../../db/schema/model-provider";
-import { orgMetadata } from "../../db/schema/org-metadata";
-import { orgMembersMetadata } from "../../db/schema/org-members-metadata";
-import { ORG_SENTINEL_USER_ID } from "./org/org-sentinel";
-import type { AgentComposeYaml } from "../infra/agent-compose/types";
+import { isConcurrentRunLimit } from "../shared/errors";
 import {
   DISALLOWED_TOOLS,
   buildAgentPrompt,
@@ -124,132 +114,10 @@ export interface CreateZeroRunParams {
   userInfoExtras?: UserInfoOptions;
 }
 
-/**
- * Pre-flight check: ensure the org has sufficient credits for VM0 runs.
- * Skips for non-VM0 provider runs. Queries orgMetadata + orgMembersMetadata.
- *
- * Accepts an optional `db` parameter so callers running inside a transaction
- * (e.g. dequeueNextAtomic with pg_advisory_xact_lock) can pass the transaction
- * object and keep all reads within the same isolation boundary.
- */
-export async function checkOrgCredits(
-  orgId: string,
-  userId: string,
-  modelProvider: string | null | undefined,
-  db: typeof globalThis.services.db = globalThis.services.db,
-): Promise<void> {
-  // Explicit non-VM0 provider — skip check entirely
-  if (modelProvider && modelProvider !== "vm0") {
-    return;
-  }
-
-  // Determine if this is a VM0 run
-  let isVm0 = modelProvider === "vm0";
-
-  if (!isVm0 && !modelProvider) {
-    // Resolve org default provider to determine if this is a VM0 run
-    const [defaultProvider] = await db
-      .select({ type: modelProviders.type })
-      .from(modelProviders)
-      .where(
-        and(
-          eq(modelProviders.orgId, orgId),
-          eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
-          eq(modelProviders.isDefault, true),
-        ),
-      )
-      .limit(1);
-    isVm0 = defaultProvider?.type === "vm0";
-  }
-
-  // Per-member credit cap check — only for VM0 runs
-  if (isVm0) {
-    const [memberRow] = await db
-      .select({ creditEnabled: orgMembersMetadata.creditEnabled })
-      .from(orgMembersMetadata)
-      .where(
-        and(
-          eq(orgMembersMetadata.orgId, orgId),
-          eq(orgMembersMetadata.userId, userId),
-        ),
-      )
-      .limit(1);
-
-    if (memberRow?.creditEnabled === false) {
-      throw insufficientCredits();
-    }
-  }
-
-  // Read credits from org_metadata
-  const [orgRow] = await db
-    .select({ credits: orgMetadata.credits })
-    .from(orgMetadata)
-    .where(eq(orgMetadata.orgId, orgId))
-    .limit(1);
-
-  // No org row → treat as sufficient (new org, default 100000 credits)
-  if (!orgRow) {
-    return;
-  }
-
-  // Credits > 0 → sufficient for any provider
-  if (orgRow.credits > 0) {
-    return;
-  }
-
-  // Credits <= 0 and VM0 run — insufficient
-  if (isVm0) {
-    throw insufficientCredits();
-  }
-
-  // Effective provider is not VM0 — skip check
-}
-
-/**
- * Pre-flight check: ensure the org has a model provider configured.
- * Skips when compose has explicit env vars, an explicit modelProvider param
- * is provided, or the framework doesn't use model providers.
- */
-export async function checkModelProviderConfigured(
-  orgId: string,
-  modelProvider: string | null | undefined,
-  composeContent: AgentComposeYaml,
-): Promise<void> {
-  // Explicit modelProvider param provided — skip (will be validated in build-context)
-  if (modelProvider) return;
-
-  // Extract framework and environment from first agent
-  const firstAgent = composeContent.agents
-    ? Object.values(composeContent.agents)[0]
-    : undefined;
-  const framework = firstAgent?.framework || "claude-code";
-
-  // Only claude-code framework needs provider resolution
-  if (framework !== "claude-code") return;
-
-  // If compose has explicit model provider env vars, skip check
-  const hasExplicitConfig = MODEL_PROVIDER_ENV_VARS.some((v) => {
-    return firstAgent?.environment?.[v] !== undefined;
-  });
-  if (hasExplicitConfig) return;
-
-  // Check if org has a default model provider
-  const [defaultProvider] = await globalThis.services.db
-    .select({ type: modelProviders.type })
-    .from(modelProviders)
-    .where(
-      and(
-        eq(modelProviders.orgId, orgId),
-        eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
-        eq(modelProviders.isDefault, true),
-      ),
-    )
-    .limit(1);
-
-  if (!defaultProvider) {
-    throw noModelProvider();
-  }
-}
+export {
+  checkOrgCredits,
+  checkModelProviderConfigured,
+} from "./zero-run-policy";
 
 /**
  * Result of createZeroRunRecord() — contains everything needed by dispatchZeroRun().

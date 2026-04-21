@@ -6,8 +6,8 @@ import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
 import { getTranslations } from "next-intl/server";
 import { Link } from "../../../../../navigation";
-import Particles from "../../../../components/Particles";
-import Footer from "../../../../components/Footer";
+import { Particles } from "../../../../components/Particles";
+import { Footer } from "../../../../components/Footer";
 import { ShareButtons } from "../../../../components/blog";
 import {
   getPost,

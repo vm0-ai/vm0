@@ -23,10 +23,8 @@ import {
   createTestArtifact,
   createTestSandboxToken,
   findTestRunRecord,
-  findTestCheckpoint,
   findTestRunnerJobEntry,
   findTestStorage,
-  createTestCheckpoint,
   getTestAgentSessionWithConversation,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { POST as checkpointWebhook } from "../../../webhooks/agent/checkpoints/route";

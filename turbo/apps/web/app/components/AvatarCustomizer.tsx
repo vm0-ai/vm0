@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { useTranslations } from "next-intl";
 import Image from "next/image";
 
@@ -224,7 +224,7 @@ function Sparkles({ active }: { active: boolean }) {
   );
 }
 
-export default function AvatarCustomizer() {
+export function AvatarCustomizer() {
   const [chars, setChars] = useState(DEFAULTS);
   const [editing, setEditing] = useState<number | null>(null);
   const [step, setStep] = useState<Step>("rotation");

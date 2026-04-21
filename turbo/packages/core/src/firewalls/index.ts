@@ -18,13 +18,19 @@ import {
   gmailDefaultAllowed,
   gmailCategories,
   gmailCategoryOrder,
+  gmailFirewall,
 } from "./gmail.generated";
 import {
   slackDefaultAllowed,
   slackCategories,
   slackCategoryOrder,
+  slackFirewall,
 } from "./slack.generated";
-import { vercelCategories, vercelCategoryOrder } from "./vercel.generated";
+import {
+  vercelCategories,
+  vercelCategoryOrder,
+  vercelFirewall,
+} from "./vercel.generated";
 import { getConnectorEnvironmentMapping } from "../contracts/connector-utils";
 import { agentmailFirewall } from "./agentmail.generated";
 import { agentphoneFirewall } from "./agentphone.generated";
@@ -83,7 +89,6 @@ import { gammaFirewall } from "./gamma.generated";
 import { garminConnectFirewall } from "./garmin-connect.generated";
 import { githubFirewall } from "./github.generated";
 import { gitlabFirewall } from "./gitlab.generated";
-import { gmailFirewall } from "./gmail.generated";
 import { googleCalendarFirewall } from "./google-calendar.generated";
 import { googleDocsFirewall } from "./google-docs.generated";
 import { googleDriveFirewall } from "./google-drive.generated";
@@ -165,7 +170,6 @@ import { shopifyFirewall } from "./shopify.generated";
 import { shortioFirewall } from "./shortio.generated";
 import { stabilityAiFirewall } from "./stability-ai.generated";
 import { similarwebFirewall } from "./similarweb.generated";
-import { slackFirewall } from "./slack.generated";
 import { slackWebhookFirewall } from "./slack-webhook.generated";
 import { spotifyFirewall } from "./spotify.generated";
 import { stravaFirewall } from "./strava.generated";
@@ -182,7 +186,6 @@ import { togetherFirewall } from "./together.generated";
 import { twentyFirewall } from "./twenty.generated";
 import { typeformFirewall } from "./typeform.generated";
 import { v0Firewall } from "./v0.generated";
-import { vercelFirewall } from "./vercel.generated";
 import { wandbFirewall } from "./wandb.generated";
 import { webflowFirewall } from "./webflow.generated";
 import { wixFirewall } from "./wix.generated";

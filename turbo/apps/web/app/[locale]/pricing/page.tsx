@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Script from "next/script";
-import PricingPageClient from "./PricingPageClient";
+import { PricingPageClient } from "./PricingPageClient";
 import type { Locale } from "../../../i18n";
 import { buildLocaleAlternates } from "../../lib/seo/alternates";
 

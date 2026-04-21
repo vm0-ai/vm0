@@ -77,7 +77,7 @@ function ephemeral(blocks: unknown[]) {
  */
 async function handleConnect(
   payload: SlackCommandPayload,
-  installation: typeof slackOrgInstallations.$inferSelect,
+  _installation: typeof slackOrgInstallations.$inferSelect,
 ): Promise<NextResponse> {
   // Check if already connected
   const [existingConnection] = await globalThis.services.db

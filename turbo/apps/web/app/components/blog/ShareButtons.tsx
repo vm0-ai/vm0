@@ -7,7 +7,7 @@ interface ShareButtonsProps {
   url: string;
 }
 
-export default function ShareButtons({ title, url }: ShareButtonsProps) {
+export function ShareButtons({ title, url }: ShareButtonsProps) {
   const t = useTranslations("blog");
   const encodedTitle = encodeURIComponent(title);
   const encodedUrl = encodeURIComponent(url);

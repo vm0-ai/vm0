@@ -1,7 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
-import Navbar from "./Navbar";
+import { Navbar } from "./Navbar";
 
-export default async function SiteHeader() {
+export async function SiteHeader() {
   const { userId } = await auth();
 
   return (

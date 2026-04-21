@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect } from "react";
-import Footer from "../components/Footer";
+import { Footer } from "../components/Footer";
 
-export default function TermsOfUseClient() {
+export function TermsOfUseClient() {
   useEffect(() => {
     if (document.getElementById("termly-jssdk")) return;
     const script = document.createElement("script");

@@ -4,7 +4,7 @@ import Image from "next/image";
 import { useSearchParams, useParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Link } from "../../../navigation";
-import Particles from "../Particles";
+import { Particles } from "../Particles";
 import type { BlogPost } from "../../lib/blog/types";
 import { getBlogBaseUrl } from "../../lib/blog/config";
 
@@ -14,7 +14,7 @@ interface BlogContentProps {
   categories: string[];
 }
 
-export default function BlogContent({
+export function BlogContent({
   posts,
   featuredPost,
   categories,

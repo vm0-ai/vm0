@@ -2,8 +2,8 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import Footer from "../../components/Footer";
-import Particles from "../../components/Particles";
+import { Footer } from "../../components/Footer";
+import { Particles } from "../../components/Particles";
 
 function PricingCard({
   title,
@@ -153,7 +153,7 @@ function PricingCard({
   );
 }
 
-export default function PricingPageClient() {
+export function PricingPageClient() {
   const t = useTranslations("pricing");
 
   return (

@@ -2,12 +2,10 @@ import {
   http as mswHttp,
   type HttpHandler,
   type HttpResponseResolver,
-} from "msw";
-import type {
-  DefaultBodyType,
-  HttpRequestHandler,
-  PathParams,
-  RequestHandlerOptions,
+  type DefaultBodyType,
+  type HttpRequestHandler,
+  type PathParams,
+  type RequestHandlerOptions,
 } from "msw";
 import { type Mock, vi } from "vitest";
 

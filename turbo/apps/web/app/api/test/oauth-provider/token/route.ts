@@ -3,7 +3,7 @@ import { isTestEndpointAllowed } from "../../../../../src/lib/auth/test-endpoint
 import {
   TEST_OAUTH_CLIENT_ID,
   TEST_OAUTH_CLIENT_SECRET,
-} from "../../../../../src/lib/zero/connector/providers/test-oauth";
+} from "../../../../../src/lib/zero/connector/providers/test-oauth-constants";
 import {
   isTestOAuthRefreshToken,
   mintAccessToken,

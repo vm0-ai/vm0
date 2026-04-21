@@ -179,7 +179,7 @@ describe("deleteUserData", () => {
     });
 
     const { composeId } = await createTestCompose("slack-test");
-    const session = await createTestAgentSession(userId, composeId);
+    await createTestAgentSession(userId, composeId);
 
     await insertTestSlackOrgThreadSession({ connectionId: connection.id });
 
@@ -312,7 +312,7 @@ describe("deleteUserData", () => {
       orgId,
       installedByUserId: userId,
     });
-    const connection = await insertTestSlackOrgConnection({
+    await insertTestSlackOrgConnection({
       slackUserId: uniqueId("slack-user"),
       slackWorkspaceId: workspaceId,
       vm0UserId: userId,

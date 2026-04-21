@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import SignInTokenClient from "./SignInTokenClient";
+import { SignInTokenClient } from "./SignInTokenClient";
 
 export const metadata: Metadata = {
   robots: {
