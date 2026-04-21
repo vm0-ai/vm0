@@ -152,7 +152,7 @@ describe("POST /api/internal/event-consumers/voice-chat-candidate", () => {
       .where(eq(featureCandidateVoiceChatTasks.id, task.id));
     expect(row!.status).toBe("running");
     expect(row!.startedAt).not.toBeNull();
-    expect(row!.result).toEqual([
+    expect(row!.assistantMessages).toEqual([
       { type: "assistant", content: "hello", at: expect.any(String) },
     ]);
 
@@ -184,9 +184,9 @@ describe("POST /api/internal/event-consumers/voice-chat-candidate", () => {
       .from(featureCandidateVoiceChatTasks)
       .where(eq(featureCandidateVoiceChatTasks.id, task.id));
     expect(row!.status).toBe("running");
-    expect(row!.result).toHaveLength(2);
+    expect(row!.assistantMessages).toHaveLength(2);
     expect(
-      row!.result.map((e) => {
+      row!.assistantMessages.map((e) => {
         return e.content;
       }),
     ).toEqual(["one", "two"]);
@@ -211,6 +211,6 @@ describe("POST /api/internal/event-consumers/voice-chat-candidate", () => {
       .from(featureCandidateVoiceChatTasks)
       .where(eq(featureCandidateVoiceChatTasks.id, task.id));
     expect(row!.status).toBe("running");
-    expect(row!.result).toEqual([]);
+    expect(row!.assistantMessages).toEqual([]);
   });
 });

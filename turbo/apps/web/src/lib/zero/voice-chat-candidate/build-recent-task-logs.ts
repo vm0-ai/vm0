@@ -56,7 +56,7 @@ function taskLastActivityAt(row: TaskRow): Date {
 }
 
 function lastResultEntryAt(row: TaskRow): Date | null {
-  const last = row.result[row.result.length - 1];
+  const last = row.assistantMessages[row.assistantMessages.length - 1];
   if (!last) return null;
   const parsed = new Date(last.at);
   if (Number.isNaN(parsed.getTime())) return null;
@@ -78,7 +78,7 @@ function collectEvents(row: TaskRow): TaskEvent[] {
   if (row.startedAt) {
     events.push({ at: row.startedAt, label: "running" });
   }
-  for (const entry of row.result) {
+  for (const entry of row.assistantMessages) {
     const at = new Date(entry.at);
     if (Number.isNaN(at.getTime())) continue;
     events.push({

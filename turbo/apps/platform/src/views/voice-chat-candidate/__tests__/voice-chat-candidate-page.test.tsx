@@ -118,7 +118,7 @@ describe("voice-candidate-item-bubble dispatcher", () => {
       callId: "call-1",
       prompt: "do the thing",
       status: "done" as const,
-      result: [
+      assistantMessages: [
         {
           type: "assistant" as const,
           content: "done!",

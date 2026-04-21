@@ -163,7 +163,7 @@ describe("POST /api/internal/callbacks/voice-chat-candidate", () => {
 
     const taskRow = await readTask(task.id);
     expect(taskRow!.status).toBe("done");
-    expect(taskRow!.result).toEqual([
+    expect(taskRow!.assistantMessages).toEqual([
       { type: "assistant", content: "final answer", at: expect.any(String) },
     ]);
     expect(taskRow!.error).toBeNull();

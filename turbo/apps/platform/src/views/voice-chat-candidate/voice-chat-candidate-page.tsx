@@ -1,6 +1,9 @@
 import { useGet, useLastResolved, useSet } from "ccstate-react";
 import { Button, cn } from "@vm0/ui";
-import type { VoiceChatCandidateTask } from "@vm0/core";
+import type {
+  VoiceChatCandidateSession,
+  VoiceChatCandidateTask,
+} from "@vm0/core";
 import {
   IconMicrophone,
   IconMicrophoneOff,
@@ -19,10 +22,12 @@ import {
   vccConversationItems$,
   vccConversationSummary$,
   vccWorkingTasksSummary$,
-  vccFinishedTasksSummary$,
+  vccFinishedTasksFullText$,
   vccRecentTaskLogs$,
   vccSummarySeq$,
   vccLastSummaryAt$,
+  vccTalkerInstructionTokens$,
+  vccSessionList$,
   startVoiceChatCandidate$,
   endVoiceChatCandidate$,
   toggleVoiceChatCandidateMute$,
@@ -88,6 +93,20 @@ function VoiceChatCandidateHeader({ status }: { status: ConnectionStatus }) {
   );
 }
 
+const TOKEN_BUDGET = 32_000;
+
+function formatTokenCount(tokens: number): string {
+  if (tokens < 1000) return `${tokens}t`;
+  const k = tokens / 1000;
+  return `${k < 10 ? k.toFixed(1) : Math.round(k)}k`;
+}
+
+function formatTokenPercent(tokens: number): string {
+  const pct = (tokens / TOKEN_BUDGET) * 100;
+  if (pct < 10) return `${pct.toFixed(1)}%`;
+  return `${Math.round(pct)}%`;
+}
+
 function ReasonerSection({ title, body }: { title: string; body: string }) {
   if (!body.trim()) {
     return null;
@@ -107,10 +126,11 @@ function ReasonerSection({ title, body }: { title: string; body: string }) {
 function ReasonerPanel() {
   const conversation = useGet(vccConversationSummary$);
   const working = useGet(vccWorkingTasksSummary$);
-  const finished = useGet(vccFinishedTasksSummary$);
+  const finished = useGet(vccFinishedTasksFullText$);
   const recentLogs = useGet(vccRecentTaskLogs$);
   const summarySeq = useGet(vccSummarySeq$);
   const lastAt = useGet(vccLastSummaryAt$);
+  const tokens = useGet(vccTalkerInstructionTokens$);
 
   const updatedLabel = lastAt ? new Date(lastAt).toLocaleTimeString() : "never";
   const hasAny =
@@ -124,6 +144,10 @@ function ReasonerPanel() {
       <div className="shrink-0 px-4 py-2 flex items-center gap-3 text-muted-foreground border-b">
         <span className="font-medium">Reasoner</span>
         <span className="font-mono">seq={summarySeq}</span>
+        <span className="font-mono">
+          {formatTokenCount(tokens)}/{TOKEN_BUDGET / 1000}k{" "}
+          {formatTokenPercent(tokens)}
+        </span>
         <span>updated {updatedLabel}</span>
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-3">
@@ -204,9 +228,9 @@ function TaskerPanel({
                 <p className="text-xs text-foreground break-words line-clamp-3">
                   {task.prompt}
                 </p>
-                {task.result.length > 0 && (
+                {task.assistantMessages.length > 0 && (
                   <div className="max-h-40 overflow-y-auto flex flex-col gap-1.5 border-t border-border/60 pt-2">
-                    {task.result.map((entry) => {
+                    {task.assistantMessages.map((entry) => {
                       return (
                         <p
                           key={`${entry.at}:${entry.content.slice(0, 32)}`}
@@ -273,6 +297,61 @@ function VoiceChatCandidateFooter({
   );
 }
 
+function SessionHistoryList({
+  onReenter,
+}: {
+  onReenter: (sessionId: string) => void;
+}) {
+  const sessions = useLastResolved(vccSessionList$);
+  if (!sessions || sessions.length === 0) {
+    return null;
+  }
+
+  const statusColor: Record<VoiceChatCandidateSession["status"], string> = {
+    active: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
+    ended: "bg-muted text-muted-foreground",
+    timeout: "bg-muted text-muted-foreground",
+  };
+
+  return (
+    <div className="w-full max-w-md flex flex-col gap-2">
+      <h3 className="text-sm font-medium text-muted-foreground">
+        Previous sessions
+      </h3>
+      <div className="flex flex-col gap-1.5 max-h-64 overflow-y-auto">
+        {sessions.map((session) => {
+          const created = new Date(session.createdAt);
+          return (
+            <button
+              key={session.id}
+              type="button"
+              onClick={() => {
+                onReenter(session.id);
+              }}
+              className="flex items-center justify-between gap-3 rounded-md border border-input px-3 py-2 text-left hover:bg-muted transition"
+            >
+              <div className="flex flex-col min-w-0">
+                <span className="text-xs font-mono truncate">{session.id}</span>
+                <span className="text-[11px] text-muted-foreground">
+                  {created.toLocaleString()}
+                </span>
+              </div>
+              <span
+                className={cn(
+                  "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide shrink-0",
+                  statusColor[session.status],
+                )}
+              >
+                {session.status}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function VoiceChatCandidatePage() {
   const pageSignal = useGet(pageSignal$);
   const enabled = useLastResolved(vccEnabled$);
@@ -329,6 +408,11 @@ export function VoiceChatCandidatePage() {
             Start Voice Chat
           </Button>
         </div>
+        <SessionHistoryList
+          onReenter={(sessionId) => {
+            detach(startSession(pageSignal, sessionId), Reason.DomCallback);
+          }}
+        />
       </div>
     );
   }

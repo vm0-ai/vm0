@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
 import { initServices } from "../../../../src/lib/init-services";
-import { createVoiceChatCandidateSession } from "../../../../src/lib/zero/voice-chat-candidate/session-service";
+import {
+  createVoiceChatCandidateSession,
+  listVoiceChatCandidateSessions,
+} from "../../../../src/lib/zero/voice-chat-candidate/session-service";
+import { buildTalkerPayload } from "../../../../src/lib/zero/voice-chat-candidate/talker-instructions";
 import {
   badRequestResponse,
   createVoiceChatCandidateSessionBodySchema,
@@ -39,7 +43,34 @@ export async function POST(request: Request): Promise<Response> {
     agentId: parsed.data.agentId,
   });
 
+  const talker = await buildTalkerPayload(session);
+
   return NextResponse.json({
     session: serializeVoiceChatCandidateSession(session),
+    ...talker,
+  });
+}
+
+export async function GET(request: Request): Promise<Response> {
+  initServices();
+
+  const authCtx = await getAuthContext(
+    request.headers.get("authorization") ?? undefined,
+  );
+  if (!authCtx?.orgId) return unauthorizedResponse();
+
+  if (!(await isVoiceChatCandidateEnabled(authCtx))) {
+    return forbiddenResponse();
+  }
+
+  const sessions = await listVoiceChatCandidateSessions({
+    orgId: authCtx.orgId,
+    userId: authCtx.userId,
+  });
+
+  return NextResponse.json({
+    sessions: sessions.map((s) => {
+      return serializeVoiceChatCandidateSession(s);
+    }),
   });
 }

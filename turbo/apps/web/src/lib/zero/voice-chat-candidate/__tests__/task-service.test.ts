@@ -175,7 +175,7 @@ describe("completeVoiceChatCandidateTask", () => {
     });
 
     expect(completed.task.status).toBe("done");
-    expect(completed.task.result).toEqual([
+    expect(completed.task.assistantMessages).toEqual([
       { type: "assistant", content: "all good", at: expect.any(String) },
     ]);
     expect(completed.task.finishedAt).not.toBeNull();

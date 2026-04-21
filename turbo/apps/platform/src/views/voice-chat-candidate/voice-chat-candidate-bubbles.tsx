@@ -158,7 +158,7 @@ export function VoiceCandidateItemBubble({
       return (
         <VoiceCandidateTaskResultBubble
           prompt={task?.prompt ?? null}
-          result={item.content ?? joinResultEntries(task?.result)}
+          result={item.content ?? joinResultEntries(task?.assistantMessages)}
           error={task?.error ?? null}
         />
       );

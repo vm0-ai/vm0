@@ -136,7 +136,7 @@ export async function triggerReasoning(sessionId: string): Promise<void> {
         id: t.id,
         status: t.status,
         prompt: t.prompt,
-        resultText: flattenTaskResult(t.result),
+        resultText: flattenTaskResult(t.assistantMessages),
         error: t.error,
         createdAt: t.createdAt.toISOString(),
         startedAt: t.startedAt?.toISOString() ?? null,

@@ -138,7 +138,8 @@ export const featureCandidateVoiceChatTasks = pgTable(
     prompt: text("prompt").notNull(),
     // Valid values: "pending" | "queued" | "running" | "done" | "failed"
     status: varchar("status", { length: 20 }).notNull(),
-    result: jsonb("result")
+    result: text("result"),
+    assistantMessages: jsonb("assistant_messages")
       .$type<VoiceChatCandidateTaskResultEntry[]>()
       .notNull()
       .default([]),

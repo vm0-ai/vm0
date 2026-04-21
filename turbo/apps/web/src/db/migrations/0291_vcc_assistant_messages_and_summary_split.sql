@@ -1,6 +1,4 @@
-ALTER TABLE "feature_candidate_voice_chat_tasks" ALTER COLUMN "result" SET DATA TYPE jsonb;--> statement-breakpoint
-ALTER TABLE "feature_candidate_voice_chat_tasks" ALTER COLUMN "result" SET DEFAULT '[]'::jsonb;--> statement-breakpoint
-ALTER TABLE "feature_candidate_voice_chat_tasks" ALTER COLUMN "result" SET NOT NULL;--> statement-breakpoint
+ALTER TABLE "feature_candidate_voice_chat_tasks" ADD COLUMN "assistant_messages" jsonb DEFAULT '[]'::jsonb NOT NULL;--> statement-breakpoint
 ALTER TABLE "feature_candidate_voice_chat_sessions" ADD COLUMN "conversation_summary" text;--> statement-breakpoint
 ALTER TABLE "feature_candidate_voice_chat_sessions" ADD COLUMN "working_tasks_summary" text;--> statement-breakpoint
 ALTER TABLE "feature_candidate_voice_chat_sessions" ADD COLUMN "finished_tasks_summary" text;--> statement-breakpoint

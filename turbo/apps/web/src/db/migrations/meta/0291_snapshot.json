@@ -8620,6 +8620,12 @@
         },
         "result": {
           "name": "result",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "assistant_messages": {
+          "name": "assistant_messages",
           "type": "jsonb",
           "primaryKey": false,
           "notNull": true,

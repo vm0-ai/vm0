@@ -224,7 +224,7 @@ describe("GET /api/zero/voice-chat-candidate/:id/tasks (listTasks)", () => {
     expect(body.tasks).toHaveLength(2);
     expect(body.tasks[0].prompt).toBe("newer");
     expect(body.tasks[1].prompt).toBe("older");
-    expect(body.tasks[0].result).toEqual([]);
+    expect(body.tasks[0].assistantMessages).toEqual([]);
   });
 
   // Silence the "unused" warning for endCandidateSession — kept imported for

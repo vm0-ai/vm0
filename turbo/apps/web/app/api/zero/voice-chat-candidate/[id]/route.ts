@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
 import { initServices } from "../../../../../src/lib/init-services";
-import { buildRecentTaskLogs } from "../../../../../src/lib/zero/voice-chat-candidate/build-recent-task-logs";
 import { getVoiceChatCandidateSession } from "../../../../../src/lib/zero/voice-chat-candidate/session-service";
+import { buildTalkerPayload } from "../../../../../src/lib/zero/voice-chat-candidate/talker-instructions";
 import {
   isVoiceChatCandidateEnabled,
   notFoundResponse,
@@ -41,10 +41,10 @@ export async function GET(
     return notFoundResponse("Voice-chat-candidate session not found");
   }
 
-  const recentTaskLogs = await buildRecentTaskLogs(session.id);
+  const talker = await buildTalkerPayload(session);
 
   return NextResponse.json({
     session: serializeVoiceChatCandidateSession(session),
-    recentTaskLogs,
+    ...talker,
   });
 }

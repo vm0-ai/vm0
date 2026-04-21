@@ -145,7 +145,7 @@ export async function completeVoiceChatCandidateTask(params: {
       .update(featureCandidateVoiceChatTasks)
       .set({
         status: finalStatus,
-        result: sql`${featureCandidateVoiceChatTasks.result} || ${JSON.stringify(finalEntries)}::jsonb`,
+        assistantMessages: sql`${featureCandidateVoiceChatTasks.assistantMessages} || ${JSON.stringify(finalEntries)}::jsonb`,
         error: params.error,
         finishedAt: now,
       })
@@ -247,9 +247,9 @@ export async function markTaskRunningIfQueued(
 }
 
 /**
- * Append assistant-message entries to `tasks.result`. Silent no-op when the
- * task is unknown (not a voice-chat run) or terminal. Returns session+user on
- * success.
+ * Append assistant-message entries to `tasks.assistant_messages`. Silent no-op when
+ * the task is unknown (not a voice-chat run) or terminal. Returns session+user
+ * on success.
  */
 export async function appendTaskAssistantResult(params: {
   runId: string;
@@ -260,7 +260,7 @@ export async function appendTaskAssistantResult(params: {
   const [row] = await db
     .update(featureCandidateVoiceChatTasks)
     .set({
-      result: sql`${featureCandidateVoiceChatTasks.result} || ${JSON.stringify(params.entries)}::jsonb`,
+      assistantMessages: sql`${featureCandidateVoiceChatTasks.assistantMessages} || ${JSON.stringify(params.entries)}::jsonb`,
     })
     .where(
       and(

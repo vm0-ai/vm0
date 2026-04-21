@@ -50,7 +50,13 @@ export const apiVoiceChatCandidateHandlers = [
     };
     mockSessions.set(session.id, session);
     mockItems.set(session.id, []);
-    return respond(200, { session });
+    return respond(200, {
+      session,
+      recentTaskLogs: "",
+      finishedTasksFullText: "",
+      talkerInstructions: "",
+      talkerInstructionTokens: 0,
+    });
   }),
 
   mockApi(zeroVoiceChatCandidateContract.getSession, ({ params, respond }) => {
@@ -60,8 +66,40 @@ export const apiVoiceChatCandidateHandlers = [
         error: { code: "NOT_FOUND", message: "Session not found" },
       });
     }
-    return respond(200, { session, recentTaskLogs: "" });
+    return respond(200, {
+      session,
+      recentTaskLogs: "",
+      finishedTasksFullText: "",
+      talkerInstructions: "",
+      talkerInstructionTokens: 0,
+    });
   }),
+
+  mockApi(zeroVoiceChatCandidateContract.listSessions, ({ respond }) => {
+    return respond(200, { sessions: Array.from(mockSessions.values()) });
+  }),
+
+  mockApi(
+    zeroVoiceChatCandidateContract.reenterSession,
+    ({ params, respond }) => {
+      const session = mockSessions.get(params.id);
+      if (!session) {
+        return respond(404, {
+          error: { code: "NOT_FOUND", message: "Session not found" },
+        });
+      }
+      session.status = "active";
+      session.endedAt = null;
+      session.lastHeartbeatAt = new Date().toISOString();
+      return respond(200, {
+        session,
+        recentTaskLogs: "",
+        finishedTasksFullText: "",
+        talkerInstructions: "",
+        talkerInstructionTokens: 0,
+      });
+    },
+  ),
 
   mockApi(zeroVoiceChatCandidateContract.endSession, ({ params, respond }) => {
     const session = mockSessions.get(params.id);
@@ -156,7 +194,7 @@ export const apiVoiceChatCandidateHandlers = [
         callId: body.callId,
         prompt: body.prompt,
         status: "pending",
-        result: [],
+        assistantMessages: [],
         error: null,
         createdAt: new Date().toISOString(),
         startedAt: null,

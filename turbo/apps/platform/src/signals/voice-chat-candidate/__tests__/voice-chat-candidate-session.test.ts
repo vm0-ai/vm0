@@ -67,7 +67,7 @@ function taskPayload(overrides: Record<string, unknown> = {}) {
     callId: "call-1",
     prompt: "do the thing",
     status: "pending" as const,
-    result: [],
+    assistantMessages: [],
     error: null,
     createdAt: "2026-04-20T00:00:00Z",
     startedAt: null,
@@ -103,7 +103,13 @@ function mockCreateSessionOk() {
       zeroVoiceChatCandidateContract.createSession,
       ({ body, respond }) => {
         calls.push(body);
-        return respond(200, { session: sessionPayload() });
+        return respond(200, {
+          session: sessionPayload(),
+          recentTaskLogs: "",
+          finishedTasksFullText: "",
+          talkerInstructions: "",
+          talkerInstructionTokens: 0,
+        });
       },
     ),
   );
@@ -200,7 +206,13 @@ function mockReadItemsEmpty() {
 function mockGetSessionOk() {
   server.use(
     mockApi(zeroVoiceChatCandidateContract.getSession, ({ respond }) => {
-      return respond(200, { session: sessionPayload(), recentTaskLogs: "" });
+      return respond(200, {
+        session: sessionPayload(),
+        recentTaskLogs: "",
+        finishedTasksFullText: "",
+        talkerInstructions: "",
+        talkerInstructionTokens: 0,
+      });
     }),
   );
 }

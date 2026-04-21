@@ -2043,7 +2043,7 @@
       "idx": 291,
       "version": "7",
       "when": 1776775000000,
-      "tag": "0291_vcc_result_jsonb_and_summary_split",
+      "tag": "0291_vcc_assistant_messages_and_summary_split",
       "breakpoints": true
     }
   ]
