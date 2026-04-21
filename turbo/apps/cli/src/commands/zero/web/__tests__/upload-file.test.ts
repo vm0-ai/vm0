@@ -172,7 +172,7 @@ describe("zero web upload-file command", () => {
           return HttpResponse.json(
             {
               error: {
-                message: "File too large (max 10 MB)",
+                message: "File too large (max 100 MB)",
                 code: "BAD_REQUEST",
               },
             },

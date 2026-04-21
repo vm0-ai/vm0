@@ -103,9 +103,9 @@ describe("POST /api/zero/uploads", () => {
       expect(data.error.message).toContain("No file");
     });
 
-    it("should reject file exceeding 10 MB", async () => {
-      // Create a file slightly over 10 MB
-      const largeBuffer = new ArrayBuffer(10 * 1024 * 1024 + 1);
+    it("should reject file exceeding 100 MB", async () => {
+      // Create a file slightly over 100 MB
+      const largeBuffer = new ArrayBuffer(100 * 1024 * 1024 + 1);
       const file = new File([largeBuffer], "large.txt", {
         type: "text/plain",
       });

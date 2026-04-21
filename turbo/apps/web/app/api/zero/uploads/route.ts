@@ -10,7 +10,7 @@ import { logger } from "../../../../src/lib/shared/logger";
 
 const log = logger("api:zero:uploads");
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB
 const ALLOWED_TYPES = new Set([
   "image/png",
   "image/jpeg",
@@ -54,7 +54,9 @@ export async function POST(request: NextRequest) {
 
   if (file.size > MAX_FILE_SIZE) {
     return NextResponse.json(
-      { error: { message: "File too large (max 10 MB)", code: "BAD_REQUEST" } },
+      {
+        error: { message: "File too large (max 100 MB)", code: "BAD_REQUEST" },
+      },
       { status: 400 },
     );
   }
