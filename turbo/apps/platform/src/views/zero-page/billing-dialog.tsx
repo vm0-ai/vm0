@@ -47,7 +47,7 @@ const PLANS = [
     price: "$0",
     period: "/month",
     features: [
-      "100,000 starter credits (expire in 1 month)",
+      "10,000 starter credits (expire in 1 month)",
       "Community support",
     ],
   },

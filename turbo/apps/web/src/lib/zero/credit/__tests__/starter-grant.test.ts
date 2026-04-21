@@ -26,7 +26,7 @@ describe("ensureStarterCreditGrant", () => {
     context.setupMocks();
   });
 
-  it("first call grants 100k credits and writes one starter_grant expires row", async () => {
+  it("first call grants 10k credits and writes one starter_grant expires row", async () => {
     const { orgId } = await context.setupUser();
 
     await callEnsureStarterCreditGrant(orgId);

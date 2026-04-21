@@ -1,7 +1,7 @@
 import { creditExpiresRecord } from "../../../db/schema/credit-expires-record";
 import { grantOrgCredits } from "../org/org-service";
 
-export const STARTER_GRANT_AMOUNT = 100_000;
+export const STARTER_GRANT_AMOUNT = 10_000;
 export const STARTER_GRANT_SOURCE = "starter_grant";
 
 /**
@@ -23,7 +23,7 @@ type StarterGrantTx = Parameters<
 >[0];
 
 /**
- * Idempotently give a free-tier org its 100k starter credits with a 1-month
+ * Idempotently give a free-tier org its 10k starter credits with a 1-month
  * expiry. Safe to call from any `org_metadata` insert path.
  *
  * Callers MUST pass a `StarterGrantTx` (i.e. run inside `db.transaction`).

@@ -16,11 +16,11 @@ CREATE UNIQUE INDEX "uq_credit_expires_starter_grant" ON "credit_expires_record"
 --   NOT EXISTS (starter_grant row) — idempotent re-run guard, matches the partial
 --                                    unique index above.
 --   amount = credits               — for free orgs, the entire balance is treated as
---                                    the expiring starter pool. Orgs with > 100k
---                                    (promo / support grants / test) are rare and
---                                    accepting the whole balance under this TTL is
---                                    the simpler policy than carving out a
---                                    non-expiring remainder.
+--                                    the expiring starter pool. Orgs with surplus
+--                                    above the starter grant (promo / support / test)
+--                                    are rare and accepting the whole balance under
+--                                    this TTL is the simpler policy than carving out
+--                                    a non-expiring remainder.
 INSERT INTO "credit_expires_record" (
   id, org_id, source, stripe_invoice_id, amount, remaining, expires_at, created_at
 )
