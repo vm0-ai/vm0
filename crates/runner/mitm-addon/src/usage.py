@@ -433,6 +433,8 @@ def maybe_report_proxy_usage(flow: http.HTTPFlow, run_id: str) -> None:
     firewall_name = flow.metadata.get("firewall_name", "")
     if not (firewall_name.startswith("model-provider:") and run_id):
         return
+    if not flow.metadata.get("firewall_billable", False):
+        return
     proxy_usage = flow.metadata.get("proxy_usage")
     if not proxy_usage:
         return

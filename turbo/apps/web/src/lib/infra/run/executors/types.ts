@@ -83,6 +83,8 @@ export interface PreparedContext {
 
   // Feature flags evaluated at job creation time (all switch states for user/org)
   featureFlags: Record<string, boolean> | null;
+
+  billableFirewalls: string[];
 }
 
 /**

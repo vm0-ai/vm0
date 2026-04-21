@@ -399,6 +399,7 @@ const router = tsr.router(runsMainContract, {
           continuedFromSessionId: body.sessionId,
           debugNoMockClaude: body.debugNoMockClaude,
           captureNetworkBodies: body.captureNetworkBodies,
+          billableFirewalls: resolved.billableFirewalls,
           apiStartTime,
         });
 

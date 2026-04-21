@@ -68,13 +68,19 @@ function formatMetric(metric: TelemetryMetric): string {
 /**
  * Format a denied network request (filtered by permission rule)
  */
+function formatFirewallTag(entry: NetworkLogEntry): string {
+  if (!entry.firewall_name) return "";
+  const billable = entry.firewall_billable ? chalk.yellow("$") : "";
+  return ` ${chalk.cyan(`[${entry.firewall_name}${billable ? ` ${billable}` : ""}]`)}`;
+}
+
+/**
+ * Format a denied network request (filtered by permission rule)
+ */
 function formatNetworkDeny(entry: NetworkLogEntry): string {
   const method = entry.method || "???";
   const url = entry.url || entry.host || "unknown";
-  const firewall = entry.firewall_name
-    ? ` ${chalk.cyan(`[${entry.firewall_name}]`)}`
-    : "";
-  return `[${entry.timestamp}] ${method.padEnd(6)} ${chalk.red.bold("DENY")} ${chalk.dim(url)}${firewall}`;
+  return `[${entry.timestamp}] ${method.padEnd(6)} ${chalk.red.bold("DENY")} ${chalk.dim(url)}${formatFirewallTag(entry)}`;
 }
 
 /**
@@ -131,14 +137,11 @@ function formatNetworkRequest(entry: NetworkLogEntry): string {
   const requestSize = entry.request_size || 0;
   const responseSize = entry.response_size || 0;
   const url = entry.url || entry.host || "unknown";
-  const firewall = entry.firewall_name
-    ? ` ${chalk.cyan(`[${entry.firewall_name}]`)}`
-    : "";
   const error = entry.firewall_error
     ? ` ${chalk.red(entry.firewall_error)}`
     : "";
 
-  let line = `[${entry.timestamp}] ${method.padEnd(6)} ${statusColor(status)} ${latencyColor(latencyMs + "ms")} ${formatBytes(requestSize)}/${formatBytes(responseSize)} ${chalk.dim(url)}${firewall}${error}${formatAuthInfo(entry)}`;
+  let line = `[${entry.timestamp}] ${method.padEnd(6)} ${statusColor(status)} ${latencyColor(latencyMs + "ms")} ${formatBytes(requestSize)}/${formatBytes(responseSize)} ${chalk.dim(url)}${formatFirewallTag(entry)}${error}${formatAuthInfo(entry)}`;
 
   line += formatCaptureFields(entry);
 

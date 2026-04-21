@@ -2227,6 +2227,7 @@ mod tests {
             settings: None,
             experimental_profile: None,
             feature_flags: None,
+            billable_firewalls: vec![],
         }
     }
 

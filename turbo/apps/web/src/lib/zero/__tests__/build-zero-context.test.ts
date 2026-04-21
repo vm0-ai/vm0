@@ -115,6 +115,29 @@ describe("Org-Level Runtime Resolution (Zero Layer)", () => {
         createZeroRun(baseParams({ agentId: noKeyAgentId })),
       ).rejects.toSatisfy(isNoModelProvider);
     });
+
+    it("should leave billableFirewalls empty for user-paid providers", async () => {
+      // User brings their own Anthropic key; the firewall still exists to
+      // enforce rules, but runs must NOT charge platform credits.
+      const agentName = uniqueId("user-paid-agent");
+      await createTestCompose(agentName, {
+        skipDefaultApiKey: true,
+      });
+      const userPaidAgentId = await getTestZeroAgentId(user.orgId, agentName);
+
+      await upsertOrgModelProvider(
+        user.orgId,
+        "anthropic-api-key",
+        "org-api-key",
+      );
+
+      const result = await createZeroRun(
+        baseParams({ agentId: userPaidAgentId }),
+      );
+      await context.mocks.flushAfter();
+      const job = await findTestRunnerJobEntry(result.runId);
+      expect(job!.executionContext.billableFirewalls).toEqual([]);
+    });
   });
 
   describe("Secret Merge", () => {
