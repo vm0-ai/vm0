@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.89.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.88.6...runner-rs-v0.89.0) (2026-04-21)
+
+
+### Features
+
+* **runner:** emit vm_reuse telemetry for every reuse decision ([#10441](https://github.com/vm0-ai/vm0/issues/10441)) ([ac947c3](https://github.com/vm0-ai/vm0/commit/ac947c30e57b90312dfba90a2f8fd95a66e91ebe))
+
+
+### Refactoring
+
+* **billing:** unify connector billing gate on firewall_billable ([#10446](https://github.com/vm0-ai/vm0/issues/10446)) ([d8e23b9](https://github.com/vm0-ai/vm0/commit/d8e23b9b110b3979322ba44869a7cffe6cf289cf))
+
 ## [0.88.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.88.5...runner-rs-v0.88.6) (2026-04-21)
 
 ## [0.88.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.88.4...runner-rs-v0.88.5) (2026-04-21)

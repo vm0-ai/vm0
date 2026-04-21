@@ -1,5 +1,23 @@
 # Changelog
 
+## [8.220.0](https://github.com/vm0-ai/vm0/compare/core-v8.219.1...core-v8.220.0) (2026-04-21)
+
+
+### Features
+
+* custom api keys management page with org context support ([#10469](https://github.com/vm0-ai/vm0/issues/10469)) ([aa14355](https://github.com/vm0-ai/vm0/commit/aa14355b8b6ed0a961f50c04a29376fcb965194e))
+* **uploads:** serve permanent /f file redirect for attachments ([#10460](https://github.com/vm0-ai/vm0/issues/10460)) ([85fd3d4](https://github.com/vm0-ai/vm0/commit/85fd3d4338e18db10fdfc0f62b1f8c0b1adf9f6f))
+
+
+### Bug Fixes
+
+* **zero/billing:** return 4xx for downgrade preconditions instead of 500 ([#10465](https://github.com/vm0-ai/vm0/issues/10465)) ([7309a21](https://github.com/vm0-ai/vm0/commit/7309a213afbc54ce2f11548376d8f486e15653fc))
+
+
+### Refactoring
+
+* **billing:** unify connector billing gate on firewall_billable ([#10446](https://github.com/vm0-ai/vm0/issues/10446)) ([d8e23b9](https://github.com/vm0-ai/vm0/commit/d8e23b9b110b3979322ba44869a7cffe6cf289cf))
+
 ## [8.219.1](https://github.com/vm0-ai/vm0/compare/core-v8.219.0...core-v8.219.1) (2026-04-21)
 
 

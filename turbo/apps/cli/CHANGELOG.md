@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.127.0](https://github.com/vm0-ai/vm0/compare/cli-v9.126.2...cli-v9.127.0) (2026-04-21)
+
+
+### Features
+
+* **uploads:** serve permanent /f file redirect for attachments ([#10460](https://github.com/vm0-ai/vm0/issues/10460)) ([85fd3d4](https://github.com/vm0-ai/vm0/commit/85fd3d4338e18db10fdfc0f62b1f8c0b1adf9f6f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.220.0
+
 ## [9.126.2](https://github.com/vm0-ai/vm0/compare/cli-v9.126.1...cli-v9.126.2) (2026-04-21)
 
 

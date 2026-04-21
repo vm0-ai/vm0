@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.276.0](https://github.com/vm0-ai/vm0/compare/app-v0.275.2...app-v0.276.0) (2026-04-21)
+
+
+### Features
+
+* custom api keys management page with org context support ([#10469](https://github.com/vm0-ai/vm0/issues/10469)) ([aa14355](https://github.com/vm0-ai/vm0/commit/aa14355b8b6ed0a961f50c04a29376fcb965194e))
+
+
+### Performance Improvements
+
+* **eslint:** replace type-checker with ast-only analysis in computed-const-args-package-scope ([#10449](https://github.com/vm0-ai/vm0/issues/10449)) ([6de4f6d](https://github.com/vm0-ai/vm0/commit/6de4f6d77fe47e255e263111914e710642800676))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.220.0
+
 ## [0.275.2](https://github.com/vm0-ai/vm0/compare/app-v0.275.1...app-v0.275.2) (2026-04-21)
 
 
