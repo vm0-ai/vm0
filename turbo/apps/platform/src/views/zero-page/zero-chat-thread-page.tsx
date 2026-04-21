@@ -651,11 +651,8 @@ function AssistantErrorContent({ error }: { error: string }) {
 
   if (isNoModelProvider) {
     return (
-      <div className="flex items-start gap-2 text-foreground">
-        <IconAlertCircle
-          size={16}
-          className="shrink-0 mt-[3px] text-amber-500"
-        />
+      <div className="flex items-center gap-2 text-foreground">
+        <IconAlertCircle size={16} className="shrink-0 text-amber-500" />
         <span>
           No model provider configured yet.{" "}
           <button
@@ -683,11 +680,8 @@ function AssistantErrorContent({ error }: { error: string }) {
 
   if (isProviderIncompatible) {
     return (
-      <div className="flex items-start gap-2 text-foreground">
-        <IconAlertCircle
-          size={16}
-          className="shrink-0 mt-[3px] text-amber-500"
-        />
+      <div className="flex items-center gap-2 text-foreground">
+        <IconAlertCircle size={16} className="shrink-0 text-amber-500" />
         <span>
           This session was started with a different model provider and
           can&apos;t be continued with the current one.{" "}
@@ -703,8 +697,8 @@ function AssistantErrorContent({ error }: { error: string }) {
   }
 
   return (
-    <div className="flex items-start gap-2 text-destructive">
-      <IconAlertCircle size={16} className="shrink-0 mt-[3px]" />
+    <div className="flex items-center gap-2 text-destructive">
+      <IconAlertCircle size={16} className="shrink-0" />
       <Markdown source={error} />
     </div>
   );
