@@ -145,6 +145,23 @@ function makeErrorHandler(
       );
     }
 
+    // Malformed JSON in the request body thrown from the ts-rest
+    // `evaluateContent` middleware (via undici `parseJSONFromBytes`).
+    // This is a client bug, not ours — classify as 400 so it doesn't
+    // page oncall or burn a Sentry event.
+    if (err instanceof SyntaxError && err.message.includes("JSON")) {
+      log.warn(`${routeName} invalid json body: ${err.message}`);
+      return TsRestResponse.fromJson(
+        {
+          error: {
+            message: "Invalid JSON in request body",
+            code: "BAD_REQUEST",
+          },
+        },
+        { status: 400 },
+      );
+    }
+
     // Non-validation errors: log full details server-side, return generic message
     log.error(`${routeName} error:`, err);
     if (options.reportToSentry) {

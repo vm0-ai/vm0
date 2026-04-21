@@ -74,4 +74,15 @@ describe("createSafeErrorHandler", () => {
       captureContext: { tags: { route: "test-route" } },
     });
   });
+
+  it("maps malformed JSON body SyntaxError to 400 without Sentry", async () => {
+    const err = new SyntaxError("Bad escaped character in JSON at position 18");
+    const response = handler(err);
+    expect(response).toBeDefined();
+    expect(response!.status).toBe(400);
+    const body = await response!.json();
+    expect(body.error.code).toBe("BAD_REQUEST");
+    expect(body.error.message).toBe("Invalid JSON in request body");
+    expect(vi.mocked(Sentry.captureException)).not.toHaveBeenCalled();
+  });
 });
