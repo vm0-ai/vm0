@@ -89,7 +89,9 @@ export function VoiceCandidateTaskResultBubble({
   );
 }
 
-const TOOL_STATUS_LABEL: Record<VoiceChatCandidateTaskStatus, string> = {
+const TOOL_STATUS_LABEL: Readonly<
+  Record<VoiceChatCandidateTaskStatus, string>
+> = {
   pending: "calling",
   queued: "queued",
   running: "running",

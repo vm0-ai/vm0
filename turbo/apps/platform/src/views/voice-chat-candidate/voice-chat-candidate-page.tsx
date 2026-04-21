@@ -96,14 +96,18 @@ function VoiceChatCandidateHeader({ status }: { status: ConnectionStatus }) {
 const TOKEN_BUDGET = 32_000;
 
 function formatTokenCount(tokens: number): string {
-  if (tokens < 1000) return `${tokens}t`;
+  if (tokens < 1000) {
+    return `${tokens}t`;
+  }
   const k = tokens / 1000;
   return `${k < 10 ? k.toFixed(1) : Math.round(k)}k`;
 }
 
 function formatTokenPercent(tokens: number): string {
   const pct = (tokens / TOKEN_BUDGET) * 100;
-  if (pct < 10) return `${pct.toFixed(1)}%`;
+  if (pct < 10) {
+    return `${pct.toFixed(1)}%`;
+  }
   return `${Math.round(pct)}%`;
 }
 
@@ -256,6 +260,60 @@ function TaskerPanel({
   );
 }
 
+function TalkerSection() {
+  const status = useGet(vccStatus$);
+  const tasksById = useGet(vccTasksById$);
+  const conversationItems = useGet(vccConversationItems$);
+  const setScrollContainer = useSet(setVoiceChatCandidateScrollContainer$);
+
+  return (
+    <section className="flex flex-col min-h-0 overflow-hidden">
+      <div ref={setScrollContainer} className="flex-1 min-h-0 overflow-y-auto">
+        <div className="px-4 pt-4 pb-8 flex flex-col gap-4">
+          {conversationItems.length === 0 && (
+            <p className="text-sm text-muted-foreground text-center py-8">
+              {status === "connecting"
+                ? "Connecting..."
+                : "Speak to start the conversation."}
+            </p>
+          )}
+          {conversationItems.map((entry) => {
+            if (entry.kind === "streaming") {
+              return entry.role === "user" ? (
+                <VoiceCandidateUserBubble
+                  key={entry.key}
+                  content={entry.content}
+                />
+              ) : (
+                <VoiceCandidateAssistantBubble
+                  key={entry.key}
+                  content={entry.content}
+                />
+              );
+            }
+            if (entry.kind === "tool_call") {
+              return (
+                <VoiceCandidateToolCallBubble
+                  key={entry.key}
+                  prompt={entry.task.prompt}
+                  status={entry.task.status}
+                />
+              );
+            }
+            return (
+              <VoiceCandidateItemBubble
+                key={entry.key}
+                item={entry.item}
+                taskById={tasksById}
+              />
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function VoiceChatCandidateFooter({
   status,
   muted,
@@ -360,11 +418,9 @@ export function VoiceChatCandidatePage() {
   const muted = useGet(vccMuted$);
   const error = useGet(vccError$);
   const tasksById = useGet(vccTasksById$);
-  const conversationItems = useGet(vccConversationItems$);
   const startSession = useSet(startVoiceChatCandidate$);
   const endSession = useSet(endVoiceChatCandidate$);
   const toggleMute = useSet(toggleVoiceChatCandidateMute$);
-  const setScrollContainer = useSet(setVoiceChatCandidateScrollContainer$);
 
   if (enabled === false) {
     return (
@@ -400,7 +456,7 @@ export function VoiceChatCandidatePage() {
             size="lg"
             className="w-full"
             onClick={() => {
-              detach(startSession(pageSignal), Reason.DomCallback);
+              detach(startSession(undefined, pageSignal), Reason.DomCallback);
             }}
             disabled={!agentId}
           >
@@ -410,7 +466,7 @@ export function VoiceChatCandidatePage() {
         </div>
         <SessionHistoryList
           onReenter={(sessionId) => {
-            detach(startSession(pageSignal, sessionId), Reason.DomCallback);
+            detach(startSession(sessionId, pageSignal), Reason.DomCallback);
           }}
         />
       </div>
@@ -430,55 +486,7 @@ export function VoiceChatCandidatePage() {
       {/* Desktop-only 3-column layout; no responsive fallback. */}
       <div className="grid grid-cols-3 flex-1 min-h-0 divide-x divide-border">
         <ReasonerPanel />
-
-        <section className="flex flex-col min-h-0 overflow-hidden">
-          <div
-            ref={setScrollContainer}
-            className="flex-1 min-h-0 overflow-y-auto"
-          >
-            <div className="px-4 pt-4 pb-8 flex flex-col gap-4">
-              {conversationItems.length === 0 && (
-                <p className="text-sm text-muted-foreground text-center py-8">
-                  {status === "connecting"
-                    ? "Connecting..."
-                    : "Speak to start the conversation."}
-                </p>
-              )}
-              {conversationItems.map((entry) => {
-                if (entry.kind === "streaming") {
-                  return entry.role === "user" ? (
-                    <VoiceCandidateUserBubble
-                      key={entry.key}
-                      content={entry.content}
-                    />
-                  ) : (
-                    <VoiceCandidateAssistantBubble
-                      key={entry.key}
-                      content={entry.content}
-                    />
-                  );
-                }
-                if (entry.kind === "tool_call") {
-                  return (
-                    <VoiceCandidateToolCallBubble
-                      key={entry.key}
-                      prompt={entry.task.prompt}
-                      status={entry.task.status}
-                    />
-                  );
-                }
-                return (
-                  <VoiceCandidateItemBubble
-                    key={entry.key}
-                    item={entry.item}
-                    taskById={tasksById}
-                  />
-                );
-              })}
-            </div>
-          </div>
-        </section>
-
+        <TalkerSection />
         <TaskerPanel tasks={tasksById} />
       </div>
 

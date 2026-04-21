@@ -384,7 +384,7 @@ describe("voice-chat-candidate session", () => {
     mockListTasksOk();
     mockHeartbeatOk();
     detach(
-      context.store.set(startVoiceChatCandidate$, context.signal),
+      context.store.set(startVoiceChatCandidate$, undefined, context.signal),
       Reason.DomCallback,
     );
     await vi.waitFor(() => {
@@ -426,7 +426,11 @@ describe("voice-chat-candidate session", () => {
       await setup();
       mockCreateSessionError(400, "forbidden");
 
-      await context.store.set(startVoiceChatCandidate$, context.signal);
+      await context.store.set(
+        startVoiceChatCandidate$,
+        undefined,
+        context.signal,
+      );
 
       expect(context.store.get(vccStatus$)).toBe("error");
       expect(context.store.get(vccError$)).toBe("forbidden");
@@ -437,7 +441,11 @@ describe("voice-chat-candidate session", () => {
       mockCreateSessionOk();
       mockTokenError();
 
-      await context.store.set(startVoiceChatCandidate$, context.signal);
+      await context.store.set(
+        startVoiceChatCandidate$,
+        undefined,
+        context.signal,
+      );
 
       expect(context.store.get(vccStatus$)).toBe("error");
       expect(context.store.get(vccError$)).toBe("token failed");
@@ -588,7 +596,7 @@ describe("voice-chat-candidate session", () => {
       );
 
       detach(
-        context.store.set(startVoiceChatCandidate$, context.signal),
+        context.store.set(startVoiceChatCandidate$, undefined, context.signal),
         Reason.DomCallback,
       );
       await vi.waitFor(() => {

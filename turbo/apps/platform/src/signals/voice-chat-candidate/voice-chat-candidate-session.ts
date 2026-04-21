@@ -180,7 +180,9 @@ export const vccSessionList$ = computed(async (get) => {
   const res = await accept(client.listSessions({}), [200, 401, 403], {
     toast: false,
   });
-  if (res.status !== 200) return [];
+  if (res.status !== 200) {
+    return [];
+  }
   return res.body.sessions;
 });
 
@@ -423,7 +425,9 @@ function sendFunctionOutput(
 }
 
 function flattenAssistantMessages(task: VoiceChatCandidateTask): string {
-  if (task.assistantMessages.length === 0) return "";
+  if (task.assistantMessages.length === 0) {
+    return "";
+  }
   return task.assistantMessages
     .map((e) => {
       return e.content;
@@ -432,10 +436,16 @@ function flattenAssistantMessages(task: VoiceChatCandidateTask): string {
 }
 
 function taskReplayOutput(task: VoiceChatCandidateTask): string {
-  if (task.error) return `Task failed: ${task.error}`;
+  if (task.error) {
+    return `Task failed: ${task.error}`;
+  }
   const body = flattenAssistantMessages(task);
-  if (body) return body;
-  if (task.status === "done") return "(empty result)";
+  if (body) {
+    return body;
+  }
+  if (task.status === "done") {
+    return "(empty result)";
+  }
   return `Task '${task.prompt.slice(0, 60)}' queued.`;
 }
 
@@ -478,7 +488,9 @@ function replayHistoryToTalker(
     if (entry.kind === "item") {
       const item = entry.item;
       const text = item.content?.trim();
-      if (!text) continue;
+      if (!text) {
+        continue;
+      }
       if (item.role === "user") {
         dc.send(
           JSON.stringify({
@@ -976,7 +988,11 @@ const releaseWakeLock$ = command(({ get, set }) => {
 // ---------------------------------------------------------------------------
 
 export const startVoiceChatCandidate$ = command(
-  async ({ get, set }, signal: AbortSignal, reenterSessionId?: string) => {
+  async (
+    { get, set },
+    reenterSessionId: string | undefined,
+    signal: AbortSignal,
+  ) => {
     const status = get(internalStatus$);
     if (status === "connecting" || status === "connected") {
       return;
