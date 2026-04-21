@@ -1,6 +1,5 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import indexHtml from "../../index.html?raw";
 
 // The platform app is an English-only admin UI. Browser auto-translation
 // (notably Chrome Mobile on zh-TW locales) wraps text nodes in <font>
@@ -10,14 +9,12 @@ import { describe, expect, it } from "vitest";
 // index.html as the opt-out; this test guards the attributes from being
 // accidentally removed.
 describe("platform index.html translation opt-out", () => {
-  const html = readFileSync(resolve(__dirname, "../../index.html"), "utf8");
-
   it('sets translate="no" on the <html> element', () => {
-    expect(html).toMatch(/<html[^>]*\btranslate="no"/);
+    expect(indexHtml).toMatch(/<html[^>]*\btranslate="no"/);
   });
 
   it("includes the legacy Google notranslate meta tag", () => {
-    expect(html).toMatch(
+    expect(indexHtml).toMatch(
       /<meta[^>]*\bname="google"[^>]*\bcontent="notranslate"/,
     );
   });
