@@ -84,9 +84,6 @@ function UseCaseCard({
 }) {
   const platformUrl = getAppUrl();
 
-  // Get the first prompt variant for the "Try it" link
-  const firstPrompt = useCase.slug;
-
   // Build the href for the Try it button
   // Use a simple prompt based on the use case title
   const tryItHref = buildPromptHref(
