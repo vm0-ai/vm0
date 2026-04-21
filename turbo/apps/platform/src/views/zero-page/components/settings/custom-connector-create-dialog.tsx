@@ -40,7 +40,10 @@ function CreateFormFields({
     headerName: string;
     headerTemplate: string;
   };
-  setField: (field: string, value: string) => void;
+  setField: (
+    field: "displayName" | "prefixesRaw" | "headerName" | "headerTemplate",
+    value: string,
+  ) => void;
 }) {
   return (
     <div className="flex flex-col gap-4">
