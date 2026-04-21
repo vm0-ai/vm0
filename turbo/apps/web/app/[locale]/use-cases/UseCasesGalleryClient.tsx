@@ -133,7 +133,7 @@ function UseCaseCard({
           </p>
           <button
             type="button"
-            onClick={() => setIsExpanded(!isExpanded)}
+            onClick={() => { setIsExpanded(!isExpanded); }}
             className="flex items-center gap-1 self-start text-[13px] font-medium text-[#ed4e01] transition-all hover:gap-2"
           >
             <IconChevronUp
