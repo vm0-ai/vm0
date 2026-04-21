@@ -30,6 +30,14 @@ ruleTester.run("no-getter-setter-params", rule, {
     {
       code: "command(({ get, set }) => { function inner(get: Getter) {} })",
     },
+    // No type annotation — untyped params are not flagged
+    {
+      code: "function helper(get) { }",
+    },
+    // Qualified type name — only bare Getter/Setter is matched
+    {
+      code: "function helper(get: lib.Getter) { }",
+    },
   ],
   invalid: [
     // Function declaration with Getter param

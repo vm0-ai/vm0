@@ -28,6 +28,18 @@ ruleTester.run("no-store-in-params", rule, {
     {
       code: "function init() { }",
     },
+    // Qualified Store type — only bare Store is matched (TSQualifiedName is ignored)
+    {
+      code: "function init(s: lib.Store) { }",
+    },
+    // Type alias for Store is not detected — only explicit Store annotations are matched
+    {
+      code: "type MyStore = Store; function init(s: MyStore) { }",
+    },
+    // Untyped param is not flagged
+    {
+      code: "function init(s) { }",
+    },
   ],
   invalid: [
     // Direct Store param

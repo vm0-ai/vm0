@@ -33,6 +33,10 @@ export default createRule({
   },
 
   create(context) {
+    // Checks type annotation text only, not symbol origin. False positives are
+    // possible for user-defined types named Getter/Setter from non-ccstate
+    // packages, but are acceptable in this codebase where these names are
+    // ccstate-specific by convention.
     function getGetterSetterName(param: TSESTree.Parameter): string | null {
       if (param.type !== AST_NODE_TYPES.Identifier) {
         return null;

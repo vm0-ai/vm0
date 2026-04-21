@@ -31,6 +31,12 @@ type MessageIds = "noStoreInParams" | "noStoreInObjectParams";
 
 // Returns the dot-path where Store was found, or null if not found.
 // path=[] means Store is the direct type; path=["store"] means { store: Store }.
+//
+// Note: checks type annotation text only, not symbol origin. False positives are
+// possible for user-defined types named Store from non-ccstate packages, but are
+// acceptable in this codebase where this name is ccstate-specific by convention.
+// Also note: type aliases (e.g. `type MyStore = Store; fn(s: MyStore)`) are not
+// detected — only explicit Store annotations are matched.
 function findStorePath(
   typeNode: TSESTree.TypeNode,
   path: string[] = [],
