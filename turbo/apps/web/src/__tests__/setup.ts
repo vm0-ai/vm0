@@ -235,6 +235,22 @@ vi.mock("resend", () => {
         },
       },
     },
+    contacts: {
+      create: vi
+        .fn()
+        .mockResolvedValue({ data: { id: "mock-contact-id" }, error: null }),
+      update: vi
+        .fn()
+        .mockResolvedValue({ data: { id: "mock-contact-id" }, error: null }),
+      remove: vi.fn().mockResolvedValue({
+        data: { deleted: true, contact: "mock-contact-id" },
+        error: null,
+      }),
+      get: vi.fn().mockResolvedValue({
+        data: { id: "mock-contact-id", email: "mock@example.com" },
+        error: null,
+      }),
+    },
     webhooks: {
       verify: vi.fn().mockReturnValue(true),
     },

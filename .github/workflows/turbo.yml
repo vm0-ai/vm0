@@ -716,6 +716,7 @@ jobs:
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           RESEND_WEBHOOK_SECRET: ${{ secrets.RESEND_WEBHOOK_SECRET }}
           RESEND_FROM_DOMAIN: ${{ vars.RESEND_FROM_DOMAIN }}
+          RESEND_CONTACT_SEGMENT_ID: ${{ vars.RESEND_CONTACT_SEGMENT_ID }}
           VM0_DEFAULT_AGENT: ${{ vars.VM0_DEFAULT_AGENT }}
           STRAPI_URL: ${{ github.event_name == 'merge_group' && vars.STRAPI_URL || '' }}
           GITHUB_APP_SLUG: ${{ vars.VM0_GITHUB_APP_SLUG }}
@@ -924,6 +925,7 @@ jobs:
             RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
             RESEND_WEBHOOK_SECRET=${{ secrets.RESEND_WEBHOOK_SECRET }}
             RESEND_FROM_DOMAIN=${{ vars.RESEND_FROM_DOMAIN }}
+            RESEND_CONTACT_SEGMENT_ID=${{ vars.RESEND_CONTACT_SEGMENT_ID }}
             VM0_DEFAULT_AGENT=${{ vars.VM0_DEFAULT_AGENT }}
             STRAPI_URL=${{ github.event_name == 'merge_group' && vars.STRAPI_URL || '' }}
             OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}

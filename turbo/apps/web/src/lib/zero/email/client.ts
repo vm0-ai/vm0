@@ -139,3 +139,129 @@ export async function getReceivedEmailAttachments(
     };
   });
 }
+
+export type ResendContactError = {
+  message: string;
+  statusCode: number | null;
+  name: string;
+};
+
+type ContactResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; error: ResendContactError };
+
+interface ContactInput {
+  email: string;
+  firstName?: string;
+  lastName?: string;
+}
+
+/**
+ * Create a Resend contact and assign it to the given segment in one call.
+ * Returns the new contact id on success.
+ */
+export async function createContact(
+  input: ContactInput,
+  segmentId: string,
+): Promise<ContactResult<{ id: string }>> {
+  const resend = getResendClient();
+
+  const { data, error } = await resend.contacts.create({
+    email: input.email,
+    firstName: input.firstName,
+    lastName: input.lastName,
+    segments: [{ id: segmentId }],
+  });
+
+  if (error || !data) {
+    return {
+      ok: false,
+      error: {
+        message: error?.message ?? "unknown",
+        statusCode: error?.statusCode ?? null,
+        name: error?.name ?? "unknown",
+      },
+    };
+  }
+
+  return { ok: true, data: { id: data.id } };
+}
+
+/**
+ * Update an existing Resend contact by id.
+ * Passes `null` to clear first/last name when the source no longer has one.
+ */
+export async function updateContact(
+  contactId: string,
+  input: ContactInput,
+): Promise<ContactResult<{ id: string }>> {
+  const resend = getResendClient();
+
+  const { data, error } = await resend.contacts.update({
+    id: contactId,
+    firstName: input.firstName ?? null,
+    lastName: input.lastName ?? null,
+  });
+
+  if (error || !data) {
+    return {
+      ok: false,
+      error: {
+        message: error?.message ?? "unknown",
+        statusCode: error?.statusCode ?? null,
+        name: error?.name ?? "unknown",
+      },
+    };
+  }
+
+  return { ok: true, data: { id: data.id } };
+}
+
+/**
+ * Remove a Resend contact by id. Idempotent: 404 is treated as success.
+ */
+export async function removeContact(
+  contactId: string,
+): Promise<ContactResult<{ deleted: true }>> {
+  const resend = getResendClient();
+
+  const { data, error } = await resend.contacts.remove(contactId);
+
+  if (error || !data) {
+    return {
+      ok: false,
+      error: {
+        message: error?.message ?? "unknown",
+        statusCode: error?.statusCode ?? null,
+        name: error?.name ?? "unknown",
+      },
+    };
+  }
+
+  return { ok: true, data: { deleted: true } };
+}
+
+/**
+ * Look up a contact by email. Used to recover the contact id after a
+ * 409 (already exists) response on create.
+ */
+export async function getContactByEmail(
+  email: string,
+): Promise<ContactResult<{ id: string }>> {
+  const resend = getResendClient();
+
+  const { data, error } = await resend.contacts.get({ email });
+
+  if (error || !data) {
+    return {
+      ok: false,
+      error: {
+        message: error?.message ?? "unknown",
+        statusCode: error?.statusCode ?? null,
+        name: error?.name ?? "unknown",
+      },
+    };
+  }
+
+  return { ok: true, data: { id: data.id } };
+}

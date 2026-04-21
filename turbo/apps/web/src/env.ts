@@ -196,6 +196,8 @@ function initEnv() {
       RESEND_API_KEY: z.string().min(1).optional(),
       RESEND_WEBHOOK_SECRET: z.string().min(1).optional(),
       RESEND_FROM_DOMAIN: z.string().min(1).optional(),
+      // Resend segment for Clerk user contact sync; unset = sync disabled
+      RESEND_CONTACT_SEGMENT_ID: z.string().min(1).optional(),
       // Sentry (used by both server and client)
       SENTRY_DSN_WEB: z.url().optional(),
       SENTRY_AUTH_TOKEN: z.string().min(1).optional(),
@@ -372,6 +374,7 @@ function initEnv() {
       RESEND_API_KEY: process.env.RESEND_API_KEY,
       RESEND_WEBHOOK_SECRET: process.env.RESEND_WEBHOOK_SECRET,
       RESEND_FROM_DOMAIN: process.env.RESEND_FROM_DOMAIN,
+      RESEND_CONTACT_SEGMENT_ID: process.env.RESEND_CONTACT_SEGMENT_ID,
       SENTRY_DSN_WEB: process.env.SENTRY_DSN_WEB,
       SENTRY_AUTH_TOKEN: process.env.SENTRY_AUTH_TOKEN,
       SENTRY_ORG: process.env.SENTRY_ORG,

@@ -46,6 +46,14 @@
     {
       "path": "/api/cron/phone-cleanup",
       "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/cron/reconcile-resend-contacts",
+      "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/cron/drain-resend-outbox",
+      "schedule": "* * * * *"
     }
   ]
 }
