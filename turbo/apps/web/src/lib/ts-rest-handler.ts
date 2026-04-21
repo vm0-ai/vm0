@@ -15,7 +15,7 @@ import "server-only";
 import { createNextHandler, tsr } from "@ts-rest/serverless/next";
 import { TsRestResponse } from "@ts-rest/serverless";
 import type { TsRestRequest } from "@ts-rest/serverless";
-import type { AppRouter } from "@ts-rest/core";
+import type { AppRoute, AppRouter } from "@ts-rest/core";
 import * as Sentry from "@sentry/nextjs";
 import { flushLogs, logger } from "./shared/logger";
 import { ingestRequestLog, flushAxiom } from "./shared/axiom";
@@ -29,6 +29,30 @@ export { tsr, TsRestResponse };
  * This is the return type of `tsr.router(contract, { ... })`.
  */
 type TsRestRouter<T extends AppRouter> = ReturnType<typeof tsr.router<T>>;
+
+/**
+ * Walk a ts-rest contract and build a `${method}:${path}` → operation-name
+ * map. Nested sub-routers get dot-joined keys (e.g. `billing.checkout`).
+ * Used to attach an operation suffix to `routeName` in the default error
+ * handler so multi-op handlers produce distinct log labels.
+ */
+function buildOperationMap(contract: AppRouter): Map<string, string> {
+  const map = new Map<string, string>();
+  const walk = (node: AppRouter, prefix: string): void => {
+    for (const [key, value] of Object.entries(node)) {
+      if (!value || typeof value !== "object") continue;
+      if ("method" in value && "path" in value) {
+        const route = value as AppRoute;
+        const op = prefix ? `${prefix}.${key}` : key;
+        map.set(`${route.method}:${route.path}`, op);
+      } else {
+        walk(value as AppRouter, prefix ? `${prefix}.${key}` : key);
+      }
+    }
+  };
+  walk(contract, "");
+  return map;
+}
 
 /**
  * Create a safe error handler that sanitizes error messages for API responses.
@@ -156,17 +180,41 @@ export function createHandler<T extends AppRouter>(
   router: TsRestRouter<T>,
   options: CreateHandlerOptions,
 ) {
-  const resolvedOptions = {
-    errorHandler:
-      options.errorHandler ?? createSafeErrorHandler(options.routeName),
+  // Pre-build per-operation error handlers for multi-op contracts so each
+  // operation surfaces its own label (e.g. `zero.chat-threads.create` vs
+  // `zero.chat-threads.list`). Single-op contracts keep `options.routeName`
+  // directly — the name already uniquely identifies the operation.
+  const opMap = options.errorHandler ? null : buildOperationMap(contract);
+  const perOpHandlers =
+    opMap && opMap.size > 1
+      ? new Map(
+          [...new Set(opMap.values())].map((op) => [
+            op,
+            createSafeErrorHandler(`${options.routeName}.${op}`),
+          ]),
+        )
+      : null;
+  const defaultHandler = createSafeErrorHandler(options.routeName);
+
+  const resolvedErrorHandler = (
+    err: unknown,
+    req: TsRestRequest,
+  ): TsRestResponse | void => {
+    if (options.errorHandler) return options.errorHandler(err);
+    if (perOpHandlers && opMap) {
+      const op = opMap.get(`${req.method}:${req.route}`);
+      const h = op ? perOpHandlers.get(op) : undefined;
+      if (h) return h(err);
+    }
+    return defaultHandler(err);
   };
 
   return createNextHandler(contract, router, {
+    errorHandler: resolvedErrorHandler,
     handlerType: "app-router",
     // jsonQuery is intentionally disabled: JSON.parse() misinterprets hex strings
     // like "846e3519" as scientific notation, corrupting version query params (#2666)
     jsonQuery: false,
-    ...resolvedOptions,
     requestMiddleware: [
       (request) => {
         // Record request start time
