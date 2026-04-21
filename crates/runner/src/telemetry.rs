@@ -92,6 +92,16 @@ impl JobTelemetry {
         send_telemetry(&self.http, self.run_id, &self.sandbox_token, ops).await;
     }
 
+    /// Snapshot of buffered ops for tests. Returns `(action_type, success, error)`
+    /// tuples in insertion order.
+    #[cfg(test)]
+    pub(crate) fn pending_ops_snapshot(&self) -> Vec<(String, bool, Option<String>)> {
+        self.pending_ops
+            .iter()
+            .map(|op| (op.action_type.clone(), op.success, op.error.clone()))
+            .collect()
+    }
+
     /// Spawn a fire-and-forget flush for auto-threshold flushes.
     fn fire_and_forget_flush(&mut self) {
         let ops = std::mem::take(&mut self.pending_ops);
