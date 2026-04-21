@@ -185,6 +185,9 @@ export async function createCheckpoint(
     | VolumeVersionsSnapshot
     | undefined;
 
+  if (!run.sessionId) {
+    throw notFound("Agent run has no session_id");
+  }
   const agentSession = await updateAgentSession(
     run.sessionId,
     conversation.id,
