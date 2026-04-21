@@ -66,6 +66,26 @@ function buildOperationMap(contract: AppRouter): Map<string, string> {
 export function createSafeErrorHandler(
   routeName: string,
 ): (err: unknown) => TsRestResponse | void {
+  return makeErrorHandler(routeName, { reportToSentry: true });
+}
+
+/**
+ * Like {@link createSafeErrorHandler} but does NOT forward unhandled errors
+ * to Sentry. Use for routes whose *own* purpose is to report errors (e.g.
+ * the client-error sink endpoint) — otherwise a failing report can echo
+ * back into Sentry as a fresh issue, creating a self-referential loop.
+ * Server logs still record the failure at error level.
+ */
+export function createSilentErrorHandler(
+  routeName: string,
+): (err: unknown) => TsRestResponse | void {
+  return makeErrorHandler(routeName, { reportToSentry: false });
+}
+
+function makeErrorHandler(
+  routeName: string,
+  options: { reportToSentry: boolean },
+): (err: unknown) => TsRestResponse | void {
   const log = logger(`api:${routeName}`);
 
   return function safeErrorHandler(err: unknown): TsRestResponse | void {
@@ -127,13 +147,15 @@ export function createSafeErrorHandler(
 
     // Non-validation errors: log full details server-side, return generic message
     log.error(`${routeName} error:`, err);
-    // Report to Sentry. Without this, ts-rest-handled 5xx never reaches
-    // Sentry because the error is caught here and a 500 JSON is returned,
-    // so Next.js's onRequestError instrumentation hook never fires.
-    Sentry.captureException(err, {
-      mechanism: { type: "ts-rest-handler", handled: true },
-      captureContext: { tags: { route: routeName } },
-    });
+    if (options.reportToSentry) {
+      // Report to Sentry. Without this, ts-rest-handled 5xx never reaches
+      // Sentry because the error is caught here and a 500 JSON is returned,
+      // so Next.js's onRequestError instrumentation hook never fires.
+      Sentry.captureException(err, {
+        mechanism: { type: "ts-rest-handler", handled: true },
+        captureContext: { tags: { route: routeName } },
+      });
+    }
     return TsRestResponse.fromJson(
       {
         error: {
