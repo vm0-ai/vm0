@@ -50,6 +50,8 @@ const router = tsr.router(runnerRealtimeTokenContract, {
   },
 });
 
-const handler = createHandler(runnerRealtimeTokenContract, router);
+const handler = createHandler(runnerRealtimeTokenContract, router, {
+  routeName: "runners.realtime.token",
+});
 
 export { handler as POST };

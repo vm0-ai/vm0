@@ -19,11 +19,7 @@ import {
   lt,
 } from "drizzle-orm";
 import { z } from "zod";
-import {
-  createHandler,
-  createSafeErrorHandler,
-  tsr,
-} from "../../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
 import { chatSearchContract, type ChatSearchMessage } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
@@ -201,7 +197,7 @@ const router = tsr.router(chatSearchContract, {
 });
 
 const handler = createHandler(chatSearchContract, router, {
-  errorHandler: createSafeErrorHandler("zero-chat-search"),
+  routeName: "zero.chat.search",
 });
 
 export { handler as GET };

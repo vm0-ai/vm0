@@ -497,6 +497,7 @@ function errorHandler(err: unknown): TsRestResponse | void {
 }
 
 const handler = createHandler(runsMainContract, router, {
+  routeName: "agent.runs",
   errorHandler,
 });
 

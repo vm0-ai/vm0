@@ -1,10 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { after } from "next/server";
-import {
-  createHandler,
-  createSafeErrorHandler,
-  tsr,
-} from "../../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
 import { chatMessagesContract, type AttachFile } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
@@ -433,7 +429,7 @@ const router = tsr.router(chatMessagesContract, {
 });
 
 const handler = createHandler(chatMessagesContract, router, {
-  errorHandler: createSafeErrorHandler("zero-chat-messages"),
+  routeName: "zero.chat.messages",
 });
 
 export { handler as POST };

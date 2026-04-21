@@ -121,6 +121,8 @@ const router = tsr.router(runsCancelContract, {
   },
 });
 
-const handler = createHandler(runsCancelContract, router);
+const handler = createHandler(runsCancelContract, router, {
+  routeName: "agent.runs.cancel",
+});
 
 export { handler as POST };

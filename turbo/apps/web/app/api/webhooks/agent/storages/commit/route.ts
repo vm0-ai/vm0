@@ -1,8 +1,4 @@
-import {
-  createHandler,
-  tsr,
-  createSafeErrorHandler,
-} from "../../../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../../../src/lib/ts-rest-handler";
 import { webhookStoragesCommitContract, VOLUME_ORG_USER_ID } from "@vm0/core";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
@@ -329,7 +325,7 @@ const router = tsr.router(webhookStoragesCommitContract, {
 });
 
 const handler = createHandler(webhookStoragesCommitContract, router, {
-  errorHandler: createSafeErrorHandler("webhook:storages:commit"),
+  routeName: "webhooks.agent.storages.commit",
 });
 
 export { handler as POST };

@@ -1,8 +1,4 @@
-import {
-  createHandler,
-  createSafeErrorHandler,
-  tsr,
-} from "../../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
 import { zeroBillingDowngradeContract, createErrorResponse } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { env } from "../../../../../src/env";
@@ -44,7 +40,7 @@ const router = tsr.router(zeroBillingDowngradeContract, {
 });
 
 const handler = createHandler(zeroBillingDowngradeContract, router, {
-  errorHandler: createSafeErrorHandler("zero-billing-downgrade"),
+  routeName: "zero.billing.downgrade",
 });
 
 export { handler as POST };

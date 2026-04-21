@@ -1,8 +1,4 @@
-import {
-  createHandler,
-  createSafeErrorHandler,
-  tsr,
-} from "../../../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../../../src/lib/ts-rest-handler";
 import { zeroRunNetworkLogsContract, type AxiomNetworkEvent } from "@vm0/core";
 import { initServices } from "../../../../../../src/lib/init-services";
 import {
@@ -105,7 +101,7 @@ ${sinceFilter}
 });
 
 const handler = createHandler(zeroRunNetworkLogsContract, router, {
-  errorHandler: createSafeErrorHandler("zero-runs:network"),
+  routeName: "zero.runs.network",
 });
 
 export { handler as GET };

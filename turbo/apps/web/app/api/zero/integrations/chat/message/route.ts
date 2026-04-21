@@ -1,8 +1,4 @@
-import {
-  createHandler,
-  createSafeErrorHandler,
-  tsr,
-} from "../../../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../../../src/lib/ts-rest-handler";
 import { integrationsChatMessageContract } from "@vm0/core";
 import { initServices } from "../../../../../../src/lib/init-services";
 import {
@@ -81,7 +77,7 @@ const router = tsr.router(integrationsChatMessageContract, {
 });
 
 const handler = createHandler(integrationsChatMessageContract, router, {
-  errorHandler: createSafeErrorHandler("integrations-chat-message"),
+  routeName: "zero.integrations.chat.message",
 });
 
 export { handler as POST };

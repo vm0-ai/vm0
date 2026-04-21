@@ -1,8 +1,4 @@
-import {
-  createHandler,
-  createSafeErrorHandler,
-  tsr,
-} from "../../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
 import { zeroComposesByIdContract } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
@@ -69,7 +65,7 @@ const router = tsr.router(zeroComposesByIdContract, {
 });
 
 const handler = createHandler(zeroComposesByIdContract, router, {
-  errorHandler: createSafeErrorHandler("zero-composes:id"),
+  routeName: "zero.composes.byId",
 });
 
 export { handler as GET, handler as DELETE };

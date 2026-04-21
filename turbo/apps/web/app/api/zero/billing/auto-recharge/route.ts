@@ -1,8 +1,4 @@
-import {
-  createHandler,
-  createSafeErrorHandler,
-  tsr,
-} from "../../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
 import {
   zeroBillingAutoRechargeContract,
   createErrorResponse,
@@ -58,7 +54,7 @@ const router = tsr.router(zeroBillingAutoRechargeContract, {
 });
 
 const handler = createHandler(zeroBillingAutoRechargeContract, router, {
-  errorHandler: createSafeErrorHandler("zero-billing-auto-recharge"),
+  routeName: "zero.billing.auto-recharge",
 });
 
 export { handler as GET, handler as PUT };

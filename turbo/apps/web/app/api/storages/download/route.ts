@@ -1,8 +1,4 @@
-import {
-  createHandler,
-  tsr,
-  createSafeErrorHandler,
-} from "../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
 import { storagesDownloadContract, VOLUME_ORG_USER_ID } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { storages, storageVersions } from "../../../../src/db/schema/storage";
@@ -199,7 +195,7 @@ const router = tsr.router(storagesDownloadContract, {
 });
 
 const handler = createHandler(storagesDownloadContract, router, {
-  errorHandler: createSafeErrorHandler("storages:download"),
+  routeName: "storages.download",
 });
 
 export { handler as GET };

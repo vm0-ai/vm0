@@ -137,6 +137,8 @@ const router = tsr.router(zeroDeveloperSupportContract, {
   },
 });
 
-const handler = createHandler(zeroDeveloperSupportContract, router);
+const handler = createHandler(zeroDeveloperSupportContract, router, {
+  routeName: "zero.developer-support",
+});
 
 export { handler as POST };

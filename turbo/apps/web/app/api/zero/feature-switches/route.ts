@@ -1,8 +1,4 @@
-import {
-  createHandler,
-  createSafeErrorHandler,
-  tsr,
-} from "../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
 import { zeroFeatureSwitchesContract } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import {
@@ -71,7 +67,7 @@ const router = tsr.router(zeroFeatureSwitchesContract, {
 });
 
 const handler = createHandler(zeroFeatureSwitchesContract, router, {
-  errorHandler: createSafeErrorHandler("zero-feature-switches"),
+  routeName: "zero.feature-switches",
 });
 
 export { handler as GET, handler as POST, handler as DELETE };

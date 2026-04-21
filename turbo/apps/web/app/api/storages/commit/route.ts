@@ -1,8 +1,4 @@
-import {
-  createHandler,
-  tsr,
-  createSafeErrorHandler,
-} from "../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
 import { storagesCommitContract, VOLUME_ORG_USER_ID } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
@@ -320,7 +316,7 @@ const router = tsr.router(storagesCommitContract, {
 });
 
 const handler = createHandler(storagesCommitContract, router, {
-  errorHandler: createSafeErrorHandler("storages:commit"),
+  routeName: "storages.commit",
 });
 
 export { handler as POST };

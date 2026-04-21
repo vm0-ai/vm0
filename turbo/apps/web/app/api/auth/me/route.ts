@@ -25,6 +25,8 @@ const router = tsr.router(authContract, {
   },
 });
 
-const handler = createHandler(authContract, router);
+const handler = createHandler(authContract, router, {
+  routeName: "auth.me",
+});
 
 export { handler as GET };

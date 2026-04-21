@@ -119,9 +119,11 @@ describe("connector permission dialog", () => {
     // The check icon (svg) should now be rendered instead of the avatar img
     expect(agentButton.querySelector("svg")).toBeInTheDocument();
 
-    // Click again to deselect — the avatar img should return
+    // Click again to deselect — the transparent placeholder span should return
+    // (no img: avatarUrl is null, so no default preset flashes)
     await user.click(agentButton);
-    expect(agentButton.querySelector("img")).toBeInTheDocument();
+    expect(agentButton.querySelector("img")).toBeNull();
+    expect(agentButton.querySelector("span[aria-hidden]")).toBeInTheDocument();
   });
 
   it("closes dialog without saving when clicking Later", async () => {

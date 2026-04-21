@@ -32,6 +32,8 @@ const router = tsr.router(cliAuthDeviceContract, {
   },
 });
 
-const handler = createHandler(cliAuthDeviceContract, router);
+const handler = createHandler(cliAuthDeviceContract, router, {
+  routeName: "cli.auth.device",
+});
 
 export { handler as POST };

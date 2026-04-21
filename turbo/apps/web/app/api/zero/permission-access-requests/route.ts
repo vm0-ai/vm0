@@ -1,8 +1,4 @@
-import {
-  createHandler,
-  createSafeErrorHandler,
-  tsr,
-} from "../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
 import {
   permissionAccessRequestsCreateContract,
   permissionAccessRequestsListContract,
@@ -446,19 +442,19 @@ const resolveRouter = tsr.router(permissionAccessRequestsResolveContract, {
 const postHandler = createHandler(
   permissionAccessRequestsCreateContract,
   createRouter,
-  { errorHandler: createSafeErrorHandler("zero:permission-access-requests") },
+  { routeName: "zero.permission-access-requests.create" },
 );
 
 const getHandler = createHandler(
   permissionAccessRequestsListContract,
   listRouter,
-  { errorHandler: createSafeErrorHandler("zero:permission-access-requests") },
+  { routeName: "zero.permission-access-requests.list" },
 );
 
 const putHandler = createHandler(
   permissionAccessRequestsResolveContract,
   resolveRouter,
-  { errorHandler: createSafeErrorHandler("zero:permission-access-requests") },
+  { routeName: "zero.permission-access-requests.resolve" },
 );
 
 export { postHandler as POST, getHandler as GET, putHandler as PUT };

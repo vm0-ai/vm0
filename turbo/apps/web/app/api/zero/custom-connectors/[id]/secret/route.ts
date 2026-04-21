@@ -1,8 +1,4 @@
-import {
-  createHandler,
-  createSafeErrorHandler,
-  tsr,
-} from "../../../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../../../src/lib/ts-rest-handler";
 import {
   zeroCustomConnectorSecretContract,
   createErrorResponse,
@@ -58,7 +54,7 @@ const router = tsr.router(zeroCustomConnectorSecretContract, {
 });
 
 const handler = createHandler(zeroCustomConnectorSecretContract, router, {
-  errorHandler: createSafeErrorHandler("zero-custom-connectors"),
+  routeName: "zero.custom-connectors.secret",
 });
 
 export { handler as PUT, handler as DELETE };

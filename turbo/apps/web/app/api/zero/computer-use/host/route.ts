@@ -1,8 +1,4 @@
-import {
-  createHandler,
-  createSafeErrorHandler,
-  tsr,
-} from "../../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
 import {
   zeroComputerUseHostContract,
   createErrorResponse,
@@ -51,7 +47,7 @@ const router = tsr.router(zeroComputerUseHostContract, {
 });
 
 const handler = createHandler(zeroComputerUseHostContract, router, {
-  errorHandler: createSafeErrorHandler("zero-computer-use:host"),
+  routeName: "zero.computer-use.host",
 });
 
 export { handler as GET };

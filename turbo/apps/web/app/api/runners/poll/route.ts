@@ -153,6 +153,7 @@ function errorHandler(err: unknown): TsRestResponse | void {
 }
 
 const handler = createHandler(runnersPollContract, router, {
+  routeName: "runners.poll",
   errorHandler,
 });
 

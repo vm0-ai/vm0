@@ -437,6 +437,7 @@ jobs:
           fetch-depth: 0
       - uses: ./.github/actions/toolchain-init
       - name: Check Migration Immutability
+        if: vars.CI_CHECK_IMMUTABLE_MIGRATE != '0'
         run: |
           BASE_REF="${{ needs.prepare.outputs.base-ref }}"
           # Check that migration SQL files and snapshots are only added, never modified or deleted
@@ -1291,8 +1292,21 @@ jobs:
         with:
           name: cli-dist
           path: /tmp/cli-deploy
-      - name: Link CLI globally
-        run: cd /tmp/cli-deploy && sudo npm link
+      - name: Install CLI globally
+        run: |
+          set -euo pipefail
+          # Derive from `node` on PATH so sudo and user see the same prefix
+          # regardless of npmrc / env-var inheritance.
+          NODE_PREFIX=$(dirname "$(dirname "$(command -v node)")")
+          CLI_DIR="$NODE_PREFIX/lib/node_modules/@vm0/cli"
+          sudo rm -rf "$CLI_DIR"
+          sudo mkdir -p "$NODE_PREFIX/lib/node_modules/@vm0"
+          sudo cp -a /tmp/cli-deploy "$CLI_DIR"
+          sudo chmod +x "$CLI_DIR/dist/index.js" "$CLI_DIR/dist/zero.js"
+          sudo ln -sf "$CLI_DIR/dist/index.js" "$NODE_PREFIX/bin/vm0"
+          sudo ln -sf "$CLI_DIR/dist/zero.js" "$NODE_PREFIX/bin/zero"
+          vm0 --help
+          zero --help
       - name: Download E2E test tokens
         uses: actions/download-artifact@v8
         with:
@@ -1773,8 +1787,21 @@ jobs:
         with:
           name: cli-dist
           path: /tmp/cli-deploy
-      - name: Link CLI globally
-        run: cd /tmp/cli-deploy && sudo npm link
+      - name: Install CLI globally
+        run: |
+          set -euo pipefail
+          # Derive from `node` on PATH so sudo and user see the same prefix
+          # regardless of npmrc / env-var inheritance.
+          NODE_PREFIX=$(dirname "$(dirname "$(command -v node)")")
+          CLI_DIR="$NODE_PREFIX/lib/node_modules/@vm0/cli"
+          sudo rm -rf "$CLI_DIR"
+          sudo mkdir -p "$NODE_PREFIX/lib/node_modules/@vm0"
+          sudo cp -a /tmp/cli-deploy "$CLI_DIR"
+          sudo chmod +x "$CLI_DIR/dist/index.js" "$CLI_DIR/dist/zero.js"
+          sudo ln -sf "$CLI_DIR/dist/index.js" "$NODE_PREFIX/bin/vm0"
+          sudo ln -sf "$CLI_DIR/dist/zero.js" "$NODE_PREFIX/bin/zero"
+          vm0 --help
+          zero --help
       - name: Download E2E test tokens
         uses: actions/download-artifact@v8
         with:
@@ -1830,8 +1857,21 @@ jobs:
         with:
           name: cli-dist
           path: /tmp/cli-deploy
-      - name: Link CLI globally
-        run: cd /tmp/cli-deploy && sudo npm link
+      - name: Install CLI globally
+        run: |
+          set -euo pipefail
+          # Derive from `node` on PATH so sudo and user see the same prefix
+          # regardless of npmrc / env-var inheritance.
+          NODE_PREFIX=$(dirname "$(dirname "$(command -v node)")")
+          CLI_DIR="$NODE_PREFIX/lib/node_modules/@vm0/cli"
+          sudo rm -rf "$CLI_DIR"
+          sudo mkdir -p "$NODE_PREFIX/lib/node_modules/@vm0"
+          sudo cp -a /tmp/cli-deploy "$CLI_DIR"
+          sudo chmod +x "$CLI_DIR/dist/index.js" "$CLI_DIR/dist/zero.js"
+          sudo ln -sf "$CLI_DIR/dist/index.js" "$NODE_PREFIX/bin/vm0"
+          sudo ln -sf "$CLI_DIR/dist/zero.js" "$NODE_PREFIX/bin/zero"
+          vm0 --help
+          zero --help
       - name: Install GNU parallel for bats
         run: sudo curl -sL https://raw.githubusercontent.com/martinda/gnu-parallel/master/src/parallel -o /usr/local/bin/parallel && sudo chmod +x /usr/local/bin/parallel
       - name: Download E2E test tokens

@@ -1,8 +1,4 @@
-import {
-  createHandler,
-  createSafeErrorHandler,
-  tsr,
-} from "../../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
 import {
   zeroCustomConnectorByIdContract,
   createErrorResponse,
@@ -88,7 +84,7 @@ const router = tsr.router(zeroCustomConnectorByIdContract, {
 });
 
 const handler = createHandler(zeroCustomConnectorByIdContract, router, {
-  errorHandler: createSafeErrorHandler("zero-custom-connectors"),
+  routeName: "zero.custom-connectors.byId",
 });
 
 export { handler as DELETE, handler as PATCH };

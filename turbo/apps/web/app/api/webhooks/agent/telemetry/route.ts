@@ -173,6 +173,7 @@ function errorHandler(err: unknown): TsRestResponse | void {
 }
 
 const handler = createHandler(webhookTelemetryContract, router, {
+  routeName: "webhooks.agent.telemetry",
   errorHandler,
 });
 

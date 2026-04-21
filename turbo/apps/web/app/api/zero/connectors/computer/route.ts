@@ -1,8 +1,4 @@
-import {
-  createHandler,
-  createSafeErrorHandler,
-  tsr,
-} from "../../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
 import { zeroComputerConnectorContract, createErrorResponse } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
@@ -82,7 +78,7 @@ const router = tsr.router(zeroComputerConnectorContract, {
 });
 
 const handler = createHandler(zeroComputerConnectorContract, router, {
-  errorHandler: createSafeErrorHandler("zero-connectors:computer"),
+  routeName: "zero.connectors.computer",
 });
 
 export { handler as GET, handler as POST, handler as DELETE };

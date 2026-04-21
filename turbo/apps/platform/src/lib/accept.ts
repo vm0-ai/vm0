@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/react";
 import { toast } from "@vm0/ui/components/ui/sonner";
 
 class ApiError extends Error {
@@ -61,6 +62,15 @@ async function accept<
   if (options?.toast !== false) {
     toast.error(message);
   }
+  // Trail of a breadcrumb so the next captured exception in this scope
+  // carries enough context to triage. The breadcrumb persists across
+  // async boundaries within the current Sentry scope.
+  Sentry.addBreadcrumb({
+    category: "api",
+    level: result.status >= 500 ? "error" : "warning",
+    message: `API ${result.status} ${code}`,
+    data: { status: result.status, code },
+  });
   throw new ApiError(message, code, result.status);
 }
 

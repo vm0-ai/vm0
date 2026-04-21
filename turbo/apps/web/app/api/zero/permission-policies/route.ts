@@ -1,8 +1,4 @@
-import {
-  createHandler,
-  createSafeErrorHandler,
-  tsr,
-} from "../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
 import {
   zeroAgentPermissionPoliciesContract,
   getConnectorFirewall,
@@ -154,7 +150,7 @@ function buildAgentResponse(
 }
 
 const handler = createHandler(zeroAgentPermissionPoliciesContract, router, {
-  errorHandler: createSafeErrorHandler("zero:permission-policies"),
+  routeName: "zero.permission-policies",
 });
 
 export { handler as PUT };

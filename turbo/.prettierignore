@@ -10,3 +10,5 @@ CHANGELOG.md
 .source
 Caddyfile
 **/codereviews/**
+apps/web/src/db/migrations/
+apps/web/scripts/migrations/

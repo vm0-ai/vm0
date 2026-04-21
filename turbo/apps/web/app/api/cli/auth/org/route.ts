@@ -112,6 +112,7 @@ function errorHandler(err: unknown): TsRestResponse | void {
 }
 
 const handler = createHandler(cliAuthOrgContract, router, {
+  routeName: "cli.auth.org",
   errorHandler,
 });
 

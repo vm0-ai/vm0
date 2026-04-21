@@ -1,8 +1,4 @@
-import {
-  createHandler,
-  createSafeErrorHandler,
-  tsr,
-} from "../../../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../../../src/lib/ts-rest-handler";
 import { zeroConnectorSessionsContract, createErrorResponse } from "@vm0/core";
 import { initServices } from "../../../../../../src/lib/init-services";
 import {
@@ -59,7 +55,7 @@ const router = tsr.router(zeroConnectorSessionsContract, {
 });
 
 const handler = createHandler(zeroConnectorSessionsContract, router, {
-  errorHandler: createSafeErrorHandler("zero-connectors:sessions"),
+  routeName: "zero.connectors.sessions",
 });
 
 export { handler as POST };

@@ -1,8 +1,4 @@
-import {
-  createHandler,
-  createSafeErrorHandler,
-  tsr,
-} from "../../../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../../../src/lib/ts-rest-handler";
 import { chatThreadV1MessagesContract } from "@vm0/core";
 import { z } from "zod";
 import { initServices } from "../../../../../../src/lib/init-services";
@@ -70,7 +66,7 @@ const router = tsr.router(chatThreadV1MessagesContract, {
 });
 
 const handler = createHandler(chatThreadV1MessagesContract, router, {
-  errorHandler: createSafeErrorHandler("v1-chat-thread-messages"),
+  routeName: "v1.chat-threads.messages",
 });
 
 export { handler as GET };

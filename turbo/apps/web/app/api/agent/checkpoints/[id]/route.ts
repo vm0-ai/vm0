@@ -141,6 +141,7 @@ function errorHandler(err: unknown): TsRestResponse | void {
 }
 
 const handler = createHandler(checkpointsByIdContract, router, {
+  routeName: "agent.checkpoints.byId",
   errorHandler,
 });
 

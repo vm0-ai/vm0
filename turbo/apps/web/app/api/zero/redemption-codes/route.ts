@@ -18,11 +18,7 @@
  * above in place even if you add a `FeatureSwitchKey.RedemptionCodes` check
  * elsewhere — they are what makes minting and tracing safe.
  */
-import {
-  createHandler,
-  createSafeErrorHandler,
-  tsr,
-} from "../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
 import {
   zeroRedemptionCodesMintContract,
   zeroRedemptionCodesListContract,
@@ -117,10 +113,10 @@ const listRouter = tsr.router(zeroRedemptionCodesListContract, {
 });
 
 const mintHandler = createHandler(zeroRedemptionCodesMintContract, mintRouter, {
-  errorHandler: createSafeErrorHandler("zero-redemption-codes:mint"),
+  routeName: "zero.redemption-codes.mint",
 });
 const listHandler = createHandler(zeroRedemptionCodesListContract, listRouter, {
-  errorHandler: createSafeErrorHandler("zero-redemption-codes:list"),
+  routeName: "zero.redemption-codes.list",
 });
 
 export { mintHandler as POST, listHandler as GET };

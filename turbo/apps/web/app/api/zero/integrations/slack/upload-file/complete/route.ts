@@ -56,6 +56,8 @@ const router = tsr.router(integrationsSlackUploadCompleteContract, {
   },
 });
 
-const handler = createHandler(integrationsSlackUploadCompleteContract, router);
+const handler = createHandler(integrationsSlackUploadCompleteContract, router, {
+  routeName: "zero.integrations.slack.upload-file.complete",
+});
 
 export { handler as POST };

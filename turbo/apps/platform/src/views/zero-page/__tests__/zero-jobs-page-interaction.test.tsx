@@ -162,7 +162,7 @@ describe("zero jobs page - avatar display", () => {
     });
   });
 
-  it("renders fallback avatar when avatarUrl is null (AGENT-D-013)", async () => {
+  it("renders a transparent placeholder when avatarUrl is null (AGENT-D-013)", async () => {
     setMockTeam([
       DEFAULT_AGENT,
       {
@@ -177,11 +177,14 @@ describe("zero jobs page - avatar display", () => {
     ]);
     detachedSetupPage({ context, path: "/agents" });
 
-    // Even without an avatar URL, a fallback SVG avatar should render
+    // Wait for the agent card to appear in the grid.
     await waitFor(() => {
-      const avatar = screen.getByRole("img", { name: "No Avatar Agent" });
-      expect(avatar).toBeInTheDocument();
+      expect(screen.getByText("No Avatar Agent")).toBeInTheDocument();
     });
+    // With avatarUrl=null the avatar slot is a transparent placeholder (see
+    // AgentAvatarImg) — no role="img" element is rendered for this agent, so
+    // we never flash a default preset that doesn't match the real avatar.
+    expect(screen.queryByRole("img", { name: "No Avatar Agent" })).toBeNull();
   });
 });
 

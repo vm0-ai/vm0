@@ -297,6 +297,7 @@ function errorHandler(err: unknown): TsRestResponse | void {
 }
 
 const handler = createHandler(webhookCompleteContract, router, {
+  routeName: "webhooks.agent.complete",
   errorHandler,
 });
 

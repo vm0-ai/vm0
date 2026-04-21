@@ -184,6 +184,7 @@ function errorHandler(err: unknown): TsRestResponse | void {
 }
 
 const handler = createHandler(runEventsContract, router, {
+  routeName: "agent.runs.events",
   errorHandler,
 });
 

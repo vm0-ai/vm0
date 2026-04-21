@@ -58,6 +58,7 @@ function errorHandler(err: unknown): TsRestResponse | void {
 }
 
 const handler = createHandler(zeroLogsSearchContract, router, {
+  routeName: "zero.logs.search",
   errorHandler,
 });
 

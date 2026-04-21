@@ -1,8 +1,4 @@
-import {
-  createHandler,
-  createSafeErrorHandler,
-  tsr,
-} from "../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
 import { zeroUserPreferencesContract, createErrorResponse } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import {
@@ -73,7 +69,7 @@ const router = tsr.router(zeroUserPreferencesContract, {
 });
 
 const handler = createHandler(zeroUserPreferencesContract, router, {
-  errorHandler: createSafeErrorHandler("zero-user-preferences"),
+  routeName: "zero.user-preferences",
 });
 
 export { handler as GET, handler as POST };

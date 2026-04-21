@@ -1,9 +1,5 @@
 import { eq, and, lt, sql } from "drizzle-orm";
-import {
-  createHandler,
-  createSafeErrorHandler,
-  tsr,
-} from "../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
 import { pushSubscriptionsContract } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import {
@@ -62,7 +58,7 @@ const router = tsr.router(pushSubscriptionsContract, {
 });
 
 const handler = createHandler(pushSubscriptionsContract, router, {
-  errorHandler: createSafeErrorHandler("zero-push-subscriptions"),
+  routeName: "zero.push-subscriptions",
 });
 
 export { handler as POST };

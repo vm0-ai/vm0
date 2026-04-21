@@ -1,8 +1,4 @@
-import {
-  createHandler,
-  createSafeErrorHandler,
-  tsr,
-} from "../../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
 import { zeroUsageMembersContract } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
@@ -28,7 +24,7 @@ const router = tsr.router(zeroUsageMembersContract, {
 });
 
 const handler = createHandler(zeroUsageMembersContract, router, {
-  errorHandler: createSafeErrorHandler("zero-usage-members"),
+  routeName: "zero.usage.members",
 });
 
 export { handler as GET };

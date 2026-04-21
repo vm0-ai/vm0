@@ -402,6 +402,7 @@ function errorHandler(err: unknown): TsRestResponse | void {
 }
 
 const handler = createHandler(logsListContract, router, {
+  routeName: "zero.logs",
   errorHandler,
 });
 

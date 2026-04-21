@@ -1,8 +1,4 @@
-import {
-  createHandler,
-  createSafeErrorHandler,
-  tsr,
-} from "../../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
 import { zeroSchedulesByNameContract } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
@@ -49,7 +45,7 @@ const router = tsr.router(zeroSchedulesByNameContract, {
 });
 
 const handler = createHandler(zeroSchedulesByNameContract, router, {
-  errorHandler: createSafeErrorHandler("zero-schedules:name"),
+  routeName: "zero.schedules.byName",
 });
 
 export { handler as DELETE };

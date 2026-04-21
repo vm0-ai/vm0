@@ -128,6 +128,7 @@ function errorHandler(err: unknown): TsRestResponse | void {
 }
 
 const handler = createHandler(webhookUsageContract, router, {
+  routeName: "webhooks.agent.usage",
   errorHandler,
 });
 

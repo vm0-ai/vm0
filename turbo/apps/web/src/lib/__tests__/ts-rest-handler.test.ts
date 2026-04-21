@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as Sentry from "@sentry/nextjs";
+import type { TsRestRequest } from "@ts-rest/serverless";
+import type { AppRouter } from "@ts-rest/core";
 
 vi.mock("@sentry/nextjs", () => {
   return {
@@ -8,7 +10,33 @@ vi.mock("@sentry/nextjs", () => {
   };
 });
 
-import { createSafeErrorHandler } from "../ts-rest-handler";
+// Capture the errorHandler passed to createNextHandler so tests can invoke it
+// directly without spinning up a real Next.js server.
+type ResolvedErrorHandler = (err: unknown, req: TsRestRequest) => unknown;
+let capturedErrorHandler: ResolvedErrorHandler | undefined;
+
+vi.mock("@ts-rest/serverless/next", async (importOriginal) => {
+  const original =
+    await importOriginal<typeof import("@ts-rest/serverless/next")>();
+  return {
+    ...original,
+    createNextHandler: (
+      _contract: AppRouter,
+      _router: unknown,
+      options: { errorHandler?: ResolvedErrorHandler },
+    ) => {
+      capturedErrorHandler = options.errorHandler;
+      // Return a no-op handler — tests only exercise the errorHandler
+      return () => {
+        return Promise.resolve(new Response());
+      };
+    },
+  };
+});
+
+import { initContract } from "@ts-rest/core";
+import { z } from "zod";
+import { createSafeErrorHandler, createHandler, tsr } from "../ts-rest-handler";
 import { badRequest, notFound, forbidden } from "../shared/errors";
 
 describe("createSafeErrorHandler", () => {
@@ -73,5 +101,108 @@ describe("createSafeErrorHandler", () => {
       mechanism: { type: "ts-rest-handler", handled: true },
       captureContext: { tags: { route: "test-route" } },
     });
+  });
+
+  it("maps malformed JSON body SyntaxError to 400 without Sentry", async () => {
+    const err = new SyntaxError("Bad escaped character in JSON at position 18");
+    const response = handler(err);
+    expect(response).toBeDefined();
+    expect(response!.status).toBe(400);
+    const body = await response!.json();
+    expect(body.error.code).toBe("BAD_REQUEST");
+    expect(body.error.message).toBe("Invalid JSON in request body");
+    expect(vi.mocked(Sentry.captureException)).not.toHaveBeenCalled();
+  });
+});
+
+describe("createHandler per-operation dispatch", () => {
+  // Minimal two-operation contract: one GET (list) and one POST (create).
+  const c = initContract();
+  const twoOpContract = c.router({
+    list: {
+      method: "GET",
+      path: "/api/test",
+      responses: { 200: z.object({ items: z.array(z.string()) }) },
+    },
+    create: {
+      method: "POST",
+      path: "/api/test",
+      body: z.object({ name: z.string() }),
+      responses: { 201: z.object({ id: z.string() }) },
+    },
+  });
+
+  // Minimal router stubs — createNextHandler is mocked so these are never called.
+  const router = tsr.router(twoOpContract, {
+    list: async () => {
+      return { status: 200 as const, body: { items: [] } };
+    },
+    create: async () => {
+      return { status: 201 as const, body: { id: "x" } };
+    },
+  });
+
+  beforeEach(() => {
+    capturedErrorHandler = undefined;
+  });
+
+  it("routes GET errors to the list operation handler", async () => {
+    createHandler(twoOpContract, router, { routeName: "test" });
+    expect(capturedErrorHandler).toBeDefined();
+
+    const fakeReq = { method: "GET", route: "/api/test" } as TsRestRequest;
+    const err = new Error("list failure");
+    const response = await capturedErrorHandler!(err, fakeReq);
+    expect(response).toBeDefined();
+    // Sentry tag should carry the per-operation route name
+    expect(vi.mocked(Sentry.captureException)).toHaveBeenCalledWith(err, {
+      mechanism: { type: "ts-rest-handler", handled: true },
+      captureContext: { tags: { route: "test.list" } },
+    });
+  });
+
+  it("routes POST errors to the create operation handler", async () => {
+    createHandler(twoOpContract, router, { routeName: "test" });
+    expect(capturedErrorHandler).toBeDefined();
+
+    const fakeReq = { method: "POST", route: "/api/test" } as TsRestRequest;
+    const err = new Error("create failure");
+    const response = await capturedErrorHandler!(err, fakeReq);
+    expect(response).toBeDefined();
+    expect(vi.mocked(Sentry.captureException)).toHaveBeenCalledWith(err, {
+      mechanism: { type: "ts-rest-handler", handled: true },
+      captureContext: { tags: { route: "test.create" } },
+    });
+  });
+
+  it("falls back to base routeName when operation is not found in the map", async () => {
+    createHandler(twoOpContract, router, { routeName: "test" });
+    expect(capturedErrorHandler).toBeDefined();
+
+    const fakeReq = {
+      method: "DELETE",
+      route: "/api/unknown",
+    } as TsRestRequest;
+    const err = new Error("unknown failure");
+    await capturedErrorHandler!(err, fakeReq);
+    expect(vi.mocked(Sentry.captureException)).toHaveBeenCalledWith(err, {
+      mechanism: { type: "ts-rest-handler", handled: true },
+      captureContext: { tags: { route: "test" } },
+    });
+  });
+
+  it("uses custom errorHandler when provided, bypassing per-operation dispatch", async () => {
+    const customHandler = vi.fn().mockReturnValue(undefined);
+    createHandler(twoOpContract, router, {
+      routeName: "test",
+      errorHandler: customHandler,
+    });
+    expect(capturedErrorHandler).toBeDefined();
+
+    const fakeReq = { method: "GET", route: "/api/test" } as TsRestRequest;
+    const err = new Error("custom error");
+    await capturedErrorHandler!(err, fakeReq);
+    expect(customHandler).toHaveBeenCalledWith(err);
+    expect(vi.mocked(Sentry.captureException)).not.toHaveBeenCalled();
   });
 });

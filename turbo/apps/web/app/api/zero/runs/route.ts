@@ -1,9 +1,5 @@
 import { eq } from "drizzle-orm";
-import {
-  createHandler,
-  createSafeErrorHandler,
-  tsr,
-} from "../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
 import { zeroRunsMainContract } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import {
@@ -154,7 +150,7 @@ const router = tsr.router(zeroRunsMainContract, {
 });
 
 const handler = createHandler(zeroRunsMainContract, router, {
-  errorHandler: createSafeErrorHandler("zero-runs"),
+  routeName: "zero.runs",
 });
 
 export { handler as POST };

@@ -105,6 +105,7 @@ function errorHandler(err: unknown): TsRestResponse | void {
 }
 
 const handler = createHandler(webhookCheckpointsContract, router, {
+  routeName: "webhooks.agent.checkpoints",
   errorHandler,
 });
 

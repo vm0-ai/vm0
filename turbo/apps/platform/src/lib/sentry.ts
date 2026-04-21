@@ -1,4 +1,5 @@
 import * as Sentry from "@sentry/react";
+import { ApiError } from "./accept";
 
 // Initialize Sentry synchronously so that global error/unhandledrejection
 // handlers are installed before the app bootstraps. Errors during bootstrap
@@ -24,7 +25,7 @@ export function initSentry(): void {
     tracesSampleRate: 0,
 
     // Filter out expected errors
-    beforeSend(event) {
+    beforeSend(event, hint) {
       // Filter out 4xx client errors that are expected
       const statusCode = event.contexts?.response?.status_code;
       if (
@@ -34,6 +35,28 @@ export function initSentry(): void {
       ) {
         return null;
       }
+
+      // ApiError thrown by accept() carries status+code. Use them to:
+      //  (a) drop 4xx, which are expected business states, and
+      //  (b) for 5xx, regroup by (status, code) so Sentry stops collapsing
+      //      every API error under the generic accept.ts frame.
+      const original = hint?.originalException;
+      if (original instanceof ApiError) {
+        if (original.status >= 400 && original.status < 500) {
+          return null;
+        }
+        event.fingerprint = [
+          "api-error",
+          String(original.status),
+          original.code,
+        ];
+        event.tags = {
+          ...event.tags,
+          "api.status": original.status,
+          "api.code": original.code,
+        };
+      }
+
       return event;
     },
 

@@ -109,6 +109,7 @@ function errorHandler(err: unknown): TsRestResponse | void {
 }
 
 const handler = createHandler(webhookConnectorBillingContract, router, {
+  routeName: "webhooks.agent.connector-billing",
   errorHandler,
 });
 

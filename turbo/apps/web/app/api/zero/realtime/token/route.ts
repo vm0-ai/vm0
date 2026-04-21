@@ -22,6 +22,8 @@ const router = tsr.router(platformRealtimeTokenContract, {
   },
 });
 
-const handler = createHandler(platformRealtimeTokenContract, router);
+const handler = createHandler(platformRealtimeTokenContract, router, {
+  routeName: "zero.realtime.token",
+});
 
 export { handler as POST };

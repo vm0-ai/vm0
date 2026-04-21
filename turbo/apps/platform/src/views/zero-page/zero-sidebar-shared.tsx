@@ -5,7 +5,6 @@ import { currentChatAgentDisplayName$ } from "../../signals/agent-chat.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { resolveAvatarUrl, resolveAvatarSvgConfig } from "./avatar-utils.ts";
 import { AvatarSvgPreview } from "./avatar-svg-preview.tsx";
-import { getAvatarPresets } from "./zero-avatars.ts";
 
 /**
  * Returns label/placeholder strings that vary based on the UnifyChatThreads
@@ -25,14 +24,6 @@ export function useChatThreadsTitleLabels() {
   };
 }
 
-/**
- * Fallback preset config used when the agent hasn't loaded yet or has no avatar.
- * Matches preset:0 — the default avatar.
- */
-function getFallbackConfig() {
-  return getAvatarPresets()[0];
-}
-
 interface AgentAvatarState {
   /** Resolved image URL, or null when SVG/loading. */
   src: string | null;
@@ -43,7 +34,7 @@ interface AgentAvatarState {
 /**
  * Reactive hook that returns the agent avatar state from the DB.
  * Returns `{ src: null, rawAvatarUrl: null }` while the agent id is unknown
- * (still loading) to avoid flashing an incorrect fallback.
+ * (still loading) or the agent has no avatar set.
  */
 function useAgentAvatarState(id: string): AgentAvatarState {
   const resolved = useLastResolved(agents$);
@@ -93,15 +84,7 @@ export function AvatarFromUrl({
       <img src={src} alt={alt} className={className} data-testid={testId} />
     );
   }
-  return (
-    <AvatarSvgPreview
-      config={getFallbackConfig()}
-      size={size}
-      className={className}
-      alt={alt}
-      data-testid={testId}
-    />
-  );
+  return <span className={className} aria-hidden="true" data-testid={testId} />;
 }
 
 /** Reactive avatar image that respects DB-persisted and user overrides. */
@@ -141,14 +124,8 @@ export function AgentAvatarImg({
     );
   }
 
-  // Fallback: default preset SVG
-  return (
-    <AvatarSvgPreview
-      config={getFallbackConfig()}
-      size={size}
-      className={className}
-      alt={alt}
-      data-testid={testId}
-    />
-  );
+  // Transparent placeholder: reserves the avatar's box so layout doesn't shift
+  // while the agent (or its avatarUrl) is still loading, and avoids flashing a
+  // default preset that doesn't match the agent's real avatar.
+  return <span className={className} aria-hidden="true" data-testid={testId} />;
 }

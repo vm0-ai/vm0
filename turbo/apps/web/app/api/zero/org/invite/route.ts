@@ -1,8 +1,4 @@
-import {
-  createHandler,
-  createSafeErrorHandler,
-  tsr,
-} from "../../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
 import { zeroOrgInviteContract, createErrorResponse } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
@@ -83,7 +79,7 @@ const router = tsr.router(zeroOrgInviteContract, {
 });
 
 const handler = createHandler(zeroOrgInviteContract, router, {
-  errorHandler: createSafeErrorHandler("zero-org-invite"),
+  routeName: "zero.org.invite",
 });
 
 export { handler as POST, handler as DELETE };

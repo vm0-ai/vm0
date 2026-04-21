@@ -1,8 +1,4 @@
-import {
-  createHandler,
-  createSafeErrorHandler,
-  tsr,
-} from "../../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
 import { zeroBillingStatusContract } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
@@ -39,7 +35,7 @@ const router = tsr.router(zeroBillingStatusContract, {
 });
 
 const handler = createHandler(zeroBillingStatusContract, router, {
-  errorHandler: createSafeErrorHandler("zero-billing-status"),
+  routeName: "zero.billing.status",
 });
 
 export { handler as GET };

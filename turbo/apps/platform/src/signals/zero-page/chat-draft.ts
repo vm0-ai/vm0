@@ -1,8 +1,9 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
 import { resetSignal, createDeferredPromise } from "../utils.ts";
 import { currentChatThreadId$ } from "../agent-chat.ts";
-import { fetch$ } from "../fetch.ts";
-import type { PersistedAttachment } from "@vm0/core";
+import { zeroClient$ } from "../api-client.ts";
+import { accept } from "../../lib/accept.ts";
+import { zeroUploadsContract, type PersistedAttachment } from "@vm0/core";
 
 // ---------------------------------------------------------------------------
 // Attachment types (moved from zero-chat.ts)
@@ -42,7 +43,8 @@ function createChatAttachment(file: File): ZeroChatAttachment {
   });
 
   const upload$ = command(async ({ get, set }, signal: AbortSignal) => {
-    const fetchFn = get(fetch$);
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroUploadsContract);
     const formData = new FormData();
     formData.append("file", file);
 
@@ -50,33 +52,13 @@ function createChatAttachment(file: File): ZeroChatAttachment {
     const deferred = createDeferredPromise<FileInfo>(uploadSignal);
     set(internalPromise$, deferred.promise);
 
-    const res = await fetchFn("/api/zero/uploads", {
-      method: "POST",
-      body: formData,
-      signal: uploadSignal,
-    });
+    const result = await accept(
+      client.upload({ body: formData, fetchOptions: { signal: uploadSignal } }),
+      [200],
+    );
     signal.throwIfAborted();
 
-    if (!res.ok) {
-      const err = (await res.json().catch(() => {
-        return null;
-      })) as {
-        error?: { message?: string };
-      } | null;
-      throw new Error(
-        err?.error?.message ?? `Upload failed: ${res.statusText}`,
-      );
-    }
-
-    const data = (await res.json()) as {
-      id: string;
-      filename: string;
-      contentType: string;
-      size: number;
-      url: string;
-    };
-
-    deferred.resolve({ id: data.id, url: data.url });
+    deferred.resolve({ id: result.body.id, url: result.body.url });
   });
 
   return {

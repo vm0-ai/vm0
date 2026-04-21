@@ -106,6 +106,7 @@ function errorHandler(err: unknown): TsRestResponse | void {
 }
 
 const handler = createHandler(runnersHeartbeatContract, router, {
+  routeName: "runners.heartbeat",
   errorHandler,
 });
 

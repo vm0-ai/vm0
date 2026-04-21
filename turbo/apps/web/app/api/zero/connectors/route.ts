@@ -1,8 +1,4 @@
-import {
-  createHandler,
-  createSafeErrorHandler,
-  tsr,
-} from "../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
 import {
   zeroConnectorsMainContract,
   getConnectorProvidedSecretNames,
@@ -51,7 +47,7 @@ const router = tsr.router(zeroConnectorsMainContract, {
 });
 
 const handler = createHandler(zeroConnectorsMainContract, router, {
-  errorHandler: createSafeErrorHandler("zero-connectors"),
+  routeName: "zero.connectors",
 });
 
 export { handler as GET };

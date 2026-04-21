@@ -1,8 +1,4 @@
-import {
-  createHandler,
-  createSafeErrorHandler,
-  tsr,
-} from "../../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
 import { zeroOrgDeleteContract, createErrorResponse } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
@@ -61,7 +57,7 @@ const router = tsr.router(zeroOrgDeleteContract, {
 });
 
 const handler = createHandler(zeroOrgDeleteContract, router, {
-  errorHandler: createSafeErrorHandler("zero-org-delete"),
+  routeName: "zero.org.delete",
 });
 
 export { handler as POST };

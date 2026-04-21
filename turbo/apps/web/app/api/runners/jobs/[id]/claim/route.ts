@@ -232,6 +232,7 @@ function errorHandler(err: unknown): TsRestResponse | void {
 }
 
 const handler = createHandler(runnersJobClaimContract, router, {
+  routeName: "runners.jobs.claim",
   errorHandler,
 });
 

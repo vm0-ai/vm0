@@ -1,11 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { onboardingCompleteContract } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
-import {
-  createHandler,
-  createSafeErrorHandler,
-  tsr,
-} from "../../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
 import { orgMembersMetadata } from "../../../../../src/db/schema/org-members-metadata";
@@ -98,7 +94,7 @@ const router = tsr.router(onboardingCompleteContract, {
 });
 
 const handler = createHandler(onboardingCompleteContract, router, {
-  errorHandler: createSafeErrorHandler("onboarding-complete"),
+  routeName: "zero.onboarding.complete",
 });
 
 export { handler as POST };

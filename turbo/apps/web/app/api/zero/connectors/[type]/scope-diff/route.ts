@@ -1,8 +1,4 @@
-import {
-  createHandler,
-  createSafeErrorHandler,
-  tsr,
-} from "../../../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../../../src/lib/ts-rest-handler";
 import {
   zeroConnectorScopeDiffContract,
   createErrorResponse,
@@ -36,7 +32,7 @@ const router = tsr.router(zeroConnectorScopeDiffContract, {
 });
 
 const handler = createHandler(zeroConnectorScopeDiffContract, router, {
-  errorHandler: createSafeErrorHandler("zero-connectors:scope-diff"),
+  routeName: "zero.connectors.scope-diff",
 });
 
 export { handler as GET };

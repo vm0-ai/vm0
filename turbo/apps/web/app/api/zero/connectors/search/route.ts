@@ -1,8 +1,4 @@
-import {
-  createHandler,
-  createSafeErrorHandler,
-  tsr,
-} from "../../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
 import {
   zeroConnectorsSearchContract,
   createErrorResponse,
@@ -83,7 +79,7 @@ const router = tsr.router(zeroConnectorsSearchContract, {
 });
 
 const handler = createHandler(zeroConnectorsSearchContract, router, {
-  errorHandler: createSafeErrorHandler("zero-connectors:search"),
+  routeName: "zero.connectors.search",
 });
 
 export { handler as GET };

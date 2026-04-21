@@ -331,6 +331,7 @@ function errorHandler(err: unknown): TsRestResponse | void {
 }
 
 const handler = createHandler(composesMainContract, router, {
+  routeName: "agent.composes",
   errorHandler,
 });
 

@@ -1,8 +1,4 @@
-import {
-  createHandler,
-  createSafeErrorHandler,
-  tsr,
-} from "../../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
 import { zeroOrgMembersContract, createErrorResponse } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
@@ -108,7 +104,7 @@ const router = tsr.router(zeroOrgMembersContract, {
 });
 
 const handler = createHandler(zeroOrgMembersContract, router, {
-  errorHandler: createSafeErrorHandler("zero-org-members"),
+  routeName: "zero.org.members",
 });
 
 export { handler as GET, handler as PATCH, handler as DELETE };

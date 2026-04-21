@@ -1,6 +1,6 @@
 import {
   createHandler,
-  createSafeErrorHandler,
+  createSilentErrorHandler,
   tsr,
 } from "../../../../src/lib/ts-rest-handler";
 import { zeroReportErrorContract } from "@vm0/core";
@@ -103,8 +103,12 @@ const router = tsr.router(zeroReportErrorContract, {
   },
 });
 
+// Use the silent variant: this endpoint *is* the error sink. If it fails,
+// forwarding that failure to Sentry would create a self-referential echo —
+// server logs already carry full context at error level.
 const handler = createHandler(zeroReportErrorContract, router, {
-  errorHandler: createSafeErrorHandler("zero-report-error"),
+  routeName: "zero.report-error",
+  errorHandler: createSilentErrorHandler("zero.report-error"),
 });
 
 export { handler as POST };

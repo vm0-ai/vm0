@@ -1,8 +1,4 @@
-import {
-  createHandler,
-  tsr,
-  createSafeErrorHandler,
-} from "../../../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../../../src/lib/ts-rest-handler";
 import { webhookCheckpointsPrepareHistoryContract } from "@vm0/core";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
@@ -115,7 +111,7 @@ const handler = createHandler(
   webhookCheckpointsPrepareHistoryContract,
   router,
   {
-    errorHandler: createSafeErrorHandler("webhook:checkpoints:prepare-history"),
+    routeName: "webhooks.agent.checkpoints.prepare-history",
   },
 );
 
