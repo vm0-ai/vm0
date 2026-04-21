@@ -1292,8 +1292,8 @@ jobs:
         with:
           name: cli-dist
           path: /tmp/cli-deploy
-      - name: Link CLI globally
-        run: cd /tmp/cli-deploy && sudo npm link
+      - name: Install CLI globally
+        run: sudo npm install -g /tmp/cli-deploy
       - name: Download E2E test tokens
         uses: actions/download-artifact@v8
         with:
@@ -1774,8 +1774,8 @@ jobs:
         with:
           name: cli-dist
           path: /tmp/cli-deploy
-      - name: Link CLI globally
-        run: cd /tmp/cli-deploy && sudo npm link
+      - name: Install CLI globally
+        run: sudo npm install -g /tmp/cli-deploy
       - name: Download E2E test tokens
         uses: actions/download-artifact@v8
         with:
@@ -1831,8 +1831,8 @@ jobs:
         with:
           name: cli-dist
           path: /tmp/cli-deploy
-      - name: Link CLI globally
-        run: cd /tmp/cli-deploy && sudo npm link
+      - name: Install CLI globally
+        run: sudo npm install -g /tmp/cli-deploy
       - name: Install GNU parallel for bats
         run: sudo curl -sL https://raw.githubusercontent.com/martinda/gnu-parallel/master/src/parallel -o /usr/local/bin/parallel && sudo chmod +x /usr/local/bin/parallel
       - name: Download E2E test tokens
