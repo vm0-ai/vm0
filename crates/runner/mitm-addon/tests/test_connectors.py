@@ -1861,6 +1861,49 @@ class TestForwardRequestSecurity:
         assert result is None
 
 
+class TestForwardRequestResourceCleanup:
+    """Regression tests for #10476: urllib response/HTTPError must be closed
+    or sustained auth.base URL-rewrite traffic will leak sockets and
+    eventually exhaust the mitmproxy process FD limit.
+    """
+
+    def test_closes_response_on_success(self):
+        resp = MagicMock()
+        resp.__enter__.return_value = resp
+        resp.status = 200
+        resp.read.return_value = b"ok"
+        resp.headers = {"Content-Type": "application/json"}
+        with patch.object(auth._opener, "open", return_value=resp):
+            status, body, _ = auth._forward_request_sync("https://example.com", "GET", {}, None)
+        assert status == 200
+        assert body == b"ok"
+        resp.__exit__.assert_called_once()
+
+    def test_closes_httperror_on_error(self):
+        err = urllib.error.HTTPError(
+            "https://example.com", 500, "Server Error", {}, io.BytesIO(b"oops")
+        )
+        err.close = MagicMock(wraps=err.close)
+        with patch.object(auth._opener, "open", side_effect=err):
+            status, body, _ = auth._forward_request_sync("https://example.com", "GET", {}, None)
+        assert status == 500
+        assert body == b"oops"
+        err.close.assert_called_once()
+
+    def test_closes_response_when_read_raises(self):
+        resp = MagicMock()
+        resp.__enter__.return_value = resp
+        resp.status = 200
+        resp.read.side_effect = OSError("socket closed")
+        resp.headers = {}
+        with (
+            patch.object(auth._opener, "open", return_value=resp),
+            pytest.raises(OSError, match="socket closed"),
+        ):
+            auth._forward_request_sync("https://example.com", "GET", {}, None)
+        resp.__exit__.assert_called_once()
+
+
 # =========================================================================
 # auth.base URL rewriting
 # =========================================================================

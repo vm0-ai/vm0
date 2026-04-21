@@ -277,10 +277,14 @@ def _forward_request_sync(
             continue
         req.add_header(k, v)
     try:
-        resp = _opener.open(req, timeout=30)
-        return resp.status, resp.read(), _filter_response_headers(dict(resp.headers))
+        with _opener.open(req, timeout=30) as resp:
+            return resp.status, resp.read(), _filter_response_headers(dict(resp.headers))
     except urllib.error.HTTPError as e:
-        return e.code, e.read(), _filter_response_headers(dict(e.headers))
+        # HTTPError wraps an open socket; context-manage it or the fd leaks
+        # (sustained auth.base URL-rewrite traffic would eventually exhaust
+        # the mitmproxy process FD limit).
+        with e:
+            return e.code, e.read(), _filter_response_headers(dict(e.headers))
 
 
 async def forward_request(
