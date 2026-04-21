@@ -44,7 +44,6 @@ import {
 } from "./context/resolve-source";
 
 // Re-exports for API compatibility
-export { MODEL_PROVIDER_ENV_VARS } from "./context/resolve-model-provider";
 export {
   filterSecretConnectorMap,
   applyConnectorPolicies,
