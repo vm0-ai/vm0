@@ -590,50 +590,6 @@ describe("POST /api/zero/chat/messages", () => {
         expect(override.selectedModel).toBe("claude-opus-4-7");
       });
 
-      it("clears the thread override when modelSelection is null", async () => {
-        const providerId = await getTestModelProviderIdByType(
-          user.orgId,
-          "anthropic-api-key",
-        );
-
-        // Seed an override via the first send.
-        const first = await POST(
-          createTestRequest(URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              agentId,
-              prompt: "with override",
-              modelSelection: {
-                modelProviderId: providerId,
-                selectedModel: "claude-opus-4-7",
-              },
-            }),
-          }),
-        );
-        expect(first.status).toBe(201);
-        const { threadId } = await first.json();
-
-        // Now clear it explicitly.
-        const clear = await POST(
-          createTestRequest(URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              agentId,
-              prompt: "reset to default",
-              threadId,
-              modelSelection: null,
-            }),
-          }),
-        );
-        expect(clear.status).toBe(201);
-
-        const override = await getTestChatThreadModelOverride(threadId);
-        expect(override.modelProviderId).toBeNull();
-        expect(override.selectedModel).toBeNull();
-      });
-
       it("leaves the thread override untouched when modelSelection is omitted", async () => {
         const providerId = await getTestModelProviderIdByType(
           user.orgId,
@@ -675,6 +631,174 @@ describe("POST /api/zero/chat/messages", () => {
         const override = await getTestChatThreadModelOverride(threadId);
         expect(override.modelProviderId).toBe(providerId);
         expect(override.selectedModel).toBe("claude-opus-4-7");
+      });
+
+      it("rejects modelSelection change on an existing thread", async () => {
+        const providerId = await getTestModelProviderIdByType(
+          user.orgId,
+          "anthropic-api-key",
+        );
+
+        // Seed a thread with stored values on its first send.
+        const first = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              agentId,
+              prompt: "first",
+              modelSelection: {
+                modelProviderId: providerId,
+                selectedModel: "claude-opus-4-7",
+              },
+            }),
+          }),
+        );
+        expect(first.status).toBe(201);
+        const { threadId } = await first.json();
+
+        const response = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              agentId,
+              prompt: "switch model",
+              threadId,
+              modelSelection: {
+                modelProviderId: providerId,
+                selectedModel: "claude-sonnet-4-6",
+              },
+            }),
+          }),
+        );
+        expect(response.status).toBe(400);
+        const data = await response.json();
+        expect(data.error.code).toBe("BAD_REQUEST");
+      });
+
+      it("allows modelSelection on existing thread when values match stored", async () => {
+        const providerId = await getTestModelProviderIdByType(
+          user.orgId,
+          "anthropic-api-key",
+        );
+
+        const first = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              agentId,
+              prompt: "first",
+              modelSelection: {
+                modelProviderId: providerId,
+                selectedModel: "claude-opus-4-7",
+              },
+            }),
+          }),
+        );
+        expect(first.status).toBe(201);
+        const { threadId } = await first.json();
+
+        const response = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              agentId,
+              prompt: "follow up",
+              threadId,
+              modelSelection: {
+                modelProviderId: providerId,
+                selectedModel: "claude-opus-4-7",
+              },
+            }),
+          }),
+        );
+        expect(response.status).toBe(201);
+      });
+
+      it("rejects modelSelection that clears (null) on an existing thread with stored values", async () => {
+        const providerId = await getTestModelProviderIdByType(
+          user.orgId,
+          "anthropic-api-key",
+        );
+
+        const first = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              agentId,
+              prompt: "first",
+              modelSelection: {
+                modelProviderId: providerId,
+                selectedModel: "claude-opus-4-7",
+              },
+            }),
+          }),
+        );
+        expect(first.status).toBe(201);
+        const { threadId } = await first.json();
+
+        const response = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              agentId,
+              prompt: "reset",
+              threadId,
+              modelSelection: null,
+            }),
+          }),
+        );
+        expect(response.status).toBe(400);
+        const data = await response.json();
+        expect(data.error.code).toBe("BAD_REQUEST");
+      });
+
+      it("accepts first modelSelection on a freshly-created thread", async () => {
+        const providerId = await getTestModelProviderIdByType(
+          user.orgId,
+          "anthropic-api-key",
+        );
+
+        // Create a thread with no modelSelection — stored values remain null.
+        const create = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              agentId,
+              prompt: "greet",
+            }),
+          }),
+        );
+        expect(create.status).toBe(201);
+        const { threadId } = await create.json();
+
+        const override = await getTestChatThreadModelOverride(threadId);
+        expect(override.modelProviderId).toBeNull();
+        expect(override.selectedModel).toBeNull();
+
+        // First modelSelection on this thread must be accepted.
+        const response = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              agentId,
+              prompt: "with override",
+              threadId,
+              modelSelection: {
+                modelProviderId: providerId,
+                selectedModel: "claude-opus-4-7",
+              },
+            }),
+          }),
+        );
+        expect(response.status).toBe(201);
       });
 
       it("rejects a providerId from a different org", async () => {

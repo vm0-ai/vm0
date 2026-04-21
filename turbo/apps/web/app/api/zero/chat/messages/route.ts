@@ -145,6 +145,39 @@ async function resolveRunModelOverride(
 }
 
 /**
+ * Once a thread has stored modelProviderId + selectedModel, those values are
+ * immutable. The picker is disabled on existing threads, so this guard
+ * rejects out-of-band/manual API callers that try to change or clear them.
+ */
+async function rejectIfThreadModelLocked(
+  threadId: string,
+  incoming: { modelProviderId: string; selectedModel: string } | null,
+): Promise<boolean> {
+  const [existing] = await globalThis.services.db
+    .select({
+      modelProviderId: chatThreads.modelProviderId,
+      selectedModel: chatThreads.selectedModel,
+    })
+    .from(chatThreads)
+    .where(eq(chatThreads.id, threadId))
+    .limit(1);
+  if (
+    !existing ||
+    existing.modelProviderId === null ||
+    existing.selectedModel === null
+  ) {
+    return false;
+  }
+  if (incoming === null) {
+    return true;
+  }
+  return (
+    existing.modelProviderId !== incoming.modelProviderId ||
+    existing.selectedModel !== incoming.selectedModel
+  );
+}
+
+/**
  * Resolve an existing thread or create a new one.
  * Returns thread metadata needed for run creation and title generation.
  */
@@ -298,6 +331,22 @@ const router = tsr.router(chatMessagesContract, {
           },
         };
       }
+    }
+
+    if (
+      body.threadId !== undefined &&
+      body.modelSelection !== undefined &&
+      (await rejectIfThreadModelLocked(body.threadId, body.modelSelection))
+    ) {
+      return {
+        status: 400 as const,
+        body: {
+          error: {
+            message: "Cannot change model on an existing thread",
+            code: "BAD_REQUEST" as const,
+          },
+        },
+      };
     }
 
     try {

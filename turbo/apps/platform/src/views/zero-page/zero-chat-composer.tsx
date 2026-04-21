@@ -154,6 +154,8 @@ interface ZeroChatComposerProps {
      * base URL differs are disabled to preserve session continuity.
      */
     sessionProviderType: ModelProviderType | null;
+    // When true, picker is read-only (e.g. existing chat thread).
+    disabled?: boolean;
   };
 }
 
@@ -928,6 +930,7 @@ export function ZeroChatComposer({
                     )}
                     sessionProviderType={modelPicker.sessionProviderType}
                     compactTrigger
+                    disabled={modelPicker.disabled}
                   />
                 )}
                 <MicButton

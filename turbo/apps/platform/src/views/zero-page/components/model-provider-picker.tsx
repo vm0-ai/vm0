@@ -70,6 +70,8 @@ interface ModelProviderPickerProps {
    * space is tight and the full breakdown lives in the open dropdown.
    */
   compactTrigger?: boolean;
+  // When true, picker is read-only (e.g. existing chat thread).
+  disabled?: boolean;
 }
 
 // Radix Select reserves the empty string for "no value" and throws if a
@@ -171,6 +173,44 @@ function TriggerLabel({
   );
 }
 
+function DisabledPickerLabel({
+  providers,
+  value,
+  placeholder,
+  compactTrigger,
+  triggerClassName,
+}: Pick<
+  ModelProviderPickerProps,
+  "providers" | "value" | "placeholder" | "compactTrigger" | "triggerClassName"
+> & {
+  placeholder: string;
+  compactTrigger: boolean;
+}) {
+  const defaultModelName = resolveDefaultModel(providers);
+  const triggerAriaLabel = value
+    ? getModelDisplayName(value.selectedModel)
+    : defaultModelName !== null
+      ? getModelDisplayName(defaultModelName)
+      : placeholder;
+  return (
+    <span
+      aria-label={triggerAriaLabel}
+      className={cn(
+        "inline-flex items-center px-2 text-sm text-muted-foreground",
+        triggerClassName,
+      )}
+    >
+      <TriggerLabel
+        providers={providers}
+        value={value}
+        defaultModelName={defaultModelName}
+        placeholder={placeholder}
+        compact={compactTrigger}
+      />
+    </span>
+  );
+}
+
 export function ModelProviderPicker({
   providers,
   value,
@@ -179,7 +219,20 @@ export function ModelProviderPicker({
   triggerClassName,
   sessionProviderType,
   compactTrigger = false,
+  disabled = false,
 }: ModelProviderPickerProps) {
+  if (disabled) {
+    return (
+      <DisabledPickerLabel
+        providers={providers}
+        value={value}
+        placeholder={placeholder}
+        compactTrigger={compactTrigger}
+        triggerClassName={triggerClassName}
+      />
+    );
+  }
+
   const groups = providers
     .map((provider) => {
       const typeConfig = MODEL_PROVIDER_TYPES[provider.type];
