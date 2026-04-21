@@ -3,8 +3,7 @@ import { resetSignal, createDeferredPromise } from "../utils.ts";
 import { currentChatThreadId$ } from "../agent-chat.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
-import { zeroUploadsContract } from "@vm0/core";
-import type { PersistedAttachment } from "@vm0/core";
+import { zeroUploadsContract, type PersistedAttachment } from "@vm0/core";
 
 // ---------------------------------------------------------------------------
 // Attachment types (moved from zero-chat.ts)
@@ -54,7 +53,7 @@ function createChatAttachment(file: File): ZeroChatAttachment {
     set(internalPromise$, deferred.promise);
 
     const result = await accept(
-      client.upload({ body: formData }, { signal: uploadSignal }),
+      client.upload({ body: formData, fetchOptions: { signal: uploadSignal } }),
       [200],
     );
     signal.throwIfAborted();
