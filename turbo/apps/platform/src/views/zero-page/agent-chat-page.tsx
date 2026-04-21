@@ -495,8 +495,6 @@ export function AgentChatPage() {
 
   const suggestedPrompts = useGet(suggestedPrompts$);
   const navigate = useSet(detachedNavigateTo$);
-  const features = useLastResolved(featureSwitch$);
-  const redeemCodeEnabled = features?.[FeatureSwitchKey.RedeemCode] ?? false;
   const pageSignal = useGet(pageSignal$);
 
   const handleSend = (text: string) => {
@@ -508,7 +506,7 @@ export function AgentChatPage() {
     <div className="relative flex flex-1 flex-col min-h-0">
       <header className="hidden md:block shrink-0 bg-transparent px-4 sm:px-6 pt-4 pb-2">
         <div className="flex justify-end items-center gap-2">
-          {redeemCodeEnabled && <RedeemCodeButton />}
+          <RedeemCodeButton />
           <ChatHeaderAction pageSignal={pageSignal} />
         </div>
       </header>
@@ -659,7 +657,7 @@ export function AgentChatPage() {
           </div>
         </div>
       </main>
-      {redeemCodeEnabled && <RedeemCodeDialog />}
+      <RedeemCodeDialog />
     </div>
   );
 }

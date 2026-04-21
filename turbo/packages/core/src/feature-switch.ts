@@ -318,13 +318,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: true,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.RedeemCode]: {
-    maintainer: "yuma@vm0.ai",
-    description:
-      "Show redeem-code gift icon and dialog in the agent chat page header",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.NanoBananaConnector]: {
     maintainer: "liangyou@vm0.ai",
     description:
