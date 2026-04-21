@@ -15,6 +15,3 @@ UPDATE "agent_runs"
 SET session_id = continued_from_session_id
 WHERE session_id IS NULL
   AND continued_from_session_id IS NOT NULL;
---> statement-breakpoint
-ALTER TABLE "agent_runs" ALTER COLUMN "session_id" SET NOT NULL;--> statement-breakpoint
-ALTER TABLE "agent_runs" ADD CONSTRAINT "agent_runs_session_id_agent_sessions_id_fk" FOREIGN KEY ("session_id") REFERENCES "public"."agent_sessions"("id") ON DELETE restrict ON UPDATE no action;
