@@ -125,14 +125,16 @@ describe("POST /api/zero/billing/downgrade", () => {
     expect(response.status).toBe(400);
   });
 
-  it("returns 500 when org has no subscription", async () => {
+  it("returns 409 when org has no subscription", async () => {
     const request = createDowngradeRequest({ targetTier: "free" });
     const response = await POST(request);
 
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(409);
+    const data = await response.json();
+    expect(data.error.code).toBe("CONFLICT");
   });
 
-  it("returns 500 when target tier is same or higher", async () => {
+  it("returns 400 when target tier is same or higher", async () => {
     const subId = uniqueId("sub-same");
     await updateOrgStripeFields(user.orgId, {
       stripeSubscriptionId: subId,
@@ -143,7 +145,9 @@ describe("POST /api/zero/billing/downgrade", () => {
     const request = createDowngradeRequest({ targetTier: "pro" });
     const response = await POST(request);
 
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(400);
+    const data = await response.json();
+    expect(data.error.code).toBe("BAD_REQUEST");
   });
 
   it("downgrades team to pro via subscription update", async () => {
