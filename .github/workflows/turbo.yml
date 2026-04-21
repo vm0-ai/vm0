@@ -1295,16 +1295,18 @@ jobs:
       - name: Install CLI globally
         run: |
           set -euo pipefail
-          NODE_PREFIX=$(npm config get prefix)
+          # Derive from `node` on PATH so sudo and user see the same prefix
+          # regardless of npmrc / env-var inheritance.
+          NODE_PREFIX=$(dirname "$(dirname "$(command -v node)")")
+          CLI_DIR="$NODE_PREFIX/lib/node_modules/@vm0/cli"
+          sudo rm -rf "$CLI_DIR"
           sudo mkdir -p "$NODE_PREFIX/lib/node_modules/@vm0"
-          sudo cp -r /tmp/cli-deploy "$NODE_PREFIX/lib/node_modules/@vm0/cli"
-          sudo chmod +x \
-            "$NODE_PREFIX/lib/node_modules/@vm0/cli/dist/index.js" \
-            "$NODE_PREFIX/lib/node_modules/@vm0/cli/dist/zero.js"
-          sudo ln -sf "$NODE_PREFIX/lib/node_modules/@vm0/cli/dist/index.js" "$NODE_PREFIX/bin/vm0"
-          sudo ln -sf "$NODE_PREFIX/lib/node_modules/@vm0/cli/dist/zero.js" "$NODE_PREFIX/bin/zero"
-          vm0 --help >/dev/null
-          zero --help >/dev/null
+          sudo cp -r /tmp/cli-deploy "$CLI_DIR"
+          sudo chmod +x "$CLI_DIR/dist/index.js" "$CLI_DIR/dist/zero.js"
+          sudo ln -sf "$CLI_DIR/dist/index.js" "$NODE_PREFIX/bin/vm0"
+          sudo ln -sf "$CLI_DIR/dist/zero.js" "$NODE_PREFIX/bin/zero"
+          vm0 --help
+          zero --help
       - name: Download E2E test tokens
         uses: actions/download-artifact@v8
         with:
@@ -1788,16 +1790,18 @@ jobs:
       - name: Install CLI globally
         run: |
           set -euo pipefail
-          NODE_PREFIX=$(npm config get prefix)
+          # Derive from `node` on PATH so sudo and user see the same prefix
+          # regardless of npmrc / env-var inheritance.
+          NODE_PREFIX=$(dirname "$(dirname "$(command -v node)")")
+          CLI_DIR="$NODE_PREFIX/lib/node_modules/@vm0/cli"
+          sudo rm -rf "$CLI_DIR"
           sudo mkdir -p "$NODE_PREFIX/lib/node_modules/@vm0"
-          sudo cp -r /tmp/cli-deploy "$NODE_PREFIX/lib/node_modules/@vm0/cli"
-          sudo chmod +x \
-            "$NODE_PREFIX/lib/node_modules/@vm0/cli/dist/index.js" \
-            "$NODE_PREFIX/lib/node_modules/@vm0/cli/dist/zero.js"
-          sudo ln -sf "$NODE_PREFIX/lib/node_modules/@vm0/cli/dist/index.js" "$NODE_PREFIX/bin/vm0"
-          sudo ln -sf "$NODE_PREFIX/lib/node_modules/@vm0/cli/dist/zero.js" "$NODE_PREFIX/bin/zero"
-          vm0 --help >/dev/null
-          zero --help >/dev/null
+          sudo cp -r /tmp/cli-deploy "$CLI_DIR"
+          sudo chmod +x "$CLI_DIR/dist/index.js" "$CLI_DIR/dist/zero.js"
+          sudo ln -sf "$CLI_DIR/dist/index.js" "$NODE_PREFIX/bin/vm0"
+          sudo ln -sf "$CLI_DIR/dist/zero.js" "$NODE_PREFIX/bin/zero"
+          vm0 --help
+          zero --help
       - name: Download E2E test tokens
         uses: actions/download-artifact@v8
         with:
@@ -1856,16 +1860,18 @@ jobs:
       - name: Install CLI globally
         run: |
           set -euo pipefail
-          NODE_PREFIX=$(npm config get prefix)
+          # Derive from `node` on PATH so sudo and user see the same prefix
+          # regardless of npmrc / env-var inheritance.
+          NODE_PREFIX=$(dirname "$(dirname "$(command -v node)")")
+          CLI_DIR="$NODE_PREFIX/lib/node_modules/@vm0/cli"
+          sudo rm -rf "$CLI_DIR"
           sudo mkdir -p "$NODE_PREFIX/lib/node_modules/@vm0"
-          sudo cp -r /tmp/cli-deploy "$NODE_PREFIX/lib/node_modules/@vm0/cli"
-          sudo chmod +x \
-            "$NODE_PREFIX/lib/node_modules/@vm0/cli/dist/index.js" \
-            "$NODE_PREFIX/lib/node_modules/@vm0/cli/dist/zero.js"
-          sudo ln -sf "$NODE_PREFIX/lib/node_modules/@vm0/cli/dist/index.js" "$NODE_PREFIX/bin/vm0"
-          sudo ln -sf "$NODE_PREFIX/lib/node_modules/@vm0/cli/dist/zero.js" "$NODE_PREFIX/bin/zero"
-          vm0 --help >/dev/null
-          zero --help >/dev/null
+          sudo cp -r /tmp/cli-deploy "$CLI_DIR"
+          sudo chmod +x "$CLI_DIR/dist/index.js" "$CLI_DIR/dist/zero.js"
+          sudo ln -sf "$CLI_DIR/dist/index.js" "$NODE_PREFIX/bin/vm0"
+          sudo ln -sf "$CLI_DIR/dist/zero.js" "$NODE_PREFIX/bin/zero"
+          vm0 --help
+          zero --help
       - name: Install GNU parallel for bats
         run: sudo curl -sL https://raw.githubusercontent.com/martinda/gnu-parallel/master/src/parallel -o /usr/local/bin/parallel && sudo chmod +x /usr/local/bin/parallel
       - name: Download E2E test tokens
