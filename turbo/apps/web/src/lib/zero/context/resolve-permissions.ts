@@ -5,6 +5,9 @@ import {
   type FirewallPolicies,
   type NetworkPolicies,
 } from "@vm0/core";
+import { logger } from "../../shared/logger";
+
+const log = logger("zero:resolve-permissions");
 
 /**
  * Filter secretConnectorMap by removing keys that are overridden by
@@ -61,19 +64,31 @@ export function mergePermissions(
   }
 
   const allConfigs = [...autoConfigs, ...connectorResults];
-  if (allConfigs.length === 0) return undefined;
   const firewalls = resolveFirewallBaseUrlVars(allConfigs, vars);
+  if (firewalls.length === 0) return undefined;
   const remainingNames = new Set(
     firewalls.map((fw) => {
       return fw.name;
     }),
   );
-  for (const name of Object.keys(networkPolicies)) {
-    if (!remainingNames.has(name)) {
-      delete networkPolicies[name];
-    }
+  const droppedNames = allConfigs
+    .map((fw) => {
+      return fw.name;
+    })
+    .filter((name) => {
+      return !remainingNames.has(name);
+    });
+  if (droppedNames.length > 0) {
+    log.warn("firewall dropped: required vars not set", {
+      names: droppedNames,
+    });
   }
-  return { firewalls, networkPolicies };
+  const cleanedNetworkPolicies = Object.fromEntries(
+    Object.entries(networkPolicies).filter(([name]) => {
+      return remainingNames.has(name);
+    }),
+  );
+  return { firewalls, networkPolicies: cleanedNetworkPolicies };
 }
 
 /** Collect all unique permission names from a firewall's APIs. */
