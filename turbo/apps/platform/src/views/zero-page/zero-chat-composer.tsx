@@ -872,7 +872,7 @@ export function ZeroChatComposer({
             )}
             <textarea
               ref={(el) => {
-                if (el && autoFocus) {
+                if (el && autoFocus && !window.matchMedia("(pointer: coarse)").matches) {
                   el.focus();
                 }
                 setInputRef?.(el);
