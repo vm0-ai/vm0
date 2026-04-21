@@ -1982,6 +1982,13 @@
       "when": 1776690330883,
       "tag": "0282_absurd_shockwave",
       "breakpoints": true
+    },
+    {
+      "idx": 283,
+      "version": "7",
+      "when": 1776764288241,
+      "tag": "0283_chunky_nighthawk",
+      "breakpoints": true
     }
   ]
 }
