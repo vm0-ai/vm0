@@ -628,6 +628,7 @@ jobs:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           ABLY_API_KEY: ${{ secrets.ABLY_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           VAPID_PUBLIC_KEY: ${{ vars.VAPID_PUBLIC_KEY }}
           VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
           CONCURRENT_RUN_LIMIT_CAP: "0"
