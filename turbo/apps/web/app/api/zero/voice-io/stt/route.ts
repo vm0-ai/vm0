@@ -77,21 +77,9 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  // 4. API key check
   const apiKey = env().OPENAI_API_KEY;
-  if (!apiKey) {
-    return NextResponse.json(
-      {
-        error: {
-          message: "OpenAI API key not configured",
-          code: "SERVICE_UNAVAILABLE",
-        },
-      },
-      { status: 503 },
-    );
-  }
 
-  // 5. Parse multipart form data
+  // 4. Parse multipart form data
   const formData = await request.formData();
   const file = formData.get("file");
 
@@ -102,7 +90,7 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  // 6. Validate file size
+  // 5. Validate file size
   if (file.size > MAX_FILE_SIZE) {
     return NextResponse.json(
       {
@@ -115,7 +103,7 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  // 7. Validate file type (strip codec suffix, e.g. "audio/webm;codecs=opus" → "audio/webm")
+  // 6. Validate file type (strip codec suffix, e.g. "audio/webm;codecs=opus" → "audio/webm")
   const baseMimeType = file.type.split(";")[0] ?? file.type;
   if (!ALLOWED_MIME_TYPES.has(baseMimeType)) {
     return NextResponse.json(
@@ -129,7 +117,7 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  // 8. Call OpenAI STT API
+  // 7. Call OpenAI STT API
   const openaiForm = new FormData();
   openaiForm.append("file", file, file.name || "audio.webm");
   openaiForm.append("model", "gpt-4o-mini-transcribe");
@@ -167,7 +155,7 @@ export async function POST(request: Request): Promise<Response> {
 
   const result = (await openaiResponse.json()) as { text: string };
 
-  // 9. Record the successful audio input for free-tier quota accounting.
+  // 8. Record the successful audio input for free-tier quota accounting.
   // Skipped on failure so infra errors don't burn the user's free quota.
   if (orgTier === "free") {
     await recordBehavior(orgId, authCtx.userId, AUDIO_INPUT_BEHAVIOR_KEY);

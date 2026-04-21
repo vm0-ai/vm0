@@ -4,7 +4,6 @@ import { FeatureSwitchKey, isFeatureEnabled } from "@vm0/core";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
 import { initServices } from "../../../../../src/lib/init-services";
 import { loadFeatureSwitchOverrides } from "../../../../../src/lib/zero/user/feature-switches-service";
-import { env } from "../../../../../src/env";
 import { createEphemeralToken } from "../../../../../src/lib/zero/voice-chat/openai-token";
 import { logger } from "../../../../../src/lib/shared/logger";
 
@@ -37,18 +36,6 @@ export async function POST(request: Request): Promise<Response> {
     return NextResponse.json(
       { error: { message: "Voice chat is not enabled", code: "FORBIDDEN" } },
       { status: 403 },
-    );
-  }
-
-  if (!env().OPENAI_API_KEY) {
-    return NextResponse.json(
-      {
-        error: {
-          message: "OpenAI API key not configured",
-          code: "SERVICE_UNAVAILABLE",
-        },
-      },
-      { status: 503 },
     );
   }
 

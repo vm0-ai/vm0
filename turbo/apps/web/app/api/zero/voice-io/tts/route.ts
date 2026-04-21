@@ -75,17 +75,6 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   const apiKey = env().OPENAI_API_KEY;
-  if (!apiKey) {
-    return NextResponse.json(
-      {
-        error: {
-          message: "OpenAI API key not configured",
-          code: "SERVICE_UNAVAILABLE",
-        },
-      },
-      { status: 503 },
-    );
-  }
 
   const response = await fetch(OPENAI_TTS_URL, {
     method: "POST",
