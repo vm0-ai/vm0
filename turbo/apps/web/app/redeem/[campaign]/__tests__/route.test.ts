@@ -75,7 +75,9 @@ describe("GET /redeem/[campaign]", () => {
     context.setupMocks();
     user = await context.setupUser();
     vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_fake");
-    vi.stubEnv("NEXT_PUBLIC_APP_URL", "http://localhost:3000");
+    // Distinct host from the request origin (localhost:3000) so assertions
+    // can verify error redirects cross over to the platform app domain.
+    vi.stubEnv("NEXT_PUBLIC_APP_URL", "http://app.localhost:3002");
     vi.stubEnv("ZERO_ONE_TIME_CAMPAIGN", CAMPAIGN_ENV);
     reloadEnv();
 
@@ -133,7 +135,7 @@ describe("GET /redeem/[campaign]", () => {
 
     expect(response.status).toBe(307);
     expect(response.headers.get("location")).toContain(
-      "/redeem/error?reason=admin_required",
+      "http://app.localhost:3002/redeem/error?reason=admin_required",
     );
   });
 
@@ -288,7 +290,7 @@ describe("GET /redeem/[campaign]", () => {
 
     expect(response.status).toBe(307);
     expect(response.headers.get("location")).toContain(
-      "/redeem/error?reason=campaign_misconfigured",
+      "http://app.localhost:3002/redeem/error?reason=campaign_misconfigured",
     );
   });
 

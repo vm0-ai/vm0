@@ -32,6 +32,7 @@ export const ROUTES = {
   reportError: "/runs/:runId/report-error",
   missionControl: "/_/mission-control",
   redemptionCodes: "/_/redemption-codes",
+  redeemError: "/redeem/error",
   skeleton: "/_/skeleton",
   error: "/_/error",
 } as const;

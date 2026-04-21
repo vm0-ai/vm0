@@ -31,13 +31,12 @@ export async function GET(
   ctx: { params: Promise<{ campaign: string }> },
 ): Promise<NextResponse> {
   initServices();
-  const { STRIPE_SECRET_KEY } = env();
-  // Use the live request origin instead of a NEXT_PUBLIC_ env var so redirects
-  // follow the host the user actually hit (bad smell #6 — NEXT_PUBLIC_ vars are
-  // bundled into client code and should not be read server-side).
+  const { STRIPE_SECRET_KEY, NEXT_PUBLIC_APP_URL } = env();
+  // Use the live request origin for /sign-in (same web host) but the platform
+  // app URL for the error page (lives at app.<domain>, not www.<domain>).
   const origin = req.nextUrl.origin;
   const errorPage = (reason: string) => {
-    return new URL(`/redeem/error?reason=${reason}`, origin);
+    return new URL(`/redeem/error?reason=${reason}`, NEXT_PUBLIC_APP_URL);
   };
   if (!STRIPE_SECRET_KEY) {
     return NextResponse.redirect(errorPage("billing_unavailable"));
