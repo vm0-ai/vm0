@@ -23,7 +23,10 @@ export default [
       // The rules below are disabled because they either have no violations in this codebase
       // or are superseded by oxlint equivalents (see .oxlintrc.json).
       //
-      // Rules moved to oxlint — see .oxlintrc.json for enforcement
+      // Rules moved to oxlint (react plugin) — same semantics, Rust-based for speed.
+      // Verified: oxlint react/rules-of-hooks catches conditional hook violations.
+      // Note: oxlint uses "react/" namespace while ESLint uses "react-hooks/" — both enforce
+      // the same React hooks constraint specification.
       "react-hooks/rules-of-hooks": "off",
       // Class component rules — irrelevant, classes are banned via no-restricted-syntax
       "react/no-direct-mutation-state": "off",
@@ -31,26 +34,37 @@ export default [
       "react/require-render-return": "off",
       "react/prop-types": "off",
       "react/no-deprecated": "off",
-      // Intentionally disabled react-hooks v7 rules: high runtime cost, no violations in
-      // codebase, and no direct oxlint equivalents. Acceptable trade-off for this project
-      // because: (a) classes are banned so component-lifecycle rules don't apply,
-      // (b) immutability and purity are enforced by code review and TypeScript readonly types,
-      // (c) set-state-in-effect / error-boundaries / refs are project patterns that are
-      // audited and currently clean.
+      // react-hooks v7 rules disabled for performance. Rationale per rule:
+      // static-components: no violations; functional component pattern is consistent
       "react-hooks/static-components": "off",
+      // use-memo: high cost, no violations; memoization decisions are reviewed manually
       "react-hooks/use-memo": "off",
+      // component-hook-factories: no violations in codebase
       "react-hooks/component-hook-factories": "off",
+      // preserve-manual-memoization: no violations; conflicts with use-memo being off
       "react-hooks/preserve-manual-memoization": "off",
+      // incompatible-library: no third-party hook libraries that trigger this
       "react-hooks/incompatible-library": "off",
+      // immutability: enforced by TypeScript readonly types and code review
       "react-hooks/immutability": "off",
+      // globals: no violations; React globals usage is consistent
       "react-hooks/globals": "off",
+      // refs: no violations; ref usage patterns are reviewed
       "react-hooks/refs": "off",
+      // set-state-in-effect: no violations; effect cleanup patterns are consistent
       "react-hooks/set-state-in-effect": "off",
+      // error-boundaries: classes are banned, so error boundary class components don't exist
       "react-hooks/error-boundaries": "off",
+      // purity: no violations; side effects are intentional and reviewed
       "react-hooks/purity": "off",
-      "react-hooks/set-state-in-render": "off",
+      // set-state-in-render: re-enabled to prevent infinite render loops
+      // (setState during render causes immediate re-render, leading to infinite loops)
+      "react-hooks/set-state-in-render": "error",
+      // unsupported-syntax: no violations; no experimental syntax used
       "react-hooks/unsupported-syntax": "off",
+      // config: no violations; no react compiler config directives used
       "react-hooks/config": "off",
+      // gating: no violations; no feature flag gating of hooks used
       "react-hooks/gating": "off",
     },
   },
