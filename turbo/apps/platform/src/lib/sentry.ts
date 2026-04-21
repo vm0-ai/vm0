@@ -24,7 +24,7 @@ export function initSentry(): void {
     tracesSampleRate: 0,
 
     // Filter out expected errors
-    beforeSend(event) {
+    beforeSend(event, hint) {
       // Filter out 4xx client errors that are expected
       const statusCode = event.contexts?.response?.status_code;
       if (
@@ -34,6 +34,33 @@ export function initSentry(): void {
       ) {
         return null;
       }
+
+      // ApiError thrown by accept() carries status+code. Use them to:
+      //  (a) drop 4xx, which are expected business states, and
+      //  (b) for 5xx, regroup by (status, code) so Sentry stops collapsing
+      //      every API error under the generic accept.ts frame.
+      const original = hint?.originalException;
+      if (
+        original instanceof Error &&
+        original.name === "ApiError" &&
+        "status" in original &&
+        "code" in original &&
+        typeof (original as { status: unknown }).status === "number" &&
+        typeof (original as { code: unknown }).code === "string"
+      ) {
+        const status = (original as { status: number }).status;
+        const code = (original as { code: string }).code;
+        if (status >= 400 && status < 500) {
+          return null;
+        }
+        event.fingerprint = ["api-error", String(status), code];
+        event.tags = {
+          ...event.tags,
+          "api.status": status,
+          "api.code": code,
+        };
+      }
+
       return event;
     },
 
