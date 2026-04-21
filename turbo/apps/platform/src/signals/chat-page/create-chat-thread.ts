@@ -31,9 +31,14 @@ import { agentById } from "../agent.ts";
 import { pinnedAgentIds$ } from "../zero-page/zero-pinned-agents.ts";
 import { writeToClipboard } from "../zero-page/clipboard.ts";
 import type { GroupedChatMessageGroup } from "./chat-message.ts";
+import {
+  createThinkingIndicatorSignals,
+  type ThinkingIndicatorSignals,
+} from "./thinking-indicator.ts";
 import { logger } from "../log.ts";
 
 export type { DraftSignals } from "../zero-page/chat-draft.ts";
+export type { ThinkingIndicatorSignals } from "./thinking-indicator.ts";
 
 const L = logger("ChatThread");
 
@@ -90,6 +95,8 @@ export interface ChatThreadSignals {
   allFinished$: Computed<Promise<boolean>>;
   fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>;
   loadPagedMessages$: Command<Promise<void>, [AbortSignal]>;
+  // ── Thinking indicator ───────────────────────────────────────────────────
+  thinkingIndicator: ThinkingIndicatorSignals;
 }
 
 // ---------------------------------------------------------------------------
@@ -970,6 +977,11 @@ export function createChatThreadSignals(
 
   const { setInputRef$, focusInput$ } = createInputRef();
 
+  const thinkingIndicator = createThinkingIndicatorSignals(
+    allFinished$,
+    groupedChatMessages$,
+  );
+
   return {
     threadData$,
     modelSelection$,
@@ -1000,6 +1012,7 @@ export function createChatThreadSignals(
     allFinished$,
     fetchNextPage$,
     loadPagedMessages$,
+    thinkingIndicator,
   };
 }
 

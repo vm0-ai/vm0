@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -165,7 +165,12 @@ describe("zero chat thread page - copy message button", () => {
       expect(screen.getByText("Hello world")).toBeInTheDocument();
     });
 
-    const copyButton = screen.getByLabelText("Copy message");
+    const assistantBubble = screen
+      .getByText("Hello world")
+      .closest("[data-role='assistant']")!;
+    const copyButton = within(assistantBubble as HTMLElement).getByLabelText(
+      "Copy message",
+    );
     await user.click(copyButton);
 
     await waitFor(() => {

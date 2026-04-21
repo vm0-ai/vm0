@@ -1,4 +1,4 @@
-import * as React from "react";
+import type { CSSProperties } from "react";
 import {
   useGet,
   useSet,
@@ -439,110 +439,24 @@ function ChatSkeleton() {
 // Thinking indicator — shown the entire time a run is active
 // ---------------------------------------------------------------------------
 
-const BLOCK_COLORS = [
-  "#e8a0b4",
-  "#c4705a",
-  "#f5b88a",
-  "#a8b560",
-  "#6bb5a0",
-  "#7baed4",
-  "#b09eda",
-  "#d4a87b",
-  "#e07878",
-  "#82c4c2",
-] as const;
-
-function useRandomBlockColors(): [string, string, string] {
-  return React.useMemo(() => {
-    const shuffled = [...BLOCK_COLORS].sort(() => Math.random() - 0.5);
-    return [shuffled[0]!, shuffled[1]!, shuffled[2]!];
-  }, []);
-}
-
-const THINKING_PHRASES = [
-  "Brewing...",
-  "Piecing together...",
-  "Spinning up...",
-  "On it...",
-  "Assembling...",
-  "Sketching out...",
-  "Mapping it...",
-  "Wiring up...",
-  "Shaping...",
-  "Tuning in...",
-] as const;
-
-const PHRASE_INTERVAL_MS = 3500;
-
-function useRotatingPhrase(active: boolean): string {
-  const [index, setIndex] = React.useState(() =>
-    Math.floor(Math.random() * THINKING_PHRASES.length),
-  );
-  React.useEffect(() => {
-    if (!active) {
-      return;
-    }
-    const id = setInterval(() => {
-      setIndex((prev) => (prev + 1) % THINKING_PHRASES.length);
-    }, PHRASE_INTERVAL_MS);
-    return () => clearInterval(id);
-  }, [active]);
-  return THINKING_PHRASES[index]!;
-}
-
-function formatDonePhrase(lastMsg: PagedChatMessage | undefined): string {
-  const phrases = [
-    (t: string) => `Wrapped up at ${t}`,
-    (t: string) => `All done — ${t}`,
-    (t: string) => `Delivered at ${t}`,
-    (t: string) => `Finished at ${t}, at your service`,
-    (t: string) => `That was a wrap — ${t}`,
-    (t: string) => `Mission complete, ${t}`,
-    (t: string) => `Signed off at ${t}`,
-    (t: string) => `Done and dusted — ${t}`,
-  ] as const;
-  const time = lastMsg
-    ? new Date(lastMsg.createdAt).toLocaleString("en-US", {
-        month: "short",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-      })
-    : "just now";
-  const pick = phrases[Math.floor(Math.random() * phrases.length)]!;
-  return pick(time);
-}
-
-function useDonePhrase(lastMsg: PagedChatMessage | undefined): string {
-  const msgId = lastMsg?.id;
-  return React.useMemo(() => {
-    return formatDonePhrase(lastMsg);
-    // Re-compute only when the message changes
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [msgId]);
-}
-
 function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
   const groups = useLastResolved(thread.groupedChatMessages$) ?? [];
   const allFinishedLoadable = useLastLoadable(thread.allFinished$);
   const runActive =
     allFinishedLoadable.state === "hasData" && !allFinishedLoadable.data;
-  const [c1, c2, c3] = useRandomBlockColors();
+  const [c1, c2, c3] = useGet(thread.thinkingIndicator.blockColors$);
   const blockStyle = {
     "--zb-c1": c1,
     "--zb-c2": c2,
     "--zb-c3": c3,
-  } as React.CSSProperties;
+  } as CSSProperties;
 
   const lastGroup = groups[groups.length - 1];
   const lastIsAssistant = lastGroup?.role === "assistant";
   const waitingForAssistant = !!lastGroup && !lastIsAssistant;
   const running = runActive || waitingForAssistant;
-  const label = useRotatingPhrase(running);
-  const lastMsg = lastIsAssistant
-    ? lastGroup.messages[lastGroup.messages.length - 1]
-    : undefined;
-  const donePhrase = useDonePhrase(lastMsg);
+  const label = useGet(thread.thinkingIndicator.rotatingPhrase$);
+  const donePhrase = useGet(thread.thinkingIndicator.donePhrase$);
 
   if (!lastGroup) {
     return null;
@@ -771,38 +685,54 @@ function PagedGroupRow({
   thread: ChatThreadSignals;
 }) {
   if (group.role === "user") {
-    return <PagedUserGroup group={group} />;
+    return <PagedUserGroup group={group} thread={thread} />;
   }
   return <PagedAssistantGroup group={group} thread={thread} />;
 }
 
-function PagedUserGroup({ group }: { group: GroupedChatMessageGroup }) {
+function PagedUserGroup({
+  group,
+  thread,
+}: {
+  group: GroupedChatMessageGroup;
+  thread: ChatThreadSignals;
+}) {
   return (
     <>
       {group.messages.map((msg) => {
-        return <PagedUserMessage key={msg.id} message={msg} />;
+        return <PagedUserMessage key={msg.id} message={msg} thread={thread} />;
       })}
     </>
   );
 }
 
-function PagedUserMessage({ message }: { message: PagedChatMessage }) {
+function PagedUserMessage({
+  message,
+  thread,
+}: {
+  message: PagedChatMessage;
+  thread: ChatThreadSignals;
+}) {
   const content = message.content ?? "";
   const { cleanContent, parsed } = parseInlineAttachments(content);
   const displayContent = cleanContent.replace(/\n/g, "  \n");
+  const pageSignal = useGet(pageSignal$);
   const setLightboxUrl = useSet(setAttachmentLightboxUrl$);
   const openLightbox = (url: string) => {
     setLightboxUrl(url);
   };
-  const [copied, setCopied] = React.useState(false);
+  const copiedId = useGet(thread.copiedMessageId$);
+  const copied = copiedId === message.id;
+  const copyMessage = useSet(thread.copyMessage$);
 
   const handleCopy = () => {
     if (!cleanContent) {
       return;
     }
-    navigator.clipboard.writeText(cleanContent);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+    detach(
+      copyMessage(message.id, cleanContent, pageSignal),
+      Reason.DomCallback,
+    );
   };
 
   const allAttachments = parsed.map((p) => {
