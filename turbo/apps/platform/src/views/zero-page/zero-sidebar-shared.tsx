@@ -84,9 +84,7 @@ export function AvatarFromUrl({
       <img src={src} alt={alt} className={className} data-testid={testId} />
     );
   }
-  return (
-    <span className={className} aria-hidden="true" data-testid={testId} />
-  );
+  return <span className={className} aria-hidden="true" data-testid={testId} />;
 }
 
 /** Reactive avatar image that respects DB-persisted and user overrides. */
@@ -129,7 +127,5 @@ export function AgentAvatarImg({
   // Transparent placeholder: reserves the avatar's box so layout doesn't shift
   // while the agent (or its avatarUrl) is still loading, and avoids flashing a
   // default preset that doesn't match the agent's real avatar.
-  return (
-    <span className={className} aria-hidden="true" data-testid={testId} />
-  );
+  return <span className={className} aria-hidden="true" data-testid={testId} />;
 }

@@ -184,9 +184,7 @@ describe("zero jobs page - avatar display", () => {
     // With avatarUrl=null the avatar slot is a transparent placeholder (see
     // AgentAvatarImg) — no role="img" element is rendered for this agent, so
     // we never flash a default preset that doesn't match the real avatar.
-    expect(
-      screen.queryByRole("img", { name: "No Avatar Agent" }),
-    ).toBeNull();
+    expect(screen.queryByRole("img", { name: "No Avatar Agent" })).toBeNull();
   });
 });
 
