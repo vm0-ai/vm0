@@ -163,9 +163,9 @@ def _fetch_firewall_headers_sync(
         # ctx.options.vm0_api_url (operator-set at mitmdump launch).
         resp = urllib.request.urlopen(req, timeout=10)  # noqa: S310
     except urllib.error.HTTPError as e:
-        # HTTPError wraps an open socket; close on every exit path to
-        # avoid FD exhaustion under sustained cache-miss load (#10475).
-        try:
+        # HTTPError wraps an open socket; `with e` closes on every exit
+        # path to avoid FD exhaustion under sustained cache-miss load (#10475).
+        with e:
             try:
                 error_body = json.loads(e.read())
             except (json.JSONDecodeError, OSError):
@@ -176,8 +176,6 @@ def _fetch_firewall_headers_sync(
                     error_info.get("message", "Connector not configured"),
                 ) from None
             raise
-        finally:
-            e.close()
     try:
         return json.loads(resp.read())
     finally:
