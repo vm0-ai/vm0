@@ -69,7 +69,7 @@ function createChatAttachment(file: File): ZeroChatAttachment {
       [200],
       { toast: false },
     );
-    uploadSignal.throwIfAborted();
+    signal.throwIfAborted();
 
     // Step 2: PUT the file bytes straight to R2 using the presigned URL.
     // Do NOT forward auth headers or cookies — the URL's signature is the
@@ -80,7 +80,7 @@ function createChatAttachment(file: File): ZeroChatAttachment {
       headers: { "content-type": file.type },
       signal: uploadSignal,
     });
-    uploadSignal.throwIfAborted();
+    signal.throwIfAborted();
 
     if (!putRes.ok) {
       throw new Error(`storage returned ${putRes.status} ${putRes.statusText}`);
@@ -173,9 +173,7 @@ export function createDraftSignals(): DraftSignals {
         return [...prev, attachment];
       });
 
-      try {
-        await set(attachment.upload$, signal);
-      } catch (error) {
+      await set(attachment.upload$, signal).catch((error: unknown) => {
         // Drop the failed chip so the composer doesn't show an orphan.
         // `removeAttachment$` may have already removed it on user cancel;
         // filter is a no-op in that case.
@@ -195,7 +193,7 @@ export function createDraftSignals(): DraftSignals {
         const message =
           error instanceof Error ? error.message : "Unknown error";
         toast.error(`Failed to upload ${file.name}: ${message}`);
-      }
+      });
     },
   );
 

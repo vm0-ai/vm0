@@ -49,7 +49,9 @@ export async function POST(request: NextRequest) {
   const userId = authCtx.userId;
 
   const parsed = prepareSchema.safeParse(
-    await request.json().catch(() => null),
+    await request.json().catch(() => {
+      return null;
+    }),
   );
   if (!parsed.success) {
     return NextResponse.json(

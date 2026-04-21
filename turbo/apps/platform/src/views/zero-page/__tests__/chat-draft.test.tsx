@@ -138,8 +138,10 @@ describe("chat draft persistence across thread navigation", () => {
           updatedAt: "2026-03-10T00:00:00Z",
         });
       }),
-      // Uploads now use a two-step presigned flow: JSON "prepare" then a
-      // direct browser PUT to R2. We mock both to mimic production.
+      // mockApi cannot be used here: /api/zero/uploads/prepare is an internal
+      // helper endpoint whose response shape is owned by the route; we want to
+      // defer the PUT to R2 so tests that need a deferred upload can resolve
+      // it manually.
       http.post("*/api/zero/uploads/prepare", () => {
         return HttpResponse.json({
           id: "upload-1",
