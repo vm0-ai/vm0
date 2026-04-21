@@ -13,94 +13,53 @@
  *   }
  */
 
-import {
-  AST_NODE_TYPES,
-  ESLintUtils,
-  type TSESTree,
-} from "@typescript-eslint/utils";
-import { SyntaxKind, TypeFlags, type Type, type TypeChecker } from "typescript";
-import { createRule, isMutableObjectType } from "../utils.ts";
+import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import { createRule } from "../utils.ts";
 
-// Performance optimization: Cache results to avoid repeated type checking
-// Note: WeakMap is used so memory is automatically freed when nodes are garbage collected
-const enumMemberCache = new WeakMap<TSESTree.MemberExpression, boolean>();
-const constantReturnTypeCache = new WeakMap<Type, boolean>();
+// Functions that always return a constant ccstate type (Computed/Command).
+// No type checker needed — these are well-known ccstate primitives.
+const KNOWN_CONSTANT_FUNCTIONS = new Set(["computed", "command"]);
 
-function isEnumMember(
-  node: TSESTree.MemberExpression,
-  checker: TypeChecker,
-  services: import("@typescript-eslint/utils").ParserServicesWithTypeInformation,
-): boolean {
-  // Check cache first
-  const cached = enumMemberCache.get(node);
-  if (cached !== undefined) {
-    return cached;
+function isKnownConstantCall(node: TSESTree.CallExpression): boolean {
+  return (
+    node.callee.type === AST_NODE_TYPES.Identifier &&
+    KNOWN_CONSTANT_FUNCTIONS.has(node.callee.name)
+  );
+}
+
+// An object literal is considered a "signal object" when at least one property
+// key ends with "$" — the project-wide convention for signal variables.
+function isSignalObject(node: TSESTree.ObjectExpression): boolean {
+  return node.properties.some(
+    (prop) =>
+      prop.type === AST_NODE_TYPES.Property &&
+      prop.key.type === AST_NODE_TYPES.Identifier &&
+      prop.key.name.endsWith("$"),
+  );
+}
+
+// A top-level return is "constant" if it directly returns computed()/command()
+// or an object whose keys follow the $-suffix signal convention.
+function isConstantReturnExpression(node: TSESTree.Expression): boolean {
+  if (node.type === AST_NODE_TYPES.CallExpression) {
+    return isKnownConstantCall(node);
   }
-
-  if (
-    node.object.type !== AST_NODE_TYPES.Identifier ||
-    node.property.type !== AST_NODE_TYPES.Identifier
-  ) {
-    enumMemberCache.set(node, false);
-    return false;
+  if (node.type === AST_NODE_TYPES.ObjectExpression) {
+    return isSignalObject(node);
   }
-
-  try {
-    // Check if the object refers to an enum
-    const objectTsNode = services.esTreeNodeToTSNodeMap.get(node.object);
-    const objectSymbol = checker.getSymbolAtLocation(objectTsNode);
-
-    if (objectSymbol?.valueDeclaration?.kind === SyntaxKind.EnumDeclaration) {
-      enumMemberCache.set(node, true);
-      return true;
-    }
-
-    // Also check the type of the member expression result
-    const tsNode = services.esTreeNodeToTSNodeMap.get(node);
-    const type = checker.getTypeAtLocation(tsNode);
-
-    // Check if it's a literal type (which enum members are)
-    const isLiteralType =
-      type.flags &
-      (TypeFlags.String |
-        TypeFlags.Number |
-        TypeFlags.Boolean |
-        TypeFlags.StringLiteral |
-        TypeFlags.NumberLiteral |
-        TypeFlags.BooleanLiteral);
-
-    if (isLiteralType) {
-      // Additional check: is the object a known enum-like identifier?
-      const objectName = node.object.name;
-      const result = objectName
-        ? /^[A-Z][a-zA-Z]*Key$|^[A-Z][a-zA-Z]*Type$|^[A-Z][a-zA-Z]*$/.test(
-            objectName,
-          )
-        : false;
-      enumMemberCache.set(node, result);
-      return result;
-    }
-  } catch {
-    // If type checking fails, fall back to heuristic
-    const objectName = node.object.name;
-    const result = objectName
-      ? /^[A-Z][a-zA-Z]*Key$|^[A-Z][a-zA-Z]*Type$|^[A-Z][a-zA-Z]*$/.test(
-          objectName,
-        )
-      : false;
-    enumMemberCache.set(node, result);
-    return result;
-  }
-
-  enumMemberCache.set(node, false);
   return false;
 }
 
-function isConstantValue(
-  node: TSESTree.Node,
-  checker?: TypeChecker,
-  services?: import("@typescript-eslint/utils").ParserServicesWithTypeInformation,
-): boolean {
+function functionBodyHasConstantReturn(body: TSESTree.BlockStatement): boolean {
+  return body.body.some(
+    (stmt) =>
+      stmt.type === AST_NODE_TYPES.ReturnStatement &&
+      stmt.argument != null &&
+      isConstantReturnExpression(stmt.argument),
+  );
+}
+
+function isConstantValue(node: TSESTree.Node): boolean {
   if (node.type === AST_NODE_TYPES.Literal) {
     return true;
   }
@@ -108,120 +67,59 @@ function isConstantValue(
     return node.expressions.length === 0;
   }
   if (node.type === AST_NODE_TYPES.UnaryExpression) {
-    return (
-      node.operator === "-" && isConstantValue(node.argument, checker, services)
-    );
+    return node.operator === "-" && isConstantValue(node.argument);
   }
   if (node.type === AST_NODE_TYPES.ArrayExpression) {
-    return node.elements.every(
-      (el) => el && isConstantValue(el, checker, services),
-    );
+    return node.elements.every((el) => el != null && isConstantValue(el));
   }
   if (node.type === AST_NODE_TYPES.ObjectExpression) {
-    return node.properties.every((prop) => {
-      if (prop.type === AST_NODE_TYPES.Property) {
-        return isConstantValue(prop.value, checker, services);
-      }
-      return false;
-    });
-  }
-  if (node.type === AST_NODE_TYPES.Identifier) {
-    return false;
+    return node.properties.every(
+      (prop) =>
+        prop.type === AST_NODE_TYPES.Property && isConstantValue(prop.value),
+    );
   }
   if (node.type === AST_NODE_TYPES.MemberExpression) {
-    // Handle enum member access like LocalStorageKey.Theme
-    if (checker && services) {
-      return isEnumMember(node, checker, services);
-    }
-    return false;
+    // Heuristic: PascalCase.Member → likely an enum (e.g. LocalStorageKey.Theme).
+    // Matches the project convention; non-standard const patterns are accepted
+    // as a known trade-off to avoid the TypeScript language service.
+    return (
+      node.object.type === AST_NODE_TYPES.Identifier &&
+      node.property.type === AST_NODE_TYPES.Identifier &&
+      /^[A-Z][a-zA-Z]*$/.test(node.object.name)
+    );
   }
-  if (
-    node.type === AST_NODE_TYPES.ArrowFunctionExpression ||
-    node.type === AST_NODE_TYPES.FunctionExpression
-  ) {
-    if (
-      node.type === AST_NODE_TYPES.ArrowFunctionExpression &&
-      node.expression
-    ) {
-      // For arrow functions with expression body: () => 42
-      return isConstantValue(node.body, checker, services);
+  if (node.type === AST_NODE_TYPES.ArrowFunctionExpression) {
+    // () => 'literal'  or  () => { return 'literal'; }
+    if (node.expression) {
+      return isConstantValue(node.body as TSESTree.Expression);
     }
     if (
       node.body.type === AST_NODE_TYPES.BlockStatement &&
       node.body.body.length === 1 &&
       node.body.body[0].type === AST_NODE_TYPES.ReturnStatement &&
-      node.body.body[0].argument
+      node.body.body[0].argument != null
     ) {
-      return isConstantValue(node.body.body[0].argument, checker, services);
+      return isConstantValue(node.body.body[0].argument);
+    }
+    return false;
+  }
+  if (node.type === AST_NODE_TYPES.FunctionExpression) {
+    if (
+      node.body.body.length === 1 &&
+      node.body.body[0].type === AST_NODE_TYPES.ReturnStatement &&
+      node.body.body[0].argument != null
+    ) {
+      return isConstantValue(node.body.body[0].argument);
     }
     return false;
   }
   return false;
 }
 
-function hasOnlyConstantArguments(
-  node: TSESTree.CallExpression,
-  checker: TypeChecker,
-  services: import("@typescript-eslint/utils").ParserServicesWithTypeInformation,
-): boolean {
-  return node.arguments.every((arg) => {
-    if (arg.type === AST_NODE_TYPES.SpreadElement) {
-      return false;
-    }
-    return isConstantValue(arg, checker, services);
-  });
-}
-
-function isComputedOrCommandType(typeString: string): boolean {
-  return (
-    typeString.startsWith("Computed<") ||
-    typeString === "Computed" ||
-    typeString.startsWith("Command<") ||
-    typeString === "Command"
+function hasOnlyConstantArguments(node: TSESTree.CallExpression): boolean {
+  return node.arguments.every(
+    (arg) => arg.type !== AST_NODE_TYPES.SpreadElement && isConstantValue(arg),
   );
-}
-
-function checkObjectProperties(type: Type, checker: TypeChecker): boolean {
-  const properties = checker.getPropertiesOfType(type);
-
-  // Optimization: Skip objects with too many properties (likely not signal containers)
-  if (properties.length > 20) {
-    return false;
-  }
-
-  if (properties.length === 0) {
-    return false;
-  }
-
-  // Check only first few properties for performance
-  const propertiesToCheck = properties.slice(0, 10);
-  for (const property of propertiesToCheck) {
-    try {
-      // Quick check: if property name ends with $, it's likely a signal
-      if (property.name.endsWith("$")) {
-        return true;
-      }
-
-      const declaration =
-        property.valueDeclaration ?? property.declarations?.[0];
-      if (!declaration) {
-        continue;
-      }
-      const propertyType = checker.getTypeOfSymbolAtLocation(
-        property,
-        declaration,
-      );
-      const propertyTypeString = checker.typeToString(propertyType);
-
-      // If any property is Computed/Command, consider this type relevant
-      if (isComputedOrCommandType(propertyTypeString)) {
-        return true;
-      }
-    } catch {
-      continue;
-    }
-  }
-  return false;
 }
 
 export default createRule({
@@ -233,7 +131,7 @@ export default createRule({
       description:
         "Enforce that functions returning constant types with literal arguments must be called at package scope",
       recommended: true,
-      requiresTypeChecking: true,
+      requiresTypeChecking: false,
     },
     schema: [],
     messages: {
@@ -242,115 +140,17 @@ export default createRule({
     },
   },
   create(context) {
-    const services = ESLintUtils.getParserServices(context);
-    const checker = services.program.getTypeChecker();
+    // Populated at package scope by FunctionDeclaration visitor.
+    // Pre-seeded with known ccstate primitives.
+    const packageScopeConstantFunctions = new Set<string>(
+      KNOWN_CONSTANT_FUNCTIONS,
+    );
 
-    // Non-package-scope calls grouped by callee name. Using a Map means Program:exit
-    // only iterates entries for "computed" and packageScopeConstantFunctions names instead
-    // of all ~30K non-package-scope calls.
+    // Non-package-scope calls grouped by callee name so Program:exit only
+    // iterates entries that match known constant function names.
     const deferredCallsByName = new Map<string, TSESTree.CallExpression[]>();
 
-    // Track functions that return constant types and are defined at package scope
-    const packageScopeConstantFunctions = new Set<string>();
-
-    function isConstantReturnType(type: Type): boolean {
-      // Check cache first
-      const cached = constantReturnTypeCache.get(type);
-      if (cached !== undefined) {
-        return cached;
-      }
-
-      const typeString = checker.typeToString(type);
-
-      // Fast path: Check if it's directly Computed/Command type (string check is fast)
-      if (isComputedOrCommandType(typeString)) {
-        constantReturnTypeCache.set(type, true);
-        return true;
-      }
-
-      // Primary condition: if it's not mutable, it's constant (covers all immutable types)
-      if (!isMutableObjectType(type, services, checker)) {
-        constantReturnTypeCache.set(type, true);
-        return true;
-      }
-
-      // Special handling for objects that contain Computed/Command properties (even if mutable)
-      // This maintains backward compatibility for signal-containing objects
-      const hasSignalProperties = checkObjectProperties(type, checker);
-      constantReturnTypeCache.set(type, hasSignalProperties);
-      return hasSignalProperties;
-    }
-
-    function functionReturnsConstant(node: TSESTree.CallExpression): boolean {
-      // Early return for known non-constant functions
-      if (node.callee.type === AST_NODE_TYPES.Identifier) {
-        const name = node.callee.name;
-        // Common functions that definitely don't return constants
-        const nonConstantFunctions = [
-          "setTimeout",
-          "setInterval",
-          "setImmediate",
-          "fetch",
-          "Promise",
-          "XMLHttpRequest",
-          "addEventListener",
-          "removeEventListener",
-          "Math.random",
-          "Date.now",
-          "performance.now",
-          "requestAnimationFrame",
-          "requestIdleCallback",
-        ];
-        if (nonConstantFunctions.includes(name)) {
-          return false;
-        }
-      }
-
-      const tsNode = services.esTreeNodeToTSNodeMap.get(node);
-      const type = checker.getTypeAtLocation(tsNode);
-
-      // Check if the call expression returns a constant type
-      return isConstantReturnType(type);
-    }
-
-    function processCallsForName(name: string, requiresTypeCheck: boolean) {
-      const calls = deferredCallsByName.get(name);
-      if (!calls) {
-        return;
-      }
-
-      for (const node of calls) {
-        if (node.arguments.length === 0) {
-          continue;
-        }
-        // packageScopeConstantFunctions entries need a type re-check to filter async
-        // wrappers (e.g. Promise<T>) that slip through the declaration-level check.
-        if (requiresTypeCheck && !functionReturnsConstant(node)) {
-          continue;
-        }
-        if (!hasOnlyConstantArguments(node, checker, services)) {
-          continue;
-        }
-        context.report({
-          node,
-          messageId: "mustBePackageScope",
-          data: { name },
-        });
-      }
-    }
-
-    function processDeferredCallChecks() {
-      // computed() always returns Computed<> — no type check needed
-      processCallsForName("computed", false);
-
-      // Package-scope helper functions need a type re-check at the call site
-      for (const name of packageScopeConstantFunctions) {
-        processCallsForName(name, true);
-      }
-    }
-
-    // Depth counter for function-like scopes — O(1) alternative to isInPackageScope
-    // per-node parent-chain traversal. Incremented on enter, decremented on exit.
+    // O(1) scope depth counter — avoids per-node parent-chain traversal.
     let scopeDepth = 0;
 
     function enterScope() {
@@ -361,28 +161,18 @@ export default createRule({
     }
 
     return {
-      // Track function declarations that return constant types at package scope.
-      // Check depth BEFORE incrementing: depth===0 means the declaration is at package scope.
+      // Detect package-scope factory functions by AST shape.
+      // Check depth BEFORE incrementing: depth === 0 means the declaration is
+      // at package scope.
       FunctionDeclaration(node: TSESTree.FunctionDeclaration) {
         const atPackageScope = scopeDepth === 0 && node.id !== null;
         scopeDepth++;
 
-        if (!atPackageScope) {
+        if (!atPackageScope || node.id === null) {
           return;
         }
 
-        // Check if this function returns a constant type (immutable or signal-containing)
-        const hasConstantReturn = node.body.body.some((stmt) => {
-          if (stmt.type === AST_NODE_TYPES.ReturnStatement && stmt.argument) {
-            // Check call expressions, object expressions, and other return types
-            const tsNode = services.esTreeNodeToTSNodeMap.get(stmt.argument);
-            const type = checker.getTypeAtLocation(tsNode);
-            return isConstantReturnType(type);
-          }
-          return false;
-        });
-
-        if (hasConstantReturn && node.id) {
+        if (functionBodyHasConstantReturn(node.body)) {
           packageScopeConstantFunctions.add(node.id.name);
         }
       },
@@ -400,28 +190,43 @@ export default createRule({
       "ClassExpression:exit": exitScope,
 
       CallExpression(node: TSESTree.CallExpression) {
-        // Package-scope calls can never be violations — skip immediately (O(1) depth check)
+        // Package-scope calls are never violations.
         if (scopeDepth === 0) {
           return;
         }
-        // Method calls (obj.method()) are never ccstate factory functions at package scope
+        // Method calls (obj.method()) are never signal factory functions.
         if (node.callee.type !== AST_NODE_TYPES.Identifier) {
           return;
         }
-        const functionName = node.callee.name;
-        // Group by callee name so Program:exit can skip all irrelevant names in O(1)
-        let calls = deferredCallsByName.get(functionName);
+        const name = node.callee.name;
+        let calls = deferredCallsByName.get(name);
         if (calls === undefined) {
           calls = [];
-          deferredCallsByName.set(functionName, calls);
+          deferredCallsByName.set(name, calls);
         }
         calls.push(node);
       },
 
-      // Process all deferred checks after we've seen all function declarations
       "Program:exit"() {
-        processDeferredCallChecks();
-        // WeakMap automatically handles memory cleanup when nodes are garbage collected
+        for (const name of packageScopeConstantFunctions) {
+          const calls = deferredCallsByName.get(name);
+          if (!calls) {
+            continue;
+          }
+          for (const node of calls) {
+            if (node.arguments.length === 0) {
+              continue;
+            }
+            if (!hasOnlyConstantArguments(node)) {
+              continue;
+            }
+            context.report({
+              node,
+              messageId: "mustBePackageScope",
+              data: { name },
+            });
+          }
+        }
       },
     };
   },

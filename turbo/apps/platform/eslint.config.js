@@ -25,7 +25,6 @@ export default [
     },
     rules: {
       "react/react-in-jsx-scope": "off",
-      // Non-type-aware rules
       "ccstate/signal-dollar-suffix": "error",
       "ccstate/no-export-state": "error",
       "ccstate/signal-check-await": "error",
@@ -42,7 +41,6 @@ export default [
       "ccstate/no-void-statement": "error",
       "ccstate/no-abort-swallower": "error",
       "ccstate/require-accept": "error",
-      // AST-only rules that previously lived in the type-aware block
       "ccstate/command-async-signal": "error",
       "ccstate/no-getter-setter-params": "error",
       "ccstate/no-store-in-params": [
@@ -64,18 +62,6 @@ export default [
           ],
         },
       ],
-    },
-  },
-  // Type-aware rules (only for TypeScript files)
-  {
-    files: ["**/*.ts", "**/*.tsx"],
-    languageOptions: {
-      parserOptions: {
-        projectService: true,
-        tsconfigRootDir: import.meta.dirname,
-      },
-    },
-    rules: {
       "ccstate/computed-const-args-package-scope": "error",
     },
   },
