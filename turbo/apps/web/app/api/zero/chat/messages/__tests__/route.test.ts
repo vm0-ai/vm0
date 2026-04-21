@@ -497,7 +497,7 @@ describe("POST /api/zero/chat/messages", () => {
       expect(run.appendSystemPrompt).not.toContain("Web Attached Files");
     });
 
-    it("should resolve attach files with presigned URLs in thread detail", async () => {
+    it("should resolve attach files to permanent /f/ URLs in thread detail", async () => {
       // Create a thread with a message containing attach files via the API
       const attachFiles = [
         {
@@ -536,9 +536,6 @@ describe("POST /api/zero/chat/messages", () => {
           return [];
         },
       );
-      context.mocks.s3.generatePresignedUrl.mockResolvedValue(
-        "https://presigned-url/data.csv",
-      );
 
       // Fetch thread detail which resolves attach files
       const threadResponse = await getChatThreadById(
@@ -558,7 +555,9 @@ describe("POST /api/zero/chat/messages", () => {
       expect(userMsg.attachFiles).toHaveLength(1);
       expect(userMsg.attachFiles[0].id).toBe("resolve-uuid-1");
       expect(userMsg.attachFiles[0].filename).toBe("data.csv");
-      expect(userMsg.attachFiles[0].url).toBe("https://presigned-url/data.csv");
+      expect(userMsg.attachFiles[0].url).toBe(
+        `http://localhost:3001/f/${encodeURIComponent(user.userId)}/resolve-uuid-1/data.csv`,
+      );
     });
 
     describe("per-run model selection (composer picker)", () => {

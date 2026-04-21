@@ -15,9 +15,10 @@ import {
   type ResolvedAttachFile,
   persistedAttachmentSchema,
 } from "@vm0/core";
-import { generatePresignedUrl, listS3Objects } from "../../infra/s3/s3-client";
+import { listS3Objects } from "../../infra/s3/s3-client";
 import { env } from "../../../env";
 import { EXT_MIMETYPE_MAP } from "../../shared/mimetype";
+import { buildFileUrl } from "../uploads/file-url";
 
 /**
  * Create a new chat thread.
@@ -301,8 +302,13 @@ type ChatMessage = {
 };
 
 /**
- * Resolve file IDs to presigned S3 URLs with metadata for the frontend.
- * Lists S3 objects at each file's prefix to discover filename and size.
+ * Resolve file IDs to permanent file URLs with metadata for the frontend.
+ *
+ * Lists S3 objects at each file's prefix to recover filename and size, then
+ * constructs the permanent `${APP_URL}/f/{userId}/{id}/{filename}` URL. The
+ * short-lived presigned signature is materialized per-request inside the /f
+ * route, not here — the value returned to the frontend is stable and safe
+ * to persist in markdown or share over external channels.
  */
 export async function resolveAttachFileUrls(
   userId: string,
@@ -321,7 +327,7 @@ export async function resolveAttachFileUrls(
       const ext = filename.split(".").pop()?.toLowerCase();
       const contentType =
         (ext ? EXT_MIMETYPE_MAP[ext] : undefined) ?? "application/octet-stream";
-      const url = await generatePresignedUrl(bucket, obj.key, 86400, filename);
+      const url = buildFileUrl(userId, fileId, filename);
       return { id: fileId, filename, contentType, size: obj.size, url };
     }),
   );
