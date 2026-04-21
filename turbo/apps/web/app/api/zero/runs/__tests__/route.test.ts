@@ -406,7 +406,7 @@ describe("POST /api/zero/runs", () => {
       );
     });
 
-    it("should inject disallowedTools with cron tools", async () => {
+    it("should inject disallowedTools with cron and schedule-wakeup tools", async () => {
       const response = await postRun({ agentId, prompt: "Hello" });
       expect(response.status).toBe(201);
       const data = await response.json();
@@ -415,7 +415,12 @@ describe("POST /api/zero/runs", () => {
       const job = await findTestRunnerJobEntry(data.runId);
       expect(job).toBeDefined();
       expect(job!.executionContext.disallowedTools).toEqual(
-        expect.arrayContaining(["CronCreate", "CronList", "CronDelete"]),
+        expect.arrayContaining([
+          "CronCreate",
+          "CronList",
+          "CronDelete",
+          "ScheduleWakeup",
+        ]),
       );
     });
 

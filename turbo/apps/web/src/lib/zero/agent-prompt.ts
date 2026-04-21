@@ -51,11 +51,13 @@ function buildAgentIdentityPrompt(identity: AgentIdentity): string {
 /**
  * Tools to disallow for all zero agent runs.
  * - Cron tools: agents use `zero schedule` instead.
+ * - ScheduleWakeup: powers /loop dynamic (self-paced) mode; agents use `zero schedule` instead.
  */
 export const DISALLOWED_TOOLS = [
   "CronCreate",
   "CronList",
   "CronDelete",
+  "ScheduleWakeup",
 ] as const;
 
 /**
@@ -68,7 +70,7 @@ function buildAgentToolsPrompt(): string {
     "You have access to the Zero CLI. Run commands with: `npx -p @vm0/cli zero <command>`",
     "- Discover available commands: `zero --help`.",
     "- Search agent run logs, web chat messages, or external services via connectors: `zero search --help`.",
-    "- Schedule recurring tasks: `zero schedule --help`. Do NOT use /loop or cron tools (CronCreate, CronList, CronDelete) — they are not available.",
+    "- Schedule recurring tasks: `zero schedule --help`. Do NOT use /loop, cron tools (CronCreate, CronList, CronDelete), or ScheduleWakeup — they are not available.",
     "- Slack messaging, file uploads, and file downloads: `zero slack --help`. Your replies are automatically sent to the originating thread — only use these commands for different channels/threads. Never use SLACK_TOKEN directly — it's a user OAuth token.",
     "- Download a Slack file attachment to local disk: `zero slack download-file -h` for usage and how to read different file types. Use this whenever a Slack message context includes a `[Slack file]` block.",
     "- Download a web-uploaded file to local disk: `zero web download-file -h` for usage and how to read different file types. Use this whenever a web chat message includes a `[Web file]` block.",
