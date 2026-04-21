@@ -1,5 +1,3 @@
-// TODO(#10334): split large commands to comply with max-lines-per-function (128)
-// oxlint-disable max-lines-per-function
 import { command, computed, state } from "ccstate";
 import {
   FeatureSwitchKey,
@@ -610,7 +608,7 @@ const negotiateSdp$ = command(
 );
 
 const setupWebRTC$ = command(
-  async (
+  (
     { set },
     stream: MediaStream,
     token: string,
@@ -911,15 +909,17 @@ const acquireVccMic$ = command(
   },
 );
 
+interface BootstrapVccTransportArgs {
+  stream: MediaStream;
+  token: string;
+  sessionId: string;
+  sessionSignal: AbortSignal;
+  outerSignal: AbortSignal;
+}
+
 const bootstrapVccTransport$ = command(
-  async (
-    { set },
-    stream: MediaStream,
-    token: string,
-    sessionId: string,
-    sessionSignal: AbortSignal,
-    outerSignal: AbortSignal,
-  ): Promise<void> => {
+  async ({ set }, args: BootstrapVccTransportArgs): Promise<void> => {
+    const { stream, token, sessionId, sessionSignal, outerSignal } = args;
     const ok = await set(setupWebRTC$, stream, token, sessionSignal);
     outerSignal.throwIfAborted();
     if (!ok) {
@@ -970,14 +970,13 @@ export const startVoiceChatCandidate$ = command(
       return;
     }
 
-    await set(
-      bootstrapVccTransport$,
+    await set(bootstrapVccTransport$, {
       stream,
       token,
-      session.id,
+      sessionId: session.id,
       sessionSignal,
-      signal,
-    );
+      outerSignal: signal,
+    });
   },
 );
 
