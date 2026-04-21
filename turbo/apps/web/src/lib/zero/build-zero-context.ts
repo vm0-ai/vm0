@@ -229,13 +229,12 @@ async function resolveSecretsAndEnvironment(
     : undefined;
 
   // Build connector permission configs for placeholder injection and firewall
-  // rules. When allowedConnectorTypes is provided, use it so that firewalls are
-  // injected even when the user hasn't linked the connector yet (no secrets).
-  // When undefined (no org context / CLI direct call), fall back to
-  // connectorTypes (secret-derived) for backward compatibility.
-  const firewallSourceTypes = allowedConnectorTypes ?? connectorTypes;
+  // rules. Only inject a connector's firewall when the user has the required
+  // credentials (secret-derived). Otherwise templates like Jira's
+  // `https://${{ vars.JIRA_DOMAIN }}` resolve to a missing variable at runtime
+  // and abort the run even though the user never linked the connector.
   const connectorPermissionConfigs: ExpandedFirewallConfig[] = [
-    ...firewallSourceTypes.filter(isFirewallConnectorType).map((type) => {
+    ...connectorTypes.filter(isFirewallConnectorType).map((type) => {
       return { ...getConnectorFirewall(type) };
     }),
     ...customConnectorResult.firewalls,
