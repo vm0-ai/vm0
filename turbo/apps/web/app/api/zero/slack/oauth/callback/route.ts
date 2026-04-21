@@ -275,9 +275,11 @@ async function handleInstallCallback(params: {
     );
   }
 
-  // Slack flow: redirect to success page
+  // Slack flow: redirect to the settings/slack page with workspace + slack user
+  // context so the user (after sign-in) can claim the installation into their org
+  // via the existing connect flow.
   return NextResponse.redirect(
-    `${appUrl}/slack/installed?workspace=${encodeURIComponent(oauthResult.teamName)}`,
+    `${appUrl}/settings/slack?w=${encodeURIComponent(oauthResult.teamId)}&u=${encodeURIComponent(oauthResult.authedUserId)}`,
   );
 }
 
