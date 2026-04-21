@@ -1,5 +1,13 @@
 # Changelog
 
+## [12.276.6](https://github.com/vm0-ai/vm0/compare/web-v12.276.5...web-v12.276.6) (2026-04-21)
+
+
+### Bug Fixes
+
+* **db:** delete agent_runs whose compose was cascade-deleted (a2b bucket) ([#10456](https://github.com/vm0-ai/vm0/issues/10456)) ([b574303](https://github.com/vm0-ai/vm0/commit/b57430371f8e99dc0725583386c1bb75c231f7f7)), closes [#10447](https://github.com/vm0-ai/vm0/issues/10447)
+* **web:** guard [locale] page against asset-like paths before auth() ([#10458](https://github.com/vm0-ai/vm0/issues/10458)) ([0df30e7](https://github.com/vm0-ai/vm0/commit/0df30e72fb63ea4507ba7266cfef7b4c7fb4fbe4))
+
 ## [12.276.5](https://github.com/vm0-ai/vm0/compare/web-v12.276.4...web-v12.276.5) (2026-04-21)
 
 
