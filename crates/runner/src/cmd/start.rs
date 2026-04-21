@@ -62,6 +62,15 @@ pub async fn run_start(
     args: StartArgs,
     runtime_provider: &dyn RuntimeProvider,
 ) -> RunnerResult<()> {
+    // Register lifecycle signals (SIGTERM/SIGINT/SIGUSR1/SIGUSR2) before
+    // any slow startup work. Tokio's `signal()` installs the process-wide
+    // `sigaction` handler on first call; until then the default disposition
+    // (Term) applies, so a drain SIGUSR1 racing with `service install`
+    // would kill the process and leave a restart that no one drains. See
+    // issue #10416.
+    let signals = EarlySignals::register()
+        .map_err(|e| RunnerError::Internal(format!("register signal handlers: {e}")))?;
+
     let mut runner_config = config::load(&args.config).await?;
 
     // CLI / env overrides — take server out so we can mutate independently
@@ -334,7 +343,7 @@ pub async fn run_start(
         min_memory_mb,
         kmsg_handle,
         dns_handle,
-        signal_override: None,
+        signal_source: SignalSource::Real(signals),
     };
 
     run(config).await
@@ -364,10 +373,22 @@ struct RunConfig {
     min_memory_mb: u32,
     kmsg_handle: kmsg_log::KmsgHandle,
     dns_handle: dns::DnsProxy,
-    /// External signal controller. When `Some`, the real signal handler is
-    /// not spawned and the caller drives mode transitions and hard-shutdown
-    /// state directly. Used by integration tests.
-    signal_override: Option<SignalController>,
+    /// How the run's mode channel is driven. Production supplies the signal
+    /// streams registered at the top of `run_start`; tests supply a
+    /// pre-built `SignalController` so they can drive mode transitions
+    /// directly.
+    signal_source: SignalSource,
+}
+
+enum SignalSource {
+    /// Real signals pre-registered at the top of `run_start`. `run()`
+    /// spawns the `SignalController` task that consumes them.
+    Real(EarlySignals),
+    /// Test-supplied controller. `run()` does not spawn a handler task and
+    /// the caller drives `mode_tx` itself. Constructed only by `mod tests`
+    /// below; non-test code matches on it but never builds it.
+    #[cfg_attr(not(test), allow(dead_code))]
+    Override(SignalController),
 }
 
 type MitmRestartHandle = tokio::task::JoinHandle<RunnerResult<tokio::process::Child>>;
@@ -395,7 +416,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         min_memory_mb,
         kmsg_handle,
         dns_handle,
-        signal_override,
+        signal_source,
     } = config;
 
     // Build per-profile factories via the sandbox runtime.
@@ -452,8 +473,12 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     // -----------------------------------------------------------------------
     // Signal handling / mode channel
     // -----------------------------------------------------------------------
-    let signal = signal_override
-        .unwrap_or_else(|| SignalController::spawn(cancel.clone(), Arc::clone(&cancel_tokens)));
+    let signal = match signal_source {
+        SignalSource::Real(signals) => {
+            SignalController::spawn(cancel.clone(), Arc::clone(&cancel_tokens), signals)
+        }
+        SignalSource::Override(controller) => controller,
+    };
     let mut mode_rx = signal.mode_rx;
     let mode_tx = signal.mode_tx;
     let signal_handler_abort = signal.handler_abort;
@@ -1367,6 +1392,53 @@ async fn handle_job_result(
     }
 }
 
+/// Pre-registered signal streams.
+///
+/// Tokio's `signal()` installs the process-wide `sigaction` handler on its
+/// first call per signal kind; before that call, the default disposition
+/// (Term for all four of these) applies. If a drain SIGUSR1 arrives during
+/// startup (e.g. `service install` immediately followed by `service drain`
+/// while the runner is still warming factories), the default action kills
+/// the process and systemd restarts the unit with no one to drain it —
+/// the new PID stays `Running` forever. See issue #10416.
+///
+/// Registering all four streams at the top of [`run_start`] before any
+/// slow work (config load, runtime/factory boot) closes the race: the
+/// sigaction handler is in place and the listener exists, so signals
+/// arriving at any point after registration are queued in the listener's
+/// watch channel and observed by [`SignalController`] as soon as its task
+/// is spawned.
+struct EarlySignals {
+    sigterm: tokio::signal::unix::Signal,
+    sigint: tokio::signal::unix::Signal,
+    sigusr1: tokio::signal::unix::Signal,
+    sigusr2: tokio::signal::unix::Signal,
+}
+
+impl EarlySignals {
+    /// Register the four lifecycle signals (SIGTERM/SIGINT/SIGUSR1/SIGUSR2)
+    /// so they don't fall to their default Term disposition during startup.
+    ///
+    /// Each `signal()` both installs the process-wide `sigaction` handler
+    /// (idempotent via `OnceCell`) and subscribes a fresh watch receiver.
+    /// Bind them via `let` rather than a struct literal so that if a later
+    /// call fails with `?`, the already-subscribed earlier receivers are
+    /// dropped (and unsubscribed) on the error path — obvious at a glance.
+    fn register() -> std::io::Result<Self> {
+        use tokio::signal::unix::{SignalKind, signal};
+        let sigterm = signal(SignalKind::terminate())?;
+        let sigint = signal(SignalKind::interrupt())?;
+        let sigusr1 = signal(SignalKind::user_defined1())?;
+        let sigusr2 = signal(SignalKind::user_defined2())?;
+        Ok(Self {
+            sigterm,
+            sigint,
+            sigusr1,
+            sigusr2,
+        })
+    }
+}
+
 /// Signal-driven mode channel shared between the signal handler task and
 /// the main run loop.
 ///
@@ -1415,29 +1487,29 @@ impl SignalController {
     fn spawn(
         cancel: CancellationToken,
         cancel_tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
+        signals: EarlySignals,
     ) -> Self {
         let (mode_tx, mode_rx) = tokio::sync::watch::channel(RunnerMode::Running);
         let tx_for_task = mode_tx.clone();
+        let EarlySignals {
+            mut sigterm,
+            mut sigint,
+            mut sigusr1,
+            mut sigusr2,
+        } = signals;
         let handle = tokio::spawn(async move {
-            use tokio::signal::unix::{SignalKind, signal};
-
-            let mut sigterm = signal(SignalKind::terminate()).ok();
-            let mut sigint = signal(SignalKind::interrupt()).ok();
-            let mut sigusr1 = signal(SignalKind::user_defined1()).ok();
-            let mut sigusr2 = signal(SignalKind::user_defined2()).ok();
-
             loop {
                 tokio::select! {
-                    _ = recv_signal(&mut sigterm) => {
+                    _ = sigterm.recv() => {
                         handle_stopping_signal("SIGTERM", &cancel, &cancel_tokens, &tx_for_task).await;
                     }
-                    _ = recv_signal(&mut sigint) => {
+                    _ = sigint.recv() => {
                         handle_stopping_signal("SIGINT", &cancel, &cancel_tokens, &tx_for_task).await;
                     }
-                    _ = recv_signal(&mut sigusr1) => {
+                    _ = sigusr1.recv() => {
                         handle_drain_signal(&tx_for_task);
                     }
-                    _ = recv_signal(&mut sigusr2) => {
+                    _ = sigusr2.recv() => {
                         handle_resume_signal(&tx_for_task);
                     }
                 }
@@ -1495,16 +1567,6 @@ async fn handle_stopping_signal(
     drop(tokens);
     info!(active_jobs = count, "dispatched per-job cancellations");
     cancel.cancel();
-}
-
-/// Await a signal if registered, or pend forever if registration failed.
-async fn recv_signal(sig: &mut Option<tokio::signal::unix::Signal>) {
-    match sig {
-        Some(s) => {
-            s.recv().await;
-        }
-        None => std::future::pending().await,
-    }
 }
 
 /// Spawn a background mitm restart task when the backoff timer fires
@@ -1840,6 +1902,51 @@ mod tests {
         assert!(result.is_err());
     }
 
+    /// Regression test for issue #10416: SIGUSR1 arriving between
+    /// `EarlySignals::register()` and `SignalController::spawn` must still
+    /// drive the mode transition. Previously the handler was registered
+    /// inside the spawned task, so signals delivered during the startup
+    /// window hit the default Term disposition and killed the process.
+    ///
+    /// This test raises SIGUSR1 process-wide. It is safe only because no
+    /// other test subscribes to SIGUSR1 — all other tests use
+    /// `SignalSource::Override` and never call `signal()`. If another
+    /// signal-raising test is added, serialize them (e.g. with a
+    /// `Mutex` shared via `OnceLock`) to avoid cross-talk.
+    #[tokio::test]
+    async fn signal_buffered_before_spawn_is_delivered() {
+        let signals = EarlySignals::register().expect("register");
+
+        // Simulate startup work between registration and spawn — the
+        // window that used to lose signals under the old design.
+        tokio::time::sleep(Duration::from_millis(30)).await;
+
+        nix::sys::signal::raise(nix::sys::signal::Signal::SIGUSR1).expect("raise");
+
+        // Let the sigaction handler + tokio signal driver propagate
+        // before the consumer task starts.
+        tokio::time::sleep(Duration::from_millis(30)).await;
+
+        let controller = SignalController::spawn(
+            CancellationToken::new(),
+            Arc::new(tokio::sync::Mutex::new(HashMap::new())),
+            signals,
+        );
+        let mut mode_rx = controller.mode_rx;
+
+        tokio::time::timeout(Duration::from_secs(2), mode_rx.changed())
+            .await
+            .expect("buffered SIGUSR1 should drive mode within 2s")
+            .expect("mode channel closed");
+        assert_eq!(*mode_rx.borrow(), RunnerMode::Draining);
+
+        // Abort so the task releases its Signal stream subscriptions
+        // and does not linger to consume signals raised by later tests.
+        if let Some(abort) = controller.handler_abort {
+            abort.abort();
+        }
+    }
+
     // -----------------------------------------------------------------------
     // collect_heartbeat_state: running_count excludes idle VMs
     // -----------------------------------------------------------------------
@@ -2171,7 +2278,7 @@ mod tests {
             min_memory_mb,
             kmsg_handle: kmsg_log::KmsgHandle::noop(),
             dns_handle: crate::dns::DnsProxy::noop(),
-            signal_override: Some(SignalController {
+            signal_source: SignalSource::Override(SignalController {
                 mode_rx,
                 mode_tx: mode_tx.clone(),
                 handler_abort: None,
