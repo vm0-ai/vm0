@@ -1,5 +1,30 @@
 # Changelog
 
+## [12.276.0](https://github.com/vm0-ai/vm0/compare/web-v12.275.0...web-v12.276.0) (2026-04-21)
+
+
+### Features
+
+* **activity:** add runner tab with sandbox reuse result ([#10385](https://github.com/vm0-ai/vm0/issues/10385)) ([6d00d40](https://github.com/vm0-ai/vm0/commit/6d00d40ec5e0910f30d1287d7af07ad9a6fb222d))
+
+
+### Bug Fixes
+
+* **credits:** enforce credit expiration for non-subscription orgs ([#10304](https://github.com/vm0-ai/vm0/issues/10304)) ([786a8bc](https://github.com/vm0-ai/vm0/commit/786a8bcf78901b8fc791caeac44ea4068dad93f6)), closes [#10299](https://github.com/vm0-ai/vm0/issues/10299)
+* **db:** keep agent_runs.session_id nullable to unblock production ([#10394](https://github.com/vm0-ai/vm0/issues/10394)) ([8a354fc](https://github.com/vm0-ai/vm0/commit/8a354fcfbc79d5b7b98ab022d7985eee3be0667f))
+
+
+### Refactoring
+
+* **queue:** prune dead non-zero branch in queued run dispatcher ([#10383](https://github.com/vm0-ai/vm0/issues/10383)) ([cae4fae](https://github.com/vm0-ai/vm0/commit/cae4fae507e019e1ead7ff4e12bada65be570455)), closes [#10382](https://github.com/vm0-ai/vm0/issues/10382)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.217.0
+
 ## [12.275.0](https://github.com/vm0-ai/vm0/compare/web-v12.274.0...web-v12.275.0) (2026-04-21)
 
 

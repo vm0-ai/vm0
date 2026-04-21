@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.125.6](https://github.com/vm0-ai/vm0/compare/cli-v9.125.5...cli-v9.125.6) (2026-04-21)
+
+
+### Bug Fixes
+
+* **cli:** suppress redundant doctor authorize link until connector is connected ([#10387](https://github.com/vm0-ai/vm0/issues/10387)) ([083fb5d](https://github.com/vm0-ai/vm0/commit/083fb5dcd661751201ec26224bb98b83f5322f82))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.217.0
+
 ## [9.125.5](https://github.com/vm0-ai/vm0/compare/cli-v9.125.4...cli-v9.125.5) (2026-04-21)
 
 
