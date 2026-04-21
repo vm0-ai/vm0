@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import {
+  BILLABLE_CONNECTORS,
   getModelProviderFirewall,
   getConnectorFirewall,
   isFirewallConnectorType,
@@ -260,12 +261,24 @@ async function resolveSecretsAndEnvironment(
     ],
   );
 
-  // Only the vm0 meta-provider is platform-billable (runs on VM0 key pool).
-  // Every other resolvedModelProvider is user-paid (user supplied their own key).
-  const billableFirewalls =
-    modelProviderResult.resolvedModelProvider === "vm0" && modelProviderConfig
-      ? [modelProviderConfig.name]
-      : [];
+  // Billable firewalls feed flow.metadata["firewall_billable"] in mitm-addon,
+  // gating platform-side billing webhooks and full-body response buffering:
+  // - vm0 meta-provider: platform-paid model tokens (user didn't supply a key).
+  // - Connector firewalls listed in BILLABLE_CONNECTORS: per-call priced APIs
+  //   where the platform covers the upstream cost and bills the user.
+  const billableFirewalls: string[] = [];
+  if (
+    modelProviderResult.resolvedModelProvider === "vm0" &&
+    modelProviderConfig
+  ) {
+    billableFirewalls.push(modelProviderConfig.name);
+  }
+  const billableConnectorSet = new Set<string>(BILLABLE_CONNECTORS);
+  for (const fw of connectorPermissionConfigs) {
+    if (billableConnectorSet.has(fw.name)) {
+      billableFirewalls.push(fw.name);
+    }
+  }
 
   return {
     secrets,
