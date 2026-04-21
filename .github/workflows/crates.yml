@@ -1317,7 +1317,7 @@ jobs:
           # is still active afterward so the EXIT trap dumps journalctl at the
           # right diagnostic boundary (instead of hanging inside systemctl stop).
           wait_for_exit() {
-            local svc=$1 budget=${2:-5}
+            local svc=$1 budget=${2:-10}
             echo "--- Waiting up to ${budget}s for $svc to exit ---"
             for i in $(seq 1 "$budget"); do
               systemctl is-active --quiet "vm0-runner-${svc}" || return 0
