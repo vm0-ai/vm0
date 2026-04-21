@@ -59,13 +59,6 @@ function initEnv() {
       SLACK_API_URL: z.url().optional(),
       E2E_SLACK_MOCK_ENABLED: z.enum(["true", "false", "1", "0"]).optional(),
       VM0_DEFAULT_AGENT: z.string().min(1).optional(), // Default agent compose/agent UUID for new integrations
-      // Extra Clerk user IDs (comma-separated, plain text) allowed to mint
-      // redemption codes in addition to `STAFF_ORG_ID_HASHES`. Intended as a
-      // local-dev / preview convenience so an engineer can mint test codes
-      // from their own account without being in the hard-coded staff org.
-      // Not meant for production; if set in prod it broadens the staff list,
-      // so only populate in `.env.local` or per-engineer preview secrets.
-      EXTRA_STAFF_USER_IDS: z.string().optional(),
       // Ahrefs OAuth (for connector)
       AHREFS_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       AHREFS_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
@@ -283,7 +276,6 @@ function initEnv() {
       SLACK_API_URL: process.env.SLACK_API_URL,
       E2E_SLACK_MOCK_ENABLED: process.env.E2E_SLACK_MOCK_ENABLED,
       VM0_DEFAULT_AGENT: process.env.VM0_DEFAULT_AGENT,
-      EXTRA_STAFF_USER_IDS: process.env.EXTRA_STAFF_USER_IDS,
       AHREFS_OAUTH_CLIENT_ID: process.env.AHREFS_OAUTH_CLIENT_ID,
       AHREFS_OAUTH_CLIENT_SECRET: process.env.AHREFS_OAUTH_CLIENT_SECRET,
       AIRTABLE_OAUTH_CLIENT_ID: process.env.AIRTABLE_OAUTH_CLIENT_ID,

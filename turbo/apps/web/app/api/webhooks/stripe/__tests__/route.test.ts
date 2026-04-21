@@ -15,6 +15,7 @@ import {
   getOrgMembersEntry,
   findCreditExpiresRecords,
   insertCreditExpiresRecord,
+  setOrgCredits,
 } from "../../../../../src/__tests__/api-test-helpers";
 import type { StripeMockFns } from "../../../../../src/__tests__/stripe-mock";
 import { reloadEnv } from "../../../../../src/env";
@@ -630,6 +631,9 @@ describe("POST /api/webhooks/stripe", () => {
       const invId = uniqueId("inv-exp-settle");
       const periodEnd = Math.floor(Date.now() / 1000) + 30 * 86400;
 
+      // Seed enough baseline credits so expireCredits can deduct 3000
+      // without hitting the GREATEST(balance - expired, 0) clamp at 0.
+      await setOrgCredits(user.orgId, 100_000);
       await updateOrgStripeFields(user.orgId, {
         stripeCustomerId: cusId,
         stripeSubscriptionId: subId,

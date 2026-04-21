@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { initServices } from "../../../../../../src/lib/init-services";
@@ -6,7 +6,6 @@ import { getAuthContext } from "../../../../../../src/lib/auth/get-auth-context"
 import { voiceChatPreparations } from "../../../../../../src/db/schema/voice-chat";
 import { logger } from "../../../../../../src/lib/shared/logger";
 import { publishUserSignal } from "../../../../../../src/lib/infra/realtime/client";
-import { after } from "next/server";
 
 const bodySchema = z.object({
   content: z.string().min(1),

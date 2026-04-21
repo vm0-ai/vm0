@@ -62,8 +62,13 @@ pub async fn run_gc(args: GcArgs) -> RunnerResult<()> {
 
     let locks_removed = gc_orphaned_locks(&home, args.dry_run).await?;
     let (job_logs_removed, job_logs_freed) = gc_job_logs(&home, args.dry_run).await?;
-    let versions_removed =
-        gc_versions(&home, args.dry_run, args.protect_version.as_deref()).await?;
+    let versions_removed = gc_versions(
+        &home,
+        args.dry_run,
+        args.protect_version.as_deref(),
+        args.keep_latest,
+    )
+    .await?;
 
     let debootstrap_freed = gc_debootstrap(&home, args.keep_latest, args.dry_run).await?;
 
@@ -656,28 +661,37 @@ async fn dir_stats(dir: &Path) -> (u64, SystemTime) {
     (total_bytes, mtime)
 }
 
-/// Check whether a directory name is a semver version string (`v<major>.<minor>.<patch>`).
-fn is_semver_version(name: &str) -> bool {
-    let Some(rest) = name.strip_prefix('v') else {
-        return false;
-    };
-    let parts: Vec<&str> = rest.split('.').collect();
-    parts.len() == 3 && parts.iter().all(|p| p.parse::<u32>().is_ok())
+/// Parse `v<major>.<minor>.<patch>` into a tuple for ordering. Returns `None`
+/// for non-semver names so callers can filter them out in one pass.
+fn parse_semver(name: &str) -> Option<(u32, u32, u32)> {
+    let rest = name.strip_prefix('v')?;
+    let mut parts = rest.split('.');
+    let major = parts.next()?.parse::<u32>().ok()?;
+    let minor = parts.next()?.parse::<u32>().ok()?;
+    let patch = parts.next()?.parse::<u32>().ok()?;
+    if parts.next().is_some() {
+        return None;
+    }
+    Some((major, minor, patch))
 }
 
 /// Remove old deployment version directories that are not actively running.
 ///
-/// Scans `home.bin_dir()` for semver-named subdirectories (e.g. `v0.2.0`), checks
-/// whether the corresponding systemd unit is active, and deletes inactive versions
-/// (bin dir, runner config dir, and systemd unit).
+/// Scans `home.bin_dir()` for semver-named subdirectories (e.g. `v0.2.0`) and
+/// deletes inactive versions (bin dir, runner config dir, and systemd unit).
 ///
-/// If `protect` is provided, that version is unconditionally kept regardless of
-/// systemd unit state. This prevents the currently-deployed version from being
-/// garbage-collected during deployment (see `--protect-version`).
+/// Survival rules (any one keeps the version):
+/// - `--protect-version` matches the name.
+/// - The version is in the top `keep_latest` by semver descending. This covers
+///   the "staged but not yet installed" case where two overlapping releases
+///   race: the older release's promote must not wipe the newer release's
+///   just-staged binary even though the newer unit isn't active yet.
+/// - The corresponding systemd unit is active.
 async fn gc_versions(
     home: &HomePaths,
     dry_run: bool,
     protect: Option<&str>,
+    keep_latest: Option<usize>,
 ) -> RunnerResult<Vec<String>> {
     let bin_dir = home.bin_dir();
     let mut entries = match tokio::fs::read_dir(&bin_dir).await {
@@ -691,17 +705,42 @@ async fn gc_versions(
         }
     };
 
-    let mut removed: Vec<String> = Vec::new();
-
+    // First pass: collect all semver-named dirs. We need the full set to
+    // pick the top `keep_latest` by version, so we can't decide-and-delete
+    // in one pass.
+    let mut semver_dirs: Vec<(String, (u32, u32, u32))> = Vec::new();
     while let Some(entry) = next_entry_warn(&mut entries, "gc_versions", &bin_dir).await {
         let name = entry.file_name();
         let Some(name) = name.to_str() else { continue };
-        if !is_semver_version(name) {
+        if let Some(ver) = parse_semver(name) {
+            semver_dirs.push((name.to_string(), ver));
+        }
+    }
+
+    // Pick the top-N by semver descending. `keep_latest = None` means no
+    // version-based protection (pre-#10411 behavior).
+    let keep_count = keep_latest.unwrap_or(0);
+    let kept_by_latest: HashSet<String> = if keep_count == 0 {
+        HashSet::new()
+    } else {
+        let mut sorted = semver_dirs.clone();
+        sorted.sort_by_key(|e| std::cmp::Reverse(e.1));
+        sorted
+            .into_iter()
+            .take(keep_count)
+            .map(|(n, _)| n)
+            .collect()
+    };
+
+    let mut removed: Vec<String> = Vec::new();
+    for (name, _) in &semver_dirs {
+        if protect == Some(name.as_str()) {
+            info!("version {name}: protected (--protect-version), skipping");
             continue;
         }
 
-        if protect == Some(name) {
-            info!("version {name}: protected (--protect-version), skipping");
+        if kept_by_latest.contains(name) {
+            info!("version {name}: within --keep-latest, skipping");
             continue;
         }
 
@@ -748,7 +787,7 @@ async fn gc_versions(
 
             info!("removed version {name}");
         }
-        removed.push(name.to_string());
+        removed.push(name.clone());
     }
 
     Ok(removed)
@@ -1238,22 +1277,29 @@ mod tests {
     }
 
     #[test]
-    fn is_semver_version_valid() {
-        assert!(is_semver_version("v1.0.0"));
-        assert!(is_semver_version("v0.2.10"));
-        assert!(is_semver_version("v12.34.56"));
+    fn parse_semver_valid() {
+        assert_eq!(parse_semver("v1.0.0"), Some((1, 0, 0)));
+        assert_eq!(parse_semver("v0.2.10"), Some((0, 2, 10)));
+        assert_eq!(parse_semver("v12.34.56"), Some((12, 34, 56)));
     }
 
     #[test]
-    fn is_semver_version_invalid() {
-        assert!(!is_semver_version("staging"));
-        assert!(!is_semver_version("test-abc"));
-        assert!(!is_semver_version("v1.0"));
-        assert!(!is_semver_version("v1.0.0-rc1"));
-        assert!(!is_semver_version("1.0.0"));
-        assert!(!is_semver_version(""));
-        assert!(!is_semver_version("v"));
-        assert!(!is_semver_version("v1.0.0.0"));
+    fn parse_semver_invalid() {
+        assert!(parse_semver("staging").is_none());
+        assert!(parse_semver("test-abc").is_none());
+        assert!(parse_semver("v1.0").is_none());
+        assert!(parse_semver("v1.0.0-rc1").is_none());
+        assert!(parse_semver("1.0.0").is_none());
+        assert!(parse_semver("").is_none());
+        assert!(parse_semver("v").is_none());
+        assert!(parse_semver("v1.0.0.0").is_none());
+    }
+
+    /// Ordering must be numeric (`v0.10.0 > v0.9.0`), not lexicographic.
+    #[test]
+    fn parse_semver_orders_numerically() {
+        assert!(parse_semver("v0.10.0") > parse_semver("v0.9.0"));
+        assert!(parse_semver("v1.0.0") > parse_semver("v0.99.99"));
     }
 
     #[tokio::test]
@@ -1273,7 +1319,7 @@ mod tests {
         std::fs::create_dir_all(runners_dir.join("v1.0.0")).unwrap();
 
         // systemctl will fail in test env, so versions are treated as inactive
-        let mut removed = gc_versions(&home, false, None).await.unwrap();
+        let mut removed = gc_versions(&home, false, None, None).await.unwrap();
         removed.sort();
         assert_eq!(removed, ["v1.0.0", "v2.0.0"]);
         assert!(!bin_dir.join("v1.0.0").exists());
@@ -1293,7 +1339,7 @@ mod tests {
 
         std::fs::create_dir_all(bin_dir.join("v1.0.0")).unwrap();
 
-        let removed = gc_versions(&home, true, None).await.unwrap();
+        let removed = gc_versions(&home, true, None, None).await.unwrap();
         assert_eq!(removed, ["v1.0.0"]);
         assert!(bin_dir.join("v1.0.0").exists(), "dry-run should not delete");
     }
@@ -1304,7 +1350,7 @@ mod tests {
         let home = test_home(dir.path());
         std::fs::create_dir_all(home.bin_dir()).unwrap();
 
-        let removed = gc_versions(&home, false, None).await.unwrap();
+        let removed = gc_versions(&home, false, None, None).await.unwrap();
         assert!(removed.is_empty());
     }
 
@@ -1313,7 +1359,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let home = test_home(dir.path());
         // Don't create bin_dir — should return 0, not error.
-        let removed = gc_versions(&home, false, None).await.unwrap();
+        let removed = gc_versions(&home, false, None, None).await.unwrap();
         assert!(removed.is_empty());
     }
 
@@ -1326,7 +1372,9 @@ mod tests {
         std::fs::create_dir_all(bin_dir.join("v1.0.0")).unwrap();
         std::fs::create_dir_all(bin_dir.join("v2.0.0")).unwrap();
 
-        let mut removed = gc_versions(&home, false, Some("v1.0.0")).await.unwrap();
+        let mut removed = gc_versions(&home, false, Some("v1.0.0"), None)
+            .await
+            .unwrap();
         removed.sort();
         assert_eq!(removed, ["v2.0.0"]);
         assert!(
@@ -1334,6 +1382,53 @@ mod tests {
             "skipped version should survive"
         );
         assert!(!bin_dir.join("v2.0.0").exists());
+    }
+
+    /// Two overlapping release pipelines can interleave: v0.88.2's promote
+    /// runs `gc --keep-latest 6 --protect-version v0.88.2` after v0.88.3 has
+    /// already staged its binary. `--keep-latest` must cover semver dirs so
+    /// v0.88.3 survives by version ordering alone, not just `--protect-version`.
+    #[tokio::test]
+    async fn gc_versions_keep_latest_covers_staged_newer_version() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let bin_dir = home.bin_dir();
+
+        for v in ["v0.88.0", "v0.88.1", "v0.88.2", "v0.88.3"] {
+            std::fs::create_dir_all(bin_dir.join(v)).unwrap();
+        }
+
+        // Simulating v0.88.2's own promote: protects itself, keeps top 1.
+        // v0.88.3 must survive via keep_latest even though protect is v0.88.2.
+        let mut removed = gc_versions(&home, false, Some("v0.88.2"), Some(1))
+            .await
+            .unwrap();
+        removed.sort();
+        assert_eq!(removed, ["v0.88.0", "v0.88.1"]);
+        assert!(
+            bin_dir.join("v0.88.3").exists(),
+            "newest survives via keep_latest"
+        );
+        assert!(bin_dir.join("v0.88.2").exists(), "protect-version survives");
+        assert!(!bin_dir.join("v0.88.1").exists());
+        assert!(!bin_dir.join("v0.88.0").exists());
+    }
+
+    /// `--keep-latest` orders numerically, not lexicographically — v0.10.0
+    /// must outrank v0.9.0.
+    #[tokio::test]
+    async fn gc_versions_keep_latest_numeric_ordering() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let bin_dir = home.bin_dir();
+
+        for v in ["v0.9.0", "v0.10.0"] {
+            std::fs::create_dir_all(bin_dir.join(v)).unwrap();
+        }
+
+        let removed = gc_versions(&home, false, None, Some(1)).await.unwrap();
+        assert_eq!(removed, ["v0.9.0"]);
+        assert!(bin_dir.join("v0.10.0").exists());
     }
 
     #[tokio::test]

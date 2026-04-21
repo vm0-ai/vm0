@@ -6,6 +6,7 @@ import {
 } from "../../db/schema/agent-compose";
 import { zeroAgents } from "../../db/schema/zero-agent";
 import { orgMetadata } from "../../db/schema/org-metadata";
+import { ensureStarterCreditGrant } from "../zero/credit/starter-grant-service";
 
 interface Services {
   db: typeof globalThis.services.db;
@@ -78,13 +79,18 @@ export async function seedDefaultAgent(
     })
     .onConflictDoNothing();
 
-  await db
-    .insert(orgMetadata)
-    .values({ orgId: input.orgId, defaultAgentId: composeId })
-    .onConflictDoUpdate({
-      target: orgMetadata.orgId,
-      set: { defaultAgentId: composeId, updatedAt: new Date() },
-    });
+  // Starter grant must land alongside the default-agent row — BATS Slack
+  // dispatch tests exercise credit checks on this path.
+  await db.transaction(async (tx) => {
+    await ensureStarterCreditGrant(tx, input.orgId);
+    await tx
+      .insert(orgMetadata)
+      .values({ orgId: input.orgId, defaultAgentId: composeId })
+      .onConflictDoUpdate({
+        target: orgMetadata.orgId,
+        set: { defaultAgentId: composeId, updatedAt: new Date() },
+      });
+  });
 
   return { composeId, versionId, agentId: composeId };
 }

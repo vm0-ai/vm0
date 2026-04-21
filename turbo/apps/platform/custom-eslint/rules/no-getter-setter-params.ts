@@ -12,12 +12,7 @@
  *   async function doWork(get: Getter, data: Data) { ... }
  */
 
-import {
-  AST_NODE_TYPES,
-  ESLintUtils,
-  type TSESTree,
-} from "@typescript-eslint/utils";
-import type { Type } from "typescript";
+import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 import { createRule } from "../utils.ts";
 
 export default createRule({
@@ -28,7 +23,7 @@ export default createRule({
     docs: {
       description:
         "Functions must not accept ccstate Getter or Setter types as parameters — use command() instead",
-      requiresTypeChecking: true,
+      requiresTypeChecking: false,
     },
     schema: [],
     messages: {
@@ -38,46 +33,36 @@ export default createRule({
   },
 
   create(context) {
-    const services = ESLintUtils.getParserServices(context);
-    const checker = services.program.getTypeChecker();
-
-    function isCCStateGetterOrSetter(type: Type): boolean {
-      const symbol = type.aliasSymbol ?? type.getSymbol();
-      if (!symbol) {
-        return false;
+    // Checks type annotation text only, not symbol origin. False positives are
+    // possible for user-defined types named Getter/Setter from non-ccstate
+    // packages, but are acceptable in this codebase where these names are
+    // ccstate-specific by convention.
+    function getGetterSetterName(param: TSESTree.Parameter): string | null {
+      if (param.type !== AST_NODE_TYPES.Identifier) {
+        return null;
       }
-
-      const name = symbol.getName();
-      if (name !== "Getter" && name !== "Setter") {
-        return false;
+      const ann = param.typeAnnotation?.typeAnnotation;
+      if (
+        ann === undefined ||
+        ann.type !== AST_NODE_TYPES.TSTypeReference ||
+        ann.typeName.type !== AST_NODE_TYPES.Identifier
+      ) {
+        return null;
       }
-
-      const declarations = symbol.getDeclarations();
-      if (!declarations?.length) {
-        return false;
-      }
-
-      return declarations.some((d) =>
-        d.getSourceFile().fileName.includes("ccstate"),
-      );
+      const { name } = ann.typeName;
+      return name === "Getter" || name === "Setter" ? name : null;
     }
 
     function checkParam(param: TSESTree.Parameter) {
-      if (param.type !== AST_NODE_TYPES.Identifier) {
+      const typeName = getGetterSetterName(param);
+      if (typeName === null) {
         return;
       }
-
-      const tsNode = services.esTreeNodeToTSNodeMap.get(param);
-      const type = checker.getTypeAtLocation(tsNode);
-
-      if (isCCStateGetterOrSetter(type)) {
-        const typeName = checker.typeToString(type);
-        context.report({
-          node: param,
-          messageId: "noGetterSetterParam",
-          data: { name: param.name, type: typeName },
-        });
-      }
+      context.report({
+        node: param,
+        messageId: "noGetterSetterParam",
+        data: { name: (param as TSESTree.Identifier).name, type: typeName },
+      });
     }
 
     const ccstatePrimitives = new Set(["command", "computed", "state"]);

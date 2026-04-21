@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
 import { chatMessagesContract } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
+import {
+  mockUploadPending,
+  mockUploadSuccess,
+} from "../../../mocks/upload-helpers.ts";
 import {
   mockChatLifecycle,
   PLACEHOLDER,
@@ -89,10 +92,12 @@ describe("chat-d-057: upload progress indicator in AttachmentChip", () => {
     const user = userEvent.setup();
 
     server.use(
-      // mockApi cannot be used here: /api/zero/uploads accepts multipart FormData,
-      // which is out of scope for the mockApi helper (Phase 0 of #9707).
-      http.post("*/api/zero/uploads", () => {
-        return new Promise<never>(() => {});
+      ...mockUploadPending({
+        id: "upload-pending",
+        filename: "document.pdf",
+        contentType: "application/pdf",
+        size: 4,
+        url: "https://example.com/document.pdf",
       }),
     );
     mockChatAPI();
@@ -128,16 +133,12 @@ describe("chat-d-058: image preview thumbnails in AttachmentChip", () => {
     const imageUrl = "https://example.com/photo.png";
 
     server.use(
-      // mockApi cannot be used here: /api/zero/uploads accepts multipart FormData,
-      // which is out of scope for the mockApi helper (Phase 0 of #9707).
-      http.post("*/api/zero/uploads", () => {
-        return HttpResponse.json({
-          id: "upload-1",
-          filename: "photo.png",
-          contentType: "image/png",
-          size: 2048,
-          url: imageUrl,
-        });
+      ...mockUploadSuccess({
+        id: "upload-1",
+        filename: "photo.png",
+        contentType: "image/png",
+        size: 2048,
+        url: imageUrl,
       }),
     );
     mockChatAPI();
@@ -172,16 +173,12 @@ describe("chat-i-059: image preview button opens lightbox", () => {
     const imageUrl = "https://example.com/photo.png";
 
     server.use(
-      // mockApi cannot be used here: /api/zero/uploads accepts multipart FormData,
-      // which is out of scope for the mockApi helper (Phase 0 of #9707).
-      http.post("*/api/zero/uploads", () => {
-        return HttpResponse.json({
-          id: "upload-1",
-          filename: "photo.png",
-          contentType: "image/png",
-          size: 2048,
-          url: imageUrl,
-        });
+      ...mockUploadSuccess({
+        id: "upload-1",
+        filename: "photo.png",
+        contentType: "image/png",
+        size: 2048,
+        url: imageUrl,
       }),
     );
     mockChatAPI();
@@ -225,16 +222,12 @@ describe("chat-i-060: close button closes lightbox", () => {
     const imageUrl = "https://example.com/photo.png";
 
     server.use(
-      // mockApi cannot be used here: /api/zero/uploads accepts multipart FormData,
-      // which is out of scope for the mockApi helper (Phase 0 of #9707).
-      http.post("*/api/zero/uploads", () => {
-        return HttpResponse.json({
-          id: "upload-1",
-          filename: "photo.png",
-          contentType: "image/png",
-          size: 2048,
-          url: imageUrl,
-        });
+      ...mockUploadSuccess({
+        id: "upload-1",
+        filename: "photo.png",
+        contentType: "image/png",
+        size: 2048,
+        url: imageUrl,
       }),
     );
     mockChatAPI();
@@ -284,16 +277,12 @@ describe("chat-i-061: backdrop click closes lightbox", () => {
     const imageUrl = "https://example.com/photo.png";
 
     server.use(
-      // mockApi cannot be used here: /api/zero/uploads accepts multipart FormData,
-      // which is out of scope for the mockApi helper (Phase 0 of #9707).
-      http.post("*/api/zero/uploads", () => {
-        return HttpResponse.json({
-          id: "upload-1",
-          filename: "photo.png",
-          contentType: "image/png",
-          size: 2048,
-          url: imageUrl,
-        });
+      ...mockUploadSuccess({
+        id: "upload-1",
+        filename: "photo.png",
+        contentType: "image/png",
+        size: 2048,
+        url: imageUrl,
       }),
     );
     mockChatAPI();
@@ -344,16 +333,12 @@ describe("chat-i-062: remove button on attachment chip calls onRemove", () => {
     const user = userEvent.setup();
 
     server.use(
-      // mockApi cannot be used here: /api/zero/uploads accepts multipart FormData,
-      // which is out of scope for the mockApi helper (Phase 0 of #9707).
-      http.post("*/api/zero/uploads", () => {
-        return HttpResponse.json({
-          id: "upload-1",
-          filename: "report.pdf",
-          contentType: "application/pdf",
-          size: 512,
-          url: "https://example.com/report.pdf",
-        });
+      ...mockUploadSuccess({
+        id: "upload-1",
+        filename: "report.pdf",
+        contentType: "application/pdf",
+        size: 512,
+        url: "https://example.com/report.pdf",
       }),
     );
     mockChatAPI();
@@ -467,16 +452,12 @@ describe("chat-d-064: video attachment chip shows neither image thumbnail nor fi
     const videoUrl = "https://example.com/demo.mp4";
 
     server.use(
-      // mockApi cannot be used here: /api/zero/uploads accepts multipart FormData,
-      // which is out of scope for the mockApi helper (Phase 0 of #9707).
-      http.post("*/api/zero/uploads", () => {
-        return HttpResponse.json({
-          id: "upload-video-1",
-          filename: "demo.mp4",
-          contentType: "video/mp4",
-          size: 2048,
-          url: videoUrl,
-        });
+      ...mockUploadSuccess({
+        id: "upload-video-1",
+        filename: "demo.mp4",
+        contentType: "video/mp4",
+        size: 2048,
+        url: videoUrl,
       }),
     );
     mockChatAPI();
@@ -527,16 +508,12 @@ describe("chat-i-065: new-thread send includes structured attachFiles", () => {
     let capturedAttachFiles: unknown = "not-called";
 
     server.use(
-      // mockApi cannot be used here: /api/zero/uploads accepts multipart FormData,
-      // which is out of scope for the mockApi helper (Phase 0 of #9707).
-      http.post("*/api/zero/uploads", () => {
-        return HttpResponse.json({
-          id: "upload-new-1",
-          filename: "notes.pdf",
-          contentType: "application/pdf",
-          size: 321,
-          url: fileUrl,
-        });
+      ...mockUploadSuccess({
+        id: "upload-new-1",
+        filename: "notes.pdf",
+        contentType: "application/pdf",
+        size: 321,
+        url: fileUrl,
       }),
     );
     mockChatLifecycle();

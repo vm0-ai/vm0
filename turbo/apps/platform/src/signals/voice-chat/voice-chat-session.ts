@@ -172,7 +172,6 @@ const internalPrepElapsedMs$ = state(0);
 const internalReconnectAttempt$ = state(0);
 const internalModel$ = state<RealtimeModel>("gpt-realtime-mini");
 
-const internalParentSignal$ = state<AbortSignal | null>(null);
 const internalWakeLock$ = state<WakeLockSentinel | null>(null);
 
 const meetingPromptInput$ = state("");
@@ -549,14 +548,20 @@ const injectSlowBrainEvents$ = command(
   },
 );
 
+interface WebRTCConfig {
+  token: string;
+  model: RealtimeModel;
+}
+
 const setupWebRTC$ = command(
   async (
     { get, set },
     stream: MediaStream,
-    token: string,
-    model: RealtimeModel,
+    config: WebRTCConfig,
+    parentSignal: AbortSignal,
     signal: AbortSignal,
   ): Promise<boolean> => {
+    const { token, model } = config;
     const pc = new RTCPeerConnection();
     set(internalPc$, pc);
 
@@ -611,7 +616,7 @@ const setupWebRTC$ = command(
       "close",
       onDomEventFn((): void | Promise<void> => {
         if (get(internalStatus$) === "connected") {
-          return set(reconnectVoiceSession$, signal);
+          return set(reconnectVoiceSession$, signal, parentSignal);
         }
       }),
     );
@@ -624,7 +629,7 @@ const setupWebRTC$ = command(
           pc.iceConnectionState === "disconnected"
         ) {
           if (get(internalStatus$) === "connected") {
-            return set(reconnectVoiceSession$, signal);
+            return set(reconnectVoiceSession$, signal, parentSignal);
           }
         }
       }),
@@ -773,7 +778,7 @@ const cleanupWebRTC$ = command(({ get, set }) => {
 // --- Reconnect logic ---
 
 const reconnectVoiceSession$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
+  async ({ get, set }, signal: AbortSignal, parentSignal: AbortSignal) => {
     set(internalStatus$, "reconnecting");
     set(internalError$, null);
     set(internalReconnectAttempt$, 0);
@@ -872,8 +877,8 @@ const reconnectVoiceSession$ = command(
       const ok = await set(
         setupWebRTC$,
         stream,
-        clientSecret.value,
-        model,
+        { token: clientSecret.value, model },
+        parentSignal,
         signal,
       );
       if (ok) {
@@ -881,12 +886,6 @@ const reconnectVoiceSession$ = command(
         set(internalReconnectAttempt$, 0);
         await set(acquireWakeLock$, signal);
         signal.throwIfAborted();
-        const parentSignal = get(internalParentSignal$);
-        if (!parentSignal) {
-          set(internalError$, "No parent signal for reconnect");
-          set(internalStatus$, "error");
-          return;
-        }
         const sessionSignal = set(resetSessionSignal$, parentSignal);
         await Promise.allSettled([
           set(startHeartbeat$, sessionSignal),
@@ -989,7 +988,11 @@ const releaseWakeLock$ = command(({ get, set }) => {
 // --- Shared connection logic ---
 
 const connectVoiceSession$ = command(
-  async ({ get, set }, sessionSignal: AbortSignal) => {
+  async (
+    { get, set },
+    sessionSignal: AbortSignal,
+    parentSignal: AbortSignal,
+  ) => {
     const model = get(internalModel$);
 
     set(internalStatus$, "connecting");
@@ -1037,8 +1040,8 @@ const connectVoiceSession$ = command(
     const ok = await set(
       setupWebRTC$,
       stream,
-      clientSecret.value,
-      model,
+      { token: clientSecret.value, model },
+      parentSignal,
       sessionSignal,
     );
     sessionSignal.throwIfAborted();
@@ -1058,14 +1061,20 @@ const connectVoiceSession$ = command(
 
 // --- Shared preparation → activate → connect flow ---
 
+interface PrepareActivateConfig {
+  sessionId: string;
+  timeoutMs: number;
+}
+
 const prepareActivateConnect$ = command(
   async (
     { get, set },
-    sessionId: string,
+    config: PrepareActivateConfig,
     sessionSignal: AbortSignal,
-    timeoutMs: number,
+    parentSignal: AbortSignal,
     signal: AbortSignal,
   ) => {
+    const { sessionId, timeoutMs } = config;
     const startTime = Date.now();
     let preparationReady = false;
 
@@ -1167,7 +1176,7 @@ const prepareActivateConnect$ = command(
     // Connect voice (token → mic → WebRTC → poll/heartbeat)
     await Promise.allSettled([
       heartbeatPromise,
-      set(connectVoiceSession$, sessionSignal),
+      set(connectVoiceSession$, sessionSignal, parentSignal),
     ]);
   },
 );
@@ -1244,7 +1253,6 @@ export const startVoiceChat$ = command(
     set(internalCurrentAssistant$, null);
     set(internalPrompt$, null);
     set(internalPrepStartTime$, Date.now());
-    set(internalParentSignal$, signal);
 
     const sessionSignal = set(resetSessionSignal$, signal);
 
@@ -1318,14 +1326,14 @@ export const startVoiceChat$ = command(
 
       await Promise.allSettled([
         heartbeatPromise,
-        set(connectVoiceSession$, sessionSignal),
+        set(connectVoiceSession$, sessionSignal, signal),
       ]);
     } else {
       await set(
         prepareActivateConnect$,
-        session.id,
+        { sessionId: session.id, timeoutMs: PREP_TIMEOUT_CHAT_MS },
         sessionSignal,
-        PREP_TIMEOUT_CHAT_MS,
+        signal,
         signal,
       );
     }
@@ -1353,7 +1361,6 @@ export const startVoiceMeeting$ = command(
     set(internalCurrentAssistant$, null);
     set(internalPrompt$, prompt);
     set(internalPrepStartTime$, Date.now());
-    set(internalParentSignal$, signal);
 
     const sessionSignal = set(resetSessionSignal$, signal);
 
@@ -1414,14 +1421,14 @@ export const startVoiceMeeting$ = command(
 
       await Promise.allSettled([
         heartbeatPromise,
-        set(connectVoiceSession$, sessionSignal),
+        set(connectVoiceSession$, sessionSignal, signal),
       ]);
     } else {
       await set(
         prepareActivateConnect$,
-        session.id,
+        { sessionId: session.id, timeoutMs: PREP_TIMEOUT_MEETING_MS },
         sessionSignal,
-        PREP_TIMEOUT_MEETING_MS,
+        signal,
         signal,
       );
     }
@@ -1480,7 +1487,6 @@ export const endVoiceChat$ = command(({ get, set }) => {
   set(internalPrepElapsedMs$, 0);
   set(internalReconnectAttempt$, 0);
   set(internalModel$, "gpt-realtime-mini");
-  set(internalParentSignal$, null);
   set(internalStatus$, "idle");
 });
 
@@ -1490,7 +1496,7 @@ export const retryVoiceChat$ = command(
     if (status !== "disconnected") {
       return;
     }
-    await set(reconnectVoiceSession$, signal);
+    await set(reconnectVoiceSession$, signal, signal);
   },
 );
 

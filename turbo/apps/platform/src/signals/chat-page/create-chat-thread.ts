@@ -245,12 +245,21 @@ function createModelSelection(
           selectedModel: thread.selectedModel,
         };
       }
-      // No thread override → seed from the org default provider so the
-      // picker's displayed model is the one the send body carries. Without
-      // this seed, the picker trigger silently shows the org default (via
-      // its null-value fallback) while the request sends `modelSelection:
-      // null`, which the backend resolves against `zero_agents.selected_model`
-      // — not against the org default — producing a display/run mismatch.
+      // No thread override → fall back to the agent's default, then to the
+      // org default. Seeding here (rather than letting the picker show its
+      // null-value fallback) keeps the picker's displayed model identical
+      // to what the send body carries. Without this seed, the backend
+      // would receive `modelSelection: null` while the UI advertised a
+      // specific model, producing a display/run mismatch.
+      if (thread?.agentId) {
+        const agent = await get(agentById(thread.agentId));
+        if (agent?.modelProviderId && agent.selectedModel) {
+          return {
+            modelProviderId: agent.modelProviderId,
+            selectedModel: agent.selectedModel,
+          };
+        }
+      }
       const { modelProviders } = await get(orgModelProviders$);
       const defaultProvider = modelProviders.find((p) => {
         return p.isDefault;

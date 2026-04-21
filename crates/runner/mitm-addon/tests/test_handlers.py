@@ -54,6 +54,7 @@ class TestRequestHandler:
             "vms": {
                 "10.200.0.1": {
                     "runId": "run-test-oauth",
+                    "billableFirewalls": [],
                     "sandboxToken": "tok-test",
                     "networkLogPath": str(tmp_path / "net.jsonl"),
                     "proxyLogPath": str(tmp_path / "proxy.jsonl"),
@@ -132,6 +133,7 @@ class TestRequestHandler:
             "vms": {
                 "10.200.0.5": {
                     "runId": "run-conn-1",
+                    "billableFirewalls": [],
                     "sandboxToken": "tok-conn",
                     "networkLogPath": str(tmp_path / "net.jsonl"),
                     "firewalls": [
@@ -191,6 +193,7 @@ class TestRequestHandler:
             "vms": {
                 "10.200.0.5": {
                     "runId": "run-conn-1",
+                    "billableFirewalls": [],
                     "sandboxToken": "tok-conn",
                     "networkLogPath": str(tmp_path / "net.jsonl"),
                     "firewalls": [
@@ -258,6 +261,7 @@ class TestRequestHandler:
             "vms": {
                 "10.200.0.5": {
                     "runId": "run-conn-1",
+                    "billableFirewalls": [],
                     "sandboxToken": "tok-conn",
                     "networkLogPath": str(tmp_path / "net.jsonl"),
                     "firewalls": [
@@ -325,6 +329,7 @@ class TestRequestHandler:
             "vms": {
                 "10.200.0.5": {
                     "runId": "run-conn-1",
+                    "billableFirewalls": [],
                     "sandboxToken": "tok-conn",
                     "networkLogPath": str(tmp_path / "net.jsonl"),
                     "firewalls": [
@@ -1456,6 +1461,7 @@ class TestResponseUsageReporting:
         flow.metadata["firewall_action"] = "ALLOW"
         flow.metadata["original_url"] = "https://api.anthropic.com/v1/messages"
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata["firewall_billable"] = True
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
         flow.metadata["proxy_usage"] = {
             "model": "claude-sonnet-4-6",
@@ -1498,6 +1504,7 @@ class TestResponseUsageReporting:
         flow.metadata["original_url"] = "https://api.anthropic.com/v1/messages"
         flow.metadata["firewall_action"] = "ALLOW"
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata["firewall_billable"] = True
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
         flow.metadata["proxy_usage"] = {
             "model": "claude-sonnet-4-6",
@@ -1538,6 +1545,7 @@ class TestResponseUsageReporting:
         flow.metadata["original_url"] = "https://api.anthropic.com/v1/messages"
         flow.metadata["firewall_action"] = "ALLOW"
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata["firewall_billable"] = True
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
         flow.metadata["proxy_usage"] = {
             "model": "claude-sonnet-4-6",
@@ -1576,6 +1584,7 @@ class TestResponseUsageReporting:
         flow.metadata["original_url"] = "https://api.anthropic.com/v1/messages"
         flow.metadata["firewall_action"] = "ALLOW"
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata["firewall_billable"] = True
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
         flow.metadata["proxy_usage"] = {
             "model": "claude-sonnet-4-6",
@@ -1797,6 +1806,7 @@ class TestMaybeReportProxyUsage:
         """Model-provider usage reaches _opener with correct payload."""
         flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata["firewall_billable"] = True
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
         flow.metadata["proxy_usage"] = {
             "model": "claude-sonnet-4-6",
@@ -1817,6 +1827,28 @@ class TestMaybeReportProxyUsage:
         body = json.loads(req.data)
         assert body["runId"] == "run-abc-123"
         assert body["usage"]["input_tokens"] == 100
+
+    def test_skips_when_firewall_not_billable(self, real_flow, fresh_usage_executor):
+        """Should NOT report usage when firewall_billable is False.
+
+        Simulates a user supplying their own Anthropic key — the web layer
+        does not list the firewall in billableFirewalls, so no platform
+        credits should be charged.
+        """
+        flow = real_flow(with_response=False, host="api.anthropic.com")
+        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata["firewall_billable"] = False
+        flow.metadata["vm_sandbox_token"] = "tok-xyz"
+        flow.metadata["proxy_usage"] = {"input_tokens": 100}
+
+        with (
+            patch.object(usage, "get_api_url", return_value="https://api.vm0.ai"),
+            patch.object(usage, "_opener") as mock_opener,
+        ):
+            usage.maybe_report_proxy_usage(flow, "run-abc-123")
+            usage.usage_executor.shutdown(wait=True)
+
+        mock_opener.open.assert_not_called()  # urllib external boundary (#9991)
 
     def test_skips_non_model_provider(self, real_flow, fresh_usage_executor):
         """Should NOT reach _opener for non-model-provider requests."""
@@ -1862,6 +1894,7 @@ class TestMaybeReportProxyUsage:
         """Should write to proxy log and skip when sandbox_token is empty."""
         flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata["firewall_billable"] = True
         flow.metadata["vm_sandbox_token"] = ""
         flow.metadata["proxy_usage"] = {"input_tokens": 50}
         proxy_log = tmp_path / "proxy-run-abc-123.jsonl"
@@ -1882,6 +1915,7 @@ class TestMaybeReportProxyUsage:
         """Should write to proxy log and skip when api_url is empty."""
         flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata["firewall_billable"] = True
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
         flow.metadata["proxy_usage"] = {"input_tokens": 50}
         proxy_log = tmp_path / "proxy-run-abc-123.jsonl"
@@ -2459,6 +2493,7 @@ class TestUsageWebhookDelivery:
     def _model_flow(real_flow, tmp_path):
         flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata["firewall_billable"] = True
         flow.metadata["vm_sandbox_token"] = "tok"
         flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
         flow.metadata["proxy_usage"] = {"input_tokens": 100}
@@ -2875,7 +2910,7 @@ class TestFirewallHeaderCache:
         }
         auth._cache_locks[("run-old", "api-1")] = asyncio.Lock()
 
-        registry = {"vms": {"10.200.0.1": {"runId": "run-new"}}}
+        registry = {"vms": {"10.200.0.1": {"runId": "run-new", "billableFirewalls": []}}}
         reg_path = tmp_path / "registry.json"
         reg_path.write_text(json.dumps(registry))
 

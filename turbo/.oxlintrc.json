@@ -1,5 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/oxc-project/oxlint/main/npm/oxlint/configuration_schema.json",
+  "plugins": ["import"],
   "rules": {
     "import/no-cycle": "error",
     "import/no-self-import": "error",

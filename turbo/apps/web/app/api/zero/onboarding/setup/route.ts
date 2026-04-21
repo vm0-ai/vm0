@@ -16,6 +16,7 @@ import { zeroAgents } from "../../../../../src/db/schema/zero-agent";
 import { orgMetadata } from "../../../../../src/db/schema/org-metadata";
 import { orgMembersMetadata } from "../../../../../src/db/schema/org-members-metadata";
 import { userConnectors } from "../../../../../src/db/schema/user-connector";
+import { ensureStarterCreditGrant } from "../../../../../src/lib/zero/credit/starter-grant-service";
 import { logger } from "../../../../../src/lib/shared/logger";
 
 const log = logger("api:onboarding-setup");
@@ -219,14 +220,18 @@ const router = tsr.router(onboardingSetupContract, {
 
     // Parallel group 2: connectors + default agent + mark complete
     const parallelGroup2: Promise<unknown>[] = [
-      // Set default agent
-      db
-        .insert(orgMetadata)
-        .values({ orgId: org.orgId, defaultAgentId: agentId })
-        .onConflictDoUpdate({
-          target: orgMetadata.orgId,
-          set: { defaultAgentId: agentId, updatedAt: new Date() },
-        }),
+      // Ensure starter grant lands before (or alongside) the default-agent row.
+      // Runs in a transaction so the starter grant + default-agent upsert are atomic.
+      db.transaction(async (tx) => {
+        await ensureStarterCreditGrant(tx, org.orgId);
+        await tx
+          .insert(orgMetadata)
+          .values({ orgId: org.orgId, defaultAgentId: agentId })
+          .onConflictDoUpdate({
+            target: orgMetadata.orgId,
+            set: { defaultAgentId: agentId, updatedAt: new Date() },
+          });
+      }),
       // Mark onboarding complete + set timezone from browser
       db
         .insert(orgMembersMetadata)

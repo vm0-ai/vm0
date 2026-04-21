@@ -7,8 +7,6 @@ import {
 import {
   createTestCompose,
   createTestAgentSession,
-} from "../../../../../src/__tests__/api-test-helpers";
-import {
   createTelegramCallbackInstallation,
   telegramUserLinkExists,
   createTelegramThreadSession,

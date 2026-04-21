@@ -1,5 +1,57 @@
 # Changelog
 
+## [0.275.1](https://github.com/vm0-ai/vm0/compare/app-v0.275.0...app-v0.275.1) (2026-04-21)
+
+
+### Performance Improvements
+
+* **platform:** reduce activity log poll interval from 10s to 3s ([#10440](https://github.com/vm0-ai/vm0/issues/10440)) ([0284532](https://github.com/vm0-ai/vm0/commit/0284532eb41ceb1089480964846f12d03d4d6b5c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.219.1
+
+## [0.275.0](https://github.com/vm0-ai/vm0/compare/app-v0.274.1...app-v0.275.0) (2026-04-21)
+
+
+### Features
+
+* **platform:** fall back to agent default model in chat composer ([#10431](https://github.com/vm0-ai/vm0/issues/10431)) ([f0f96ab](https://github.com/vm0-ai/vm0/commit/f0f96ab26e8139b56a69c8937aef4126374db4a7))
+
+
+### Refactoring
+
+* **platform:** split voice-chat-candidate-session.ts large commands ([#10432](https://github.com/vm0-ai/vm0/issues/10432)) ([36aa24a](https://github.com/vm0-ai/vm0/commit/36aa24ab3521ac8301dd1ec68468d13ba1a46917))
+
+
+### Performance Improvements
+
+* **eslint:** reduce type-checking overhead in @vm0/app ccstate rules ([#10418](https://github.com/vm0-ai/vm0/issues/10418)) ([46facd2](https://github.com/vm0-ai/vm0/commit/46facd209c29cd6c0a922edb1e4f76f044aac9fe))
+
+## [0.274.1](https://github.com/vm0-ai/vm0/compare/app-v0.274.0...app-v0.274.1) (2026-04-21)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.219.0
+
+## [0.274.0](https://github.com/vm0-ai/vm0/compare/app-v0.273.0...app-v0.274.0) (2026-04-21)
+
+
+### Features
+
+* move thinking indicator inline under latest message ([#10246](https://github.com/vm0-ai/vm0/issues/10246)) ([eb0aa92](https://github.com/vm0-ai/vm0/commit/eb0aa92fbfa49a8f18806dde8669b8bbd17acaaf))
+
+
+### Bug Fixes
+
+* **web:** ts-rest api error triage and observability ([#10402](https://github.com/vm0-ai/vm0/issues/10402)) ([67d7ceb](https://github.com/vm0-ai/vm0/commit/67d7ceb879f70d3428ac895831201ca4124ded97))
+
 ## [0.273.0](https://github.com/vm0-ai/vm0/compare/app-v0.272.0...app-v0.273.0) (2026-04-21)
 
 

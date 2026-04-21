@@ -19,9 +19,10 @@ export const orgMetadata = pgTable(
   "org_metadata",
   {
     orgId: text("org_id").primaryKey(),
-    // New orgs start with 100000 starter credits. Existing orgs retain their
-    // current balance (migrations 0180 and 0257 only changed the column DEFAULT, not rows).
-    credits: bigint("credits", { mode: "number" }).notNull().default(100_000),
+    // Credits are granted explicitly via ensureStarterCreditGrant() (10k starter,
+    // 1-month TTL via credit_expires_record) or via Stripe invoice.paid for paid
+    // tiers. The column DEFAULT is 0 — never rely on the default to materialise a grant.
+    credits: bigint("credits", { mode: "number" }).notNull().default(0),
     tier: text("tier").notNull().default("free"),
     defaultAgentId: uuid("default_agent_id").references(
       () => {

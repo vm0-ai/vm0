@@ -5,8 +5,8 @@ import Image from "next/image";
 import { IconArrowUpRight } from "@tabler/icons-react";
 import { useTranslations } from "next-intl";
 import { Link } from "../../../../navigation";
-import Footer from "../../../components/Footer";
-import Particles from "../../../components/Particles";
+import { Footer } from "../../../components/Footer";
+import { Particles } from "../../../components/Particles";
 import { getAppUrl } from "../../../../src/lib/zero/url";
 import { buildPromptHref } from "../data";
 import type { UseCase, ConnectorRef } from "../data";
@@ -109,7 +109,7 @@ function PromptVariants({
   );
 }
 
-export default function UseCaseDetailClient({ useCase }: { useCase: UseCase }) {
+export function UseCaseDetailClient({ useCase }: { useCase: UseCase }) {
   const t = useTranslations("useCases");
   const slug = useCase.slug;
   const platformUrl = getAppUrl();

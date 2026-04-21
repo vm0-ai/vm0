@@ -6,8 +6,8 @@ import { initServices } from "../../../../../src/lib/init-services";
 import { cliTokens } from "../../../../../src/db/schema/cli-tokens";
 import { orgCache } from "../../../../../src/db/schema/org-cache";
 import { orgMembersCache } from "../../../../../src/db/schema/org-members-cache";
-import { orgMetadata } from "../../../../../src/db/schema/org-metadata";
 import { getOrgNameAndSlug } from "../../../../../src/lib/auth/org-cache";
+import { ensureStarterCreditGrant } from "../../../../../src/lib/zero/credit/starter-grant-service";
 import { generateCliToken } from "../../../../../src/lib/auth/sandbox-token";
 import {
   resolveTestUserId,
@@ -80,12 +80,11 @@ async function ensureTestOrg(userId: string): Promise<{ orgId: string }> {
       .where(eq(orgCache.orgId, orgId));
     // Ensure org_metadata row exists so downstream zero-run calls to
     // getOrgMetadata() don't 404. Onboarding normally creates this; E2E
-    // tests skip onboarding, so seed defaults here (tier=free, credits
-    // from column default).
-    await globalThis.services.db
-      .insert(orgMetadata)
-      .values({ orgId })
-      .onConflictDoNothing();
+    // tests skip onboarding, so seed the starter grant here (tier defaults
+    // to free via column default, credits come from ensureStarterCreditGrant).
+    await globalThis.services.db.transaction(async (tx) => {
+      await ensureStarterCreditGrant(tx, orgId);
+    });
     return { orgId };
   }
 

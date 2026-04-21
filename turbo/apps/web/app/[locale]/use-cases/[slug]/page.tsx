@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
-import UseCaseDetailClient from "./UseCaseDetailClient";
+import { UseCaseDetailClient } from "./UseCaseDetailClient";
 import { USE_CASES, getUseCaseBySlug } from "../data";
 import { locales, type Locale } from "../../../../i18n";
 import { buildLocaleAlternates } from "../../../lib/seo/alternates";

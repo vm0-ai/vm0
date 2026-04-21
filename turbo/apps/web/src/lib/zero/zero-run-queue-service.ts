@@ -31,6 +31,8 @@ import {
   checkRunConcurrencyLimit,
   authorizeCompose,
   validateComposeRequirements,
+  checkOrgCredits,
+  checkModelProviderConfigured,
 } from "./zero-run-policy";
 import {
   buildAndDispatchRun,
@@ -49,10 +51,6 @@ import {
   decryptSecretsMap,
 } from "../shared/crypto/secrets-encryption";
 import { isConcurrentRunLimit, isInsufficientCredits } from "../shared/errors";
-import {
-  checkOrgCredits,
-  checkModelProviderConfigured,
-} from "./zero-run-service";
 import { logger } from "../shared/logger";
 import { publishOrgSignal } from "./realtime";
 import type { OrgTier, QueueResponse, TriggerSource } from "@vm0/core";

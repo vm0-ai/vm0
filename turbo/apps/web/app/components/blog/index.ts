@@ -1,2 +1,2 @@
-export { default as BlogContent } from "./BlogContent";
-export { default as ShareButtons } from "./ShareButtons";
+export { BlogContent } from "./BlogContent";
+export { ShareButtons } from "./ShareButtons";

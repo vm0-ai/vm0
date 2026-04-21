@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import TermsOfUseClient from "./TermsOfUseClient";
+import { TermsOfUseClient } from "./TermsOfUseClient";
 
 export const metadata: Metadata = {
   title: "Terms of Use",

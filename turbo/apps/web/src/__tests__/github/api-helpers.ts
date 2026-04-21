@@ -12,7 +12,6 @@ import { initServices } from "../../lib/init-services";
 import { env } from "../../env";
 import { encryptSecretValue } from "../../lib/shared/crypto/secrets-encryption";
 import { orgCache } from "../../db/schema/org-cache";
-import { orgMetadata } from "../../db/schema/org-metadata";
 import {
   agentComposes,
   agentComposeVersions,
@@ -21,6 +20,7 @@ import { zeroAgents } from "../../db/schema/zero-agent";
 import { githubInstallations } from "../../db/schema/github-installation";
 import { githubUserLinks } from "../../db/schema/github-user-link";
 import { userCache } from "../../db/schema/user-cache";
+import { ensureStarterCreditGrant } from "../../lib/zero/credit/starter-grant-service";
 
 interface GitHubInstallationResult {
   installation: {
@@ -69,11 +69,13 @@ export async function givenGitHubInstallation(
       set: { slug: orgSlug, cachedAt: new Date() },
     });
 
-  // Ensure org row exists (source of truth for tier and default agent)
-  await globalThis.services.db
-    .insert(orgMetadata)
-    .values({ orgId })
-    .onConflictDoNothing();
+  // Ensure org row exists (source of truth for tier and default agent).
+  // Routing through ensureStarterCreditGrant mirrors how real free-tier orgs
+  // land their starter credits + a matching credit_expires_record during
+  // onboarding (see STARTER_GRANT_AMOUNT for the current value).
+  await globalThis.services.db.transaction(async (tx) => {
+    await ensureStarterCreditGrant(tx, orgId);
+  });
 
   // Create compose
   const [compose] = await globalThis.services.db

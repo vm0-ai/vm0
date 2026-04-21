@@ -7,8 +7,8 @@ import { getActiveToken } from "../config";
 
 /**
  * Minimal extension → MIME map covering the server allowlist for
- * `/api/zero/uploads`. Kept in this file rather than a shared module to
- * match the YAGNI pattern used elsewhere in the CLI.
+ * `/api/zero/uploads/prepare`. Kept in this file rather than a shared module
+ * to match the YAGNI pattern used elsewhere in the CLI.
  */
 const MIME_BY_EXTENSION: Record<string, string> = {
   ".png": "image/png",
@@ -115,10 +115,44 @@ interface UploadWebFileResult {
   url: string;
 }
 
+interface PrepareUploadResponse {
+  id: string;
+  filename: string;
+  contentType: string;
+  size: number;
+  uploadUrl: string;
+  url: string;
+}
+
+async function parseErrorBody(
+  response: Response,
+  fallback: string,
+): Promise<{ message: string; code: string }> {
+  let message = `${fallback} (HTTP ${response.status})`;
+  let code = "UNKNOWN";
+  try {
+    const body = (await response.json()) as {
+      error?: { message?: string; code?: string };
+    };
+    if (body.error?.message) message = body.error.message;
+    if (body.error?.code) code = body.error.code;
+  } catch {
+    // ignore parse errors — keep generic message
+  }
+  return { message, code };
+}
+
 /**
- * Upload a local file to the zero uploads endpoint and receive back metadata
- * including a 7-day presigned GET URL. Authenticates via ZERO_TOKEN
- * (`file:write` capability) or a CLI PAT / Clerk session.
+ * Upload a local file and receive back metadata including a 7-day presigned
+ * GET URL. Authenticates via ZERO_TOKEN (`file:write` capability) or a CLI
+ * PAT / Clerk session.
+ *
+ * Two-step flow:
+ *   1. POST /api/zero/uploads/prepare — server signs a PUT URL for R2
+ *   2. PUT the file bytes directly to R2
+ *
+ * Step 2 never touches the Next.js runtime, which lifts the cap from
+ * Vercel's ~4.5 MB body limit up to R2's 5 GB single-PUT limit.
  */
 export async function uploadWebFile(
   localPath: string,
@@ -141,41 +175,53 @@ export async function uploadWebFile(
 
   const filename = basename(localPath);
   const contentType = options?.contentType ?? inferContentType(localPath);
-  const bytes = readFileSync(localPath);
-  const blob = new Blob([new Uint8Array(bytes)], { type: contentType });
 
-  const formData = new FormData();
-  formData.append("file", blob, filename);
-
-  const url = new URL("/api/zero/uploads", baseUrl);
-  const headers: Record<string, string> = {
+  const prepareHeaders: Record<string, string> = {
     Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
   };
   const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
   if (bypassSecret) {
-    headers["x-vercel-protection-bypass"] = bypassSecret;
+    prepareHeaders["x-vercel-protection-bypass"] = bypassSecret;
   }
 
-  const response = await fetch(url, {
+  const prepareUrl = new URL("/api/zero/uploads/prepare", baseUrl);
+  const prepareRes = await fetch(prepareUrl, {
     method: "POST",
-    headers,
-    body: formData,
+    headers: prepareHeaders,
+    body: JSON.stringify({ filename, contentType, size: stats.size }),
   });
 
-  if (!response.ok) {
-    let message = `Failed to upload file (HTTP ${response.status})`;
-    let code = "UNKNOWN";
-    try {
-      const body = (await response.json()) as {
-        error?: { message?: string; code?: string };
-      };
-      if (body.error?.message) message = body.error.message;
-      if (body.error?.code) code = body.error.code;
-    } catch {
-      // ignore parse errors — keep generic message
-    }
-    throw new ApiRequestError(message, code, response.status);
+  if (!prepareRes.ok) {
+    const { message, code } = await parseErrorBody(
+      prepareRes,
+      "Failed to prepare upload",
+    );
+    throw new ApiRequestError(message, code, prepareRes.status);
   }
 
-  return (await response.json()) as UploadWebFileResult;
+  const prepared = (await prepareRes.json()) as PrepareUploadResponse;
+
+  const bytes = readFileSync(localPath);
+  const putRes = await fetch(prepared.uploadUrl, {
+    method: "PUT",
+    headers: { "Content-Type": contentType },
+    body: new Uint8Array(bytes),
+  });
+
+  if (!putRes.ok) {
+    throw new ApiRequestError(
+      `Failed to upload file to storage (HTTP ${putRes.status})`,
+      "UPLOAD_FAILED",
+      putRes.status,
+    );
+  }
+
+  return {
+    id: prepared.id,
+    filename: prepared.filename,
+    contentType: prepared.contentType,
+    size: prepared.size,
+    url: prepared.url,
+  };
 }

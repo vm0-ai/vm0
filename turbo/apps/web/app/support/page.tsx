@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import SupportPageClient from "./SupportPageClient";
+import { SupportPageClient } from "./SupportPageClient";
 
 export const metadata: Metadata = {
   title: "Support",

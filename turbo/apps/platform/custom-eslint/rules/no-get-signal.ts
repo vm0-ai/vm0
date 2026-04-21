@@ -16,13 +16,51 @@
  *   })
  */
 
-import {
-  AST_NODE_TYPES,
-  ESLintUtils,
-  type TSESTree,
-} from "@typescript-eslint/utils";
-import type { Type } from "typescript";
+import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 import { createRule } from "../utils.ts";
+
+function typeNodeMentionsAbortSignal(typeNode: TSESTree.TypeNode): boolean {
+  if (typeNode.type === AST_NODE_TYPES.TSTypeReference) {
+    const typeName = typeNode.typeName;
+    if (
+      typeName.type === AST_NODE_TYPES.Identifier &&
+      typeName.name === "AbortSignal"
+    ) {
+      return true;
+    }
+    if (typeNode.typeArguments) {
+      for (const arg of typeNode.typeArguments.params) {
+        if (typeNodeMentionsAbortSignal(arg)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+  if (typeNode.type === AST_NODE_TYPES.TSUnionType) {
+    return typeNode.types.some(typeNodeMentionsAbortSignal);
+  }
+  if (typeNode.type === AST_NODE_TYPES.TSIntersectionType) {
+    return typeNode.types.some(typeNodeMentionsAbortSignal);
+  }
+  return false;
+}
+
+function initMentionsAbortController(init: TSESTree.Expression): boolean {
+  if (init.type === AST_NODE_TYPES.NewExpression) {
+    const callee = init.callee;
+    if (
+      callee.type === AST_NODE_TYPES.Identifier &&
+      callee.name === "AbortController"
+    ) {
+      return true;
+    }
+  }
+  if (init.type === AST_NODE_TYPES.MemberExpression) {
+    return initMentionsAbortController(init.object);
+  }
+  return false;
+}
 
 export default createRule({
   name: "no-get-signal",
@@ -33,7 +71,7 @@ export default createRule({
       description:
         "AbortSignal should not be get by state, use signal parameter instead.",
       recommended: true,
-      requiresTypeChecking: true,
+      requiresTypeChecking: false,
     },
     schema: [],
     messages: {
@@ -42,56 +80,7 @@ export default createRule({
     },
   },
   create(context) {
-    const services = ESLintUtils.getParserServices(context);
-    const checker = services.program.getTypeChecker();
-
-    const typeCache = new WeakMap<Type, boolean>();
-
-    function isSignalType(type: Type): boolean {
-      const cached = typeCache.get(type);
-      if (cached !== undefined) {
-        return cached;
-      }
-
-      const typeString = checker.typeToString(type);
-
-      const isStateOrComputed = /^(State|Computed)<.*>$/.test(typeString);
-
-      if (isStateOrComputed) {
-        const symbol = type.getSymbol();
-        if (symbol) {
-          const declarations = symbol.getDeclarations();
-          if (declarations?.length) {
-            const sourceFile = declarations[0].getSourceFile();
-            const result = sourceFile.fileName.includes("ccstate");
-            typeCache.set(type, result);
-            return result;
-          }
-        }
-      }
-
-      typeCache.set(type, false);
-      return false;
-    }
-
-    function hasDirectAbortSignalGeneric(type: Type): boolean {
-      const typeString = checker.typeToString(type);
-
-      // Matches:
-      // State<AbortSignal>
-      // Computed<AbortSignal>
-      // State<AbortSignal | undefined>
-      // Computed<AbortSignal | undefined>
-      // State<Map<string, AbortSignal>>
-      // Computed<Map<string, AbortSignal>>
-      // State<Map<string, AbortSignal | undefined>>
-      // Computed<Map<string, AbortSignal | undefined>>
-      // Does not match:
-      // State<Map<string, Command<void, [AbortSignal]>>>
-      const directAbortSignalPattern =
-        /^(State|Computed)<(AbortSignal(\s*\|\s*undefined)?|undefined\s*\|\s*AbortSignal|Map<[^,]+,\s*(AbortSignal(\s*\|\s*undefined)?|undefined\s*\|\s*AbortSignal)>)>$/;
-      return directAbortSignalPattern.test(typeString);
-    }
+    const abortSignalSignals = new Set<string>();
 
     function isStoreGet(node: TSESTree.CallExpression): boolean {
       if (node.callee.type === AST_NODE_TYPES.MemberExpression) {
@@ -109,6 +98,42 @@ export default createRule({
     }
 
     return {
+      VariableDeclarator(node: TSESTree.VariableDeclarator) {
+        if (node.id.type !== AST_NODE_TYPES.Identifier) {
+          return;
+        }
+        if (
+          node.init === null ||
+          node.init === undefined ||
+          node.init.type !== AST_NODE_TYPES.CallExpression
+        ) {
+          return;
+        }
+        const call = node.init;
+        if (
+          call.callee.type !== AST_NODE_TYPES.Identifier ||
+          (call.callee.name !== "state" && call.callee.name !== "computed")
+        ) {
+          return;
+        }
+
+        const hasAbortSignalTypeArg =
+          call.typeArguments !== undefined &&
+          call.typeArguments !== null &&
+          call.typeArguments.params.some(typeNodeMentionsAbortSignal);
+
+        const hasAbortControllerInit = call.arguments.some((arg) => {
+          if (arg.type === AST_NODE_TYPES.SpreadElement) {
+            return false;
+          }
+          return initMentionsAbortController(arg);
+        });
+
+        if (hasAbortSignalTypeArg || hasAbortControllerInit) {
+          abortSignalSignals.add(node.id.name);
+        }
+      },
+
       CallExpression(node: TSESTree.CallExpression) {
         if (isStoreGet(node)) {
           return;
@@ -120,10 +145,10 @@ export default createRule({
           node.arguments.length > 0
         ) {
           const firstArg = node.arguments[0];
-          const tsNode = services.esTreeNodeToTSNodeMap.get(firstArg);
-          const type = checker.getTypeAtLocation(tsNode);
-
-          if (isSignalType(type) && hasDirectAbortSignalGeneric(type)) {
+          if (
+            firstArg.type === AST_NODE_TYPES.Identifier &&
+            abortSignalSignals.has(firstArg.name)
+          ) {
             context.report({
               node,
               messageId: "noGetSignal",

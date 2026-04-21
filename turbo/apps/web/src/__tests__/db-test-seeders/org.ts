@@ -220,6 +220,11 @@ export async function insertOrgDefaultModelProvider(
  * Set the credit balance for an org in the `org` table.
  * Ensures the org row exists first.
  *
+ * Authoritative on intent — when a test says "give this org exactly N
+ * credits", this helper does NOT create a matching credit_expires_record.
+ * Tests that exercise FEFO or the 1-month expiry should seed an expires
+ * row explicitly via createExpiresRecord / ensureStarterCreditGrant.
+ *
  * @why-db-direct Sets credit balance directly; no API for direct
  * credit manipulation (Stripe webhook handles this)
  */

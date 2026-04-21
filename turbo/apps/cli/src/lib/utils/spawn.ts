@@ -1,5 +1,4 @@
-import { spawn, type SpawnOptions } from "child_process";
-import type { ChildProcess } from "child_process";
+import { spawn, type SpawnOptions, type ChildProcess } from "child_process";
 
 /**
  * Spawn a child process with safe Windows shell handling.

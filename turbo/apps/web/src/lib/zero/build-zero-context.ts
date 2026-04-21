@@ -44,7 +44,6 @@ import {
 } from "./context/resolve-source";
 
 // Re-exports for API compatibility
-export { MODEL_PROVIDER_ENV_VARS } from "./context/resolve-model-provider";
 export {
   filterSecretConnectorMap,
   applyConnectorPolicies,
@@ -140,6 +139,7 @@ async function resolveSecretsAndEnvironment(
   selectedModel: string | undefined;
   connectorPermissionConfigs: ExpandedFirewallConfig[];
   mergedVars: Record<string, string> | undefined;
+  billableFirewalls: string[];
 }> {
   // Model provider secret injection
   const hasExplicitModelProviderConfig = MODEL_PROVIDER_ENV_VARS.some((v) => {
@@ -230,13 +230,17 @@ async function resolveSecretsAndEnvironment(
     : undefined;
 
   // Build connector permission configs for placeholder injection and firewall
-  // rules. When allowedConnectorTypes is provided, use it so that firewalls are
-  // injected even when the user hasn't linked the connector yet (no secrets).
-  // When undefined (no org context / CLI direct call), fall back to
-  // connectorTypes (secret-derived) for backward compatibility.
-  const firewallSourceTypes = allowedConnectorTypes ?? connectorTypes;
+  // rules. Product policy: a connector is usable only when BOTH the agent
+  // authorizes it AND the user has linked the credentials. `connectorTypes`
+  // already reflects that intersection — OAuth connectors filtered by
+  // allowedConnectorTypes, api-token connectors filtered by allowedConnectorTypes
+  // and gated on every required secret/variable being present
+  // (`deriveApiTokenConnectedTypes`). Loosening that gate silently reintroduces
+  // the "Firewall base URL requires variable X but it was not provided" crash
+  // when the user authorized a connector but never set its vars (e.g. Jira's
+  // `https://${{ vars.JIRA_DOMAIN }}`).
   const connectorPermissionConfigs: ExpandedFirewallConfig[] = [
-    ...firewallSourceTypes.filter(isFirewallConnectorType).map((type) => {
+    ...connectorTypes.filter(isFirewallConnectorType).map((type) => {
       return { ...getConnectorFirewall(type) };
     }),
     ...customConnectorResult.firewalls,
@@ -256,6 +260,13 @@ async function resolveSecretsAndEnvironment(
     ],
   );
 
+  // Only the vm0 meta-provider is platform-billable (runs on VM0 key pool).
+  // Every other resolvedModelProvider is user-paid (user supplied their own key).
+  const billableFirewalls =
+    modelProviderResult.resolvedModelProvider === "vm0" && modelProviderConfig
+      ? [modelProviderConfig.name]
+      : [];
+
   return {
     secrets,
     environment,
@@ -265,6 +276,7 @@ async function resolveSecretsAndEnvironment(
     selectedModel: modelProviderResult.selectedModel,
     connectorPermissionConfigs,
     mergedVars,
+    billableFirewalls,
   };
 }
 
@@ -341,6 +353,8 @@ interface ResolvedCliContext {
   // Model provider metadata (for zero_runs upsert)
   resolvedModelProvider?: ModelProviderType;
   selectedModel?: string;
+
+  billableFirewalls: string[];
 
   // Timings
   timings: {
@@ -426,6 +440,7 @@ export async function resolveCliRunContext(
     // No compose available — return only what we can resolve
     return {
       vars,
+      billableFirewalls: [],
       timings: {
         resolveSource: resolveEnd - resolveStart,
         resolveSecrets: 0,
@@ -484,6 +499,7 @@ export async function resolveCliRunContext(
     selectedModel,
     connectorPermissionConfigs,
     mergedVars,
+    billableFirewalls,
   } = secretsResult;
   const userTimezone = userPrefs?.timezone ?? undefined;
 
@@ -517,6 +533,7 @@ export async function resolveCliRunContext(
     userTimezone,
     resolvedModelProvider,
     selectedModel,
+    billableFirewalls,
     timings: {
       resolveSource: resolveEnd - resolveStart,
       resolveSecrets: resolveSecretsEnd - resolveSecretsStart,
@@ -656,6 +673,7 @@ export async function buildZeroExecutionContext(
     selectedModel,
     connectorPermissionConfigs,
     mergedVars,
+    billableFirewalls,
   } = secretsResult;
   const userTimezone =
     params.preloadedUserTimezone ?? userPrefs?.timezone ?? undefined;
@@ -708,6 +726,7 @@ export async function buildZeroExecutionContext(
       // Debug flag
       debugNoMockClaude: params.debugNoMockClaude,
       captureNetworkBodies: params.captureNetworkBodies,
+      billableFirewalls,
       // API start time for E2E timing metrics
       apiStartTime: params.apiStartTime,
     },

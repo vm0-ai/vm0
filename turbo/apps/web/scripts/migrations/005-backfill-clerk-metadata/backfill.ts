@@ -157,6 +157,10 @@ export async function backfillOrgMetadata(
         const zeroAgentId: string | null = clerkComposeId ?? null;
 
         if (!dryRun) {
+          // Intentionally does NOT call ensureStarterCreditGrant. This is a
+          // one-shot historical Clerk-sync script gated by --migrate; newly-
+          // inserted free orgs land at credits=0 here. Free orgs that still
+          // need a starter grant are covered by migration 0283's backfill.
           await db
             .insert(orgMetadata)
             .values({

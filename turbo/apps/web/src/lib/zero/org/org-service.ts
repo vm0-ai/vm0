@@ -136,6 +136,13 @@ export async function updateOrg(
  *
  * Accepts a Drizzle transaction so the deduction can be part of
  * a larger atomic operation (e.g. credit processing).
+ *
+ * Intentionally does NOT call ensureStarterCreditGrant — this primitive
+ * runs after credit_usage was already recorded, which implies onboarding
+ * (or test-token) has already created the org_metadata row with the
+ * starter grant. The ON CONFLICT INSERT path here is a defensive fallback
+ * for orgs that somehow lack a row; it creates a row with negative credits,
+ * which is visible and recoverable.
  */
 export async function deductOrgCredits(
   tx: Parameters<Parameters<typeof globalThis.services.db.transaction>[0]>[0],
@@ -155,6 +162,11 @@ export async function deductOrgCredits(
  *
  * Credits rollover (accumulate) — adds to existing balance.
  * Uses the same INSERT ON CONFLICT pattern as deductOrgCredits.
+ *
+ * Intentionally does NOT call ensureStarterCreditGrant — callers are either
+ * paid flows (handleInvoicePaid, handleAutoRechargeInvoicePaid) whose orgs
+ * already have a row, or the starter-grant helper itself. Wiring the helper
+ * here would be a cycle.
  */
 export async function grantOrgCredits(
   tx: Parameters<Parameters<typeof globalThis.services.db.transaction>[0]>[0],

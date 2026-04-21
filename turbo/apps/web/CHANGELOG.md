@@ -1,5 +1,48 @@
 # Changelog
 
+## [12.276.5](https://github.com/vm0-ai/vm0/compare/web-v12.276.4...web-v12.276.5) (2026-04-21)
+
+
+### Bug Fixes
+
+* **zero:** gate firewall injection on credential presence again ([#10437](https://github.com/vm0-ai/vm0/issues/10437)) ([1f4abad](https://github.com/vm0-ai/vm0/commit/1f4abadcf6b6f3bcc74dc4a203ad8662bf0645ee))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.219.1
+
+## [12.276.4](https://github.com/vm0-ai/vm0/compare/web-v12.276.3...web-v12.276.4) (2026-04-21)
+
+
+### Bug Fixes
+
+* **db:** delete 310 dangling agent_runs with missing sessions ([#10428](https://github.com/vm0-ai/vm0/issues/10428)) ([61de5bf](https://github.com/vm0-ai/vm0/commit/61de5bf42d0c677875097295edbe6832f5994181))
+
+
+### Refactoring
+
+* **activity:** tighten runner-tab types at api + seeder boundaries ([#10403](https://github.com/vm0-ai/vm0/issues/10403)) ([b5451e2](https://github.com/vm0-ai/vm0/commit/b5451e26aaf49f6f6f17e62d8e5b19ce5318da02))
+
+## [12.276.3](https://github.com/vm0-ai/vm0/compare/web-v12.276.2...web-v12.276.3) (2026-04-21)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.219.0
+
+## [12.276.2](https://github.com/vm0-ai/vm0/compare/web-v12.276.1...web-v12.276.2) (2026-04-21)
+
+
+### Bug Fixes
+
+* **web:** ts-rest api error triage and observability ([#10402](https://github.com/vm0-ai/vm0/issues/10402)) ([67d7ceb](https://github.com/vm0-ai/vm0/commit/67d7ceb879f70d3428ac895831201ca4124ded97))
+* **zero:** disallow schedulewakeup tool for zero agent runs ([#10412](https://github.com/vm0-ai/vm0/issues/10412)) ([10eb97b](https://github.com/vm0-ai/vm0/commit/10eb97bba71a891c60fc6e38bedf013f896a1263))
+
 ## [12.276.1](https://github.com/vm0-ai/vm0/compare/web-v12.276.0...web-v12.276.1) (2026-04-21)
 
 

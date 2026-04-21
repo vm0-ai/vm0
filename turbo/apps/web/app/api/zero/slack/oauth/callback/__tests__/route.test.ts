@@ -174,6 +174,7 @@ describe("/api/zero/slack/oauth/callback", () => {
     mockOAuthSuccess({
       teamId: workspaceId,
       teamName: "Slack Workspace",
+      authedUserId: "U-slack-installer",
     });
 
     const request = createTestRequest(
@@ -181,11 +182,13 @@ describe("/api/zero/slack/oauth/callback", () => {
     );
     const response = await GET(request);
 
-    // Should redirect to installed page
+    // Should redirect to /settings/slack with w+u so the user can claim
+    // the orphan installation via the connect flow after sign-in.
     expect(response.status).toBe(307);
     const location = response.headers.get("Location");
-    expect(location).toContain("/slack/installed");
-    expect(location).toContain("workspace=Slack%20Workspace");
+    expect(location).toContain("/settings/slack");
+    expect(location).toContain(`w=${workspaceId}`);
+    expect(location).toContain("u=U-slack-installer");
 
     // Verify installation was created with null org_id
     const installation = await findTestSlackOrgInstallation(workspaceId);
@@ -233,9 +236,12 @@ describe("/api/zero/slack/oauth/callback", () => {
     );
     const response = await GET(secondRequest);
 
-    // Re-install without state redirects to installed page
+    // Re-install without state redirects to /settings/slack with w+u context.
     expect(response.status).toBe(307);
-    expect(response.headers.get("Location")).toContain("/slack/installed");
+    const location = response.headers.get("Location");
+    expect(location).toContain("/settings/slack");
+    expect(location).toContain(`w=${workspaceId}`);
+    expect(location).toContain("u=U-different");
 
     // Verify bot token updated, org binding preserved
     const installation = await findTestSlackOrgInstallation(workspaceId);

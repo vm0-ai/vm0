@@ -315,7 +315,7 @@ describe("organization.deleted e2e cleanup", () => {
       orgId,
       installedByUserId: userId,
     });
-    const connection = await insertTestSlackOrgConnection({
+    await insertTestSlackOrgConnection({
       slackUserId: uniqueId("slack-user"),
       slackWorkspaceId: workspaceId,
       vm0UserId: userId,

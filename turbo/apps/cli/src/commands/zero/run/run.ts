@@ -1,4 +1,4 @@
-import { Command } from "commander";
+import { Command, Option } from "commander";
 import { createZeroRun } from "../../../lib/api";
 import { isUUID, renderRunCreated } from "../../run/shared";
 import { withErrorHandler } from "../../../lib/command";
@@ -14,6 +14,7 @@ export const mainRunCommand = new Command()
     "Override model provider (e.g., anthropic-api-key)",
   )
   .option("--verbose", "Show full tool inputs and outputs")
+  .addOption(new Option("--debug-no-mock-claude").hideHelp())
   .addHelpText(
     "after",
     `
@@ -34,6 +35,7 @@ Notes:
         options: {
           modelProvider?: string;
           verbose?: boolean;
+          debugNoMockClaude?: boolean;
         },
       ) => {
         // 1. Validate agent-id is a UUID
@@ -50,6 +52,7 @@ Notes:
           agentId,
           prompt,
           modelProvider: options.modelProvider,
+          debugNoMockClaude: options.debugNoMockClaude,
         });
 
         // 3. Check for immediate failure

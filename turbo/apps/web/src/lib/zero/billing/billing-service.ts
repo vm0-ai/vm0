@@ -12,6 +12,7 @@ import {
   getExpiresRecordsSummary,
   getUnsettledExpiredAmount,
 } from "../credit/credit-expires-service";
+import { ensureStarterCreditGrant } from "../credit/starter-grant-service";
 import { logger } from "../../shared/logger";
 
 const log = logger("billing");
@@ -103,13 +104,18 @@ async function getOrCreateStripeCustomer(orgId: string): Promise<string> {
     metadata: { orgId },
   });
 
-  await db
-    .insert(orgMetadata)
-    .values({ orgId, stripeCustomerId: customer.id })
-    .onConflictDoUpdate({
-      target: orgMetadata.orgId,
-      set: { stripeCustomerId: customer.id, updatedAt: new Date() },
-    });
+  // Guarantee the starter grant at first org_metadata materialisation — a
+  // free user may skip onboarding and first hit billing (pricing → upgrade).
+  await db.transaction(async (tx) => {
+    await ensureStarterCreditGrant(tx, orgId);
+    await tx
+      .insert(orgMetadata)
+      .values({ orgId, stripeCustomerId: customer.id })
+      .onConflictDoUpdate({
+        target: orgMetadata.orgId,
+        set: { stripeCustomerId: customer.id, updatedAt: new Date() },
+      });
+  });
 
   return customer.id;
 }

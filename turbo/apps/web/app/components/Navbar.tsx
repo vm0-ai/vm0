@@ -7,8 +7,8 @@ import { Link } from "../../navigation";
 import { useTranslations } from "next-intl";
 import { useTheme } from "./ThemeProvider";
 import { IconArrowRight } from "@tabler/icons-react";
-import ThemeToggle from "./ThemeToggle";
-import LanguageSwitcher from "./LanguageSwitcher";
+import { ThemeToggle } from "./ThemeToggle";
+import { LanguageSwitcher } from "./LanguageSwitcher";
 import { useUser, useClerk } from "@clerk/nextjs";
 import { getAppUrl } from "../../src/lib/zero/url";
 import { isBlogEnabled } from "../../src/env";
@@ -16,7 +16,7 @@ interface NavbarProps {
   initialIsSignedIn?: boolean;
 }
 
-export default function Navbar({ initialIsSignedIn = false }: NavbarProps) {
+export function Navbar({ initialIsSignedIn = false }: NavbarProps) {
   const { theme } = useTheme();
   const t = useTranslations("nav");
   const { isSignedIn: clerkIsSignedIn, isLoaded } = useUser();

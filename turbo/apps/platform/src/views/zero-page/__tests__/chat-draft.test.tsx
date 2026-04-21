@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
@@ -9,6 +10,19 @@ import { detachedNavigateTo$ } from "../../../signals/route.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 import { chatThreadByIdContract } from "@vm0/core";
+
+vi.mock("@vm0/ui/components/ui/sonner", async (importOriginal) => {
+  const actual =
+    (await importOriginal()) as typeof import("@vm0/ui/components/ui/sonner");
+  return {
+    ...actual,
+    toast: { error: vi.fn(), success: vi.fn(), info: vi.fn() },
+  };
+});
+
+beforeEach(() => {
+  vi.mocked(toast.error).mockClear();
+});
 
 const context = testContext();
 
@@ -124,13 +138,22 @@ describe("chat draft persistence across thread navigation", () => {
           updatedAt: "2026-03-10T00:00:00Z",
         });
       }),
-      // mockApi cannot be used here: /api/zero/uploads accepts multipart FormData,
-      // which is out of scope for the mockApi helper (Phase 0 of #9707).
-      http.post("*/api/zero/uploads", () => {
-        // Signal that the upload request has arrived
+      // mockApi cannot be used here: /api/zero/uploads/prepare is an internal
+      // helper endpoint whose response shape is owned by the route; we want to
+      // defer the PUT to R2 so tests that need a deferred upload can resolve
+      // it manually.
+      http.post("*/api/zero/uploads/prepare", () => {
+        return HttpResponse.json({
+          id: "upload-1",
+          filename: "photo.png",
+          contentType: "image/png",
+          size: 1024,
+          uploadUrl: "https://mock-upload.example.com/photo.png",
+          url: "https://example.com/photo.png",
+        });
+      }),
+      http.put("https://mock-upload.example.com/photo.png", () => {
         resolveUpload?.();
-
-        // Return a promise that we resolve later
         return new Promise<Response>((resolve) => {
           uploadRequestResolve = (resp) => {
             return resolve(resp);
@@ -172,16 +195,8 @@ describe("chat draft persistence across thread navigation", () => {
       expect(screen.queryByLabelText(/photo\.png/)).toBeNull();
     });
 
-    // Now resolve the upload on the server side
-    uploadRequestResolve!(
-      HttpResponse.json({
-        id: "upload-1",
-        filename: "photo.png",
-        contentType: "image/png",
-        size: 1024,
-        url: "https://example.com/photo.png",
-      }),
-    );
+    // Now resolve the deferred PUT to R2
+    uploadRequestResolve!(new HttpResponse(null, { status: 200 }));
 
     // Navigate back to thread-1 — draft restored from per-thread cache,
     // upload should now be complete
@@ -192,5 +207,86 @@ describe("chat draft persistence across thread navigation", () => {
     await waitFor(() => {
       expect(screen.getByLabelText("Remove photo.png")).toBeInTheDocument();
     });
+  });
+
+  it("should toast and drop the chip when prepare returns an error", async () => {
+    const user = userEvent.setup();
+    mockThreads();
+    server.use(
+      // mockApi cannot be used here: we want to assert UI behavior when the
+      // server returns an error shape directly without going through the
+      // typed happy path.
+      http.post("*/api/zero/uploads/prepare", () => {
+        return HttpResponse.json(
+          {
+            error: {
+              message: "File too large (max 1 GB)",
+              code: "BAD_REQUEST",
+            },
+          },
+          { status: 400 },
+        );
+      }),
+    );
+
+    detachedSetupPage({ context, path: "/chats/thread-err-1" });
+
+    await waitFor(() => {
+      expect(getTextarea()).toBeInTheDocument();
+    });
+
+    const fileInput = document.querySelector(
+      'input[type="file"]',
+    ) as HTMLInputElement;
+    const file = new File(["bad"], "huge.png", { type: "image/png" });
+    await user.upload(fileInput, file);
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith(
+        expect.stringContaining("File too large"),
+      );
+    });
+    expect(screen.queryByLabelText(/huge\.png/)).toBeNull();
+  });
+
+  it("should toast and drop the chip when the R2 put fails", async () => {
+    const user = userEvent.setup();
+    mockThreads();
+    server.use(
+      // mockApi cannot be used here: /api/zero/uploads/prepare is an internal
+      // helper endpoint with no ts-rest contract.
+      http.post("*/api/zero/uploads/prepare", () => {
+        return HttpResponse.json({
+          id: "upload-err",
+          filename: "fail.png",
+          contentType: "image/png",
+          size: 1024,
+          uploadUrl: "https://mock-upload.example.com/fail.png",
+          url: "https://example.com/fail.png",
+        });
+      }),
+      http.put("https://mock-upload.example.com/fail.png", () => {
+        return new HttpResponse(null, { status: 500 });
+      }),
+    );
+
+    detachedSetupPage({ context, path: "/chats/thread-err-2" });
+
+    await waitFor(() => {
+      expect(getTextarea()).toBeInTheDocument();
+    });
+
+    const fileInput = document.querySelector(
+      'input[type="file"]',
+    ) as HTMLInputElement;
+    const file = new File(["x"], "fail.png", { type: "image/png" });
+    await user.upload(fileInput, file);
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith(
+        expect.stringContaining("storage returned 500"),
+      );
+    });
+    expect(screen.queryByLabelText(/fail\.png/)).toBeNull();
   });
 });

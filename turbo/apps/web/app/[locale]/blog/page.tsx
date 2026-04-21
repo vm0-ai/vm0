@@ -9,7 +9,7 @@ import {
   getBlogBaseUrl,
 } from "../../lib/blog";
 import { BlogContent } from "../../components/blog";
-import Footer from "../../components/Footer";
+import { Footer } from "../../components/Footer";
 import { isBlogEnabled } from "../../../src/env";
 import type { Locale } from "../../../i18n";
 import { buildLocaleAlternates } from "../../lib/seo/alternates";

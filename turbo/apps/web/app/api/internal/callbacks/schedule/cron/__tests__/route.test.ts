@@ -20,12 +20,6 @@ import { seedTestRun } from "../../../../../../../src/__tests__/db-test-seeders/
 
 const context = testContext();
 
-interface CronCallbackPayload {
-  scheduleId: string;
-  cronExpression: string;
-  timezone: string;
-}
-
 describe("POST /api/internal/callbacks/schedule/cron", () => {
   let composeId: string;
   let userId: string;

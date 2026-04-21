@@ -279,6 +279,7 @@ impl JobProvider for LocalProvider {
             settings: None,
             experimental_profile: req.profile,
             feature_flags: req.feature_flags,
+            billable_firewalls: vec![],
         })
     }
 

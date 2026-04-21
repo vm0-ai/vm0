@@ -15,11 +15,12 @@ import { POST as tokenRouteHandler } from "../../../../../app/api/test/oauth-pro
 import { GET as userinfoRouteHandler } from "../../../../../app/api/test/oauth-provider/userinfo/route";
 import { env } from "../../../../env";
 import { throwOAuthError } from "./oauth-error";
-
-export const TEST_OAUTH_CLIENT_ID = "test-oauth-client";
-export const TEST_OAUTH_CLIENT_SECRET = "test-oauth-secret";
-export const TEST_OAUTH_ACCESS_SECRET_NAME = "TEST_OAUTH_ACCESS_TOKEN";
-export const TEST_OAUTH_REFRESH_SECRET_NAME = "TEST_OAUTH_REFRESH_TOKEN";
+export {
+  TEST_OAUTH_CLIENT_ID,
+  TEST_OAUTH_CLIENT_SECRET,
+  TEST_OAUTH_ACCESS_SECRET_NAME,
+  TEST_OAUTH_REFRESH_SECRET_NAME,
+} from "./test-oauth-constants";
 
 interface TokenResponse {
   accessToken: string;

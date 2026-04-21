@@ -321,6 +321,7 @@ async fn register_proxy(config: &ExecutorConfig, context: &ExecutionContext, sou
         secret_connector_map: context.secret_connector_map.as_ref(),
         vars: context.vars.as_ref(),
         capture_network_bodies: context.capture_network_bodies.unwrap_or(false),
+        billable_firewalls: &context.billable_firewalls,
     };
     if let Err(e) = config.registry.register_vm(source_ip, &registration).await {
         warn!(run_id = %context.run_id, error = %e, "failed to register VM in proxy");
@@ -1279,6 +1280,7 @@ mod tests {
             settings: None,
             experimental_profile: None,
             feature_flags: None,
+            billable_firewalls: vec![],
         }
     }
 
@@ -1552,6 +1554,7 @@ mod tests {
             "sandboxToken": "tok",
             "workingDir": "/workspace",
             "cliAgentType": "claude-code",
+            "billableFirewalls": [],
             "firewalls": [{
                 "name": "github",
                 "apis": [{
@@ -1593,7 +1596,8 @@ mod tests {
             "prompt": "test",
             "sandboxToken": "tok",
             "workingDir": "/workspace",
-            "cliAgentType": "claude-code"
+            "cliAgentType": "claude-code",
+            "billableFirewalls": []
         });
         let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
         assert!(ctx.firewalls.is_none());

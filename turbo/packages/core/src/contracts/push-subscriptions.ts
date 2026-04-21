@@ -1,6 +1,5 @@
 import { z } from "zod";
-import { initContract } from "./base";
-import { authHeadersSchema } from "./base";
+import { initContract, authHeadersSchema } from "./base";
 import { apiErrorSchema } from "./errors";
 
 const c = initContract();

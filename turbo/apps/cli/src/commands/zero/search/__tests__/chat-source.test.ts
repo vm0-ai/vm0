@@ -29,7 +29,7 @@ function makeMessage(params: {
 }
 
 describe("zero search --source chat", () => {
-  const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
+  vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});

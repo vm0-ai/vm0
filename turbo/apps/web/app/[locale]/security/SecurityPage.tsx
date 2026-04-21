@@ -1,7 +1,7 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import Footer from "../../components/Footer";
+import { Footer } from "../../components/Footer";
 
 const SECTION_KEYS = [
   "isolatedExecution",
@@ -11,7 +11,7 @@ const SECTION_KEYS = [
   "openSource",
 ] as const;
 
-export default function SecurityPage() {
+export function SecurityPage() {
   const t = useTranslations("securityPage");
 
   return (
