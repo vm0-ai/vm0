@@ -288,7 +288,7 @@ export async function markRunFailed(
       .where(eq(agentRuns.id, runId))
       .limit(1);
     if (row) {
-      (error as RunDispatchError).sessionId = row.sessionId;
+      (error as RunDispatchError).sessionId = row.sessionId ?? undefined;
     }
   }
 }

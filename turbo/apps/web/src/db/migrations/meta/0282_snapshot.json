@@ -513,7 +513,7 @@
           "name": "session_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "status": {
           "name": "status",
@@ -738,15 +738,6 @@
           "columnsFrom": ["agent_compose_version_id"],
           "columnsTo": ["id"],
           "onDelete": "set null",
-          "onUpdate": "no action"
-        },
-        "agent_runs_session_id_agent_sessions_id_fk": {
-          "name": "agent_runs_session_id_agent_sessions_id_fk",
-          "tableFrom": "agent_runs",
-          "tableTo": "agent_sessions",
-          "columnsFrom": ["session_id"],
-          "columnsTo": ["id"],
-          "onDelete": "restrict",
           "onUpdate": "no action"
         }
       },
