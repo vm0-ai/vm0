@@ -1,0 +1,1 @@
+CREATE INDEX "idx_voice_chat_sessions_user_ended_created" ON "voice_chat_sessions" USING btree ("user_id","org_id","created_at" DESC NULLS LAST) WHERE status IN ('ended', 'timeout');

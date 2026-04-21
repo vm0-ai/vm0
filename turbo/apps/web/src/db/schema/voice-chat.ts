@@ -7,6 +7,7 @@ import {
   serial,
   index,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { agentRuns } from "./agent-run";
 import { agentComposes } from "./agent-compose";
 
@@ -47,6 +48,9 @@ export const voiceChatSessions = pgTable(
     return [
       index("idx_voice_chat_sessions_user").on(table.userId, table.orgId),
       index("idx_voice_chat_sessions_status").on(table.status),
+      index("idx_voice_chat_sessions_user_ended_created")
+        .on(table.userId, table.orgId, table.createdAt.desc())
+        .where(sql`status IN ('ended', 'timeout')`),
     ];
   },
 );
