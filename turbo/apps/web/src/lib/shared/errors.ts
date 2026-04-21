@@ -53,12 +53,6 @@ interface ConcurrentRunLimitError extends ApiErrorBase {
   readonly code: "TOO_MANY_REQUESTS";
 }
 
-interface TooManyRequestsError extends ApiErrorBase {
-  readonly name: "TooManyRequestsError";
-  readonly statusCode: 429;
-  readonly code: "TOO_MANY_REQUESTS";
-}
-
 interface InsufficientCreditsError extends ApiErrorBase {
   readonly name: "InsufficientCreditsError";
   readonly statusCode: 402;
@@ -142,16 +136,6 @@ export function concurrentRunLimit(
 ): ConcurrentRunLimitError {
   const error = new Error(message) as ConcurrentRunLimitError;
   (error as { name: string }).name = "ConcurrentRunLimitError";
-  (error as { statusCode: number }).statusCode = 429;
-  (error as { code: string }).code = "TOO_MANY_REQUESTS";
-  return error;
-}
-
-export function tooManyRequests(
-  message = "Too many requests. Please slow down and try again shortly.",
-): TooManyRequestsError {
-  const error = new Error(message) as TooManyRequestsError;
-  (error as { name: string }).name = "TooManyRequestsError";
   (error as { statusCode: number }).statusCode = 429;
   (error as { code: string }).code = "TOO_MANY_REQUESTS";
   return error;

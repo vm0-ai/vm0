@@ -57,5 +57,4 @@ export enum FeatureSwitchKey {
   NanoBananaConnector = "nanoBananaConnector",
   UnifyChatThreads = "unifyChatThreads",
   Vm0GlmModel = "vm0GlmModel",
-  RedemptionCodes = "redemptionCodes",
 }

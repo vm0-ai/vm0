@@ -1996,6 +1996,13 @@
       "when": 1776759477305,
       "tag": "0284_starter_credit_expiry",
       "breakpoints": true
+    },
+    {
+      "idx": 285,
+      "version": "7",
+      "when": 1776763403291,
+      "tag": "0285_drop_redemption_codes",
+      "breakpoints": true
     }
   ]
 }

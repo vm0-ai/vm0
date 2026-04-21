@@ -6,7 +6,7 @@ import { STAFF_ORG_ID_HASHES, fnv1a } from "./identity-hash";
  * Intended as an authorization boundary — unlike feature switches, this
  * helper is NOT influenced by `user_feature_switches` overrides or any
  * runtime toggle. Callers can rely on it as a true yes/no gate for
- * internal-only endpoints (e.g. redemption-code minting).
+ * internal-only endpoints.
  *
  * Modifying `STAFF_ORG_ID_HASHES` affects every consumer of this helper;
  * treat the list as a privileged allow-list.
