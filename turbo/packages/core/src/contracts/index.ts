@@ -717,6 +717,20 @@ export {
   type ZeroVariablesByNameContract,
 } from "./zero-secrets";
 export {
+  apiKeysContract,
+  apiKeysByIdContract,
+  apiKeyItemSchema,
+  apiKeyListResponseSchema,
+  createApiKeyRequestSchema,
+  createApiKeyResponseSchema,
+  type ApiKeysContract,
+  type ApiKeysByIdContract,
+  type ApiKeyItem,
+  type ApiKeyListResponse,
+  type CreateApiKeyRequest,
+  type CreateApiKeyResponse,
+} from "./api-keys";
+export {
   zeroCustomConnectorsContract,
   zeroCustomConnectorByIdContract,
   zeroCustomConnectorSecretContract,
