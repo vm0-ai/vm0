@@ -9,6 +9,9 @@ import Particles from "../../components/Particles";
 import { USE_CASES } from "./data";
 import type { UseCase, ConnectorRef, AvatarConfig, Role } from "./data";
 
+const MAX_WIDTH = 1200;
+const PAGE_PADDING = 24;
+
 type RoleFilter = Role | "all";
 
 const ROLE_FILTERS: RoleFilter[] = [
@@ -145,9 +148,15 @@ export default function UseCasesGalleryClient() {
         </div>
       </section>
 
-      {/* Role filter */}
+      {/* Role filter - aligned with cards below */}
       <section style={{ paddingBottom: "32px" }}>
-        <div className="container">
+        <div
+          style={{
+            maxWidth: MAX_WIDTH,
+            margin: "0 auto",
+            padding: `0 ${PAGE_PADDING}px`,
+          }}
+        >
           <div className="uc-filter-row" role="tablist" aria-label={t("role")}>
             {ROLE_FILTERS.map((role) => {
               const isActive = activeRole === role;
