@@ -264,12 +264,9 @@ describe("getAuthContext auth() call optimization", () => {
     expect(mockAuth).toHaveBeenCalled();
   });
 
-  it("should not call auth() for unknown Bearer token (returns null)", async () => {
-    // Unknown Bearer tokens are rejected immediately — session fallback only
-    // applies when there is no Bearer header at all.
-    const result = await getAuthContext("Bearer unknown_token_format");
-    expect(result).toBeNull();
-    expect(mockAuth).not.toHaveBeenCalled();
+  it("should call auth() for unknown Bearer token", async () => {
+    await getAuthContext("Bearer unknown_token_format");
+    expect(mockAuth).toHaveBeenCalled();
   });
 
   it("should not call auth() when zero token is provided", async () => {

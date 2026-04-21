@@ -9,7 +9,6 @@ import {
   IconChevronRight,
   IconSwitchHorizontal,
   IconDatabaseExport,
-  IconKey,
 } from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/core";
 import {
@@ -130,7 +129,12 @@ export function AccountDropdown({
       return;
     }
     if (action === "manage") {
-      detach(clerk?.openUserProfile(), Reason.DomCallback);
+      detach(
+        clerk?.openUserProfile({
+          apiKeysProps: { hide: !apiKeysEnabled },
+        }),
+        Reason.DomCallback,
+      );
       return;
     }
     onAccountAction?.(action);
@@ -310,17 +314,6 @@ export function AccountDropdown({
           <IconUser size={18} stroke={1.5} className="text-muted-foreground" />
           <span>Manage account</span>
         </DropdownMenuItem>
-        {apiKeysEnabled && (
-          <DropdownMenuItem
-            onClick={() => {
-              return handleAccountAction("apiKeys");
-            }}
-            className="gap-3 px-3 py-2.5 rounded-lg"
-          >
-            <IconKey size={18} stroke={1.5} className="text-muted-foreground" />
-            <span>API Keys</span>
-          </DropdownMenuItem>
-        )}
         {showExportData && (
           <DropdownMenuItem
             onClick={() => {

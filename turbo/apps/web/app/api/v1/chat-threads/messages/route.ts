@@ -120,6 +120,8 @@ const router = tsr.router(chatThreadV1SendContract, {
         body: {
           threadId,
           messageId: userMessage.id,
+          runId: result.runId,
+          status: result.status,
           createdAt: result.createdAt.toISOString(),
         },
       };

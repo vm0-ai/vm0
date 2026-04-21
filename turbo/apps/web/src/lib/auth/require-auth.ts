@@ -1,7 +1,10 @@
 import type { ZeroCapability } from "@vm0/core";
-import { getAuthContext, type AuthContext } from "./get-auth-context";
 import {
-  isPatToken,
+  authenticateClerkApiKey,
+  getAuthContext,
+  type AuthContext,
+} from "./get-auth-context";
+import {
   isSandboxToken,
   verifySandboxToken,
   verifyZeroToken,
@@ -81,19 +84,15 @@ export function isAuthError(
 }
 
 /**
- * Strict authenticator for the public `/api/v1/*` surface: the caller must
- * present a `vm0_pat_…` personal access token minted from `/settings/api-keys`
- * (or the CLI device flow — the same token artifact). Session cookies,
- * sandbox/zero tokens, and any other bearer shape are rejected so these
- * endpoints can never be reached without an explicit, user-created PAT.
+ * Strict authenticator for the public `/api/v1/*` surface: any valid
+ * Clerk-issued API Key for the caller's user acts as a personal access token.
+ * Session cookies, CLI PAT (`vm0_pat_`), and sandbox/zero tokens are all
+ * rejected so these endpoints can never be reached without an explicit,
+ * user-created Clerk API key. Verifies the key directly via
+ * `clerkClient.apiKeys.verify` and never consults Clerk's session, so it is
+ * safe to use under routes where `clerkMiddleware` has been bypassed.
  *
- * The PAT JWT carries the orgId stamped at mint time, so `resolveOrg` has
- * explicit org context without a session lookup. We additionally re-check
- * that the user is still a member of that org — a PAT must not outlive
- * membership.
- *
- * Missing/invalid/revoked/expired keys (or keys whose user left the org)
- * return 401.
+ * Missing/invalid/revoked/expired keys return 401.
  */
 export async function requireApiKeyAuth(
   authHeader: string | undefined,
@@ -106,10 +105,9 @@ export async function requireApiKeyAuth(
   };
   if (!authHeader?.startsWith("Bearer ")) return unauthorized;
   const token = authHeader.substring(7);
-  if (!isPatToken(token)) return unauthorized;
-  const authCtx = await getAuthContext(authHeader);
+  // Reject any self-signed prefix on this surface — v1 is api_key only.
+  if (token.startsWith("vm0_")) return unauthorized;
+  const authCtx = await authenticateClerkApiKey(token);
   if (!authCtx) return unauthorized;
-  if (authCtx.tokenType !== "pat") return unauthorized;
-  if (!authCtx.orgId) return unauthorized;
   return authCtx;
 }

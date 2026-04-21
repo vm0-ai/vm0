@@ -41,7 +41,7 @@ describe("/api/integrations/github", () => {
 
       const request = createTestRequest(
         "http://localhost:3000/api/integrations/github",
-        {},
+        { headers: { Authorization: "Bearer test-token" } },
       );
       const response = await GET(request);
       const data = await response.json();
@@ -61,7 +61,7 @@ describe("/api/integrations/github", () => {
 
       const request = createTestRequest(
         "http://localhost:3000/api/integrations/github",
-        {},
+        { headers: { Authorization: "Bearer test-token" } },
       );
       const response = await GET(request);
       const data = await response.json();
@@ -83,7 +83,7 @@ describe("/api/integrations/github", () => {
 
       const request = createTestRequest(
         "http://localhost:3000/api/integrations/github",
-        {},
+        { headers: { Authorization: "Bearer test-token" } },
       );
       const response = await GET(request);
       const data = await response.json();
@@ -119,6 +119,7 @@ describe("/api/integrations/github", () => {
         "http://localhost:3000/api/integrations/github",
         {
           method: "DELETE",
+          headers: { Authorization: "Bearer test-token" },
         },
       );
       const response = await DELETE(request);
@@ -141,6 +142,7 @@ describe("/api/integrations/github", () => {
         "http://localhost:3000/api/integrations/github",
         {
           method: "DELETE",
+          headers: { Authorization: "Bearer test-token" },
         },
       );
       const response = await DELETE(request);
@@ -173,6 +175,7 @@ describe("/api/integrations/github", () => {
         "http://localhost:3000/api/integrations/github",
         {
           method: "DELETE",
+          headers: { Authorization: "Bearer test-token" },
         },
       );
       const response = await DELETE(request);
@@ -211,6 +214,7 @@ describe("/api/integrations/github", () => {
         "http://localhost:3000/api/integrations/github",
         {
           method: "DELETE",
+          headers: { Authorization: "Bearer test-token" },
         },
       );
       const response = await DELETE(request);
@@ -254,6 +258,7 @@ describe("/api/integrations/github", () => {
         {
           method: "PATCH",
           headers: {
+            Authorization: "Bearer test-token",
             "Content-Type": "application/json",
           },
           body: JSON.stringify({}),
@@ -276,6 +281,7 @@ describe("/api/integrations/github", () => {
         {
           method: "PATCH",
           headers: {
+            Authorization: "Bearer test-token",
             "Content-Type": "application/json",
           },
           body: JSON.stringify({ agentName: "some-agent" }),
@@ -306,6 +312,7 @@ describe("/api/integrations/github", () => {
         {
           method: "PATCH",
           headers: {
+            Authorization: "Bearer test-token",
             "Content-Type": "application/json",
           },
           body: JSON.stringify({ agentName: "some-agent" }),
@@ -344,6 +351,7 @@ describe("/api/integrations/github", () => {
         {
           method: "PATCH",
           headers: {
+            Authorization: "Bearer test-token",
             "Content-Type": "application/json",
           },
           body: JSON.stringify({ agentName: "some-agent" }),
@@ -368,6 +376,7 @@ describe("/api/integrations/github", () => {
         {
           method: "PATCH",
           headers: {
+            Authorization: "Bearer test-token",
             "Content-Type": "application/json",
           },
           body: JSON.stringify({ agentName: "nonexistent-agent" }),
@@ -395,6 +404,7 @@ describe("/api/integrations/github", () => {
         {
           method: "PATCH",
           headers: {
+            Authorization: "Bearer test-token",
             "Content-Type": "application/json",
           },
           body: JSON.stringify({ agentName: "new-agent" }),
@@ -408,7 +418,9 @@ describe("/api/integrations/github", () => {
 
       // Verify the agent was updated by fetching the integration
       const getResponse = await GET(
-        createTestRequest("http://localhost:3000/api/integrations/github", {}),
+        createTestRequest("http://localhost:3000/api/integrations/github", {
+          headers: { Authorization: "Bearer test-token" },
+        }),
       );
       const getData = await getResponse.json();
 

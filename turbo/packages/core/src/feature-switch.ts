@@ -288,7 +288,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.ApiKeys]: {
     maintainer: "ethan@vm0.ai",
     description:
-      "Gate the custom /settings/api-keys UI for issuing personal access tokens used by the /api/v1 public surface. When disabled, the settings page redirects to / and the sidebar menu item is hidden. The backend /api/v1 verification does NOT consult this flag — previously issued PATs continue to work.",
+      "Show the API Keys tab in Manage Account (Clerk UserProfile). When disabled, the tab is hidden even if API Keys are enabled in the Clerk dashboard.",
     enabled: false,
   },
   [FeatureSwitchKey.SlackAgentSwitch]: {

@@ -47,6 +47,27 @@ let orgSlugOverrides = new Map<string, string>();
 // by this test, avoiding cross-file interference in parallel test runs.
 let mockUserIds: string[] = [];
 
+// Module-level registry mapping API key secret → verify() response.
+// Lets individual tests register Clerk-issued API keys (opaque secrets) that
+// the v1 API surface verifies via clerkClient().apiKeys.verify(secret).
+type MockApiKey = {
+  id: string;
+  subject: string;
+  claims: Record<string, unknown> | null;
+  revoked?: boolean;
+  expired?: boolean;
+};
+const mockApiKeys = new Map<string, MockApiKey>();
+
+/**
+ * Register a Clerk-issued API key for a test. The secret is the raw token
+ * the client sends as `Authorization: Bearer <secret>`; the rest of the
+ * fields shape the APIKey object the backend mock returns from verify().
+ */
+export function registerMockApiKey(secret: string, key: MockApiKey): void {
+  mockApiKeys.set(secret, key);
+}
+
 /**
  * Configure Clerk auth mock
  * @param options - Auth configuration
@@ -331,6 +352,35 @@ export function mockClerk(options: {
       deleteOrganizationDomain: vi.fn().mockResolvedValue({}),
       updateOrganizationDomain: vi.fn().mockResolvedValue({}),
     },
+    apiKeys: {
+      verify: vi.fn().mockImplementation((secret: string) => {
+        const key = mockApiKeys.get(secret);
+        if (!key) {
+          const err = new Error("API key not found") as Error & {
+            status?: number;
+          };
+          err.status = 404;
+          return Promise.reject(err);
+        }
+        return Promise.resolve({
+          id: key.id,
+          type: "api_key",
+          name: key.id,
+          subject: key.subject,
+          scopes: [],
+          claims: key.claims,
+          revoked: key.revoked ?? false,
+          revocationReason: null,
+          expired: key.expired ?? false,
+          expiration: null,
+          createdBy: null,
+          description: null,
+          lastUsedAt: null,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        });
+      }),
+    },
   } as unknown as Awaited<ReturnType<typeof clerkClient>>);
 }
 
@@ -346,5 +396,6 @@ export function clearClerkMock(): string[] {
   createdOrgs = [];
   orgSlugOverrides = new Map();
   mockUserIds = [];
+  mockApiKeys.clear();
   return userIds;
 }
