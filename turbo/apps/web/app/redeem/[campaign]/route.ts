@@ -38,73 +38,92 @@ export async function GET(
   const errorPage = (reason: string) => {
     return new URL(`/redeem/error?reason=${reason}`, NEXT_PUBLIC_APP_URL);
   };
-  if (!STRIPE_SECRET_KEY) {
-    return NextResponse.redirect(errorPage("billing_unavailable"));
-  }
 
-  const { campaign: campaignKey } = await ctx.params;
+  try {
+    if (!STRIPE_SECRET_KEY) {
+      return NextResponse.redirect(errorPage("billing_unavailable"));
+    }
 
-  // Layer 1: route-level whitelist. Reject before even calling Stripe so an
-  // attacker can't use the endpoint to enumerate campaigns or kick off
-  // checkout for an unintended price/coupon combo.
-  if (!getCampaign(campaignKey)) {
-    return new NextResponse("Not Found", { status: 404 });
-  }
+    const { campaign: campaignKey } = await ctx.params;
 
-  const { userId, orgId, orgRole } = await auth();
-  if (!userId) {
-    // Preserve the full current URL (path + query) so Clerk's post-login
+    // Layer 1: route-level whitelist. Reject before even calling Stripe so an
+    // attacker can't use the endpoint to enumerate campaigns or kick off
+    // checkout for an unintended price/coupon combo.
+    if (!getCampaign(campaignKey)) {
+      return new NextResponse("Not Found", { status: 404 });
+    }
+
+    const { userId, orgId, orgRole } = await auth();
+
+    // Preserve the full current URL (path + query) so Clerk's post-flow
     // redirect drops the user right back at this handler.
     const redirectUrl = req.nextUrl.pathname + req.nextUrl.search;
-    const target = new URL("/sign-in", origin);
-    target.searchParams.set("redirect_url", redirectUrl);
-    return NextResponse.redirect(target);
-  }
-  if (!orgId) {
-    return NextResponse.redirect(errorPage("no_active_org"));
-  }
-  if (orgRole !== "org:admin") {
-    return NextResponse.redirect(errorPage("admin_required"));
-  }
 
-  const homeUrl = new URL("/", origin).toString();
-  let outcome;
-  try {
-    outcome = await startOrResumeRedemption({
-      orgId,
-      campaignKey,
-      successUrl: homeUrl,
-      cancelUrl: homeUrl,
-    });
-  } catch (err) {
-    // Config drift: env points at a priceId/couponId Stripe doesn't have.
-    // Redirect instead of 500ing so admin users see a readable signal.
-    // Other Stripe failures (network, auth) still throw so on-call notices.
-    if (
-      err instanceof Stripe.errors.StripeInvalidRequestError &&
-      err.code === "resource_missing"
-    ) {
-      log.error("campaign misconfigured — Stripe resource missing", {
-        orgId,
-        campaignKey,
-        param: err.param,
-        message: err.message,
-      });
-      return NextResponse.redirect(errorPage("campaign_misconfigured"));
+    if (!userId) {
+      const target = new URL("/sign-in", origin);
+      target.searchParams.set("redirect_url", redirectUrl);
+      return NextResponse.redirect(target);
     }
-    throw err;
-  }
+    if (!orgId) {
+      // Let Clerk's org-selection task handle org choice; on completion it
+      // brings the user back to the redemption URL.
+      const target = new URL("/sign-in/tasks/choose-organization", origin);
+      target.searchParams.set("redirect_url", redirectUrl);
+      return NextResponse.redirect(target);
+    }
+    if (orgRole !== "org:admin") {
+      return NextResponse.redirect(errorPage("admin_required"));
+    }
 
-  switch (outcome.kind) {
-    case "redirect":
-      log.info("one_time_purchase redirecting to Stripe", {
+    const homeUrl = new URL("/", origin).toString();
+    let outcome;
+    try {
+      outcome = await startOrResumeRedemption({
         orgId,
         campaignKey,
+        successUrl: homeUrl,
+        cancelUrl: homeUrl,
       });
-      return NextResponse.redirect(outcome.url);
-    case "already_granted":
-      return NextResponse.redirect(new URL("/?promo=already_redeemed", origin));
-    case "processing":
-      return NextResponse.redirect(new URL("/?promo=processing", origin));
+    } catch (err) {
+      // Config drift: env points at a priceId/couponId Stripe doesn't have.
+      // Redirect instead of 500ing so admin users see a readable signal.
+      if (
+        err instanceof Stripe.errors.StripeInvalidRequestError &&
+        err.code === "resource_missing"
+      ) {
+        log.error("campaign misconfigured — Stripe resource missing", {
+          orgId,
+          campaignKey,
+          param: err.param,
+          message: err.message,
+        });
+        return NextResponse.redirect(errorPage("campaign_misconfigured"));
+      }
+      throw err;
+    }
+
+    switch (outcome.kind) {
+      case "redirect":
+        log.info("one_time_purchase redirecting to Stripe", {
+          orgId,
+          campaignKey,
+        });
+        return NextResponse.redirect(outcome.url);
+      case "already_granted":
+        return NextResponse.redirect(
+          new URL("/?promo=already_redeemed", origin),
+        );
+      case "processing":
+        return NextResponse.redirect(new URL("/?promo=processing", origin));
+    }
+  } catch (err) {
+    // Outer safety net: anything unexpected (DB down, Stripe 5xx, auth blip,
+    // etc.) should still surface as the branded error page, not a bare 500.
+    // on-call still gets full detail via the log + Sentry hook.
+    log.error("redeem route unexpected error", {
+      err: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    });
+    return NextResponse.redirect(errorPage("unknown"));
   }
 }

@@ -122,6 +122,42 @@ describe("GET /redeem/[campaign]", () => {
     expect(response.status).toBe(404);
   });
 
+  it("redirects logged-in users without an active org to choose-organization", async () => {
+    mockClerk({
+      userId: user.userId,
+      orgId: null,
+      orgRole: null,
+    });
+
+    const response = await GET(createTestRequest(REDEEM_URL), {
+      params: params(CAMPAIGN),
+    });
+
+    expect(response.status).toBe(307);
+    const location = response.headers.get("location");
+    expect(location).toContain("/sign-in/tasks/choose-organization");
+    expect(location).toContain(encodeURIComponent(`/redeem/${CAMPAIGN}`));
+  });
+
+  it("redirects to the error page with an unknown reason when an unexpected error is thrown", async () => {
+    await updateOrgStripeFields(user.orgId, {
+      stripeCustomerId: uniqueId("cus"),
+    });
+
+    stripeMocks.checkoutSessionsCreate.mockRejectedValue(
+      new Error("boom: database unreachable"),
+    );
+
+    const response = await GET(createTestRequest(REDEEM_URL), {
+      params: params(CAMPAIGN),
+    });
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toContain(
+      "http://app.localhost:3002/redeem/error?reason=unknown",
+    );
+  });
+
   it("redirects non-admin org members home with admin_required error", async () => {
     mockClerk({
       userId: user.userId,

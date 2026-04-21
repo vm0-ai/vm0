@@ -1,18 +1,13 @@
 import type { ReactNode } from "react";
 import { useGet } from "ccstate-react";
-import {
-  IconAlertCircle,
-  IconAlertTriangle,
-  IconLock,
-  IconX,
-} from "@tabler/icons-react";
+import { IconAlertCircle, IconLock, IconX } from "@tabler/icons-react";
 import { Button } from "@vm0/ui";
 import { searchParams$ } from "../../signals/route.ts";
 import { ROUTES } from "../../signals/route-paths.ts";
 import { Link } from "../router/link.tsx";
 import { VM0Logo } from "../components/vm0-logo.tsx";
 
-type ReasonKind = "transient" | "action" | "auth" | "broken";
+type ReasonKind = "transient" | "auth" | "broken";
 
 interface ReasonInfo {
   kind: ReasonKind;
@@ -27,13 +22,6 @@ function resolveReason(reason: string | null): ReasonInfo {
         kind: "transient",
         title: "Billing is temporarily unavailable",
         body: "Our payment system isn't available right now. Please try again in a few minutes.",
-      };
-    }
-    case "no_active_org": {
-      return {
-        kind: "action",
-        title: "No active organization",
-        body: "Switch to an organization and open the redemption link again.",
       };
     }
     case "admin_required": {
@@ -68,11 +56,6 @@ function ReasonIcon({ kind }: { kind: ReasonKind }): ReactNode {
           size={40}
           className="text-muted-foreground opacity-70"
         />
-      );
-    }
-    case "action": {
-      return (
-        <IconAlertTriangle size={40} className="text-orange-500 opacity-70" />
       );
     }
     case "auth": {
