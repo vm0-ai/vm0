@@ -400,8 +400,13 @@ async fn gc_nested_images(
 
     // Phase 2b: delete everything past the top-N cutoff. Track per-rootfs
     // deleted-snapshot bytes so the dry-run orphan accounting can subtract
-    // the overlap (see orphan-rootfs note below).
-    let mut dry_run_snapshot_bytes: Vec<u64> = vec![0; rootfs_states.len()];
+    // the overlap (see orphan-rootfs note below). Skip the allocation in
+    // real-mode — nothing reads or writes it there.
+    let mut dry_run_snapshot_bytes: Vec<u64> = if dry_run {
+        vec![0; rootfs_states.len()]
+    } else {
+        Vec::new()
+    };
     for c in candidates.iter().skip(keep_count) {
         // Clone `hash` so the immutable borrow on `rootfs_states` is
         // released before the error branch mutates it below.
