@@ -6,7 +6,7 @@ import { useMemo, useState } from "react";
 import { Link } from "../../../navigation";
 import Footer from "../../components/Footer";
 import Particles from "../../components/Particles";
-import { getAppUrl } from "../../../../src/lib/zero/url";
+import { getAppUrl } from "../../../src/lib/zero/url";
 import { USE_CASES, buildPromptHref } from "./data";
 import type { UseCase, ConnectorRef, AvatarConfig, Role } from "./data";
 
@@ -15,12 +15,7 @@ const PAGE_PADDING = 24;
 
 type RoleFilter = Role | "all";
 
-const ROLE_FILTERS: RoleFilter[] = [
-  "all",
-  "engineering",
-  "product",
-  "ops",
-];
+const ROLE_FILTERS: RoleFilter[] = ["all", "engineering", "product", "ops"];
 
 const AVATAR_BASE = "/assets/avatar";
 
@@ -115,7 +110,10 @@ function UseCaseCard({
           <AgentAvatar config={useCase.avatar} size={64} />
 
           {/* Connector logos */}
-          <div className="relative flex items-center gap-1.5" style={{ top: 10 }}>
+          <div
+            className="relative flex items-center gap-1.5"
+            style={{ top: 10 }}
+          >
             {useCase.connectors.map((c) => {
               return <ConnectorIcon key={c.id} connector={c} />;
             })}
