@@ -6,6 +6,7 @@ import { creditUsage } from "../../db/schema/credit-usage";
 import { clientCreditUsage } from "../../db/schema/client-credit-usage";
 import { usageDaily } from "../../db/schema/usage-daily";
 import { insightsDaily } from "../../db/schema/insights-daily";
+import { orgPromoRedemption } from "../../db/schema/org-promo-redemption";
 
 // ---------------------------------------------------------------------------
 // Read-only assertion helpers for billing / credit test verification.
@@ -61,6 +62,53 @@ export async function findCreditExpiresRecords(orgId: string) {
     .from(creditExpiresRecord)
     .where(eq(creditExpiresRecord.orgId, orgId))
     .orderBy(creditExpiresRecord.expiresAt);
+}
+
+/**
+ * Look up a credit_expires_record by (orgId, stripeInvoiceId). Used by
+ * one-time purchase webhook tests that assert credits landed with the
+ * correct source / expiry metadata for a specific Stripe session id.
+ */
+export async function findCreditExpiresRecordByStripeInvoiceId(
+  orgId: string,
+  stripeInvoiceId: string,
+) {
+  initServices();
+  const [row] = await globalThis.services.db
+    .select()
+    .from(creditExpiresRecord)
+    .where(
+      and(
+        eq(creditExpiresRecord.orgId, orgId),
+        eq(creditExpiresRecord.stripeInvoiceId, stripeInvoiceId),
+      ),
+    )
+    .limit(1);
+  return row;
+}
+
+/**
+ * Read the current stripe_session_id stored on the org_promo_redemption row
+ * for (orgId, productId, promoCode). Returns undefined if no row exists.
+ */
+export async function findOrgPromoRedemption(params: {
+  orgId: string;
+  productId: string;
+  promoCode: string;
+}): Promise<{ stripeSessionId: string } | undefined> {
+  initServices();
+  const [row] = await globalThis.services.db
+    .select({ stripeSessionId: orgPromoRedemption.stripeSessionId })
+    .from(orgPromoRedemption)
+    .where(
+      and(
+        eq(orgPromoRedemption.orgId, params.orgId),
+        eq(orgPromoRedemption.productId, params.productId),
+        eq(orgPromoRedemption.promoCode, params.promoCode),
+      ),
+    )
+    .limit(1);
+  return row;
 }
 
 // ---------------------------------------------------------------------------

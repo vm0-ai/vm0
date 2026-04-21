@@ -12,6 +12,7 @@ import {
   getExpiresRecordsSummary,
   getUnsettledExpiredAmount,
 } from "../credit/credit-expires-service";
+import { getOneTimeProduct } from "./one-time-products";
 import { logger } from "../../shared/logger";
 
 const log = logger("billing");
@@ -26,6 +27,7 @@ interface CheckoutSessionInput {
   id: string;
   subscription: string | { id: string } | null;
   customer: string | { id: string } | null;
+  metadata: Record<string, string> | null;
 }
 
 /** Fields read by {@link handleInvoicePaid}. */
@@ -148,11 +150,20 @@ export async function createCheckoutSession(
 
 /**
  * Handle checkout.session.completed — set tier + subscription fields on org.
- * Does NOT grant credits (single code path via invoice.paid).
+ * Does NOT grant credits for subscriptions (single code path via invoice.paid).
+ *
+ * One-time purchases (`metadata.purpose === "one_time_purchase"`) are
+ * dispatched to {@link handleOneTimePurchaseCompleted}, which grants credits
+ * sourced from the server-side {@link ONE_TIME_PRODUCTS} registry.
  */
 export async function handleCheckoutCompleted(
   session: CheckoutSessionInput,
 ): Promise<void> {
+  if (session.metadata?.purpose === "one_time_purchase") {
+    await handleOneTimePurchaseCompleted(session);
+    return;
+  }
+
   const subscriptionId =
     typeof session.subscription === "string"
       ? session.subscription
@@ -229,6 +240,153 @@ export async function handleCheckoutCompleted(
     subscriptionId,
     customerId,
   });
+}
+
+/**
+ * Grant credits for a completed one-time purchase. The `credits`, `expiresDays`
+ * and `source` values are looked up in {@link ONE_TIME_PRODUCTS} — never read
+ * from webhook metadata — so an attacker who forges a session metadata can't
+ * inflate the payout. Idempotent via `createExpiresRecord`'s unique index on
+ * `(org_id, stripe_invoice_id)`.
+ */
+async function handleOneTimePurchaseCompleted(
+  session: CheckoutSessionInput,
+): Promise<void> {
+  const metadata = session.metadata ?? {};
+  const orgId = metadata.orgId;
+  const productId = metadata.productId;
+
+  if (!orgId || !productId) {
+    log.warn("one_time_purchase missing metadata", {
+      sessionId: session.id,
+      hasOrgId: !!orgId,
+      hasProductId: !!productId,
+    });
+    return;
+  }
+
+  const rule = getOneTimeProduct(productId);
+  if (!rule) {
+    log.warn("one_time_purchase unknown productId — skipping", {
+      sessionId: session.id,
+      productId,
+    });
+    return;
+  }
+
+  const expiresAt = new Date(
+    Date.now() + rule.expiresDays * 24 * 60 * 60 * 1000,
+  );
+  const db = globalThis.services.db;
+  await db.transaction(async (tx) => {
+    const inserted = await createExpiresRecord(tx, orgId, {
+      source: rule.source,
+      stripeInvoiceId: session.id,
+      amount: rule.credits,
+      expiresAt,
+    });
+    if (!inserted) {
+      log.info("one_time_purchase already processed — skipping", {
+        sessionId: session.id,
+        orgId,
+      });
+      return;
+    }
+    await grantOrgCredits(tx, orgId, rule.credits);
+    log.info("one_time_purchase credits granted", {
+      orgId,
+      productId,
+      credits: rule.credits,
+      sessionId: session.id,
+    });
+  });
+}
+
+// ---------------------------------------------------------------------------
+// One-time Checkout Session creation (used by /buy/[productId])
+// ---------------------------------------------------------------------------
+
+const oneTimePriceIdCache = new Map<string, string>();
+
+/**
+ * Resolve the price id to charge for a one-time product purchase. Prefers the
+ * product's `default_price` and falls back to its first active price so a
+ * migration between prices doesn't require a code change.
+ */
+async function resolveOneTimePriceId(productId: string): Promise<string> {
+  const cached = oneTimePriceIdCache.get(productId);
+  if (cached) return cached;
+
+  const stripe = getStripe();
+  const product = await stripe.products.retrieve(productId);
+  let priceId: string | null = null;
+  if (typeof product.default_price === "string") {
+    priceId = product.default_price;
+  } else if (product.default_price && "id" in product.default_price) {
+    priceId = product.default_price.id;
+  }
+
+  if (!priceId) {
+    log.warn(
+      "product has no default_price; falling back to first active price",
+      {
+        productId,
+      },
+    );
+    const prices = await stripe.prices.list({
+      product: productId,
+      active: true,
+      limit: 1,
+    });
+    priceId = prices.data[0]?.id ?? null;
+  }
+
+  if (!priceId) {
+    throw new Error(`Product ${productId} has no usable price`);
+  }
+
+  oneTimePriceIdCache.set(productId, priceId);
+  return priceId;
+}
+
+/**
+ * Create a Stripe Checkout session for a one-time purchase.
+ *
+ * The session carries a fixed metadata shape the webhook relies on to
+ * dispatch to {@link handleOneTimePurchaseCompleted}. Callers are responsible
+ * for checking that `productId`/`promoCode` are whitelisted *before* calling
+ * this — see `ONE_TIME_PRODUCTS`.
+ */
+export async function createOneTimeCheckoutSession(params: {
+  orgId: string;
+  productId: string;
+  promoCode: string;
+  successUrl: string;
+  cancelUrl: string;
+}): Promise<{ sessionId: string; url: string }> {
+  const customerId = await getOrCreateStripeCustomer(params.orgId);
+  const stripe = getStripe();
+  const priceId = await resolveOneTimePriceId(params.productId);
+
+  const session = await stripe.checkout.sessions.create({
+    mode: "payment",
+    customer: customerId,
+    line_items: [{ price: priceId, quantity: 1 }],
+    discounts: [{ coupon: params.promoCode }],
+    success_url: params.successUrl,
+    cancel_url: params.cancelUrl,
+    metadata: {
+      orgId: params.orgId,
+      productId: params.productId,
+      promoCode: params.promoCode,
+      purpose: "one_time_purchase",
+    },
+  });
+
+  if (!session.url) {
+    throw new Error("Stripe checkout session did not return a URL");
+  }
+  return { sessionId: session.id, url: session.url };
 }
 
 /**
