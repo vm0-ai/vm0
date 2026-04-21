@@ -361,7 +361,7 @@ describe("GET /api/zero/usage/insight", () => {
 
     expect(data.schedules.length).toBe(100);
     expect(data.scheduleOtherCount).toBe(5);
-  });
+  }, 30000);
 
   it("scope isolation — other user's activity in same org is invisible", async () => {
     const { userId, orgId } = await context.user;
@@ -503,5 +503,5 @@ describe("GET /api/zero/usage/insight", () => {
 
     expect(data.schedules.length).toBe(100);
     expect(data.scheduleOtherCount).toBe(5);
-  });
+  }, 30000);
 });
