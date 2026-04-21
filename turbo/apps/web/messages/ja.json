@@ -306,7 +306,7 @@
     },
     "content": {
       "auto-merge-releases": {
-        "title": "リリースPRを、チームのスケジュールに合わせて自動マージ - 追いかける必要はもうない",
+        "title": "リリースPRを、チームのスケジュールに合わせて自動マージ追いかける必要はもうない",
         "description": "いつリリースPRを出すか、どのPRはスキップするか。Zeroに一度伝えておくだけ。チームのペースに合わせてチェックを走らせ、リスクのあるPRはスキップ、残りは自動でマージします - チームが「人力cron」から解放されます。",
         "timeSaved": "1リリースあたり約15分短縮",
         "headings": {
@@ -2588,7 +2588,7 @@
         ]
       },
       "marketing-content-automation": {
-        "title": "Run a full content pipeline from research to scoring - without a content team",
+        "title": "Run a full content pipeline from research to scoring without a content team",
         "description": "Set up a multi-agent loop: one agent drafts posts daily from competitor and trend research, Zero saves your best inspirations on command, and a monitor agent scores performance every week. The whole pipeline runs in Slack.",
         "timeSaved": "~5 hrs saved per week",
         "headings": {
@@ -2928,7 +2928,7 @@
         ]
       },
       "daily-email-triage": {
-        "title": "受信箱を2分で仕分け - 2時間ではなく",
+        "title": "受信箱を2分で仕分け2時間ではなく",
         "description": "ZeroがGmailを読み込み、ノイズを除外し、優先順位付きのSlackサマリーを送信 - 朝の始まりはメールに埋もれるのではなく、把握した状態で。",
         "timeSaved": "毎日約20分節約",
         "headings": {
@@ -3010,7 +3010,7 @@
         ]
       },
       "auto-test-coverage": {
-        "title": "毎日のコード変更のテストを自動作成 - 一晩で",
+        "title": "毎日のコード変更のテストを自動作成一晩で",
         "description": "Zeroがマージ済みPRをスキャンしてテスト未カバーのファイルを見つけ、プロジェクトの規約に沿ったテストを作成してPRを開きます - 毎朝、カバレッジが向上した状態で仕事を始められます。",
         "timeSaved": "毎日約45分節約",
         "headings": {
@@ -3092,7 +3092,7 @@
         ]
       },
       "daily-user-analysis": {
-        "title": "毎日のプロダクト分析 - 手動クエリゼロ",
+        "title": "毎日のプロダクト分析手動クエリゼロ",
         "description": "Zeroがスケジュールに従って本番DBにクエリを実行し、ユーザー行動を分析して構造化レポートをSlackに投稿 - トレンドが問題になる前に気づけます。",
         "timeSaved": "毎日約30分節約",
         "headings": {
@@ -3174,7 +3174,7 @@
         ]
       },
       "evening-brief": {
-        "title": "チームの1日まとめを自動で - 夕方に",
+        "title": "チームの1日まとめを自動で夕方に",
         "description": "Zeroがその日のSlack会話、マージ済みPR、クローズされたIssueをまとめ、チームチャンネルにダイジェストを投稿 - 50件のメッセージをスクロールしなくても、何がリリースされたか全員が把握できます。",
         "timeSaved": "毎日約15分節約",
         "headings": {

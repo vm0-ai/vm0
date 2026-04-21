@@ -306,7 +306,7 @@
     },
     "content": {
       "auto-merge-releases": {
-        "title": "Fusiona PRs de release al ritmo de tu equipo - sin tener que perseguirlos",
+        "title": "Fusiona PRs de release al ritmo de tu equipo sin tener que perseguirlos",
         "description": "Dile a Zero una vez cuándo publicar los PRs de release y cuáles saltar. Corre la revisión en tu ritmo, salta los cambios arriesgados y fusiona el resto - deja de ser el cron humano del equipo.",
         "timeSaved": "~15 min ahorrados por release",
         "headings": {
@@ -2506,7 +2506,7 @@
         ]
       },
       "marketing-content-automation": {
-        "title": "Run a full content pipeline from research to scoring - without a content team",
+        "title": "Run a full content pipeline from research to scoring without a content team",
         "description": "Set up a multi-agent loop: one agent drafts posts daily from competitor and trend research, Zero saves your best inspirations on command, and a monitor agent scores performance every week. The whole pipeline runs in Slack.",
         "timeSaved": "~5 hrs saved per week",
         "headings": {
@@ -2928,7 +2928,7 @@
         ]
       },
       "daily-email-triage": {
-        "title": "Triaje tu bandeja de entrada en dos minutos - no dos horas",
+        "title": "Triaje tu bandeja de entrada en dos minutos no dos horas",
         "description": "Zero lee tu Gmail, separa la señal del ruido y te envía un resumen priorizado en Slack con acciones pendientes - para que empieces el día informado, no enterrado.",
         "timeSaved": "~20 min ahorrados al día",
         "headings": {
@@ -3010,7 +3010,7 @@
         ]
       },
       "auto-test-coverage": {
-        "title": "Escribe tests automáticamente para cada cambio de código - durante la noche",
+        "title": "Escribe tests automáticamente para cada cambio de código durante la noche",
         "description": "Zero escanea los PRs fusionados en busca de archivos sin tests, escribe tests siguiendo tus convenciones y abre un PR - para que empieces cada día con mejor cobertura.",
         "timeSaved": "~45 min ahorrados al día",
         "headings": {
@@ -3092,7 +3092,7 @@
         ]
       },
       "daily-user-analysis": {
-        "title": "Analítica de producto diaria - cero consultas manuales",
+        "title": "Analítica de producto diaria con cero consultas manuales",
         "description": "Zero consulta tu base de datos de producción según una programación, analiza el comportamiento de los usuarios y publica un informe estructurado en Slack - para que detectes tendencias antes de que se conviertan en problemas.",
         "timeSaved": "~30 min ahorrados al día",
         "headings": {
@@ -3174,7 +3174,7 @@
         ]
       },
       "evening-brief": {
-        "title": "Genera un resumen conciso de fin de jornada - automáticamente",
+        "title": "Genera un resumen conciso de fin de jornada automáticamente",
         "description": "Zero recopila las conversaciones de Slack del día, los PRs fusionados y los issues cerrados, y publica un resumen en tu canal de equipo - para que todos sepan qué se publicó sin hojear 50 mensajes.",
         "timeSaved": "~15 min ahorrados al día",
         "headings": {

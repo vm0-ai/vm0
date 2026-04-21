@@ -306,7 +306,7 @@
     },
     "content": {
       "auto-merge-releases": {
-        "title": "Ship release PRs on your team's schedule - without chasing them",
+        "title": "Ship release PRs on your team's schedule without chasing them",
         "description": "Tell Zero once when to ship release PRs and which ones to skip. It runs the check on your cadence, skips risky changes, and merges the rest - so you stop being a human cron job.",
         "timeSaved": "~15 min saved per release",
         "headings": {
@@ -2588,7 +2588,7 @@
         ]
       },
       "marketing-content-automation": {
-        "title": "Run a full content pipeline from research to scoring - without a content team",
+        "title": "Run a full content pipeline from research to scoring without a content team",
         "description": "Set up a multi-agent loop: one agent drafts posts daily from competitor and trend research, Zero saves your best inspirations on command, and a monitor agent scores performance every week. The whole pipeline runs in Slack.",
         "timeSaved": "~5 hrs saved per week",
         "headings": {
@@ -2928,7 +2928,7 @@
         ]
       },
       "daily-email-triage": {
-        "title": "Triage your inbox in two minutes - not two hours",
+        "title": "Triage your inbox in two minutes not two hours",
         "description": "Zero reads your Gmail, separates signal from noise, and sends a prioritized Slack summary with action items - so you start the day informed, not buried.",
         "timeSaved": "~20 min saved per day",
         "headings": {
@@ -3010,7 +3010,7 @@
         ]
       },
       "auto-test-coverage": {
-        "title": "Auto-write tests for every code change - overnight",
+        "title": "Auto-write tests for every code change overnight",
         "description": "Zero scans merged PRs for untested files, writes tests following your conventions, and opens a PR - so you start each day with better coverage.",
         "timeSaved": "~45 min saved per day",
         "headings": {
@@ -3092,7 +3092,7 @@
         ]
       },
       "daily-user-analysis": {
-        "title": "Daily product analytics - zero manual queries",
+        "title": "Daily product analytics with zero manual queries",
         "description": "Zero queries your production database on a schedule, analyzes user behavior, and posts a structured report to Slack - so you spot trends before they become problems.",
         "timeSaved": "~30 min saved per day",
         "headings": {
@@ -3174,7 +3174,7 @@
         ]
       },
       "evening-brief": {
-        "title": "Ship a concise end-of-day summary - automatically",
+        "title": "Ship a concise end-of-day summary automatically",
         "description": "Zero collects today's Slack conversations, merged PRs, and closed issues, then posts a digest to your team channel - so everyone knows what shipped without scrolling through 50 messages.",
         "timeSaved": "~15 min saved per day",
         "headings": {

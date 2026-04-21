@@ -306,7 +306,7 @@
     },
     "content": {
       "auto-merge-releases": {
-        "title": "Release-PRs automatisch im Teamrhythmus mergen - ohne hinterherrennen zu müssen",
+        "title": "Release-PRs automatisch im Teamrhythmus mergen ohne hinterherrennen zu müssen",
         "description": "Sag Zero einmal, wann Release-PRs rausgehen sollen und welche übersprungen werden. Zero läuft in eurem Takt, überspringt riskante Änderungen und mergt den Rest - damit ihr nicht länger als Cronjob für Menschen herhalten müsst.",
         "timeSaved": "~15 Min pro Release gespart",
         "headings": {
@@ -2506,7 +2506,7 @@
         ]
       },
       "marketing-content-automation": {
-        "title": "Run a full content pipeline from research to scoring - without a content team",
+        "title": "Run a full content pipeline from research to scoring without a content team",
         "description": "Set up a multi-agent loop: one agent drafts posts daily from competitor and trend research, Zero saves your best inspirations on command, and a monitor agent scores performance every week. The whole pipeline runs in Slack.",
         "timeSaved": "~5 hrs saved per week",
         "headings": {
@@ -2928,7 +2928,7 @@
         ]
       },
       "daily-email-triage": {
-        "title": "Sortieren Sie Ihren Posteingang in zwei Minuten - nicht in zwei Stunden",
+        "title": "Sortieren Sie Ihren Posteingang in zwei Minuten nicht in zwei Stunden",
         "description": "Zero liest Ihre Gmail, trennt Signal von Rauschen und sendet eine priorisierte Slack-Zusammenfassung mit Handlungselementen - damit Sie informiert in den Tag starten, nicht begraben.",
         "timeSaved": "~20 Min. pro Tag gespart",
         "headings": {
@@ -3010,7 +3010,7 @@
         ]
       },
       "auto-test-coverage": {
-        "title": "Automatisch Tests für jede Code-Änderung schreiben - über Nacht",
+        "title": "Automatisch Tests für jede Code-Änderung schreiben über Nacht",
         "description": "Zero scannt gemergte PRs auf ungetestete Dateien, schreibt Tests nach Ihren Konventionen und öffnet einen PR - damit Sie jeden Tag mit besserer Code-Abdeckung starten.",
         "timeSaved": "~45 Min. pro Tag gespart",
         "headings": {

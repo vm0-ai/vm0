@@ -1,7 +1,6 @@
 "use client";
 
 import Image from "next/image";
-import { IconArrowUpRight } from "@tabler/icons-react";
 import { useTranslations } from "next-intl";
 import { useMemo, useState } from "react";
 import { Link } from "../../../navigation";
@@ -131,17 +130,18 @@ function UseCaseCard({
         </div>
       </Link>
 
-      {/* Try it button - outside Link to handle separate click */}
+      {/* Try it button - matches detail page style */}
       <div className="px-6 pb-5">
         <a
           href={tryItHref}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center gap-0.5 text-[13px] font-medium text-[#ed4e01] transition-all hover:gap-1.5"
+          className="inline-flex items-center gap-1 text-[14px] font-normal text-[#ed4e01] transition-all hover:gap-1.5"
+          style={{ fontStyle: 'italic' }}
           onClick={(e) => e.stopPropagation()}
         >
           {tryItLabel}
-          <IconArrowUpRight size={14} />
+          <span className="text-[12px]">↗</span>
         </a>
       </div>
     </div>
