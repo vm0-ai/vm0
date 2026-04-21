@@ -54,7 +54,7 @@ function functionBodyHasConstantReturn(body: TSESTree.BlockStatement): boolean {
   return body.body.some(
     (stmt) =>
       stmt.type === AST_NODE_TYPES.ReturnStatement &&
-      stmt.argument != null &&
+      stmt.argument !== null &&
       isConstantReturnExpression(stmt.argument),
   );
 }
@@ -70,7 +70,7 @@ function isConstantValue(node: TSESTree.Node): boolean {
     return node.operator === "-" && isConstantValue(node.argument);
   }
   if (node.type === AST_NODE_TYPES.ArrayExpression) {
-    return node.elements.every((el) => el != null && isConstantValue(el));
+    return node.elements.every((el) => el !== null && isConstantValue(el));
   }
   if (node.type === AST_NODE_TYPES.ObjectExpression) {
     return node.properties.every(
@@ -97,7 +97,7 @@ function isConstantValue(node: TSESTree.Node): boolean {
       node.body.type === AST_NODE_TYPES.BlockStatement &&
       node.body.body.length === 1 &&
       node.body.body[0].type === AST_NODE_TYPES.ReturnStatement &&
-      node.body.body[0].argument != null
+      node.body.body[0].argument !== null
     ) {
       return isConstantValue(node.body.body[0].argument);
     }
@@ -107,7 +107,7 @@ function isConstantValue(node: TSESTree.Node): boolean {
     if (
       node.body.body.length === 1 &&
       node.body.body[0].type === AST_NODE_TYPES.ReturnStatement &&
-      node.body.body[0].argument != null
+      node.body.body[0].argument !== null
     ) {
       return isConstantValue(node.body.body[0].argument);
     }
