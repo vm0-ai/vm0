@@ -1,5 +1,5 @@
 import { createHandler, tsr } from "../../../../../../src/lib/ts-rest-handler";
-import { zeroRunRunnerContract, type SandboxReuseResult } from "@vm0/core";
+import { zeroRunRunnerContract, sandboxReuseResultSchema } from "@vm0/core";
 import { initServices } from "../../../../../../src/lib/init-services";
 import {
   requireAuth,
@@ -42,12 +42,17 @@ const router = tsr.router(zeroRunRunnerContract, {
       };
     }
 
+    // Validate the DB value at the API boundary instead of blind-casting —
+    // if the runner ever writes an enum value the zod schema doesn't know
+    // about, we want to fail fast here (500) rather than crash the UI on a
+    // missing `SANDBOX_REUSE_LABELS[...]` lookup.
+    const sandboxReuseResult = sandboxReuseResultSchema
+      .nullable()
+      .parse(row.sandboxReuseResult ?? null);
+
     return {
       status: 200 as const,
-      body: {
-        sandboxReuseResult: (row.sandboxReuseResult ??
-          null) as SandboxReuseResult | null,
-      },
+      body: { sandboxReuseResult },
     };
   },
 });

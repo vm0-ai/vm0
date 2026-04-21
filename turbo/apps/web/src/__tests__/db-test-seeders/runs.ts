@@ -1,4 +1,5 @@
 import { and, eq, or } from "drizzle-orm";
+import type { SandboxReuseResult } from "@vm0/core";
 import { agentRuns } from "../../db/schema/agent-run";
 import { agentSessions } from "../../db/schema/agent-session";
 import { zeroRuns } from "../../db/schema/zero-run";
@@ -470,7 +471,7 @@ export async function setTestRunSelectedModel(
  */
 export async function setTestRunSandboxReuseResult(
   runId: string,
-  sandboxReuseResult: string,
+  sandboxReuseResult: SandboxReuseResult,
 ): Promise<void> {
   initServices();
   await globalThis.services.db
