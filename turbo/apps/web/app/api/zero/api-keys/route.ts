@@ -104,6 +104,7 @@ const router = tsr.router(apiKeysContract, {
 });
 
 const handler = createHandler(apiKeysContract, router, {
+  routeName: "zero.api-keys",
   errorHandler: createSafeErrorHandler("zero-api-keys"),
 });
 

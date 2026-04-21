@@ -38,6 +38,7 @@ const router = tsr.router(apiKeysByIdContract, {
 });
 
 const handler = createHandler(apiKeysByIdContract, router, {
+  routeName: "zero.api-keys.byId",
   errorHandler: createSafeErrorHandler("zero-api-keys-by-id"),
 });
 
