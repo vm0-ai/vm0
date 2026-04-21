@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.125.5](https://github.com/vm0-ai/vm0/compare/cli-v9.125.4...cli-v9.125.5) (2026-04-21)
+
+
+### Refactoring
+
+* **firewalls:** drop redundant ref field, use name everywhere ([#10353](https://github.com/vm0-ai/vm0/issues/10353)) ([87cd67e](https://github.com/vm0-ai/vm0/commit/87cd67e6a1c47a0bf69f388907f317f4cdf52246))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.216.0
+
 ## [9.125.4](https://github.com/vm0-ai/vm0/compare/cli-v9.125.3...cli-v9.125.4) (2026-04-20)
 
 

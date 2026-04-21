@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.88.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.88.2...runner-rs-v0.88.3) (2026-04-21)
+
+
+### Refactoring
+
+* **firewalls:** drop redundant ref field, use name everywhere ([#10353](https://github.com/vm0-ai/vm0/issues/10353)) ([87cd67e](https://github.com/vm0-ai/vm0/commit/87cd67e6a1c47a0bf69f388907f317f4cdf52246))
+
 ## [0.88.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.88.1...runner-rs-v0.88.2) (2026-04-20)
 
 

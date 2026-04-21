@@ -1,5 +1,17 @@
 # Changelog
 
+## [8.216.0](https://github.com/vm0-ai/vm0/compare/core-v8.215.0...core-v8.216.0) (2026-04-21)
+
+
+### Features
+
+* add Kimi K2.6 model support ([#10356](https://github.com/vm0-ai/vm0/issues/10356)) ([bac75d0](https://github.com/vm0-ai/vm0/commit/bac75d0dd28fe73328af6a44963dd01774795518))
+
+
+### Refactoring
+
+* **firewalls:** drop redundant ref field, use name everywhere ([#10353](https://github.com/vm0-ai/vm0/issues/10353)) ([87cd67e](https://github.com/vm0-ai/vm0/commit/87cd67e6a1c47a0bf69f388907f317f4cdf52246))
+
 ## [8.215.0](https://github.com/vm0-ai/vm0/compare/core-v8.214.0...core-v8.215.0) (2026-04-20)
 
 
