@@ -106,23 +106,20 @@ async function resolveRunModelOverride(
     | null
     | undefined,
 ): Promise<{ providerId: string | null; selectedModel: string | null }> {
-  if (modelSelection !== undefined) {
+  if (modelSelection !== undefined && modelSelection !== null) {
     await globalThis.services.db
       .update(chatThreads)
       .set({
-        modelProviderId: modelSelection?.modelProviderId ?? null,
-        selectedModel: modelSelection?.selectedModel ?? null,
+        modelProviderId: modelSelection.modelProviderId,
+        selectedModel: modelSelection.selectedModel,
         updatedAt: new Date(),
       })
       .where(eq(chatThreads.id, threadId));
-    if (modelSelection !== null) {
-      return {
-        providerId: modelSelection.modelProviderId,
-        selectedModel: modelSelection.selectedModel,
-      };
-    }
-    // modelSelection === null means "clear" — fall through to agent default.
-  } else {
+    return {
+      providerId: modelSelection.modelProviderId,
+      selectedModel: modelSelection.selectedModel,
+    };
+  } else if (modelSelection === undefined) {
     const [thread] = await globalThis.services.db
       .select({
         modelProviderId: chatThreads.modelProviderId,

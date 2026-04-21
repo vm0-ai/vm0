@@ -50,7 +50,7 @@ export interface ModelProviderSelection {
 interface ModelProviderPickerProps {
   providers: ModelProviderResponse[];
   value: ModelProviderSelection | null;
-  onChange: (value: ModelProviderSelection | null) => void;
+  onChange?: (value: ModelProviderSelection | null) => void;
   placeholder?: string;
   /**
    * Classes applied to the SelectTrigger. Defaults to `h-9 w-full`. The
@@ -277,7 +277,7 @@ export function ModelProviderPicker({
     <Select
       value={encodeValue(value)}
       onValueChange={(raw) => {
-        onChange(decodeValue(raw));
+        onChange?.(decodeValue(raw));
       }}
     >
       <SelectTrigger
