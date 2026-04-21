@@ -62,10 +62,18 @@ export function mergePermissions(
 
   const allConfigs = [...autoConfigs, ...connectorResults];
   if (allConfigs.length === 0) return undefined;
-  return {
-    firewalls: resolveFirewallBaseUrlVars(allConfigs, vars),
-    networkPolicies,
-  };
+  const firewalls = resolveFirewallBaseUrlVars(allConfigs, vars);
+  const remainingNames = new Set(
+    firewalls.map((fw) => {
+      return fw.name;
+    }),
+  );
+  for (const name of Object.keys(networkPolicies)) {
+    if (!remainingNames.has(name)) {
+      delete networkPolicies[name];
+    }
+  }
+  return { firewalls, networkPolicies };
 }
 
 /** Collect all unique permission names from a firewall's APIs. */

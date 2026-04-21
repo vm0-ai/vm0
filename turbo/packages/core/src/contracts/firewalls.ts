@@ -251,35 +251,47 @@ export function hasBaseUrlVars(base: string): boolean {
 
 /**
  * Resolve `${{ vars.X }}` templates in firewall base URLs.
- * Returns a new array with all base URL templates replaced by actual values.
- * Throws if a referenced variable is not provided.
+ * Firewalls whose base URL references a variable that is not provided are
+ * dropped from the result — a connector may be declared by the agent before
+ * the user has set the required variable (e.g. Jira's `JIRA_DOMAIN`), and
+ * that should not abort the entire run.
  */
 export function resolveFirewallBaseUrlVars(
   firewalls: Firewalls,
   vars: Record<string, string> | undefined,
 ): Firewalls {
-  return firewalls.map((fw) => {
-    return {
-      ...fw,
-      apis: fw.apis.map((api) => {
-        if (!hasBaseUrlVars(api.base)) return api;
-        const resolved = api.base.replace(
-          BASE_URL_VARS_PATTERN_G,
-          (_match, name: string) => {
-            const value = vars?.[name];
-            if (!value) {
-              throw new Error(
-                `Firewall "${fw.name}" base URL requires variable "${name}" but it was not provided`,
-              );
-            }
-            return value;
-          },
-        );
-        validateBaseUrl(resolved, fw.name);
-        return { ...api, base: resolved };
-      }),
-    };
-  });
+  const resolved: Firewalls = [];
+  for (const fw of firewalls) {
+    let skipFirewall = false;
+    const apis: FirewallApi[] = [];
+    for (const api of fw.apis) {
+      if (!hasBaseUrlVars(api.base)) {
+        apis.push(api);
+        continue;
+      }
+      let missing = false;
+      const newBase = api.base.replace(
+        BASE_URL_VARS_PATTERN_G,
+        (_match, name: string) => {
+          const value = vars?.[name];
+          if (!value) {
+            missing = true;
+            return "";
+          }
+          return value;
+        },
+      );
+      if (missing) {
+        skipFirewall = true;
+        break;
+      }
+      validateBaseUrl(newBase, fw.name);
+      apis.push({ ...api, base: newBase });
+    }
+    if (skipFirewall) continue;
+    resolved.push({ ...fw, apis });
+  }
+  return resolved;
 }
 
 /**

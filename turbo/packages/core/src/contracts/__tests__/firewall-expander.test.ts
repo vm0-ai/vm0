@@ -968,16 +968,23 @@ describe("resolveFirewallBaseUrlVars", () => {
     expect(result[1]!.apis[0]!.base).toBe("https://acme.zendesk.com");
   });
 
-  it("throws when required variable is missing", () => {
-    expect(() => {
-      return resolveFirewallBaseUrlVars([zendeskFirewall], {});
-    }).toThrow('requires variable "ZENDESK_SUBDOMAIN"');
+  it("drops firewall when required variable is missing", () => {
+    const result = resolveFirewallBaseUrlVars([zendeskFirewall], {});
+    expect(result).toEqual([]);
   });
 
-  it("throws when vars is undefined", () => {
-    expect(() => {
-      return resolveFirewallBaseUrlVars([zendeskFirewall], undefined);
-    }).toThrow('requires variable "ZENDESK_SUBDOMAIN"');
+  it("drops firewall when vars is undefined", () => {
+    const result = resolveFirewallBaseUrlVars([zendeskFirewall], undefined);
+    expect(result).toEqual([]);
+  });
+
+  it("keeps static firewalls when another firewall has missing vars", () => {
+    const result = resolveFirewallBaseUrlVars(
+      [staticFirewall, zendeskFirewall],
+      {},
+    );
+    expect(result).toHaveLength(1);
+    expect(result[0]!.name).toBe("github");
   });
 
   it("validates resolved URL is well-formed", () => {
