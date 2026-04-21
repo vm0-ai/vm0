@@ -19,6 +19,7 @@ export async function createZeroRun(body: {
   modelProvider?: string;
   tools?: string[];
   settings?: string;
+  debugNoMockClaude?: boolean;
 }): Promise<CreateRunResponse> {
   const config = await getClientConfig();
   const client = initClient(zeroRunsMainContract, config);

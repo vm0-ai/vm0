@@ -158,6 +158,7 @@ function buildStoredContext(
     userTimezone: context.userTimezone ?? undefined,
     memoryName: context.memoryName ?? undefined,
     featureFlags: context.featureFlags ?? undefined,
+    billableFirewalls: context.billableFirewalls,
   };
 }
 

@@ -12,6 +12,7 @@ import {
   agentComposeVersions,
 } from "../../db/schema/agent-compose";
 import { agentRuns } from "../../db/schema/agent-run";
+import { zeroRuns } from "../../db/schema/zero-run";
 import { ensureTestAgentSession } from "./runs";
 import { grantOrgCredits } from "../../lib/zero/org/org-service";
 import {
@@ -491,6 +492,12 @@ export async function seedInsightsDaily(
  * Create a completed run with a specific completedAt timestamp.
  * Used by proxy usage comparison tests that need to control the time window.
  *
+ * Also inserts a `zero_runs` row so the proxy-usage-comparison cron (which
+ * filters to `zero_runs.modelProvider = "vm0"`) picks the run up.  The
+ * optional `modelProvider` override lets tests simulate non-vm0 runs
+ * (user-paid providers) or skip the `zero_runs` row entirely (plain agent
+ * runs) by passing `null`.
+ *
  * @why-db-direct Run lifecycle is managed by the runner. Tests need precise
  * completedAt timestamp control for time-window queries.
  */
@@ -498,6 +505,7 @@ export async function createCompletedRun(
   orgId: string,
   userId: string,
   completedAt: Date,
+  opts: { modelProvider?: string | null } = {},
 ): Promise<string> {
   initServices();
   const composeName = `compose-${randomBytes(4).toString("hex")}`;
@@ -529,6 +537,15 @@ export async function createCompletedRun(
       sessionId,
     })
     .returning();
+  const modelProvider =
+    opts.modelProvider === undefined ? "vm0" : opts.modelProvider;
+  if (modelProvider !== null) {
+    await globalThis.services.db.insert(zeroRuns).values({
+      id: run!.id,
+      triggerSource: "test",
+      modelProvider,
+    });
+  }
   return run!.id;
 }
 

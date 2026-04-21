@@ -59,16 +59,22 @@ export function CustomConnectorRenameDialog({
         <DialogHeader>
           <DialogTitle>Rename custom connector</DialogTitle>
         </DialogHeader>
-        <label className="flex flex-col gap-1.5 text-sm">
-          <span className="text-foreground">Display name</span>
+        <div className="flex flex-col gap-2">
+          <label
+            htmlFor="cc-rename-name"
+            className="text-sm font-medium text-foreground"
+          >
+            Display name
+          </label>
           <Input
+            id="cc-rename-name"
             value={displayName}
             onChange={(e) => {
               return setDisplayName(e.target.value);
             }}
             autoFocus
           />
-        </label>
+        </div>
         <DialogFooter>
           <Button variant="outline" onClick={closeDialog} disabled={submitting}>
             Cancel

@@ -1,5 +1,39 @@
 # Changelog
 
+## [12.276.6](https://github.com/vm0-ai/vm0/compare/web-v12.276.5...web-v12.276.6) (2026-04-21)
+
+
+### Bug Fixes
+
+* **db:** delete agent_runs whose compose was cascade-deleted (a2b bucket) ([#10456](https://github.com/vm0-ai/vm0/issues/10456)) ([b574303](https://github.com/vm0-ai/vm0/commit/b57430371f8e99dc0725583386c1bb75c231f7f7)), closes [#10447](https://github.com/vm0-ai/vm0/issues/10447)
+* **web:** guard [locale] page against asset-like paths before auth() ([#10458](https://github.com/vm0-ai/vm0/issues/10458)) ([0df30e7](https://github.com/vm0-ai/vm0/commit/0df30e72fb63ea4507ba7266cfef7b4c7fb4fbe4))
+
+## [12.276.5](https://github.com/vm0-ai/vm0/compare/web-v12.276.4...web-v12.276.5) (2026-04-21)
+
+
+### Bug Fixes
+
+* **zero:** gate firewall injection on credential presence again ([#10437](https://github.com/vm0-ai/vm0/issues/10437)) ([1f4abad](https://github.com/vm0-ai/vm0/commit/1f4abadcf6b6f3bcc74dc4a203ad8662bf0645ee))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.219.1
+
+## [12.276.4](https://github.com/vm0-ai/vm0/compare/web-v12.276.3...web-v12.276.4) (2026-04-21)
+
+
+### Bug Fixes
+
+* **db:** delete 310 dangling agent_runs with missing sessions ([#10428](https://github.com/vm0-ai/vm0/issues/10428)) ([61de5bf](https://github.com/vm0-ai/vm0/commit/61de5bf42d0c677875097295edbe6832f5994181))
+
+
+### Refactoring
+
+* **activity:** tighten runner-tab types at api + seeder boundaries ([#10403](https://github.com/vm0-ai/vm0/issues/10403)) ([b5451e2](https://github.com/vm0-ai/vm0/commit/b5451e26aaf49f6f6f17e62d8e5b19ce5318da02))
+
 ## [12.276.3](https://github.com/vm0-ai/vm0/compare/web-v12.276.2...web-v12.276.3) (2026-04-21)
 
 

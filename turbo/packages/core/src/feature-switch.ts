@@ -335,16 +335,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "still uses the current-agent fallback.",
     enabled: false,
   },
-  [FeatureSwitchKey.RedemptionCodes]: {
-    maintainer: "yuma@vm0.ai",
-    description:
-      "Show the internal /_/redemption-codes page (mint + redeem UI). " +
-      "UI-visibility gate only — the mint endpoint is independently " +
-      "protected by a STAFF_ORG_ID_HASHES identity check on the server, " +
-      "so this flag does NOT authorize minting.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
 };
 
 interface ResolvedHashes {

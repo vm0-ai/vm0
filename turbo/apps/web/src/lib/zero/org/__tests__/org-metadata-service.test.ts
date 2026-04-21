@@ -7,6 +7,7 @@ import {
   createTestOrg,
   updateOrgTier,
   updateOrgStripeFields,
+  setOrgCredits,
 } from "../../../../__tests__/api-test-helpers";
 import { reloadEnv } from "../../../../env";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route
@@ -65,6 +66,7 @@ describe("getOrgMetadata", () => {
     const { id: orgId } = await createTestOrg(slug);
 
     await updateOrgTier(orgId, "pro");
+    await setOrgCredits(orgId, 100_000);
 
     const result = await getOrgMetadata(orgId);
 
@@ -91,18 +93,20 @@ describe("getOrgMetadata", () => {
     expect(client.organizations.getOrganization).not.toHaveBeenCalled();
   });
 
-  it("returns default credits for new org", async () => {
+  it("returns 0 credits for new org without a starter grant", async () => {
     const userId = uniqueId("test-user");
     const slug = uniqueId("org");
     mockClerk({ userId });
     const { id: orgId } = await createTestOrg(slug);
 
+    // createTestOrg inserts the row directly without going through
+    // ensureStarterCreditGrant, so the column default (0) applies.
     const result = await getOrgMetadata(orgId);
 
     expect(result).toEqual({
       orgId,
       tier: "free",
-      credits: 100_000,
+      credits: 0,
     });
   });
 });

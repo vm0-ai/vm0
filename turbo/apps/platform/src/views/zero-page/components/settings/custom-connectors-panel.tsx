@@ -1,10 +1,5 @@
 import { useGet, useLastResolved, useSet } from "ccstate-react";
-import {
-  IconDotsVertical,
-  IconPlus,
-  IconCheck,
-  IconPlug,
-} from "@tabler/icons-react";
+import { IconDotsVertical } from "@tabler/icons-react";
 import {
   Button,
   DropdownMenu,
@@ -18,7 +13,6 @@ import {
   customConnectorDialog$,
   customConnectors$,
   openCustomConnectorConnectDialog$,
-  openCustomConnectorCreateDialog$,
   openCustomConnectorDeleteDialog$,
   openCustomConnectorRenameDialog$,
   setCustomConnectorRenameInput$,
@@ -47,6 +41,8 @@ function CustomConnectorRow({
   onRename: () => void;
   onDelete: () => void;
 }) {
+  const hasActions = connector.hasSecret || isAdmin;
+
   return (
     <div className="zero-card flex flex-col">
       <div className="flex h-14 items-center gap-2.5 px-5">
@@ -55,28 +51,48 @@ function CustomConnectorRow({
           displayName={connector.displayName}
           size={20}
         />
-        <span className="truncate text-sm font-medium text-foreground">
+        <span className="min-w-0 flex-1 text-sm font-medium text-foreground truncate">
           {connector.displayName}
         </span>
-        <div className="ml-auto flex items-center gap-1">
+      </div>
+      <div className="flex h-11 items-center justify-between border-t border-border/50 pl-5 pr-2">
+        <div className="flex items-center gap-2 min-w-0">
           {connector.hasSecret ? (
-            <span className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400">
-              <IconCheck size={12} stroke={1.5} />
+            <span className="flex items-center gap-2 text-xs text-muted-foreground truncate">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
               Connected
             </span>
           ) : (
-            <Button size="sm" variant="outline" onClick={onConnect}>
-              <IconPlug size={14} stroke={1.5} className="mr-1" />
+            <button
+              type="button"
+              onClick={onConnect}
+              className="text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
               Connect
-            </Button>
+            </button>
           )}
+          {connector.prefixes[0] && (
+            <span className="truncate text-xs text-muted-foreground/60 font-mono">
+              {connector.prefixes[0]}
+            </span>
+          )}
+        </div>
+        {hasActions && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-7 w-7">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 shrink-0 rounded-lg text-muted-foreground hover:text-foreground"
+                aria-label="More options"
+              >
                 <IconDotsVertical size={14} stroke={1.5} />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
+            <DropdownMenuContent align="end" className="w-44">
+              {!connector.hasSecret && (
+                <DropdownMenuItem onClick={onConnect}>Connect</DropdownMenuItem>
+              )}
               {connector.hasSecret && (
                 <DropdownMenuItem onClick={onDisconnect}>
                   Disconnect
@@ -95,10 +111,7 @@ function CustomConnectorRow({
               )}
             </DropdownMenuContent>
           </DropdownMenu>
-        </div>
-      </div>
-      <div className="flex h-11 items-center border-t border-border/30 px-5 text-xs text-muted-foreground">
-        <span className="truncate font-mono">{connector.prefixes[0]}</span>
+        )}
       </div>
     </div>
   );
@@ -108,7 +121,6 @@ export function CustomConnectorsPanel() {
   const connectors = useLastResolved(customConnectors$);
   const isAdmin = useLastResolved(isOrgAdmin$) ?? false;
   const dialog = useGet(customConnectorDialog$);
-  const openCreate = useSet(openCustomConnectorCreateDialog$);
   const openRename = useSet(openCustomConnectorRenameDialog$);
   const openConnect = useSet(openCustomConnectorConnectDialog$);
   const openDelete = useSet(openCustomConnectorDeleteDialog$);
@@ -127,25 +139,14 @@ export function CustomConnectorsPanel() {
 
   return (
     <section className="flex flex-col gap-3">
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-medium text-muted-foreground">
-          <span>Custom connectors</span>
-          {connectors && <span> ({connectors.length})</span>}
-        </h2>
-        {isAdmin && (
-          <Button size="sm" onClick={openCreate}>
-            <IconPlus size={14} stroke={1.5} className="mr-1" />
-            New
-          </Button>
-        )}
-      </div>
-
       {connectors && connectors.length === 0 && (
-        <p className="text-sm text-muted-foreground">
-          {isAdmin
-            ? "No custom connectors yet. Create one to register an API for every member to use."
-            : "Your org hasn't registered any custom connectors yet."}
-        </p>
+        <div className="zero-card py-12 text-center">
+          <p className="text-sm text-muted-foreground">
+            {isAdmin
+              ? "No custom connectors yet. Create one to register an API for every member to use."
+              : "Your org hasn't registered any custom connectors yet."}
+          </p>
+        </div>
       )}
 
       {connectors && connectors.length > 0 && (

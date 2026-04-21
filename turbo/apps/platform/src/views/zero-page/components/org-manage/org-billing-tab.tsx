@@ -58,7 +58,7 @@ const PLANS = [
     cta: "Current plan",
     image: planFreeImg,
     features: [
-      "100,000 starter credits",
+      "10,000 starter credits (expire in 1 month)",
       "1 concurrent run",
       "Unlimited total agents",
       "Bring your own LLM keys",

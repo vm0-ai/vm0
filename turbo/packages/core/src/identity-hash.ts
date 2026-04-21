@@ -21,8 +21,7 @@ export function fnv1a(input: string): string {
  *
  * This list is the source of truth for `isStaffOrg()` — adding an entry here
  * grants that org access to every endpoint that uses `isStaffOrg` as an
- * authorization check, including redemption-code minting. Treat changes with
- * the same care as role grants.
+ * authorization check. Treat changes with the same care as role grants.
  */
 export const STAFF_ORG_ID_HASHES: readonly string[] = [
   "afce210e", // org_3ANttyrbWYJk6JKRSTRLEsbsDLe

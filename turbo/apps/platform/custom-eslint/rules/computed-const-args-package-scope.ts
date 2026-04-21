@@ -73,41 +73,46 @@ function isConstantValue(node: TSESTree.Node): boolean {
     return node.elements.every((el) => el !== null && isConstantValue(el));
   }
   if (node.type === AST_NODE_TYPES.ObjectExpression) {
-    return node.properties.every(
-      (prop) =>
-        prop.type === AST_NODE_TYPES.Property && isConstantValue(prop.value),
-    );
+    return node.properties.every((prop) => {
+      if (prop.type === AST_NODE_TYPES.Property) {
+        return isConstantValue(prop.value);
+      }
+      return false;
+    });
+  }
+  if (node.type === AST_NODE_TYPES.Identifier) {
+    return false;
   }
   if (node.type === AST_NODE_TYPES.MemberExpression) {
     // Heuristic: PascalCase.Member → likely an enum (e.g. LocalStorageKey.Theme).
     // Matches the project convention; non-standard const patterns are accepted
     // as a known trade-off to avoid the TypeScript language service.
-    return (
-      node.object.type === AST_NODE_TYPES.Identifier &&
-      node.property.type === AST_NODE_TYPES.Identifier &&
-      /^[A-Z][a-zA-Z]*$/.test(node.object.name)
-    );
+    const obj = node.object;
+    const prop = node.property;
+    if (
+      obj.type === AST_NODE_TYPES.Identifier &&
+      prop.type === AST_NODE_TYPES.Identifier
+    ) {
+      return /^[A-Z][a-zA-Z]*$/.test(obj.name);
+    }
+    return false;
   }
-  if (node.type === AST_NODE_TYPES.ArrowFunctionExpression) {
-    // () => 'literal'  or  () => { return 'literal'; }
-    if (node.expression) {
-      return isConstantValue(node.body as TSESTree.Expression);
+  if (
+    node.type === AST_NODE_TYPES.ArrowFunctionExpression ||
+    node.type === AST_NODE_TYPES.FunctionExpression
+  ) {
+    if (
+      node.type === AST_NODE_TYPES.ArrowFunctionExpression &&
+      node.expression
+    ) {
+      return isConstantValue(node.body);
     }
     if (
       node.body.type === AST_NODE_TYPES.BlockStatement &&
       node.body.body.length === 1 &&
       node.body.body[0].type === AST_NODE_TYPES.ReturnStatement &&
-      node.body.body[0].argument !== null
-    ) {
-      return isConstantValue(node.body.body[0].argument);
-    }
-    return false;
-  }
-  if (node.type === AST_NODE_TYPES.FunctionExpression) {
-    if (
-      node.body.body.length === 1 &&
-      node.body.body[0].type === AST_NODE_TYPES.ReturnStatement &&
-      node.body.body[0].argument !== null
+      node.body.body[0].argument !== null &&
+      node.body.body[0].argument !== undefined
     ) {
       return isConstantValue(node.body.body[0].argument);
     }
@@ -117,9 +122,12 @@ function isConstantValue(node: TSESTree.Node): boolean {
 }
 
 function hasOnlyConstantArguments(node: TSESTree.CallExpression): boolean {
-  return node.arguments.every(
-    (arg) => arg.type !== AST_NODE_TYPES.SpreadElement && isConstantValue(arg),
-  );
+  return node.arguments.every((arg) => {
+    if (arg.type === AST_NODE_TYPES.SpreadElement) {
+      return false;
+    }
+    return isConstantValue(arg);
+  });
 }
 
 export default createRule({
@@ -150,6 +158,26 @@ export default createRule({
     // iterates entries that match known constant function names.
     const deferredCallsByName = new Map<string, TSESTree.CallExpression[]>();
 
+    function processCallsForName(name: string) {
+      const calls = deferredCallsByName.get(name);
+      if (calls === undefined) {
+        return;
+      }
+      for (const node of calls) {
+        if (node.arguments.length === 0) {
+          continue;
+        }
+        if (!hasOnlyConstantArguments(node)) {
+          continue;
+        }
+        context.report({
+          node,
+          messageId: "mustBePackageScope",
+          data: { name },
+        });
+      }
+    }
+
     // O(1) scope depth counter — avoids per-node parent-chain traversal.
     let scopeDepth = 0;
 
@@ -168,11 +196,11 @@ export default createRule({
         const atPackageScope = scopeDepth === 0 && node.id !== null;
         scopeDepth++;
 
-        if (!atPackageScope || node.id === null) {
+        if (!atPackageScope) {
           return;
         }
 
-        if (functionBodyHasConstantReturn(node.body)) {
+        if (functionBodyHasConstantReturn(node.body) && node.id !== null) {
           packageScopeConstantFunctions.add(node.id.name);
         }
       },
@@ -194,7 +222,7 @@ export default createRule({
         if (scopeDepth === 0) {
           return;
         }
-        // Method calls (obj.method()) are never signal factory functions.
+        // Method calls (obj.method()) are never ccstate factory functions.
         if (node.callee.type !== AST_NODE_TYPES.Identifier) {
           return;
         }
@@ -207,25 +235,10 @@ export default createRule({
         calls.push(node);
       },
 
+      // Process all deferred checks after we've seen all function declarations
       "Program:exit"() {
         for (const name of packageScopeConstantFunctions) {
-          const calls = deferredCallsByName.get(name);
-          if (!calls) {
-            continue;
-          }
-          for (const node of calls) {
-            if (node.arguments.length === 0) {
-              continue;
-            }
-            if (!hasOnlyConstantArguments(node)) {
-              continue;
-            }
-            context.report({
-              node,
-              messageId: "mustBePackageScope",
-              data: { name },
-            });
-          }
+          processCallsForName(name);
         }
       },
     };

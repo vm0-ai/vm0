@@ -2,6 +2,7 @@ import { eq, and, inArray, sum, lte, gte } from "drizzle-orm";
 import { creditUsage } from "../../../db/schema/credit-usage";
 import { clientCreditUsage } from "../../../db/schema/client-credit-usage";
 import { agentRuns } from "../../../db/schema/agent-run";
+import { zeroRuns } from "../../../db/schema/zero-run";
 import { logger } from "../../shared/logger";
 
 const log = logger("service:proxy-usage-comparison");
@@ -16,6 +17,11 @@ const log = logger("service:proxy-usage-comparison");
  * The 30-second floor gives mitmproxy time to deliver all reports.
  * The 5m30s ceiling matches the cron interval (5 min) plus the floor so
  * consecutive runs cover adjacent, non-overlapping windows.
+ *
+ * Only vm0-provider runs are compared.  For other providers the proxy does
+ * not report usage (see `billableFirewalls` in `build-zero-context.ts`),
+ * so `credit_usage` is legitimately empty and the comparison would
+ * false-alarm on every run.
  */
 export async function compareRecentRunsProxyUsage(): Promise<void> {
   const db = globalThis.services.db;
@@ -26,10 +32,12 @@ export async function compareRecentRunsProxyUsage(): Promise<void> {
   const runs = await db
     .select({ id: agentRuns.id, orgId: agentRuns.orgId })
     .from(agentRuns)
+    .innerJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))
     .where(
       and(
         gte(agentRuns.completedAt, windowStart),
         lte(agentRuns.completedAt, windowEnd),
+        eq(zeroRuns.modelProvider, "vm0"),
       ),
     )
     // Cap to keep the IN (...) clause in compareProxyUsage bounded.

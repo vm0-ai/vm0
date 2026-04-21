@@ -49,7 +49,6 @@ import { initSlackOrg$ as handleSlackRedirect$ } from "./zero-page/zero-slack.ts
 import { setupSkeletonPage$, setupErrorPage$ } from "./skeleton-page-setup.ts";
 import { startSkeletonCycling$ } from "./app-skeleton.ts";
 import { setupMissionControlPage$ } from "./mission-control-page/mission-control-page.ts";
-import { setupRedemptionCodesPage$ } from "./redemption-codes-page/redemption-codes-page-setup.ts";
 import { setupRealtime$ } from "./realtime.ts";
 import { setupPwaEdgeSwipe$ } from "./zero-page/pwa-edge-swipe.ts";
 import { setupSidebarShortcut$ } from "./zero-page/zero-nav.ts";
@@ -215,10 +214,6 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.missionControl,
     setup: setupAuthPageWrapper(setupMissionControlPage$),
-  },
-  {
-    path: ROUTES.redemptionCodes,
-    setup: setupAuthPageWrapper(setupRedemptionCodesPage$),
   },
   {
     path: ROUTES.skeleton,

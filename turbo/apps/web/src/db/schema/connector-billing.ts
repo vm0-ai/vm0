@@ -17,8 +17,10 @@ import { agentRuns } from "./agent-run";
  * keyed by (runId, flowId, category) for deduplication.  Processed later
  * by a billing processor to charge credits.
  *
- * Only billable connectors (gated by `_BILLABLE_CONNECTORS` in the addon)
- * and successful (2xx) responses produce records.
+ * Only billable connectors (firewalls listed in `BILLABLE_CONNECTORS` in
+ * `@vm0/core`, surfaced to the addon as `flow.metadata["firewall_billable"]`
+ * via `billableFirewalls` on the execution context) and successful (2xx)
+ * responses produce records.
  */
 export const connectorBilling = pgTable(
   "connector_billing",
