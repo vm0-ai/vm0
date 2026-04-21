@@ -45,52 +45,55 @@ export default createRule({
     const services = ESLintUtils.getParserServices(context);
     const checker = services.program.getTypeChecker();
 
-    const typeCache = new WeakMap<Type, boolean>();
+    // Matches:
+    // State<AbortSignal>, Computed<AbortSignal>
+    // State<AbortSignal | undefined>, Computed<AbortSignal | undefined>
+    // State<Map<string, AbortSignal>>, etc.
+    // Does not match: State<Map<string, Command<void, [AbortSignal]>>>
+    const directAbortSignalPattern =
+      /^(State|Computed)<(AbortSignal(\s*\|\s*undefined)?|undefined\s*\|\s*AbortSignal|Map<[^,]+,\s*(AbortSignal(\s*\|\s*undefined)?|undefined\s*\|\s*AbortSignal)>)>$/;
 
-    function isSignalType(type: Type): boolean {
-      const cached = typeCache.get(type);
+    // Combined cache: for each unique Type object, stores whether it is a ccstate
+    // State/Computed signal that holds AbortSignal. TypeScript canonicalizes generic
+    // types, so the same Type object is returned for all references to the same variable,
+    // meaning typeToString is called at most once per distinct type.
+    const abortSignalSignalCache = new WeakMap<Type, boolean>();
+
+    function isAbortSignalSignal(type: Type): boolean {
+      const cached = abortSignalSignalCache.get(type);
       if (cached !== undefined) {
         return cached;
       }
 
       const typeString = checker.typeToString(type);
 
-      const isStateOrComputed = /^(State|Computed)<.*>$/.test(typeString);
+      // Fast exit: must be State<...> or Computed<...> to be relevant at all
+      if (!/^(State|Computed)</.test(typeString)) {
+        abortSignalSignalCache.set(type, false);
+        return false;
+      }
 
-      if (isStateOrComputed) {
-        const symbol = type.getSymbol();
-        if (symbol) {
-          const declarations = symbol.getDeclarations();
-          if (declarations?.length) {
-            const sourceFile = declarations[0].getSourceFile();
-            const result = sourceFile.fileName.includes("ccstate");
-            typeCache.set(type, result);
-            return result;
-          }
+      // Check if it holds AbortSignal before the expensive symbol lookup
+      if (!directAbortSignalPattern.test(typeString)) {
+        abortSignalSignalCache.set(type, false);
+        return false;
+      }
+
+      // Confirm it's from ccstate (not a user-defined State/Computed type)
+      const symbol = type.getSymbol();
+      if (symbol) {
+        const declarations = symbol.getDeclarations();
+        if (declarations?.length) {
+          const result = declarations[0]
+            .getSourceFile()
+            .fileName.includes("ccstate");
+          abortSignalSignalCache.set(type, result);
+          return result;
         }
       }
 
-      typeCache.set(type, false);
+      abortSignalSignalCache.set(type, false);
       return false;
-    }
-
-    function hasDirectAbortSignalGeneric(type: Type): boolean {
-      const typeString = checker.typeToString(type);
-
-      // Matches:
-      // State<AbortSignal>
-      // Computed<AbortSignal>
-      // State<AbortSignal | undefined>
-      // Computed<AbortSignal | undefined>
-      // State<Map<string, AbortSignal>>
-      // Computed<Map<string, AbortSignal>>
-      // State<Map<string, AbortSignal | undefined>>
-      // Computed<Map<string, AbortSignal | undefined>>
-      // Does not match:
-      // State<Map<string, Command<void, [AbortSignal]>>>
-      const directAbortSignalPattern =
-        /^(State|Computed)<(AbortSignal(\s*\|\s*undefined)?|undefined\s*\|\s*AbortSignal|Map<[^,]+,\s*(AbortSignal(\s*\|\s*undefined)?|undefined\s*\|\s*AbortSignal)>)>$/;
-      return directAbortSignalPattern.test(typeString);
     }
 
     function isStoreGet(node: TSESTree.CallExpression): boolean {
@@ -123,7 +126,7 @@ export default createRule({
           const tsNode = services.esTreeNodeToTSNodeMap.get(firstArg);
           const type = checker.getTypeAtLocation(tsNode);
 
-          if (isSignalType(type) && hasDirectAbortSignalGeneric(type)) {
+          if (isAbortSignalSignal(type)) {
             context.report({
               node,
               messageId: "noGetSignal",

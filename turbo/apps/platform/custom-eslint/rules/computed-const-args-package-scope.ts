@@ -172,41 +172,6 @@ function hasOnlyConstantArguments(
   });
 }
 
-function isInPackageScope(node: TSESTree.Node): boolean {
-  let current: TSESTree.Node | undefined = node.parent;
-
-  while (current) {
-    if (
-      current.type === AST_NODE_TYPES.FunctionDeclaration ||
-      current.type === AST_NODE_TYPES.FunctionExpression ||
-      current.type === AST_NODE_TYPES.ArrowFunctionExpression ||
-      current.type === AST_NODE_TYPES.MethodDefinition ||
-      current.type === AST_NODE_TYPES.ClassDeclaration ||
-      current.type === AST_NODE_TYPES.ClassExpression
-    ) {
-      return false;
-    }
-    if (current.type === AST_NODE_TYPES.Program) {
-      return true;
-    }
-    current = current.parent;
-  }
-
-  return true;
-}
-
-function getFunctionName(node: TSESTree.CallExpression): string {
-  if (node.callee.type === AST_NODE_TYPES.Identifier) {
-    return node.callee.name;
-  } else if (
-    node.callee.type === AST_NODE_TYPES.MemberExpression &&
-    node.callee.property.type === AST_NODE_TYPES.Identifier
-  ) {
-    return node.callee.property.name;
-  }
-  return "<anonymous>";
-}
-
 function isComputedOrCommandType(typeString: string): boolean {
   return (
     typeString.startsWith("Computed<") ||
@@ -280,12 +245,10 @@ export default createRule({
     const services = ESLintUtils.getParserServices(context);
     const checker = services.program.getTypeChecker();
 
-    // Non-package-scope calls collected without type checking.
-    // Type checking is deferred to Program:exit so the name filter runs first.
-    const deferredCallChecks: {
-      node: TSESTree.CallExpression;
-      functionName: string;
-    }[] = [];
+    // Non-package-scope calls grouped by callee name. Using a Map means Program:exit
+    // only iterates entries for "computed" and packageScopeConstantFunctions names instead
+    // of all ~30K non-package-scope calls.
+    const deferredCallsByName = new Map<string, TSESTree.CallExpression[]>();
 
     // Track functions that return constant types and are defined at package scope
     const packageScopeConstantFunctions = new Set<string>();
@@ -350,44 +313,61 @@ export default createRule({
       return isConstantReturnType(type);
     }
 
-    function processDeferredCallChecks() {
-      for (const { node, functionName } of deferredCallChecks) {
-        // Skip no-argument calls — factory / utility functions without args
+    function processCallsForName(name: string, requiresTypeCheck: boolean) {
+      const calls = deferredCallsByName.get(name);
+      if (!calls) {
+        return;
+      }
+
+      for (const node of calls) {
         if (node.arguments.length === 0) {
           continue;
         }
-
-        if (functionName === "computed") {
-          // computed() always returns Computed<> — skip the expensive type check
-        } else if (packageScopeConstantFunctions.has(functionName)) {
-          // packageScopeConstantFunctions entries were verified on declaration, BUT the
-          // call expression may wrap a non-constant (e.g. async fn → Promise<T>).
-          // Re-check here to filter those false positives cheaply for this small set.
-          if (!functionReturnsConstant(node)) {
-            continue;
-          }
-        } else {
+        // packageScopeConstantFunctions entries need a type re-check to filter async
+        // wrappers (e.g. Promise<T>) that slip through the declaration-level check.
+        if (requiresTypeCheck && !functionReturnsConstant(node)) {
           continue;
         }
-
-        // Check if all arguments are constants (AST only, cheap)
         if (!hasOnlyConstantArguments(node, checker, services)) {
           continue;
         }
-
         context.report({
           node,
           messageId: "mustBePackageScope",
-          data: { name: functionName },
+          data: { name },
         });
       }
     }
 
+    function processDeferredCallChecks() {
+      // computed() always returns Computed<> — no type check needed
+      processCallsForName("computed", false);
+
+      // Package-scope helper functions need a type re-check at the call site
+      for (const name of packageScopeConstantFunctions) {
+        processCallsForName(name, true);
+      }
+    }
+
+    // Depth counter for function-like scopes — O(1) alternative to isInPackageScope
+    // per-node parent-chain traversal. Incremented on enter, decremented on exit.
+    let scopeDepth = 0;
+
+    function enterScope() {
+      scopeDepth++;
+    }
+    function exitScope() {
+      scopeDepth--;
+    }
+
     return {
-      // Track function declarations that return constant types at package scope
+      // Track function declarations that return constant types at package scope.
+      // Check depth BEFORE incrementing: depth===0 means the declaration is at package scope.
       FunctionDeclaration(node: TSESTree.FunctionDeclaration) {
-        // Only track functions at package scope
-        if (!isInPackageScope(node) || !node.id) {
+        const atPackageScope = scopeDepth === 0 && node.id !== null;
+        scopeDepth++;
+
+        if (!atPackageScope) {
           return;
         }
 
@@ -402,19 +382,40 @@ export default createRule({
           return false;
         });
 
-        if (hasConstantReturn) {
+        if (hasConstantReturn && node.id) {
           packageScopeConstantFunctions.add(node.id.name);
         }
       },
+      "FunctionDeclaration:exit": exitScope,
+
+      FunctionExpression: enterScope,
+      "FunctionExpression:exit": exitScope,
+      ArrowFunctionExpression: enterScope,
+      "ArrowFunctionExpression:exit": exitScope,
+      MethodDefinition: enterScope,
+      "MethodDefinition:exit": exitScope,
+      ClassDeclaration: enterScope,
+      "ClassDeclaration:exit": exitScope,
+      ClassExpression: enterScope,
+      "ClassExpression:exit": exitScope,
 
       CallExpression(node: TSESTree.CallExpression) {
-        // Package-scope calls can never be violations — skip immediately
-        if (isInPackageScope(node)) {
+        // Package-scope calls can never be violations — skip immediately (O(1) depth check)
+        if (scopeDepth === 0) {
           return;
         }
-        const functionName = getFunctionName(node);
-        // Defer type checking to Program:exit so the name filter runs first
-        deferredCallChecks.push({ node, functionName });
+        // Method calls (obj.method()) are never ccstate factory functions at package scope
+        if (node.callee.type !== AST_NODE_TYPES.Identifier) {
+          return;
+        }
+        const functionName = node.callee.name;
+        // Group by callee name so Program:exit can skip all irrelevant names in O(1)
+        let calls = deferredCallsByName.get(functionName);
+        if (calls === undefined) {
+          calls = [];
+          deferredCallsByName.set(functionName, calls);
+        }
+        calls.push(node);
       },
 
       // Process all deferred checks after we've seen all function declarations

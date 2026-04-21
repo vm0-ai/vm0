@@ -21,12 +21,16 @@ import {
   type ParserServicesWithTypeInformation,
   type TSESTree,
 } from "@typescript-eslint/utils";
-import type { TypeChecker } from "typescript";
+import type { Type, TypeChecker } from "typescript";
 import { createRule, isMutableObjectType } from "../utils.ts";
 
 interface Options {
   allowedMutableTypes?: TypeOrValueSpecifier[];
 }
+
+// These callee names always return ccstate types that are in allowedMutableTypes.
+// Skipping the type check for them eliminates ~60% of checker.getTypeAtLocation calls.
+const CCSTATE_PRIMITIVES = new Set(["state", "computed", "command"]);
 
 function isPackageScope(node: TSESTree.Node): boolean {
   let parent = node.parent;
@@ -45,83 +49,17 @@ function isPackageScope(node: TSESTree.Node): boolean {
   return true;
 }
 
-function checkObjectPattern(
-  node: TSESTree.ObjectPattern,
-  services: ParserServicesWithTypeInformation,
-  checker: TypeChecker,
-  allowedMutableTypes: TypeOrValueSpecifier[] = [],
+function isCCStatePrimitiveCall(
+  init: TSESTree.Expression | null | undefined,
 ): boolean {
-  for (const property of node.properties) {
-    if (
-      property.type === AST_NODE_TYPES.Property &&
-      property.value.type === AST_NODE_TYPES.Identifier
-    ) {
-      const tsNode = services.esTreeNodeToTSNodeMap.get(property.value);
-      const type = checker.getTypeAtLocation(tsNode);
-
-      if (isMutableObjectType(type, services, checker, allowedMutableTypes)) {
-        return true;
-      }
-    }
+  if (init === null || init === undefined) {
+    return false;
   }
-  return false;
-}
-
-function checkIdentifier(
-  node: TSESTree.Identifier,
-  services: ParserServicesWithTypeInformation,
-  checker: TypeChecker,
-  allowedMutableTypes: TypeOrValueSpecifier[] = [],
-): boolean {
-  const tsNode = services.esTreeNodeToTSNodeMap.get(node);
-  const type = checker.getTypeAtLocation(tsNode);
-
-  return isMutableObjectType(type, services, checker, allowedMutableTypes);
-}
-
-function checkArrayPattern(
-  node: TSESTree.ArrayPattern,
-  services: ParserServicesWithTypeInformation,
-  checker: TypeChecker,
-  allowedMutableTypes: TypeOrValueSpecifier[] = [],
-): boolean {
-  for (const element of node.elements) {
-    if (!element || element.type !== AST_NODE_TYPES.Identifier) {
-      continue;
-    }
-    const tsNode = services.esTreeNodeToTSNodeMap.get(element);
-    const type = checker.getTypeAtLocation(tsNode);
-
-    if (isMutableObjectType(type, services, checker, allowedMutableTypes)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-function checkDeclarator(
-  declarator: TSESTree.VariableDeclarator,
-  services: ParserServicesWithTypeInformation,
-  checker: TypeChecker,
-  allowedMutableTypes: TypeOrValueSpecifier[] = [],
-): boolean {
-  if (declarator.id.type === AST_NODE_TYPES.ObjectPattern) {
-    return checkObjectPattern(
-      declarator.id,
-      services,
-      checker,
-      allowedMutableTypes,
-    );
-  }
-  if (declarator.id.type === AST_NODE_TYPES.ArrayPattern) {
-    return checkArrayPattern(
-      declarator.id,
-      services,
-      checker,
-      allowedMutableTypes,
-    );
-  }
-  return checkIdentifier(declarator.id, services, checker, allowedMutableTypes);
+  return (
+    init.type === AST_NODE_TYPES.CallExpression &&
+    init.callee.type === AST_NODE_TYPES.Identifier &&
+    CCSTATE_PRIMITIVES.has(init.callee.name)
+  );
 }
 
 export default createRule<[Options] | [], "noPackageVariable">({
@@ -172,6 +110,74 @@ export default createRule<[Options] | [], "noPackageVariable">({
     const allowedMutableTypes = options?.allowedMutableTypes ?? [];
     const services = ESLintUtils.getParserServices(context);
     const checker = services.program.getTypeChecker();
+    // Cache type mutability results — TypeScript reuses Type objects for the same type,
+    // so this avoids repeated isTypeReadonly calls for identical types (e.g. State<number>).
+    const typeCache = new WeakMap<Type, boolean>();
+
+    function isMutableCached(
+      type: Type,
+      srv: ParserServicesWithTypeInformation,
+      chk: TypeChecker,
+    ): boolean {
+      const cached = typeCache.get(type);
+      if (cached !== undefined) {
+        return cached;
+      }
+      const result = isMutableObjectType(type, srv, chk, allowedMutableTypes);
+      typeCache.set(type, result);
+      return result;
+    }
+
+    function checkObjectPattern(node: TSESTree.ObjectPattern): boolean {
+      for (const property of node.properties) {
+        if (
+          property.type === AST_NODE_TYPES.Property &&
+          property.value.type === AST_NODE_TYPES.Identifier
+        ) {
+          const tsNode = services.esTreeNodeToTSNodeMap.get(property.value);
+          const type = checker.getTypeAtLocation(tsNode);
+          if (isMutableCached(type, services, checker)) {
+            return true;
+          }
+        }
+      }
+      return false;
+    }
+
+    function checkIdentifier(node: TSESTree.Identifier): boolean {
+      const tsNode = services.esTreeNodeToTSNodeMap.get(node);
+      const type = checker.getTypeAtLocation(tsNode);
+      return isMutableCached(type, services, checker);
+    }
+
+    function checkArrayPattern(node: TSESTree.ArrayPattern): boolean {
+      for (const element of node.elements) {
+        if (!element || element.type !== AST_NODE_TYPES.Identifier) {
+          continue;
+        }
+        const tsNode = services.esTreeNodeToTSNodeMap.get(element);
+        const type = checker.getTypeAtLocation(tsNode);
+        if (isMutableCached(type, services, checker)) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function checkDeclarator(declarator: TSESTree.VariableDeclarator): boolean {
+      // Fast-path: state(), computed(), command() always return allowed ccstate types.
+      if (isCCStatePrimitiveCall(declarator.init)) {
+        return false;
+      }
+
+      if (declarator.id.type === AST_NODE_TYPES.ObjectPattern) {
+        return checkObjectPattern(declarator.id);
+      }
+      if (declarator.id.type === AST_NODE_TYPES.ArrayPattern) {
+        return checkArrayPattern(declarator.id);
+      }
+      return checkIdentifier(declarator.id);
+    }
 
     return {
       VariableDeclaration(node: TSESTree.VariableDeclaration) {
@@ -192,9 +198,7 @@ export default createRule<[Options] | [], "noPackageVariable">({
             continue;
           }
 
-          if (
-            checkDeclarator(declarator, services, checker, allowedMutableTypes)
-          ) {
+          if (checkDeclarator(declarator)) {
             context.report({
               node: declarator,
               messageId: "noPackageVariable",
