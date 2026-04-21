@@ -401,7 +401,7 @@ class TestAddCaptureFields:
 
     def test_truncation_preserves_utf8_boundary(self, real_flow):
         # Body is STREAM_BUFFER_LIMIT + a 3-byte char "€" (\xe2\x82\xac)
-        body = b"x" * STREAM_BUFFER_LIMIT + "\u20ac".encode()
+        body = b"x" * STREAM_BUFFER_LIMIT + "\u20ac".encode("utf-8")
         flow = real_flow(
             method="POST",
             host="api.example.com",
