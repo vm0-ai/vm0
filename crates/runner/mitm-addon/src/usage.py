@@ -840,9 +840,11 @@ def log_connector_usage(flow: http.HTTPFlow, run_id: str) -> None:
     - ``run_id`` is empty (no billing attribution)
     - ``flow.metadata["firewall_billable"]`` is False (web layer decided
       this firewall is not platform-billable for this run)
-    - firewall is a model provider (routed through
-      :func:`maybe_report_proxy_usage` instead — parsing here would emit
-      bogus X-shaped billing records)
+    - ``firewall_name`` is not ``"x"`` (every parser below is X-specific —
+      :func:`_parse_x_request_metadata`, :func:`_compute_x_billable_counts`.
+      Model-provider flows are routed through :func:`maybe_report_proxy_usage`
+      instead; future non-x billable connectors must be dispatched here
+      before the X parser sees their requests)
     - response status is outside 2xx (failures aren't billable)
     - ``firewall_permission`` is empty (unknown-endpoint-allow has no
       stable pricing key)
@@ -852,7 +854,11 @@ def log_connector_usage(flow: http.HTTPFlow, run_id: str) -> None:
     if not flow.metadata.get("firewall_billable", False):
         return
     firewall_name = flow.metadata.get("firewall_name", "")
-    if firewall_name.startswith("model-provider:"):
+    if firewall_name != "x":
+        # Current function body is X-specific.  When BILLABLE_CONNECTORS in
+        # @vm0/core grows past ["x"], dispatch to a per-connector handler
+        # here — letting the X parser run on another connector's request
+        # would emit bogus billing records.
         return
     if not flow.response or not (
         _HTTP_STATUS_OK_MIN <= flow.response.status_code < _HTTP_STATUS_REDIRECT_MIN

@@ -2408,9 +2408,19 @@ class TestLogConnectorUsage:
 
     def test_skips_for_model_provider(self, tmp_path, real_flow):
         """Model providers go through maybe_report_proxy_usage instead —
-        log_connector_usage must early-return even when firewall_billable."""
+        log_connector_usage is X-specific and must early-return on
+        non-x firewalls even when firewall_billable=True."""
         flow = self._make_x_flow(real_flow, tmp_path)
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        assert self._call_and_get_billing(flow) == []
+
+    def test_skips_for_non_x_billable_firewall(self, tmp_path, real_flow):
+        """Billable non-x connectors (hypothetical future additions to
+        BILLABLE_CONNECTORS) must NOT reach the X-specific parser.  Catching
+        this at the gate prevents bogus billing records if someone grows the
+        whitelist without also adding per-connector dispatch."""
+        flow = self._make_x_flow(real_flow, tmp_path)
+        flow.metadata["firewall_name"] = "github"
         assert self._call_and_get_billing(flow) == []
 
     def test_skips_when_not_billable(self, tmp_path, real_flow):
