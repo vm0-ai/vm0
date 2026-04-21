@@ -52,12 +52,14 @@ function buildAgentIdentityPrompt(identity: AgentIdentity): string {
  * Tools to disallow for all zero agent runs.
  * - Cron tools: agents use `zero schedule` instead.
  * - ScheduleWakeup: powers /loop dynamic (self-paced) mode; agents use `zero schedule` instead.
+ * - AskUserQuestion: zero agents run unattended and cannot block on interactive input.
  */
 export const DISALLOWED_TOOLS = [
   "CronCreate",
   "CronList",
   "CronDelete",
   "ScheduleWakeup",
+  "AskUserQuestion",
 ] as const;
 
 /**
