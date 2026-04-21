@@ -462,6 +462,24 @@ export async function setTestRunSelectedModel(
 }
 
 /**
+ * Set the sandbox-reuse-result outcome on an existing run.
+ *
+ * @why-db-direct Runner reports this field via the agent-complete webhook
+ * during normal execution; tests for the runner-tab API need to seed it
+ * directly without invoking the webhook pipeline.
+ */
+export async function setTestRunSandboxReuseResult(
+  runId: string,
+  sandboxReuseResult: string,
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .update(agentRuns)
+    .set({ sandboxReuseResult })
+    .where(eq(agentRuns.id, runId));
+}
+
+/**
  * Insert a zero_runs record for a run that already exists in agent_runs.
  *
  * @why-db-direct Creates zero_runs record; enqueueRun() does not create this

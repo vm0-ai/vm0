@@ -12,6 +12,7 @@ import {
   networkLogsResponseSchema,
   logsSearchResponseSchema,
 } from "./runs";
+import { sandboxReuseResultSchema } from "./webhooks";
 
 /**
  * Zero run request schema — subset of unified schema.
@@ -253,6 +254,35 @@ export const zeroRunNetworkLogsContract = c.router({
 });
 
 /**
+ * Zero run runner contract (GET /api/zero/runs/:id/runner)
+ * Returns runner-level metadata about how the run was provisioned
+ * (sandbox reuse decision, etc.). Kept separate from logDetailSchema
+ * so runner-tab fields can grow without polluting the generic log
+ * detail response.
+ */
+const runRunnerResponseSchema = z.object({
+  sandboxReuseResult: sandboxReuseResultSchema.nullable(),
+});
+
+export const zeroRunRunnerContract = c.router({
+  getRunner: {
+    method: "GET",
+    path: "/api/zero/runs/:id/runner",
+    headers: authHeadersSchema,
+    pathParams: z.object({
+      id: z.string().min(1, "Run ID is required"),
+    }),
+    responses: {
+      200: runRunnerResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Get runner-level metadata for a run",
+  },
+});
+
+/**
  * Zero logs search contract (GET /api/zero/logs/search)
  * Search agent events across runs via zero token auth
  */
@@ -281,6 +311,7 @@ export const zeroLogsSearchContract = c.router({
 
 // Inferred types from Zod schemas
 export type RunContextResponse = z.infer<typeof runContextResponseSchema>;
+export type RunRunnerResponse = z.infer<typeof runRunnerResponseSchema>;
 
 // Type exports
 export type ZeroLogsSearchContract = typeof zeroLogsSearchContract;
@@ -291,3 +322,4 @@ export type ZeroRunsQueueContract = typeof zeroRunsQueueContract;
 export type ZeroRunAgentEventsContract = typeof zeroRunAgentEventsContract;
 export type ZeroRunContextContract = typeof zeroRunContextContract;
 export type ZeroRunNetworkLogsContract = typeof zeroRunNetworkLogsContract;
+export type ZeroRunRunnerContract = typeof zeroRunRunnerContract;

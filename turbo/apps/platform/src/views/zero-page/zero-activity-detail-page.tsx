@@ -29,6 +29,7 @@ import {
   FeatureSwitchKey,
   RUN_ERROR_GUIDANCE,
   type ModelProviderType,
+  type SandboxReuseResult,
 } from "@vm0/core";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { fetchDownloadExtra$ } from "../../signals/activity-page/activity-download.ts";
@@ -62,6 +63,7 @@ import {
 import { GroupedMessageCard } from "./components/log-views/grouped-message-card.tsx";
 import { StatusDot } from "./components/log-views/status-dot.tsx";
 import { zeroActivityContext$ } from "../../signals/activity-page/activity-context-signals.ts";
+import { zeroActivityRunner$ } from "../../signals/activity-page/activity-runner-signals.ts";
 import {
   zeroActivityNetworkLogs$,
   loadNetworkLogsNextPage$,
@@ -401,7 +403,37 @@ function resolveDisplayName(
   return detail.displayName ?? detail.agentId ?? "Agent";
 }
 
-type ActivityTab = "steps" | "context" | "network";
+type ActivityTab = "steps" | "context" | "runner" | "network";
+
+const SANDBOX_REUSE_LABELS = {
+  reused: {
+    label: "Reused",
+    description: "Sandbox was unparked from the idle pool.",
+  },
+  featureDisabled: {
+    label: "Not reused",
+    description: "Sandbox reuse is disabled for this run.",
+  },
+  noSessionId: {
+    label: "Not reused",
+    description: "No session ID available to match against the idle pool.",
+  },
+  poolMiss: {
+    label: "Not reused",
+    description: "No matching sandbox found in the idle pool.",
+  },
+  profileMismatch: {
+    label: "Not reused",
+    description: "Idle pool entry exists but its profile does not match.",
+  },
+  unparkFailed: {
+    label: "Not reused",
+    description: "Unpark attempt failed; a fresh sandbox was provisioned.",
+  },
+} as const satisfies Record<
+  SandboxReuseResult,
+  { label: string; description: string }
+>;
 
 function ActivityStepsContent({
   detail,
@@ -500,6 +532,49 @@ function ActivityContextTab() {
   return <ContextContent context={context} />;
 }
 
+function ActivityRunnerTab() {
+  const runnerLoadable = useLastLoadable(zeroActivityRunner$);
+
+  if (
+    runnerLoadable.state === "loading" ||
+    runnerLoadable.state === "hasError"
+  ) {
+    return (
+      <div className="flex flex-col gap-2 py-4">
+        <div className="h-4 w-24 rounded bg-muted/50 animate-pulse" />
+        <div className="h-8 w-64 rounded bg-muted/50 animate-pulse" />
+      </div>
+    );
+  }
+
+  const runner = runnerLoadable.data;
+  const reuse = runner?.sandboxReuseResult ?? null;
+  const info = reuse ? SANDBOX_REUSE_LABELS[reuse] : null;
+
+  return (
+    <div className="flex flex-col gap-6 pb-8">
+      <section>
+        <h3 className="text-sm font-semibold text-foreground mb-2">Sandbox</h3>
+        {info ? (
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center rounded-md border bg-muted/50 px-2 py-0.5 text-xs font-medium">
+              {info.label}
+            </span>
+            <span className="text-sm text-muted-foreground">
+              {info.description}
+            </span>
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            Unknown (older run, recorded before sandbox reuse tracking was
+            added).
+          </p>
+        )}
+      </section>
+    </div>
+  );
+}
+
 function ActivityNetworkTab() {
   const logsLoadable = useLastLoadable(zeroActivityNetworkLogs$);
   const loadNextPage = useSet(loadNetworkLogsNextPage$);
@@ -548,6 +623,35 @@ function ActivityNetworkTab() {
   );
 }
 
+function ActivityTabContent({
+  activeTab,
+  detail,
+  eventsData,
+  features,
+}: {
+  activeTab: ActivityTab;
+  detail: LogDetail;
+  eventsData: AgentEvent[];
+  features: Record<FeatureSwitchKey, boolean> | undefined;
+}) {
+  if (activeTab === "steps") {
+    return (
+      <ActivityStepsContent
+        detail={detail}
+        eventsData={eventsData}
+        features={features}
+      />
+    );
+  }
+  if (activeTab === "context") {
+    return <ActivityContextTab />;
+  }
+  if (activeTab === "runner") {
+    return <ActivityRunnerTab />;
+  }
+  return <ActivityNetworkTab />;
+}
+
 function ActivityDetailContent({
   detail,
   displayName,
@@ -563,7 +667,9 @@ function ActivityDetailContent({
   const updateParams = useSet(updateSearchParams$);
   const rawTab = params.get("tab");
   const activeTab: ActivityTab =
-    rawTab === "context" || rawTab === "network" ? rawTab : "steps";
+    rawTab === "context" || rawTab === "runner" || rawTab === "network"
+      ? rawTab
+      : "steps";
   const setActiveTab = (tab: ActivityTab) => {
     const next = new URLSearchParams(params);
     if (tab === "steps") {
@@ -663,6 +769,7 @@ function ActivityDetailContent({
                 <TabsList>
                   <TabsTrigger value="steps">Steps</TabsTrigger>
                   <TabsTrigger value="context">Context</TabsTrigger>
+                  <TabsTrigger value="runner">Runner</TabsTrigger>
                   <TabsTrigger value="network">Network</TabsTrigger>
                 </TabsList>
               </Tabs>
@@ -670,15 +777,12 @@ function ActivityDetailContent({
           )}
 
           <div className="mt-6">
-            {activeTab === "steps" && (
-              <ActivityStepsContent
-                detail={detail}
-                eventsData={eventsData}
-                features={features}
-              />
-            )}
-            {activeTab === "context" && <ActivityContextTab />}
-            {activeTab === "network" && <ActivityNetworkTab />}
+            <ActivityTabContent
+              activeTab={activeTab}
+              detail={detail}
+              eventsData={eventsData}
+              features={features}
+            />
           </div>
         </div>
       </div>
