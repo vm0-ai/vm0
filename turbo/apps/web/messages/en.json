@@ -3422,7 +3422,7 @@
     },
     "filter": {
       "all": "All",
-      "everyone": "Everyone",
+      "everyone": "Cross-functional",
       "engineering": "Engineering",
       "product": "Product",
       "ops": "Operations"

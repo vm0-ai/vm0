@@ -3422,7 +3422,7 @@
     },
     "filter": {
       "all": "すべて",
-      "everyone": "全員向け",
+      "everyone": "横断的",
       "engineering": "Engineering",
       "product": "プロダクト",
       "ops": "オペレーション"

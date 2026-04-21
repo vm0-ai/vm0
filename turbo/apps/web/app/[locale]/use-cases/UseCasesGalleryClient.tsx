@@ -75,11 +75,9 @@ function ConnectorIcon({ connector }: { connector: ConnectorRef }) {
 function UseCaseCard({
   useCase,
   title,
-  description,
 }: {
   useCase: UseCase;
   title: string;
-  description: string;
 }) {
   return (
     <Link
@@ -87,9 +85,9 @@ function UseCaseCard({
       className="group block overflow-hidden rounded-[20px] bg-white transition-all duration-300 hover:-translate-y-0.5"
       style={{ textDecoration: "none" }}
     >
-      {/* Colorful top area */}
+      {/* Colorful top area - reduced height */}
       <div
-        className="relative flex items-center justify-between px-6 pb-6 pt-16"
+        className="relative flex items-center justify-between px-6 pb-4 pt-8"
         style={{ backgroundColor: useCase.color }}
       >
         {/* Grid texture overlay */}
@@ -102,24 +100,21 @@ function UseCaseCard({
           }}
         />
         {/* Agent avatar */}
-        <AgentAvatar config={useCase.avatar} size={64} />
+        <AgentAvatar config={useCase.avatar} size={48} />
 
         {/* Connector logos */}
-        <div className="relative flex items-center gap-1.5" style={{ top: 10 }}>
+        <div className="relative flex items-center gap-1.5" style={{ top: 6 }}>
           {useCase.connectors.map((c) => {
             return <ConnectorIcon key={c.id} connector={c} />;
           })}
         </div>
       </div>
 
-      {/* Content */}
-      <div className="flex flex-col gap-3 px-6 pb-7 pt-5">
+      {/* Content - title only */}
+      <div className="flex flex-col px-6 pb-6 pt-4">
         <h3 className="text-lg font-medium leading-snug tracking-[-0.2px] text-[hsl(var(--foreground))] group-hover:text-[#ed4e01]">
           {title}
         </h3>
-        <p className="line-clamp-3 text-[15px] font-light leading-relaxed text-[hsl(var(--muted-foreground))]">
-          {description}
-        </p>
       </div>
     </Link>
   );
@@ -188,7 +183,6 @@ export default function UseCasesGalleryClient() {
                 key={uc.slug}
                 useCase={uc}
                 title={t(`content.${uc.slug}.title`)}
-                description={t(`content.${uc.slug}.description`)}
               />
             );
           })}
