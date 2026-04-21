@@ -414,7 +414,6 @@ async def handle_firewall_request(
     flow.metadata["firewall_base"] = firewall_base
     flow.metadata["firewall_api_id"] = api_id
     flow.metadata["firewall_name"] = match_info.get("name", "")
-    flow.metadata["firewall_ref"] = match_info.get("ref", "")
     flow.metadata["firewall_permission"] = match_info.get("permission", "")
     flow.metadata["firewall_rule_match"] = match_info.get("rule", "")
     flow.metadata["firewall_params"] = match_info.get("params", {})
@@ -435,7 +434,7 @@ async def handle_firewall_request(
                 {
                     "error": "auth_unavailable",
                     "message": "Auth secrets not configured",
-                    "permission": match_info.get("ref", ""),
+                    "permission": match_info.get("name", ""),
                     "base": firewall_base,
                 }
             ).encode(),
@@ -456,7 +455,7 @@ async def handle_firewall_request(
             auth_query,
         )
     except ConnectorNotConfiguredError as e:
-        ref = match_info.get("ref", "")
+        fw_name = match_info.get("name", "")
         log_proxy_entry(
             proxy_log_path,
             "info",
@@ -469,11 +468,11 @@ async def handle_firewall_request(
         error_body: dict = {
             "error": "connector_not_configured",
             "message": str(e),
-            "permission": ref,
+            "permission": fw_name,
             "base": firewall_base,
         }
-        if ref:
-            error_body["connectors"] = [ref]
+        if fw_name:
+            error_body["connectors"] = [fw_name]
         flow.response = http.Response.make(
             424,
             json.dumps(error_body).encode(),
@@ -496,7 +495,7 @@ async def handle_firewall_request(
                 {
                     "error": "auth_failed",
                     "message": f"Failed to resolve auth headers: {e}",
-                    "permission": match_info.get("ref", ""),
+                    "permission": match_info.get("name", ""),
                     "base": firewall_base,
                 }
             ).encode(),
@@ -560,7 +559,7 @@ async def handle_firewall_request(
                     {
                         "error": "url_rewrite_forward_failed",
                         "message": "Failed to forward request to upstream",
-                        "permission": match_info.get("ref", ""),
+                        "permission": match_info.get("name", ""),
                     }
                 ).encode(),
                 {"Content-Type": "application/json"},

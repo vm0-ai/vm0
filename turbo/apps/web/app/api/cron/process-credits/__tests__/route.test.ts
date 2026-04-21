@@ -17,6 +17,9 @@ import {
   insertOrgMembersEntry,
   getOrgMembersEntry,
   updateOrgStripeFields,
+  insertCreditExpiresRecord,
+  findCreditExpiresRecords,
+  grantCreditsToOrg,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { reloadEnv } from "../../../../../src/env";
 
@@ -320,6 +323,51 @@ describe("GET /api/cron/process-credits", () => {
       expect(record!.status).toBe("processed");
       expect(record!.creditsCharged).toBe(200);
 
+      const credits = await getOrgCredits(user.orgId);
+      expect(credits).toBe(99_800);
+    });
+
+    it("settles expired credits during consumption on non-subscription org", async () => {
+      // Reproduces the fix for issue #10299: a non-subscription org never hits
+      // `expireCredits` via invoice renewal, so the first consumption event
+      // must settle the expired row itself — otherwise the aggregate balance
+      // stays inflated and the expired row silently backs the spend.
+      await insertTestCreditPricing("gpt-4", {
+        inputTokenPrice: 1_000_000,
+        outputTokenPrice: 1_000_000,
+      });
+
+      const pastDate = new Date();
+      pastDate.setMonth(pastDate.getMonth() - 1);
+      const expiredId = await insertCreditExpiresRecord({
+        orgId: user.orgId,
+        amount: 5000,
+        expiresAt: pastDate,
+        stripeInvoiceId: uniqueId("inv-expired"),
+      });
+      // Mirror the inflated ledger: seed org with the expired amount on top
+      // of the default 100k starter credits
+      await grantCreditsToOrg(user.orgId, 5000);
+
+      // 100 input + 100 output → 200 credits charged
+      await insertTestCreditUsage(user.orgId, {
+        userId: user.userId,
+        model: "gpt-4",
+        inputTokens: 100,
+        outputTokens: 100,
+      });
+
+      const response = await GET(cronRequest("test-cron-secret"));
+      expect(response.status).toBe(200);
+
+      // Expired row is zeroed (not drawn down by the spend)
+      const records = await findCreditExpiresRecords(user.orgId);
+      const expired = records.find((r) => {
+        return r.id === expiredId;
+      })!;
+      expect(expired.remaining).toBe(0);
+
+      // Org balance: 100_000 + 5_000 (granted) − 5_000 (expired) − 200 (spend)
       const credits = await getOrgCredits(user.orgId);
       expect(credits).toBe(99_800);
     });

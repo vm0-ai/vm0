@@ -330,28 +330,30 @@ describe("GET /api/zero/usage/insight", () => {
       orgId,
     });
 
-    // Seed 105 schedules, each with one run + credit usage
-    for (let i = 0; i < 105; i++) {
-      const scheduleId = await seedTestSchedule({
-        agentId: composeId,
-        userId,
-        orgId,
-      });
+    // Seed 105 schedules in parallel, each with one run + credit usage
+    await Promise.all(
+      Array.from({ length: 105 }, async (_, i) => {
+        const scheduleId = await seedTestSchedule({
+          agentId: composeId,
+          userId,
+          orgId,
+        });
 
-      const { runId } = await seedTestRun(userId, composeId, {
-        triggerSource: "schedule",
-        scheduleId,
-        status: "completed",
-      });
+        const { runId } = await seedTestRun(userId, composeId, {
+          triggerSource: "schedule",
+          scheduleId,
+          status: "completed",
+        });
 
-      await insertTestCreditUsageForRun({
-        runId,
-        orgId,
-        userId,
-        creditsCharged: i + 1,
-        status: "processed",
-      });
-    }
+        await insertTestCreditUsageForRun({
+          runId,
+          orgId,
+          userId,
+          creditsCharged: i + 1,
+          status: "processed",
+        });
+      }),
+    );
 
     const response = await GET(
       makeRequest({ range: "28d", groupBy: "source", tz: "UTC" }),
@@ -470,30 +472,32 @@ describe("GET /api/zero/usage/insight", () => {
       orgId,
     });
 
-    // Seed 105 schedules where the 5 overflow items have creditsCharged = 0
-    for (let i = 0; i < 105; i++) {
-      const scheduleId = await seedTestSchedule({
-        agentId: composeId,
-        userId,
-        orgId,
-      });
+    // Seed 105 schedules in parallel where the 5 overflow items have creditsCharged = 0
+    await Promise.all(
+      Array.from({ length: 105 }, async (_, i) => {
+        const scheduleId = await seedTestSchedule({
+          agentId: composeId,
+          userId,
+          orgId,
+        });
 
-      const { runId } = await seedTestRun(userId, composeId, {
-        triggerSource: "schedule",
-        scheduleId,
-        status: "completed",
-      });
+        const { runId } = await seedTestRun(userId, composeId, {
+          triggerSource: "schedule",
+          scheduleId,
+          status: "completed",
+        });
 
-      // Top-100 items have credits 6..105; overflow items 1..5 have creditsCharged = 0
-      // so all overflow rows have zero credits — this is the regression case.
-      await insertTestCreditUsageForRun({
-        runId,
-        orgId,
-        userId,
-        creditsCharged: i < 5 ? 0 : i + 1,
-        status: "processed",
-      });
-    }
+        // Top-100 items have credits 6..105; overflow items 1..5 have creditsCharged = 0
+        // so all overflow rows have zero credits — this is the regression case.
+        await insertTestCreditUsageForRun({
+          runId,
+          orgId,
+          userId,
+          creditsCharged: i < 5 ? 0 : i + 1,
+          status: "processed",
+        });
+      }),
+    );
 
     const response = await GET(
       makeRequest({ range: "28d", groupBy: "source", tz: "UTC" }),

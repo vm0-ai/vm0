@@ -72,7 +72,6 @@ ${sinceFilter}
         response_size: e.response_size,
         firewall_base: e.firewall_base,
         firewall_name: e.firewall_name,
-        firewall_ref: e.firewall_ref,
         firewall_permission: e.firewall_permission,
         firewall_rule_match: e.firewall_rule_match,
         firewall_params: e.firewall_params,

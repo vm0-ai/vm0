@@ -60,7 +60,6 @@ class TestRequestHandler:
                     "firewalls": [
                         {
                             "name": "test-oauth",
-                            "ref": "test-oauth",
                             "apis": [
                                 {
                                     "base": "https://api.vm0.ai/api/test/oauth-provider",
@@ -138,7 +137,6 @@ class TestRequestHandler:
                     "firewalls": [
                         {
                             "name": "github",
-                            "ref": "github",
                             "apis": [
                                 {
                                     "base": "https://api.github.com",
@@ -183,7 +181,6 @@ class TestRequestHandler:
         # match-info into flow.metadata at auth.py:327–333 up-front.
         assert flow.metadata["firewall_base"] == "https://api.github.com"
         assert flow.metadata["firewall_name"] == "github"
-        assert flow.metadata["firewall_ref"] == "github"
         assert flow.metadata["firewall_permission"] == "full-access"
 
     async def test_firewall_permission_blocks_unmatched(
@@ -199,7 +196,6 @@ class TestRequestHandler:
                     "firewalls": [
                         {
                             "name": "github",
-                            "ref": "github",
                             "apis": [
                                 {
                                     "base": "https://api.github.com",
@@ -250,7 +246,7 @@ class TestRequestHandler:
         assert body["error"] == "permission_denied"
         assert body["method"] == "GET"
         assert body["path"] == "/orgs"
-        assert body["ref"] == "github"
+        assert body["name"] == "github"
         assert body["permissions"] == []
         assert body["base"] == "https://api.github.com"
 
@@ -267,7 +263,6 @@ class TestRequestHandler:
                     "firewalls": [
                         {
                             "name": "github",
-                            "ref": "github",
                             "apis": [
                                 {
                                     "base": "https://api.github.com",
@@ -318,7 +313,6 @@ class TestRequestHandler:
         # match-info into flow.metadata at auth.py:327–333 up-front.
         assert flow.metadata["firewall_base"] == "https://api.github.com"
         assert flow.metadata["firewall_name"] == "github"
-        assert flow.metadata["firewall_ref"] == "github"
         assert flow.metadata["firewall_permission"] == "read-repos"
         assert flow.metadata["firewall_rule_match"] == "GET /repos/{owner}/{repo}"
         assert flow.metadata["firewall_params"] == {"owner": "octocat", "repo": "hello"}
@@ -336,7 +330,6 @@ class TestRequestHandler:
                     "firewalls": [
                         {
                             "name": "github",
-                            "ref": "github",
                             "apis": [
                                 {
                                     "base": "https://api.github.com",
@@ -1667,8 +1660,7 @@ class TestErrorHandler:
         flow.metadata["original_url"] = "https://slack.com/api/chat.postMessage"
         flow.metadata["firewall_action"] = "ALLOW"
         flow.metadata["firewall_base"] = "https://slack.com/api"
-        flow.metadata["firewall_ref"] = "slack"
-        flow.metadata["firewall_name"] = "Slack API"
+        flow.metadata["firewall_name"] = "slack"
         flow.metadata["firewall_permission"] = "chat:write"
         flow.metadata["firewall_rule_match"] = "POST /chat.postMessage"
         flow.error = Error("timed out")
@@ -1678,8 +1670,8 @@ class TestErrorHandler:
 
         entry = json.loads(Path(log_path).read_text().strip())
         assert entry["firewall_base"] == "https://slack.com/api"
-        assert entry["firewall_ref"] == "slack"
-        assert entry["firewall_name"] == "Slack API"
+        assert entry["firewall_name"] == "slack"
+        assert "firewall_ref" not in entry
         assert entry["firewall_permission"] == "chat:write"
         assert entry["firewall_rule_match"] == "POST /chat.postMessage"
         assert entry["error"] == "timed out"

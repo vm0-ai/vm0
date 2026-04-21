@@ -97,7 +97,6 @@ describe("resolveFirewallSelections", () => {
 
     expect(expanded).toHaveLength(1);
     expect(expanded[0]!.name).toBe("custom-git");
-    expect(expanded[0]!.ref).toBe("custom-git");
     expect(expanded[0]!.apis).toHaveLength(1);
     const permNames = expanded[0]!.apis[0]!.permissions!.map((p) => {
       return p.name;
@@ -213,7 +212,6 @@ describe("resolveFirewallSelections", () => {
     expect(fetchFn).not.toHaveBeenCalled();
     expect(expanded).toHaveLength(1);
     expect(expanded[0]!.name).toBe("slack");
-    expect(expanded[0]!.ref).toBe("slack");
     expect(expanded[0]!.apis.length).toBeGreaterThan(0);
   });
 
@@ -240,7 +238,7 @@ describe("resolveFirewallSelections", () => {
         },
       ],
     };
-    const names = collectAndValidatePermissions("mixed", config);
+    const names = collectAndValidatePermissions(config);
     expect([...names].sort()).toEqual(["read", "upload"]);
   });
 
@@ -923,7 +921,6 @@ describe("hasBaseUrlVars", () => {
 describe("resolveFirewallBaseUrlVars", () => {
   const zendeskFirewall = {
     name: "zendesk",
-    ref: "zendesk",
     apis: [
       {
         base: "https://${{ vars.ZENDESK_SUBDOMAIN }}.zendesk.com",
@@ -938,7 +935,6 @@ describe("resolveFirewallBaseUrlVars", () => {
 
   const staticFirewall = {
     name: "github",
-    ref: "github",
     apis: [
       {
         base: "https://api.github.com",

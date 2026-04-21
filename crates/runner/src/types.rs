@@ -95,14 +95,11 @@ pub struct ExecutionContext {
     pub feature_flags: Option<HashMap<String, bool>>,
 }
 
-/// A single firewall config with its name, ref key, and API entries.
+/// A single firewall config with its name and API entries.
+/// `name` is the canonical identifier (also used as the networkPolicies map key).
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Firewall {
     pub name: String,
-    /// The ref key from vm0.yaml (e.g., "github", "slack").
-    /// `ref` is a Rust keyword, so we rename via serde.
-    #[serde(rename = "ref")]
-    pub ref_key: String,
     pub apis: Vec<FirewallApi>,
 }
 
@@ -390,7 +387,6 @@ mod tests {
             "memoryName": "project-mem",
             "firewalls": [{
                 "name": "github",
-                "ref": "github",
                 "apis": [{"base": "https://api.github.com", "auth": {"headers": {}}}]
             }],
             "disallowedTools": ["CronCreate"],
@@ -421,7 +417,6 @@ mod tests {
     fn firewall_round_trip() {
         let fw = Firewall {
             name: "github".into(),
-            ref_key: "github".into(),
             apis: vec![FirewallApi {
                 id: "api-1".into(),
                 base: "https://api.github.com".into(),
@@ -440,12 +435,10 @@ mod tests {
             }],
         };
         let json = serde_json::to_value(&fw).unwrap();
-        // `ref_key` serializes as "ref"
-        assert_eq!(json["ref"], "github");
-        assert!(json.get("ref_key").is_none());
+        assert_eq!(json["name"], "github");
         // round-trip
         let deserialized: Firewall = serde_json::from_value(json).unwrap();
-        assert_eq!(deserialized.ref_key, "github");
+        assert_eq!(deserialized.name, "github");
         assert_eq!(
             deserialized.apis[0].permissions.as_ref().unwrap()[0].name,
             "metadata:read"

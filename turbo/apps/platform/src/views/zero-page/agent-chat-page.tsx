@@ -571,6 +571,7 @@ export function AgentChatPage() {
             onInputChange={setInput}
             onSend={handleSend}
             displayName={currentChatAgentDisplayName ?? ""}
+            autoFocus
             modelPicker={
               modelFeatureEnabled &&
               orgProviders &&

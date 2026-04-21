@@ -4,6 +4,7 @@ import {
   updateOrgStripeFields,
   insertCreditExpiresRecord,
   insertOrgCacheEntry,
+  grantCreditsToOrg,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -192,6 +193,36 @@ describe("GET /api/zero/billing/status", () => {
     const data = await response.json();
     expect(data.creditExpiry.expiringNextCycle).toBe(0);
     expect(data.creditExpiry.nextExpiryDate).toBeNull();
+  });
+
+  it("displays credits minus not-yet-settled expired amount", async () => {
+    // Dormant non-subscription org: expired row never got settled (no renewal
+    // to trigger expireCredits, no run yet to trigger the eager path), so the
+    // raw credits column is still inflated by the expired amount. The /status
+    // endpoint must subtract it before returning so the UI shows the real
+    // spendable balance.
+    const { orgId } = await context.setupUser({ prefix: "expiry-unsettled" });
+
+    const pastDate = new Date();
+    pastDate.setMonth(pastDate.getMonth() - 1);
+    await insertCreditExpiresRecord({
+      orgId,
+      amount: 3000,
+      expiresAt: pastDate,
+      stripeInvoiceId: uniqueId("inv-expired"),
+    });
+    // Mirror the inflated ledger: default 100k starter + 3k that's expired
+    await grantCreditsToOrg(orgId, 3000);
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/zero/billing/status",
+    );
+    const response = await GET(request);
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    // 100_000 (starter) + 3_000 (granted) − 3_000 (expired) = 100_000
+    expect(data.credits).toBe(100_000);
   });
 
   it("returns defaults when org row does not exist", async () => {

@@ -65,7 +65,6 @@ const runContextResponse = {
   firewalls: [
     {
       name: "github",
-      ref: "github",
       apis: [
         {
           base: "https://api.github.com",
@@ -180,7 +179,7 @@ describe("zero doctor check-connector command", () => {
   });
 
   describe("step 2: connector status", () => {
-    it("should report connector not connected with connect URL", async () => {
+    it("should report connector not connected with a single authorize URL that covers both connect and authorize", async () => {
       vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
       vi.stubEnv("VM0_TOKEN", "test-token");
       vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
@@ -212,9 +211,13 @@ describe("zero doctor check-connector command", () => {
 
       const output = getOutput();
       expect(output).toContain("not connected");
+      // When agentId is present, the /authorize page performs the OAuth connect
+      // before granting permission — so show only that link (see issue #9589).
       expect(output).toContain(
-        "[Connect GitHub](https://app.vm0.ai/connectors/github/connect?agentId=agent-abc-123)",
+        "[Authorize GitHub](https://app.vm0.ai/connectors/github/authorize?agentId=agent-abc-123)",
       );
+      expect(output).not.toContain("[Connect GitHub]");
+      expect(output).toContain("needs to be connected and authorized");
     });
 
     it("should report connector expired with reconnect URL", async () => {
@@ -528,7 +531,7 @@ describe("zero doctor check-connector command", () => {
 
       const output = getOutput();
       expect(output).toContain(
-        "https://app.vm0.ai/connectors/github/connect?agentId=agent-1",
+        "https://app.vm0.ai/connectors/github/authorize?agentId=agent-1",
       );
     });
   });

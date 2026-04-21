@@ -88,7 +88,6 @@ export async function resolveCustomConnectorFirewalls(
     const prefixes = row.prefixes as string[];
     firewalls.push({
       name: row.slug,
-      ref: row.slug,
       description: row.displayName,
       apis: prefixes.map((prefix) => {
         return {

@@ -36,7 +36,6 @@ import {
   buildAndDispatchRun,
   loadCompose,
   registerCallbacks,
-  markRunFailed,
 } from "../infra/run/run-service";
 import type {
   CreateRunParams,
@@ -45,7 +44,6 @@ import type {
 import { generateZeroToken, generateSandboxToken } from "../auth/sandbox-token";
 import { loadFeatureSwitchOverrides } from "./user/feature-switches-service";
 import { buildZeroExecutionContext } from "./build-zero-context";
-import { buildInfraExecutionContext } from "../infra/run/context/build-context";
 import {
   encryptSecretsMap,
   decryptSecretsMap,
@@ -483,109 +481,33 @@ async function markQueuedRunFailed(
 // ─── Zero Dispatch ──────────────────────────────────────────────────────────
 
 /**
- * Zero-layer dispatch wrapper for queued runs.
- * For zero runs (ZERO_AGENT_ID in vars): generates tokens, builds zero context
- * (secrets, model provider, firewalls), and dispatches with pre-built context.
- * For non-zero runs: delegates directly to the infra dispatcher unchanged.
+ * Dispatch wrapper for queued runs. Generates tokens, builds the Zero
+ * execution context (secrets, model provider, firewalls), and hands off to
+ * the infra dispatcher. `enqueueRun` is only called from `createZeroRun`,
+ * so every queued entry is a Zero run — there is no other shape to handle.
  */
 export async function dispatchQueuedZeroRun(
   runId: string,
   params: CreateRunParams,
 ): Promise<void> {
-  if (params.vars?.ZERO_AGENT_ID) {
-    // Queued dispatch anchors apiStart at dequeue, not the original request.
-    // The queue wait time is intentionally excluded from startup latency —
-    // merging it would hide queue-worker lag behind cold-start numbers.
-    const apiStartTime = Date.now();
-
-    // Generate fresh ZERO_TOKEN for queued dispatch
-    const overrides = await loadFeatureSwitchOverrides(
-      params.orgId,
-      params.userId,
-    );
-    const zeroToken = await generateZeroToken(
-      params.userId,
-      runId,
-      params.orgId,
-      overrides,
-    );
-    const updatedParams: CreateRunParams = {
-      ...params,
-      secrets: { ...params.secrets, ZERO_TOKEN: zeroToken },
-    };
-
-    // Load compose + authorize (same validation as direct path)
-    const { composeContent, compose } = await loadCompose(
-      params.agentComposeVersionId,
-      params.composeId,
-    );
-    authorizeCompose(params.userId, params.orgId, compose);
-    const authorizeTime = Date.now();
-
-    // Pre-flight: ensure model provider is still configured (may have been
-    // removed after enqueue). Throws noModelProvider() on failure — caught by
-    // drainOrgQueue() which marks the run as failed.
-    await checkModelProviderConfigured(
-      params.orgId,
-      params.modelProvider,
-      composeContent,
-    );
-
-    // Validate compose requirements for new runs only
-    if (!params.checkpointId && !params.sessionId) {
-      await validateComposeRequirements(composeContent);
-    }
-
-    // Register callbacks early so they persist even if context building fails
-    if (params.callbacks && params.callbacks.length > 0) {
-      await registerCallbacks(runId, params.callbacks);
-    }
-
-    // Generate sandbox token + build zero context
-    const sandboxToken = await generateSandboxToken(params.userId, runId);
-    const tokenTime = Date.now();
-    const contextResult = await buildZeroExecutionContext({
-      ...updatedParams,
-      sandboxToken,
-      agentCompose: composeContent,
-      runId,
-      agentName: params.agentName,
-      apiStartTime,
-    });
-
-    // Update zero_runs with resolved model fields before dispatch so metadata
-    // is recorded even if dispatch succeeds but a later step fails.
-    // Zero queued path: row already exists (created at enqueue time), so UPDATE is safe.
-    await globalThis.services.db
-      .update(zeroRuns)
-      .set({
-        modelProvider: contextResult.resolvedModelProvider ?? null,
-        selectedModel: contextResult.selectedModel ?? null,
-      })
-      .where(eq(zeroRuns.id, runId));
-
-    await buildAndDispatchRun({
-      runId,
-      context: contextResult.context,
-      timings: {
-        apiStart: apiStartTime,
-        authorize: authorizeTime,
-        transaction: apiStartTime,
-        token: tokenTime,
-        resolveSourceDuration: contextResult.timings.resolveSourceAndOrg,
-        resolveSecretsDuration: contextResult.timings.resolveSecrets,
-      },
-    });
-
-    return;
-  }
-
-  // Non-zero path — build infra context and dispatch directly
-  const nonZeroLog = logger("zero:run-queue-service:non-zero");
-  // Anchored at dequeue for the same reason as the zero path above —
-  // queue wait is intentionally not part of startup latency.
+  // Queued dispatch anchors apiStart at dequeue, not the original request.
+  // The queue wait time is intentionally excluded from startup latency —
+  // merging it would hide queue-worker lag behind cold-start numbers.
   const apiStartTime = Date.now();
 
+  // Generate fresh ZERO_TOKEN for queued dispatch
+  const overrides = await loadFeatureSwitchOverrides(
+    params.orgId,
+    params.userId,
+  );
+  const zeroToken = await generateZeroToken(
+    params.userId,
+    runId,
+    params.orgId,
+    overrides,
+  );
+
+  // Load compose + authorize (same validation as direct path)
   const { composeContent, compose } = await loadCompose(
     params.agentComposeVersionId,
     params.composeId,
@@ -593,50 +515,60 @@ export async function dispatchQueuedZeroRun(
   authorizeCompose(params.userId, params.orgId, compose);
   const authorizeTime = Date.now();
 
+  // Pre-flight: ensure model provider is still configured (may have been
+  // removed after enqueue). Throws noModelProvider() on failure — caught by
+  // drainOrgQueue() which marks the run as failed.
+  await checkModelProviderConfigured(
+    params.orgId,
+    params.modelProvider,
+    composeContent,
+  );
+
+  // Validate compose requirements for new runs only
   if (!params.checkpointId && !params.sessionId) {
     await validateComposeRequirements(composeContent);
   }
 
+  // Register callbacks early so they persist even if context building fails
+  if (params.callbacks && params.callbacks.length > 0) {
+    await registerCallbacks(runId, params.callbacks);
+  }
+
+  // Generate sandbox token + build zero context
   const sandboxToken = await generateSandboxToken(params.userId, runId);
   const tokenTime = Date.now();
+  const contextResult = await buildZeroExecutionContext({
+    ...params,
+    secrets: { ...params.secrets, ZERO_TOKEN: zeroToken },
+    sandboxToken,
+    agentCompose: composeContent,
+    runId,
+    apiStartTime,
+  });
 
-  try {
-    if (params.callbacks && params.callbacks.length > 0) {
-      await registerCallbacks(runId, params.callbacks);
-    }
+  // Update zero_runs with resolved model fields before dispatch so metadata
+  // is recorded even if dispatch succeeds but a later step fails.
+  // Row already exists (created at enqueue time), so UPDATE is safe.
+  await globalThis.services.db
+    .update(zeroRuns)
+    .set({
+      modelProvider: contextResult.resolvedModelProvider ?? null,
+      selectedModel: contextResult.selectedModel ?? null,
+    })
+    .where(eq(zeroRuns.id, runId));
 
-    const { context } = buildInfraExecutionContext({
-      ...params,
-      sandboxToken,
-      runId,
-      agentCompose: composeContent,
-      continuedFromSessionId: params.sessionId,
-      apiStartTime,
-    });
-
-    await buildAndDispatchRun({
-      runId,
-      context,
-      timings: {
-        apiStart: apiStartTime,
-        authorize: authorizeTime,
-        transaction: apiStartTime,
-        token: tokenTime,
-      },
-    });
-  } catch (error) {
-    await markRunFailed(runId, error);
-    // drainOrgQueue always publishes queue:changed in its finally block —
-    // including the empty-queue case — so no explicit publish is needed here.
-    await drainOrgQueue(params.orgId, dispatchQueuedZeroRun).catch(
-      (drainErr) => {
-        nonZeroLog.error("Failed to drain org queue after run failure", {
-          drainErr,
-        });
-      },
-    );
-    throw error;
-  }
+  await buildAndDispatchRun({
+    runId,
+    context: contextResult.context,
+    timings: {
+      apiStart: apiStartTime,
+      authorize: authorizeTime,
+      transaction: apiStartTime,
+      token: tokenTime,
+      resolveSourceDuration: contextResult.timings.resolveSourceAndOrg,
+      resolveSecretsDuration: contextResult.timings.resolveSecrets,
+    },
+  });
 }
 
 // ─── Queue Status (Zero layer) ─────────────────────────────────────────────

@@ -51,7 +51,6 @@ def add_firewall_metadata(flow: http.HTTPFlow, log_entry: dict) -> None:
     meta = flow.metadata
     log_entry["firewall_base"] = meta.get("firewall_base", "")
     log_entry["firewall_name"] = meta.get("firewall_name", "")
-    log_entry["firewall_ref"] = meta.get("firewall_ref", "")
     log_entry["firewall_permission"] = meta.get("firewall_permission", "")
     log_entry["firewall_rule_match"] = meta.get("firewall_rule_match", "")
     # Optional fields — only include when present

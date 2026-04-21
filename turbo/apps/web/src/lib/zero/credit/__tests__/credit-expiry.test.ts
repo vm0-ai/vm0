@@ -9,7 +9,10 @@ import {
   testExpireCredits,
 } from "../../../../__tests__/api-test-helpers";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route
-import { getExpiresRecordsSummary } from "../credit-expires-service";
+import {
+  getExpiresRecordsSummary,
+  getUnsettledExpiredAmount,
+} from "../credit-expires-service";
 
 const context = testContext();
 
@@ -94,6 +97,43 @@ describe("credit expires service", () => {
       const records = await findCreditExpiresRecords(orgId);
       expect(records).toHaveLength(0);
     });
+
+    it("skips expired rows — drains the unexpired row instead", async () => {
+      const { orgId } = await context.setupUser({
+        prefix: "fefo-skip-expired",
+      });
+
+      const pastDate = new Date();
+      pastDate.setMonth(pastDate.getMonth() - 1);
+      const futureDate = new Date();
+      futureDate.setMonth(futureDate.getMonth() + 2);
+
+      const expiredId = await insertCreditExpiresRecord({
+        orgId,
+        amount: 5000,
+        expiresAt: pastDate,
+        stripeInvoiceId: uniqueId("inv-expired"),
+      });
+      const activeId = await insertCreditExpiresRecord({
+        orgId,
+        amount: 5000,
+        expiresAt: futureDate,
+        stripeInvoiceId: uniqueId("inv-active"),
+      });
+
+      await testDeductFromExpiresRecords(orgId, 3000);
+
+      const records = await findCreditExpiresRecords(orgId);
+      const expired = records.find((r) => {
+        return r.id === expiredId;
+      })!;
+      const active = records.find((r) => {
+        return r.id === activeId;
+      })!;
+      // Expired row untouched, active row debited
+      expect(expired.remaining).toBe(5000);
+      expect(active.remaining).toBe(2000);
+    });
   });
 
   describe("expireCredits", () => {
@@ -171,6 +211,77 @@ describe("credit expires service", () => {
       const summary = await getExpiresRecordsSummary(orgId);
       expect(summary.expiringNextCycle).toBe(0);
       expect(summary.nextExpiryDate).toBeNull();
+    });
+  });
+
+  describe("getUnsettledExpiredAmount", () => {
+    it("returns zero when there are no expired rows", async () => {
+      const { orgId } = await context.setupUser({ prefix: "unsettled-none" });
+
+      const futureDate = new Date();
+      futureDate.setMonth(futureDate.getMonth() + 2);
+      await insertCreditExpiresRecord({
+        orgId,
+        amount: 5000,
+        expiresAt: futureDate,
+        stripeInvoiceId: uniqueId("inv-active"),
+      });
+
+      const amount = await getUnsettledExpiredAmount(orgId);
+      expect(amount).toBe(0);
+    });
+
+    it("sums remaining across expired rows only", async () => {
+      const { orgId } = await context.setupUser({ prefix: "unsettled-sum" });
+
+      const pastDate = new Date();
+      pastDate.setMonth(pastDate.getMonth() - 1);
+      const futureDate = new Date();
+      futureDate.setMonth(futureDate.getMonth() + 2);
+
+      await insertCreditExpiresRecord({
+        orgId,
+        amount: 5000,
+        remaining: 3000,
+        expiresAt: pastDate,
+        stripeInvoiceId: uniqueId("inv-expired-a"),
+      });
+      await insertCreditExpiresRecord({
+        orgId,
+        amount: 2000,
+        remaining: 2000,
+        expiresAt: pastDate,
+        stripeInvoiceId: uniqueId("inv-expired-b"),
+      });
+      await insertCreditExpiresRecord({
+        orgId,
+        amount: 10000,
+        remaining: 10000,
+        expiresAt: futureDate,
+        stripeInvoiceId: uniqueId("inv-active"),
+      });
+
+      const amount = await getUnsettledExpiredAmount(orgId);
+      expect(amount).toBe(5000);
+    });
+
+    it("ignores expired rows that have already been settled to zero", async () => {
+      const { orgId } = await context.setupUser({
+        prefix: "unsettled-settled",
+      });
+
+      const pastDate = new Date();
+      pastDate.setMonth(pastDate.getMonth() - 1);
+      await insertCreditExpiresRecord({
+        orgId,
+        amount: 5000,
+        remaining: 0,
+        expiresAt: pastDate,
+        stripeInvoiceId: uniqueId("inv-zeroed"),
+      });
+
+      const amount = await getUnsettledExpiredAmount(orgId);
+      expect(amount).toBe(0);
     });
   });
 });

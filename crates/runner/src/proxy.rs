@@ -831,7 +831,6 @@ mod tests {
 
         let firewall_entries = vec![Firewall {
             name: "gmail".to_string(),
-            ref_key: "gmail".to_string(),
             apis: vec![FirewallApi {
                 id: String::new(),
                 base: "https://gmail.googleapis.com/gmail/v1/users/me".to_string(),
@@ -891,7 +890,6 @@ mod tests {
         let vm_json = &value["vms"]["10.200.0.5"];
         let fw = &vm_json["firewalls"][0];
         assert_eq!(fw["name"], "gmail");
-        assert_eq!(fw["ref"], "gmail");
         assert_eq!(
             fw["apis"][0]["base"],
             "https://gmail.googleapis.com/gmail/v1/users/me"
@@ -973,7 +971,6 @@ mod tests {
 
         let firewall_entries = vec![Firewall {
             name: "discord-webhook".to_string(),
-            ref_key: "discord-webhook".to_string(),
             apis: vec![FirewallApi {
                 id: String::new(),
                 base: "https://firewall-placeholder.vm3.ai/discord-webhook/hook".to_string(),
@@ -1030,7 +1027,6 @@ mod tests {
 
         let firewall_entries = vec![Firewall {
             name: "serpapi".to_string(),
-            ref_key: "serpapi".to_string(),
             apis: vec![FirewallApi {
                 id: String::new(),
                 base: "https://serpapi.com".to_string(),

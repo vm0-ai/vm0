@@ -36,18 +36,17 @@ export const firewallApiSchema = z.object({
 });
 
 /**
- * A single firewall with its name, ref, and API entries.
+ * A single firewall with its name and API entries.
  * Used in the expanded (post-compose) format.
  */
 export const firewallSchema = z.object({
   name: z.string(),
-  ref: z.string(),
   apis: z.array(firewallApiSchema),
 });
 
 /**
  * Firewall configuration for proxy-side token replacement.
- * Flat array of firewall entries: [{ name, ref, apis }]
+ * Flat array of firewall entries: [{ name, apis }]
  */
 export const firewallsSchema = z.array(firewallSchema);
 
@@ -82,7 +81,7 @@ export const firewallPolicySchema = z.object({
 export type FirewallPolicy = z.infer<typeof firewallPolicySchema>;
 
 /**
- * Firewall policies — map of firewall ref → connector policy.
+ * Firewall policies — map of firewall name → connector policy.
  * Example: { "github": { policies: { "repo-read": "allow" }, unknownPolicy: "allow" } }
  */
 export const firewallPoliciesSchema = z.record(
@@ -160,7 +159,7 @@ const networkPolicySchema = z.object({
 });
 
 /**
- * Network policies map — firewall ref → policy config.
+ * Network policies map — firewall name → policy config.
  * Example: { "github": { allow: ["repo-read"], deny: ["admin"], ask: [], unknownPolicy: "deny" } }
  */
 export const networkPoliciesSchema = z.record(z.string(), networkPolicySchema);
@@ -477,13 +476,13 @@ export function validateBaseUrl(base: string, serviceName: string): void {
  * Expanded firewall config stored in compose content.
  * Resolved from firewall name + FirewallConfig at compose time, then frozen.
  *
- * - `name`: firewall config name (e.g., "slack")
- * - `ref`: key used in vm0.yaml to reference this firewall config
+ * - `name`: firewall config name (e.g., "slack"). Also the key used in
+ *   vm0.yaml to reference this firewall config, and the map key in
+ *   `FirewallPolicies` / `NetworkPolicies`.
  * - `description`: optional description from the firewall config
  */
 export interface ExpandedFirewallConfig {
   name: string;
-  ref: string;
   description?: string;
   apis: FirewallApi[];
   placeholders?: Record<string, string>;

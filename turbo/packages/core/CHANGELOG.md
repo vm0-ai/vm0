@@ -1,5 +1,35 @@
 # Changelog
 
+## [8.216.0](https://github.com/vm0-ai/vm0/compare/core-v8.215.0...core-v8.216.0) (2026-04-21)
+
+
+### Features
+
+* add Kimi K2.6 model support ([#10356](https://github.com/vm0-ai/vm0/issues/10356)) ([bac75d0](https://github.com/vm0-ai/vm0/commit/bac75d0dd28fe73328af6a44963dd01774795518))
+
+
+### Refactoring
+
+* **firewalls:** drop redundant ref field, use name everywhere ([#10353](https://github.com/vm0-ai/vm0/issues/10353)) ([87cd67e](https://github.com/vm0-ai/vm0/commit/87cd67e6a1c47a0bf69f388907f317f4cdf52246))
+
+## [8.215.0](https://github.com/vm0-ai/vm0/compare/core-v8.214.0...core-v8.215.0) (2026-04-20)
+
+
+### Features
+
+* **credits:** add internal redemption codes page (mint + redeem) ([#10241](https://github.com/vm0-ai/vm0/issues/10241)) ([d012b77](https://github.com/vm0-ai/vm0/commit/d012b775da1a9d42c446ecf072e731c1cc4a8fc7))
+
+
+### Bug Fixes
+
+* **core:** route glm-5.1 through openrouter with upstream model override ([#10321](https://github.com/vm0-ai/vm0/issues/10321)) ([c72a464](https://github.com/vm0-ai/vm0/commit/c72a464bf288513e28461bc75366443c5b086902))
+
+
+### Refactoring
+
+* **platform:** drop client-only override layer from feature switches ([#10316](https://github.com/vm0-ai/vm0/issues/10316)) ([e42e0db](https://github.com/vm0-ai/vm0/commit/e42e0db5162412ac5296415c95cb941101ab27f3))
+* **runs:** remove legacy session-creation fallback and require session id ([#10337](https://github.com/vm0-ai/vm0/issues/10337)) ([9133cef](https://github.com/vm0-ai/vm0/commit/9133cef3439ade00456cc778d94e5ef237d64465))
+
 ## [8.214.0](https://github.com/vm0-ai/vm0/compare/core-v8.213.0...core-v8.214.0) (2026-04-20)
 
 

@@ -312,7 +312,6 @@ describe("contextContent", () => {
         firewalls: [
           {
             name: "my-firewall",
-            ref: "fw-1",
             apis: [{ base: "https://api.example.com" }],
           },
         ],

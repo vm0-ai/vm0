@@ -1313,6 +1313,19 @@ jobs:
           FAILED=0
           fail() { FAILED=1; echo "FAIL: $1"; exit 1; }
 
+          # Poll `systemctl is-active` with a bounded budget; fail if the unit
+          # is still active afterward so the EXIT trap dumps journalctl at the
+          # right diagnostic boundary (instead of hanging inside systemctl stop).
+          wait_for_exit() {
+            local svc=$1 budget=${2:-5}
+            echo "--- Waiting up to ${budget}s for $svc to exit ---"
+            for i in $(seq 1 "$budget"); do
+              systemctl is-active --quiet "vm0-runner-${svc}" || return 0
+              sleep 1
+            done
+            fail "$svc still active after ${budget}s (stuck on drain?)"
+          }
+
           cleanup() {
             echo "--- Cleanup: uninstalling services ---"
             sudo "$BIN_DIR/runner" service uninstall --name "$SVC_A" --force 2>/dev/null || true
@@ -1359,7 +1372,8 @@ jobs:
           echo "--- Waiting for job 2 ---"
           wait $SUBMIT2_PID || fail "Job 2 failed"
 
-          # 7. Uninstall A (systemctl stop blocks until drain finishes)
+          # 7. Wait for A to exit after drain, then uninstall
+          wait_for_exit "$SVC_A"
           echo "--- Uninstalling runner A ---"
           sudo "$BIN_DIR/runner" service uninstall --name "$SVC_A" --force
 
@@ -1367,9 +1381,10 @@ jobs:
           echo "--- Submit job 3 (only B) ---"
           sudo "$BIN_DIR/runner" local submit --group "$GROUP" --prompt 'echo job3' || fail "Job 3 failed"
 
-          # 9. Drain and uninstall B
+          # 9. Drain B, wait for it to exit, then uninstall
           echo "--- Draining runner B ---"
           sudo "$BIN_DIR/runner" service drain --name "$SVC_B"
+          wait_for_exit "$SVC_B"
           echo "--- Uninstalling runner B ---"
           sudo "$BIN_DIR/runner" service uninstall --name "$SVC_B" --force
           trap - EXIT
