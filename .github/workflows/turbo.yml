@@ -1293,7 +1293,18 @@ jobs:
           name: cli-dist
           path: /tmp/cli-deploy
       - name: Install CLI globally
-        run: sudo npm install -g /tmp/cli-deploy
+        run: |
+          set -euo pipefail
+          NODE_PREFIX=$(npm config get prefix)
+          sudo mkdir -p "$NODE_PREFIX/lib/node_modules/@vm0"
+          sudo cp -r /tmp/cli-deploy "$NODE_PREFIX/lib/node_modules/@vm0/cli"
+          sudo chmod +x \
+            "$NODE_PREFIX/lib/node_modules/@vm0/cli/dist/index.js" \
+            "$NODE_PREFIX/lib/node_modules/@vm0/cli/dist/zero.js"
+          sudo ln -sf "$NODE_PREFIX/lib/node_modules/@vm0/cli/dist/index.js" "$NODE_PREFIX/bin/vm0"
+          sudo ln -sf "$NODE_PREFIX/lib/node_modules/@vm0/cli/dist/zero.js" "$NODE_PREFIX/bin/zero"
+          vm0 --help >/dev/null
+          zero --help >/dev/null
       - name: Download E2E test tokens
         uses: actions/download-artifact@v8
         with:
@@ -1775,7 +1786,18 @@ jobs:
           name: cli-dist
           path: /tmp/cli-deploy
       - name: Install CLI globally
-        run: sudo npm install -g /tmp/cli-deploy
+        run: |
+          set -euo pipefail
+          NODE_PREFIX=$(npm config get prefix)
+          sudo mkdir -p "$NODE_PREFIX/lib/node_modules/@vm0"
+          sudo cp -r /tmp/cli-deploy "$NODE_PREFIX/lib/node_modules/@vm0/cli"
+          sudo chmod +x \
+            "$NODE_PREFIX/lib/node_modules/@vm0/cli/dist/index.js" \
+            "$NODE_PREFIX/lib/node_modules/@vm0/cli/dist/zero.js"
+          sudo ln -sf "$NODE_PREFIX/lib/node_modules/@vm0/cli/dist/index.js" "$NODE_PREFIX/bin/vm0"
+          sudo ln -sf "$NODE_PREFIX/lib/node_modules/@vm0/cli/dist/zero.js" "$NODE_PREFIX/bin/zero"
+          vm0 --help >/dev/null
+          zero --help >/dev/null
       - name: Download E2E test tokens
         uses: actions/download-artifact@v8
         with:
@@ -1832,7 +1854,18 @@ jobs:
           name: cli-dist
           path: /tmp/cli-deploy
       - name: Install CLI globally
-        run: sudo npm install -g /tmp/cli-deploy
+        run: |
+          set -euo pipefail
+          NODE_PREFIX=$(npm config get prefix)
+          sudo mkdir -p "$NODE_PREFIX/lib/node_modules/@vm0"
+          sudo cp -r /tmp/cli-deploy "$NODE_PREFIX/lib/node_modules/@vm0/cli"
+          sudo chmod +x \
+            "$NODE_PREFIX/lib/node_modules/@vm0/cli/dist/index.js" \
+            "$NODE_PREFIX/lib/node_modules/@vm0/cli/dist/zero.js"
+          sudo ln -sf "$NODE_PREFIX/lib/node_modules/@vm0/cli/dist/index.js" "$NODE_PREFIX/bin/vm0"
+          sudo ln -sf "$NODE_PREFIX/lib/node_modules/@vm0/cli/dist/zero.js" "$NODE_PREFIX/bin/zero"
+          vm0 --help >/dev/null
+          zero --help >/dev/null
       - name: Install GNU parallel for bats
         run: sudo curl -sL https://raw.githubusercontent.com/martinda/gnu-parallel/master/src/parallel -o /usr/local/bin/parallel && sudo chmod +x /usr/local/bin/parallel
       - name: Download E2E test tokens
