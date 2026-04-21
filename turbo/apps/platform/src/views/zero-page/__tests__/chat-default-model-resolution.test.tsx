@@ -212,6 +212,16 @@ async function expectComposerShowsModel(displayName: string): Promise<void> {
   });
 }
 
+// Thread page composer renders the model as plain text (picker is locked
+// once the thread has stored values). No combobox exists there.
+async function expectThreadComposerShowsModel(
+  displayName: string,
+): Promise<void> {
+  await waitFor(() => {
+    expect(screen.getByLabelText(displayName).tagName).toBe("SPAN");
+  });
+}
+
 async function expectAgentChatLoaded(): Promise<void> {
   // The document title is set to the agent display name once
   // setupAgentChatPage$ has fetched agent data; waiting on it guarantees
@@ -353,7 +363,7 @@ describe("chat composer — default model resolution", () => {
 
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
-    await expectComposerShowsModel("GLM-5.1");
+    await expectThreadComposerShowsModel("GLM-5.1");
   });
 
   // CHAT-DM-007: When the thread has no override, the composer on the
@@ -373,6 +383,7 @@ describe("chat composer — default model resolution", () => {
 
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
+    // Thread has no stored values yet — picker remains interactive.
     await expectComposerShowsModel("Claude Opus 4.7");
   });
 });
