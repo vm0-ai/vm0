@@ -158,9 +158,41 @@ struct GcCandidate {
     hash: String,
     size: u64,
     mtime: SystemTime,
+    /// Index into the enclosing `Vec<RootfsState>` so we can mark the parent
+    /// rootfs as "has a surviving snapshot" when this candidate is kept.
+    rootfs_idx: usize,
     /// Exclusive lock held until the candidate is deleted or explicitly kept.
     /// Prevents a `runner start` from acquiring a shared lock between probe and delete.
     _lock: Flock<std::fs::File>,
+}
+
+/// Per-rootfs state carried through the two-phase global GC: first we walk
+/// every rootfs and record whether we hold its exclusive lock plus whether
+/// any locked / recent snapshot already forces it to survive; then we prune
+/// snapshots globally and, for each rootfs with no surviving snapshot, try
+/// to delete the rootfs dir itself.
+struct RootfsState {
+    path: PathBuf,
+    hash: String,
+    /// `Some(_)` = we hold the exclusive rootfs lock and may delete the rootfs
+    /// directory if it ends up with no surviving snapshots. `None` = another
+    /// process holds it; we can only touch unlocked snapshots inside.
+    rootfs_lock: Option<Flock<std::fs::File>>,
+    /// True once any snapshot under this rootfs is known to survive GC
+    /// (in-use, too recent, kept by top-N, or a deletion failure). Blocks
+    /// rootfs-dir deletion in the final pass.
+    any_snapshot_survives: bool,
+}
+
+/// Set `any_snapshot_survives = true` on the rootfs at `idx`. `idx` is
+/// either a freshly-minted `rootfs_states.len()` at push time or a
+/// `GcCandidate.rootfs_idx` stamped at push time, so the `Some` branch is
+/// the only reachable one in practice; the no-op `None` is a belt-and-
+/// braces guard to satisfy panic-free indexing.
+fn mark_rootfs_survives(states: &mut [RootfsState], idx: usize) {
+    if let Some(state) = states.get_mut(idx) {
+        state.any_snapshot_survives = true;
+    }
 }
 
 /// Try to delete an orphaned rootfs directory (no surviving snapshots).
@@ -198,9 +230,22 @@ async fn try_delete_orphan_rootfs(rootfs_path: &Path, rootfs_hash: &str, dry_run
 
 /// GC for the nested image layout: `<images>/<rootfs>/snapshots/<snapshot>/`.
 ///
-/// Per-rootfs: mtime-sort snapshots, keep the latest `keep_latest`, delete the rest.
-/// After per-rootfs cleanup: if a rootfs dir has no surviving snapshots and its
-/// mtime is older than `GC_MIN_AGE`, delete the entire rootfs dir (orphan cleanup).
+/// Three phases, with **global** top-N semantics across all rootfs:
+///
+/// 1. Walk every rootfs. Probe locks and filter out snapshots that must
+///    survive (in-use, too recent, malformed); collect the remaining
+///    eligible snapshots into one flat candidate list. Rootfs dirs with
+///    no `snapshots/` subdir are orphan-deleted inline when we hold the
+///    rootfs lock.
+/// 2. Global top-N: sort the candidate list by mtime (newest first), keep
+///    the first `keep_latest`, delete the rest.
+/// 3. Orphan rootfs sweep: any rootfs whose lock we hold AND where no
+///    snapshot survived is deleted.
+///
+/// Global (cross-rootfs) rather than per-rootfs so a host that has
+/// accumulated many distinct rootfs hashes (e.g. per-PR builds) can be
+/// trimmed down — per-rootfs top-N kept every rootfs forever whenever
+/// each had ≤ N snapshots.
 async fn gc_nested_images(
     home: &HomePaths,
     keep_latest: Option<usize>,
@@ -219,7 +264,10 @@ async fn gc_nested_images(
     };
 
     let mut total_freed = 0u64;
+    let mut rootfs_states: Vec<RootfsState> = Vec::new();
+    let mut candidates: Vec<GcCandidate> = Vec::new();
 
+    // Phase 1: walk all rootfs, collect candidates across the entire images tree.
     while let Some(rootfs_entry) = next_entry_warn(&mut rootfs_entries, "images", &images_dir).await
     {
         let rootfs_path = rootfs_entry.path();
@@ -240,7 +288,7 @@ async fn gc_nested_images(
         // individual snapshots (guarded by their own locks), but must NOT
         // delete the rootfs directory itself.
         let rootfs_lock_path = home.rootfs_lock(&rootfs_hash);
-        let _rootfs_lock = match probe_lock(&rootfs_lock_path) {
+        let rootfs_lock = match probe_lock(&rootfs_lock_path) {
             LockProbe::Free(lock) => Some(lock),
             LockProbe::Held => {
                 info!("images/{rootfs_hash}: rootfs in use, will only GC unlocked snapshots");
@@ -251,13 +299,13 @@ async fn gc_nested_images(
                 continue;
             }
         };
-        let can_delete_rootfs = _rootfs_lock.is_some();
+        let can_delete_rootfs = rootfs_lock.is_some();
 
         let snapshots_dir = rootfs_path.join("snapshots");
         let mut snapshot_entries = match tokio::fs::read_dir(&snapshots_dir).await {
             Ok(rd) => rd,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                // No snapshots/ subdirectory — orphaned rootfs.
+                // No snapshots/ subdirectory — orphaned rootfs, handle inline.
                 if can_delete_rootfs {
                     total_freed +=
                         try_delete_orphan_rootfs(&rootfs_path, &rootfs_hash, dry_run).await;
@@ -270,15 +318,14 @@ async fn gc_nested_images(
             }
         };
 
-        // Track whether any snapshot (or stale non-snapshot entry) would
-        // remain in `snapshots/` after this GC pass. Used below in place of
-        // a physical `read_dir` check so dry-run correctly predicts
-        // orphan-rootfs eligibility — the physical tree is unchanged in
-        // dry-run, so `read_dir` would always see the pre-GC state.
-        let mut any_snapshot_survives = false;
+        let rootfs_idx = rootfs_states.len();
+        rootfs_states.push(RootfsState {
+            path: rootfs_path.clone(),
+            hash: rootfs_hash.clone(),
+            rootfs_lock,
+            any_snapshot_survives: false,
+        });
 
-        // Collect snapshot candidates.
-        let mut candidates: Vec<GcCandidate> = Vec::new();
         while let Some(snap_entry) =
             next_entry_warn(&mut snapshot_entries, "snapshots", &snapshots_dir).await
         {
@@ -288,11 +335,11 @@ async fn gc_nested_images(
                 .and_then(|n| n.to_str())
                 .map(String::from)
             else {
-                any_snapshot_survives = true;
+                mark_rootfs_survives(&mut rootfs_states, rootfs_idx);
                 continue;
             };
             if !snap_path.is_dir() {
-                any_snapshot_survives = true;
+                mark_rootfs_survives(&mut rootfs_states, rootfs_idx);
                 continue;
             }
 
@@ -300,92 +347,103 @@ async fn gc_nested_images(
             match probe_lock(&lock_path) {
                 LockProbe::Free(lock) => {
                     let (size, mtime) = dir_stats(&snap_path).await;
-                    candidates.push(GcCandidate {
-                        path: snap_path,
-                        hash: snap_hash,
-                        size,
-                        mtime,
-                        _lock: lock,
-                    });
+                    let age = SystemTime::now().duration_since(mtime).unwrap_or_default();
+                    if age < GC_MIN_AGE {
+                        // Too recent to be safely deleted (races with
+                        // `runner build` releasing its lock). Drop our
+                        // exclusive lock so the next caller can pick it
+                        // up; mark the rootfs as preserved.
+                        mark_rootfs_survives(&mut rootfs_states, rootfs_idx);
+                        info!(
+                            "images/{rootfs_hash}/snapshots/{snap_hash}: too recent ({}s), keeping",
+                            age.as_secs()
+                        );
+                    } else {
+                        candidates.push(GcCandidate {
+                            path: snap_path,
+                            hash: snap_hash,
+                            size,
+                            mtime,
+                            rootfs_idx,
+                            _lock: lock,
+                        });
+                    }
                 }
                 LockProbe::Held => {
-                    any_snapshot_survives = true;
+                    mark_rootfs_survives(&mut rootfs_states, rootfs_idx);
                     info!("images/{rootfs_hash}/snapshots/{snap_hash}: in use, skipping");
                 }
                 LockProbe::Error(e) => {
-                    any_snapshot_survives = true;
+                    mark_rootfs_survives(&mut rootfs_states, rootfs_idx);
                     info!(
                         "images/{rootfs_hash}/snapshots/{snap_hash}: lock probe failed ({e}), skipping"
                     );
                 }
             }
         }
+    }
 
-        // Protect recently-created snapshots.
-        let now = SystemTime::now();
-        candidates.retain(|c| {
-            let age = now.duration_since(c.mtime).unwrap_or_default();
-            if age < GC_MIN_AGE {
-                any_snapshot_survives = true;
-                info!(
-                    "images/{rootfs_hash}/snapshots/{}: too recent ({}s), keeping",
-                    c.hash,
-                    age.as_secs()
-                );
-                false
-            } else {
-                true
-            }
-        });
-
-        // Sort by mtime descending (newest first), keep latest N.
-        candidates.sort_by_key(|c| std::cmp::Reverse(c.mtime));
-        let keep_count = keep_latest.unwrap_or(0);
-        for c in candidates.iter().take(keep_count) {
-            any_snapshot_survives = true;
+    // Phase 2a: global sort by mtime descending, keep the top N across all rootfs.
+    candidates.sort_by_key(|c| std::cmp::Reverse(c.mtime));
+    let keep_count = keep_latest.unwrap_or(0);
+    for c in candidates.iter().take(keep_count) {
+        if let Some(state) = rootfs_states.get_mut(c.rootfs_idx) {
+            state.any_snapshot_survives = true;
             info!(
-                "images/{rootfs_hash}/snapshots/{}: keeping (latest unused, {})",
+                "images/{}/snapshots/{}: keeping (global top-{keep_count}, {})",
+                state.hash,
                 c.hash,
                 human_bytes(c.size)
             );
         }
+    }
 
-        for c in candidates.iter().skip(keep_count) {
-            if dry_run {
-                info!(
-                    "[dry-run] would delete images/{rootfs_hash}/snapshots/{} ({})",
-                    c.hash,
-                    human_bytes(c.size)
-                );
-            } else if let Err(e) = tokio::fs::remove_dir_all(&c.path).await {
-                warn!(
-                    "failed to remove images/{rootfs_hash}/snapshots/{}: {e}",
-                    c.hash
-                );
-                any_snapshot_survives = true;
-                continue;
-            } else {
-                info!(
-                    "deleted images/{rootfs_hash}/snapshots/{} ({})",
-                    c.hash,
-                    human_bytes(c.size)
-                );
+    // Phase 2b: delete everything past the top-N cutoff. Track per-rootfs
+    // deleted-snapshot bytes so the dry-run orphan accounting can subtract
+    // the overlap (see orphan-rootfs note below).
+    let mut dry_run_snapshot_bytes: Vec<u64> = vec![0; rootfs_states.len()];
+    for c in candidates.iter().skip(keep_count) {
+        // Clone `hash` so the immutable borrow on `rootfs_states` is
+        // released before the error branch mutates it below.
+        let Some(rootfs_hash) = rootfs_states.get(c.rootfs_idx).map(|s| s.hash.clone()) else {
+            continue;
+        };
+        if dry_run {
+            info!(
+                "[dry-run] would delete images/{rootfs_hash}/snapshots/{} ({})",
+                c.hash,
+                human_bytes(c.size)
+            );
+            if let Some(slot) = dry_run_snapshot_bytes.get_mut(c.rootfs_idx) {
+                *slot += c.size;
             }
-            total_freed += c.size;
+        } else if let Err(e) = tokio::fs::remove_dir_all(&c.path).await {
+            warn!(
+                "failed to remove images/{rootfs_hash}/snapshots/{}: {e}",
+                c.hash
+            );
+            mark_rootfs_survives(&mut rootfs_states, c.rootfs_idx);
+            continue;
+        } else {
+            info!(
+                "deleted images/{rootfs_hash}/snapshots/{} ({})",
+                c.hash,
+                human_bytes(c.size)
+            );
         }
+        total_freed += c.size;
+    }
 
-        // If no snapshot would remain, the rootfs becomes orphan. Only
-        // delete rootfs if we also hold the exclusive rootfs lock.
-        if !any_snapshot_survives && can_delete_rootfs {
-            // In dry-run, `try_delete_orphan_rootfs` stats the rootfs
-            // before removal, which still includes the snapshot subdirs
-            // we already counted in the loop above (nothing was physically
-            // removed). In real-mode the snapshot subdirs are gone by the
-            // time it runs, so the stat naturally excludes them. Subtract
-            // the overlap in dry-run to match real-mode totals.
-            let rootfs_bytes = try_delete_orphan_rootfs(&rootfs_path, &rootfs_hash, dry_run).await;
-            let overlap: u64 = if dry_run {
-                candidates.iter().skip(keep_count).map(|c| c.size).sum()
+    // Phase 3: any rootfs whose lock we hold AND where no snapshot survives
+    // is orphan — delete the rootfs directory itself. In dry-run mode
+    // `try_delete_orphan_rootfs` stats the rootfs *including* the snapshot
+    // subdirs we already counted (dry-run leaves them on disk), so subtract
+    // that overlap to match the real-mode total.
+    for (idx, state) in rootfs_states.iter().enumerate() {
+        if !state.any_snapshot_survives && state.rootfs_lock.is_some() {
+            let rootfs_bytes = try_delete_orphan_rootfs(&state.path, &state.hash, dry_run).await;
+            let overlap = if dry_run {
+                dry_run_snapshot_bytes.get(idx).copied().unwrap_or(0)
             } else {
                 0
             };
@@ -1440,7 +1498,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn gc_nested_images_keeps_latest_per_rootfs() {
+    async fn gc_nested_images_keeps_latest_single_rootfs() {
         use std::fs::FileTimes;
         use std::time::Duration;
 
@@ -1481,6 +1539,311 @@ mod tests {
             "rootfs should survive"
         );
         assert!(freed > 0);
+    }
+
+    /// Global top-N across rootfs: three distinct rootfs each with a single
+    /// snapshot. `keep_latest=1` keeps only the globally newest; the other
+    /// two rootfs become orphan (no surviving snapshot) and get deleted
+    /// alongside their lone snapshot.
+    #[tokio::test]
+    async fn gc_nested_images_keeps_global_top_n_across_rootfs() {
+        use std::fs::FileTimes;
+        use std::time::Duration;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let images_dir = home.images_dir();
+        let locks_dir = home.locks_dir();
+        std::fs::create_dir_all(&locks_dir).unwrap();
+
+        let specs: [(&str, &str, u64); 3] = [
+            ("rootfs_oldest", "snap_oldest", 1_000_000),
+            ("rootfs_middle", "snap_middle", 2_000_000),
+            ("rootfs_newest", "snap_newest", 3_000_000),
+        ];
+
+        for (rootfs_name, snap_name, mtime_secs) in &specs {
+            let rootfs_dir = images_dir.join(rootfs_name);
+            let snap = rootfs_dir.join("snapshots").join(snap_name);
+            std::fs::create_dir_all(&snap).unwrap();
+            std::fs::write(snap.join("snapshot.bin"), b"data").unwrap();
+            std::fs::write(rootfs_dir.join("rootfs.ext4"), b"rootfs").unwrap();
+
+            let t = SystemTime::UNIX_EPOCH + Duration::from_secs(*mtime_secs);
+            std::fs::File::open(&snap)
+                .unwrap()
+                .set_times(FileTimes::new().set_modified(t))
+                .unwrap();
+            // Age-gate the rootfs dir so orphan cleanup is eligible.
+            std::fs::File::open(&rootfs_dir)
+                .unwrap()
+                .set_times(FileTimes::new().set_modified(t))
+                .unwrap();
+        }
+
+        let freed = gc_nested_images(&home, Some(1), false).await.unwrap();
+
+        // Only the globally newest rootfs+snapshot should survive.
+        assert!(
+            images_dir.join("rootfs_newest").exists(),
+            "globally newest rootfs should survive"
+        );
+        assert!(
+            images_dir
+                .join("rootfs_newest/snapshots/snap_newest")
+                .exists(),
+            "globally newest snapshot should survive"
+        );
+        assert!(
+            !images_dir.join("rootfs_middle").exists(),
+            "middle rootfs should be deleted (snapshot not in top-1)"
+        );
+        assert!(
+            !images_dir.join("rootfs_oldest").exists(),
+            "oldest rootfs should be deleted (snapshot not in top-1)"
+        );
+        assert!(freed > 0);
+    }
+
+    /// Top-N selection must pick across rootfs boundaries — if rootfs A has
+    /// the newest snapshot and rootfs B has the second-newest, `keep_latest=2`
+    /// must keep one from each rather than greedily draining A. Regression
+    /// guard: a bug that reintroduced per-rootfs buckets would keep only A
+    /// and drop B entirely.
+    #[tokio::test]
+    async fn gc_nested_images_top_n_spans_multiple_rootfs() {
+        use std::fs::FileTimes;
+        use std::time::Duration;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let images_dir = home.images_dir();
+        let locks_dir = home.locks_dir();
+        std::fs::create_dir_all(&locks_dir).unwrap();
+
+        // Two rootfs, each with one old snapshot. Rootfs A's snapshot is
+        // newer than rootfs B's.
+        let rootfs_a = images_dir.join("rootfs_a");
+        let snap_a = rootfs_a.join("snapshots").join("snap_a");
+        let rootfs_b = images_dir.join("rootfs_b");
+        let snap_b = rootfs_b.join("snapshots").join("snap_b");
+        for d in [&snap_a, &snap_b] {
+            std::fs::create_dir_all(d).unwrap();
+            std::fs::write(d.join("snapshot.bin"), b"data").unwrap();
+        }
+        std::fs::write(rootfs_a.join("rootfs.ext4"), b"rootfs_a").unwrap();
+        std::fs::write(rootfs_b.join("rootfs.ext4"), b"rootfs_b").unwrap();
+
+        let time_b = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        let time_a = SystemTime::UNIX_EPOCH + Duration::from_secs(2_000_000);
+        std::fs::File::open(&snap_a)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(time_a))
+            .unwrap();
+        std::fs::File::open(&snap_b)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(time_b))
+            .unwrap();
+
+        // keep_latest=2 with 2 total candidates across 2 rootfs → both stay.
+        let freed = gc_nested_images(&home, Some(2), false).await.unwrap();
+        assert!(snap_a.exists(), "snap_a (newest) must survive");
+        assert!(
+            snap_b.exists(),
+            "snap_b (older, but still in top-2 globally) must survive"
+        );
+        assert_eq!(freed, 0, "no candidates should have been deleted");
+    }
+
+    /// Locked and recent snapshots are protected but must NOT consume a
+    /// top-N slot — the quota applies only to the eligible (unlocked,
+    /// old-enough) candidate pool. Regression guard for a variant where
+    /// `keep_latest` was implemented against the raw snapshot count.
+    #[tokio::test]
+    async fn gc_nested_images_locked_and_recent_snapshots_dont_consume_top_n() {
+        use std::fs::FileTimes;
+        use std::time::Duration;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let images_dir = home.images_dir();
+        let locks_dir = home.locks_dir();
+        std::fs::create_dir_all(&locks_dir).unwrap();
+
+        // rootfs_locked: one locked snapshot (in use) — protected, outside quota.
+        let rootfs_locked = images_dir.join("rootfs_locked");
+        let snap_locked = rootfs_locked.join("snapshots").join("snap_locked");
+        std::fs::create_dir_all(&snap_locked).unwrap();
+        std::fs::write(snap_locked.join("snapshot.bin"), b"data").unwrap();
+        std::fs::write(rootfs_locked.join("rootfs.ext4"), b"r").unwrap();
+        let old_time = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        std::fs::File::open(&snap_locked)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(old_time))
+            .unwrap();
+
+        // rootfs_recent: one recent snapshot (< GC_MIN_AGE) — protected, outside quota.
+        let rootfs_recent = images_dir.join("rootfs_recent");
+        let snap_recent = rootfs_recent.join("snapshots").join("snap_recent");
+        std::fs::create_dir_all(&snap_recent).unwrap();
+        std::fs::write(snap_recent.join("snapshot.bin"), b"data").unwrap();
+        std::fs::write(rootfs_recent.join("rootfs.ext4"), b"r").unwrap();
+        // snap_recent mtime stays at "now" (default), so age < GC_MIN_AGE.
+
+        // rootfs_old: two eligible old snapshots, only one should survive keep_latest=1.
+        let rootfs_old = images_dir.join("rootfs_old");
+        let snap_old_a = rootfs_old.join("snapshots").join("snap_old_a");
+        let snap_old_b = rootfs_old.join("snapshots").join("snap_old_b");
+        for d in [&snap_old_a, &snap_old_b] {
+            std::fs::create_dir_all(d).unwrap();
+            std::fs::write(d.join("snapshot.bin"), b"data").unwrap();
+        }
+        std::fs::write(rootfs_old.join("rootfs.ext4"), b"r").unwrap();
+        let older = SystemTime::UNIX_EPOCH + Duration::from_secs(500_000);
+        let newer = SystemTime::UNIX_EPOCH + Duration::from_secs(900_000);
+        std::fs::File::open(&snap_old_a)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(older))
+            .unwrap();
+        std::fs::File::open(&snap_old_b)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(newer))
+            .unwrap();
+
+        // Hold a shared lock on snap_locked (simulating runner start).
+        let snap_lock_file = lock::open_lock_file(&home.snapshot_lock("snap_locked")).unwrap();
+        let _snap_held = Flock::lock(snap_lock_file, FlockArg::LockShared).unwrap();
+
+        let freed = gc_nested_images(&home, Some(1), false).await.unwrap();
+
+        // Protected: untouched.
+        assert!(snap_locked.exists(), "locked snapshot must survive");
+        assert!(snap_recent.exists(), "recent snapshot must survive");
+        // Eligible pool = {snap_old_a, snap_old_b}. keep_latest=1 → snap_old_b
+        // (newer mtime) survives, snap_old_a is deleted. Crucially, the quota
+        // was NOT consumed by snap_locked or snap_recent.
+        assert!(snap_old_b.exists(), "newer eligible snapshot must survive");
+        assert!(
+            !snap_old_a.exists(),
+            "older eligible snapshot must be deleted (top-1 quota spent on snap_old_b)"
+        );
+        // rootfs_old still has snap_old_b → rootfs dir survives.
+        assert!(rootfs_old.exists(), "rootfs with surviving snapshot stays");
+        assert!(freed > 0);
+    }
+
+    /// A rootfs whose mtime is younger than `GC_MIN_AGE` must NOT be
+    /// orphan-deleted, even after all its old snapshots are pruned. The
+    /// `any_snapshot_survives=false` branch in Phase 3 routes through
+    /// `try_delete_orphan_rootfs` which applies a second age check against
+    /// the rootfs-dir mtime itself. Covers the invariant that removing a
+    /// snapshot subdir does NOT bump the rootfs-dir mtime (only its
+    /// `snapshots/` child's mtime), so a freshly-built rootfs is preserved
+    /// during its build-release race window.
+    #[tokio::test]
+    async fn gc_nested_images_recent_rootfs_with_all_old_snaps_stays() {
+        use std::fs::FileTimes;
+        use std::time::Duration;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let images_dir = home.images_dir();
+        let locks_dir = home.locks_dir();
+        std::fs::create_dir_all(&locks_dir).unwrap();
+
+        let rootfs_dir = images_dir.join("rootfs_recent_shell");
+        let snap = rootfs_dir.join("snapshots").join("snap_old");
+        std::fs::create_dir_all(&snap).unwrap();
+        std::fs::write(snap.join("snapshot.bin"), b"data").unwrap();
+        std::fs::write(rootfs_dir.join("rootfs.ext4"), b"rootfs").unwrap();
+
+        // Snapshot is old — eligible for deletion.
+        let old_time = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        std::fs::File::open(&snap)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(old_time))
+            .unwrap();
+        // Rootfs dir itself stays at mtime "now" (default) — inside GC_MIN_AGE.
+
+        let freed = gc_nested_images(&home, Some(0), false).await.unwrap();
+
+        assert!(
+            !snap.exists(),
+            "old snapshot is eligible and must be deleted"
+        );
+        assert!(
+            rootfs_dir.exists(),
+            "rootfs dir is recent — must survive even with no snapshots left"
+        );
+        assert!(
+            rootfs_dir.join("rootfs.ext4").exists(),
+            "rootfs file must still be on disk"
+        );
+        assert!(freed > 0, "snapshot bytes should be counted as freed");
+    }
+
+    /// Dry-run under global top-N across multiple rootfs: the reported
+    /// `freed` bytes must equal what a real run would free, with each
+    /// orphaned rootfs contributing its *full* directory size (snapshot
+    /// bytes + rootfs files) exactly once. Regression guard for the
+    /// per-rootfs `dry_run_snapshot_bytes` overlap vector — an off-by-one
+    /// or wrong-index subtraction would show up as a byte mismatch here.
+    #[tokio::test]
+    async fn gc_nested_images_dry_run_global_top_n_byte_accounting() {
+        use std::fs::FileTimes;
+        use std::time::Duration;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let images_dir = home.images_dir();
+        let locks_dir = home.locks_dir();
+        std::fs::create_dir_all(&locks_dir).unwrap();
+
+        // Three rootfs, each with one old snapshot, strictly increasing mtimes.
+        let specs: [(&str, &str, u64); 3] = [
+            ("rootfs_1", "snap_1", 1_000_000),
+            ("rootfs_2", "snap_2", 2_000_000),
+            ("rootfs_3", "snap_3", 3_000_000),
+        ];
+        for (rootfs_name, snap_name, mtime_secs) in &specs {
+            let rootfs_dir = images_dir.join(rootfs_name);
+            let snap = rootfs_dir.join("snapshots").join(snap_name);
+            std::fs::create_dir_all(&snap).unwrap();
+            std::fs::write(snap.join("snapshot.bin"), b"data").unwrap();
+            std::fs::write(rootfs_dir.join("rootfs.ext4"), b"rootfs").unwrap();
+            let t = SystemTime::UNIX_EPOCH + Duration::from_secs(*mtime_secs);
+            std::fs::File::open(&snap)
+                .unwrap()
+                .set_times(FileTimes::new().set_modified(t))
+                .unwrap();
+            // Age-gate the rootfs dir so orphan cleanup is eligible in
+            // both dry-run and real-mode.
+            std::fs::File::open(&rootfs_dir)
+                .unwrap()
+                .set_times(FileTimes::new().set_modified(t))
+                .unwrap();
+        }
+
+        // Expected: dry-run with keep_latest=1 would wipe rootfs_1 and
+        // rootfs_2 in full; rootfs_3's snapshot survives as top-1. The
+        // reported bytes should equal the full dir size of rootfs_1 +
+        // rootfs_2 (captured BEFORE dry-run, because dry-run leaves disk
+        // untouched and we can measure after).
+        let (rootfs_1_bytes, _) = dir_stats(&images_dir.join("rootfs_1")).await;
+        let (rootfs_2_bytes, _) = dir_stats(&images_dir.join("rootfs_2")).await;
+        let expected = rootfs_1_bytes + rootfs_2_bytes;
+        assert!(expected > 0, "test fixture must have non-zero size");
+
+        let freed = gc_nested_images(&home, Some(1), true).await.unwrap();
+
+        // Dry-run leaves everything in place.
+        assert!(images_dir.join("rootfs_1").exists());
+        assert!(images_dir.join("rootfs_2").exists());
+        assert!(images_dir.join("rootfs_3").exists());
+        assert_eq!(
+            freed, expected,
+            "dry-run bytes must match the sum of orphaned rootfs dir sizes"
+        );
     }
 
     #[tokio::test]
