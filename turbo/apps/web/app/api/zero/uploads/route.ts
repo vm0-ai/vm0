@@ -9,7 +9,8 @@ import { env } from "../../../../src/env";
 import { logger } from "../../../../src/lib/shared/logger";
 import {
   ALLOWED_UPLOAD_TYPES,
-  MAX_FILE_SIZE_BYTES,
+  MAX_MULTIPART_UPLOAD_SIZE_BYTES,
+  MAX_MULTIPART_UPLOAD_SIZE_LABEL,
 } from "../../../../src/lib/zero/uploads/constants";
 
 const log = logger("api:zero:uploads");
@@ -39,10 +40,13 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (file.size > MAX_FILE_SIZE_BYTES) {
+  if (file.size > MAX_MULTIPART_UPLOAD_SIZE_BYTES) {
     return NextResponse.json(
       {
-        error: { message: "File too large (max 100 MB)", code: "BAD_REQUEST" },
+        error: {
+          message: `File too large (max ${MAX_MULTIPART_UPLOAD_SIZE_LABEL})`,
+          code: "BAD_REQUEST",
+        },
       },
       { status: 400 },
     );

@@ -10,7 +10,8 @@ import { env } from "../../../../../src/env";
 import { logger } from "../../../../../src/lib/shared/logger";
 import {
   ALLOWED_UPLOAD_TYPES,
-  MAX_FILE_SIZE_BYTES,
+  MAX_PRESIGNED_UPLOAD_SIZE_BYTES,
+  MAX_PRESIGNED_UPLOAD_SIZE_LABEL,
 } from "../../../../../src/lib/zero/uploads/constants";
 
 const log = logger("api:zero:uploads:prepare");
@@ -19,9 +20,10 @@ const log = logger("api:zero:uploads:prepare");
  * Presigned-URL upload preparation.
  *
  * The legacy `POST /api/zero/uploads` proxies the whole file through the
- * Next.js runtime, which chokes on 100 MB bodies in `next dev` and on
- * Vercel's 4.5 MB serverless body cap in production. This endpoint returns
- * a presigned PUT URL so the browser uploads directly to R2.
+ * Next.js runtime, which chokes on large bodies in `next dev` and on
+ * Vercel's ~4.5 MB serverless body cap in production. This endpoint returns
+ * a presigned PUT URL so the browser uploads directly to R2, which lifts
+ * the practical cap up to R2's 5 GB single-PUT limit.
  */
 
 const PUT_URL_TTL_SECONDS = 3600; // 1 hour to finish the upload
@@ -59,10 +61,13 @@ export async function POST(request: NextRequest) {
   }
   const { filename, contentType, size } = parsed.data;
 
-  if (size > MAX_FILE_SIZE_BYTES) {
+  if (size > MAX_PRESIGNED_UPLOAD_SIZE_BYTES) {
     return NextResponse.json(
       {
-        error: { message: "File too large (max 100 MB)", code: "BAD_REQUEST" },
+        error: {
+          message: `File too large (max ${MAX_PRESIGNED_UPLOAD_SIZE_LABEL})`,
+          code: "BAD_REQUEST",
+        },
       },
       { status: 400 },
     );

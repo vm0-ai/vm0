@@ -75,12 +75,12 @@ describe("POST /api/zero/uploads/prepare", () => {
       expect((await response.json()).error.code).toBe("BAD_REQUEST");
     });
 
-    it("rejects files larger than 100 MB", async () => {
+    it("rejects files larger than 1 GB", async () => {
       const response = await POST(
         createPrepareRequest({
           filename: "big.bin",
           contentType: "application/pdf",
-          size: 100 * 1024 * 1024 + 1,
+          size: 1024 * 1024 * 1024 + 1,
         }),
       );
       expect(response.status).toBe(400);
