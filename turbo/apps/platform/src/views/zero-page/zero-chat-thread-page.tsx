@@ -488,7 +488,7 @@ function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
   const allFinishedLoadable = useLastLoadable(thread.allFinished$);
   const runActive =
     allFinishedLoadable.state === "hasData" && !allFinishedLoadable.data;
-  const [c1, c2, c3] = useGet(thread.thinkingIndicator.blockColors$);
+  const [c1, c2, c3] = useGet(thread.blockColors$);
   const blockStyle = {
     "--zb-c1": c1,
     "--zb-c2": c2,
@@ -499,8 +499,8 @@ function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
   const lastIsAssistant = lastGroup?.role === "assistant";
   const waitingForAssistant = !!lastGroup && !lastIsAssistant;
   const running = runActive || waitingForAssistant;
-  const label = useGet(thread.thinkingIndicator.rotatingPhrase$);
-  const donePhrase = useGet(thread.thinkingIndicator.donePhrase$);
+  const label = useGet(thread.rotatingPhrase$);
+  const donePhrase = useGet(thread.donePhrase$);
 
   if (!lastGroup) {
     return null;

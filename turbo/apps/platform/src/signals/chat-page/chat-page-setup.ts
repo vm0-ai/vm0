@@ -92,7 +92,7 @@ export const setupChatPage$ = command(
     );
 
     await Promise.all([
-      set(thread.thinkingIndicator.runPhraseLoop$, signal),
+      set(thread.runPhraseLoop$, signal),
       set(thread.loadPagedMessages$, signal),
     ]);
   },
