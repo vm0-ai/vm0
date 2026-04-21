@@ -1,5 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse, type NextRequest } from "next/server";
+import Stripe from "stripe";
 import { initServices } from "../../../src/lib/init-services";
 import { env } from "../../../src/env";
 import { getCampaign } from "../../../src/lib/zero/billing/one-time-products";
@@ -35,10 +36,11 @@ export async function GET(
   // follow the host the user actually hit (bad smell #6 — NEXT_PUBLIC_ vars are
   // bundled into client code and should not be read server-side).
   const origin = req.nextUrl.origin;
+  const errorPage = (reason: string) => {
+    return new URL(`/redeem/error?reason=${reason}`, origin);
+  };
   if (!STRIPE_SECRET_KEY) {
-    return NextResponse.redirect(
-      new URL("/?error=billing_unavailable", origin),
-    );
+    return NextResponse.redirect(errorPage("billing_unavailable"));
   }
 
   const { campaign: campaignKey } = await ctx.params;
@@ -60,19 +62,39 @@ export async function GET(
     return NextResponse.redirect(target);
   }
   if (!orgId) {
-    return NextResponse.redirect(new URL("/?error=no_active_org", origin));
+    return NextResponse.redirect(errorPage("no_active_org"));
   }
   if (orgRole !== "org:admin") {
-    return NextResponse.redirect(new URL("/?error=admin_required", origin));
+    return NextResponse.redirect(errorPage("admin_required"));
   }
 
   const homeUrl = new URL("/", origin).toString();
-  const outcome = await startOrResumeRedemption({
-    orgId,
-    campaignKey,
-    successUrl: homeUrl,
-    cancelUrl: homeUrl,
-  });
+  let outcome;
+  try {
+    outcome = await startOrResumeRedemption({
+      orgId,
+      campaignKey,
+      successUrl: homeUrl,
+      cancelUrl: homeUrl,
+    });
+  } catch (err) {
+    // Config drift: env points at a priceId/couponId Stripe doesn't have.
+    // Redirect instead of 500ing so admin users see a readable signal.
+    // Other Stripe failures (network, auth) still throw so on-call notices.
+    if (
+      err instanceof Stripe.errors.StripeInvalidRequestError &&
+      err.code === "resource_missing"
+    ) {
+      log.error("campaign misconfigured — Stripe resource missing", {
+        orgId,
+        campaignKey,
+        param: err.param,
+        message: err.message,
+      });
+      return NextResponse.redirect(errorPage("campaign_misconfigured"));
+    }
+    throw err;
+  }
 
   switch (outcome.kind) {
     case "redirect":

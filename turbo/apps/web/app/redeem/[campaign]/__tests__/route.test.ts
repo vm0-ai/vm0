@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import Stripe from "stripe";
 import {
   createTestRequest,
   findOrgPromoRedemption,
@@ -23,9 +24,12 @@ const stripeMocks = vi.hoisted(() => {
   };
 });
 
-vi.mock("stripe", () => {
-  return {
-    default: function MockStripe() {
+vi.mock("stripe", async (importOriginal) => {
+  // Keep the real `Stripe.errors.*` classes so route-level `instanceof` checks
+  // work; only the constructor is stubbed.
+  const actual = await importOriginal<typeof import("stripe")>();
+  const MockStripe = Object.assign(
+    function MockStripe() {
       return {
         products: { retrieve: vi.fn() },
         prices: { list: vi.fn() },
@@ -43,7 +47,9 @@ vi.mock("stripe", () => {
         webhooks: { constructEvent: vi.fn() },
       };
     },
-  };
+    { errors: actual.default.errors },
+  );
+  return { default: MockStripe };
 });
 
 import { GET } from "../route";
@@ -126,7 +132,9 @@ describe("GET /redeem/[campaign]", () => {
     });
 
     expect(response.status).toBe(307);
-    expect(response.headers.get("location")).toContain("error=admin_required");
+    expect(response.headers.get("location")).toContain(
+      "/redeem/error?reason=admin_required",
+    );
   });
 
   it("creates a Stripe Checkout session on first visit and records the row", async () => {
@@ -258,6 +266,30 @@ describe("GET /redeem/[campaign]", () => {
     );
     expect(stripeMocks.checkoutSessionsCreate).not.toHaveBeenCalled();
     expect(stripeMocks.checkoutSessionsRetrieve).not.toHaveBeenCalled();
+  });
+
+  it("redirects home with campaign_misconfigured when Stripe coupon is missing", async () => {
+    await updateOrgStripeFields(user.orgId, {
+      stripeCustomerId: uniqueId("cus"),
+    });
+
+    stripeMocks.checkoutSessionsCreate.mockRejectedValue(
+      new Stripe.errors.StripeInvalidRequestError({
+        type: "invalid_request_error",
+        message: "No such coupon: 'ZERO100'",
+        code: "resource_missing",
+        param: "discounts[0][coupon]",
+      }),
+    );
+
+    const response = await GET(createTestRequest(REDEEM_URL), {
+      params: params(CAMPAIGN),
+    });
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toContain(
+      "/redeem/error?reason=campaign_misconfigured",
+    );
   });
 
   it("redirects home with processing when Stripe session is complete but webhook hasn't landed yet", async () => {
