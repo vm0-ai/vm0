@@ -84,9 +84,9 @@ function UseCaseCard({
       className="group block overflow-hidden rounded-[20px] bg-white transition-all duration-300 hover:-translate-y-0.5"
       style={{ textDecoration: "none" }}
     >
-      {/* Colorful top area - reduced height */}
+      {/* Colorful top area */}
       <div
-        className="relative flex items-center justify-between px-6 pb-4 pt-8"
+        className="relative flex items-center justify-between px-6 pb-5 pt-10"
         style={{ backgroundColor: useCase.color }}
       >
         {/* Grid texture overlay */}
@@ -99,10 +99,10 @@ function UseCaseCard({
           }}
         />
         {/* Agent avatar */}
-        <AgentAvatar config={useCase.avatar} size={48} />
+        <AgentAvatar config={useCase.avatar} size={56} />
 
         {/* Connector logos */}
-        <div className="relative flex items-center gap-1.5" style={{ top: 6 }}>
+        <div className="relative flex items-center gap-1.5" style={{ top: 8 }}>
           {useCase.connectors.map((c) => {
             return <ConnectorIcon key={c.id} connector={c} />;
           })}
@@ -110,7 +110,7 @@ function UseCaseCard({
       </div>
 
       {/* Content - title only */}
-      <div className="flex flex-col px-6 pb-6 pt-4">
+      <div className="flex flex-col px-6 pb-7 pt-5">
         <h3 className="text-lg font-medium leading-snug tracking-[-0.2px] text-[hsl(var(--foreground))] group-hover:text-[#ed4e01]">
           {title}
         </h3>
