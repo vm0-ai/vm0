@@ -129,8 +129,8 @@ export function CustomConnectorsPanel() {
     <section className="flex flex-col gap-3">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-medium text-muted-foreground">
-          Custom connectors
-          {connectors ? ` (${connectors.length})` : ""}
+          <span>Custom connectors</span>
+          {connectors && <span> ({connectors.length})</span>}
         </h2>
         {isAdmin && (
           <Button size="sm" onClick={openCreate}>
