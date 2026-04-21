@@ -1,8 +1,4 @@
-import {
-  createHandler,
-  createSafeErrorHandler,
-  tsr,
-} from "../../../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../../../src/lib/ts-rest-handler";
 import { zeroRunRunnerContract, type SandboxReuseResult } from "@vm0/core";
 import { initServices } from "../../../../../../src/lib/init-services";
 import {
@@ -57,7 +53,7 @@ const router = tsr.router(zeroRunRunnerContract, {
 });
 
 const handler = createHandler(zeroRunRunnerContract, router, {
-  errorHandler: createSafeErrorHandler("zero-runs:runner"),
+  routeName: "zero.runs.runner",
 });
 
 export { handler as GET };
