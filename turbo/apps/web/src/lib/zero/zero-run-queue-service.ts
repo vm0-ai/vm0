@@ -506,10 +506,6 @@ export async function dispatchQueuedZeroRun(
     params.orgId,
     overrides,
   );
-  const updatedParams: CreateRunParams = {
-    ...params,
-    secrets: { ...params.secrets, ZERO_TOKEN: zeroToken },
-  };
 
   // Load compose + authorize (same validation as direct path)
   const { composeContent, compose } = await loadCompose(
@@ -542,11 +538,11 @@ export async function dispatchQueuedZeroRun(
   const sandboxToken = await generateSandboxToken(params.userId, runId);
   const tokenTime = Date.now();
   const contextResult = await buildZeroExecutionContext({
-    ...updatedParams,
+    ...params,
+    secrets: { ...params.secrets, ZERO_TOKEN: zeroToken },
     sandboxToken,
     agentCompose: composeContent,
     runId,
-    agentName: params.agentName,
     apiStartTime,
   });
 
