@@ -437,6 +437,7 @@ jobs:
           fetch-depth: 0
       - uses: ./.github/actions/toolchain-init
       - name: Check Migration Immutability
+        if: vars.CI_CHECK_IMMUTABLE_MIGRATE != '0'
         run: |
           BASE_REF="${{ needs.prepare.outputs.base-ref }}"
           # Check that migration SQL files and snapshots are only added, never modified or deleted
