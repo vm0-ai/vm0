@@ -4,17 +4,13 @@ import {
   voiceChatEvents,
 } from "../../../db/schema/voice-chat";
 import { createZeroRun, type CreateZeroRunResult } from "../zero-run-service";
-import { cancelRun } from "../zero-run-cancel";
 import {
   buildVoiceChatQuickPrepPrompt,
   buildVoiceChatMeetingPrompt,
   buildVoiceChatObservationOnlyPrompt,
 } from "../integration-prompt";
 import { conflict, notFound, badRequest, forbidden } from "../../shared/errors";
-import { logger } from "../../shared/logger";
 import { adaptVoiceChatSessionTrigger } from "./adapt-voice-chat-session-trigger";
-
-const log = logger("zero:voice-chat:session");
 
 // ---------------------------------------------------------------------------
 // Session CRUD
@@ -112,7 +108,11 @@ export async function endSession(
     throw badRequest("Session is not active");
   }
 
-  // Write session-end event and update status atomically
+  // Write session-end event and update status atomically. Slow-brain sees the
+  // event within its 5s poll window and self-exits via the agent-complete
+  // webhook path — which is what populates `agent_runs.result.agentSessionId`
+  // so the next voice chat can resume this CC session. Hard-cancelling here
+  // would skip that webhook and lose the session id.
   await db.transaction(async (tx) => {
     await tx.insert(voiceChatEvents).values({
       sessionId,
@@ -124,15 +124,6 @@ export async function endSession(
       .set({ status: "ended", endedAt: new Date() })
       .where(eq(voiceChatSessions.id, sessionId));
   });
-
-  // Cancel slow-brain run if active (ignore errors if already terminated)
-  if (session.runId) {
-    try {
-      await cancelRun(session.runId, userId, orgId);
-    } catch {
-      log.debug(`Run ${session.runId} already terminated, skipping cancel`);
-    }
-  }
 }
 
 // ---------------------------------------------------------------------------

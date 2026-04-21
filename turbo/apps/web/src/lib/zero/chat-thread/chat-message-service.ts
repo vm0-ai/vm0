@@ -7,6 +7,7 @@ import { chatThreads } from "../../../db/schema/chat-thread";
 import { agentRuns } from "../../../db/schema/agent-run";
 import { zeroRuns } from "../../../db/schema/zero-run";
 import { publishUserSignal } from "../../infra/realtime/client";
+import { hasAgentSessionId } from "../run-result";
 
 /**
  * Insert a chat message (user row on send, or assistant row on terminal
@@ -311,17 +312,6 @@ export async function getLatestRunProviderTypeForThread(
     .orderBy(desc(agentRuns.createdAt))
     .limit(1);
   return row?.modelProvider ?? null;
-}
-
-function hasAgentSessionId(
-  value: unknown,
-): value is { agentSessionId: string } {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "agentSessionId" in value &&
-    typeof (value as { agentSessionId: unknown }).agentSessionId === "string"
-  );
 }
 
 /**
