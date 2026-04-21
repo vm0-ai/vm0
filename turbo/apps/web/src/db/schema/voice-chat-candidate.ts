@@ -41,15 +41,17 @@ export const featureCandidateVoiceChatSessions = pgTable(
     mode: varchar("mode", { length: 20 }).notNull().default("chat"),
     // Valid values: "active" | "ended" | "timeout"
     status: varchar("status", { length: 20 }).notNull().default("active"),
-    context: text("context"),
-    contextSeq: integer("context_seq").notNull().default(0),
-    contextVersion: integer("context_version").notNull().default(0),
+    conversationSummary: text("conversation_summary"),
+    workingTasksSummary: text("working_tasks_summary"),
+    finishedTasksSummary: text("finished_tasks_summary"),
+    summarySeq: integer("summary_seq").notNull().default(0),
+    summaryVersion: integer("summary_version").notNull().default(0),
     // Valid values: "idle" | "running"
     reasoningStatus: varchar("reasoning_status", { length: 20 })
       .notNull()
       .default("idle"),
     reasoningPending: boolean("reasoning_pending").notNull().default(false),
-    lastReasoningAt: timestamp("last_reasoning_at"),
+    lastSummaryAt: timestamp("last_summary_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     lastHeartbeatAt: timestamp("last_heartbeat_at").defaultNow().notNull(),
     endedAt: timestamp("ended_at"),

@@ -85,9 +85,18 @@ export async function POST(
             return `[${i.seq}] ${i.role}: ${i.content ?? ""}`;
           })
           .join("\n");
+  const reasonerSummary = [
+    session.conversationSummary?.trim(),
+    session.workingTasksSummary?.trim(),
+    session.finishedTasksSummary?.trim(),
+  ]
+    .filter((s): s is string => {
+      return Boolean(s);
+    })
+    .join("\n\n");
   const appendSystemPrompt = [
     `[Voice chat context]\n${agentSystemPrompt.trim() || "(none)"}`,
-    `[Reasoner context]\n${session.context?.trim() || "(none)"}`,
+    `[Reasoner context]\n${reasonerSummary || "(none)"}`,
     `[Recent items]\n${recentFormatted}`,
   ].join("\n\n");
 

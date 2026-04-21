@@ -1,10 +1,11 @@
+// TODO(#10334): split large commands to comply with max-lines-per-function (128)
+// oxlint-disable max-lines-per-function
 import { command, computed, state } from "ccstate";
 import {
   FeatureSwitchKey,
   zeroVoiceChatCandidateContract,
   type VoiceChatCandidateItem,
   type VoiceChatCandidateItemRole,
-  type VoiceChatCandidateSession,
   type VoiceChatCandidateTask,
 } from "@vm0/core";
 import { featureSwitch$ } from "../external/feature-switch.ts";
@@ -82,11 +83,30 @@ When you receive a message starting with [Task ...], it is the result of a task 
 - Be warm and conversational.
 `.trim();
 
-function composeInstructions(context: string): string {
-  if (!context.trim()) {
-    return TALKER_INSTRUCTIONS_BASE;
+interface TalkerDynamicContext {
+  conversationSummary: string;
+  workingTasksSummary: string;
+  finishedTasksSummary: string;
+  recentTaskLogs: string;
+}
+
+function composeInstructions(ctx: TalkerDynamicContext): string {
+  const parts: string[] = [TALKER_INSTRUCTIONS_BASE];
+  if (ctx.conversationSummary.trim()) {
+    parts.push(`## Conversation context\n${ctx.conversationSummary.trim()}`);
   }
-  return `${TALKER_INSTRUCTIONS_BASE}\n\n## Context\n${context}`;
+  if (ctx.workingTasksSummary.trim()) {
+    parts.push(`## Tasks in flight\n${ctx.workingTasksSummary.trim()}`);
+  }
+  if (ctx.finishedTasksSummary.trim()) {
+    parts.push(
+      `## Recently finished tasks\n${ctx.finishedTasksSummary.trim()}`,
+    );
+  }
+  if (ctx.recentTaskLogs.trim()) {
+    parts.push(`## Recent task activity\n${ctx.recentTaskLogs.trim()}`);
+  }
+  return parts.join("\n\n");
 }
 
 function shortPrompt(prompt: string, max = 60): string {
@@ -113,10 +133,13 @@ const internalTasksByCallId$ = state<Record<string, VoiceChatCandidateTask>>(
   {},
 );
 const internalTasksById$ = state<Record<string, VoiceChatCandidateTask>>({});
-const internalContext$ = state<string>("");
-const internalContextVersion$ = state<number>(0);
-const internalContextSeq$ = state<number>(0);
-const internalLastReasoningAt$ = state<string | null>(null);
+const internalConversationSummary$ = state<string>("");
+const internalWorkingTasksSummary$ = state<string>("");
+const internalFinishedTasksSummary$ = state<string>("");
+const internalRecentTaskLogs$ = state<string>("");
+const internalSummaryVersion$ = state<number>(0);
+const internalSummarySeq$ = state<number>(0);
+const internalLastSummaryAt$ = state<string | null>(null);
 const internalStreamingAssistant$ = state<{
   responseId: string;
   itemId: string | null;
@@ -167,16 +190,28 @@ export const vccTasksById$ = computed((get) => {
   return get(internalTasksById$);
 });
 
-export const vccReasonerContext$ = computed((get) => {
-  return get(internalContext$);
+export const vccConversationSummary$ = computed((get) => {
+  return get(internalConversationSummary$);
 });
 
-export const vccReasonerContextSeq$ = computed((get) => {
-  return get(internalContextSeq$);
+export const vccWorkingTasksSummary$ = computed((get) => {
+  return get(internalWorkingTasksSummary$);
 });
 
-export const vccReasonerLastAt$ = computed((get) => {
-  return get(internalLastReasoningAt$);
+export const vccFinishedTasksSummary$ = computed((get) => {
+  return get(internalFinishedTasksSummary$);
+});
+
+export const vccRecentTaskLogs$ = computed((get) => {
+  return get(internalRecentTaskLogs$);
+});
+
+export const vccSummarySeq$ = computed((get) => {
+  return get(internalSummarySeq$);
+});
+
+export const vccLastSummaryAt$ = computed((get) => {
+  return get(internalLastSummaryAt$);
 });
 
 type StreamingItem = {
@@ -509,22 +544,13 @@ const handleDCMessage$ = command(
 // WebRTC setup
 // ---------------------------------------------------------------------------
 
-function buildSessionUpdate(context: string): string {
-  return JSON.stringify({
-    type: "session.update",
-    session: {
-      modalities: ["text", "audio"],
-      instructions: composeInstructions(context),
-      input_audio_transcription: { model: "gpt-4o-mini-transcribe" },
-      input_audio_noise_reduction: { type: "far_field" },
-      turn_detection: HANDS_FREE_VAD_CONFIG,
-      tools: SESSION_TOOLS,
-    },
-  });
-}
-
-const createVccPeerConnection$ = command(
-  ({ set }, stream: MediaStream): RTCPeerConnection => {
+const setupWebRTC$ = command(
+  async (
+    { get, set },
+    stream: MediaStream,
+    token: string,
+    signal: AbortSignal,
+  ): Promise<boolean> => {
     const pc = new RTCPeerConnection();
     set(internalPc$, pc);
 
@@ -542,24 +568,36 @@ const createVccPeerConnection$ = command(
       }
     });
 
-    return pc;
-  },
-);
-
-const attachVccDataChannel$ = command(
-  ({ get, set }, pc: RTCPeerConnection, sessionSignal: AbortSignal) => {
     const dc = pc.createDataChannel("oai-events");
     set(internalDc$, dc);
 
     dc.addEventListener("open", () => {
-      dc.send(buildSessionUpdate(get(internalContext$)));
+      const ctx: TalkerDynamicContext = {
+        conversationSummary: get(internalConversationSummary$),
+        workingTasksSummary: get(internalWorkingTasksSummary$),
+        finishedTasksSummary: get(internalFinishedTasksSummary$),
+        recentTaskLogs: get(internalRecentTaskLogs$),
+      };
+      dc.send(
+        JSON.stringify({
+          type: "session.update",
+          session: {
+            modalities: ["text", "audio"],
+            instructions: composeInstructions(ctx),
+            input_audio_transcription: { model: "gpt-4o-mini-transcribe" },
+            input_audio_noise_reduction: { type: "far_field" },
+            turn_detection: HANDS_FREE_VAD_CONFIG,
+            tools: SESSION_TOOLS,
+          },
+        }),
+      );
       set(internalStatus$, "connected");
     });
 
     dc.addEventListener(
       "message",
       onDomEventFn((ev: MessageEvent) => {
-        return set(handleDCMessage$, ev.data as string, sessionSignal);
+        return set(handleDCMessage$, ev.data as string, signal);
       }),
     );
 
@@ -579,16 +617,7 @@ const attachVccDataChannel$ = command(
         }
       }
     });
-  },
-);
 
-const negotiateSdp$ = command(
-  async (
-    { set },
-    pc: RTCPeerConnection,
-    token: string,
-    signal: AbortSignal,
-  ): Promise<boolean> => {
     const offer = await pc.createOffer();
     signal.throwIfAborted();
     await pc.setLocalDescription(offer);
@@ -621,19 +650,6 @@ const negotiateSdp$ = command(
   },
 );
 
-const setupWebRTC$ = command(
-  (
-    { set },
-    stream: MediaStream,
-    token: string,
-    signal: AbortSignal,
-  ): Promise<boolean> => {
-    const pc = set(createVccPeerConnection$, stream);
-    set(attachVccDataChannel$, pc, signal);
-    return set(negotiateSdp$, pc, token, signal);
-  },
-);
-
 // ---------------------------------------------------------------------------
 // Heartbeat + Ably loops
 // ---------------------------------------------------------------------------
@@ -659,15 +675,21 @@ const startHeartbeat$ = command(async ({ get }, signal: AbortSignal) => {
   );
 });
 
-const refreshInstructionsIfChanged$ = command(({ get }, context: string) => {
+const pushTalkerInstructions$ = command(({ get }) => {
   const dc = get(internalDc$);
   if (!dc || dc.readyState !== "open") {
     return;
   }
+  const ctx: TalkerDynamicContext = {
+    conversationSummary: get(internalConversationSummary$),
+    workingTasksSummary: get(internalWorkingTasksSummary$),
+    finishedTasksSummary: get(internalFinishedTasksSummary$),
+    recentTaskLogs: get(internalRecentTaskLogs$),
+  };
   dc.send(
     JSON.stringify({
       type: "session.update",
-      session: { instructions: composeInstructions(context) },
+      session: { instructions: composeInstructions(ctx) },
     }),
   );
 });
@@ -717,14 +739,29 @@ const startAblyLoop$ = command(
 
       if (sessionRes.status === 200) {
         const session = sessionRes.body.session;
-        const prevVersion = get(internalContextVersion$);
-        const nextContext = session.context ?? "";
-        if (session.contextVersion > prevVersion) {
-          set(internalContext$, nextContext);
-          set(internalContextVersion$, session.contextVersion);
-          set(internalContextSeq$, session.contextSeq);
-          set(internalLastReasoningAt$, session.lastReasoningAt);
-          set(refreshInstructionsIfChanged$, nextContext);
+        const nextRecentLogs = sessionRes.body.recentTaskLogs;
+        const prevVersion = get(internalSummaryVersion$);
+        const prevRecentLogs = get(internalRecentTaskLogs$);
+
+        let instructionsChanged = false;
+        if (session.summaryVersion > prevVersion) {
+          set(internalConversationSummary$, session.conversationSummary ?? "");
+          set(internalWorkingTasksSummary$, session.workingTasksSummary ?? "");
+          set(
+            internalFinishedTasksSummary$,
+            session.finishedTasksSummary ?? "",
+          );
+          set(internalSummaryVersion$, session.summaryVersion);
+          set(internalSummarySeq$, session.summarySeq);
+          set(internalLastSummaryAt$, session.lastSummaryAt);
+          instructionsChanged = true;
+        }
+        if (nextRecentLogs !== prevRecentLogs) {
+          set(internalRecentTaskLogs$, nextRecentLogs);
+          instructionsChanged = true;
+        }
+        if (instructionsChanged) {
+          set(pushTalkerInstructions$);
         }
         if (session.status !== "active") {
           set(internalStatus$, "disconnected");
@@ -834,93 +871,86 @@ const releaseWakeLock$ = command(({ get, set }) => {
 });
 
 // ---------------------------------------------------------------------------
-// Start-flow phase commands
+// Public commands
 // ---------------------------------------------------------------------------
 
-const resetVccSessionState$ = command(
-  ({ set }, signal: AbortSignal): AbortSignal => {
+export const startVoiceChatCandidate$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const status = get(internalStatus$);
+    if (status === "connecting" || status === "connected") {
+      return;
+    }
+
     set(internalStatus$, "connecting");
     set(internalError$, null);
     set(internalItems$, []);
     set(internalMaxSeq$, 0);
     set(internalTasksByCallId$, {});
     set(internalTasksById$, {});
-    set(internalContext$, "");
-    set(internalContextVersion$, 0);
-    set(internalContextSeq$, 0);
-    set(internalLastReasoningAt$, null);
+    set(internalConversationSummary$, "");
+    set(internalWorkingTasksSummary$, "");
+    set(internalFinishedTasksSummary$, "");
+    set(internalRecentTaskLogs$, "");
+    set(internalSummaryVersion$, 0);
+    set(internalSummarySeq$, 0);
+    set(internalLastSummaryAt$, null);
     set(internalStreamingAssistant$, null);
     set(internalPendingUserItemId$, null);
     set(internalMuted$, false);
     set(internalSessionId$, null);
     set(internalParentSignal$, signal);
-    return set(resetSessionSignal$, signal);
-  },
-);
 
-const resolveVccAgentId$ = command(
-  async ({ get, set }, signal: AbortSignal): Promise<string | null> => {
+    const sessionSignal = set(resetSessionSignal$, signal);
+
     const agentId = await get(defaultAgentId$);
     signal.throwIfAborted();
+
     if (!agentId) {
       set(internalError$, "No agent selected");
       set(internalStatus$, "error");
-      return null;
+      return;
     }
-    return agentId;
-  },
-);
 
-const createVccSession$ = command(
-  async (
-    { get, set },
-    agentId: string,
-    signal: AbortSignal,
-  ): Promise<VoiceChatCandidateSession | null> => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroVoiceChatCandidateContract);
-    const res = await accept(
+
+    const sessionRes = await accept(
       client.createSession({ body: { agentId } }),
       [200, 400, 401, 403],
       { toast: false },
     );
     signal.throwIfAborted();
-    if (res.status !== 200) {
-      set(internalError$, res.body.error.message);
-      set(internalStatus$, "error");
-      return null;
-    }
-    const session = res.body.session;
-    set(internalSessionId$, session.id);
-    set(internalContext$, session.context ?? "");
-    set(internalContextVersion$, session.contextVersion);
-    set(internalContextSeq$, session.contextSeq);
-    set(internalLastReasoningAt$, session.lastReasoningAt);
-    return session;
-  },
-);
 
-const fetchVccRealtimeToken$ = command(
-  async ({ get, set }, signal: AbortSignal): Promise<string | null> => {
-    const createClient = get(zeroClient$);
-    const client = createClient(zeroVoiceChatCandidateContract);
-    const res = await accept(
+    if (sessionRes.status !== 200) {
+      set(internalError$, sessionRes.body.error.message);
+      set(internalStatus$, "error");
+      return;
+    }
+
+    const session = sessionRes.body.session;
+    set(internalSessionId$, session.id);
+    set(internalConversationSummary$, session.conversationSummary ?? "");
+    set(internalWorkingTasksSummary$, session.workingTasksSummary ?? "");
+    set(internalFinishedTasksSummary$, session.finishedTasksSummary ?? "");
+    set(internalSummaryVersion$, session.summaryVersion);
+    set(internalSummarySeq$, session.summarySeq);
+    set(internalLastSummaryAt$, session.lastSummaryAt);
+
+    const tokenRes = await accept(
       client.token({ body: { model: TALKER_MODEL } }),
       [200, 401, 403, 500, 503],
       { toast: false },
     );
     signal.throwIfAborted();
-    if (res.status !== 200) {
-      set(internalError$, res.body.error.message);
-      set(internalStatus$, "error");
-      return null;
-    }
-    return res.body.client_secret.value;
-  },
-);
 
-const acquireVccMic$ = command(
-  async ({ set }, signal: AbortSignal): Promise<MediaStream | null> => {
+    if (tokenRes.status !== 200) {
+      set(internalError$, tokenRes.body.error.message);
+      set(internalStatus$, "error");
+      return;
+    }
+
+    const { client_secret: clientSecret } = tokenRes.body;
+
     let stream: MediaStream;
     // eslint-disable-next-line no-restricted-syntax -- getUserMedia can reject on permission denial or missing hardware
     try {
@@ -938,29 +968,17 @@ const acquireVccMic$ = command(
         "Microphone access denied. Please allow microphone access.",
       );
       set(internalStatus$, "error");
-      return null;
+      return;
     }
     signal.throwIfAborted();
     set(internalStream$, stream);
-    return stream;
-  },
-);
 
-interface BootstrapVccTransportArgs {
-  stream: MediaStream;
-  token: string;
-  sessionId: string;
-  sessionSignal: AbortSignal;
-}
-
-const bootstrapVccTransport$ = command(
-  async (
-    { set },
-    args: BootstrapVccTransportArgs,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    const { stream, token, sessionId, sessionSignal } = args;
-    const ok = await set(setupWebRTC$, stream, token, sessionSignal);
+    const ok = await set(
+      setupWebRTC$,
+      stream,
+      clientSecret.value,
+      sessionSignal,
+    );
     signal.throwIfAborted();
     if (!ok) {
       return;
@@ -971,49 +989,8 @@ const bootstrapVccTransport$ = command(
 
     await Promise.allSettled([
       set(startHeartbeat$, sessionSignal),
-      set(startAblyLoop$, sessionId, sessionSignal),
+      set(startAblyLoop$, session.id, sessionSignal),
     ]);
-  },
-);
-
-// ---------------------------------------------------------------------------
-// Public commands
-// ---------------------------------------------------------------------------
-
-export const startVoiceChatCandidate$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const status = get(internalStatus$);
-    if (status === "connecting" || status === "connected") {
-      return;
-    }
-
-    const sessionSignal = set(resetVccSessionState$, signal);
-
-    const agentId = await set(resolveVccAgentId$, signal);
-    if (!agentId) {
-      return;
-    }
-
-    const session = await set(createVccSession$, agentId, signal);
-    if (!session) {
-      return;
-    }
-
-    const token = await set(fetchVccRealtimeToken$, signal);
-    if (!token) {
-      return;
-    }
-
-    const stream = await set(acquireVccMic$, signal);
-    if (!stream) {
-      return;
-    }
-
-    await set(
-      bootstrapVccTransport$,
-      { stream, token, sessionId: session.id, sessionSignal },
-      signal,
-    );
   },
 );
 
@@ -1067,10 +1044,13 @@ export const endVoiceChatCandidate$ = command(({ get, set }) => {
   set(internalMaxSeq$, 0);
   set(internalTasksByCallId$, {});
   set(internalTasksById$, {});
-  set(internalContext$, "");
-  set(internalContextVersion$, 0);
-  set(internalContextSeq$, 0);
-  set(internalLastReasoningAt$, null);
+  set(internalConversationSummary$, "");
+  set(internalWorkingTasksSummary$, "");
+  set(internalFinishedTasksSummary$, "");
+  set(internalRecentTaskLogs$, "");
+  set(internalSummaryVersion$, 0);
+  set(internalSummarySeq$, 0);
+  set(internalLastSummaryAt$, null);
   set(internalStreamingAssistant$, null);
   set(internalPendingUserItemId$, null);
   set(internalParentSignal$, null);

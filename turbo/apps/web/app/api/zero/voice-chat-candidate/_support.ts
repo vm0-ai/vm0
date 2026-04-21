@@ -40,11 +40,13 @@ export function serializeVoiceChatCandidateSession(session: SessionRow) {
     agentId: session.agentId,
     mode: "chat" as const,
     status: session.status,
-    context: session.context,
-    contextSeq: session.contextSeq,
-    contextVersion: session.contextVersion,
-    lastReasoningAt: session.lastReasoningAt
-      ? session.lastReasoningAt.toISOString()
+    conversationSummary: session.conversationSummary,
+    workingTasksSummary: session.workingTasksSummary,
+    finishedTasksSummary: session.finishedTasksSummary,
+    summarySeq: session.summarySeq,
+    summaryVersion: session.summaryVersion,
+    lastSummaryAt: session.lastSummaryAt
+      ? session.lastSummaryAt.toISOString()
       : null,
     createdAt: session.createdAt.toISOString(),
     lastHeartbeatAt: session.lastHeartbeatAt.toISOString(),

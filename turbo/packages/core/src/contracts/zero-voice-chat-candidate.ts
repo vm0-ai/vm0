@@ -49,10 +49,12 @@ export const voiceChatCandidateSessionSchema = z.object({
   agentId: z.uuid().nullable(),
   mode: z.literal("chat"),
   status: voiceChatCandidateSessionStatusSchema,
-  context: z.string().nullable(),
-  contextSeq: z.number().int(),
-  contextVersion: z.number().int(),
-  lastReasoningAt: z.string().nullable(),
+  conversationSummary: z.string().nullable(),
+  workingTasksSummary: z.string().nullable(),
+  finishedTasksSummary: z.string().nullable(),
+  summarySeq: z.number().int(),
+  summaryVersion: z.number().int(),
+  lastSummaryAt: z.string().nullable(),
   createdAt: z.string(),
   lastHeartbeatAt: z.string(),
   endedAt: z.string().nullable(),
@@ -159,11 +161,14 @@ export const zeroVoiceChatCandidateContract = c.router({
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.uuid() }),
     responses: {
-      200: z.object({ session: voiceChatCandidateSessionSchema }),
+      200: z.object({
+        session: voiceChatCandidateSessionSchema,
+        recentTaskLogs: z.string(),
+      }),
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Get a voice-chat-candidate session (including context)",
+    summary: "Get a voice-chat-candidate session with recent task logs",
   },
 
   endSession: {

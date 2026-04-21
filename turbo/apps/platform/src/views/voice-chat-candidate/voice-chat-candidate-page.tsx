@@ -17,9 +17,12 @@ import {
   vccAgentId$,
   vccTasksById$,
   vccConversationItems$,
-  vccReasonerContext$,
-  vccReasonerContextSeq$,
-  vccReasonerLastAt$,
+  vccConversationSummary$,
+  vccWorkingTasksSummary$,
+  vccFinishedTasksSummary$,
+  vccRecentTaskLogs$,
+  vccSummarySeq$,
+  vccLastSummaryAt$,
   startVoiceChatCandidate$,
   endVoiceChatCandidate$,
   toggleVoiceChatCandidateMute$,
@@ -84,25 +87,52 @@ function VoiceChatCandidateHeader({ status }: { status: ConnectionStatus }) {
   );
 }
 
+function ReasonerSection({ title, body }: { title: string; body: string }) {
+  if (!body.trim()) {
+    return null;
+  }
+  return (
+    <section>
+      <h3 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">
+        {title}
+      </h3>
+      <pre className="whitespace-pre-wrap font-mono text-xs text-foreground/80">
+        {body}
+      </pre>
+    </section>
+  );
+}
+
 function ReasonerPanel() {
-  const context = useGet(vccReasonerContext$);
-  const contextSeq = useGet(vccReasonerContextSeq$);
-  const lastAt = useGet(vccReasonerLastAt$);
+  const conversation = useGet(vccConversationSummary$);
+  const working = useGet(vccWorkingTasksSummary$);
+  const finished = useGet(vccFinishedTasksSummary$);
+  const recentLogs = useGet(vccRecentTaskLogs$);
+  const summarySeq = useGet(vccSummarySeq$);
+  const lastAt = useGet(vccLastSummaryAt$);
 
   const updatedLabel = lastAt ? new Date(lastAt).toLocaleTimeString() : "never";
+  const hasAny =
+    conversation.trim() ||
+    working.trim() ||
+    finished.trim() ||
+    recentLogs.trim();
 
   return (
     <aside className="flex flex-col min-h-0 overflow-hidden text-xs">
       <div className="shrink-0 px-4 py-2 flex items-center gap-3 text-muted-foreground border-b">
         <span className="font-medium">Reasoner</span>
-        <span className="font-mono">seq={contextSeq}</span>
+        <span className="font-mono">seq={summarySeq}</span>
         <span>updated {updatedLabel}</span>
       </div>
-      <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3">
-        {context ? (
-          <pre className="whitespace-pre-wrap font-mono text-xs text-foreground/80">
-            {context}
-          </pre>
+      <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-3">
+        {hasAny ? (
+          <>
+            <ReasonerSection title="Conversation" body={conversation} />
+            <ReasonerSection title="Working tasks" body={working} />
+            <ReasonerSection title="Finished tasks" body={finished} />
+            <ReasonerSection title="Recent task activity" body={recentLogs} />
+          </>
         ) : (
           <p className="text-muted-foreground italic">No context yet.</p>
         )}
