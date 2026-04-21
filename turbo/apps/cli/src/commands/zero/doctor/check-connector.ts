@@ -169,6 +169,14 @@ async function checkConnectorStatus(ctx: DiagContext): Promise<{
   console.log("");
   if (!ctx.agentId) {
     console.log("ZERO_AGENT_ID is not set — cannot check agent authorization.");
+  } else if (!isConnected) {
+    console.log(
+      `Skipped — agent authorization can only be checked once the ${ctx.label} connector is connected (see 2a).`,
+    );
+  } else if (isExpired) {
+    console.log(
+      `Skipped — agent authorization can only be checked once the ${ctx.label} connector is reconnected (see 2a).`,
+    );
   } else if (!hasPermission) {
     const url = `${ctx.platformOrigin}/connectors/${ctx.connectorType}/authorize?agentId=${ctx.agentId}`;
     console.log(

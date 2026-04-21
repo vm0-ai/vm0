@@ -214,6 +214,12 @@ describe("zero doctor check-connector command", () => {
       expect(output).toContain(
         "[Connect GitHub](https://app.vm0.ai/connectors/github/connect?agentId=agent-abc-123)",
       );
+      // Authorize link must be suppressed while the connector is not connected —
+      // otherwise the doctor shows two actionable links at once (see issue #9589).
+      expect(output).not.toContain("[Authorize GitHub]");
+      expect(output).toContain(
+        "agent authorization can only be checked once the GitHub connector is connected",
+      );
     });
 
     it("should report connector expired with reconnect URL", async () => {
