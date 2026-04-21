@@ -146,11 +146,14 @@ async function checkConnectorStatus(ctx: DiagContext): Promise<{
   );
   console.log("");
   if (!isConnected) {
-    const connectUrl = ctx.agentId
-      ? `${ctx.platformOrigin}/connectors/${ctx.connectorType}/connect?agentId=${ctx.agentId}`
-      : `${ctx.platformOrigin}/connectors/${ctx.connectorType}/connect`;
     console.log(`The ${ctx.label} connector is not connected.`);
-    console.log(`Connect it at: [Connect ${ctx.label}](${connectUrl})`);
+    if (!ctx.agentId) {
+      // No agentId: can't scope the authorize page, so fall back to a plain
+      // connect link. With agentId, 2b's Authorize link performs the initial
+      // OAuth connect before granting permission — one link covers both steps.
+      const connectUrl = `${ctx.platformOrigin}/connectors/${ctx.connectorType}/connect`;
+      console.log(`Connect it at: [Connect ${ctx.label}](${connectUrl})`);
+    }
   } else if (isExpired) {
     const url = `${ctx.platformOrigin}/connectors`;
     console.log(
@@ -169,22 +172,22 @@ async function checkConnectorStatus(ctx: DiagContext): Promise<{
   console.log("");
   if (!ctx.agentId) {
     console.log("ZERO_AGENT_ID is not set — cannot check agent authorization.");
-  } else if (!isConnected) {
-    console.log(
-      `Skipped — agent authorization can only be checked once the ${ctx.label} connector is connected (see 2a).`,
-    );
   } else if (isExpired) {
+    // The /authorize page treats an expired connector as "already connected"
+    // and won't re-trigger OAuth. Defer to 2a's Reconnect link in that case.
     console.log(
       `Skipped — agent authorization can only be checked once the ${ctx.label} connector is reconnected (see 2a).`,
     );
-  } else if (!hasPermission) {
+  } else if (hasPermission) {
+    console.log(`The ${ctx.label} connector is authorized for this agent.`);
+  } else {
     const url = `${ctx.platformOrigin}/connectors/${ctx.connectorType}/authorize?agentId=${ctx.agentId}`;
     console.log(
-      `The ${ctx.label} connector is not authorized for this agent (${ctx.agentId}).`,
+      isConnected
+        ? `The ${ctx.label} connector is not authorized for this agent (${ctx.agentId}).`
+        : `The ${ctx.label} connector needs to be connected and authorized for this agent (${ctx.agentId}).`,
     );
     console.log(`Authorize it at: [Authorize ${ctx.label}](${url})`);
-  } else {
-    console.log(`The ${ctx.label} connector is authorized for this agent.`);
   }
   console.log("");
 
