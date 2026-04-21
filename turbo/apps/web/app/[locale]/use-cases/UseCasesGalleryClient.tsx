@@ -99,7 +99,7 @@ function UseCaseCard({
       >
         {/* Colorful top area */}
         <div
-          className="relative flex items-center justify-between px-6 pb-5 pt-10"
+          className="relative flex items-center justify-between px-6 pb-6 pt-16"
           style={{ backgroundColor: useCase.color }}
         >
           {/* Grid texture overlay */}
@@ -112,10 +112,10 @@ function UseCaseCard({
             }}
           />
           {/* Agent avatar */}
-          <AgentAvatar config={useCase.avatar} size={56} />
+          <AgentAvatar config={useCase.avatar} size={64} />
 
           {/* Connector logos */}
-          <div className="relative flex items-center gap-1.5" style={{ top: 8 }}>
+          <div className="relative flex items-center gap-1.5" style={{ top: 10 }}>
             {useCase.connectors.map((c) => {
               return <ConnectorIcon key={c.id} connector={c} />;
             })}
@@ -123,25 +123,24 @@ function UseCaseCard({
         </div>
 
         {/* Content - title only */}
-        <div className="flex flex-col px-6 pb-4 pt-5">
+        <div className="flex flex-col gap-3 px-6 pb-7 pt-5">
           <h3 className="text-lg font-medium leading-snug tracking-[-0.2px] text-[hsl(var(--foreground))] group-hover:text-[#ed4e01]">
             {title}
           </h3>
         </div>
       </Link>
 
-      {/* Try it button - matches detail page style */}
-      <div className="px-6 pb-5">
+      {/* Try it button - matches Submit your case style */}
+      <div className="px-6 pb-7">
         <a
           href={tryItHref}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center gap-1 text-[14px] font-normal text-[#ed4e01] transition-all hover:gap-1.5"
-          style={{ fontStyle: 'italic' }}
+          className="inline-flex items-center gap-1 text-[14px] font-medium text-[#ed4e01] transition-all hover:gap-2"
           onClick={(e) => e.stopPropagation()}
         >
           {tryItLabel}
-          <span className="text-[12px]">↗</span>
+          <span>→</span>
         </a>
       </div>
     </div>
