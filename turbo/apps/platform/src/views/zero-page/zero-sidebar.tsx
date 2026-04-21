@@ -327,7 +327,7 @@ function SidebarNavContent() {
     <>
       {/* Collapsed icon-only sidebar — desktop only, only rendered when sidebarOff */}
       {off && (
-        <aside className="zero-nav box-border md:flex h-full w-16 shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar px-2 transition-all duration-300">
+        <aside className="zero-nav box-border hidden md:flex h-full w-16 shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar px-2 transition-all duration-300">
           <div className="flex w-full shrink-0 justify-center pt-3 pb-1">
             <TooltipProvider delayDuration={200}>
               <Tooltip>
