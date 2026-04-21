@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.273.0](https://github.com/vm0-ai/vm0/compare/app-v0.272.0...app-v0.273.0) (2026-04-21)
+
+
+### Features
+
+* add ts-rest contract for file uploads and use accept() ([#10396](https://github.com/vm0-ai/vm0/issues/10396)) ([675ac69](https://github.com/vm0-ai/vm0/commit/675ac6976d56e6d9e33cd6d5328f65e1c8c330b8))
+
+
+### Bug Fixes
+
+* **platform:** remove avatar fallback to default preset ([#9363](https://github.com/vm0-ai/vm0/issues/9363)) ([#10393](https://github.com/vm0-ai/vm0/issues/10393)) ([b62cde6](https://github.com/vm0-ai/vm0/commit/b62cde686cefa6c8cb3af7614591d7d6beabc1c9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.218.0
+
 ## [0.272.0](https://github.com/vm0-ai/vm0/compare/app-v0.271.0...app-v0.272.0) (2026-04-21)
 
 

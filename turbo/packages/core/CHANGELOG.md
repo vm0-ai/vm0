@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.218.0](https://github.com/vm0-ai/vm0/compare/core-v8.217.0...core-v8.218.0) (2026-04-21)
+
+
+### Features
+
+* add ts-rest contract for file uploads and use accept() ([#10396](https://github.com/vm0-ai/vm0/issues/10396)) ([675ac69](https://github.com/vm0-ai/vm0/commit/675ac6976d56e6d9e33cd6d5328f65e1c8c330b8))
+
 ## [8.217.0](https://github.com/vm0-ai/vm0/compare/core-v8.216.0...core-v8.217.0) (2026-04-21)
 
 
