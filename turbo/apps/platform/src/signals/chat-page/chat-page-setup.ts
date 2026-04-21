@@ -5,7 +5,6 @@ import { SidebarLayout } from "../../views/zero-page/sidebar-layout.tsx";
 import { ZeroChatThreadPage } from "../../views/zero-page/zero-chat-thread-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
-import { chatThreads$ } from "./chat-message.ts";
 import { setChatAgentId$, currentChatThreadId$ } from "../agent-chat.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
@@ -15,6 +14,7 @@ import {
 } from "./create-chat-thread.ts";
 import { createRestoredAttachment } from "../zero-page/chat-draft.ts";
 import { setupChatPageKeyboard$ } from "./chat-keyboard.ts";
+import { setAblyLoop$ } from "../realtime.ts";
 
 export const setupChatPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -45,17 +45,14 @@ export const setupChatPage$ = command(
       return;
     }
 
-    const sessions = await get(chatThreads$);
-    signal.throwIfAborted();
-    const session = sessions.find((s: { id: string }) => {
-      return s.id === threadId;
-    });
-    const sessionTitle = session?.title ?? "New chat";
-    set(updateDocumentTitle$, sessionTitle);
-
     const thread = get(currentChatThreadSignals$)!;
     const threadData = await get(thread.threadData$);
     signal.throwIfAborted();
+
+    // Use threadData for title (reliable on page refresh) instead of chatThreads$
+    const sessionTitle = threadData?.title ?? "New chat";
+    set(updateDocumentTitle$, sessionTitle);
+
     set(setChatAgentId$, threadData?.agentId ?? null);
 
     // Seed draft from server data on first visit (local cache was empty).
@@ -91,6 +88,25 @@ export const setupChatPage$ = command(
       { signal },
     );
 
-    await set(thread.loadPagedMessages$, signal);
+    // Reactive document title: update when thread data changes via Ably events
+    const onThreadUpdated$ = command(async ({ get, set }, sig: AbortSignal) => {
+      const data = await get(thread.threadData$);
+      sig.throwIfAborted();
+      if (data) {
+        set(updateDocumentTitle$, data.title ?? "New chat");
+      }
+      return false;
+    });
+
+    // Run both loops in parallel: loadPagedMessages$ and title update listener
+    await Promise.all([
+      set(thread.loadPagedMessages$, signal),
+      set(
+        setAblyLoop$,
+        `chatThreadRunUpdated:${threadId}`,
+        onThreadUpdated$,
+        signal,
+      ),
+    ]);
   },
 );
