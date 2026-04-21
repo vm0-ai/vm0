@@ -1359,7 +1359,14 @@ jobs:
           echo "--- Waiting for job 2 ---"
           wait $SUBMIT2_PID || fail "Job 2 failed"
 
-          # 7. Uninstall A (systemctl stop blocks until drain finishes)
+          # 7. Wait for A to exit after drain (5s budget), then uninstall
+          echo "--- Waiting up to 5s for $SVC_A to exit ---"
+          for i in $(seq 1 5); do
+            systemctl is-active --quiet "vm0-runner-${SVC_A}" || break
+            sleep 1
+          done
+          systemctl is-active --quiet "vm0-runner-${SVC_A}" \
+            && fail "$SVC_A still active after 5s (stuck on drain?)"
           echo "--- Uninstalling runner A ---"
           sudo "$BIN_DIR/runner" service uninstall --name "$SVC_A" --force
 
@@ -1367,9 +1374,16 @@ jobs:
           echo "--- Submit job 3 (only B) ---"
           sudo "$BIN_DIR/runner" local submit --group "$GROUP" --prompt 'echo job3' || fail "Job 3 failed"
 
-          # 9. Drain and uninstall B
+          # 9. Drain B, wait for it to exit (5s budget), then uninstall
           echo "--- Draining runner B ---"
           sudo "$BIN_DIR/runner" service drain --name "$SVC_B"
+          echo "--- Waiting up to 5s for $SVC_B to exit ---"
+          for i in $(seq 1 5); do
+            systemctl is-active --quiet "vm0-runner-${SVC_B}" || break
+            sleep 1
+          done
+          systemctl is-active --quiet "vm0-runner-${SVC_B}" \
+            && fail "$SVC_B still active after 5s (stuck on drain?)"
           echo "--- Uninstalling runner B ---"
           sudo "$BIN_DIR/runner" service uninstall --name "$SVC_B" --force
           trap - EXIT
