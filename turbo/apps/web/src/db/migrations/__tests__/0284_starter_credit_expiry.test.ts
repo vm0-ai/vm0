@@ -67,8 +67,8 @@ async function runBackfill(): Promise<void> {
       org_id,
       'starter_grant',
       NULL,
-      LEAST(credits, 100000),
-      LEAST(credits, 100000),
+      credits,
+      credits,
       now() + interval '1 month',
       now()
     FROM "org_metadata" om
@@ -104,7 +104,7 @@ describe("migration 0284 backfill body", () => {
     expect(row.stripeInvoiceId).toBeNull();
   });
 
-  it("caps amount at 100k for orgs with balances above the starter pool", async () => {
+  it("tags the full balance as expiring for free orgs with > 100k credits", async () => {
     const orgId = uniqueId("org-backfill-over");
     await seedOrg(orgId, "free", 250_000);
     await clearStarterGrants(orgId);
@@ -113,8 +113,8 @@ describe("migration 0284 backfill body", () => {
 
     const rows = await readStarterGrants(orgId);
     expect(rows).toHaveLength(1);
-    expect(rows[0]!.amount).toBe(100_000);
-    expect(rows[0]!.remaining).toBe(100_000);
+    expect(rows[0]!.amount).toBe(250_000);
+    expect(rows[0]!.remaining).toBe(250_000);
   });
 
   it("skips free-tier orgs with 0 balance — no retroactive grants", async () => {

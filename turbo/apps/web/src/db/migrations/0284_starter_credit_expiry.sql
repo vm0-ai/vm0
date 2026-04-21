@@ -10,14 +10,17 @@ CREATE UNIQUE INDEX "uq_credit_expires_starter_grant" ON "credit_expires_record"
 
 -- Backfill: every existing free-tier org with credits > 0 gets one starter_grant
 -- expires record with a 1-month TTL anchored at migration run time.
---   tier = 'free'                 — only the starter pool expires.
+--   tier = 'free'                 — only free-tier balances expire; Pro orgs have
+--                                    their own invoice-anchored expires rows.
 --   credits > 0                   — orgs at 0 balance don't get a retroactive grant.
 --   NOT EXISTS (starter_grant row) — idempotent re-run guard, matches the partial
 --                                    unique index above.
---   amount = LEAST(credits, 100000) — orgs with > 100k still only tag 100k as the
---                                    starter pool; the remainder stays as non-
---                                    expiring balance, the conservative reading
---                                    of "we only promise expiry on the starter grant".
+--   amount = credits               — for free orgs, the entire balance is treated as
+--                                    the expiring starter pool. Orgs with > 100k
+--                                    (promo / support grants / test) are rare and
+--                                    accepting the whole balance under this TTL is
+--                                    the simpler policy than carving out a
+--                                    non-expiring remainder.
 INSERT INTO "credit_expires_record" (
   id, org_id, source, stripe_invoice_id, amount, remaining, expires_at, created_at
 )
@@ -26,8 +29,8 @@ SELECT
   org_id,
   'starter_grant',
   NULL,
-  LEAST(credits, 100000),
-  LEAST(credits, 100000),
+  credits,
+  credits,
   now() + interval '1 month',
   now()
 FROM "org_metadata" om
