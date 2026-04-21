@@ -301,7 +301,14 @@ def responseheaders(flow: http.HTTPFlow) -> None:
     ndjson_decompressor = None
     firewall_name = flow.metadata.get("firewall_name", "")
     is_model_provider = firewall_name.startswith("model-provider:")
-    is_billable_connector = usage.is_billable_connector(firewall_name)
+    # Platform-billable firewall flag, sourced from vm_info["billableFirewalls"]
+    # via auth.handle_firewall_request.  Gates log_connector_usage (in response())
+    # and the full-body response buffering that billing payload extraction needs.
+    is_billable_flow = flow.metadata.get("firewall_billable", False)
+    # X-specific NDJSON stream classification — tied to the x firewall itself,
+    # not to billing.  Kept separate so a future non-x billable connector
+    # doesn't accidentally inherit X stream parsing.
+    is_x_flow = firewall_name == "x"
 
     # Classify X NDJSON streams early so we can register an incremental parser
     # and avoid buffering the (potentially multi-GB) stream body.  Only a
@@ -317,19 +324,16 @@ def responseheaders(flow: http.HTTPFlow) -> None:
     # Reads ``original_url`` with no fallback — kept consistent with
     # :func:`usage._parse_x_request_metadata` so the log entry's
     # ``is_stream`` field cannot diverge from the parser registration
-    # decision.  For any billable connector flow, ``request()`` has
-    # already populated ``original_url`` before ``responseheaders`` fires.
+    # decision.  For any x firewall flow, ``request()`` has already
+    # populated ``original_url`` before ``responseheaders`` fires.
     is_x_stream = False
-    if (
-        is_billable_connector
-        and _HTTP_STATUS_OK_MIN <= flow.response.status_code < _HTTP_STATUS_REDIRECT_MIN
-    ):
+    if is_x_flow and _HTTP_STATUS_OK_MIN <= flow.response.status_code < _HTTP_STATUS_REDIRECT_MIN:
         stream_path = urllib.parse.urlparse(flow.metadata.get("original_url", "")).path
         is_x_stream = usage.is_x_stream_path(stream_path)
 
     # Track flows that will generate webhook POSTs (usage or connector billing)
     # so the runner can wait for them to reach response()/error() before stopping.
-    if is_model_provider or is_billable_connector:
+    if is_model_provider or is_billable_flow:
         usage.increment_flows()
         flow.metadata["_usage_flow_tracked"] = True
 
@@ -349,13 +353,15 @@ def responseheaders(flow: http.HTTPFlow) -> None:
         flow.metadata["x_ndjson_state"] = ndjson_state
         ndjson_decompressor = body_utils.create_stream_decompressor(flow.response.headers)
 
-    # Buffer cap policy:
+    # Buffer cap policy (coupled to billability by design — every billable
+    # connector today needs json.loads on the full body to build the webhook
+    # payload; if that ever diverges, add a separate flag):
     # - Model providers: unbounded — need full body for non-SSE JSON usage extraction.
-    # - X non-stream billable connectors: unbounded — full body feeds json.loads.
+    # - Billable non-stream connectors: unbounded — full body feeds json.loads.
     # - X stream endpoints: STREAM_BUFFER_LIMIT (64 KB) — parser handles bytes
     #   incrementally; the buffer is kept only for forensic network logging.
     # - Everything else: STREAM_BUFFER_LIMIT (default 64 KB).
-    if is_model_provider or (is_billable_connector and not is_x_stream):
+    if is_model_provider or (is_billable_flow and not is_x_stream):
         buf_limit = None
     else:
         buf_limit = body_utils.STREAM_BUFFER_LIMIT

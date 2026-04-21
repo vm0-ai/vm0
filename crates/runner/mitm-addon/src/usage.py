@@ -5,10 +5,11 @@ Two paths:
 - Model-provider responses (SSE streams and non-streaming JSON): extract
   Anthropic token counts and report them to the platform webhook through
   a background thread pool.
-- Billable connector responses (X API; see :data:`_BILLABLE_CONNECTORS`):
-  compute per-permission billable resource counts and forward them to the
-  platform via ``/api/webhooks/agent/connector-billing`` for persistence
-  in the ``connector_billing`` table.
+- Billable connector responses (flagged by the web layer via
+  ``billableFirewalls`` → ``flow.metadata["firewall_billable"]``): compute
+  per-permission billable resource counts and forward them to the platform
+  via ``/api/webhooks/agent/connector-billing`` for persistence in the
+  ``connector_billing`` table.
 """
 
 import json
@@ -471,30 +472,6 @@ def maybe_report_proxy_usage(flow: http.HTTPFlow, run_id: str) -> None:
 # for persistence in the connector_billing table.
 # ---------------------------------------------------------------------------
 
-# Non-model-provider firewalls whose traffic we intend to bill.  Listing a
-# firewall here triggers full-body buffering in mitm_addon.responseheaders
-# (so log_connector_usage can parse the JSON in response()) and routes the
-# flow through log_connector_usage.  Start with X; expand once observation
-# data validates the pipeline.
-_BILLABLE_CONNECTORS = frozenset({"x"})
-
-
-def is_billable_connector(firewall_name: str) -> bool:
-    """Return True when this firewall is on the billable-connector list.
-
-    Used by ``mitm_addon.responseheaders`` to choose the response-body
-    handling strategy:
-
-    - **Non-stream endpoints**: disable buffer truncation so
-      ``log_connector_usage`` can ``json.loads`` the full body in
-      ``response()``.
-    - **Stream endpoints** (see :data:`_X_STREAM_ENDPOINTS`): register an
-      incremental NDJSON parser via :func:`create_x_ndjson_extractor` so
-      we never buffer the (potentially multi-GB) stream body.
-    """
-    return firewall_name in _BILLABLE_CONNECTORS
-
-
 # X v2 NDJSON streaming endpoint paths (exact match — ``/2/tweets/search/stream/rules``
 # is a regular request/response endpoint for rules management, NOT a stream).
 # Streams deliver one JSON object per line, possibly for hours; responseheaders
@@ -861,15 +838,21 @@ def log_connector_usage(flow: http.HTTPFlow, run_id: str) -> None:
     Skipped when:
 
     - ``run_id`` is empty (no billing attribution)
-    - ``firewall_name`` is not in :data:`_BILLABLE_CONNECTORS`
+    - ``flow.metadata["firewall_billable"]`` is False (web layer decided
+      this firewall is not platform-billable for this run)
+    - firewall is a model provider (routed through
+      :func:`maybe_report_proxy_usage` instead — parsing here would emit
+      bogus X-shaped billing records)
     - response status is outside 2xx (failures aren't billable)
     - ``firewall_permission`` is empty (unknown-endpoint-allow has no
       stable pricing key)
     """
     if not run_id:
         return
+    if not flow.metadata.get("firewall_billable", False):
+        return
     firewall_name = flow.metadata.get("firewall_name", "")
-    if not is_billable_connector(firewall_name):
+    if firewall_name.startswith("model-provider:"):
         return
     if not flow.response or not (
         _HTTP_STATUS_OK_MIN <= flow.response.status_code < _HTTP_STATUS_REDIRECT_MIN

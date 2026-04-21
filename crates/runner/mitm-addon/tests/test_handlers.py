@@ -560,6 +560,7 @@ class TestResponseHeadersHandler:
         """Non-stream X requests still need full body for json.loads."""
         flow = real_flow(with_response=False, host="api.x.com", path="/2/users/by")
         flow.metadata["firewall_name"] = "x"
+        flow.metadata["firewall_billable"] = True
         flow.metadata["original_url"] = "https://api.x.com/2/users/by?ids=1,2,3"
         flow.response = tutils.tresp(
             status_code=200, headers=http.Headers(**{"content-type": "application/json"})
@@ -598,6 +599,7 @@ class TestResponseHeadersHandler:
         """
         flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets/search/stream")
         flow.metadata["firewall_name"] = "x"
+        flow.metadata["firewall_billable"] = True
         flow.metadata["original_url"] = "https://api.x.com/2/tweets/search/stream"
         flow.response = tutils.tresp(
             status_code=401, headers=http.Headers(**{"content-type": "application/json"})
@@ -1406,6 +1408,7 @@ class TestResponseUsageReporting:
             status_code=200, headers=http.Headers(**{"content-type": "application/json"})
         )
         flow.metadata["firewall_name"] = "x"
+        flow.metadata["firewall_billable"] = True
 
         mitm_addon.responseheaders(flow)
 
@@ -1715,6 +1718,7 @@ class TestErrorHandler:
         flow.metadata["original_url"] = "https://api.x.com/2/tweets/search/stream"
         flow.metadata["firewall_action"] = "ALLOW"
         flow.metadata["firewall_name"] = "x"
+        flow.metadata["firewall_billable"] = True
         flow.metadata["firewall_permission"] = "tweet.read"
         flow.metadata["firewall_rule_match"] = "GET /2/tweets/search/stream"
         flow.metadata["x_ndjson_state"] = {
@@ -1764,6 +1768,7 @@ class TestErrorHandler:
         flow.metadata["original_url"] = "https://api.x.com/2/tweets/search/stream"
         flow.metadata["firewall_action"] = "ALLOW"
         flow.metadata["firewall_name"] = "x"
+        flow.metadata["firewall_billable"] = True
         flow.metadata["firewall_permission"] = "tweet.read"
         flow.metadata["firewall_rule_match"] = "GET /2/tweets/search/stream"
         flow.response = tutils.tresp(
@@ -1984,6 +1989,7 @@ class TestLogConnectorUsage:
         flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
         flow.metadata["vm_sandbox_token"] = "test-token"
         flow.metadata["firewall_name"] = "x"
+        flow.metadata["firewall_billable"] = True
         flow.metadata["firewall_permission"] = permission
         flow.metadata["firewall_rule_match"] = rule
         flow.metadata["stream_buffer"] = bytearray(body)
@@ -2401,15 +2407,16 @@ class TestLogConnectorUsage:
         assert self._call_and_get_billing(flow, run_id="") == []
 
     def test_skips_for_model_provider(self, tmp_path, real_flow):
-        """Model providers go through maybe_report_proxy_usage instead."""
+        """Model providers go through maybe_report_proxy_usage instead —
+        log_connector_usage must early-return even when firewall_billable."""
         flow = self._make_x_flow(real_flow, tmp_path)
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
         assert self._call_and_get_billing(flow) == []
 
-    def test_skips_for_non_billable_connector(self, tmp_path, real_flow):
-        """Connectors not in _BILLABLE_CONNECTORS are not logged."""
+    def test_skips_when_not_billable(self, tmp_path, real_flow):
+        """Firewalls with firewall_billable=False are not logged."""
         flow = self._make_x_flow(real_flow, tmp_path)
-        flow.metadata["firewall_name"] = "gamma"
+        flow.metadata["firewall_billable"] = False
         assert self._call_and_get_billing(flow) == []
 
     def test_skips_when_no_response(self, tmp_path, real_flow):
@@ -2443,6 +2450,7 @@ class TestLogConnectorUsage:
         flow.metadata["firewall_action"] = "ALLOW"
         flow.metadata["original_url"] = "https://api.x.com/2/tweets/search/stream"
         flow.metadata["firewall_name"] = "x"
+        flow.metadata["firewall_billable"] = True
         flow.metadata["firewall_permission"] = "tweet.read"
         flow.metadata["firewall_rule_match"] = "GET /2/tweets/search/stream"
         flow.response = tutils.tresp(status_code=200)
