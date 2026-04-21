@@ -51,6 +51,7 @@ import { startSkeletonCycling$ } from "./app-skeleton.ts";
 import { setupMissionControlPage$ } from "./mission-control-page/mission-control-page.ts";
 import { setupRedemptionCodesPage$ } from "./redemption-codes-page/redemption-codes-page-setup.ts";
 import { setupRedeemErrorPage$ } from "./redeem-error/redeem-error-page-setup.ts";
+import { setupRedeemStatusPage$ } from "./redeem-status/redeem-status-page-setup.ts";
 import { setupRealtime$ } from "./realtime.ts";
 import { setupPwaEdgeSwipe$ } from "./zero-page/pwa-edge-swipe.ts";
 import { setupSidebarShortcut$ } from "./zero-page/zero-nav.ts";
@@ -224,6 +225,10 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.redeemError,
     setup: setupRedeemErrorPage$,
+  },
+  {
+    path: ROUTES.redeemStatus,
+    setup: setupRedeemStatusPage$,
   },
   {
     path: ROUTES.skeleton,

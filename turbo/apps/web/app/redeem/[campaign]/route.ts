@@ -38,6 +38,9 @@ export async function GET(
   const errorPage = (reason: string) => {
     return new URL(`/redeem/error?reason=${reason}`, NEXT_PUBLIC_APP_URL);
   };
+  const statusPage = (state: string) => {
+    return new URL(`/redeem/status?state=${state}`, NEXT_PUBLIC_APP_URL);
+  };
 
   try {
     if (!STRIPE_SECRET_KEY) {
@@ -110,11 +113,9 @@ export async function GET(
         });
         return NextResponse.redirect(outcome.url);
       case "already_granted":
-        return NextResponse.redirect(
-          new URL("/?promo=already_redeemed", origin),
-        );
+        return NextResponse.redirect(statusPage("already_redeemed"));
       case "processing":
-        return NextResponse.redirect(new URL("/?promo=processing", origin));
+        return NextResponse.redirect(statusPage("processing"));
     }
   } catch (err) {
     // Outer safety net: anything unexpected (DB down, Stripe 5xx, auth blip,

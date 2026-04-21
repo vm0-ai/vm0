@@ -300,7 +300,7 @@ describe("GET /redeem/[campaign]", () => {
 
     expect(response.status).toBe(307);
     expect(response.headers.get("location")).toContain(
-      "promo=already_redeemed",
+      "http://app.localhost:3002/redeem/status?state=already_redeemed",
     );
     expect(stripeMocks.checkoutSessionsCreate).not.toHaveBeenCalled();
     expect(stripeMocks.checkoutSessionsRetrieve).not.toHaveBeenCalled();
@@ -350,6 +350,8 @@ describe("GET /redeem/[campaign]", () => {
     });
 
     expect(response.status).toBe(307);
-    expect(response.headers.get("location")).toContain("promo=processing");
+    expect(response.headers.get("location")).toContain(
+      "http://app.localhost:3002/redeem/status?state=processing",
+    );
   });
 });
