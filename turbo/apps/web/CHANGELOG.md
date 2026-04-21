@@ -1,5 +1,17 @@
 # Changelog
 
+## [12.276.4](https://github.com/vm0-ai/vm0/compare/web-v12.276.3...web-v12.276.4) (2026-04-21)
+
+
+### Bug Fixes
+
+* **db:** delete 310 dangling agent_runs with missing sessions ([#10428](https://github.com/vm0-ai/vm0/issues/10428)) ([61de5bf](https://github.com/vm0-ai/vm0/commit/61de5bf42d0c677875097295edbe6832f5994181))
+
+
+### Refactoring
+
+* **activity:** tighten runner-tab types at api + seeder boundaries ([#10403](https://github.com/vm0-ai/vm0/issues/10403)) ([b5451e2](https://github.com/vm0-ai/vm0/commit/b5451e26aaf49f6f6f17e62d8e5b19ce5318da02))
+
 ## [12.276.3](https://github.com/vm0-ai/vm0/compare/web-v12.276.2...web-v12.276.3) (2026-04-21)
 
 

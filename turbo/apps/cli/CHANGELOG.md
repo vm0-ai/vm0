@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.126.1](https://github.com/vm0-ai/vm0/compare/cli-v9.126.0...cli-v9.126.1) (2026-04-21)
+
+
+### Performance Improvements
+
+* **eslint:** reduce type-checking overhead in @vm0/app ccstate rules ([#10418](https://github.com/vm0-ai/vm0/issues/10418)) ([46facd2](https://github.com/vm0-ai/vm0/commit/46facd209c29cd6c0a922edb1e4f76f044aac9fe))
+
 ## [9.126.0](https://github.com/vm0-ai/vm0/compare/cli-v9.125.7...cli-v9.126.0) (2026-04-21)
 
 
