@@ -1,6 +1,11 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
-import { useGet, useSet, useLastLoadable } from "ccstate-react";
+import {
+  useGet,
+  useSet,
+  useLastLoadable,
+  useLastResolved,
+} from "ccstate-react";
 import {
   IconSearch,
   IconPlug,
@@ -17,7 +22,9 @@ import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
 import {
   connectorsPageTab$,
   setConnectorsPageTab$,
+  openCustomConnectorCreateDialog$,
 } from "../../signals/zero-page/settings/custom-connectors.ts";
+import { isOrgAdmin$ } from "../../signals/org.ts";
 import { CustomConnectorsPanel } from "./components/settings/custom-connectors-panel.tsx";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {
@@ -284,6 +291,8 @@ export function ZeroConnectorsPage() {
   const optimisticConnected = useGet(justConnectedTypes$);
   const activeTab = useGet(connectorsPageTab$);
   const setActiveTab = useSet(setConnectorsPageTab$);
+  const isAdmin = useLastResolved(isOrgAdmin$) ?? false;
+  const openCreateCustom = useSet(openCustomConnectorCreateDialog$);
 
   const search = useGet(connectorsSearch$);
   const setSearch = useSet(setConnectorsSearch$);
@@ -373,12 +382,12 @@ export function ZeroConnectorsPage() {
     <div className="flex flex-1 flex-col min-h-0 overflow-auto [scrollbar-gutter:stable]">
       <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-3 md:pt-10 pb-0 md:pb-3">
         <div className="mx-auto max-w-[900px]">
-          <div className="flex items-center justify-between gap-4">
-            <div className="hidden md:block">
-              <h1 className="text-xl font-semibold tracking-tight text-foreground">
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <div className="min-w-0 hidden md:block">
+              <h1 className="text-lg font-semibold tracking-tight text-foreground">
                 Connectors
               </h1>
-              <p className="text-sm text-muted-foreground mt-1">
+              <p className="mt-0.5 text-sm text-muted-foreground">
                 Connect third-party services for your agents to use.
               </p>
             </div>
@@ -404,17 +413,30 @@ export function ZeroConnectorsPage() {
 
       <main className="flex-1 px-4 sm:px-6 pt-3 pb-16">
         <div className="mx-auto max-w-[900px] flex flex-col gap-6">
-          <Tabs
-            value={activeTab}
-            onValueChange={(v) => {
-              return setActiveTab(v === "custom" ? "custom" : "builtin");
-            }}
-          >
-            <TabsList>
-              <TabsTrigger value="builtin">Built-in</TabsTrigger>
-              <TabsTrigger value="custom">Custom</TabsTrigger>
-            </TabsList>
-          </Tabs>
+          <div className="flex items-center justify-between">
+            <Tabs
+              value={activeTab}
+              onValueChange={(v) => {
+                return setActiveTab(v === "custom" ? "custom" : "builtin");
+              }}
+            >
+              <TabsList>
+                <TabsTrigger value="builtin">Built-in</TabsTrigger>
+                <TabsTrigger value="custom">Custom</TabsTrigger>
+              </TabsList>
+            </Tabs>
+            {activeTab === "custom" && isAdmin && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="zero-btn-morandi h-9 gap-2 shrink-0 rounded-lg border"
+                onClick={openCreateCustom}
+              >
+                <IconPlus size={14} stroke={2} />
+                New connector
+              </Button>
+            )}
+          </div>
 
           {activeTab === "builtin" && (
             <>

@@ -73,9 +73,15 @@ export function CustomConnectorConnectDialog({
           requests by the firewall. It&apos;s never exposed to the agent as an
           environment variable.
         </p>
-        <label className="flex flex-col gap-1.5 text-sm">
-          <span className="text-foreground">Credential</span>
+        <div className="flex flex-col gap-2">
+          <label
+            htmlFor="cc-connect-credential"
+            className="text-sm font-medium text-foreground"
+          >
+            Credential
+          </label>
           <Input
+            id="cc-connect-credential"
             type="password"
             value={value}
             onChange={(e) => {
@@ -83,7 +89,7 @@ export function CustomConnectorConnectDialog({
             }}
             autoFocus
           />
-        </label>
+        </div>
         <DialogFooter>
           <Button variant="outline" onClick={close} disabled={submitting}>
             Cancel

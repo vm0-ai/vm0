@@ -1,6 +1,6 @@
 {
-  "id": "0149f526-f8be-4e3a-94c7-454c7853b026",
-  "prevId": "e8b67ce8-f4d8-4dc9-b2ba-cd5c7bf5b38d",
+  "id": "f16a7113-f8ba-4161-be29-676e82c3d51b",
+  "prevId": "39dff07e-d937-4719-980d-ecb39d29b84f",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2641,6 +2641,22 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "uq_credit_expires_starter_grant": {
+          "name": "uq_credit_expires_starter_grant",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "source = 'starter_grant'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -4935,7 +4951,7 @@
           "type": "bigint",
           "primaryKey": false,
           "notNull": true,
-          "default": 100000
+          "default": 0
         },
         "tier": {
           "name": "tier",
@@ -5572,156 +5588,6 @@
             }
           ],
           "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.redemption_code_attempts": {
-      "name": "redemption_code_attempts",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "serial",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "attempted_at": {
-          "name": "attempted_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "success": {
-          "name": "success",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {
-        "idx_redemption_code_attempts_user_time": {
-          "name": "idx_redemption_code_attempts_user_time",
-          "columns": [
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "attempted_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.redemption_codes": {
-      "name": "redemption_codes",
-      "schema": "",
-      "columns": {
-        "code": {
-          "name": "code",
-          "type": "varchar(32)",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "credits_per_code": {
-          "name": "credits_per_code",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_by_org_id": {
-          "name": "created_by_org_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_by_user_id": {
-          "name": "created_by_user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "expires_at": {
-          "name": "expires_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "redeemed_by_org_id": {
-          "name": "redeemed_by_org_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "redeemed_by_user_id": {
-          "name": "redeemed_by_user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "redeemed_at": {
-          "name": "redeemed_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "idx_redemption_codes_created_by": {
-          "name": "idx_redemption_codes_created_by",
-          "columns": [
-            {
-              "expression": "created_by_org_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
           "concurrently": false,
           "method": "btree",
           "with": {}
