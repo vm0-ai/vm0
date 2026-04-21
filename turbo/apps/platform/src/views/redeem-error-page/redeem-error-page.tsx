@@ -10,6 +10,7 @@ import { Button } from "@vm0/ui";
 import { searchParams$ } from "../../signals/route.ts";
 import { ROUTES } from "../../signals/route-paths.ts";
 import { Link } from "../router/link.tsx";
+import { VM0Logo } from "../components/vm0-logo.tsx";
 
 type ReasonKind = "transient" | "action" | "auth" | "broken";
 
@@ -90,10 +91,11 @@ export function RedeemErrorPage() {
   const info = resolveReason(params.get("reason"));
 
   return (
-    <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
-      <div className="pointer-events-auto flex w-[500px] max-w-[calc(100vw-96px)] flex-col items-center gap-6 rounded-[20px] border border-border bg-background px-8 py-10">
-        <ReasonIcon kind={info.kind} />
-        <div className="flex flex-col items-center gap-2">
+    <div className="flex h-dvh w-full items-center justify-center bg-background px-6">
+      <div className="flex w-[500px] max-w-full flex-col items-center gap-10 rounded-[20px] border border-border bg-background px-[50px] py-12">
+        <VM0Logo />
+        <div className="flex flex-col items-center gap-4">
+          <ReasonIcon kind={info.kind} />
           <p className="text-center text-lg font-medium leading-7 text-foreground">
             {info.title}
           </p>
