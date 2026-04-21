@@ -104,7 +104,8 @@
       "files": ["custom-eslint/**/*.*"],
       "rules": {
         "new-cap": "allow",
-        "max-lines-per-function": ["allow"]
+        "max-lines-per-function": ["allow"],
+        "complexity": "allow"
       }
     },
     {
@@ -348,7 +349,6 @@
     "@typescript-eslint/no-require-imports": "error",
     "@typescript-eslint/no-unnecessary-type-constraint": "error",
     "@typescript-eslint/no-unsafe-function-type": "error",
-    "arrow-body-style": "error",
     "complexity": "error",
     "no-case-declarations": "error",
     "no-empty": "error",
