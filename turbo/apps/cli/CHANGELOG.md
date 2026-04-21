@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.126.0](https://github.com/vm0-ai/vm0/compare/cli-v9.125.7...cli-v9.126.0) (2026-04-21)
+
+
+### Features
+
+* **zero/uploads:** raise presigned upload cap to 1 gb and migrate chat to presigned put ([#10409](https://github.com/vm0-ai/vm0/issues/10409)) ([e9ddfd8](https://github.com/vm0-ai/vm0/commit/e9ddfd8455087357d2d10e32a335e9c6a6d95f1b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.219.0
+
 ## [9.125.7](https://github.com/vm0-ai/vm0/compare/cli-v9.125.6...cli-v9.125.7) (2026-04-21)
 
 

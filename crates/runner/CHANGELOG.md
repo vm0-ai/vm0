@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.88.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.88.3...runner-rs-v0.88.4) (2026-04-21)
+
+
+### Bug Fixes
+
+* **runner:** pre-register signal handlers before slow startup ([#10419](https://github.com/vm0-ai/vm0/issues/10419)) ([9c3ec4d](https://github.com/vm0-ai/vm0/commit/9c3ec4daea8fc3f0843655a6b4bfd72519da8629)), closes [#10416](https://github.com/vm0-ai/vm0/issues/10416)
+
 ## [0.88.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.88.2...runner-rs-v0.88.3) (2026-04-21)
 
 

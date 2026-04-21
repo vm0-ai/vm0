@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.219.0](https://github.com/vm0-ai/vm0/compare/core-v8.218.0...core-v8.219.0) (2026-04-21)
+
+
+### Features
+
+* **zero/uploads:** raise presigned upload cap to 1 gb and migrate chat to presigned put ([#10409](https://github.com/vm0-ai/vm0/issues/10409)) ([e9ddfd8](https://github.com/vm0-ai/vm0/commit/e9ddfd8455087357d2d10e32a335e9c6a6d95f1b))
+
 ## [8.218.0](https://github.com/vm0-ai/vm0/compare/core-v8.217.0...core-v8.218.0) (2026-04-21)
 
 
