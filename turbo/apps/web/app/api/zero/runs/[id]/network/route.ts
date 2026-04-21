@@ -71,6 +71,7 @@ ${sinceFilter}
         firewall_permission: e.firewall_permission,
         firewall_rule_match: e.firewall_rule_match,
         firewall_params: e.firewall_params,
+        firewall_billable: e.firewall_billable,
         firewall_error: e.firewall_error,
         auth_resolved_secrets: e.auth_resolved_secrets,
         auth_refreshed_connectors: e.auth_refreshed_connectors,

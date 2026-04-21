@@ -269,7 +269,7 @@ export const setupActivityLogLoop$ = command(
         set(autoScrollActivityDetail$);
         return finished;
       },
-      10_000,
+      3000,
       signal,
     );
   },

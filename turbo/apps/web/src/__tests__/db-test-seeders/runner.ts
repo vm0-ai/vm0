@@ -65,6 +65,7 @@ export async function createTestRunnerJob(
     resumeSession: null,
     encryptedSecrets,
     cliAgentType: "claude",
+    billableFirewalls: [],
     ...contextOverrides,
   };
 

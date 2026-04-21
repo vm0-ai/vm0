@@ -112,6 +112,8 @@ export interface CreateZeroRunParams {
   chatThreadId?: string;
   /** Extra user info fields merged into the base # Current User Info block. */
   userInfoExtras?: UserInfoOptions;
+  /** Force real Claude in mock environments (internal debugging / e2e only). */
+  debugNoMockClaude?: boolean;
 }
 
 /**
@@ -363,6 +365,7 @@ async function createZeroRunRecord(
     orgId: resolved.orgId,
     orgTier,
     additionalVolumes: skillVolumes.length > 0 ? skillVolumes : undefined,
+    debugNoMockClaude: params.debugNoMockClaude,
   };
 
   // ── Round 3: Pre-flight checks (need compose content) ───────────────

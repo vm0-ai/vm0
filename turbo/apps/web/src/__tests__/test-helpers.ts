@@ -216,7 +216,11 @@ export async function insertOrgCacheEntry(entry: {
 
 /**
  * Ensure an org row exists in the `org` table.
- * Inserts with defaults if missing, does nothing if already present.
+ *
+ * Creates an empty org_metadata row (credits=0 per column default, no
+ * credit_expires_record). Tests that need a specific balance should call
+ * setOrgCredits; tests that exercise the full starter-grant path should
+ * go through the onboarding API or call ensureStarterCreditGrant directly.
  */
 export async function ensureOrgRow(orgId: string): Promise<void> {
   initServices();

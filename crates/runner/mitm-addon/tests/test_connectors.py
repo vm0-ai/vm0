@@ -1405,6 +1405,7 @@ class TestHandleFirewallRequest:
             "sandboxToken": "tok-xyz",
             "encryptedSecrets": "iv:tag:data",
             "networkLogPath": str(tmp_path / "net.jsonl"),
+            "billableFirewalls": [],
         }
         match_info = {
             "name": "github",
@@ -1456,6 +1457,7 @@ class TestHandleFirewallRequest:
             "sandboxToken": "tok-xyz",
             "encryptedSecrets": "iv:tag:data",
             "networkLogPath": str(tmp_path / "net.jsonl"),
+            "billableFirewalls": [],
         }
         match_info = {"name": "github"}
 
@@ -1489,6 +1491,7 @@ class TestHandleFirewallRequest:
             "sandboxToken": "tok-xyz",
             "encryptedSecrets": "iv:tag:data",
             "networkLogPath": "",
+            "billableFirewalls": [],
         }
         match_info = {"name": "github"}
 
@@ -1524,6 +1527,7 @@ class TestHandleFirewallRequest:
             "sandboxToken": "tok-xyz",
             "encryptedSecrets": "iv:tag:data",
             "networkLogPath": str(tmp_path / "net.jsonl"),
+            "billableFirewalls": [],
         }
         match_info = {"name": "github"}
 
@@ -1562,6 +1566,7 @@ class TestHandleFirewallRequest:
             "sandboxToken": "tok-xyz",
             "encryptedSecrets": "iv:tag:data",
             "networkLogPath": str(tmp_path / "net.jsonl"),
+            "billableFirewalls": [],
         }
         match_info = {"name": "htmlcsstoimage"}
 
@@ -1591,7 +1596,12 @@ class TestHandleFirewallRequest:
         flow = real_flow(with_response=False, host="api.github.com", path="/repos")
         flow.metadata["vm_run_id"] = "test-run"
         api_entry = {"base": "https://api.github.com", "auth": {"headers": {}}}
-        vm_info = {"runId": "run-1", "sandboxToken": "tok-xyz", "networkLogPath": ""}
+        vm_info = {
+            "runId": "run-1",
+            "sandboxToken": "tok-xyz",
+            "networkLogPath": "",
+            "billableFirewalls": [],
+        }
         match_info = {"name": "github"}
 
         with mitm_ctx():
@@ -1831,6 +1841,7 @@ class TestAuthBaseUrlRewrite:
             "sandboxToken": "tok-xyz",
             "encryptedSecrets": "iv:tag:data",
             "networkLogPath": str(tmp_path / "net.jsonl"),
+            "billableFirewalls": [],
         }
         match_info = {
             "name": "discord-webhook",
@@ -1875,6 +1886,7 @@ class TestAuthBaseUrlRewrite:
             "sandboxToken": "tok-xyz",
             "encryptedSecrets": "iv:tag:data",
             "networkLogPath": str(tmp_path / "net.jsonl"),
+            "billableFirewalls": [],
         }
         match_info = {
             "name": "bitrix",
@@ -1921,6 +1933,7 @@ class TestAuthBaseUrlRewrite:
             "sandboxToken": "tok-xyz",
             "encryptedSecrets": "iv:tag:data",
             "networkLogPath": str(tmp_path / "net.jsonl"),
+            "billableFirewalls": [],
         }
         match_info = {
             "name": "discord-webhook",
@@ -1965,6 +1978,7 @@ class TestAuthBaseUrlRewrite:
             "sandboxToken": "tok-xyz",
             "encryptedSecrets": "iv:tag:data",
             "networkLogPath": str(tmp_path / "net.jsonl"),
+            "billableFirewalls": [],
         }
         match_info = {
             "name": "bitrix",
@@ -2010,6 +2024,7 @@ class TestAuthBaseUrlRewrite:
             "sandboxToken": "tok-xyz",
             "encryptedSecrets": "iv:tag:data",
             "networkLogPath": str(tmp_path / "net.jsonl"),
+            "billableFirewalls": [],
         }
         match_info = {
             "name": "test",
@@ -2051,6 +2066,7 @@ class TestAuthBaseUrlRewrite:
             "sandboxToken": "tok-xyz",
             "encryptedSecrets": "iv:tag:data",
             "networkLogPath": str(tmp_path / "net.jsonl"),
+            "billableFirewalls": [],
         }
         match_info = {
             "name": "github",
@@ -2214,6 +2230,7 @@ class TestAuthBaseUrlRewriteEdgeCases:
             "sandboxToken": "tok",
             "encryptedSecrets": "iv:tag:data",
             "networkLogPath": str(tmp_path / "net.jsonl"),
+            "billableFirewalls": [],
         }
         match_info = {
             "name": "test",
@@ -2266,6 +2283,7 @@ class TestAuthBaseUrlRewriteEdgeCases:
             "sandboxToken": "tok",
             "encryptedSecrets": "iv:tag:data",
             "networkLogPath": str(tmp_path / "net.jsonl"),
+            "billableFirewalls": [],
         }
         match_info = {
             "name": "gh",
@@ -2380,6 +2398,7 @@ class TestAuthQueryInjection:
             "runId": "run-1",
             "sandboxToken": "tok",
             "encryptedSecrets": "iv:tag:data",
+            "billableFirewalls": [],
         }
         match_info = {
             "name": "serpapi",
@@ -2417,6 +2436,7 @@ class TestAuthQueryInjection:
             "runId": "run-1",
             "sandboxToken": "tok",
             "encryptedSecrets": "iv:tag:data",
+            "billableFirewalls": [],
         }
         match_info = {
             "name": "serpapi",
@@ -2455,6 +2475,7 @@ class TestAuthQueryInjection:
             "runId": "run-1",
             "sandboxToken": "tok",
             "encryptedSecrets": "iv:tag:data",
+            "billableFirewalls": [],
         }
         match_info = {
             "name": "ex",
@@ -2492,6 +2513,7 @@ class TestAuthQueryInjection:
             "runId": "run-1",
             "sandboxToken": "tok",
             "encryptedSecrets": "iv:tag:data",
+            "billableFirewalls": [],
         }
         match_info = {
             "name": "test",
@@ -2533,6 +2555,7 @@ class TestAuthQueryInjection:
             "runId": "run-1",
             "sandboxToken": "tok",
             "encryptedSecrets": "iv:tag:data",
+            "billableFirewalls": [],
         }
         match_info = {
             "name": "gh",

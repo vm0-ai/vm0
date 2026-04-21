@@ -10,6 +10,7 @@ import {
   findInsightsDaily,
   seedCreditUsageRecord,
   seedUserCacheEntry,
+  setOrgCredits,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { seedCompletedTestRun } from "../../../../../src/__tests__/db-test-seeders/runs";
 import { reloadEnv } from "../../../../../src/env";
@@ -65,6 +66,7 @@ describe("GET /api/cron/aggregate-insights", () => {
 
     // Ensure org has metadata row for credit balance lookup
     await ensureOrgRow(orgId);
+    await setOrgCredits(orgId, 100_000);
   });
 
   it("should return 401 with invalid cron secret", async () => {
@@ -184,7 +186,7 @@ describe("GET /api/cron/aggregate-insights", () => {
 
     const row = await findInsightsDaily(orgId, todayDateStr(), userId);
     expect(row).toBeDefined();
-    // ensureOrgRow inserts with default 100000 credits
+    // credits seeded to 100000 in beforeEach via setOrgCredits
     expect(row!.data.creditBalance).toBe(100000);
   });
 

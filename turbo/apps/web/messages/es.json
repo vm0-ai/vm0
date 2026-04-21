@@ -98,7 +98,7 @@
     "free": {
       "description": "Comienza gratis con tu compañero de IA.",
       "features": {
-        "starterCredits": "100.000 créditos iniciales",
+        "starterCredits": "10.000 créditos iniciales",
         "concurrentRun": "1 ejecución simultánea",
         "unlimitedAgents": "Agentes totales ilimitados",
         "bringOwnLLM": "Usa tus propias claves de LLM",
@@ -179,7 +179,7 @@
       "prioritySupportDesc": "Soporte dedicado con tiempos de respuesta más rápidos"
     },
     "tableValues": {
-      "starter": "100.000 iniciales",
+      "starter": "10.000 iniciales",
       "20k": "20.000",
       "120k": "120.000",
       "unlimited": "Ilimitado",
@@ -195,7 +195,7 @@
       "runOutOfCredits": "¿Qué pasa cuando se me acaban los créditos?",
       "runOutOfCreditsAnswer": "Cuando tus créditos se agoten, tus agentes dejarán de funcionar. Puedes comprar créditos adicionales mediante recarga automática o actualizar a un plan superior para más créditos mensuales.",
       "doCreditsRollOver": "¿Se acumulan los créditos no utilizados?",
-      "doCreditsRollOverAnswer": "En el plan Free, los créditos iniciales no caducan pero no se reponen. En Pro, los créditos no utilizados se acumulan por 1 mes. En Team, los créditos se acumulan por 1 mes.",
+      "doCreditsRollOverAnswer": "En el plan Free, los créditos iniciales caducan 1 mes después del registro y no se reponen. En Pro, los créditos no utilizados se acumulan por 1 mes. En Team, los créditos se acumulan por 1 mes.",
       "bringOwnModel": "¿Puedo usar mi propio proveedor de modelos?",
       "bringOwnModelAnswer": "¡Sí! Todos los planes permiten usar tus propias claves API de LLM (Anthropic, etc.). Al usar tus propias claves, no se consumen créditos de VM0 para el uso de modelos.",
       "howSecure": "¿Qué tan seguro es VM0?",
