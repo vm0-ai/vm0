@@ -10,6 +10,7 @@ import {
 } from "../../../../__tests__/api-test-helpers";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route
 import {
+  createExpiresRecord,
   getExpiresRecordsSummary,
   getUnsettledExpiredAmount,
 } from "../credit-expires-service";
@@ -282,6 +283,37 @@ describe("credit expires service", () => {
 
       const amount = await getUnsettledExpiredAmount(orgId);
       expect(amount).toBe(0);
+    });
+  });
+
+  describe("createExpiresRecord return value", () => {
+    it("returns true on first insert and false when the same invoice id collides", async () => {
+      const { orgId } = await context.setupUser({ prefix: "expires-return" });
+      const stripeInvoiceId = uniqueId("inv-idempotency");
+      const expiresAt = new Date();
+      expiresAt.setMonth(expiresAt.getMonth() + 1);
+
+      // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: createExpiresRecord takes a Tx and has no API route
+      const db = globalThis.services.db;
+      const firstInsert = await db.transaction(async (tx) => {
+        return createExpiresRecord(tx, orgId, {
+          source: "one_time_purchase",
+          stripeInvoiceId,
+          amount: 1000,
+          expiresAt,
+        });
+      });
+      expect(firstInsert).toBe(true);
+
+      const secondInsert = await db.transaction(async (tx) => {
+        return createExpiresRecord(tx, orgId, {
+          source: "one_time_purchase",
+          stripeInvoiceId,
+          amount: 1000,
+          expiresAt,
+        });
+      });
+      expect(secondInsert).toBe(false);
     });
   });
 });
