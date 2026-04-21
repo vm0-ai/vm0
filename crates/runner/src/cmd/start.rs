@@ -1908,6 +1908,11 @@ mod tests {
     /// inside the spawned task, so signals delivered during the startup
     /// window hit the default Term disposition and killed the process.
     ///
+    /// Timing: raising SIGUSR1 before `spawn()` is deterministic in program
+    /// order, and the outer `timeout(2s)` absorbs the
+    /// `kernel → sigaction → pipe → driver → watch → recv` propagation
+    /// regardless of scheduling — no artificial sleep is needed.
+    ///
     /// This test raises SIGUSR1 process-wide. It is safe only because no
     /// other test subscribes to SIGUSR1 — all other tests use
     /// `SignalSource::Override` and never call `signal()`. If another
@@ -1917,15 +1922,7 @@ mod tests {
     async fn signal_buffered_before_spawn_is_delivered() {
         let signals = EarlySignals::register().expect("register");
 
-        // Simulate startup work between registration and spawn — the
-        // window that used to lose signals under the old design.
-        tokio::time::sleep(Duration::from_millis(30)).await;
-
         nix::sys::signal::raise(nix::sys::signal::Signal::SIGUSR1).expect("raise");
-
-        // Let the sigaction handler + tokio signal driver propagate
-        // before the consumer task starts.
-        tokio::time::sleep(Duration::from_millis(30)).await;
 
         let controller = SignalController::spawn(
             CancellationToken::new(),
