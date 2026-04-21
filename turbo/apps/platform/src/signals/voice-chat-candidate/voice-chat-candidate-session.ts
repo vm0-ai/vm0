@@ -496,13 +496,22 @@ const handleDCMessage$ = command(
 // WebRTC setup
 // ---------------------------------------------------------------------------
 
-const setupWebRTC$ = command(
-  async (
-    { get, set },
-    stream: MediaStream,
-    token: string,
-    signal: AbortSignal,
-  ): Promise<boolean> => {
+function buildSessionUpdate(context: string): string {
+  return JSON.stringify({
+    type: "session.update",
+    session: {
+      modalities: ["text", "audio"],
+      instructions: composeInstructions(context),
+      input_audio_transcription: { model: "gpt-4o-mini-transcribe" },
+      input_audio_noise_reduction: { type: "far_field" },
+      turn_detection: HANDS_FREE_VAD_CONFIG,
+      tools: SESSION_TOOLS,
+    },
+  });
+}
+
+const createVccPeerConnection$ = command(
+  ({ set }, stream: MediaStream): RTCPeerConnection => {
     const pc = new RTCPeerConnection();
     set(internalPc$, pc);
 
@@ -520,31 +529,24 @@ const setupWebRTC$ = command(
       }
     });
 
+    return pc;
+  },
+);
+
+const attachVccDataChannel$ = command(
+  ({ get, set }, pc: RTCPeerConnection, sessionSignal: AbortSignal) => {
     const dc = pc.createDataChannel("oai-events");
     set(internalDc$, dc);
 
     dc.addEventListener("open", () => {
-      const context = get(internalContext$);
-      dc.send(
-        JSON.stringify({
-          type: "session.update",
-          session: {
-            modalities: ["text", "audio"],
-            instructions: composeInstructions(context),
-            input_audio_transcription: { model: "gpt-4o-mini-transcribe" },
-            input_audio_noise_reduction: { type: "far_field" },
-            turn_detection: HANDS_FREE_VAD_CONFIG,
-            tools: SESSION_TOOLS,
-          },
-        }),
-      );
+      dc.send(buildSessionUpdate(get(internalContext$)));
       set(internalStatus$, "connected");
     });
 
     dc.addEventListener(
       "message",
       onDomEventFn((ev: MessageEvent) => {
-        return set(handleDCMessage$, ev.data as string, signal);
+        return set(handleDCMessage$, ev.data as string, sessionSignal);
       }),
     );
 
@@ -564,7 +566,16 @@ const setupWebRTC$ = command(
         }
       }
     });
+  },
+);
 
+const negotiateSdp$ = command(
+  async (
+    { set },
+    pc: RTCPeerConnection,
+    token: string,
+    signal: AbortSignal,
+  ): Promise<boolean> => {
     const offer = await pc.createOffer();
     signal.throwIfAborted();
     await pc.setLocalDescription(offer);
@@ -594,6 +605,19 @@ const setupWebRTC$ = command(
     await pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
     signal.throwIfAborted();
     return true;
+  },
+);
+
+const setupWebRTC$ = command(
+  async (
+    { set },
+    stream: MediaStream,
+    token: string,
+    signal: AbortSignal,
+  ): Promise<boolean> => {
+    const pc = set(createVccPeerConnection$, stream);
+    set(attachVccDataChannel$, pc, signal);
+    return set(negotiateSdp$, pc, token, signal);
   },
 );
 
