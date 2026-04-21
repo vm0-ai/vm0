@@ -28,11 +28,11 @@ function mockAPIs() {
       updatedAt: "2024-01-01T00:00:00Z",
     },
     {
-      id: "agent-detail-id",
+      id: "e0000000-0000-4000-a000-000000000010",
       displayName: "My Agent",
       description: "A helpful agent",
       sound: null,
-      avatarUrl: null,
+      avatarUrl: "preset:2",
       headVersionId: "version_2",
       updatedAt: "2024-01-02T00:00:00Z",
     },
@@ -45,7 +45,7 @@ function mockAPIs() {
         description: "A helpful agent",
         displayName: "My Agent",
         sound: null,
-        avatarUrl: null,
+        avatarUrl: "preset:2",
         permissionPolicies: null,
         customSkills: [],
       });

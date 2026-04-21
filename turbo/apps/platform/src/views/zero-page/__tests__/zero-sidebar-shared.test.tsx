@@ -3,7 +3,7 @@
  *
  * Covers:
  *  SIDEBAR-D-042 — avatar renders from database URL
- *  SIDEBAR-D-043 — fallback avatar when no image
+ *  SIDEBAR-D-043 — transparent placeholder when no image (no flash of default)
  *  SIDEBAR-D-044 — loading state shows no image initially
  *
  * Follows platform testing principles:
@@ -77,8 +77,8 @@ describe("agent avatar renders from database (SIDEBAR-D-042)", () => {
   });
 });
 
-describe("agent avatar shows fallback when no image (SIDEBAR-D-043)", () => {
-  it("renders SVG fallback when avatarUrl is null", async () => {
+describe("agent avatar renders transparent placeholder when no image (SIDEBAR-D-043)", () => {
+  it("renders no img when avatarUrl is null, so the wrong default doesn't flash", async () => {
     mockBaseAPIs([
       { id: DEFAULT_AGENT_ID, displayName: null, avatarUrl: null },
       {
@@ -90,14 +90,17 @@ describe("agent avatar shows fallback when no image (SIDEBAR-D-043)", () => {
 
     detachedSetupPage({ context, path: "/" });
 
+    // Wait for the pinned agent row to render (its name appears in the sidebar).
     await waitFor(() => {
       const sidebar = getSidebar();
-      // Fallback renders SVG layers (multiple img elements) instead of a single img
-      const imgs = within(sidebar).getAllByRole("img", {
-        name: "Fallback Agent",
-      });
-      expect(imgs.length).toBeGreaterThanOrEqual(1);
+      expect(within(sidebar).getByText("Fallback Agent")).toBeInTheDocument();
     });
+    const sidebar = getSidebar();
+    // With avatarUrl=null the avatar slot is a transparent placeholder — no
+    // role="img" element is rendered for this agent.
+    expect(
+      within(sidebar).queryByRole("img", { name: "Fallback Agent" }),
+    ).toBeNull();
   });
 });
 
@@ -189,11 +192,15 @@ describe("avatar loading state shows no image initially (SIDEBAR-D-044)", () => 
 
     deferred.resolve();
 
-    // After team data resolves, the fallback avatar img appears
+    // After team data resolves, the agent row appears. Its avatar has no URL,
+    // so the slot stays a transparent placeholder — no role="img" element.
     await waitFor(() => {
       expect(
-        within(getSidebar()).getByRole("img", { name: "Loading Agent" }),
+        within(getSidebar()).getByText("Loading Agent"),
       ).toBeInTheDocument();
     });
+    expect(
+      within(getSidebar()).queryByRole("img", { name: "Loading Agent" }),
+    ).toBeNull();
   });
 });
