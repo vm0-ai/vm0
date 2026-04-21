@@ -53,6 +53,17 @@ export default [
           allowedFunctions: ["setupRouter"],
         },
       ],
+      "ccstate/no-get-signal": "error",
+      "ccstate/no-package-variable": [
+        "error",
+        {
+          allowedConstructors: [
+            "LocationOverrides",
+            "PromiseTracker",
+            "LoggerRegistry",
+          ],
+        },
+      ],
     },
   },
   // Type-aware rules (only for TypeScript files)
@@ -65,23 +76,6 @@ export default [
       },
     },
     rules: {
-      "ccstate/no-package-variable": [
-        "error",
-        {
-          allowedMutableTypes: [
-            { from: "package", name: "State", package: "ccstate" },
-            { from: "package", name: "Computed", package: "ccstate" },
-            { from: "package", name: "Command", package: "ccstate" },
-            { from: "file", name: "ConsoleLogger" },
-            { from: "file", name: "TestContext" },
-            { from: "package", name: "Store", package: "ccstate" },
-            { from: "file", name: "LocationOverrides" },
-            { from: "file", name: "PromiseTracker" },
-            { from: "file", name: "LoggerRegistry" },
-          ],
-        },
-      ],
-      "ccstate/no-get-signal": "error",
       "ccstate/computed-const-args-package-scope": "error",
     },
   },
