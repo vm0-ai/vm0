@@ -148,6 +148,12 @@ describe("VM0 managed model provider", () => {
       expect(getVm0ApiModel("glm-5.1")).toBe("z-ai/glm-5.1");
     });
 
+    it("should resolve kimi-k2.6 to moonshot-api-key", () => {
+      expect(getVm0ConcreteProviderType("kimi-k2.6")).toBe("moonshot-api-key");
+      expect(getVm0Vendor("kimi-k2.6")).toBe("moonshot");
+      expect(getVm0ApiModel("kimi-k2.6")).toBe("kimi-k2.6");
+    });
+
     it("should fall back to display name when no apiModel override is set", () => {
       expect(getVm0ApiModel("claude-sonnet-4-6")).toBe("claude-sonnet-4-6");
     });
