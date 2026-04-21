@@ -16,7 +16,6 @@ type RoleFilter = Role | "all";
 
 const ROLE_FILTERS: RoleFilter[] = [
   "all",
-  "everyone",
   "engineering",
   "product",
   "ops",
