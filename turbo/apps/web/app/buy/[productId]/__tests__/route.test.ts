@@ -20,6 +20,7 @@ const stripeMocks = vi.hoisted(() => {
     pricesList: vi.fn(),
     checkoutSessionsCreate: vi.fn(),
     checkoutSessionsRetrieve: vi.fn(),
+    checkoutSessionsExpire: vi.fn(),
     customersCreate: vi.fn(),
   };
 });
@@ -34,6 +35,7 @@ vi.mock("stripe", () => {
           sessions: {
             create: stripeMocks.checkoutSessionsCreate,
             retrieve: stripeMocks.checkoutSessionsRetrieve,
+            expire: stripeMocks.checkoutSessionsExpire,
           },
         },
         customers: { create: stripeMocks.customersCreate },
@@ -72,6 +74,7 @@ describe("GET /buy/[productId]", () => {
     stripeMocks.pricesList.mockReset();
     stripeMocks.checkoutSessionsCreate.mockReset();
     stripeMocks.checkoutSessionsRetrieve.mockReset();
+    stripeMocks.checkoutSessionsExpire.mockReset();
     stripeMocks.customersCreate.mockReset();
 
     // Default: product has a default_price that's an object.

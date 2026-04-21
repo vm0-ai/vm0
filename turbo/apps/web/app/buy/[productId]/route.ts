@@ -32,10 +32,14 @@ export async function GET(
   ctx: { params: Promise<{ productId: string }> },
 ): Promise<NextResponse> {
   initServices();
-  const { STRIPE_SECRET_KEY, NEXT_PUBLIC_APP_URL } = env();
+  const { STRIPE_SECRET_KEY } = env();
+  // Use the live request origin instead of a NEXT_PUBLIC_ env var so redirects
+  // follow the host the user actually hit (bad smell #6 — NEXT_PUBLIC_ vars are
+  // bundled into client code and should not be read server-side).
+  const origin = req.nextUrl.origin;
   if (!STRIPE_SECRET_KEY) {
     return NextResponse.redirect(
-      new URL("/?error=billing_unavailable", NEXT_PUBLIC_APP_URL),
+      new URL("/?error=billing_unavailable", origin),
     );
   }
 
@@ -57,22 +61,18 @@ export async function GET(
     // Preserve the full current URL (path + query) so Clerk's post-login
     // redirect drops the user right back at this handler.
     const redirectUrl = req.nextUrl.pathname + req.nextUrl.search;
-    const target = new URL("/sign-in", NEXT_PUBLIC_APP_URL);
+    const target = new URL("/sign-in", origin);
     target.searchParams.set("redirect_url", redirectUrl);
     return NextResponse.redirect(target);
   }
   if (!orgId) {
-    return NextResponse.redirect(
-      new URL("/?error=no_active_org", NEXT_PUBLIC_APP_URL),
-    );
+    return NextResponse.redirect(new URL("/?error=no_active_org", origin));
   }
   if (orgRole !== "org:admin") {
-    return NextResponse.redirect(
-      new URL("/?error=admin_required", NEXT_PUBLIC_APP_URL),
-    );
+    return NextResponse.redirect(new URL("/?error=admin_required", origin));
   }
 
-  const homeUrl = new URL("/", NEXT_PUBLIC_APP_URL).toString();
+  const homeUrl = new URL("/", origin).toString();
   const outcome = await startOrResumeRedemption({
     orgId,
     productId,
@@ -90,12 +90,8 @@ export async function GET(
       });
       return NextResponse.redirect(outcome.url);
     case "already_granted":
-      return NextResponse.redirect(
-        new URL("/?promo=already_redeemed", NEXT_PUBLIC_APP_URL),
-      );
+      return NextResponse.redirect(new URL("/?promo=already_redeemed", origin));
     case "processing":
-      return NextResponse.redirect(
-        new URL("/?promo=processing", NEXT_PUBLIC_APP_URL),
-      );
+      return NextResponse.redirect(new URL("/?promo=processing", origin));
   }
 }

@@ -68,11 +68,25 @@ export async function startOrResumeRedemption(
     return { kind: "redirect", url: session.url };
   }
 
-  // Lost the race — some other caller claimed the row. Resume against the
-  // winner's session.
+  // Lost the race — some other caller claimed the row. Expire the throwaway
+  // Stripe session we just created so it doesn't linger for 24h as dashboard
+  // noise, then resume against the winner's session.
+  const stripe = getStripe();
+  await stripe.checkout.sessions.expire(session.sessionId);
+
+  // The winning transaction has committed (our insert saw the conflict), so
+  // the row MUST be visible. If it's not, something is wrong at the DB
+  // layer — surface an operator-friendly message and let on-call debug.
   const winner = await selectRedemption(params);
   if (!winner) {
-    throw new Error("Race lost but redemption row missing");
+    log.error("one_time_purchase race inconsistency", {
+      orgId: params.orgId,
+      productId: params.productId,
+      promoCode: params.promoCode,
+    });
+    throw new Error(
+      "Redemption state is temporarily inconsistent; please retry in a moment",
+    );
   }
   return resumeExisting(params, winner.stripeSessionId);
 }
