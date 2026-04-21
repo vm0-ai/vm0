@@ -1,20 +1,13 @@
 /**
- * Upload limits.
+ * Upload limits shared by the presigned-URL prepare endpoint and its callers.
  *
- * The presigned path (`/api/zero/uploads/prepare` → browser PUT to R2) can
- * handle 1 GB because the bytes never pass through the Next.js runtime.
- *
- * The legacy multipart path (`POST /api/zero/uploads`, used by the CLI)
- * is capped much lower because Vercel's serverless body limit is ~4.5 MB
- * and `next dev` starts failing well before 1 GB. Keeping a code-level cap
- * there produces a clean 400 instead of a runtime-level surprise.
+ * The file body never passes through the Next.js runtime — the browser /
+ * CLI PUTs straight to R2 using the presigned URL, so we can go all the way
+ * up to R2's 5 GB single-PUT ceiling. 1 GB is the policy cap we chose.
  */
 
-export const MAX_PRESIGNED_UPLOAD_SIZE_BYTES = 1024 * 1024 * 1024; // 1 GB
-export const MAX_PRESIGNED_UPLOAD_SIZE_LABEL = "1 GB";
-
-export const MAX_MULTIPART_UPLOAD_SIZE_BYTES = 100 * 1024 * 1024; // 100 MB
-export const MAX_MULTIPART_UPLOAD_SIZE_LABEL = "100 MB";
+export const MAX_UPLOAD_SIZE_BYTES = 1024 * 1024 * 1024; // 1 GB
+export const MAX_UPLOAD_SIZE_LABEL = "1 GB";
 
 export const ALLOWED_UPLOAD_TYPES: ReadonlySet<string> = new Set([
   "image/png",
