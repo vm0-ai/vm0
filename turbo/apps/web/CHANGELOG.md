@@ -1,5 +1,13 @@
 # Changelog
 
+## [12.276.2](https://github.com/vm0-ai/vm0/compare/web-v12.276.1...web-v12.276.2) (2026-04-21)
+
+
+### Bug Fixes
+
+* **web:** ts-rest api error triage and observability ([#10402](https://github.com/vm0-ai/vm0/issues/10402)) ([67d7ceb](https://github.com/vm0-ai/vm0/commit/67d7ceb879f70d3428ac895831201ca4124ded97))
+* **zero:** disallow schedulewakeup tool for zero agent runs ([#10412](https://github.com/vm0-ai/vm0/issues/10412)) ([10eb97b](https://github.com/vm0-ai/vm0/commit/10eb97bba71a891c60fc6e38bedf013f896a1263))
+
 ## [12.276.1](https://github.com/vm0-ai/vm0/compare/web-v12.276.0...web-v12.276.1) (2026-04-21)
 
 
