@@ -8,7 +8,6 @@ import {
   voiceChatEvents,
 } from "../../../../src/db/schema/voice-chat";
 import { featureCandidateVoiceChatSessions } from "../../../../src/db/schema/voice-chat-candidate";
-import { deleteExpiredPreparations } from "../../../../src/lib/zero/voice-chat/preparation-service";
 import { triggerReasoning } from "../../../../src/lib/zero/voice-chat-candidate/trigger-reasoning";
 import { publishUserSignal } from "../../../../src/lib/infra/realtime/client";
 
@@ -18,7 +17,6 @@ const log = logger("cron:voice-chat-cleanup");
 
 const STALE_HEARTBEAT_MS = 2 * 60 * 1000; // 2 minutes
 const MAX_SESSION_DURATION_MS = 60 * 60 * 1000; // 60 minutes
-const PREPARATION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 const CANDIDATE_STALE_HEARTBEAT_MS = 2 * 60 * 1000; // 2 minutes
 const CANDIDATE_MAX_SESSION_MS = 30 * 60 * 1000; // 30 minutes
@@ -67,9 +65,6 @@ export async function GET(request: Request): Promise<Response> {
     );
     log.info("Voice chat cleanup completed", { cleaned: result.length });
   }
-
-  // Clean up expired preparations (>24h)
-  const expiredPreps = await deleteExpiredPreparations(PREPARATION_TTL_MS);
 
   // === voice-chat-candidate session cleanup ===
   // LIMIT 50 per tick caps worst-case runtime under catastrophic backlog.
@@ -177,7 +172,6 @@ export async function GET(request: Request): Promise<Response> {
   return NextResponse.json({
     success: true,
     cleaned: result.length,
-    preparationsCleaned: expiredPreps.length,
     candidateCleaned: timedOutCandidates.length,
     reasonerReset: recoveredReasoners.length,
   });

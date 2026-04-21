@@ -885,22 +885,12 @@ export {
 export {
   zeroVoiceChatSessionsContract,
   type ZeroVoiceChatSessionsContract,
-  type VoiceChatMode,
   type VoiceChatSession,
   type VoiceChatSessionCreated,
   type CreateVoiceChatSessionBody,
   type VoiceChatTokenBody,
   type VoiceChatTokenResponse,
 } from "./zero-voice-chat-sessions";
-export {
-  zeroVoiceChatPrepareTriggerContract,
-  zeroVoiceChatPrepareCompleteContract,
-  zeroVoiceChatPrepareListContract,
-  type ZeroVoiceChatPrepareCompleteContract,
-  type PrepareCompleteBody,
-  type PrepareCompleteResponse,
-  type FreshPreparation,
-} from "./zero-voice-chat-prepare";
 export {
   zeroVoiceIoQuotaContract,
   audioInputQuotaResponseSchema,

@@ -8,8 +8,6 @@ import {
   IconPhoneOff,
   IconLoader2,
   IconRefresh,
-  IconUsers,
-  IconCheck,
 } from "@tabler/icons-react";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
@@ -19,13 +17,9 @@ import {
   vcError$,
   vcEnabled$,
   vcAgentId$,
-  vcPrompt$,
   vcPrepElapsedMs$,
   vcReconnectAttempt$,
-  vcMeetingPromptInput$,
-  setMeetingPromptInput$,
   startVoiceChat$,
-  startVoiceMeeting$,
   endVoiceChat$,
   retryVoiceChat$,
   toggleVoiceChatMute$,
@@ -35,13 +29,6 @@ import {
   type RealtimeModel,
 } from "../../signals/voice-chat/voice-chat-session.ts";
 import { setVoiceChatScrollContainer$ } from "../../signals/voice-chat/voice-chat-auto-scroll.ts";
-import {
-  meetingPrepStatus$,
-  meetingPrepPrompt$,
-  freshPreparations$,
-  triggerPreparation$,
-  clearPreparation$,
-} from "../../signals/voice-chat/voice-chat-preparation.ts";
 import {
   VoiceUserBubble,
   VoiceAssistantBubble,
@@ -209,151 +196,6 @@ function VoiceChatFooter({
   );
 }
 
-function MeetingBox() {
-  const pageSignal = useGet(pageSignal$);
-  const agentId = useLastResolved(vcAgentId$);
-  const meetingPrompt = useGet(vcMeetingPromptInput$);
-  const setMeetingPrompt = useSet(setMeetingPromptInput$);
-  const startMeeting = useSet(startVoiceMeeting$);
-  const prepStatus = useGet(meetingPrepStatus$);
-  const prepPrompt = useGet(meetingPrepPrompt$);
-  const triggerPrep = useSet(triggerPreparation$);
-  const clearPrep = useSet(clearPreparation$);
-  const promptMatchesPrep = prepPrompt === meetingPrompt;
-
-  return (
-    <div className="w-full max-w-md rounded-lg border border-input p-5 flex flex-col gap-3">
-      <h2 className="text-lg font-semibold">Voice Meeting</h2>
-      <p className="text-sm text-muted-foreground">
-        Set a topic to guide a structured conversation.
-      </p>
-      <textarea
-        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        rows={3}
-        placeholder="What would you like to discuss?"
-        value={meetingPrompt}
-        onChange={(e) => {
-          setMeetingPrompt(e.target.value);
-          if (prepPrompt && e.target.value !== prepPrompt) {
-            clearPrep();
-          }
-        }}
-      />
-      {prepStatus === "preparing" && promptMatchesPrep && (
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <IconLoader2 size={16} className="animate-spin" />
-          Preparing...
-        </div>
-      )}
-      {prepStatus === "ready" && promptMatchesPrep && (
-        <div className="flex items-center gap-2 text-sm text-green-600">
-          <IconCheck size={16} />
-          Preparation ready
-        </div>
-      )}
-      {prepStatus === "failed" && promptMatchesPrep && (
-        <div className="text-sm text-destructive">Preparation failed</div>
-      )}
-      <div className="flex gap-2">
-        {!(prepStatus === "ready" && promptMatchesPrep) && (
-          <Button
-            size="lg"
-            variant="outline"
-            className="flex-1"
-            onClick={() => {
-              detach(
-                triggerPrep(meetingPrompt, pageSignal),
-                Reason.DomCallback,
-              );
-            }}
-            disabled={
-              !agentId ||
-              !meetingPrompt.trim() ||
-              (prepStatus === "preparing" && promptMatchesPrep)
-            }
-          >
-            {prepStatus === "preparing" && promptMatchesPrep
-              ? "Preparing..."
-              : "Prepare"}
-          </Button>
-        )}
-        <Button
-          size="lg"
-          variant="secondary"
-          className="flex-1"
-          onClick={() => {
-            detach(startMeeting(meetingPrompt, pageSignal), Reason.DomCallback);
-          }}
-          disabled={!agentId || !meetingPrompt.trim()}
-        >
-          <IconUsers size={18} className="mr-2" />
-          Start Meeting
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-function formatRelativeTime(iso: string): string {
-  const diffMs = Date.now() - new Date(iso).getTime();
-  const minutes = Math.floor(diffMs / 60_000);
-  if (minutes < 1) {
-    return "just now";
-  }
-  if (minutes < 60) {
-    return `${minutes}min ago`;
-  }
-  const hours = Math.floor(minutes / 60);
-  return `${hours}h ago`;
-}
-
-function ReadyMeetings() {
-  const preparations = useLastResolved(freshPreparations$);
-  const pageSignal = useGet(pageSignal$);
-  const startMeeting = useSet(startVoiceMeeting$);
-  const agentId = useLastResolved(vcAgentId$);
-
-  if (!preparations || preparations.length === 0) {
-    return null;
-  }
-
-  return (
-    <div className="w-full max-w-md flex flex-col gap-2">
-      <h2 className="text-sm font-medium text-muted-foreground">
-        Ready Meetings
-      </h2>
-      {preparations.map((prep) => {
-        return (
-          <div
-            key={prep.id}
-            className="flex items-center justify-between rounded-lg border border-input px-4 py-3"
-          >
-            <div className="flex-1 min-w-0 mr-3">
-              <p className="text-sm truncate">{prep.prompt}</p>
-              <p className="text-xs text-muted-foreground">
-                {formatRelativeTime(prep.createdAt)}
-              </p>
-            </div>
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={() => {
-                detach(
-                  startMeeting(prep.prompt!, pageSignal),
-                  Reason.DomCallback,
-                );
-              }}
-              disabled={!agentId}
-            >
-              Start
-            </Button>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 export function VoiceChatPage() {
   const pageSignal = useGet(pageSignal$);
   const enabled = useLastResolved(vcEnabled$);
@@ -366,7 +208,6 @@ export function VoiceChatPage() {
   const toggleMute = useSet(toggleVoiceChatMute$);
   const reconnectAttempt = useGet(vcReconnectAttempt$);
   const retrySession = useSet(retryVoiceChat$);
-  const prompt = useGet(vcPrompt$);
   const prepElapsedMs = useGet(vcPrepElapsedMs$);
   const model = useGet(vcModel$);
   const setModel = useSet(setVcModel$);
@@ -432,8 +273,6 @@ export function VoiceChatPage() {
             Start Voice Chat
           </Button>
         </div>
-        <MeetingBox />
-        <ReadyMeetings />
       </div>
     );
   }
@@ -445,14 +284,6 @@ export function VoiceChatPage() {
         reconnectAttempt={reconnectAttempt}
         elapsedSeconds={elapsedSeconds}
       />
-
-      {/* Prompt banner */}
-      {prompt && (
-        <div className="shrink-0 border-b px-4 py-3">
-          <p className="text-sm text-muted-foreground">Your prompt:</p>
-          <p className="text-sm mt-1">{prompt}</p>
-        </div>
-      )}
 
       {/* Error banner */}
       {error && (

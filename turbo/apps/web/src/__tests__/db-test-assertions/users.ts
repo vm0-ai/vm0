@@ -1,11 +1,7 @@
 import { eq, sql } from "drizzle-orm";
 import { initServices } from "../../lib/init-services";
 import { pushSubscriptions } from "../../db/schema/push-subscription";
-import {
-  voiceChatSessions,
-  voiceChatEvents,
-  voiceChatPreparations,
-} from "../../db/schema/voice-chat";
+import { voiceChatSessions, voiceChatEvents } from "../../db/schema/voice-chat";
 
 /**
  * Count rows in a table where user_id matches.
@@ -99,17 +95,4 @@ export async function getTestVoiceChatEvents(
     })
     .from(voiceChatEvents)
     .where(eq(voiceChatEvents.sessionId, sessionId));
-}
-
-/**
- * Read a full voice-chat preparation record.
- */
-export async function getTestVoiceChatPreparation(id: string) {
-  initServices();
-  const [row] = await globalThis.services.db
-    .select()
-    .from(voiceChatPreparations)
-    .where(eq(voiceChatPreparations.id, id))
-    .limit(1);
-  return row;
 }

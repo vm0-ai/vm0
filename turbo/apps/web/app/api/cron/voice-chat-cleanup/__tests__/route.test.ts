@@ -5,8 +5,6 @@ import {
   insertTestVoiceChatSession,
   getTestVoiceChatSessionStatus,
   getTestVoiceChatEvents,
-  insertTestVoiceChatPreparation,
-  getTestVoiceChatPreparation,
   insertTestVoiceChatCandidateSession,
   getTestVoiceChatCandidateSession,
   countTestVoiceChatCandidateSessionsByStatus,
@@ -164,63 +162,6 @@ describe("GET /api/cron/voice-chat-cleanup", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.cleaned).toBe(0);
-  });
-
-  it("should delete expired preparations (>24h)", async () => {
-    const expiredTime = new Date(Date.now() - 25 * 60 * 60 * 1000); // 25h ago
-    const prepId = await insertTestVoiceChatPreparation({
-      orgId: "org_test",
-      userId: "user_test",
-      status: "ready",
-      createdAt: expiredTime,
-    });
-
-    const response = await GET(cronRequest("test-cron-secret"));
-    const body = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(body.preparationsCleaned).toBe(1);
-    expect(await getTestVoiceChatPreparation(prepId)).toBeUndefined();
-  });
-
-  it("should not delete fresh preparations (<24h)", async () => {
-    const recentTime = new Date(Date.now() - 60 * 1000); // 1 min ago
-    const prepId = await insertTestVoiceChatPreparation({
-      orgId: "org_test",
-      userId: "user_test",
-      status: "ready",
-      createdAt: recentTime,
-    });
-
-    const response = await GET(cronRequest("test-cron-secret"));
-    const body = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(body.preparationsCleaned).toBe(0);
-    expect(await getTestVoiceChatPreparation(prepId)).toBeDefined();
-  });
-
-  it("should return preparationsCleaned count in response", async () => {
-    const expiredTime = new Date(Date.now() - 25 * 60 * 60 * 1000);
-    await insertTestVoiceChatPreparation({
-      orgId: "org_test",
-      userId: "user_test1",
-      status: "preparing",
-      createdAt: expiredTime,
-    });
-    await insertTestVoiceChatPreparation({
-      orgId: "org_test",
-      userId: "user_test2",
-      status: "ready",
-      createdAt: expiredTime,
-    });
-
-    const response = await GET(cronRequest("test-cron-secret"));
-    const body = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(body.preparationsCleaned).toBe(2);
     expect(body.cleaned).toBe(0);
   });
 

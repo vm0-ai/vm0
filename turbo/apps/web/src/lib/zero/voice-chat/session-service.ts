@@ -5,11 +5,7 @@ import {
 } from "../../../db/schema/voice-chat";
 import { agentRuns } from "../../../db/schema/agent-run";
 import { createZeroRun, type CreateZeroRunResult } from "../zero-run-service";
-import {
-  buildVoiceChatQuickPrepPrompt,
-  buildVoiceChatMeetingPrompt,
-  buildVoiceChatObservationOnlyPrompt,
-} from "../integration-prompt";
+import { buildVoiceChatQuickPrepPrompt } from "../integration-prompt";
 import { conflict, notFound, badRequest, forbidden } from "../../shared/errors";
 import { hasAgentSessionId } from "../run-result";
 import { adaptVoiceChatSessionTrigger } from "./adapt-voice-chat-session-trigger";
@@ -22,7 +18,6 @@ export async function createSession(
   orgId: string,
   userId: string,
   agentId: string,
-  options?: { mode?: "chat" | "meeting"; prompt?: string },
 ) {
   const db = globalThis.services.db;
 
@@ -42,18 +37,13 @@ export async function createSession(
     throw conflict("User already has an active voice-chat session");
   }
 
-  const mode = options?.mode ?? "chat";
-  const status = "preparing";
-
   const [session] = await db
     .insert(voiceChatSessions)
     .values({
       orgId,
       userId,
       agentId,
-      mode,
-      prompt: options?.prompt ?? null,
-      status,
+      status: "preparing",
     })
     .returning();
 
@@ -178,32 +168,11 @@ export async function dispatchSlowBrain(
   orgId: string,
   userId: string,
   agentId: string,
-  options: {
-    mode?: "chat" | "meeting";
-    prompt?: string;
-    apiStartTime: number;
-  },
+  options: { apiStartTime: number },
 ): Promise<CreateZeroRunResult> {
   const db = globalThis.services.db;
-  const meetingPrompt = options.mode === "meeting" ? options.prompt : undefined;
-
-  const appendSystemPrompt = meetingPrompt
-    ? buildVoiceChatMeetingPrompt(session.id, meetingPrompt)
-    : buildVoiceChatQuickPrepPrompt(session.id);
-
-  const prompt = meetingPrompt
-    ? `You are Zero's slow-brain for voice-chat session ${session.id}. A meeting has been requested. Read the shared context for the meeting prompt and begin preparation.`
-    : `You are Zero's slow-brain for voice-chat session ${session.id}. Review the agent configuration and user context, then prepare an initial directive before the conversation begins.`;
-
-  // Write meeting-prompt event before session-start (meeting mode only)
-  if (meetingPrompt) {
-    await db.insert(voiceChatEvents).values({
-      sessionId: session.id,
-      source: "user",
-      type: "meeting-prompt",
-      content: meetingPrompt,
-    });
-  }
+  const appendSystemPrompt = buildVoiceChatQuickPrepPrompt(session.id);
+  const prompt = `You are Zero's slow-brain for voice-chat session ${session.id}. Review the agent configuration and user context, then prepare an initial directive before the conversation begins.`;
 
   const continueFromAgentSessionId =
     (await getPriorVoiceChatAgentSessionId(orgId, userId)) ?? undefined;
@@ -237,84 +206,7 @@ export async function dispatchSlowBrain(
 }
 
 // ---------------------------------------------------------------------------
-// Cached Preparation Events
-// ---------------------------------------------------------------------------
-
-export async function writeCachedPreparationEvents(
-  sessionId: string,
-  directiveContent: string,
-) {
-  const db = globalThis.services.db;
-  await db.insert(voiceChatEvents).values([
-    {
-      sessionId,
-      source: "slow-brain",
-      type: "thinking",
-      content: "Reviewing agent context and preparing initial guidance...",
-    },
-    {
-      sessionId,
-      source: "slow-brain",
-      type: "directive",
-      content: directiveContent,
-    },
-    {
-      sessionId,
-      source: "slow-brain",
-      type: "preparation-ready",
-    },
-  ]);
-}
-
-// ---------------------------------------------------------------------------
-// Observation-Only Slow-Brain Dispatch
-// ---------------------------------------------------------------------------
-
-export async function dispatchObservationSlowBrain(
-  session: {
-    id: string;
-    orgId: string;
-    userId: string;
-    agentId: string;
-  },
-  apiStartTime: number,
-): Promise<CreateZeroRunResult> {
-  const db = globalThis.services.db;
-  const appendSystemPrompt = buildVoiceChatObservationOnlyPrompt(session.id);
-  const prompt = `You are Zero's slow-brain for voice-chat session ${session.id}. Preparation is complete. Start observing the conversation.`;
-
-  const continueFromAgentSessionId =
-    (await getPriorVoiceChatAgentSessionId(session.orgId, session.userId)) ??
-    undefined;
-
-  const result = await createZeroRun(
-    adaptVoiceChatSessionTrigger({
-      userId: session.userId,
-      agentId: session.agentId,
-      prompt,
-      appendSystemPrompt,
-      sessionId: session.id,
-      continueFromAgentSessionId,
-      apiStartTime,
-    }),
-  );
-
-  await db
-    .update(voiceChatSessions)
-    .set({ runId: result.runId })
-    .where(eq(voiceChatSessions.id, session.id));
-
-  await db.insert(voiceChatEvents).values({
-    sessionId: session.id,
-    source: "system",
-    type: "session-start",
-  });
-
-  return result;
-}
-
-// ---------------------------------------------------------------------------
-// Session Activation (meeting mode: preparing → active)
+// Session Activation (preparing → active)
 // ---------------------------------------------------------------------------
 
 export async function activateSession(
