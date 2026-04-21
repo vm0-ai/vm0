@@ -950,6 +950,11 @@ export {
   type PhoneStatusResponse,
 } from "./zero-phone";
 export {
+  zeroUploadsContract,
+  type ZeroUploadsContract,
+  type UploadResponse,
+} from "./zero-uploads";
+export {
   zeroIntegrationsTelegramContract,
   type ZeroIntegrationsTelegramContract,
   type TelegramStatusResponse,
