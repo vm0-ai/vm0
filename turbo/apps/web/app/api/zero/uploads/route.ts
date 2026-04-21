@@ -7,25 +7,12 @@ import {
 } from "../../../../src/lib/infra/s3/s3-client";
 import { env } from "../../../../src/env";
 import { logger } from "../../../../src/lib/shared/logger";
+import {
+  ALLOWED_UPLOAD_TYPES,
+  MAX_FILE_SIZE_BYTES,
+} from "../../../../src/lib/zero/uploads/constants";
 
 const log = logger("api:zero:uploads");
-
-const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB
-const ALLOWED_TYPES = new Set([
-  "image/png",
-  "image/jpeg",
-  "image/gif",
-  "image/webp",
-  "image/svg+xml",
-  "video/mp4",
-  "video/webm",
-  "video/quicktime",
-  "application/pdf",
-  "text/plain",
-  "text/csv",
-  "text/markdown",
-  "application/json",
-]);
 
 export async function POST(request: NextRequest) {
   initServices();
@@ -52,7 +39,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (file.size > MAX_FILE_SIZE) {
+  if (file.size > MAX_FILE_SIZE_BYTES) {
     return NextResponse.json(
       {
         error: { message: "File too large (max 100 MB)", code: "BAD_REQUEST" },
@@ -61,7 +48,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (!ALLOWED_TYPES.has(file.type)) {
+  if (!ALLOWED_UPLOAD_TYPES.has(file.type)) {
     return NextResponse.json(
       {
         error: {

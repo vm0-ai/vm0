@@ -5,14 +5,23 @@ import { apiErrorSchema } from "./errors";
 const c = initContract();
 
 // ---------------------------------------------------------------------------
-// Response schema
+// Schemas
 // ---------------------------------------------------------------------------
 
-const uploadResponseSchema = z.object({
+const prepareRequestSchema = z.object({
+  filename: z.string().min(1).max(255),
+  contentType: z.string().min(1).max(200),
+  size: z.number().int().nonnegative(),
+});
+
+const prepareResponseSchema = z.object({
   id: z.string(),
   filename: z.string(),
   contentType: z.string(),
   size: z.number(),
+  /** Presigned PUT URL — browser uploads the file body here directly. */
+  uploadUrl: z.string().url(),
+  /** Presigned GET URL returned to the app after upload succeeds. */
   url: z.string().url(),
 });
 
@@ -21,31 +30,30 @@ const uploadResponseSchema = z.object({
 // ---------------------------------------------------------------------------
 
 /**
- * Zero contract for POST /api/zero/uploads
+ * Zero contract for uploads.
  *
- * Handles multipart/form-data file uploads with validation.
- * Uses FormData body for binary file transmission.
+ * `prepare` issues a presigned PUT URL so the browser can send the file body
+ * straight to R2, bypassing the Next.js runtime's body-size limits. After a
+ * successful PUT, the presigned GET URL in `url` is stored on the message.
  */
 export const zeroUploadsContract = c.router({
-  upload: {
+  prepare: {
     method: "POST",
-    path: "/api/zero/uploads",
+    path: "/api/zero/uploads/prepare",
     headers: authHeadersSchema,
-    contentType: "multipart/form-data",
-    body: c.type<FormData>(),
+    body: prepareRequestSchema,
     responses: {
-      200: uploadResponseSchema,
+      200: prepareResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
-      413: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "Upload a file",
+    summary: "Prepare a direct-to-R2 upload",
   },
 });
 
 export type ZeroUploadsContract = typeof zeroUploadsContract;
 
 // Inferred types
-export type UploadResponse = z.infer<typeof uploadResponseSchema>;
+export type UploadPrepareResponse = z.infer<typeof prepareResponseSchema>;

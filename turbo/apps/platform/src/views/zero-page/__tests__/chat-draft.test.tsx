@@ -124,13 +124,20 @@ describe("chat draft persistence across thread navigation", () => {
           updatedAt: "2026-03-10T00:00:00Z",
         });
       }),
-      // mockApi cannot be used here: /api/zero/uploads accepts multipart FormData,
-      // which is out of scope for the mockApi helper (Phase 0 of #9707).
-      http.post("*/api/zero/uploads", () => {
-        // Signal that the upload request has arrived
+      // Uploads now use a two-step presigned flow: JSON "prepare" then a
+      // direct browser PUT to R2. We mock both to mimic production.
+      http.post("*/api/zero/uploads/prepare", () => {
+        return HttpResponse.json({
+          id: "upload-1",
+          filename: "photo.png",
+          contentType: "image/png",
+          size: 1024,
+          uploadUrl: "https://mock-upload.example.com/photo.png",
+          url: "https://example.com/photo.png",
+        });
+      }),
+      http.put("https://mock-upload.example.com/photo.png", () => {
         resolveUpload?.();
-
-        // Return a promise that we resolve later
         return new Promise<Response>((resolve) => {
           uploadRequestResolve = (resp) => {
             return resolve(resp);
@@ -172,16 +179,8 @@ describe("chat draft persistence across thread navigation", () => {
       expect(screen.queryByLabelText(/photo\.png/)).toBeNull();
     });
 
-    // Now resolve the upload on the server side
-    uploadRequestResolve!(
-      HttpResponse.json({
-        id: "upload-1",
-        filename: "photo.png",
-        contentType: "image/png",
-        size: 1024,
-        url: "https://example.com/photo.png",
-      }),
-    );
+    // Now resolve the deferred PUT to R2
+    uploadRequestResolve!(new HttpResponse(null, { status: 200 }));
 
     // Navigate back to thread-1 — draft restored from per-thread cache,
     // upload should now be complete

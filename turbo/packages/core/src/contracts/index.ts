@@ -952,7 +952,7 @@ export {
 export {
   zeroUploadsContract,
   type ZeroUploadsContract,
-  type UploadResponse,
+  type UploadPrepareResponse,
 } from "./zero-uploads";
 export {
   zeroIntegrationsTelegramContract,

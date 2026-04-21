@@ -45,20 +45,43 @@ function createChatAttachment(file: File): ZeroChatAttachment {
   const upload$ = command(async ({ get, set }, signal: AbortSignal) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroUploadsContract);
-    const formData = new FormData();
-    formData.append("file", file);
 
     const uploadSignal = set(resetSignal$, signal);
     const deferred = createDeferredPromise<FileInfo>(uploadSignal);
     set(internalPromise$, deferred.promise);
 
-    const result = await accept(
-      client.upload({ body: formData, fetchOptions: { signal: uploadSignal } }),
+    // Step 1: ask the server to sign a PUT URL for R2. The file body never
+    // travels through the Next.js runtime, which lets us exceed Vercel's
+    // serverless body cap and next dev's multipart parser limits.
+    const prepared = await accept(
+      client.prepare({
+        body: {
+          filename: file.name,
+          contentType: file.type,
+          size: file.size,
+        },
+        fetchOptions: { signal: uploadSignal },
+      }),
       [200],
     );
-    signal.throwIfAborted();
+    uploadSignal.throwIfAborted();
 
-    deferred.resolve({ id: result.body.id, url: result.body.url });
+    // Step 2: PUT the file bytes straight to R2 using the presigned URL.
+    // Do NOT forward auth headers or cookies — the URL's signature is the
+    // only credential R2 accepts, and adding others trips CORS.
+    const putRes = await fetch(prepared.body.uploadUrl, {
+      method: "PUT",
+      body: file,
+      headers: { "content-type": file.type },
+      signal: uploadSignal,
+    });
+    uploadSignal.throwIfAborted();
+
+    if (!putRes.ok) {
+      throw new Error(`Upload failed: ${putRes.status} ${putRes.statusText}`);
+    }
+
+    deferred.resolve({ id: prepared.body.id, url: prepared.body.url });
   });
 
   return {
