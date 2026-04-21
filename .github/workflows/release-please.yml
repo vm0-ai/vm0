@@ -1276,16 +1276,27 @@ jobs:
             echo "R2_SECRET_ACCESS_KEY=$SK"
           } >> "$GITHUB_ENV"
 
-      - name: Stage runner on production hosts with Ansible
+      # Provision runner + monitoring. The action skips both playbooks when
+      # the remote host's ~/.vm0-provision-hash matches the current
+      # ansible/ tree hash — most releases don't touch ansible/, so this
+      # is typically a no-op (one SSH hash check per host).
+      - name: Provision metal hosts
+        uses: ./.github/actions/provision
+        with:
+          hosts: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          metal-user: ${{ vars.AWS_METAL_RUNNER_USER }}
+          grafana-cloud-prometheus-url: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_URL }}
+          grafana-cloud-prometheus-user: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_USER }}
+          grafana-cloud-api-key: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
+          env-label: prod
+
+      - name: Build rootfs and snapshot on production hosts
         env:
           AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
           AWS_METAL_RUNNER_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
           RUNNER_VERSION: ${{ needs.release-please.outputs.runner_rs_version }}
           API_URL: ${{ vars.VM0_API_URL }}
-          GRAFANA_CLOUD_PROMETHEUS_URL: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_URL }}
-          GRAFANA_CLOUD_PROMETHEUS_USER: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_USER }}
-          GRAFANA_CLOUD_API_KEY: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
           # R2 image cache credentials — from resolve-image-cache job (repo-level,
           # not production-scoped) so the runner uses the same bucket as CI.
           # R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY come from $GITHUB_ENV
@@ -1294,22 +1305,6 @@ jobs:
           R2_USER_STORAGES_BUCKET_NAME: ${{ needs.resolve-image-cache.outputs.r2-bucket }}
         run: |
           cd ansible
-          ansible-playbook \
-            -i "${AWS_METAL_RUNNER_HOSTS}," \
-            playbooks/provision-runner.yml \
-            -e "ansible_user=${AWS_METAL_RUNNER_USER}" \
-            -v
-          if [ -n "${GRAFANA_CLOUD_API_KEY}" ]; then
-            ansible-playbook \
-              -i "${AWS_METAL_RUNNER_HOSTS}," \
-              playbooks/provision-monitoring.yml \
-              -e "ansible_user=${AWS_METAL_RUNNER_USER}" \
-              -e "grafana_cloud_prometheus_url=${GRAFANA_CLOUD_PROMETHEUS_URL}" \
-              -e "grafana_cloud_prometheus_user=${GRAFANA_CLOUD_PROMETHEUS_USER}" \
-              -e "grafana_cloud_api_key=${GRAFANA_CLOUD_API_KEY}" \
-              -e "env_label=prod" \
-              -v
-          fi
           ansible-playbook \
             -i "${AWS_METAL_RUNNER_HOSTS}," \
             playbooks/build-runner.yml \

@@ -356,6 +356,7 @@ jobs:
           grafana-cloud-prometheus-url: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_URL }}
           grafana-cloud-prometheus-user: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_USER }}
           grafana-cloud-api-key: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
+          env-label: dev
 
       - name: Deploy and build on metal host
         id: build
