@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
 import { initServices } from "../../../../../src/lib/init-services";
-import { env } from "../../../../../src/env";
 import {
   createEphemeralToken,
   isOpenAiTokenError,
@@ -27,18 +26,6 @@ export async function POST(request: Request): Promise<Response> {
 
   if (!(await isVoiceChatCandidateEnabled(authCtx))) {
     return forbiddenResponse();
-  }
-
-  if (!env().OPENAI_API_KEY) {
-    return NextResponse.json(
-      {
-        error: {
-          message: "OpenAI API key not configured",
-          code: "SERVICE_UNAVAILABLE",
-        },
-      },
-      { status: 503 },
-    );
   }
 
   const parsed = voiceChatCandidateTokenBodySchema.safeParse(

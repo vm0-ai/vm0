@@ -57,10 +57,6 @@ export async function createEphemeralToken(
   model?: string,
 ): Promise<EphemeralTokenResponse> {
   const apiKey = env().OPENAI_API_KEY;
-  if (!apiKey) {
-    throw new Error("OPENAI_API_KEY not configured");
-  }
-
   const resolvedModel = resolveModel(model);
 
   const response = await fetch(OPENAI_REALTIME_URL, {

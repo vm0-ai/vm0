@@ -367,19 +367,6 @@ describe("POST /api/zero/voice-chat/token", () => {
     expect(body.error.code).toBe("FORBIDDEN");
   });
 
-  it("should return 503 when OPENAI_API_KEY is not configured", async () => {
-    const userId = uniqueId("zvc-nokey");
-    await setupOrg(userId);
-    vi.stubEnv("OPENAI_API_KEY", "");
-    reloadEnv();
-
-    const response = await tokenPOST(tokenRequest());
-    const body = await response.json();
-
-    expect(response.status).toBe(503);
-    expect(body.error.code).toBe("SERVICE_UNAVAILABLE");
-  });
-
   it("should return ephemeral token on success", async () => {
     const userId = uniqueId("zvc-ok");
     await setupOrg(userId);

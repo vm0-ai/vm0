@@ -202,8 +202,8 @@ function initEnv() {
         .optional(),
       // Realtime pub/sub
       ABLY_API_KEY: z.string().min(1),
-      // OpenAI (for voice-chat ephemeral token minting)
-      OPENAI_API_KEY: z.string().min(1).optional(),
+      // OpenAI (voice-chat ephemeral token minting, STT, TTS)
+      OPENAI_API_KEY: z.string().min(1),
       // Vercel cron job authentication
       CRON_SECRET: z.string().min(1).optional(),
       // Lightweight model (OpenRouter) — used for internal tasks like title generation
