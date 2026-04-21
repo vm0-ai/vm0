@@ -70,4 +70,25 @@ describe("adaptVoiceChatSessionTrigger", () => {
     expect(typeof secret).toBe("string");
     expect(secret && secret.length).toBeGreaterThan(0);
   });
+
+  it("omits CreateZeroRunParams.sessionId when no prior agent session exists", () => {
+    const result = adaptVoiceChatSessionTrigger(baseCtx);
+    expect(result.sessionId).toBeUndefined();
+  });
+
+  it("forwards continueFromAgentSessionId as CreateZeroRunParams.sessionId", () => {
+    const result = adaptVoiceChatSessionTrigger({
+      ...baseCtx,
+      continueFromAgentSessionId: "prior-cc-session-id",
+    });
+    expect(result.sessionId).toBe("prior-cc-session-id");
+  });
+
+  it("keeps the callback payload keyed by voice-chat sessionId, not continue id", () => {
+    const result = adaptVoiceChatSessionTrigger({
+      ...baseCtx,
+      continueFromAgentSessionId: "prior-cc-session-id",
+    });
+    expect(result.callbacks?.[0]?.payload).toEqual({ sessionId: "sess-1" });
+  });
 });

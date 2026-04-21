@@ -1,8 +1,9 @@
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, inArray, desc, isNotNull } from "drizzle-orm";
 import {
   voiceChatSessions,
   voiceChatEvents,
 } from "../../../db/schema/voice-chat";
+import { agentRuns } from "../../../db/schema/agent-run";
 import { createZeroRun, type CreateZeroRunResult } from "../zero-run-service";
 import {
   buildVoiceChatQuickPrepPrompt,
@@ -10,6 +11,7 @@ import {
   buildVoiceChatObservationOnlyPrompt,
 } from "../integration-prompt";
 import { conflict, notFound, badRequest, forbidden } from "../../shared/errors";
+import { hasAgentSessionId } from "../run-result";
 import { adaptVoiceChatSessionTrigger } from "./adapt-voice-chat-session-trigger";
 
 // ---------------------------------------------------------------------------
@@ -67,6 +69,47 @@ async function getSession(sessionId: string) {
     .where(eq(voiceChatSessions.id, sessionId))
     .limit(1);
   return session ?? null;
+}
+
+/**
+ * Find the most recent agentSessionId for a user's prior voice chats.
+ *
+ * Joins voice_chat_sessions with agent_runs via runId and scans the last 5
+ * terminated sessions (status IN ('ended', 'timeout')) for this (orgId,
+ * userId) — both graceful-exit paths populate result.agentSessionId via the
+ * agent-complete webhook. Returns the first populated agentSessionId found,
+ * or null when no suitable prior session exists.
+ *
+ * The 5-row scan (same as chat-thread's getLatestSessionIdForThread) tolerates
+ * the race where a just-ended session's run hasn't yet written its result.
+ */
+export async function getPriorVoiceChatAgentSessionId(
+  orgId: string,
+  userId: string,
+): Promise<string | null> {
+  const db = globalThis.services.db;
+
+  const rows = await db
+    .select({ result: agentRuns.result })
+    .from(voiceChatSessions)
+    .innerJoin(agentRuns, eq(voiceChatSessions.runId, agentRuns.id))
+    .where(
+      and(
+        eq(voiceChatSessions.userId, userId),
+        eq(voiceChatSessions.orgId, orgId),
+        inArray(voiceChatSessions.status, ["ended", "timeout"]),
+        isNotNull(voiceChatSessions.runId),
+      ),
+    )
+    .orderBy(desc(voiceChatSessions.createdAt))
+    .limit(5);
+
+  for (const row of rows) {
+    if (hasAgentSessionId(row.result)) {
+      return row.result.agentSessionId;
+    }
+  }
+  return null;
 }
 
 export async function heartbeat(
@@ -162,6 +205,9 @@ export async function dispatchSlowBrain(
     });
   }
 
+  const continueFromAgentSessionId =
+    (await getPriorVoiceChatAgentSessionId(orgId, userId)) ?? undefined;
+
   const result = await createZeroRun(
     adaptVoiceChatSessionTrigger({
       userId,
@@ -169,6 +215,7 @@ export async function dispatchSlowBrain(
       prompt,
       appendSystemPrompt,
       sessionId: session.id,
+      continueFromAgentSessionId,
       apiStartTime: options.apiStartTime,
     }),
   );
@@ -226,6 +273,7 @@ export async function writeCachedPreparationEvents(
 export async function dispatchObservationSlowBrain(
   session: {
     id: string;
+    orgId: string;
     userId: string;
     agentId: string;
   },
@@ -235,6 +283,10 @@ export async function dispatchObservationSlowBrain(
   const appendSystemPrompt = buildVoiceChatObservationOnlyPrompt(session.id);
   const prompt = `You are Zero's slow-brain for voice-chat session ${session.id}. Preparation is complete. Start observing the conversation.`;
 
+  const continueFromAgentSessionId =
+    (await getPriorVoiceChatAgentSessionId(session.orgId, session.userId)) ??
+    undefined;
+
   const result = await createZeroRun(
     adaptVoiceChatSessionTrigger({
       userId: session.userId,
@@ -242,6 +294,7 @@ export async function dispatchObservationSlowBrain(
       prompt,
       appendSystemPrompt,
       sessionId: session.id,
+      continueFromAgentSessionId,
       apiStartTime,
     }),
   );
