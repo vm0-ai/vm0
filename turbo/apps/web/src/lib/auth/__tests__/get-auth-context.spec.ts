@@ -264,9 +264,28 @@ describe("getAuthContext auth() call optimization", () => {
     expect(mockAuth).toHaveBeenCalled();
   });
 
-  it("should call auth() for unknown Bearer token", async () => {
+  it("should call auth() for unknown Bearer token (Clerk session fallback)", async () => {
+    // Clerk's session.getToken() hands the platform api-client a standard
+    // JWT that the web api-client forwards as `Authorization: Bearer eyJ...`.
+    // That shape matches neither vm0_pat_ nor vm0_sandbox_ prefixes, so it
+    // must fall through to Clerk session auth, not 401.
     await getAuthContext("Bearer unknown_token_format");
     expect(mockAuth).toHaveBeenCalled();
+  });
+
+  it("should resolve Clerk session auth when a Clerk-shape JWT Bearer is presented", async () => {
+    mockAuth.mockResolvedValue({
+      userId: "clerk-user",
+    } as Awaited<ReturnType<typeof auth>>);
+
+    // clerkMiddleware populates auth() from the Authorization header itself;
+    // getAuthContext must defer to it for any non-vm0 Bearer shape.
+    const result = await getAuthContext(
+      "Bearer eyJhbGciOiJSUzI1NiJ9.payload.sig",
+    );
+    expect(result).not.toBeNull();
+    expect(result?.userId).toBe("clerk-user");
+    expect(result?.tokenType).toBe("session");
   });
 
   it("should not call auth() when zero token is provided", async () => {

@@ -114,7 +114,11 @@ export const handleZeroNavSelect$ = command(({ set }, id: SidebarNavId) => {
   set(internalShowAboutPage$, false);
 });
 
-export type ZeroAccountAction = "preferences" | "manage" | "signout";
+export type ZeroAccountAction =
+  | "preferences"
+  | "manage"
+  | "apiKeys"
+  | "signout";
 
 export const handleZeroAccountAction$ = command(
   ({ set }, action: ZeroAccountAction) => {
@@ -123,6 +127,10 @@ export const handleZeroAccountAction$ = command(
     }
     if (action === "preferences") {
       set(detachedNavigateTo$, ROUTES.settings);
+      return;
+    }
+    if (action === "apiKeys") {
+      set(detachedNavigateTo$, ROUTES.settingsApiKeys);
     }
   },
 );

@@ -1,15 +1,15 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
-import { runStatusSchema } from "./runs";
 
 const c = initContract();
 
 /**
- * Public v1 chat-threads surface. Authenticated exclusively via Clerk-issued
- * API Keys (verified server-side). The caller never addresses an agent id —
- * every thread is created under the caller's default agent, and responses
- * omit agent-related fields so the public contract stays narrow.
+ * Public v1 chat-threads surface. Authenticated exclusively via vm0 personal
+ * access tokens (`vm0_pat_…`) minted from `/settings/api-keys`. The caller
+ * never addresses an agent id — every thread is created under the caller's
+ * default agent, and responses omit agent-related fields so the public
+ * contract stays narrow.
  */
 const v1ThreadSchema = z.object({
   id: z.string(),
@@ -22,9 +22,7 @@ const v1MessageSchema = z.object({
   id: z.string(),
   role: z.enum(["user", "assistant"]),
   content: z.string().nullable(),
-  runId: z.string().optional(),
   error: z.string().optional(),
-  status: z.string().optional(),
   createdAt: z.string(),
 });
 
@@ -80,8 +78,6 @@ export const chatThreadV1SendContract = c.router({
       201: z.object({
         threadId: z.string(),
         messageId: z.string(),
-        runId: z.string(),
-        status: runStatusSchema,
         createdAt: z.string(),
       }),
       400: apiErrorSchema,

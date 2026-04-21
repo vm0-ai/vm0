@@ -66,10 +66,18 @@ describe("POST /api/zero/voice-chat/prepare/complete", () => {
   }
 
   it("should reject non-sandbox callers with 400 (no runId)", async () => {
-    // When Clerk authenticates a regular user, authCtx.runId is undefined.
-    // The endpoint returns 400 "must be called from a sandbox run".
+    // When Clerk authenticates a regular user via session (no Bearer token),
+    // authCtx.runId is undefined. The endpoint returns 400 "must be called
+    // from a sandbox run".
     const response = await POST(
-      makeRequest("invalid-token", { content: "test" }),
+      new Request(
+        "http://localhost:3000/api/zero/voice-chat/prepare/complete",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: "test" }),
+        },
+      ),
     );
     const body = await response.json();
     expect(response.status).toBe(400);
