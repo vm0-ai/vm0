@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
@@ -9,6 +10,19 @@ import { detachedNavigateTo$ } from "../../../signals/route.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 import { chatThreadByIdContract } from "@vm0/core";
+
+vi.mock("@vm0/ui/components/ui/sonner", async (importOriginal) => {
+  const actual =
+    (await importOriginal()) as typeof import("@vm0/ui/components/ui/sonner");
+  return {
+    ...actual,
+    toast: { error: vi.fn(), success: vi.fn(), info: vi.fn() },
+  };
+});
+
+beforeEach(() => {
+  vi.mocked(toast.error).mockClear();
+});
 
 const context = testContext();
 
@@ -191,5 +205,86 @@ describe("chat draft persistence across thread navigation", () => {
     await waitFor(() => {
       expect(screen.getByLabelText("Remove photo.png")).toBeInTheDocument();
     });
+  });
+
+  it("should toast and drop the chip when prepare returns an error", async () => {
+    const user = userEvent.setup();
+    mockThreads();
+    server.use(
+      // mockApi cannot be used here: we want to assert UI behavior when the
+      // server returns an error shape directly without going through the
+      // typed happy path.
+      http.post("*/api/zero/uploads/prepare", () => {
+        return HttpResponse.json(
+          {
+            error: {
+              message: "File too large (max 1 GB)",
+              code: "BAD_REQUEST",
+            },
+          },
+          { status: 400 },
+        );
+      }),
+    );
+
+    detachedSetupPage({ context, path: "/chats/thread-err-1" });
+
+    await waitFor(() => {
+      expect(getTextarea()).toBeInTheDocument();
+    });
+
+    const fileInput = document.querySelector(
+      'input[type="file"]',
+    ) as HTMLInputElement;
+    const file = new File(["bad"], "huge.png", { type: "image/png" });
+    await user.upload(fileInput, file);
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith(
+        expect.stringContaining("File too large"),
+      );
+    });
+    expect(screen.queryByLabelText(/huge\.png/)).toBeNull();
+  });
+
+  it("should toast and drop the chip when the R2 put fails", async () => {
+    const user = userEvent.setup();
+    mockThreads();
+    server.use(
+      // mockApi cannot be used here: /api/zero/uploads/prepare is an internal
+      // helper endpoint with no ts-rest contract.
+      http.post("*/api/zero/uploads/prepare", () => {
+        return HttpResponse.json({
+          id: "upload-err",
+          filename: "fail.png",
+          contentType: "image/png",
+          size: 1024,
+          uploadUrl: "https://mock-upload.example.com/fail.png",
+          url: "https://example.com/fail.png",
+        });
+      }),
+      http.put("https://mock-upload.example.com/fail.png", () => {
+        return new HttpResponse(null, { status: 500 });
+      }),
+    );
+
+    detachedSetupPage({ context, path: "/chats/thread-err-2" });
+
+    await waitFor(() => {
+      expect(getTextarea()).toBeInTheDocument();
+    });
+
+    const fileInput = document.querySelector(
+      'input[type="file"]',
+    ) as HTMLInputElement;
+    const file = new File(["x"], "fail.png", { type: "image/png" });
+    await user.upload(fileInput, file);
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith(
+        expect.stringContaining("storage returned 500"),
+      );
+    });
+    expect(screen.queryByLabelText(/fail\.png/)).toBeNull();
   });
 });

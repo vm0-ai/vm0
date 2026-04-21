@@ -1,4 +1,5 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import { resetSignal, createDeferredPromise } from "../utils.ts";
 import { currentChatThreadId$ } from "../agent-chat.ts";
 import { zeroClient$ } from "../api-client.ts";
@@ -53,6 +54,9 @@ function createChatAttachment(file: File): ZeroChatAttachment {
     // Step 1: ask the server to sign a PUT URL for R2. The file body never
     // travels through the Next.js runtime, which lets us exceed Vercel's
     // serverless body cap and next dev's multipart parser limits.
+    //
+    // Toast is disabled here so upload errors are surfaced through a single
+    // path in `uploadAttachment$`, which also removes the failed chip.
     const prepared = await accept(
       client.prepare({
         body: {
@@ -63,6 +67,7 @@ function createChatAttachment(file: File): ZeroChatAttachment {
         fetchOptions: { signal: uploadSignal },
       }),
       [200],
+      { toast: false },
     );
     uploadSignal.throwIfAborted();
 
@@ -78,7 +83,7 @@ function createChatAttachment(file: File): ZeroChatAttachment {
     uploadSignal.throwIfAborted();
 
     if (!putRes.ok) {
-      throw new Error(`Upload failed: ${putRes.status} ${putRes.statusText}`);
+      throw new Error(`storage returned ${putRes.status} ${putRes.statusText}`);
     }
 
     deferred.resolve({ id: prepared.body.id, url: prepared.body.url });
@@ -168,7 +173,29 @@ export function createDraftSignals(): DraftSignals {
         return [...prev, attachment];
       });
 
-      await set(attachment.upload$, signal);
+      try {
+        await set(attachment.upload$, signal);
+      } catch (error) {
+        // Drop the failed chip so the composer doesn't show an orphan.
+        // `removeAttachment$` may have already removed it on user cancel;
+        // filter is a no-op in that case.
+        set(internalAttachments$, (prev) => {
+          return prev.filter((a) => {
+            return a !== attachment;
+          });
+        });
+
+        // Aborts come from user cancel (X on chip) or external signal
+        // (page navigation) — neither is an error condition.
+        const isAbort = error instanceof Error && error.name === "AbortError";
+        if (isAbort) {
+          return;
+        }
+
+        const message =
+          error instanceof Error ? error.message : "Unknown error";
+        toast.error(`Failed to upload ${file.name}: ${message}`);
+      }
     },
   );
 
