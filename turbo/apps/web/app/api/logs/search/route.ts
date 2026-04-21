@@ -55,6 +55,7 @@ function errorHandler(err: unknown): TsRestResponse | void {
 }
 
 const handler = createHandler(logsSearchContract, router, {
+  routeName: "logs.search",
   errorHandler,
 });
 

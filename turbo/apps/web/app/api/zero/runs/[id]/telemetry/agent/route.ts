@@ -1,6 +1,5 @@
 import {
   createHandler,
-  createSafeErrorHandler,
   tsr,
 } from "../../../../../../../src/lib/ts-rest-handler";
 import { zeroRunAgentEventsContract } from "@vm0/core";
@@ -48,7 +47,7 @@ const router = tsr.router(zeroRunAgentEventsContract, {
 });
 
 const handler = createHandler(zeroRunAgentEventsContract, router, {
-  errorHandler: createSafeErrorHandler("zero-runs:telemetry:agent"),
+  routeName: "zero.runs.telemetry.agent",
 });
 
 export { handler as GET };

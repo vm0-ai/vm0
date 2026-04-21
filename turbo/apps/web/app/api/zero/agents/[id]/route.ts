@@ -1,8 +1,4 @@
-import {
-  createHandler,
-  createSafeErrorHandler,
-  tsr,
-} from "../../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
 import { zeroAgentsByIdContract, toFirewallPolicies } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
@@ -426,7 +422,7 @@ const router = tsr.router(zeroAgentsByIdContract, {
 });
 
 const handler = createHandler(zeroAgentsByIdContract, router, {
-  errorHandler: createSafeErrorHandler("zero-agents:id"),
+  routeName: "zero.agents.byId",
 });
 
 export { handler as GET, handler as PUT, handler as PATCH, handler as DELETE };

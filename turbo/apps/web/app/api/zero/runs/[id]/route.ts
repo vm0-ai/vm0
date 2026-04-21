@@ -1,8 +1,4 @@
-import {
-  createHandler,
-  createSafeErrorHandler,
-  tsr,
-} from "../../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
 import { zeroRunsByIdContract } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
@@ -39,7 +35,7 @@ const router = tsr.router(zeroRunsByIdContract, {
 });
 
 const handler = createHandler(zeroRunsByIdContract, router, {
-  errorHandler: createSafeErrorHandler("zero-runs:id"),
+  routeName: "zero.runs.byId",
 });
 
 export { handler as GET };

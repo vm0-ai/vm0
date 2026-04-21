@@ -34,6 +34,8 @@ const router = tsr.router(runsByIdContract, {
   },
 });
 
-const handler = createHandler(runsByIdContract, router);
+const handler = createHandler(runsByIdContract, router, {
+  routeName: "agent.runs.byId",
+});
 
 export { handler as GET };

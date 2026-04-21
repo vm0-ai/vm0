@@ -146,6 +146,7 @@ function errorHandler(err: unknown): TsRestResponse | void {
 }
 
 const handler = createHandler(runSystemLogContract, router, {
+  routeName: "agent.runs.telemetry.system-log",
   errorHandler,
 });
 

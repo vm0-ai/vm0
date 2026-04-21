@@ -1,8 +1,4 @@
-import {
-  createHandler,
-  createSafeErrorHandler,
-  tsr,
-} from "../../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
 import {
   zeroComputerUseUnregisterContract,
   createErrorResponse,
@@ -52,7 +48,7 @@ const router = tsr.router(zeroComputerUseUnregisterContract, {
 });
 
 const handler = createHandler(zeroComputerUseUnregisterContract, router, {
-  errorHandler: createSafeErrorHandler("zero-computer-use:unregister"),
+  routeName: "zero.computer-use.unregister",
 });
 
 export { handler as DELETE };

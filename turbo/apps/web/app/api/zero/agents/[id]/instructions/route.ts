@@ -1,9 +1,5 @@
 import { gunzipSync } from "node:zlib";
-import {
-  createHandler,
-  createSafeErrorHandler,
-  tsr,
-} from "../../../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../../../src/lib/ts-rest-handler";
 import {
   zeroAgentInstructionsContract,
   getInstructionsStorageName,
@@ -304,7 +300,7 @@ const router = tsr.router(zeroAgentInstructionsContract, {
 });
 
 const handler = createHandler(zeroAgentInstructionsContract, router, {
-  errorHandler: createSafeErrorHandler("zero-agents:instructions"),
+  routeName: "zero.agents.instructions",
 });
 
 export { handler as GET, handler as PUT };

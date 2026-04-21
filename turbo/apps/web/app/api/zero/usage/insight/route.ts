@@ -1,8 +1,4 @@
-import {
-  createHandler,
-  createSafeErrorHandler,
-  tsr,
-} from "../../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
 import { zeroUsageInsightContract, createErrorResponse } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
@@ -43,7 +39,7 @@ const router = tsr.router(zeroUsageInsightContract, {
 });
 
 const handler = createHandler(zeroUsageInsightContract, router, {
-  errorHandler: createSafeErrorHandler("zero-usage-insight"),
+  routeName: "zero.usage.insight",
 });
 
 export { handler as GET };

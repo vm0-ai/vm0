@@ -1,7 +1,6 @@
 import { eq, and } from "drizzle-orm";
 import {
   createHandler,
-  createSafeErrorHandler,
   tsr,
 } from "../../../../../../../src/lib/ts-rest-handler";
 import {
@@ -66,7 +65,7 @@ const router = tsr.router(zeroConnectorSessionByIdContract, {
 });
 
 const handler = createHandler(zeroConnectorSessionByIdContract, router, {
-  errorHandler: createSafeErrorHandler("zero-connectors:session-by-id"),
+  routeName: "zero.connectors.sessions.bySessionId",
 });
 
 export { handler as GET };

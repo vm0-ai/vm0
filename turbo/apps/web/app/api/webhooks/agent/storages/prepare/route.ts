@@ -1,8 +1,4 @@
-import {
-  createHandler,
-  tsr,
-  createSafeErrorHandler,
-} from "../../../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../../../src/lib/ts-rest-handler";
 import {
   webhookStoragesPrepareContract,
   VOLUME_ORG_USER_ID,
@@ -289,7 +285,7 @@ const router = tsr.router(webhookStoragesPrepareContract, {
 });
 
 const handler = createHandler(webhookStoragesPrepareContract, router, {
-  errorHandler: createSafeErrorHandler("webhook:storages:prepare"),
+  routeName: "webhooks.agent.storages.prepare",
 });
 
 export { handler as POST };

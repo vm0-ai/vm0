@@ -148,6 +148,7 @@ function errorHandler(err: unknown): TsRestResponse | void {
 }
 
 const handler = createHandler(sessionsByIdContract, router, {
+  routeName: "agent.sessions.byId",
   errorHandler,
 });
 

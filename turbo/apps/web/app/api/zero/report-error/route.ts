@@ -1,8 +1,4 @@
-import {
-  createHandler,
-  createSafeErrorHandler,
-  tsr,
-} from "../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
 import { zeroReportErrorContract } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import {
@@ -104,7 +100,7 @@ const router = tsr.router(zeroReportErrorContract, {
 });
 
 const handler = createHandler(zeroReportErrorContract, router, {
-  errorHandler: createSafeErrorHandler("zero-report-error"),
+  routeName: "zero.report-error",
 });
 
 export { handler as POST };

@@ -30,6 +30,8 @@ const router = tsr.router(runsQueueContract, {
   },
 });
 
-const handler = createHandler(runsQueueContract, router);
+const handler = createHandler(runsQueueContract, router, {
+  routeName: "agent.runs.queue",
+});
 
 export { handler as GET };

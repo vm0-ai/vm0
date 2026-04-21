@@ -144,6 +144,7 @@ function errorHandler(err: unknown): TsRestResponse | void {
 }
 
 const handler = createHandler(cliAuthTokenContract, router, {
+  routeName: "cli.auth.token",
   errorHandler,
 });
 

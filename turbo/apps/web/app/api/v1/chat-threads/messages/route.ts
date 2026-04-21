@@ -1,9 +1,5 @@
 import { after } from "next/server";
-import {
-  createHandler,
-  createSafeErrorHandler,
-  tsr,
-} from "../../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
 import { chatThreadV1SendContract } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
@@ -150,7 +146,7 @@ const router = tsr.router(chatThreadV1SendContract, {
 });
 
 const handler = createHandler(chatThreadV1SendContract, router, {
-  errorHandler: createSafeErrorHandler("v1-chat-thread-send"),
+  routeName: "v1.chat-threads.messages.send",
 });
 
 export { handler as POST };

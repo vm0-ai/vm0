@@ -1,8 +1,4 @@
-import {
-  createHandler,
-  tsr,
-  createSafeErrorHandler,
-} from "../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
 import { storagesListContract, VOLUME_ORG_USER_ID } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { storages } from "../../../../src/db/schema/storage";
@@ -95,7 +91,7 @@ const router = tsr.router(storagesListContract, {
 });
 
 const handler = createHandler(storagesListContract, router, {
-  errorHandler: createSafeErrorHandler("storages:list"),
+  routeName: "storages.list",
 });
 
 export { handler as GET };

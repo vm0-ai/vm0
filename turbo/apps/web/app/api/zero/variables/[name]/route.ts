@@ -1,8 +1,4 @@
-import {
-  createHandler,
-  createSafeErrorHandler,
-  tsr,
-} from "../../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
 import { zeroVariablesByNameContract, createErrorResponse } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
@@ -47,7 +43,7 @@ const router = tsr.router(zeroVariablesByNameContract, {
 });
 
 const handler = createHandler(zeroVariablesByNameContract, router, {
-  errorHandler: createSafeErrorHandler("zero-variables"),
+  routeName: "zero.variables.byName",
 });
 
 export { handler as DELETE };

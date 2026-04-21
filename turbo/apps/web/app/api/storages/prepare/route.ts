@@ -1,8 +1,4 @@
-import {
-  createHandler,
-  tsr,
-  createSafeErrorHandler,
-} from "../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
 import {
   storagesPrepareContract,
   VOLUME_ORG_USER_ID,
@@ -335,7 +331,7 @@ const router = tsr.router(storagesPrepareContract, {
 });
 
 const handler = createHandler(storagesPrepareContract, router, {
-  errorHandler: createSafeErrorHandler("storages:prepare"),
+  routeName: "storages.prepare",
 });
 
 export { handler as POST };

@@ -155,6 +155,7 @@ function errorHandler(err: unknown): TsRestResponse | void {
 }
 
 const handler = createHandler(runMetricsContract, router, {
+  routeName: "agent.runs.telemetry.metrics",
   errorHandler,
 });
 

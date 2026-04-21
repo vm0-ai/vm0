@@ -120,8 +120,16 @@ export function createSafeErrorHandler(
 
 /**
  * Options for createHandler.
+ *
+ * Route naming convention: `<area>.<resource>[.<sub>][.<op|byId>]`, mirroring
+ * the URL path with parameters collapsed to the operation name. Examples:
+ *   /api/agent/runs/[id]          → "agent.runs.byId"
+ *   /api/zero/chat-threads        → "zero.chat-threads"
+ *   /api/webhooks/agent/complete  → "webhooks.agent.complete"
  */
 interface CreateHandlerOptions {
+  /** Stable route identifier used for structured logs and error tags. */
+  routeName: string;
   /** Custom error handler for validation and other errors */
   errorHandler?: (err: unknown) => TsRestResponse | void;
 }
@@ -137,17 +145,16 @@ const requestStartTimes = new WeakMap<TsRestRequest, number>();
  *
  * @param contract - The ts-rest contract definition
  * @param router - The ts-rest router implementation (from tsr.router)
- * @param options - Additional options (errorHandler, etc.)
+ * @param options - Must include `routeName`; may override `errorHandler`.
  */
 export function createHandler<T extends AppRouter>(
   contract: T,
   router: TsRestRouter<T>,
-  options?: CreateHandlerOptions,
+  options: CreateHandlerOptions,
 ) {
   const resolvedOptions = {
-    ...options,
     errorHandler:
-      options?.errorHandler ?? createSafeErrorHandler("unknown-route"),
+      options.errorHandler ?? createSafeErrorHandler(options.routeName),
   };
 
   return createNextHandler(contract, router, {

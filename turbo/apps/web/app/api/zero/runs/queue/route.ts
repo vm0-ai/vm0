@@ -1,8 +1,4 @@
-import {
-  createHandler,
-  createSafeErrorHandler,
-  tsr,
-} from "../../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
 import { zeroRunsQueueContract, orgTierSchema } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
@@ -31,7 +27,7 @@ const router = tsr.router(zeroRunsQueueContract, {
 });
 
 const handler = createHandler(zeroRunsQueueContract, router, {
-  errorHandler: createSafeErrorHandler("zero-runs:queue"),
+  routeName: "zero.runs.queue",
 });
 
 export { handler as GET };

@@ -1,8 +1,4 @@
-import {
-  createHandler,
-  createSafeErrorHandler,
-  tsr,
-} from "../../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
 import {
   zeroOrgMembershipRequestsContract,
   createErrorResponse,
@@ -73,7 +69,7 @@ const router = tsr.router(zeroOrgMembershipRequestsContract, {
 });
 
 const handler = createHandler(zeroOrgMembershipRequestsContract, router, {
-  errorHandler: createSafeErrorHandler("zero-org-membership-requests"),
+  routeName: "zero.org.membership-requests",
 });
 
 export { handler as POST, handler as DELETE };

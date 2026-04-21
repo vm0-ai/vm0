@@ -50,6 +50,8 @@ const router = tsr.router(composesListContract, {
   },
 });
 
-const handler = createHandler(composesListContract, router);
+const handler = createHandler(composesListContract, router, {
+  routeName: "agent.composes.list",
+});
 
 export { handler as GET };

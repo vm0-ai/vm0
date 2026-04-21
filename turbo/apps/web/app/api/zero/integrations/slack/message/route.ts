@@ -267,6 +267,8 @@ const router = tsr.router(integrationsSlackMessageContract, {
   },
 });
 
-const handler = createHandler(integrationsSlackMessageContract, router);
+const handler = createHandler(integrationsSlackMessageContract, router, {
+  routeName: "zero.integrations.slack.message",
+});
 
 export { handler as POST };

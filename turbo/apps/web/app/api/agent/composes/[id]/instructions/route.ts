@@ -198,6 +198,8 @@ const router = tsr.router(composesInstructionsContract, {
   },
 });
 
-const handler = createHandler(composesInstructionsContract, router);
+const handler = createHandler(composesInstructionsContract, router, {
+  routeName: "agent.composes.instructions",
+});
 
 export { handler as GET };

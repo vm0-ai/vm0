@@ -1,8 +1,4 @@
-import {
-  createHandler,
-  createSafeErrorHandler,
-  tsr,
-} from "../../../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../../../src/lib/ts-rest-handler";
 import { zeroUserConnectorsContract, connectorTypeSchema } from "@vm0/core";
 import { initServices } from "../../../../../../src/lib/init-services";
 import {
@@ -185,7 +181,7 @@ const router = tsr.router(zeroUserConnectorsContract, {
 });
 
 const handler = createHandler(zeroUserConnectorsContract, router, {
-  errorHandler: createSafeErrorHandler("zero-agents:user-connectors"),
+  routeName: "zero.agents.user-connectors",
 });
 
 export { handler as GET, handler as PUT };

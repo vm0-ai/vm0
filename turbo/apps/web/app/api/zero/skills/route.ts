@@ -1,8 +1,4 @@
-import {
-  createHandler,
-  createSafeErrorHandler,
-  tsr,
-} from "../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
 import {
   zeroSkillsCollectionContract,
   getCustomSkillStorageName,
@@ -134,7 +130,7 @@ const router = tsr.router(zeroSkillsCollectionContract, {
 });
 
 const handler = createHandler(zeroSkillsCollectionContract, router, {
-  errorHandler: createSafeErrorHandler("zero-skills"),
+  routeName: "zero.skills",
 });
 
 export { handler as GET, handler as POST };

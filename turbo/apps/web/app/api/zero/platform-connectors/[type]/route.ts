@@ -1,8 +1,4 @@
-import {
-  createHandler,
-  createSafeErrorHandler,
-  tsr,
-} from "../../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
 import {
   zeroPlatformConnectorContract,
   createErrorResponse,
@@ -50,7 +46,7 @@ const router = tsr.router(zeroPlatformConnectorContract, {
 });
 
 const handler = createHandler(zeroPlatformConnectorContract, router, {
-  errorHandler: createSafeErrorHandler("zero-platform-connectors:type"),
+  routeName: "zero.platform-connectors.byType",
 });
 
 export { handler as POST };

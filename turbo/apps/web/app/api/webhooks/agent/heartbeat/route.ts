@@ -92,6 +92,7 @@ function errorHandler(err: unknown): TsRestResponse | void {
 }
 
 const handler = createHandler(webhookHeartbeatContract, router, {
+  routeName: "webhooks.agent.heartbeat",
   errorHandler,
 });
 

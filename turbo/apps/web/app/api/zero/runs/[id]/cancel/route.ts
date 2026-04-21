@@ -1,8 +1,4 @@
-import {
-  createHandler,
-  createSafeErrorHandler,
-  tsr,
-} from "../../../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../../../src/lib/ts-rest-handler";
 import { zeroRunsCancelContract, createErrorResponse } from "@vm0/core";
 import { initServices } from "../../../../../../src/lib/init-services";
 import {
@@ -77,7 +73,7 @@ const router = tsr.router(zeroRunsCancelContract, {
 });
 
 const handler = createHandler(zeroRunsCancelContract, router, {
-  errorHandler: createSafeErrorHandler("zero-runs:cancel"),
+  routeName: "zero.runs.cancel",
 });
 
 export { handler as POST };

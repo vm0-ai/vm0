@@ -44,6 +44,8 @@ const router = tsr.router(composesMetadataContract, {
   },
 });
 
-const handler = createHandler(composesMetadataContract, router);
+const handler = createHandler(composesMetadataContract, router, {
+  routeName: "agent.composes.metadata",
+});
 
 export { handler as PATCH };

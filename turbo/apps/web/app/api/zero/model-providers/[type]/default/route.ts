@@ -1,8 +1,4 @@
-import {
-  createHandler,
-  createSafeErrorHandler,
-  tsr,
-} from "../../../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../../../src/lib/ts-rest-handler";
 import {
   zeroModelProvidersDefaultContract,
   createErrorResponse,
@@ -68,7 +64,7 @@ const router = tsr.router(zeroModelProvidersDefaultContract, {
 });
 
 const handler = createHandler(zeroModelProvidersDefaultContract, router, {
-  errorHandler: createSafeErrorHandler("zero-model-providers"),
+  routeName: "zero.model-providers.default",
 });
 
 export { handler as POST };

@@ -295,6 +295,8 @@ const router = tsr.router(cronCleanupSandboxesContract, {
   },
 });
 
-const handler = createHandler(cronCleanupSandboxesContract, router);
+const handler = createHandler(cronCleanupSandboxesContract, router, {
+  routeName: "cron.cleanup-sandboxes",
+});
 
 export { handler as GET };

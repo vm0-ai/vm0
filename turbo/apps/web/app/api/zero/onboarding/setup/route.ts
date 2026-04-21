@@ -1,11 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { onboardingSetupContract } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
-import {
-  createHandler,
-  createSafeErrorHandler,
-  tsr,
-} from "../../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
 import {
   requireAuth,
   isAuthError,
@@ -291,7 +287,7 @@ const router = tsr.router(onboardingSetupContract, {
 });
 
 const handler = createHandler(onboardingSetupContract, router, {
-  errorHandler: createSafeErrorHandler("onboarding-setup"),
+  routeName: "zero.onboarding.setup",
 });
 
 export { handler as POST };

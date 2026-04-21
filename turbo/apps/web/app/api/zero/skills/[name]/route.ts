@@ -1,9 +1,5 @@
 import { gunzipSync } from "node:zlib";
-import {
-  createHandler,
-  createSafeErrorHandler,
-  tsr,
-} from "../../../../../src/lib/ts-rest-handler";
+import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
 import {
   zeroSkillsDetailContract,
   getCustomSkillStorageName,
@@ -323,7 +319,7 @@ const router = tsr.router(zeroSkillsDetailContract, {
 });
 
 const handler = createHandler(zeroSkillsDetailContract, router, {
-  errorHandler: createSafeErrorHandler("zero-skills:detail"),
+  routeName: "zero.skills.byName",
 });
 
 export { handler as GET, handler as PUT, handler as DELETE };
