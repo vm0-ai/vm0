@@ -342,6 +342,38 @@ describe("Org-Level Runtime Resolution (Zero Layer)", () => {
       );
     });
 
+    // Regression for production crash:
+    //   Firewall "jira" base URL requires variable "JIRA_DOMAIN" but it was not provided
+    // When a user was authorized for a connector but never set the required
+    // secrets/variables, the firewall for that connector must not be injected.
+    it("should not inject connector firewall when user has no credentials", async () => {
+      const agentName = uniqueId("jira-agent");
+      await createTestCompose(agentName);
+      const jiraAgentId = await getTestZeroAgentId(user.orgId, agentName);
+
+      // Authorize jira for this agent but never set JIRA_API_TOKEN/DOMAIN/EMAIL
+      await createTestUserConnector(
+        user.orgId,
+        user.userId,
+        jiraAgentId,
+        "jira",
+      );
+
+      const result = await createZeroRun(baseParams({ agentId: jiraAgentId }));
+
+      await context.mocks.flushAfter();
+      const job = await findTestRunnerJobEntry(result.runId);
+      expect(job).toBeDefined();
+      // jira firewall must not appear — its base url templates on JIRA_DOMAIN
+      // which would fail to resolve
+      const firewallNames = (job!.executionContext.firewalls ?? []).map(
+        (fw) => {
+          return fw.name;
+        },
+      );
+      expect(firewallNames).not.toContain("jira");
+    });
+
     it("should not filter custom user secrets that do not belong to any connector", async () => {
       const agentName = uniqueId("conn-agent");
       await createTestCompose(agentName, {
