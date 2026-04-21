@@ -1421,6 +1421,33 @@ class TestResponseUsageReporting:
         assert len(buf) == len(large_chunk)
         assert not state["truncated"]
 
+    def test_non_x_billable_connector_keeps_unbounded_buffer(self, real_flow, headers):
+        """Buffer policy gates on firewall_billable (not firewall_name == 'x').
+
+        When BILLABLE_CONNECTORS grows past ['x'], responseheaders must
+        keep the body unbounded for the new connector too — its future
+        log_*_connector_usage handler will need json.loads on the full body.
+        """
+        flow = real_flow(with_response=False, host="api.gamma.example")
+        flow.response = tutils.tresp(
+            status_code=200, headers=http.Headers(**{"content-type": "application/json"})
+        )
+        flow.metadata["firewall_name"] = "gamma"  # hypothetical future billable connector
+        flow.metadata["firewall_billable"] = True
+
+        mitm_addon.responseheaders(flow)
+
+        callback = flow.response.stream
+        large_chunk = b"g" * (body_utils.STREAM_BUFFER_LIMIT + 1000)
+        callback(large_chunk)
+
+        buf = flow.metadata["stream_buffer"]
+        state = flow.metadata["stream_buffer_state"]
+        assert len(buf) == len(large_chunk)
+        assert not state["truncated"]
+        # And no X-specific state gets attached to a non-x flow.
+        assert "x_ndjson_state" not in flow.metadata
+
     def test_no_usage_report_for_non_model_provider(
         self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor
     ):
