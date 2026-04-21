@@ -211,7 +211,7 @@ describe("applyConnectorPolicies", () => {
     });
   });
 
-  it("defaults unknownPolicy to allow when ref absent from unknownPermissionPolicies", () => {
+  it("defaults unknownPolicy to allow when name absent from unknownPermissionPolicies", () => {
     const fw = makeFirewall({
       name: "github",
       apis: [
