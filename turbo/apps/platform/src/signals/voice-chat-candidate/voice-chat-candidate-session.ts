@@ -825,8 +825,9 @@ const resetVccSessionState$ = command(
 );
 
 const resolveVccAgentId$ = command(
-  async ({ get, set }): Promise<string | null> => {
+  async ({ get, set }, signal: AbortSignal): Promise<string | null> => {
     const agentId = await get(defaultAgentId$);
+    signal.throwIfAborted();
     if (!agentId) {
       set(internalError$, "No agent selected");
       set(internalStatus$, "error");
@@ -914,20 +915,23 @@ interface BootstrapVccTransportArgs {
   token: string;
   sessionId: string;
   sessionSignal: AbortSignal;
-  outerSignal: AbortSignal;
 }
 
 const bootstrapVccTransport$ = command(
-  async ({ set }, args: BootstrapVccTransportArgs): Promise<void> => {
-    const { stream, token, sessionId, sessionSignal, outerSignal } = args;
+  async (
+    { set },
+    args: BootstrapVccTransportArgs,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const { stream, token, sessionId, sessionSignal } = args;
     const ok = await set(setupWebRTC$, stream, token, sessionSignal);
-    outerSignal.throwIfAborted();
+    signal.throwIfAborted();
     if (!ok) {
       return;
     }
 
     await set(acquireWakeLock$, sessionSignal);
-    outerSignal.throwIfAborted();
+    signal.throwIfAborted();
 
     await Promise.allSettled([
       set(startHeartbeat$, sessionSignal),
@@ -949,8 +953,7 @@ export const startVoiceChatCandidate$ = command(
 
     const sessionSignal = set(resetVccSessionState$, signal);
 
-    const agentId = await set(resolveVccAgentId$);
-    signal.throwIfAborted();
+    const agentId = await set(resolveVccAgentId$, signal);
     if (!agentId) {
       return;
     }
@@ -970,13 +973,11 @@ export const startVoiceChatCandidate$ = command(
       return;
     }
 
-    await set(bootstrapVccTransport$, {
-      stream,
-      token,
-      sessionId: session.id,
-      sessionSignal,
-      outerSignal: signal,
-    });
+    await set(
+      bootstrapVccTransport$,
+      { stream, token, sessionId: session.id, sessionSignal },
+      signal,
+    );
   },
 );
 
