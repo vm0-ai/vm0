@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.276.5](https://github.com/vm0-ai/vm0/compare/web-v12.276.4...web-v12.276.5) (2026-04-21)
+
+
+### Bug Fixes
+
+* **zero:** gate firewall injection on credential presence again ([#10437](https://github.com/vm0-ai/vm0/issues/10437)) ([1f4abad](https://github.com/vm0-ai/vm0/commit/1f4abadcf6b6f3bcc74dc4a203ad8662bf0645ee))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.219.1
+
 ## [12.276.4](https://github.com/vm0-ai/vm0/compare/web-v12.276.3...web-v12.276.4) (2026-04-21)
 
 

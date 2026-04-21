@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.275.1](https://github.com/vm0-ai/vm0/compare/app-v0.275.0...app-v0.275.1) (2026-04-21)
+
+
+### Performance Improvements
+
+* **platform:** reduce activity log poll interval from 10s to 3s ([#10440](https://github.com/vm0-ai/vm0/issues/10440)) ([0284532](https://github.com/vm0-ai/vm0/commit/0284532eb41ceb1089480964846f12d03d4d6b5c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.219.1
+
 ## [0.275.0](https://github.com/vm0-ai/vm0/compare/app-v0.274.1...app-v0.275.0) (2026-04-21)
 
 
