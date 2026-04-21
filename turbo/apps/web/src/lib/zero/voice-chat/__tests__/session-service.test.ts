@@ -3,7 +3,6 @@ import { eq } from "drizzle-orm";
 import { testContext, uniqueId } from "../../../../__tests__/test-helpers";
 import { seedTestCompose } from "../../../../__tests__/db-test-seeders/agents";
 import { seedTestRun } from "../../../../__tests__/db-test-seeders/runs";
-import { initServices } from "../../../init-services";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route covers these services yet
 import {
   createSession,
@@ -18,7 +17,6 @@ import { agentRuns } from "../../../../db/schema/agent-run";
 const context = testContext();
 
 async function seedAgent() {
-  initServices();
   const { userId, orgId } = await context.setupUser();
   const { composeId } = await seedTestCompose({
     userId,
@@ -42,7 +40,6 @@ async function seedSessionWithRun(options: {
   sessionStatus?: "active" | "preparing" | "ended" | "timeout";
   createdAt?: Date;
 }) {
-  initServices();
   const { runId } = await seedTestRun(options.userId, options.agentId, {
     orgId: options.orgId,
     status: options.runStatus ?? "running",
