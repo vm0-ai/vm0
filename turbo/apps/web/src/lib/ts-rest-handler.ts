@@ -227,10 +227,12 @@ export function createHandler<T extends AppRouter>(
   const perOpHandlers =
     opMap && opMap.size > 1
       ? new Map(
-          [...new Set(opMap.values())].map((op) => [
-            op,
-            createSafeErrorHandler(`${options.routeName}.${op}`),
-          ]),
+          [...new Set(opMap.values())].map((op) => {
+            return [
+              op,
+              createSafeErrorHandler(`${options.routeName}.${op}`),
+            ] as const;
+          }),
         )
       : null;
   const defaultHandler = createSafeErrorHandler(options.routeName);
