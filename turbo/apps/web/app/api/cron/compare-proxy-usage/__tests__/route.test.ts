@@ -378,4 +378,119 @@ describe("GET /api/cron/compare-proxy-usage", () => {
     expect(errorMessagesForOrg(logSpy, user1.orgId)).toHaveLength(0);
     expect(errorMessagesForOrg(logSpy, user2.orgId)).toHaveLength(1);
   });
+
+  // ── Non-vm0 provider filter ────────────────────────────────────────
+  //
+  // The proxy only reports usage for `billableFirewalls`, which is
+  // populated *only* when `resolvedModelProvider === "vm0"` (see
+  // build-zero-context.ts).  For user-paid providers (BYOK) the proxy
+  // legitimately writes nothing to `credit_usage`, so comparing against
+  // `client_credit_usage` would false-alarm on every run.
+
+  it("does not log 'missing proxy' for a non-vm0 run (BYOK provider)", async () => {
+    const { orgId, userId } = await context.setupUser({ prefix: "byok" });
+    const runId = await createCompletedRun(
+      orgId,
+      userId,
+      new Date(Date.now() - 120_000),
+      { modelProvider: "anthropic-api-key" },
+    );
+    // Client-side events still record usage for BYOK runs…
+    await insertTestClientCreditUsage(orgId, {
+      userId,
+      runId,
+      inputTokens: 100,
+    });
+    // …but the proxy deliberately does not write to credit_usage.
+
+    const response = await callCronRoute();
+
+    expect(response.status).toBe(200);
+    expect(errorMessagesForOrg(logSpy, orgId)).toHaveLength(0);
+  });
+
+  it("does not log 'undercount' for a non-vm0 run even with partial proxy data", async () => {
+    const { orgId, userId } = await context.setupUser({ prefix: "byok-u" });
+    const runId = await createCompletedRun(
+      orgId,
+      userId,
+      new Date(Date.now() - 120_000),
+      { modelProvider: "moonshot-api-key" },
+    );
+    // Pathological state: something wrote proxy rows for a non-vm0 run
+    // (e.g. legacy data, or an inflight migration).  The filter must still
+    // skip it rather than triggering an undercount alert.
+    await insertTestCreditUsageForRun({
+      runId,
+      orgId,
+      userId,
+      inputTokens: 30,
+    });
+    await insertTestClientCreditUsage(orgId, {
+      userId,
+      runId,
+      inputTokens: 100,
+    });
+
+    const response = await callCronRoute();
+
+    expect(response.status).toBe(200);
+    expect(errorMessagesForOrg(logSpy, orgId)).toHaveLength(0);
+  });
+
+  it("does not log for a run without a zero_runs row (plain agent run)", async () => {
+    const { orgId, userId } = await context.setupUser({ prefix: "no-zero" });
+    const runId = await createCompletedRun(
+      orgId,
+      userId,
+      new Date(Date.now() - 120_000),
+      { modelProvider: null },
+    );
+    await insertTestClientCreditUsage(orgId, {
+      userId,
+      runId,
+      inputTokens: 100,
+    });
+
+    const response = await callCronRoute();
+
+    expect(response.status).toBe(200);
+    expect(errorMessagesForOrg(logSpy, orgId)).toHaveLength(0);
+  });
+
+  it("mixes vm0 and non-vm0 runs: alerts only on the vm0 one", async () => {
+    const { orgId, userId } = await context.setupUser({ prefix: "mixed" });
+    const completedAt = new Date(Date.now() - 120_000);
+
+    // vm0 run with undercount → should alert
+    const vm0Run = await createCompletedRun(orgId, userId, completedAt);
+    await insertTestCreditUsageForRun({
+      runId: vm0Run,
+      orgId,
+      userId,
+      inputTokens: 30,
+    });
+    await insertTestClientCreditUsage(orgId, {
+      userId,
+      runId: vm0Run,
+      inputTokens: 100,
+    });
+
+    // BYOK run with same undercount shape → should NOT alert
+    const byokRun = await createCompletedRun(orgId, userId, completedAt, {
+      modelProvider: "anthropic-api-key",
+    });
+    await insertTestClientCreditUsage(orgId, {
+      userId,
+      runId: byokRun,
+      inputTokens: 100,
+    });
+
+    const response = await callCronRoute();
+
+    expect(response.status).toBe(200);
+    const entries = errorMessagesForOrg(logSpy, orgId);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]!.meta).toMatchObject({ runId: vm0Run });
+  });
 });
