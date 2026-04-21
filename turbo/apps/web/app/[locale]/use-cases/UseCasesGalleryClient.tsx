@@ -1,12 +1,14 @@
 "use client";
 
 import Image from "next/image";
+import { IconArrowUpRight } from "@tabler/icons-react";
 import { useTranslations } from "next-intl";
 import { useMemo, useState } from "react";
 import { Link } from "../../../navigation";
 import Footer from "../../components/Footer";
 import Particles from "../../components/Particles";
-import { USE_CASES } from "./data";
+import { getAppUrl } from "../../../../src/lib/zero/url";
+import { USE_CASES, buildPromptHref } from "./data";
 import type { UseCase, ConnectorRef, AvatarConfig, Role } from "./data";
 
 const MAX_WIDTH = 1200;
@@ -74,48 +76,78 @@ function ConnectorIcon({ connector }: { connector: ConnectorRef }) {
 function UseCaseCard({
   useCase,
   title,
+  tryItLabel,
 }: {
   useCase: UseCase;
   title: string;
+  tryItLabel: string;
 }) {
+  const platformUrl = getAppUrl();
+
+  // Get the first prompt variant for the "Try it" link
+  const firstPrompt = useCase.slug;
+
+  // Build the href for the Try it button
+  // Use a simple prompt based on the use case title
+  const tryItHref = buildPromptHref(
+    `Help me with: ${title}`,
+    useCase.connectors,
+    platformUrl,
+  );
+
   return (
-    <Link
-      href={`/use-cases/${useCase.slug}`}
-      className="group block overflow-hidden rounded-[20px] bg-white transition-all duration-300 hover:-translate-y-0.5"
-      style={{ textDecoration: "none" }}
-    >
-      {/* Colorful top area */}
-      <div
-        className="relative flex items-center justify-between px-6 pb-5 pt-10"
-        style={{ backgroundColor: useCase.color }}
+    <div className="group block overflow-hidden rounded-[20px] bg-white transition-all duration-300 hover:-translate-y-0.5">
+      <Link
+        href={`/use-cases/${useCase.slug}`}
+        style={{ textDecoration: "none" }}
       >
-        {/* Grid texture overlay */}
+        {/* Colorful top area */}
         <div
-          className="pointer-events-none absolute inset-0"
-          style={{
-            backgroundImage:
-              "linear-gradient(rgba(255,255,255,0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.08) 1px, transparent 1px)",
-            backgroundSize: "40px 40px",
-          }}
-        />
-        {/* Agent avatar */}
-        <AgentAvatar config={useCase.avatar} size={56} />
+          className="relative flex items-center justify-between px-6 pb-5 pt-10"
+          style={{ backgroundColor: useCase.color }}
+        >
+          {/* Grid texture overlay */}
+          <div
+            className="pointer-events-none absolute inset-0"
+            style={{
+              backgroundImage:
+                "linear-gradient(rgba(255,255,255,0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.08) 1px, transparent 1px)",
+              backgroundSize: "40px 40px",
+            }}
+          />
+          {/* Agent avatar */}
+          <AgentAvatar config={useCase.avatar} size={56} />
 
-        {/* Connector logos */}
-        <div className="relative flex items-center gap-1.5" style={{ top: 8 }}>
-          {useCase.connectors.map((c) => {
-            return <ConnectorIcon key={c.id} connector={c} />;
-          })}
+          {/* Connector logos */}
+          <div className="relative flex items-center gap-1.5" style={{ top: 8 }}>
+            {useCase.connectors.map((c) => {
+              return <ConnectorIcon key={c.id} connector={c} />;
+            })}
+          </div>
         </div>
-      </div>
 
-      {/* Content - title only */}
-      <div className="flex flex-col px-6 pb-7 pt-5">
-        <h3 className="text-lg font-medium leading-snug tracking-[-0.2px] text-[hsl(var(--foreground))] group-hover:text-[#ed4e01]">
-          {title}
-        </h3>
+        {/* Content - title only */}
+        <div className="flex flex-col px-6 pb-4 pt-5">
+          <h3 className="text-lg font-medium leading-snug tracking-[-0.2px] text-[hsl(var(--foreground))] group-hover:text-[#ed4e01]">
+            {title}
+          </h3>
+        </div>
+      </Link>
+
+      {/* Try it button - outside Link to handle separate click */}
+      <div className="px-6 pb-5">
+        <a
+          href={tryItHref}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-0.5 text-[13px] font-medium text-[#ed4e01] transition-all hover:gap-1.5"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {tryItLabel}
+          <IconArrowUpRight size={14} />
+        </a>
       </div>
-    </Link>
+    </div>
   );
 }
 
@@ -182,6 +214,7 @@ export default function UseCasesGalleryClient() {
                 key={uc.slug}
                 useCase={uc}
                 title={t(`content.${uc.slug}.title`)}
+                tryItLabel={t("tryIt")}
               />
             );
           })}
