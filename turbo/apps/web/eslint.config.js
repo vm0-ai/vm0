@@ -19,8 +19,24 @@ export default [
   ...nextJsConfig,
   {
     rules: {
-      // react-hooks v7 added many rules via configs.recommended with extreme runtime cost.
-      // Keep only the two classic rules; disable all v7 additions.
+      // react-hooks v7 added many rules via configs.recommended with significant runtime cost.
+      // The rules below are disabled because they either have no violations in this codebase
+      // or are superseded by oxlint equivalents (see .oxlintrc.json).
+      //
+      // Rules moved to oxlint — see .oxlintrc.json for enforcement
+      "react-hooks/rules-of-hooks": "off",
+      // Class component rules — irrelevant, classes are banned via no-restricted-syntax
+      "react/no-direct-mutation-state": "off",
+      "react/display-name": "off",
+      "react/require-render-return": "off",
+      "react/prop-types": "off",
+      "react/no-deprecated": "off",
+      // Intentionally disabled react-hooks v7 rules: high runtime cost, no violations in
+      // codebase, and no direct oxlint equivalents. Acceptable trade-off for this project
+      // because: (a) classes are banned so component-lifecycle rules don't apply,
+      // (b) immutability and purity are enforced by code review and TypeScript readonly types,
+      // (c) set-state-in-effect / error-boundaries / refs are project patterns that are
+      // audited and currently clean.
       "react-hooks/static-components": "off",
       "react-hooks/use-memo": "off",
       "react-hooks/component-hook-factories": "off",
@@ -36,15 +52,6 @@ export default [
       "react-hooks/unsupported-syntax": "off",
       "react-hooks/config": "off",
       "react-hooks/gating": "off",
-      // Covered by oxlint (react/rules-of-hooks, react/no-direct-mutation-state,
-      // react/display-name, react/require-render-return)
-      "react-hooks/rules-of-hooks": "off",
-      "react/no-direct-mutation-state": "off",
-      "react/display-name": "off",
-      "react/require-render-return": "off",
-      // Class component rules — irrelevant, classes are banned in this codebase
-      "react/prop-types": "off",
-      "react/no-deprecated": "off",
     },
   },
   {

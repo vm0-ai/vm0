@@ -1,6 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/oxc-project/oxlint/main/npm/oxlint/configuration_schema.json",
   "extends": ["../../.oxlintrc.json"],
+  "plugins": ["react"],
   "rules": {
     "react/rules-of-hooks": "error",
     "react/no-direct-mutation-state": "error",
