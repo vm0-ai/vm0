@@ -757,6 +757,24 @@ function PagedUserGroup({
   );
 }
 
+function resolveAttachments(
+  message: PagedChatMessage,
+  parsed: { filename: string; url: string }[],
+) {
+  const source =
+    message.attachFiles && message.attachFiles.length > 0
+      ? message.attachFiles
+      : parsed;
+  return source.map((f) => {
+    return {
+      filename: f.filename,
+      url: f.url,
+      isImage: isImageFilename(f.filename),
+      isVideo: isVideoFilename(f.filename),
+    };
+  });
+}
+
 function PagedUserMessage({
   message,
   thread,
@@ -799,24 +817,7 @@ function PagedUserMessage({
     );
   };
 
-  const allAttachments =
-    message.attachFiles && message.attachFiles.length > 0
-      ? message.attachFiles.map((f) => {
-          return {
-            filename: f.filename,
-            url: f.url,
-            isImage: isImageFilename(f.filename),
-            isVideo: isVideoFilename(f.filename),
-          };
-        })
-      : parsed.map((p) => {
-          return {
-            filename: p.filename,
-            url: p.url,
-            isImage: isImageFilename(p.filename),
-            isVideo: isVideoFilename(p.filename),
-          };
-        });
+  const allAttachments = resolveAttachments(message, parsed);
 
   return (
     <div data-role="user" className="group">
