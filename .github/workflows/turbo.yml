@@ -1119,7 +1119,7 @@ jobs:
       - name: Install E2E dependencies
         run: npm install -g agent-browser@0.22.0
       - name: Run browser E2E tests
-        continue-on-error: true
+        continue-on-error: ${{ vars.CI_CHECK_BROWSER_E2E != '1' }}
         run: |
           BATS_TEST_TIMEOUT=180 ./e2e/test/libs/bats/bin/bats -T ./e2e/tests/02-browser/*.bats
         env:
@@ -2214,7 +2214,7 @@ jobs:
           check_result "deploy-app" "${{ needs.deploy-app.result }}" "true"
           check_result "build-cli" "${{ needs.build-cli.result }}" "true"
           check_result "build-e2b-template" "${{ needs.build-e2b-template.result }}" "true"
-          check_result "cli-e2e-02-browser" "${{ needs.cli-e2e-02-browser.result }}" "informational"
+          check_result "cli-e2e-02-browser" "${{ needs.cli-e2e-02-browser.result }}" "${{ vars.CI_CHECK_BROWSER_E2E == '1' && 'true' || 'informational' }}"
           check_result "cli-e2e-02-playwright" "${{ needs.cli-e2e-02-playwright.result }}" "true"
           check_result "cli-e2e-01-serial" "${{ needs.cli-e2e-01-serial.result }}" "true"
           check_result "deploy-runner-prepare" "${{ needs.deploy-runner-prepare.result }}" "true"
