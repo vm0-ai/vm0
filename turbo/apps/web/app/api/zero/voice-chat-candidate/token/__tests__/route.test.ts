@@ -3,7 +3,6 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../../../../src/mocks/server";
 import { testContext } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
-import { reloadEnv } from "../../../../../../src/env";
 import { setupCandidateOrg } from "../../__tests__/_helpers";
 
 vi.mock("@vm0/core", async (importOriginal) => {
@@ -12,10 +11,6 @@ vi.mock("@vm0/core", async (importOriginal) => {
     ...actual,
     isFeatureEnabled: vi.fn().mockReturnValue(true),
   };
-});
-
-vi.hoisted(() => {
-  vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
 });
 
 const { isFeatureEnabled } = await import("@vm0/core");
@@ -47,8 +42,6 @@ describe("POST /api/zero/voice-chat-candidate/token", () => {
     userId = user.userId;
     await setupCandidateOrg(userId);
     mockIsFeatureEnabled.mockReturnValue(true);
-    vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
-    reloadEnv();
   });
 
   it("returns 401 when not authenticated", async () => {

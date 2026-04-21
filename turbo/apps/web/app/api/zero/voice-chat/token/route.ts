@@ -4,7 +4,10 @@ import { FeatureSwitchKey, isFeatureEnabled } from "@vm0/core";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
 import { initServices } from "../../../../../src/lib/init-services";
 import { loadFeatureSwitchOverrides } from "../../../../../src/lib/zero/user/feature-switches-service";
-import { createEphemeralToken } from "../../../../../src/lib/zero/voice-chat/openai-token";
+import {
+  createEphemeralToken,
+  isOpenAiTokenError,
+} from "../../../../../src/lib/zero/voice-chat/openai-token";
 import { logger } from "../../../../../src/lib/shared/logger";
 
 const log = logger("api:zero:voice-chat:token");
@@ -39,23 +42,33 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
+  const raw = await request.json().catch(() => {
+    return undefined;
+  });
+  const body = bodySchema.parse(raw);
+
+  // Narrow catch: only map upstream OpenAI failures to 500 with the documented
+  // error body. Any other exception (logic bug, unavailable service, etc.)
+  // propagates to the framework error handler — per project "avoid defensive
+  // programming" rule.
   try {
-    const raw = await request.json().catch(() => {
-      return undefined;
-    });
-    const body = bodySchema.parse(raw);
     const result = await createEphemeralToken(body?.model);
     return NextResponse.json(result);
   } catch (error) {
-    log.error("Failed to create ephemeral token", { error });
-    return NextResponse.json(
-      {
-        error: {
-          message: "Failed to create ephemeral token",
-          code: "INTERNAL_SERVER_ERROR",
+    if (isOpenAiTokenError(error)) {
+      log.error("OpenAI token request failed", {
+        status: error.status,
+      });
+      return NextResponse.json(
+        {
+          error: {
+            message: "Failed to create ephemeral token",
+            code: "INTERNAL_SERVER_ERROR",
+          },
         },
-      },
-      { status: 500 },
-    );
+        { status: 500 },
+      );
+    }
+    throw error;
   }
 }

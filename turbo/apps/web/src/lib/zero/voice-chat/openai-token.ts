@@ -22,6 +22,40 @@ interface EphemeralTokenResponse {
   };
 }
 
+// Tagged error raised when the upstream OpenAI realtime session endpoint
+// responds with a non-ok status. The route handler uses `isOpenAiTokenError`
+// to narrow the catch and map to HTTP 500 with the documented error body.
+// Plain object + discriminant avoids `class`, which is disallowed by project lint rules.
+const OPENAI_TOKEN_ERROR_TAG = "OpenAiTokenError" as const;
+
+interface OpenAiTokenError extends Error {
+  readonly name: typeof OPENAI_TOKEN_ERROR_TAG;
+  readonly status: number;
+  readonly body: string;
+}
+
+function createOpenAiTokenError(
+  status: number,
+  body: string,
+): OpenAiTokenError {
+  const err = new Error(`OpenAI API error: ${status}`) as Error & {
+    name: typeof OPENAI_TOKEN_ERROR_TAG;
+    status: number;
+    body: string;
+  };
+  err.name = OPENAI_TOKEN_ERROR_TAG;
+  err.status = status;
+  err.body = body;
+  return err;
+}
+
+export function isOpenAiTokenError(value: unknown): value is OpenAiTokenError {
+  return (
+    value instanceof Error &&
+    (value as { name?: unknown }).name === OPENAI_TOKEN_ERROR_TAG
+  );
+}
+
 export async function createEphemeralToken(
   model?: string,
 ): Promise<EphemeralTokenResponse> {
@@ -43,7 +77,7 @@ export async function createEphemeralToken(
   if (!response.ok) {
     const body = await response.text();
     log.error("OpenAI token request failed", { status: response.status, body });
-    throw new Error(`OpenAI API error: ${response.status}`);
+    throw createOpenAiTokenError(response.status, body);
   }
 
   return response.json() as Promise<EphemeralTokenResponse>;
