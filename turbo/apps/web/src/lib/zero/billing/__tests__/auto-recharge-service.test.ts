@@ -128,7 +128,7 @@ describe("auto-recharge-service", () => {
         autoRechargeThreshold: 500,
         autoRechargeAmount: 5000,
       });
-      // Default credits = 100000, threshold = 500 → above threshold
+      // Seeded credits = 100000 (see beforeEach), threshold = 500 → above threshold
 
       await triggerAutoRecharge(user.orgId);
 
@@ -161,7 +161,7 @@ describe("auto-recharge-service", () => {
       });
       await updateOrgAutoRecharge(user.orgId, {
         autoRechargeEnabled: true,
-        autoRechargeThreshold: 110_000, // balance (100000) is below this
+        autoRechargeThreshold: 110_000, // seeded balance (100000) is below this
         autoRechargeAmount: 10_000,
       });
 

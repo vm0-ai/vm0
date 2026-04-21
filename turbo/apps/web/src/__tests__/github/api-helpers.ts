@@ -71,7 +71,8 @@ export async function givenGitHubInstallation(
 
   // Ensure org row exists (source of truth for tier and default agent).
   // Routing through ensureStarterCreditGrant mirrors how real free-tier orgs
-  // land 100k credits + a matching credit_expires_record during onboarding.
+  // land their starter credits + a matching credit_expires_record during
+  // onboarding (see STARTER_GRANT_AMOUNT for the current value).
   await globalThis.services.db.transaction(async (tx) => {
     await ensureStarterCreditGrant(tx, orgId);
   });

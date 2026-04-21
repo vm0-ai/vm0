@@ -205,6 +205,9 @@ describe("GET /api/zero/billing/status", () => {
     // endpoint must subtract it before returning so the UI shows the real
     // spendable balance.
     const { orgId } = await context.setupUser({ prefix: "expiry-unsettled" });
+    // Seed a 100k baseline balance — the column default is now 0, so tests
+    // that need a specific starting balance must seed it explicitly.
+    await setOrgCredits(orgId, 100_000);
 
     const pastDate = new Date();
     pastDate.setMonth(pastDate.getMonth() - 1);
@@ -214,7 +217,7 @@ describe("GET /api/zero/billing/status", () => {
       expiresAt: pastDate,
       stripeInvoiceId: uniqueId("inv-expired"),
     });
-    // Mirror the inflated ledger: default 100k starter + 3k that's expired
+    // Mirror the inflated ledger: 100k baseline + 3k that's expired
     await grantCreditsToOrg(orgId, 3000);
 
     const request = createTestRequest(
@@ -224,7 +227,7 @@ describe("GET /api/zero/billing/status", () => {
 
     expect(response.status).toBe(200);
     const data = await response.json();
-    // 100_000 (starter) + 3_000 (granted) − 3_000 (expired) = 100_000
+    // 100_000 (seeded) + 3_000 (granted) − 3_000 (expired) = 100_000
     expect(data.credits).toBe(100_000);
   });
 

@@ -348,7 +348,7 @@ describe("GET /api/cron/process-credits", () => {
         stripeInvoiceId: uniqueId("inv-expired"),
       });
       // Mirror the inflated ledger: seed org with the expired amount on top
-      // of the default 100k starter credits
+      // of the 100k baseline seeded in beforeEach via setOrgCredits
       await grantCreditsToOrg(user.orgId, 5000);
 
       // 100 input + 100 output → 200 credits charged
