@@ -116,6 +116,8 @@ const internalTasksByCallId$ = state<Record<string, VoiceChatCandidateTask>>(
 const internalTasksById$ = state<Record<string, VoiceChatCandidateTask>>({});
 const internalContext$ = state<string>("");
 const internalContextVersion$ = state<number>(0);
+const internalContextSeq$ = state<number>(0);
+const internalLastReasoningAt$ = state<string | null>(null);
 const internalStreamingAssistant$ = state<{
   responseId: string;
   itemId: string | null;
@@ -164,6 +166,18 @@ export const vccSessionId$ = computed((get) => {
 
 export const vccTasksById$ = computed((get) => {
   return get(internalTasksById$);
+});
+
+export const vccReasonerContext$ = computed((get) => {
+  return get(internalContext$);
+});
+
+export const vccReasonerContextSeq$ = computed((get) => {
+  return get(internalContextSeq$);
+});
+
+export const vccReasonerLastAt$ = computed((get) => {
+  return get(internalLastReasoningAt$);
 });
 
 type StreamingItem = {
@@ -685,6 +699,8 @@ const startAblyLoop$ = command(
         if (session.contextVersion > prevVersion) {
           set(internalContext$, nextContext);
           set(internalContextVersion$, session.contextVersion);
+          set(internalContextSeq$, session.contextSeq);
+          set(internalLastReasoningAt$, session.lastReasoningAt);
           set(refreshInstructionsIfChanged$, nextContext);
         }
         if (session.status !== "active") {
@@ -692,6 +708,22 @@ const startAblyLoop$ = command(
           return true;
         }
       }
+
+      const tasksRes = await accept(
+        client.listTasks({ params: { id: sid } }),
+        [200, 401, 404],
+        { toast: false },
+      );
+      loopSignal.throwIfAborted();
+
+      if (tasksRes.status === 200) {
+        const next: Record<string, VoiceChatCandidateTask> = {};
+        for (const task of tasksRes.body.tasks) {
+          next[task.id] = task;
+        }
+        set(internalTasksById$, next);
+      }
+
       return false;
     });
 
@@ -797,6 +829,8 @@ export const startVoiceChatCandidate$ = command(
     set(internalTasksById$, {});
     set(internalContext$, "");
     set(internalContextVersion$, 0);
+    set(internalContextSeq$, 0);
+    set(internalLastReasoningAt$, null);
     set(internalStreamingAssistant$, null);
     set(internalPendingUserItemId$, null);
     set(internalMuted$, false);
@@ -834,6 +868,8 @@ export const startVoiceChatCandidate$ = command(
     set(internalSessionId$, session.id);
     set(internalContext$, session.context ?? "");
     set(internalContextVersion$, session.contextVersion);
+    set(internalContextSeq$, session.contextSeq);
+    set(internalLastReasoningAt$, session.lastReasoningAt);
 
     const tokenRes = await accept(
       client.token({ body: { model: TALKER_MODEL } }),
@@ -945,6 +981,8 @@ export const endVoiceChatCandidate$ = command(({ get, set }) => {
   set(internalTasksById$, {});
   set(internalContext$, "");
   set(internalContextVersion$, 0);
+  set(internalContextSeq$, 0);
+  set(internalLastReasoningAt$, null);
   set(internalStreamingAssistant$, null);
   set(internalPendingUserItemId$, null);
   set(internalParentSignal$, null);

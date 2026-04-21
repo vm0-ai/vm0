@@ -1,5 +1,6 @@
 import { useGet, useLastResolved, useSet } from "ccstate-react";
 import { Button, cn } from "@vm0/ui";
+import type { VoiceChatCandidateTask } from "@vm0/core";
 import {
   IconMicrophone,
   IconMicrophoneOff,
@@ -16,6 +17,9 @@ import {
   vccAgentId$,
   vccTasksById$,
   vccConversationItems$,
+  vccReasonerContext$,
+  vccReasonerContextSeq$,
+  vccReasonerLastAt$,
   startVoiceChatCandidate$,
   endVoiceChatCandidate$,
   toggleVoiceChatCandidateMute$,
@@ -77,6 +81,123 @@ function VoiceChatCandidateHeader({ status }: { status: ConnectionStatus }) {
       </span>
       <StatusBadge status={status} />
     </div>
+  );
+}
+
+function ReasonerPanel() {
+  const context = useGet(vccReasonerContext$);
+  const contextSeq = useGet(vccReasonerContextSeq$);
+  const lastAt = useGet(vccReasonerLastAt$);
+
+  const updatedLabel = lastAt ? new Date(lastAt).toLocaleTimeString() : "never";
+
+  return (
+    <aside className="flex flex-col min-h-0 overflow-hidden text-xs">
+      <div className="shrink-0 px-4 py-2 flex items-center gap-3 text-muted-foreground border-b">
+        <span className="font-medium">Reasoner</span>
+        <span className="font-mono">seq={contextSeq}</span>
+        <span>updated {updatedLabel}</span>
+      </div>
+      <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3">
+        {context ? (
+          <pre className="whitespace-pre-wrap font-mono text-xs text-foreground/80">
+            {context}
+          </pre>
+        ) : (
+          <p className="text-muted-foreground italic">No context yet.</p>
+        )}
+      </div>
+    </aside>
+  );
+}
+
+type TaskStatus = VoiceChatCandidateTask["status"];
+
+function TaskStatusBadge({ status }: { status: TaskStatus }) {
+  const color: Record<TaskStatus, string> = {
+    pending: "bg-muted text-muted-foreground",
+    queued: "bg-muted text-muted-foreground",
+    running:
+      "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
+    done: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
+    failed: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
+  };
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide",
+        color[status],
+      )}
+    >
+      {status === "running" && (
+        <IconLoader2 size={10} className="animate-spin mr-1" />
+      )}
+      {status}
+    </span>
+  );
+}
+
+function TaskerPanel({
+  tasks,
+}: {
+  tasks: Record<string, VoiceChatCandidateTask>;
+}) {
+  const sorted = Object.values(tasks).sort((a, b) => {
+    return b.createdAt.localeCompare(a.createdAt);
+  });
+
+  return (
+    <aside className="flex flex-col min-h-0 overflow-hidden text-xs">
+      <div className="shrink-0 px-4 py-2 flex items-center gap-3 text-muted-foreground border-b">
+        <span className="font-medium">Tasker</span>
+        <span className="font-mono">{sorted.length} task(s)</span>
+      </div>
+      <div className="flex-1 min-h-0 overflow-y-auto px-3 py-3 flex flex-col gap-3">
+        {sorted.length === 0 ? (
+          <p className="text-muted-foreground italic text-center py-4">
+            No tasks yet.
+          </p>
+        ) : (
+          sorted.map((task) => {
+            return (
+              <div
+                key={task.id}
+                className="rounded-lg border border-border bg-muted/30 px-3 py-2 flex flex-col gap-2"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <TaskStatusBadge status={task.status} />
+                  <span className="text-[10px] text-muted-foreground font-mono">
+                    {new Date(task.createdAt).toLocaleTimeString()}
+                  </span>
+                </div>
+                <p className="text-xs text-foreground break-words line-clamp-3">
+                  {task.prompt}
+                </p>
+                {task.result.length > 0 && (
+                  <div className="max-h-40 overflow-y-auto flex flex-col gap-1.5 border-t border-border/60 pt-2">
+                    {task.result.map((entry) => {
+                      return (
+                        <p
+                          key={`${entry.at}:${entry.content.slice(0, 32)}`}
+                          className="text-xs text-foreground/80 whitespace-pre-wrap break-words"
+                        >
+                          {entry.content}
+                        </p>
+                      );
+                    })}
+                  </div>
+                )}
+                {task.error && (
+                  <p className="text-xs text-destructive break-words border-t border-border/60 pt-2">
+                    {task.error}
+                  </p>
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
+    </aside>
   );
 }
 
@@ -191,40 +312,50 @@ export function VoiceChatCandidatePage() {
         </div>
       )}
 
-      <div ref={setScrollContainer} className="flex-1 min-h-0 overflow-y-auto">
-        <div className="mx-auto w-full max-w-[900px] px-4 pt-4 pb-8">
-          <div className="flex flex-col gap-4">
-            {conversationItems.length === 0 && (
-              <p className="text-sm text-muted-foreground text-center py-8">
-                {status === "connecting"
-                  ? "Connecting..."
-                  : "Speak to start the conversation."}
-              </p>
-            )}
-            {conversationItems.map((entry) => {
-              if (entry.kind === "streaming") {
-                return entry.role === "user" ? (
-                  <VoiceCandidateUserBubble
+      {/* Desktop-only 3-column layout; no responsive fallback. */}
+      <div className="grid grid-cols-3 flex-1 min-h-0 divide-x divide-border">
+        <ReasonerPanel />
+
+        <section className="flex flex-col min-h-0 overflow-hidden">
+          <div
+            ref={setScrollContainer}
+            className="flex-1 min-h-0 overflow-y-auto"
+          >
+            <div className="px-4 pt-4 pb-8 flex flex-col gap-4">
+              {conversationItems.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-8">
+                  {status === "connecting"
+                    ? "Connecting..."
+                    : "Speak to start the conversation."}
+                </p>
+              )}
+              {conversationItems.map((entry) => {
+                if (entry.kind === "streaming") {
+                  return entry.role === "user" ? (
+                    <VoiceCandidateUserBubble
+                      key={entry.key}
+                      content={entry.content}
+                    />
+                  ) : (
+                    <VoiceCandidateAssistantBubble
+                      key={entry.key}
+                      content={entry.content}
+                    />
+                  );
+                }
+                return (
+                  <VoiceCandidateItemBubble
                     key={entry.key}
-                    content={entry.content}
-                  />
-                ) : (
-                  <VoiceCandidateAssistantBubble
-                    key={entry.key}
-                    content={entry.content}
+                    item={entry.item}
+                    taskById={tasksById}
                   />
                 );
-              }
-              return (
-                <VoiceCandidateItemBubble
-                  key={entry.key}
-                  item={entry.item}
-                  taskById={tasksById}
-                />
-              );
-            })}
+              })}
+            </div>
           </div>
-        </div>
+        </section>
+
+        <TaskerPanel tasks={tasksById} />
       </div>
 
       <VoiceChatCandidateFooter

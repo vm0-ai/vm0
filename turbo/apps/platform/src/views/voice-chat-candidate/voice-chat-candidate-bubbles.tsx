@@ -1,6 +1,23 @@
 import { IconInfoCircle, IconSparkles } from "@tabler/icons-react";
-import type { VoiceChatCandidateItem, VoiceChatCandidateTask } from "@vm0/core";
+import type {
+  VoiceChatCandidateItem,
+  VoiceChatCandidateTask,
+  VoiceChatCandidateTaskResultEntry,
+} from "@vm0/core";
 import { Markdown } from "../components/markdown.tsx";
+
+function joinResultEntries(
+  entries: VoiceChatCandidateTaskResultEntry[] | undefined,
+): string | null {
+  if (!entries || entries.length === 0) {
+    return null;
+  }
+  return entries
+    .map((e) => {
+      return e.content;
+    })
+    .join("\n\n");
+}
 
 // ---------------------------------------------------------------------------
 // Bubble components — one per VoiceChatCandidateItem role
@@ -109,7 +126,7 @@ export function VoiceCandidateItemBubble({
       return (
         <VoiceCandidateTaskResultBubble
           prompt={task?.prompt ?? null}
-          result={item.content ?? task?.result ?? null}
+          result={item.content ?? joinResultEntries(task?.result)}
           error={task?.error ?? null}
         />
       );

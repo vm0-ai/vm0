@@ -41,6 +41,7 @@ export const apiVoiceChatCandidateHandlers = [
       context: null,
       contextSeq: 0,
       contextVersion: 0,
+      lastReasoningAt: null,
       createdAt: now,
       lastHeartbeatAt: now,
       endedAt: null,
@@ -153,7 +154,7 @@ export const apiVoiceChatCandidateHandlers = [
         callId: body.callId,
         prompt: body.prompt,
         status: "pending",
-        result: null,
+        result: [],
         error: null,
         createdAt: new Date().toISOString(),
         startedAt: null,
@@ -163,6 +164,24 @@ export const apiVoiceChatCandidateHandlers = [
       return respond(200, { task });
     },
   ),
+
+  mockApi(zeroVoiceChatCandidateContract.listTasks, ({ params, respond }) => {
+    const sessionId = params.id;
+    const session = mockSessions.get(sessionId);
+    if (!session) {
+      return respond(404, {
+        error: { code: "NOT_FOUND", message: "Session not found" },
+      });
+    }
+    const tasks = Array.from(mockTasks.values())
+      .filter((t) => {
+        return t.sessionId === sessionId;
+      })
+      .sort((a, b) => {
+        return b.createdAt.localeCompare(a.createdAt);
+      });
+    return respond(200, { tasks });
+  }),
 
   mockApi(zeroVoiceChatCandidateContract.token, ({ respond }) => {
     return respond(200, {

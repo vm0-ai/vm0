@@ -43,6 +43,9 @@ export function serializeVoiceChatCandidateSession(session: SessionRow) {
     context: session.context,
     contextSeq: session.contextSeq,
     contextVersion: session.contextVersion,
+    lastReasoningAt: session.lastReasoningAt
+      ? session.lastReasoningAt.toISOString()
+      : null,
     createdAt: session.createdAt.toISOString(),
     lastHeartbeatAt: session.lastHeartbeatAt.toISOString(),
     endedAt: session.endedAt ? session.endedAt.toISOString() : null,

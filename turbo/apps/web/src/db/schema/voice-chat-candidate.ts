@@ -7,9 +7,11 @@ import {
   integer,
   boolean,
   serial,
+  jsonb,
   index,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import type { VoiceChatCandidateTaskResultEntry } from "@vm0/core";
 import { agentComposes } from "./agent-compose";
 import { agentRuns } from "./agent-run";
 
@@ -134,7 +136,10 @@ export const featureCandidateVoiceChatTasks = pgTable(
     prompt: text("prompt").notNull(),
     // Valid values: "pending" | "queued" | "running" | "done" | "failed"
     status: varchar("status", { length: 20 }).notNull(),
-    result: text("result"),
+    result: jsonb("result")
+      .$type<VoiceChatCandidateTaskResultEntry[]>()
+      .notNull()
+      .default([]),
     error: text("error"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     startedAt: timestamp("started_at"),

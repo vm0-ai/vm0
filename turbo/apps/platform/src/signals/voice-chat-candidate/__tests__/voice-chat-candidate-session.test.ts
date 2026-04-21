@@ -35,6 +35,7 @@ function sessionPayload(overrides: Record<string, unknown> = {}) {
     context: null,
     contextSeq: 0,
     contextVersion: 0,
+    lastReasoningAt: null,
     createdAt: "2026-04-20T00:00:00Z",
     lastHeartbeatAt: "2026-04-20T00:00:00Z",
     endedAt: null,
@@ -64,7 +65,7 @@ function taskPayload(overrides: Record<string, unknown> = {}) {
     callId: "call-1",
     prompt: "do the thing",
     status: "pending" as const,
-    result: null,
+    result: [],
     error: null,
     createdAt: "2026-04-20T00:00:00Z",
     startedAt: null,
@@ -198,6 +199,14 @@ function mockGetSessionOk() {
   server.use(
     mockApi(zeroVoiceChatCandidateContract.getSession, ({ respond }) => {
       return respond(200, { session: sessionPayload() });
+    }),
+  );
+}
+
+function mockListTasksOk() {
+  server.use(
+    mockApi(zeroVoiceChatCandidateContract.listTasks, ({ respond }) => {
+      return respond(200, { tasks: [] });
     }),
   );
 }
@@ -358,6 +367,7 @@ describe("voice-chat-candidate session", () => {
     mockTokenOk();
     mockReadItemsEmpty();
     mockGetSessionOk();
+    mockListTasksOk();
     mockHeartbeatOk();
     detach(
       context.store.set(startVoiceChatCandidate$, context.signal),
@@ -552,6 +562,7 @@ describe("voice-chat-candidate session", () => {
       mockCreateSessionOk();
       mockTokenOk();
       mockGetSessionOk();
+      mockListTasksOk();
       mockHeartbeatOk();
       let itemsBatch: ReturnType<typeof itemPayload>[] = [];
       server.use(

@@ -52,6 +52,7 @@ export const voiceChatCandidateSessionSchema = z.object({
   context: z.string().nullable(),
   contextSeq: z.number().int(),
   contextVersion: z.number().int(),
+  lastReasoningAt: z.string().nullable(),
   createdAt: z.string(),
   lastHeartbeatAt: z.string(),
   endedAt: z.string().nullable(),
@@ -74,6 +75,15 @@ export type VoiceChatCandidateItem = z.infer<
   typeof voiceChatCandidateItemSchema
 >;
 
+export const voiceChatCandidateTaskResultEntrySchema = z.object({
+  type: z.literal("assistant"),
+  content: z.string(),
+  at: z.string(),
+});
+export type VoiceChatCandidateTaskResultEntry = z.infer<
+  typeof voiceChatCandidateTaskResultEntrySchema
+>;
+
 export const voiceChatCandidateTaskSchema = z.object({
   id: z.uuid(),
   sessionId: z.uuid(),
@@ -81,7 +91,7 @@ export const voiceChatCandidateTaskSchema = z.object({
   callId: z.string(),
   prompt: z.string(),
   status: voiceChatCandidateTaskStatusSchema,
-  result: z.string().nullable(),
+  result: z.array(voiceChatCandidateTaskResultEntrySchema),
   error: z.string().nullable(),
   createdAt: z.string(),
   startedAt: z.string().nullable(),
@@ -226,6 +236,19 @@ export const zeroVoiceChatCandidateContract = c.router({
       404: apiErrorSchema,
     },
     summary: "Create a task from the Talker's createTask tool call",
+  },
+
+  listTasks: {
+    method: "GET",
+    path: "/api/zero/voice-chat-candidate/:id/tasks",
+    headers: authHeadersSchema,
+    pathParams: z.object({ id: z.uuid() }),
+    responses: {
+      200: z.object({ tasks: z.array(voiceChatCandidateTaskSchema) }),
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "List voice-chat-candidate tasks for a session",
   },
 
   token: {
