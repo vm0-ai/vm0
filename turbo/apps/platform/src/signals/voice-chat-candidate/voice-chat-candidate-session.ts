@@ -6,6 +6,7 @@ import {
   zeroVoiceChatCandidateContract,
   type VoiceChatCandidateItem,
   type VoiceChatCandidateItemRole,
+  type VoiceChatCandidateSession,
   type VoiceChatCandidateTask,
 } from "@vm0/core";
 import { featureSwitch$ } from "../external/feature-switch.ts";
@@ -803,16 +804,11 @@ const releaseWakeLock$ = command(({ get, set }) => {
 });
 
 // ---------------------------------------------------------------------------
-// Public commands
+// Start-flow phase commands
 // ---------------------------------------------------------------------------
 
-export const startVoiceChatCandidate$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const status = get(internalStatus$);
-    if (status === "connecting" || status === "connected") {
-      return;
-    }
-
+const resetVccSessionState$ = command(
+  ({ set }, signal: AbortSignal): AbortSignal => {
     set(internalStatus$, "connecting");
     set(internalError$, null);
     set(internalItems$, []);
@@ -826,54 +822,70 @@ export const startVoiceChatCandidate$ = command(
     set(internalMuted$, false);
     set(internalSessionId$, null);
     set(internalParentSignal$, signal);
+    return set(resetSessionSignal$, signal);
+  },
+);
 
-    const sessionSignal = set(resetSessionSignal$, signal);
-
+const resolveVccAgentId$ = command(
+  async ({ get, set }): Promise<string | null> => {
     const agentId = await get(defaultAgentId$);
-    signal.throwIfAborted();
-
     if (!agentId) {
       set(internalError$, "No agent selected");
       set(internalStatus$, "error");
-      return;
+      return null;
     }
+    return agentId;
+  },
+);
 
+const createVccSession$ = command(
+  async (
+    { get, set },
+    agentId: string,
+    signal: AbortSignal,
+  ): Promise<VoiceChatCandidateSession | null> => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroVoiceChatCandidateContract);
-
-    const sessionRes = await accept(
+    const res = await accept(
       client.createSession({ body: { agentId } }),
       [200, 400, 401, 403],
       { toast: false },
     );
     signal.throwIfAborted();
-
-    if (sessionRes.status !== 200) {
-      set(internalError$, sessionRes.body.error.message);
+    if (res.status !== 200) {
+      set(internalError$, res.body.error.message);
       set(internalStatus$, "error");
-      return;
+      return null;
     }
-
-    const session = sessionRes.body.session;
+    const session = res.body.session;
     set(internalSessionId$, session.id);
     set(internalContext$, session.context ?? "");
     set(internalContextVersion$, session.contextVersion);
+    return session;
+  },
+);
 
-    const tokenRes = await accept(
+const fetchVccRealtimeToken$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<string | null> => {
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroVoiceChatCandidateContract);
+    const res = await accept(
       client.token({ body: { model: TALKER_MODEL } }),
       [200, 401, 403, 500, 503],
       { toast: false },
     );
     signal.throwIfAborted();
-
-    if (tokenRes.status !== 200) {
-      set(internalError$, tokenRes.body.error.message);
+    if (res.status !== 200) {
+      set(internalError$, res.body.error.message);
       set(internalStatus$, "error");
-      return;
+      return null;
     }
+    return res.body.client_secret.value;
+  },
+);
 
-    const { client_secret: clientSecret } = tokenRes.body;
-
+const acquireVccMic$ = command(
+  async ({ set }, signal: AbortSignal): Promise<MediaStream | null> => {
     let stream: MediaStream;
     // eslint-disable-next-line no-restricted-syntax -- getUserMedia can reject on permission denial or missing hardware
     try {
@@ -891,29 +903,81 @@ export const startVoiceChatCandidate$ = command(
         "Microphone access denied. Please allow microphone access.",
       );
       set(internalStatus$, "error");
-      return;
+      return null;
     }
     signal.throwIfAborted();
     set(internalStream$, stream);
+    return stream;
+  },
+);
 
-    const ok = await set(
-      setupWebRTC$,
-      stream,
-      clientSecret.value,
-      sessionSignal,
-    );
-    signal.throwIfAborted();
+const bootstrapVccTransport$ = command(
+  async (
+    { set },
+    stream: MediaStream,
+    token: string,
+    sessionId: string,
+    sessionSignal: AbortSignal,
+    outerSignal: AbortSignal,
+  ): Promise<void> => {
+    const ok = await set(setupWebRTC$, stream, token, sessionSignal);
+    outerSignal.throwIfAborted();
     if (!ok) {
       return;
     }
 
     await set(acquireWakeLock$, sessionSignal);
-    signal.throwIfAborted();
+    outerSignal.throwIfAborted();
 
     await Promise.allSettled([
       set(startHeartbeat$, sessionSignal),
-      set(startAblyLoop$, session.id, sessionSignal),
+      set(startAblyLoop$, sessionId, sessionSignal),
     ]);
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Public commands
+// ---------------------------------------------------------------------------
+
+export const startVoiceChatCandidate$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const status = get(internalStatus$);
+    if (status === "connecting" || status === "connected") {
+      return;
+    }
+
+    const sessionSignal = set(resetVccSessionState$, signal);
+
+    const agentId = await set(resolveVccAgentId$);
+    signal.throwIfAborted();
+    if (!agentId) {
+      return;
+    }
+
+    const session = await set(createVccSession$, agentId, signal);
+    if (!session) {
+      return;
+    }
+
+    const token = await set(fetchVccRealtimeToken$, signal);
+    if (!token) {
+      return;
+    }
+
+    const stream = await set(acquireVccMic$, signal);
+    if (!stream) {
+      return;
+    }
+
+    await set(
+      bootstrapVccTransport$,
+      stream,
+      token,
+      session.id,
+      sessionSignal,
+      signal,
+    );
   },
 );
 
