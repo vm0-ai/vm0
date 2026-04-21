@@ -1,4 +1,5 @@
 import * as Sentry from "@sentry/react";
+import { ApiError } from "./accept";
 
 // Initialize Sentry synchronously so that global error/unhandledrejection
 // handlers are installed before the app bootstraps. Errors during bootstrap
@@ -40,24 +41,19 @@ export function initSentry(): void {
       //  (b) for 5xx, regroup by (status, code) so Sentry stops collapsing
       //      every API error under the generic accept.ts frame.
       const original = hint?.originalException;
-      if (
-        original instanceof Error &&
-        original.name === "ApiError" &&
-        "status" in original &&
-        "code" in original &&
-        typeof (original as { status: unknown }).status === "number" &&
-        typeof (original as { code: unknown }).code === "string"
-      ) {
-        const status = (original as { status: number }).status;
-        const code = (original as { code: string }).code;
-        if (status >= 400 && status < 500) {
+      if (original instanceof ApiError) {
+        if (original.status >= 400 && original.status < 500) {
           return null;
         }
-        event.fingerprint = ["api-error", String(status), code];
+        event.fingerprint = [
+          "api-error",
+          String(original.status),
+          original.code,
+        ];
         event.tags = {
           ...event.tags,
-          "api.status": status,
-          "api.code": code,
+          "api.status": original.status,
+          "api.code": original.code,
         };
       }
 
