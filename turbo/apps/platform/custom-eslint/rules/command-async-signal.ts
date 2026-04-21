@@ -14,11 +14,7 @@
  *   command(async ({ get, set }, value: string) => { ... })  // last param is not signal
  */
 
-import {
-  AST_NODE_TYPES,
-  ESLintUtils,
-  type TSESTree,
-} from "@typescript-eslint/utils";
+import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 import { createRule } from "../utils.ts";
 
 export default createRule({
@@ -29,7 +25,7 @@ export default createRule({
     docs: {
       description:
         "Async commands must accept AbortSignal as their last parameter",
-      requiresTypeChecking: true,
+      requiresTypeChecking: false,
     },
     schema: [],
     messages: {
@@ -41,13 +37,17 @@ export default createRule({
   },
 
   create(context) {
-    const services = ESLintUtils.getParserServices(context);
-    const checker = services.program.getTypeChecker();
-
-    function isAbortSignalType(param: TSESTree.Parameter): boolean {
-      const tsNode = services.esTreeNodeToTSNodeMap.get(param);
-      const type = checker.getTypeAtLocation(tsNode);
-      return checker.typeToString(type) === "AbortSignal";
+    function isAbortSignalAnnotation(param: TSESTree.Parameter): boolean {
+      if (param.type !== AST_NODE_TYPES.Identifier) {
+        return false;
+      }
+      const ann = param.typeAnnotation?.typeAnnotation;
+      return (
+        ann !== undefined &&
+        ann.type === AST_NODE_TYPES.TSTypeReference &&
+        ann.typeName.type === AST_NODE_TYPES.Identifier &&
+        ann.typeName.name === "AbortSignal"
+      );
     }
 
     function checkCommandCallback(
@@ -67,7 +67,7 @@ export default createRule({
       }
 
       const lastParam = userParams[userParams.length - 1];
-      if (!isAbortSignalType(lastParam)) {
+      if (!isAbortSignalAnnotation(lastParam)) {
         context.report({ node: lastParam, messageId: "signalNotLast" });
       }
     }

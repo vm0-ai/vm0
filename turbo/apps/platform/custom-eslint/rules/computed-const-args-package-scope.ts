@@ -280,11 +280,11 @@ export default createRule({
     const services = ESLintUtils.getParserServices(context);
     const checker = services.program.getTypeChecker();
 
-    // Store deferred call expression checks until we finish processing all function declarations
+    // Non-package-scope calls collected without type checking.
+    // Type checking is deferred to Program:exit so the name filter runs first.
     const deferredCallChecks: {
       node: TSESTree.CallExpression;
       functionName: string;
-      returnsConstant: boolean;
     }[] = [];
 
     // Track functions that return constant types and are defined at package scope
@@ -351,45 +351,35 @@ export default createRule({
     }
 
     function processDeferredCallChecks() {
-      for (const {
-        node,
-        functionName,
-        returnsConstant,
-      } of deferredCallChecks) {
-        // Skip if it doesn't return constant
-        if (!returnsConstant) {
-          continue;
-        }
-
-        // Only check calls to package-scope defined functions or 'computed'
-        if (
-          functionName !== "computed" &&
-          !packageScopeConstantFunctions.has(functionName)
-        ) {
-          continue;
-        }
-
-        // Check if all arguments are constants
-        if (!hasOnlyConstantArguments(node, checker, services)) {
-          continue;
-        }
-
-        // Skip no-argument functions (factory functions, utility functions)
-        // These are often legitimately called at runtime to create new instances
+      for (const { node, functionName } of deferredCallChecks) {
+        // Skip no-argument calls — factory / utility functions without args
         if (node.arguments.length === 0) {
           continue;
         }
 
-        // Check if the call is at package scope
-        if (!isInPackageScope(node)) {
-          context.report({
-            node,
-            messageId: "mustBePackageScope",
-            data: {
-              name: functionName,
-            },
-          });
+        if (functionName === "computed") {
+          // computed() always returns Computed<> — skip the expensive type check
+        } else if (packageScopeConstantFunctions.has(functionName)) {
+          // packageScopeConstantFunctions entries were verified on declaration, BUT the
+          // call expression may wrap a non-constant (e.g. async fn → Promise<T>).
+          // Re-check here to filter those false positives cheaply for this small set.
+          if (!functionReturnsConstant(node)) {
+            continue;
+          }
+        } else {
+          continue;
         }
+
+        // Check if all arguments are constants (AST only, cheap)
+        if (!hasOnlyConstantArguments(node, checker, services)) {
+          continue;
+        }
+
+        context.report({
+          node,
+          messageId: "mustBePackageScope",
+          data: { name: functionName },
+        });
       }
     }
 
@@ -418,14 +408,13 @@ export default createRule({
       },
 
       CallExpression(node: TSESTree.CallExpression) {
-        // Get the function name
+        // Package-scope calls can never be violations — skip immediately
+        if (isInPackageScope(node)) {
+          return;
+        }
         const functionName = getFunctionName(node);
-
-        // Check if this function call returns a constant type and store the result
-        const returnsConstant = functionReturnsConstant(node);
-
-        // Defer the check - we'll process it later when we know all function definitions
-        deferredCallChecks.push({ node, functionName, returnsConstant });
+        // Defer type checking to Program:exit so the name filter runs first
+        deferredCallChecks.push({ node, functionName });
       },
 
       // Process all deferred checks after we've seen all function declarations

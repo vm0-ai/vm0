@@ -42,6 +42,17 @@ export default [
       "ccstate/no-void-statement": "error",
       "ccstate/no-abort-swallower": "error",
       "ccstate/require-accept": "error",
+      // AST-only rules that previously lived in the type-aware block
+      "ccstate/command-async-signal": "error",
+      "ccstate/no-getter-setter-params": "error",
+      "ccstate/no-store-in-params": [
+        "error",
+        {
+          // setupRouter is the app-boundary bootstrap function that must bridge
+          // the Store instance into React's StoreProvider context system.
+          allowedFunctions: ["setupRouter"],
+        },
+      ],
     },
   },
   // Type-aware rules (only for TypeScript files)
@@ -72,16 +83,6 @@ export default [
       ],
       "ccstate/no-get-signal": "error",
       "ccstate/computed-const-args-package-scope": "error",
-      "ccstate/no-store-in-params": [
-        "error",
-        {
-          // setupRouter is the app-boundary bootstrap function that must bridge
-          // the Store instance into React's StoreProvider context system.
-          allowedFunctions: ["setupRouter"],
-        },
-      ],
-      "ccstate/command-async-signal": "error",
-      "ccstate/no-getter-setter-params": "error",
     },
   },
   {
@@ -234,6 +235,7 @@ export default [
       "custom-eslint/**",
       "src/mocks/**",
       "src/__tests__/**",
+      "eslint.config.ablation.mjs",
     ],
   },
   ...oxlint.buildFromOxlintConfigFile("../../.oxlintrc.json"),

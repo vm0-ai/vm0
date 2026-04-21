@@ -26,7 +26,7 @@ export function renderConnectedAsCell(
   return identity;
 }
 
-const ANSI_PATTERN = /\u001b\[[0-9;]*m/g;
+const ANSI_PATTERN = new RegExp(`${String.fromCharCode(0x1b)}\\[[0-9;]*m`, "g");
 
 export function stripAnsi(s: string): string {
   return s.replace(ANSI_PATTERN, "");
