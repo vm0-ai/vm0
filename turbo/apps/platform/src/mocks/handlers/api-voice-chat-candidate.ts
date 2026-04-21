@@ -38,10 +38,12 @@ export const apiVoiceChatCandidateHandlers = [
       agentId: body.agentId,
       mode: "chat",
       status: "active",
-      context: null,
-      contextSeq: 0,
-      contextVersion: 0,
-      lastReasoningAt: null,
+      conversationSummary: null,
+      workingTasksSummary: null,
+      finishedTasksSummary: null,
+      summarySeq: 0,
+      summaryVersion: 0,
+      lastSummaryAt: null,
       createdAt: now,
       lastHeartbeatAt: now,
       endedAt: null,
@@ -58,7 +60,7 @@ export const apiVoiceChatCandidateHandlers = [
         error: { code: "NOT_FOUND", message: "Session not found" },
       });
     }
-    return respond(200, { session });
+    return respond(200, { session, recentTaskLogs: "" });
   }),
 
   mockApi(zeroVoiceChatCandidateContract.endSession, ({ params, respond }) => {

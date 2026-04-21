@@ -2,14 +2,17 @@ import "server-only";
 import { env } from "../../../env";
 import { logger } from "../../shared/logger";
 import {
+  CONVERSATION_SECTION,
+  FINISHED_SECTION,
   REASONER_SYSTEM_PROMPT,
+  WORKING_SECTION,
   buildReasonerUserPrompt,
 } from "./reasoner-prompts";
 
 const BASE_URL = "https://openrouter.ai/api/v1/chat/completions";
 const MODEL = "anthropic/claude-sonnet-4.5";
 const TIMEOUT_MS = 30_000;
-const MAX_TOKENS = 400;
+const MAX_TOKENS = 800;
 const TEMPERATURE = 0.2;
 
 const log = logger("zero:voice-chat-candidate:reasoner");
@@ -22,16 +25,42 @@ interface OpenRouterResponse {
   }>;
 }
 
+interface ItemForReasoner {
+  seq: number;
+  role: string;
+  content: string | null;
+  createdAt: string;
+}
+
+interface TaskForReasoner {
+  id: string;
+  status: string;
+  prompt: string;
+  resultText: string | null;
+  error: string | null;
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+}
+
 interface CallReasonerParams {
   agentSystemPrompt: string;
-  currentContext: string | null;
-  newItems: Array<{ seq: number; role: string; content: string | null }>;
-  pendingTasks: Array<{ id: string; status: string; prompt: string }>;
+  priorConversationSummary: string | null;
+  priorWorkingTasksSummary: string | null;
+  priorFinishedTasksSummary: string | null;
+  transcript: ItemForReasoner[];
+  tasks: TaskForReasoner[];
+}
+
+interface ReasonerResult {
+  conversationSummary: string;
+  workingTasksSummary: string;
+  finishedTasksSummary: string;
 }
 
 export async function callReasoner(
   params: CallReasonerParams,
-): Promise<string | null> {
+): Promise<ReasonerResult | null> {
   const { OPENROUTER_API_KEY } = env();
   if (!OPENROUTER_API_KEY) {
     log.warn("OPENROUTER_API_KEY not configured, skipping reasoner call");
@@ -94,5 +123,26 @@ export async function callReasoner(
     return null;
   }
 
-  return content;
+  return parseReasonerSections(content);
+}
+
+function parseReasonerSections(raw: string): ReasonerResult {
+  const conv = extractSection(raw, CONVERSATION_SECTION);
+  const working = extractSection(raw, WORKING_SECTION);
+  const finished = extractSection(raw, FINISHED_SECTION);
+  return {
+    conversationSummary: conv,
+    workingTasksSummary: working,
+    finishedTasksSummary: finished,
+  };
+}
+
+function extractSection(raw: string, name: string): string {
+  const marker = `---${name}---`;
+  const idx = raw.indexOf(marker);
+  if (idx === -1) return "";
+  const after = raw.slice(idx + marker.length);
+  const nextIdx = after.search(/---[A-Z]+---/u);
+  const slice = nextIdx === -1 ? after : after.slice(0, nextIdx);
+  return slice.trim();
 }

@@ -32,10 +32,12 @@ function sessionPayload(overrides: Record<string, unknown> = {}) {
     agentId: DEFAULT_AGENT_ID,
     mode: "chat" as const,
     status: "active" as const,
-    context: null,
-    contextSeq: 0,
-    contextVersion: 0,
-    lastReasoningAt: null,
+    conversationSummary: null,
+    workingTasksSummary: null,
+    finishedTasksSummary: null,
+    summarySeq: 0,
+    summaryVersion: 0,
+    lastSummaryAt: null,
     createdAt: "2026-04-20T00:00:00Z",
     lastHeartbeatAt: "2026-04-20T00:00:00Z",
     endedAt: null,
@@ -198,7 +200,7 @@ function mockReadItemsEmpty() {
 function mockGetSessionOk() {
   server.use(
     mockApi(zeroVoiceChatCandidateContract.getSession, ({ respond }) => {
-      return respond(200, { session: sessionPayload() });
+      return respond(200, { session: sessionPayload(), recentTaskLogs: "" });
     }),
   );
 }

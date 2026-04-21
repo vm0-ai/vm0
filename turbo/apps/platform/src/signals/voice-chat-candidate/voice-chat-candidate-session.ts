@@ -83,11 +83,30 @@ When you receive a message starting with [Task ...], it is the result of a task 
 - Be warm and conversational.
 `.trim();
 
-function composeInstructions(context: string): string {
-  if (!context.trim()) {
-    return TALKER_INSTRUCTIONS_BASE;
+interface TalkerDynamicContext {
+  conversationSummary: string;
+  workingTasksSummary: string;
+  finishedTasksSummary: string;
+  recentTaskLogs: string;
+}
+
+function composeInstructions(ctx: TalkerDynamicContext): string {
+  const parts: string[] = [TALKER_INSTRUCTIONS_BASE];
+  if (ctx.conversationSummary.trim()) {
+    parts.push(`## Conversation context\n${ctx.conversationSummary.trim()}`);
   }
-  return `${TALKER_INSTRUCTIONS_BASE}\n\n## Context\n${context}`;
+  if (ctx.workingTasksSummary.trim()) {
+    parts.push(`## Tasks in flight\n${ctx.workingTasksSummary.trim()}`);
+  }
+  if (ctx.finishedTasksSummary.trim()) {
+    parts.push(
+      `## Recently finished tasks\n${ctx.finishedTasksSummary.trim()}`,
+    );
+  }
+  if (ctx.recentTaskLogs.trim()) {
+    parts.push(`## Recent task activity\n${ctx.recentTaskLogs.trim()}`);
+  }
+  return parts.join("\n\n");
 }
 
 function shortPrompt(prompt: string, max = 60): string {
@@ -114,10 +133,13 @@ const internalTasksByCallId$ = state<Record<string, VoiceChatCandidateTask>>(
   {},
 );
 const internalTasksById$ = state<Record<string, VoiceChatCandidateTask>>({});
-const internalContext$ = state<string>("");
-const internalContextVersion$ = state<number>(0);
-const internalContextSeq$ = state<number>(0);
-const internalLastReasoningAt$ = state<string | null>(null);
+const internalConversationSummary$ = state<string>("");
+const internalWorkingTasksSummary$ = state<string>("");
+const internalFinishedTasksSummary$ = state<string>("");
+const internalRecentTaskLogs$ = state<string>("");
+const internalSummaryVersion$ = state<number>(0);
+const internalSummarySeq$ = state<number>(0);
+const internalLastSummaryAt$ = state<string | null>(null);
 const internalStreamingAssistant$ = state<{
   responseId: string;
   itemId: string | null;
@@ -168,16 +190,28 @@ export const vccTasksById$ = computed((get) => {
   return get(internalTasksById$);
 });
 
-export const vccReasonerContext$ = computed((get) => {
-  return get(internalContext$);
+export const vccConversationSummary$ = computed((get) => {
+  return get(internalConversationSummary$);
 });
 
-export const vccReasonerContextSeq$ = computed((get) => {
-  return get(internalContextSeq$);
+export const vccWorkingTasksSummary$ = computed((get) => {
+  return get(internalWorkingTasksSummary$);
 });
 
-export const vccReasonerLastAt$ = computed((get) => {
-  return get(internalLastReasoningAt$);
+export const vccFinishedTasksSummary$ = computed((get) => {
+  return get(internalFinishedTasksSummary$);
+});
+
+export const vccRecentTaskLogs$ = computed((get) => {
+  return get(internalRecentTaskLogs$);
+});
+
+export const vccSummarySeq$ = computed((get) => {
+  return get(internalSummarySeq$);
+});
+
+export const vccLastSummaryAt$ = computed((get) => {
+  return get(internalLastSummaryAt$);
 });
 
 type StreamingItem = {
@@ -538,13 +572,18 @@ const setupWebRTC$ = command(
     set(internalDc$, dc);
 
     dc.addEventListener("open", () => {
-      const context = get(internalContext$);
+      const ctx: TalkerDynamicContext = {
+        conversationSummary: get(internalConversationSummary$),
+        workingTasksSummary: get(internalWorkingTasksSummary$),
+        finishedTasksSummary: get(internalFinishedTasksSummary$),
+        recentTaskLogs: get(internalRecentTaskLogs$),
+      };
       dc.send(
         JSON.stringify({
           type: "session.update",
           session: {
             modalities: ["text", "audio"],
-            instructions: composeInstructions(context),
+            instructions: composeInstructions(ctx),
             input_audio_transcription: { model: "gpt-4o-mini-transcribe" },
             input_audio_noise_reduction: { type: "far_field" },
             turn_detection: HANDS_FREE_VAD_CONFIG,
@@ -636,15 +675,21 @@ const startHeartbeat$ = command(async ({ get }, signal: AbortSignal) => {
   );
 });
 
-const refreshInstructionsIfChanged$ = command(({ get }, context: string) => {
+const pushTalkerInstructions$ = command(({ get }) => {
   const dc = get(internalDc$);
   if (!dc || dc.readyState !== "open") {
     return;
   }
+  const ctx: TalkerDynamicContext = {
+    conversationSummary: get(internalConversationSummary$),
+    workingTasksSummary: get(internalWorkingTasksSummary$),
+    finishedTasksSummary: get(internalFinishedTasksSummary$),
+    recentTaskLogs: get(internalRecentTaskLogs$),
+  };
   dc.send(
     JSON.stringify({
       type: "session.update",
-      session: { instructions: composeInstructions(context) },
+      session: { instructions: composeInstructions(ctx) },
     }),
   );
 });
@@ -694,14 +739,29 @@ const startAblyLoop$ = command(
 
       if (sessionRes.status === 200) {
         const session = sessionRes.body.session;
-        const prevVersion = get(internalContextVersion$);
-        const nextContext = session.context ?? "";
-        if (session.contextVersion > prevVersion) {
-          set(internalContext$, nextContext);
-          set(internalContextVersion$, session.contextVersion);
-          set(internalContextSeq$, session.contextSeq);
-          set(internalLastReasoningAt$, session.lastReasoningAt);
-          set(refreshInstructionsIfChanged$, nextContext);
+        const nextRecentLogs = sessionRes.body.recentTaskLogs;
+        const prevVersion = get(internalSummaryVersion$);
+        const prevRecentLogs = get(internalRecentTaskLogs$);
+
+        let instructionsChanged = false;
+        if (session.summaryVersion > prevVersion) {
+          set(internalConversationSummary$, session.conversationSummary ?? "");
+          set(internalWorkingTasksSummary$, session.workingTasksSummary ?? "");
+          set(
+            internalFinishedTasksSummary$,
+            session.finishedTasksSummary ?? "",
+          );
+          set(internalSummaryVersion$, session.summaryVersion);
+          set(internalSummarySeq$, session.summarySeq);
+          set(internalLastSummaryAt$, session.lastSummaryAt);
+          instructionsChanged = true;
+        }
+        if (nextRecentLogs !== prevRecentLogs) {
+          set(internalRecentTaskLogs$, nextRecentLogs);
+          instructionsChanged = true;
+        }
+        if (instructionsChanged) {
+          set(pushTalkerInstructions$);
         }
         if (session.status !== "active") {
           set(internalStatus$, "disconnected");
@@ -827,10 +887,13 @@ export const startVoiceChatCandidate$ = command(
     set(internalMaxSeq$, 0);
     set(internalTasksByCallId$, {});
     set(internalTasksById$, {});
-    set(internalContext$, "");
-    set(internalContextVersion$, 0);
-    set(internalContextSeq$, 0);
-    set(internalLastReasoningAt$, null);
+    set(internalConversationSummary$, "");
+    set(internalWorkingTasksSummary$, "");
+    set(internalFinishedTasksSummary$, "");
+    set(internalRecentTaskLogs$, "");
+    set(internalSummaryVersion$, 0);
+    set(internalSummarySeq$, 0);
+    set(internalLastSummaryAt$, null);
     set(internalStreamingAssistant$, null);
     set(internalPendingUserItemId$, null);
     set(internalMuted$, false);
@@ -866,10 +929,12 @@ export const startVoiceChatCandidate$ = command(
 
     const session = sessionRes.body.session;
     set(internalSessionId$, session.id);
-    set(internalContext$, session.context ?? "");
-    set(internalContextVersion$, session.contextVersion);
-    set(internalContextSeq$, session.contextSeq);
-    set(internalLastReasoningAt$, session.lastReasoningAt);
+    set(internalConversationSummary$, session.conversationSummary ?? "");
+    set(internalWorkingTasksSummary$, session.workingTasksSummary ?? "");
+    set(internalFinishedTasksSummary$, session.finishedTasksSummary ?? "");
+    set(internalSummaryVersion$, session.summaryVersion);
+    set(internalSummarySeq$, session.summarySeq);
+    set(internalLastSummaryAt$, session.lastSummaryAt);
 
     const tokenRes = await accept(
       client.token({ body: { model: TALKER_MODEL } }),
@@ -979,10 +1044,13 @@ export const endVoiceChatCandidate$ = command(({ get, set }) => {
   set(internalMaxSeq$, 0);
   set(internalTasksByCallId$, {});
   set(internalTasksById$, {});
-  set(internalContext$, "");
-  set(internalContextVersion$, 0);
-  set(internalContextSeq$, 0);
-  set(internalLastReasoningAt$, null);
+  set(internalConversationSummary$, "");
+  set(internalWorkingTasksSummary$, "");
+  set(internalFinishedTasksSummary$, "");
+  set(internalRecentTaskLogs$, "");
+  set(internalSummaryVersion$, 0);
+  set(internalSummarySeq$, 0);
+  set(internalLastSummaryAt$, null);
   set(internalStreamingAssistant$, null);
   set(internalPendingUserItemId$, null);
   set(internalParentSignal$, null);

@@ -12,6 +12,17 @@ function openRouterResponse(content: string | null) {
   };
 }
 
+function emptyParams() {
+  return {
+    agentSystemPrompt: "",
+    priorConversationSummary: null,
+    priorWorkingTasksSummary: null,
+    priorFinishedTasksSummary: null,
+    transcript: [],
+    tasks: [],
+  };
+}
+
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
@@ -25,23 +36,30 @@ describe("callReasoner", () => {
 
     const { callReasoner } = await import("../reasoner");
 
-    const result = await callReasoner({
-      agentSystemPrompt: "",
-      currentContext: null,
-      newItems: [],
-      pendingTasks: [],
-    });
+    const result = await callReasoner(emptyParams());
 
     expect(result).toBeNull();
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("returns the trimmed model content on a successful response", async () => {
+  it("parses the 3 sections on a successful response", async () => {
     vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key");
     reloadEnv();
 
+    const payload = [
+      "---CONVERSATION---",
+      "User: backend eng",
+      "Focus: reviewing PR",
+      "",
+      "---WORKING---",
+      "[t1] running — fetch PRs — user is waiting — 3 so far",
+      "",
+      "---FINISHED---",
+      "[t0] done — earlier lookup — outcome: 5 PRs",
+    ].join("\n");
+
     const handler = http.post(OPENROUTER_URL, () => {
-      return HttpResponse.json(openRouterResponse("  new context  "));
+      return HttpResponse.json(openRouterResponse(payload));
     });
     server.use(handler.handler);
 
@@ -49,12 +67,25 @@ describe("callReasoner", () => {
 
     const result = await callReasoner({
       agentSystemPrompt: "be helpful",
-      currentContext: "prior",
-      newItems: [{ seq: 1, role: "user", content: "hi" }],
-      pendingTasks: [],
+      priorConversationSummary: "prior",
+      priorWorkingTasksSummary: null,
+      priorFinishedTasksSummary: null,
+      transcript: [
+        {
+          seq: 1,
+          role: "user",
+          content: "hi",
+          createdAt: new Date().toISOString(),
+        },
+      ],
+      tasks: [],
     });
 
-    expect(result).toBe("new context");
+    expect(result).not.toBeNull();
+    expect(result?.conversationSummary).toContain("User: backend eng");
+    expect(result?.conversationSummary).toContain("Focus: reviewing PR");
+    expect(result?.workingTasksSummary).toContain("[t1] running");
+    expect(result?.finishedTasksSummary).toContain("[t0] done");
     expect(handler.mocked).toHaveBeenCalledTimes(1);
   });
 
@@ -69,12 +100,7 @@ describe("callReasoner", () => {
 
     const { callReasoner } = await import("../reasoner");
 
-    const result = await callReasoner({
-      agentSystemPrompt: "",
-      currentContext: null,
-      newItems: [],
-      pendingTasks: [],
-    });
+    const result = await callReasoner(emptyParams());
 
     expect(result).toBeNull();
   });
@@ -90,12 +116,7 @@ describe("callReasoner", () => {
 
     const { callReasoner } = await import("../reasoner");
 
-    const result = await callReasoner({
-      agentSystemPrompt: "",
-      currentContext: null,
-      newItems: [],
-      pendingTasks: [],
-    });
+    const result = await callReasoner(emptyParams());
 
     expect(result).toBeNull();
   });
@@ -118,12 +139,7 @@ describe("callReasoner", () => {
 
     const { callReasoner } = await import("../reasoner");
 
-    const promise = callReasoner({
-      agentSystemPrompt: "",
-      currentContext: null,
-      newItems: [],
-      pendingTasks: [],
-    });
+    const promise = callReasoner(emptyParams());
 
     await vi.advanceTimersByTimeAsync(31_000);
 
@@ -142,12 +158,7 @@ describe("callReasoner", () => {
 
     const { callReasoner } = await import("../reasoner");
 
-    const result = await callReasoner({
-      agentSystemPrompt: "",
-      currentContext: null,
-      newItems: [],
-      pendingTasks: [],
-    });
+    const result = await callReasoner(emptyParams());
 
     expect(result).toBeNull();
   });

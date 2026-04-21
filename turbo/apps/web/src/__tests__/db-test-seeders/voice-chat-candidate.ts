@@ -12,7 +12,7 @@ export async function insertTestVoiceChatCandidateSession(overrides: {
   agentId?: string | null;
   status?: "active" | "ended" | "timeout";
   reasoningStatus?: "idle" | "running";
-  lastReasoningAt?: Date | null;
+  lastSummaryAt?: Date | null;
   createdAt?: Date;
   lastHeartbeatAt?: Date;
 }): Promise<string> {
@@ -26,7 +26,7 @@ export async function insertTestVoiceChatCandidateSession(overrides: {
       agentId: overrides.agentId ?? null,
       status: overrides.status ?? "active",
       reasoningStatus: overrides.reasoningStatus ?? "idle",
-      lastReasoningAt: overrides.lastReasoningAt ?? null,
+      lastSummaryAt: overrides.lastSummaryAt ?? null,
       createdAt: overrides.createdAt ?? now,
       lastHeartbeatAt: overrides.lastHeartbeatAt ?? now,
     })

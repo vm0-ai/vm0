@@ -309,7 +309,7 @@ describe("GET /api/cron/voice-chat-cleanup", () => {
         orgId: "org_test",
         userId: "user_test",
         reasoningStatus: "running",
-        lastReasoningAt: staleReasoningAt,
+        lastSummaryAt: staleReasoningAt,
       });
 
       // Pre-cron: after() queue is empty.
@@ -328,13 +328,13 @@ describe("GET /api/cron/voice-chat-cleanup", () => {
       expect(globalThis.nextAfterCallbacks.length).toBe(1);
     });
 
-    it("T6 — does not touch a non-stuck reasoner (lastReasoningAt within 5 min)", async () => {
+    it("T6 — does not touch a non-stuck reasoner (lastSummaryAt within 5 min)", async () => {
       const freshReasoningAt = new Date(Date.now() - 2 * 60 * 1000);
       const sessionId = await insertTestVoiceChatCandidateSession({
         orgId: "org_test",
         userId: "user_test",
         reasoningStatus: "running",
-        lastReasoningAt: freshReasoningAt,
+        lastSummaryAt: freshReasoningAt,
       });
 
       const response = await GET(cronRequest("test-cron-secret"));
@@ -343,7 +343,7 @@ describe("GET /api/cron/voice-chat-cleanup", () => {
       expect(body.reasonerReset).toBe(0);
       const row = await getTestVoiceChatCandidateSession(sessionId);
       expect(row?.reasoningStatus).toBe("running");
-      expect(row?.lastReasoningAt?.getTime()).toBe(freshReasoningAt.getTime());
+      expect(row?.lastSummaryAt?.getTime()).toBe(freshReasoningAt.getTime());
     });
 
     it("T7 — idempotent: a second run within the same tick processes nothing", async () => {
@@ -403,7 +403,7 @@ describe("GET /api/cron/voice-chat-cleanup", () => {
           orgId,
           userId: `user_t9_${i}`,
           reasoningStatus: "running",
-          lastReasoningAt: staleReasoningAt,
+          lastSummaryAt: staleReasoningAt,
         });
       }
 
