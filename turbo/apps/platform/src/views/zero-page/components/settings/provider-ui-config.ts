@@ -218,6 +218,7 @@ const VM0_MODEL_CREDIT_MULTIPLIER = Object.freeze<Record<string, number>>({
   "claude-sonnet-4-6": 1,
   "glm-5.1": 0.4,
   "claude-haiku-4-5": 0.3,
+  "kimi-k2.6": 0.3,
   "kimi-k2.5": 0.2,
   "MiniMax-M2.7": 0.1,
 });

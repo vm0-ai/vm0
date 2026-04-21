@@ -71,6 +71,10 @@ export const VM0_MODEL_TO_PROVIDER: Record<string, Vm0ModelConfig> = {
     concreteType: "anthropic-api-key",
     vendor: "anthropic",
   },
+  "kimi-k2.6": {
+    concreteType: "moonshot-api-key",
+    vendor: "moonshot",
+  },
   "kimi-k2.5": {
     concreteType: "moonshot-api-key",
     vendor: "moonshot",
@@ -193,11 +197,12 @@ export const MODEL_PROVIDER_TYPES = {
       CLAUDE_CODE_SUBAGENT_MODEL: "$model",
     } as Record<string, string>,
     models: [
+      "kimi-k2.6",
       "kimi-k2.5",
       "kimi-k2-thinking-turbo",
       "kimi-k2-thinking",
     ] as string[],
-    defaultModel: "kimi-k2.5",
+    defaultModel: "kimi-k2.6",
   },
   "minimax-api-key": {
     framework: "claude-code" as const,
@@ -281,6 +286,7 @@ export const MODEL_PROVIDER_TYPES = {
       "anthropic/claude-sonnet-4.6",
       "anthropic/claude-sonnet-4.5",
       "anthropic/claude-haiku-4.5",
+      "moonshotai/kimi-k2.6",
       "moonshotai/kimi-k2.5",
       "minimax/minimax-m2.5",
       "zai/glm-5-turbo",
