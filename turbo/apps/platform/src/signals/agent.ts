@@ -30,7 +30,9 @@ export function agentById(id: string) {
 }
 
 export const reloadAgentById$ = command(({ set }) => {
-  set(internalAgentByIdReload$, (prev) => prev + 1);
+  set(internalAgentByIdReload$, (prev) => {
+    return prev + 1;
+  });
 });
 
 const defaultAgent$ = computed(async (get) => {
