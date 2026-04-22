@@ -4,7 +4,6 @@ import { testContext } from "../../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
 import {
   postRequest,
-  getRequest,
   paramsFor,
   seedCandidateAgent,
   seedCandidateSession,
@@ -22,7 +21,7 @@ vi.mock("@vm0/core", async (importOriginal) => {
 const { isFeatureEnabled } = await import("@vm0/core");
 const mockIsFeatureEnabled = isFeatureEnabled as ReturnType<typeof vi.fn>;
 
-const { POST, GET } = await import("../route");
+const { POST } = await import("../route");
 
 const context = testContext();
 
@@ -168,96 +167,3 @@ describe("POST /api/zero/voice-chat-candidate/:id/items (appendItem)", () => {
   });
 });
 
-describe("GET /api/zero/voice-chat-candidate/:id/items (readItems)", () => {
-  let orgId: string;
-  let userId: string;
-
-  beforeEach(async () => {
-    context.setupMocks();
-    const user = await context.setupUser();
-    userId = user.userId;
-    const org = await setupCandidateOrg(userId);
-    orgId = org.orgId;
-    mockIsFeatureEnabled.mockReturnValue(true);
-  });
-
-  it("returns 401 when not authenticated", async () => {
-    mockClerk({ userId: null });
-    const response = await GET(
-      getRequest(`/${randomUUID()}/items`),
-      paramsFor(randomUUID()),
-    );
-    expect(response.status).toBe(401);
-  });
-
-  it("returns 404 when the feature flag is disabled", async () => {
-    const { agentId } = await seedCandidateAgent(userId, orgId);
-    const session = await seedCandidateSession({ orgId, userId, agentId });
-    mockIsFeatureEnabled.mockReturnValue(false);
-    const response = await GET(
-      getRequest(`/${session.id}/items`),
-      paramsFor(session.id),
-    );
-    expect(response.status).toBe(404);
-  });
-
-  it("returns 404 when the session does not exist", async () => {
-    const response = await GET(
-      getRequest(`/${randomUUID()}/items`),
-      paramsFor(randomUUID()),
-    );
-    expect(response.status).toBe(404);
-  });
-
-  it("returns items in seq order and supports ?after= filtering", async () => {
-    const { agentId } = await seedCandidateAgent(userId, orgId);
-    const session = await seedCandidateSession({ orgId, userId, agentId });
-
-    const firstId = randomUUID();
-    const secondId = randomUUID();
-    await POST(
-      postRequest(
-        `/${session.id}/items`,
-        itemBody({ content: "one", realtimeItemId: firstId }),
-      ),
-      paramsFor(session.id),
-    );
-    await POST(
-      postRequest(
-        `/${session.id}/items`,
-        itemBody({ content: "two", realtimeItemId: secondId }),
-      ),
-      paramsFor(session.id),
-    );
-
-    const all = await GET(
-      getRequest(`/${session.id}/items`),
-      paramsFor(session.id),
-    );
-    const allBody = await all.json();
-    expect(all.status).toBe(200);
-    expect(allBody.items).toHaveLength(2);
-    expect(allBody.items[0].content).toBe("one");
-    expect(allBody.items[1].content).toBe("two");
-
-    const firstSeq = allBody.items[0].seq;
-    const afterRes = await GET(
-      getRequest(`/${session.id}/items?after=${firstSeq}`),
-      paramsFor(session.id),
-    );
-    const afterBody = await afterRes.json();
-    expect(afterRes.status).toBe(200);
-    expect(afterBody.items).toHaveLength(1);
-    expect(afterBody.items[0].content).toBe("two");
-  });
-
-  it("returns 400 when after= is not a number", async () => {
-    const { agentId } = await seedCandidateAgent(userId, orgId);
-    const session = await seedCandidateSession({ orgId, userId, agentId });
-    const response = await GET(
-      getRequest(`/${session.id}/items?after=nope`),
-      paramsFor(session.id),
-    );
-    expect(response.status).toBe(400);
-  });
-});

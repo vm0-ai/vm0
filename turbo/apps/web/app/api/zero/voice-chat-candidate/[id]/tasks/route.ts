@@ -6,6 +6,7 @@ import { readVoiceChatCandidateItems } from "../../../../../../src/lib/zero/voic
 import {
   createVoiceChatCandidateTask,
   listSessionTasks,
+  listSessionTasksForCard,
 } from "../../../../../../src/lib/zero/voice-chat-candidate/task-service";
 import { buildSlowBrainAppendSystemPrompt } from "../../../../../../src/lib/zero/voice-chat-candidate/build-slow-brain-prompt";
 import {
@@ -137,7 +138,7 @@ export async function GET(
     return notFoundResponse("Voice-chat-candidate session not found");
   }
 
-  const tasks = await listSessionTasks(id);
+  const tasks = await listSessionTasksForCard(id);
   return NextResponse.json({
     tasks: tasks.map(serializeVoiceChatCandidateTask),
   });

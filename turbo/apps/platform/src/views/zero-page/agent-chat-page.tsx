@@ -59,6 +59,7 @@ import {
   suggestedPrompts$,
 } from "../../signals/zero-page/zero-chat-page.ts";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
+import { Markdown } from "../components/markdown.tsx";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
@@ -340,60 +341,72 @@ function VoiceChatLauncher() {
   );
 }
 
-function formatElapsed(ms: number): string {
-  const total = Math.max(0, Math.floor(ms / 1000));
-  const mins = Math.floor(total / 60);
-  const secs = total % 60;
-  return `${mins.toString()}:${secs.toString().padStart(2, "0")}`;
+function taskStatusLabel(
+  status: VoiceChatCandidateTask["status"],
+): string {
+  switch (status) {
+    case "running":
+      return "Running";
+    case "queued":
+      return "Queued";
+    case "pending":
+      return "Pending";
+    case "done":
+      return "Done";
+    case "failed":
+      return "Failed";
+  }
 }
 
-/**
- * Elapsed display refreshes when the task list changes — which happens every
- * Ably poll. That's coarser than a 1Hz tick, but avoids a ccstate clock
- * signal for a non-essential visual.
- */
-function TaskCard({ task }: { task: VoiceChatCandidateTask }) {
-  const startedAt = task.startedAt ? new Date(task.startedAt).getTime() : null;
-  const createdAt = new Date(task.createdAt).getTime();
-  const elapsedMs = Date.now() - (startedAt ?? createdAt);
-  const statusLabel =
-    task.status === "running"
-      ? "Running"
-      : task.status === "queued"
-        ? "Queued"
-        : "Pending";
+function TaskRow({ task }: { task: VoiceChatCandidateTask }) {
+  const isFinished = task.status === "done" || task.status === "failed";
+  // tasker runs stream progress into `assistantMessages`; the newest entry
+  // is what the slow brain is currently saying. After completion, the same
+  // slot carries the final result so the card is self-explanatory.
+  const latestProgress = task.assistantMessages.at(-1)?.content.trim() ?? "";
   return (
-    <div
-      className="zero-card p-3 flex flex-col gap-1"
-      data-testid="voice-task-card"
+    <li
+      className={
+        isFinished ? "text-muted-foreground/80" : "text-foreground"
+      }
+      data-testid="voice-task-row"
       data-task-status={task.status}
     >
-      <p className="text-sm text-foreground line-clamp-2">{task.prompt}</p>
-      <div className="flex items-center justify-between text-xs text-muted-foreground">
-        <span>{statusLabel}</span>
-        <span>{formatElapsed(elapsedMs)}</span>
+      <div className="flex items-baseline gap-2">
+        <span className="font-medium line-clamp-2">{task.prompt}</span>
+        <span className="text-xs text-muted-foreground shrink-0">
+          {taskStatusLabel(task.status)}
+        </span>
       </div>
-    </div>
+      {latestProgress.length > 0 && (
+        <div
+          className="pl-0 mt-1 text-sm text-muted-foreground/90"
+          data-testid="voice-task-row-progress"
+        >
+          <Markdown source={latestProgress} />
+        </div>
+      )}
+    </li>
   );
 }
 
 function VoiceModeSubtitle() {
-  const lastUser = useGet(lastUserMessage$);
-  const lastAgent = useGet(lastAgentMessage$);
+  const userContent = useGet(lastUserMessage$);
+  const agentContent = useGet(lastAgentMessage$);
   return (
     <div className="w-full flex flex-col gap-2" data-testid="voice-subtitle">
       <p
-        className="text-sm text-muted-foreground line-clamp-1"
+        className="text-sm text-muted-foreground line-clamp-1 min-h-[1.25rem]"
         data-testid="voice-subtitle-user"
       >
-        {lastUser || " "}
+        {userContent}
       </p>
-      <p
-        className="text-base text-foreground line-clamp-2"
+      <div
+        className="text-base text-foreground min-h-[1.5rem]"
         data-testid="voice-subtitle-agent"
       >
-        {lastAgent || " "}
-      </p>
+        {agentContent ? <Markdown source={agentContent} /> : null}
+      </div>
     </div>
   );
 }
@@ -404,14 +417,14 @@ function VoiceModeTaskList() {
     return null;
   }
   return (
-    <div
-      className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full"
+    <ul
+      className="w-full list-disc list-outside pl-5 space-y-2 text-sm"
       data-testid="voice-task-list"
     >
       {tasks.map((task) => {
-        return <TaskCard key={task.id} task={task} />;
+        return <TaskRow key={task.id} task={task} />;
       })}
-    </div>
+    </ul>
   );
 }
 
