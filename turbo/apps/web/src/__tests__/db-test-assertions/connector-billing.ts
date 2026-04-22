@@ -1,18 +1,15 @@
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { initServices } from "../../lib/init-services";
-import { connectorBilling } from "../../db/schema/connector-billing";
+import { usageEvent } from "../../db/schema/usage-event";
 
-/**
- * Find connector_billing records by runId.
- */
+/** Find `usage_event` rows of kind=connector by runId. */
 export async function findTestConnectorBillingByRunId(runId: string): Promise<
   Array<{
     id: string;
     runId: string | null;
-    flowId: string;
     orgId: string;
     userId: string;
-    connector: string;
+    provider: string;
     category: string;
     quantity: number;
     status: string;
@@ -21,16 +18,15 @@ export async function findTestConnectorBillingByRunId(runId: string): Promise<
   initServices();
   return globalThis.services.db
     .select({
-      id: connectorBilling.id,
-      runId: connectorBilling.runId,
-      flowId: connectorBilling.flowId,
-      orgId: connectorBilling.orgId,
-      userId: connectorBilling.userId,
-      connector: connectorBilling.connector,
-      category: connectorBilling.category,
-      quantity: connectorBilling.quantity,
-      status: connectorBilling.status,
+      id: usageEvent.id,
+      runId: usageEvent.runId,
+      orgId: usageEvent.orgId,
+      userId: usageEvent.userId,
+      provider: usageEvent.provider,
+      category: usageEvent.category,
+      quantity: usageEvent.quantity,
+      status: usageEvent.status,
     })
-    .from(connectorBilling)
-    .where(eq(connectorBilling.runId, runId));
+    .from(usageEvent)
+    .where(and(eq(usageEvent.runId, runId), eq(usageEvent.kind, "connector")));
 }

@@ -529,20 +529,22 @@ export type WebhookStoragesCommitContract =
 export type WebhookUsageContract = typeof webhookUsageContract;
 
 /**
- * Webhook connector billing contract for /api/webhooks/agent/connector-billing
+ * Webhook usage event contract for /api/webhooks/agent/usage-event
  *
- * Receives per-API-call connector billing records (billable resource counts)
- * from the mitmproxy addon for billing attribution.
+ * Receives per-event billable usage records (connector API calls, and
+ * future sandbox-reported billable events) from the mitmproxy addon
+ * for persistence in the `usage_event` table.
  */
-export const webhookConnectorBillingContract = c.router({
+export const webhookUsageEventContract = c.router({
   send: {
     method: "POST",
-    path: "/api/webhooks/agent/connector-billing",
+    path: "/api/webhooks/agent/usage-event",
     headers: authHeadersSchema,
     body: z.object({
       runId: z.string().min(1, "runId is required"),
-      flowId: z.string().min(1).max(100),
-      connector: z.string().min(1).max(50),
+      idempotencyKey: z.uuid(),
+      kind: z.string().min(1).max(30),
+      provider: z.string().min(1).max(100),
       category: z.string().min(1).max(100),
       quantity: z.number().int().min(0),
     }),
@@ -555,9 +557,8 @@ export const webhookConnectorBillingContract = c.router({
       404: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "Receive connector billing data from sandbox",
+    summary: "Receive usage event data from sandbox",
   },
 });
 
-export type WebhookConnectorBillingContract =
-  typeof webhookConnectorBillingContract;
+export type WebhookUsageEventContract = typeof webhookUsageEventContract;

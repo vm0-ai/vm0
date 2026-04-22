@@ -68,7 +68,7 @@ def report_connector_usage(flow: http.HTTPFlow, run_id: str) -> None:
                 f"Billable firewall {firewall_name!r} has no registered handler — "
                 "billing records for this firewall will be dropped.  Check that "
                 "BILLABLE_CONNECTORS in @vm0/core and _HANDLERS here are in sync.",
-                type="connector_billing",
+                type="usage_event",
                 firewall_name=firewall_name,
             )
         return

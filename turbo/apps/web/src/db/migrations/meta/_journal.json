@@ -2094,6 +2094,13 @@
       "when": 1776860068792,
       "tag": "0298_flip_memory_storages_to_artifact",
       "breakpoints": true
+    },
+    {
+      "idx": 299,
+      "version": "7",
+      "when": 1776867698258,
+      "tag": "0299_glorious_sauron",
+      "breakpoints": true
     }
   ]
 }

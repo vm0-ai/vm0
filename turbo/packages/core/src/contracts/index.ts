@@ -171,8 +171,8 @@ export {
   type WebhookStoragesPrepareContract,
   type WebhookStoragesCommitContract,
   type WebhookUsageContract,
-  webhookConnectorBillingContract,
-  type WebhookConnectorBillingContract,
+  webhookUsageEventContract,
+  type WebhookUsageEventContract,
 } from "./webhooks";
 export {
   cliAuthDeviceContract,

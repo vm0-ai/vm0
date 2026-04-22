@@ -8,8 +8,8 @@ Two paths:
 - Billable connector responses (flagged by the web layer via
   ``billableFirewalls`` → ``flow.metadata["firewall_billable"]``): compute
   per-permission billable resource counts and forward them to the platform
-  via ``/api/webhooks/agent/connector-billing`` for persistence in the
-  ``connector_billing`` table — see :mod:`usage.providers.connectors`.
+  via ``/api/webhooks/agent/usage-event`` for persistence in the
+  ``usage_event`` table — see :mod:`usage.providers.connectors`.
 
 This package exposes the stable surface consumed by ``mitm_addon.py``.
 For test patching, target the submodule that **reads** the name (e.g.

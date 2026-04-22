@@ -3,17 +3,17 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../../src/lib/ts-rest-handler";
-import { webhookConnectorBillingContract } from "@vm0/core";
+import { webhookUsageEventContract } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
-import { connectorBilling } from "../../../../../src/db/schema/connector-billing";
+import { usageEvent } from "../../../../../src/db/schema/usage-event";
 import { eq, and } from "drizzle-orm";
 import { getSandboxAuthForRun } from "../../../../../src/lib/auth/get-sandbox-auth";
 import { logger } from "../../../../../src/lib/shared/logger";
 
-const log = logger("webhooks:connector-billing");
+const log = logger("webhooks:usage-event");
 
-const router = tsr.router(webhookConnectorBillingContract, {
+const router = tsr.router(webhookUsageEventContract, {
   send: async ({ body, headers }) => {
     initServices();
 
@@ -54,27 +54,23 @@ const router = tsr.router(webhookConnectorBillingContract, {
     }
 
     await globalThis.services.db
-      .insert(connectorBilling)
+      .insert(usageEvent)
       .values({
         runId: body.runId,
-        flowId: body.flowId,
         orgId: run.orgId,
         userId,
-        connector: body.connector,
+        kind: body.kind,
+        provider: body.provider,
         category: body.category,
         quantity: body.quantity,
+        idempotencyKey: body.idempotencyKey,
       })
-      .onConflictDoNothing({
-        target: [
-          connectorBilling.runId,
-          connectorBilling.flowId,
-          connectorBilling.category,
-        ],
-      });
+      .onConflictDoNothing({ target: [usageEvent.idempotencyKey] });
 
-    log.debug("Connector billing recorded", {
+    log.debug("Usage event recorded", {
       runId: body.runId,
-      connector: body.connector,
+      kind: body.kind,
+      provider: body.provider,
       category: body.category,
       quantity: body.quantity,
     });
@@ -108,8 +104,8 @@ function errorHandler(err: unknown): TsRestResponse | void {
   return undefined;
 }
 
-const handler = createHandler(webhookConnectorBillingContract, router, {
-  routeName: "webhooks.agent.connector-billing",
+const handler = createHandler(webhookUsageEventContract, router, {
+  routeName: "webhooks.agent.usage-event",
   errorHandler,
 });
 

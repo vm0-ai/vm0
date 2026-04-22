@@ -20,7 +20,7 @@ import * as modelProviderSchema from "./schema/model-provider";
 import * as variableSchema from "./schema/variable";
 import * as composeJobSchema from "./schema/compose-job";
 import * as connectorSchema from "./schema/connector";
-import * as connectorBillingSchema from "./schema/connector-billing";
+import * as usageEventSchema from "./schema/usage-event";
 import * as usageDailySchema from "./schema/usage-daily";
 import * as emailThreadSessionSchema from "./schema/email-thread-session";
 import * as emailReplyRequestSchema from "./schema/email-reply-request";
@@ -91,7 +91,7 @@ export const schema = {
   ...variableSchema,
   ...composeJobSchema,
   ...connectorSchema,
-  ...connectorBillingSchema,
+  ...usageEventSchema,
   ...usageDailySchema,
   ...emailThreadSessionSchema,
   ...emailReplyRequestSchema,

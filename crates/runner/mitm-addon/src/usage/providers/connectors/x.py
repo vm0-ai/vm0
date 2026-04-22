@@ -2,11 +2,12 @@
 
 Computes per-permission billable resource counts from successful requests
 through the X firewall and forwards them to the platform for persistence
-in the ``connector_billing`` table.
+in the ``usage_event`` table.
 """
 
 import json
 import urllib.parse
+import uuid
 from collections.abc import Callable
 from typing import TypedDict
 
@@ -16,6 +17,7 @@ import body_utils
 from auth import get_api_url
 from logging_utils import log_proxy_entry
 
+from ...namespaces import USAGE_EVENT_NAMESPACE_CONNECTOR
 from ...webhook import _enqueue_webhook
 
 # HTTP 2xx success range (RFC 9110).  Also defined in ``mitm_addon.py``; kept
@@ -386,8 +388,8 @@ def report_usage(flow: http.HTTPFlow, run_id: str) -> None:
 
     Derives per-permission billable resource counts from the request and
     response, then forwards them to the platform via
-    ``/api/webhooks/agent/connector-billing`` for persistence in the
-    ``connector_billing`` table.
+    ``/api/webhooks/agent/usage-event`` for persistence in the
+    ``usage_event`` table.
 
     **Caller contract**: the dispatcher in
     :mod:`usage.providers.connectors` guarantees ``run_id`` is non-empty,
@@ -414,7 +416,7 @@ def report_usage(flow: http.HTTPFlow, run_id: str) -> None:
     resp_meta = _parse_response_metadata(flow)
     billable_counts = _compute_billable_counts(flow.request.method, req_meta, resp_meta, endpoint)
 
-    # Forward billing records to the platform for persistence.
+    # Forward usage events to the platform for persistence.
     sandbox_token = flow.metadata.get("vm_sandbox_token", "")
     api_url = get_api_url()
     proxy_log_path = flow.metadata.get("vm_proxy_log_path", "")
@@ -422,22 +424,32 @@ def report_usage(flow: http.HTTPFlow, run_id: str) -> None:
         log_proxy_entry(
             proxy_log_path,
             "warn",
-            "Cannot report connector billing: missing sandbox_token or api_url",
-            type="connector_billing",
+            "Cannot report usage event: missing sandbox_token or api_url",
+            type="usage_event",
         )
         return
-    url = f"{api_url}/api/webhooks/agent/connector-billing"
+    url = f"{api_url}/api/webhooks/agent/usage-event"
     for category, qty in billable_counts.items():
+        # UUIDv5 from stable inputs — retries produce the same key, so the
+        # server-side UNIQUE(idempotency_key) dedups duplicate deliveries
+        # without the addon needing to persist anything across restarts.
+        idempotency_key = str(
+            uuid.uuid5(
+                USAGE_EVENT_NAMESPACE_CONNECTOR,
+                f"{run_id}:{flow.id}:{category}",
+            )
+        )
         _enqueue_webhook(
             url,
             sandbox_token,
             {
                 "runId": run_id,
-                "flowId": flow.id,
-                "connector": firewall_name,
+                "idempotencyKey": idempotency_key,
+                "kind": "connector",
+                "provider": firewall_name,
                 "category": category,
                 "quantity": qty,
             },
             proxy_log_path,
-            "connector_billing",
+            "usage_event",
         )

@@ -2485,7 +2485,7 @@ class TestReportConnectorUsage:
         assert len(lines) == 1
         assert lines[0]["level"] == "warn"
         assert lines[0]["firewall_name"] == "github"
-        assert lines[0]["type"] == "connector_billing"
+        assert lines[0]["type"] == "usage_event"
 
     def test_warns_separately_per_firewall_name(self, tmp_path, real_flow):
         """One-shot guard is per-firewall-name, not global — a new desynced
