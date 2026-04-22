@@ -4,7 +4,7 @@ import { withErrorHandler } from "../../../lib/command";
 
 export const uploadFileCommand = new Command()
   .name("upload-file")
-  .description("Upload a local file and print a 7-day presigned URL")
+  .description("Upload a local file and print a permanent URL")
   .requiredOption("-f, --file <path>", "Local file path to upload")
   .option("--content-type <mime>", "Override inferred content type")
   .addHelpText(
@@ -20,7 +20,8 @@ Output:
 
 Notes:
   - Authenticates via ZERO_TOKEN (requires file:write capability)
-  - Returned URL is a presigned GET valid for 7 days
+  - Returned URL is permanent (serves a short-lived signed redirect on access)
+  - Safe to persist in chat messages or share over external channels
   - Max file size: 1 GB
   - Allowed types: png / jpeg / gif / webp / svg / mp4 / webm / mov / pdf / txt / csv / md / json`,
   )
