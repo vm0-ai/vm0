@@ -426,6 +426,85 @@ describe("org billing tab - auto-recharge section", () => {
     expect(thresholdInput).toHaveValue("3000");
   });
 
+  it("should not flash the toggle state between save-resolve and refetch-complete", async () => {
+    // Regression: saveAutoRecharge$ used to clear optimistic overrides before
+    // waiting for billingReload$ to produce a fresh config, so useLastLoadable
+    // (keepLastResolved=true) handed back the stale pre-save config for one
+    // network RTT. On a toggle-ON save the user briefly saw the switch blink
+    // back to OFF and the threshold/amount section collapse; dirty also
+    // flipped false, briefly hiding UnsavedBar.
+    const user = userEvent.setup();
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+      autoRecharge: { enabled: false, threshold: 2000, amount: 10_000 },
+    });
+
+    // First fetch returns the pre-save state (enabled=false). Subsequent
+    // fetches are held open so the window between override-clear and
+    // refetch-complete is long enough to observe.
+    let releaseRefetch = (): void => {};
+    const refetchStarted = new Promise<void>((resolve) => {
+      releaseRefetch = resolve;
+    });
+    let refetchCount = 0;
+    server.use(
+      mockApi(zeroBillingStatusContract.get, async ({ respond }) => {
+        refetchCount++;
+        const enabled = refetchCount > 1;
+        if (refetchCount > 1) {
+          await refetchStarted;
+        }
+        return respond(200, {
+          tier: "pro",
+          credits: 20_000,
+          subscriptionStatus: "active",
+          currentPeriodEnd: null,
+          cancelAtPeriodEnd: false,
+          hasSubscription: true,
+          autoRecharge: { enabled, threshold: 2000, amount: 10_000 },
+          creditExpiry: { expiringNextCycle: 0, nextExpiryDate: null },
+        });
+      }),
+    );
+
+    await openBillingTab();
+
+    const toggle = await waitFor(() => {
+      const t = screen.getByRole("switch", { name: /enable auto-recharge/i });
+      expect(t).toHaveAttribute("aria-checked", "false");
+      return t;
+    });
+
+    await user.click(toggle);
+    await waitFor(() => {
+      expect(toggle).toHaveAttribute("aria-checked", "true");
+    });
+
+    const bar = await screen.findByTestId("auto-recharge-unsaved-bar");
+    const savePromise = user.click(within(bar).getByTestId("save-button"));
+
+    // While the refetch is blocked, the toggle must stay ON (no flash).
+    // Poll for a beat then assert state hasn't regressed.
+    await new Promise((r) => {
+      return setTimeout(r, 50);
+    });
+    expect(toggle).toHaveAttribute("aria-checked", "true");
+
+    // Release the refetch and let the save finish.
+    releaseRefetch();
+    await savePromise;
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("auto-recharge-unsaved-bar"),
+      ).not.toBeInTheDocument();
+    });
+    expect(toggle).toHaveAttribute("aria-checked", "true");
+  });
+
   it("should discard unsaved auto-recharge changes when Discard is clicked", async () => {
     const user = userEvent.setup();
     setMockBillingStatus({
