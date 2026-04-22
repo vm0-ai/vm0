@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.90.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.89.3...runner-rs-v0.90.0) (2026-04-22)
+
+
+### Features
+
+* **mitm-addon:** vendor ijson pure-python backend ([#10533](https://github.com/vm0-ai/vm0/issues/10533)) ([fec03b3](https://github.com/vm0-ai/vm0/commit/fec03b31ec0766baff9d4e4b200d1d37f03a80a7))
+
+
+### Documentation
+
+* **mitm-addon:** clarify firewall_action vs firewall_error semantics ([#10540](https://github.com/vm0-ai/vm0/issues/10540)) ([c48046d](https://github.com/vm0-ai/vm0/commit/c48046d52203593a6e4f5e432a55a79660c74062))
+
+
+### Refactoring
+
+* **mitm-addon:** surface one-shot warnings for best-effort failures ([#10525](https://github.com/vm0-ai/vm0/issues/10525)) ([136cf1f](https://github.com/vm0-ai/vm0/commit/136cf1fa0ac2d9e4079015a26bc9103c3f3e7b49))
+* **mitm-addon:** unify urllib cleanup on `with` blocks ([#10543](https://github.com/vm0-ai/vm0/issues/10543)) ([f319b55](https://github.com/vm0-ai/vm0/commit/f319b55a470d2460395e84042859063685b964dd)), closes [#10491](https://github.com/vm0-ai/vm0/issues/10491)
+
+## [0.89.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.89.2...runner-rs-v0.89.3) (2026-04-22)
+
+
+### Bug Fixes
+
+* skip auto-focus on touch devices in ZeroChatComposer ([#10496](https://github.com/vm0-ai/vm0/issues/10496)) ([2c90017](https://github.com/vm0-ai/vm0/commit/2c90017ef46dae13b52426038025e22bb9cc9f88))
+
+## [0.89.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.89.1...runner-rs-v0.89.2) (2026-04-22)
+
+
+### Bug Fixes
+
+* **runner:** close urllib response in firewall auth fetch ([#10489](https://github.com/vm0-ai/vm0/issues/10489)) ([30a80ca](https://github.com/vm0-ai/vm0/commit/30a80caf4b598eb84dc39547b11378c56c6b5412))
+
 ## [0.89.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.89.0...runner-rs-v0.89.1) (2026-04-22)
 
 

@@ -4,6 +4,22 @@ import { apiErrorSchema } from "./errors";
 
 const c = initContract();
 
+export const voiceChatEventTypeSchema = z.enum([
+  "session-start",
+  "session-end",
+  "speech",
+  "request-slow-brain",
+  "response",
+  "directive",
+  "thinking",
+  "observation",
+  "preparation-ready",
+  "meeting-prompt",
+  "task-dispatched",
+  "task-completed",
+]);
+export type VoiceChatEventType = z.infer<typeof voiceChatEventTypeSchema>;
+
 const contextEventSchema = z.object({
   id: z.string(),
   seq: z.number(),

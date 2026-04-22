@@ -276,8 +276,10 @@ describe("deleteOrgData", () => {
     await insertOrgMembersEntry({ orgId, userId });
 
     // Platform connector enablement — separate table from OAuth, must also
-    // be cascaded on org deletion.
-    await insertTestPlatformConnector(orgId, userId, "nano-banana");
+    // be cascaded on org deletion. The table stores varchar, so any string
+    // value exercises the delete path regardless of which (if any) platform
+    // connector is currently registered in the contract.
+    await insertTestPlatformConnector(orgId, userId, "__test_platform__");
 
     // Execute deletion
     await deleteOrgData(orgId);

@@ -313,13 +313,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: true,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.NanoBananaConnector]: {
-    maintainer: "liangyou@vm0.ai",
-    description:
-      "Show the Nano Banana (Google Gemini image generation) platform-managed connector",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.UnifyChatThreads]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -328,6 +321,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Gates the sidebar + /chats title/placeholder/aria-label swaps, the per-row " +
       "agent avatar render, and the unscoped request shape. New-chat creation " +
       "still uses the current-agent fallback.",
+    enabled: false,
+  },
+  [FeatureSwitchKey.Vm0DeepseekModel]: {
+    maintainer: "ethan@vm0.ai",
+    description: "Enable the DeepSeek-V3.2 (deepseek-chat) VM0 managed model",
     enabled: false,
   },
 };

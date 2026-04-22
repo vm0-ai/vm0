@@ -4,7 +4,7 @@ import { zeroAgentsByIdContract } from "@vm0/core";
 import { zeroClient$ } from "../../api-client.ts";
 import { accept } from "../../../lib/accept.ts";
 import { zeroJobDetail$ } from "./detail.ts";
-import { reloadAgents$ } from "../../agent.ts";
+import { reloadAgentById$, reloadAgents$ } from "../../agent.ts";
 
 // ---------------------------------------------------------------------------
 // Delete agent
@@ -24,5 +24,6 @@ export const deleteZeroJobAgent$ = command(
 
     toast.success("Agent deleted");
     set(reloadAgents$);
+    set(reloadAgentById$);
   },
 );

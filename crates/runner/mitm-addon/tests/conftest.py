@@ -27,6 +27,7 @@ from mitmproxy.test import tflow, tutils
 import auth
 import mitm_addon
 import usage
+from usage.providers import connectors as _usage_connectors
 
 
 @pytest.fixture(autouse=True)
@@ -48,6 +49,8 @@ def _reset_module_state() -> None:
     auth._cache_locks.clear()
     auth._force_refresh_markers.clear()
     auth._last_force_refresh_at.clear()
+    _usage_connectors._unregistered_handler_warned.clear()
+    usage.counters._pending_write_error_logged = False
 
 
 def _headers(*pairs: tuple[str, str]) -> http.Headers:

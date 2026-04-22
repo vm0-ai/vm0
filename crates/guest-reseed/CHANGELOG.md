@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/vm0-ai/vm0/compare/guest-reseed-v0.3.0...guest-reseed-v0.3.1) (2026-04-22)
+
+
+### Bug Fixes
+
+* skip auto-focus on touch devices in ZeroChatComposer ([#10496](https://github.com/vm0-ai/vm0/issues/10496)) ([2c90017](https://github.com/vm0-ai/vm0/commit/2c90017ef46dae13b52426038025e22bb9cc9f88))
+
 ## [0.3.0](https://github.com/vm0-ai/vm0/compare/guest-reseed-v0.2.0...guest-reseed-v0.3.0) (2026-04-09)
 
 

@@ -98,6 +98,8 @@ import {
   setPopoverSearch$,
   popoverSortOrder$,
   setPopoverSortOrder$,
+  modelPickerOpen$,
+  setModelPickerOpen$,
 } from "../../signals/zero-page/zero-chat-composer.ts";
 import {
   audioInputAvailable$,
@@ -164,6 +166,8 @@ interface ZeroChatComposerProps {
      * base URL differs are disabled to preserve session continuity.
      */
     sessionProviderType: ModelProviderType | null;
+    // When true, picker is read-only (e.g. existing chat thread).
+    disabled?: boolean;
   };
 }
 
@@ -644,6 +648,8 @@ export function ZeroChatComposer({
 }: ZeroChatComposerProps) {
   const showAddDialog = useGet(showAddDialog$);
   const setShowAddDialog = useSet(setShowAddDialog$);
+  const modelPickerOpen = useGet(modelPickerOpen$);
+  const setModelPickerOpen = useSet(setModelPickerOpen$);
 
   const resolved = useResolvedComposerSignals(
     input,
@@ -824,6 +830,11 @@ export function ZeroChatComposer({
         "mod+b": () => {
           toggleSidebar();
         },
+        "mod+alt+.": () => {
+          if (modelPicker) {
+            setModelPickerOpen(true);
+          }
+        },
       },
       e,
     );
@@ -938,6 +949,9 @@ export function ZeroChatComposer({
                     )}
                     sessionProviderType={modelPicker.sessionProviderType}
                     compactTrigger
+                    open={modelPickerOpen}
+                    onOpenChange={setModelPickerOpen}
+                    disabled={modelPicker.disabled}
                   />
                 )}
                 <MicButton

@@ -137,7 +137,6 @@ const CONNECTOR_ICON_COLORFUL = {
   minio: true,
   monday: true,
   n8n: true,
-  "nano-banana": true,
   neon: true,
   pandadoc: true,
   pdf4me: true,

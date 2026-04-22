@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import {
@@ -32,6 +33,10 @@ import {
 } from "../zero-schedule.ts";
 
 const context = testContext();
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 function mockScheduleResponse(): ScheduleResponse {
   return createMockScheduleResponse({
@@ -382,6 +387,62 @@ describe("zero-schedule signals", () => {
 
       expect(captured.body).not.toBeNull();
       expect(captured.body?.description).toBe("Custom description here");
+    });
+
+    it("should toast on pre-API validation error (past atTime)", async () => {
+      const errorSpy = vi.spyOn(toast, "error").mockImplementation(() => {
+        return "" as unknown as ReturnType<typeof toast.error>;
+      });
+
+      await setup();
+      await expect(
+        context.store.set(
+          saveZeroSchedule$,
+          {
+            prompt: "One-time task in the past",
+            freq: "once",
+            date: "2000-01-01",
+            hour: 9,
+            minute: 0,
+            timezone: "UTC",
+            intervalSeconds: 0,
+          },
+          context.signal,
+        ),
+      ).rejects.toThrow("Scheduled time must be in the future");
+
+      expect(errorSpy).toHaveBeenCalledWith(
+        "Scheduled time must be in the future",
+      );
+    });
+
+    it("should not toast when save is aborted mid-flight", async () => {
+      // Aborts on DomCallback paths (e.g. navigation, unmount) are silent by
+      // design — detach() swallows AbortError. The error-toast helper must
+      // not surface these as user-visible toasts.
+      const errorSpy = vi.spyOn(toast, "error").mockImplementation(() => {
+        return "" as unknown as ReturnType<typeof toast.error>;
+      });
+
+      await setup();
+
+      await expect(
+        context.store.set(
+          saveZeroSchedule$,
+          {
+            prompt: "Aborted save",
+            freq: "every_day",
+            date: "2030-01-01",
+            hour: 9,
+            minute: 0,
+            timezone: "UTC",
+            intervalSeconds: 0,
+          },
+          AbortSignal.abort(),
+        ),
+      ).rejects.toThrow();
+
+      expect(errorSpy).not.toHaveBeenCalled();
     });
 
     it("should throw on API error during save", async () => {
@@ -815,6 +876,38 @@ describe("org schedule signals", () => {
       expect(captured.body).not.toBeNull();
       expect(captured.body?.timezone).toBe("Asia/Shanghai");
       expect(captured.body?.name).toBe("existing-schedule");
+    });
+
+    // A validation error thrown inside saveOrgSchedule$ (before the API call)
+    // must surface as a toast. These errors propagate out of ccstate commands
+    // and are silently swallowed by detach(Reason.DomCallback) in the views,
+    // so without an explicit toast the user sees no feedback on save failure.
+    it("should toast on pre-API validation error (past atTime)", async () => {
+      const errorSpy = vi.spyOn(toast, "error").mockImplementation(() => {
+        return "" as unknown as ReturnType<typeof toast.error>;
+      });
+
+      await setup();
+      await expect(
+        context.store.set(
+          saveOrgSchedule$,
+          {
+            prompt: "One-time task in the past",
+            freq: "once",
+            date: "2000-01-01",
+            hour: 9,
+            minute: 0,
+            timezone: "UTC",
+            intervalSeconds: 0,
+            agentId: "e0000000-0000-4000-a000-000000000010",
+          },
+          context.signal,
+        ),
+      ).rejects.toThrow("Scheduled time must be in the future");
+
+      expect(errorSpy).toHaveBeenCalledWith(
+        "Scheduled time must be in the future",
+      );
     });
   });
 

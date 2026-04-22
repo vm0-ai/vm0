@@ -44,63 +44,80 @@ beforeEach(() => {
 // InternalConnectorLogos (ORG-D-118, ORG-D-119, ORG-D-120, ORG-I-121)
 // ---------------------------------------------------------------------------
 
+// Render-heavy internal debug page (173 connectors × 4 IconBox ≈ 700 DOM
+// nodes). Bumped timeout absorbs CPU contention from parallel workers.
+const INTERNAL_LOGOS_TIMEOUT = 15_000;
+
 describe("internal connector logos - display (ORG-D-118)", () => {
-  it("lists all connector types with labels and type identifiers", async () => {
-    detachedSetupPage({ context, path: "/__internal-connector-logos" });
-    const connectorTypes = Object.keys(CONNECTOR_TYPES) as ConnectorType[];
-    // Verify at least one connector type and its label appears in the document
-    // (labels and type keys may appear multiple times due to icon display variants).
-    await waitFor(() => {
-      expect(
-        screen.queryAllByText(CONNECTOR_TYPES[connectorTypes[0]].label).length,
-      ).toBeGreaterThan(0);
-      expect(screen.queryAllByText(connectorTypes[0]).length).toBeGreaterThan(
-        0,
-      );
-    });
-    // All connectors are rendered at once, so sync checks suffice after the first waitFor
-    for (const type of connectorTypes) {
-      expect(screen.queryAllByText(type).length).toBeGreaterThan(0);
-    }
-  });
+  it(
+    "lists all connector types with labels and type identifiers",
+    async () => {
+      detachedSetupPage({ context, path: "/__internal-connector-logos" });
+      const connectorTypes = Object.keys(CONNECTOR_TYPES) as ConnectorType[];
+      // Verify at least one connector type and its label appears in the document
+      // (labels and type keys may appear multiple times due to icon display variants).
+      await waitFor(() => {
+        expect(
+          screen.queryAllByText(CONNECTOR_TYPES[connectorTypes[0]].label)
+            .length,
+        ).toBeGreaterThan(0);
+        expect(screen.queryAllByText(connectorTypes[0]).length).toBeGreaterThan(
+          0,
+        );
+      });
+      // All connectors are rendered at once, so sync checks suffice after the first waitFor
+      for (const type of connectorTypes) {
+        expect(screen.queryAllByText(type).length).toBeGreaterThan(0);
+      }
+    },
+    INTERNAL_LOGOS_TIMEOUT,
+  );
 });
 
 describe("internal connector logos - display (ORG-D-119)", () => {
-  it("heading displays the count of connector types", async () => {
-    detachedSetupPage({ context, path: "/__internal-connector-logos" });
-    const connectorTypes = Object.keys(CONNECTOR_TYPES);
-    await waitFor(() => {
-      expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
-        connectorTypes.length.toString(),
-      );
-    });
-  });
+  it(
+    "heading displays the count of connector types",
+    async () => {
+      detachedSetupPage({ context, path: "/__internal-connector-logos" });
+      const connectorTypes = Object.keys(CONNECTOR_TYPES);
+      await waitFor(() => {
+        expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
+          connectorTypes.length.toString(),
+        );
+      });
+    },
+    INTERNAL_LOGOS_TIMEOUT,
+  );
 });
 
 describe("internal connector logos - interaction (ORG-I-121)", () => {
-  it("size selection buttons change the displayed icon size", async () => {
-    const user = userEvent.setup();
-    detachedSetupPage({ context, path: "/__internal-connector-logos" });
-    // Default size button is "128" — clicking "16" should switch to a smaller size
-    await waitFor(() => {
-      expect(
-        screen.getAllByRole("button").find((el) => {
-          return /128/.test(el.textContent ?? "");
-        }),
-      ).toBeInTheDocument();
-    });
-    const btn16 = screen.getAllByRole("button").find((el) => {
-      return /^16$/.test(el.textContent ?? "");
-    });
-    await user.click(btn16!);
-    // After clicking "16", the icons container should reflect the smaller size;
-    // verify the page still renders connector icon images (alt="" so role="presentation")
-    await waitFor(() => {
-      expect(
-        screen.getAllByRole("presentation", { hidden: true }).length,
-      ).toBeGreaterThan(0);
-    });
-  });
+  it(
+    "size selection buttons change the displayed icon size",
+    async () => {
+      const user = userEvent.setup();
+      detachedSetupPage({ context, path: "/__internal-connector-logos" });
+      // Default size button is "128" — clicking "16" should switch to a smaller size
+      await waitFor(() => {
+        expect(
+          screen.getAllByRole("button").find((el) => {
+            return /128/.test(el.textContent ?? "");
+          }),
+        ).toBeInTheDocument();
+      });
+      const btn16 = screen.getAllByRole("button").find((el) => {
+        return /^16$/.test(el.textContent ?? "");
+      });
+      await user.click(btn16!);
+      // After clicking "16", the icons container should reflect the smaller size;
+      // verify the page still renders connector icon images (alt="" so role="presentation")
+      await waitFor(() => {
+        expect(
+          screen.getAllByRole("presentation", { hidden: true }).length,
+        ).toBeGreaterThan(0);
+      });
+    },
+    INTERNAL_LOGOS_TIMEOUT,
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -173,10 +190,10 @@ describe("inline settings row - conditional (ORG-C-109)", () => {
       context,
       path: `/schedules/${TEST_SCHEDULE_ID}`,
     });
-    // The "Agent" InlineSettingsRow has description "Which agent runs when this schedule fires."
+    // The "Agent" InlineSettingsRow has a description explaining the field is read-only.
     await waitFor(() => {
       expect(
-        screen.getByText("Which agent runs when this schedule fires."),
+        screen.getByText(/The agent is fixed once a schedule is created/i),
       ).toBeInTheDocument();
     });
   });

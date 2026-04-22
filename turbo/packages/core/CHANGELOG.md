@@ -1,5 +1,41 @@
 # Changelog
 
+## [8.224.0](https://github.com/vm0-ai/vm0/compare/core-v8.223.0...core-v8.224.0) (2026-04-22)
+
+
+### Features
+
+* **db:** add voice_chat_tasks schema and contracts ([#10550](https://github.com/vm0-ai/vm0/issues/10550)) ([2ff102a](https://github.com/vm0-ai/vm0/commit/2ff102a9e8a510f533346ec25d0c0ad26bc61d1e))
+
+
+### Refactoring
+
+* **core:** inline billable-connectors into firewalls/index ([#10556](https://github.com/vm0-ai/vm0/issues/10556)) ([09a7f4d](https://github.com/vm0-ai/vm0/commit/09a7f4d46dbb417fdf56860b314ec88840e87aa2))
+
+## [8.223.0](https://github.com/vm0-ai/vm0/compare/core-v8.222.0...core-v8.223.0) (2026-04-22)
+
+
+### Features
+
+* add deepseek-reasoner to vm0 managed models ([#10532](https://github.com/vm0-ai/vm0/issues/10532)) ([c113802](https://github.com/vm0-ai/vm0/commit/c11380229af6afbfad202cbeaf234c90dcfda568))
+
+
+### Bug Fixes
+
+* **voice-chat:** auto-end stale session on double-start and unstick preparing UI ([#10536](https://github.com/vm0-ai/vm0/issues/10536)) ([2bb9fd9](https://github.com/vm0-ai/vm0/commit/2bb9fd95e5326a07e5aa8304fac9d924ed363263))
+
+## [8.222.0](https://github.com/vm0-ai/vm0/compare/core-v8.221.0...core-v8.222.0) (2026-04-22)
+
+
+### Features
+
+* add deepseek-chat to vm0 managed models with feature flag ([#10501](https://github.com/vm0-ai/vm0/issues/10501)) ([6d13890](https://github.com/vm0-ai/vm0/commit/6d13890d1c73f94372810b251241609579a16ce2))
+
+
+### Bug Fixes
+
+* skip auto-focus on touch devices in ZeroChatComposer ([#10496](https://github.com/vm0-ai/vm0/issues/10496)) ([2c90017](https://github.com/vm0-ai/vm0/commit/2c90017ef46dae13b52426038025e22bb9cc9f88))
+
 ## [8.221.0](https://github.com/vm0-ai/vm0/compare/core-v8.220.0...core-v8.221.0) (2026-04-22)
 
 

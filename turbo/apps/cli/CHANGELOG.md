@@ -1,5 +1,42 @@
 # Changelog
 
+## [9.128.0](https://github.com/vm0-ai/vm0/compare/cli-v9.127.3...cli-v9.128.0) (2026-04-22)
+
+
+### Features
+
+* **cli:** add zero voice-chat task commands ([#10557](https://github.com/vm0-ai/vm0/issues/10557)) ([8d11478](https://github.com/vm0-ai/vm0/commit/8d11478ed4ac7a84f85392c0ead9be63966963c3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.224.0
+
+## [9.127.3](https://github.com/vm0-ai/vm0/compare/cli-v9.127.2...cli-v9.127.3) (2026-04-22)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.223.0
+
+## [9.127.2](https://github.com/vm0-ai/vm0/compare/cli-v9.127.1...cli-v9.127.2) (2026-04-22)
+
+
+### Bug Fixes
+
+* skip auto-focus on touch devices in ZeroChatComposer ([#10496](https://github.com/vm0-ai/vm0/issues/10496)) ([2c90017](https://github.com/vm0-ai/vm0/commit/2c90017ef46dae13b52426038025e22bb9cc9f88))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.222.0
+
 ## [9.127.1](https://github.com/vm0-ai/vm0/compare/cli-v9.127.0...cli-v9.127.1) (2026-04-22)
 
 

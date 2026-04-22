@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
-import { generatePresignedPutUrl } from "../../../../../src/lib/infra/s3/s3-client";
+import {
+  generatePresignedPutUrl,
+  generatePresignedUrl,
+} from "../../../../../src/lib/infra/s3/s3-client";
 import { env } from "../../../../../src/env";
 import { logger } from "../../../../../src/lib/shared/logger";
 import {
@@ -10,7 +13,6 @@ import {
   MAX_UPLOAD_SIZE_BYTES,
   MAX_UPLOAD_SIZE_LABEL,
 } from "../../../../../src/lib/zero/uploads/constants";
-import { buildFileUrl } from "../../../../../src/lib/zero/uploads/file-url";
 
 const log = logger("api:zero:uploads:prepare");
 
@@ -20,15 +22,10 @@ const log = logger("api:zero:uploads:prepare");
  * Returns a presigned PUT URL so the browser (or CLI) uploads the file body
  * directly to R2. Because the body never passes through the Next.js runtime,
  * this path is not constrained by Vercel's ~4.5 MB serverless body cap.
- *
- * The GET-side URL returned to the caller is a permanent
- * `/f/{userId}/{id}/{filename}` redirect served by the app — callers may
- * persist it in messages, drafts, or external channels. The short-lived
- * presigned signature is materialized per-request inside that route, on
- * each individual access.
  */
 
 const PUT_URL_TTL_SECONDS = 3600; // 1 hour to finish the upload
+const GET_URL_TTL_SECONDS = 604800; // 7 days — max SigV4 TTL
 
 const prepareSchema = z.object({
   filename: z.string().min(1).max(255),
@@ -93,14 +90,16 @@ export async function POST(request: NextRequest) {
   const s3Key = `uploads/${userId}/${id}/${sanitizedName}`;
   const bucket = env().R2_USER_STORAGES_BUCKET_NAME;
 
-  const uploadUrl = await generatePresignedPutUrl(
-    bucket,
-    s3Key,
-    contentType,
-    PUT_URL_TTL_SECONDS,
-    true,
-  );
-  const url = buildFileUrl(userId, id, sanitizedName);
+  const [uploadUrl, url] = await Promise.all([
+    generatePresignedPutUrl(
+      bucket,
+      s3Key,
+      contentType,
+      PUT_URL_TTL_SECONDS,
+      true,
+    ),
+    generatePresignedUrl(bucket, s3Key, GET_URL_TTL_SECONDS, sanitizedName),
+  ]);
 
   log.debug(
     `Prepared presigned upload for ${sanitizedName} (${size} bytes) user=${userId}`,

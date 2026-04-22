@@ -1,0 +1,25 @@
+import type { ConnectorConfig } from "../connectors";
+
+export const pdfco = {
+  pdfco: {
+    label: "PDF.co",
+    environmentMapping: {
+      PDFCO_TOKEN: "$secrets.PDFCO_TOKEN",
+    },
+    helpText:
+      "Connect your PDF.co account to convert, merge, split, and extract data from PDF documents via API",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        secrets: {
+          PDFCO_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-pdfco-api-key",
+          },
+        },
+      },
+    },
+    defaultAuthMethod: "api-token",
+  },
+} as const satisfies Record<string, ConnectorConfig>;

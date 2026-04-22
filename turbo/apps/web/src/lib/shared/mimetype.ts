@@ -8,6 +8,7 @@ export const EXT_MIMETYPE_MAP: Readonly<Record<string, string>> = {
   jpeg: "image/jpeg",
   gif: "image/gif",
   webp: "image/webp",
+  avif: "image/avif",
   svg: "image/svg+xml",
   mp4: "video/mp4",
   webm: "video/webm",

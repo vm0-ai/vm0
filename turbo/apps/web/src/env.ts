@@ -128,6 +128,18 @@ function initEnv() {
             .record(z.string(), z.array(z.string()))
             .parse(JSON.parse(val));
         }),
+      ZERO_ONE_TIME_CAMPAIGN: z
+        .string()
+        .optional()
+        .transform((val) => {
+          if (!val) return undefined;
+          return z
+            .record(
+              z.string(),
+              z.object({ priceId: z.string(), couponId: z.string() }),
+            )
+            .parse(JSON.parse(val));
+        }),
       // Clerk Webhooks
       CLERK_WEBHOOK_SIGNING_SECRET: z.string().min(1).optional(),
       // Stripe OAuth (for connector)
@@ -319,6 +331,7 @@ function initEnv() {
       STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
       STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
       ZERO_PRICE: process.env.ZERO_PRICE,
+      ZERO_ONE_TIME_CAMPAIGN: process.env.ZERO_ONE_TIME_CAMPAIGN,
       CLERK_WEBHOOK_SIGNING_SECRET: process.env.CLERK_WEBHOOK_SIGNING_SECRET,
       STRIPE_OAUTH_CLIENT_ID: process.env.STRIPE_OAUTH_CLIENT_ID,
       STRIPE_OAUTH_CLIENT_SECRET: process.env.STRIPE_OAUTH_CLIENT_SECRET,

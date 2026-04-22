@@ -92,6 +92,7 @@ const CHAT_SHORTCUT_SECTIONS = [
     shortcuts: [
       { key: "enter", label: "Send message" },
       { key: "escape", label: "Blur composer" },
+      { key: "mod+alt+.", label: "Switch model" },
     ],
   },
 ] as const;
@@ -434,6 +435,11 @@ function ChatThreadComposer({
                   onChange: setModelSelection,
                   sessionProviderType:
                     threadData?.latestSessionProviderType ?? null,
+                  // Lock once the thread has stored values — mirrors the
+                  // backend guard in rejectIfThreadModelLocked.
+                  disabled: Boolean(
+                    threadData?.modelProviderId && threadData?.selectedModel,
+                  ),
                 }
               : undefined
           }

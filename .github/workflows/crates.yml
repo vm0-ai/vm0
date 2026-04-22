@@ -234,6 +234,10 @@ jobs:
           pip install ".[test]"
           python -m pytest tests/ -v
 
+      - name: Verify vendored ijson matches pinned source
+        run: |
+          crates/runner/mitm-addon/scripts/vendor-ijson.sh --check
+
   nbd-cow-test:
     runs-on: ubuntu-latest
     container:

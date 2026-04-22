@@ -1,5 +1,69 @@
 # Changelog
 
+## [0.281.0](https://github.com/vm0-ai/vm0/compare/app-v0.280.1...app-v0.281.0) (2026-04-22)
+
+
+### Features
+
+* **platform:** re-land chat thread model lock from [#10442](https://github.com/vm0-ai/vm0/issues/10442) ([#10571](https://github.com/vm0-ai/vm0/issues/10571)) ([ee11b28](https://github.com/vm0-ai/vm0/commit/ee11b28128fd1a9d5049214d3a94d87bcb71c433))
+
+## [0.280.1](https://github.com/vm0-ai/vm0/compare/app-v0.280.0...app-v0.280.1) (2026-04-22)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.224.0
+
+## [0.280.0](https://github.com/vm0-ai/vm0/compare/app-v0.279.0...app-v0.280.0) (2026-04-22)
+
+
+### Features
+
+* add /buy/[productId] route for one-time promo credit purchases ([#10451](https://github.com/vm0-ai/vm0/issues/10451)) ([04e2b83](https://github.com/vm0-ai/vm0/commit/04e2b836f60c688f85963cace824a602c74e469e))
+
+
+### Bug Fixes
+
+* **platform:** apply thumbnail clamp to markdown image syntax ([#10527](https://github.com/vm0-ai/vm0/issues/10527)) ([bab9f73](https://github.com/vm0-ai/vm0/commit/bab9f734d8dfd0cd88d8e0a7355d1a49488bd420))
+* **voice-chat:** auto-end stale session on double-start and unstick preparing UI ([#10536](https://github.com/vm0-ai/vm0/issues/10536)) ([2bb9fd9](https://github.com/vm0-ai/vm0/commit/2bb9fd95e5326a07e5aa8304fac9d924ed363263))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.223.0
+
+## [0.279.0](https://github.com/vm0-ai/vm0/compare/app-v0.278.0...app-v0.279.0) (2026-04-22)
+
+
+### Features
+
+* add deepseek-chat to vm0 managed models with feature flag ([#10501](https://github.com/vm0-ai/vm0/issues/10501)) ([6d13890](https://github.com/vm0-ai/vm0/commit/6d13890d1c73f94372810b251241609579a16ce2))
+* add mod+alt+. keyboard shortcut to open model picker ([#10503](https://github.com/vm0-ai/vm0/issues/10503)) ([ece4fb2](https://github.com/vm0-ai/vm0/commit/ece4fb25b091792403682cc949a2553a7596d179))
+
+
+### Bug Fixes
+
+* invalidate agentById cache after agent mutations ([#10502](https://github.com/vm0-ai/vm0/issues/10502)) ([4eeac62](https://github.com/vm0-ai/vm0/commit/4eeac62d2d42152f2269e37e5891e22ced02cd79))
+* skip auto-focus on touch devices in ZeroChatComposer ([#10496](https://github.com/vm0-ai/vm0/issues/10496)) ([2c90017](https://github.com/vm0-ai/vm0/commit/2c90017ef46dae13b52426038025e22bb9cc9f88))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.222.0
+
+## [0.278.0](https://github.com/vm0-ai/vm0/compare/app-v0.277.0...app-v0.278.0) (2026-04-22)
+
+
+### Features
+
+* extend chatHeaderNewButton to mobile top bar ([#10500](https://github.com/vm0-ai/vm0/issues/10500)) ([e913bc5](https://github.com/vm0-ai/vm0/commit/e913bc53d1bdafe2f832a50b8b448e460ee2fee8))
+
 ## [0.277.0](https://github.com/vm0-ai/vm0/compare/app-v0.276.0...app-v0.277.0) (2026-04-22)
 
 

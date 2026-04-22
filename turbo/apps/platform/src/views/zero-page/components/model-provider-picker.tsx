@@ -50,7 +50,7 @@ export interface ModelProviderSelection {
 interface ModelProviderPickerProps {
   providers: ModelProviderResponse[];
   value: ModelProviderSelection | null;
-  onChange: (value: ModelProviderSelection | null) => void;
+  onChange?: (value: ModelProviderSelection | null) => void;
   placeholder?: string;
   /**
    * Classes applied to the SelectTrigger. Defaults to `h-9 w-full`. The
@@ -70,6 +70,12 @@ interface ModelProviderPickerProps {
    * space is tight and the full breakdown lives in the open dropdown.
    */
   compactTrigger?: boolean;
+  /** Controlled open state for programmatic toggle (e.g. keyboard shortcut). */
+  open?: boolean;
+  /** Callback when the open state changes. */
+  onOpenChange?: (open: boolean) => void;
+  // When true, picker is read-only (e.g. existing chat thread).
+  disabled?: boolean;
 }
 
 // Radix Select reserves the empty string for "no value" and throws if a
@@ -171,17 +177,58 @@ function TriggerLabel({
   );
 }
 
-export function ModelProviderPicker({
+function DisabledPickerLabel({
   providers,
   value,
-  onChange,
-  placeholder = "Inherit from org default",
+  placeholder,
+  compactTrigger,
   triggerClassName,
-  sessionProviderType,
-  compactTrigger = false,
-}: ModelProviderPickerProps) {
-  const groups = providers
-    .map((provider) => {
+}: Pick<
+  ModelProviderPickerProps,
+  "providers" | "value" | "placeholder" | "compactTrigger" | "triggerClassName"
+> & {
+  placeholder: string;
+  compactTrigger: boolean;
+}) {
+  const defaultModelName = resolveDefaultModel(providers);
+  const triggerAriaLabel = value
+    ? getModelDisplayName(value.selectedModel)
+    : defaultModelName !== null
+      ? getModelDisplayName(defaultModelName)
+      : placeholder;
+  return (
+    <span
+      aria-label={triggerAriaLabel}
+      className={cn(
+        "inline-flex items-center px-2 text-sm text-muted-foreground",
+        triggerClassName,
+      )}
+    >
+      <TriggerLabel
+        providers={providers}
+        value={value}
+        defaultModelName={defaultModelName}
+        placeholder={placeholder}
+        compact={compactTrigger}
+      />
+    </span>
+  );
+}
+
+interface ProviderGroup {
+  provider: ModelProviderResponse;
+  label: string;
+  models: readonly string[];
+  isVm0: boolean;
+  incompatible: boolean;
+}
+
+function buildProviderGroups(
+  providers: ModelProviderResponse[],
+  sessionProviderType: ModelProviderType | null | undefined,
+): ProviderGroup[] {
+  return providers
+    .map((provider): ProviderGroup | null => {
       const typeConfig = MODEL_PROVIDER_TYPES[provider.type];
       if (!typeConfig) {
         return null;
@@ -201,7 +248,7 @@ export function ModelProviderPicker({
         incompatible,
       };
     })
-    .filter((g): g is NonNullable<typeof g> => {
+    .filter((g): g is ProviderGroup => {
       return g !== null;
     })
     .sort((a, b) => {
@@ -212,7 +259,33 @@ export function ModelProviderPicker({
       }
       return a.isVm0 ? -1 : 1;
     });
+}
 
+export function ModelProviderPicker({
+  providers,
+  value,
+  onChange,
+  placeholder = "Inherit from org default",
+  triggerClassName,
+  sessionProviderType,
+  compactTrigger = false,
+  open,
+  onOpenChange,
+  disabled = false,
+}: ModelProviderPickerProps) {
+  if (disabled) {
+    return (
+      <DisabledPickerLabel
+        providers={providers}
+        value={value}
+        placeholder={placeholder}
+        compactTrigger={compactTrigger}
+        triggerClassName={triggerClassName}
+      />
+    );
+  }
+
+  const groups = buildProviderGroups(providers, sessionProviderType);
   const defaultModelName = resolveDefaultModel(providers);
   const triggerAriaLabel = value
     ? getModelDisplayName(value.selectedModel)
@@ -224,8 +297,10 @@ export function ModelProviderPicker({
     <Select
       value={encodeValue(value)}
       onValueChange={(raw) => {
-        onChange(decodeValue(raw));
+        onChange?.(decodeValue(raw));
       }}
+      open={open}
+      onOpenChange={onOpenChange}
     >
       <SelectTrigger
         aria-label={triggerAriaLabel}

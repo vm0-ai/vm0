@@ -1,4 +1,11 @@
-import { pgTable, uuid, varchar, text, timestamp } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  uuid,
+  varchar,
+  text,
+  timestamp,
+  type AnyPgColumn,
+} from "drizzle-orm/pg-core";
 import { agentRuns } from "./agent-run";
 
 /**
@@ -14,7 +21,7 @@ export const conversations = pgTable("conversations", {
   id: uuid("id").defaultRandom().primaryKey(),
   runId: uuid("run_id")
     .references(
-      () => {
+      (): AnyPgColumn => {
         return agentRuns.id;
       },
       { onDelete: "cascade" },

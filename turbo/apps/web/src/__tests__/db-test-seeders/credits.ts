@@ -7,6 +7,7 @@ import { creditExpiresRecord } from "../../db/schema/credit-expires-record";
 import { creditUsage } from "../../db/schema/credit-usage";
 import { clientCreditUsage } from "../../db/schema/client-credit-usage";
 import { insightsDaily } from "../../db/schema/insights-daily";
+import { orgPromoRedemption } from "../../db/schema/org-promo-redemption";
 import {
   agentComposes,
   agentComposeVersions,
@@ -176,6 +177,28 @@ export async function insertCreditExpiresRecord(params: {
     })
     .returning({ id: creditExpiresRecord.id });
   return row!.id;
+}
+
+/**
+ * Insert an org_promo_redemption row — simulates the state after a previous
+ * `/redeem/[campaign]` attempt claimed the (org, campaign) slot.
+ *
+ * @why-db-direct The row is normally written by the `/redeem/[campaign]`
+ * route after a successful Stripe session create. Tests exercise the route's
+ * resume branches (open/expired/complete) and need to pre-plant a session id
+ * that the Stripe mock returns a specific status for.
+ */
+export async function insertOrgPromoRedemption(params: {
+  orgId: string;
+  campaignKey: string;
+  stripeSessionId: string;
+}): Promise<void> {
+  initServices();
+  await globalThis.services.db.insert(orgPromoRedemption).values({
+    orgId: params.orgId,
+    campaignKey: params.campaignKey,
+    stripeSessionId: params.stripeSessionId,
+  });
 }
 
 // ---------------------------------------------------------------------------

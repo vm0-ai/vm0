@@ -329,6 +329,7 @@ jobs:
             STRIPE_WEBHOOK_SECRET=${{ secrets.STRIPE_WEBHOOK_SECRET }}
             CLERK_WEBHOOK_SIGNING_SECRET=${{ secrets.CLERK_WEBHOOK_SIGNING_SECRET }}
             ZERO_PRICE=${{ secrets.ZERO_PRICE }}
+            ZERO_ONE_TIME_CAMPAIGN=${{ vars.ZERO_ONE_TIME_CAMPAIGN }}
             AGENTPHONE_API_KEY=${{ secrets.AGENTPHONE_API_KEY }}
             PLAIN_API_KEY=${{ secrets.PLAIN_API_KEY }}
             NGROK_API_KEY=${{ secrets.NGROK_API_KEY }}

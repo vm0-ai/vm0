@@ -144,6 +144,7 @@ STRIPE_VERCEL_GATEWAY_REPORT_ACCESS_KEY=op://Development/stripe/STRIPE_VERCEL_GA
 STRIPE_SECRET_KEY=op://Development/stripe/STRIPE_SECRET_KEY
 STRIPE_WEBHOOK_SECRET=op://Development/stripe/STRIPE_WEBHOOK_SECRET
 ZERO_PRICE=op://Development/stripe/ZERO_PRICE
+ZERO_ONE_TIME_CAMPAIGN=op://Development/stripe/ZERO_ONE_TIME_CAMPAIGN
 
 # Optional: AgentPhone (Phone Channel)
 AGENTPHONE_API_KEY=op://Development/agentphone/AGENTPHONE_API_KEY

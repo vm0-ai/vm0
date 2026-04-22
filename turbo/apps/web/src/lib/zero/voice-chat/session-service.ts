@@ -6,9 +6,10 @@ import {
 import { agentRuns } from "../../../db/schema/agent-run";
 import { createZeroRun, type CreateZeroRunResult } from "../zero-run-service";
 import { buildVoiceChatQuickPrepPrompt } from "../integration-prompt";
-import { conflict, notFound, badRequest, forbidden } from "../../shared/errors";
+import { notFound, badRequest, forbidden } from "../../shared/errors";
 import { hasAgentSessionId } from "../run-result";
 import { adaptVoiceChatSessionTrigger } from "./adapt-voice-chat-session-trigger";
+import { cancelSessionPendingRuns } from "./task-service";
 
 // ---------------------------------------------------------------------------
 // Session CRUD
@@ -21,34 +22,58 @@ export async function createSession(
 ) {
   const db = globalThis.services.db;
 
-  const [existing] = await db
-    .select({ id: voiceChatSessions.id })
-    .from(voiceChatSessions)
-    .where(
-      and(
-        eq(voiceChatSessions.userId, userId),
-        eq(voiceChatSessions.orgId, orgId),
-        inArray(voiceChatSessions.status, ["active", "preparing"]),
-      ),
-    )
-    .limit(1);
+  const { session, staleIds } = await db.transaction(async (tx) => {
+    // Graceful auto-end: slow-brain sees session-end within 5s and self-exits,
+    // populating result.agentSessionId so the new run can resume via
+    // getPriorVoiceChatAgentSessionId. Do NOT cancelRun — that skips the webhook.
+    const stale = await tx
+      .select({ id: voiceChatSessions.id })
+      .from(voiceChatSessions)
+      .where(
+        and(
+          eq(voiceChatSessions.userId, userId),
+          eq(voiceChatSessions.orgId, orgId),
+          inArray(voiceChatSessions.status, ["active", "preparing"]),
+        ),
+      );
 
-  if (existing) {
-    throw conflict("User already has an active voice-chat session");
+    for (const row of stale) {
+      await tx.insert(voiceChatEvents).values({
+        sessionId: row.id,
+        source: "system",
+        type: "session-end",
+      });
+      await tx
+        .update(voiceChatSessions)
+        .set({ status: "ended", endedAt: new Date() })
+        .where(eq(voiceChatSessions.id, row.id));
+    }
+
+    const [inserted] = await tx
+      .insert(voiceChatSessions)
+      .values({
+        orgId,
+        userId,
+        agentId,
+        status: "preparing",
+      })
+      .returning();
+
+    return {
+      session: inserted!,
+      staleIds: stale.map((s) => {
+        return s.id;
+      }),
+    };
+  });
+
+  // Cancel any in-flight tasker runs on the sessions we just force-ended.
+  // Outside the transaction because cancelRun issues sandbox HTTP calls.
+  for (const staleId of staleIds) {
+    await cancelSessionPendingRuns(staleId);
   }
 
-  const [session] = await db
-    .insert(voiceChatSessions)
-    .values({
-      orgId,
-      userId,
-      agentId,
-      status: "preparing",
-    })
-    .returning();
-
-  // Insert always returns the inserted row
-  return session!;
+  return session;
 }
 
 async function getSession(sessionId: string) {
@@ -157,6 +182,10 @@ export async function endSession(
       .set({ status: "ended", endedAt: new Date() })
       .where(eq(voiceChatSessions.id, sessionId));
   });
+
+  // Ephemeral tasker runs don't poll the event log, so they cannot self-exit
+  // on session-end the way slow-brain does. Cancel them explicitly.
+  await cancelSessionPendingRuns(sessionId);
 }
 
 // ---------------------------------------------------------------------------

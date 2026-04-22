@@ -161,19 +161,22 @@ def _fetch_firewall_headers_sync(
     try:
         # S310 is satisfied by provenance: `req` always targets
         # ctx.options.vm0_api_url (operator-set at mitmdump launch).
-        resp = urllib.request.urlopen(req, timeout=10)  # noqa: S310
+        with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
+            return json.loads(resp.read())
     except urllib.error.HTTPError as e:
-        try:
-            error_body = json.loads(e.read())
-        except (json.JSONDecodeError, OSError):
-            raise e from None
-        error_info = error_body.get("error", {})
-        if error_info.get("code") == "CONNECTOR_NOT_CONFIGURED":
-            raise ConnectorNotConfiguredError(
-                error_info.get("message", "Connector not configured"),
-            ) from None
-        raise
-    return json.loads(resp.read())
+        # HTTPError wraps an open socket; `with e` closes on every exit
+        # path to avoid FD exhaustion under sustained cache-miss load (#10475).
+        with e:
+            try:
+                error_body = json.loads(e.read())
+            except (json.JSONDecodeError, OSError):
+                raise e from None
+            error_info = error_body.get("error", {})
+            if error_info.get("code") == "CONNECTOR_NOT_CONFIGURED":
+                raise ConnectorNotConfiguredError(
+                    error_info.get("message", "Connector not configured"),
+                ) from None
+            raise
 
 
 async def fetch_firewall_headers(
@@ -436,6 +439,15 @@ async def handle_firewall_request(
             type="firewall",
             firewall_base=firewall_base,
         )
+        # `firewall_action` records the firewall's permission decision
+        # (ALLOW/DENY/BLOCK); `firewall_error` records post-decision
+        # execution failures. They are orthogonal — the firewall granted
+        # the request, but we cannot fulfill it because auth is missing,
+        # so action=ALLOW + error=<reason> is the correct combination
+        # (applies to the two analogous 502 paths below as well).
+        # Permission-usage analytics should read `action`; execution error
+        # rates should aggregate independently on `firewall_error`.
+        # See #10493 for why this is not a miscategorization.
         flow.metadata["firewall_action"] = "ALLOW"
         flow.metadata["firewall_error"] = "auth_unavailable"
         flow.response = http.Response.make(

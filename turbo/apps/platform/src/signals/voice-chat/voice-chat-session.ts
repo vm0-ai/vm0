@@ -1153,40 +1153,50 @@ export const startVoiceChat$ = command(
 
     const sessionSignal = set(resetSessionSignal$, signal);
 
-    const agentId = await get(defaultAgentId$);
-    signal.throwIfAborted();
+    // eslint-disable-next-line no-restricted-syntax -- safety net: any non-abort rejection after setting "preparing" must transition to "error" or VoiceBanner sticks on "Enabling…"
+    try {
+      const agentId = await get(defaultAgentId$);
+      signal.throwIfAborted();
 
-    if (!agentId) {
-      set(internalError$, "No agent selected");
+      if (!agentId) {
+        set(internalError$, "No agent selected");
+        set(internalStatus$, "error");
+        return;
+      }
+
+      const createClient = get(zeroClient$);
+      const sessionsClient = createClient(zeroVoiceChatSessionsContract);
+      const sessionRes = await accept(
+        sessionsClient.create({ body: { agentId } }),
+        [200, 400, 401, 403],
+        { toast: false },
+      );
+      signal.throwIfAborted();
+
+      if (sessionRes.status !== 200) {
+        set(internalError$, sessionRes.body.error.message);
+        set(internalStatus$, "error");
+        return;
+      }
+
+      const { session } = sessionRes.body;
+      set(internalSessionId$, session.id);
+
+      await set(
+        prepareActivateConnect$,
+        { sessionId: session.id, timeoutMs: PREP_TIMEOUT_CHAT_MS },
+        sessionSignal,
+        signal,
+        signal,
+      );
+    } catch (error) {
+      throwIfAbort(error);
+      set(
+        internalError$,
+        error instanceof Error ? error.message : "Failed to start voice chat",
+      );
       set(internalStatus$, "error");
-      return;
     }
-
-    const createClient = get(zeroClient$);
-    const sessionsClient = createClient(zeroVoiceChatSessionsContract);
-    const sessionRes = await accept(
-      sessionsClient.create({ body: { agentId } }),
-      [200, 400, 401, 403],
-      { toast: false },
-    );
-    signal.throwIfAborted();
-
-    if (sessionRes.status !== 200) {
-      set(internalError$, sessionRes.body.error.message);
-      set(internalStatus$, "error");
-      return;
-    }
-
-    const { session } = sessionRes.body;
-    set(internalSessionId$, session.id);
-
-    await set(
-      prepareActivateConnect$,
-      { sessionId: session.id, timeoutMs: PREP_TIMEOUT_CHAT_MS },
-      sessionSignal,
-      signal,
-      signal,
-    );
   },
 );
 

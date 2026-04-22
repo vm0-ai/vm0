@@ -106,23 +106,20 @@ async function resolveRunModelOverride(
     | null
     | undefined,
 ): Promise<{ providerId: string | null; selectedModel: string | null }> {
-  if (modelSelection !== undefined) {
+  if (modelSelection !== undefined && modelSelection !== null) {
     await globalThis.services.db
       .update(chatThreads)
       .set({
-        modelProviderId: modelSelection?.modelProviderId ?? null,
-        selectedModel: modelSelection?.selectedModel ?? null,
+        modelProviderId: modelSelection.modelProviderId,
+        selectedModel: modelSelection.selectedModel,
         updatedAt: new Date(),
       })
       .where(eq(chatThreads.id, threadId));
-    if (modelSelection !== null) {
-      return {
-        providerId: modelSelection.modelProviderId,
-        selectedModel: modelSelection.selectedModel,
-      };
-    }
-    // modelSelection === null means "clear" — fall through to agent default.
-  } else {
+    return {
+      providerId: modelSelection.modelProviderId,
+      selectedModel: modelSelection.selectedModel,
+    };
+  } else if (modelSelection === undefined) {
     const [thread] = await globalThis.services.db
       .select({
         modelProviderId: chatThreads.modelProviderId,
@@ -142,6 +139,39 @@ async function resolveRunModelOverride(
     providerId: agent.modelProviderId,
     selectedModel: agent.selectedModel,
   };
+}
+
+/**
+ * Once a thread has stored modelProviderId + selectedModel, those values are
+ * immutable. The picker is disabled on existing threads, so this guard
+ * rejects out-of-band/manual API callers that try to change or clear them.
+ */
+async function rejectIfThreadModelLocked(
+  threadId: string,
+  incoming: { modelProviderId: string; selectedModel: string } | null,
+): Promise<boolean> {
+  const [existing] = await globalThis.services.db
+    .select({
+      modelProviderId: chatThreads.modelProviderId,
+      selectedModel: chatThreads.selectedModel,
+    })
+    .from(chatThreads)
+    .where(eq(chatThreads.id, threadId))
+    .limit(1);
+  if (
+    !existing ||
+    existing.modelProviderId === null ||
+    existing.selectedModel === null
+  ) {
+    return false;
+  }
+  if (incoming === null) {
+    return true;
+  }
+  return (
+    existing.modelProviderId !== incoming.modelProviderId ||
+    existing.selectedModel !== incoming.selectedModel
+  );
 }
 
 /**
@@ -298,6 +328,22 @@ const router = tsr.router(chatMessagesContract, {
           },
         };
       }
+    }
+
+    if (
+      body.threadId !== undefined &&
+      body.modelSelection !== undefined &&
+      (await rejectIfThreadModelLocked(body.threadId, body.modelSelection))
+    ) {
+      return {
+        status: 400 as const,
+        body: {
+          error: {
+            message: "Cannot change model on an existing thread",
+            code: "BAD_REQUEST" as const,
+          },
+        },
+      };
     }
 
     try {

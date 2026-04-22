@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { FeatureSwitchKey } from "../../feature-switch-key";
 import {
   getProviderBaseUrl,
   areProvidersCompatible,
@@ -7,6 +8,7 @@ import {
   getDefaultModel,
   getEnvironmentMapping,
   getVm0VisibleModels,
+  VM0_MODEL_TO_PROVIDER,
   MODEL_PROVIDER_FIREWALL_CONFIGS,
   type ModelProviderType,
 } from "../model-providers";
@@ -135,11 +137,50 @@ describe("model selection for Anthropic-native providers", () => {
 });
 
 describe("getVm0VisibleModels", () => {
-  it("all models are always visible (no feature flags)", () => {
+  it("returns all models when no features are provided", () => {
     const models = getVm0VisibleModels();
     expect(models).toContain("kimi-k2.5");
     expect(models).toContain("MiniMax-M2.7");
     expect(models).toContain("glm-5.1");
+    // All feature-flagged models must be hidden when no features are provided
+    const featureFlaggedModels = Object.entries(VM0_MODEL_TO_PROVIDER)
+      .filter(([, config]) => {
+        return config.featureFlag !== undefined;
+      })
+      .map(([model]) => {
+        return model;
+      });
+    for (const model of featureFlaggedModels) {
+      expect(models).not.toContain(model);
+    }
+  });
+
+  it("hides deepseek-chat when Vm0DeepseekModel flag is disabled", () => {
+    const models = getVm0VisibleModels({
+      [FeatureSwitchKey.Vm0DeepseekModel]: false,
+    });
+    expect(models).not.toContain("deepseek-chat");
+  });
+
+  it("shows deepseek-chat when Vm0DeepseekModel flag is enabled", () => {
+    const models = getVm0VisibleModels({
+      [FeatureSwitchKey.Vm0DeepseekModel]: true,
+    });
+    expect(models).toContain("deepseek-chat");
+  });
+
+  it("hides deepseek-reasoner when Vm0DeepseekModel flag is disabled", () => {
+    const models = getVm0VisibleModels({
+      [FeatureSwitchKey.Vm0DeepseekModel]: false,
+    });
+    expect(models).not.toContain("deepseek-reasoner");
+  });
+
+  it("shows deepseek-reasoner when Vm0DeepseekModel flag is enabled", () => {
+    const models = getVm0VisibleModels({
+      [FeatureSwitchKey.Vm0DeepseekModel]: true,
+    });
+    expect(models).toContain("deepseek-reasoner");
   });
 });
 

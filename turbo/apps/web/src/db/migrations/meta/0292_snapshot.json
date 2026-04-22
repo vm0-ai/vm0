@@ -1,5 +1,5 @@
 {
-  "id": "5c58968c-8dfb-4cb6-82fd-6c05864355a8",
+  "id": "95979fd7-3545-4899-a63d-8887bb522cc7",
   "prevId": "90d192b6-3fa5-4821-a6b5-a3d6fa67d53d",
   "version": "7",
   "dialect": "postgresql",
@@ -529,7 +529,7 @@
           "name": "session_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "status": {
           "name": "status",
@@ -758,6 +758,19 @@
             "id"
           ],
           "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "agent_runs_session_id_agent_sessions_id_fk": {
+          "name": "agent_runs_session_id_agent_sessions_id_fk",
+          "tableFrom": "agent_runs",
+          "tableTo": "agent_sessions",
+          "columnsFrom": [
+            "session_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },
@@ -8621,12 +8634,6 @@
         "result": {
           "name": "result",
           "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "result_updated_at": {
-          "name": "result_updated_at",
-          "type": "timestamp",
           "primaryKey": false,
           "notNull": false
         },

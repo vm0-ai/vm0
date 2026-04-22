@@ -87,40 +87,6 @@ describe("GET /api/zero/connectors/:type", () => {
   });
 });
 
-describe("GET /api/zero/connectors/:type (platform rows)", () => {
-  beforeEach(() => {
-    context.setupMocks();
-  });
-
-  it("returns a platform connector seeded in user_platform_connectors", async () => {
-    const userId = uniqueId("zcget-pl");
-    const { orgId } = await setupOrg(userId);
-    await insertTestPlatformConnector(orgId, userId, "nano-banana");
-
-    const response = await GET(createTestRequest(connectorUrl("nano-banana")));
-    expect(response.status).toBe(200);
-    const data = await response.json();
-    expect(data.type).toBe("nano-banana");
-    expect(data.authMethod).toBe("platform");
-    expect(data.oauthScopes).toBeNull();
-    expect(data.externalId).toBeNull();
-  });
-
-  it("does not leak a platform row across orgs", async () => {
-    // Seed in org A.
-    const userA = uniqueId("zcget-xo-a");
-    const { orgId: orgA } = await setupOrg(userA);
-    await insertTestPlatformConnector(orgA, userA, "nano-banana");
-
-    // Switch to org B and GET the same type — must not see org A's row.
-    const userB = uniqueId("zcget-xo-b");
-    await setupOrg(userB);
-
-    const response = await GET(createTestRequest(connectorUrl("nano-banana")));
-    expect(response.status).toBe(404);
-  });
-});
-
 describe("DELETE /api/zero/connectors/:type", () => {
   beforeEach(() => {
     context.setupMocks();
@@ -154,21 +120,6 @@ describe("DELETE /api/zero/connectors/:type", () => {
       createTestRequest(connectorUrl("github"), { method: "DELETE" }),
     );
     expect(response.status).toBe(401);
-  });
-
-  it("should delete a platform connector and return 204", async () => {
-    const userId = uniqueId("zcdel-pl");
-    const { orgId } = await setupOrg(userId);
-    await insertTestPlatformConnector(orgId, userId, "nano-banana");
-
-    const response = await DELETE(
-      createTestRequest(connectorUrl("nano-banana"), { method: "DELETE" }),
-    );
-    expect(response.status).toBe(204);
-
-    // Subsequent GET should 404 — row gone, no residual derivation.
-    const after = await GET(createTestRequest(connectorUrl("nano-banana")));
-    expect(after.status).toBe(404);
   });
 
   it("clears both tables when OAuth and platform rows coexist on the same type", async () => {

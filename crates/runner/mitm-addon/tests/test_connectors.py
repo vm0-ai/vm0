@@ -1665,6 +1665,7 @@ class TestHandleFirewallRequest:
 class TestFetchFirewallHeaders:
     def test_builds_correct_request(self, headers):
         mock_resp = MagicMock()
+        mock_resp.__enter__.return_value = mock_resp
         mock_resp.read.return_value = json.dumps(
             {"headers": {"Authorization": "Bearer tok"}}
         ).encode()
@@ -1697,6 +1698,7 @@ class TestFetchFirewallHeaders:
 
     def test_includes_vercel_bypass_header(self, headers):
         mock_resp = MagicMock()
+        mock_resp.__enter__.return_value = mock_resp
         mock_resp.read.return_value = json.dumps({"headers": {}}).encode()
 
         mock_req_instance = MagicMock()
@@ -1715,6 +1717,7 @@ class TestFetchFirewallHeaders:
 
     def test_no_vercel_bypass_when_empty(self, headers):
         mock_resp = MagicMock()
+        mock_resp.__enter__.return_value = mock_resp
         mock_resp.read.return_value = json.dumps({"headers": {}}).encode()
 
         mock_req_instance = MagicMock()
@@ -1730,6 +1733,7 @@ class TestFetchFirewallHeaders:
 
     def test_includes_auth_base_in_request_body(self, headers):
         mock_resp = MagicMock()
+        mock_resp.__enter__.return_value = mock_resp
         mock_resp.read.return_value = json.dumps(
             {"headers": {}, "base": "https://discord.com/api/webhooks/123/abc"}
         ).encode()
@@ -1801,9 +1805,49 @@ class TestFetchFirewallHeaders:
         ):
             auth._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai")
 
+    def test_closes_response_on_success(self):
+        """Success path must close the urlopen response — FD leak guard (#10475)."""
+        mock_resp = MagicMock()
+        mock_resp.__enter__.return_value = mock_resp
+        mock_resp.read.return_value = json.dumps({"headers": {}}).encode()
+
+        with (
+            patch("auth.urllib.request.Request"),
+            patch("auth.urllib.request.urlopen", return_value=mock_resp),
+            patch.object(auth, "VERCEL_BYPASS", ""),
+        ):
+            auth._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai")
+
+        mock_resp.__exit__.assert_called_once()  # urllib external boundary (#9991)
+
+    def test_closes_http_error_response(self):
+        """HTTPError path must close the underlying socket — FD leak guard (#10475)."""
+        error_body = json.dumps(
+            {"error": {"message": "Bad request", "code": "BAD_REQUEST"}}
+        ).encode()
+        http_error = urllib.error.HTTPError(
+            "https://api.vm0.ai/api/webhooks/agent/firewall/auth",
+            400,
+            "Bad Request",
+            {},
+            io.BytesIO(error_body),
+        )
+        http_error.close = MagicMock()
+
+        with (
+            patch("auth.urllib.request.Request"),
+            patch("auth.urllib.request.urlopen", side_effect=http_error),
+            patch.object(auth, "VERCEL_BYPASS", ""),
+            pytest.raises(urllib.error.HTTPError),
+        ):
+            auth._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai")
+
+        http_error.close.assert_called_once()  # urllib external boundary (#9991)
+
     async def test_async_wrapper_passes_api_url_from_ctx(self, headers):
         """fetch_firewall_headers reads api_url on the event loop and passes it to the sync fn."""
         mock_resp = MagicMock()
+        mock_resp.__enter__.return_value = mock_resp
         mock_resp.read.return_value = json.dumps({"headers": {"Auth": "tok"}}).encode()
 
         with (

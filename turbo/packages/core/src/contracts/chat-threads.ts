@@ -8,7 +8,7 @@ const c = initContract();
 
 /**
  * File attachment metadata stored alongside user messages.
- * The `id` is the attachment id — URLs are resolved at query time.
+ * The `id` is the S3 file key — URLs are resolved at query time.
  */
 const attachFileSchema = z.object({
   id: z.string(),
@@ -17,24 +17,11 @@ const attachFileSchema = z.object({
   size: z.number(),
 });
 
-/**
- * Attach file returned to the frontend with a resolved URL.
- * `url` is the permanent `${APP_URL}/f/{userId}/{id}/{filename}` redirect
- * served by the app — consumers may render, cache, or share it freely; the
- * underlying short-lived presigned signature is materialized per-request
- * inside the /f route.
- */
+/** Attach file with a resolved presigned URL, returned to the frontend. */
 const resolvedAttachFileSchema = attachFileSchema.extend({
   url: z.string(),
 });
 
-/**
- * Attachment metadata persisted in chat_threads.draft_attachments.
- *
- * `url` is the permanent `/f/{userId}/{id}/{filename}` form. Historically
- * this stored a 7-day presigned URL that could silently expire while
- * drafts sat in the DB; the permanent redirect removes that footgun.
- */
 const persistedAttachmentSchema = z.object({
   id: z.string(),
   url: z.string(),

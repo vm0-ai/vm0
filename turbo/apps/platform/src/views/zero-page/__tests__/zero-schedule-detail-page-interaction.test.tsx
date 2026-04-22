@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -512,6 +512,29 @@ describe("zero schedule detail page - run now button triggers immediate run (SCH
     await waitFor(() => {
       expect(screen.getByText(/Run started/i)).toBeInTheDocument();
     });
+  });
+});
+
+// The Agent field is shown on the detail page but must be read-only: changing
+// it would create a duplicate schedule on the new agent rather than moving the
+// existing one (the backend keys schedule lookup on agentId + name). Keep the
+// control visible for context and disable it to match actual behavior.
+describe("zero schedule detail page - agent field is read-only", () => {
+  it("should render the agent select as disabled", async () => {
+    mockAPIs();
+    detachedSetupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
+    await waitForPageLoad();
+
+    const agentDescription = await screen.findByText(
+      /The agent is fixed once a schedule is created/i,
+    );
+    // Row structure is <row><leftCol><p label /><p description /></leftCol>
+    // <rightCol>{Select}</rightCol></row>; walk up two parents to the row.
+    const row = agentDescription.parentElement?.parentElement;
+    expect(row).not.toBeNull();
+
+    const agentCombobox = within(row!).getByRole("combobox");
+    expect(agentCombobox).toBeDisabled();
   });
 });
 

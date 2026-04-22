@@ -14,6 +14,7 @@ import { locales, defaultLocale } from "./i18n";
 const SKIP_I18N_PREFIXES = [
   "/api/",
   "/_next/",
+  "/redeem/",
   "/cli-auth",
   "/connector/",
   "/slack/",

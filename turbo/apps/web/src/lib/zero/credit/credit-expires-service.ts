@@ -16,6 +16,10 @@ type Tx = Parameters<
  * uq_credit_expires_invoice on (org_id, stripe_invoice_id) where stripe_invoice_id IS NOT NULL.
  * No explicit target is specified because PostgreSQL cannot use partial indexes as
  * conflict targets via column notation; the unconditional DO NOTHING form works instead.
+ *
+ * Returns `true` when a new row was inserted and `false` when the row already
+ * existed (Stripe webhook retry). Callers that need to gate side effects
+ * (e.g. granting credits) on a fresh insert should check the return value.
  */
 export async function createExpiresRecord(
   tx: Tx,
@@ -26,8 +30,8 @@ export async function createExpiresRecord(
     amount: number;
     expiresAt: Date;
   },
-): Promise<void> {
-  await tx
+): Promise<boolean> {
+  const rows = await tx
     .insert(creditExpiresRecord)
     .values({
       orgId,
@@ -37,7 +41,9 @@ export async function createExpiresRecord(
       remaining: params.amount,
       expiresAt: params.expiresAt,
     })
-    .onConflictDoNothing();
+    .onConflictDoNothing()
+    .returning({ id: creditExpiresRecord.id });
+  return rows.length > 0;
 }
 
 /**
@@ -145,11 +151,15 @@ export async function expireCredits(tx: Tx, orgId: string): Promise<number> {
  * `org_metadata.credits` aggregate still includes them until the next
  * `expireCredits` call. Use this to present the true spendable balance on
  * read paths that run outside the settlement transaction.
+ *
+ * Accepts an optional `db` so callers already running inside a transaction
+ * (e.g. the admission gate inside `dequeueNextAtomic`) can pass their tx
+ * handle and keep both reads under the same isolation boundary.
  */
 export async function getUnsettledExpiredAmount(
   orgId: string,
+  db: typeof globalThis.services.db = globalThis.services.db,
 ): Promise<number> {
-  const db = globalThis.services.db;
   const [row] = await db
     .select({
       total: sql<number>`COALESCE(SUM(${creditExpiresRecord.remaining}), 0)::int`,

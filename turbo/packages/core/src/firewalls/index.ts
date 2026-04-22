@@ -134,7 +134,6 @@ import { mixpanelFirewall } from "./mixpanel.generated";
 import { mondayFirewall } from "./monday.generated";
 import { msg9Firewall } from "./msg9.generated";
 import { n8nFirewall } from "./n8n.generated";
-import { nanoBananaFirewall } from "./nano-banana.generated";
 import { neonFirewall } from "./neon.generated";
 import { notionFirewall } from "./notion.generated";
 import { openaiFirewall } from "./openai.generated";
@@ -319,7 +318,6 @@ const CONNECTOR_FIREWALLS = {
   monday: mondayFirewall,
   msg9: msg9Firewall,
   n8n: n8nFirewall,
-  "nano-banana": nanoBananaFirewall,
   neon: neonFirewall,
   notion: notionFirewall,
   openai: openaiFirewall,
@@ -443,6 +441,25 @@ const EXPANDED_CONNECTOR_FIREWALLS = Object.fromEntries(
 
 /** Connector types that have a firewall config (subset of ConnectorType). */
 export type FirewallConnectorType = keyof typeof CONNECTOR_FIREWALLS;
+
+/**
+ * Connector firewalls that are platform-billable.
+ *
+ * Attaching one of these to a run adds its firewall name to the
+ * billableFirewalls whitelist in the execution context, which surfaces as
+ * flow.metadata["firewall_billable"] in mitm-addon. That flag gates
+ * log_connector_usage (per-call billing) and the full-body response
+ * buffering needed to extract the billing payload.
+ *
+ * The `satisfies ReadonlyArray<FirewallConnectorType>` constraint catches
+ * typos at compile time: any literal here must be a valid firewall
+ * connector type (key of `CONNECTOR_FIREWALLS`).
+ */
+export const BILLABLE_CONNECTORS = [
+  "x",
+] as const satisfies ReadonlyArray<FirewallConnectorType>;
+
+export type BillableConnector = (typeof BILLABLE_CONNECTORS)[number];
 
 /**
  * Extract the union of permission names from a firewall config object.
@@ -678,8 +695,3 @@ export function getBuiltinConnectorDisplayName(
 ): string {
   return CONNECTOR_TYPES[type]?.label ?? type;
 }
-
-export {
-  BILLABLE_CONNECTORS,
-  type BillableConnector,
-} from "./billable-connectors";

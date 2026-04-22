@@ -117,20 +117,27 @@ describe("POST /api/zero/voice-chat (create session)", () => {
     expect(body.error.code).toBe("BAD_REQUEST");
   });
 
-  it("should return 409 when user already has an active session", async () => {
-    await createTestVoiceChatSession(orgId, userId);
-    const response = await POST(createRequest({ agentId: "any-agent-id" }));
+  it("should auto-end stale 'active' session and succeed instead of returning 409", async () => {
+    const { agentId } = await createTestCompose(uniqueId("vc-agent"));
+    const stale = await createTestVoiceChatSession(orgId, userId);
+
+    const response = await POST(createRequest({ agentId }));
     const body = await response.json();
-    expect(response.status).toBe(409);
-    expect(body.error.code).toBe("CONFLICT");
+
+    expect(response.status).toBe(200);
+    expect(body.session.id).not.toBe(stale.id);
+    expect(body.session.status).toBe("preparing");
   });
 
-  it("should return 409 when user has a preparing session", async () => {
-    await createTestVoiceChatSession(orgId, userId, "preparing");
-    const response = await POST(createRequest({ agentId: "any-agent-id" }));
+  it("should auto-end stale 'preparing' session and succeed instead of returning 409", async () => {
+    const { agentId } = await createTestCompose(uniqueId("vc-agent"));
+    const stale = await createTestVoiceChatSession(orgId, userId, "preparing");
+
+    const response = await POST(createRequest({ agentId }));
     const body = await response.json();
-    expect(response.status).toBe(409);
-    expect(body.error.code).toBe("CONFLICT");
+
+    expect(response.status).toBe(200);
+    expect(body.session.id).not.toBe(stale.id);
   });
 
   it("should create session and dispatch slow-brain on success", async () => {

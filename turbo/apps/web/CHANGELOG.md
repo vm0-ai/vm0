@@ -1,5 +1,74 @@
 # Changelog
 
+## [12.282.0](https://github.com/vm0-ai/vm0/compare/web-v12.281.0...web-v12.282.0) (2026-04-22)
+
+
+### Features
+
+* **platform:** re-land chat thread model lock from [#10442](https://github.com/vm0-ai/vm0/issues/10442) ([#10571](https://github.com/vm0-ai/vm0/issues/10571)) ([ee11b28](https://github.com/vm0-ai/vm0/commit/ee11b28128fd1a9d5049214d3a94d87bcb71c433))
+* **voice-chat:** add tasker backend service and routes ([#10561](https://github.com/vm0-ai/vm0/issues/10561)) ([402280f](https://github.com/vm0-ai/vm0/commit/402280f8c9484dab67972f5d8f8ce2cb22aa6897))
+* **voice-chat:** enable tasker dispatch via slow-brain prompt ([#10570](https://github.com/vm0-ai/vm0/issues/10570)) ([5ca3824](https://github.com/vm0-ai/vm0/commit/5ca38248a95ee69548090363b7a852597e526965))
+
+
+### Bug Fixes
+
+* **credits:** admission gate subtracts unsettled expired credits ([#10567](https://github.com/vm0-ai/vm0/issues/10567)) ([2561567](https://github.com/vm0-ai/vm0/commit/2561567936c741a6ccd1246713ce95cf6fca2b1a))
+* **uploads:** allow image/avif in zero upload allow-list ([#10568](https://github.com/vm0-ai/vm0/issues/10568)) ([752c22f](https://github.com/vm0-ai/vm0/commit/752c22ff38cbd5c72dd8d7ba791bb3c5ab9172c2)), closes [#10511](https://github.com/vm0-ai/vm0/issues/10511)
+
+## [12.281.0](https://github.com/vm0-ai/vm0/compare/web-v12.280.0...web-v12.281.0) (2026-04-22)
+
+
+### Features
+
+* **db:** add voice_chat_tasks schema and contracts ([#10550](https://github.com/vm0-ai/vm0/issues/10550)) ([2ff102a](https://github.com/vm0-ai/vm0/commit/2ff102a9e8a510f533346ec25d0c0ad26bc61d1e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.224.0
+
+## [12.280.0](https://github.com/vm0-ai/vm0/compare/web-v12.279.0...web-v12.280.0) (2026-04-22)
+
+
+### Features
+
+* add /buy/[productId] route for one-time promo credit purchases ([#10451](https://github.com/vm0-ai/vm0/issues/10451)) ([04e2b83](https://github.com/vm0-ai/vm0/commit/04e2b836f60c688f85963cace824a602c74e469e))
+* add deepseek-reasoner to vm0 managed models ([#10532](https://github.com/vm0-ai/vm0/issues/10532)) ([c113802](https://github.com/vm0-ai/vm0/commit/c11380229af6afbfad202cbeaf234c90dcfda568))
+
+
+### Bug Fixes
+
+* **voice-chat:** auto-end stale session on double-start and unstick preparing UI ([#10536](https://github.com/vm0-ai/vm0/issues/10536)) ([2bb9fd9](https://github.com/vm0-ai/vm0/commit/2bb9fd95e5326a07e5aa8304fac9d924ed363263))
+* **web:** enable Ably queryTime to prevent clock skew auth failures ([#10537](https://github.com/vm0-ai/vm0/issues/10537)) ([43142b2](https://github.com/vm0-ai/vm0/commit/43142b2c89ab0b3d9b7d022086ec3a644789f2b4)), closes [#10520](https://github.com/vm0-ai/vm0/issues/10520)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.223.0
+
+## [12.279.0](https://github.com/vm0-ai/vm0/compare/web-v12.278.0...web-v12.279.0) (2026-04-22)
+
+
+### Features
+
+* add deepseek-chat to vm0 managed models with feature flag ([#10501](https://github.com/vm0-ai/vm0/issues/10501)) ([6d13890](https://github.com/vm0-ai/vm0/commit/6d13890d1c73f94372810b251241609579a16ce2))
+
+
+### Bug Fixes
+
+* skip auto-focus on touch devices in ZeroChatComposer ([#10496](https://github.com/vm0-ai/vm0/issues/10496)) ([2c90017](https://github.com/vm0-ai/vm0/commit/2c90017ef46dae13b52426038025e22bb9cc9f88))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.222.0
+
 ## [12.278.0](https://github.com/vm0-ai/vm0/compare/web-v12.277.0...web-v12.278.0) (2026-04-22)
 
 

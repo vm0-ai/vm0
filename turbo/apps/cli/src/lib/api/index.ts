@@ -193,5 +193,12 @@ export {
   appendVoiceChatContextEvent,
 } from "./domains/zero-voice-chat-context";
 
+// Domain modules - Zero Voice Chat Tasks
+export {
+  createVoiceChatTask,
+  getVoiceChatTask,
+  listVoiceChatTasks,
+} from "./domains/zero-voice-chat-tasks";
+
 // Domain modules - Web
 export { downloadWebFile, uploadWebFile } from "./domains/web";
