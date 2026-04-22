@@ -181,6 +181,7 @@ describe("VM0 managed model provider", () => {
         "kimi-k2.5",
         "MiniMax-M2.7",
         "deepseek-chat",
+        "deepseek-reasoner",
       ]);
     });
   });
