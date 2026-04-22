@@ -61,7 +61,12 @@
           # Managed by ansible/playbooks/provision-runner.yml — do not edit.
           # Prefix match (no `.service` anchor) so this fires regardless of
           # whether needrestart's code path hands us the short or full name.
+          # Belt-and-braces: override_rc is consulted at the per-service
+          # restart-decision layer; blacklist_rc short-circuits earlier in
+          # the scan path. Setting both means any future refactor of
+          # needrestart that drops one layer still leaves the other intact.
           $nrconf{override_rc}->{qr(^vm0-runner-)} = 0;
+          push(@{$nrconf{blacklist_rc}}, qr(^vm0-runner-));
         mode: '0644'
       become: true
 
