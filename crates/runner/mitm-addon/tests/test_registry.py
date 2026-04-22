@@ -108,8 +108,10 @@ class TestLoadRegistry:
             assert "10.0.0.1" in result
             assert log.warn.call_count == 1  # no new warn on success
 
-            # File breaks again with a different mtime/size → warn #2.
-            path.write_text("{ broken again, longer")
+            # File breaks again. Different size than the good content above
+            # busts the cache key so the parse re-runs; the successful load
+            # reset the flag, so this failure warns again.
+            path.write_text("{ broken again, different size")
             mitm_addon.load_registry()
             assert log.warn.call_count == 2
 
