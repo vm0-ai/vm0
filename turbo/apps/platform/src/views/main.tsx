@@ -5,6 +5,7 @@ import { Toaster } from "@vm0/ui/components/ui/sonner";
 import { ErrorBoundary } from "./error-boundary.tsx";
 import { Router } from "./router.tsx";
 import { subscribeThreadListChanged$ } from "../signals/chat-thread-list-reload.ts";
+import { watchOrgSwitch$ } from "../signals/auth.ts";
 import { rootSignal$ } from "../signals/root-signal.ts";
 import { detach, Reason } from "../signals/utils.ts";
 import "./css/index.css";
@@ -15,6 +16,7 @@ export const setupRouter = (
 ) => {
   const { signal } = store.get(rootSignal$);
   detach(store.set(subscribeThreadListChanged$, signal), Reason.Daemon);
+  detach(store.set(watchOrgSwitch$, signal), Reason.Daemon);
   render(
     <StrictMode>
       <StoreProvider value={store}>

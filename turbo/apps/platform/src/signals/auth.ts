@@ -86,45 +86,55 @@ export const setupClerk$ = command(
 );
 
 /**
- * User signal that provides the current authenticated user from Clerk.
- * Returns undefined if no user is authenticated.
- */
-const ORG_ID_KEY = "clerk-active-org-id";
-
-function persistOrgId(orgId: string | undefined) {
-  if (orgId) {
-    sessionStorage.setItem(ORG_ID_KEY, orgId);
-  } else {
-    sessionStorage.removeItem(ORG_ID_KEY);
-  }
-}
-
-/**
- * Command that monitors the active Clerk organization and reloads
- * the page when it changes. Persists the active org ID to session storage.
+ * Daemon that listens for Clerk state changes and reloads the page on any
+ * active-organization switch. This runs in every tab on every origin, so:
+ *
+ * - The tab that initiated the switch (via `clerk.setActive`) reloads as
+ *   soon as Clerk's listener fires.
+ * - Sibling tabs reload too — Clerk v5 broadcasts `sessionUpdated` via
+ *   its internal BroadcastChannel, so their Clerk instances pick up the
+ *   change and fire listeners within milliseconds.
+ *
+ * Before reloading we force Clerk to mint a fresh session JWT with
+ * `skipCache: true`. The session cookie is shared across *.vm0.ai, so
+ * without this, the reload (or any in-flight request to www.vm0.ai) could
+ * land with a stale JWT whose orgId still reflects the previous org.
+ *
+ * Runs until its signal aborts — kick off via `detach()` from the views
+ * layer since it never resolves on its own.
  */
 export const watchOrgSwitch$ = command(async ({ get }, signal: AbortSignal) => {
   const clerk = await get(clerk$);
   signal.throwIfAborted();
 
-  let prevOrgId = sessionStorage.getItem(ORG_ID_KEY) ?? undefined;
-  const currentOrgId = clerk.organization?.id ?? undefined;
-  prevOrgId = currentOrgId;
-  persistOrgId(currentOrgId);
+  let prevOrgId = clerk.organization?.id ?? undefined;
 
-  const unsubscribe = clerk.addListener(() => {
+  while (!signal.aborted) {
+    await new Promise<void>((resolve) => {
+      const onAbort = () => {
+        unsubscribe();
+        resolve();
+      };
+      const unsubscribe = clerk.addListener(() => {
+        signal.removeEventListener("abort", onAbort);
+        unsubscribe();
+        resolve();
+      });
+      signal.addEventListener("abort", onAbort, { once: true });
+    });
+    if (signal.aborted) return;
+
     const newOrgId = clerk.organization?.id ?? undefined;
-    if (newOrgId !== prevOrgId) {
-      prevOrgId = newOrgId;
-      persistOrgId(newOrgId);
-      // Navigate to the Zero homepage on org switch. A full page load is
-      // required because server-side data (agents, jobs, secrets, etc.) is
-      // scoped to the active organization, and multiple signal trees depend
-      // on the org context established at bootstrap time.
-      location.href = "/";
-    }
-  });
-  signal.addEventListener("abort", unsubscribe);
+    if (newOrgId === prevOrgId) continue;
+    prevOrgId = newOrgId;
+
+    await clerk.session?.getToken({ skipCache: true }).catch(() => {
+      return null;
+    });
+    signal.throwIfAborted();
+    location.href = "/";
+    return;
+  }
 });
 
 export const user$ = computed(async (get) => {

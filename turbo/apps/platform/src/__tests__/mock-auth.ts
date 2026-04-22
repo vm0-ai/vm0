@@ -177,3 +177,8 @@ export function fireClerkListeners() {
     cb();
   }
 }
+
+/** Number of currently registered Clerk listeners. */
+export function clerkListenerCount(): number {
+  return clerkListeners.length;
+}

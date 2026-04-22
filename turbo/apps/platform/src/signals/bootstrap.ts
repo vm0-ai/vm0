@@ -1,6 +1,6 @@
 import { command } from "ccstate";
 import { toast } from "@vm0/ui/components/ui/sonner";
-import { setupClerk$, watchOrgSwitch$ } from "./auth.ts";
+import { setupClerk$ } from "./auth.ts";
 import { initTheme$ } from "./theme.ts";
 import { setRootSignal$ } from "./root-signal.ts";
 import {
@@ -349,10 +349,7 @@ export const bootstrap$ = command(
       set(setupPwaEdgeSwipe$, signal),
       set(setupSidebarShortcut$, signal),
       set(startSkeletonCycling$, signal),
-      (async () => {
-        await set(setupClerk$, signal);
-        await set(watchOrgSwitch$, signal);
-      })(),
+      set(setupClerk$, signal),
       set(setupRoutes$, signal),
     ]);
 
