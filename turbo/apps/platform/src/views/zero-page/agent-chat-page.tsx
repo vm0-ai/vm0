@@ -26,7 +26,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@vm0/ui";
-import { FeatureSwitchKey, type VoiceChatCandidateTask } from "@vm0/core";
+import { FeatureSwitchKey } from "@vm0/core";
 import {
   featureSwitch$,
   trinityEnabled$,
@@ -60,8 +60,8 @@ import {
   suggestedPrompts$,
 } from "../../signals/zero-page/zero-chat-page.ts";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
-import { Markdown } from "../components/markdown.tsx";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
+import { activeRoute$ } from "../../signals/active-route.ts";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
 import {
@@ -71,18 +71,7 @@ import {
   startNewZeroSession$,
 } from "../../signals/chat-page/chat-message.ts";
 import { navigateToChat$ } from "../../signals/zero-page/zero-nav.ts";
-import {
-  vccStatus$,
-  vccError$,
-} from "../../signals/voice-chat-candidate/voice-chat-candidate-session.ts";
-import {
-  agentChatVoiceMode$,
-  enterAgentChatVoiceMode$,
-  exitAgentChatVoiceMode$,
-  lastUserMessage$,
-  lastAgentMessage$,
-  agentChatPendingTasks$,
-} from "../../signals/zero-page/agent-chat-voice-mode.ts";
+import { vccStatus$ } from "../../signals/voice-chat-candidate/voice-chat-candidate-session.ts";
 
 function getTagline(
   agentName: string,
@@ -238,7 +227,7 @@ function NewChatButton({ pageSignal }: { pageSignal: AbortSignal }) {
   );
 }
 
-function ChatHeaderAction({ pageSignal }: { pageSignal: AbortSignal }) {
+export function ChatHeaderAction({ pageSignal }: { pageSignal: AbortSignal }) {
   const features = useLastResolved(featureSwitch$);
   const newButtonEnabled =
     features?.[FeatureSwitchKey.ChatHeaderNewButton] ?? false;
@@ -285,39 +274,37 @@ function PinPill() {
   );
 }
 
-function VoiceChatLauncher() {
+export function VoiceChatLauncher() {
   const trinityEnabled = useLastResolved(trinityEnabled$) ?? false;
-  const voiceMode = useGet(agentChatVoiceMode$);
   const vccStatus = useGet(vccStatus$);
+  const activeRoute = useGet(activeRoute$);
   const currentChatAgentId = useLastResolved(currentChatAgentId$);
-  const enterVoice = useSet(enterAgentChatVoiceMode$);
-  const exitVoice = useSet(exitAgentChatVoiceMode$);
-  const pageSignal = useGet(pageSignal$);
+  const navigate = useSet(detachedNavigateTo$);
 
   if (!trinityEnabled) {
     return null;
   }
 
+  const onTalk = activeRoute === "agentTalk";
+
   const handleClick = () => {
-    if (voiceMode === "on") {
-      exitVoice();
+    if (!currentChatAgentId) {
       return;
     }
-    if (currentChatAgentId) {
-      detach(enterVoice(currentChatAgentId, pageSignal), Reason.DomCallback);
-    }
+    navigate(onTalk ? "/agents/:agentId/chat" : "/agents/:agentId/talk", {
+      pathParams: { agentId: currentChatAgentId },
+    });
   };
 
-  const isConnecting = voiceMode === "on" && vccStatus === "connecting";
-  const isConnected = voiceMode === "on" && vccStatus === "connected";
+  const isConnecting = onTalk && vccStatus === "connecting";
+  const isConnected = onTalk && vccStatus === "connected";
   const colorClass = isConnected
     ? "text-green-600 hover:text-green-700"
     : isConnecting
       ? "text-primary animate-pulse"
       : "text-muted-foreground hover:text-foreground";
 
-  const tooltipText =
-    voiceMode === "on" ? "Exit voice chat" : "Start voice chat";
+  const tooltipText = onTalk ? "Exit voice chat" : "Start voice chat";
 
   return (
     <TooltipProvider delayDuration={200}>
@@ -328,7 +315,7 @@ function VoiceChatLauncher() {
             onClick={handleClick}
             data-testid="voice-chat-launcher"
             aria-label={tooltipText}
-            aria-pressed={voiceMode === "on"}
+            aria-pressed={onTalk}
             className={`shrink-0 flex h-9 w-9 items-center justify-center rounded-lg transition-colors hover:bg-accent cursor-pointer ${colorClass}`}
           >
             <IconMicrophone size={20} stroke={1.5} />
@@ -342,7 +329,11 @@ function VoiceChatLauncher() {
   );
 }
 
-function ChatAgentAvatar({ agentId }: { agentId: string | null | undefined }) {
+export function ChatAgentAvatar({
+  agentId,
+}: {
+  agentId: string | null | undefined;
+}) {
   return (
     <div className="relative shrink-0">
       {agentId ? (
@@ -381,108 +372,6 @@ function ChatAgentAvatar({ agentId }: { agentId: string | null | undefined }) {
       <PinPill />
     </div>
   );
-}
-
-function taskStatusLabel(status: VoiceChatCandidateTask["status"]): string {
-  switch (status) {
-    case "running": {
-      return "Running";
-    }
-    case "queued": {
-      return "Queued";
-    }
-    case "pending": {
-      return "Pending";
-    }
-    case "done": {
-      return "Done";
-    }
-    case "failed": {
-      return "Failed";
-    }
-  }
-}
-
-function TaskRow({ task }: { task: VoiceChatCandidateTask }) {
-  const isFinished = task.status === "done" || task.status === "failed";
-  // tasker runs stream progress into `assistantMessages`; the newest entry
-  // is what the slow brain is currently saying. After completion, the same
-  // slot carries the final result so the card is self-explanatory.
-  const latestProgress = task.assistantMessages.at(-1)?.content.trim() ?? "";
-  return (
-    <li
-      className={isFinished ? "text-muted-foreground/80" : "text-foreground"}
-      data-testid="voice-task-row"
-      data-task-status={task.status}
-    >
-      <div className="flex items-baseline gap-2">
-        <span className="font-medium line-clamp-2">{task.prompt}</span>
-        <span className="text-xs text-muted-foreground shrink-0">
-          {taskStatusLabel(task.status)}
-        </span>
-      </div>
-      {latestProgress.length > 0 && (
-        <div
-          className="pl-0 mt-1 text-sm text-muted-foreground/90"
-          data-testid="voice-task-row-progress"
-        >
-          <Markdown source={latestProgress} />
-        </div>
-      )}
-    </li>
-  );
-}
-
-function VoiceModeSubtitle() {
-  const userContent = useGet(lastUserMessage$);
-  const agentContent = useGet(lastAgentMessage$);
-  return (
-    <div className="w-full flex flex-col gap-2" data-testid="voice-subtitle">
-      <p
-        className="text-sm text-muted-foreground line-clamp-1 min-h-[1.25rem]"
-        data-testid="voice-subtitle-user"
-      >
-        {userContent}
-      </p>
-      <div
-        className="text-base text-foreground min-h-[1.5rem]"
-        data-testid="voice-subtitle-agent"
-      >
-        {agentContent ? <Markdown source={agentContent} /> : null}
-      </div>
-    </div>
-  );
-}
-
-function VoiceModeTaskList() {
-  const tasks = useGet(agentChatPendingTasks$);
-  if (tasks.length === 0) {
-    return null;
-  }
-  return (
-    <ul
-      className="w-full list-disc list-outside pl-5 space-y-2 text-sm"
-      data-testid="voice-task-list"
-    >
-      {tasks.map((task) => {
-        return <TaskRow key={task.id} task={task} />;
-      })}
-    </ul>
-  );
-}
-
-function voiceStatusText(
-  status: "idle" | "connecting" | "connected" | "disconnected" | "error",
-  agentName: string,
-  hasError: boolean,
-): string {
-  if (hasError || status === "error") {
-    return "Error";
-  }
-  if (status === "connecting" || status === "idle") {
-    return "Connecting…";
-  }
-  return `${agentName} is online`;
 }
 
 export function AgentChatPage() {
@@ -554,18 +443,6 @@ export function AgentChatPage() {
   const navigate = useSet(detachedNavigateTo$);
   const pageSignal = useGet(pageSignal$);
 
-  const voiceMode = useGet(agentChatVoiceMode$);
-  const vccStatus = useGet(vccStatus$);
-  const vccError = useGet(vccError$);
-  const voiceActive = voiceMode === "on";
-  const statusText = voiceActive
-    ? voiceStatusText(
-        vccStatus,
-        currentChatAgentDisplayName ?? "Agent",
-        vccError !== null,
-      )
-    : tagline;
-
   const handleSend = (text: string) => {
     setInput("");
     handleSendMessage(text);
@@ -586,122 +463,109 @@ export function AgentChatPage() {
             <div className="flex-1 min-w-0 flex items-center gap-3">
               <VoiceChatLauncher />
               <h2
-                aria-label={statusText}
+                aria-label={tagline}
                 data-testid="chat-tagline"
                 className="text-2xl sm:text-3xl font-semibold tracking-tight text-foreground"
               >
-                {voiceActive ? (
-                  statusText
-                ) : (
-                  <TypewriterText text={statusText} />
-                )}
+                <TypewriterText text={tagline} />
               </h2>
             </div>
           </div>
 
-          {voiceActive ? (
-            <>
-              <VoiceModeSubtitle />
-              <VoiceModeTaskList />
-            </>
-          ) : (
-            <>
-              {/* Composer */}
-              <ZeroChatComposer
-                className="w-full"
-                input={input}
-                onInputChange={setInput}
-                onSend={handleSend}
-                displayName={currentChatAgentDisplayName ?? ""}
-                autoFocus
-                modelPicker={
-                  modelFeatureEnabled &&
-                  orgProviders &&
-                  orgProviders.modelProviders.length > 0
-                    ? {
-                        providers: orgProviders.modelProviders,
-                        value: modelSelection,
-                        onChange: setModelSelection,
-                        // No prior session exists on the landing page.
-                        sessionProviderType: null,
-                      agentDefault: agentModelDefault,
-                      }
-                    : undefined
-                }
-              />
+          {/* Composer */}
+          <ZeroChatComposer
+            className="w-full"
+            input={input}
+            onInputChange={setInput}
+            onSend={handleSend}
+            displayName={currentChatAgentDisplayName ?? ""}
+            autoFocus
+            modelPicker={
+              modelFeatureEnabled &&
+              orgProviders &&
+              orgProviders.modelProviders.length > 0
+                ? {
+                    providers: orgProviders.modelProviders,
+                    value: modelSelection,
+                    onChange: setModelSelection,
+                    // No prior session exists on the landing page.
+                    sessionProviderType: null,
+                    agentDefault: agentModelDefault,
+                  }
+                : undefined
+            }
+          />
 
-              {/* Suggested prompts */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 w-full">
-                {suggestedPrompts.map(
-                  ({ title, description, connectors, prompt }) => {
-                    return (
-                      <button
-                        key={title}
-                        type="button"
-                        className="zero-card cursor-pointer p-4 text-left flex flex-col relative group hover:bg-muted/30 transition-colors"
-                        onClick={() => {
-                          return setInput(prompt);
-                        }}
-                      >
-                        <IconArrowUpRight
-                          size={14}
-                          stroke={2}
-                          className="absolute top-4 right-4 text-muted-foreground/0 group-hover:text-muted-foreground transition-colors"
-                        />
-                        <p className="text-sm font-semibold text-foreground pr-5">
-                          {title}
-                        </p>
-                        <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
-                          {description}
-                        </p>
-                        {connectors && connectors.length > 0 && (
-                          <div className="flex items-center gap-1.5 mt-auto pt-2.5">
-                            {connectors.map((type) => {
-                              return (
-                                <span
-                                  key={type}
-                                  className="flex h-7 w-7 items-center justify-center rounded-md border border-border/60 bg-background"
-                                >
-                                  <ConnectorIcon type={type} size={14} />
-                                </span>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </button>
-                    );
-                  },
-                )}
-                <button
-                  type="button"
-                  className="zero-card cursor-pointer p-4 text-left flex flex-col relative group hover:bg-muted/30 transition-colors"
-                  onClick={() => {
-                    if (currentChatAgentId) {
-                      navigate("/agents/:agentId/ideas", {
-                        pathParams: { agentId: currentChatAgentId },
-                      });
-                    }
-                  }}
-                >
-                  <IconArrowUpRight
-                    size={14}
-                    stroke={2}
-                    className="absolute top-4 right-4 text-muted-foreground/0 group-hover:text-muted-foreground transition-colors"
-                  />
-                  <p className="text-sm font-semibold text-foreground pr-5">
-                    Ideas &amp; use cases
-                  </p>
-                  <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
-                    Browse use cases across all connectors
-                  </p>
-                  <div className="flex items-center gap-1.5 mt-auto pt-2.5 text-sm font-medium text-primary">
-                    <span>View all</span>
-                    <IconArrowUpRight size={14} stroke={2} />
-                  </div>
-                </button>
+          {/* Suggested prompts */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 w-full">
+            {suggestedPrompts.map(
+              ({ title, description, connectors, prompt }) => {
+                return (
+                  <button
+                    key={title}
+                    type="button"
+                    className="zero-card cursor-pointer p-4 text-left flex flex-col relative group hover:bg-muted/30 transition-colors"
+                    onClick={() => {
+                      return setInput(prompt);
+                    }}
+                  >
+                    <IconArrowUpRight
+                      size={14}
+                      stroke={2}
+                      className="absolute top-4 right-4 text-muted-foreground/0 group-hover:text-muted-foreground transition-colors"
+                    />
+                    <p className="text-sm font-semibold text-foreground pr-5">
+                      {title}
+                    </p>
+                    <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
+                      {description}
+                    </p>
+                    {connectors && connectors.length > 0 && (
+                      <div className="flex items-center gap-1.5 mt-auto pt-2.5">
+                        {connectors.map((type) => {
+                          return (
+                            <span
+                              key={type}
+                              className="flex h-7 w-7 items-center justify-center rounded-md border border-border/60 bg-background"
+                            >
+                              <ConnectorIcon type={type} size={14} />
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </button>
+                );
+              },
+            )}
+            <button
+              type="button"
+              className="zero-card cursor-pointer p-4 text-left flex flex-col relative group hover:bg-muted/30 transition-colors"
+              onClick={() => {
+                if (currentChatAgentId) {
+                  navigate("/agents/:agentId/ideas", {
+                    pathParams: { agentId: currentChatAgentId },
+                  });
+                }
+              }}
+            >
+              <IconArrowUpRight
+                size={14}
+                stroke={2}
+                className="absolute top-4 right-4 text-muted-foreground/0 group-hover:text-muted-foreground transition-colors"
+              />
+              <p className="text-sm font-semibold text-foreground pr-5">
+                Ideas &amp; use cases
+              </p>
+              <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
+                Browse use cases across all connectors
+              </p>
+              <div className="flex items-center gap-1.5 mt-auto pt-2.5 text-sm font-medium text-primary">
+                <span>View all</span>
+                <IconArrowUpRight size={14} stroke={2} />
               </div>
-            </>
-          )}
+            </button>
+          </div>
         </div>
       </main>
     </div>

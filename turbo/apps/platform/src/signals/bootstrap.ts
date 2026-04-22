@@ -28,6 +28,7 @@ import { setupApiKeysPage$ } from "./api-keys-page/api-keys-page-setup.ts";
 import { setupSchedulePage$ } from "./schedule-page/schedule-page-setup.ts";
 import { setupScheduleDetailPage$ } from "./schedule-page/schedule-detail-page-setup.ts";
 import { setupAgentChatPage$ } from "./zero-page/agent-chat-page-setup.ts";
+import { setupAgentTalkPage$ } from "./zero-page/agent-talk-page-setup.ts";
 import { setupHomePage$ } from "./zero-page/home-page-setup.ts";
 import { setupChatPage$ } from "./chat-page/chat-page-setup.ts";
 import { setupInternalConnectorLogos$ } from "./internal-connector-logos-setup.ts";
@@ -127,6 +128,10 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.agentChat,
     setup: setupAuthPageWrapper(setupAgentChatPage$),
+  },
+  {
+    path: ROUTES.agentTalk,
+    setup: setupAuthPageWrapper(setupAgentTalkPage$),
   },
   {
     path: ROUTES.agentPermissions,

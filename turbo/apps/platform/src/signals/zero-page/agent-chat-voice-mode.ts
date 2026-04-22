@@ -45,9 +45,12 @@ export const lastUserMessage$ = vccLastUserMessage$;
 export const lastAgentMessage$ = vccLastAssistantMessage$;
 
 /**
- * Task cards shown in voice mode. The server endpoint already filters to
- * pending / queued / running, so this is just a pass-through.
+ * Task cards shown in voice mode — only in-flight work. The server returns
+ * active plus recently-finished tasks so the Talker has context, but the UI
+ * drops `done` and `failed` so the list reads as a live working queue.
  */
 export const agentChatPendingTasks$ = computed((get) => {
-  return get(vccActiveTasks$);
+  return get(vccActiveTasks$).filter((t) => {
+    return t.status !== "done" && t.status !== "failed";
+  });
 });

@@ -265,17 +265,12 @@ const handleTalkerToolCall$ = command(
       return;
     }
 
-    // Prefix the prompt with the tool the Talker reached for. Behavior is
-    // identical across tools — this tag is just a breadcrumb in activity
-    // logs so we can see which emotion led to the task.
-    const taggedPrompt = `[via ${toolName}] ${prompt}`;
-
     const createClient = get(zeroClient$);
     const client = createClient(zeroVoiceChatCandidateContract);
     const res = await accept(
       client.createTask({
         params: { id: sid },
-        body: { prompt: taggedPrompt, callId },
+        body: { prompt, callId },
       }),
       [200, 400, 401, 404],
       { toast: false },

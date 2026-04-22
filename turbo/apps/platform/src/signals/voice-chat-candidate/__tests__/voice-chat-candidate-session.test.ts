@@ -509,7 +509,7 @@ describe("voice-chat-candidate session", () => {
   });
 
   describe("talker tool calls", () => {
-    it("posts /tasks with [via inform_slow_brain] prefix and echoes function_call_output", async () => {
+    it("posts /tasks with the raw prompt and echoes function_call_output", async () => {
       await setup();
       const taskCalls = mockCreateTaskOk();
       await startSuccessfully();
@@ -528,7 +528,7 @@ describe("voice-chat-candidate session", () => {
         expect(taskCalls).toHaveLength(1);
       });
       expect(taskCalls[0]).toStrictEqual({
-        prompt: "[via inform_slow_brain] do the laundry",
+        prompt: "do the laundry",
         callId: "call-abc",
       });
 
@@ -553,7 +553,7 @@ describe("voice-chat-candidate session", () => {
       ["want_to_reject", "that seems out of scope"],
       ["want_to_apologize", "sorry I can't do this"],
     ])(
-      "routes %s through the same task-creation path with a [via %s] prefix",
+      "routes %s through the same task-creation path with the raw prompt",
       async (toolName, userPrompt) => {
         await setup();
         const taskCalls = mockCreateTaskOk();
@@ -571,7 +571,7 @@ describe("voice-chat-candidate session", () => {
           expect(taskCalls).toHaveLength(1);
         });
         expect(taskCalls[0]).toStrictEqual({
-          prompt: `[via ${toolName}] ${userPrompt}`,
+          prompt: userPrompt,
           callId: `call-${toolName}`,
         });
       },
