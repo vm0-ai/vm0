@@ -3418,6 +3418,91 @@
           "Pflegen Sie eine Liste bekannter instabiler Tests und weisen Sie Zero an, sie von Alarmen auszunehmen. Das verhindert Alarmmüdigkeit.",
           "Kombinieren Sie mit auto-merge-releases für eine vollständige Release-Pipeline: merge-queue-monitor erkennt feststeckende PRs, auto-merge-releases liefert das Release, sobald die Queue frei ist."
         ]
+      },
+      "seo-blog-writing": {
+        "title": "SEO-optimierte Blogbeiträge mit Keyword-Recherche und KI-Bildern schreiben",
+        "description": "Zero holt Keyword-Daten aus Ahrefs, verfasst einen Blogbeitrag für vielversprechende Suchbegriffe, generiert ein Titelbild mit Fal.ai und veröffentlicht alles als Entwurf in Strapi — ein Prompt, von Anfang bis Ende.",
+        "timeSaved": "~90 Min. gespart",
+        "headings": {
+          "scenario": "Warum ein einziger Blogbeitrag drei Tools und den halben Vormittag kostet",
+          "prompt": "So bitten Sie Zero, einen Blogbeitrag zu recherchieren, zu schreiben und zu veröffentlichen",
+          "steps": "Wie Zero aus Keyword-Daten einen veröffentlichungsreifen Entwurf macht",
+          "nextActions": "Content-Rhythmus planen, Inhalte kanalübergreifend verwerten oder Rankings verfolgen",
+          "integrations": "Erforderliche Integrationen: Ahrefs, Strapi und Fal.ai",
+          "tips": "Best Practices für KI-gestütztes SEO-Blogschreiben"
+        },
+        "scenario": "Sie brauchen einen Blogbeitrag, der tatsächlich rankt. Das heißt: Ahrefs öffnen, Keywords nach Suchvolumen und Schwierigkeit filtern, eines auswählen, das zur Content-Strategie passt, 1.500 Wörter schreiben, ein Titelbild erstellen oder beschaffen, alles fürs CMS formatieren und veröffentlichen. Wenn Sie fertig sind, ist der Vormittag vorbei — und diese Woche stehen noch zwei weitere Beiträge auf dem Kalender. Sie nennen Zero das Thema und Ihre Domain. Zero zieht die Keyword-Daten, schreibt den Beitrag, generiert das Titelbild und schickt einen fertigen Entwurf an Strapi. Sie prüfen und klicken auf Veröffentlichen.",
+        "promptVariants": [
+          {
+            "label": "Detailliert",
+            "prompt": "@Zero recherchiere Keywords auf Ahrefs zum Thema „KI-Agent-Sicherheit“ für unsere Domain vm0.ai. Wähle das beste Keyword nach Volumen und Schwierigkeit, schreibe einen 1.500-Wörter-Blogbeitrag dafür, generiere ein Titelbild mit Fal.ai und veröffentliche als Entwurf in Strapi."
+          },
+          {
+            "label": "Schnell",
+            "prompt": "@Zero schreibe einen Blogbeitrag über Agent-Berechtigungsisolierung. Nutze Ahrefs für die Keyword-Recherche, generiere ein Titelbild und veröffentliche in Strapi."
+          },
+          {
+            "label": "Geplant",
+            "prompt": "@Zero recherchiere jeden Montag aktuelle Keywords in unserer Nische auf Ahrefs, schreibe einen SEO-optimierten Blogbeitrag mit Fal.ai-Titelbild und veröffentliche als Entwurf in Strapi."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Lucas",
+            "text": "@Zero recherchiere Keywords auf Ahrefs für „KI-Agent-Plattformen“ und schreibe einen SEO-Blogbeitrag. Generiere ein Titelbild mit Fal.ai und veröffentliche als Entwurf in Strapi."
+          },
+          {
+            "name": "Zero",
+            "text": "Erledigt. Hier ist, was ich gefunden und erstellt habe:\n\n**Gewähltes Keyword:** „ai agent platform security“ — 1.400 Suchanfragen/Monat, KD 23\n**Artikel:** „Warum Plattformsicherheit für KI-Agenten zum neuen Standard wird“ (1.620 Wörter)\n**Titelbild:** Mit Fal.ai generiert — abstraktes Security-Mesh-Visual\n**Veröffentlicht:** Strapi-Entwurf #67\n\nVorschau: www.vm0.ai/de/blog/posts/ai-agent-platform-security?status=draft"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero sucht in Ahrefs das richtige Keyword",
+            "description": "Zero fragt die Ahrefs-API mit Ihrem Themenstichwort und Ihrer Domain ab. Es ruft Keyword-Vorschläge ab, sortiert nach Suchvolumen, Keyword-Schwierigkeit und Traffic-Potenzial — und wählt die beste Gelegenheit, die Rankbarkeit und Suchintention in Einklang bringt."
+          },
+          {
+            "title": "Zero verfasst und strukturiert den Blogbeitrag",
+            "description": "Mit dem ausgewählten Keyword und verwandten Begriffen erstellt Zero einen vollständigen Blogbeitrag mit SEO-optimiertem Titel, Meta-Beschreibung, Überschriftenstruktur und Fließtext. Semantische Keywords werden natürlich eingeflochten, On-Page-SEO-Best-Practices eingehalten — ohne Keyword-Stuffing."
+          },
+          {
+            "title": "Zero generiert ein Titelbild und veröffentlicht in Strapi",
+            "description": "Zero beauftragt Fal.ai mit der Erstellung eines Titelbilds, das zum Artikelthema passt. Dann schickt es das komplette Paket — Artikeltext, Metadaten und Titelbild — als Entwurf an Ihr Strapi-CMS, bereit zur Prüfung."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Einen wöchentlichen Content-Rhythmus aufbauen",
+            "description": "Automatisieren Sie Ihren Redaktionskalender mit geplanter Keyword-Recherche und Texterstellung",
+            "examplePrompt": "@Zero finde jeden Montag und Donnerstag eine neue Keyword-Gelegenheit auf Ahrefs für unseren Blog, schreibe einen optimierten Beitrag und veröffentliche als Entwurf in Strapi."
+          },
+          {
+            "title": "Für Social Media aufbereiten",
+            "description": "Verwandeln Sie Ihren Blogbeitrag in X-Threads und LinkedIn-Snippets",
+            "examplePrompt": "@Zero nimm den neuesten Blogbeitrag in Strapi und erstelle einen X-Thread und einen LinkedIn-Post mit den wichtigsten Punkten."
+          },
+          {
+            "title": "Keyword-Rankings im Zeitverlauf verfolgen",
+            "description": "Beobachten Sie, wie Ihre veröffentlichten Beiträge in den Suchergebnissen steigen",
+            "examplePrompt": "@Zero überprüfe jeden Freitag in Ahrefs die Ranking-Positionen unserer letzten 10 Blogbeiträge und poste eine Zusammenfassung in #marketing."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Ahrefs — Zero nutzt die Ahrefs-API für die Keyword-Recherche, ruft Suchvolumen und Schwierigkeitsmetriken ab und identifiziert Content-Lücken. Erforderlich für den Keyword-Recherche-Schritt."
+          },
+          {
+            "description": "Strapi — Zero veröffentlicht den fertigen Artikel (Titel, Text, Meta, Titelbild) als Entwurf in Ihrem Strapi-CMS. Content-Manager-API-Zugang erforderlich."
+          },
+          {
+            "description": "Fal.ai — Zero generiert ein Titelbild über die Fal.ai-Bildgenerierungs-API. Optional — ohne Verbindung veröffentlicht Zero den Artikel ohne Titelbild."
+          }
+        ],
+        "tips": [
+          "Geben Sie Zero einen Zielbereich für die Keyword-Schwierigkeit (z. B. KD unter 30) und eine Mindestvolumen-Schwelle. So wird verhindert, dass es Vanity-Keywords verfolgt, für die Sie realistisch nicht ranken können.",
+          "Fügen Sie Ihre Markensprache-Richtlinien oder einen Beispielbeitrag in den Prompt ein. Zero schreibt bessere Texte, wenn es einen stilistischen Ankerpunkt hat.",
+          "Kombinieren Sie dies mit dem Content-Performance-Report-Use-Case. Lassen Sie Zero die Beiträge schreiben und dann überwachen, welche Traktion gewinnen — speisen Sie die Gewinner in den nächsten Keyword-Recherche-Zyklus ein."
+        ]
       }
     },
     "filter": {

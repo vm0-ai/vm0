@@ -3418,6 +3418,91 @@
           "Mantén una lista de tests inestables conocidos y dile a Zero que los excluya de las alertas. Esto evita la fatiga de alertas y mantiene la señal limpia.",
           "Combínalo con auto-merge-releases para un pipeline de release completo: merge-queue-monitor detecta PRs bloqueados, auto-merge-releases publica el release cuando la cola se despeja."
         ]
+      },
+      "seo-blog-writing": {
+        "title": "Escribe artículos de blog optimizados para SEO con investigación de palabras clave e imágenes IA",
+        "description": "Zero extrae datos de palabras clave de Ahrefs, redacta un artículo orientado a términos de alta oportunidad, genera una imagen destacada con Fal.ai y publica todo en Strapi como borrador — un solo prompt, de principio a fin.",
+        "timeSaved": "~90 min ahorrados",
+        "headings": {
+          "scenario": "Por qué escribir un artículo de blog requiere tres herramientas y media mañana",
+          "prompt": "Cómo pedirle a Zero que investigue, escriba y publique un artículo de blog",
+          "steps": "Cómo Zero convierte datos de palabras clave en un borrador publicable",
+          "nextActions": "Programar una cadencia de contenido, reutilizar en otros canales o rastrear posiciones",
+          "integrations": "Integraciones requeridas: Ahrefs, Strapi y Fal.ai",
+          "tips": "Mejores prácticas para redacción de blogs SEO asistida por IA"
+        },
+        "scenario": "Necesitas un artículo de blog que realmente posicione. Eso significa abrir Ahrefs, filtrar palabras clave con buen volumen y baja dificultad, elegir una que encaje con tu estrategia de contenido, escribir 1.500 palabras, conseguir o crear una imagen destacada, formatear todo para el CMS y publicar. Para cuando terminas, la mañana se fue — y aún te quedan dos artículos más esta semana. Le dices a Zero el área temática y tu dominio. Extrae los datos de palabras clave, escribe el artículo, genera la imagen de portada y envía un borrador pulido a Strapi. Tú revisas y publicas.",
+        "promptVariants": [
+          {
+            "label": "Detallado",
+            "prompt": "@Zero investiga palabras clave en Ahrefs para el tema \"seguridad de agentes IA\" orientado a nuestro dominio vm0.ai. Elige la mejor palabra clave por volumen y dificultad, escribe un artículo de blog de 1.500 palabras optimizado para ella, genera una imagen destacada con Fal.ai y publica en Strapi como borrador."
+          },
+          {
+            "label": "Rápido",
+            "prompt": "@Zero escribe un artículo de blog sobre aislamiento de permisos de agentes. Usa Ahrefs para investigar palabras clave, genera una imagen de portada y publica en Strapi."
+          },
+          {
+            "label": "Programado",
+            "prompt": "@Zero cada lunes, investiga palabras clave en tendencia en nuestro nicho en Ahrefs, escribe un artículo de blog optimizado para SEO con imagen de portada de Fal.ai y publica en Strapi como borrador."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Lucas",
+            "text": "@Zero investiga palabras clave en Ahrefs para \"plataformas de agentes IA\" y escribe un artículo de blog SEO. Genera una imagen de portada con Fal.ai y publica en Strapi como borrador."
+          },
+          {
+            "name": "Zero",
+            "text": "Listo. Esto es lo que encontré y creé:\n\n**Palabra clave seleccionada:** \"ai agent platform security\" — 1.400 búsquedas/mes, KD 23\n**Artículo:** \"Por qué la seguridad de plataformas de agentes es el nuevo estándar\" (1.620 palabras)\n**Imagen de portada:** Generada con Fal.ai — visual abstracto de malla de seguridad\n**Publicado:** Borrador en Strapi #67\n\nVista previa: www.vm0.ai/es/blog/posts/ai-agent-platform-security?status=draft"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero busca la palabra clave adecuada en Ahrefs",
+            "description": "Zero consulta la API de Ahrefs con tu tema semilla y dominio. Obtiene sugerencias de palabras clave clasificadas por volumen de búsqueda, dificultad y potencial de tráfico — luego selecciona la mejor oportunidad que equilibra posicionabilidad con intención de búsqueda."
+          },
+          {
+            "title": "Zero escribe y estructura el artículo de blog",
+            "description": "Con la palabra clave elegida y sus términos relacionados, Zero redacta un artículo completo con título optimizado para SEO, meta descripción, estructura de encabezados y cuerpo del texto. Incorpora palabras clave semánticas de forma natural y sigue las mejores prácticas de SEO on-page — sin relleno de palabras clave."
+          },
+          {
+            "title": "Zero genera una imagen de portada y publica en Strapi",
+            "description": "Zero solicita a Fal.ai que cree una imagen destacada acorde con la temática del artículo. Luego envía el paquete completo — texto del artículo, metadatos e imagen de portada — a tu CMS Strapi como borrador, listo para revisión."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Construir una cadencia semanal de contenido",
+            "description": "Automatiza tu calendario editorial con investigación de palabras clave y redacción programadas",
+            "examplePrompt": "@Zero cada lunes y jueves, encuentra una nueva oportunidad de palabra clave en Ahrefs para nuestro blog, escribe un artículo optimizado y publica como borrador en Strapi."
+          },
+          {
+            "title": "Reutilizar como contenido social",
+            "description": "Convierte tu artículo de blog en hilos de X y publicaciones de LinkedIn",
+            "examplePrompt": "@Zero toma el último artículo de blog en Strapi y crea un hilo de X y una publicación de LinkedIn resumiendo los puntos clave."
+          },
+          {
+            "title": "Rastrear posiciones de palabras clave en el tiempo",
+            "description": "Monitorea cómo tus artículos publicados escalan en los resultados de búsqueda",
+            "examplePrompt": "@Zero cada viernes, revisa en Ahrefs las posiciones de nuestros últimos 10 artículos publicados y publica un resumen en #marketing."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Ahrefs — Zero usa la API de Ahrefs para investigar palabras clave, obtener métricas de volumen y dificultad, e identificar brechas de contenido. Requerido para el paso de investigación de palabras clave."
+          },
+          {
+            "description": "Strapi — Zero publica el artículo terminado (título, cuerpo, meta, imagen de portada) en tu CMS Strapi como borrador. Se requiere acceso a la API de content-manager."
+          },
+          {
+            "description": "Fal.ai — Zero genera una imagen destacada a través de la API de generación de imágenes de Fal.ai. Opcional — si no está conectado, Zero publica el artículo sin imagen de portada."
+          }
+        ],
+        "tips": [
+          "Dale a Zero un rango objetivo de dificultad de palabra clave (ej. KD menor a 30) y un umbral mínimo de volumen. Esto evita que persiga palabras clave vanidosas para las que no puedes posicionar de forma realista.",
+          "Incluye tus directrices de voz de marca o un artículo de ejemplo en el prompt. Zero escribe mejor cuando tiene un ancla estilística.",
+          "Combínalo con el caso de uso content-performance-report. Deja que Zero escriba los artículos y luego monitorea cuáles ganan tracción — alimenta los ganadores en tu próximo ciclo de investigación de palabras clave."
+        ]
       }
     },
     "filter": {

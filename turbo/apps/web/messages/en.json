@@ -3418,6 +3418,91 @@
           "Maintain a list of known flaky tests and tell Zero to exclude them from alerts. This prevents alert fatigue and keeps the signal strong.",
           "Chain with auto-merge-releases for a full release pipeline: merge-queue-monitor catches stuck PRs, auto-merge-releases ships the release once the queue clears."
         ]
+      },
+      "seo-blog-writing": {
+        "title": "Write SEO-optimized blog posts with keyword research and AI images",
+        "description": "Zero pulls keyword data from Ahrefs, drafts a blog post targeting high-opportunity terms, generates a featured image with Fal.ai, and publishes everything to Strapi as a draft — one prompt, end to end.",
+        "timeSaved": "~90 min saved",
+        "headings": {
+          "scenario": "Why writing one blog post takes three tools and half your morning",
+          "prompt": "How to ask Zero to research, write, and publish a blog post",
+          "steps": "How Zero turns keyword data into a published draft",
+          "nextActions": "Schedule a content cadence, repurpose across channels, or track rankings",
+          "integrations": "Required integrations: Ahrefs, Strapi, and Fal.ai",
+          "tips": "Best practices for AI-assisted SEO blog writing"
+        },
+        "scenario": "You need a blog post that actually ranks. That means opening Ahrefs, filtering for keywords with decent volume and low difficulty, picking one that fits your content strategy, writing 1,500 words around it, sourcing or creating a featured image, formatting everything for the CMS, and publishing. By the time you finish, the morning is gone — and you still have two more posts on the calendar this week. You tell Zero the topic area and your domain. It pulls the keyword data, writes the post, generates the cover art, and pushes a polished draft to Strapi. You review and hit publish.",
+        "promptVariants": [
+          {
+            "label": "Detailed",
+            "prompt": "@Zero research keywords on Ahrefs for the topic \"AI agent security\" targeting our domain vm0.ai. Pick the best keyword by volume and difficulty, write a 1,500-word blog post optimized for it, generate a featured image with Fal.ai, and publish to Strapi as a draft."
+          },
+          {
+            "label": "Quick",
+            "prompt": "@Zero write a blog post about agent permission isolation. Use Ahrefs for keyword research, generate a cover image, and publish to Strapi."
+          },
+          {
+            "label": "Scheduled",
+            "prompt": "@Zero every Monday, research trending keywords in our niche on Ahrefs, write an SEO-optimized blog post with a Fal.ai cover image, and publish to Strapi as a draft."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Lucas",
+            "text": "@Zero research keywords on Ahrefs for \"AI agent platforms\" and write an SEO blog post. Generate a cover image with Fal.ai and publish to Strapi as a draft."
+          },
+          {
+            "name": "Zero",
+            "text": "Done. Here's what I found and built:\n\n**Keyword selected:** \"ai agent platform security\" — 1,400 mo. volume, KD 23\n**Article:** \"Why Agent Platform Security Is the New Table Stakes\" (1,620 words)\n**Cover image:** Generated with Fal.ai — abstract security mesh visual\n**Published:** Strapi draft #67\n\nPreview: www.vm0.ai/en/blog/posts/ai-agent-platform-security?status=draft"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero mines Ahrefs for the right keyword",
+            "description": "Zero queries the Ahrefs API with your topic seed and domain. It pulls keyword suggestions ranked by search volume, keyword difficulty, and traffic potential — then selects the best opportunity that balances rankability with search intent."
+          },
+          {
+            "title": "Zero writes and structures the blog post",
+            "description": "Using the chosen keyword and its related terms, Zero drafts a full-length blog post with an SEO-optimized title, meta description, heading structure, and body copy. It weaves in semantic keywords naturally and follows on-page SEO best practices — without keyword stuffing."
+          },
+          {
+            "title": "Zero generates a cover image and publishes to Strapi",
+            "description": "Zero prompts Fal.ai to create a featured image that matches the article's theme. Then it pushes the complete package — article text, metadata, and cover image — to your Strapi CMS as a draft, ready for review."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Build a weekly content cadence",
+            "description": "Automate your editorial calendar with scheduled keyword research and drafting",
+            "examplePrompt": "@Zero every Monday and Thursday, find a new keyword opportunity on Ahrefs for our blog, write an optimized post, and publish to Strapi as a draft."
+          },
+          {
+            "title": "Repurpose into social content",
+            "description": "Turn your blog post into X threads and LinkedIn snippets",
+            "examplePrompt": "@Zero take the latest blog post in Strapi and create an X thread and a LinkedIn post summarizing the key points."
+          },
+          {
+            "title": "Track keyword rankings over time",
+            "description": "Monitor how your published posts climb in search results",
+            "examplePrompt": "@Zero every Friday, check Ahrefs for the ranking positions of our last 10 published blog posts and post a summary to #marketing."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Ahrefs — Zero uses the Ahrefs API to research keywords, pull search volume and difficulty metrics, and identify content gaps. Required for the keyword research step."
+          },
+          {
+            "description": "Strapi — Zero publishes the finished article (title, body, meta, cover image) to your Strapi CMS as a draft. Content-manager API access required."
+          },
+          {
+            "description": "Fal.ai — Zero generates a featured image via the Fal.ai image generation API. Optional — if not connected, Zero publishes the article without a cover image."
+          }
+        ],
+        "tips": [
+          "Give Zero a target keyword difficulty range (e.g. KD under 30) and minimum volume threshold. This prevents it from chasing vanity keywords you can't realistically rank for.",
+          "Include your brand voice guidelines or a sample post in the prompt. Zero writes better copy when it has a stylistic anchor to match.",
+          "Pair this with the content-performance-report use case. Let Zero write the posts and then monitor which ones gain traction — feed the winners back into your next keyword research cycle."
+        ]
       }
     },
     "filter": {
