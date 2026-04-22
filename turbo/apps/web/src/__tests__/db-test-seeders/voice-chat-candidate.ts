@@ -36,6 +36,7 @@ export async function insertTestVoiceChatCandidateTask(
   overrides: {
     result?: string;
     resultUpdatedAt?: Date;
+    finishedAt?: Date;
     status?: "pending" | "queued" | "running" | "done" | "failed";
   } = {},
 ): Promise<string> {
@@ -52,7 +53,7 @@ export async function insertTestVoiceChatCandidateTask(
       status,
       result: overrides.result ?? "A".repeat(500) + " important data",
       resultUpdatedAt: overrides.resultUpdatedAt ?? twoMinutesAgo,
-      finishedAt: isFinished ? twoMinutesAgo : null,
+      finishedAt: isFinished ? (overrides.finishedAt ?? twoMinutesAgo) : null,
     })
     .returning({ id: featureCandidateVoiceChatTasks.id });
   return row!.id;
