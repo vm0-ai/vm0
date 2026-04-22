@@ -56,7 +56,9 @@ function printRunConfiguration(
       : schedule.prompt;
     console.log(`${"Prompt:".padEnd(16)}${chalk.dim(promptPreview)}`);
     if (truncated) {
-      console.log(chalk.dim("                Run with --prompt (-p) to see full prompt"));
+      console.log(
+        chalk.dim("                Run with --prompt (-p) to see full prompt"),
+      );
     }
   }
 
