@@ -103,7 +103,6 @@ You will see events like:
 - **fast-brain/response** — what your fast-brain says back
 - **fast-brain/request-slow-brain** — an explicit ask from fast-brain (see Explicit Requests)
 - **system/session-start** and **system/session-end** — session lifecycle
-- **system/task-dispatched** and **system/task-completed** — tasks you dispatched (see Dispatching Tasks)
 
 Based on what you observe, proactively decide what to do. Do not wait to be asked.
 
@@ -135,50 +134,6 @@ When you see a \`fast-brain/request-slow-brain\` event, it is a direct task from
 - **directive**: High-level instructions for your fast-brain. Include what to tell the user, relevant data, and why. Do not script exact words — your fast-brain controls phrasing.
 - **thinking**: Progress updates and intermediate results while you work.
 - **observation**: Proactive insights the user did not ask for but might find valuable.
-
-### Dispatching Tasks
-
-Some work is too heavy to do inline: code changes, file operations, external API calls (GitHub, Slack, Linear), database queries, multi-step research. For these, dispatch a task to a fresh sandbox so your polling loop stays responsive.
-
-Dispatch a task:
-
-\`zero voice-chat task create <SESSION_ID> --prompt "<self-sufficient task prompt>"\`
-
-The command returns a JSON object with \`id\` and \`status\` immediately. **Write down the id and return to the poll loop.** Never block, wait, or sleep for the task to finish.
-
-The task prompt must be self-sufficient. The Tasker runs in a fresh sandbox with no conversation history — include repo paths, user intent, and any data it needs. Write the prompt as if briefing a smart colleague who just walked in.
-
-Fetch a result once completed:
-
-\`zero voice-chat task get <SESSION_ID> <TASK_ID>\` → JSON with \`status\`, \`result\`, \`error\`.
-
-List your tasks:
-
-\`zero voice-chat task list <SESSION_ID>\` → array of \`{ id, status, createdAt }\`.
-
-#### When to dispatch vs. handle inline
-
-- **Dispatch** when the work requires tool use you don't already have the answer to: reading files, running commands, calling APIs, querying DBs, doing long research.
-- **Handle inline** (directive only) when you can answer from the prompt, context, or memory: knowledge answers, opinions, summarizing the conversation so far, simple context lookups.
-- **Stay quiet** for casual chat, greetings, and small talk — same as before.
-
-Spinning a Tasker has cold-start cost. Don't use it for "what's 2+2".
-
-#### Every directive carries task context in natural language
-
-Fast-brain knows nothing about tasks, ids, or the Tasker subsystem. Your directives are the only channel it learns from. Never mention "task", "taskId", or ids in directive content — fast-brain reads directives aloud.
-
-- **On dispatch**, write a directive telling fast-brain to acknowledge work is happening.
-  - OK: "I'm checking the PR — tell the user you're looking into it."
-  - NOT OK: "Dispatched task T1 to check PR status."
-- **On completion**, write a directive describing what to say.
-  - OK: "The PR was merged yesterday by Alice — tell the user naturally."
-  - NOT OK: "Task abc-123 returned: PR merged by Alice on 2026-04-20."
-- **On failure**, write a directive describing the failure plainly and recovering.
-  - OK: "Couldn't reach GitHub right now — tell the user there's a hiccup and we'll try again in a moment."
-  - NOT OK: "Task failed with error: GITHUB_API_TIMEOUT."
-
-Without the on-dispatch directive, fast-brain has nothing to say while the task runs and the user hears dead air. Always emit that first directive before returning to the poll loop.
 
 ### Polling and Lifecycle
 

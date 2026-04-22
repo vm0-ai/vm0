@@ -58,7 +58,7 @@ function upsertUserTranscript(
 }
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
-const PREP_TIMEOUT_CHAT_MS = 60_000;
+const PREP_TIMEOUT_CHAT_MS = 120_000;
 const MAX_RECONNECT_ATTEMPTS = 5;
 const RECONNECT_BASE_DELAY_MS = 1000;
 export type RealtimeModel = "gpt-realtime" | "gpt-realtime-mini";
