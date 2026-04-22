@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.280.0](https://github.com/vm0-ai/vm0/compare/app-v0.279.0...app-v0.280.0) (2026-04-22)
+
+
+### Features
+
+* add /buy/[productId] route for one-time promo credit purchases ([#10451](https://github.com/vm0-ai/vm0/issues/10451)) ([04e2b83](https://github.com/vm0-ai/vm0/commit/04e2b836f60c688f85963cace824a602c74e469e))
+
+
+### Bug Fixes
+
+* **platform:** apply thumbnail clamp to markdown image syntax ([#10527](https://github.com/vm0-ai/vm0/issues/10527)) ([bab9f73](https://github.com/vm0-ai/vm0/commit/bab9f734d8dfd0cd88d8e0a7355d1a49488bd420))
+* **voice-chat:** auto-end stale session on double-start and unstick preparing UI ([#10536](https://github.com/vm0-ai/vm0/issues/10536)) ([2bb9fd9](https://github.com/vm0-ai/vm0/commit/2bb9fd95e5326a07e5aa8304fac9d924ed363263))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.223.0
+
 ## [0.279.0](https://github.com/vm0-ai/vm0/compare/app-v0.278.0...app-v0.279.0) (2026-04-22)
 
 

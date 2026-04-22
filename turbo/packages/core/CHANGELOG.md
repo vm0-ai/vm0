@@ -1,5 +1,17 @@
 # Changelog
 
+## [8.223.0](https://github.com/vm0-ai/vm0/compare/core-v8.222.0...core-v8.223.0) (2026-04-22)
+
+
+### Features
+
+* add deepseek-reasoner to vm0 managed models ([#10532](https://github.com/vm0-ai/vm0/issues/10532)) ([c113802](https://github.com/vm0-ai/vm0/commit/c11380229af6afbfad202cbeaf234c90dcfda568))
+
+
+### Bug Fixes
+
+* **voice-chat:** auto-end stale session on double-start and unstick preparing UI ([#10536](https://github.com/vm0-ai/vm0/issues/10536)) ([2bb9fd9](https://github.com/vm0-ai/vm0/commit/2bb9fd95e5326a07e5aa8304fac9d924ed363263))
+
 ## [8.222.0](https://github.com/vm0-ai/vm0/compare/core-v8.221.0...core-v8.222.0) (2026-04-22)
 
 

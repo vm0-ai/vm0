@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.90.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.89.3...runner-rs-v0.90.0) (2026-04-22)
+
+
+### Features
+
+* **mitm-addon:** vendor ijson pure-python backend ([#10533](https://github.com/vm0-ai/vm0/issues/10533)) ([fec03b3](https://github.com/vm0-ai/vm0/commit/fec03b31ec0766baff9d4e4b200d1d37f03a80a7))
+
+
+### Documentation
+
+* **mitm-addon:** clarify firewall_action vs firewall_error semantics ([#10540](https://github.com/vm0-ai/vm0/issues/10540)) ([c48046d](https://github.com/vm0-ai/vm0/commit/c48046d52203593a6e4f5e432a55a79660c74062))
+
+
+### Refactoring
+
+* **mitm-addon:** surface one-shot warnings for best-effort failures ([#10525](https://github.com/vm0-ai/vm0/issues/10525)) ([136cf1f](https://github.com/vm0-ai/vm0/commit/136cf1fa0ac2d9e4079015a26bc9103c3f3e7b49))
+* **mitm-addon:** unify urllib cleanup on `with` blocks ([#10543](https://github.com/vm0-ai/vm0/issues/10543)) ([f319b55](https://github.com/vm0-ai/vm0/commit/f319b55a470d2460395e84042859063685b964dd)), closes [#10491](https://github.com/vm0-ai/vm0/issues/10491)
+
 ## [0.89.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.89.2...runner-rs-v0.89.3) (2026-04-22)
 
 

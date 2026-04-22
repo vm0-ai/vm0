@@ -1,5 +1,26 @@
 # Changelog
 
+## [12.280.0](https://github.com/vm0-ai/vm0/compare/web-v12.279.0...web-v12.280.0) (2026-04-22)
+
+
+### Features
+
+* add /buy/[productId] route for one-time promo credit purchases ([#10451](https://github.com/vm0-ai/vm0/issues/10451)) ([04e2b83](https://github.com/vm0-ai/vm0/commit/04e2b836f60c688f85963cace824a602c74e469e))
+* add deepseek-reasoner to vm0 managed models ([#10532](https://github.com/vm0-ai/vm0/issues/10532)) ([c113802](https://github.com/vm0-ai/vm0/commit/c11380229af6afbfad202cbeaf234c90dcfda568))
+
+
+### Bug Fixes
+
+* **voice-chat:** auto-end stale session on double-start and unstick preparing UI ([#10536](https://github.com/vm0-ai/vm0/issues/10536)) ([2bb9fd9](https://github.com/vm0-ai/vm0/commit/2bb9fd95e5326a07e5aa8304fac9d924ed363263))
+* **web:** enable Ably queryTime to prevent clock skew auth failures ([#10537](https://github.com/vm0-ai/vm0/issues/10537)) ([43142b2](https://github.com/vm0-ai/vm0/commit/43142b2c89ab0b3d9b7d022086ec3a644789f2b4)), closes [#10520](https://github.com/vm0-ai/vm0/issues/10520)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.223.0
+
 ## [12.279.0](https://github.com/vm0-ai/vm0/compare/web-v12.278.0...web-v12.279.0) (2026-04-22)
 
 
