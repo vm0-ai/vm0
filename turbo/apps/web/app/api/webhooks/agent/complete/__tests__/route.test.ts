@@ -258,8 +258,11 @@ describe("POST /api/webhooks/agent/complete", () => {
       expect(data.status).toBe("completed");
     });
 
-    it("should include memory in result when checkpoint has memorySnapshot", async () => {
-      // Create checkpoint with both artifact and memory snapshots
+    it("should not include memory in result even when checkpoint has memorySnapshot", async () => {
+      // Post-#10602: result.memory is no longer populated. Memory rides in
+      // result.artifact (keyed by storage name "memory") via artifactSnapshots.
+      // The memorySnapshot column remains on the checkpoint record until
+      // #10603 for backward compatibility but the webhook ignores it.
       const checkpointRequest = createTestRequest(
         "http://localhost:3000/api/webhooks/agent/checkpoints",
         {
@@ -307,7 +310,7 @@ describe("POST /api/webhooks/agent/complete", () => {
       const response = await POST(request);
       expect(response.status).toBe(200);
 
-      // Verify run result includes memory
+      // Verify run result does NOT include memory (memory now flows via artifacts)
       const run = await findTestRunRecord(testRunId);
       expect(run).toBeDefined();
       expect(run!.status).toBe("completed");
@@ -316,7 +319,7 @@ describe("POST /api/webhooks/agent/complete", () => {
         memory?: Record<string, string>;
         artifact?: Record<string, string>;
       };
-      expect(result.memory).toEqual({ "my-memory": "mem-v1" });
+      expect(result.memory).toBeUndefined();
       expect(result.artifact).toEqual({ "test-artifact": "v1" });
     });
 

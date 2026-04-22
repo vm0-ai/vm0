@@ -126,16 +126,8 @@ async fn execute(
     }
     record_sandbox_op("working_dir_setup", wd_start.elapsed(), true, None);
 
-    // Set up Claude Code auto-memory symlink (links vm0 memory to Claude Code's native path)
-    let mem_start = Instant::now();
-    let mem_linked = guest_agent::memory::setup_auto_memory_symlink();
-    // Snapshot memory content so the checkpoint step can skip
-    // storages/prepare+commit when nothing changed during the run.
-    let memory_boot_fp = guest_agent::memory::capture_boot_fingerprint().await;
-    record_sandbox_op("memory_symlink_setup", mem_start.elapsed(), true, None);
-    if mem_linked {
-        log_info!(LOG_TAG, "Auto-memory symlink created");
-    }
+    // Memory is now mounted directly at the Claude Code auto-memory path via
+    // manifest.artifacts[] — no runtime symlink needed (see #10602).
 
     let init_elapsed = start.elapsed();
     record_sandbox_op("init_total", init_elapsed, true, None);
@@ -218,7 +210,7 @@ async fn execute(
         log_info!(LOG_TAG, "▷ Checkpoint");
         let cp_start = Instant::now();
         let (cp_result, _) = tokio::join!(
-            checkpoint::create_checkpoint(&memory_boot_fp),
+            checkpoint::create_checkpoint(),
             telemetry::final_upload_silent(masker),
         );
         match cp_result {

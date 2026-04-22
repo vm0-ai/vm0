@@ -75,7 +75,11 @@ struct Manifest {
     storages: Vec<Storage>,
     #[serde(default)]
     artifacts: Vec<Artifact>,
+    /// Legacy wire-compat slot — always null since #10602 (memory now rides
+    /// in `artifacts` above). Deserialized and ignored; field is dropped
+    /// entirely in #10603 when the TS manifest type stops emitting the key.
     #[serde(default)]
+    #[allow(dead_code)]
     memory: Option<Artifact>,
     /// Paths to clean before downloading (stale file cleanup on VM reuse).
     #[serde(default)]
@@ -150,8 +154,9 @@ pub fn run(manifest_path: &str) -> bool {
     // This must run before parallel downloads to avoid race conditions with
     // parent-child mount path overlaps.
     if !manifest.cleanup_paths.is_empty() {
-        // Collect all mount paths that should be preserved (unchanged storages,
-        // artifact, and memory).
+        // Collect all mount paths that should be preserved (unchanged storages
+        // and artifacts). Memory rides in artifacts[] post-#10602 so the memory
+        // slot no longer needs its own preservation branch.
         let mut preserved: Vec<&str> = manifest
             .storages
             .iter()
@@ -160,11 +165,6 @@ pub fn run(manifest_path: &str) -> bool {
             .collect();
         for a in manifest.artifacts.iter().filter(|a| a.cached) {
             preserved.push(a.mount_path.as_str());
-        }
-        if let Some(m) = &manifest.memory
-            && m.cached
-        {
-            preserved.push(m.mount_path.as_str());
         }
 
         cleanup_stale_paths(&manifest.cleanup_paths, &preserved);
@@ -203,19 +203,9 @@ pub fn run(manifest_path: &str) -> bool {
         }
     }
 
-    // Memory: 404 is non-fatal (may not exist on first run)
-    if let Some(memory) = &manifest.memory
-        && is_valid_url(&memory.archive_url)
-        && let Some(url) = memory.archive_url.clone()
-    {
-        tasks.push(DownloadTask {
-            label: "memory".to_string(),
-            op_name: "memory_download",
-            url,
-            mount_path: memory.mount_path.clone(),
-            allow_404: true,
-        });
-    }
+    // Memory (post-#10602): flows through manifest.artifacts[], no dedicated
+    // download task. The manifest.memory slot is retained for wire compat
+    // and is removed in #10603.
 
     // Pre-create all target directories before parallel downloads.
     // This avoids races between parent-child mount paths (e.g. /home/user/.claude

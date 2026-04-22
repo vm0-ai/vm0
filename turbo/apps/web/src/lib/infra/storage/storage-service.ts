@@ -4,7 +4,6 @@ import { generatePresignedUrl, putS3Object } from "../s3/s3-client";
 import { logger } from "../../shared/logger";
 import { badRequest } from "../../shared/errors";
 import {
-  DEFAULT_MEMORY_MOUNT_PATH,
   type AdditionalArtifact,
   type AdditionalVolume,
   type AgentVolumeConfig,
@@ -458,13 +457,37 @@ async function resolveAdditionalArtifact(
   bucketName: string,
 ): Promise<ManifestArtifact> {
   const version = entry.version || "latest";
-  const { versionId, s3Key } = await resolveVersion(
-    runtimeClerkOrgId,
-    entry.name,
-    "artifact",
-    version,
-    userId,
-  );
+  let resolved: { versionId: string; s3Key: string };
+  try {
+    resolved = await resolveVersion(
+      runtimeClerkOrgId,
+      entry.name,
+      "artifact",
+      version,
+      userId,
+    );
+  } catch (err) {
+    // Dual-read compat for epic #10577 Phase 2 type flip (#10601):
+    // fall back to type='memory' for storages not yet flipped. Any artifact
+    // row missing under type='artifact' is retried as type='memory'; in
+    // practice only legacy memory storages match. Removed in #10603.
+    if (!(err instanceof Error && err.message.includes("not found"))) {
+      throw err;
+    }
+    log.info("memory dual-read fallback hit", {
+      name: entry.name,
+      orgId: runtimeClerkOrgId,
+      userId,
+    });
+    resolved = await resolveVersion(
+      runtimeClerkOrgId,
+      entry.name,
+      "memory",
+      version,
+      userId,
+    );
+  }
+  const { versionId, s3Key } = resolved;
   const archiveKey = `${s3Key}/archive.tar.gz`;
   const manifestKey = `${s3Key}/manifest.json`;
   const [archiveUrl, manifestUrl] = await Promise.all([
@@ -509,14 +532,13 @@ function resolveArtifactSource(
  * @param agentConfig - Agent configuration containing volume definitions
  * @param vars - Template variables for placeholder replacement
  * @param agentClerkOrgId - Agent Clerk org ID for volume resolution (where the agent is defined)
- * @param runtimeClerkOrgId - Runtime Clerk org ID for artifact/memory resolution (where the agent is executed)
- * @param userId - User ID within the runtime org (for artifact/memory ownership)
+ * @param runtimeClerkOrgId - Runtime Clerk org ID for artifact resolution (where the agent is executed)
+ * @param userId - User ID within the runtime org (for artifact ownership)
  * @param artifactName - Artifact storage name
  * @param artifactVersion - Artifact version (defaults to "latest")
  * @param volumeVersionOverrides - Optional volume version overrides
  * @param resumeArtifact - Optional artifact snapshot for resume (overrides artifactName/artifactVersion)
  * @param resumeArtifactMountPath - Mount path for resume artifact
- * @param memoryName - Optional memory storage name (mounted at DEFAULT_MEMORY_MOUNT_PATH)
  * @returns Storage manifest with presigned URLs
  */
 export async function prepareStorageManifest(
@@ -530,7 +552,6 @@ export async function prepareStorageManifest(
   volumeVersionOverrides?: Record<string, string>,
   resumeArtifact?: { artifactName: string; artifactVersion: string },
   resumeArtifactMountPath?: string,
-  memoryName?: string,
   additionalVolumes?: AdditionalVolume[],
   additionalArtifacts?: AdditionalArtifact[],
 ): Promise<StorageManifest> {
@@ -545,11 +566,10 @@ export async function prepareStorageManifest(
   // Skip artifact in resolveVolumes if we're using resumeArtifact (we'll handle it separately)
   const skipArtifact = !!resumeArtifact;
 
-  // If no agent config and no resume artifact and no memory and no additional volumes/artifacts, return empty manifest
+  // If no agent config and no resume artifact and no additional volumes/artifacts, return empty manifest
   if (
     !agentConfig &&
     !resumeArtifact &&
-    !memoryName &&
     (!additionalVolumes || additionalVolumes.length === 0) &&
     (!additionalArtifacts || additionalArtifacts.length === 0)
   ) {
@@ -602,7 +622,6 @@ export async function prepareStorageManifest(
     runtimeClerkOrgId,
     userId,
     artifactSource,
-    memoryName,
   );
 
   // Resolve non-latest volumes individually (rare: explicit version overrides)
@@ -642,7 +661,6 @@ export async function prepareStorageManifest(
     userId,
     bucketName,
     artifactSource,
-    memoryName,
     nonLatestResolved,
     nonLatestAdditionalResolved,
   );
@@ -756,7 +774,6 @@ async function executeBatchResolution(
   runtimeClerkOrgId: string,
   userId: string,
   artifactSource: ResolvedArtifact | null,
-  memoryName: string | undefined,
 ): Promise<Map<string, { versionId: string; s3Key: string }>> {
   // Phase 1: System org batch (system compose volumes + system additional volumes)
   const systemLookups: StorageLookup[] = [
@@ -813,24 +830,6 @@ async function executeBatchResolution(
       userId,
       name: artifactSource.vasStorageName,
       type: "artifact",
-    });
-  }
-
-  if (memoryName) {
-    // Dual-read compat for epic #10577 Phase 2 type flip (#10601):
-    // check type='artifact' first (post-flip state), fall back to
-    // type='memory' (pre-flip state). Removed in #10603.
-    remainingLookups.push({
-      orgId: runtimeClerkOrgId,
-      userId,
-      name: memoryName,
-      type: "artifact",
-    });
-    remainingLookups.push({
-      orgId: runtimeClerkOrgId,
-      userId,
-      name: memoryName,
-      type: "memory",
     });
   }
 
@@ -948,7 +947,6 @@ async function buildManifestFromResults(
   userId: string,
   bucketName: string,
   artifactSource: ResolvedArtifact | null,
-  memoryName: string | undefined,
   nonLatestResolved: (ManifestStorage | null)[],
   nonLatestAdditionalResolved: (ManifestStorage | null)[],
 ): Promise<StorageManifest> {
@@ -1099,44 +1097,10 @@ async function buildManifestFromResults(
     bucketName,
   );
 
-  // Build memory
-  let memory: ManifestArtifact | null = null;
-  if (memoryName) {
-    // Dual-read compat for epic #10577 Phase 2 type flip (#10601):
-    // prefer type='artifact' row, fall back to type='memory'. Removed in #10603.
-    const artifactKey = lookupKey(
-      runtimeClerkOrgId,
-      userId,
-      memoryName,
-      "artifact",
-    );
-    const memoryKey = lookupKey(
-      runtimeClerkOrgId,
-      userId,
-      memoryName,
-      "memory",
-    );
-    const resolved = lookupWithFallback(allResults, artifactKey, memoryKey);
-    if (!resolved) {
-      throw new Error(`Storage "${memoryName}" not found in database`);
-    }
-    if (!allResults.has(artifactKey)) {
-      log.info("memory dual-read fallback hit", {
-        memoryName,
-        orgId: runtimeClerkOrgId,
-        userId,
-      });
-    }
-    const archiveKey = `${resolved.s3Key}/archive.tar.gz`;
-    const archiveUrl = await generatePresignedUrl(bucketName, archiveKey);
-    memory = {
-      mountPath: DEFAULT_MEMORY_MOUNT_PATH,
-      vasStorageName: memoryName,
-      vasVersionId: resolved.versionId,
-      archiveUrl,
-    };
-    log.debug(`Generated archive URL for memory "${memoryName}"`);
-  }
+  // Memory is always null post-#10602 — memory now flows through
+  // manifest.artifacts[] (zero synthesizes it from memoryName). The slot is
+  // retained for runner wire compat and is removed in #10603.
+  const memory: ManifestArtifact | null = null;
 
   // Deduplicate mount paths: additional volumes override compose volumes
   const additionalMountPaths = new Set(

@@ -62,20 +62,10 @@ fn create_tar_gz_entries(entries: &[TarEntry]) -> std::io::Result<Vec<u8>> {
 /// Write a manifest JSON to a temp file and return its path.
 /// `storages`: list of (mount_path, archive_url) pairs.
 /// `artifact`: optional (mount_path, archive_url) pair.
-/// `memory`: optional (mount_path, archive_url) pair.
 fn write_manifest(
     dir: &TempDir,
     storages: &[(&str, Option<&str>)],
     artifact: Option<(&str, Option<&str>)>,
-) -> std::io::Result<PathBuf> {
-    write_manifest_with_memory(dir, storages, artifact, None)
-}
-
-fn write_manifest_with_memory(
-    dir: &TempDir,
-    storages: &[(&str, Option<&str>)],
-    artifact: Option<(&str, Option<&str>)>,
-    memory: Option<(&str, Option<&str>)>,
 ) -> std::io::Result<PathBuf> {
     let storages_json: Vec<String> = storages
         .iter()
@@ -93,19 +83,10 @@ fn write_manifest_with_memory(
         None => format!(r#","artifacts":[{{"mountPath":"{}"}}]"#, mount_path),
     });
 
-    let memory_json = memory.map(|(mount_path, archive_url)| match archive_url {
-        Some(url) => format!(
-            r#","memory":{{"mountPath":"{}","archiveUrl":"{}"}}"#,
-            mount_path, url
-        ),
-        None => format!(r#","memory":{{"mountPath":"{}"}}"#, mount_path),
-    });
-
     let json = format!(
-        r#"{{"storages":[{}]{}{}}}"#,
+        r#"{{"storages":[{}]{}}}"#,
         storages_json.join(","),
         artifact_json.unwrap_or_default(),
-        memory_json.unwrap_or_default()
     );
 
     let manifest_path = dir.path().join("manifest.json");
@@ -603,110 +584,11 @@ fn artifact_null_url_skipped() {
     assert!(result);
 }
 
-// ---------------------------------------------------------------------------
-// Test 16: memory download succeeds
-// ---------------------------------------------------------------------------
-#[test]
-fn memory_download_success() {
-    let server = MockServer::start();
-    let tar_gz = create_tar_gz(&[("memory.txt", b"memory data")]).unwrap();
-
-    server.mock(|when, then| {
-        when.method(GET).path("/memory.tar.gz");
-        then.status(200)
-            .header("content-type", "application/gzip")
-            .body(&tar_gz);
-    });
-
-    let dir = tempfile::tempdir().unwrap();
-    let mount = dir.path().join("memory_mount");
-    let url = server.url("/memory.tar.gz");
-    let manifest =
-        write_manifest_with_memory(&dir, &[], None, Some((mount.to_str().unwrap(), Some(&url))))
-            .unwrap();
-
-    let result = guest_download::run(manifest.to_str().unwrap());
-
-    assert!(result);
-    assert_eq!(
-        std::fs::read_to_string(mount.join("memory.txt")).unwrap(),
-        "memory data"
-    );
-}
-
-// ---------------------------------------------------------------------------
-// Test 17: memory 404 is non-fatal (may not exist on first run)
-// ---------------------------------------------------------------------------
-#[test]
-fn memory_404_non_fatal() {
-    let server = MockServer::start();
-
-    server.mock(|when, then| {
-        when.method(GET).path("/memory.tar.gz");
-        then.status(404);
-    });
-
-    let dir = tempfile::tempdir().unwrap();
-    let mount = dir.path().join("memory_mount");
-    let url = server.url("/memory.tar.gz");
-    let manifest =
-        write_manifest_with_memory(&dir, &[], None, Some((mount.to_str().unwrap(), Some(&url))))
-            .unwrap();
-
-    let result = guest_download::run(manifest.to_str().unwrap());
-    assert!(result);
-}
-
-// ---------------------------------------------------------------------------
-// Test 18: memory 500 is fatal (exhausts retries)
-// ---------------------------------------------------------------------------
-#[test]
-fn memory_500_fatal() {
-    let server = MockServer::start();
-
-    let mock = server.mock(|when, then| {
-        when.method(GET).path("/memory.tar.gz");
-        then.status(500);
-    });
-
-    let dir = tempfile::tempdir().unwrap();
-    let mount = dir.path().join("memory_mount");
-    let url = server.url("/memory.tar.gz");
-    let manifest =
-        write_manifest_with_memory(&dir, &[], None, Some((mount.to_str().unwrap(), Some(&url))))
-            .unwrap();
-
-    let result = guest_download::run(manifest.to_str().unwrap());
-
-    assert!(!result);
-    mock.assert_calls(3);
-}
-
-// ---------------------------------------------------------------------------
-// Test 19: memory with null/missing URL is skipped
-// ---------------------------------------------------------------------------
-#[test]
-fn memory_null_url_skipped() {
-    let dir = tempfile::tempdir().unwrap();
-    let mount = dir.path().join("memory_mount");
-
-    // archiveUrl is the string "null" — should be treated as missing
-    let manifest = write_manifest_with_memory(
-        &dir,
-        &[],
-        None,
-        Some((mount.to_str().unwrap(), Some("null"))),
-    )
-    .unwrap();
-    let result = guest_download::run(manifest.to_str().unwrap());
-    assert!(result);
-
-    // archiveUrl is absent entirely
-    let manifest =
-        write_manifest_with_memory(&dir, &[], None, Some((mount.to_str().unwrap(), None))).unwrap();
-    let result = guest_download::run(manifest.to_str().unwrap());
-    assert!(result);
-}
+// Tests 16–19 (memory download success/404/500/null-url) removed in #10602.
+// Memory no longer has a dedicated manifest slot — it rides in `artifacts[]`
+// and is covered by the artifact tests above. The top-level `memory` field
+// on the manifest is retained for wire compat and is deserialized-and-ignored;
+// that parse path has no dedicated test (#10603 removes the field entirely).
 
 // ---------------------------------------------------------------------------
 // Test 20: symlink escaping target directory is skipped

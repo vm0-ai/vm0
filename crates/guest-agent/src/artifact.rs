@@ -298,31 +298,6 @@ pub(crate) fn collect_file_metadata(dir_path: &str) -> Vec<FileEntry> {
     files
 }
 
-/// Deterministic 32-byte fingerprint of a pre-walked file set: SHA-256 over
-/// the path-sorted sequence of `(path, hash, size)` triples. Cheap — the
-/// per-file content hashing was already done by [`collect_file_metadata`].
-pub(crate) fn fingerprint_from_files(files: &[FileEntry]) -> [u8; 32] {
-    let mut sorted: Vec<&FileEntry> = files.iter().collect();
-    sorted.sort_by(|a, b| a.path.cmp(&b.path));
-    let mut hasher = Sha256::new();
-    for f in &sorted {
-        hasher.update(f.path.as_bytes());
-        hasher.update(b"\0");
-        hasher.update(f.hash.as_bytes());
-        hasher.update(b"\0");
-        hasher.update(f.size.to_le_bytes());
-        hasher.update(b"\0");
-    }
-    hasher.finalize().into()
-}
-
-/// Convenience: walk `dir_path` and compute its fingerprint. Equivalent to
-/// `fingerprint_from_files(&collect_file_metadata(dir_path))`, used at boot
-/// time where there's no snapshot upload to share the walk with.
-pub(crate) fn compute_directory_fingerprint(dir_path: &str) -> [u8; 32] {
-    fingerprint_from_files(&collect_file_metadata(dir_path))
-}
-
 fn walk_dir(current: &str, relative: &str, out: &mut Vec<FileEntry>) {
     let entries = match std::fs::read_dir(current) {
         Ok(e) => e,
@@ -685,89 +660,5 @@ mod tests {
     fn collect_file_metadata_nonexistent_dir() {
         let files = collect_file_metadata("/nonexistent/path/that/does/not/exist");
         assert!(files.is_empty());
-    }
-
-    #[test]
-    fn fingerprint_stable_for_identical_content() {
-        let a = tempfile::tempdir().unwrap();
-        let b = tempfile::tempdir().unwrap();
-        std::fs::write(a.path().join("m.md"), "hello").unwrap();
-        std::fs::write(b.path().join("m.md"), "hello").unwrap();
-        let fa = compute_directory_fingerprint(a.path().to_str().unwrap());
-        let fb = compute_directory_fingerprint(b.path().to_str().unwrap());
-        assert_eq!(fa, fb);
-    }
-
-    #[test]
-    fn fingerprint_changes_on_content_edit() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("m.md"), "v1").unwrap();
-        let f1 = compute_directory_fingerprint(dir.path().to_str().unwrap());
-        std::fs::write(dir.path().join("m.md"), "v2-edited").unwrap();
-        let f2 = compute_directory_fingerprint(dir.path().to_str().unwrap());
-        assert_ne!(f1, f2);
-    }
-
-    #[test]
-    fn fingerprint_changes_on_file_added() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("m.md"), "same").unwrap();
-        let f1 = compute_directory_fingerprint(dir.path().to_str().unwrap());
-        std::fs::write(dir.path().join("extra.md"), "new").unwrap();
-        let f2 = compute_directory_fingerprint(dir.path().to_str().unwrap());
-        assert_ne!(f1, f2);
-    }
-
-    #[test]
-    fn fingerprint_changes_on_file_removed() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("a.md"), "x").unwrap();
-        std::fs::write(dir.path().join("b.md"), "y").unwrap();
-        let f1 = compute_directory_fingerprint(dir.path().to_str().unwrap());
-        std::fs::remove_file(dir.path().join("b.md")).unwrap();
-        let f2 = compute_directory_fingerprint(dir.path().to_str().unwrap());
-        assert_ne!(f1, f2);
-    }
-
-    #[test]
-    fn fingerprint_ignores_git_and_vm0() {
-        let with_extras = tempfile::tempdir().unwrap();
-        let without = tempfile::tempdir().unwrap();
-        std::fs::write(with_extras.path().join("m.md"), "same").unwrap();
-        std::fs::create_dir(with_extras.path().join(".git")).unwrap();
-        std::fs::write(with_extras.path().join(".git/HEAD"), "x").unwrap();
-        std::fs::create_dir(with_extras.path().join(".vm0")).unwrap();
-        std::fs::write(with_extras.path().join(".vm0/cfg"), "y").unwrap();
-        std::fs::write(without.path().join("m.md"), "same").unwrap();
-        assert_eq!(
-            compute_directory_fingerprint(with_extras.path().to_str().unwrap()),
-            compute_directory_fingerprint(without.path().to_str().unwrap()),
-        );
-    }
-
-    #[test]
-    fn fingerprint_empty_dir_matches_nonexistent() {
-        let dir = tempfile::tempdir().unwrap();
-        let fp_empty = compute_directory_fingerprint(dir.path().to_str().unwrap());
-        let fp_missing = compute_directory_fingerprint("/nonexistent/for/fingerprint");
-        assert_eq!(fp_empty, fp_missing);
-    }
-
-    #[test]
-    fn fingerprint_order_independent() {
-        // `walk_dir` uses filesystem order, which isn't guaranteed. The
-        // fingerprint sorts by path before hashing — verify that matters by
-        // checking two sets with the same content produce the same hash even
-        // if created in different orders.
-        let a = tempfile::tempdir().unwrap();
-        let b = tempfile::tempdir().unwrap();
-        std::fs::write(a.path().join("z.md"), "last").unwrap();
-        std::fs::write(a.path().join("a.md"), "first").unwrap();
-        std::fs::write(b.path().join("a.md"), "first").unwrap();
-        std::fs::write(b.path().join("z.md"), "last").unwrap();
-        assert_eq!(
-            compute_directory_fingerprint(a.path().to_str().unwrap()),
-            compute_directory_fingerprint(b.path().to_str().unwrap()),
-        );
     }
 }

@@ -5,7 +5,6 @@ use crate::constants;
 use crate::env;
 use crate::error::AgentError;
 use crate::http;
-use crate::memory;
 use crate::paths;
 use crate::urls;
 use bytes::Bytes;
@@ -18,22 +17,14 @@ use std::path::Path;
 const LOG_TAG: &str = "sandbox:guest-agent";
 
 /// Create a checkpoint after a successful run.
-///
-/// `memory_boot_fp` is the memory-mount fingerprint captured at init time. If
-/// it's still equal to the current fingerprint, the memory content is
-/// unchanged and the storages/prepare+commit round-trips can be skipped.
-pub async fn create_checkpoint(
-    memory_boot_fp: &memory::MemoryBootFingerprint,
-) -> Result<(), AgentError> {
+pub async fn create_checkpoint() -> Result<(), AgentError> {
     let start = std::time::Instant::now();
-    let result = create_checkpoint_impl(memory_boot_fp).await;
+    let result = create_checkpoint_impl().await;
     record_sandbox_op("checkpoint_total", start.elapsed(), result.is_ok(), None);
     result
 }
 
-async fn create_checkpoint_impl(
-    memory_boot_fp: &memory::MemoryBootFingerprint,
-) -> Result<(), AgentError> {
+async fn create_checkpoint_impl() -> Result<(), AgentError> {
     log_info!(LOG_TAG, "Creating checkpoint...");
 
     // Read session ID
@@ -235,30 +226,17 @@ async fn create_checkpoint_impl(
         log_info!(LOG_TAG, "Session history uploaded to S3");
     }
 
-    // Validate memory driver before starting parallel snapshot creation.
-    // Driver validation uses early return, which cannot be done inside async blocks.
-    let has_memory = !env::memory_driver().is_empty() && !env::memory_name().is_empty();
-    if has_memory && env::memory_driver() != "vas" {
-        return Err(AgentError::Checkpoint(format!(
-            "Unknown memory driver: {} (only 'vas' is supported)",
-            env::memory_driver()
-        )));
-    }
-
-    // Create artifact and memory snapshots in parallel (independent directories + APIs).
-    let (artifact_snapshots, memory_snapshot) = tokio::join!(
-        async {
-            // Loop over all configured artifacts and snapshot each one in turn.
-            // Returns a map of {artifactName -> versionId} — the new
-            // `artifactSnapshots` shape. Empty list → None (no field emitted).
-            let entries = env::artifacts();
-            if entries.is_empty() {
-                log_info!(
-                    LOG_TAG,
-                    "No artifact configured, creating checkpoint without artifact snapshot"
-                );
-                return Ok::<_, AgentError>(None);
-            }
+    // Snapshot all configured artifacts. Memory rides in env::artifacts()
+    // post-#10602, so there is no longer a separate memory arm.
+    let artifact_snapshots: Option<serde_json::Map<String, serde_json::Value>> = {
+        let entries = env::artifacts();
+        if entries.is_empty() {
+            log_info!(
+                LOG_TAG,
+                "No artifact configured, creating checkpoint without artifact snapshot"
+            );
+            None
+        } else {
             let mut results = serde_json::Map::new();
             for entry in entries {
                 log_info!(
@@ -289,85 +267,9 @@ async fn create_checkpoint_impl(
                     serde_json::Value::String(snapshot.version_id),
                 );
             }
-            Ok(Some(results))
-        },
-        async {
-            if !has_memory {
-                return Ok::<_, AgentError>(None);
-            }
-            if !Path::new(env::memory_mount_path()).exists() {
-                log_info!(
-                    LOG_TAG,
-                    "Memory directory does not exist, skipping memory snapshot"
-                );
-                return Ok(None);
-            }
-            // Walk once. If the fingerprint matches the boot snapshot and we
-            // have a parent version to echo, the memory content is
-            // byte-identical to what the sandbox booted with — the server's
-            // HEAD already represents this exact state, so the storages
-            // /prepare + /commit round-trips (~1s combined) would be a pure
-            // no-op. Skip them and echo the parent `memory_version_id` so
-            // `agentSession.memoryName` stays associated for future resumes.
-            // Covers:
-            //   - "never used memory" (empty at boot, empty now)
-            //   - "memory preserved verbatim" (N files at boot, same N files now)
-            //   - "write-then-delete / edit-then-revert" (end state matches boot)
-            // The `memory_version_id` non-empty guard ensures the skip
-            // payload's shape matches the normal path (a real version hash).
-            // Wipe, partial-edit, and first-run-without-parent fall through
-            // to create_snapshot with the pre-walked files (no second walk).
-            let files = artifact::walk_files(env::memory_mount_path()).await?;
-            let skip_check_start = std::time::Instant::now();
-            if let Some(boot_fp) = memory_boot_fp.as_ref()
-                && !env::memory_version_id().is_empty()
-                && &artifact::fingerprint_from_files(&files) == boot_fp
-            {
-                log_info!(
-                    LOG_TAG,
-                    "Memory unchanged since boot, skipping storage API calls"
-                );
-                record_sandbox_op(
-                    "memory_snapshot_skipped",
-                    skip_check_start.elapsed(),
-                    true,
-                    None,
-                );
-                return Ok(Some(json!({
-                    "memoryName": env::memory_name(),
-                    "memoryVersion": env::memory_version_id(),
-                })));
-            }
-            log_info!(
-                LOG_TAG,
-                "Creating VAS snapshot for memory '{}' at {}",
-                env::memory_name(),
-                env::memory_mount_path()
-            );
-            let snapshot = artifact::create_snapshot(
-                env::memory_mount_path(),
-                files,
-                env::memory_name(),
-                "memory",
-                env::run_id(),
-                &format!("Memory checkpoint from run {}", env::run_id()),
-                env::memory_version_id(),
-            )
-            .await?;
-            log_info!(
-                LOG_TAG,
-                "VAS memory snapshot created: {}@{}",
-                env::memory_name(),
-                snapshot.version_id
-            );
-            Ok(Some(json!({
-                "memoryName": env::memory_name(),
-                "memoryVersion": snapshot.version_id,
-            })))
-        },
-    );
-    let artifact_snapshots = artifact_snapshots?;
-    let memory_snapshot = memory_snapshot?;
+            Some(results)
+        }
+    };
 
     // Build and send checkpoint payload (session history hash only, content uploaded to S3)
     let mut payload = json!({
@@ -400,12 +302,6 @@ async fn create_checkpoint_impl(
             "artifactSnapshots".to_string(),
             serde_json::Value::Object(snaps),
         );
-    }
-
-    if let Some(snap) = memory_snapshot
-        && let Some(obj) = payload.as_object_mut()
-    {
-        obj.insert("memorySnapshot".to_string(), snap);
     }
 
     log_info!(LOG_TAG, "Calling checkpoint API...");

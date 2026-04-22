@@ -2061,8 +2061,11 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(artifact).toBeDefined();
       expect(artifact!.userId).toBe(user.userId);
 
-      // Verify memory storage was created in the compose's org
-      const memory = await findTestStorage(user.orgId, "memory", "memory");
+      // Verify memory storage was created in the compose's org. Post-#10602,
+      // memory flows through artifacts[] and is auto-created as type='artifact'
+      // (the legacy type='memory' branch was removed when infra folded memory
+      // into the artifacts pipeline).
+      const memory = await findTestStorage(user.orgId, "memory", "artifact");
       expect(memory).toBeDefined();
       expect(memory!.userId).toBe(user.userId);
     });

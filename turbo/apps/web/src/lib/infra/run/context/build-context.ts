@@ -1,7 +1,11 @@
 import { expandEnvironmentFromCompose } from "../environment/expand-environment";
 import type { ExecutionContext, ResumeSession } from "../types";
 import type { ArtifactSnapshot } from "../../checkpoint/types";
-import type { AdditionalArtifact, AdditionalVolume } from "../../storage/types";
+import {
+  AUTO_MEMORY_MOUNT_PATH,
+  type AdditionalArtifact,
+  type AdditionalVolume,
+} from "../../storage/types";
 import type { Firewalls, NetworkPolicies } from "@vm0/core";
 
 interface BuildInfraContextParams {
@@ -63,6 +67,16 @@ export function buildInfraExecutionContext(
       params.secrets,
     ).environment;
 
+  // Fold memory into artifacts[] so downstream treats memory as just another
+  // artifact entry (#10602). memoryName stays on the context for session-row
+  // bookkeeping (agent_sessions.memory_name) and runner wire compat.
+  const artifacts: AdditionalArtifact[] | undefined = params.memoryName
+    ? [
+        ...(params.artifacts ?? []),
+        { name: params.memoryName, mountPath: AUTO_MEMORY_MOUNT_PATH },
+      ]
+    : params.artifacts;
+
   const context: ExecutionContext = {
     runId: params.runId,
     userId: params.userId,
@@ -77,7 +91,7 @@ export function buildInfraExecutionContext(
     sandboxToken: params.sandboxToken,
     artifactName: params.artifactName,
     artifactVersion: params.artifactVersion,
-    artifacts: params.artifacts,
+    artifacts,
     memoryName: params.memoryName,
     volumeVersions: params.volumeVersions,
     additionalVolumes: params.additionalVolumes,

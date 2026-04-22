@@ -86,17 +86,6 @@ fn load_artifacts() -> Vec<ArtifactEnv> {
 static ARTIFACTS: LazyLock<Vec<ArtifactEnv>> = LazyLock::new(load_artifacts);
 
 // ---------------------------------------------------------------------------
-// Memory
-// ---------------------------------------------------------------------------
-
-static MEMORY_DRIVER: LazyLock<String> = LazyLock::new(|| env_or_empty("VM0_MEMORY_DRIVER"));
-static MEMORY_VERSION_ID: LazyLock<String> =
-    LazyLock::new(|| env_or_empty("VM0_MEMORY_VERSION_ID"));
-static MEMORY_MOUNT_PATH: LazyLock<String> =
-    LazyLock::new(|| env_or_empty("VM0_MEMORY_MOUNT_PATH"));
-static MEMORY_NAME: LazyLock<String> = LazyLock::new(|| env_or_empty("VM0_MEMORY_NAME"));
-
-// ---------------------------------------------------------------------------
 // Public accessors
 // ---------------------------------------------------------------------------
 
@@ -144,18 +133,6 @@ pub fn use_mock_claude() -> bool {
 }
 pub fn artifacts() -> &'static [ArtifactEnv] {
     &ARTIFACTS
-}
-pub fn memory_driver() -> &'static str {
-    &MEMORY_DRIVER
-}
-pub fn memory_mount_path() -> &'static str {
-    &MEMORY_MOUNT_PATH
-}
-pub fn memory_name() -> &'static str {
-    &MEMORY_NAME
-}
-pub fn memory_version_id() -> &'static str {
-    &MEMORY_VERSION_ID
 }
 pub fn stuck_tool_timeout_secs() -> u64 {
     *STUCK_TOOL_TIMEOUT

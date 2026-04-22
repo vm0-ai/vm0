@@ -16,7 +16,11 @@ import { badRequest, notFound } from "../shared/errors";
 import { logger } from "../shared/logger";
 import type { ExecutionContext, ResumeSession } from "../infra/run/types";
 import type { ArtifactSnapshot } from "../infra/checkpoint/types";
-import type { AdditionalVolume } from "../infra/storage/types";
+import type {
+  AdditionalArtifact,
+  AdditionalVolume,
+} from "../infra/storage/types";
+import { AUTO_MEMORY_MOUNT_PATH } from "../infra/storage/types";
 import { expandEnvironmentFromCompose } from "../infra/run/environment";
 import { getUserPreferences } from "./user/user-preferences-service";
 import { getApiTokenConnectorTypes } from "./connector/connector-service";
@@ -704,6 +708,16 @@ export async function buildZeroExecutionContext(
     mergedVars,
   );
 
+  // Synthesize memory as an additional artifact mounted directly at Claude
+  // Code's auto-memory path. This replaces the guest-agent symlink bootstrap:
+  // the runner mounts memory at AUTO_MEMORY_MOUNT_PATH so Claude Code finds
+  // it without any in-sandbox symlink work. memoryName stays on the context
+  // for session-row bookkeeping (agent_sessions.memory_name). manifest.memory
+  // is always null after this — infra treats memory as just another artifact.
+  const memoryArtifacts: AdditionalArtifact[] | undefined = memoryName
+    ? [{ name: memoryName, mountPath: AUTO_MEMORY_MOUNT_PATH }]
+    : undefined;
+
   // Build final execution context
   return {
     context: {
@@ -720,6 +734,7 @@ export async function buildZeroExecutionContext(
       sandboxToken: params.sandboxToken,
       artifactName,
       artifactVersion,
+      artifacts: memoryArtifacts,
       memoryName,
       volumeVersions,
       additionalVolumes,

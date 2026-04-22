@@ -422,10 +422,6 @@ async fn run_in_sandbox(
         // and there are no paths to clean up.
         let has_work = effective.storages.iter().any(|s| s.archive_url.is_some())
             || effective.artifacts.iter().any(|a| a.archive_url.is_some())
-            || effective
-                .memory
-                .as_ref()
-                .is_some_and(|m| m.archive_url.is_some())
             || !effective.cleanup_paths.is_empty();
         if !has_work {
             info!(run_id = %context.run_id, "all storages unchanged, skipping download");
@@ -1007,14 +1003,12 @@ fn filter_unchanged_storages(
             cleanup_paths.push(prev_path.clone());
         }
     }
-    let memory = manifest
-        .memory
-        .as_ref()
-        .map(|m| filter_artifact(m, &prev.memory, &mut skipped, &mut cleanup_paths));
+    // Memory always arrives as None post-#10602 (memory flows through
+    // manifest.artifacts[]). Slot retained for wire compat, removed in #10603.
+    let memory = None;
 
     if skipped > 0 {
-        let total =
-            manifest.storages.len() + manifest.artifacts.len() + manifest.memory.iter().count();
+        let total = manifest.storages.len() + manifest.artifacts.len();
         info!(skipped, total, "filtered unchanged storage entries");
     }
 
@@ -1222,18 +1216,8 @@ fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, 
         env.insert("VM0_ARTIFACTS".into(), serialized);
     }
 
-    // Memory config
-    if let Some(manifest) = &context.storage_manifest
-        && let Some(memory) = &manifest.memory
-    {
-        env.insert("VM0_MEMORY_DRIVER".into(), "vas".into());
-        env.insert("VM0_MEMORY_MOUNT_PATH".into(), memory.mount_path.clone());
-        env.insert("VM0_MEMORY_NAME".into(), memory.vas_storage_name.clone());
-        env.insert(
-            "VM0_MEMORY_VERSION_ID".into(),
-            memory.vas_version_id.clone(),
-        );
-    }
+    // Memory now flows through VM0_ARTIFACTS (see #10602). The manifest.memory
+    // slot is retained for wire compat and is removed in #10603.
 
     // Resume session ID
     if let Some(session) = &context.resume_session {
@@ -2148,25 +2132,30 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn build_env_json_with_memory() {
+    async fn build_env_json_with_memory_as_artifact() {
+        // Post-#10602: memory rides in VM0_ARTIFACTS, not VM0_MEMORY_*.
         let mut ctx = minimal_context();
         ctx.storage_manifest = Some(StorageManifest {
             storages: vec![],
-            artifacts: vec![],
-            memory: Some(ArtifactEntry {
+            artifacts: vec![ArtifactEntry {
                 mount_path: "/memory".into(),
                 archive_url: None,
                 cached: false,
-                vas_storage_name: "project-mem".into(),
+                vas_storage_name: "memory".into(),
                 vas_version_id: "v2".into(),
-            }),
+            }],
+            memory: None,
             cleanup_paths: vec![],
         });
         let env = build_env_json(&ctx, "http://localhost");
-        assert_eq!(env.get("VM0_MEMORY_DRIVER").unwrap(), "vas");
-        assert_eq!(env.get("VM0_MEMORY_MOUNT_PATH").unwrap(), "/memory");
-        assert_eq!(env.get("VM0_MEMORY_NAME").unwrap(), "project-mem");
-        assert_eq!(env.get("VM0_MEMORY_VERSION_ID").unwrap(), "v2");
+        assert!(!env.contains_key("VM0_MEMORY_DRIVER"));
+        assert!(!env.contains_key("VM0_MEMORY_MOUNT_PATH"));
+        assert!(!env.contains_key("VM0_MEMORY_NAME"));
+        assert!(!env.contains_key("VM0_MEMORY_VERSION_ID"));
+        let artifacts = env.get("VM0_ARTIFACTS").unwrap();
+        assert!(artifacts.contains("\"memory\""));
+        assert!(artifacts.contains("\"/memory\""));
+        assert!(artifacts.contains("\"v2\""));
     }
 
     // -----------------------------------------------------------------------
@@ -3021,14 +3010,13 @@ mod tests {
                 vas_version_id: Some("v1".into()),
             }],
             artifacts: vec![art("my-art", "v1", "https://s3/v1")],
-            memory: Some(art("mem", "m1", "https://s3/m1")),
+            memory: None,
             cleanup_paths: vec![],
         };
         let prev = crate::idle_pool::StorageFingerprints::default();
         let result = filter_unchanged_storages(&manifest, &prev);
         assert!(result.storages[0].archive_url.is_some());
         assert!(result.artifacts[0].archive_url.is_some());
-        assert!(result.memory.as_ref().unwrap().archive_url.is_some());
     }
 
     #[test]
@@ -3042,7 +3030,7 @@ mod tests {
                 vas_version_id: Some("v1".into()),
             }],
             artifacts: vec![art("my-art", "v1", "https://s3/v1")],
-            memory: Some(art("mem", "m1", "https://s3/m1")),
+            memory: None,
             cleanup_paths: vec![],
         };
         let mut storages = HashMap::new();
@@ -3050,15 +3038,13 @@ mod tests {
         let prev = crate::idle_pool::StorageFingerprints {
             storages,
             artifacts: art_fp("/workspace", "my-art", "v1"),
-            memory: Some(("mem".into(), "m1".into())),
+            memory: None,
         };
         let result = filter_unchanged_storages(&manifest, &prev);
         assert!(result.storages[0].archive_url.is_none());
         assert!(result.storages[0].cached);
         assert!(result.artifacts[0].archive_url.is_none());
         assert!(result.artifacts[0].cached);
-        assert!(result.memory.as_ref().unwrap().archive_url.is_none());
-        assert!(result.memory.as_ref().unwrap().cached);
     }
 
     #[test]

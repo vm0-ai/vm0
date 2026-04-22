@@ -322,18 +322,11 @@ describe("POST /api/zero/runs", () => {
       expect(job!.executionContext.memoryName).toBe("memory");
     });
 
-    it("should not inject artifact into storage manifest", async () => {
-      const response = await postRun({ agentId, prompt: "Hello" });
-      expect(response.status).toBe(201);
-      const data = await response.json();
-      await context.mocks.flushAfter();
-
-      const job = await findTestRunnerJobEntry(data.runId);
-      expect(job).toBeDefined();
-      expect(job!.executionContext.storageManifest?.artifacts).toEqual([]);
-    });
-
-    it("should inject memory into storage manifest", async () => {
+    it("should inject memory into storage manifest artifacts", async () => {
+      // Post-#10602: memory flows through manifest.artifacts[] (not the
+      // legacy manifest.memory slot, which is now always null until #10603
+      // removes it). The single entry in artifacts is the synthesized memory
+      // mount at AUTO_MEMORY_MOUNT_PATH.
       const response = await postRun({ agentId, prompt: "Hello" });
       expect(response.status).toBe(201);
       const data = await response.json();
@@ -342,7 +335,13 @@ describe("POST /api/zero/runs", () => {
       const job = await findTestRunnerJobEntry(data.runId);
       expect(job).toBeDefined();
       expect(job!.executionContext.storageManifest).not.toBeNull();
-      expect(job!.executionContext.storageManifest!.memory).not.toBeNull();
+      expect(job!.executionContext.storageManifest!.memory).toBeNull();
+      const artifacts = job!.executionContext.storageManifest!.artifacts;
+      expect(artifacts).toHaveLength(1);
+      expect(artifacts[0]!.vasStorageName).toBe("memory");
+      expect(artifacts[0]!.mountPath).toBe(
+        "/home/user/.claude/projects/-home-user-workspace/memory",
+      );
     });
 
     it("should inject agent identity into appendSystemPrompt", async () => {

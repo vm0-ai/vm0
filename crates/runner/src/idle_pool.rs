@@ -25,7 +25,10 @@ pub struct StorageFingerprints {
     pub storages: HashMap<String, (String, String)>,
     /// mount_path → (vas_storage_name, vas_version_id) for artifacts.
     pub artifacts: HashMap<String, (String, String)>,
-    /// (vas_storage_name, vas_version_id) for memory.
+    /// Legacy slot — always `None` since #10602 (memory now folds into
+    /// `artifacts` above). Read nowhere; dropped entirely in #10603 when the
+    /// manifest's top-level `memory` field goes away.
+    #[allow(dead_code)]
     pub memory: Option<(String, String)>,
 }
 

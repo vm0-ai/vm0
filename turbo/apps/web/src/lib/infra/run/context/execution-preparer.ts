@@ -114,16 +114,14 @@ export async function prepareForExecution(
 
   const agentOrgId = agentComposeInfo.orgId;
 
-  // Auto-create artifact and memory storages if they don't exist yet.
-  // Additional artifacts are also auto-created so that first-run multi-mount
-  // callers don't have to pre-provision each storage record.
+  // Auto-create artifact storages if they don't exist yet. Memory now rides
+  // in context.artifacts (zero synthesizes it), so the memory branch is
+  // covered by the artifacts[] loop below. Infra no longer creates type=
+  // 'memory' rows — #10601 flipped existing rows to type='artifact'.
   const ensureStart = Date.now();
   await Promise.all([
     context.artifactName
       ? ensureStorageExists(orgId, userId, context.artifactName, "artifact")
-      : null,
-    context.memoryName
-      ? ensureStorageExists(orgId, userId, context.memoryName, "memory")
       : null,
     ...(context.artifacts ?? []).map((entry) => {
       return ensureStorageExists(orgId, userId, entry.name, "artifact");
@@ -146,7 +144,6 @@ export async function prepareForExecution(
     context.volumeVersions,
     context.resumeArtifact,
     workingDir,
-    context.memoryName,
     context.additionalVolumes,
     context.artifacts,
   );
