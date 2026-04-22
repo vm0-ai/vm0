@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.89.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.89.1...runner-rs-v0.89.2) (2026-04-22)
+
+
+### Bug Fixes
+
+* **runner:** close urllib response in firewall auth fetch ([#10489](https://github.com/vm0-ai/vm0/issues/10489)) ([30a80ca](https://github.com/vm0-ai/vm0/commit/30a80caf4b598eb84dc39547b11378c56c6b5412))
+
 ## [0.89.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.89.0...runner-rs-v0.89.1) (2026-04-22)
 
 

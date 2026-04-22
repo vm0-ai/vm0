@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.278.0](https://github.com/vm0-ai/vm0/compare/app-v0.277.0...app-v0.278.0) (2026-04-22)
+
+
+### Features
+
+* extend chatHeaderNewButton to mobile top bar ([#10500](https://github.com/vm0-ai/vm0/issues/10500)) ([e913bc5](https://github.com/vm0-ai/vm0/commit/e913bc53d1bdafe2f832a50b8b448e460ee2fee8))
+
 ## [0.277.0](https://github.com/vm0-ai/vm0/compare/app-v0.276.0...app-v0.277.0) (2026-04-22)
 
 
