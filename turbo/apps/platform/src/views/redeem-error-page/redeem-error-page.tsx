@@ -34,8 +34,8 @@ function resolveReason(reason: string | null): ReasonInfo {
     case "campaign_misconfigured": {
       return {
         kind: "broken",
-        title: "This campaign is misconfigured",
-        body: "We couldn't start the checkout session. The team has been notified — please try again later or contact support.",
+        title: "This offer isn't available",
+        body: "The promo code may have expired, reached its redemption limit, or been removed. If you believe this is a mistake, contact support.",
       };
     }
     default: {

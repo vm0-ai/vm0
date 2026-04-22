@@ -1,7 +1,9 @@
 import { and, eq } from "drizzle-orm";
+import Stripe from "stripe";
 import { orgPromoRedemption } from "../../../db/schema/org-promo-redemption";
 import { creditExpiresRecord } from "../../../db/schema/credit-expires-record";
 import { createOneTimeCheckoutSession } from "./billing-service";
+import { getCampaign } from "./one-time-products";
 import { getStripe } from "../stripe";
 import { logger } from "../../shared/logger";
 
@@ -131,6 +133,14 @@ async function resumeExisting(
   const session = await stripe.checkout.sessions.retrieve(stripeSessionId);
 
   if (session.status === "open" && session.url) {
+    // Re-validate the underlying coupon before handing back the cached
+    // session URL. An admin may have deleted the coupon, let it pass its
+    // `redeem_by`, or hit `max_redemptions` after the session was created —
+    // Stripe would silently keep the session "open" for 24h and only block
+    // at payment time, which is a lousy UX. On failure we expire the
+    // session, drop the dedup row, and propagate `resource_missing` so the
+    // route lands on campaign_misconfigured.
+    await ensureCampaignStillAvailable(params, stripeSessionId);
     return { kind: "redirect", url: session.url };
   }
   if (session.status === "complete") {
@@ -156,4 +166,94 @@ async function resumeExisting(
     newSessionId: fresh.sessionId,
   });
   return { kind: "redirect", url: fresh.url };
+}
+
+/**
+ * Throw a `resource_missing` StripeInvalidRequestError if the campaign's
+ * coupon is not usable right now. Covers:
+ *   - coupon was deleted in Stripe (retrieve → 404)
+ *   - coupon has `valid: false` (computed by Stripe from `redeem_by`,
+ *     `max_redemptions`, or manual invalidation)
+ *
+ * When invalid, expires the cached Stripe session and removes the dedup
+ * row so the next `/redeem` hit takes the clean create-session path and
+ * also fails cleanly at campaign_misconfigured.
+ */
+async function ensureCampaignStillAvailable(
+  params: RedemptionParams,
+  stripeSessionId: string,
+): Promise<void> {
+  const campaign = getCampaign(params.campaignKey);
+  if (!campaign) {
+    // Route already 404s if getCampaign is undefined — if we got here, env
+    // drifted mid-request. Surfacing as misconfigured is fine.
+    await cleanupStaleRedemption(params, stripeSessionId);
+    throw new Stripe.errors.StripeInvalidRequestError({
+      type: "invalid_request_error",
+      code: "resource_missing",
+      message: `Campaign ${params.campaignKey} is no longer configured`,
+    });
+  }
+
+  const stripe = getStripe();
+  let coupon;
+  try {
+    coupon = await stripe.coupons.retrieve(campaign.couponId);
+  } catch (err) {
+    if (
+      err instanceof Stripe.errors.StripeInvalidRequestError &&
+      err.code === "resource_missing"
+    ) {
+      log.warn("one_time_purchase coupon missing on resume", {
+        orgId: params.orgId,
+        campaignKey: params.campaignKey,
+        couponId: campaign.couponId,
+      });
+      await cleanupStaleRedemption(params, stripeSessionId);
+    }
+    throw err;
+  }
+
+  if (!coupon.valid) {
+    log.warn("one_time_purchase coupon no longer valid on resume", {
+      orgId: params.orgId,
+      campaignKey: params.campaignKey,
+      couponId: campaign.couponId,
+      redeemBy: coupon.redeem_by,
+      maxRedemptions: coupon.max_redemptions,
+      timesRedeemed: coupon.times_redeemed,
+    });
+    await cleanupStaleRedemption(params, stripeSessionId);
+    throw new Stripe.errors.StripeInvalidRequestError({
+      type: "invalid_request_error",
+      code: "resource_missing",
+      message: `Coupon ${campaign.couponId} is no longer valid (expired, maxed out, or disabled)`,
+    });
+  }
+}
+
+async function cleanupStaleRedemption(
+  params: RedemptionParams,
+  stripeSessionId: string,
+): Promise<void> {
+  const db = globalThis.services.db;
+  const stripe = getStripe();
+  // Expire the Stripe session first so it stops showing up in dashboard
+  // listings; failure to expire is non-fatal (session will 24h itself).
+  try {
+    await stripe.checkout.sessions.expire(stripeSessionId);
+  } catch (err) {
+    log.warn("failed to expire stale stripe session", {
+      sessionId: stripeSessionId,
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
+  await db
+    .delete(orgPromoRedemption)
+    .where(
+      and(
+        eq(orgPromoRedemption.orgId, params.orgId),
+        eq(orgPromoRedemption.campaignKey, params.campaignKey),
+      ),
+    );
 }

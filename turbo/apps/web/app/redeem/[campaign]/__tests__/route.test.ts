@@ -21,6 +21,7 @@ const stripeMocks = vi.hoisted(() => {
     checkoutSessionsRetrieve: vi.fn(),
     checkoutSessionsExpire: vi.fn(),
     customersCreate: vi.fn(),
+    couponsRetrieve: vi.fn(),
   };
 });
 
@@ -41,6 +42,7 @@ vi.mock("stripe", async (importOriginal) => {
           },
         },
         customers: { create: stripeMocks.customersCreate },
+        coupons: { retrieve: stripeMocks.couponsRetrieve },
         subscriptions: { retrieve: vi.fn() },
         invoices: { list: vi.fn() },
         billingPortal: { sessions: { create: vi.fn() } },
@@ -85,10 +87,17 @@ describe("GET /redeem/[campaign]", () => {
     stripeMocks.checkoutSessionsRetrieve.mockReset();
     stripeMocks.checkoutSessionsExpire.mockReset();
     stripeMocks.customersCreate.mockReset();
+    stripeMocks.couponsRetrieve.mockReset();
 
     // If tests seed a Stripe customer on the org, customers.create shouldn't be
     // called; but default the fallback to a known id just in case.
     stripeMocks.customersCreate.mockResolvedValue({ id: "cus_test" });
+    // Default: coupon is live and valid. Resume-branch tests can override
+    // this to simulate deletion / expiry / max_redemptions.
+    stripeMocks.couponsRetrieve.mockResolvedValue({
+      id: COUPON_ID,
+      valid: true,
+    });
   });
 
   it("redirects unauthenticated users to /sign-in with round-trip redirect_url", async () => {
@@ -245,6 +254,86 @@ describe("GET /redeem/[campaign]", () => {
       "https://stripe.test/checkout/cs_open_1",
     );
     expect(stripeMocks.checkoutSessionsCreate).not.toHaveBeenCalled();
+  });
+
+  it("drops the cached session and redirects to campaign_misconfigured when the coupon was deleted", async () => {
+    await updateOrgStripeFields(user.orgId, {
+      stripeCustomerId: uniqueId("cus"),
+    });
+    await insertOrgPromoRedemption({
+      orgId: user.orgId,
+      campaignKey: CAMPAIGN,
+      stripeSessionId: "cs_open_stale",
+    });
+    stripeMocks.checkoutSessionsRetrieve.mockResolvedValue({
+      id: "cs_open_stale",
+      status: "open",
+      url: "https://stripe.test/checkout/cs_open_stale",
+    });
+    stripeMocks.couponsRetrieve.mockRejectedValue(
+      new Stripe.errors.StripeInvalidRequestError({
+        type: "invalid_request_error",
+        message: `No such coupon: '${COUPON_ID}'`,
+        code: "resource_missing",
+      }),
+    );
+
+    const response = await GET(createTestRequest(REDEEM_URL), {
+      params: params(CAMPAIGN),
+    });
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toContain(
+      "/redeem/error?reason=campaign_misconfigured",
+    );
+    expect(stripeMocks.checkoutSessionsExpire).toHaveBeenCalledWith(
+      "cs_open_stale",
+    );
+    const row = await findOrgPromoRedemption({
+      orgId: user.orgId,
+      campaignKey: CAMPAIGN,
+    });
+    expect(row).toBeUndefined();
+  });
+
+  it("drops the cached session and redirects to campaign_misconfigured when the coupon is no longer valid", async () => {
+    await updateOrgStripeFields(user.orgId, {
+      stripeCustomerId: uniqueId("cus"),
+    });
+    await insertOrgPromoRedemption({
+      orgId: user.orgId,
+      campaignKey: CAMPAIGN,
+      stripeSessionId: "cs_open_invalid",
+    });
+    stripeMocks.checkoutSessionsRetrieve.mockResolvedValue({
+      id: "cs_open_invalid",
+      status: "open",
+      url: "https://stripe.test/checkout/cs_open_invalid",
+    });
+    // Stripe computes `valid: false` when `redeem_by` has passed,
+    // `max_redemptions` is reached, or the coupon is manually disabled.
+    stripeMocks.couponsRetrieve.mockResolvedValue({
+      id: COUPON_ID,
+      valid: false,
+      redeem_by: Math.floor(Date.now() / 1000) - 60,
+    });
+
+    const response = await GET(createTestRequest(REDEEM_URL), {
+      params: params(CAMPAIGN),
+    });
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toContain(
+      "/redeem/error?reason=campaign_misconfigured",
+    );
+    expect(stripeMocks.checkoutSessionsExpire).toHaveBeenCalledWith(
+      "cs_open_invalid",
+    );
+    const row = await findOrgPromoRedemption({
+      orgId: user.orgId,
+      campaignKey: CAMPAIGN,
+    });
+    expect(row).toBeUndefined();
   });
 
   it("rotates to a new Stripe session when the existing one has expired", async () => {
