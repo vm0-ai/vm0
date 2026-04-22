@@ -225,21 +225,11 @@ fn parse_log_message(message: &str) -> Option<LogEntry> {
 
 /// Extract a value for a `KEY=value` field from an iptables log line.
 ///
-/// Matches `KEY=` only at the start of the string or after a space,
-/// preventing false matches on suffixes (e.g. `DSCP=` matching `SCP=`).
+/// Matches `KEY=` only at a whitespace-delimited token boundary, preventing
+/// false matches on suffixes (e.g. `DSCP=` matching `SCP=`).
 fn extract_field<'a>(line: &'a str, key: &str) -> Option<&'a str> {
-    let start = if line.starts_with(key) {
-        key.len()
-    } else {
-        let needle = format!(" {key}");
-        let pos = line.find(&needle)?;
-        pos + needle.len()
-    };
-    let end = line
-        .get(start..)?
-        .find(' ')
-        .map_or(line.len(), |i| start + i);
-    line.get(start..end)
+    line.split_whitespace()
+        .find_map(|tok| tok.strip_prefix(key))
 }
 
 /// Append a JSON line to the network log file.
