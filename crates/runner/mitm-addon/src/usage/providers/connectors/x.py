@@ -319,7 +319,7 @@ def _compute_billable_counts(method: str, req_meta: dict, resp_meta: dict, endpo
 
     Returns a dict mapping firewall permission name → resource count.
     Keys are always existing X firewall permissions so the server's
-    ``credit_pricing`` table doesn't need separate entries for expansion
+    usage pricing table doesn't need separate entries for expansion
     resources.
 
     Writes (non-GET) always count as ``{endpoint: 1}`` regardless of

@@ -543,7 +543,7 @@ export const webhookUsageEventContract = c.router({
     body: z.object({
       runId: z.string().min(1, "runId is required"),
       idempotencyKey: z.uuid(),
-      kind: z.string().min(1).max(30),
+      kind: z.enum(["connector"]),
       provider: z.string().min(1).max(100),
       category: z.string().min(1).max(100),
       quantity: z.number().int().min(0),
