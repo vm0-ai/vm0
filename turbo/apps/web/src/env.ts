@@ -235,6 +235,14 @@ function initEnv() {
       AGENTPHONE_API_KEY: z.string().min(1).optional(),
       // Plain.com (developer support thread creation) — optional, falls back to email
       PLAIN_API_KEY: z.string().min(1).optional(),
+      // Gemini via Vertex AI (Vercel OIDC → GCP Workload Identity Federation)
+      // All five must be set together for the /api/generate-image route to work.
+      // Only wired into production deploys; preview/dev are intentionally unbound.
+      GCP_PROJECT_ID: z.string().min(1).optional(),
+      GCP_PROJECT_NUMBER: z.string().min(1).optional(),
+      GCP_SERVICE_ACCOUNT_EMAIL: z.string().min(1).optional(),
+      GCP_WORKLOAD_IDENTITY_POOL_ID: z.string().min(1).optional(),
+      GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID: z.string().min(1).optional(),
     },
     client: {
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: z.string().min(1),
@@ -397,6 +405,12 @@ function initEnv() {
         process.env.VERCEL_AUTOMATION_BYPASS_SECRET,
       AGENTPHONE_API_KEY: process.env.AGENTPHONE_API_KEY,
       PLAIN_API_KEY: process.env.PLAIN_API_KEY,
+      GCP_PROJECT_ID: process.env.GCP_PROJECT_ID,
+      GCP_PROJECT_NUMBER: process.env.GCP_PROJECT_NUMBER,
+      GCP_SERVICE_ACCOUNT_EMAIL: process.env.GCP_SERVICE_ACCOUNT_EMAIL,
+      GCP_WORKLOAD_IDENTITY_POOL_ID: process.env.GCP_WORKLOAD_IDENTITY_POOL_ID,
+      GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID:
+        process.env.GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID,
 
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:
         process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
