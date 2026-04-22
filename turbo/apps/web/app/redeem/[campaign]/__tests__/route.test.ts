@@ -199,6 +199,11 @@ describe("GET /redeem/[campaign]", () => {
         mode: "payment",
         line_items: [{ price: PRICE_ID, quantity: 1 }],
         discounts: [{ coupon: COUPON_ID }],
+        // Stripe returns to the platform app (NEXT_PUBLIC_APP_URL), never
+        // back to the web origin — so localhost dev entry still lands on the
+        // real dashboard after payment.
+        success_url: "http://app.localhost:3002/",
+        cancel_url: "http://app.localhost:3002/",
         metadata: {
           orgId: user.orgId,
           campaignKey: CAMPAIGN,

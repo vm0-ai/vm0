@@ -78,14 +78,19 @@ export async function GET(
       return NextResponse.redirect(errorPage("admin_required"));
     }
 
-    const homeUrl = new URL("/", origin).toString();
+    // Stripe success/cancel always return to the platform app, not the web
+    // origin. Credits are visible in the app dashboard, and using the env
+    // URL means devs hitting localhost:3000/redeem/... still end up on the
+    // real platform after payment instead of bouncing to a local marketing
+    // page.
+    const appHome = new URL("/", NEXT_PUBLIC_APP_URL).toString();
     let outcome;
     try {
       outcome = await startOrResumeRedemption({
         orgId,
         campaignKey,
-        successUrl: homeUrl,
-        cancelUrl: homeUrl,
+        successUrl: appHome,
+        cancelUrl: appHome,
       });
     } catch (err) {
       // Config drift: env points at a priceId/couponId Stripe doesn't have.
