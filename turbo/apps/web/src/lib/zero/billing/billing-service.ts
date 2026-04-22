@@ -1002,12 +1002,7 @@ export async function getBillingStatus(orgId: string): Promise<{
     expiringNextCycle: number;
     nextExpiryDate: Date | null;
   };
-  creditBreakdown: Array<{
-    category: CreditBreakdownCategory;
-    label: string;
-    credits: number;
-    tier?: "pro" | "team";
-  }>;
+  creditBreakdown: CreditBreakdownSegment[];
 }> {
   const db = globalThis.services.db;
   const [org] = await db
