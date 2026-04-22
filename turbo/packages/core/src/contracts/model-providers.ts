@@ -85,7 +85,6 @@ export const VM0_MODEL_TO_PROVIDER: Record<string, Vm0ModelConfig> = {
   "deepseek-chat": {
     concreteType: "deepseek-api-key",
     vendor: "deepseek",
-    featureFlag: FeatureSwitchKey.Vm0DeepseekModel,
   },
 };
 
