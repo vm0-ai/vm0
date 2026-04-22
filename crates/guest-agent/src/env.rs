@@ -51,16 +51,34 @@ static STUCK_TOOL_TIMEOUT: LazyLock<u64> = LazyLock::new(|| {
 });
 
 // ---------------------------------------------------------------------------
-// Artifact
+// Artifacts (multi-mount)
+//
+// The runner emits a single `VM0_ARTIFACTS` env var containing a JSON array
+// of `{name, mountPath, versionId}` entries — one per artifact mounted at
+// boot. If the env var is unset or empty, there are no artifacts.
 // ---------------------------------------------------------------------------
 
-static ARTIFACT_DRIVER: LazyLock<String> = LazyLock::new(|| env_or_empty("VM0_ARTIFACT_DRIVER"));
-static ARTIFACT_VERSION_ID: LazyLock<String> =
-    LazyLock::new(|| env_or_empty("VM0_ARTIFACT_VERSION_ID"));
-static ARTIFACT_MOUNT_PATH: LazyLock<String> =
-    LazyLock::new(|| env_or_empty("VM0_ARTIFACT_MOUNT_PATH"));
-static ARTIFACT_VOLUME_NAME: LazyLock<String> =
-    LazyLock::new(|| env_or_empty("VM0_ARTIFACT_VOLUME_NAME"));
+#[derive(Clone, Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArtifactEnv {
+    pub name: String,
+    pub mount_path: String,
+    pub version_id: String,
+}
+
+static ARTIFACTS: LazyLock<Vec<ArtifactEnv>> = LazyLock::new(|| {
+    let raw = std::env::var("VM0_ARTIFACTS").unwrap_or_default();
+    if raw.is_empty() {
+        return Vec::new();
+    }
+    match serde_json::from_str::<Vec<ArtifactEnv>>(&raw) {
+        Ok(list) => list,
+        Err(err) => {
+            eprintln!("[WARN] VM0_ARTIFACTS is not valid JSON ({err}), treating as empty");
+            Vec::new()
+        }
+    }
+});
 
 // ---------------------------------------------------------------------------
 // Memory
@@ -119,17 +137,8 @@ pub fn settings() -> &'static str {
 pub fn use_mock_claude() -> bool {
     *USE_MOCK_CLAUDE
 }
-pub fn artifact_driver() -> &'static str {
-    &ARTIFACT_DRIVER
-}
-pub fn artifact_mount_path() -> &'static str {
-    &ARTIFACT_MOUNT_PATH
-}
-pub fn artifact_volume_name() -> &'static str {
-    &ARTIFACT_VOLUME_NAME
-}
-pub fn artifact_version_id() -> &'static str {
-    &ARTIFACT_VERSION_ID
+pub fn artifacts() -> &'static [ArtifactEnv] {
+    &ARTIFACTS
 }
 pub fn memory_driver() -> &'static str {
     &MEMORY_DRIVER

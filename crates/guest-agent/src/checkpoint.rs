@@ -235,18 +235,9 @@ async fn create_checkpoint_impl(
         log_info!(LOG_TAG, "Session history uploaded to S3");
     }
 
-    // Validate drivers before starting parallel snapshot creation.
+    // Validate memory driver before starting parallel snapshot creation.
     // Driver validation uses early return, which cannot be done inside async blocks.
-    let has_artifact =
-        !env::artifact_driver().is_empty() && !env::artifact_volume_name().is_empty();
     let has_memory = !env::memory_driver().is_empty() && !env::memory_name().is_empty();
-
-    if has_artifact && env::artifact_driver() != "vas" {
-        return Err(AgentError::Checkpoint(format!(
-            "Unknown artifact driver: {} (only 'vas' is supported)",
-            env::artifact_driver()
-        )));
-    }
     if has_memory && env::memory_driver() != "vas" {
         return Err(AgentError::Checkpoint(format!(
             "Unknown memory driver: {} (only 'vas' is supported)",
@@ -255,42 +246,50 @@ async fn create_checkpoint_impl(
     }
 
     // Create artifact and memory snapshots in parallel (independent directories + APIs).
-    let (artifact_snapshot, memory_snapshot) = tokio::join!(
+    let (artifact_snapshots, memory_snapshot) = tokio::join!(
         async {
-            if !has_artifact {
+            // Loop over all configured artifacts and snapshot each one in turn.
+            // Returns a map of {artifactName -> versionId} — the new
+            // `artifactSnapshots` shape. Empty list → None (no field emitted).
+            let entries = env::artifacts();
+            if entries.is_empty() {
                 log_info!(
                     LOG_TAG,
                     "No artifact configured, creating checkpoint without artifact snapshot"
                 );
                 return Ok::<_, AgentError>(None);
             }
-            log_info!(
-                LOG_TAG,
-                "Creating VAS snapshot for artifact '{}' at {}",
-                env::artifact_volume_name(),
-                env::artifact_mount_path()
-            );
-            let files = artifact::walk_files(env::artifact_mount_path()).await?;
-            let snapshot = artifact::create_snapshot(
-                env::artifact_mount_path(),
-                files,
-                env::artifact_volume_name(),
-                "artifact",
-                env::run_id(),
-                &format!("Checkpoint from run {}", env::run_id()),
-                env::artifact_version_id(),
-            )
-            .await?;
-            log_info!(
-                LOG_TAG,
-                "VAS artifact snapshot created: {}@{}",
-                env::artifact_volume_name(),
-                snapshot.version_id
-            );
-            Ok(Some(json!({
-                "artifactName": env::artifact_volume_name(),
-                "artifactVersion": snapshot.version_id,
-            })))
+            let mut results = serde_json::Map::new();
+            for entry in entries {
+                log_info!(
+                    LOG_TAG,
+                    "Creating VAS snapshot for artifact '{}' at {}",
+                    entry.name,
+                    entry.mount_path
+                );
+                let files = artifact::walk_files(&entry.mount_path).await?;
+                let snapshot = artifact::create_snapshot(
+                    &entry.mount_path,
+                    files,
+                    &entry.name,
+                    "artifact",
+                    env::run_id(),
+                    &format!("Checkpoint from run {}", env::run_id()),
+                    &entry.version_id,
+                )
+                .await?;
+                log_info!(
+                    LOG_TAG,
+                    "VAS artifact snapshot created: {}@{}",
+                    entry.name,
+                    snapshot.version_id
+                );
+                results.insert(
+                    entry.name.clone(),
+                    serde_json::Value::String(snapshot.version_id),
+                );
+            }
+            Ok(Some(results))
         },
         async {
             if !has_memory {
@@ -367,7 +366,7 @@ async fn create_checkpoint_impl(
             })))
         },
     );
-    let artifact_snapshot = artifact_snapshot?;
+    let artifact_snapshots = artifact_snapshots?;
     let memory_snapshot = memory_snapshot?;
 
     // Build and send checkpoint payload (session history hash only, content uploaded to S3)
@@ -378,10 +377,29 @@ async fn create_checkpoint_impl(
         "cliAgentSessionHistoryHash": history_hash,
     });
 
-    if let Some(snap) = artifact_snapshot
+    if let Some(snaps) = artifact_snapshots
         && let Some(obj) = payload.as_object_mut()
     {
-        obj.insert("artifactSnapshot".to_string(), snap);
+        // Legacy single-entry compat: if exactly one artifact was snapshotted,
+        // also emit the old `artifactSnapshot: {artifactName, artifactVersion}`
+        // shape so the server's double-write path (which reads the legacy
+        // column on resume) stays populated. Multi-artifact checkpoints omit
+        // the legacy field since it cannot represent N entries.
+        if snaps.len() == 1
+            && let Some((name, version)) = snaps.iter().next()
+        {
+            obj.insert(
+                "artifactSnapshot".to_string(),
+                json!({
+                    "artifactName": name,
+                    "artifactVersion": version,
+                }),
+            );
+        }
+        obj.insert(
+            "artifactSnapshots".to_string(),
+            serde_json::Value::Object(snaps),
+        );
     }
 
     if let Some(snap) = memory_snapshot
