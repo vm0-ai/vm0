@@ -11,6 +11,7 @@ import {
   expireCredits,
   getExpiresRecordsSummary,
   getUnsettledExpiredAmount,
+  getCreditBreakdownRecords,
 } from "../credit/credit-expires-service";
 import { getCampaign } from "./one-time-products";
 import { ensureStarterCreditGrant } from "../credit/starter-grant-service";
@@ -860,6 +861,7 @@ export async function getBillingStatus(orgId: string): Promise<{
     expiringNextCycle: number;
     nextExpiryDate: Date | null;
   };
+  creditBreakdown: Array<{ category: string; label: string; credits: number }>;
 }> {
   const db = globalThis.services.db;
   const [org] = await db
@@ -878,18 +880,79 @@ export async function getBillingStatus(orgId: string): Promise<{
     .where(eq(orgMetadata.orgId, orgId))
     .limit(1);
 
-  const expirySummary = await getExpiresRecordsSummary(orgId);
+  const [expirySummary, unsettledExpired, records] = await Promise.all([
+    getExpiresRecordsSummary(orgId),
+    getUnsettledExpiredAmount(orgId),
+    getCreditBreakdownRecords(orgId),
+  ]);
 
-  // Subtract not-yet-settled expired credits so the displayed balance matches
-  // what the user can actually spend. Dormant non-subscription orgs never hit
-  // `expireCredits` until their next run, so the raw `credits` column can be
-  // inflated until then — this keeps the UI honest in the meantime.
-  const unsettledExpired = await getUnsettledExpiredAmount(orgId);
   const rawCredits = org?.credits ?? 0;
   const displayedCredits = Math.max(rawCredits - unsettledExpired, 0);
+  const tier = org?.tier ?? "free";
+
+  // Build breakdown segments from individual credit records.
+  // subscription_renewal records are matched to tier by amount.
+  const breakdown: Array<{
+    category: string;
+    label: string;
+    credits: number;
+  }> = [];
+  const planTierFromAmount = (amount: number): string => {
+    if (amount === TIER_MONTHLY_CREDITS.team) return "Team";
+    if (amount === TIER_MONTHLY_CREDITS.pro) return "Pro";
+    const name = tier.charAt(0).toUpperCase() + tier.slice(1);
+    return name;
+  };
+
+  // Accumulate by label to merge records with the same label
+  const labelCredits = new Map<
+    string,
+    { category: string; label: string; credits: number }
+  >();
+  const addSegment = (category: string, label: string, credits: number) => {
+    const existing = labelCredits.get(label);
+    if (existing) {
+      existing.credits += credits;
+    } else {
+      labelCredits.set(label, { category, label, credits });
+    }
+  };
+
+  for (const r of records) {
+    if (r.source === "subscription_renewal") {
+      const tierName = planTierFromAmount(r.amount);
+      addSegment("plan", `${tierName} plan`, r.remaining);
+    } else if (r.source === "starter_grant") {
+      addSegment("free", "Free plan", r.remaining);
+    } else if (r.source === "one_time_purchase") {
+      addSegment("promotional", "Promotional", r.remaining);
+    }
+  }
+
+  // Untracked credits (auto-recharge or legacy data)
+  const trackedTotal = records.reduce((sum, r) => sum + r.remaining, 0);
+  const untracked = Math.max(displayedCredits - trackedTotal, 0);
+  if (untracked > 0) {
+    if (tier === "free") {
+      addSegment("free", "Free plan", untracked);
+    } else {
+      addSegment("payAsYouGo", "Pay as you go", untracked);
+    }
+  }
+
+  // Order: plan entries first, then free, promotional, payAsYouGo
+  const categoryOrder = ["plan", "free", "promotional", "payAsYouGo"];
+  for (const [, seg] of labelCredits) {
+    breakdown.push(seg);
+  }
+  breakdown.sort((a, b) => {
+    return (
+      categoryOrder.indexOf(a.category) - categoryOrder.indexOf(b.category)
+    );
+  });
 
   return {
-    tier: org?.tier ?? "free",
+    tier,
     credits: displayedCredits,
     subscriptionStatus: org?.subscriptionStatus ?? null,
     currentPeriodEnd: org?.currentPeriodEnd ?? null,
@@ -901,5 +964,6 @@ export async function getBillingStatus(orgId: string): Promise<{
       amount: org?.autoRechargeAmount ?? null,
     },
     creditExpiry: expirySummary,
+    creditBreakdown: breakdown,
   };
 }

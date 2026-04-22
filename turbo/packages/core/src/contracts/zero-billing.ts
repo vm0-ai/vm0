@@ -19,6 +19,12 @@ const creditExpirySchema = z.object({
   nextExpiryDate: z.string().nullable(),
 });
 
+const creditBreakdownSegmentSchema = z.object({
+  category: z.string(),
+  label: z.string(),
+  credits: z.number(),
+});
+
 const billingStatusResponseSchema = z.object({
   tier: z.string(),
   credits: z.number(),
@@ -28,6 +34,7 @@ const billingStatusResponseSchema = z.object({
   hasSubscription: z.boolean(),
   autoRecharge: autoRechargeSchema,
   creditExpiry: creditExpirySchema,
+  creditBreakdown: z.array(creditBreakdownSegmentSchema),
 });
 
 const checkoutResponseSchema = z.object({

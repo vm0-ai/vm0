@@ -3,7 +3,6 @@ import type { NextFetchEvent } from "next/server";
 import { NextRequest, NextResponse } from "next/server";
 import {
   runLayers,
-  corsLayer,
   authRedirectLayer,
   legalRedirectLayer,
   localeGuardLayer,
@@ -81,8 +80,9 @@ const clerk = clerkMiddleware(async (auth, request: NextRequest) => {
     }
   }
 
+  // CORS for API routes is handled in the outer middleware (before Clerk),
+  // so we skip corsLayer here. Only non-API layers remain.
   return runLayers(request, [
-    corsLayer,
     authRedirectLayer,
     legalRedirectLayer,
     localeGuardLayer,
@@ -108,13 +108,12 @@ export default async function middleware(
   request: NextRequest,
   event: NextFetchEvent,
 ) {
+  const isApiRoute = request.nextUrl.pathname.startsWith("/api/");
+
   // Handle CORS preflight before Clerk — OPTIONS requests carry no credentials,
   // and Clerk may add x-middleware-next to the response which prevents Next.js
   // from returning our 200 directly.
-  if (
-    request.method === "OPTIONS" &&
-    request.nextUrl.pathname.startsWith("/api/")
-  ) {
+  if (isApiRoute && request.method === "OPTIONS") {
     return handleCors(request);
   }
 
@@ -127,7 +126,7 @@ export default async function middleware(
   // (verified server-side). Bypass Clerk middleware entirely so its session
   // detection never touches the opaque Bearer tokens it cannot parse.
   if (request.nextUrl.pathname.startsWith("/api/v1/")) {
-    return NextResponse.next();
+    return handleCors(request);
   }
 
   // Self-signed tokens (sandbox, PAT) are only consumed by /api/* endpoints.
@@ -136,8 +135,8 @@ export default async function middleware(
   // calling Clerk so auth() in server components resolves to an anonymous
   // session instead of throwing "clerkMiddleware not detected".
   if (hasSelfSignedToken) {
-    if (request.nextUrl.pathname.startsWith("/api/")) {
-      return NextResponse.next();
+    if (isApiRoute) {
+      return handleCors(request);
     }
     const scrubbedHeaders = new Headers(request.headers);
     scrubbedHeaders.delete("authorization");
@@ -147,7 +146,20 @@ export default async function middleware(
     return clerk(scrubbedRequest, event);
   }
 
-  return clerk(request, event);
+  const response = await clerk(request, event);
+
+  // Ensure CORS headers are present on all API responses, even if Clerk
+  // or an inner layer failed to set them (e.g. Clerk error, layer bypass).
+  if (isApiRoute && response) {
+    const corsResponse = handleCors(request);
+    const allowOrigin = corsResponse.headers.get("Access-Control-Allow-Origin");
+    if (allowOrigin && !response.headers.get("Access-Control-Allow-Origin")) {
+      response.headers.set("Access-Control-Allow-Origin", allowOrigin);
+      response.headers.set("Access-Control-Allow-Credentials", "true");
+    }
+  }
+
+  return response;
 }
 
 export const config = {

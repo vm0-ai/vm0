@@ -1,8 +1,14 @@
 import { useGet, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
-import type { OrgMember, MemberUsage } from "@vm0/core";
+import type { OrgMember, MemberUsage, BillingStatusResponse } from "@vm0/core";
 import { IconUsers } from "@tabler/icons-react";
 import { Input } from "@vm0/ui";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@vm0/ui/components/ui/tooltip";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { UnsavedBar } from "./unsaved-bar.tsx";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
@@ -31,6 +37,119 @@ import {
 function displayName(m: OrgMember): string {
   const parts = [m.firstName, m.lastName].filter(Boolean);
   return parts.length > 0 ? parts.join(" ") : "";
+}
+
+// ---------------------------------------------------------------------------
+// Credit breakdown bar chart
+// ---------------------------------------------------------------------------
+
+const CATEGORY_COLORS: Record<string, string> = {
+  free: "bg-[#3EB7B8]",
+  promotional: "bg-[#E88033]",
+  payAsYouGo: "bg-[#97918A]",
+};
+
+const PLAN_COLORS: Record<string, string> = {
+  "Pro plan": "bg-[#EDC43E]",
+  "Team plan": "bg-[#6B8DE3]",
+};
+
+function colorForSegment(seg: { category: string; label: string }): string {
+  if (seg.category === "plan") {
+    return PLAN_COLORS[seg.label] ?? "bg-[#EDC43E]";
+  }
+  return CATEGORY_COLORS[seg.category] ?? "bg-[#97918A]";
+}
+
+const CATEGORY_DESCRIPTIONS: Record<string, string> = {
+  free: "Starter credits, use until depleted",
+  promotional: "Campaign credits, expires after a set period",
+  payAsYouGo: "Auto-recharge credits, never expire",
+};
+
+function descriptionForSegment(
+  seg: { category: string; label: string },
+  currentTier: string,
+): string {
+  if (seg.category !== "plan") {
+    return CATEGORY_DESCRIPTIONS[seg.category] ?? "";
+  }
+  const segTier = seg.label.replace(" plan", "").toLowerCase();
+  if (segTier === currentTier) {
+    return "Monthly plan credits, resets each billing cycle";
+  }
+  return "Leftover credits from previous plan";
+}
+
+function CreditBalanceChart({ billing }: { billing: BillingStatusResponse }) {
+  const segments = billing.creditBreakdown.filter((s) => s.credits > 0);
+  const total = billing.credits;
+
+  return (
+    <div className="px-5 py-4" data-testid="credit-balance-info">
+      <p className="text-sm font-medium tabular-nums text-foreground">
+        {total.toLocaleString()}
+      </p>
+
+      {total > 0 && segments.length > 0 && (
+        <div className="mt-3 flex flex-col gap-2">
+          {/* Bar */}
+          <TooltipProvider delayDuration={100}>
+            <div className="flex h-2.5 w-full rounded-full bg-muted/40">
+              {segments.map((s, i) => {
+                const color = colorForSegment(s);
+                const desc = descriptionForSegment(s, billing.tier);
+                return (
+                  <Tooltip key={`${s.category}-${i}`}>
+                    <TooltipTrigger asChild>
+                      <div
+                        className={`h-2.5 ${color} cursor-default first:rounded-l-full last:rounded-r-full ring-0 hover:ring-2 hover:ring-foreground/30 hover:z-10 transition-shadow`}
+                        style={{
+                          width: `${(s.credits / total) * 100}%`,
+                        }}
+                      />
+                    </TooltipTrigger>
+                    <TooltipContent
+                      side="top"
+                      sideOffset={8}
+                      style={{ backgroundColor: "white", color: "inherit" }}
+                      className="border shadow-md"
+                    >
+                      <div className="font-medium text-foreground">
+                        {s.label} — {s.credits.toLocaleString()}
+                      </div>
+                      <div className="text-muted-foreground mt-0.5">{desc}</div>
+                    </TooltipContent>
+                  </Tooltip>
+                );
+              })}
+            </div>
+          </TooltipProvider>
+
+          {/* Legend */}
+          <div className="flex flex-wrap gap-x-4 gap-y-1">
+            {segments.map((s, i) => {
+              const color = colorForSegment(s);
+              return (
+                <div
+                  key={`${s.category}-${i}`}
+                  className="flex items-center gap-1.5 text-xs text-muted-foreground"
+                >
+                  <span
+                    className={`inline-block h-2 w-2 shrink-0 rounded-full ${color}`}
+                  />
+                  <span>{s.label}</span>
+                  <span className="tabular-nums">
+                    {s.credits.toLocaleString()}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -170,11 +289,7 @@ function OverviewSection() {
               <div className="h-1.5 w-full rounded-full bg-muted/40 animate-pulse" />
             </div>
           ) : billing ? (
-            <div className="px-5 py-4" data-testid="credit-balance-info">
-              <p className="text-sm font-medium tabular-nums text-foreground">
-                {billing.credits.toLocaleString()}
-              </p>
-            </div>
+            <CreditBalanceChart billing={billing} />
           ) : (
             <div className="px-5 py-4">
               <p className="text-sm text-muted-foreground">

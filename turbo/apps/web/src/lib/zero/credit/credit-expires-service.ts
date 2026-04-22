@@ -1,4 +1,4 @@
-import { eq, and, gt, lte, asc, sql } from "drizzle-orm";
+import { eq, and, gt, lte, asc, sql, sum } from "drizzle-orm";
 import { creditExpiresRecord } from "../../../db/schema/credit-expires-record";
 import { orgMetadata } from "../../../db/schema/org-metadata";
 import { logger } from "../../shared/logger";
@@ -218,4 +218,30 @@ export async function getExpiresRecordsSummary(orgId: string): Promise<{
     }, 0);
 
   return { expiringNextCycle, nextExpiryDate };
+}
+
+/**
+ * Remaining credits for active (non-expired) records, returned as individual
+ * rows so callers can distinguish subscription_renewal records from different
+ * tiers (e.g. pro=20k vs team=120k).
+ */
+export async function getCreditBreakdownRecords(
+  orgId: string,
+): Promise<Array<{ source: string; amount: number; remaining: number }>> {
+  const db = globalThis.services.db;
+
+  return db
+    .select({
+      source: creditExpiresRecord.source,
+      amount: creditExpiresRecord.amount,
+      remaining: creditExpiresRecord.remaining,
+    })
+    .from(creditExpiresRecord)
+    .where(
+      and(
+        eq(creditExpiresRecord.orgId, orgId),
+        gt(creditExpiresRecord.remaining, 0),
+        gt(creditExpiresRecord.expiresAt, new Date()),
+      ),
+    );
 }

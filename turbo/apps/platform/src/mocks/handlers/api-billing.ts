@@ -42,6 +42,9 @@ function defaultBillingStatus(): BillingStatusResponse {
       expiringNextCycle: 10_000,
       nextExpiryDate: MOCK_STARTER_GRANT_EXPIRY,
     },
+    creditBreakdown: [
+      { category: "free", label: "Free plan", credits: 10_000 },
+    ],
   };
 }
 
