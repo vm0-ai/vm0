@@ -36,11 +36,7 @@ import {
 import { authorizeConnector$ } from "../../signals/connectors-page/directed-authorize-type.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { IconCheck, IconLoader2 } from "@tabler/icons-react";
-import {
-  MinimalSidebarLayout,
-  Vm0LogoLink,
-  GoogleOAuthNotice,
-} from "./zero-directed-shared.tsx";
+import { Vm0LogoLink, GoogleOAuthNotice } from "./zero-directed-shared.tsx";
 
 function runDirectedConnect(params: {
   authMethods: string[];
@@ -341,9 +337,5 @@ function DirectedConnectCard() {
 }
 
 export function ZeroDirectedConnectPage() {
-  return (
-    <MinimalSidebarLayout>
-      <DirectedConnectCard />
-    </MinimalSidebarLayout>
-  );
+  return <DirectedConnectCard />;
 }
