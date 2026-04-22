@@ -170,8 +170,14 @@ export async function listConnectors(
         updatedAt: row.updatedAt.toISOString(),
       };
     }),
-    ...platformRows.map((row) => {
-      return platformRowToResponse(row, parseConnectorType(row.type));
+    // Platform rows are indexed by varchar, so the table can outlive a
+    // connector's removal from the contract (e.g. a type dropped from
+    // `CONNECTOR_TYPES` while stale rows remain). Silently skip unknown
+    // types instead of throwing, so the list endpoint stays usable while
+    // ops/back-office cleans up the orphan rows.
+    ...platformRows.flatMap((row) => {
+      const parsed = connectorTypeSchema.safeParse(row.type);
+      return parsed.success ? [platformRowToResponse(row, parsed.data)] : [];
     }),
   ];
 

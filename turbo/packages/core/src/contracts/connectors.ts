@@ -4941,21 +4941,6 @@ const CONNECTOR_TYPES_DEF = {
     },
     defaultAuthMethod: "api-token",
   },
-  "nano-banana": {
-    label: "Nano Banana",
-    environmentMapping: {},
-    helpText: "Google Gemini image generation, billed to your org credits",
-    featureFlag: FeatureSwitchKey.NanoBananaConnector,
-    authMethods: {
-      platform: {
-        label: "Enable",
-        helpText:
-          "Image generations are billed to your organization's credits. By enabling, you agree that prompts and reference images are sent to the Google Gemini API.",
-        secrets: {},
-      },
-    },
-    defaultAuthMethod: "platform",
-  },
 } satisfies Record<string, ConnectorConfig>;
 
 export type ConnectorType = keyof typeof CONNECTOR_TYPES_DEF;

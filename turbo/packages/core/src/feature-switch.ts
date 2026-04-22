@@ -313,13 +313,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: true,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.NanoBananaConnector]: {
-    maintainer: "liangyou@vm0.ai",
-    description:
-      "Show the Nano Banana (Google Gemini image generation) platform-managed connector",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.UnifyChatThreads]: {
     maintainer: "ethan@vm0.ai",
     description:

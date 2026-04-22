@@ -10,8 +10,8 @@ import {
 /**
  * Per-user enablement of a platform-supplied connector.
  *
- * Platform connectors (e.g. nano-banana) do not store user credentials —
- * the platform injects its own auth at proxy time. All this row records is
+ * Platform connectors do not store user credentials — the platform
+ * injects its own auth at proxy time. All this row records is
  * that a given user in a given org has accepted the terms and enabled the
  * connector. A missing row means "not enabled". Kept separate from the
  * `connectors` table so the OAuth-specific columns there stay strictly

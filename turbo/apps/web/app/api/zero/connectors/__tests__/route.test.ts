@@ -69,18 +69,21 @@ describe("GET /api/zero/connectors", () => {
     expect(response.status).toBe(401);
   });
 
-  it("includes platform connectors when a row exists", async () => {
-    const userId = uniqueId("zcon-pl");
+  it("skips platform rows whose type no longer exists in the contract", async () => {
+    // Regression: when a platform-managed connector is removed from
+    // CONNECTOR_TYPES, any previously-enabled row in user_platform_connectors
+    // becomes orphaned. The list endpoint must stay usable — silently drop
+    // the orphan instead of failing the whole response.
+    const userId = uniqueId("zcon-orphan");
     const { orgId } = await setupOrg(userId);
-    await insertTestPlatformConnector(orgId, userId, "nano-banana");
+    await insertTestPlatformConnector(orgId, userId, "__removed_connector__");
 
     const response = await GET(createTestRequest(connectorsUrl()));
     expect(response.status).toBe(200);
     const data = await response.json();
-    const platform = data.connectors.find((c: { type: string }) => {
-      return c.type === "nano-banana";
+    const orphan = data.connectors.find((c: { type: string }) => {
+      return c.type === "__removed_connector__";
     });
-    expect(platform).toBeDefined();
-    expect(platform.authMethod).toBe("platform");
+    expect(orphan).toBeUndefined();
   });
 });
