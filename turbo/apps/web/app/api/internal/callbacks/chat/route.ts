@@ -109,7 +109,7 @@ async function loadPriorTitleContext(
     { excludeRunId: currentRunId },
   );
   return messages.map((m) => {
-    return { role: m.role as "user" | "assistant", content: m.content! };
+    return { role: m.role, content: m.content };
   });
 }
 

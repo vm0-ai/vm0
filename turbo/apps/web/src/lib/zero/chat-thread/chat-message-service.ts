@@ -1,15 +1,4 @@
-import {
-  eq,
-  asc,
-  desc,
-  and,
-  or,
-  ne,
-  sql,
-  inArray,
-  isNull,
-  isNotNull,
-} from "drizzle-orm";
+import { eq, asc, desc, and, sql, inArray, isNotNull } from "drizzle-orm";
 import {
   chatMessages,
   type ChatMessageAttachFiles,
@@ -53,6 +42,17 @@ type MessageRow = {
   runStatus: string | null;
   runError: string | null;
   attachFiles: ChatMessageAttachFiles | null;
+};
+
+/**
+ * Narrower row shape returned by `getLatestMessagesByThreadId`. The SQL
+ * query enforces `role IN ('user','assistant')` and `content IS NOT NULL`,
+ * so callers can treat those fields as already narrowed without reaching
+ * for `as` casts.
+ */
+type PromptContextMessageRow = Omit<MessageRow, "role" | "content"> & {
+  role: "user" | "assistant";
+  content: string;
 };
 
 /**
@@ -246,20 +246,16 @@ export async function getLatestMessagesByThreadId(
   chatThreadId: string,
   limit: number,
   options?: { excludeRunId?: string },
-): Promise<MessageRow[]> {
+): Promise<PromptContextMessageRow[]> {
   const conditions = [
     eq(chatMessages.chatThreadId, chatThreadId),
     isNotNull(chatMessages.content),
     inArray(chatMessages.role, ["user", "assistant"]),
   ];
   if (options?.excludeRunId !== undefined) {
-    const excludeClause = or(
-      isNull(chatMessages.runId),
-      ne(chatMessages.runId, options.excludeRunId),
+    conditions.push(
+      sql`(${chatMessages.runId} IS NULL OR ${chatMessages.runId} != ${options.excludeRunId})`,
     );
-    if (excludeClause !== undefined) {
-      conditions.push(excludeClause);
-    }
   }
 
   const rows = await globalThis.services.db
@@ -269,7 +265,15 @@ export async function getLatestMessagesByThreadId(
     .where(and(...conditions))
     .orderBy(desc(chatMessages.createdAt), desc(chatMessages.sequenceNumber))
     .limit(limit);
-  return rows.reverse();
+  // SQL guarantees role ∈ {'user','assistant'} and content IS NOT NULL, so
+  // narrow once here instead of pushing the cast out to every caller.
+  return rows.reverse().map((row) => {
+    return {
+      ...row,
+      role: row.role as "user" | "assistant",
+      content: row.content as string,
+    };
+  });
 }
 
 /**

@@ -206,12 +206,10 @@ async function resolveThread(
   ]);
 
   // `messages` already satisfies `content IS NOT NULL` and role IN
-  // ('user','assistant') in SQL — no further filtering needed.
+  // ('user','assistant') in SQL; the service narrows the row shape so no
+  // per-caller casts are needed.
   const previousContext = messages.map((m) => {
-    return {
-      role: m.role as "user" | "assistant",
-      content: m.content as string,
-    };
+    return { role: m.role, content: m.content };
   });
 
   const incompleteContext = buildWebChatIncompleteContext(
