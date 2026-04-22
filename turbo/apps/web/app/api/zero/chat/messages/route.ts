@@ -191,8 +191,9 @@ async function rejectIfThreadModelLocked(
  *
  * When `dims` is provided, each sub-stage (create-thread, get-thread,
  * session-id lookup, messages, incomplete-rounds, continue-from resolution)
- * emits a span to the `chat-request-spans` Axiom dataset. Sub-queries stay
- * sequential — this instrumentation must not change ordering.
+ * emits a span to the `sandbox-op-log` Axiom dataset with
+ * `source: "web-chat"`. Each parallel arm is wrapped in `timed()` so the
+ * per-query duration is still captured alongside the parallel execution.
  */
 async function resolveThread(
   userId: string,

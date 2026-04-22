@@ -427,7 +427,7 @@ describe("POST /api/zero/chat/messages", () => {
       expect(openRouterHandler.mocked).toHaveBeenCalledTimes(1);
     });
 
-    describe("Phase-1 chat-request-spans instrumentation", () => {
+    describe("Phase-1 sandbox-op-log web-chat instrumentation", () => {
       it("emits spans for key Phase-1 stages with dimensions stamped progressively", async () => {
         // Spy on ingestSandboxOpLog at the module boundary. The chat spans
         // reuse this single dataset with `source: "web-chat"`; filtering the

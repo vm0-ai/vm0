@@ -1,8 +1,8 @@
 /**
- * Canonical op_type strings emitted to the `chat-request-spans` Axiom dataset
- * by the `/api/zero/chat/messages` route handler and its service-layer
- * sub-stages. Centralized so emitters and query authors share a single source
- * of truth and typos can't drift between them.
+ * Canonical op_type strings emitted to the `sandbox-op-log` Axiom dataset
+ * with `source: "web-chat"` by the `/api/zero/chat/messages` route handler
+ * and its service-layer sub-stages. Centralized so emitters and query authors
+ * share a single source of truth and typos can't drift between them.
  */
 export const CHAT_REQUEST_OPS = {
   auth: "api_chat_send_auth",
