@@ -81,6 +81,7 @@ import { asana } from "./connectors/asana";
 import { atlassian } from "./connectors/atlassian";
 import { metaAds } from "./connectors/meta-ads";
 import { stripe } from "./connectors/stripe";
+import { onyx } from "./connectors/onyx";
 import { openai } from "./connectors/openai";
 import { similarweb } from "./connectors/similarweb";
 import { perplexity } from "./connectors/perplexity";
@@ -336,6 +337,7 @@ const CONNECTOR_TYPES_DEF = {
   ...atlassian,
   ...metaAds,
   ...stripe,
+  ...onyx,
   ...openai,
   ...similarweb,
   ...perplexity,
