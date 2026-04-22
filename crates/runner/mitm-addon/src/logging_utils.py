@@ -16,7 +16,7 @@ def log_network_entry(log_path: str, entry: dict) -> None:
     if not log_path:
         return
     try:
-        fd = os.open(log_path, os.O_CREAT | os.O_APPEND | os.O_WRONLY, 0o644)
+        fd = os.open(log_path, os.O_CREAT | os.O_APPEND | os.O_WRONLY, 0o600)
         try:
             os.write(fd, (json.dumps(entry) + "\n").encode())
         finally:
@@ -36,7 +36,7 @@ def log_proxy_entry(proxy_log_path: str, level: str, message: str, **extra: obje
     }
     entry.update(extra)
     try:
-        fd = os.open(proxy_log_path, os.O_CREAT | os.O_APPEND | os.O_WRONLY, 0o644)
+        fd = os.open(proxy_log_path, os.O_CREAT | os.O_APPEND | os.O_WRONLY, 0o600)
         try:
             os.write(fd, (json.dumps(entry) + "\n").encode())
         finally:
@@ -58,12 +58,16 @@ def add_firewall_metadata(flow: http.HTTPFlow, log_entry: dict) -> None:
     for key in (
         "firewall_params",
         "firewall_error",
-        "auth_resolved_secrets",
-        "auth_refreshed_connectors",
-        "auth_refreshed_secrets",
         "auth_cache_hit",
         "auth_url_rewrite",
     ):
         value = meta.get(key)
         if value is not None:
             log_entry[key] = value
+    for key in (
+        "auth_resolved_secrets",
+        "auth_refreshed_connectors",
+        "auth_refreshed_secrets",
+    ):
+        if meta.get(key) is not None:
+            log_entry[key] = "[REDACTED]"
