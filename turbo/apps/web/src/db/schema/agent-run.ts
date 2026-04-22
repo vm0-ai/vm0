@@ -6,9 +6,11 @@ import {
   jsonb,
   timestamp,
   index,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { agentComposeVersions } from "./agent-compose";
+import { agentSessions } from "./agent-session";
 
 /**
  * Agent Runs table
@@ -30,7 +32,14 @@ export const agentRuns = pgTable(
     ),
     resumedFromCheckpointId: uuid("resumed_from_checkpoint_id"),
     continuedFromSessionId: uuid("continued_from_session_id"),
-    sessionId: uuid("session_id"),
+    sessionId: uuid("session_id")
+      .notNull()
+      .references(
+        (): AnyPgColumn => {
+          return agentSessions.id;
+        },
+        { onDelete: "cascade" },
+      ),
     status: varchar("status", { length: 20 }).notNull(),
     prompt: text("prompt").notNull(),
     appendSystemPrompt: text("append_system_prompt"),

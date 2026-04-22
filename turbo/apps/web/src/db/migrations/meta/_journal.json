@@ -2045,6 +2045,13 @@
       "when": 1776775000000,
       "tag": "0291_vcc_assistant_messages_and_summary_split",
       "breakpoints": true
+    },
+    {
+      "idx": 292,
+      "version": "7",
+      "when": 1776828084130,
+      "tag": "0292_agent_runs_session_id_not_null_fk",
+      "breakpoints": true
     }
   ]
 }
