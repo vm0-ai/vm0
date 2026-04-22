@@ -12,6 +12,7 @@ import { testContext, uniqueId } from "../../../../__tests__/test-helpers";
 import { mockClerk } from "../../../../__tests__/clerk-mock";
 import { insertOrgDefaultModelProvider } from "../../../../__tests__/db-test-seeders/org";
 import { mockAblyPublish } from "../../../../__tests__/ably-mock";
+import { buildVoiceChatQuickPrepPrompt } from "../../integration-prompt";
 /* eslint-disable web/no-direct-db-in-tests -- Service-level exception: no user-facing API appends slow-brain/fast-brain-sourced events or reads a task without auth; exercising the round trip requires simulating both sides. */
 import { appendEvent } from "../context-service";
 import { getVoiceChatTask } from "../task-service";
@@ -35,6 +36,23 @@ const { POST: postCallbackRoute } =
 
 const TASKS_BASE_URL = "http://localhost:3000/api/zero/voice-chat";
 const CALLBACK_URL = "http://localhost/api/internal/callbacks/voice-chat-task";
+
+describe("voice-chat slow-brain prompt includes tasker guidance", () => {
+  const prompt = buildVoiceChatQuickPrepPrompt("test-session-id");
+
+  it.each([
+    ["task create command", "zero voice-chat task create"],
+    ["task get command", "zero voice-chat task get"],
+    ["task list command", "zero voice-chat task list"],
+    ["task-dispatched event", "task-dispatched"],
+    ["task-completed event", "task-completed"],
+    ["never-block rule", "Never block"],
+    ["natural language rule", "natural language"],
+    ["phase 1 dispatch guard", "Do NOT dispatch tasks during preparation"],
+  ])("includes %s", (_name, substring) => {
+    expect(prompt).toContain(substring);
+  });
+});
 
 describe("tasker round trip through the blackboard", () => {
   const context = testContext();
