@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.130.0](https://github.com/vm0-ai/vm0/compare/cli-v9.129.2...cli-v9.130.0) (2026-04-22)
+
+
+### Features
+
+* **cli:** add --avatar option to agent create and edit commands ([#10610](https://github.com/vm0-ai/vm0/issues/10610)) ([1a8abe9](https://github.com/vm0-ai/vm0/commit/1a8abe95d15c4499e2aa3ec864daa6a3db3ad642))
+* **cli:** replace singleton --artifact with repeatable name[:version]:/path grammar ([#10681](https://github.com/vm0-ai/vm0/issues/10681)) ([dae7e4c](https://github.com/vm0-ai/vm0/commit/dae7e4cbc318b33dfa52730043b94b39915a4629))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.227.0
+
 ## [9.129.2](https://github.com/vm0-ai/vm0/compare/cli-v9.129.1...cli-v9.129.2) (2026-04-22)
 
 

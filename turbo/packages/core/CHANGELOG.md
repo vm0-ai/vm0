@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.227.0](https://github.com/vm0-ai/vm0/compare/core-v8.226.0...core-v8.227.0) (2026-04-22)
+
+
+### Features
+
+* **voice-chat-candidate:** add reasoner timing, task compaction, dev cron scheduler ([#10578](https://github.com/vm0-ai/vm0/issues/10578)) ([87d63eb](https://github.com/vm0-ai/vm0/commit/87d63eb187d75db495743d25292a79ce154c56e7))
+
 ## [8.226.0](https://github.com/vm0-ai/vm0/compare/core-v8.225.1...core-v8.226.0) (2026-04-22)
 
 

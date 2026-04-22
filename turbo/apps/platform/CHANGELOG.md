@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.284.0](https://github.com/vm0-ai/vm0/compare/app-v0.283.0...app-v0.284.0) (2026-04-22)
+
+
+### Features
+
+* **platform:** refine voice input mic button and composer toolbar ([#10621](https://github.com/vm0-ai/vm0/issues/10621)) ([65125ec](https://github.com/vm0-ai/vm0/commit/65125ec1eacd46666e800bbeaaffbb61b4f752fe))
+* **voice-chat-candidate:** add reasoner timing, task compaction, dev cron scheduler ([#10578](https://github.com/vm0-ai/vm0/issues/10578)) ([87d63eb](https://github.com/vm0-ai/vm0/commit/87d63eb187d75db495743d25292a79ce154c56e7))
+* **voice-chat:** inject system task events into fast-brain ([#10676](https://github.com/vm0-ai/vm0/issues/10676)) ([7830a36](https://github.com/vm0-ai/vm0/commit/7830a361c9abfdae2c626cce9e7a0228adf50756))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.227.0
+
 ## [0.283.0](https://github.com/vm0-ai/vm0/compare/app-v0.282.1...app-v0.283.0) (2026-04-22)
 
 
