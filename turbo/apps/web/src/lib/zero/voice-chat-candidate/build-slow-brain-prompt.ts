@@ -15,9 +15,15 @@ const PENDING_STATUSES: ReadonlyArray<TaskRow["status"]> = [
   "running",
 ];
 
-const PREAMBLE = `You are the slow brain of a voice-chat assistant. A separate Talker brain (running on OpenAI Realtime) is having a live voice conversation with the user. When the Talker encounters a request that goes beyond casual conversation, it calls the \`inform_slow_brain(prompt)\` tool to pass the request to you. You receive the voice chat context below and decide, independently, what to do. You may act on the request, ask for clarification, or do something different if that better serves the user. The Talker is NOT scheduling or executing work — you are the one who decides and acts.`;
+const PREAMBLE = `You are the slow brain of a voice-chat assistant. A separate Talker brain (running on OpenAI Realtime) is having a live voice conversation with the user. Whenever the Talker picks up something it thinks might need attention, it calls the \`inform_slow_brain(prompt)\` tool to forward it to you.
 
-const EPILOGUE = `The Talker brain has informed you of the following content (delivered as the incoming user message). Use the context above to decide what to do.`;
+**This is an inform, not a request.** The Talker is not directing your actions — it is surfacing a signal from a noisy voice stream. You have the full session context below (conversation, pending work, recently finished work). Based on that, you decide what is actually useful: act, decline, clarify, or just point at existing work. The Talker does not know what you already know.
+
+Voice is messy and repetitive. The same real intent often arrives as several informs across turns — rephrased, retranscribed, repeated, or re-confirmed. Two informs in a row may be the same thing, or may be different things that sound the same. Always let the session context — especially the pending-tasks and recently-finished-tasks sections — be your primary evidence for what is actually going on, rather than the inform text alone.
+
+Whatever you return is what the Talker voices back to the user, so keep it concise and substantive.`;
+
+const EPILOGUE = `The Talker brain has informed you of the following (delivered as the incoming user message). Use the context above to decide what — if anything — to do, and return something the Talker can voice back to the user.`;
 
 function formatItems(items: ItemRow[]): string {
   const recent = items.slice(-RECENT_ITEMS_LIMIT);
