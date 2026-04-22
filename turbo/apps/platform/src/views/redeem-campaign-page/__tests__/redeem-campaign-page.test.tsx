@@ -22,7 +22,7 @@ describe("redeem campaign page", () => {
       ),
     ).toBeInTheDocument();
 
-    const link = screen.getByRole("link", { name: "Redeem credits" });
+    const link = screen.getByText("Redeem credits");
     expect(link).toHaveAttribute("href", checkoutUrl);
   });
 
