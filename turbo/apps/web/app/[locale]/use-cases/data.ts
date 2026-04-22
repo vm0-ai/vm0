@@ -1672,7 +1672,6 @@ export const USE_CASES: UseCase[] = [
     promptVariantCount: 3,
     slackPreviewCount: 2,
   },
-
 ];
 
 // ---------------------------------------------------------------------------
