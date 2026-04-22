@@ -160,12 +160,6 @@ const PLAUSIBLE: ConnectorRef = {
   icon: "/assets/connectors/plausible.svg",
 };
 
-const REDDIT: ConnectorRef = {
-  id: "reddit",
-  label: "Reddit",
-  icon: "/assets/connectors/reddit.svg",
-};
-
 const FIGMA: ConnectorRef = {
   id: "figma",
   label: "Figma",
@@ -613,40 +607,6 @@ export const USE_CASES: UseCase[] = [
   },
 
   {
-    slug: "cross-tool-context-query",
-    color: "#8a9ebe",
-    avatar: {
-      rotation: 4,
-      skin: 3,
-      hairStyle: 2,
-      hairColor: 5,
-      expression: 4,
-      intensity: "m",
-    },
-    roles: ["everyone"],
-    capability: "multi-tool",
-    model: "Claude 4 Sonnet",
-    connectors: [SLACK, LINEAR, NOTION, GITHUB],
-    integrations: [
-      { connector: SLACK, required: true },
-      { connector: LINEAR, required: true },
-      { connector: NOTION, required: false },
-      { connector: GITHUB, required: false },
-    ],
-    relatedSlugs: [
-      "standup-summary",
-      "document-decisions",
-      "product-health-briefing",
-    ],
-    stepCount: 3,
-    nextActionCount: 3,
-    integrationCount: 4,
-    tipCount: 3,
-    promptVariantCount: 4,
-    slackPreviewCount: 2,
-  },
-
-  {
     slug: "customer-360",
     color: "#9e8abe",
     avatar: {
@@ -1024,72 +984,6 @@ export const USE_CASES: UseCase[] = [
   },
 
   {
-    slug: "marketing-content-automation",
-    color: "#9a7cbe",
-    avatar: {
-      rotation: 1,
-      skin: 2,
-      hairStyle: 3,
-      hairColor: 5,
-      expression: 4,
-      intensity: "h",
-    },
-    roles: ["marketing"],
-    capability: "scheduled",
-    model: "Claude 4 Sonnet",
-    connectors: [SLACK, X_TWITTER, NOTION],
-    integrations: [
-      { connector: SLACK, required: true },
-      { connector: X_TWITTER, required: true },
-      { connector: NOTION, required: true },
-    ],
-    relatedSlugs: [
-      "competitor-audit",
-      "content-performance-report",
-      "document-decisions",
-    ],
-    stepCount: 3,
-    nextActionCount: 3,
-    integrationCount: 3,
-    tipCount: 3,
-    promptVariantCount: 3,
-    slackPreviewCount: 2,
-  },
-
-  {
-    slug: "engineering-brief",
-    color: "#8abc7c",
-    avatar: {
-      rotation: 3,
-      skin: 4,
-      hairStyle: 2,
-      hairColor: 1,
-      expression: 2,
-      intensity: "d",
-    },
-    roles: ["engineering", "product"],
-    capability: "scheduled",
-    model: "Claude 4 Sonnet",
-    connectors: [SLACK, GITHUB, LINEAR],
-    integrations: [
-      { connector: SLACK, required: true },
-      { connector: GITHUB, required: true },
-      { connector: LINEAR, required: false },
-    ],
-    relatedSlugs: [
-      "product-health-briefing",
-      "sentry-triage",
-      "error-triage-daily",
-    ],
-    stepCount: 3,
-    nextActionCount: 3,
-    integrationCount: 3,
-    tipCount: 3,
-    promptVariantCount: 3,
-    slackPreviewCount: 1,
-  },
-
-  {
     slug: "security-compliance",
     color: "#be7c5a",
     avatar: {
@@ -1370,38 +1264,6 @@ export const USE_CASES: UseCase[] = [
   },
 
   {
-    slug: "fleet-monitoring",
-    color: "#5c9fbe",
-    avatar: {
-      rotation: 4,
-      skin: 3,
-      hairStyle: 2,
-      hairColor: 4,
-      expression: 2,
-      intensity: "d",
-    },
-    roles: ["engineering"],
-    capability: "instant",
-    model: "Claude 4 Sonnet",
-    connectors: [SLACK, ANTHROPIC_MANAGED_AGENTS],
-    integrations: [
-      { connector: ANTHROPIC_MANAGED_AGENTS, required: true },
-      { connector: SLACK, required: true },
-    ],
-    relatedSlugs: [
-      "managed-agent-workers",
-      "voice-driven-agent",
-      "cost-optimizer",
-    ],
-    stepCount: 3,
-    nextActionCount: 3,
-    integrationCount: 2,
-    tipCount: 3,
-    promptVariantCount: 3,
-    slackPreviewCount: 2,
-  },
-
-  {
     slug: "developer-support-triage",
     color: "#8abe9a",
     avatar: {
@@ -1488,72 +1350,6 @@ export const USE_CASES: UseCase[] = [
     stepCount: 3,
     nextActionCount: 3,
     integrationCount: 2,
-    tipCount: 3,
-    promptVariantCount: 3,
-    slackPreviewCount: 2,
-  },
-
-  {
-    slug: "community-forum-monitoring",
-    color: "#bea85a",
-    avatar: {
-      rotation: 1,
-      skin: 3,
-      hairStyle: 5,
-      hairColor: 2,
-      expression: 3,
-      intensity: "m",
-    },
-    roles: ["marketing"],
-    capability: "scheduled",
-    model: "Claude 4 Sonnet",
-    connectors: [REDDIT, NOTION, SLACK],
-    integrations: [
-      { connector: REDDIT, required: true },
-      { connector: NOTION, required: true },
-      { connector: SLACK, required: false },
-    ],
-    relatedSlugs: [
-      "trending-topic-radar",
-      "competitor-audit",
-      "kol-cold-outreach",
-    ],
-    stepCount: 3,
-    nextActionCount: 3,
-    integrationCount: 3,
-    tipCount: 3,
-    promptVariantCount: 3,
-    slackPreviewCount: 2,
-  },
-
-  {
-    slug: "ad-hoc-traffic-analyst",
-    color: "#7cbec4",
-    avatar: {
-      rotation: 4,
-      skin: 2,
-      hairStyle: 2,
-      hairColor: 3,
-      expression: 2,
-      intensity: "m",
-    },
-    roles: ["marketing"],
-    capability: "instant",
-    model: "Claude 4 Sonnet",
-    connectors: [SLACK, PLAUSIBLE, NOTION],
-    integrations: [
-      { connector: PLAUSIBLE, required: true },
-      { connector: SLACK, required: true },
-      { connector: NOTION, required: false },
-    ],
-    relatedSlugs: [
-      "marketing-analytics",
-      "content-performance-report",
-      "product-health-briefing",
-    ],
-    stepCount: 3,
-    nextActionCount: 3,
-    integrationCount: 3,
     tipCount: 3,
     promptVariantCount: 3,
     slackPreviewCount: 2,
@@ -1650,39 +1446,6 @@ export const USE_CASES: UseCase[] = [
   },
 
   {
-    slug: "social-competitor-monitoring",
-    color: "#be5a7c",
-    avatar: {
-      rotation: 2,
-      skin: 1,
-      hairStyle: 4,
-      hairColor: 2,
-      expression: 4,
-      intensity: "h",
-    },
-    roles: ["marketing"],
-    capability: "scheduled",
-    model: "Claude 4 Sonnet",
-    connectors: [X_TWITTER, NOTION, SLACK],
-    integrations: [
-      { connector: X_TWITTER, required: true },
-      { connector: NOTION, required: true },
-      { connector: SLACK, required: false },
-    ],
-    relatedSlugs: [
-      "competitor-audit",
-      "trending-topic-radar",
-      "kol-cold-outreach",
-    ],
-    stepCount: 3,
-    nextActionCount: 3,
-    integrationCount: 3,
-    tipCount: 3,
-    promptVariantCount: 3,
-    slackPreviewCount: 2,
-  },
-
-  {
     slug: "brief-to-draft-content",
     color: "#8ebe5a",
     avatar: {
@@ -1704,7 +1467,7 @@ export const USE_CASES: UseCase[] = [
     ],
     relatedSlugs: [
       "multilingual-cms-publishing",
-      "marketing-content-automation",
+      "content-experiment-engine",
       "marketing-emails",
     ],
     stepCount: 3,
@@ -1737,7 +1500,7 @@ export const USE_CASES: UseCase[] = [
     ],
     relatedSlugs: [
       "brief-to-draft-content",
-      "marketing-content-automation",
+      "content-experiment-engine",
       "multilingual-cms-publishing",
     ],
     stepCount: 3,
@@ -1762,21 +1525,20 @@ export const USE_CASES: UseCase[] = [
     roles: ["marketing"],
     capability: "scheduled",
     model: "Claude 4 Sonnet",
-    connectors: [X_TWITTER, REDDIT, NOTION, SLACK],
+    connectors: [X_TWITTER, NOTION, SLACK],
     integrations: [
       { connector: X_TWITTER, required: true },
       { connector: NOTION, required: true },
       { connector: SLACK, required: true },
-      { connector: REDDIT, required: false },
     ],
     relatedSlugs: [
-      "marketing-content-automation",
       "content-performance-report",
-      "social-competitor-monitoring",
+      "competitor-audit",
+      "trending-topic-radar",
     ],
     stepCount: 3,
     nextActionCount: 3,
-    integrationCount: 4,
+    integrationCount: 3,
     tipCount: 3,
     promptVariantCount: 3,
     slackPreviewCount: 2,
@@ -1805,7 +1567,7 @@ export const USE_CASES: UseCase[] = [
     relatedSlugs: [
       "brief-to-draft-content",
       "cover-art-generation",
-      "marketing-content-automation",
+      "content-experiment-engine",
     ],
     stepCount: 3,
     nextActionCount: 3,
@@ -1837,7 +1599,7 @@ export const USE_CASES: UseCase[] = [
     relatedSlugs: [
       "cost-optimizer",
       "managed-agent-workers",
-      "fleet-monitoring",
+      "specialized-agent-personas",
     ],
     stepCount: 3,
     nextActionCount: 3,
@@ -1901,7 +1663,7 @@ export const USE_CASES: UseCase[] = [
     relatedSlugs: [
       "managed-agent-workers",
       "self-tuning-agent",
-      "fleet-monitoring",
+      "voice-driven-agent",
     ],
     stepCount: 3,
     nextActionCount: 3,
