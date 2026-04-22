@@ -8,6 +8,7 @@ import {
   getDefaultModel,
   getEnvironmentMapping,
   getVm0VisibleModels,
+  VM0_MODEL_TO_PROVIDER,
   MODEL_PROVIDER_FIREWALL_CONFIGS,
   type ModelProviderType,
 } from "../model-providers";
@@ -141,7 +142,17 @@ describe("getVm0VisibleModels", () => {
     expect(models).toContain("kimi-k2.5");
     expect(models).toContain("MiniMax-M2.7");
     expect(models).toContain("glm-5.1");
-    expect(models).not.toContain("deepseek-chat");
+    // All feature-flagged models must be hidden when no features are provided
+    const featureFlaggedModels = Object.entries(VM0_MODEL_TO_PROVIDER)
+      .filter(([, config]) => {
+        return config.featureFlag !== undefined;
+      })
+      .map(([model]) => {
+        return model;
+      });
+    for (const model of featureFlaggedModels) {
+      expect(models).not.toContain(model);
+    }
   });
 
   it("hides deepseek-chat when Vm0DeepseekModel flag is disabled", () => {
