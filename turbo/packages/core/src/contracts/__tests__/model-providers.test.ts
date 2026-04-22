@@ -155,17 +155,17 @@ describe("getVm0VisibleModels", () => {
     }
   });
 
-  it("deepseek-chat is always visible regardless of Vm0DeepseekModel flag", () => {
-    // deepseek-chat no longer has a featureFlag, so it should be visible
-    const modelsDisabled = getVm0VisibleModels({
+  it("deepseek-chat is visible when no features are provided", () => {
+    // deepseek-chat has no featureFlag, so it is always visible
+    const models = getVm0VisibleModels();
+    expect(models).toContain("deepseek-chat");
+  });
+
+  it("deepseek-chat is visible even when Vm0DeepseekModel flag is disabled", () => {
+    const models = getVm0VisibleModels({
       [FeatureSwitchKey.Vm0DeepseekModel]: false,
     });
-    expect(modelsDisabled).toContain("deepseek-chat");
-
-    const modelsEnabled = getVm0VisibleModels({
-      [FeatureSwitchKey.Vm0DeepseekModel]: true,
-    });
-    expect(modelsEnabled).toContain("deepseek-chat");
+    expect(models).toContain("deepseek-chat");
   });
 });
 
