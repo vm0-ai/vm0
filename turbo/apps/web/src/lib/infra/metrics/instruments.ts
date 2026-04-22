@@ -1,4 +1,4 @@
-import { ingestSandboxOpLog, ingestChatRequestSpan } from "../../shared/axiom";
+import { ingestSandboxOpLog } from "../../shared/axiom";
 
 export function recordSandboxOperation(attrs: {
   sandboxType: "runner" | "docker";
@@ -44,14 +44,24 @@ export interface ChatSpanDimensions {
   thread_is_new?: boolean;
 }
 
+/**
+ * Emit a Phase-1 chat request span to the shared `sandbox-op-log` dataset
+ * with `source: "web-chat"`. sandbox_type has no meaning for chat spans —
+ * we fill `"chat"` for schema consistency. `run_id` is absent until the
+ * run-record transaction commits and is therefore optional on the entry.
+ */
 export function recordChatSpan(
   opType: string,
   durationMs: number,
   dims: ChatSpanDimensions,
 ): void {
-  ingestChatRequestSpan({
+  const { run_id: runId, ...rest } = dims;
+  ingestSandboxOpLog({
+    source: "web-chat",
     op_type: opType,
+    sandbox_type: "chat",
     duration_ms: durationMs,
-    ...dims,
+    ...(runId ? { run_id: runId } : {}),
+    ...rest,
   });
 }

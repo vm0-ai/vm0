@@ -33,7 +33,7 @@ import {
   queryAxiom,
   ingestToAxiom,
   flushAxiom,
-  ingestChatRequestSpan,
+  ingestSandboxOpLog,
 } from "../client";
 
 beforeEach(() => {
@@ -94,33 +94,33 @@ describe("flushAxiom", () => {
 });
 
 // ---------------------------------------------------------------------------
-// ingestChatRequestSpan
+// ingestSandboxOpLog — web-chat source with extended dims
 // ---------------------------------------------------------------------------
 
-describe("ingestChatRequestSpan", () => {
-  it("buffers to the chat-request-spans dataset with dims preserved", () => {
-    ingestChatRequestSpan({
+describe("ingestSandboxOpLog web-chat source", () => {
+  it("buffers to the sandbox-op-log dataset with extra dims preserved", () => {
+    ingestSandboxOpLog({
+      source: "web-chat",
       op_type: "api_chat_send_auth",
+      sandbox_type: "chat",
       duration_ms: 7,
       user_id: "user-x",
       agent_id: "agent-y",
       thread_id: "thread-z",
-      run_id: null,
-      org_id: null,
     });
 
     expect(mockIngest).toHaveBeenCalledTimes(1);
     const [dataset, events] = mockIngest.mock.calls[0]!;
-    expect(dataset).toMatch(/^vm0-chat-request-spans-/);
+    expect(dataset).toMatch(/^vm0-sandbox-op-log-/);
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({
+      source: "web-chat",
       op_type: "api_chat_send_auth",
+      sandbox_type: "chat",
       duration_ms: 7,
       user_id: "user-x",
       agent_id: "agent-y",
       thread_id: "thread-z",
-      run_id: null,
-      org_id: null,
     });
     expect(events[0]._time).toMatch(/T/);
   });

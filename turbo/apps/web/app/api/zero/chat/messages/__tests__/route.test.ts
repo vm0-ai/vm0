@@ -429,13 +429,12 @@ describe("POST /api/zero/chat/messages", () => {
 
     describe("Phase-1 chat-request-spans instrumentation", () => {
       it("emits spans for key Phase-1 stages with dimensions stamped progressively", async () => {
-        // Spy on ingestChatRequestSpan at the module boundary. The real path
-        // short-circuits when AXIOM_TOKEN_TELEMETRY is unset in tests; spying
-        // captures emission calls without needing a live Axiom client.
-        // Mirrors the existing precedent in test-helpers.ts, which spies on
-        // queryAxiom / ingestToAxiom / flushAxiom on the same module.
+        // Spy on ingestSandboxOpLog at the module boundary. The chat spans
+        // reuse this single dataset with `source: "web-chat"`; filtering the
+        // spy's calls by source isolates chat spans from the run-dispatch
+        // `source: "web"` spans that also flow through it.
         const spanSpy = vi
-          .spyOn(axiomClient, "ingestChatRequestSpan")
+          .spyOn(axiomClient, "ingestSandboxOpLog")
           .mockImplementation(() => {
             return;
           });
@@ -455,11 +454,16 @@ describe("POST /api/zero/chat/messages", () => {
           const data = await response.json();
 
           expect(spanSpy).toHaveBeenCalled();
-          const spanEvents = spanSpy.mock.calls.map((c) => {
-            return c[0];
-          });
+          const chatSpanEvents = spanSpy.mock.calls
+            .map((c) => {
+              return c[0];
+            })
+            .filter((e) => {
+              return e.source === "web-chat";
+            });
+          expect(chatSpanEvents.length).toBeGreaterThan(0);
           const opTypes = new Set(
-            spanEvents.map((e) => {
+            chatSpanEvents.map((e) => {
               return e.op_type;
             }),
           );
@@ -483,32 +487,34 @@ describe("POST /api/zero/chat/messages", () => {
             true,
           );
 
-          // Every span should carry duration_ms and the static agent_id dim.
-          for (const event of spanEvents) {
+          // Every chat span should carry duration_ms, sandbox_type="chat",
+          // and the static agent_id dim.
+          for (const event of chatSpanEvents) {
             expect(typeof event.duration_ms).toBe("number");
+            expect(event.sandbox_type).toBe("chat");
             expect(event.agent_id).toBe(agentId);
           }
 
           // org_id is stamped after Round 1 finishes — Round 1 spans emit
           // without it, Round 2+ spans carry it.
-          const round2ConnectorsSpan = spanEvents.find((e) => {
+          const round2ConnectorsSpan = chatSpanEvents.find((e) => {
             return e.op_type === "api_chat_send_create_run_round2_connectors";
           });
           expect(round2ConnectorsSpan?.org_id).toBeTruthy();
 
           // run_id is stamped after the tx commits — only post-commit spans
           // carry it.
-          const persistSpan = spanEvents.find((e) => {
+          const persistSpan = chatSpanEvents.find((e) => {
             return e.op_type === "api_chat_send_persist_zero_run_metadata";
           });
           expect(persistSpan?.run_id).toBe(data.runId);
 
           // insert_run_record happens inside the tx, before commit — emits
           // with run_id absent.
-          const insertRunRecordSpan = spanEvents.find((e) => {
+          const insertRunRecordSpan = chatSpanEvents.find((e) => {
             return e.op_type === "api_chat_send_create_run_insert_run_record";
           });
-          expect(insertRunRecordSpan?.run_id ?? null).toBeNull();
+          expect(insertRunRecordSpan?.run_id).toBeUndefined();
         } finally {
           // Restore so the spy does not leak across tests in the same suite.
           spanSpy.mockRestore();

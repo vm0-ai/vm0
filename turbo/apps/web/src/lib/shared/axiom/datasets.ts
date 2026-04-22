@@ -24,7 +24,6 @@ export const DATASETS = {
   REQUEST_LOG: "request-log",
   SANDBOX_OP_LOG: "sandbox-op-log",
   RUN_CONTEXT: "run-context",
-  CHAT_REQUEST_SPANS: "chat-request-spans",
 } as const;
 
 /**

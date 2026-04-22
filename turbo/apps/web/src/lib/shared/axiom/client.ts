@@ -221,12 +221,23 @@ export function ingestRunContext(snapshot: RunContextSnapshot): void {
   ]);
 }
 
+/**
+ * End-to-end pipeline op log entry. One dataset covers:
+ *   - `source: "web"` — api_to_executor / api_to_claim spans from the run dispatch path
+ *   - `source: "web-chat"` — Phase-1 `/api/zero/chat/messages` stage spans; `run_id`
+ *     is absent until the transaction commits, so it's optional here.
+ *   - `source: "runner"` — runner-side step.op spans
+ *   - `source: "sandbox"` — in-sandbox op spans
+ * Additional dimensions (agent_id, thread_id, org_id, …) are spread in
+ * schemaless by callers.
+ */
 interface SandboxOpLogEntry {
-  source: "web" | "runner" | "sandbox";
+  source: "web" | "web-chat" | "runner" | "sandbox";
   op_type: string;
   sandbox_type: string;
   duration_ms: number;
-  run_id: string;
+  run_id?: string;
+  [key: string]: unknown;
 }
 
 /**
@@ -247,42 +258,4 @@ export function ingestSandboxOpLog(entry: SandboxOpLogEntry): void {
     },
   ]);
   // Don't await flush - let it batch automatically
-}
-
-/**
- * Per-stage span for a chat request flow. Emitted once per Phase-1 stage of
- * `POST /api/zero/chat/messages`. Dimensions are optional because some values
- * (run_id, org_id) are not known at the earliest stages of the request.
- */
-interface ChatRequestSpanEntry {
-  op_type: string;
-  duration_ms: number;
-  run_id?: string | null;
-  org_id?: string | null;
-  user_id?: string;
-  agent_id?: string;
-  thread_id?: string;
-  token_type?: string;
-  model_selection_present?: boolean;
-  thread_length?: number;
-  thread_is_new?: boolean;
-}
-
-/**
- * Ingest a chat-request span to Axiom.
- * Fire-and-forget - doesn't block the response.
- */
-export function ingestChatRequestSpan(entry: ChatRequestSpanEntry): void {
-  const client = getTelemetryInstance(env().AXIOM_TOKEN_TELEMETRY);
-  if (!client) {
-    return;
-  }
-
-  const dataset = getDatasetName(DATASETS.CHAT_REQUEST_SPANS);
-  client.ingest(dataset, [
-    {
-      _time: new Date().toISOString(),
-      ...entry,
-    },
-  ]);
 }
