@@ -1,0 +1,246 @@
+//! Tracing layer that ships WARN+ events to Axiom.
+//!
+//! Disabled at construction when `AXIOM_TOKEN_TELEMETRY` or
+//! `AXIOM_DATASET_SUFFIX` is unset. Dual-write: the existing fmt subscriber
+//! keeps writing to stderr + file; this layer adds Axiom as an extra sink.
+//!
+//! Uses the workspace reqwest client directly (no axiom-rs) so we don't pull
+//! a second reqwest major into the musl binary. Ingest endpoint:
+//! `POST /v1/datasets/{name}/ingest` with Bearer auth and a JSON-array body —
+//! see <https://axiom.co/docs/restapi/ingest>.
+
+use std::fmt::Write as _;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
+
+use reqwest::Client;
+use serde_json::{Map, Value};
+use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
+use tracing::field::{Field, Visit};
+use tracing::{Event, Metadata, Subscriber};
+use tracing_subscriber::layer::{Context, Layer};
+use tracing_subscriber::registry::LookupSpan;
+
+const CHANNEL_CAP: usize = 1024;
+const BATCH_SIZE: usize = 50;
+const BATCH_INTERVAL: Duration = Duration::from_secs(5);
+const FLUSH_DEADLINE: Duration = Duration::from_secs(5);
+const HTTP_TIMEOUT: Duration = Duration::from_secs(10);
+const DEFAULT_AXIOM_URL: &str = "https://api.axiom.co";
+const SERVICE_NAME: &str = "runner";
+
+/// Holds the dispatcher task. `shutdown().await` drains the queue; dropping
+/// without calling `shutdown` leaves the tokio runtime to abort the task.
+pub struct AxiomGuard {
+    tx: mpsc::Sender<Msg>,
+    handle: Option<JoinHandle<()>>,
+}
+
+impl AxiomGuard {
+    pub async fn shutdown(mut self) {
+        let _ = self.tx.send(Msg::Close).await;
+        if let Some(h) = self.handle.take() {
+            let _ = tokio::time::timeout(FLUSH_DEADLINE, h).await;
+        }
+    }
+}
+
+/// Initialize the Axiom layer. Returns `None` when required env is missing —
+/// caller should install a `None` layer in that case (no-op).
+pub fn init() -> Option<(AxiomLayer, AxiomGuard)> {
+    let token = std::env::var("AXIOM_TOKEN_TELEMETRY")
+        .ok()
+        .filter(|s| !s.is_empty())?;
+    let suffix = std::env::var("AXIOM_DATASET_SUFFIX")
+        .ok()
+        .filter(|s| !s.is_empty())?;
+    // `AXIOM_URL` override exists mainly for tests (points at an httpmock server).
+    let base_url = std::env::var("AXIOM_URL")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| DEFAULT_AXIOM_URL.into());
+    // Shared dataset with TS: turbo/apps/web/src/lib/shared/axiom/datasets.ts
+    // DATASETS.WEB_LOGS. APL queries filter by `service == "runner"`.
+    let dataset = format!("vm0-web-logs-{suffix}");
+    let ingest_url = format!(
+        "{}/v1/datasets/{}/ingest",
+        base_url.trim_end_matches('/'),
+        dataset,
+    );
+
+    let client = match Client::builder().timeout(HTTP_TIMEOUT).build() {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("warn: axiom http client build failed: {e}");
+            return None;
+        }
+    };
+
+    let (tx, rx) = mpsc::channel(CHANNEL_CAP);
+    let handle = tokio::spawn(dispatcher(client, ingest_url, token, rx));
+
+    Some((
+        AxiomLayer {
+            tx: tx.clone(),
+            dropped: AtomicU64::new(0),
+        },
+        AxiomGuard {
+            tx,
+            handle: Some(handle),
+        },
+    ))
+}
+
+pub struct AxiomLayer {
+    tx: mpsc::Sender<Msg>,
+    dropped: AtomicU64,
+}
+
+enum Msg {
+    Event(Value),
+    Close,
+}
+
+impl<S> Layer<S> for AxiomLayer
+where
+    S: Subscriber + for<'a> LookupSpan<'a>,
+{
+    fn enabled(&self, metadata: &Metadata<'_>, _: Context<'_, S>) -> bool {
+        // Fixed WARN+ threshold. Errors and warnings only; INFO/DEBUG stay out
+        // of Axiom to keep ingest volume predictable.
+        *metadata.level() <= tracing::Level::WARN
+    }
+
+    fn on_event(&self, event: &Event<'_>, _: Context<'_, S>) {
+        let value = serialize_event(event);
+        if self.tx.try_send(Msg::Event(value)).is_err() {
+            // Bounded-channel full or dispatcher gone. Surface periodically —
+            // never through `tracing` itself (feedback loop).
+            let prev = self.dropped.fetch_add(1, Ordering::Relaxed);
+            if prev.is_multiple_of(1000) {
+                eprintln!("warn: axiom channel full, dropped {} events", prev + 1);
+            }
+        }
+    }
+}
+
+async fn dispatcher(
+    client: Client,
+    ingest_url: String,
+    token: String,
+    mut rx: mpsc::Receiver<Msg>,
+) {
+    let mut batch: Vec<Value> = Vec::with_capacity(BATCH_SIZE);
+    let mut interval = tokio::time::interval(BATCH_INTERVAL);
+    loop {
+        tokio::select! {
+            msg = rx.recv() => match msg {
+                Some(Msg::Event(v)) => {
+                    batch.push(v);
+                    if batch.len() >= BATCH_SIZE {
+                        flush(&client, &ingest_url, &token, &mut batch).await;
+                    }
+                }
+                Some(Msg::Close) | None => {
+                    flush(&client, &ingest_url, &token, &mut batch).await;
+                    return;
+                }
+            },
+            _ = interval.tick() => {
+                if !batch.is_empty() {
+                    flush(&client, &ingest_url, &token, &mut batch).await;
+                }
+            }
+        }
+    }
+}
+
+async fn flush(client: &Client, ingest_url: &str, token: &str, batch: &mut Vec<Value>) {
+    if batch.is_empty() {
+        return;
+    }
+    let drained: Vec<Value> = std::mem::take(batch);
+    match client
+        .post(ingest_url)
+        .bearer_auth(token)
+        .json(&drained)
+        .send()
+        .await
+    {
+        Ok(resp) if resp.status().is_success() => {}
+        Ok(resp) => {
+            // Drop events on non-success. Retry-from-inside-tracing risks
+            // feedback loops; if 429s become routine, add a real backoff
+            // wrapper then.
+            eprintln!("warn: axiom ingest returned {}", resp.status());
+        }
+        Err(e) => {
+            eprintln!("warn: axiom ingest failed: {e}");
+        }
+    }
+}
+
+/// Serialize a tracing event to match the TS logger payload shape in
+/// `turbo/apps/web/src/lib/shared/logger.ts`: flat top-level `_time`, `level`
+/// (lowercase), `message`, `context`, plus any user-supplied fields —
+/// augmented with a Rust-only `service` discriminator.
+fn serialize_event(event: &Event<'_>) -> Value {
+    struct V(Map<String, Value>);
+    impl Visit for V {
+        fn record_str(&mut self, f: &Field, v: &str) {
+            self.0.insert(f.name().into(), Value::String(v.into()));
+        }
+        fn record_i64(&mut self, f: &Field, v: i64) {
+            self.0.insert(f.name().into(), v.into());
+        }
+        fn record_u64(&mut self, f: &Field, v: u64) {
+            self.0.insert(f.name().into(), v.into());
+        }
+        fn record_f64(&mut self, f: &Field, v: f64) {
+            self.0.insert(f.name().into(), v.into());
+        }
+        fn record_bool(&mut self, f: &Field, v: bool) {
+            self.0.insert(f.name().into(), v.into());
+        }
+        fn record_error(&mut self, f: &Field, err: &(dyn std::error::Error + 'static)) {
+            // Mirror TS `serializeError` shape: an object with `message` and a
+            // `chain`. Rust has no stable `.name` / `.stack`; `chain` walks
+            // `.source()`, the closest analog to JS `cause`.
+            let mut chain: Vec<Value> = Vec::new();
+            let mut cur = err.source();
+            while let Some(e) = cur {
+                chain.push(Value::String(e.to_string()));
+                cur = e.source();
+            }
+            let mut obj = Map::new();
+            obj.insert("message".into(), Value::String(err.to_string()));
+            if !chain.is_empty() {
+                obj.insert("chain".into(), Value::Array(chain));
+            }
+            self.0.insert(f.name().into(), Value::Object(obj));
+        }
+        fn record_debug(&mut self, f: &Field, v: &dyn std::fmt::Debug) {
+            let mut s = String::new();
+            let _ = write!(s, "{v:?}");
+            self.0.insert(f.name().into(), Value::String(s));
+        }
+    }
+
+    let meta = event.metadata();
+    let mut v = V(Map::new());
+    event.record(&mut v);
+
+    let mut out = v.0;
+    out.insert(
+        "_time".into(),
+        Value::String(chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true)),
+    );
+    out.insert(
+        "level".into(),
+        Value::String(meta.level().to_string().to_ascii_lowercase()),
+    );
+    out.insert("context".into(), Value::String(meta.target().into()));
+    out.insert("service".into(), Value::String(SERVICE_NAME.into()));
+    Value::Object(out)
+}
