@@ -308,22 +308,10 @@ enum ServiceType {
 struct StatusInfo {
     mode: String,
     started_at: String,
-    active_runs: Vec<ActiveRunInfo>,
-    idle_vms: Vec<IdleVmInfo>,
+    active_runs: Vec<ActiveRun>,
+    idle_vms: Vec<IdleVm>,
     proxy_port: Option<u16>,
     dns_port: Option<u16>,
-}
-
-/// Mirror of `status::ActiveRun` for doctor's read side.
-struct ActiveRunInfo {
-    run_id: String,
-    sandbox_id: String,
-}
-
-/// Mirror of `status::IdleVm` for doctor's read side.
-struct IdleVmInfo {
-    session_id: String,
-    sandbox_id: String,
 }
 
 struct InstalledService {
@@ -761,10 +749,10 @@ struct StatusFile {
     /// again), we surface an empty active_runs rather than failing to
     /// parse and losing the whole report.
     #[serde(default)]
-    active_runs: Vec<ActiveRunFile>,
+    active_runs: Vec<ActiveRun>,
     started_at: String,
     #[serde(default)]
-    idle_vms: Vec<IdleVmFile>,
+    idle_vms: Vec<IdleVm>,
     #[serde(default)]
     proxy_port: Option<u16>,
     #[serde(default)]
@@ -772,13 +760,13 @@ struct StatusFile {
 }
 
 #[derive(Deserialize)]
-struct ActiveRunFile {
+struct ActiveRun {
     run_id: String,
     sandbox_id: String,
 }
 
 #[derive(Deserialize)]
-struct IdleVmFile {
+struct IdleVm {
     session_id: String,
     sandbox_id: String,
 }
@@ -795,22 +783,8 @@ async fn read_status(base_dir: &Path) -> Option<StatusInfo> {
     Some(StatusInfo {
         mode: file.mode,
         started_at: file.started_at,
-        active_runs: file
-            .active_runs
-            .into_iter()
-            .map(|r| ActiveRunInfo {
-                run_id: r.run_id,
-                sandbox_id: r.sandbox_id,
-            })
-            .collect(),
-        idle_vms: file
-            .idle_vms
-            .into_iter()
-            .map(|v| IdleVmInfo {
-                session_id: v.session_id,
-                sandbox_id: v.sandbox_id,
-            })
-            .collect(),
+        active_runs: file.active_runs,
+        idle_vms: file.idle_vms,
         proxy_port: file.proxy_port,
         dns_port: file.dns_port,
     })
@@ -1291,7 +1265,7 @@ mod tests {
             started_at: "2026-01-01T00:00:00.000Z".into(),
             active_runs: active
                 .into_iter()
-                .map(|(r, s)| ActiveRunInfo {
+                .map(|(r, s)| ActiveRun {
                     run_id: r.into(),
                     sandbox_id: s.into(),
                 })
@@ -1301,7 +1275,7 @@ mod tests {
             idle_vms: idle_sandboxes
                 .into_iter()
                 .enumerate()
-                .map(|(i, sbid)| IdleVmInfo {
+                .map(|(i, sbid)| IdleVm {
                     session_id: format!("sess-{i}"),
                     sandbox_id: sbid.into(),
                 })
