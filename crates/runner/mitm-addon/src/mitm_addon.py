@@ -103,6 +103,12 @@ def get_registry_path() -> str:
 # Cache for proxy registry (invalidated by file stat change)
 _registry_cache: dict = {}
 _registry_cache_key: tuple[int, int] = (0, 0)
+# One-shot guard for stat-path failures: no cache key is available in that
+# branch, so we fall back to a flag (mirrors counters.py:_pending_write_error_logged).
+# Parse-path failures use the cache key itself — recording the bad file's
+# (mtime_ns, size) as already-processed prevents re-parsing the same bytes
+# on every request and re-warning about them.
+_registry_load_error_logged = False
 
 # Track request start times for latency calculation
 _request_start_times: dict = {}
@@ -110,14 +116,22 @@ _request_start_times: dict = {}
 
 def load_registry() -> dict:
     """Load the proxy registry from file, with stat-based cache invalidation."""
-    global _registry_cache, _registry_cache_key
+    global _registry_cache, _registry_cache_key, _registry_load_error_logged
 
     try:
         registry_path = Path(get_registry_path())
         st = registry_path.stat()
-        key = (st.st_mtime_ns, st.st_size)
-        if key == _registry_cache_key:
-            return _registry_cache
+    except OSError as e:
+        if not _registry_load_error_logged:
+            _registry_load_error_logged = True
+            ctx.log.warn(f"Failed to stat proxy registry: {e}")
+        return _registry_cache
+
+    key = (st.st_mtime_ns, st.st_size)
+    if key == _registry_cache_key:
+        return _registry_cache
+
+    try:
         with registry_path.open() as f:
             new_registry = json.load(f).get("vms", {})
 
@@ -126,10 +140,15 @@ def load_registry() -> dict:
         evict_stale_cache_keys(active_run_ids)
 
         _registry_cache = new_registry
-        _registry_cache_key = key
+        _registry_load_error_logged = False
     except Exception as e:
-        ctx.log.warn(f"Failed to load proxy registry: {e}")
+        if not _registry_load_error_logged:
+            _registry_load_error_logged = True
+            ctx.log.warn(f"Failed to parse proxy registry: {e}")
 
+    # Record this file state as already processed — success or parse failure —
+    # so subsequent requests on the same bytes short-circuit at the key check.
+    _registry_cache_key = key
     return _registry_cache
 
 
