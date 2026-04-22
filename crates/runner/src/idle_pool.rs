@@ -23,8 +23,8 @@ pub const DEFAULT_IDLE_TIMEOUT_SECS: u64 = 1800;
 pub struct StorageFingerprints {
     /// mount_path → (vas_storage_name, vas_version_id) for regular storages.
     pub storages: HashMap<String, (String, String)>,
-    /// (vas_storage_name, vas_version_id) for artifact.
-    pub artifact: Option<(String, String)>,
+    /// mount_path → (vas_storage_name, vas_version_id) for artifacts.
+    pub artifacts: HashMap<String, (String, String)>,
     /// (vas_storage_name, vas_version_id) for memory.
     pub memory: Option<(String, String)>,
 }
@@ -37,12 +37,19 @@ impl StorageFingerprints {
                 storages.insert(s.mount_path.clone(), (name.clone(), ver.clone()));
             }
         }
+        let mut artifacts = HashMap::new();
+        for a in &manifest.artifacts {
+            artifacts.insert(
+                a.mount_path.clone(),
+                (a.vas_storage_name.clone(), a.vas_version_id.clone()),
+            );
+        }
         fn version_tuple(e: &crate::types::ArtifactEntry) -> (String, String) {
             (e.vas_storage_name.clone(), e.vas_version_id.clone())
         }
         Self {
             storages,
-            artifact: manifest.artifact.as_ref().map(version_tuple),
+            artifacts,
             memory: manifest.memory.as_ref().map(version_tuple),
         }
     }
