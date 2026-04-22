@@ -1506,10 +1506,7 @@ class TestResponseUsageReporting:
         mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
-            patch.object(
-                usage.providers.model_provider, "get_api_url", return_value="https://api.vm0.ai"
-            ),
-            mitm_ctx(),
+            mitm_ctx(api_url="https://api.vm0.ai"),
             patch.object(usage.webhook, "_opener") as mock_opener,
         ):
             mock_opener.open.return_value = MagicMock()
@@ -1548,10 +1545,7 @@ class TestResponseUsageReporting:
         mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
-            patch.object(
-                usage.providers.model_provider, "get_api_url", return_value="https://api.vm0.ai"
-            ),
-            mitm_ctx(),
+            mitm_ctx(api_url="https://api.vm0.ai"),
             patch.object(usage.webhook, "_opener") as mock_opener,
         ):
             mock_opener.open.return_value = MagicMock()
@@ -1594,10 +1588,7 @@ class TestResponseUsageReporting:
         mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
-            patch.object(
-                usage.providers.model_provider, "get_api_url", return_value="https://api.vm0.ai"
-            ),
-            mitm_ctx(),
+            mitm_ctx(api_url="https://api.vm0.ai"),
             patch.object(usage.webhook, "_opener") as mock_opener,
         ):
             mock_opener.open.return_value = MagicMock()
@@ -1635,10 +1626,7 @@ class TestResponseUsageReporting:
         mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
-            patch.object(
-                usage.providers.model_provider, "get_api_url", return_value="https://api.vm0.ai"
-            ),
-            mitm_ctx(),
+            mitm_ctx(api_url="https://api.vm0.ai"),
             patch.object(usage.webhook, "_opener") as mock_opener,
         ):
             mock_opener.open.return_value = MagicMock()
@@ -1743,7 +1731,7 @@ class TestErrorHandler:
         assert "slack.com" in content
 
     def test_error_logs_connector_usage_for_x_stream(
-        self, tmp_path, real_flow, headers, fresh_usage_executor
+        self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor
     ):
         """Mid-flight stream crash: partial counts still reported (issue #9534)."""
         flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets/search/stream")
@@ -1773,9 +1761,7 @@ class TestErrorHandler:
         flow.metadata["vm_sandbox_token"] = "test-token"
 
         with (
-            patch.object(
-                usage.providers.connectors.x, "get_api_url", return_value="https://app.test"
-            ),
+            mitm_ctx(api_url="https://app.test"),
             patch.object(
                 usage.webhook, "_opener"
             ) as mock_opener,  # urllib external boundary (#9991)
@@ -1792,7 +1778,7 @@ class TestErrorHandler:
         assert by_cat["users.read"] == 5
 
     def test_full_pipeline_stream_error_midflight(
-        self, tmp_path, real_flow, headers, fresh_usage_executor
+        self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor
     ):
         """End-to-end: responseheaders → partial chunks → error() logs observed counts.
 
@@ -1831,9 +1817,7 @@ class TestErrorHandler:
         flow.metadata["vm_sandbox_token"] = "test-token"
 
         with (
-            patch.object(
-                usage.providers.connectors.x, "get_api_url", return_value="https://app.test"
-            ),
+            mitm_ctx(api_url="https://app.test"),
             patch.object(
                 usage.webhook, "_opener"
             ) as mock_opener,  # urllib external boundary (#9991)
@@ -2594,10 +2578,7 @@ class TestReportConnectorUsage:
 
         # 3. Simulated disconnect - response() fires and logs via webhook
         with (
-            mitm_ctx(),
-            patch.object(
-                usage.providers.connectors.x, "get_api_url", return_value="https://app.test"
-            ),
+            mitm_ctx(api_url="https://app.test"),
             patch.object(
                 usage.webhook, "_opener"
             ) as mock_opener,  # urllib external boundary (#9991)
