@@ -1,4 +1,6 @@
-import { command, computed, state } from "ccstate";
+import { command, computed, state, type Computed } from "ccstate";
+import { agentById } from "../agent.ts";
+import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 
 // ---------------------------------------------------------------------------
 // Schedule form data — single state object for all form fields
@@ -195,3 +197,31 @@ export const syncInstructionDraftEntry$ = command(
     }
   },
 );
+
+// ---------------------------------------------------------------------------
+// Agent model default — derived from form agentId for the model picker
+// ---------------------------------------------------------------------------
+
+function createAgentModelDefault$(
+  form$: Computed<ScheduleFormData>,
+): Computed<Promise<ModelProviderSelection | null>> {
+  return computed(async (get) => {
+    const { agentId } = get(form$);
+    if (!agentId) {
+      return null;
+    }
+    const agent = await get(agentById(agentId));
+    if (!agent?.modelProviderId || !agent.selectedModel) {
+      return null;
+    }
+    return {
+      modelProviderId: agent.modelProviderId,
+      selectedModel: agent.selectedModel,
+    };
+  });
+}
+
+export const scheduleAgentModelDefault$ =
+  createAgentModelDefault$(scheduleForm$);
+
+export const dialogAgentModelDefault$ = createAgentModelDefault$(dialogForm$);

@@ -381,6 +381,7 @@ function ChatThreadComposer({
   const orgProviders = useLastResolved(orgModelProviders$);
   const modelSelection = useLastResolved(thread.modelSelection$) ?? null;
   const setModelSelection = useSet(thread.setModelSelection$);
+  const agentModelDefault = useLastResolved(thread.agentModelDefault$) ?? null;
 
   const handleInputChange = (text: string) => {
     setInput(text);
@@ -440,6 +441,7 @@ function ChatThreadComposer({
                   disabled: Boolean(
                     threadData?.modelProviderId && threadData?.selectedModel,
                   ),
+                  agentDefault: agentModelDefault,
                 }
               : undefined
           }

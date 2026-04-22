@@ -328,16 +328,13 @@ export function ZeroSettingsTab({
               orgProviders.modelProviders.length > 0 && (
                 <InlineSettingsRow
                   label="Model"
-                  description="Override the org default model for this agent."
-                  wideControls
+                  description="The model used by this agent. Defaults to the workspace setting."
                 >
-                  <div className="min-w-0 w-full">
-                    <ModelProviderPicker
-                      providers={orgProviders.modelProviders}
-                      value={modelSelection}
-                      onChange={setModelSelection}
-                    />
-                  </div>
+                  <ModelProviderPicker
+                    providers={orgProviders.modelProviders}
+                    value={modelSelection}
+                    onChange={setModelSelection}
+                  />
                 </InlineSettingsRow>
               )}
           </CardContent>

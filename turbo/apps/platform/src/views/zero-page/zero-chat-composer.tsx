@@ -168,6 +168,8 @@ interface ZeroChatComposerProps {
     sessionProviderType: ModelProviderType | null;
     // When true, picker is read-only (e.g. existing chat thread).
     disabled?: boolean;
+    /** The agent-level default model, shown as a "Default" tag in the dropdown. */
+    agentDefault?: ModelProviderSelection | null;
   };
 }
 
@@ -943,7 +945,7 @@ export function ZeroChatComposer({
                     triggerClassName={cn(
                       // Resting state: borderless ghost — trigger reads like
                       // plain text in the toolbar.
-                      "h-8 w-auto max-w-[12rem] gap-1 border-transparent bg-transparent px-2 text-xs text-muted-foreground transition-colors",
+                      "h-9 w-auto max-w-[12rem] gap-1 border-transparent bg-transparent px-2 text-sm text-muted-foreground transition-colors",
                       // Discoverable affordance only when the user targets it.
                       "hover:bg-accent hover:text-foreground focus:bg-accent focus:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground",
                     )}
@@ -952,6 +954,8 @@ export function ZeroChatComposer({
                     open={modelPickerOpen}
                     onOpenChange={setModelPickerOpen}
                     disabled={modelPicker.disabled}
+                    agentDefault={modelPicker.agentDefault}
+                    inheritLabel="agent"
                   />
                 )}
                 <MicButton

@@ -98,6 +98,7 @@ import {
   incrementDiscardNonce$,
   syncSettingsFormEntry$,
   syncInstructionDraftEntry$,
+  scheduleAgentModelDefault$,
   type ScheduleSettingsSnapshot,
 } from "../../signals/schedule-page/schedule-form.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
@@ -323,6 +324,8 @@ function ScheduleSettingsForm({
     features?.[FeatureSwitchKey.ModelProviderSelection] ?? false;
   const orgProviders = useLastResolved(orgModelProviders$);
 
+  const agentModelDefault = useLastResolved(scheduleAgentModelDefault$) ?? null;
+
   // Reset form when entry changes (component is keyed by entry.id)
   useSet(syncSettingsFormEntry$)(entry.id, entry.prompt, initial);
 
@@ -488,7 +491,7 @@ function ScheduleSettingsForm({
             orgProviders.modelProviders.length > 0 && (
               <InlineSettingsRow
                 label="Model"
-                description="Override the org default model for this schedule."
+                description="Override the agent's default model for this schedule."
               >
                 <div className={SCHEDULE_DETAIL_CONTROL_WIDTH}>
                   <ModelProviderPicker
@@ -507,6 +510,8 @@ function ScheduleSettingsForm({
                         selectedModel: sel?.selectedModel ?? null,
                       });
                     }}
+                    agentDefault={agentModelDefault}
+                    inheritLabel="agent"
                   />
                 </div>
               </InlineSettingsRow>
