@@ -144,6 +144,35 @@ describe("zero agent edit command", () => {
     });
   });
 
+    it("should update avatar and include it in request body", async () => {
+      let capturedBody: Record<string, unknown> | undefined;
+      server.use(
+        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
+          return HttpResponse.json(mockAgent);
+        }),
+        http.put(
+          "http://localhost:3000/api/zero/agents/my-agent",
+          async ({ request }) => {
+            capturedBody = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json(mockAgent);
+          },
+        ),
+      );
+
+      await editCommand.parseAsync([
+        "node",
+        "cli",
+        "my-agent",
+        "--avatar",
+        "preset:3",
+      ]);
+
+      expect(capturedBody?.avatarUrl).toBe("preset:3");
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("updated");
+    });
+  });
+
   describe("validation", () => {
     it("should fail when no options provided", async () => {
       await expect(async () => {
@@ -152,6 +181,23 @@ describe("zero agent edit command", () => {
 
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("At least one option is required"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should reject invalid avatar format", async () => {
+      await expect(async () => {
+        await editCommand.parseAsync([
+          "node",
+          "cli",
+          "my-agent",
+          "--avatar",
+          "invalid",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Invalid avatar"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });

@@ -14,6 +14,7 @@ interface AgentEditOptions {
   displayName?: string;
   description?: string;
   sound?: string;
+  avatar?: string;
   skills?: string;
   addSkill?: string;
   removeSkill?: string;
@@ -22,11 +23,20 @@ interface AgentEditOptions {
   model?: string;
 }
 
+function validateAvatar(value: string): void {
+  if (/^preset:[0-4]$/.test(value)) return;
+  if (/^svg:r[1-5]s[0-4]h[1-5]c[1-5]f[1-5][dmh]$/.test(value)) return;
+  throw new Error(
+    `Invalid avatar "${value}". Use preset:0–4 or svg:r{1-5}s{0-4}h{1-5}c{1-5}f{1-5}{d|m|h} (e.g. svg:r3s1h2c2f4h)`,
+  );
+}
+
 function hasAgentFieldUpdate(options: AgentEditOptions): boolean {
   return (
     options.displayName !== undefined ||
     options.description !== undefined ||
     options.sound !== undefined ||
+    options.avatar !== undefined ||
     options.skills !== undefined ||
     options.addSkill !== undefined ||
     options.removeSkill !== undefined ||
@@ -64,6 +74,10 @@ async function applyAgentUpdate(
       options.sound !== undefined
         ? options.sound
         : (current.sound ?? undefined),
+    avatarUrl:
+      options.avatar !== undefined
+        ? options.avatar
+        : (current.avatarUrl ?? undefined),
     customSkills,
     modelProviderId,
     selectedModel,
@@ -131,6 +145,7 @@ export const editCommand = new Command()
     "--sound <tone>",
     "New tone: professional, friendly, direct, supportive",
   )
+  .option("--avatar <config>", "Agent avatar (preset:0–4 or custom svg: string)")
   .option(
     "--skills <items>",
     "Comma-separated custom skill names to attach (replaces existing)",
@@ -149,9 +164,26 @@ export const editCommand = new Command()
   .addHelpText(
     "after",
     `
+Avatar format:
+  Presets:
+    preset:0  light skin, brown hair, calm, hyped
+    preset:1  light-medium skin, grey hair, calm, normal
+    preset:2  medium skin, pink hair, neutral, chill
+    preset:3  medium-dark skin, blonde hair, pleasant, hyped
+    preset:4  dark skin, teal hair, excited, normal
+  Custom: svg:r{R}s{S}h{H}c{C}f{F}{I}
+    R  head angle   1=far-left  3=center  5=far-right
+    S  skin tone    0=lightest  2=medium  4=darkest
+    H  hair style   1–5
+    C  hair color   1=blonde  2=teal  3=grey  4=pink  5=brown
+    F  expression   1=calm  3=neutral  5=excited
+    I  intensity    d=chill  m=normal  h=hyped
+
 Examples:
   Update description:      zero agent edit <agent-id> --description "new role"
   Update tone:             zero agent edit <agent-id> --sound friendly
+  Set avatar:              zero agent edit <agent-id> --avatar preset:2
+  Custom avatar:           zero agent edit <agent-id> --avatar svg:r3s1h2c2f4h
   Replace all skills:      zero agent edit <agent-id> --skills my-skill,other-skill
   Add a skill:             zero agent edit <agent-id> --add-skill my-skill
   Remove a skill:          zero agent edit <agent-id> --remove-skill my-skill
@@ -174,8 +206,12 @@ Notes:
 
       if (!hasAgentUpdate && !options.instructionsFile) {
         throw new Error(
-          "At least one option is required (--display-name, --description, --sound, --skills, --add-skill, --remove-skill, --model-provider, --model, --instructions-file)",
+          "At least one option is required (--display-name, --description, --sound, --avatar, --skills, --add-skill, --remove-skill, --model-provider, --model, --instructions-file)",
         );
+      }
+
+      if (options.avatar !== undefined) {
+        validateAvatar(options.avatar);
       }
 
       if (hasAgentUpdate) {

@@ -100,6 +100,54 @@ describe("zero agent create command", () => {
       expect(logCalls).toContain("other-skill");
     });
 
+    it("should send preset avatar in request body", async () => {
+      let capturedBody: Record<string, unknown> | undefined;
+      server.use(
+        http.post(
+          "http://localhost:3000/api/zero/agents",
+          async ({ request }) => {
+            capturedBody = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json(mockAgent, { status: 201 });
+          },
+        ),
+      );
+
+      await createCommand.parseAsync([
+        "node",
+        "cli",
+        "--display-name",
+        "New Agent",
+        "--avatar",
+        "preset:2",
+      ]);
+
+      expect(capturedBody?.avatarUrl).toBe("preset:2");
+    });
+
+    it("should send custom svg avatar in request body", async () => {
+      let capturedBody: Record<string, unknown> | undefined;
+      server.use(
+        http.post(
+          "http://localhost:3000/api/zero/agents",
+          async ({ request }) => {
+            capturedBody = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json(mockAgent, { status: 201 });
+          },
+        ),
+      );
+
+      await createCommand.parseAsync([
+        "node",
+        "cli",
+        "--display-name",
+        "New Agent",
+        "--avatar",
+        "svg:r3s1h2c2f4h",
+      ]);
+
+      expect(capturedBody?.avatarUrl).toBe("svg:r3s1h2c2f4h");
+    });
+
     describe("with instructions file", () => {
       let instructionsPath: string;
 
@@ -146,6 +194,24 @@ describe("zero agent create command", () => {
   });
 
   describe("error handling", () => {
+    it("should reject invalid avatar format", async () => {
+      await expect(async () => {
+        await createCommand.parseAsync([
+          "node",
+          "cli",
+          "--display-name",
+          "New Agent",
+          "--avatar",
+          "bad-avatar",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Invalid avatar"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
     it("should handle authentication error", async () => {
       server.use(
         http.post("http://localhost:3000/api/zero/agents", () => {
