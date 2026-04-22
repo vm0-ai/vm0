@@ -4,7 +4,6 @@ import { initServices } from "../../lib/init-services";
 import {
   featureCandidateVoiceChatItems,
   featureCandidateVoiceChatSessions,
-  featureCandidateVoiceChatItems,
   featureCandidateVoiceChatTasks,
 } from "../../db/schema/voice-chat-candidate";
 

@@ -1,1 +1,0 @@
-ALTER TABLE "feature_candidate_voice_chat_tasks" ADD COLUMN "result_updated_at" timestamp;
