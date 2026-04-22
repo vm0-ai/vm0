@@ -217,15 +217,15 @@ function ConnectorTriggerIcons({
     })
     .slice(0, 3);
   if (enabled.length === 0) {
-    return <IconPlug size={16} stroke={1.5} />;
+    return <IconPlug size={18} stroke={1.5} />;
   }
   return (
     <span className="flex items-center -space-x-1.5">
       {enabled.map((c) => {
         return (
           <span key={c.type} className="relative shrink-0">
-            <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-background ring-[0.7px] ring-gray-100 dark:ring-gray-600">
-              <ConnectorIcon type={c.type as ConnectorType} size={14} />
+            <span className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-background zero-border">
+              <ConnectorIcon type={c.type as ConnectorType} size={16} />
             </span>
           </span>
         );
@@ -400,7 +400,7 @@ function ConnectorsPopoverButton({
             <TooltipTrigger asChild>
               <button
                 type="button"
-                className="inline-flex shrink-0 items-center justify-center rounded-lg h-8 min-w-8 px-1.5 hover:bg-accent transition-colors"
+                className="inline-flex shrink-0 items-center justify-center rounded-lg h-9 min-w-9 px-1.5 hover:bg-accent transition-colors"
                 aria-label="Connectors"
               >
                 <ConnectorTriggerIcons connectors={agentConnectors} />
@@ -553,8 +553,8 @@ function MicButton({
             className={cn(
               "inline-flex shrink-0 items-center justify-center rounded-lg transition-colors",
               recording || transcribing
-                ? "gap-[3px] h-8 w-[48px] bg-[#2E9E9F] text-white hover:bg-[#279394]"
-                : "h-8 w-8 text-muted-foreground hover:bg-accent hover:text-foreground",
+                ? "gap-[3px] h-9 w-[52px] bg-[#2E9E9F] text-white hover:bg-[#279394]"
+                : "h-9 w-9 text-muted-foreground hover:bg-accent hover:text-foreground",
             )}
             onClick={handleClick}
             disabled={transcribing}
@@ -933,15 +933,15 @@ export function ZeroChatComposer({
               onKeyDown={handleKeyDown}
               onPaste={handlePaste}
             />
-            <div className="flex items-center justify-between p-3">
-              <div className="flex items-center gap-0.5 text-muted-foreground">
+            <div className="flex items-center justify-between gap-2 px-4 py-3">
+              <div className="flex items-center gap-1 text-muted-foreground">
                 <button
                   type="button"
-                  className="inline-flex shrink-0 items-center justify-center rounded-lg h-8 w-8 hover:bg-accent hover:text-foreground transition-colors"
+                  className="p-[9px] rounded-lg hover:bg-accent hover:text-foreground transition-colors duration-200"
                   aria-label="Attach"
                   onClick={handleFileSelect}
                 >
-                  <IconPaperclip size={16} stroke={1.5} />
+                  <IconPaperclip size={18} stroke={1.5} />
                 </button>
                 <ConnectorsPopoverButton
                   agentConnectors={agentConnectors}
@@ -953,11 +953,11 @@ export function ZeroChatComposer({
                   onToggle={handleToggle}
                 />
               </div>
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-2">
                 {actionsLoading ? (
                   <Skeleton
                     className={cn(
-                      "h-8 rounded-md",
+                      "h-9 rounded-md",
                       modelPicker ? "w-[184px]" : "w-20",
                     )}
                   />
@@ -996,21 +996,21 @@ export function ZeroChatComposer({
                       <Button
                         size="sm"
                         variant="destructive"
-                        className="rounded-lg h-8 w-8 p-0 shrink-0"
+                        className="rounded-lg h-9 w-9 p-0 shrink-0"
                         onClick={onCancel}
                         aria-label="Stop"
                       >
-                        <IconPlayerStop size={14} />
+                        <IconPlayerStop size={16} />
                       </Button>
                     ) : (
                       <Button
                         size="sm"
-                        className="rounded-lg h-8 w-8 p-0 shrink-0"
+                        className="rounded-lg h-9 w-9 p-0 shrink-0"
                         onClick={handleSend}
                         disabled={!canSend || !!sending}
                         aria-label="Send"
                       >
-                        <IconArrowUp size={16} stroke={2} />
+                        <IconArrowUp size={18} stroke={2} />
                       </Button>
                     )}
                   </>

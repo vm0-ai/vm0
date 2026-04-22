@@ -997,7 +997,7 @@ details[open] > summary > span:first-child {
 
 .mic-eq-bar {
   width: 2px;
-  height: 12px;
+  height: 14px;
   border-radius: 1px;
   background-color: white;
   transform-origin: bottom;
