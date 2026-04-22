@@ -72,11 +72,21 @@ fn main() {
     }
 }
 
-/// Recursively scan `mitm-addon/src/**/*.py` and generate `addon_files.rs` with
-/// all file contents embedded via `include_str!()`. Keys are paths relative to
-/// `src/` (e.g. `"usage/counters.py"`) so the runtime extractor can recreate the
-/// directory structure. Adding a new `.py` file — at any depth — requires zero
-/// Rust changes.
+/// Recursively scan `mitm-addon/src/**` and generate `addon_files.rs` with all
+/// addon-runtime file contents embedded via `include_str!()`. Keys are paths
+/// relative to `src/` (e.g. `"usage/counters.py"`) so the runtime extractor can
+/// recreate the directory structure. Adding a new file — at any depth — requires
+/// zero Rust changes.
+///
+/// Files picked up:
+///
+/// - `*.py` — Python addon source consumed by mitmdump at runtime.
+/// - `LICENSE*`, `COPYING*`, `NOTICE*` — license / attribution files from
+///   vendored third-party packages (e.g. `vendor/ijson/LICENSE.txt`).
+///   Required to ship with the binary to satisfy BSD-3-Clause §2, Apache-2.0
+///   §4(d), etc.  Extracting them at `{addon_dir}/vendor/*/LICENSE*` alongside
+///   the code keeps the source and its license physically co-located both in
+///   the binary and on disk.
 fn generate_addon_files() {
     let src_dir = PathBuf::from("mitm-addon/src");
 
@@ -84,7 +94,7 @@ fn generate_addon_files() {
     println!("cargo::rerun-if-changed={}", src_dir.display());
 
     let mut entries: Vec<(String, PathBuf)> = Vec::new();
-    collect_py_files(&src_dir, &src_dir, &mut entries);
+    collect_addon_files(&src_dir, &src_dir, &mut entries);
 
     // Sort by relative path for deterministic output (multiple `__init__.py`
     // entries share a basename but differ by directory).
@@ -102,7 +112,7 @@ fn generate_addon_files() {
     fs::write(out_dir.join("addon_files.rs"), code).unwrap();
 }
 
-fn collect_py_files(root: &Path, cur: &Path, out: &mut Vec<(String, PathBuf)>) {
+fn collect_addon_files(root: &Path, cur: &Path, out: &mut Vec<(String, PathBuf)>) {
     for entry in fs::read_dir(cur).unwrap_or_else(|e| panic!("read {}: {e}", cur.display())) {
         let path = entry.unwrap().path();
         if path.is_dir() {
@@ -112,10 +122,10 @@ fn collect_py_files(root: &Path, cur: &Path, out: &mut Vec<(String, PathBuf)>) {
             if name == "__pycache__" || name.starts_with('.') {
                 continue;
             }
-            collect_py_files(root, &path, out);
+            collect_addon_files(root, &path, out);
             continue;
         }
-        if path.extension().is_some_and(|ext| ext == "py") {
+        if should_embed(&path) {
             let abs = fs::canonicalize(&path)
                 .unwrap_or_else(|e| panic!("canonicalize {}: {e}", path.display()));
             println!("cargo::rerun-if-changed={}", abs.display());
@@ -127,4 +137,18 @@ fn collect_py_files(root: &Path, cur: &Path, out: &mut Vec<(String, PathBuf)>) {
             out.push((rel, abs));
         }
     }
+}
+
+/// Decide whether a file under `mitm-addon/src/` ships with the runner binary.
+///
+/// Accepts `.py` (addon sources) and the conventional license / attribution
+/// filenames used by third-party packages (e.g. vendored ijson's
+/// `LICENSE.txt`).  `include_str!` requires valid UTF-8, which all of these
+/// always are in practice.
+fn should_embed(path: &Path) -> bool {
+    if path.extension().is_some_and(|ext| ext == "py") {
+        return true;
+    }
+    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    name.starts_with("LICENSE") || name.starts_with("COPYING") || name.starts_with("NOTICE")
 }
