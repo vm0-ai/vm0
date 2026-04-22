@@ -31,6 +31,7 @@ import {
 } from "../../../../signals/zero-page/settings/connectors.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { ConnectorIcon } from "./connector-icons.tsx";
+import { Vm0ManagedBadge } from "./vm0-managed-badge.tsx";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { GoogleOAuthNotice } from "../../zero-directed-shared.tsx";
 
@@ -375,11 +376,7 @@ export function ConnectModal({
         {item.connected && (
           <p className="flex items-center gap-2 text-sm text-muted-foreground">
             <span>{connectedStatusText(item)}</span>
-            {item.connector?.authMethod === "platform" && (
-              <span className="shrink-0 rounded-sm border border-border bg-muted px-1.5 py-0.5 text-[10px] font-medium leading-none text-muted-foreground">
-                VM0 Managed
-              </span>
-            )}
+            {item.connector?.authMethod === "platform" && <Vm0ManagedBadge />}
           </p>
         )}
 
