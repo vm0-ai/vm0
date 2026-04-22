@@ -124,7 +124,7 @@ describe("zero agent create command", () => {
       expect(capturedBody?.avatarUrl).toBe("preset:2");
     });
 
-    it("should send custom svg avatar in request body", async () => {
+    it("should compose svg avatar from descriptive flags", async () => {
       let capturedBody: Record<string, unknown> | undefined;
       server.use(
         http.post(
@@ -141,11 +141,15 @@ describe("zero agent create command", () => {
         "cli",
         "--display-name",
         "New Agent",
-        "--avatar",
-        "svg:r3s1h2c2f4h",
+        "--avatar-skin",
+        "dark",
+        "--avatar-hair-color",
+        "teal",
+        "--avatar-intensity",
+        "hyped",
       ]);
 
-      expect(capturedBody?.avatarUrl).toBe("svg:r3s1h2c2f4h");
+      expect(capturedBody?.avatarUrl).toBe("svg:r3s4h1c2f1h");
     });
 
     describe("with instructions file", () => {
@@ -194,7 +198,7 @@ describe("zero agent create command", () => {
   });
 
   describe("error handling", () => {
-    it("should reject invalid avatar format", async () => {
+    it("should reject invalid avatar preset", async () => {
       await expect(async () => {
         await createCommand.parseAsync([
           "node",
@@ -202,12 +206,50 @@ describe("zero agent create command", () => {
           "--display-name",
           "New Agent",
           "--avatar",
-          "bad-avatar",
+          "preset:9",
         ]);
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Invalid avatar"),
+        expect.stringContaining("Invalid --avatar"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should reject invalid avatar skin value", async () => {
+      await expect(async () => {
+        await createCommand.parseAsync([
+          "node",
+          "cli",
+          "--display-name",
+          "New Agent",
+          "--avatar-skin",
+          "purple",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Invalid --avatar-skin"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should reject combining --avatar preset with --avatar-* flags", async () => {
+      await expect(async () => {
+        await createCommand.parseAsync([
+          "node",
+          "cli",
+          "--display-name",
+          "New Agent",
+          "--avatar",
+          "preset:1",
+          "--avatar-skin",
+          "dark",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("cannot be combined"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });

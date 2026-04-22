@@ -10,11 +10,132 @@ import {
 import { withErrorHandler } from "../../../lib/command";
 import { parseModelFlag } from "../../../lib/domain/model-provider/shared";
 
-interface AgentEditOptions {
+const SKIN_MAP: Record<string, number> = {
+  light: 0,
+  "light-medium": 1,
+  medium: 2,
+  "medium-dark": 3,
+  dark: 4,
+};
+
+const HAIR_COLOR_MAP: Record<string, number> = {
+  blonde: 1,
+  teal: 2,
+  grey: 3,
+  pink: 4,
+  brown: 5,
+};
+
+const EXPRESSION_MAP: Record<string, number> = {
+  calm: 1,
+  content: 2,
+  neutral: 3,
+  pleasant: 4,
+  excited: 5,
+};
+
+const INTENSITY_MAP: Record<string, "d" | "m" | "h"> = {
+  chill: "d",
+  normal: "m",
+  hyped: "h",
+};
+
+function lookupRequired<T>(
+  value: string,
+  map: Readonly<Record<string, T>>,
+  flag: string,
+): T {
+  if (!(value in map)) {
+    throw new Error(
+      `Invalid ${flag} "${value}". Must be one of: ${Object.keys(map).join(", ")}`,
+    );
+  }
+  return map[value]!;
+}
+
+interface AvatarOptions {
+  avatar?: string;
+  avatarRotation?: string;
+  avatarSkin?: string;
+  avatarHairStyle?: string;
+  avatarHairColor?: string;
+  avatarExpression?: string;
+  avatarIntensity?: string;
+}
+
+function resolveAvatarUrl(opts: AvatarOptions): string | undefined {
+  const hasPreset = opts.avatar !== undefined;
+  const hasCustom =
+    opts.avatarRotation !== undefined ||
+    opts.avatarSkin !== undefined ||
+    opts.avatarHairStyle !== undefined ||
+    opts.avatarHairColor !== undefined ||
+    opts.avatarExpression !== undefined ||
+    opts.avatarIntensity !== undefined;
+
+  if (!hasPreset && !hasCustom) return undefined;
+
+  if (hasPreset && hasCustom) {
+    throw new Error(
+      "--avatar cannot be combined with --avatar-* attribute options",
+    );
+  }
+
+  if (hasPreset) {
+    if (!/^preset:[0-4]$/.test(opts.avatar!)) {
+      throw new Error(
+        `Invalid --avatar "${opts.avatar}". Use preset:0 through preset:4`,
+      );
+    }
+    return opts.avatar;
+  }
+
+  let r = 3;
+  if (opts.avatarRotation !== undefined) {
+    const n = Number(opts.avatarRotation);
+    if (!Number.isInteger(n) || n < 1 || n > 5) {
+      throw new Error(
+        `Invalid --avatar-rotation "${opts.avatarRotation}". Must be 1–5`,
+      );
+    }
+    r = n;
+  }
+
+  let h = 1;
+  if (opts.avatarHairStyle !== undefined) {
+    const n = Number(opts.avatarHairStyle);
+    if (!Number.isInteger(n) || n < 1 || n > 5) {
+      throw new Error(
+        `Invalid --avatar-hair-style "${opts.avatarHairStyle}". Must be 1–5`,
+      );
+    }
+    h = n;
+  }
+
+  const s =
+    opts.avatarSkin !== undefined
+      ? lookupRequired(opts.avatarSkin, SKIN_MAP, "--avatar-skin")
+      : 2;
+  const c =
+    opts.avatarHairColor !== undefined
+      ? lookupRequired(opts.avatarHairColor, HAIR_COLOR_MAP, "--avatar-hair-color")
+      : 5;
+  const f =
+    opts.avatarExpression !== undefined
+      ? lookupRequired(opts.avatarExpression, EXPRESSION_MAP, "--avatar-expression")
+      : 1;
+  const i =
+    opts.avatarIntensity !== undefined
+      ? lookupRequired(opts.avatarIntensity, INTENSITY_MAP, "--avatar-intensity")
+      : "m";
+
+  return `svg:r${r}s${s}h${h}c${c}f${f}${i}`;
+}
+
+interface AgentEditOptions extends AvatarOptions {
   displayName?: string;
   description?: string;
   sound?: string;
-  avatar?: string;
   skills?: string;
   addSkill?: string;
   removeSkill?: string;
@@ -23,11 +144,15 @@ interface AgentEditOptions {
   model?: string;
 }
 
-function validateAvatar(value: string): void {
-  if (/^preset:[0-4]$/.test(value)) return;
-  if (/^svg:r[1-5]s[0-4]h[1-5]c[1-5]f[1-5][dmh]$/.test(value)) return;
-  throw new Error(
-    `Invalid avatar "${value}". Use preset:0–4 or svg:r{1-5}s{0-4}h{1-5}c{1-5}f{1-5}{d|m|h} (e.g. svg:r3s1h2c2f4h)`,
+function hasAvatarUpdate(options: AvatarOptions): boolean {
+  return (
+    options.avatar !== undefined ||
+    options.avatarRotation !== undefined ||
+    options.avatarSkin !== undefined ||
+    options.avatarHairStyle !== undefined ||
+    options.avatarHairColor !== undefined ||
+    options.avatarExpression !== undefined ||
+    options.avatarIntensity !== undefined
   );
 }
 
@@ -36,7 +161,7 @@ function hasAgentFieldUpdate(options: AgentEditOptions): boolean {
     options.displayName !== undefined ||
     options.description !== undefined ||
     options.sound !== undefined ||
-    options.avatar !== undefined ||
+    hasAvatarUpdate(options) ||
     options.skills !== undefined ||
     options.addSkill !== undefined ||
     options.removeSkill !== undefined ||
@@ -61,6 +186,10 @@ async function applyAgentUpdate(
       ? parseModelFlag(options.model)
       : current.selectedModel;
 
+  const avatarUrl = hasAvatarUpdate(options)
+    ? resolveAvatarUrl(options)
+    : (current.avatarUrl ?? undefined);
+
   await updateZeroAgent(agentId, {
     displayName:
       options.displayName !== undefined
@@ -74,10 +203,7 @@ async function applyAgentUpdate(
       options.sound !== undefined
         ? options.sound
         : (current.sound ?? undefined),
-    avatarUrl:
-      options.avatar !== undefined
-        ? options.avatar
-        : (current.avatarUrl ?? undefined),
+    avatarUrl,
     customSkills,
     modelProviderId,
     selectedModel,
@@ -145,7 +271,22 @@ export const editCommand = new Command()
     "--sound <tone>",
     "New tone: professional, friendly, direct, supportive",
   )
-  .option("--avatar <config>", "Agent avatar (preset:0–4 or custom svg: string)")
+  .option("--avatar <preset>", "Avatar preset: preset:0 through preset:4")
+  .option("--avatar-rotation <1-5>", "Head angle: 1=far-left  3=center  5=far-right")
+  .option(
+    "--avatar-skin <tone>",
+    "Skin tone: light | light-medium | medium | medium-dark | dark",
+  )
+  .option("--avatar-hair-style <1-5>", "Hair style: 1–5")
+  .option(
+    "--avatar-hair-color <color>",
+    "Hair color: blonde | teal | grey | pink | brown",
+  )
+  .option(
+    "--avatar-expression <expr>",
+    "Expression: calm | content | neutral | pleasant | excited",
+  )
+  .option("--avatar-intensity <level>", "Intensity: chill | normal | hyped")
   .option(
     "--skills <items>",
     "Comma-separated custom skill names to attach (replaces existing)",
@@ -164,26 +305,29 @@ export const editCommand = new Command()
   .addHelpText(
     "after",
     `
-Avatar format:
-  Presets:
+Avatar:
+  Quick presets (--avatar):
     preset:0  light skin, brown hair, calm, hyped
     preset:1  light-medium skin, grey hair, calm, normal
     preset:2  medium skin, pink hair, neutral, chill
     preset:3  medium-dark skin, blonde hair, pleasant, hyped
     preset:4  dark skin, teal hair, excited, normal
-  Custom: svg:r{R}s{S}h{H}c{C}f{F}{I}
-    R  head angle   1=far-left  3=center  5=far-right
-    S  skin tone    0=lightest  2=medium  4=darkest
-    H  hair style   1–5
-    C  hair color   1=blonde  2=teal  3=grey  4=pink  5=brown
-    F  expression   1=calm  3=neutral  5=excited
-    I  intensity    d=chill  m=normal  h=hyped
+
+  Custom attributes (--avatar-* flags, replace the entire avatar):
+    --avatar-rotation   1=far-left  3=center(default)  5=far-right
+    --avatar-skin       light / light-medium / medium(default) / medium-dark / dark
+    --avatar-hair-style 1–5 (default: 1)
+    --avatar-hair-color blonde / teal / grey / pink / brown(default)
+    --avatar-expression calm(default) / content / neutral / pleasant / excited
+    --avatar-intensity  chill / normal(default) / hyped
+
+  Note: --avatar and --avatar-* cannot be used together.
 
 Examples:
   Update description:      zero agent edit <agent-id> --description "new role"
   Update tone:             zero agent edit <agent-id> --sound friendly
-  Set avatar:              zero agent edit <agent-id> --avatar preset:2
-  Custom avatar:           zero agent edit <agent-id> --avatar svg:r3s1h2c2f4h
+  Quick preset avatar:     zero agent edit <agent-id> --avatar preset:2
+  Custom avatar:           zero agent edit <agent-id> --avatar-skin dark --avatar-hair-color teal --avatar-intensity hyped
   Replace all skills:      zero agent edit <agent-id> --skills my-skill,other-skill
   Add a skill:             zero agent edit <agent-id> --add-skill my-skill
   Remove a skill:          zero agent edit <agent-id> --remove-skill my-skill
@@ -206,12 +350,8 @@ Notes:
 
       if (!hasAgentUpdate && !options.instructionsFile) {
         throw new Error(
-          "At least one option is required (--display-name, --description, --sound, --avatar, --skills, --add-skill, --remove-skill, --model-provider, --model, --instructions-file)",
+          "At least one option is required (--display-name, --description, --sound, --avatar, --avatar-*, --skills, --add-skill, --remove-skill, --model-provider, --model, --instructions-file)",
         );
-      }
-
-      if (options.avatar !== undefined) {
-        validateAvatar(options.avatar);
       }
 
       if (hasAgentUpdate) {
