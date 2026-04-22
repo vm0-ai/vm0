@@ -817,6 +817,15 @@ async function executeBatchResolution(
   }
 
   if (memoryName) {
+    // Dual-read compat for epic #10577 Phase 2 type flip (#10601):
+    // check type='artifact' first (post-flip state), fall back to
+    // type='memory' (pre-flip state). Removed in #10603.
+    remainingLookups.push({
+      orgId: runtimeClerkOrgId,
+      userId,
+      name: memoryName,
+      type: "artifact",
+    });
     remainingLookups.push({
       orgId: runtimeClerkOrgId,
       userId,
@@ -1093,10 +1102,30 @@ async function buildManifestFromResults(
   // Build memory
   let memory: ManifestArtifact | null = null;
   if (memoryName) {
-    const key = lookupKey(runtimeClerkOrgId, userId, memoryName, "memory");
-    const resolved = allResults.get(key);
+    // Dual-read compat for epic #10577 Phase 2 type flip (#10601):
+    // prefer type='artifact' row, fall back to type='memory'. Removed in #10603.
+    const artifactKey = lookupKey(
+      runtimeClerkOrgId,
+      userId,
+      memoryName,
+      "artifact",
+    );
+    const memoryKey = lookupKey(
+      runtimeClerkOrgId,
+      userId,
+      memoryName,
+      "memory",
+    );
+    const resolved = lookupWithFallback(allResults, artifactKey, memoryKey);
     if (!resolved) {
       throw new Error(`Storage "${memoryName}" not found in database`);
+    }
+    if (!allResults.has(artifactKey)) {
+      log.info("memory dual-read fallback hit", {
+        memoryName,
+        orgId: runtimeClerkOrgId,
+        userId,
+      });
     }
     const archiveKey = `${resolved.s3Key}/archive.tar.gz`;
     const archiveUrl = await generatePresignedUrl(bucketName, archiveKey);
