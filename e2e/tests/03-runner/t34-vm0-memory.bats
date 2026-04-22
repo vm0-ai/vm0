@@ -1,15 +1,16 @@
 #!/usr/bin/env bats
 
 # Test VM0 memory flag persistence across continue and resume flows
-# This test verifies the full auto-memory symlink flow:
-# 1. guest-agent creates symlink: ~/.claude/projects/-{wd}/memory/ -> /home/user/.vm0/memory
-# 2. Agent writes through the symlink path (as Claude Code does in production)
-# 3. vm0 run continue restores memory and symlink is recreated
-# 4. vm0 run resume restores memory from checkpoint and symlink is recreated
+# This test verifies the auto-memory direct-mount flow (post-#10602):
+# 1. runner mounts memory directly at ~/.claude/projects/-{wd}/memory
+#    (no guest-agent symlink bootstrap — memory rides in manifest.artifacts[])
+# 2. Agent writes through that mount path (as Claude Code does in production)
+# 3. vm0 run continue restores memory and the mount is recreated
+# 4. vm0 run resume restores memory from checkpoint and the mount is recreated
 # 5. Fresh run with same --memory name reads previously written marker (dedup path)
 #
 # mock-claude executes the prompt as a bash command, so we write a marker file
-# through the symlink path and verify it survives across continue/resume.
+# through the mount path and verify it survives across continue/resume.
 #
 # Each test is self-contained: it runs its own initial vm0 run to create state,
 # then verifies the behavior under test. Two vm0 run calls (~15s each) = ~30s,
@@ -51,8 +52,9 @@ volumes:
     version: latest
 EOF
 
-    # Symlink path: guest-agent encodes working_dir "/home/user/workspace" as "-home-user-workspace"
-    export SYMLINK_PATH="/home/user/.claude/projects/-home-user-workspace/memory"
+    # Direct-mount path (post-#10602): runner mounts memory here as a directory,
+    # encoded from working_dir "/home/user/workspace" as "-home-user-workspace".
+    export MEMORY_MOUNT="/home/user/.claude/projects/-home-user-workspace/memory"
 
     # Compose agent once for all tests in this file
     $VM0_CLI compose "$TEST_CONFIG" >/dev/null
@@ -76,11 +78,11 @@ teardown_file() {
     # Unique memory name per test to avoid conflicts with parallel tests
     local memory_name="e2e-mem-t34-2-$(date +%s%3N)-$RANDOM"
 
-    # Step 1: Run agent with --memory, write marker file through symlink
-    # Verifies: symlink exists, points to .vm0/memory, write-through works, visible at both paths
+    # Step 1: Run agent with --memory, write marker file through mount directory
+    # Verifies: memory mount exists as a directory, write-through works
     run $VM0_CLI run "$AGENT_NAME" \
         --memory "$memory_name" \
-        "test -L $SYMLINK_PATH && readlink $SYMLINK_PATH | grep -q '.vm0/memory' && echo 'memory-marker-t34' > $SYMLINK_PATH/marker.txt && cat $SYMLINK_PATH/marker.txt && cat /home/user/.vm0/memory/marker.txt"
+        "test -d $MEMORY_MOUNT && echo 'memory-marker-t34' > $MEMORY_MOUNT/marker.txt && cat $MEMORY_MOUNT/marker.txt"
 
     assert_success
     assert_output --partial "● Bash("
@@ -99,11 +101,11 @@ teardown_file() {
         return 1
     }
 
-    # Step 2: Continue from session, verify marker file is readable through symlink
+    # Step 2: Continue from session, verify marker file is readable through mount
     echo "# Continuing from session: $session_id (no --memory flag)..."
     run $VM0_CLI run continue "$session_id" \
         --verbose \
-        "test -L $SYMLINK_PATH && cat $SYMLINK_PATH/marker.txt"
+        "test -d $MEMORY_MOUNT && cat $MEMORY_MOUNT/marker.txt"
 
     assert_success
     assert_output --partial "● Bash("
@@ -114,10 +116,10 @@ teardown_file() {
     # Unique memory name per test to avoid conflicts with parallel tests
     local memory_name="e2e-mem-t34-3-$(date +%s%3N)-$RANDOM"
 
-    # Step 1: Run agent with --memory, write marker file through symlink
+    # Step 1: Run agent with --memory, write marker file through mount directory
     run $VM0_CLI run "$AGENT_NAME" \
         --memory "$memory_name" \
-        "test -L $SYMLINK_PATH && echo 'memory-marker-t34' > $SYMLINK_PATH/marker.txt && cat $SYMLINK_PATH/marker.txt"
+        "test -d $MEMORY_MOUNT && echo 'memory-marker-t34' > $MEMORY_MOUNT/marker.txt && cat $MEMORY_MOUNT/marker.txt"
 
     assert_success
     assert_output --partial "● Bash("
@@ -136,11 +138,11 @@ teardown_file() {
         return 1
     }
 
-    # Step 2: Resume from checkpoint, verify marker file is readable through symlink
+    # Step 2: Resume from checkpoint, verify marker file is readable through mount
     echo "# Resuming from checkpoint: $checkpoint_id (no --memory flag)..."
     run $VM0_CLI run resume "$checkpoint_id" \
         --verbose \
-        "test -L $SYMLINK_PATH && cat $SYMLINK_PATH/marker.txt"
+        "test -d $MEMORY_MOUNT && cat $MEMORY_MOUNT/marker.txt"
 
     assert_success
     assert_output --partial "● Bash("
@@ -151,10 +153,10 @@ teardown_file() {
     # Unique memory name per test to avoid conflicts with parallel tests
     local memory_name="e2e-mem-t34-4-$(date +%s%3N)-$RANDOM"
 
-    # Step 1: Run agent with --memory, write marker file through symlink
+    # Step 1: Run agent with --memory, write marker file through mount directory
     run $VM0_CLI run "$AGENT_NAME" \
         --memory "$memory_name" \
-        "test -L $SYMLINK_PATH && echo 'memory-marker-t34' > $SYMLINK_PATH/marker.txt && cat $SYMLINK_PATH/marker.txt"
+        "test -d $MEMORY_MOUNT && echo 'memory-marker-t34' > $MEMORY_MOUNT/marker.txt && cat $MEMORY_MOUNT/marker.txt"
 
     assert_success
     assert_output --partial "● Bash("
@@ -170,7 +172,7 @@ teardown_file() {
     echo "# Running fresh agent with --memory $memory_name (dedup path)..."
     run $VM0_CLI run "$AGENT_NAME" \
         --memory "$memory_name" \
-        "test -L $SYMLINK_PATH && cat $SYMLINK_PATH/marker.txt"
+        "test -d $MEMORY_MOUNT && cat $MEMORY_MOUNT/marker.txt"
 
     assert_success
     assert_output --partial "● Bash("
