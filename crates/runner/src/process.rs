@@ -56,8 +56,10 @@ pub struct DiscoveredProcesses {
 ///
 /// Returns `(config_path, subcommand)` or `None` if the argv doesn't match.
 fn parse_runner_cmdline(argv: &[String]) -> Option<(PathBuf, String)> {
-    let subcmd_pos = argv.iter().position(|t| t == "start" || t == "benchmark")?;
-    let subcmd = argv.get(subcmd_pos)?.clone();
+    let subcmd = argv
+        .iter()
+        .find(|t| *t == "start" || *t == "benchmark")?
+        .clone();
 
     let config_pos = argv.iter().position(|t| t == "--config" || t == "-c")?;
     let config_path = argv.get(config_pos + 1)?;
