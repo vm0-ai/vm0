@@ -151,7 +151,11 @@ export async function POST(
     taskId: task.id,
     runId: run.runId,
   });
-  await appendTaskEvent(id, "task-dispatched", task.id);
+  await appendTaskEvent(id, {
+    type: "task-dispatched",
+    taskId: task.id,
+    prompt: parsed.data.prompt,
+  });
 
   after(() => {
     return publishUserSignal([session.userId], `voice:${id}`);

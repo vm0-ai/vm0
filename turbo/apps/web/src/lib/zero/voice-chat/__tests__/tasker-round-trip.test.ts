@@ -122,7 +122,9 @@ describe("tasker round trip through the blackboard", () => {
     });
     expect(dispatched).toBeTruthy();
     expect(dispatched!.source).toBe("system");
-    expect(dispatched!.content).toBe(JSON.stringify({ taskId: task.id }));
+    const dispatchedContent = JSON.parse(dispatched!.content!);
+    expect(dispatchedContent.taskId).toBe(task.id);
+    expect(dispatchedContent.prompt).toContain("PR #123");
 
     context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
       { eventData: { result: "PR #123 merged by @alice on 2026-04-21" } },
@@ -160,7 +162,10 @@ describe("tasker round trip through the blackboard", () => {
     });
     expect(completedEvent).toBeTruthy();
     expect(completedEvent!.source).toBe("system");
-    expect(completedEvent!.content).toBe(JSON.stringify({ taskId: task.id }));
+    const completedContent = JSON.parse(completedEvent!.content!);
+    expect(completedContent.taskId).toBe(task.id);
+    expect(completedContent.status).toBe("done");
+    expect(completedContent.result).toContain("merged by @alice");
 
     const fetched = await getVoiceChatTask(task.id);
     await appendEvent(

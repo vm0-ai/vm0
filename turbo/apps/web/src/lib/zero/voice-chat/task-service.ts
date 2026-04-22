@@ -83,6 +83,29 @@ export async function listVoiceChatTasks(
     .orderBy(asc(voiceChatTasks.createdAt));
 }
 
+const TASK_EVENT_CONTENT_MAX = 2000;
+
+function truncateTaskEventField(s: string | null | undefined): string | null {
+  if (s == null) return null;
+  return s.length > TASK_EVENT_CONTENT_MAX
+    ? `${s.slice(0, TASK_EVENT_CONTENT_MAX)}…`
+    : s;
+}
+
+type TaskEventInput =
+  | {
+      type: "task-dispatched";
+      taskId: string;
+      prompt: string;
+    }
+  | {
+      type: "task-completed";
+      taskId: string;
+      status: VoiceChatTaskTerminalStatus;
+      result: string | null;
+      error: string | null;
+    };
+
 /**
  * Append a system-source task lifecycle event directly into the blackboard.
  *
@@ -91,17 +114,33 @@ export async function listVoiceChatTasks(
  * `endSession` has flipped the session to "ended" (the cancel step races with
  * runs that are already terminating), so system writes bypass that gate the
  * same way `endSession` itself does when emitting `session-end`.
+ *
+ * Content is JSON with the task subject (prompt on dispatch, status/result/error
+ * on completion) so fast-brain and the tasks-panel UI can render human-readable
+ * context without a secondary fetch. Fields are truncated at 2000 chars.
  */
 export async function appendTaskEvent(
   sessionId: string,
-  type: "task-dispatched" | "task-completed",
-  taskId: string,
+  input: TaskEventInput,
 ): Promise<void> {
+  const content =
+    input.type === "task-dispatched"
+      ? JSON.stringify({
+          taskId: input.taskId,
+          prompt: truncateTaskEventField(input.prompt),
+        })
+      : JSON.stringify({
+          taskId: input.taskId,
+          status: input.status,
+          result: truncateTaskEventField(input.result),
+          error: truncateTaskEventField(input.error),
+        });
+
   await globalThis.services.db.insert(voiceChatEvents).values({
     sessionId,
     source: "system",
-    type,
-    content: JSON.stringify({ taskId }),
+    type: input.type,
+    content,
   });
 }
 
