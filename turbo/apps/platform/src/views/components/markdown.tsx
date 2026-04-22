@@ -276,6 +276,42 @@ function MarkdownLinkRenderer(
   return <PlainLink {...rest}>{children}</PlainLink>;
 }
 
+function MediaImage({
+  src,
+  alt,
+  onImageClick,
+}: {
+  src: string;
+  alt: string;
+  onImageClick?: (url: string) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        onImageClick?.(src);
+      }}
+      className="block max-w-full my-1 rounded-lg overflow-hidden cursor-zoom-in border border-foreground/10"
+    >
+      <img src={src} alt={alt} className="max-h-32 max-w-full object-contain" />
+    </button>
+  );
+}
+
+function MarkdownImageRenderer(
+  props: ComponentPropsWithoutRef<"img"> & {
+    mediaPreview: boolean;
+    onImageClick: ((url: string) => void) | undefined;
+  },
+) {
+  const { mediaPreview, onImageClick, src, alt, ...rest } = props;
+  const hasSafeSrc = typeof src === "string" && isSafeMediaUrl(src);
+  if (mediaPreview && hasSafeSrc) {
+    return <MediaImage src={src} alt={alt ?? ""} onImageClick={onImageClick} />;
+  }
+  return <img {...rest} src={src} alt={alt} />;
+}
+
 export function Markdown({
   className,
   style,
@@ -298,6 +334,15 @@ export function Markdown({
       />
     );
   };
+  const renderImage = (props: ComponentPropsWithoutRef<"img">) => {
+    return (
+      <MarkdownImageRenderer
+        {...props}
+        mediaPreview={mediaPreview}
+        onImageClick={onImageClick}
+      />
+    );
+  };
   return (
     <MarkdownPreview
       className={`!bg-transparent !text-foreground text-sm ${className ?? ""}`}
@@ -313,6 +358,7 @@ export function Markdown({
       components={{
         table: ResponsiveTable,
         a: renderLink,
+        img: renderImage,
       }}
       {...rest}
     />
