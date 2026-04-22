@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.131.0](https://github.com/vm0-ai/vm0/compare/cli-v9.130.0...cli-v9.131.0) (2026-04-22)
+
+
+### Features
+
+* **cli:** display avatar in agent view command ([#10698](https://github.com/vm0-ai/vm0/issues/10698)) ([a42e570](https://github.com/vm0-ai/vm0/commit/a42e5705d6b6406501a78e2c0b5a31b30cce497e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.228.0
+
 ## [9.130.0](https://github.com/vm0-ai/vm0/compare/cli-v9.129.2...cli-v9.130.0) (2026-04-22)
 
 

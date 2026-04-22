@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.286.0](https://github.com/vm0-ai/vm0/compare/web-v12.285.0...web-v12.286.0) (2026-04-22)
+
+
+### Features
+
+* **billing:** add credit balance breakdown with stacked bar chart ([#10585](https://github.com/vm0-ai/vm0/issues/10585)) ([8b9c6d6](https://github.com/vm0-ai/vm0/commit/8b9c6d6314d7cdf0fdae1e2291cd5406bba4fca6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.228.0
+
 ## [12.285.0](https://github.com/vm0-ai/vm0/compare/web-v12.284.0...web-v12.285.0) (2026-04-22)
 
 
