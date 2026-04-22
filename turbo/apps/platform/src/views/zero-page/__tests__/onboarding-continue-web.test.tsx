@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
@@ -137,9 +136,7 @@ function mockSlackConnectReady() {
   );
 }
 
-async function walkMemberToWhereStep(
-  _user: ReturnType<typeof userEvent.setup>,
-) {
+async function walkMemberToWhereStep() {
   await waitFor(() => {
     expect(screen.getByText("Choose your tools")).toBeInTheDocument();
   });
@@ -152,7 +149,7 @@ async function walkMemberToWhereStep(
   });
 }
 
-async function walkAdminToWhereStep(_user: ReturnType<typeof userEvent.setup>) {
+async function walkAdminToWhereStep() {
   await waitFor(() => {
     expect(screen.getByText(/Name your workspace/)).toBeInTheDocument();
   });
@@ -183,11 +180,10 @@ async function walkAdminToWhereStep(_user: ReturnType<typeof userEvent.setup>) {
 
 describe("onboarding continue in web → agent chat page", () => {
   it("should navigate to /agents/:id/chat after admin completes full onboarding", async () => {
-    const user = userEvent.setup();
     mockAdminOnboarding();
 
     detachedSetupPage({ context, path: "/onboarding" });
-    await walkAdminToWhereStep(user);
+    await walkAdminToWhereStep();
 
     switchToAdminComplete();
 
@@ -232,11 +228,10 @@ describe("onboarding continue in web → agent chat page", () => {
 
 describe("onboarding add to Slack → works page", () => {
   it("should navigate to /works after admin completes onboarding via Slack", async () => {
-    const user = userEvent.setup();
     mockAdminOnboarding();
 
     detachedSetupPage({ context, path: "/onboarding" });
-    await walkAdminToWhereStep(user);
+    await walkAdminToWhereStep();
 
     switchToAdminComplete();
 
@@ -281,11 +276,10 @@ describe("onboarding add to Slack → works page", () => {
 
 describe("prompt param forwarding", () => {
   it("should forward ?prompt= to chat page via Continue in web", async () => {
-    const user = userEvent.setup();
     mockAdminOnboarding();
 
     detachedSetupPage({ context, path: "/onboarding?prompt=hello%20world" });
-    await walkAdminToWhereStep(user);
+    await walkAdminToWhereStep();
 
     switchToAdminComplete();
 
@@ -303,11 +297,10 @@ describe("prompt param forwarding", () => {
   });
 
   it("should not include prompt param when absent", async () => {
-    const user = userEvent.setup();
     mockAdminOnboarding();
 
     detachedSetupPage({ context, path: "/onboarding" });
-    await walkAdminToWhereStep(user);
+    await walkAdminToWhereStep();
 
     switchToAdminComplete();
 
@@ -324,11 +317,10 @@ describe("prompt param forwarding", () => {
   });
 
   it("should forward ?prompt= to /works via Add to Slack", async () => {
-    const user = userEvent.setup();
     mockAdminOnboarding();
 
     detachedSetupPage({ context, path: "/onboarding?prompt=hello%20world" });
-    await walkAdminToWhereStep(user);
+    await walkAdminToWhereStep();
 
     switchToAdminComplete();
 
@@ -341,11 +333,10 @@ describe("prompt param forwarding", () => {
   });
 
   it("should not include prompt param in /works when absent", async () => {
-    const user = userEvent.setup();
     mockAdminOnboarding();
 
     detachedSetupPage({ context, path: "/onboarding" });
-    await walkAdminToWhereStep(user);
+    await walkAdminToWhereStep();
 
     switchToAdminComplete();
 
@@ -358,7 +349,6 @@ describe("prompt param forwarding", () => {
   });
 
   it("should forward ?prompt= to /works for member via Add to Slack", async () => {
-    const user = userEvent.setup();
     mockMemberOnboarding();
 
     detachedSetupPage({
@@ -366,7 +356,7 @@ describe("prompt param forwarding", () => {
       path: "/onboarding?prompt=summarize%20inbox",
     });
 
-    await walkMemberToWhereStep(user);
+    await walkMemberToWhereStep();
 
     switchToMemberComplete();
 
@@ -379,7 +369,6 @@ describe("prompt param forwarding", () => {
   });
 
   it("should append ?prompt= to Slack install URL", async () => {
-    const user = userEvent.setup();
     mockAdminOnboarding();
     mockSlackInstallReady();
     const openSpy = vi.spyOn(window, "open").mockReturnValue(null);
@@ -388,7 +377,7 @@ describe("prompt param forwarding", () => {
       context,
       path: "/onboarding?prompt=summarize%20inbox",
     });
-    await walkAdminToWhereStep(user);
+    await walkAdminToWhereStep();
 
     switchToAdminComplete();
 
@@ -404,13 +393,12 @@ describe("prompt param forwarding", () => {
   });
 
   it("should omit prompt from Slack install URL when absent", async () => {
-    const user = userEvent.setup();
     mockAdminOnboarding();
     mockSlackInstallReady();
     const openSpy = vi.spyOn(window, "open").mockReturnValue(null);
 
     detachedSetupPage({ context, path: "/onboarding" });
-    await walkAdminToWhereStep(user);
+    await walkAdminToWhereStep();
 
     switchToAdminComplete();
 
@@ -426,7 +414,6 @@ describe("prompt param forwarding", () => {
   });
 
   it("should open connect URL for member with ?prompt=", async () => {
-    const user = userEvent.setup();
     mockMemberOnboarding();
     mockSlackConnectReady();
     const openSpy = vi.spyOn(window, "open").mockReturnValue(null);
@@ -436,7 +423,7 @@ describe("prompt param forwarding", () => {
       path: "/onboarding?prompt=summarize%20inbox",
     });
 
-    await walkMemberToWhereStep(user);
+    await walkMemberToWhereStep();
 
     switchToMemberComplete();
 
@@ -504,7 +491,6 @@ describe("completeMemberOnboarding request body", () => {
   });
 
   it("should send empty body when member has no selected connectors", async () => {
-    const user = userEvent.setup();
     mockMemberOnboarding();
 
     let receivedBody: unknown = null;
@@ -517,7 +503,7 @@ describe("completeMemberOnboarding request body", () => {
 
     detachedSetupPage({ context, path: "/onboarding" });
 
-    await walkMemberToWhereStep(user);
+    await walkMemberToWhereStep();
 
     switchToMemberComplete();
 

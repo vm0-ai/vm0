@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
@@ -43,7 +42,7 @@ function mockTeamAPI(
   setMockTeam([DEFAULT_AGENT, ...extraAgents]);
 }
 
-async function openDialog(_user: ReturnType<typeof userEvent.setup>) {
+async function openDialog() {
   await waitFor(() => {
     expect(screen.getByText("New agent")).toBeInTheDocument();
   });
@@ -69,7 +68,6 @@ describe("zero jobs page - create agent dialog", () => {
   });
 
   it("creates agent and shows it in the grid (AGENT-D-014)", async () => {
-    const user = userEvent.setup();
     const NEW_AGENT = {
       id: "new-agent-id",
       displayName: "Marketing Bot",
@@ -115,7 +113,7 @@ describe("zero jobs page - create agent dialog", () => {
     );
 
     detachedSetupPage({ context, path: "/agents" });
-    await openDialog(user);
+    await openDialog();
 
     const input = screen.getByPlaceholderText("e.g. Research Assistant");
     await fill(input, "Marketing Bot");
@@ -128,11 +126,10 @@ describe("zero jobs page - create agent dialog", () => {
   });
 
   it("closes the dialog when cancel is clicked (AGENT-D-015)", async () => {
-    const user = userEvent.setup();
     mockTeamAPI();
     detachedSetupPage({ context, path: "/agents" });
 
-    await openDialog(user);
+    await openDialog();
 
     click(screen.getByText("Cancel"));
 

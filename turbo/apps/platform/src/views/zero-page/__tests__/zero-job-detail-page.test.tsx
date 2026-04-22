@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
@@ -212,7 +211,6 @@ function mockAPIsWithSchedules() {
 }
 
 async function openScheduleMenuAndClick(
-  _user: ReturnType<typeof userEvent.setup>,
   timeLabel: string,
   action: "Edit" | "Delete" | "Run now",
 ) {
@@ -228,7 +226,6 @@ async function openScheduleMenuAndClick(
 
 describe("zero job detail page - schedule card delete confirmation", () => {
   it("should show confirmation dialog when delete button is clicked in card view", async () => {
-    const user = userEvent.setup();
     mockAPIsWithSchedules();
     detachedSetupPage({ context, path: "/agents/my-agent?tab=schedule" });
 
@@ -238,7 +235,7 @@ describe("zero job detail page - schedule card delete confirmation", () => {
       ).toBeInTheDocument();
     });
 
-    await openScheduleMenuAndClick(user, "Every weekday at 9:00 AM", "Delete");
+    await openScheduleMenuAndClick("Every weekday at 9:00 AM", "Delete");
 
     await waitFor(() => {
       expect(screen.getByText("Delete schedule?")).toBeInTheDocument();
@@ -249,7 +246,6 @@ describe("zero job detail page - schedule card delete confirmation", () => {
   });
 
   it("should close dialog without deleting when Cancel is clicked in card view", async () => {
-    const user = userEvent.setup();
     let deleteCalled = false;
 
     mockAPIsWithSchedules();
@@ -268,7 +264,7 @@ describe("zero job detail page - schedule card delete confirmation", () => {
       ).toBeInTheDocument();
     });
 
-    await openScheduleMenuAndClick(user, "Every weekday at 9:00 AM", "Delete");
+    await openScheduleMenuAndClick("Every weekday at 9:00 AM", "Delete");
 
     await waitFor(() => {
       expect(screen.getByText("Delete schedule?")).toBeInTheDocument();
@@ -283,7 +279,6 @@ describe("zero job detail page - schedule card delete confirmation", () => {
   });
 
   it("should call delete API when Delete is confirmed in card view", async () => {
-    const user = userEvent.setup();
     let deletedName: string | null = null;
 
     mockAPIsWithSchedules();
@@ -302,7 +297,7 @@ describe("zero job detail page - schedule card delete confirmation", () => {
       ).toBeInTheDocument();
     });
 
-    await openScheduleMenuAndClick(user, "Every weekday at 9:00 AM", "Delete");
+    await openScheduleMenuAndClick("Every weekday at 9:00 AM", "Delete");
 
     await waitFor(() => {
       expect(screen.getByText("Delete schedule?")).toBeInTheDocument();

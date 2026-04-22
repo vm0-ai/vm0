@@ -96,7 +96,7 @@ function mockLogsWithPagination() {
   );
 }
 
-async function openRunHistoryTab(_user: ReturnType<typeof userEvent.setup>) {
+async function openRunHistoryTab() {
   click(screen.getByText(/Run History/i));
   await waitFor(() => {
     expect(screen.getByText(/Page 1/)).toBeInTheDocument();
@@ -330,10 +330,9 @@ describe("zero schedule detail page - pagination previous button works (SCHED-D-
   it("should show the previous page when previous button is clicked", async () => {
     mockAPIs();
     mockLogsWithPagination();
-    const user = userEvent.setup();
     detachedSetupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
     await waitForPageLoad();
-    await openRunHistoryTab(user);
+    await openRunHistoryTab();
 
     click(screen.getByLabelText("Next page"));
     await waitFor(() => {
@@ -351,10 +350,9 @@ describe("zero schedule detail page - pagination next button works (SCHED-D-027)
   it("should show the next page when next button is clicked", async () => {
     mockAPIs();
     mockLogsWithPagination();
-    const user = userEvent.setup();
     detachedSetupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
     await waitForPageLoad();
-    await openRunHistoryTab(user);
+    await openRunHistoryTab();
 
     click(screen.getByLabelText("Next page"));
 
@@ -368,10 +366,9 @@ describe("zero schedule detail page - pagination forward 2 button works (SCHED-D
   it("should jump forward two pages when forward 2 button is clicked", async () => {
     mockAPIs();
     mockLogsWithPagination();
-    const user = userEvent.setup();
     detachedSetupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
     await waitForPageLoad();
-    await openRunHistoryTab(user);
+    await openRunHistoryTab();
 
     click(screen.getByLabelText("Forward 2 pages"));
 
@@ -385,10 +382,9 @@ describe("zero schedule detail page - pagination back 2 button works (SCHED-D-02
   it("should jump back two pages when back 2 button is clicked", async () => {
     mockAPIs();
     mockLogsWithPagination();
-    const user = userEvent.setup();
     detachedSetupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
     await waitForPageLoad();
-    await openRunHistoryTab(user);
+    await openRunHistoryTab();
 
     click(screen.getByLabelText("Forward 2 pages"));
     await waitFor(() => {

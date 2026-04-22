@@ -13,7 +13,6 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import {
   FeatureSwitchKey,
   zeroAgentsByIdContract,
@@ -72,7 +71,7 @@ function setupMockAgent() {
   );
 }
 
-async function openProfileTab(_user: ReturnType<typeof userEvent.setup>) {
+async function openProfileTab() {
   detachedSetupPage({ context, path: "/agents/my-agent" });
   await waitFor(() => {
     expect(
@@ -93,7 +92,6 @@ describe("model-provider-picker - display with null value", () => {
   // MPKR-D-001: When value is null and default provider has a selectedModel,
   // the trigger must show that model's display name, not blank or placeholder.
   it("shows default provider selectedModel display name when value is null (MPKR-D-001)", async () => {
-    const user = userEvent.setup();
     setupMockAgent();
     setMockFeatureSwitches({ [FeatureSwitchKey.ModelProviderSelection]: true });
     setMockOrgModelProviders([
@@ -111,7 +109,7 @@ describe("model-provider-picker - display with null value", () => {
       },
     ]);
 
-    await openProfileTab(user);
+    await openProfileTab();
 
     await waitFor(() => {
       // The trigger aria-label should reflect the default model, not the placeholder
@@ -124,7 +122,6 @@ describe("model-provider-picker - display with null value", () => {
   // MPKR-D-002: When value is null and default provider has selectedModel=null,
   // fall back to getDefaultModel for the provider type (claude-sonnet-4-6 for anthropic-api-key).
   it("falls back to provider type default model when selectedModel is null (MPKR-D-002)", async () => {
-    const user = userEvent.setup();
     setupMockAgent();
     setMockFeatureSwitches({ [FeatureSwitchKey.ModelProviderSelection]: true });
     setMockOrgModelProviders([
@@ -142,7 +139,7 @@ describe("model-provider-picker - display with null value", () => {
       },
     ]);
 
-    await openProfileTab(user);
+    await openProfileTab();
 
     await waitFor(() => {
       // anthropic-api-key defaultModel is "claude-sonnet-4-6" → "Claude Sonnet 4.6"
@@ -155,7 +152,6 @@ describe("model-provider-picker - display with null value", () => {
   // MPKR-D-003: When value is null and no provider is marked as default,
   // the trigger must show the placeholder text.
   it("shows placeholder when no default provider exists (MPKR-D-003)", async () => {
-    const user = userEvent.setup();
     setupMockAgent();
     setMockFeatureSwitches({ [FeatureSwitchKey.ModelProviderSelection]: true });
     setMockOrgModelProviders([
@@ -173,7 +169,7 @@ describe("model-provider-picker - display with null value", () => {
       },
     ]);
 
-    await openProfileTab(user);
+    await openProfileTab();
 
     await waitFor(() => {
       expect(

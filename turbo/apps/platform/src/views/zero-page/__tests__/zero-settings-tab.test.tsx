@@ -4,7 +4,6 @@
  */
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
@@ -81,7 +80,7 @@ function mockAPIs(detailOverrides: Record<string, unknown> = {}) {
   );
 }
 
-async function openProfileTab(_user: ReturnType<typeof userEvent.setup>) {
+async function openProfileTab() {
   detachedSetupPage({ context, path: "/agents/my-agent" });
   await waitFor(() => {
     expect(
@@ -96,9 +95,8 @@ async function openProfileTab(_user: ReturnType<typeof userEvent.setup>) {
 
 describe("zero settings tab - display", () => {
   it("shows agent name in the name input (AGENT-D-038)", async () => {
-    const user = userEvent.setup();
     mockAPIs({ displayName: "My Agent" });
-    await openProfileTab(user);
+    await openProfileTab();
 
     await waitFor(() => {
       expect(screen.getByDisplayValue("My Agent")).toBeInTheDocument();
@@ -106,9 +104,8 @@ describe("zero settings tab - display", () => {
   });
 
   it("shows agent description in the description textarea (AGENT-D-039)", async () => {
-    const user = userEvent.setup();
     mockAPIs({ description: "A helpful agent" });
-    await openProfileTab(user);
+    await openProfileTab();
 
     await waitFor(() => {
       expect(screen.getByDisplayValue("A helpful agent")).toBeInTheDocument();
@@ -116,9 +113,8 @@ describe("zero settings tab - display", () => {
   });
 
   it("shows hint section for the selected tone (AGENT-D-040)", async () => {
-    const user = userEvent.setup();
     mockAPIs({ sound: "friendly" });
-    await openProfileTab(user);
+    await openProfileTab();
 
     await waitFor(() => {
       // The tone group contains a description hint and a sample preview panel
@@ -132,9 +128,8 @@ describe("zero settings tab - display", () => {
   });
 
   it("shows tone sample preview panel for the selected tone (AGENT-D-041)", async () => {
-    const user = userEvent.setup();
     mockAPIs({ sound: "professional" });
-    await openProfileTab(user);
+    await openProfileTab();
 
     await waitFor(() => {
       // The tone group contains both a hint line and a sample conversation preview
@@ -149,9 +144,8 @@ describe("zero settings tab - display", () => {
   });
 
   it("shows danger zone for non-default agents (AGENT-D-042)", async () => {
-    const user = userEvent.setup();
     mockAPIs();
-    await openProfileTab(user);
+    await openProfileTab();
 
     await waitFor(() => {
       expect(screen.getByText("Danger zone")).toBeInTheDocument();
@@ -206,9 +200,8 @@ describe("zero settings tab - display", () => {
 
 describe("zero settings tab - avatar", () => {
   it("shows avatar SVG preview when agent has preset avatar (AGENT-D-044)", async () => {
-    const user = userEvent.setup();
     mockAPIs({ avatarUrl: "preset:0" });
-    await openProfileTab(user);
+    await openProfileTab();
 
     await waitFor(() => {
       // The avatar row label and the wand button are both present,
@@ -219,9 +212,8 @@ describe("zero settings tab - avatar", () => {
   });
 
   it("shows avatar maker wand button (AGENT-D-045)", async () => {
-    const user = userEvent.setup();
     mockAPIs();
-    await openProfileTab(user);
+    await openProfileTab();
 
     await waitFor(() => {
       expect(screen.getByLabelText("Create custom avatar")).toBeInTheDocument();
@@ -229,9 +221,8 @@ describe("zero settings tab - avatar", () => {
   });
 
   it("shows avatar SVG preview when agent has svg: avatar (AGENT-D-046)", async () => {
-    const user = userEvent.setup();
     mockAPIs({ avatarUrl: "svg:r1s0h3c2f1d" });
-    await openProfileTab(user);
+    await openProfileTab();
 
     await waitFor(() => {
       expect(screen.getByText("Avatar")).toBeInTheDocument();
@@ -240,7 +231,6 @@ describe("zero settings tab - avatar", () => {
   });
 
   it("saves avatar when applied from avatar maker (AGENT-D-047)", async () => {
-    const user = userEvent.setup();
     let capturedPayload: ZeroAgentMetadataRequest | null = null;
     mockAPIs({ avatarUrl: "preset:0" });
 
@@ -251,7 +241,7 @@ describe("zero settings tab - avatar", () => {
       }),
     );
 
-    await openProfileTab(user);
+    await openProfileTab();
 
     // Click the wand button to open the avatar maker
     await waitFor(() => {
@@ -278,9 +268,8 @@ describe("zero settings tab - avatar", () => {
 
 describe("zero settings tab - interaction", () => {
   it("updates name field when typing (AGENT-D-048)", async () => {
-    const user = userEvent.setup();
     mockAPIs({ displayName: "My Agent" });
-    await openProfileTab(user);
+    await openProfileTab();
 
     const nameInput = await screen.findByDisplayValue("My Agent");
     await fill(nameInput, "Renamed Agent");
@@ -289,9 +278,8 @@ describe("zero settings tab - interaction", () => {
   });
 
   it("updates description textarea when typing (AGENT-D-049)", async () => {
-    const user = userEvent.setup();
     mockAPIs({ description: "A helpful agent" });
-    await openProfileTab(user);
+    await openProfileTab();
 
     const descTextarea = await screen.findByDisplayValue("A helpful agent");
     await fill(descTextarea, "Updated description");
@@ -300,9 +288,8 @@ describe("zero settings tab - interaction", () => {
   });
 
   it("changes tone selection when clicking a tone button (AGENT-D-050)", async () => {
-    const user = userEvent.setup();
     mockAPIs({ sound: "professional" });
-    await openProfileTab(user);
+    await openProfileTab();
 
     await waitFor(() => {
       expect(screen.getByText("Clear and polished")).toBeInTheDocument();
@@ -316,9 +303,8 @@ describe("zero settings tab - interaction", () => {
   });
 
   it("saves settings when Save button is clicked and resets dirty state (AGENT-D-051)", async () => {
-    const user = userEvent.setup();
     mockAPIs({ displayName: "My Agent" });
-    await openProfileTab(user);
+    await openProfileTab();
 
     // Set up patch and reload handlers after initial load
     server.use(
@@ -347,9 +333,8 @@ describe("zero settings tab - interaction", () => {
   });
 
   it("reverts changes when Discard is clicked (AGENT-D-052)", async () => {
-    const user = userEvent.setup();
     mockAPIs({ displayName: "My Agent" });
-    await openProfileTab(user);
+    await openProfileTab();
 
     const nameInput = await screen.findByDisplayValue("My Agent");
     await fill(nameInput, "Changed Name");
@@ -369,9 +354,8 @@ describe("zero settings tab - interaction", () => {
   });
 
   it("opens delete confirmation dialog when Delete agent is clicked (AGENT-D-053)", async () => {
-    const user = userEvent.setup();
     mockAPIs();
-    await openProfileTab(user);
+    await openProfileTab();
 
     await waitFor(() => {
       expect(screen.getByText(/Delete agent/i)).toBeInTheDocument();
@@ -385,9 +369,8 @@ describe("zero settings tab - interaction", () => {
   });
 
   it("closes delete dialog when Cancel is clicked (AGENT-D-054)", async () => {
-    const user = userEvent.setup();
     mockAPIs();
-    await openProfileTab(user);
+    await openProfileTab();
 
     await waitFor(() => {
       expect(screen.getByText(/Delete agent/i)).toBeInTheDocument();
@@ -407,14 +390,13 @@ describe("zero settings tab - interaction", () => {
   });
 
   it("deletes agent and redirects to /agents after confirmation (AGENT-D-055)", async () => {
-    const user = userEvent.setup();
     mockAPIs();
     server.use(
       mockApi(zeroAgentsByIdContract.delete, ({ respond }) => {
         return respond(204);
       }),
     );
-    await openProfileTab(user);
+    await openProfileTab();
 
     await waitFor(() => {
       expect(screen.getByText(/Delete agent/i)).toBeInTheDocument();

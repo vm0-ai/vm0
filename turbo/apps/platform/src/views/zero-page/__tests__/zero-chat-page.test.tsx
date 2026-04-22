@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { zeroAgentsByIdContract, zeroUserConnectorsContract } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { setMockOrg } from "../../../mocks/handlers/api-org.ts";
@@ -456,7 +455,7 @@ describe("zero chat page - ideation page", () => {
     expect(screen.getAllByText("GitHub").length).toBeGreaterThan(0);
   });
 
-  async function navigateToIdeation(_user: ReturnType<typeof userEvent.setup>) {
+  async function navigateToIdeation() {
     await waitFor(() => {
       expect(screen.getByText("Ideas & use cases")).toBeInTheDocument();
     });
@@ -472,9 +471,8 @@ describe("zero chat page - ideation page", () => {
   }
 
   it("should filter categories when a tab is clicked", async () => {
-    const user = userEvent.setup();
     await renderChatPage();
-    await navigateToIdeation(user);
+    await navigateToIdeation();
 
     // Click a specific category tab
     const githubCategoryBtn = screen.getAllByRole("button").find((el) => {
@@ -497,9 +495,8 @@ describe("zero chat page - ideation page", () => {
   });
 
   it("should navigate back to chat and set prompt when a use case is clicked", async () => {
-    const user = userEvent.setup();
     await renderChatPage();
-    await navigateToIdeation(user);
+    await navigateToIdeation();
 
     // Click a known use case card
     click(screen.getByText("Daily standup report"));
@@ -516,9 +513,8 @@ describe("zero chat page - ideation page", () => {
   });
 
   it("should navigate back to chat when breadcrumb is clicked", async () => {
-    const user = userEvent.setup();
     await renderChatPage();
-    await navigateToIdeation(user);
+    await navigateToIdeation();
 
     // Click the Chat breadcrumb to go back
     const chatBreadcrumb = screen.getByText("Chat").closest("button")!;

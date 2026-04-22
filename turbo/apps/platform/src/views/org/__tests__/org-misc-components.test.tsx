@@ -14,7 +14,6 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import {
   CONNECTOR_TYPES,
   type ConnectorType,
@@ -333,7 +332,7 @@ describe("zero unsaved bar - interaction (ORG-I-114)", () => {
 // ClaudeCodeSetupPrompt (ORG-D-105, ORG-I-106, ORG-S-107)
 // ---------------------------------------------------------------------------
 
-async function openSetupPrompt(_user: ReturnType<typeof userEvent.setup>) {
+async function openSetupPrompt() {
   detachedSetupPage({ context, path: "/?settings=providers" });
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
@@ -363,8 +362,7 @@ async function openSetupPrompt(_user: ReturnType<typeof userEvent.setup>) {
 
 describe("setup prompt - display (ORG-D-105)", () => {
   it("displays 'claude setup-token' command in a code element", async () => {
-    const user = userEvent.setup();
-    await openSetupPrompt(user);
+    await openSetupPrompt();
     const codeEl = screen.getByText("claude setup-token");
     expect(codeEl.tagName.toLowerCase()).toBe("code");
   });
@@ -372,9 +370,8 @@ describe("setup prompt - display (ORG-D-105)", () => {
 
 describe("setup prompt - interaction (ORG-I-106)", () => {
   it("clicking the code element triggers the copied state", async () => {
-    const user = userEvent.setup();
     vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
-    await openSetupPrompt(user);
+    await openSetupPrompt();
     click(screen.getByText("claude setup-token"));
     // The original command text should be replaced by the "copied!" state
     await waitFor(() => {
@@ -385,9 +382,8 @@ describe("setup prompt - interaction (ORG-I-106)", () => {
 
 describe("setup prompt - state (ORG-S-107)", () => {
   it("text changes to 'copied!' after click", async () => {
-    const user = userEvent.setup();
     vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
-    await openSetupPrompt(user);
+    await openSetupPrompt();
     click(screen.getByText("claude setup-token"));
     await waitFor(() => {
       expect(screen.getByText("copied!")).toBeInTheDocument();

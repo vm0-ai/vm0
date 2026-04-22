@@ -394,7 +394,7 @@ describe("connector search input filters list (AGENT-D-065)", () => {
 // AGENT-D-066: Connect button in step 3
 // ---------------------------------------------------------------------------
 
-async function navigateToStep3(_user: ReturnType<typeof userEvent.setup>) {
+async function navigateToStep3() {
   const input = await screen.findByPlaceholderText("e.g. Acme Corp");
   await fill(input, "Acme");
   click(screen.getByText("Next"));
@@ -418,11 +418,10 @@ async function navigateToStep3(_user: ReturnType<typeof userEvent.setup>) {
 
 describe("connect button is present in step 3 (AGENT-D-066)", () => {
   it("connect button is rendered for selected connectors in step 3", async () => {
-    const user = userEvent.setup();
     mockOnboardingNeeded();
     await renderOnboardingPage();
 
-    await navigateToStep3(user);
+    await navigateToStep3();
 
     expect(screen.getByText("Connect")).toBeInTheDocument();
   });

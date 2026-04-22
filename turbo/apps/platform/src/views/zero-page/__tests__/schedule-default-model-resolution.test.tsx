@@ -27,7 +27,6 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import {
   FeatureSwitchKey,
   zeroAgentsByIdContract,
@@ -168,7 +167,7 @@ function mockOrgProviders(options: {
   ]);
 }
 
-async function openCreateDialog(_user: ReturnType<typeof userEvent.setup>) {
+async function openCreateDialog() {
   // Empty schedules list so only one "Add schedule" button is rendered
   // (header — the empty-state button is also labelled "Add schedule").
   setMockSchedules([]);
@@ -228,8 +227,7 @@ describe("schedule composer — default model resolution", () => {
     });
     mockAgent({ modelProviderId: null, selectedModel: null });
 
-    const user = userEvent.setup();
-    await openCreateDialog(user);
+    await openCreateDialog();
 
     await expectDialogPickerShowsModel("Kimi K2.5");
   });
@@ -251,8 +249,7 @@ describe("schedule composer — default model resolution", () => {
       selectedModel: "claude-opus-4-7",
     });
 
-    const user = userEvent.setup();
-    await openCreateDialog(user);
+    await openCreateDialog();
 
     await expectDialogPickerShowsModel("Claude Opus 4.7");
   });
@@ -271,8 +268,7 @@ describe("schedule composer — default model resolution", () => {
       selectedModel: "claude-opus-4-6",
     });
 
-    const user = userEvent.setup();
-    await openCreateDialog(user);
+    await openCreateDialog();
 
     await expectDialogPickerShowsModel("Claude Opus 4.6");
   });
@@ -286,8 +282,7 @@ describe("schedule composer — default model resolution", () => {
     });
     mockAgent({ modelProviderId: null, selectedModel: null });
 
-    const user = userEvent.setup();
-    await openCreateDialog(user);
+    await openCreateDialog();
 
     await expectDialogPickerShowsModel("Kimi K2.5");
   });
@@ -302,8 +297,7 @@ describe("schedule composer — default model resolution", () => {
     });
     mockAgent({ modelProviderId: null, selectedModel: null });
 
-    const user = userEvent.setup();
-    await openCreateDialog(user);
+    await openCreateDialog();
 
     await expectDialogPickerShowsModel("Claude Sonnet 4.6");
   });
@@ -322,8 +316,7 @@ describe("schedule composer — default model resolution", () => {
       selectedModel: "glm-5.1",
     });
 
-    const user = userEvent.setup();
-    await openCreateDialog(user);
+    await openCreateDialog();
 
     await expectDialogPickerShowsModel("GLM-5.1");
   });

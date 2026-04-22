@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
@@ -88,10 +87,7 @@ function mockAPIs() {
   };
 }
 
-async function deleteThread(
-  _user: ReturnType<typeof userEvent.setup>,
-  nthButton: number,
-) {
+async function deleteThread(nthButton: number) {
   const deleteButtons = await waitFor(() => {
     const btns = screen.getAllByLabelText("Delete chat");
     expect(btns.length).toBeGreaterThanOrEqual(nthButton);
@@ -110,7 +106,6 @@ async function deleteThread(
 
 describe("sidebar chat delete", () => {
   it("should send the correct thread ID when deleting the first thread", async () => {
-    const user = userEvent.setup();
     const { getLastDeletedId } = mockAPIs();
 
     detachedSetupPage({ context, path: "/chats/thread-1" });
@@ -119,7 +114,7 @@ describe("sidebar chat delete", () => {
       expect(screen.getByText("First chat")).toBeInTheDocument();
     });
 
-    await deleteThread(user, 1);
+    await deleteThread(1);
 
     await waitFor(() => {
       expect(getLastDeletedId()).toBe("thread-1");
@@ -127,7 +122,6 @@ describe("sidebar chat delete", () => {
   });
 
   it("should send the correct thread ID when deleting a middle thread", async () => {
-    const user = userEvent.setup();
     const { getLastDeletedId } = mockAPIs();
 
     detachedSetupPage({ context, path: "/chats/thread-1" });
@@ -136,7 +130,7 @@ describe("sidebar chat delete", () => {
       expect(screen.getByText("Second chat")).toBeInTheDocument();
     });
 
-    await deleteThread(user, 2);
+    await deleteThread(2);
 
     await waitFor(() => {
       expect(getLastDeletedId()).toBe("thread-2");
@@ -144,7 +138,6 @@ describe("sidebar chat delete", () => {
   });
 
   it("should remove the deleted thread from the sidebar list", async () => {
-    const user = userEvent.setup();
     mockAPIs();
 
     detachedSetupPage({ context, path: "/chats/thread-2" });
@@ -153,7 +146,7 @@ describe("sidebar chat delete", () => {
       expect(screen.getByText("First chat")).toBeInTheDocument();
     });
 
-    await deleteThread(user, 1);
+    await deleteThread(1);
 
     await waitFor(() => {
       expect(screen.queryByText("First chat")).not.toBeInTheDocument();
@@ -164,7 +157,6 @@ describe("sidebar chat delete", () => {
   });
 
   it("should navigate to the next thread after deleting the current one", async () => {
-    const user = userEvent.setup();
     mockAPIs();
 
     detachedSetupPage({ context, path: "/chats/thread-1" });
@@ -173,7 +165,7 @@ describe("sidebar chat delete", () => {
       expect(screen.getByText("First chat")).toBeInTheDocument();
     });
 
-    await deleteThread(user, 1);
+    await deleteThread(1);
 
     await waitFor(() => {
       expect(pathname()).toBe("/chats/thread-2");
@@ -181,7 +173,6 @@ describe("sidebar chat delete", () => {
   });
 
   it("should navigate to the previous thread when deleting the last one in the list", async () => {
-    const user = userEvent.setup();
     mockAPIs();
 
     detachedSetupPage({ context, path: "/chats/thread-3" });
@@ -190,7 +181,7 @@ describe("sidebar chat delete", () => {
       expect(screen.getByText("Third chat")).toBeInTheDocument();
     });
 
-    await deleteThread(user, 3);
+    await deleteThread(3);
 
     await waitFor(() => {
       expect(pathname()).toBe("/chats/thread-2");
@@ -198,8 +189,6 @@ describe("sidebar chat delete", () => {
   });
 
   it("should navigate away from the chat page when deleting the only remaining thread", async () => {
-    const user = userEvent.setup();
-
     let threads = [
       makeThread("thread-only", "Only chat", "2026-03-10T00:00:00Z"),
     ];
@@ -239,7 +228,7 @@ describe("sidebar chat delete", () => {
       expect(screen.getByText("Only chat")).toBeInTheDocument();
     });
 
-    await deleteThread(user, 1);
+    await deleteThread(1);
 
     await waitFor(() => {
       expect(pathname()).not.toBe("/chats/thread-only");

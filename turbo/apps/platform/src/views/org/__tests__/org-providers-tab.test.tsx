@@ -8,7 +8,6 @@
 
 import { describe, it, expect, beforeEach } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import {
   type ModelProviderResponse,
   MODEL_PROVIDER_TYPES,
@@ -345,7 +344,7 @@ describe("org delete provider dialog - display", () => {
   });
 });
 
-async function openDeleteDialog(_user: ReturnType<typeof userEvent.setup>) {
+async function openDeleteDialog() {
   await waitFor(() => {
     expect(screen.getByLabelText("More options")).toBeInTheDocument();
   });
@@ -367,12 +366,11 @@ async function openDeleteDialog(_user: ReturnType<typeof userEvent.setup>) {
 describe("org delete provider dialog - interaction", () => {
   // ORG-I-087
   it("closes dialog when cancel button is clicked", async () => {
-    const user = userEvent.setup();
     mockAPIs({
       providers: [makeProvider("anthropic-api-key", { isDefault: true })],
     });
     await openProvidersPage();
-    await openDeleteDialog(user);
+    await openDeleteDialog();
     const cancelBtn = screen.getAllByRole("button").find((el) => {
       return el.textContent?.trim() === "Cancel";
     });
@@ -389,7 +387,6 @@ describe("org delete provider dialog - interaction", () => {
 
   // ORG-I-088
   it("shows Deleting... state and calls delete endpoint when delete button is clicked", async () => {
-    const user = userEvent.setup();
     let resolveDelete!: () => void;
     const deletePromise = new Promise<void>((resolve) => {
       resolveDelete = resolve;
@@ -405,7 +402,7 @@ describe("org delete provider dialog - interaction", () => {
       }),
     );
     await openProvidersPage();
-    await openDeleteDialog(user);
+    await openDeleteDialog();
     const deleteBtn = screen.getAllByRole("button").find((el) => {
       return el.textContent?.trim() === "Delete";
     });

@@ -41,7 +41,7 @@ function mockTeamWithSubagent() {
   ]);
 }
 
-async function openCreateDialog(_user: ReturnType<typeof userEvent.setup>) {
+async function openCreateDialog() {
   detachedSetupPage({ context, path: "/agents" });
 
   await waitFor(() => {
@@ -56,16 +56,14 @@ async function openCreateDialog(_user: ReturnType<typeof userEvent.setup>) {
 
 describe("create agent dialog - avatar", () => {
   it("should show a preset avatar when dialog opens", async () => {
-    const user = userEvent.setup();
     mockTeamWithSubagent();
-    await openCreateDialog(user);
+    await openCreateDialog();
 
     const avatar = screen.getByRole("img", { name: "New agent" });
     expect(avatar).toBeInTheDocument();
   });
 
   it("should send chosen avatar when creating agent", async () => {
-    const user = userEvent.setup();
     let capturedPayload: ZeroAgentRequest | null = null;
 
     mockTeamWithSubagent();
@@ -97,7 +95,7 @@ describe("create agent dialog - avatar", () => {
       }),
     );
 
-    await openCreateDialog(user);
+    await openCreateDialog();
 
     const input = screen.getByPlaceholderText("e.g. Research Assistant");
     await fill(input, "My New Agent");
@@ -145,7 +143,7 @@ describe("create agent dialog - avatar", () => {
       }),
     );
 
-    await openCreateDialog(user);
+    await openCreateDialog();
 
     const input = screen.getByPlaceholderText("e.g. Research Assistant");
     await fill(input, "Enter Agent");

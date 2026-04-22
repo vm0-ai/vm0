@@ -60,7 +60,7 @@ function mockCreateModeAPIs() {
   setMockSchedules([mockScheduleForList()]);
 }
 
-async function openCreateDialog(_user: ReturnType<typeof userEvent.setup>) {
+async function openCreateDialog() {
   mockCreateModeAPIs();
   detachedSetupPage({ context, path: "/schedules" });
   await waitFor(() => {
@@ -106,7 +106,7 @@ function mockEditModeAPIs() {
   );
 }
 
-async function openEditDialog(_user: ReturnType<typeof userEvent.setup>) {
+async function openEditDialog() {
   mockEditModeAPIs();
   // Navigate with ?tab=schedule so resetActiveTab$ picks up the schedule tab from the URL.
   detachedSetupPage({ context, path: "/agents/my-agent?tab=schedule" });
@@ -134,10 +134,7 @@ function getOpenListboxOption(text: string): HTMLElement {
   return within(listbox).getByRole("option", { name: text });
 }
 
-async function switchFrequency(
-  _user: ReturnType<typeof userEvent.setup>,
-  freqLabel: string,
-) {
+async function switchFrequency(freqLabel: string) {
   const freqTrigger = screen.getByRole("combobox", { name: "Time" });
   click(freqTrigger);
   const option = await waitFor(() => {
@@ -148,16 +145,14 @@ async function switchFrequency(
 
 describe("schedule dialog - form title (SCHED-D-046)", () => {
   it("shows 'Add schedule' in create mode", async () => {
-    const user = userEvent.setup();
-    await openCreateDialog(user);
+    await openCreateDialog();
     expect(
       screen.getByRole("heading", { name: "Add schedule" }),
     ).toBeInTheDocument();
   });
 
   it("shows 'Edit schedule' in edit mode", async () => {
-    const user = userEvent.setup();
-    await openEditDialog(user);
+    await openEditDialog();
     expect(
       screen.getByRole("heading", { name: "Edit schedule" }),
     ).toBeInTheDocument();
@@ -166,7 +161,6 @@ describe("schedule dialog - form title (SCHED-D-046)", () => {
 
 describe("schedule dialog - save error (SCHED-D-047)", () => {
   it("surfaces save failure via toast and keeps dialog open", async () => {
-    const user = userEvent.setup();
     server.use(
       mockApi(zeroSchedulesMainContract.deploy, ({ respond }) => {
         return respond(400, {
@@ -174,7 +168,7 @@ describe("schedule dialog - save error (SCHED-D-047)", () => {
         });
       }),
     );
-    await openCreateDialog(user);
+    await openCreateDialog();
     const promptInput = screen.getByLabelText("Prompt");
     await fill(promptInput, "My task");
     click(screen.getByText("Create"));
@@ -194,8 +188,7 @@ describe("schedule dialog - loading state (SCHED-D-048)", () => {
         return respond(201, mockDeployResponse());
       }),
     );
-    const user = userEvent.setup();
-    await openCreateDialog(user);
+    await openCreateDialog();
     const promptInput = screen.getByLabelText("Prompt");
     await fill(promptInput, "My task");
     click(screen.getByText("Create"));
@@ -208,8 +201,7 @@ describe("schedule dialog - loading state (SCHED-D-048)", () => {
 
 describe("schedule dialog - agent selector renders (SCHED-D-049)", () => {
   it("renders agent selector dropdown in create mode", async () => {
-    const user = userEvent.setup();
-    await openCreateDialog(user);
+    await openCreateDialog();
     expect(screen.getByRole("combobox", { name: "Agent" })).toBeInTheDocument();
   });
 });
@@ -217,7 +209,7 @@ describe("schedule dialog - agent selector renders (SCHED-D-049)", () => {
 describe("schedule dialog - unsaved confirmation overlay (SCHED-D-050)", () => {
   it("renders confirm overlay when form is dirty and dialog is closed", async () => {
     const user = userEvent.setup();
-    await openCreateDialog(user);
+    await openCreateDialog();
     await user.type(screen.getByLabelText("Prompt"), "Some text");
     click(screen.getByText("Cancel"));
     await waitFor(() => {
@@ -248,8 +240,7 @@ describe("schedule dialog - agent selection (SCHED-D-051)", () => {
         updatedAt: "2024-01-02T00:00:00Z",
       },
     ]);
-    const user = userEvent.setup();
-    await openCreateDialog(user);
+    await openCreateDialog();
     const agentTrigger = screen.getByRole("combobox", { name: "Agent" });
     click(agentTrigger);
     const agentOption = await waitFor(() => {
@@ -266,9 +257,8 @@ describe("schedule dialog - agent selection (SCHED-D-051)", () => {
 
 describe("schedule dialog - frequency select (SCHED-D-054)", () => {
   it("shows date picker when frequency is changed to Once", async () => {
-    const user = userEvent.setup();
-    await openCreateDialog(user);
-    await switchFrequency(user, "Once");
+    await openCreateDialog();
+    await switchFrequency("Once");
     await waitFor(() => {
       expect(screen.getByLabelText("Date")).toBeInTheDocument();
     });
@@ -277,9 +267,8 @@ describe("schedule dialog - frequency select (SCHED-D-054)", () => {
 
 describe("schedule dialog - loop interval (SCHED-D-055)", () => {
   it("updates loop interval when a new value is selected", async () => {
-    const user = userEvent.setup();
-    await openCreateDialog(user);
-    await switchFrequency(user, "Loop");
+    await openCreateDialog();
+    await switchFrequency("Loop");
     await waitFor(() => {
       expect(
         screen.getByRole("combobox", { name: "Every" }),
@@ -301,9 +290,8 @@ describe("schedule dialog - loop interval (SCHED-D-055)", () => {
 
 describe("schedule dialog - day of week (SCHED-D-057)", () => {
   it("toggles day selection when a day button is clicked", async () => {
-    const user = userEvent.setup();
-    await openCreateDialog(user);
-    await switchFrequency(user, "Every week");
+    await openCreateDialog();
+    await switchFrequency("Every week");
     await waitFor(() => {
       expect(screen.getByText("Tue")).toBeInTheDocument();
     });
@@ -318,9 +306,8 @@ describe("schedule dialog - day of week (SCHED-D-057)", () => {
 
 describe("schedule dialog - day of month (SCHED-D-058)", () => {
   it("updates day of month when selected", async () => {
-    const user = userEvent.setup();
-    await openCreateDialog(user);
-    await switchFrequency(user, "Every month");
+    await openCreateDialog();
+    await switchFrequency("Every month");
     await waitFor(() => {
       expect(
         screen.getByRole("combobox", { name: "Day of month" }),
@@ -341,8 +328,7 @@ describe("schedule dialog - day of month (SCHED-D-058)", () => {
 
 describe("schedule dialog - hour select (SCHED-D-059)", () => {
   it("updates hour when a new hour is selected", async () => {
-    const user = userEvent.setup();
-    await openCreateDialog(user);
+    await openCreateDialog();
     // Default freq is every_day which shows hour/minute selects
     await waitFor(() => {
       expect(
@@ -364,8 +350,7 @@ describe("schedule dialog - hour select (SCHED-D-059)", () => {
 
 describe("schedule dialog - minute select (SCHED-D-060)", () => {
   it("updates minute when a new minute is selected", async () => {
-    const user = userEvent.setup();
-    await openCreateDialog(user);
+    await openCreateDialog();
     // Default freq is every_day which shows hour/minute selects
     await waitFor(() => {
       expect(
@@ -388,7 +373,7 @@ describe("schedule dialog - minute select (SCHED-D-060)", () => {
 describe("schedule dialog - timezone select (SCHED-D-061)", () => {
   it("renders timezone select and reflects selection change", async () => {
     const user = userEvent.setup();
-    await openCreateDialog(user);
+    await openCreateDialog();
     // Default freq is every_day which shows timezone select.
     const tzTrigger = screen.getByRole("combobox", { name: "Timezone" });
     expect(tzTrigger).toBeInTheDocument();
@@ -412,8 +397,7 @@ describe("schedule dialog - timezone select (SCHED-D-061)", () => {
 
 describe("schedule dialog - cancel button (SCHED-D-062)", () => {
   it("closes dialog without saving when Cancel is clicked on clean form", async () => {
-    const user = userEvent.setup();
-    await openCreateDialog(user);
+    await openCreateDialog();
     click(screen.getByText("Cancel"));
     await waitFor(() => {
       expect(
@@ -432,8 +416,7 @@ describe("schedule dialog - save button (SCHED-D-063)", () => {
         return respond(201, mockDeployResponse());
       }),
     );
-    const user = userEvent.setup();
-    await openCreateDialog(user);
+    await openCreateDialog();
     const promptInput = screen.getByLabelText("Prompt");
     await fill(promptInput, "My task");
     click(screen.getByText("Create"));
@@ -450,8 +433,7 @@ describe("schedule dialog - save button (SCHED-D-063)", () => {
 
 describe("schedule dialog - close button (SCHED-D-064)", () => {
   it("closes dialog when Close button is clicked on clean form", async () => {
-    const user = userEvent.setup();
-    await openCreateDialog(user);
+    await openCreateDialog();
     // The dialog has a custom Close button with aria-label="Close" (the X icon).
     // Use getAllByLabelText and pick the first one (the custom X button).
     click(screen.getAllByLabelText("Close")[0]);
@@ -470,7 +452,7 @@ describe("schedule dialog - unsaved discard (SCHED-D-065)", () => {
     const user = userEvent.setup({
       pointerEventsCheck: PointerEventsCheckLevel.Never,
     });
-    await openCreateDialog(user);
+    await openCreateDialog();
     await user.type(screen.getByLabelText("Prompt"), "Something");
     click(screen.getByText("Cancel"));
     await waitFor(() => {
@@ -492,7 +474,7 @@ describe("schedule dialog - unsaved continue (SCHED-D-066)", () => {
     const user = userEvent.setup({
       pointerEventsCheck: PointerEventsCheckLevel.Never,
     });
-    await openCreateDialog(user);
+    await openCreateDialog();
     await user.type(screen.getByLabelText("Prompt"), "Something");
     click(screen.getByText("Cancel"));
     await waitFor(() => {
@@ -511,7 +493,7 @@ describe("schedule dialog - unsaved continue (SCHED-D-066)", () => {
 describe("schedule dialog - ESC with unsaved changes (SCHED-D-067)", () => {
   it("shows confirm overlay when ESC is pressed with a dirty form", async () => {
     const user = userEvent.setup();
-    await openCreateDialog(user);
+    await openCreateDialog();
     await user.type(screen.getByLabelText("Prompt"), "Some text");
     await user.keyboard("{Escape}");
     await waitFor(() => {
@@ -525,7 +507,7 @@ describe("schedule dialog - ESC with unsaved changes (SCHED-D-067)", () => {
 
   it("closes dialog directly when ESC is pressed on a clean form", async () => {
     const user = userEvent.setup();
-    await openCreateDialog(user);
+    await openCreateDialog();
     await user.keyboard("{Escape}");
     await waitFor(() => {
       expect(

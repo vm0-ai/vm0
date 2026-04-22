@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import {
   type ScheduleResponse,
   zeroAgentsByIdContract,
@@ -102,7 +101,6 @@ function navigateToScheduleTab() {
 }
 
 async function openMenuAndClick(
-  _user: ReturnType<typeof userEvent.setup>,
   timeLabel: string,
   action: "Edit" | "Delete" | "Run now",
 ) {
@@ -279,7 +277,6 @@ describe("zero-schedule-card - save error", () => {
 
 describe("zero-schedule-card - delete", () => {
   it("closing delete dialog preserves the schedule entry (SCHED-D-041)", async () => {
-    const user = userEvent.setup();
     let deleteCalled = false;
     mockBaseAPIs([defaultSchedule()]);
     server.use(
@@ -297,7 +294,7 @@ describe("zero-schedule-card - delete", () => {
       ).toBeInTheDocument();
     });
 
-    await openMenuAndClick(user, "Every weekday at 9:00 AM", "Delete");
+    await openMenuAndClick("Every weekday at 9:00 AM", "Delete");
 
     await waitFor(() => {
       expect(screen.getByText("Delete schedule?")).toBeInTheDocument();
@@ -315,7 +312,6 @@ describe("zero-schedule-card - delete", () => {
   });
 
   it("calls delete API when delete is confirmed (SCHED-D-042)", async () => {
-    const user = userEvent.setup();
     let deletedName: string | null = null;
     mockBaseAPIs([defaultSchedule()]);
     server.use(
@@ -333,7 +329,7 @@ describe("zero-schedule-card - delete", () => {
       ).toBeInTheDocument();
     });
 
-    await openMenuAndClick(user, "Every weekday at 9:00 AM", "Delete");
+    await openMenuAndClick("Every weekday at 9:00 AM", "Delete");
 
     await waitFor(() => {
       expect(screen.getByText("Delete schedule?")).toBeInTheDocument();

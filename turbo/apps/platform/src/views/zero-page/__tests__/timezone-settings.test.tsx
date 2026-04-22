@@ -4,7 +4,6 @@
  */
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
@@ -27,7 +26,7 @@ function mockPreferencesAPI(
   });
 }
 
-async function openTimezoneTab(_user: ReturnType<typeof userEvent.setup>) {
+async function openTimezoneTab() {
   detachedSetupPage({ context, path: "/settings" });
   click(await screen.findByText("Time Zone"));
   await waitFor(() => {
@@ -37,13 +36,12 @@ async function openTimezoneTab(_user: ReturnType<typeof userEvent.setup>) {
 
 describe("timezone-settings - display", () => {
   it("shows list of available timezone options when dropdown opened (PREF-D-011)", async () => {
-    const user = userEvent.setup();
     mockPreferencesAPI({
       timezone: "Etc/UTC",
       pinnedAgentIds: [],
       sendMode: "enter",
     });
-    await openTimezoneTab(user);
+    await openTimezoneTab();
 
     click(screen.getByRole("combobox"));
 
@@ -57,7 +55,6 @@ describe("timezone-settings - display", () => {
   });
 
   it("disables select while timezone change is saving (PREF-D-012)", async () => {
-    const user = userEvent.setup();
     mockPreferencesAPI({
       timezone: "Etc/UTC",
       pinnedAgentIds: [],
@@ -68,7 +65,7 @@ describe("timezone-settings - display", () => {
         return new Promise<never>(() => {});
       }),
     );
-    await openTimezoneTab(user);
+    await openTimezoneTab();
 
     click(screen.getByRole("combobox"));
     await waitFor(() => {
@@ -97,13 +94,12 @@ describe("timezone-settings - display", () => {
   });
 
   it("shows browser default timezone when preferences has no timezone set (PREF-D-014)", async () => {
-    const user = userEvent.setup();
     mockPreferencesAPI({
       timezone: null,
       pinnedAgentIds: [],
       sendMode: "enter",
     });
-    await openTimezoneTab(user);
+    await openTimezoneTab();
 
     const browserTz = new Intl.DateTimeFormat().resolvedOptions().timeZone;
     const expectedLabel = getTimezoneLabel(browserTz);

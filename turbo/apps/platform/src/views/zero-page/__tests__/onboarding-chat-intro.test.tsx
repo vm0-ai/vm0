@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
@@ -59,10 +58,7 @@ function mockMemberOnboarding() {
 }
 
 /** Walk through onboarding steps up to the "Where would you like to work" step. */
-async function walkToWhereStep(
-  _user: ReturnType<typeof userEvent.setup>,
-  isMember: boolean,
-) {
+async function walkToWhereStep(isMember: boolean) {
   if (isMember) {
     // Member lands on step 2 (Choose your tools) under the unified flow
     await waitFor(() => {
@@ -107,11 +103,10 @@ async function walkToWhereStep(
 
 describe("onboarding → chat page (no auto-intro)", () => {
   it("should navigate to /agents/:id/chat after admin completes onboarding", async () => {
-    const user = userEvent.setup();
     mockAdminOnboarding();
 
     detachedSetupPage({ context, path: "/onboarding" });
-    await walkToWhereStep(user, false);
+    await walkToWhereStep(false);
 
     // Switch onboarding status so post-navigate route doesn't redirect back
     server.use(
@@ -142,11 +137,10 @@ describe("onboarding → chat page (no auto-intro)", () => {
   });
 
   it("should navigate to /agents/:id/chat after member completes onboarding", async () => {
-    const user = userEvent.setup();
     mockMemberOnboarding();
 
     detachedSetupPage({ context, path: "/onboarding" });
-    await walkToWhereStep(user, true);
+    await walkToWhereStep(true);
 
     server.use(
       mockApi(onboardingStatusContract.getStatus, ({ respond }) => {
