@@ -131,8 +131,20 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           MQ_HEAD_REF: ${{ github.event.merge_group.head_ref }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           if [ "$EVENT_NAME" = "pull_request" ]; then
+            # Skip runner deployment if the PR was already merged or closed.
+            # A late pull_request:synchronize run can reach here after
+            # cleanup.yml has already stopped the runner — deploying again
+            # would resurrect a stale service that no cleanup will ever reach.
+            STATE=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" \
+              "https://api.github.com/repos/${{ github.repository }}/pulls/${PR_NUMBER}" \
+              | jq -r .state)
+            if [ "$STATE" != "open" ]; then
+              echo "::warning::PR #${PR_NUMBER} is ${STATE}, skipping host/job-ref to prevent stale runner deployment"
+              exit 0
+            fi
             JOB_REF="pr-${PR_NUMBER}-test"
           elif [ "$EVENT_NAME" = "merge_group" ]; then
             MQ_PR_NUM=$(echo "$MQ_HEAD_REF" | grep -oE 'pr-[0-9]+' | head -1 | sed 's/pr-//')
@@ -244,8 +256,10 @@ jobs:
       image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260419
     needs: [detect]
     if: |
-      needs.detect.outputs.ci-changed == 'true' ||
-      needs.detect.outputs.nbd-cow-changed == 'true'
+      needs.detect.outputs.metal-job-ref != '' && (
+        needs.detect.outputs.ci-changed == 'true' ||
+        needs.detect.outputs.nbd-cow-changed == 'true'
+      )
     timeout-minutes: 5
     env:
       TARGET_TRIPLE: aarch64-unknown-linux-musl
@@ -292,13 +306,15 @@ jobs:
       image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260419
     needs: [detect]
     if: |
-      needs.detect.outputs.ci-changed == 'true' ||
-      needs.detect.outputs.runner-changed == 'true' ||
-      needs.detect.outputs.guest-init-changed == 'true' ||
-      needs.detect.outputs.guest-download-changed == 'true' ||
-      needs.detect.outputs.guest-agent-changed == 'true' ||
-      needs.detect.outputs.guest-mock-claude-changed == 'true' ||
-      needs.detect.outputs.guest-reseed-changed == 'true'
+      needs.detect.outputs.metal-job-ref != '' && (
+        needs.detect.outputs.ci-changed == 'true' ||
+        needs.detect.outputs.runner-changed == 'true' ||
+        needs.detect.outputs.guest-init-changed == 'true' ||
+        needs.detect.outputs.guest-download-changed == 'true' ||
+        needs.detect.outputs.guest-agent-changed == 'true' ||
+        needs.detect.outputs.guest-mock-claude-changed == 'true' ||
+        needs.detect.outputs.guest-reseed-changed == 'true'
+      )
     timeout-minutes: 20
     env:
       TARGET_TRIPLE: aarch64-unknown-linux-musl
@@ -1578,34 +1594,3 @@ jobs:
           echo "::endgroup::"
           exit $FAILED
 
-  runner-cleanup:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    needs: [runner-build, runner-benchmark, runner-exec, runner-cancel, runner-drain-resume, runner-balloon, runner-upgrade-local, runner-keep-alive]
-    if: ${{ always() && needs.runner-build.result != 'skipped' }}
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Install Ansible
-        run: pip3 install ansible-core
-
-      - name: Setup SSH via Cloudflare Tunnel
-        uses: ./.github/actions/setup-ssh-tunnel
-        with:
-          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
-          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
-          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
-
-      - name: Cleanup
-        env:
-          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
-          HOST: ${{ needs.runner-build.outputs.host }}
-          JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
-        run: |
-          cd ansible
-          ansible-playbook \
-            -i "${HOST}," \
-            playbooks/cleanup-crates-runner.yml \
-            -e "ansible_user=${METAL_USER}" \
-            -e "job_ref=${JOB_REF}" \
-            -v || true
