@@ -322,6 +322,91 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       expect(data.conversationId).toBeDefined();
       expect(data.artifact).toEqual(artifactSnapshot);
     });
+
+    it("should double-write artifactSnapshots map and derive legacy column", async () => {
+      const artifactSnapshots = {
+        "artifact-a": "version-aaa",
+        "artifact-b": "version-bbb",
+      };
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/checkpoints",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            cliAgentType: "claude-code",
+            cliAgentSessionId: "multi-artifact-session",
+            cliAgentSessionHistoryHash: sha256("multi-artifact-history"),
+            artifactSnapshots,
+          }),
+        },
+      );
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.artifacts).toEqual(artifactSnapshots);
+      // Legacy singleton response field derived from the first entry so older
+      // clients that only read `artifact` still see a usable value.
+      expect(data.artifact).toEqual({
+        artifactName: "artifact-a",
+        artifactVersion: "version-aaa",
+      });
+
+      const checkpoint = await findTestCheckpoint(testRunId);
+      expect(checkpoint).toBeDefined();
+      expect(checkpoint!.artifactSnapshots).toEqual(artifactSnapshots);
+      expect(checkpoint!.artifactSnapshot).toEqual({
+        artifactName: "artifact-a",
+        artifactVersion: "version-aaa",
+      });
+    });
+
+    it("should prefer artifactSnapshots map when both legacy and map are sent", async () => {
+      const legacy = {
+        artifactName: "legacy-name",
+        artifactVersion: "legacy-version",
+      };
+      const artifactSnapshots = {
+        "canonical-artifact": "canonical-version",
+      };
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/checkpoints",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            cliAgentType: "claude-code",
+            cliAgentSessionId: "dual-send-session",
+            cliAgentSessionHistoryHash: sha256("dual-send-history"),
+            artifactSnapshot: legacy,
+            artifactSnapshots,
+          }),
+        },
+      );
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      const checkpoint = await findTestCheckpoint(testRunId);
+      expect(checkpoint!.artifactSnapshots).toEqual(artifactSnapshots);
+      // Map wins over the legacy body field.
+      expect(checkpoint!.artifactSnapshot).toEqual({
+        artifactName: "canonical-artifact",
+        artifactVersion: "canonical-version",
+      });
+    });
   });
 
   describe("Session independence", () => {
