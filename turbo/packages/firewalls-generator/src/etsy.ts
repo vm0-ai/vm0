@@ -33,7 +33,8 @@ function generateTypeScript(): string {
     "} as const satisfies FirewallConfig;",
     "",
   ];
-  return lines.join("\n");
+  return lines.join("
+");
 }
 
 export async function generate(): Promise<void> {
@@ -41,4 +42,3 @@ export async function generate(): Promise<void> {
   const ts = generateTypeScript();
   writeOutput("etsy", ts, import.meta.dirname);
 }
-
