@@ -1,5 +1,4 @@
 import { describe, it, expect } from "vitest";
-import { FeatureSwitchKey } from "../../feature-switch-key";
 import {
   getProviderBaseUrl,
   areProvidersCompatible,
@@ -161,10 +160,9 @@ describe("getVm0VisibleModels", () => {
     expect(models).toContain("deepseek-chat");
   });
 
-  it("deepseek-chat is visible even when Vm0DeepseekModel flag is disabled", () => {
-    const models = getVm0VisibleModels({
-      [FeatureSwitchKey.Vm0DeepseekModel]: false,
-    });
+  it("deepseek-chat is visible even when feature flags are all disabled", () => {
+    // deepseek-chat has no featureFlag so it is unaffected by any flag state
+    const models = getVm0VisibleModels({});
     expect(models).toContain("deepseek-chat");
   });
 });

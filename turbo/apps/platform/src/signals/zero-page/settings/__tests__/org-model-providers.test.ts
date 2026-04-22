@@ -8,20 +8,11 @@ import {
   orgFormErrors$,
   orgUpdateFormModel$,
 } from "../org-model-providers.ts";
-import {
-  getProviderShape,
-  getVm0ModelMultiplier,
-} from "../../../../views/zero-page/components/settings/provider-ui-config.ts";
+import { getProviderShape } from "../../../../views/zero-page/components/settings/provider-ui-config.ts";
 import { zeroModelProvidersMainContract } from "@vm0/core";
 import { mockApi } from "../../../../mocks/msw-contract.ts";
 
 const context = testContext();
-
-describe("getVm0ModelMultiplier", () => {
-  it("returns 0.2 for deepseek-chat", () => {
-    expect(getVm0ModelMultiplier("deepseek-chat")).toBe(0.2);
-  });
-});
 
 describe("org-model-providers vm0 provider", () => {
   it("should treat vm0 as a no-secret provider shape, not api-key", () => {
