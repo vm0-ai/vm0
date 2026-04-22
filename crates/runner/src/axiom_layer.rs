@@ -47,7 +47,8 @@ impl AxiomGuard {
 }
 
 /// Initialize the Axiom layer. Returns `None` when required env is missing —
-/// caller should install a `None` layer in that case (no-op).
+/// caller should install a `None` layer in that case (no-op). Production
+/// entry point; always targets `DEFAULT_AXIOM_URL`.
 pub fn init() -> Option<(AxiomLayer, AxiomGuard)> {
     let token = std::env::var("AXIOM_TOKEN_TELEMETRY")
         .ok()
@@ -55,11 +56,18 @@ pub fn init() -> Option<(AxiomLayer, AxiomGuard)> {
     let suffix = std::env::var("AXIOM_DATASET_SUFFIX")
         .ok()
         .filter(|s| !s.is_empty())?;
-    // `AXIOM_URL` override exists mainly for tests (points at an httpmock server).
-    let base_url = std::env::var("AXIOM_URL")
-        .ok()
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| DEFAULT_AXIOM_URL.into());
+    init_with_base_url(DEFAULT_AXIOM_URL, &token, &suffix)
+}
+
+/// Core init with an explicit base URL. Exists so integration tests can point
+/// at an `httpmock` server without leaking an `AXIOM_URL` override into the
+/// runner's production env surface — production code should always call
+/// [`init`], which hard-codes [`DEFAULT_AXIOM_URL`].
+pub fn init_with_base_url(
+    base_url: &str,
+    token: &str,
+    suffix: &str,
+) -> Option<(AxiomLayer, AxiomGuard)> {
     // Shared dataset with TS: turbo/apps/web/src/lib/shared/axiom/datasets.ts
     // DATASETS.WEB_LOGS. APL queries filter by `service == "runner"`.
     let dataset = format!("vm0-web-logs-{suffix}");
@@ -78,7 +86,7 @@ pub fn init() -> Option<(AxiomLayer, AxiomGuard)> {
     };
 
     let (tx, rx) = mpsc::channel(CHANNEL_CAP);
-    let handle = tokio::spawn(dispatcher(client, ingest_url, token, rx));
+    let handle = tokio::spawn(dispatcher(client, ingest_url, token.to_string(), rx));
 
     Some((
         AxiomLayer {

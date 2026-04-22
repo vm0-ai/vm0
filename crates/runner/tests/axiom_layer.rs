@@ -22,7 +22,6 @@ fn clear_axiom_env() {
     unsafe {
         std::env::remove_var("AXIOM_TOKEN_TELEMETRY");
         std::env::remove_var("AXIOM_DATASET_SUFFIX");
-        std::env::remove_var("AXIOM_URL");
     }
 }
 
@@ -77,14 +76,10 @@ async fn warn_and_error_events_are_ingested_with_ts_shape() {
         })
         .await;
 
-    let (layer, guard) = with_env(|| {
-        unsafe {
-            std::env::set_var("AXIOM_URL", server.base_url());
-            std::env::set_var("AXIOM_TOKEN_TELEMETRY", "test-token");
-            std::env::set_var("AXIOM_DATASET_SUFFIX", "test");
-        }
-        axiom_layer::init().expect("init must succeed with env set")
-    });
+    // Use the test-only `init_with_base_url` to redirect at the mock server.
+    // `init()` always targets api.axiom.co and can't be pointed elsewhere.
+    let (layer, guard) = axiom_layer::init_with_base_url(&server.base_url(), "test-token", "test")
+        .expect("init_with_base_url must succeed");
 
     let subscriber = tracing_subscriber::registry().with(layer);
     {
