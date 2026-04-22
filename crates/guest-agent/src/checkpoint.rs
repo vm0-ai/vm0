@@ -13,7 +13,6 @@ use guest_common::{log_error, log_info};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::io::ErrorKind;
-use std::path::Path;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
 
