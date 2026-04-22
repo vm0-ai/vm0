@@ -53,9 +53,8 @@ async function applyAgentUpdate(
   agentId: string,
   options: AgentEditOptions,
 ): Promise<void> {
-  const resolvedAvatarUrl = hasAvatarUpdate(options)
-    ? resolveAvatarUrl(options)
-    : undefined;
+  const hasAvatar = hasAvatarUpdate(options);
+  const resolvedAvatarUrl = hasAvatar ? resolveAvatarUrl(options) : undefined;
 
   const current = await getZeroAgent(agentId);
   const customSkills = resolveCustomSkills(options, current.customSkills ?? []);
@@ -69,7 +68,7 @@ async function applyAgentUpdate(
       ? parseModelFlag(options.model)
       : current.selectedModel;
 
-  const avatarUrl = hasAvatarUpdate(options)
+  const avatarUrl = hasAvatar
     ? resolvedAvatarUrl
     : (current.avatarUrl ?? undefined);
 

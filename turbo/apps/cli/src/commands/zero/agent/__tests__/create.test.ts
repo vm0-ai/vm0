@@ -21,27 +21,24 @@ const mockAgent = {
   displayName: "New Agent",
   description: null,
   sound: null,
+  avatarUrl: null,
 };
 
 describe("zero agent create command", () => {
-  const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
-    throw new Error("process.exit called");
-  }) as never);
-  const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
-  const mockConsoleError = vi
-    .spyOn(console, "error")
-    .mockImplementation(() => {});
+  let mockExit: ReturnType<typeof vi.spyOn>;
+  let mockConsoleLog: ReturnType<typeof vi.spyOn>;
+  let mockConsoleError: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
+    vi.clearAllMocks();
+    mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
+      throw new Error("process.exit called");
+    }) as never);
+    mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
+    mockConsoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     chalk.level = 0;
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
-  });
-
-  afterEach(() => {
-    mockExit.mockClear();
-    mockConsoleLog.mockClear();
-    mockConsoleError.mockClear();
   });
 
   describe("successful create", () => {
