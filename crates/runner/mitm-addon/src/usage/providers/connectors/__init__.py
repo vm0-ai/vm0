@@ -16,6 +16,8 @@ from collections.abc import Callable
 
 from mitmproxy import http
 
+from logging_utils import log_proxy_entry
+
 from . import x
 
 # Map firewall_name → per-connector report_usage handler.  A handler is only
@@ -27,6 +29,13 @@ from . import x
 _HANDLERS: dict[str, Callable[[http.HTTPFlow, str], None]] = {
     "x": x.report_usage,
 }
+
+# One-shot guard: first time we see a billable firewall_name with no
+# registered handler, warn once per name per addon process.  Catches the
+# deployment-desync case where ``@vm0/core``'s ``BILLABLE_CONNECTORS`` has
+# grown but the runner is on an older addon image — without this, billing
+# records silently drop with no local signal.
+_unregistered_handler_warned: set[str] = set()
 
 
 def report_connector_usage(flow: http.HTTPFlow, run_id: str) -> None:
@@ -51,5 +60,16 @@ def report_connector_usage(flow: http.HTTPFlow, run_id: str) -> None:
     firewall_name = flow.metadata.get("firewall_name", "")
     handler = _HANDLERS.get(firewall_name)
     if handler is None:
+        if firewall_name and firewall_name not in _unregistered_handler_warned:
+            _unregistered_handler_warned.add(firewall_name)
+            log_proxy_entry(
+                flow.metadata.get("vm_proxy_log_path", ""),
+                "warn",
+                f"Billable firewall {firewall_name!r} has no registered handler — "
+                "billing records for this firewall will be dropped.  Check that "
+                "BILLABLE_CONNECTORS in @vm0/core and _HANDLERS here are in sync.",
+                type="connector_billing",
+                firewall_name=firewall_name,
+            )
         return
     handler(flow, run_id)

@@ -2482,6 +2482,54 @@ class TestReportConnectorUsage:
         flow.metadata["firewall_name"] = "github"
         assert self._call_and_get_billing(flow) == []
 
+    # ---- unregistered-handler one-shot warn (issue #10483) ----
+
+    def test_warns_once_per_unregistered_firewall_name(self, tmp_path, real_flow):
+        """First billable flow for an unregistered firewall_name emits a warn;
+        subsequent flows for the same name stay silent (one-shot guard)."""
+        proxy_log = tmp_path / "proxy.jsonl"
+        for _ in range(3):
+            flow = self._make_x_flow(real_flow, tmp_path)
+            flow.metadata["firewall_name"] = "github"
+            assert self._call_and_get_billing(flow) == []
+
+        lines = [
+            json.loads(line)
+            for line in proxy_log.read_text().splitlines()
+            if "no registered handler" in line
+        ]
+        assert len(lines) == 1
+        assert lines[0]["level"] == "warn"
+        assert lines[0]["firewall_name"] == "github"
+        assert lines[0]["type"] == "connector_billing"
+
+    def test_warns_separately_per_firewall_name(self, tmp_path, real_flow):
+        """One-shot guard is per-firewall-name, not global — a new desynced
+        connector name still surfaces even after an earlier one warned."""
+        proxy_log = tmp_path / "proxy.jsonl"
+        for name in ("github", "slack", "github"):  # github repeats; slack new
+            flow = self._make_x_flow(real_flow, tmp_path)
+            flow.metadata["firewall_name"] = name
+            assert self._call_and_get_billing(flow) == []
+
+        warned_names = [
+            json.loads(line)["firewall_name"]
+            for line in proxy_log.read_text().splitlines()
+            if "no registered handler" in line
+        ]
+        assert warned_names == ["github", "slack"]
+
+    def test_does_not_warn_on_empty_firewall_name(self, tmp_path, real_flow):
+        """Empty firewall_name is a different bug class (web-layer contract
+        violation) already logged elsewhere — don't double-warn here."""
+        proxy_log = tmp_path / "proxy.jsonl"
+        flow = self._make_x_flow(real_flow, tmp_path)
+        flow.metadata["firewall_name"] = ""
+        assert self._call_and_get_billing(flow) == []
+
+        if proxy_log.exists():
+            assert "no registered handler" not in proxy_log.read_text()
+
     def test_skips_when_not_billable(self, tmp_path, real_flow):
         """Firewalls with firewall_billable=False are not reported."""
         flow = self._make_x_flow(real_flow, tmp_path)
@@ -3070,6 +3118,38 @@ class TestUsagePendingCounter:
         # Should not raise — just no file written.
         assert usage.counters._in_flight_flows == 0
         assert usage.counters._pending_reports == 0
+
+    # ---- one-shot warn on write failure (issue #10483) ----
+
+    def test_write_failure_warns_once_per_process(self, tmp_path):
+        """Repeated OSErrors from ``_write_pending`` emit exactly one
+        ``ctx.log.warn`` per addon process — enough to seed FS-trouble
+        investigation without spamming logs on sustained failure."""
+        usage.set_pending_path(str(tmp_path / "usage-pending"))
+
+        mock_log = MagicMock()
+        with (
+            patch.object(usage.counters.ctx, "log", mock_log, create=True),
+            patch.object(usage.counters.Path, "open", side_effect=OSError("disk full")),
+        ):
+            for _ in range(3):
+                usage.increment_flows()
+
+        assert mock_log.warn.call_count == 1
+        assert "Failed to write pending count" in mock_log.warn.call_args[0][0]
+        assert "disk full" in mock_log.warn.call_args[0][0]
+
+    def test_write_failure_does_not_raise(self, tmp_path):
+        """Write failures stay best-effort after the one-shot warn — callers
+        (hot-path increment/decrement) must never observe the OSError."""
+        usage.set_pending_path(str(tmp_path / "usage-pending"))
+
+        with (
+            patch.object(usage.counters.ctx, "log", MagicMock(), create=True),
+            patch.object(usage.counters.Path, "open", side_effect=OSError("disk full")),
+        ):
+            usage.increment_flows()  # should not raise
+            usage.decrement_flows()  # should not raise
 
     def test_report_decrements_after_completion(self, tmp_path, real_flow, fresh_usage_executor):
         """Retry exhaustion still runs the decrement finally-block."""
