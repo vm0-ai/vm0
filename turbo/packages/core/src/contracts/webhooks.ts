@@ -156,7 +156,15 @@ export const webhookCheckpointsContract = c.router({
           64,
           "cliAgentSessionHistoryHash must be a 64-character SHA-256 hex string",
         ),
+      // Legacy singleton artifact snapshot. The guest-agent still emits this
+      // when exactly one artifact is snapshotted so older servers can read it;
+      // new code must read artifactSnapshots instead.
       artifactSnapshot: artifactSnapshotSchema.optional(),
+      // Multi-artifact snapshot map: artifact name → version id. Emitted
+      // unconditionally by the guest-agent (empty object when nothing to
+      // snapshot). Double-written to both the legacy single-entry column and
+      // the new artifact_snapshots JSONB column on checkpoints.
+      artifactSnapshots: z.record(z.string(), z.string()).optional(),
       memorySnapshot: memorySnapshotSchema.optional(),
       volumeVersionsSnapshot: volumeVersionsSnapshotSchema.optional(),
     }),
@@ -166,6 +174,7 @@ export const webhookCheckpointsContract = c.router({
         agentSessionId: z.string(),
         conversationId: z.string(),
         artifact: artifactSnapshotSchema.optional(),
+        artifacts: z.record(z.string(), z.string()).optional(),
         memory: memorySnapshotSchema.optional(),
         volumes: z.record(z.string(), z.string()).optional(),
       }),

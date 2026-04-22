@@ -452,7 +452,7 @@ export async function prepareStorageManifest(
     !memoryName &&
     (!additionalVolumes || additionalVolumes.length === 0)
   ) {
-    return { storages: [], artifact: null, memory: null };
+    return { storages: [], artifacts: [], memory: null };
   }
 
   // Resolve volumes from agent config.
@@ -1045,7 +1045,7 @@ async function buildManifestFromResults(
 
   return {
     storages: filteredStorages,
-    artifact,
+    artifacts: artifact ? [artifact] : [],
     memory,
   };
 }

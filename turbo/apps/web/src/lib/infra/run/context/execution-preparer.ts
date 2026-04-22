@@ -147,7 +147,7 @@ export async function prepareForExecution(
   const storageEnd = Date.now();
 
   log.debug(
-    `Storage manifest prepared with dual orgs: agentClerkOrgId=${agentOrgId}, runtimeClerkOrgId=${orgId}, ${storageManifest.storages.length} storages, ${storageManifest.artifact ? "1 artifact" : "no artifact"}`,
+    `Storage manifest prepared with dual orgs: agentClerkOrgId=${agentOrgId}, runtimeClerkOrgId=${orgId}, ${storageManifest.storages.length} storages, ${storageManifest.artifacts.length} artifacts`,
   );
 
   // Build PreparedContext

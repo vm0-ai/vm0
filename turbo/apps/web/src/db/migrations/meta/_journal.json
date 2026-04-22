@@ -2066,6 +2066,13 @@
       "when": 1776834558378,
       "tag": "0294_striped_ender_wiggin",
       "breakpoints": true
+    },
+    {
+      "idx": 295,
+      "version": "7",
+      "when": 1776850289326,
+      "tag": "0295_friendly_mister_sinister",
+      "breakpoints": true
     }
   ]
 }

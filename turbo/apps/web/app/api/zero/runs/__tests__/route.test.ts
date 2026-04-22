@@ -330,7 +330,7 @@ describe("POST /api/zero/runs", () => {
 
       const job = await findTestRunnerJobEntry(data.runId);
       expect(job).toBeDefined();
-      expect(job!.executionContext.storageManifest?.artifact).toBeNull();
+      expect(job!.executionContext.storageManifest?.artifacts).toEqual([]);
     });
 
     it("should inject memory into storage manifest", async () => {

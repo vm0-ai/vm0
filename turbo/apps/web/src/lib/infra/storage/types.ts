@@ -120,6 +120,6 @@ export interface ManifestArtifact {
  */
 export interface StorageManifest {
   storages: ManifestStorage[];
-  artifact: ManifestArtifact | null;
+  artifacts: ManifestArtifact[];
   memory: ManifestArtifact | null;
 }

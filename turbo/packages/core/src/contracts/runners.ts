@@ -86,7 +86,7 @@ export const artifactEntrySchema = z.object({
  */
 export const storageManifestSchema = z.object({
   storages: z.array(storageEntrySchema),
-  artifact: artifactEntrySchema.nullable(),
+  artifacts: z.array(artifactEntrySchema),
   memory: artifactEntrySchema.nullable(),
 });
 
