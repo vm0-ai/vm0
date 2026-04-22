@@ -46,7 +46,7 @@ beforeEach(() => {
 
 // Render-heavy internal debug page (173 connectors × 4 IconBox ≈ 700 DOM
 // nodes). Bumped timeout absorbs CPU contention from parallel workers.
-const INTERNAL_LOGOS_TIMEOUT = 15000;
+const INTERNAL_LOGOS_TIMEOUT = 15_000;
 
 describe("internal connector logos - display (ORG-D-118)", () => {
   it(
