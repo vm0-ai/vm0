@@ -570,7 +570,7 @@ const startAblyLoop$ = command(
 
       const [taskResultRes, activeTasksRes, sessionRes] = await Promise.all([
         accept(
-          client.listTaskResults({
+          client.readItems({
             params: { id: sid },
             query: { sinceSeq: get(internalTaskResultsSinceSeq$) },
           }),
@@ -756,7 +756,7 @@ export const startVoiceChatCandidate$ = command(
     // re-entry — the fresh in-call turns will populate it.
     const [taskResultsBaseline, activeTasks] = await Promise.all([
       accept(
-        client.listTaskResults({
+        client.readItems({
           params: { id: session.id },
           query: {},
         }),

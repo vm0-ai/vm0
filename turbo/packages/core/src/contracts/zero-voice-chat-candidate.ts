@@ -222,7 +222,7 @@ export const zeroVoiceChatCandidateContract = c.router({
    * NOT exposed via HTTP — the client holds the last utterance locally; the
    * DB copy is server-side only and feeds the Reasoner's summary pipeline.
    */
-  listTaskResults: {
+  readItems: {
     method: "GET",
     path: "/api/zero/voice-chat-candidate/:id/transcript/task-results",
     headers: authHeadersSchema,

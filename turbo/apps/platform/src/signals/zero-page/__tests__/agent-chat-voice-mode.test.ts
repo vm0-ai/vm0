@@ -132,23 +132,20 @@ function mockCandidateEndpoints(options: {
         client_secret: { value: "ek_test", expires_at: 9_999_999_999 },
       });
     }),
-    mockApi(
-      zeroVoiceChatCandidateContract.listTaskResults,
-      ({ query, respond }) => {
-        const all = itemsForRole("task_result");
-        if (query.sinceSeq === undefined) {
-          return respond(200, {
-            items: all.length > 0 ? [all[all.length - 1]!] : [],
-          });
-        }
-        const since = query.sinceSeq;
+    mockApi(zeroVoiceChatCandidateContract.readItems, ({ query, respond }) => {
+      const all = itemsForRole("task_result");
+      if (query.sinceSeq === undefined) {
         return respond(200, {
-          items: all.filter((i) => {
-            return i.seq > since;
-          }),
+          items: all.length > 0 ? [all[all.length - 1]!] : [],
         });
-      },
-    ),
+      }
+      const since = query.sinceSeq;
+      return respond(200, {
+        items: all.filter((i) => {
+          return i.seq > since;
+        }),
+      });
+    }),
     mockApi(zeroVoiceChatCandidateContract.getSession, ({ respond }) => {
       return respond(200, {
         session: sessionPayload(),

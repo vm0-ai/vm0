@@ -30,7 +30,7 @@ export function resetMockVoiceChatCandidate(): void {
 
 function mockTaskResultsHandler() {
   return mockApi(
-    zeroVoiceChatCandidateContract.listTaskResults,
+    zeroVoiceChatCandidateContract.readItems,
     ({ params, query, respond }) => {
       const sessionId = params.id;
       const session = mockSessions.get(sessionId);
@@ -202,41 +202,38 @@ export const apiVoiceChatCandidateHandlers = [
     },
   ),
 
-  mockApi(
-    zeroVoiceChatCandidateContract.listTasks,
-    ({ params, respond }) => {
-      const sessionId = params.id;
-      const session = mockSessions.get(sessionId);
-      if (!session) {
-        return respond(404, {
-          error: { code: "NOT_FOUND", message: "Session not found" },
-        });
-      }
-      const all = Array.from(mockTasks.values()).filter((t) => {
-        return t.sessionId === sessionId;
+  mockApi(zeroVoiceChatCandidateContract.listTasks, ({ params, respond }) => {
+    const sessionId = params.id;
+    const session = mockSessions.get(sessionId);
+    if (!session) {
+      return respond(404, {
+        error: { code: "NOT_FOUND", message: "Session not found" },
       });
-      const active = all
-        .filter((t) => {
-          return (
-            t.status === "pending" ||
-            t.status === "queued" ||
-            t.status === "running"
-          );
-        })
-        .sort((a, b) => {
-          return a.createdAt.localeCompare(b.createdAt);
-        });
-      const finished = all
-        .filter((t) => {
-          return t.status === "done" || t.status === "failed";
-        })
-        .sort((a, b) => {
-          return (b.finishedAt ?? "").localeCompare(a.finishedAt ?? "");
-        })
-        .slice(0, 3);
-      return respond(200, { tasks: [...active, ...finished] });
-    },
-  ),
+    }
+    const all = Array.from(mockTasks.values()).filter((t) => {
+      return t.sessionId === sessionId;
+    });
+    const active = all
+      .filter((t) => {
+        return (
+          t.status === "pending" ||
+          t.status === "queued" ||
+          t.status === "running"
+        );
+      })
+      .sort((a, b) => {
+        return a.createdAt.localeCompare(b.createdAt);
+      });
+    const finished = all
+      .filter((t) => {
+        return t.status === "done" || t.status === "failed";
+      })
+      .sort((a, b) => {
+        return (b.finishedAt ?? "").localeCompare(a.finishedAt ?? "");
+      })
+      .slice(0, 3);
+    return respond(200, { tasks: [...active, ...finished] });
+  }),
 
   mockApi(zeroVoiceChatCandidateContract.token, ({ respond }) => {
     return respond(200, {

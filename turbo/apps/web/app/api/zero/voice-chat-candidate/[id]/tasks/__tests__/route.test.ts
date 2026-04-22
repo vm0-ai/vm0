@@ -135,4 +135,3 @@ describe("POST /api/zero/voice-chat-candidate/:id/tasks (createTask)", () => {
     expect(zeroRun?.triggerSource).toBe("voice-chat");
   });
 });
-

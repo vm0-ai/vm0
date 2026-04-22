@@ -175,7 +175,7 @@ function mockAppendItemOk() {
 
 function mockTranscriptEmpty() {
   server.use(
-    mockApi(zeroVoiceChatCandidateContract.listTaskResults, ({ respond }) => {
+    mockApi(zeroVoiceChatCandidateContract.readItems, ({ respond }) => {
       return respond(200, { items: [] });
     }),
   );

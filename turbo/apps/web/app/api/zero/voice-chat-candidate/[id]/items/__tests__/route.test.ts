@@ -166,4 +166,3 @@ describe("POST /api/zero/voice-chat-candidate/:id/items (appendItem)", () => {
     expect(secondBody.item.content).toBe("dup");
   });
 });
-
