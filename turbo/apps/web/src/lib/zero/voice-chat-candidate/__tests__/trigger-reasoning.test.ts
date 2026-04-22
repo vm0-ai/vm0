@@ -1,25 +1,24 @@
 import { describe, it, expect, vi } from "vitest";
 import { HttpResponse } from "msw";
-import { eq } from "drizzle-orm";
 import { testContext, uniqueId } from "../../../../__tests__/test-helpers";
 import { seedTestCompose } from "../../../../__tests__/db-test-seeders/agents";
-import { insertTestVoiceChatCandidateTask } from "../../../../__tests__/db-test-seeders/voice-chat-candidate";
-import { getTestVoiceChatCandidateTask } from "../../../../__tests__/db-test-assertions/voice-chat-candidate";
+import {
+  appendTestVoiceChatCandidateItem,
+  insertTestVoiceChatCandidateTask,
+  insertTestVoiceChatCandidateSession,
+  seedTestVoiceChatCandidateSession,
+  simulateConcurrentVoiceChatCandidateSessionWrite,
+} from "../../../../__tests__/db-test-seeders/voice-chat-candidate";
+import {
+  getTestVoiceChatCandidateTask,
+  getTestVoiceChatCandidateSessionReasoningState,
+  readTestVoiceChatCandidateItems,
+} from "../../../../__tests__/db-test-assertions/voice-chat-candidate";
 import { server } from "../../../../mocks/server";
 import { http } from "../../../../__tests__/msw";
 import { mockAblyPublish } from "../../../../__tests__/ably-mock";
 import { reloadEnv } from "../../../../env";
-import { initServices } from "../../../init-services";
-// eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route covers these services yet
-import { createVoiceChatCandidateSession } from "../session-service";
-// eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route covers these services yet
-import {
-  appendVoiceChatCandidateItem,
-  readVoiceChatCandidateItems,
-} from "../item-service";
 import { triggerReasoning } from "../trigger-reasoning";
-// eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: verify DB side-effects directly
-import { featureCandidateVoiceChatSessions } from "../../../../db/schema/voice-chat-candidate";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const context = testContext();
@@ -50,31 +49,18 @@ async function seedActiveSession(): Promise<{
   orgId: string;
   sessionId: string;
 }> {
-  // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: test exercises services directly, no API route
-  initServices();
   const { userId, orgId } = await context.setupUser();
   const { composeId } = await seedTestCompose({
     userId,
     orgId,
     name: uniqueId("vcc-reasoner"),
   });
-  const session = await createVoiceChatCandidateSession({
-    orgId,
+  const sessionId = await seedTestVoiceChatCandidateSession({
     userId,
+    orgId,
     agentId: composeId,
   });
-  return { userId, orgId, sessionId: session.id };
-}
-
-async function readSession(id: string) {
-  // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: verify DB side-effects directly
-  const db = globalThis.services.db;
-  const [row] = await db
-    .select()
-    .from(featureCandidateVoiceChatSessions)
-    .where(eq(featureCandidateVoiceChatSessions.id, id))
-    .limit(1);
-  return row!;
+  return { userId, orgId, sessionId };
 }
 
 describe("triggerReasoning", () => {
@@ -84,13 +70,13 @@ describe("triggerReasoning", () => {
     reloadEnv();
 
     const { sessionId } = await seedActiveSession();
-    await appendVoiceChatCandidateItem({
+    await appendTestVoiceChatCandidateItem({
       sessionId,
       role: "user",
       content: "hello",
       realtimeItemId: uniqueId("rt"),
     });
-    const b = await appendVoiceChatCandidateItem({
+    const b = await appendTestVoiceChatCandidateItem({
       sessionId,
       role: "assistant",
       content: "hi there",
@@ -112,17 +98,17 @@ describe("triggerReasoning", () => {
 
     await triggerReasoning(sessionId);
 
-    const row = await readSession(sessionId);
-    expect(row.conversationSummary).toBe("Focus: greeting");
+    const row = await getTestVoiceChatCandidateSessionReasoningState(sessionId);
+    expect(row?.conversationSummary).toBe("Focus: greeting");
     // workingTasksSummary and finishedTasksSummary are no longer written —
     // the Talker's Task board reads live state from the tasks table.
-    expect(row.workingTasksSummary).toBeNull();
-    expect(row.finishedTasksSummary).toBeNull();
-    expect(row.summarySeq).toBe(b!.seq);
-    expect(row.summaryVersion).toBe(1);
-    expect(row.reasoningStatus).toBe("idle");
-    expect(row.reasoningPending).toBe(false);
-    expect(row.lastSummaryAt).not.toBeNull();
+    expect(row?.workingTasksSummary).toBeNull();
+    expect(row?.finishedTasksSummary).toBeNull();
+    expect(row?.summarySeq).toBe(b!.seq);
+    expect(row?.summaryVersion).toBe(1);
+    expect(row?.reasoningStatus).toBe("idle");
+    expect(row?.reasoningPending).toBe(false);
+    expect(row?.lastSummaryAt).not.toBeNull();
     expect(handler.mocked).toHaveBeenCalledTimes(1);
 
     expect(mockAblyPublish).toHaveBeenCalledWith(
@@ -136,7 +122,7 @@ describe("triggerReasoning", () => {
     // OPENROUTER_API_KEY is intentionally absent — callReasoner short-circuits
     // to null, which is exactly the "reasoner failed" branch we want to cover.
     const { sessionId } = await seedActiveSession();
-    await appendVoiceChatCandidateItem({
+    await appendTestVoiceChatCandidateItem({
       sessionId,
       role: "user",
       content: "anything",
@@ -145,15 +131,15 @@ describe("triggerReasoning", () => {
 
     await triggerReasoning(sessionId);
 
-    const row = await readSession(sessionId);
-    expect(row.conversationSummary).toBeNull();
-    expect(row.summaryVersion).toBe(0);
-    expect(row.reasoningStatus).toBe("idle");
+    const row = await getTestVoiceChatCandidateSessionReasoningState(sessionId);
+    expect(row?.conversationSummary).toBeNull();
+    expect(row?.summaryVersion).toBe(0);
+    expect(row?.reasoningStatus).toBe("idle");
     // lastSummaryAt is bumped on both success and failure branches so
     // operators can distinguish "ticks running but failing" from "no tick ran".
-    expect(row.lastSummaryAt).not.toBeNull();
+    expect(row?.lastSummaryAt).not.toBeNull();
 
-    const items = await readVoiceChatCandidateItems(sessionId);
+    const items = await readTestVoiceChatCandidateItems(sessionId);
     const systemNotes = items.filter((i) => {
       return i.role === "system_note";
     });
@@ -169,7 +155,7 @@ describe("triggerReasoning", () => {
     reloadEnv();
 
     const { sessionId } = await seedActiveSession();
-    await appendVoiceChatCandidateItem({
+    await appendTestVoiceChatCandidateItem({
       sessionId,
       role: "user",
       content: "concurrent",
@@ -192,10 +178,10 @@ describe("triggerReasoning", () => {
     // and scheduled an after() re-tick. Flush the queue so the drain fires.
     await mocks.flushAfter();
 
-    const row = await readSession(sessionId);
-    expect(row.reasoningStatus).toBe("idle");
-    expect(row.reasoningPending).toBe(false);
-    expect(row.summaryVersion).toBe(1);
+    const row = await getTestVoiceChatCandidateSessionReasoningState(sessionId);
+    expect(row?.reasoningStatus).toBe("idle");
+    expect(row?.reasoningPending).toBe(false);
+    expect(row?.summaryVersion).toBe(1);
     // Exactly one OpenRouter call — the drain re-tick sees no new items and
     // takes the debounce bailout (Decision H6).
     expect(handler.mocked).toHaveBeenCalledTimes(1);
@@ -208,7 +194,7 @@ describe("triggerReasoning", () => {
     reloadEnv();
 
     const { sessionId } = await seedActiveSession();
-    await appendVoiceChatCandidateItem({
+    await appendTestVoiceChatCandidateItem({
       sessionId,
       role: "user",
       content: "racy",
@@ -218,15 +204,11 @@ describe("triggerReasoning", () => {
     const handler = http.post(OPENROUTER_URL, async () => {
       // Simulate another tick winning the write race between our snapshot
       // and our optimistic UPDATE.
-      // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: simulate concurrent write
-      const db = globalThis.services.db;
-      await db
-        .update(featureCandidateVoiceChatSessions)
-        .set({
-          summaryVersion: 99,
-          conversationSummary: "written by another tick",
-        })
-        .where(eq(featureCandidateVoiceChatSessions.id, sessionId));
+      await simulateConcurrentVoiceChatCandidateSessionWrite(
+        sessionId,
+        99,
+        "written by another tick",
+      );
       return HttpResponse.json(
         openRouterResponse(
           threeSectionPayload({ conversation: "stale context" }),
@@ -237,10 +219,10 @@ describe("triggerReasoning", () => {
 
     await triggerReasoning(sessionId);
 
-    const row = await readSession(sessionId);
-    expect(row.conversationSummary).toBe("written by another tick");
-    expect(row.summaryVersion).toBe(99);
-    expect(row.reasoningStatus).toBe("idle");
+    const row = await getTestVoiceChatCandidateSessionReasoningState(sessionId);
+    expect(row?.conversationSummary).toBe("written by another tick");
+    expect(row?.summaryVersion).toBe(99);
+    expect(row?.reasoningStatus).toBe("idle");
     expect(mockAblyPublish).not.toHaveBeenCalled();
   });
 
@@ -249,17 +231,13 @@ describe("triggerReasoning", () => {
     vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key");
     reloadEnv();
 
-    // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: createVoiceChatCandidateSession requires agentId; tests for the null-agent path insert directly
-    initServices();
     const { userId, orgId } = await context.setupUser();
-    // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: seed a session without an agent
-    const db = globalThis.services.db;
-    const [session] = await db
-      .insert(featureCandidateVoiceChatSessions)
-      .values({ orgId, userId, agentId: null })
-      .returning();
-    const sessionId = session!.id;
-    await appendVoiceChatCandidateItem({
+    const sessionId = await insertTestVoiceChatCandidateSession({
+      userId,
+      orgId,
+      agentId: null,
+    });
+    await appendTestVoiceChatCandidateItem({
       sessionId,
       role: "user",
       content: "sans-agent",
@@ -277,9 +255,9 @@ describe("triggerReasoning", () => {
 
     await triggerReasoning(sessionId);
 
-    const row = await readSession(sessionId);
-    expect(row.conversationSummary).toBe("orphan ctx");
-    expect(row.summaryVersion).toBe(1);
+    const row = await getTestVoiceChatCandidateSessionReasoningState(sessionId);
+    expect(row?.conversationSummary).toBe("orphan ctx");
+    expect(row?.summaryVersion).toBe(1);
 
     const body = capturedBody as {
       messages: Array<{ role: string; content: string }>;
@@ -305,11 +283,11 @@ describe("triggerReasoning", () => {
 
     await triggerReasoning(sessionId);
 
-    const row = await readSession(sessionId);
-    expect(row.conversationSummary).toBeNull();
-    expect(row.summaryVersion).toBe(0);
-    expect(row.reasoningStatus).toBe("idle");
-    expect(row.reasoningPending).toBe(false);
+    const row = await getTestVoiceChatCandidateSessionReasoningState(sessionId);
+    expect(row?.conversationSummary).toBeNull();
+    expect(row?.summaryVersion).toBe(0);
+    expect(row?.reasoningStatus).toBe("idle");
+    expect(row?.reasoningPending).toBe(false);
     expect(handler.mocked).not.toHaveBeenCalled();
     expect(mockAblyPublish).not.toHaveBeenCalled();
   });
