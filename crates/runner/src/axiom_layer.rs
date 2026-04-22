@@ -22,10 +22,22 @@ use tracing::{Event, Metadata, Subscriber};
 use tracing_subscriber::layer::{Context, Layer};
 use tracing_subscriber::registry::LookupSpan;
 
+/// Bounded-channel capacity between tracing callers and the dispatcher task.
+/// WARN+ events are rare, so 1024 absorbs realistic bursts; overflow is
+/// counted + surfaced via stderr rather than blocking the tracing hot path.
 const CHANNEL_CAP: usize = 1024;
+/// Max events per ingest POST. Axiom accepts thousands per batch, but a small
+/// cap keeps POST body size and peak dispatcher memory predictable.
 const BATCH_SIZE: usize = 50;
+/// Time-based flush trigger for batches that stay below `BATCH_SIZE`. Keeps
+/// events from sitting in the buffer indefinitely when traffic is sparse.
 const BATCH_INTERVAL: Duration = Duration::from_secs(5);
+/// Upper bound on how long `AxiomGuard::shutdown` waits for the dispatcher
+/// to drain before returning — caps process-exit latency even if the
+/// channel is backed up or Axiom is slow/unresponsive.
 const FLUSH_DEADLINE: Duration = Duration::from_secs(5);
+/// Per-request HTTP timeout on the reqwest client — bounds the time a single
+/// stuck ingest call can hold up the dispatcher's batch loop.
 const HTTP_TIMEOUT: Duration = Duration::from_secs(10);
 const DEFAULT_AXIOM_URL: &str = "https://api.axiom.co";
 const SERVICE_NAME: &str = "runner";
@@ -39,10 +51,17 @@ pub struct AxiomGuard {
 
 impl AxiomGuard {
     pub async fn shutdown(mut self) {
-        let _ = self.tx.send(Msg::Close).await;
-        if let Some(h) = self.handle.take() {
-            let _ = tokio::time::timeout(FLUSH_DEADLINE, h).await;
-        }
+        // Single deadline covers both `send(Close)` (may wait for a slot if
+        // the channel is full) and `handle.await` (may wait for in-flight
+        // HTTP flushes). Without wrapping both, a full backlog could stall
+        // shutdown for many seconds before the handle timeout even started.
+        let _ = tokio::time::timeout(FLUSH_DEADLINE, async move {
+            let _ = self.tx.send(Msg::Close).await;
+            if let Some(h) = self.handle.take() {
+                let _ = h.await;
+            }
+        })
+        .await;
     }
 }
 
@@ -127,7 +146,10 @@ where
             // never through `tracing` itself (feedback loop).
             let prev = self.dropped.fetch_add(1, Ordering::Relaxed);
             if prev.is_multiple_of(1000) {
-                eprintln!("warn: axiom channel full, dropped {} events", prev + 1);
+                eprintln!(
+                    "warn: axiom channel full, {} event(s) dropped so far",
+                    prev + 1
+                );
             }
         }
     }
