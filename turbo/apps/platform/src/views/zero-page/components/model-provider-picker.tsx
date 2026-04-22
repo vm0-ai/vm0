@@ -1,4 +1,4 @@
-import React from "react";
+import type { MouseEvent, ReactNode } from "react";
 import {
   Select,
   SelectContent,
@@ -220,7 +220,7 @@ function InheritToggleRow({
           size="sm"
           checked={isInheriting}
           onCheckedChange={onToggle}
-          onClick={(e: React.MouseEvent) => {
+          onClick={(e: MouseEvent) => {
             e.stopPropagation();
           }}
           aria-label={`Use ${sourceLabel} default model`}
@@ -279,7 +279,9 @@ function TriggerLabel({
 // its interactive affordances (hover/focus/open-state), so callers don't
 // have to branch their className for the disabled case.
 function stripInteractiveClasses(cls: string | undefined): string | undefined {
-  if (!cls) return cls;
+  if (!cls) {
+    return cls;
+  }
   return cls
     .split(/\s+/)
     .filter((c) => {
@@ -381,6 +383,48 @@ function buildProviderGroups(
     });
 }
 
+function renderProviderGroup(
+  group: ProviderGroup,
+  idx: number,
+  last: number,
+): ReactNode[] {
+  const rendered: ReactNode[] = [
+    <SelectGroup key={group.provider.id}>
+      <SelectLabel className="pl-2 pr-8 py-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/60">
+        {group.label}
+        {group.incompatible && (
+          <span className="ml-1.5 font-normal normal-case text-[10px] text-muted-foreground/80">
+            (incompatible with current session)
+          </span>
+        )}
+      </SelectLabel>
+      {group.models.map((model) => {
+        const multiplier = group.isVm0
+          ? getVm0ModelMultiplier(model)
+          : undefined;
+        return (
+          <SelectItem
+            key={`${group.provider.id}::${model}`}
+            value={`${group.provider.id}::${model}`}
+            disabled={group.incompatible}
+          >
+            <span className="flex items-center gap-3 w-full">
+              <span className="truncate">{getModelDisplayName(model)}</span>
+              {multiplier !== undefined && (
+                <MultiplierBadge multiplier={multiplier} />
+              )}
+            </span>
+          </SelectItem>
+        );
+      })}
+    </SelectGroup>,
+  ];
+  if (idx < last) {
+    rendered.push(<SelectSeparator key={`sep-${group.provider.id}`} />);
+  }
+  return rendered;
+}
+
 function ModelSelectDropdown({
   groups,
   value,
@@ -412,27 +456,15 @@ function ModelSelectDropdown({
   const triggerAriaLabel = resolved
     ? getModelDisplayName(resolved.selectedModel)
     : placeholder;
-  // Mirror the controlled `open` prop into local state so the inherit-toggle
-  // handler can close the dropdown deterministically (via `setOpen(false)`)
-  // without reaching through `document.dispatchEvent`. When the caller
-  // provides `open`/`onOpenChange`, we propagate to them as well.
-  const [internalOpen, setInternalOpen] = React.useState(false);
-  const isOpen = open ?? internalOpen;
-  const setOpen = React.useCallback(
-    (next: boolean) => {
-      setInternalOpen(next);
-      onOpenChange?.(next);
-    },
-    [onOpenChange],
-  );
+  const lastGroupIdx = groups.length - 1;
   return (
     <Select
       value={encodeValue(value)}
       onValueChange={(raw) => {
         onChange(decodeValue(raw));
       }}
-      open={isOpen}
-      onOpenChange={setOpen}
+      open={open}
+      onOpenChange={onOpenChange}
     >
       <SelectTrigger
         aria-label={triggerAriaLabel}
@@ -459,7 +491,8 @@ function ModelSelectDropdown({
               if (inherit) {
                 onChange(null);
                 // Close dropdown — user is done (reverted to default).
-                setOpen(false);
+                // No-op for uncontrolled callers; they dismiss via click-outside.
+                onOpenChange?.(false);
               } else {
                 // Seed with the effective default; dropdown stays open
                 // so the user can pick a different model if they want.
@@ -473,45 +506,7 @@ function ModelSelectDropdown({
         )}
         {(!showUseDefault || value !== null) &&
           groups.flatMap((group, idx) => {
-            const rendered: React.ReactNode[] = [
-              <SelectGroup key={group.provider.id}>
-                <SelectLabel className="pl-2 pr-8 py-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/60">
-                  {group.label}
-                  {group.incompatible && (
-                    <span className="ml-1.5 font-normal normal-case text-[10px] text-muted-foreground/80">
-                      (incompatible with current session)
-                    </span>
-                  )}
-                </SelectLabel>
-                {group.models.map((model) => {
-                  const multiplier = group.isVm0
-                    ? getVm0ModelMultiplier(model)
-                    : undefined;
-                  return (
-                    <SelectItem
-                      key={`${group.provider.id}::${model}`}
-                      value={`${group.provider.id}::${model}`}
-                      disabled={group.incompatible}
-                    >
-                      <span className="flex items-center gap-3 w-full">
-                        <span className="truncate">
-                          {getModelDisplayName(model)}
-                        </span>
-                        {multiplier !== undefined && (
-                          <MultiplierBadge multiplier={multiplier} />
-                        )}
-                      </span>
-                    </SelectItem>
-                  );
-                })}
-              </SelectGroup>,
-            ];
-            if (idx < groups.length - 1) {
-              rendered.push(
-                <SelectSeparator key={`sep-${group.provider.id}`} />,
-              );
-            }
-            return rendered;
+            return renderProviderGroup(group, idx, lastGroupIdx);
           })}
       </SelectContent>
     </Select>
