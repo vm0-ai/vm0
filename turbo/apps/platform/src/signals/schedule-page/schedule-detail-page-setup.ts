@@ -1,6 +1,5 @@
 import { command } from "ccstate";
 import { createElement } from "react";
-import { SidebarLayout } from "../../views/zero-page/sidebar-layout.tsx";
 import { ZeroScheduleDetailPage } from "../../views/zero-page/zero-schedule-detail-page.tsx";
 import { updatePage$ } from "../react-router.ts";
 import { pathParams$ } from "../route.ts";
@@ -16,10 +15,7 @@ import { hideAppSkeleton$ } from "../app-skeleton.ts";
 
 export const setupScheduleDetailPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    set(
-      updatePage$,
-      createElement(SidebarLayout, null, createElement(ZeroScheduleDetailPage)),
-    );
+    set(updatePage$, createElement(ZeroScheduleDetailPage), "sidebar");
     set(initScheduleDetailTab$);
 
     // Initialize run history with the current schedule ID from the URL
