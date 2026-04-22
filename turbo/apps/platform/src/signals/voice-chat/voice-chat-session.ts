@@ -58,6 +58,9 @@ function upsertUserTranscript(
 }
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
+// 120s absorbs runner VM cold-start variance. Prep normally finishes in well
+// under 30s; the buffer guards against occasional cold sandboxes without
+// failing the UI too eagerly. Revisit (tighten) once cold-start p95 stabilises.
 const PREP_TIMEOUT_CHAT_MS = 120_000;
 const MAX_RECONNECT_ATTEMPTS = 5;
 const RECONNECT_BASE_DELAY_MS = 1000;
