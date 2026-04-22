@@ -267,18 +267,18 @@ describe("zero instructions tab - bubble menu toolbar", () => {
     const editorEl = document.querySelector(
       '[contenteditable="true"]',
     ) as HTMLElement;
-    click(editorEl);
+    await user.click(editorEl);
     await user.keyboard("{Control>}a{/Control}");
-    return { editorEl };
+    return { user, editorEl };
   }
 
   it("bold button applies bold formatting to selection (PREF-D-028)", async () => {
-    await renderWithSelection("Hello world");
+    const { user } = await renderWithSelection("Hello world");
 
     await waitFor(() => {
       expect(screen.getByTitle("Bold")).toBeInTheDocument();
     });
-    click(screen.getByTitle("Bold"));
+    await user.click(screen.getByTitle("Bold"));
 
     await waitFor(() => {
       expect(document.querySelector("strong")).toBeInTheDocument();
@@ -286,12 +286,12 @@ describe("zero instructions tab - bubble menu toolbar", () => {
   });
 
   it("italic button applies italic formatting to selection (PREF-D-029)", async () => {
-    await renderWithSelection("Hello world");
+    const { user } = await renderWithSelection("Hello world");
 
     await waitFor(() => {
       expect(screen.getByTitle("Italic")).toBeInTheDocument();
     });
-    click(screen.getByTitle("Italic"));
+    await user.click(screen.getByTitle("Italic"));
 
     await waitFor(() => {
       expect(document.querySelector("em")).toBeInTheDocument();
@@ -299,12 +299,12 @@ describe("zero instructions tab - bubble menu toolbar", () => {
   });
 
   it("strikethrough button applies strikethrough formatting (PREF-D-030)", async () => {
-    await renderWithSelection("Hello world");
+    const { user } = await renderWithSelection("Hello world");
 
     await waitFor(() => {
       expect(screen.getByTitle("Strikethrough")).toBeInTheDocument();
     });
-    click(screen.getByTitle("Strikethrough"));
+    await user.click(screen.getByTitle("Strikethrough"));
 
     await waitFor(() => {
       expect(document.querySelector("s")).toBeInTheDocument();
@@ -312,12 +312,12 @@ describe("zero instructions tab - bubble menu toolbar", () => {
   });
 
   it("inline code button applies code formatting (PREF-D-031)", async () => {
-    await renderWithSelection("Hello world");
+    const { user } = await renderWithSelection("Hello world");
 
     await waitFor(() => {
       expect(screen.getByTitle("Inline code")).toBeInTheDocument();
     });
-    click(screen.getByTitle("Inline code"));
+    await user.click(screen.getByTitle("Inline code"));
 
     await waitFor(() => {
       expect(document.querySelector("code")).toBeInTheDocument();
@@ -325,12 +325,12 @@ describe("zero instructions tab - bubble menu toolbar", () => {
   });
 
   it("heading 1 button applies h1 heading (PREF-D-032)", async () => {
-    await renderWithSelection("Hello world");
+    const { user } = await renderWithSelection("Hello world");
 
     await waitFor(() => {
       expect(screen.getByTitle("Heading 1")).toBeInTheDocument();
     });
-    click(screen.getByTitle("Heading 1"));
+    await user.click(screen.getByTitle("Heading 1"));
 
     await waitFor(() => {
       expect(document.querySelector("h1")).toBeInTheDocument();
@@ -338,12 +338,12 @@ describe("zero instructions tab - bubble menu toolbar", () => {
   });
 
   it("heading 2 button applies h2 heading (PREF-D-033)", async () => {
-    await renderWithSelection("Hello world");
+    const { user } = await renderWithSelection("Hello world");
 
     await waitFor(() => {
       expect(screen.getByTitle("Heading 2")).toBeInTheDocument();
     });
-    click(screen.getByTitle("Heading 2"));
+    await user.click(screen.getByTitle("Heading 2"));
 
     await waitFor(() => {
       expect(document.querySelector("h2")).toBeInTheDocument();
@@ -351,12 +351,12 @@ describe("zero instructions tab - bubble menu toolbar", () => {
   });
 
   it("heading 3 button applies h3 heading (PREF-D-034)", async () => {
-    await renderWithSelection("Hello world");
+    const { user } = await renderWithSelection("Hello world");
 
     await waitFor(() => {
       expect(screen.getByTitle("Heading 3")).toBeInTheDocument();
     });
-    click(screen.getByTitle("Heading 3"));
+    await user.click(screen.getByTitle("Heading 3"));
 
     await waitFor(() => {
       expect(document.querySelector("h3")).toBeInTheDocument();
@@ -364,12 +364,12 @@ describe("zero instructions tab - bubble menu toolbar", () => {
   });
 
   it("bullet list button creates unordered list (PREF-D-035)", async () => {
-    await renderWithSelection("Hello world");
+    const { user } = await renderWithSelection("Hello world");
 
     await waitFor(() => {
       expect(screen.getByTitle("Bullet list")).toBeInTheDocument();
     });
-    click(screen.getByTitle("Bullet list"));
+    await user.click(screen.getByTitle("Bullet list"));
 
     await waitFor(() => {
       expect(document.querySelector("ul")).toBeInTheDocument();
@@ -377,12 +377,12 @@ describe("zero instructions tab - bubble menu toolbar", () => {
   });
 
   it("ordered list button creates numbered list (PREF-D-036)", async () => {
-    await renderWithSelection("Hello world");
+    const { user } = await renderWithSelection("Hello world");
 
     await waitFor(() => {
       expect(screen.getByTitle("Ordered list")).toBeInTheDocument();
     });
-    click(screen.getByTitle("Ordered list"));
+    await user.click(screen.getByTitle("Ordered list"));
 
     await waitFor(() => {
       expect(document.querySelector("ol")).toBeInTheDocument();

@@ -276,8 +276,8 @@ describe("zero schedule detail page - instruction save button saves instructions
       expect(document.querySelector("[contenteditable]")).toBeInTheDocument();
     });
 
-    const editor = document.querySelector("[contenteditable]");
-    click(editor!);
+    const editor = document.querySelector("[contenteditable]") as HTMLElement;
+    editor!.focus();
     await user.keyboard("{Control>}a{/Control}New instruction content");
 
     await waitFor(() => {
@@ -308,8 +308,8 @@ describe("zero schedule detail page - instruction discard button reverts changes
       expect(document.querySelector("[contenteditable]")).toBeInTheDocument();
     });
 
-    const editor = document.querySelector("[contenteditable]");
-    click(editor!);
+    const editor = document.querySelector("[contenteditable]") as HTMLElement;
+    editor!.focus();
     await user.keyboard("{Control>}a{/Control}Something different");
 
     await waitFor(() => {
