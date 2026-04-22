@@ -46,6 +46,7 @@ import * as skillSchema from "./schema/skill";
 import * as creditUsageSchema from "./schema/credit-usage";
 import * as clientCreditUsageSchema from "./schema/client-credit-usage";
 import * as creditPricingSchema from "./schema/credit-pricing";
+import * as usagePricingSchema from "./schema/usage-pricing";
 import * as zeroAgentSchema from "./schema/zero-agent";
 import * as zeroRunSchema from "./schema/zero-run";
 import * as storageVersionLineageSchema from "./schema/storage-version-lineage";
@@ -113,6 +114,7 @@ export const schema = {
   ...creditUsageSchema,
   ...clientCreditUsageSchema,
   ...creditPricingSchema,
+  ...usagePricingSchema,
   ...zeroAgentSchema,
   ...zeroRunSchema,
   ...storageVersionLineageSchema,

@@ -2101,6 +2101,13 @@
       "when": 1776867698258,
       "tag": "0299_glorious_sauron",
       "breakpoints": true
+    },
+    {
+      "idx": 300,
+      "version": "7",
+      "when": 1776871523055,
+      "tag": "0300_clammy_johnny_blaze",
+      "breakpoints": true
     }
   ]
 }
