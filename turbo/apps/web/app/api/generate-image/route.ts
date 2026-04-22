@@ -1,10 +1,22 @@
 import { GoogleGenAI } from "@google/genai";
 import { getVercelOidcToken } from "@vercel/oidc";
+import { randomUUID } from "crypto";
 import { ExternalAccountClient } from "google-auth-library";
 import { NextRequest, NextResponse } from "next/server";
+import { creditUsage } from "../../../src/db/schema/credit-usage";
 import { env } from "../../../src/env";
+import { getAuthContext } from "../../../src/lib/auth/get-auth-context";
+import { initServices } from "../../../src/lib/init-services";
+import { isApiError } from "../../../src/lib/shared/errors";
+import { resolveOrg } from "../../../src/lib/zero/org/resolve-org";
+import { checkOrgCredits } from "../../../src/lib/zero/zero-run-policy";
 
 export const runtime = "nodejs";
+
+const MODEL = "gemini-2.5-flash-image";
+// Treated as a vm0-bundled model so checkOrgCredits() and the process-credits
+// cron both engage; pricing lives in credit_pricing keyed by this pair.
+const MODEL_PROVIDER = "vm0";
 
 interface GeneratedImage {
   mimeType: string;
@@ -84,6 +96,19 @@ function buildClient(): GoogleGenAI | null {
 }
 
 export async function POST(req: NextRequest) {
+  initServices();
+
+  const authCtx = await getAuthContext(
+    req.headers.get("Authorization") ?? undefined,
+  );
+  if (!authCtx) {
+    return NextResponse.json(
+      { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
+      { status: 401 },
+    );
+  }
+  const { userId } = authCtx;
+
   const ai = buildClient();
   if (!ai) {
     return NextResponse.json(
@@ -111,8 +136,23 @@ export async function POST(req: NextRequest) {
   }
   const prompt = body.prompt;
 
+  const db = globalThis.services.db;
+  const { org } = await resolveOrg(authCtx);
+
+  try {
+    await checkOrgCredits(org.orgId, userId, MODEL_PROVIDER, db);
+  } catch (error) {
+    if (isApiError(error)) {
+      return NextResponse.json(
+        { error: { message: error.message, code: error.code } },
+        { status: error.statusCode },
+      );
+    }
+    throw error;
+  }
+
   const result = await ai.models.generateContent({
-    model: "gemini-2.5-flash-image",
+    model: MODEL,
     contents: [{ role: "user", parts: [{ text: prompt }] }],
   });
 
@@ -135,6 +175,20 @@ export async function POST(req: NextRequest) {
       { status: 502 },
     );
   }
+
+  // Record pending credit_usage; the process-credits cron settles it later
+  // against credit_pricing. A fresh messageId keeps each call under its own
+  // row via the (run_id, message_id) unique index.
+  await db.insert(creditUsage).values({
+    runId: null,
+    messageId: randomUUID(),
+    orgId: org.orgId,
+    userId,
+    model: MODEL,
+    modelProvider: MODEL_PROVIDER,
+    inputTokens: result.usageMetadata?.promptTokenCount ?? 0,
+    outputTokens: result.usageMetadata?.candidatesTokenCount ?? 0,
+  });
 
   return NextResponse.json({ images });
 }

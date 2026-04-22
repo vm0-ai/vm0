@@ -110,6 +110,16 @@ const MODEL_PRICING: (typeof creditPricing.$inferInsert)[] = [
     cacheReadTokenPrice: usd(0.028),
     cacheCreationTokenPrice: 0,
   },
+  {
+    // Output is image tokens (~1290 tokens/image at $30/1M ≈ $0.039/image).
+    // 20% margin applied on top of Google's public pricing.
+    model: "gemini-2.5-flash-image",
+    modelProvider: "vm0",
+    inputTokenPrice: usd(0.3 * 1.2),
+    outputTokenPrice: usd(30 * 1.2),
+    cacheReadTokenPrice: 0,
+    cacheCreationTokenPrice: 0,
+  },
 ];
 
 // https://docs.x.com/x-api/getting-started/pricing
