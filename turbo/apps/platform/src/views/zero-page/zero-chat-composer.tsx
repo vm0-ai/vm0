@@ -217,15 +217,15 @@ function ConnectorTriggerIcons({
     })
     .slice(0, 3);
   if (enabled.length === 0) {
-    return <IconPlug size={18} stroke={1.5} />;
+    return <IconPlug size={16} stroke={1.5} />;
   }
   return (
     <span className="flex items-center -space-x-1.5">
       {enabled.map((c) => {
         return (
           <span key={c.type} className="relative shrink-0">
-            <span className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-background zero-border">
-              <ConnectorIcon type={c.type as ConnectorType} size={16} />
+            <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-background ring-[0.7px] ring-gray-100 dark:ring-gray-600">
+              <ConnectorIcon type={c.type as ConnectorType} size={14} />
             </span>
           </span>
         );
@@ -400,7 +400,7 @@ function ConnectorsPopoverButton({
             <TooltipTrigger asChild>
               <button
                 type="button"
-                className="inline-flex shrink-0 items-center justify-center rounded-lg h-9 min-w-9 px-1.5 hover:bg-accent transition-colors"
+                className="inline-flex shrink-0 items-center justify-center rounded-lg h-8 min-w-8 px-1.5 hover:bg-accent transition-colors"
                 aria-label="Connectors"
               >
                 <ConnectorTriggerIcons connectors={agentConnectors} />
@@ -551,10 +551,10 @@ function MicButton({
           <button
             type="button"
             className={cn(
-              "inline-flex shrink-0 items-center justify-center rounded-lg h-9 w-9 transition-colors",
-              recording
-                ? "bg-red-500/15 text-red-500 hover:bg-red-500/25"
-                : "text-muted-foreground hover:bg-accent hover:text-foreground",
+              "inline-flex shrink-0 items-center justify-center rounded-lg transition-colors",
+              recording || transcribing
+                ? "gap-[3px] h-8 w-[48px] bg-[#2E9E9F] text-white hover:bg-[#279394]"
+                : "h-8 w-8 text-muted-foreground hover:bg-accent hover:text-foreground",
             )}
             onClick={handleClick}
             disabled={transcribing}
@@ -567,13 +567,21 @@ function MicButton({
             }
           >
             {transcribing ? (
-              <IconLoader2 size={18} stroke={1.5} className="animate-spin" />
+              <>
+                <span className="mic-eq-dot" />
+                <span className="mic-eq-dot" />
+                <span className="mic-eq-dot" />
+              </>
+            ) : recording ? (
+              <>
+                <span className="mic-eq-bar" />
+                <span className="mic-eq-bar" />
+                <IconMicrophone size={16} stroke={1.5} />
+                <span className="mic-eq-bar" />
+                <span className="mic-eq-bar" />
+              </>
             ) : (
-              <IconMicrophone
-                size={18}
-                stroke={1.5}
-                className={recording ? "animate-pulse" : undefined}
-              />
+              <IconMicrophone size={18} stroke={1.5} />
             )}
           </button>
         </TooltipTrigger>
@@ -925,15 +933,15 @@ export function ZeroChatComposer({
               onKeyDown={handleKeyDown}
               onPaste={handlePaste}
             />
-            <div className="flex items-center justify-between gap-2 px-4 py-3">
-              <div className="flex items-center gap-1 text-muted-foreground">
+            <div className="flex items-center justify-between p-3">
+              <div className="flex items-center gap-0.5 text-muted-foreground">
                 <button
                   type="button"
-                  className="p-[9px] rounded-lg hover:bg-accent hover:text-foreground transition-colors duration-200"
+                  className="inline-flex shrink-0 items-center justify-center rounded-lg h-8 w-8 hover:bg-accent hover:text-foreground transition-colors"
                   aria-label="Attach"
                   onClick={handleFileSelect}
                 >
-                  <IconPaperclip size={18} stroke={1.5} />
+                  <IconPaperclip size={16} stroke={1.5} />
                 </button>
                 <ConnectorsPopoverButton
                   agentConnectors={agentConnectors}
@@ -945,11 +953,11 @@ export function ZeroChatComposer({
                   onToggle={handleToggle}
                 />
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
                 {actionsLoading ? (
                   <Skeleton
                     className={cn(
-                      "h-9 rounded-md",
+                      "h-8 rounded-md",
                       modelPicker ? "w-[184px]" : "w-20",
                     )}
                   />
@@ -962,10 +970,7 @@ export function ZeroChatComposer({
                         onChange={modelPicker.onChange}
                         placeholder="Default"
                         triggerClassName={cn(
-                          // Resting state: borderless ghost — trigger reads like
-                          // plain text in the toolbar.
-                          "h-9 w-auto max-w-[12rem] gap-1 border-transparent bg-transparent px-2 text-sm text-muted-foreground transition-colors",
-                          // Discoverable affordance only when the user targets it.
+                          "h-8 w-auto max-w-[12rem] gap-1 border-transparent bg-transparent px-2 text-xs text-muted-foreground transition-colors",
                           "hover:bg-accent hover:text-foreground focus:bg-accent focus:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground",
                         )}
                         sessionProviderType={modelPicker.sessionProviderType}
@@ -977,6 +982,7 @@ export function ZeroChatComposer({
                         inheritLabel="agent"
                       />
                     )}
+                    <div className="mx-0.5 h-4 w-px bg-border/60" />
                     <MicButton
                       onTranscribed={(text) => {
                         const base = input;
@@ -990,21 +996,21 @@ export function ZeroChatComposer({
                       <Button
                         size="sm"
                         variant="destructive"
-                        className="rounded-lg h-9 w-9 p-0 shrink-0"
+                        className="rounded-lg h-8 w-8 p-0 shrink-0"
                         onClick={onCancel}
                         aria-label="Stop"
                       >
-                        <IconPlayerStop size={16} />
+                        <IconPlayerStop size={14} />
                       </Button>
                     ) : (
                       <Button
                         size="sm"
-                        className="rounded-lg h-9 w-9 p-0 shrink-0"
+                        className="rounded-lg h-8 w-8 p-0 shrink-0"
                         onClick={handleSend}
                         disabled={!canSend || !!sending}
                         aria-label="Send"
                       >
-                        <IconArrowUp size={18} stroke={2} />
+                        <IconArrowUp size={16} stroke={2} />
                       </Button>
                     )}
                   </>

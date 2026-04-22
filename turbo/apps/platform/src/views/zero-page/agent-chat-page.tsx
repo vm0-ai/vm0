@@ -424,7 +424,7 @@ export function AgentChatPage() {
       </header>
 
       <main className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6">
-        <div className="mx-auto w-full max-w-[900px] flex flex-col items-stretch gap-6 pt-8 pb-12 sm:pt-[15vh] sm:pb-[10vh]">
+        <div className="mx-auto w-full max-w-[900px] flex flex-col items-stretch gap-6 pt-8 pb-12 sm:pt-[20vh] sm:pb-[10vh]">
           <div className="flex items-center gap-4 w-full">
             <ChatAgentAvatar agentId={currentChatAgentId} />
             <div className="flex-1 min-w-0 flex items-center gap-3">
