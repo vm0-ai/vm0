@@ -332,7 +332,7 @@ describe("org billing tab - auto-recharge section", () => {
     await fill(amountInput, "10000");
 
     const unsavedBar = await screen.findByTestId("auto-recharge-unsaved-bar");
-    await user.click(within(unsavedBar).getByTestId("save-button"));
+    click(within(unsavedBar).getByTestId("save-button"));
 
     await waitFor(() => {
       expect(capturedBody).toStrictEqual({
@@ -344,7 +344,6 @@ describe("org billing tab - auto-recharge section", () => {
   });
 
   it("should send correct data when saving auto-recharge config", async () => {
-    const user = userEvent.setup();
     let capturedBody: unknown = null;
     server.use(
       mockApi(zeroBillingAutoRechargeContract.update, ({ body, respond }) => {
@@ -384,7 +383,7 @@ describe("org billing tab - auto-recharge section", () => {
     await fill(thresholdInput, "3000");
 
     const unsavedBar = await screen.findByTestId("auto-recharge-unsaved-bar");
-    await user.click(within(unsavedBar).getByTestId("save-button"));
+    click(within(unsavedBar).getByTestId("save-button"));
 
     await waitFor(() => {
       expect(capturedBody).toStrictEqual({
@@ -431,7 +430,6 @@ describe("org billing tab - auto-recharge section", () => {
     // network RTT. On a toggle-ON save the user briefly saw the switch blink
     // back to OFF and the threshold/amount section collapse; dirty also
     // flipped false, briefly hiding UnsavedBar.
-    const user = userEvent.setup();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -484,13 +482,13 @@ describe("org billing tab - auto-recharge section", () => {
       return t;
     });
 
-    await user.click(toggle);
+    click(toggle);
     await waitFor(() => {
       expect(toggle).toHaveAttribute("aria-checked", "true");
     });
 
     const bar = await screen.findByTestId("auto-recharge-unsaved-bar");
-    const savePromise = user.click(within(bar).getByTestId("save-button"));
+    click(within(bar).getByTestId("save-button"));
 
     // Wait until the refetch has entered the gated branch — at this point the
     // PATCH has resolved and billingReload$ has been bumped, so we are inside
@@ -506,7 +504,6 @@ describe("org billing tab - auto-recharge section", () => {
 
     // Release the refetch and let the save finish.
     releaseRefetch();
-    await savePromise;
 
     await waitFor(() => {
       expect(
@@ -517,7 +514,6 @@ describe("org billing tab - auto-recharge section", () => {
   });
 
   it("should discard unsaved auto-recharge changes when Discard is clicked", async () => {
-    const user = userEvent.setup();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -539,7 +535,7 @@ describe("org billing tab - auto-recharge section", () => {
     await fill(thresholdInput, "9999");
 
     const unsavedBar = await screen.findByTestId("auto-recharge-unsaved-bar");
-    await user.click(within(unsavedBar).getByTestId("discard-button"));
+    click(within(unsavedBar).getByTestId("discard-button"));
 
     await waitFor(() => {
       expect(
