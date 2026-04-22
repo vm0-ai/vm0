@@ -15,6 +15,7 @@ import { talkDraft$ } from "./chat-draft.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { reloadTagline$ } from "./zero-chat-page.ts";
 import { setupAgentChatPageKeyboard$ } from "./agent-chat-keyboard.ts";
+import { exitAgentChatVoiceMode$ } from "./agent-chat-voice-mode.ts";
 
 export const setupAgentChatPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -22,6 +23,13 @@ export const setupAgentChatPage$ = command(
     set(updateDocumentTitle$, "Chat");
     set(reloadTagline$);
     set(setupAgentChatPageKeyboard$, signal);
+
+    // Tear down any live voice-chat-candidate session on page unmount so the
+    // WebRTC peer / mic / Ably loop do not leak across navigations. The
+    // server-side session row is preserved and resumed on next entry.
+    signal.addEventListener("abort", () => {
+      set(exitAgentChatVoiceMode$);
+    });
 
     // Reset the talk draft on entrance
     set(get(talkDraft$).clear$);

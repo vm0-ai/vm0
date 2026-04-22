@@ -2,14 +2,11 @@
 // oxlint-disable max-lines-per-function
 import { command, computed, state } from "ccstate";
 import {
-  FeatureSwitchKey,
   zeroVoiceChatCandidateContract,
   type VoiceChatCandidateItem,
   type VoiceChatCandidateItemRole,
   type VoiceChatCandidateTask,
 } from "@vm0/core";
-import { featureSwitch$ } from "../external/feature-switch.ts";
-import { defaultAgentId$ } from "../agent.ts";
 import { resetSignal, throwIfAbort, onDomEventFn } from "../utils.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { zeroClient$ } from "../api-client.ts";
@@ -117,19 +114,6 @@ export const vccError$ = computed((get) => {
   return get(internalError$);
 });
 
-const vccMuted$ = computed((get) => {
-  return get(internalMuted$);
-});
-
-const vccEnabled$ = computed(async (get) => {
-  const features = await get(featureSwitch$);
-  return features[FeatureSwitchKey.VoiceChat] ?? false;
-});
-
-const vccAgentId$ = computed(async (get) => {
-  return await get(defaultAgentId$);
-});
-
 export const vccSessionId$ = computed((get) => {
   return get(internalSessionId$);
 });
@@ -138,40 +122,7 @@ export const vccTasksById$ = computed((get) => {
   return get(internalTasksById$);
 });
 
-const vccConversationSummary$ = computed((get) => {
-  return get(internalConversationSummary$);
-});
-
-const vccSummarySeq$ = computed((get) => {
-  return get(internalSummarySeq$);
-});
-
-const vccLastSummaryAt$ = computed((get) => {
-  return get(internalLastSummaryAt$);
-});
-
-const vccTalkerInstructionTokens$ = computed((get) => {
-  return get(internalTalkerInstructionTokens$);
-});
-
-const vccTalkerInstructions$ = computed((get) => {
-  return get(internalTalkerInstructions$);
-});
-
 const sessionListRefreshToken$ = state(0);
-
-const vccSessionList$ = computed(async (get) => {
-  get(sessionListRefreshToken$);
-  const createClient = get(zeroClient$);
-  const client = createClient(zeroVoiceChatCandidateContract);
-  const res = await accept(client.listSessions({}), [200, 401, 403], {
-    toast: false,
-  });
-  if (res.status !== 200) {
-    return [];
-  }
-  return res.body.sessions;
-});
 
 type StreamingItem = {
   kind: "streaming";
@@ -1003,8 +954,7 @@ const releaseWakeLock$ = command(({ get, set }) => {
 // ---------------------------------------------------------------------------
 
 export const startVoiceChatCandidate$ = command(
-  async ({ get, set }, _unused: undefined, signal: AbortSignal) => {
-    void _unused;
+  async ({ get, set }, agentId: string, signal: AbortSignal) => {
     const status = get(internalStatus$);
     if (status === "connecting" || status === "connected") {
       return;
@@ -1033,15 +983,6 @@ export const startVoiceChatCandidate$ = command(
 
     const createClient = get(zeroClient$);
     const client = createClient(zeroVoiceChatCandidateContract);
-
-    const agentId = await get(defaultAgentId$);
-    signal.throwIfAborted();
-
-    if (!agentId) {
-      set(internalError$, "No agent selected");
-      set(internalStatus$, "error");
-      return;
-    }
 
     // createSession is get-or-create on the server side: same (userId,
     // agentId) returns the existing session row, so this doubles as resume.
@@ -1211,40 +1152,3 @@ export const endVoiceChatCandidate$ = command(({ get, set }) => {
   set(internalStatus$, "idle");
   set(sessionListRefreshToken$, get(sessionListRefreshToken$) + 1);
 });
-
-const toggleVoiceChatCandidateMute$ = command(({ get, set }) => {
-  const stream = get(internalStream$);
-  if (!stream) {
-    return;
-  }
-  const track = stream.getAudioTracks()[0];
-  if (!track) {
-    return;
-  }
-  const wasMuted = get(internalMuted$);
-  track.enabled = wasMuted;
-  set(internalMuted$, !wasMuted);
-});
-
-/**
- * Ask the server to run one reasoner tick (which also drives the compactor).
- * Fire-and-forget: the route returns 200 immediately and schedules the work
- * via `after()`; the usual CAS lock + debounce path still applies on the
- * server, so spamming this button is safe.
- */
-const triggerReasoningCandidate$ = command(
-  async ({ get }, signal: AbortSignal) => {
-    const sid = get(internalSessionId$);
-    if (!sid) {
-      return;
-    }
-    const createClient = get(zeroClient$);
-    const client = createClient(zeroVoiceChatCandidateContract);
-    await accept(
-      client.triggerReasoning({ params: { id: sid }, body: {} }),
-      [200, 401, 404],
-      { toast: false },
-    );
-    signal.throwIfAborted();
-  },
-);

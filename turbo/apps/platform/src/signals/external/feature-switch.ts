@@ -82,6 +82,11 @@ export const resetFeatureSwitches$ = command(
   },
 );
 
+export const trinityEnabled$ = computed(async (get) => {
+  const features = await get(featureSwitch$);
+  return features[FeatureSwitchKey.Trinity] ?? false;
+});
+
 export const detachedSetFeatureSwitch$ = command(
   (
     { set },

@@ -57,4 +57,5 @@ export enum FeatureSwitchKey {
   UnifyChatThreads = "unifyChatThreads",
   Vm0DeepseekModel = "vm0DeepseekModel",
   PlatformConnectors = "platformConnectors",
+  Trinity = "trinity",
 }

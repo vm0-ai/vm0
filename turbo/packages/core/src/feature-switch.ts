@@ -338,6 +338,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.Trinity]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Embed the candidate voice-chat mic toggle + voice-mode layout into the agent chat page. Gates the mic launcher, composer swap, and status/subtitle/task-card UI.",
+    enabled: false,
+  },
 };
 
 interface ResolvedHashes {
