@@ -49,7 +49,12 @@ import {
   tsr,
   TsRestResponse,
 } from "../ts-rest-handler";
-import { badRequest, notFound, forbidden } from "../shared/errors";
+import {
+  badRequest,
+  notFound,
+  forbidden,
+  providerIncompatible,
+} from "../shared/errors";
 
 describe("createSafeErrorHandler", () => {
   const handler = createSafeErrorHandler("test-route");
@@ -83,6 +88,15 @@ describe("createSafeErrorHandler", () => {
     const body = await response!.json();
     expect(body.error.code).toBe("FORBIDDEN");
     expect(body.error.message).toBe("Access denied");
+  });
+
+  it("should return correct status for ProviderIncompatibleError (required-message factory)", async () => {
+    const response = handler(providerIncompatible("Provider mismatch"));
+    expect(response).toBeDefined();
+    expect(response!.status).toBe(400);
+    const body = await response!.json();
+    expect(body.error.code).toBe("PROVIDER_INCOMPATIBLE");
+    expect(body.error.message).toBe("Provider mismatch");
   });
 
   it("should return 500 with generic message for unknown errors", async () => {
