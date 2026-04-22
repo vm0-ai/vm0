@@ -180,6 +180,7 @@ describe("VM0 managed model provider", () => {
         "kimi-k2.6",
         "kimi-k2.5",
         "MiniMax-M2.7",
+        "deepseek-chat",
       ];
       for (const model of vm0Models) {
         expect(VM0_MODEL_TO_PROVIDER[model]).toBeDefined();
