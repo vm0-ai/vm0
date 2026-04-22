@@ -3921,9 +3921,6 @@
           },
           {
             "description": "Slack. Zero sends the weekly brief, scoring reports, and nudges for review. Channel write access required."
-          },
-          {
-            "description": "Reddit. Optional. Include if you want the research to span beyond X into community forums."
           }
         ],
         "tips": [

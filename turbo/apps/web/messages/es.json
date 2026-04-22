@@ -3921,9 +3921,6 @@
           },
           {
             "description": "Slack: Zero manda el brief semanal, los reportes de score y los nudges para revisión. Acceso de escritura al canal requerido."
-          },
-          {
-            "description": "Reddit (opcional). Inclúyelo si quieres que la investigación se extienda más allá de X a los foros de comunidad."
           }
         ],
         "tips": [

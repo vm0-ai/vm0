@@ -3921,9 +3921,6 @@
           },
           {
             "description": "Slack - Zero sendet das Wochenbriefing, Scoring-Reports und Nudges zum Review. Schreibzugriff auf den Channel erforderlich."
-          },
-          {
-            "description": "Reddit - Optional. Einbauen, wenn der Research auch Community-Foren außerhalb von X umfassen soll."
           }
         ],
         "tips": [
