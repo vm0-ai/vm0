@@ -340,6 +340,14 @@ mod tests {
     }
 
     #[test]
+    fn extract_field_returns_first_match_for_duplicate_key() {
+        // dmesg iptables lines emit LEN= twice for UDP (outer packet then
+        // inner UDP payload). We rely on first-wins to pick the outer length.
+        let fields = "LEN=63 TOS=0x00 LEN=43";
+        assert_eq!(extract_field(fields, "LEN="), Some("63"));
+    }
+
+    #[test]
     fn parse_malformed_len_defaults_to_zero() {
         let msg = "VM0:10.200.0.2:IN=vm0-ve-00-00 OUT=ens5 SRC=10.200.0.2 DST=8.8.8.8 LEN=abc PROTO=UDP SPT=1234 DPT=53";
         let entry = parse_log_message(msg).unwrap();
