@@ -19,6 +19,26 @@ import type {
 const log = logger("checkpoint");
 
 /**
+ * Resolve the artifact snapshot pair (legacy single + new multi-entry map)
+ * from a checkpoint request. The multi-entry map is authoritative; a legacy
+ * single-entry record is derived from its first entry so old readers keep
+ * working for the duration of the rollout.
+ */
+function resolveArtifactSnapshots(request: CheckpointRequest): {
+  legacy: ArtifactSnapshot | null;
+  map: Record<string, string> | null;
+  hasMap: boolean;
+} {
+  const map = request.artifactSnapshots ?? null;
+  const hasMap = map !== null && Object.keys(map).length > 0;
+  if (hasMap) {
+    const [artifactName, artifactVersion] = Object.entries(map)[0]!;
+    return { legacy: { artifactName, artifactVersion }, map, hasMap };
+  }
+  return { legacy: request.artifactSnapshot ?? null, map, hasMap };
+}
+
+/**
  * Create a checkpoint for an agent run
  *
  * @param request Checkpoint request data from webhook
@@ -139,19 +159,12 @@ export async function createCheckpoint(
   // Consolidate artifact snapshots. The guest-agent emits artifactSnapshots
   // (name -> version map) as the authoritative multi-mount payload, and still
   // emits artifactSnapshot for backward compat when exactly one artifact is
-  // snapshotted. Prefer the map when present: derive a legacy single-entry
-  // record from its first entry so readers of the old column keep working.
-  const artifactSnapshotsMap = request.artifactSnapshots ?? null;
-  const hasArtifactSnapshots =
-    artifactSnapshotsMap !== null &&
-    Object.keys(artifactSnapshotsMap).length > 0;
-  const legacyArtifactSnapshot: ArtifactSnapshot | null = hasArtifactSnapshots
-    ? (() => {
-        const [artifactName, artifactVersion] =
-          Object.entries(artifactSnapshotsMap)[0]!;
-        return { artifactName, artifactVersion };
-      })()
-    : (request.artifactSnapshot ?? null);
+  // snapshotted. See resolveArtifactSnapshots above.
+  const {
+    legacy: legacyArtifactSnapshot,
+    map: artifactSnapshotsMap,
+    hasMap: hasArtifactSnapshots,
+  } = resolveArtifactSnapshots(request);
 
   // Upsert checkpoint record (handles retries atomically). Double-write both
   // the legacy singleton column and the new multi-entry JSONB column for the

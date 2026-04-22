@@ -383,6 +383,69 @@ async function resolveAdditionalVolume(
 }
 
 /**
+ * Resolve the primary (compose-derived) artifact to a ManifestArtifact.
+ * Uses the batched latest lookup when possible and falls back to an
+ * individual resolveVersion call for pinned versions.
+ */
+async function resolvePrimaryArtifact(
+  artifactSource: ResolvedArtifact | null,
+  allResults: Map<string, { versionId: string; s3Key: string }>,
+  runtimeClerkOrgId: string,
+  userId: string,
+  bucketName: string,
+): Promise<ManifestArtifact | null> {
+  if (!artifactSource) return null;
+
+  const isLatest = artifactSource.vasVersion === "latest";
+  let versionId: string;
+  let s3Key: string;
+
+  if (isLatest) {
+    const key = lookupKey(
+      runtimeClerkOrgId,
+      userId,
+      artifactSource.vasStorageName,
+      "artifact",
+    );
+    const resolved = allResults.get(key);
+    if (!resolved) {
+      throw new Error(
+        `Storage "${artifactSource.vasStorageName}" not found in database`,
+      );
+    }
+    versionId = resolved.versionId;
+    s3Key = resolved.s3Key;
+  } else {
+    const resolved = await resolveVersion(
+      runtimeClerkOrgId,
+      artifactSource.vasStorageName,
+      "artifact",
+      artifactSource.vasVersion,
+      userId,
+    );
+    versionId = resolved.versionId;
+    s3Key = resolved.s3Key;
+  }
+
+  const archiveKey = `${s3Key}/archive.tar.gz`;
+  const manifestKey = `${s3Key}/manifest.json`;
+  const [archiveUrl, manifestUrl] = await Promise.all([
+    generatePresignedUrl(bucketName, archiveKey),
+    generatePresignedUrl(bucketName, manifestKey),
+  ]);
+  log.debug(
+    `Generated archive URL for artifact "${artifactSource.vasStorageName}"`,
+  );
+  return {
+    mountPath: artifactSource.mountPath,
+    vasStorageName: artifactSource.vasStorageName,
+    vasVersionId: versionId,
+    archiveUrl,
+    manifestUrl,
+  };
+}
+
+/**
  * Resolve a single additional artifact by name/version against the runtime
  * org, returning a ManifestArtifact with presigned URLs. Missing storages
  * bubble up — additional artifacts are treated as required (unlike additional
@@ -1019,63 +1082,13 @@ async function buildManifestFromResults(
     }),
   ];
 
-  // Build artifact
-  const artifactIsLatest =
-    artifactSource && artifactSource.vasVersion === "latest";
-  let artifact: ManifestArtifact | null = null;
-
-  if (artifactSource && artifactIsLatest) {
-    const key = lookupKey(
-      runtimeClerkOrgId,
-      userId,
-      artifactSource.vasStorageName,
-      "artifact",
-    );
-    const resolved = allResults.get(key);
-    if (!resolved) {
-      throw new Error(
-        `Storage "${artifactSource.vasStorageName}" not found in database`,
-      );
-    }
-    const archiveKey = `${resolved.s3Key}/archive.tar.gz`;
-    const manifestKey = `${resolved.s3Key}/manifest.json`;
-    const [archiveUrl, manifestUrl] = await Promise.all([
-      generatePresignedUrl(bucketName, archiveKey),
-      generatePresignedUrl(bucketName, manifestKey),
-    ]);
-    artifact = {
-      mountPath: artifactSource.mountPath,
-      vasStorageName: artifactSource.vasStorageName,
-      vasVersionId: resolved.versionId,
-      archiveUrl,
-      manifestUrl,
-    };
-    log.debug(
-      `Generated archive URL for artifact "${artifactSource.vasStorageName}"`,
-    );
-  } else if (artifactSource) {
-    // Non-latest artifact: resolve individually
-    const { versionId, s3Key } = await resolveVersion(
-      runtimeClerkOrgId,
-      artifactSource.vasStorageName,
-      "artifact",
-      artifactSource.vasVersion,
-      userId,
-    );
-    const archiveKey = `${s3Key}/archive.tar.gz`;
-    const manifestKey = `${s3Key}/manifest.json`;
-    const [archiveUrl, manifestUrl] = await Promise.all([
-      generatePresignedUrl(bucketName, archiveKey),
-      generatePresignedUrl(bucketName, manifestKey),
-    ]);
-    artifact = {
-      mountPath: artifactSource.mountPath,
-      vasStorageName: artifactSource.vasStorageName,
-      vasVersionId: versionId,
-      archiveUrl,
-      manifestUrl,
-    };
-  }
+  const artifact = await resolvePrimaryArtifact(
+    artifactSource,
+    allResults,
+    runtimeClerkOrgId,
+    userId,
+    bucketName,
+  );
 
   // Build memory
   let memory: ManifestArtifact | null = null;
