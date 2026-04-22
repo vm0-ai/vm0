@@ -126,15 +126,13 @@ function PrimaryAction({
   stripeSuccess: boolean;
 }): ReactNode {
   if (!stripeSuccess && response?.status === "ready") {
+    // Render as an <a> (via asChild) so the browser handles cmd/ctrl+click,
+    // middle-click, and right-click → "open in new tab" natively. A plain
+    // onClick with `window.location.assign` swallows those modifier clicks.
     const checkoutUrl = response.checkoutUrl;
     return (
-      <Button
-        className="w-full"
-        onClick={() => {
-          window.location.assign(checkoutUrl);
-        }}
-      >
-        Redeem credits
+      <Button className="w-full" asChild>
+        <a href={checkoutUrl}>Redeem credits</a>
       </Button>
     );
   }
