@@ -44,6 +44,14 @@ import {
 import type { ChatCallbackPayload } from "../../../../../src/lib/infra/callback/callback-payloads";
 import { publishUserSignal } from "../../../../../src/lib/infra/realtime/client";
 import { logger } from "../../../../../src/lib/shared/logger";
+import {
+  recordChatSpan,
+  type ChatSpanDimensions,
+} from "../../../../../src/lib/infra/metrics";
+import {
+  CHAT_REQUEST_OPS,
+  timed,
+} from "../../../../../src/lib/zero/chat-thread/request-span-ops";
 
 const log = logger("zero:chat-messages");
 
@@ -180,14 +188,33 @@ async function rejectIfThreadModelLocked(
 /**
  * Resolve an existing thread or create a new one.
  * Returns thread metadata needed for run creation and title generation.
+ *
+ * When `dims` is provided, each sub-stage (create-thread, get-thread,
+ * session-id lookup, messages, incomplete-rounds, continue-from resolution)
+ * emits a span to the `chat-request-spans` Axiom dataset. Sub-queries stay
+ * sequential — this instrumentation must not change ordering.
  */
 async function resolveThread(
   userId: string,
   agentId: string,
   existingThreadId: string | undefined,
+  dims?: ChatSpanDimensions,
 ): Promise<ResolvedThread> {
+  const emit = (op: string, ms: number): void => {
+    if (dims) recordChatSpan(op, ms, dims);
+  };
+
   if (!existingThreadId) {
-    const thread = await createChatThread(userId, agentId);
+    const createT = await timed(async () => {
+      return createChatThread(userId, agentId);
+    });
+    emit(CHAT_REQUEST_OPS.resolve_thread_create_thread, createT.ms);
+    const thread = createT.result;
+    if (dims) {
+      dims.thread_id = thread.id;
+      dims.thread_is_new = true;
+      dims.thread_length = 0;
+    }
     return {
       threadId: thread.id,
       sessionId: undefined,
@@ -199,13 +226,40 @@ async function resolveThread(
 
   // All four reads key off `(existingThreadId, userId)` and have no data
   // dependency on each other. Running them in parallel drops the happy-path
-  // wall time to the slowest of the four, not their sum.
-  const [thread, sessionId, messages, incompleteRows] = await Promise.all([
-    getChatThread(existingThreadId, userId),
-    getLatestSessionIdForThread(existingThreadId),
-    getLatestMessagesByThreadId(existingThreadId, PREVIOUS_CONTEXT_MESSAGES),
-    getIncompleteRoundsSinceLastSuccess(existingThreadId),
+  // wall time to the slowest of the four, not their sum. Each arm is wrapped
+  // in `timed()` so we still emit per-query spans alongside the parallel
+  // execution.
+  const [threadT, sessionIdT, messagesT, incompleteT] = await Promise.all([
+    timed(async () => {
+      return getChatThread(existingThreadId, userId);
+    }),
+    timed(async () => {
+      return getLatestSessionIdForThread(existingThreadId);
+    }),
+    timed(async () => {
+      return getLatestMessagesByThreadId(
+        existingThreadId,
+        PREVIOUS_CONTEXT_MESSAGES,
+      );
+    }),
+    timed(async () => {
+      return getIncompleteRoundsSinceLastSuccess(existingThreadId);
+    }),
   ]);
+  emit(CHAT_REQUEST_OPS.resolve_thread_get_thread, threadT.ms);
+  emit(CHAT_REQUEST_OPS.resolve_thread_session_id, sessionIdT.ms);
+  emit(CHAT_REQUEST_OPS.resolve_thread_get_messages, messagesT.ms);
+  emit(CHAT_REQUEST_OPS.resolve_thread_incomplete, incompleteT.ms);
+
+  const thread = threadT.result;
+  const sessionId = sessionIdT.result;
+  const messages = messagesT.result;
+
+  if (dims) {
+    dims.thread_id = thread.id;
+    dims.thread_is_new = false;
+    dims.thread_length = messages.length;
+  }
 
   // `messages` already satisfies `content IS NOT NULL` and role IN
   // ('user','assistant') in SQL; the service narrows the row shape so no
@@ -215,20 +269,24 @@ async function resolveThread(
   });
 
   const incompleteContext = buildWebChatIncompleteContext(
-    groupIncompleteRoundsByRunId(incompleteRows),
+    groupIncompleteRoundsByRunId(incompleteT.result),
   );
 
   let continueFromSchedulePrompt: string | undefined;
   if (thread.sourceScheduleRunId && messages.length === 0) {
-    const [sourceSchedule] = await globalThis.services.db
-      .select({ name: zeroAgentSchedules.name })
-      .from(zeroRuns)
-      .innerJoin(
-        zeroAgentSchedules,
-        eq(zeroRuns.scheduleId, zeroAgentSchedules.id),
-      )
-      .where(eq(zeroRuns.id, thread.sourceScheduleRunId))
-      .limit(1);
+    const continueFromT = await timed(async () => {
+      return globalThis.services.db
+        .select({ name: zeroAgentSchedules.name })
+        .from(zeroRuns)
+        .innerJoin(
+          zeroAgentSchedules,
+          eq(zeroRuns.scheduleId, zeroAgentSchedules.id),
+        )
+        .where(eq(zeroRuns.id, thread.sourceScheduleRunId!))
+        .limit(1);
+    });
+    emit(CHAT_REQUEST_OPS.resolve_thread_continue_from, continueFromT.ms);
+    const [sourceSchedule] = continueFromT.result;
     continueFromSchedulePrompt = buildContinueFromScheduleSystemPrompt(
       thread.sourceScheduleRunId,
       sourceSchedule?.name ?? null,
@@ -282,15 +340,36 @@ const router = tsr.router(chatMessagesContract, {
     const apiStartTime = Date.now();
     initServices();
 
-    const authCtx = await requireAuth(headers.authorization, {
-      requiredCapability: "agent-run:write",
+    // Dims object is mutated in place as details become known. Each Phase-1
+    // sub-stage emits a span carrying the dims snapshot at emit time.
+    // `run_id` and `org_id` are stamped later inside createZeroRunRecord.
+    const dims: ChatSpanDimensions = {
+      agent_id: body.agentId,
+      model_selection_present: body.modelSelection != null,
+    };
+    const emit = (op: string, ms: number): void => {
+      recordChatSpan(op, ms, dims);
+    };
+
+    const authT = await timed(async () => {
+      return requireAuth(headers.authorization, {
+        requiredCapability: "agent-run:write",
+      });
     });
+    emit(CHAT_REQUEST_OPS.auth, authT.ms);
+    const authCtx = authT.result;
     if (isAuthError(authCtx)) return authCtx;
+    dims.user_id = authCtx.userId;
+    dims.token_type = authCtx.tokenType;
 
     // Verify agent exists and fetch the union projection (404 check + model
     // override fields here; full row passed through to createZeroRun so the
     // service's Round 1 skips its duplicate SELECT).
-    const agent = await fetchZeroAgentForRun(body.agentId);
+    const agentT = await timed(async () => {
+      return fetchZeroAgentForRun(body.agentId);
+    });
+    emit(CHAT_REQUEST_OPS.agent_lookup, agentT.ms);
+    const agent = agentT.result;
 
     if (!agent) {
       return {
@@ -307,18 +386,23 @@ const router = tsr.router(chatMessagesContract, {
     // service's Round 2 can skip its duplicate getOrgMetadata call.
     let preloadedOrgTier: { orgId: string; tier: string } | undefined;
     if (body.modelSelection) {
-      const { org } = await resolveOrg(authCtx);
-      preloadedOrgTier = { orgId: org.orgId, tier: org.tier };
-      const [provider] = await globalThis.services.db
-        .select({ id: modelProviders.id })
-        .from(modelProviders)
-        .where(
-          and(
-            eq(modelProviders.id, body.modelSelection.modelProviderId),
-            eq(modelProviders.orgId, org.orgId),
-          ),
-        )
-        .limit(1);
+      const modelSelection = body.modelSelection;
+      const validateT = await timed(async () => {
+        const { org } = await resolveOrg(authCtx);
+        preloadedOrgTier = { orgId: org.orgId, tier: org.tier };
+        return globalThis.services.db
+          .select({ id: modelProviders.id })
+          .from(modelProviders)
+          .where(
+            and(
+              eq(modelProviders.id, modelSelection.modelProviderId),
+              eq(modelProviders.orgId, org.orgId),
+            ),
+          )
+          .limit(1);
+      });
+      emit(CHAT_REQUEST_OPS.model_selection_validate, validateT.ms);
+      const [provider] = validateT.result;
       if (!provider) {
         return {
           status: 400 as const,
@@ -332,20 +416,22 @@ const router = tsr.router(chatMessagesContract, {
       }
     }
 
-    if (
-      body.threadId !== undefined &&
-      body.modelSelection !== undefined &&
-      (await rejectIfThreadModelLocked(body.threadId, body.modelSelection))
-    ) {
-      return {
-        status: 400 as const,
-        body: {
-          error: {
-            message: "Cannot change model on an existing thread",
-            code: "BAD_REQUEST" as const,
+    if (body.threadId !== undefined && body.modelSelection !== undefined) {
+      const lockT = await timed(async () => {
+        return rejectIfThreadModelLocked(body.threadId!, body.modelSelection!);
+      });
+      emit(CHAT_REQUEST_OPS.model_selection_lock_check, lockT.ms);
+      if (lockT.result) {
+        return {
+          status: 400 as const,
+          body: {
+            error: {
+              message: "Cannot change model on an existing thread",
+              code: "BAD_REQUEST" as const,
+            },
           },
-        },
-      };
+        };
+      }
     }
 
     try {
@@ -355,16 +441,25 @@ const router = tsr.router(chatMessagesContract, {
         previousContext,
         continueFromSchedulePrompt,
         incompleteContext,
-      } = await resolveThread(authCtx.userId, body.agentId, body.threadId);
-
-      const override = await resolveRunModelOverride(
-        threadId,
-        {
-          modelProviderId: agent.modelProviderId,
-          selectedModel: agent.selectedModel,
-        },
-        body.modelSelection,
+      } = await resolveThread(
+        authCtx.userId,
+        body.agentId,
+        body.threadId,
+        dims,
       );
+
+      const overrideT = await timed(async () => {
+        return resolveRunModelOverride(
+          threadId,
+          {
+            modelProviderId: agent.modelProviderId,
+            selectedModel: agent.selectedModel,
+          },
+          body.modelSelection,
+        );
+      });
+      emit(CHAT_REQUEST_OPS.resolve_model_override, overrideT.ms);
+      const override = overrideT.result;
 
       // Only generate title when prompt has actual user text. The
       // assistant reply is not yet available at send time — the chat
@@ -424,6 +519,7 @@ const router = tsr.router(chatMessagesContract, {
         chatThreadId: threadId,
         preloadedAgent: agent,
         preloadedOrgTier,
+        spanDims: dims,
       });
 
       // Persist user message to chat_messages.
@@ -442,6 +538,7 @@ const router = tsr.router(chatMessagesContract, {
           return f.id;
         }),
         id: body.clientMessageId,
+        spanDims: dims,
       });
 
       after(async () => {
