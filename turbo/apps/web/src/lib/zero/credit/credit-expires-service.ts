@@ -151,11 +151,15 @@ export async function expireCredits(tx: Tx, orgId: string): Promise<number> {
  * `org_metadata.credits` aggregate still includes them until the next
  * `expireCredits` call. Use this to present the true spendable balance on
  * read paths that run outside the settlement transaction.
+ *
+ * Accepts an optional `db` so callers already running inside a transaction
+ * (e.g. the admission gate inside `dequeueNextAtomic`) can pass their tx
+ * handle and keep both reads under the same isolation boundary.
  */
 export async function getUnsettledExpiredAmount(
   orgId: string,
+  db: typeof globalThis.services.db = globalThis.services.db,
 ): Promise<number> {
-  const db = globalThis.services.db;
   const [row] = await db
     .select({
       total: sql<number>`COALESCE(SUM(${creditExpiresRecord.remaining}), 0)::int`,

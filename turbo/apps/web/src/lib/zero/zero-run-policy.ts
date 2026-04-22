@@ -12,6 +12,7 @@ import { logger } from "../shared/logger";
 import { modelProviders } from "../../db/schema/model-provider";
 import { orgMetadata } from "../../db/schema/org-metadata";
 import { orgMembersMetadata } from "../../db/schema/org-members-metadata";
+import { getUnsettledExpiredAmount } from "./credit/credit-expires-service";
 import { ORG_SENTINEL_USER_ID } from "./org/org-sentinel";
 import { MODEL_PROVIDER_ENV_VARS } from "./context/resolve-model-provider";
 import type { Database } from "../../types/global";
@@ -132,6 +133,15 @@ export async function validateComposeRequirements(
  * Accepts an optional `db` parameter so callers running inside a transaction
  * (e.g. dequeueNextAtomic with pg_advisory_xact_lock) can pass the transaction
  * object and keep all reads within the same isolation boundary.
+ *
+ * The spendable balance used for admission is
+ *   org_metadata.credits − getUnsettledExpiredAmount(orgId)
+ * — the same form `getBillingStatus` presents in the UI. Without this
+ * subtraction a dormant non-subscription org whose credits have all expired
+ * but haven't been settled yet (nothing triggers `expireCredits` until the
+ * next `processOrgCredits` batch or subscription renewal) would be admitted
+ * on its stale inflated balance, the run would burn real COGS, and only the
+ * next settlement would notice.
  */
 export async function checkOrgCredits(
   orgId: string,
@@ -187,7 +197,8 @@ export async function checkOrgCredits(
     return;
   }
 
-  if (orgRow.credits > 0) {
+  const unsettledExpired = await getUnsettledExpiredAmount(orgId, db);
+  if (orgRow.credits - unsettledExpired > 0) {
     return;
   }
 

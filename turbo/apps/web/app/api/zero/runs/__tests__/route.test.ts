@@ -12,6 +12,7 @@ import {
   insertOrgDefaultModelProvider,
   insertUserCacheEntry,
   setOrgCredits,
+  insertCreditExpiresRecord,
   deleteOrgRow,
   insertOrgMembersEntry,
   findTestRunsByUserAndPrompt,
@@ -989,6 +990,50 @@ describe("POST /api/zero/runs — credit check", () => {
       expect(response.status).toBe(402);
       const data = await response.json();
       expect(data.error.code).toBe("INSUFFICIENT_CREDITS");
+    });
+
+    it("should reject VM0 run when unsettled expired credits wipe out the balance", async () => {
+      // Dormant non-subscription org: credits column still inflated because
+      // expireCredits hasn't run (no renewal, no pending usage). The admission
+      // gate must subtract unsettled expired — otherwise the run is admitted
+      // on a stale inflated balance and burns real COGS.
+      await setOrgCredits(user.orgId, 1000);
+      await insertCreditExpiresRecord({
+        orgId: user.orgId,
+        amount: 1000,
+        remaining: 1000,
+        expiresAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
+      });
+
+      const response = await postRun({
+        agentId,
+        prompt: "Credit check test",
+        modelProvider: "vm0",
+      });
+
+      expect(response.status).toBe(402);
+      const data = await response.json();
+      expect(data.error.code).toBe("INSUFFICIENT_CREDITS");
+    });
+
+    it("should allow VM0 run when a future-expiring record does not exceed the balance", async () => {
+      // Sanity check: an expires record whose expiresAt is in the future is
+      // NOT unsettled, so it must not be subtracted from the admission balance.
+      await setOrgCredits(user.orgId, 1000);
+      await insertCreditExpiresRecord({
+        orgId: user.orgId,
+        amount: 1000,
+        remaining: 1000,
+        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      });
+
+      const response = await postRun({
+        agentId,
+        prompt: "Credit check test",
+        modelProvider: "vm0",
+      });
+
+      expect(response.status).toBe(201);
     });
 
     it("should allow non-VM0 run when credits = 0", async () => {
