@@ -18,8 +18,12 @@ export const initCommand = new Command()
       const cwd = process.cwd();
       const dirName = path.basename(cwd);
 
-      // Check if config already exists
-      const existingConfig = await readStorageConfig(cwd);
+      // Check if config already exists. Memory commands opt out of the
+      // memory→artifact normalisation so `vm0 memory *` keeps working against
+      // dirs written by `vm0 memory init` until #10603 removes the CLI.
+      const existingConfig = await readStorageConfig(cwd, {
+        normalizeMemoryToArtifact: false,
+      });
       if (existingConfig) {
         if (existingConfig.type === "memory") {
           console.log(

@@ -40,10 +40,19 @@ export function isValidStorageName(name: string): boolean {
 /**
  * Read storage config from .vm0/storage.yaml
  * Also supports legacy .vm0/volume.yaml for backward compatibility
+ *
+ * `normalizeMemoryToArtifact` (default true) controls the one-release read
+ * compat for legacy `type: "memory"` entries. Artifact-side callers keep the
+ * default so old memory dirs flow transparently into the new artifact shape;
+ * memory-side callers pass `false` so `vm0 memory *` commands keep working
+ * against the dirs they themselves write (until #10603 removes the memory
+ * CLI entirely).
  */
 export async function readStorageConfig(
   basePath: string = process.cwd(),
+  options: { normalizeMemoryToArtifact?: boolean } = {},
 ): Promise<StorageConfig | null> {
+  const { normalizeMemoryToArtifact = true } = options;
   const configPath = path.join(basePath, CONFIG_DIR, CONFIG_FILE);
   const legacyConfigPath = path.join(basePath, CONFIG_DIR, "volume.yaml");
 
@@ -67,10 +76,7 @@ export async function readStorageConfig(
     config.type = "volume";
   }
 
-  // One-release read compat: legacy `type: "memory"` is normalised to
-  // "artifact" so downstream read sites see a single modern shape. Emits a
-  // deprecation warning once per path.
-  if (config.type === "memory") {
+  if (config.type === "memory" && normalizeMemoryToArtifact) {
     if (!memoryTypeWarnedPaths.has(actualPath)) {
       memoryTypeWarnedPaths.add(actualPath);
       process.stderr.write(

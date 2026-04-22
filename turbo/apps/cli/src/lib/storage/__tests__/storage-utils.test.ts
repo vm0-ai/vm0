@@ -64,4 +64,21 @@ describe("readStorageConfig", () => {
     const config = await readStorageConfig(tempDir);
     expect(config).toEqual({ name: "untyped", type: "volume" });
   });
+
+  it("preserves type: memory when normalizeMemoryToArtifact is false", async () => {
+    writeFileSync(
+      path.join(tempDir, ".vm0", "storage.yaml"),
+      "name: still-memory\ntype: memory\n",
+    );
+
+    const config = await readStorageConfig(tempDir, {
+      normalizeMemoryToArtifact: false,
+    });
+    expect(config).toEqual({ name: "still-memory", type: "memory" });
+
+    const warnCalls = stderrSpy.mock.calls.filter((call: unknown[]) => {
+      return String(call[0]).includes('type: "memory"');
+    });
+    expect(warnCalls).toHaveLength(0);
+  });
 });

@@ -3,10 +3,10 @@
  *
  * Covers:
  * - Config validation (no config, wrong type)
- * - Legacy type:memory dir rejection after storage-utils compat
  *
- * The push happy path is exercised via E2E — removal of `vm0 memory push`
- * itself is tracked in sibling sub-issues of #10577.
+ * Memory push opts out of the storage-utils memory→artifact normalisation so
+ * it keeps accepting `type: memory` dirs until #10603 removes the memory CLI.
+ * The push happy path is exercised via E2E.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -88,32 +88,6 @@ describe("memory push", () => {
       await fs.writeFile(
         path.join(tempDir, ".vm0", "storage.yaml"),
         "name: my-artifact\ntype: artifact",
-      );
-
-      await expect(async () => {
-        await pushCommand.parseAsync(["node", "cli"]);
-      }).rejects.toThrow("process.exit called");
-
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("initialized as an artifact"),
-      );
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("vm0 artifact push"),
-      );
-      expect(mockExit).toHaveBeenCalledWith(1);
-    });
-  });
-
-  describe("legacy type: memory dirs", () => {
-    // After the storage-utils one-release compat lands, `type: memory` is
-    // normalised to `artifact` at read time. `vm0 memory push` therefore
-    // rejects such dirs and directs users to `vm0 artifact push`. Removal of
-    // `vm0 memory push` itself is tracked in sibling sub-issues of #10577.
-    it("should reject legacy type: memory dirs as artifact", async () => {
-      await fs.mkdir(path.join(tempDir, ".vm0"), { recursive: true });
-      await fs.writeFile(
-        path.join(tempDir, ".vm0", "storage.yaml"),
-        "name: test-memory\ntype: memory",
       );
 
       await expect(async () => {
