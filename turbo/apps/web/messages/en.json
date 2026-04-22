@@ -4016,6 +4016,346 @@
           "Review the storyboard before voiceover, not after. Storyboard changes are cheap; voiceover re-generation isn't.",
           "Ship rough and iterate in public. A shipped 60-second video that got feedback beats a perfect one stuck in review for a week."
         ]
+      },
+      "investor-board-updates": {
+        "title": "Draft your monthly board update from live metrics and shipping activity",
+        "description": "Zero pulls your product metrics, shipping history, and customer wins from the month, then drafts a board-ready update in your voice. Edit for nuance and send, instead of building from scratch at 11pm.",
+        "timeSaved": "~4 hours saved per monthly update",
+        "headings": {
+          "scenario": "Why every board update becomes a weekend project",
+          "prompt": "How to ask Zero to draft a board update",
+          "steps": "How Zero builds your board update",
+          "nextActions": "Tune the format, add investors to the send, schedule the cadence",
+          "integrations": "Required integrations: issue tracker, GitHub, and analytics",
+          "tips": "Best practices for automated investor updates"
+        },
+        "scenario": "Board updates always look easy on the calendar and hard on the night before. Someone has to pull the month's shipping activity, reconcile it against what was actually committed, dig up the traffic and usage numbers, and write a narrative that doesn't read like a changelog. Four hours lost, usually late at night, every single month. Zero takes the raw inputs (issues closed, PRs merged, traffic, revenue, customer wins tagged in Slack) and drafts the full update in your voice. You edit for nuance and send.",
+        "promptVariants": [
+          {
+            "label": "Detailed",
+            "prompt": "@Zero draft our April board update. Pull closed issues from Linear, merged PRs from GitHub, traffic from Plausible, and customer wins I tagged in #wins. Structure it as Highlights, Metrics, Risks, Next Month."
+          },
+          {
+            "label": "Quick",
+            "prompt": "@Zero draft this month's board update."
+          },
+          {
+            "label": "Scheduled",
+            "prompt": "@Zero on the first of every month, draft the board update and DM it to me for review."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Casey",
+            "text": "@Zero draft this month's board update"
+          },
+          {
+            "name": "Zero",
+            "text": "Drafted April board update. Highlights: shipped voice onboarding, signed two enterprise customers. Metrics: MRR +18%, DAU +23%, churn 2.1%. Risks: pipeline gap in late May. Full draft in Notion, ready for your edits."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero pulls the month's raw inputs",
+            "description": "Zero queries your issue tracker for closed work, GitHub for merged PRs and deploys, your analytics tool for traffic and engagement trends, and any Slack channel you tag as signal. Everything lands in one working dataset."
+          },
+          {
+            "title": "Zero structures the draft in your format",
+            "description": "Your preferred section order (Highlights, Metrics, Risks, Asks, Next Month) stays consistent month to month. Zero fills each section based on the raw inputs and any prior updates it can learn from."
+          },
+          {
+            "title": "Zero delivers a ready-to-edit draft",
+            "description": "The full draft lands in Notion with a preview link in Slack. You rewrite the nuanced parts, approve, and send. First drafts take four hours; edits take twenty minutes."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Tune the format",
+            "description": "Adjust section order or add a new recurring section.",
+            "examplePrompt": "@Zero from now on, include a 'Team updates' section between Metrics and Risks."
+          },
+          {
+            "title": "Add investors to the send",
+            "description": "Route the approved draft to your investor list automatically.",
+            "examplePrompt": "@Zero once I approve the draft, send it to my investor list with the subject 'vm0 April Update'."
+          },
+          {
+            "title": "Schedule the cadence",
+            "description": "Move from monthly to bi-weekly, or layer in quarterly deep dives.",
+            "examplePrompt": "@Zero also draft a light bi-weekly update every other Friday with just shipping and metrics, no narrative."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Linear (or your issue tracker). Zero reads closed issues, labels, and epic progress to summarize shipping. Read access required."
+          },
+          {
+            "description": "GitHub. Zero pulls merged PRs, deploys, and release tags to anchor the shipping narrative. Read access required."
+          },
+          {
+            "description": "Plausible (or your analytics). Zero compares this month's traffic and engagement against the prior month for the metrics section. Read access required."
+          },
+          {
+            "description": "Gmail. Optional. Only needed if you want Zero to send the approved update directly to your investor list."
+          },
+          {
+            "description": "Notion. Zero writes the draft into your monthly updates folder so you can edit, version, and archive. Write access required."
+          }
+        ],
+        "tips": [
+          "Tag customer wins in a dedicated Slack channel during the month. Zero picks them up automatically instead of you trying to remember 30 days of moments.",
+          "Keep the section order stable across months. Investors skim, so consistency matters more than novelty.",
+          "Draft three days before the send, not the night of. Zero drafts in minutes; the real value is the edit time you reclaim."
+        ]
+      },
+      "lead-followups": {
+        "title": "Score every lead and draft the follow-up before you open your inbox",
+        "description": "Zero reads new inbound leads, scores them against your ideal customer profile, and drafts a tailored follow-up using the prospect's own signals. You decide who to send to.",
+        "timeSaved": "~15 min saved per lead",
+        "headings": {
+          "scenario": "Why lead follow-ups always slip by 48 hours",
+          "prompt": "How to ask Zero to score and draft follow-ups",
+          "steps": "How Zero handles inbound leads",
+          "nextActions": "Tighten the scoring, auto-send top scores, log to CRM",
+          "integrations": "Required integrations: Gmail and Notion",
+          "tips": "Best practices for lead follow-up automation"
+        },
+        "scenario": "A good lead turns cold in 48 hours. That's how long it usually takes to notice them in Gmail, do the quick LinkedIn and company-website lookup, and write a follow-up that isn't generic. By the time your reply lands, the prospect has already talked to two competitors. Lead Follow-ups closes that gap. Zero reads every new inbound lead, scores it against your ICP, pulls what it can from the prospect's signals (company, role, stage), and drafts the follow-up. You review and send. The lead gets a personal reply within an hour, not two days.",
+        "promptVariants": [
+          {
+            "label": "Detailed",
+            "prompt": "@Zero every hour during work hours, check Gmail for new inbound leads. Score each against our ICP (founders, Series A to B, B2B SaaS). For scores above 7, draft a personalized follow-up using their company and role context. Post the drafts to #sales-leads for review."
+          },
+          {
+            "label": "Quick",
+            "prompt": "@Zero any new leads today? Draft follow-ups for the ones worth replying to."
+          },
+          {
+            "label": "Single-shot",
+            "prompt": "@Zero read this inbound lead, score it, and draft a follow-up."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Morgan",
+            "text": "@Zero new leads today?"
+          },
+          {
+            "name": "Zero",
+            "text": "3 new inbound leads this morning:\n\n🟢 Score 9/10: Sarah Chen (VP Eng at Retool, B2B SaaS, Series C). Draft ready in #sales-leads.\n🟡 Score 6/10: John Park (founder, seed-stage). Draft ready, lower priority.\n🔴 Score 3/10: Lead from a non-ICP vertical. Not drafting."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero reads new inbound leads and enriches them",
+            "description": "For each new lead in Gmail, Zero extracts the basics (name, email, company) and fills in the rest from the prospect's signals: public company data, role, any links they included. Everything gets structured into a lead record."
+          },
+          {
+            "title": "Zero scores each lead against your ICP",
+            "description": "Your scoring rubric (company stage, vertical, role, company size) stays consistent. Zero applies it and returns a 1 to 10 score with a one-line rationale. Leads below your threshold get logged but not drafted."
+          },
+          {
+            "title": "Zero drafts tailored follow-ups for high-scoring leads",
+            "description": "For leads above your threshold, Zero drafts a follow-up email that references their specific context. Drafts land in your sales review channel with the score, rationale, and prospect summary. You review and send in one click."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Tighten the scoring",
+            "description": "Update the ICP or score weights as you learn what converts.",
+            "examplePrompt": "@Zero from now on, weight B2B SaaS at 3x instead of 2x, and penalize pre-seed companies."
+          },
+          {
+            "title": "Auto-send top scores",
+            "description": "For leads that clear a high confidence bar, send the draft automatically.",
+            "examplePrompt": "@Zero for leads scoring 9 or 10 with an obvious ICP match, send the follow-up automatically and notify me."
+          },
+          {
+            "title": "Log every lead to CRM",
+            "description": "Push scored leads and outcomes to your CRM for pipeline tracking.",
+            "examplePrompt": "@Zero log every scored lead to our CRM with the score and whether we replied."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Gmail. Zero reads inbound leads, drafts follow-ups, and (if approved) sends the replies. Read and send access required."
+          },
+          {
+            "description": "Notion (or your CRM). Zero logs each lead with its score, rationale, and outcome for pipeline review. Write access to one database required."
+          }
+        ],
+        "tips": [
+          "Tune the ICP rubric every two weeks. The signals that predicted conversion last quarter may not hold this quarter.",
+          "Keep a human in the loop for the first month. Spot-check Zero's scoring on 20 leads before trusting it to auto-send anything.",
+          "Separate the scoring logic from the draft template. Iterate on each independently so you know which change moved the number."
+        ]
+      },
+      "release-notes-generator": {
+        "title": "Write release notes your customers will actually read",
+        "description": "Zero reads the commits and merged PRs in your release, clusters the changes by customer impact, and drafts customer-facing release notes that are clear, specific, and ready to ship.",
+        "timeSaved": "~1 hour saved per release",
+        "headings": {
+          "scenario": "Why release notes get written in a rush or skipped entirely",
+          "prompt": "How to ask Zero to draft release notes",
+          "steps": "How Zero turns commits into customer-facing notes",
+          "nextActions": "Refine the voice, chain with publishing, translate",
+          "integrations": "Required integrations: GitHub and Slack",
+          "tips": "Best practices for automated release notes"
+        },
+        "scenario": "Release notes are always the last thing to get written and the first thing to get cut when the release is running late. The problem is the source material: commit messages written for engineers, PR titles that assume tribal knowledge, and 30 merged PRs that your users mostly don't care about individually. Release Notes Generator flips the workflow. Zero reads the commits and PR descriptions, filters for customer-visible changes, groups them by theme (new features, improvements, fixes), and writes the notes in the voice your customers actually read. You review, and the next release ships with notes instead of silence.",
+        "promptVariants": [
+          {
+            "label": "Detailed",
+            "prompt": "@Zero for the release we're shipping today, read all merged PRs since the last release tag. Group by customer impact: new features, improvements, bug fixes. Skip internal refactors and test changes. Draft customer-facing notes in our product voice."
+          },
+          {
+            "label": "Quick",
+            "prompt": "@Zero draft release notes for today's release."
+          },
+          {
+            "label": "Scheduled",
+            "prompt": "@Zero every Friday at 10am, draft release notes for the week and post to #release-notes for review."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Alex",
+            "text": "@Zero draft release notes for today's release"
+          },
+          {
+            "name": "Zero",
+            "text": "Drafted notes for v2.8. Covers 14 customer-visible changes (5 features, 6 improvements, 3 fixes). Skipped 12 internal refactors and 4 test-only PRs. Preview in Notion, ready for your edit."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero reads every merged PR in the release window",
+            "description": "Zero pulls merged PRs since the last release tag, including titles, descriptions, and labels. Internal-only changes (refactors, tests, CI tweaks) get filtered out based on your label convention."
+          },
+          {
+            "title": "Zero groups changes by customer impact",
+            "description": "Zero clusters the remaining PRs into themes: new features, improvements, and fixes. Each change gets rewritten from the PR description into a customer-facing line: specific enough to be useful, free of internal jargon."
+          },
+          {
+            "title": "Zero drafts the notes in your product voice",
+            "description": "The final draft lands in your docs tool or Slack with sections that follow your release-notes template. You edit for voice and nuance, then publish."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Refine the voice",
+            "description": "Update the guidance Zero uses for tone and formatting.",
+            "examplePrompt": "@Zero from now on, skip Markdown headers in release notes. Plain prose only."
+          },
+          {
+            "title": "Chain with publishing",
+            "description": "Push the approved notes directly to your docs or blog.",
+            "examplePrompt": "@Zero once I approve the notes, publish them to the Releases section of our docs and post the link in #announcements."
+          },
+          {
+            "title": "Translate",
+            "description": "Generate notes in every locale you support.",
+            "examplePrompt": "@Zero translate the approved release notes into German, Japanese, and Spanish. Preserve the section structure."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "GitHub. Zero reads merged PRs, commit messages, labels, and release tags. Read access to the repo required."
+          },
+          {
+            "description": "Slack. Zero delivers drafts to the review channel and posts the final notes once approved. Channel write access required."
+          }
+        ],
+        "tips": [
+          "Tag internal-only PRs with a consistent label (like `internal` or `no-release-notes`). Zero can only skip what you mark.",
+          "Keep a short style guide for release notes in your docs. Customer voice, active verbs, no internal jargon. Zero picks it up and applies it every release.",
+          "Draft notes before the release ships, not after. Reviewing a draft while the work is fresh is faster than reconstructing context a week later."
+        ]
+      },
+      "meeting-action-items": {
+        "title": "Turn every meeting into a clean list of action items with owners",
+        "description": "Zero reads your meeting transcripts, extracts the action items with owners and due dates, and posts them to the right Slack channels or your task tracker.",
+        "timeSaved": "~20 min saved per meeting",
+        "headings": {
+          "scenario": "Why action items fall through the cracks",
+          "prompt": "How to ask Zero to extract meeting action items",
+          "steps": "How Zero turns meetings into tracked work",
+          "nextActions": "Route to tasks, escalate unowned items, roll up the week",
+          "integrations": "Required integrations: Calendar, Slack, and Notion",
+          "tips": "Best practices for meeting follow-through"
+        },
+        "scenario": "Every meeting produces action items. Almost none of them get tracked. The meeting ends, people walk back to their desks, and the three things Casey agreed to handle this week live only in memory. A week later nobody remembers who owned what, and the next meeting starts with 'where did we leave off?' Meeting Action Items fixes this without adding a step. Zero reads the meeting transcript, extracts action items with their owner and due date, and posts them to the right Slack channel or your task tracker. Everyone walks out with the same list.",
+        "promptVariants": [
+          {
+            "label": "Detailed",
+            "prompt": "@Zero after every recorded meeting on my calendar, extract action items. Include the owner, the due date if mentioned, and the original quote. Post the list in the relevant project Slack channel."
+          },
+          {
+            "label": "Quick",
+            "prompt": "@Zero pull action items from this morning's design review."
+          },
+          {
+            "label": "Per-meeting",
+            "prompt": "@Zero for Monday standups, also log every action item to our Linear project as a todo assigned to the owner."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Riley",
+            "text": "@Zero pull action items from this morning's design review"
+          },
+          {
+            "name": "Zero",
+            "text": "3 action items from the design review:\n\n• Alex: publish the updated mockups in Figma by Friday.\n• Jordan: run the new onboarding flow by 3 beta users this week.\n• Casey: decide on the final color palette by next Monday.\n\nLogged to the project Notion page. Should I create Linear tasks too?"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero reads the meeting transcript",
+            "description": "Zero pulls the transcript from your meeting tool or reads the notes you dropped in Slack. If a transcript isn't available, Zero can work from notes or a recording link."
+          },
+          {
+            "title": "Zero extracts action items with owner and due date",
+            "description": "For each action item, Zero captures who owns it, what they committed to, and when it's due. Unowned items get flagged so someone can claim them."
+          },
+          {
+            "title": "Zero posts the structured list where it belongs",
+            "description": "The extracted items land in the right place: the project Slack channel, your Notion meeting notes, or your task tracker. Owners see their own items; the whole team sees the full list."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Route to tasks",
+            "description": "Auto-create tasks in your tracker for every action item.",
+            "examplePrompt": "@Zero from now on, create a Linear task for every action item, assigned to the owner with the due date as the deadline."
+          },
+          {
+            "title": "Escalate unowned items",
+            "description": "Surface action items that have no owner at the end of the meeting.",
+            "examplePrompt": "@Zero at the end of each meeting summary, flag any action item without an owner and @-mention the project lead to assign one."
+          },
+          {
+            "title": "Roll up the week",
+            "description": "Summarize all action items captured across meetings each week.",
+            "examplePrompt": "@Zero every Friday at 4pm, post a summary of all action items captured from meetings this week, grouped by owner."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Google Calendar. Zero finds your meetings and pulls meeting-related notes or transcripts. Read access required."
+          },
+          {
+            "description": "Slack. Zero posts the action item lists to the relevant channels and DMs owners their personal item list. Channel and DM write access required."
+          },
+          {
+            "description": "Notion. Zero logs the action items to your meeting notes so the history is searchable. Write access required."
+          }
+        ],
+        "tips": [
+          "Write action items as full sentences during the meeting. 'Casey will decide X by Friday' is clearer than 'Casey: decide X'. Zero handles either, but clean input means clean output.",
+          "Separate decisions from action items. Decisions go to Document Decisions; action items go to owners. Mixing them dilutes both.",
+          "Review the extracted list before the meeting ends. Thirty seconds of review catches misattributions that would otherwise live for a week."
+        ]
       }
     },
     "filter": {

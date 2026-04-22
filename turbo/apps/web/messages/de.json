@@ -4016,6 +4016,346 @@
           "Reviewe das Storyboard vor dem Voiceover, nicht danach. Storyboard-Änderungen sind billig; Voiceover-Regenerierung nicht.",
           "Ship rough und iteriere in Public. Ein ausgeliefertes 60-Sekunden-Video mit Feedback schlägt ein perfektes, das eine Woche im Review hängt."
         ]
+      },
+      "investor-board-updates": {
+        "title": "Monatliches Board-Update aus Live-Metriken und Shipping-Aktivität entwerfen",
+        "description": "Zero zieht die Produkt-Metriken, Shipping-Historie und Kundenerfolge des Monats zusammen und entwirft ein board-taugliches Update in deiner Stimme. Du feilst am Ton und sendest, statt um 23 Uhr bei null anzufangen.",
+        "timeSaved": "~4 Stunden pro Monats-Update gespart",
+        "headings": {
+          "scenario": "Warum jedes Board-Update zum Wochenendprojekt wird",
+          "prompt": "Wie du Zero bittest, ein Board-Update zu entwerfen",
+          "steps": "So baut Zero dein Board-Update auf",
+          "nextActions": "Format anpassen, Investoren in den Versand aufnehmen, Taktung planen",
+          "integrations": "Erforderliche Integrationen: Issue-Tracker, GitHub und Analytics",
+          "tips": "Best Practices für automatisierte Investor-Updates"
+        },
+        "scenario": "Im Kalender sehen Board-Updates immer einfach aus, am Abend davor aber alles andere als das. Jemand muss die Shipping-Aktivität des Monats zusammentragen, mit dem abgleichen, was tatsächlich committet war, Traffic- und Nutzungszahlen ausgraben und ein Narrativ schreiben, das nicht wie ein Changelog klingt. Vier Stunden weg, meist spät in der Nacht, jeden einzelnen Monat. Zero nimmt die Rohdaten (geschlossene Issues, gemergte PRs, Traffic, Umsatz, in Slack markierte Kundenerfolge) und entwirft das komplette Update in deiner Stimme. Du feilst am Ton und sendest.",
+        "promptVariants": [
+          {
+            "label": "Ausführlich",
+            "prompt": "@Zero entwirf unser April-Board-Update. Zieh geschlossene Issues aus Linear, gemergte PRs aus GitHub, Traffic aus Plausible und die Kundenerfolge, die ich in #wins markiert habe. Struktur: Highlights, Metriken, Risiken, Nächster Monat."
+          },
+          {
+            "label": "Schnell",
+            "prompt": "@Zero entwirf das Board-Update für diesen Monat."
+          },
+          {
+            "label": "Geplant",
+            "prompt": "@Zero entwirf am Ersten jedes Monats das Board-Update und schick es mir per DM zur Durchsicht."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Casey",
+            "text": "@Zero entwirf das Board-Update für diesen Monat"
+          },
+          {
+            "name": "Zero",
+            "text": "April-Board-Update entworfen. Highlights: Voice-Onboarding ausgeliefert, zwei Enterprise-Kunden unterschrieben. Metriken: MRR +18%, DAU +23%, Churn 2,1%. Risiken: Pipeline-Lücke Ende Mai. Vollständiger Entwurf in Notion, bereit für deine Edits."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero zieht die Rohdaten des Monats",
+            "description": "Zero fragt euren Issue-Tracker nach abgeschlossener Arbeit ab, GitHub nach gemergten PRs und Deploys, euer Analytics-Tool nach Traffic- und Engagement-Trends und jeden Slack-Channel, den ihr als Signal markiert. Alles landet in einem einzigen Arbeitsdatensatz."
+          },
+          {
+            "title": "Zero strukturiert den Entwurf in eurem Format",
+            "description": "Eure bevorzugte Abschnittsreihenfolge (Highlights, Metriken, Risiken, Asks, Nächster Monat) bleibt Monat für Monat konstant. Zero füllt jeden Abschnitt anhand der Rohdaten und früherer Updates, aus denen es lernen kann."
+          },
+          {
+            "title": "Zero liefert einen edit-fertigen Entwurf",
+            "description": "Der komplette Entwurf landet in Notion, mit einem Preview-Link in Slack. Du schreibst die feinen Stellen um, gibst frei und versendest. Erste Entwürfe dauern vier Stunden; Edits dauern zwanzig Minuten."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Format anpassen",
+            "description": "Abschnittsreihenfolge ändern oder einen neuen wiederkehrenden Abschnitt ergänzen.",
+            "examplePrompt": "@Zero ab jetzt füge zwischen Metriken und Risiken einen Abschnitt 'Team-Updates' ein."
+          },
+          {
+            "title": "Investoren in den Versand aufnehmen",
+            "description": "Den freigegebenen Entwurf automatisch an deinen Investor-Verteiler routen.",
+            "examplePrompt": "@Zero sobald ich den Entwurf freigebe, schicke ihn an meinen Investor-Verteiler mit dem Betreff 'vm0 April Update'."
+          },
+          {
+            "title": "Taktung planen",
+            "description": "Von monatlich auf zweiwöchentlich wechseln oder quartalsweise Deep Dives ergänzen.",
+            "examplePrompt": "@Zero entwirf zusätzlich jeden zweiten Freitag ein leichtes zweiwöchentliches Update, nur mit Shipping und Metriken, ohne Narrativ."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Linear (oder euer Issue-Tracker). Zero liest geschlossene Issues, Labels und Epic-Fortschritt, um das Shipping zusammenzufassen. Lesezugriff erforderlich."
+          },
+          {
+            "description": "GitHub. Zero zieht gemergte PRs, Deploys und Release-Tags, um das Shipping-Narrativ zu verankern. Lesezugriff erforderlich."
+          },
+          {
+            "description": "Plausible (oder eure Analytics). Zero vergleicht Traffic und Engagement dieses Monats mit dem Vormonat für den Metriken-Abschnitt. Lesezugriff erforderlich."
+          },
+          {
+            "description": "Gmail. Optional. Nur nötig, wenn Zero das freigegebene Update direkt an deinen Investor-Verteiler senden soll."
+          },
+          {
+            "description": "Notion. Zero schreibt den Entwurf in deinen Ordner für Monats-Updates, damit du editieren, versionieren und archivieren kannst. Schreibzugriff erforderlich."
+          }
+        ],
+        "tips": [
+          "Markiere Kundenerfolge über den Monat hinweg in einem eigenen Slack-Channel. Zero greift sie automatisch auf, statt dass du dich an 30 Tage Momente erinnern musst.",
+          "Halte die Abschnittsreihenfolge über die Monate stabil. Investoren überfliegen, also zählt Konsistenz mehr als Neuheit.",
+          "Entwirf drei Tage vor dem Versand, nicht am Abend davor. Zero entwirft in Minuten; der echte Gewinn ist die Edit-Zeit, die du zurückbekommst."
+        ]
+      },
+      "lead-followups": {
+        "title": "Jeden Lead bewerten und das Follow-up entwerfen, bevor du dein Postfach öffnest",
+        "description": "Zero liest neue Inbound-Leads, bewertet sie anhand deines idealen Kundenprofils und entwirft ein passgenaues Follow-up, das auf die Signale des Interessenten eingeht. Du entscheidest, an wen es rausgeht.",
+        "timeSaved": "~15 Min pro Lead gespart",
+        "headings": {
+          "scenario": "Warum Lead-Follow-ups immer 48 Stunden zu spät kommen",
+          "prompt": "Wie du Zero bittest, Leads zu bewerten und Follow-ups zu entwerfen",
+          "steps": "So bearbeitet Zero Inbound-Leads",
+          "nextActions": "Scoring nachschärfen, Top-Scores automatisch versenden, ins CRM loggen",
+          "integrations": "Erforderliche Integrationen: Gmail und Notion",
+          "tips": "Best Practices für automatisierte Lead-Follow-ups"
+        },
+        "scenario": "Ein guter Lead wird in 48 Stunden kalt. So lange dauert es meist, ihn in Gmail zu bemerken, den kurzen Blick auf LinkedIn und die Firmen-Website zu machen und ein Follow-up zu schreiben, das nicht generisch ist. Bis deine Antwort ankommt, hat der Interessent schon mit zwei Wettbewerbern gesprochen. Lead Follow-ups schließt diese Lücke. Zero liest jeden neuen Inbound-Lead, bewertet ihn anhand eures ICP, zieht aus den Signalen des Interessenten alles Verfügbare (Unternehmen, Rolle, Stage) und entwirft das Follow-up. Du prüfst und sendest. Der Lead bekommt innerhalb einer Stunde eine persönliche Antwort, nicht nach zwei Tagen.",
+        "promptVariants": [
+          {
+            "label": "Ausführlich",
+            "prompt": "@Zero prüfe jede Stunde während der Arbeitszeit Gmail auf neue Inbound-Leads. Bewerte jeden gegen unser ICP (Gründer, Series A bis B, B2B SaaS). Für Scores über 7 entwirf ein personalisiertes Follow-up, das Unternehmen und Rolle aufgreift. Poste die Entwürfe zur Durchsicht in #sales-leads."
+          },
+          {
+            "label": "Schnell",
+            "prompt": "@Zero neue Leads heute? Entwirf Follow-ups für die, auf die sich eine Antwort lohnt."
+          },
+          {
+            "label": "Einzelfall",
+            "prompt": "@Zero lies diesen Inbound-Lead, bewerte ihn und entwirf ein Follow-up."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Morgan",
+            "text": "@Zero neue Leads heute?"
+          },
+          {
+            "name": "Zero",
+            "text": "3 neue Inbound-Leads heute Morgen:\n\n🟢 Score 9/10: Sarah Chen (VP Eng bei Retool, B2B SaaS, Series C). Entwurf in #sales-leads bereit.\n🟡 Score 6/10: John Park (Gründer, Seed-Stage). Entwurf bereit, niedrigere Priorität.\n🔴 Score 3/10: Lead aus einer Nicht-ICP-Branche. Kein Entwurf."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero liest neue Inbound-Leads und reichert sie an",
+            "description": "Für jeden neuen Lead in Gmail extrahiert Zero die Basisdaten (Name, E-Mail, Unternehmen) und füllt den Rest aus den Signalen des Interessenten auf: öffentliche Firmendaten, Rolle, mitgeschickte Links. Alles wird zu einem strukturierten Lead-Datensatz."
+          },
+          {
+            "title": "Zero bewertet jeden Lead gegen euer ICP",
+            "description": "Euer Scoring-Rubrik (Company Stage, Branche, Rolle, Firmengröße) bleibt konstant. Zero wendet sie an und gibt einen Score von 1 bis 10 mit einer einzeiligen Begründung zurück. Leads unter der Schwelle werden geloggt, aber nicht entworfen."
+          },
+          {
+            "title": "Zero entwirft passgenaue Follow-ups für Top-Leads",
+            "description": "Für Leads über eurer Schwelle entwirft Zero eine Follow-up-E-Mail, die den konkreten Kontext des Interessenten aufgreift. Die Entwürfe landen im Sales-Review-Channel samt Score, Begründung und Kurzprofil. Du prüfst und schickst mit einem Klick."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Scoring nachschärfen",
+            "description": "ICP oder Score-Gewichte anpassen, sobald ihr seht, was wirklich konvertiert.",
+            "examplePrompt": "@Zero ab jetzt gewichte B2B SaaS mit 3x statt 2x und zieh Pre-Seed-Unternehmen Punkte ab."
+          },
+          {
+            "title": "Top-Scores automatisch versenden",
+            "description": "Leads, die eine hohe Konfidenzschwelle überspringen, den Entwurf automatisch senden.",
+            "examplePrompt": "@Zero bei Leads mit Score 9 oder 10 und eindeutigem ICP-Match, sende das Follow-up automatisch und benachrichtige mich."
+          },
+          {
+            "title": "Jeden Lead ins CRM loggen",
+            "description": "Bewertete Leads und Ergebnisse ins CRM schieben, damit die Pipeline sauber bleibt.",
+            "examplePrompt": "@Zero logg jeden bewerteten Lead mit Score und Reply-Status in unser CRM."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Gmail. Zero liest Inbound-Leads, entwirft Follow-ups und (falls freigegeben) verschickt die Antworten. Lese- und Sendezugriff erforderlich."
+          },
+          {
+            "description": "Notion (oder euer CRM). Zero loggt jeden Lead mit Score, Begründung und Ergebnis für das Pipeline-Review. Schreibzugriff auf eine Datenbank erforderlich."
+          }
+        ],
+        "tips": [
+          "Justiere das ICP-Rubrik alle zwei Wochen. Die Signale, die letztes Quartal Conversions vorhergesagt haben, gelten diesem Quartal vielleicht nicht mehr.",
+          "Lass den Menschen im ersten Monat in der Schleife. Kontrollier Zeros Scoring bei 20 Leads per Stichprobe, bevor du das automatische Senden freigibst.",
+          "Trenne Scoring-Logik und Entwurfsvorlage. Iteriere unabhängig an beidem, damit du weißt, welche Änderung die Zahl bewegt hat."
+        ]
+      },
+      "release-notes-generator": {
+        "title": "Release Notes schreiben, die eure Kunden wirklich lesen",
+        "description": "Zero liest die Commits und gemergten PRs eures Releases, clustert die Änderungen nach Kundenwirkung und entwirft kundenseitige Release Notes, die klar, konkret und versandfertig sind.",
+        "timeSaved": "~1 Stunde pro Release gespart",
+        "headings": {
+          "scenario": "Warum Release Notes in Eile geschrieben oder ganz weggelassen werden",
+          "prompt": "Wie du Zero bittest, Release Notes zu entwerfen",
+          "steps": "So macht Zero aus Commits kundenseitige Notes",
+          "nextActions": "Stimme feinjustieren, mit Publishing verketten, übersetzen",
+          "integrations": "Erforderliche Integrationen: GitHub und Slack",
+          "tips": "Best Practices für automatisierte Release Notes"
+        },
+        "scenario": "Release Notes sind immer das Letzte, was geschrieben wird, und das Erste, was gestrichen wird, wenn der Release knapp wird. Das Problem liegt am Ausgangsmaterial: Commit-Messages für Engineers, PR-Titel voller Insiderwissen und 30 gemergte PRs, die eure Nutzer einzeln gar nicht interessieren. Release Notes Generator dreht den Workflow um. Zero liest die Commits und PR-Beschreibungen, filtert auf kundensichtbare Änderungen, gruppiert sie nach Thema (neue Features, Verbesserungen, Fixes) und schreibt die Notes in der Stimme, die eure Kunden tatsächlich lesen. Du prüfst, und der nächste Release geht mit Notes statt mit Schweigen raus.",
+        "promptVariants": [
+          {
+            "label": "Ausführlich",
+            "prompt": "@Zero für den Release, den wir heute ausliefern: Lies alle gemergten PRs seit dem letzten Release-Tag. Gruppiere nach Kundenwirkung: neue Features, Verbesserungen, Bugfixes. Interne Refactors und Test-Änderungen überspringen. Entwirf kundenseitige Notes in unserer Produktstimme."
+          },
+          {
+            "label": "Schnell",
+            "prompt": "@Zero entwirf Release Notes für den heutigen Release."
+          },
+          {
+            "label": "Geplant",
+            "prompt": "@Zero jeden Freitag um 10 Uhr, entwirf die Release Notes der Woche und poste sie zur Durchsicht in #release-notes."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Alex",
+            "text": "@Zero entwirf Release Notes für den heutigen Release"
+          },
+          {
+            "name": "Zero",
+            "text": "Notes für v2.8 entworfen. Deckt 14 kundensichtbare Änderungen ab (5 Features, 6 Verbesserungen, 3 Fixes). 12 interne Refactors und 4 reine Test-PRs übersprungen. Preview in Notion, bereit für deine Edits."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero liest jeden gemergten PR im Release-Fenster",
+            "description": "Zero zieht gemergte PRs seit dem letzten Release-Tag, inklusive Titel, Beschreibungen und Labels. Interne Änderungen (Refactors, Tests, CI-Anpassungen) werden anhand eurer Label-Konvention herausgefiltert."
+          },
+          {
+            "title": "Zero gruppiert Änderungen nach Kundenwirkung",
+            "description": "Zero clustert die verbleibenden PRs in Themen: neue Features, Verbesserungen und Fixes. Jede Änderung wird aus der PR-Beschreibung in eine kundenseitige Zeile umformuliert: konkret genug, um nützlich zu sein, frei von internem Jargon."
+          },
+          {
+            "title": "Zero entwirft die Notes in eurer Produktstimme",
+            "description": "Der finale Entwurf landet in eurem Docs-Tool oder in Slack, mit Abschnitten nach eurer Release-Notes-Vorlage. Du editierst Stimme und Nuancen, dann veröffentlichst du."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Stimme feinjustieren",
+            "description": "Die Leitplanken anpassen, die Zero für Ton und Formatierung nutzt.",
+            "examplePrompt": "@Zero ab jetzt keine Markdown-Überschriften in den Release Notes. Nur Fließtext."
+          },
+          {
+            "title": "Mit Publishing verketten",
+            "description": "Die freigegebenen Notes direkt in Docs oder Blog pushen.",
+            "examplePrompt": "@Zero sobald ich die Notes freigebe, veröffentliche sie im Releases-Bereich unserer Docs und poste den Link in #announcements."
+          },
+          {
+            "title": "Übersetzen",
+            "description": "Notes in jeder von euch unterstützten Sprache generieren.",
+            "examplePrompt": "@Zero übersetze die freigegebenen Release Notes ins Deutsche, Japanische und Spanische. Abschnittsstruktur beibehalten."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "GitHub. Zero liest gemergte PRs, Commit-Messages, Labels und Release-Tags. Lesezugriff auf das Repo erforderlich."
+          },
+          {
+            "description": "Slack. Zero liefert Entwürfe in den Review-Channel und postet die finalen Notes nach Freigabe. Schreibzugriff auf den Channel erforderlich."
+          }
+        ],
+        "tips": [
+          "Tagge interne PRs konsequent mit einem Label (etwa `internal` oder `no-release-notes`). Zero kann nur überspringen, was ihr markiert.",
+          "Führt einen kurzen Styleguide für Release Notes in den Docs: Kundenstimme, aktive Verben, kein interner Jargon. Zero greift ihn auf und wendet ihn bei jedem Release an.",
+          "Entwirf die Notes vor dem Release, nicht danach. Einen Entwurf durchzusehen, solange die Arbeit frisch ist, geht schneller, als den Kontext eine Woche später zu rekonstruieren."
+        ]
+      },
+      "meeting-action-items": {
+        "title": "Jedes Meeting in eine saubere Liste mit Owner und Action Items verwandeln",
+        "description": "Zero liest eure Meeting-Transkripte, extrahiert die Action Items mit Owner und Fälligkeitsdatum und postet sie in die passenden Slack-Channels oder in euren Task-Tracker.",
+        "timeSaved": "~20 Min pro Meeting gespart",
+        "headings": {
+          "scenario": "Warum Action Items unter den Tisch fallen",
+          "prompt": "Wie du Zero bittest, Meeting-Action-Items zu extrahieren",
+          "steps": "So macht Zero aus Meetings nachverfolgbare Arbeit",
+          "nextActions": "In Tasks routen, herrenlose Items eskalieren, die Woche zusammenfassen",
+          "integrations": "Erforderliche Integrationen: Kalender, Slack und Notion",
+          "tips": "Best Practices für konsequente Meeting-Nachbereitung"
+        },
+        "scenario": "Jedes Meeting produziert Action Items. Fast keines wird nachverfolgt. Das Meeting endet, alle gehen zurück an ihren Schreibtisch, und die drei Dinge, die Casey diese Woche übernehmen wollte, existieren nur noch im Gedächtnis. Eine Woche später weiß niemand mehr, wer was hatte, und das nächste Meeting beginnt mit 'wo waren wir stehen geblieben?'. Meeting Action Items löst das, ohne einen weiteren Schritt hinzuzufügen. Zero liest das Meeting-Transkript, extrahiert Action Items mit Owner und Fälligkeitsdatum und postet sie in den passenden Slack-Channel oder euren Task-Tracker. Alle gehen mit derselben Liste raus.",
+        "promptVariants": [
+          {
+            "label": "Ausführlich",
+            "prompt": "@Zero nach jedem aufgezeichneten Meeting in meinem Kalender extrahiere die Action Items. Owner, Fälligkeitsdatum (falls genannt) und das Originalzitat einbeziehen. Liste im passenden Projekt-Slack-Channel posten."
+          },
+          {
+            "label": "Schnell",
+            "prompt": "@Zero zieh die Action Items aus dem Design Review von heute Morgen."
+          },
+          {
+            "label": "Pro Meeting",
+            "prompt": "@Zero für die Montags-Standups logge jedes Action Item zusätzlich als Todo in unser Linear-Projekt, zugewiesen an den Owner."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Riley",
+            "text": "@Zero zieh die Action Items aus dem Design Review von heute Morgen"
+          },
+          {
+            "name": "Zero",
+            "text": "3 Action Items aus dem Design Review:\n\n• Alex: die aktualisierten Mockups bis Freitag in Figma veröffentlichen.\n• Jordan: den neuen Onboarding-Flow diese Woche mit 3 Beta-Nutzern testen.\n• Casey: bis nächsten Montag die finale Farbpalette entscheiden.\n\nIn die Projekt-Notion-Seite geloggt. Soll ich auch Linear-Tasks anlegen?"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero liest das Meeting-Transkript",
+            "description": "Zero zieht das Transkript aus eurem Meeting-Tool oder liest die Notizen, die ihr in Slack abgelegt habt. Falls kein Transkript verfügbar ist, kann Zero auch mit Notizen oder einem Recording-Link arbeiten."
+          },
+          {
+            "title": "Zero extrahiert Action Items mit Owner und Fälligkeitsdatum",
+            "description": "Für jedes Action Item erfasst Zero, wer es übernimmt, was zugesagt wurde und wann es fällig ist. Herrenlose Items werden geflaggt, damit sich jemand zuständig erklären kann."
+          },
+          {
+            "title": "Zero postet die strukturierte Liste, wo sie hingehört",
+            "description": "Die extrahierten Items landen am richtigen Ort: im Projekt-Slack-Channel, in euren Notion-Meeting-Notes oder in eurem Task-Tracker. Owner sehen ihre eigenen Items; das ganze Team sieht die vollständige Liste."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "In Tasks routen",
+            "description": "Für jedes Action Item automatisch einen Task in eurem Tracker anlegen.",
+            "examplePrompt": "@Zero ab jetzt lege für jedes Action Item einen Linear-Task an, zugewiesen an den Owner, mit dem Fälligkeitsdatum als Deadline."
+          },
+          {
+            "title": "Herrenlose Items eskalieren",
+            "description": "Action Items ohne Owner am Ende des Meetings sichtbar machen.",
+            "examplePrompt": "@Zero am Ende jeder Meeting-Zusammenfassung flagge alle Action Items ohne Owner und @-mentione die Projektleitung zur Zuweisung."
+          },
+          {
+            "title": "Die Woche zusammenfassen",
+            "description": "Alle wöchentlich gesammelten Action Items aus Meetings zusammenfassen.",
+            "examplePrompt": "@Zero jeden Freitag um 16 Uhr poste eine Zusammenfassung aller Action Items aus Meetings dieser Woche, gruppiert nach Owner."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Google Calendar. Zero findet eure Meetings und zieht meetingbezogene Notizen oder Transkripte. Lesezugriff erforderlich."
+          },
+          {
+            "description": "Slack. Zero postet die Action-Item-Listen in die passenden Channels und schickt Ownern ihre persönliche Item-Liste per DM. Schreibzugriff auf Channels und DMs erforderlich."
+          },
+          {
+            "description": "Notion. Zero loggt die Action Items in euren Meeting-Notes, damit die Historie durchsuchbar bleibt. Schreibzugriff erforderlich."
+          }
+        ],
+        "tips": [
+          "Schreibt Action Items im Meeting als vollständige Sätze. 'Casey entscheidet X bis Freitag' ist klarer als 'Casey: X entscheiden'. Zero kommt mit beidem klar, aber sauberer Input bedeutet sauberen Output.",
+          "Trennt Entscheidungen von Action Items. Entscheidungen gehören zu Document Decisions; Action Items zu den Ownern. Beides zu mischen verwässert beides.",
+          "Prüft die extrahierte Liste, bevor das Meeting endet. Dreißig Sekunden Review fangen Zuschreibungsfehler ab, die sonst eine Woche bestehen bleiben."
+        ]
       }
     },
     "filter": {

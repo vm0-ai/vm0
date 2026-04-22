@@ -4016,6 +4016,346 @@
           "Revisa el storyboard antes del voiceover, no después. Los cambios de storyboard son baratos; la regeneración de voiceover no.",
           "Shippea rough e itera en público. Un video de 60 segundos publicado que recibió feedback le gana a uno perfecto atorado en revisión una semana."
         ]
+      },
+      "investor-board-updates": {
+        "title": "Redacta tu reporte mensual para el consejo a partir de métricas en vivo y actividad de entregas",
+        "description": "Zero reúne las métricas de producto, el historial de entregas y las victorias con clientes del mes, y luego redacta un reporte listo para el consejo con tu voz. Editas los matices y lo envías, en lugar de empezar desde cero a las 11 de la noche.",
+        "timeSaved": "~4 horas ahorradas por cada reporte mensual",
+        "headings": {
+          "scenario": "Por qué cada reporte para el consejo se vuelve un proyecto de fin de semana",
+          "prompt": "Cómo pedir a Zero que redacte un reporte para el consejo",
+          "steps": "Cómo Zero arma tu reporte para el consejo",
+          "nextActions": "Ajusta el formato, suma inversores al envío, programa la cadencia",
+          "integrations": "Integraciones requeridas: gestor de issues, GitHub y analítica",
+          "tips": "Buenas prácticas para reportes automatizados a inversores"
+        },
+        "scenario": "Los reportes al consejo siempre se ven fáciles en el calendario y difíciles la noche anterior. Alguien tiene que reunir la actividad de entregas del mes, reconciliarla con lo que realmente se había comprometido, desenterrar las cifras de tráfico y uso, y escribir una narrativa que no parezca un changelog. Cuatro horas perdidas, normalmente de madrugada, cada mes. Zero toma los datos en crudo (issues cerrados, PRs fusionados, tráfico, ingresos, victorias con clientes marcadas en Slack) y redacta el reporte completo con tu voz. Tú editas los matices y lo envías.",
+        "promptVariants": [
+          {
+            "label": "Detallado",
+            "prompt": "@Zero redacta nuestro reporte de consejo de abril. Reúne los issues cerrados de Linear, los PRs fusionados de GitHub, el tráfico de Plausible y las victorias con clientes que marqué en #wins. Estructúralo como Destacados, Métricas, Riesgos y Próximo mes."
+          },
+          {
+            "label": "Rápido",
+            "prompt": "@Zero redacta el reporte de consejo de este mes."
+          },
+          {
+            "label": "Programado",
+            "prompt": "@Zero el primer día de cada mes, redacta el reporte de consejo y envíamelo por DM para revisión."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Casey",
+            "text": "@Zero redacta el reporte de consejo de este mes"
+          },
+          {
+            "name": "Zero",
+            "text": "Redacté el reporte de consejo de abril. Destacados: lanzamos el onboarding por voz y firmamos dos clientes enterprise. Métricas: MRR +18%, DAU +23%, churn 2.1%. Riesgos: brecha en el pipeline a finales de mayo. Borrador completo en Notion, listo para tus ediciones."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero reúne los datos en crudo del mes",
+            "description": "Zero consulta tu gestor de issues para ver el trabajo cerrado, GitHub para los PRs fusionados y despliegues, tu herramienta de analítica para tendencias de tráfico y engagement, y cualquier canal de Slack que hayas marcado como fuente de señal. Todo queda en un solo conjunto de datos de trabajo."
+          },
+          {
+            "title": "Zero estructura el borrador en tu formato",
+            "description": "Tu orden preferido de secciones (Destacados, Métricas, Riesgos, Peticiones, Próximo mes) se mantiene consistente mes a mes. Zero completa cada sección con los datos en crudo y con los reportes previos de los que pueda aprender."
+          },
+          {
+            "title": "Zero entrega un borrador listo para editar",
+            "description": "El borrador completo aterriza en Notion con un enlace de vista previa en Slack. Tú reescribes las partes con matices, apruebas y envías. Los primeros borradores toman cuatro horas; las ediciones, veinte minutos."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Ajusta el formato",
+            "description": "Cambia el orden de las secciones o agrega una nueva sección recurrente.",
+            "examplePrompt": "@Zero a partir de ahora, incluye una sección 'Actualizaciones del equipo' entre Métricas y Riesgos."
+          },
+          {
+            "title": "Suma inversores al envío",
+            "description": "Envía el borrador aprobado a tu lista de inversores automáticamente.",
+            "examplePrompt": "@Zero en cuanto apruebe el borrador, envíalo a mi lista de inversores con el asunto 'vm0 Actualización de abril'."
+          },
+          {
+            "title": "Programa la cadencia",
+            "description": "Pasa de mensual a quincenal, o suma una inmersión trimestral.",
+            "examplePrompt": "@Zero también redacta un reporte quincenal ligero cada dos viernes con solo entregas y métricas, sin narrativa."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Linear (o tu gestor de issues). Zero lee los issues cerrados, las etiquetas y el progreso de los épicos para resumir las entregas. Se requiere acceso de lectura."
+          },
+          {
+            "description": "GitHub. Zero obtiene los PRs fusionados, despliegues y tags de release para anclar la narrativa de entregas. Se requiere acceso de lectura."
+          },
+          {
+            "description": "Plausible (o tu herramienta de analítica). Zero compara el tráfico y el engagement de este mes contra el mes anterior para la sección de métricas. Se requiere acceso de lectura."
+          },
+          {
+            "description": "Gmail. Opcional. Solo hace falta si quieres que Zero envíe el reporte aprobado directamente a tu lista de inversores."
+          },
+          {
+            "description": "Notion. Zero escribe el borrador en tu carpeta de reportes mensuales para que puedas editarlo, versionarlo y archivarlo. Se requiere acceso de escritura."
+          }
+        ],
+        "tips": [
+          "Marca las victorias con clientes en un canal de Slack dedicado durante el mes. Zero las recoge en automático, en vez de que intentes recordar 30 días de momentos.",
+          "Mantén estable el orden de las secciones mes a mes. Los inversores leen en diagonal, así que la consistencia pesa más que la novedad.",
+          "Redacta tres días antes del envío, no la noche misma. Zero redacta en minutos; el verdadero valor es el tiempo de edición que recuperas."
+        ]
+      },
+      "lead-followups": {
+        "title": "Puntúa cada lead y redacta el seguimiento antes de abrir tu inbox",
+        "description": "Zero lee los leads entrantes, los puntúa contra tu perfil de cliente ideal y redacta un seguimiento a medida usando las señales del propio prospecto. Tú decides a quién enviarle.",
+        "timeSaved": "~15 min ahorrados por lead",
+        "headings": {
+          "scenario": "Por qué el seguimiento de leads siempre se atrasa 48 horas",
+          "prompt": "Cómo pedir a Zero que puntúe y redacte seguimientos",
+          "steps": "Cómo Zero gestiona los leads entrantes",
+          "nextActions": "Afina la puntuación, envía los mejores en automático, registra en el CRM",
+          "integrations": "Integraciones requeridas: Gmail y Notion",
+          "tips": "Buenas prácticas para automatizar el seguimiento de leads"
+        },
+        "scenario": "Un buen lead se enfría en 48 horas. Eso es lo que suele tardar en notarse en Gmail, hacer la búsqueda rápida en LinkedIn y en la web de la empresa, y escribir un seguimiento que no sea genérico. Para cuando tu respuesta llega, el prospecto ya habló con dos competidores. Lead Follow-ups cierra esa brecha. Zero lee cada lead entrante, lo puntúa contra tu ICP, extrae lo que puede de las señales del prospecto (empresa, rol, etapa) y redacta el seguimiento. Tú revisas y envías. El lead recibe una respuesta personal en menos de una hora, no en dos días.",
+        "promptVariants": [
+          {
+            "label": "Detallado",
+            "prompt": "@Zero cada hora en horario laboral, revisa Gmail en busca de nuevos leads entrantes. Puntúa cada uno contra nuestro ICP (fundadores, Series A a B, B2B SaaS). Para puntuaciones superiores a 7, redacta un seguimiento personalizado usando el contexto de su empresa y rol. Publica los borradores en #sales-leads para revisión."
+          },
+          {
+            "label": "Rápido",
+            "prompt": "@Zero ¿hay leads nuevos hoy? Redacta seguimientos para los que valga la pena contestar."
+          },
+          {
+            "label": "Único",
+            "prompt": "@Zero lee este lead entrante, puntúalo y redacta un seguimiento."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Morgan",
+            "text": "@Zero ¿leads nuevos hoy?"
+          },
+          {
+            "name": "Zero",
+            "text": "3 nuevos leads entrantes esta mañana:\n\n🟢 Puntuación 9/10: Sarah Chen (VP Eng en Retool, B2B SaaS, Series C). Borrador listo en #sales-leads.\n🟡 Puntuación 6/10: John Park (fundador, etapa seed). Borrador listo, prioridad baja.\n🔴 Puntuación 3/10: Lead de un vertical fuera del ICP. No redacto borrador."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero lee los leads entrantes y los enriquece",
+            "description": "Para cada lead nuevo en Gmail, Zero extrae lo básico (nombre, email, empresa) y completa el resto con las señales del prospecto: datos públicos de la empresa, rol y cualquier enlace que haya incluido. Todo queda estructurado en un registro de lead."
+          },
+          {
+            "title": "Zero puntúa cada lead contra tu ICP",
+            "description": "Tu rúbrica de puntuación (etapa de la empresa, vertical, rol, tamaño) se mantiene consistente. Zero la aplica y devuelve una puntuación de 1 a 10 con una justificación de una línea. Los leads por debajo de tu umbral quedan registrados pero sin borrador."
+          },
+          {
+            "title": "Zero redacta seguimientos a medida para los leads con alta puntuación",
+            "description": "Para los leads por encima de tu umbral, Zero redacta un correo de seguimiento que referencia su contexto específico. Los borradores aterrizan en tu canal de revisión de ventas con la puntuación, la justificación y el resumen del prospecto. Tú revisas y envías con un clic."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Afina la puntuación",
+            "description": "Actualiza el ICP o los pesos según vayas aprendiendo qué convierte.",
+            "examplePrompt": "@Zero a partir de ahora, pondera B2B SaaS por 3x en lugar de 2x, y penaliza a las empresas pre-seed."
+          },
+          {
+            "title": "Envía los mejores en automático",
+            "description": "Para los leads que superan un alto umbral de confianza, envía el borrador de forma automática.",
+            "examplePrompt": "@Zero para los leads con puntuación 9 o 10 y un match de ICP evidente, envía el seguimiento en automático y avísame."
+          },
+          {
+            "title": "Registra cada lead en el CRM",
+            "description": "Empuja los leads puntuados y sus resultados al CRM para seguir el pipeline.",
+            "examplePrompt": "@Zero registra cada lead puntuado en nuestro CRM con la puntuación y si respondimos o no."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Gmail. Zero lee los leads entrantes, redacta los seguimientos y (si lo apruebas) envía las respuestas. Se requiere acceso de lectura y envío."
+          },
+          {
+            "description": "Notion (o tu CRM). Zero registra cada lead con su puntuación, justificación y resultado para la revisión del pipeline. Se requiere acceso de escritura a una base de datos."
+          }
+        ],
+        "tips": [
+          "Ajusta la rúbrica del ICP cada dos semanas. Las señales que predijeron conversión el trimestre pasado pueden no aplicar este trimestre.",
+          "Mantén a un humano en el loop durante el primer mes. Revisa al azar la puntuación de Zero en 20 leads antes de confiarle cualquier envío automático.",
+          "Separa la lógica de puntuación de la plantilla del borrador. Itera cada una por separado para saber qué cambio movió la aguja."
+        ]
+      },
+      "release-notes-generator": {
+        "title": "Escribe notas de versión que tus clientes sí van a leer",
+        "description": "Zero lee los commits y PRs fusionados de tu release, agrupa los cambios por impacto en el cliente y redacta notas de versión claras, específicas y listas para publicar.",
+        "timeSaved": "~1 hora ahorrada por release",
+        "headings": {
+          "scenario": "Por qué las notas de versión se escriben a las carreras o se omiten",
+          "prompt": "Cómo pedir a Zero que redacte notas de versión",
+          "steps": "Cómo Zero convierte los commits en notas para el cliente",
+          "nextActions": "Refina la voz, encadena con publicación, traduce",
+          "integrations": "Integraciones requeridas: GitHub y Slack",
+          "tips": "Buenas prácticas para notas de versión automatizadas"
+        },
+        "scenario": "Las notas de versión siempre son lo último que se escribe y lo primero que se recorta cuando el release va tarde. El problema es el material fuente: mensajes de commit escritos para ingenieros, títulos de PR que asumen conocimiento tribal, y 30 PRs fusionados que, individualmente, a tus usuarios no les interesan. Release Notes Generator da vuelta el flujo. Zero lee los commits y las descripciones de PR, filtra los cambios visibles para el cliente, los agrupa por tema (nuevas funciones, mejoras, correcciones) y redacta las notas con la voz que tus clientes realmente leen. Tú revisas, y el próximo release sale con notas en lugar de silencio.",
+        "promptVariants": [
+          {
+            "label": "Detallado",
+            "prompt": "@Zero para el release que publicamos hoy, lee todos los PRs fusionados desde el último tag de release. Agrupa por impacto en el cliente: nuevas funciones, mejoras, correcciones de bugs. Omite refactorizaciones internas y cambios en tests. Redacta notas orientadas al cliente con la voz de nuestro producto."
+          },
+          {
+            "label": "Rápido",
+            "prompt": "@Zero redacta las notas de versión del release de hoy."
+          },
+          {
+            "label": "Programado",
+            "prompt": "@Zero cada viernes a las 10am, redacta las notas de versión de la semana y publícalas en #release-notes para revisión."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Alex",
+            "text": "@Zero redacta las notas de versión del release de hoy"
+          },
+          {
+            "name": "Zero",
+            "text": "Redacté las notas para v2.8. Cubren 14 cambios visibles para el cliente (5 funciones, 6 mejoras, 3 correcciones). Omití 12 refactorizaciones internas y 4 PRs solo de tests. Vista previa en Notion, lista para tu edición."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero lee cada PR fusionado dentro de la ventana del release",
+            "description": "Zero obtiene los PRs fusionados desde el último tag de release, incluidos títulos, descripciones y etiquetas. Los cambios solo internos (refactors, tests, ajustes de CI) se filtran según tu convención de etiquetas."
+          },
+          {
+            "title": "Zero agrupa los cambios por impacto en el cliente",
+            "description": "Zero agrupa los PRs restantes en temas: nuevas funciones, mejoras y correcciones. Cada cambio se reescribe desde la descripción del PR a una línea orientada al cliente: lo bastante específica para ser útil y libre de jerga interna."
+          },
+          {
+            "title": "Zero redacta las notas con la voz de tu producto",
+            "description": "El borrador final aterriza en tu herramienta de docs o en Slack con secciones que siguen tu plantilla de notas de versión. Tú editas la voz y los matices, y publicas."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Refina la voz",
+            "description": "Actualiza las pautas que Zero usa para el tono y el formato.",
+            "examplePrompt": "@Zero a partir de ahora, omite los encabezados de Markdown en las notas de versión. Solo prosa simple."
+          },
+          {
+            "title": "Encadena con la publicación",
+            "description": "Empuja las notas aprobadas directamente a tus docs o blog.",
+            "examplePrompt": "@Zero en cuanto apruebe las notas, publícalas en la sección Releases de nuestras docs y publica el enlace en #announcements."
+          },
+          {
+            "title": "Traduce",
+            "description": "Genera notas en cada idioma que soportes.",
+            "examplePrompt": "@Zero traduce las notas de versión aprobadas al alemán, japonés y español. Mantén la estructura de secciones."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "GitHub. Zero lee los PRs fusionados, los mensajes de commit, las etiquetas y los tags de release. Se requiere acceso de lectura al repositorio."
+          },
+          {
+            "description": "Slack. Zero entrega los borradores al canal de revisión y publica las notas finales una vez aprobadas. Se requiere acceso de escritura al canal."
+          }
+        ],
+        "tips": [
+          "Etiqueta los PRs solo internos con una etiqueta consistente (como `internal` o `no-release-notes`). Zero solo puede omitir lo que marcas.",
+          "Mantén una guía de estilo corta para notas de versión en tus docs. Voz de cliente, verbos en activo, sin jerga interna. Zero la incorpora y la aplica en cada release.",
+          "Redacta las notas antes de que salga el release, no después. Revisar un borrador con el trabajo fresco es más rápido que reconstruir el contexto una semana más tarde."
+        ]
+      },
+      "meeting-action-items": {
+        "title": "Convierte cada reunión en una lista clara de tareas con responsables",
+        "description": "Zero lee las transcripciones de tus reuniones, extrae las tareas con responsables y fechas, y las publica en los canales de Slack correctos o en tu gestor de tareas.",
+        "timeSaved": "~20 min ahorrados por reunión",
+        "headings": {
+          "scenario": "Por qué las tareas de reunión se pierden en el camino",
+          "prompt": "Cómo pedir a Zero que extraiga las tareas de una reunión",
+          "steps": "Cómo Zero convierte las reuniones en trabajo rastreado",
+          "nextActions": "Envía a tareas, escala los ítems sin responsable, resume la semana",
+          "integrations": "Integraciones requeridas: Calendario, Slack y Notion",
+          "tips": "Buenas prácticas para dar seguimiento a reuniones"
+        },
+        "scenario": "Cada reunión produce tareas. Casi ninguna queda registrada. La reunión termina, la gente vuelve a su escritorio, y las tres cosas que Casey se comprometió a manejar esta semana viven solo en la memoria. Una semana después nadie recuerda quién era responsable de qué, y la siguiente reunión empieza con 'en qué nos quedamos?'. Meeting Action Items arregla esto sin agregar un paso más. Zero lee la transcripción de la reunión, extrae las tareas con su responsable y fecha, y las publica en el canal de Slack correcto o en tu gestor de tareas. Todos salen con la misma lista.",
+        "promptVariants": [
+          {
+            "label": "Detallado",
+            "prompt": "@Zero después de cada reunión grabada en mi calendario, extrae las tareas. Incluye el responsable, la fecha si se menciona y la cita original. Publica la lista en el canal de Slack del proyecto correspondiente."
+          },
+          {
+            "label": "Rápido",
+            "prompt": "@Zero saca las tareas de la revisión de diseño de esta mañana."
+          },
+          {
+            "label": "Por reunión",
+            "prompt": "@Zero para los standups de los lunes, registra también cada tarea en nuestro proyecto de Linear como un todo asignado al responsable."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Riley",
+            "text": "@Zero saca las tareas de la revisión de diseño de esta mañana"
+          },
+          {
+            "name": "Zero",
+            "text": "3 tareas de la revisión de diseño:\n\n• Alex: publicar los mockups actualizados en Figma antes del viernes.\n• Jordan: probar el nuevo flujo de onboarding con 3 usuarios beta esta semana.\n• Casey: decidir la paleta de colores final para el próximo lunes.\n\nRegistradas en la página de Notion del proyecto. ¿Creo también tareas en Linear?"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero lee la transcripción de la reunión",
+            "description": "Zero obtiene la transcripción desde tu herramienta de reuniones o lee las notas que dejaste en Slack. Si no hay transcripción, Zero puede trabajar a partir de las notas o de un enlace a la grabación."
+          },
+          {
+            "title": "Zero extrae las tareas con responsable y fecha",
+            "description": "Para cada tarea, Zero captura quién es responsable, a qué se comprometió y cuándo vence. Los ítems sin responsable quedan marcados para que alguien los reclame."
+          },
+          {
+            "title": "Zero publica la lista estructurada donde corresponde",
+            "description": "Los ítems extraídos aterrizan en el lugar correcto: el canal de Slack del proyecto, tus notas de reunión en Notion o tu gestor de tareas. Los responsables ven sus propios ítems; todo el equipo ve la lista completa."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Envía a tareas",
+            "description": "Crea tareas en tu gestor de forma automática para cada ítem.",
+            "examplePrompt": "@Zero a partir de ahora, crea una tarea de Linear por cada ítem, asignada al responsable con la fecha como plazo."
+          },
+          {
+            "title": "Escala los ítems sin responsable",
+            "description": "Resalta las tareas sin responsable al final de la reunión.",
+            "examplePrompt": "@Zero al final de cada resumen de reunión, marca cualquier tarea sin responsable y menciona con @ al líder del proyecto para que asigne uno."
+          },
+          {
+            "title": "Resume la semana",
+            "description": "Agrupa todas las tareas capturadas en reuniones a lo largo de la semana.",
+            "examplePrompt": "@Zero cada viernes a las 4pm, publica un resumen de todas las tareas capturadas en reuniones esta semana, agrupadas por responsable."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Google Calendar. Zero encuentra tus reuniones y obtiene las notas o transcripciones relacionadas. Se requiere acceso de lectura."
+          },
+          {
+            "description": "Slack. Zero publica las listas de tareas en los canales correspondientes y envía por DM a cada responsable su lista personal. Se requiere acceso de escritura al canal y a DMs."
+          },
+          {
+            "description": "Notion. Zero registra las tareas en tus notas de reunión para que el historial sea buscable. Se requiere acceso de escritura."
+          }
+        ],
+        "tips": [
+          "Escribe las tareas como oraciones completas durante la reunión. 'Casey decidirá X antes del viernes' es más claro que 'Casey: decidir X'. Zero maneja ambas, pero entrada limpia es salida limpia.",
+          "Separa las decisiones de las tareas. Las decisiones van a Document Decisions; las tareas van a los responsables. Mezclarlas diluye las dos.",
+          "Revisa la lista extraída antes de que termine la reunión. Treinta segundos de revisión atrapan atribuciones equivocadas que de otro modo vivirían una semana."
+        ]
       }
     },
     "filter": {
