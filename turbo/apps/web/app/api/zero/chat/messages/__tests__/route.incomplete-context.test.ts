@@ -272,4 +272,86 @@ describe("POST /api/zero/chat/messages — incomplete rounds context", () => {
     expect(prompt).toContain("…[truncated]");
     expect(prompt).not.toContain("x".repeat(5000));
   });
+
+  it("handles a long thread (≥100 messages) without scanning all of history", async () => {
+    // Seed 50 successive rounds (~100 chat_messages rows — one user + one
+    // placeholder assistant per round) so the thread is well past the
+    // PREVIOUS_CONTEXT_MESSAGES bound and past the incomplete-rounds 20-cap.
+    // The old `getMessagesByThreadId` scan + JS filter would read every row
+    // on every send; under the bounded rewrite this send must still succeed
+    // in reasonable time.
+    const first = await sendMessage({ agentId, prompt: "round 0" });
+    for (let i = 1; i < 50; i++) {
+      await sendMessage({
+        agentId,
+        prompt: `round ${i}`,
+        threadId: first.threadId,
+      });
+    }
+
+    const final = await sendMessage({
+      agentId,
+      prompt: "final",
+      threadId: first.threadId,
+    });
+
+    const run = await getTestRun(final.runId);
+    // None of the old rounds were cancelled, so the incomplete-rounds block
+    // must not appear — this also confirms the anchor subquery correctly
+    // returns no candidates when every run in the thread is healthy.
+    expect(run.appendSystemPrompt ?? "").not.toContain(
+      "# Incomplete Rounds Context",
+    );
+  });
+
+  it("anchors incomplete rounds correctly on a long thread with a mid-thread success", async () => {
+    // Pre-success tail: 30+ cancelled rounds the anchor must exclude.
+    const first = await sendMessage({ agentId, prompt: "early fail" });
+    await setTestRunStatus(first.runId, "cancelled");
+
+    for (let i = 0; i < 30; i++) {
+      const sent = await sendMessage({
+        agentId,
+        prompt: `pre-success ${i}`,
+        threadId: first.threadId,
+      });
+      await setTestRunStatus(sent.runId, "cancelled");
+    }
+
+    // Mid-thread success — stamps `agentSessionId` onto agent_runs.result,
+    // which is what the SQL anchor subquery keys off.
+    const success = await sendMessage({
+      agentId,
+      prompt: "success run",
+      threadId: first.threadId,
+    });
+    const { agentSessionId } = await completeTestRun(
+      user.userId,
+      success.runId,
+    );
+    await setTestRunResult(success.runId, { agentSessionId });
+
+    // Post-success incomplete round — must appear in incompleteContext.
+    const afterSuccess = await sendMessage({
+      agentId,
+      prompt: "post-success cancel",
+      threadId: first.threadId,
+    });
+    await setTestRunStatus(afterSuccess.runId, "cancelled");
+
+    const next = await sendMessage({
+      agentId,
+      prompt: "final",
+      threadId: first.threadId,
+    });
+
+    const run = await getTestRun(next.runId);
+    const prompt = run.appendSystemPrompt ?? "";
+    // Rounds after the anchor survive; rounds before it are dropped even
+    // though the thread has 30+ of them just upstream of the success.
+    expect(prompt).toContain("User: post-success cancel");
+    expect(prompt).not.toContain("User: pre-success 0");
+    expect(prompt).not.toContain("User: pre-success 29");
+    expect(prompt).not.toContain("User: early fail");
+  });
 });

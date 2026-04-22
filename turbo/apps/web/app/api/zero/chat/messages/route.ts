@@ -26,9 +26,10 @@ import {
 import {
   insertChatMessage,
   getLatestSessionIdForThread,
-  getMessagesByThreadId,
+  getLatestMessagesByThreadId,
   getIncompleteRoundsSinceLastSuccess,
   publishThreadListChanged,
+  PREVIOUS_CONTEXT_MESSAGES,
 } from "../../../../../src/lib/zero/chat-thread/chat-message-service";
 import { generateChatTitle } from "../../../../../src/lib/zero/ai/lightweight-model";
 import { zeroAgents } from "../../../../../src/db/schema/zero-agent";
@@ -194,22 +195,25 @@ async function resolveThread(
     };
   }
 
-  const thread = await getChatThread(existingThreadId, userId);
-  const sessionId = await getLatestSessionIdForThread(thread.id);
-  const messages = await getMessagesByThreadId(thread.id);
-  const previousContext = messages
-    .filter((m) => {
-      return m.content !== null;
-    })
-    .slice(-10)
-    .map((m) => {
-      return {
-        role: m.role as "user" | "assistant",
-        content: m.content as string,
-      };
-    });
+  // All four reads key off `(existingThreadId, userId)` and have no data
+  // dependency on each other. Running them in parallel drops the happy-path
+  // wall time to the slowest of the four, not their sum.
+  const [thread, sessionId, messages, incompleteRows] = await Promise.all([
+    getChatThread(existingThreadId, userId),
+    getLatestSessionIdForThread(existingThreadId),
+    getLatestMessagesByThreadId(existingThreadId, PREVIOUS_CONTEXT_MESSAGES),
+    getIncompleteRoundsSinceLastSuccess(existingThreadId),
+  ]);
 
-  const incompleteRows = await getIncompleteRoundsSinceLastSuccess(thread.id);
+  // `messages` already satisfies `content IS NOT NULL` and role IN
+  // ('user','assistant') in SQL — no further filtering needed.
+  const previousContext = messages.map((m) => {
+    return {
+      role: m.role as "user" | "assistant",
+      content: m.content as string,
+    };
+  });
+
   const incompleteContext = buildWebChatIncompleteContext(
     groupIncompleteRoundsByRunId(incompleteRows),
   );
