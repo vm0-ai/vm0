@@ -1,5 +1,17 @@
 # Changelog
 
+## [8.222.0](https://github.com/vm0-ai/vm0/compare/core-v8.221.0...core-v8.222.0) (2026-04-22)
+
+
+### Features
+
+* add deepseek-chat to vm0 managed models with feature flag ([#10501](https://github.com/vm0-ai/vm0/issues/10501)) ([6d13890](https://github.com/vm0-ai/vm0/commit/6d13890d1c73f94372810b251241609579a16ce2))
+
+
+### Bug Fixes
+
+* skip auto-focus on touch devices in ZeroChatComposer ([#10496](https://github.com/vm0-ai/vm0/issues/10496)) ([2c90017](https://github.com/vm0-ai/vm0/commit/2c90017ef46dae13b52426038025e22bb9cc9f88))
+
 ## [8.221.0](https://github.com/vm0-ai/vm0/compare/core-v8.220.0...core-v8.221.0) (2026-04-22)
 
 

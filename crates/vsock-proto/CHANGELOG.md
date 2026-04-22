@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.2](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.9.1...vsock-proto-v0.9.2) (2026-04-22)
+
+
+### Bug Fixes
+
+* skip auto-focus on touch devices in ZeroChatComposer ([#10496](https://github.com/vm0-ai/vm0/issues/10496)) ([2c90017](https://github.com/vm0-ai/vm0/commit/2c90017ef46dae13b52426038025e22bb9cc9f88))
+
 ## [0.9.1](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.9.0...vsock-proto-v0.9.1) (2026-04-17)
 
 

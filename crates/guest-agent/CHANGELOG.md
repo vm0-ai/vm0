@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.21.6...guest-agent-v0.21.7) (2026-04-22)
+
+
+### Bug Fixes
+
+* skip auto-focus on touch devices in ZeroChatComposer ([#10496](https://github.com/vm0-ai/vm0/issues/10496)) ([2c90017](https://github.com/vm0-ai/vm0/commit/2c90017ef46dae13b52426038025e22bb9cc9f88))
+
 ## [0.21.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.21.5...guest-agent-v0.21.6) (2026-04-21)
 
 

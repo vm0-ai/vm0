@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.279.0](https://github.com/vm0-ai/vm0/compare/app-v0.278.0...app-v0.279.0) (2026-04-22)
+
+
+### Features
+
+* add deepseek-chat to vm0 managed models with feature flag ([#10501](https://github.com/vm0-ai/vm0/issues/10501)) ([6d13890](https://github.com/vm0-ai/vm0/commit/6d13890d1c73f94372810b251241609579a16ce2))
+* add mod+alt+. keyboard shortcut to open model picker ([#10503](https://github.com/vm0-ai/vm0/issues/10503)) ([ece4fb2](https://github.com/vm0-ai/vm0/commit/ece4fb25b091792403682cc949a2553a7596d179))
+
+
+### Bug Fixes
+
+* invalidate agentById cache after agent mutations ([#10502](https://github.com/vm0-ai/vm0/issues/10502)) ([4eeac62](https://github.com/vm0-ai/vm0/commit/4eeac62d2d42152f2269e37e5891e22ced02cd79))
+* skip auto-focus on touch devices in ZeroChatComposer ([#10496](https://github.com/vm0-ai/vm0/issues/10496)) ([2c90017](https://github.com/vm0-ai/vm0/commit/2c90017ef46dae13b52426038025e22bb9cc9f88))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.222.0
+
 ## [0.278.0](https://github.com/vm0-ai/vm0/compare/app-v0.277.0...app-v0.278.0) (2026-04-22)
 
 
