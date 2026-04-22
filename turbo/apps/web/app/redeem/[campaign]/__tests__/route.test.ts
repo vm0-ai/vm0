@@ -200,9 +200,11 @@ describe("GET /redeem/[campaign]", () => {
         line_items: [{ price: PRICE_ID, quantity: 1 }],
         discounts: [{ coupon: COUPON_ID }],
         // Stripe returns to the platform app (NEXT_PUBLIC_APP_URL), never
-        // back to the web origin — so localhost dev entry still lands on the
-        // real dashboard after payment.
-        success_url: "http://app.localhost:3002/",
+        // back to the web origin — so localhost dev entry still lands on
+        // the real dashboard after payment. Success lands on the status
+        // page so the user sees a branded confirmation; cancel goes home.
+        success_url:
+          "http://app.localhost:3002/redeem/status?state=already_redeemed",
         cancel_url: "http://app.localhost:3002/",
         metadata: {
           orgId: user.orgId,

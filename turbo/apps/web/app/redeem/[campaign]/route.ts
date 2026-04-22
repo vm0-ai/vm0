@@ -83,13 +83,15 @@ export async function GET(
     // URL means devs hitting localhost:3000/redeem/... still end up on the
     // real platform after payment instead of bouncing to a local marketing
     // page.
+    // success → status page so users see a branded confirmation card
+    // (matches what they see on repeat clicks via startOrResumeRedemption).
     const appHome = new URL("/", NEXT_PUBLIC_APP_URL).toString();
     let outcome;
     try {
       outcome = await startOrResumeRedemption({
         orgId,
         campaignKey,
-        successUrl: appHome,
+        successUrl: statusPage("already_redeemed").toString(),
         cancelUrl: appHome,
       });
     } catch (err) {
