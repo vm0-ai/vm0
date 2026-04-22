@@ -70,6 +70,10 @@ interface ModelProviderPickerProps {
    * space is tight and the full breakdown lives in the open dropdown.
    */
   compactTrigger?: boolean;
+  /** Controlled open state for programmatic toggle (e.g. keyboard shortcut). */
+  open?: boolean;
+  /** Callback when the open state changes. */
+  onOpenChange?: (open: boolean) => void;
 }
 
 // Radix Select reserves the empty string for "no value" and throws if a
@@ -179,6 +183,8 @@ export function ModelProviderPicker({
   triggerClassName,
   sessionProviderType,
   compactTrigger = false,
+  open,
+  onOpenChange,
 }: ModelProviderPickerProps) {
   const groups = providers
     .map((provider) => {
@@ -226,6 +232,8 @@ export function ModelProviderPicker({
       onValueChange={(raw) => {
         onChange(decodeValue(raw));
       }}
+      open={open}
+      onOpenChange={onOpenChange}
     >
       <SelectTrigger
         aria-label={triggerAriaLabel}

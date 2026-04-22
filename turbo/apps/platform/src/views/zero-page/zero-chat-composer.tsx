@@ -1,6 +1,7 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
 import type React from "react";
+import { useState } from "react";
 import type { ChangeEvent, ClipboardEvent, DragEvent } from "react";
 import {
   useGet,
@@ -644,6 +645,7 @@ export function ZeroChatComposer({
 }: ZeroChatComposerProps) {
   const showAddDialog = useGet(showAddDialog$);
   const setShowAddDialog = useSet(setShowAddDialog$);
+  const [modelPickerOpen, setModelPickerOpen] = useState(false);
 
   const resolved = useResolvedComposerSignals(
     input,
@@ -824,6 +826,11 @@ export function ZeroChatComposer({
         "mod+b": () => {
           toggleSidebar();
         },
+        "mod+alt+.": () => {
+          if (modelPicker) {
+            setModelPickerOpen(true);
+          }
+        },
       },
       e,
     );
@@ -938,6 +945,8 @@ export function ZeroChatComposer({
                     )}
                     sessionProviderType={modelPicker.sessionProviderType}
                     compactTrigger
+                    open={modelPickerOpen}
+                    onOpenChange={setModelPickerOpen}
                   />
                 )}
                 <MicButton
