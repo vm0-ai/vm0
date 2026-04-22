@@ -416,6 +416,35 @@ describe("zero-schedule signals", () => {
       );
     });
 
+    it("should not toast when save is aborted mid-flight", async () => {
+      // Aborts on DomCallback paths (e.g. navigation, unmount) are silent by
+      // design — detach() swallows AbortError. The error-toast helper must
+      // not surface these as user-visible toasts.
+      const errorSpy = vi.spyOn(toast, "error").mockImplementation(() => {
+        return "" as unknown as ReturnType<typeof toast.error>;
+      });
+
+      await setup();
+
+      await expect(
+        context.store.set(
+          saveZeroSchedule$,
+          {
+            prompt: "Aborted save",
+            freq: "every_day",
+            date: "2030-01-01",
+            hour: 9,
+            minute: 0,
+            timezone: "UTC",
+            intervalSeconds: 0,
+          },
+          AbortSignal.abort(),
+        ),
+      ).rejects.toThrow();
+
+      expect(errorSpy).not.toHaveBeenCalled();
+    });
+
     it("should throw on API error during save", async () => {
       server.use(
         mockApi(zeroSchedulesMainContract.deploy, ({ respond }) => {

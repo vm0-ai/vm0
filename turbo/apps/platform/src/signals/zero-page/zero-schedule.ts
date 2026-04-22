@@ -19,6 +19,7 @@ import {
   type CronTimeOption,
 } from "./cron.ts";
 import { accept, ApiError } from "../../lib/accept.ts";
+import { throwIfAbort } from "../utils.ts";
 
 // ---------------------------------------------------------------------------
 // State
@@ -256,9 +257,11 @@ export interface ZeroScheduleSaveParams {
 
 // Non-API errors (e.g. validation from buildScheduleBody) would otherwise be
 // silently swallowed by detach(Reason.DomCallback). ApiError is skipped
-// because accept() already toasts it.
+// because accept() already toasts it. AbortError is skipped because aborts
+// on DomCallback paths are intentionally silent (component unmount, navigation).
 function runWithErrorToast<T>(fn: () => Promise<T>): Promise<T> {
   return fn().catch((error: unknown) => {
+    throwIfAbort(error);
     if (!(error instanceof ApiError)) {
       const message = error instanceof Error ? error.message : "Save failed";
       toast.error(message);
