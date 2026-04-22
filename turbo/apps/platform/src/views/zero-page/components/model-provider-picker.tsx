@@ -262,6 +262,23 @@ function TriggerLabel({
   );
 }
 
+// Read-only span reuses the trigger's geometry classes but must not echo
+// its interactive affordances (hover/focus/open-state), so callers don't
+// have to branch their className for the disabled case.
+function stripInteractiveClasses(cls: string | undefined): string | undefined {
+  if (!cls) return cls;
+  return cls
+    .split(/\s+/)
+    .filter((c) => {
+      return (
+        !c.startsWith("hover:") &&
+        !c.startsWith("focus:") &&
+        !c.startsWith("data-[state=")
+      );
+    })
+    .join(" ");
+}
+
 function DisabledPickerLabel({
   providers,
   value,
@@ -290,8 +307,8 @@ function DisabledPickerLabel({
     <span
       aria-label={triggerAriaLabel}
       className={cn(
-        "inline-flex items-center px-2 text-sm text-muted-foreground",
-        triggerClassName,
+        "inline-flex items-center px-2 text-sm text-muted-foreground cursor-default",
+        stripInteractiveClasses(triggerClassName),
       )}
     >
       <TriggerLabel
