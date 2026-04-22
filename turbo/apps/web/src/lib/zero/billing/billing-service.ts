@@ -443,39 +443,56 @@ export async function handleInvoicePaid(invoice: InvoiceInput): Promise<void> {
     return;
   }
 
-  // Grant credits and mark invoice as processed in a transaction
-  await db.transaction(async (tx) => {
-    // Settle expired credits before granting new ones
+  // The subscription line item's period.end is the actual subscription
+  // billing-cycle end — i.e. the time the customer is paying through.
+  // (The top-level invoice.period_end is the "period over which billables
+  // accrued" and for a renewal invoice collapses to the invoice creation
+  // moment, not the next renewal date — do NOT use it here.)
+  const subscriptionLine = invoice.lines.data.find((line) => {
+    return line.parent?.type === "subscription_item_details";
+  });
+  const periodEndUnix = subscriptionLine?.period.end;
+  if (!periodEndUnix) {
+    throw new Error(
+      `invoice.paid has no subscription line item with period.end — cannot create expiry record (invoiceId=${invoice.id}, orgId=${org.orgId})`,
+    );
+  }
+  const periodEndDate = new Date(periodEndUnix * 1000);
+  const expiresAt = new Date(periodEndDate);
+  expiresAt.setMonth(expiresAt.getMonth() + 1);
+
+  // Grant credits and mark invoice as processed in a transaction.
+  //
+  // The `lastProcessedInvoiceId` fast path above catches sequential retries
+  // (first delivery commits, later retry sees the updated value). It fails
+  // open when two deliveries race: both reads see the old value, both pass,
+  // and both would grant credits. The durable guard is `createExpiresRecord`
+  // — it inserts with ON CONFLICT DO NOTHING on the
+  // `(org_id, stripe_invoice_id)` unique index, and a losing concurrent tx
+  // blocks until the winner commits then observes the conflict, so only one
+  // caller sees `inserted=true`. Gate `grantOrgCredits` on that flag.
+  const granted = await db.transaction(async (tx) => {
+    // Settle expired credits before granting new ones. Safe to run in the
+    // losing tx too: `expireCredits` takes SELECT FOR UPDATE on expired
+    // rows, so the loser sees `remaining = 0` once the winner commits and
+    // no-ops.
     await expireCredits(tx, org.orgId);
 
-    await grantOrgCredits(tx, org.orgId, credits);
-
-    // The subscription line item's period.end is the actual subscription
-    // billing-cycle end — i.e. the time the customer is paying through.
-    // (The top-level invoice.period_end is the "period over which billables
-    // accrued" and for a renewal invoice collapses to the invoice creation
-    // moment, not the next renewal date — do NOT use it here.)
-    const subscriptionLine = invoice.lines.data.find((line) => {
-      return line.parent?.type === "subscription_item_details";
-    });
-    const periodEndUnix = subscriptionLine?.period.end;
-    if (!periodEndUnix) {
-      throw new Error(
-        `invoice.paid has no subscription line item with period.end — cannot create expiry record (invoiceId=${invoice.id}, orgId=${org.orgId})`,
-      );
-    }
-
-    // Calculate expires_at: currentPeriodEnd + 1 month
-    const periodEndDate = new Date(periodEndUnix * 1000);
-    const expiresAt = new Date(periodEndDate);
-    expiresAt.setMonth(expiresAt.getMonth() + 1);
-
-    await createExpiresRecord(tx, org.orgId, {
+    const inserted = await createExpiresRecord(tx, org.orgId, {
       source: "subscription_renewal",
       stripeInvoiceId: invoice.id,
       amount: credits,
       expiresAt,
     });
+    if (!inserted) {
+      log.info(
+        "invoice.paid already processed — skipping (concurrent delivery)",
+        { invoiceId: invoice.id, orgId: org.orgId },
+      );
+      return false;
+    }
+
+    await grantOrgCredits(tx, org.orgId, credits);
 
     await tx
       .update(orgMetadata)
@@ -485,7 +502,11 @@ export async function handleInvoicePaid(invoice: InvoiceInput): Promise<void> {
         updatedAt: new Date(),
       })
       .where(eq(orgMetadata.orgId, org.orgId));
+
+    return true;
   });
+
+  if (!granted) return;
 
   // Reset member credit cap flags for the new billing period
   await resetMemberCreditFlags(org.orgId);

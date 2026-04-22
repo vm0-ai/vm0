@@ -678,6 +678,55 @@ describe("POST /api/webhooks/stripe", () => {
       expect(oldRecord?.remaining).toBe(0);
     });
 
+    it("concurrent duplicate invoice.paid grants credits only once", async () => {
+      // Two webhook deliveries racing in parallel both read the old
+      // `lastProcessedInvoiceId` (null) and pass the fast-path check. Without
+      // the inner `createExpiresRecord` idempotency gate both would call
+      // `grantOrgCredits` and double the balance; the unique index ensures
+      // only one transaction successfully inserts the expires record, and
+      // the other bails before granting.
+      const cusId = uniqueId("cus-race");
+      const subId = uniqueId("sub-race");
+      const invId = uniqueId("inv-race");
+      const periodEnd = Math.floor(Date.now() / 1000) + 30 * 86400;
+
+      await updateOrgStripeFields(user.orgId, {
+        stripeCustomerId: cusId,
+        stripeSubscriptionId: subId,
+      });
+
+      stripeMocks.subscriptionsRetrieve.mockResolvedValue({
+        id: subId,
+        items: { data: [{ price: { id: TEST_PRICE_PRO } }] },
+      });
+
+      const creditsBefore = await getOrgCredits(user.orgId);
+
+      const payload = {
+        id: invId,
+        customer: cusId,
+        lines: invoiceLinesWithSubscriptionPeriod(periodEnd),
+        parent: { subscription_details: { subscription: subId } },
+      };
+
+      const [r1, r2] = await Promise.all([
+        sendWebhookEvent("invoice.paid", payload),
+        sendWebhookEvent("invoice.paid", payload),
+      ]);
+
+      expect(r1.status).toBe(200);
+      expect(r2.status).toBe(200);
+
+      const creditsAfter = await getOrgCredits(user.orgId);
+      expect(creditsAfter! - creditsBefore!).toBe(20_000);
+
+      const records = await findCreditExpiresRecords(user.orgId);
+      const renewalRecords = records.filter((r) => {
+        return r.stripeInvoiceId === invId;
+      });
+      expect(renewalRecords).toHaveLength(1);
+    });
+
     it("duplicate invoice.paid is idempotent for expires records", async () => {
       const cusId = uniqueId("cus-exp-idem");
       const subId = uniqueId("sub-exp-idem");
@@ -803,8 +852,14 @@ describe("POST /api/webhooks/stripe", () => {
       );
     });
 
-    it("auto-recharge does NOT create expires record", async () => {
+    it("auto-recharge writes a sentinel expires record with far-future expires_at", async () => {
+      // The record is the idempotency marker for the auto-recharge invoice;
+      // `expires_at` is set past any realistic date so `expireCredits` never
+      // settles it — preserving the "PAYG credits never expire" contract
+      // while letting the unique `(org_id, stripe_invoice_id)` index block
+      // double-delivery from double-granting.
       const cusId = uniqueId("cus-exp-auto");
+      const invId = uniqueId("inv-auto-exp");
 
       await updateOrgStripeFields(user.orgId, {
         stripeCustomerId: cusId,
@@ -814,7 +869,7 @@ describe("POST /api/webhooks/stripe", () => {
       });
 
       const response = await sendWebhookEvent("invoice.paid", {
-        id: uniqueId("inv-auto-exp"),
+        id: invId,
         customer: cusId,
         metadata: {
           type: "auto_recharge",
@@ -827,7 +882,59 @@ describe("POST /api/webhooks/stripe", () => {
       expect(response.status).toBe(200);
 
       const records = await findCreditExpiresRecords(user.orgId);
-      expect(records).toHaveLength(0);
+      const autoRecharge = records.filter((r) => {
+        return r.source === "auto_recharge";
+      });
+      expect(autoRecharge).toHaveLength(1);
+      expect(autoRecharge[0]?.stripeInvoiceId).toBe(invId);
+      expect(autoRecharge[0]?.amount).toBe(5000);
+      expect(
+        autoRecharge[0]?.expiresAt.getUTCFullYear(),
+      ).toBeGreaterThanOrEqual(2999);
+    });
+
+    it("concurrent duplicate auto-recharge grants credits only once", async () => {
+      // Without the expires-record idempotency gate, two racing deliveries
+      // both pass the metadata check and both call grantOrgCredits.
+      const cusId = uniqueId("cus-auto-race");
+      const invId = uniqueId("inv-auto-race");
+
+      await updateOrgStripeFields(user.orgId, {
+        stripeCustomerId: cusId,
+      });
+      await updateOrgAutoRecharge(user.orgId, {
+        autoRechargePendingAt: new Date(),
+      });
+
+      const creditsBefore = await getOrgCredits(user.orgId);
+
+      const payload = {
+        id: invId,
+        customer: cusId,
+        metadata: {
+          type: "auto_recharge",
+          orgId: user.orgId,
+          creditsAmount: "5000",
+        },
+        parent: null,
+      };
+
+      const [r1, r2] = await Promise.all([
+        sendWebhookEvent("invoice.paid", payload),
+        sendWebhookEvent("invoice.paid", payload),
+      ]);
+
+      expect(r1.status).toBe(200);
+      expect(r2.status).toBe(200);
+
+      const creditsAfter = await getOrgCredits(user.orgId);
+      expect(creditsAfter! - creditsBefore!).toBe(5000);
+
+      const records = await findCreditExpiresRecords(user.orgId);
+      const autoRecharge = records.filter((r) => {
+        return r.stripeInvoiceId === invId;
+      });
+      expect(autoRecharge).toHaveLength(1);
     });
   });
 
