@@ -114,10 +114,10 @@ export const watchOrgSwitch$ = command(async ({ get }, signal: AbortSignal) => {
 
   // Listener stays `() => void`: Clerk's `ListenerCallback` signature
   // is not awaited, and returning a promise from it would trip
-  // `typescript/no-misused-promises`. The promise chain below is
-  // terminated by `.catch(() => undefined)`, which satisfies
-  // `typescript/no-floating-promises` and ensures the reload still
-  // fires even if the token rotation rejects.
+  // `typescript/no-misused-promises`. The promise chain below handles
+  // both fulfillment and rejection in `.then(reload, reload)`, which
+  // satisfies `typescript/no-floating-promises` and ensures the
+  // reload still fires even if the token rotation rejects.
   const unsubscribe = clerk.addListener(() => {
     const newOrgId = clerk.organization?.id ?? undefined;
     if (newOrgId === prevOrgId) {
@@ -129,21 +129,21 @@ export const watchOrgSwitch$ = command(async ({ get }, signal: AbortSignal) => {
     // org_id claim before the reload — a brand-new tab opened in
     // parallel would otherwise read the stale cookie JWT (which bakes
     // org_id at mint time) and see the old org until the ~60s TTL
-    // expires. The trailing `.catch(() => undefined)` swallows refresh
-    // failures so the reload still runs — the fresh page load will
-    // re-establish Clerk state regardless.
-    clerk.session
-      ?.getToken({ skipCache: true })
-      .then(() => {
-        // Full page load is required because server-side data (agents,
-        // jobs, secrets, etc.) is scoped to the active organization and
-        // multiple signal trees depend on the org context established
-        // at bootstrap time.
-        location.href = "/";
-      })
-      .catch(() => {
-        return undefined;
-      });
+    // expires. Passing the same reload handler as both fulfilled and
+    // rejected callbacks to `.then` guarantees the reload runs in
+    // both cases: on success the fresh JWT is already in the cookie;
+    // on failure the full page load will re-establish Clerk state
+    // regardless. This form also satisfies
+    // `typescript/no-floating-promises`, which requires a rejection
+    // handler on the terminal call.
+    const reload = (): void => {
+      // Full page load is required because server-side data (agents,
+      // jobs, secrets, etc.) is scoped to the active organization and
+      // multiple signal trees depend on the org context established
+      // at bootstrap time.
+      location.href = "/";
+    };
+    clerk.session?.getToken({ skipCache: true }).then(reload, reload);
   });
   signal.addEventListener("abort", unsubscribe);
 });
