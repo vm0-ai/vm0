@@ -202,9 +202,20 @@ jobs:
             # A late pull_request:synchronize run can reach here after
             # cleanup.yml has already stopped the runner — deploying again
             # would resurrect a stale service that no cleanup will ever reach.
-            STATE=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" \
+            #
+            # Retry transient API failures, then fail loudly if the state
+            # stays unknown. Silently skipping would let the PR merge without
+            # runner coverage; fail-open would risk deploying a zombie runner.
+            # A red check is the right middle ground — re-run the job once
+            # the API recovers.
+            STATE=$(curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors \
+              -H "Authorization: Bearer $GH_TOKEN" \
               "https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}" \
               | jq -r .state)
+            if [ -z "$STATE" ]; then
+              echo "::error::Failed to query PR #${{ github.event.pull_request.number }} state from GitHub API after retries"
+              exit 1
+            fi
             if [ "$STATE" != "open" ]; then
               echo "::warning::PR #${{ github.event.pull_request.number }} is ${STATE}, skipping job-ref to prevent stale runner deployment"
               exit 0
