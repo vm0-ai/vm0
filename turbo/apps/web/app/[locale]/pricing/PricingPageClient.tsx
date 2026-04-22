@@ -425,7 +425,7 @@ export function PricingPageClient() {
                   <TableRow
                     feature={t("tableFeatures.creditsRollover")}
                     description={t("tableFeatures.creditsRolloverDesc")}
-                    free={false}
+                    free={t("tableValues.oneMonth")}
                     pro={t("tableValues.oneMonth")}
                     team={t("tableValues.oneMonth")}
                   />
