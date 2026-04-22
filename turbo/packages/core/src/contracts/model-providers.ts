@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { FeatureSwitchKey } from "../feature-switch-key";
 import type { ExpandedFirewallConfig } from "./firewalls";
 
 /**
@@ -41,6 +42,7 @@ interface Vm0ModelConfig {
   // different identifier than what we show to users (e.g. OpenRouter uses
   // "z-ai/glm-5.1" while our UI shows "glm-5.1").
   apiModel?: string;
+  featureFlag?: FeatureSwitchKey;
 }
 
 // Key order is load-bearing: `Object.keys()` preserves insertion order and
@@ -80,13 +82,29 @@ export const VM0_MODEL_TO_PROVIDER: Record<string, Vm0ModelConfig> = {
     concreteType: "minimax-api-key",
     vendor: "minimax",
   },
+  "deepseek-chat": {
+    concreteType: "deepseek-api-key",
+    vendor: "deepseek",
+    featureFlag: FeatureSwitchKey.Vm0DeepseekModel,
+  },
 };
 
 /**
- * Return all VM0 managed models visible to the caller.
+ * Return the VM0 managed models visible to the caller, filtered by feature
+ * switches. Models without a featureFlag are always visible; models with a
+ * flag require the flag to be enabled in the supplied feature map.
  */
-export function getVm0VisibleModels(): string[] {
-  return Object.keys(VM0_MODEL_TO_PROVIDER);
+export function getVm0VisibleModels(
+  features?: Partial<Record<FeatureSwitchKey, boolean>>,
+): string[] {
+  return Object.entries(VM0_MODEL_TO_PROVIDER)
+    .filter(([, { featureFlag }]) => {
+      if (!featureFlag) return true;
+      return features?.[featureFlag] === true;
+    })
+    .map(([model]) => {
+      return model;
+    });
 }
 
 /**

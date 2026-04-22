@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { FeatureSwitchKey } from "../../feature-switch-key";
 import {
   getProviderBaseUrl,
   areProvidersCompatible,
@@ -135,11 +136,26 @@ describe("model selection for Anthropic-native providers", () => {
 });
 
 describe("getVm0VisibleModels", () => {
-  it("all models are always visible (no feature flags)", () => {
+  it("returns all models when no features are provided", () => {
     const models = getVm0VisibleModels();
     expect(models).toContain("kimi-k2.5");
     expect(models).toContain("MiniMax-M2.7");
     expect(models).toContain("glm-5.1");
+    expect(models).not.toContain("deepseek-chat");
+  });
+
+  it("hides deepseek-chat when Vm0DeepseekModel flag is disabled", () => {
+    const models = getVm0VisibleModels({
+      [FeatureSwitchKey.Vm0DeepseekModel]: false,
+    });
+    expect(models).not.toContain("deepseek-chat");
+  });
+
+  it("shows deepseek-chat when Vm0DeepseekModel flag is enabled", () => {
+    const models = getVm0VisibleModels({
+      [FeatureSwitchKey.Vm0DeepseekModel]: true,
+    });
+    expect(models).toContain("deepseek-chat");
   });
 });
 
