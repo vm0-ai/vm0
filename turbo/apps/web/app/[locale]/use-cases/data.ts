@@ -742,34 +742,6 @@ export const USE_CASES: UseCase[] = [
   },
 
   {
-    slug: "managed-agent-workers",
-    color: "#8ea0be",
-    avatar: {
-      rotation: 3,
-      skin: 2,
-      hairStyle: 4,
-      hairColor: 4,
-      expression: 4,
-      intensity: "d",
-    },
-    roles: ["engineering"],
-    capability: "multi-tool",
-    model: "Claude 4 Sonnet",
-    connectors: [ANTHROPIC_MANAGED_AGENTS, GITHUB, SLACK],
-    integrations: [
-      { connector: ANTHROPIC_MANAGED_AGENTS, required: true },
-      { connector: GITHUB, required: true },
-    ],
-    relatedSlugs: ["tech-debt-scan", "pr-review", "file-bugs-from-slack"],
-    stepCount: 3,
-    nextActionCount: 3,
-    integrationCount: 2,
-    tipCount: 3,
-    promptVariantCount: 3,
-    slackPreviewCount: 2,
-  },
-
-  {
     slug: "marketing-emails",
     color: "#d68c7c",
     avatar: {
@@ -1251,7 +1223,7 @@ export const USE_CASES: UseCase[] = [
       { connector: GITHUB, required: false },
     ],
     relatedSlugs: [
-      "managed-agent-workers",
+      "daily-engineering-brief",
       "build-with-v0",
       "file-bugs-from-slack",
     ],
@@ -1577,101 +1549,6 @@ export const USE_CASES: UseCase[] = [
     slackPreviewCount: 2,
   },
 
-  {
-    slug: "self-tuning-agent",
-    color: "#7c5abe",
-    avatar: {
-      rotation: 2,
-      skin: 3,
-      hairStyle: 2,
-      hairColor: 2,
-      expression: 2,
-      intensity: "d",
-    },
-    roles: ["ops", "engineering"],
-    capability: "scheduled",
-    model: "Claude 4 Sonnet",
-    connectors: [VM0, SLACK],
-    integrations: [
-      { connector: VM0, required: true },
-      { connector: SLACK, required: true },
-    ],
-    relatedSlugs: [
-      "cost-optimizer",
-      "managed-agent-workers",
-      "specialized-agent-personas",
-    ],
-    stepCount: 3,
-    nextActionCount: 3,
-    integrationCount: 2,
-    tipCount: 3,
-    promptVariantCount: 3,
-    slackPreviewCount: 2,
-  },
-
-  {
-    slug: "integration-health",
-    color: "#3abebe",
-    avatar: {
-      rotation: 4,
-      skin: 1,
-      hairStyle: 3,
-      hairColor: 3,
-      expression: 1,
-      intensity: "d",
-    },
-    roles: ["engineering", "ops"],
-    capability: "scheduled",
-    model: "Claude 4 Sonnet",
-    connectors: [VM0, SLACK],
-    integrations: [
-      { connector: VM0, required: true },
-      { connector: SLACK, required: true },
-    ],
-    relatedSlugs: [
-      "control-verification",
-      "cost-optimizer",
-      "managed-agent-workers",
-    ],
-    stepCount: 3,
-    nextActionCount: 3,
-    integrationCount: 2,
-    tipCount: 3,
-    promptVariantCount: 3,
-    slackPreviewCount: 2,
-  },
-
-  {
-    slug: "specialized-agent-personas",
-    color: "#beab3a",
-    avatar: {
-      rotation: 3,
-      skin: 2,
-      hairStyle: 5,
-      hairColor: 5,
-      expression: 5,
-      intensity: "m",
-    },
-    roles: ["ops", "everyone"],
-    capability: "instant",
-    model: "Claude 4 Sonnet",
-    connectors: [VM0, SLACK],
-    integrations: [
-      { connector: VM0, required: true },
-      { connector: SLACK, required: true },
-    ],
-    relatedSlugs: [
-      "managed-agent-workers",
-      "self-tuning-agent",
-      "voice-driven-agent",
-    ],
-    stepCount: 3,
-    nextActionCount: 3,
-    integrationCount: 2,
-    tipCount: 3,
-    promptVariantCount: 3,
-    slackPreviewCount: 2,
-  },
 ];
 
 // ---------------------------------------------------------------------------
