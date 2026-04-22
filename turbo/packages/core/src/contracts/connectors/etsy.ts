@@ -12,10 +12,10 @@ export const etsy = {
       "api-token": {
         label: "API Key",
         helpText:
-          "1. Log in to [Etsy](https://www.etsy.com/developers/your-apps)
-2. Click **Create a New App** (or select an existing app)
-3. Copy the **Keystring** and **Shared Secret**
-4. Paste both values joined with a colon: `keystring:shared_secret`",
+          "1. Log in to [Etsy](https://www.etsy.com/developers/your-apps)\n" +
+          "2. Click **Create a New App** (or select an existing app)\n" +
+          "3. Copy the **Keystring** and **Shared Secret**\n" +
+          "4. Paste both values joined with a colon: `keystring:shared_secret`",
         secrets: {
           ETSY_TOKEN: {
             label: "API Key (keystring:shared_secret)",
