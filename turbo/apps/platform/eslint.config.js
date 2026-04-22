@@ -192,18 +192,6 @@ export default [
       "no-restricted-syntax": "off",
     },
   },
-  // voice-chat-candidate-session.ts uses three narrow try/catch blocks for
-  // browser APIs that can throw on OS-level rejections:
-  //   - JSON.parse on untrusted Realtime DC event data (malformed args)
-  //   - navigator.wakeLock.request (document hidden / OS deny)
-  //   - navigator.mediaDevices.getUserMedia (permission denied / no hardware)
-  // Each catch recovers gracefully rather than crashing the voice session.
-  {
-    files: ["src/signals/voice-chat-candidate/voice-chat-candidate-session.ts"],
-    rules: {
-      "no-restricted-syntax": "off",
-    },
-  },
   {
     ignores: [
       "dist/**",

@@ -249,6 +249,7 @@ const handleTalkerToolCall$ = command(
     }
 
     let parsed: { prompt?: unknown };
+    // eslint-disable-next-line no-restricted-syntax -- JSON.parse on untrusted Realtime DC event data can throw on malformed args; catch recovers gracefully
     try {
       parsed = JSON.parse(argsJson) as { prompt?: unknown };
     } catch (error) {
@@ -633,6 +634,7 @@ const acquireWakeLock$ = command(async ({ set }, signal: AbortSignal) => {
     }
     pending = true;
     let lock: WakeLockSentinel | undefined;
+    // eslint-disable-next-line no-restricted-syntax -- navigator.wakeLock.request can throw on OS deny or hidden document; catch recovers gracefully
     try {
       lock = await navigator.wakeLock.request("screen");
     } catch {
@@ -790,6 +792,7 @@ export const startVoiceChatCandidate$ = command(
     const { client_secret: clientSecret } = tokenRes.body;
 
     let stream: MediaStream;
+    // eslint-disable-next-line no-restricted-syntax -- navigator.mediaDevices.getUserMedia can throw on permission denied or no hardware; catch recovers gracefully
     try {
       stream = await navigator.mediaDevices.getUserMedia({
         audio: {
