@@ -69,6 +69,9 @@ function runDirectedConnect(params: {
     params.openTokenDialog();
     return;
   }
+  // Defensive fallback for the degenerate empty-authMethods case — the
+  // contract disallows it today, so in practice this is unreachable after
+  // the api-token branch above.
   if (!hasOAuth && !hasPlatform) {
     params.openTokenDialog();
     return;
