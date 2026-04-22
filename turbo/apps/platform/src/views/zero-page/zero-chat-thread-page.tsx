@@ -408,6 +408,7 @@ function ChatThreadComposer({
     <footer
       data-chat-composer
       className="relative shrink-0 overflow-y-auto [scrollbar-gutter:stable] px-4 sm:px-6 pt-3 pb-2 bg-[hsl(var(--background))]"
+      style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}
     >
       <div className="pointer-events-none absolute inset-x-0 -top-5 h-5 bg-gradient-to-t from-[hsl(var(--background))] to-transparent" />
       <div className="mx-auto max-w-[900px]">
