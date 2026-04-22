@@ -24,11 +24,22 @@ function startOfDayInTz(date: Date, tz: string): Date {
     second: "2-digit",
     hour12: false,
   }).formatToParts(date);
-  const h = parseInt(parts.find((p) => p.type === "hour")?.value ?? "0");
-  const m = parseInt(parts.find((p) => p.type === "minute")?.value ?? "0");
-  const s = parseInt(parts.find((p) => p.type === "second")?.value ?? "0");
-  const elapsed =
-    ((h * 60 + m) * 60 + s) * 1000 + (date.getTime() % 1000);
+  const h = parseInt(
+    parts.find((p) => {
+      return p.type === "hour";
+    })?.value ?? "0",
+  );
+  const m = parseInt(
+    parts.find((p) => {
+      return p.type === "minute";
+    })?.value ?? "0",
+  );
+  const s = parseInt(
+    parts.find((p) => {
+      return p.type === "second";
+    })?.value ?? "0",
+  );
+  const elapsed = ((h * 60 + m) * 60 + s) * 1000 + (date.getTime() % 1000);
   return new Date(date.getTime() - elapsed);
 }
 
