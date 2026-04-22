@@ -1538,6 +1538,7 @@ jobs:
       - runner-build
       - runner-benchmark
       - runner-exec
+      - runner-cancel
       - runner-drain-resume
       - runner-balloon
       - runner-upgrade-local
@@ -1585,6 +1586,7 @@ jobs:
           check_result "runner-build" "${{ needs.runner-build.result }}" "true"
           check_result "runner-benchmark" "${{ needs.runner-benchmark.result }}" "true"
           check_result "runner-exec" "${{ needs.runner-exec.result }}" "true"
+          check_result "runner-cancel" "${{ needs.runner-cancel.result }}" "true"
           check_result "runner-drain-resume" "${{ needs.runner-drain-resume.result }}" "true"
           check_result "runner-balloon" "${{ needs.runner-balloon.result }}" "true"
           check_result "runner-upgrade-local" "${{ needs.runner-upgrade-local.result }}" "true"
