@@ -112,3 +112,94 @@ async fn init_returns_none_when_token_empty() {
     });
     assert!(result.is_none());
 }
+
+/// Error type with a walkable `source()` chain. Lets us exercise the
+/// `record_error` visitor without pulling in extra deps.
+#[derive(Debug)]
+struct ChainErr {
+    msg: &'static str,
+    src: Option<Box<ChainErr>>,
+}
+
+impl std::fmt::Display for ChainErr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.msg)
+    }
+}
+
+impl std::error::Error for ChainErr {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.src.as_deref().map(|e| e as &dyn std::error::Error)
+    }
+}
+
+#[tokio::test]
+async fn error_field_serializes_with_message_and_source_chain() {
+    let server = MockServer::start_async().await;
+
+    // Match on the exact nested shape the `record_error` visitor emits.
+    // `serde_json::Map` preserves insertion order, and we insert `message`
+    // before `chain` — so the substring literal is stable.
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/v1/datasets/vm0-web-logs-test/ingest")
+                .body_includes(r#""error":{"message":"top","chain":["middle","root"]}"#)
+                .body_includes(r#""message":"explosion""#);
+            then.status(200).body("{}");
+        })
+        .await;
+
+    let (layer, guard) = axiom_layer::init_with_base_url(&server.base_url(), "t", "test")
+        .expect("init must succeed");
+    let subscriber = tracing_subscriber::registry().with(layer);
+    {
+        let _sub = tracing::subscriber::set_default(subscriber);
+        let err = ChainErr {
+            msg: "top",
+            src: Some(Box::new(ChainErr {
+                msg: "middle",
+                src: Some(Box::new(ChainErr {
+                    msg: "root",
+                    src: None,
+                })),
+            })),
+        };
+        tracing::error!(
+            error = &err as &(dyn std::error::Error + 'static),
+            "explosion",
+        );
+    }
+    guard.shutdown().await;
+
+    mock.assert_calls_async(1).await;
+}
+
+#[tokio::test]
+async fn non_success_ingest_response_does_not_hang_shutdown_or_panic() {
+    let server = MockServer::start_async().await;
+
+    // Return 500 for every ingest. The dispatcher should log via
+    // INTERNAL_TARGET and drop the batch without panicking; shutdown must
+    // still complete well within FLUSH_DEADLINE.
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/v1/datasets/vm0-web-logs-test/ingest");
+            then.status(500).body("boom");
+        })
+        .await;
+
+    let (layer, guard) = axiom_layer::init_with_base_url(&server.base_url(), "t", "test")
+        .expect("init must succeed");
+    let subscriber = tracing_subscriber::registry().with(layer);
+    {
+        let _sub = tracing::subscriber::set_default(subscriber);
+        tracing::error!("trigger ingest failure");
+    }
+
+    // If the failure path panics or leaks the task, this await never returns
+    // (the test harness enforces its own timeout, so we'd see a hang).
+    guard.shutdown().await;
+    mock.assert_calls_async(1).await;
+}
