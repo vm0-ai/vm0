@@ -154,6 +154,7 @@ describe("zero schedule status command", () => {
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).not.toContain(longPrompt);
       expect(logCalls).toMatch(/a{57}\.\.\./);
+      expect(logCalls).toContain("--prompt");
     });
 
     it("should display schedule when agent identifier is a UUID", async () => {
