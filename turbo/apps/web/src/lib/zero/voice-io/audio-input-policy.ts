@@ -1,7 +1,7 @@
 import type { OrgTier } from "@vm0/core";
 import { getCount } from "../behavior/user-behavior-count-service";
 
-export const AUDIO_INPUT_FREE_QUOTA = 3;
+export const AUDIO_INPUT_QUOTA = 10;
 export const AUDIO_INPUT_BEHAVIOR_KEY = "audio_input";
 
 interface AudioInputQuotaStatus {
@@ -15,13 +15,13 @@ export async function checkAudioInputQuota(
   userId: string,
   orgTier: OrgTier,
 ): Promise<AudioInputQuotaStatus> {
-  if (orgTier !== "free") {
+  if (orgTier === "team") {
     return { allowed: true, count: 0, limit: null };
   }
   const count = await getCount(orgId, userId, AUDIO_INPUT_BEHAVIOR_KEY);
   return {
-    allowed: count < AUDIO_INPUT_FREE_QUOTA,
+    allowed: count < AUDIO_INPUT_QUOTA,
     count,
-    limit: AUDIO_INPUT_FREE_QUOTA,
+    limit: AUDIO_INPUT_QUOTA,
   };
 }

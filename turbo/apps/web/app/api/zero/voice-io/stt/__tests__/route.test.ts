@@ -14,7 +14,7 @@ import { reloadEnv } from "../../../../../../src/env";
 import { readBehaviorCount } from "../../../../../../src/__tests__/db-test-seeders/behavior";
 import {
   AUDIO_INPUT_BEHAVIOR_KEY,
-  AUDIO_INPUT_FREE_QUOTA,
+  AUDIO_INPUT_QUOTA,
 } from "../../../../../../src/lib/zero/voice-io/audio-input-policy";
 
 vi.mock("@vm0/core", async (importOriginal) => {
@@ -174,14 +174,14 @@ describe("POST /api/zero/voice-io/stt", () => {
   });
 
   describe("org tier quota gating", () => {
-    it("should not increment the counter for a pro org across multiple successes", async () => {
-      const userId = uniqueId("stt-pro");
+    it("should not increment the counter for a team org across multiple successes", async () => {
+      const userId = uniqueId("stt-team");
       const { orgId } = await setupOrg(userId);
-      await updateOrgTier(orgId, "pro");
+      await updateOrgTier(orgId, "team");
 
       server.use(
         http.post("https://api.openai.com/v1/audio/transcriptions", () => {
-          return HttpResponse.json({ text: "pro transcript" });
+          return HttpResponse.json({ text: "team transcript" });
         }),
       );
 
@@ -198,6 +198,29 @@ describe("POST /api/zero/voice-io/stt", () => {
       expect(count).toBe(0);
     });
 
+    it("should increment the counter on each successful pro-tier call up to the quota", async () => {
+      const userId = uniqueId("stt-pro");
+      const { orgId } = await setupOrg(userId);
+      await updateOrgTier(orgId, "pro");
+
+      server.use(
+        http.post("https://api.openai.com/v1/audio/transcriptions", () => {
+          return HttpResponse.json({ text: "pro transcript" });
+        }),
+      );
+
+      for (let i = 1; i <= AUDIO_INPUT_QUOTA; i++) {
+        const response = await POST(createSttRequest(createAudioFile()));
+        expect(response.status).toBe(200);
+        const count = await readBehaviorCount(
+          orgId,
+          userId,
+          AUDIO_INPUT_BEHAVIOR_KEY,
+        );
+        expect(count).toBe(i);
+      }
+    });
+
     it("should increment the counter on each successful free-tier call up to the quota", async () => {
       const userId = uniqueId("stt-free");
       const { orgId } = await setupOrg(userId);
@@ -208,7 +231,7 @@ describe("POST /api/zero/voice-io/stt", () => {
         }),
       );
 
-      for (let i = 1; i <= AUDIO_INPUT_FREE_QUOTA; i++) {
+      for (let i = 1; i <= AUDIO_INPUT_QUOTA; i++) {
         const response = await POST(createSttRequest(createAudioFile()));
         expect(response.status).toBe(200);
         const count = await readBehaviorCount(
@@ -230,8 +253,7 @@ describe("POST /api/zero/voice-io/stt", () => {
         }),
       );
 
-      // Exhaust the quota with AUDIO_INPUT_FREE_QUOTA successful calls
-      for (let i = 0; i < AUDIO_INPUT_FREE_QUOTA; i++) {
+      for (let i = 0; i < AUDIO_INPUT_QUOTA; i++) {
         const ok = await POST(createSttRequest(createAudioFile()));
         expect(ok.status).toBe(200);
       }
@@ -241,8 +263,8 @@ describe("POST /api/zero/voice-io/stt", () => {
       expect(response.status).toBe(402);
       expect(body.error.code).toBe("AUDIO_INPUT_QUOTA_EXCEEDED");
       expect(body.quota).toEqual({
-        count: AUDIO_INPUT_FREE_QUOTA,
-        limit: AUDIO_INPUT_FREE_QUOTA,
+        count: AUDIO_INPUT_QUOTA,
+        limit: AUDIO_INPUT_QUOTA,
       });
 
       const count = await readBehaviorCount(
@@ -250,7 +272,29 @@ describe("POST /api/zero/voice-io/stt", () => {
         userId,
         AUDIO_INPUT_BEHAVIOR_KEY,
       );
-      expect(count).toBe(AUDIO_INPUT_FREE_QUOTA);
+      expect(count).toBe(AUDIO_INPUT_QUOTA);
+    });
+
+    it("should return 402 once the pro-tier quota is exhausted", async () => {
+      const userId = uniqueId("stt-pro-exceed");
+      const { orgId } = await setupOrg(userId);
+      await updateOrgTier(orgId, "pro");
+
+      server.use(
+        http.post("https://api.openai.com/v1/audio/transcriptions", () => {
+          return HttpResponse.json({ text: "ok" });
+        }),
+      );
+
+      for (let i = 0; i < AUDIO_INPUT_QUOTA; i++) {
+        const ok = await POST(createSttRequest(createAudioFile()));
+        expect(ok.status).toBe(200);
+      }
+
+      const response = await POST(createSttRequest(createAudioFile()));
+      const body = await response.json();
+      expect(response.status).toBe(402);
+      expect(body.error.code).toBe("AUDIO_INPUT_QUOTA_EXCEEDED");
     });
 
     it("should not increment the counter when OpenAI fails on the first free-tier call", async () => {

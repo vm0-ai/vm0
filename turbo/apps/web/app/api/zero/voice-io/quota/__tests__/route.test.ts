@@ -11,7 +11,7 @@ import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { seedBehaviorCount } from "../../../../../../src/__tests__/db-test-seeders/behavior";
 import {
   AUDIO_INPUT_BEHAVIOR_KEY,
-  AUDIO_INPUT_FREE_QUOTA,
+  AUDIO_INPUT_QUOTA,
 } from "../../../../../../src/lib/zero/voice-io/audio-input-policy";
 
 const { GET } = await import("../route");
@@ -54,7 +54,7 @@ describe("GET /api/zero/voice-io/quota", () => {
     expect(body).toEqual({
       allowed: true,
       count: 0,
-      limit: AUDIO_INPUT_FREE_QUOTA,
+      limit: AUDIO_INPUT_QUOTA,
     });
   });
 
@@ -68,7 +68,7 @@ describe("GET /api/zero/voice-io/quota", () => {
     expect(body).toEqual({
       allowed: true,
       count: 2,
-      limit: AUDIO_INPUT_FREE_QUOTA,
+      limit: AUDIO_INPUT_QUOTA,
     });
   });
 
@@ -79,30 +79,50 @@ describe("GET /api/zero/voice-io/quota", () => {
       orgId,
       userId,
       AUDIO_INPUT_BEHAVIOR_KEY,
-      AUDIO_INPUT_FREE_QUOTA,
+      AUDIO_INPUT_QUOTA,
     );
     const response = await GET(createQuotaRequest());
     const body = await response.json();
     expect(response.status).toBe(200);
     expect(body).toEqual({
       allowed: false,
-      count: AUDIO_INPUT_FREE_QUOTA,
-      limit: AUDIO_INPUT_FREE_QUOTA,
+      count: AUDIO_INPUT_QUOTA,
+      limit: AUDIO_INPUT_QUOTA,
     });
   });
 
-  it("should return allowed=true with limit=null for a pro org regardless of history", async () => {
+  it("should return allowed=true with quota limit for a pro org with partial usage", async () => {
     const userId = uniqueId("quota-pro");
     const { orgId } = await setupOrg(userId);
     await updateOrgTier(orgId, "pro");
-    await seedBehaviorCount(orgId, userId, AUDIO_INPUT_BEHAVIOR_KEY, 10);
+    await seedBehaviorCount(orgId, userId, AUDIO_INPUT_BEHAVIOR_KEY, 5);
     const response = await GET(createQuotaRequest());
     const body = await response.json();
     expect(response.status).toBe(200);
     expect(body).toEqual({
       allowed: true,
-      count: 0,
-      limit: null,
+      count: 5,
+      limit: AUDIO_INPUT_QUOTA,
+    });
+  });
+
+  it("should return allowed=false when a pro org has reached the quota", async () => {
+    const userId = uniqueId("quota-pro-full");
+    const { orgId } = await setupOrg(userId);
+    await updateOrgTier(orgId, "pro");
+    await seedBehaviorCount(
+      orgId,
+      userId,
+      AUDIO_INPUT_BEHAVIOR_KEY,
+      AUDIO_INPUT_QUOTA,
+    );
+    const response = await GET(createQuotaRequest());
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body).toEqual({
+      allowed: false,
+      count: AUDIO_INPUT_QUOTA,
+      limit: AUDIO_INPUT_QUOTA,
     });
   });
 

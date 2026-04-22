@@ -161,6 +161,8 @@
       "connectorsDesc": "Verbinden Sie Ihre Tools wie Slack, GitHub, Notion und mehr",
       "bringOwnLLM": "Eigenes LLM mitbringen",
       "bringOwnLLMDesc": "Verwenden Sie Ihre eigenen Modellanbieter-API-Schlüssel",
+      "voiceInput": "Spracheingabe",
+      "voiceInputDesc": "Sprache-zu-Text-Eingabe für freihändige Agenten-Interaktion",
       "sandboxedExecution": "Sandbox-Ausführung",
       "sandboxedExecutionDesc": "Firecracker-microVMs mit Hardware-Level-KVM-Isolation",
       "fullAuditTrail": "Vollständiger Audit-Trail",
@@ -184,7 +186,8 @@
       "120k": "120.000",
       "unlimited": "Unbegrenzt",
       "oneMonth": "1 Monat",
-      "allConnectors": "Alle Konnektoren"
+      "allConnectors": "Alle Konnektoren",
+      "tenPerMonth": "10 / Monat"
     },
     "faq": {
       "title": "Häufig gestellte Fragen",

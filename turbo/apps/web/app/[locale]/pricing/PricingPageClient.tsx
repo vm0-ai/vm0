@@ -461,6 +461,13 @@ export function PricingPageClient() {
                     pro={true}
                     team={true}
                   />
+                  <TableRow
+                    feature={t("tableFeatures.voiceInput")}
+                    description={t("tableFeatures.voiceInputDesc")}
+                    free={t("tableValues.tenPerMonth")}
+                    pro={t("tableValues.tenPerMonth")}
+                    team={t("tableValues.unlimited")}
+                  />
 
                   <TableSection title={t("sections.securityAndCompliance")} />
                   <TableRow

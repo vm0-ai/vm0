@@ -161,6 +161,8 @@
       "connectorsDesc": "Slack、GitHub、Notionなどのツールを接続",
       "bringOwnLLM": "自分のLLMを持ち込み",
       "bringOwnLLMDesc": "自分のモデルプロバイダーAPIキーを使用",
+      "voiceInput": "音声入力",
+      "voiceInputDesc": "ハンズフリーでエージェントと対話するための音声テキスト変換入力",
       "sandboxedExecution": "サンドボックス実行",
       "sandboxedExecutionDesc": "ハードウェアレベルのKVM分離によるFirecracker microVM",
       "fullAuditTrail": "完全な監査証跡",
@@ -184,7 +186,8 @@
       "120k": "120,000",
       "unlimited": "無制限",
       "oneMonth": "1ヶ月",
-      "allConnectors": "すべてのコネクター"
+      "allConnectors": "すべてのコネクター",
+      "tenPerMonth": "10回 / 月"
     },
     "faq": {
       "title": "よくある質問",

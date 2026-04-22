@@ -68,7 +68,7 @@ export async function POST(request: Request): Promise<Response> {
       {
         error: {
           message:
-            "Audio input quota exceeded. Upgrade to Pro or Team for unlimited audio input.",
+            "Audio input quota exceeded. Upgrade to Team for unlimited voice input.",
           code: "AUDIO_INPUT_QUOTA_EXCEEDED",
         },
         quota: { count: quota.count, limit: quota.limit },
@@ -155,9 +155,10 @@ export async function POST(request: Request): Promise<Response> {
 
   const result = (await openaiResponse.json()) as { text: string };
 
-  // 8. Record the successful audio input for free-tier quota accounting.
-  // Skipped on failure so infra errors don't burn the user's free quota.
-  if (orgTier === "free") {
+  // 8. Record the successful audio input for quota accounting.
+  // Team tier is unlimited; free and pro share the same capped quota.
+  // Skipped on failure so infra errors don't burn the user's quota.
+  if (orgTier !== "team") {
     await recordBehavior(orgId, authCtx.userId, AUDIO_INPUT_BEHAVIOR_KEY);
   }
 
