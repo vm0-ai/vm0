@@ -91,7 +91,12 @@ export async function GET(
       outcome = await startOrResumeRedemption({
         orgId,
         campaignKey,
-        successUrl: statusPage("already_redeemed").toString(),
+        // First-time success lands on the `redeemed` state — the webhook may
+        // still be in-flight when Stripe redirects the user here, so copy
+        // says "credits on the way" rather than implying they're already in
+        // the ledger. Repeat clicks after the webhook lands are handled by
+        // the `already_granted` outcome branch below.
+        successUrl: statusPage("redeemed").toString(),
         cancelUrl: appHome,
       });
     } catch (err) {

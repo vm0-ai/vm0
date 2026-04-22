@@ -24,6 +24,13 @@ function resolveState(state: string | null): StateInfo {
         body: "We're applying your credits now. This usually takes a few seconds — refresh in a moment to see the updated balance.",
       };
     }
+    case "redeemed": {
+      return {
+        kind: "granted",
+        title: "Payment successful",
+        body: "Your credits are on the way. Open the dashboard to see your new balance.",
+      };
+    }
     case "already_redeemed":
     default: {
       return {

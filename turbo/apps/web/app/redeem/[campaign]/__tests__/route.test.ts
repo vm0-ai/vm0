@@ -203,8 +203,7 @@ describe("GET /redeem/[campaign]", () => {
         // back to the web origin — so localhost dev entry still lands on
         // the real dashboard after payment. Success lands on the status
         // page so the user sees a branded confirmation; cancel goes home.
-        success_url:
-          "http://app.localhost:3002/redeem/status?state=already_redeemed",
+        success_url: "http://app.localhost:3002/redeem/status?state=redeemed",
         cancel_url: "http://app.localhost:3002/",
         metadata: {
           orgId: user.orgId,
