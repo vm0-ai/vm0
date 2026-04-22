@@ -175,12 +175,9 @@ function mockAppendItemOk() {
 
 function mockTranscriptEmpty() {
   server.use(
-    mockApi(
-      zeroVoiceChatCandidateContract.listTaskResults,
-      ({ respond }) => {
-        return respond(200, { items: [] });
-      },
-    ),
+    mockApi(zeroVoiceChatCandidateContract.listTaskResults, ({ respond }) => {
+      return respond(200, { items: [] });
+    }),
   );
 }
 
@@ -200,12 +197,9 @@ function mockGetSessionOk() {
 
 function mockListActiveTasksOk() {
   server.use(
-    mockApi(
-      zeroVoiceChatCandidateContract.listTasks,
-      ({ respond }) => {
-        return respond(200, { tasks: [] });
-      },
-    ),
+    mockApi(zeroVoiceChatCandidateContract.listTasks, ({ respond }) => {
+      return respond(200, { tasks: [] });
+    }),
   );
 }
 
@@ -597,9 +591,7 @@ describe("voice-chat-candidate session", () => {
       });
 
       // Let any pending microtasks flush.
-      await new Promise((resolve) => {
-        setTimeout(resolve, 0);
-      });
+      await Promise.resolve();
       expect(taskCalls).toHaveLength(0);
     });
 
@@ -687,9 +679,7 @@ describe("voice-chat-candidate session", () => {
         transcript: "   ",
       });
       // Let any pending microtasks flush; the state should NOT be blanked.
-      await new Promise((resolve) => {
-        setTimeout(resolve, 0);
-      });
+      await Promise.resolve();
       expect(context.store.get(vccLastUserMessage$)).toBe("first");
     });
   });
@@ -703,12 +693,9 @@ describe("voice-chat-candidate session", () => {
       mockTranscriptEmpty();
       let activeTasks: ReturnType<typeof taskPayload>[] = [];
       server.use(
-        mockApi(
-          zeroVoiceChatCandidateContract.listTasks,
-          ({ respond }) => {
-            return respond(200, { tasks: activeTasks });
-          },
-        ),
+        mockApi(zeroVoiceChatCandidateContract.listTasks, ({ respond }) => {
+          return respond(200, { tasks: activeTasks });
+        }),
       );
 
       detach(

@@ -51,7 +51,6 @@ const TALKER_TOOL_NAMES = [
   "want_to_apologize",
 ] as const;
 type TalkerToolName = (typeof TALKER_TOOL_NAMES)[number];
-const TALKER_TOOL_NAME_SET: ReadonlySet<string> = new Set(TALKER_TOOL_NAMES);
 
 const TOOL_PROMPT_PARAM = {
   type: "object",
@@ -372,7 +371,7 @@ const handleDCMessage$ = command(
         if (
           event.call_id &&
           event.name &&
-          TALKER_TOOL_NAME_SET.has(event.name) &&
+          (TALKER_TOOL_NAMES as readonly string[]).includes(event.name) &&
           event.arguments
         ) {
           await set(
@@ -578,11 +577,9 @@ const startAblyLoop$ = command(
           [200, 401, 404],
           { toast: false },
         ),
-        accept(
-          client.listTasks({ params: { id: sid } }),
-          [200, 401, 404],
-          { toast: false },
-        ),
+        accept(client.listTasks({ params: { id: sid } }), [200, 401, 404], {
+          toast: false,
+        }),
         accept(client.getSession({ params: { id: sid } }), [200, 401, 404], {
           toast: false,
         }),

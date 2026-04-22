@@ -383,20 +383,23 @@ function ChatAgentAvatar({ agentId }: { agentId: string | null | undefined }) {
   );
 }
 
-function taskStatusLabel(
-  status: VoiceChatCandidateTask["status"],
-): string {
+function taskStatusLabel(status: VoiceChatCandidateTask["status"]): string {
   switch (status) {
-    case "running":
+    case "running": {
       return "Running";
-    case "queued":
+    }
+    case "queued": {
       return "Queued";
-    case "pending":
+    }
+    case "pending": {
       return "Pending";
-    case "done":
+    }
+    case "done": {
       return "Done";
-    case "failed":
+    }
+    case "failed": {
       return "Failed";
+    }
   }
 }
 
@@ -408,9 +411,7 @@ function TaskRow({ task }: { task: VoiceChatCandidateTask }) {
   const latestProgress = task.assistantMessages.at(-1)?.content.trim() ?? "";
   return (
     <li
-      className={
-        isFinished ? "text-muted-foreground/80" : "text-foreground"
-      }
+      className={isFinished ? "text-muted-foreground/80" : "text-foreground"}
       data-testid="voice-task-row"
       data-task-status={task.status}
     >
