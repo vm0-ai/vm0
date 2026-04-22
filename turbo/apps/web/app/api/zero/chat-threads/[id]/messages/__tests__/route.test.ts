@@ -259,7 +259,7 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
     expect(data.messages[0].role).toBe("user");
   });
 
-  it("should resolve attach files to permanent /f/ URLs in paged messages", async () => {
+  it("should resolve attach files with presigned URLs in paged messages", async () => {
     const createRes = await POST(
       createTestRequest("http://localhost:3000/api/zero/chat-threads", {
         method: "POST",
@@ -290,6 +290,9 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
         return [];
       },
     );
+    context.mocks.s3.generatePresignedUrl.mockResolvedValue(
+      "https://presigned-url/data.csv",
+    );
 
     const response = await GET(
       createTestRequest(
@@ -306,9 +309,7 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
     expect(userMsg.attachFiles).toHaveLength(1);
     expect(userMsg.attachFiles[0].id).toBe("paged-resolve-uuid");
     expect(userMsg.attachFiles[0].filename).toBe("data.csv");
-    expect(userMsg.attachFiles[0].url).toBe(
-      `http://localhost:3001/f/${encodeURIComponent(testUserId)}/paged-resolve-uuid/data.csv`,
-    );
+    expect(userMsg.attachFiles[0].url).toBe("https://presigned-url/data.csv");
   });
 
   it("should not expose run-level error on event-backed assistant rows", async () => {
