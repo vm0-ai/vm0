@@ -147,12 +147,12 @@ describe("--volume option", () => {
 
   describe("parseMount", () => {
     it("should parse name:/path format", () => {
-      const result = parseMount("my-data:/mnt/data");
+      const result = parseMount("my-data:/mnt/data", "volume");
       expect(result).toEqual({ name: "my-data", mountPath: "/mnt/data" });
     });
 
     it("should parse name:version:/path format", () => {
-      const result = parseMount("my-data:abc123:/mnt/data");
+      const result = parseMount("my-data:abc123:/mnt/data", "volume");
       expect(result).toEqual({
         name: "my-data",
         version: "abc123",
@@ -162,7 +162,7 @@ describe("--volume option", () => {
 
     it("should reject input with no mount path", () => {
       expect(() => {
-        return parseMount("my-data");
+        return parseMount("my-data", "volume");
       }).toThrow(
         "Invalid volume format: my-data (expected name:/path or name:version:/path)",
       );
@@ -170,19 +170,19 @@ describe("--volume option", () => {
 
     it("should reject empty name", () => {
       expect(() => {
-        return parseMount(":/mnt/data");
+        return parseMount(":/mnt/data", "volume");
       }).toThrow("Invalid volume format: :/mnt/data (name cannot be empty)");
     });
 
     it("should reject mount path not starting with /", () => {
       expect(() => {
-        return parseMount("my-data:abc123:not-a-path");
+        return parseMount("my-data:abc123:not-a-path", "volume");
       }).toThrow("Invalid volume mount path: not-a-path (must start with /)");
     });
 
     it("should reject empty version in 3-part format", () => {
       expect(() => {
-        return parseMount("my-data::/mnt/data");
+        return parseMount("my-data::/mnt/data", "volume");
       }).toThrow(
         "Invalid volume format: my-data::/mnt/data (version cannot be empty)",
       );
@@ -190,7 +190,7 @@ describe("--volume option", () => {
 
     it("should reject too many parts", () => {
       expect(() => {
-        return parseMount("a:b:c:d");
+        return parseMount("a:b:c:d", "volume");
       }).toThrow(
         "Invalid volume format: a:b:c:d (expected name:/path or name:version:/path)",
       );

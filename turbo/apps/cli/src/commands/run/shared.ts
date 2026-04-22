@@ -56,7 +56,7 @@ export function collectVolumeVersions(
  */
 export function parseMount(
   value: string,
-  flagLabel: "volume" | "artifact" = "volume",
+  flagLabel: "volume" | "artifact",
 ): {
   name: string;
   version?: string;
