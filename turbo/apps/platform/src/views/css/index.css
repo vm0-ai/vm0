@@ -25,6 +25,13 @@
   --color-sidebar-active: hsl(var(--primary) / 0.95);
   --color-sidebar-primary: hsl(var(--white));
   --color-sidebar-accent: hsl(var(--gray-100));
+
+  /* Credit balance breakdown segment colors (usage bar chart) */
+  --color-credit-free: #3eb7b8;
+  --color-credit-promotional: #e88033;
+  --color-credit-pay-as-you-go: #97918a;
+  --color-credit-plan-pro: #edc43e;
+  --color-credit-plan-team: #6b8de3;
 }
 
 /* Landing tagline carousel: smooth vertical fade-in */

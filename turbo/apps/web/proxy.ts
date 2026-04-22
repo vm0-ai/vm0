@@ -148,12 +148,17 @@ export default async function middleware(
 
   const response = await clerk(request, event);
 
-  // Ensure CORS headers are present on all API responses, even if Clerk
-  // or an inner layer failed to set them (e.g. Clerk error, layer bypass).
+  // API responses from Clerk carry no CORS headers — the inner `corsLayer`
+  // was removed so Clerk's auth.protect() redirects aren't shadowed by a
+  // CORS early-return. Apply response-side CORS headers here so browsers can
+  // read cross-origin authenticated responses. Preflight is handled above,
+  // so only Allow-Origin and Allow-Credentials are needed for actual
+  // requests. `handleCors` performs origin-allowlist validation.
   if (isApiRoute && response) {
-    const corsResponse = handleCors(request);
-    const allowOrigin = corsResponse.headers.get("Access-Control-Allow-Origin");
-    if (allowOrigin && !response.headers.get("Access-Control-Allow-Origin")) {
+    const allowOrigin = handleCors(request).headers.get(
+      "Access-Control-Allow-Origin",
+    );
+    if (allowOrigin) {
       response.headers.set("Access-Control-Allow-Origin", allowOrigin);
       response.headers.set("Access-Control-Allow-Credentials", "true");
     }

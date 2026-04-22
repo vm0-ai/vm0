@@ -45,24 +45,27 @@ function displayName(m: OrgMember): string {
 
 type CreditSegment = BillingStatusResponse["creditBreakdown"][number];
 
+// Segment swatches map to theme tokens defined in
+// `turbo/apps/platform/src/views/css/index.css` under `@theme`. Keep the
+// mapping here purely symbolic so branding/dark-mode tweaks happen in CSS.
 const CATEGORY_COLORS: Readonly<
   Record<Exclude<CreditSegment["category"], "plan">, string>
 > = {
-  free: "bg-[#3EB7B8]",
-  promotional: "bg-[#E88033]",
-  payAsYouGo: "bg-[#97918A]",
+  free: "bg-credit-free",
+  promotional: "bg-credit-promotional",
+  payAsYouGo: "bg-credit-pay-as-you-go",
 };
 
 const PLAN_COLORS: Readonly<
   Record<NonNullable<CreditSegment["tier"]>, string>
 > = {
-  pro: "bg-[#EDC43E]",
-  team: "bg-[#6B8DE3]",
+  pro: "bg-credit-plan-pro",
+  team: "bg-credit-plan-team",
 };
 
 function colorForSegment(seg: CreditSegment): string {
   if (seg.category === "plan") {
-    return seg.tier ? PLAN_COLORS[seg.tier] : "bg-[#EDC43E]";
+    return seg.tier ? PLAN_COLORS[seg.tier] : "bg-credit-plan-pro";
   }
   return CATEGORY_COLORS[seg.category];
 }
