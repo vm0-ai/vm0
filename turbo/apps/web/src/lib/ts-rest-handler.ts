@@ -241,7 +241,13 @@ export function createHandler<T extends AppRouter>(
     err: unknown,
     req: TsRestRequest,
   ): TsRestResponse | void => {
-    if (options.errorHandler) return options.errorHandler(err);
+    if (options.errorHandler) {
+      const result = options.errorHandler(err);
+      if (result) return result;
+      // Custom handler declined this error (returned undefined) — delegate to
+      // the default chain so ApiError → correct status, raw errors → log +
+      // Sentry. ts-rest's own dispatcher uses the same truthy-check semantic.
+    }
     if (perOpHandlers && opMap) {
       const op = opMap.get(`${req.method}:${req.route}`);
       const h = op ? perOpHandlers.get(op) : undefined;

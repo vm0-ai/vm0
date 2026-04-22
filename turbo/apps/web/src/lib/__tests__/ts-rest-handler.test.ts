@@ -11,8 +11,15 @@ vi.mock("@sentry/nextjs", () => {
 });
 
 // Capture the errorHandler passed to createNextHandler so tests can invoke it
-// directly without spinning up a real Next.js server.
-type ResolvedErrorHandler = (err: unknown, req: TsRestRequest) => unknown;
+// directly without spinning up a real Next.js server. Return type mirrors the
+// real resolver so tests can access `.status` / `.json()` without casts.
+type ResolvedErrorHandler = (
+  err: unknown,
+  req: TsRestRequest,
+) =>
+  | InstanceType<typeof TsRestResponse>
+  | void
+  | Promise<InstanceType<typeof TsRestResponse> | void>;
 let capturedErrorHandler: ResolvedErrorHandler | undefined;
 
 vi.mock("@ts-rest/serverless/next", async (importOriginal) => {
@@ -36,7 +43,12 @@ vi.mock("@ts-rest/serverless/next", async (importOriginal) => {
 
 import { initContract } from "@ts-rest/core";
 import { z } from "zod";
-import { createSafeErrorHandler, createHandler, tsr } from "../ts-rest-handler";
+import {
+  createSafeErrorHandler,
+  createHandler,
+  tsr,
+  TsRestResponse,
+} from "../ts-rest-handler";
 import { badRequest, notFound, forbidden } from "../shared/errors";
 
 describe("createSafeErrorHandler", () => {
@@ -191,8 +203,12 @@ describe("createHandler per-operation dispatch", () => {
     });
   });
 
-  it("uses custom errorHandler when provided, bypassing per-operation dispatch", async () => {
-    const customHandler = vi.fn().mockReturnValue(undefined);
+  it("uses custom errorHandler response as-is when it returns a response", async () => {
+    const fakeResponse = TsRestResponse.fromJson(
+      { error: { message: "custom", code: "CUSTOM" } },
+      { status: 418 },
+    );
+    const customHandler = vi.fn().mockReturnValue(fakeResponse);
     createHandler(twoOpContract, router, {
       routeName: "test",
       errorHandler: customHandler,
@@ -201,8 +217,120 @@ describe("createHandler per-operation dispatch", () => {
 
     const fakeReq = { method: "GET", route: "/api/test" } as TsRestRequest;
     const err = new Error("custom error");
-    await capturedErrorHandler!(err, fakeReq);
+    const response = await capturedErrorHandler!(err, fakeReq);
     expect(customHandler).toHaveBeenCalledWith(err);
+    expect(response).toBe(fakeResponse);
+    expect(vi.mocked(Sentry.captureException)).not.toHaveBeenCalled();
+  });
+});
+
+describe("createHandler custom errorHandler fall-through", () => {
+  const c2 = initContract();
+  const singleOpContract = c2.router({
+    show: {
+      method: "GET",
+      path: "/api/thing/:id",
+      pathParams: z.object({ id: z.string() }),
+      responses: { 200: z.object({ id: z.string() }) },
+    },
+  });
+
+  const singleOpRouter = tsr.router(singleOpContract, {
+    show: async ({ params }) => {
+      return { status: 200 as const, body: { id: params.id } };
+    },
+  });
+
+  // Simulates the pattern used in all 28 real routes: handle pathParamsError,
+  // otherwise return undefined (the "delegate to default" signal).
+  const validationOnlyHandler = (err: unknown): TsRestResponse | void => {
+    if (err && typeof err === "object" && "pathParamsError" in err) {
+      return TsRestResponse.fromJson(
+        { error: { message: "bad id", code: "BAD_REQUEST" } },
+        { status: 400 },
+      );
+    }
+    return undefined;
+  };
+
+  beforeEach(() => {
+    capturedErrorHandler = undefined;
+    vi.clearAllMocks();
+  });
+
+  it("delegates ApiError to defaultHandler (404 with proper code, no Sentry)", async () => {
+    createHandler(singleOpContract, singleOpRouter, {
+      routeName: "thing.show",
+      errorHandler: validationOnlyHandler,
+    });
+    expect(capturedErrorHandler).toBeDefined();
+
+    const fakeReq = {
+      method: "GET",
+      route: "/api/thing/:id",
+    } as TsRestRequest;
+    const err = notFound("Agent compose not found");
+
+    const response = await capturedErrorHandler!(err, fakeReq);
+
+    expect(response).toBeDefined();
+    expect(response!.status).toBe(404);
+    const body = await response!.json();
+    expect(body.error.code).toBe("NOT_FOUND");
+    expect(body.error.message).toBe("Agent compose not found");
+    expect(vi.mocked(Sentry.captureException)).not.toHaveBeenCalled();
+  });
+
+  it("delegates raw Error to defaultHandler (500 + Sentry capture)", async () => {
+    createHandler(singleOpContract, singleOpRouter, {
+      routeName: "thing.show",
+      errorHandler: validationOnlyHandler,
+    });
+    expect(capturedErrorHandler).toBeDefined();
+
+    const fakeReq = {
+      method: "GET",
+      route: "/api/thing/:id",
+    } as TsRestRequest;
+    const err = new Error("db connection lost");
+
+    const response = await capturedErrorHandler!(err, fakeReq);
+
+    expect(response).toBeDefined();
+    expect(response!.status).toBe(500);
+    const body = await response!.json();
+    expect(body.error.code).toBe("INTERNAL_ERROR");
+    expect(vi.mocked(Sentry.captureException)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(Sentry.captureException)).toHaveBeenCalledWith(err, {
+      mechanism: { type: "ts-rest-handler", handled: true },
+      captureContext: { tags: { route: "thing.show" } },
+    });
+  });
+
+  it("custom handler still wins when it returns a response (validation errors)", async () => {
+    createHandler(singleOpContract, singleOpRouter, {
+      routeName: "thing.show",
+      errorHandler: validationOnlyHandler,
+    });
+    expect(capturedErrorHandler).toBeDefined();
+
+    const fakeReq = {
+      method: "GET",
+      route: "/api/thing/:id",
+    } as TsRestRequest;
+    const validationErr = {
+      pathParamsError: {
+        issues: [{ path: ["id"], message: "required" }],
+      },
+    };
+
+    const response = await capturedErrorHandler!(validationErr, fakeReq);
+
+    expect(response).toBeDefined();
+    expect(response!.status).toBe(400);
+    const body = await response!.json();
+    expect(body.error.code).toBe("BAD_REQUEST");
+    expect(body.error.message).toBe("bad id");
     expect(vi.mocked(Sentry.captureException)).not.toHaveBeenCalled();
   });
 });
