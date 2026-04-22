@@ -111,21 +111,34 @@ export const watchOrgSwitch$ = command(async ({ get }, signal: AbortSignal) => {
 
   while (!signal.aborted) {
     await new Promise<void>((resolve) => {
+      let unsubscribe: () => void = () => {};
       const onAbort = () => {
         unsubscribe();
         resolve();
       };
-      const unsubscribe = clerk.addListener(() => {
+      // Clerk's addListener fires the callback synchronously once on
+      // registration with the current state — skip that initial call, we only
+      // care about subsequent state changes.
+      let initialized = false;
+      unsubscribe = clerk.addListener(() => {
+        if (!initialized) {
+          initialized = true;
+          return;
+        }
         signal.removeEventListener("abort", onAbort);
         unsubscribe();
         resolve();
       });
       signal.addEventListener("abort", onAbort, { once: true });
     });
-    if (signal.aborted) return;
+    if (signal.aborted) {
+      return;
+    }
 
     const newOrgId = clerk.organization?.id ?? undefined;
-    if (newOrgId === prevOrgId) continue;
+    if (newOrgId === prevOrgId) {
+      continue;
+    }
     prevOrgId = newOrgId;
 
     await clerk.session?.getToken({ skipCache: true }).catch(() => {
