@@ -2,7 +2,7 @@ import { sql } from "drizzle-orm";
 import type { UsageInsightResponse } from "@vm0/core";
 
 interface UsageInsightOptions {
-  range: "24h" | "7d" | "28d";
+  range: "today" | "yesterday" | "7d" | "28d";
   groupBy: "source" | "agent";
   tz: string;
 }
@@ -16,17 +16,44 @@ interface SqlParams {
   tzLit: string;
 }
 
-function rangeToTruncAndMs(range: "24h" | "7d" | "28d"): {
-  trunc: string;
-  ms: number;
-} {
+function startOfDayInTz(date: Date, tz: string): Date {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+  const h = parseInt(parts.find((p) => p.type === "hour")?.value ?? "0");
+  const m = parseInt(parts.find((p) => p.type === "minute")?.value ?? "0");
+  const s = parseInt(parts.find((p) => p.type === "second")?.value ?? "0");
+  const elapsed =
+    ((h * 60 + m) * 60 + s) * 1000 + (date.getTime() % 1000);
+  return new Date(date.getTime() - elapsed);
+}
+
+function rangeToWindow(
+  range: "today" | "yesterday" | "7d" | "28d",
+  tz: string,
+): { trunc: string; startTs: Date; endTs: Date } {
+  const now = new Date();
+  const todayStart = startOfDayInTz(now, tz);
+
   switch (range) {
-    case "24h":
-      return { trunc: "hour", ms: 24 * 60 * 60 * 1000 };
-    case "7d":
-      return { trunc: "day", ms: 7 * 24 * 60 * 60 * 1000 };
-    case "28d":
-      return { trunc: "day", ms: 28 * 24 * 60 * 60 * 1000 };
+    case "today":
+      return { trunc: "hour", startTs: todayStart, endTs: now };
+    case "yesterday": {
+      const yesterdayStart = new Date(todayStart.getTime() - 86400000);
+      return { trunc: "hour", startTs: yesterdayStart, endTs: todayStart };
+    }
+    case "7d": {
+      const start = new Date(todayStart.getTime() - 6 * 86400000);
+      return { trunc: "day", startTs: start, endTs: now };
+    }
+    case "28d": {
+      const start = new Date(todayStart.getTime() - 27 * 86400000);
+      return { trunc: "day", startTs: start, endTs: now };
+    }
   }
 }
 
@@ -425,9 +452,7 @@ export async function getUsageInsight(
   options: UsageInsightOptions,
 ): Promise<UsageInsightResponse> {
   const db = globalThis.services.db;
-  const { trunc, ms } = rangeToTruncAndMs(options.range);
-  const endTs = new Date();
-  const startTs = new Date(endTs.getTime() - ms);
+  const { trunc, startTs, endTs } = rangeToWindow(options.range, options.tz);
 
   const p: SqlParams = {
     userIdLit: pgLit(userId),

@@ -22,7 +22,8 @@ const AGENT_COLORS = [
 ] as const;
 
 const RANGE_LABELS = {
-  "24h": "Last 24 hours",
+  today: "Today",
+  yesterday: "Yesterday",
   "7d": "Last 7 days",
   "28d": "Last 28 days",
 } as const satisfies Record<InsightRange, string>;

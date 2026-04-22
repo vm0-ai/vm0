@@ -34,12 +34,12 @@ export const setChartWidth$ = command(({ set }, width: number) => {
   set(internalChartWidth$, width);
 });
 
-export type InsightRange = "24h" | "7d" | "28d";
+export type InsightRange = "today" | "yesterday" | "7d" | "28d";
 export type InsightGroupBy = "source" | "agent";
 export type InsightMetric = "credits" | "tokens";
 export type InsightDetailTab = "schedules" | "chats";
 
-const internalRange$ = state<InsightRange>("7d");
+const internalRange$ = state<InsightRange>("today");
 const internalGroupBy$ = state<InsightGroupBy>("source");
 const internalMetric$ = state<InsightMetric>("credits");
 const internalDetailTab$ = state<InsightDetailTab>("schedules");

@@ -48,7 +48,7 @@ function formatBucketLabel(ts: string, range: string): string {
   if (Number.isNaN(d.getTime())) {
     return ts;
   }
-  if (range === "24h") {
+  if (range === "today" || range === "yesterday") {
     return d.toLocaleTimeString("en-US", { hour: "2-digit", hour12: false });
   }
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });

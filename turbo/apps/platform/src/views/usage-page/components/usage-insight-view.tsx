@@ -71,7 +71,8 @@ export function UsageInsightView() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="24h">Last 24h</SelectItem>
+              <SelectItem value="today">Today</SelectItem>
+              <SelectItem value="yesterday">Yesterday</SelectItem>
               <SelectItem value="7d">Last 7 days</SelectItem>
               <SelectItem value="28d">Last 28 days</SelectItem>
             </SelectContent>
