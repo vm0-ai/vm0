@@ -151,31 +151,6 @@ function mockTokenError() {
   );
 }
 
-function mockEndSessionOk() {
-  const calls: string[] = [];
-  server.use(
-    mockApi(
-      zeroVoiceChatCandidateContract.endSession,
-      ({ params, respond }) => {
-        calls.push(params.id);
-        return respond(200, { ok: true as const });
-      },
-    ),
-  );
-  return calls;
-}
-
-function mockHeartbeatOk() {
-  const calls: string[] = [];
-  server.use(
-    mockApi(zeroVoiceChatCandidateContract.heartbeat, ({ params, respond }) => {
-      calls.push(params.id);
-      return respond(200, { ok: true as const });
-    }),
-  );
-  return calls;
-}
-
 function mockAppendItemOk() {
   const calls: { role: string; content: string; realtimeItemId: string }[] = [];
   let nextSeq = 10;
@@ -384,7 +359,6 @@ describe("voice-chat-candidate session", () => {
     mockReadItemsEmpty();
     mockGetSessionOk();
     mockListTasksOk();
-    mockHeartbeatOk();
     detach(
       context.store.set(startVoiceChatCandidate$, undefined, context.signal),
       Reason.DomCallback,
@@ -587,7 +561,6 @@ describe("voice-chat-candidate session", () => {
       mockTokenOk();
       mockGetSessionOk();
       mockListTasksOk();
-      mockHeartbeatOk();
       let itemsBatch: ReturnType<typeof itemPayload>[] = [];
       server.use(
         mockApi(zeroVoiceChatCandidateContract.readItems, ({ respond }) => {
@@ -630,17 +603,15 @@ describe("voice-chat-candidate session", () => {
   });
 
   describe("endVoiceChatCandidate$", () => {
-    it("posts /end and resets state to idle", async () => {
+    it("tears down WebRTC and resets state to idle without ending the session", async () => {
       await setup();
-      const endCalls = mockEndSessionOk();
       await startSuccessfully();
 
       context.store.set(endVoiceChatCandidate$);
 
       await vi.waitFor(() => {
-        expect(endCalls).toContain(SESSION_ID);
+        expect(context.store.get(vccStatus$)).toBe("idle");
       });
-      expect(context.store.get(vccStatus$)).toBe("idle");
       expect(context.store.get(vccSessionId$)).toBeNull();
     });
   });

@@ -2115,6 +2115,13 @@
       "when": 1776881000000,
       "tag": "0301_drop_memory_and_artifact_snapshot",
       "breakpoints": true
+    },
+    {
+      "idx": 297,
+      "version": "7",
+      "when": 1776848438437,
+      "tag": "0297_careless_polaris",
+      "breakpoints": true
     }
   ]
 }

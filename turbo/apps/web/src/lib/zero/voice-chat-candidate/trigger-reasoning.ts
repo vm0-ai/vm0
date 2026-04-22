@@ -22,14 +22,14 @@ const log = logger("zero:voice-chat-candidate:trigger-reasoning");
 export async function triggerReasoning(sessionId: string): Promise<void> {
   const db = globalThis.services.db;
 
-  // Step 0 — load session and bail early on unknown/ended sessions.
+  // Step 0 — load session and bail early on unknown sessions. Sessions
+  // themselves are stateless; there's no "ended" concept to gate on.
   const [session] = await db
     .select()
     .from(featureCandidateVoiceChatSessions)
     .where(eq(featureCandidateVoiceChatSessions.id, sessionId))
     .limit(1);
   if (!session) return;
-  if (session.status !== "active") return;
 
   // Step 1 — CAS acquire. Only the tick that flips idle→running owns the
   // lock. A losing racer sets reasoning_pending=true and exits; whichever
@@ -80,7 +80,7 @@ export async function triggerReasoning(sessionId: string): Promise<void> {
     .from(featureCandidateVoiceChatSessions)
     .where(eq(featureCandidateVoiceChatSessions.id, sessionId))
     .limit(1);
-  if (!freshSession || freshSession.status !== "active") {
+  if (!freshSession) {
     await db
       .update(featureCandidateVoiceChatSessions)
       .set({

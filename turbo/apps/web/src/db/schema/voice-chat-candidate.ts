@@ -39,8 +39,6 @@ export const featureCandidateVoiceChatSessions = pgTable(
     ),
     // Valid values: "chat" (v1 only)
     mode: varchar("mode", { length: 20 }).notNull().default("chat"),
-    // Valid values: "active" | "ended" | "timeout"
-    status: varchar("status", { length: 20 }).notNull().default("active"),
     conversationSummary: text("conversation_summary"),
     workingTasksSummary: text("working_tasks_summary"),
     finishedTasksSummary: text("finished_tasks_summary"),
@@ -58,13 +56,17 @@ export const featureCandidateVoiceChatSessions = pgTable(
     lastReasoningStartedAt: timestamp("last_reasoning_started_at"),
     lastReasoningDurationMs: integer("last_reasoning_duration_ms"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
-    lastHeartbeatAt: timestamp("last_heartbeat_at").defaultNow().notNull(),
-    endedAt: timestamp("ended_at"),
   },
   (table) => {
     return [
       index("idx_fc_voice_chat_sessions_user").on(table.userId, table.orgId),
-      index("idx_fc_voice_chat_sessions_status").on(table.status),
+      // Supports the "latest session for (userId, agentId)" lookup performed
+      // by createVoiceChatCandidateSession (get-or-create).
+      index("idx_fc_voice_chat_sessions_user_agent_created").on(
+        table.userId,
+        table.agentId,
+        table.createdAt,
+      ),
     ];
   },
 );

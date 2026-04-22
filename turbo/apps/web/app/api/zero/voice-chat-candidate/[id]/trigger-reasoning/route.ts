@@ -38,10 +38,9 @@ export async function POST(
   if (
     !session ||
     session.orgId !== authCtx.orgId ||
-    session.userId !== authCtx.userId ||
-    session.status !== "active"
+    session.userId !== authCtx.userId
   ) {
-    return notFoundResponse("Session not found or not active");
+    return notFoundResponse("Session not found");
   }
 
   after(() => {

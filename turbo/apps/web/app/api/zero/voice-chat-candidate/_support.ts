@@ -39,7 +39,6 @@ export function serializeVoiceChatCandidateSession(session: SessionRow) {
     userId: session.userId,
     agentId: session.agentId,
     mode: "chat" as const,
-    status: session.status,
     conversationSummary: session.conversationSummary,
     workingTasksSummary: session.workingTasksSummary,
     finishedTasksSummary: session.finishedTasksSummary,
@@ -49,8 +48,6 @@ export function serializeVoiceChatCandidateSession(session: SessionRow) {
       ? session.lastSummaryAt.toISOString()
       : null,
     createdAt: session.createdAt.toISOString(),
-    lastHeartbeatAt: session.lastHeartbeatAt.toISOString(),
-    endedAt: session.endedAt ? session.endedAt.toISOString() : null,
   };
 }
 

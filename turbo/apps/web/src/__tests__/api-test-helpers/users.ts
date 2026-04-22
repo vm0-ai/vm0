@@ -31,7 +31,6 @@ export {
 } from "../db-test-assertions/users";
 export {
   getTestVoiceChatCandidateSession,
-  countTestVoiceChatCandidateSessionsByStatus,
   countTestVoiceChatCandidateSessionsByReasoningStatus,
 } from "../db-test-assertions/voice-chat-candidate";
 

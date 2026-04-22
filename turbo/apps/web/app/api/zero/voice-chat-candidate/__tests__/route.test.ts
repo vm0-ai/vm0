@@ -73,11 +73,8 @@ describe("POST /api/zero/voice-chat-candidate (createSession)", () => {
     expect(body.session.userId).toBe(userId);
     expect(body.session.agentId).toBe(agentId);
     expect(body.session.mode).toBe("chat");
-    expect(body.session.status).toBe("active");
     expect(body.session.summarySeq).toBe(0);
     expect(body.session.summaryVersion).toBe(0);
     expect(typeof body.session.createdAt).toBe("string");
-    expect(typeof body.session.lastHeartbeatAt).toBe("string");
-    expect(body.session.endedAt).toBeNull();
   });
 });

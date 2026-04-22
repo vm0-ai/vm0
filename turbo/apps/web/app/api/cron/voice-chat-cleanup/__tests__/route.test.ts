@@ -7,10 +7,8 @@ import {
   getTestVoiceChatEvents,
   insertTestVoiceChatCandidateSession,
   getTestVoiceChatCandidateSession,
-  countTestVoiceChatCandidateSessionsByStatus,
   countTestVoiceChatCandidateSessionsByReasoningStatus,
 } from "../../../../../src/__tests__/api-test-helpers";
-import { mockAblyPublish } from "../../../../../src/__tests__/ably-mock";
 import { reloadEnv } from "../../../../../src/env";
 
 vi.hoisted(() => {
@@ -29,7 +27,6 @@ function cronRequest(secret?: string) {
 describe("GET /api/cron/voice-chat-cleanup", () => {
   beforeEach(() => {
     context.setupMocks();
-    mockAblyPublish.mockClear();
     vi.stubEnv("CRON_SECRET", "test-cron-secret");
     reloadEnv();
   });
@@ -166,84 +163,6 @@ describe("GET /api/cron/voice-chat-cleanup", () => {
   });
 
   describe("voice-chat-candidate passes", () => {
-    it("T1 — times out candidate sessions with stale heartbeat and publishes signal", async () => {
-      const mocks = context.setupMocks();
-      const staleTime = new Date(Date.now() - 3 * 60 * 1000);
-      const sessionId = await insertTestVoiceChatCandidateSession({
-        orgId: "org_test",
-        userId: "user_test",
-        lastHeartbeatAt: staleTime,
-      });
-
-      const response = await GET(cronRequest("test-cron-secret"));
-      const body = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(body.candidateCleaned).toBe(1);
-      expect(body.reasonerReset).toBe(0);
-
-      const row = await getTestVoiceChatCandidateSession(sessionId);
-      expect(row?.status).toBe("timeout");
-      expect(row?.endedAt).not.toBeNull();
-
-      await mocks.flushAfter();
-      expect(mockAblyPublish).toHaveBeenCalledWith(
-        `voice-chat-candidate:${sessionId}`,
-        null,
-      );
-    });
-
-    it("T2 — times out candidate sessions exceeding max duration (>30 min)", async () => {
-      const oldTime = new Date(Date.now() - 31 * 60 * 1000);
-      const sessionId = await insertTestVoiceChatCandidateSession({
-        orgId: "org_test",
-        userId: "user_test",
-        createdAt: oldTime,
-        lastHeartbeatAt: new Date(),
-      });
-
-      const response = await GET(cronRequest("test-cron-secret"));
-      const body = await response.json();
-
-      expect(body.candidateCleaned).toBe(1);
-      const row = await getTestVoiceChatCandidateSession(sessionId);
-      expect(row?.status).toBe("timeout");
-    });
-
-    it("T3 — does not touch fresh candidate sessions within thresholds", async () => {
-      const recentTime = new Date(Date.now() - 30 * 1000);
-      const sessionId = await insertTestVoiceChatCandidateSession({
-        orgId: "org_test",
-        userId: "user_test",
-        createdAt: recentTime,
-        lastHeartbeatAt: recentTime,
-      });
-
-      const response = await GET(cronRequest("test-cron-secret"));
-      const body = await response.json();
-
-      expect(body.candidateCleaned).toBe(0);
-      const row = await getTestVoiceChatCandidateSession(sessionId);
-      expect(row?.status).toBe("active");
-    });
-
-    it("T4 — does not touch already-ended candidate sessions", async () => {
-      const staleTime = new Date(Date.now() - 10 * 60 * 1000);
-      const sessionId = await insertTestVoiceChatCandidateSession({
-        orgId: "org_test",
-        userId: "user_test",
-        status: "ended",
-        lastHeartbeatAt: staleTime,
-      });
-
-      const response = await GET(cronRequest("test-cron-secret"));
-      const body = await response.json();
-
-      expect(body.candidateCleaned).toBe(0);
-      const row = await getTestVoiceChatCandidateSession(sessionId);
-      expect(row?.status).toBe("ended");
-    });
-
     it("T5 — resets stuck reasoner and queues a triggerReasoning re-tick", async () => {
       const staleReasoningAt = new Date(Date.now() - 6 * 60 * 1000);
       const sessionId = await insertTestVoiceChatCandidateSession({
@@ -260,12 +179,10 @@ describe("GET /api/cron/voice-chat-cleanup", () => {
       const body = await response.json();
 
       expect(body.reasonerReset).toBe(1);
-      expect(body.candidateCleaned).toBe(0);
       const row = await getTestVoiceChatCandidateSession(sessionId);
       expect(row?.reasoningStatus).toBe("idle");
 
       // Exactly one after() callback was queued: the re-tick for this session.
-      // publishUserSignal was not queued because the session is not timed out.
       expect(globalThis.nextAfterCallbacks.length).toBe(1);
     });
 
@@ -285,55 +202,6 @@ describe("GET /api/cron/voice-chat-cleanup", () => {
       const row = await getTestVoiceChatCandidateSession(sessionId);
       expect(row?.reasoningStatus).toBe("running");
       expect(row?.lastSummaryAt?.getTime()).toBe(freshReasoningAt.getTime());
-    });
-
-    it("T7 — idempotent: a second run within the same tick processes nothing", async () => {
-      const staleTime = new Date(Date.now() - 3 * 60 * 1000);
-      const sessionId = await insertTestVoiceChatCandidateSession({
-        orgId: "org_test",
-        userId: "user_test",
-        lastHeartbeatAt: staleTime,
-      });
-
-      const first = await GET(cronRequest("test-cron-secret"));
-      expect((await first.json()).candidateCleaned).toBe(1);
-
-      const second = await GET(cronRequest("test-cron-secret"));
-      const secondBody = await second.json();
-      expect(secondBody.candidateCleaned).toBe(0);
-
-      const row = await getTestVoiceChatCandidateSession(sessionId);
-      expect(row?.status).toBe("timeout");
-    });
-
-    it("T8 — caps candidate cleanup at 50 per tick (LIMIT 50)", async () => {
-      const orgId = `org_t8_${Date.now()}`;
-      const staleTime = new Date(Date.now() - 3 * 60 * 1000);
-      for (let i = 0; i < 60; i++) {
-        await insertTestVoiceChatCandidateSession({
-          orgId,
-          userId: `user_t8_${i}`,
-          lastHeartbeatAt: staleTime,
-        });
-      }
-
-      const first = await GET(cronRequest("test-cron-secret"));
-      expect((await first.json()).candidateCleaned).toBe(50);
-      expect(
-        await countTestVoiceChatCandidateSessionsByStatus(orgId, "active"),
-      ).toBe(10);
-      expect(
-        await countTestVoiceChatCandidateSessionsByStatus(orgId, "timeout"),
-      ).toBe(50);
-
-      const second = await GET(cronRequest("test-cron-secret"));
-      expect((await second.json()).candidateCleaned).toBe(10);
-      expect(
-        await countTestVoiceChatCandidateSessionsByStatus(orgId, "active"),
-      ).toBe(0);
-      expect(
-        await countTestVoiceChatCandidateSessionsByStatus(orgId, "timeout"),
-      ).toBe(60);
     });
 
     it("T9 — caps reasoner stuck-recovery at 50 per tick (LIMIT 50)", async () => {

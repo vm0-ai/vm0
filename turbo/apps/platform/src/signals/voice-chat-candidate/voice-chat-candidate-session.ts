@@ -6,12 +6,11 @@ import {
   zeroVoiceChatCandidateContract,
   type VoiceChatCandidateItem,
   type VoiceChatCandidateItemRole,
-  type VoiceChatCandidateSession,
   type VoiceChatCandidateTask,
 } from "@vm0/core";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import { defaultAgentId$ } from "../agent.ts";
-import { resetSignal, throwIfAbort, onDomEventFn, setLoop } from "../utils.ts";
+import { resetSignal, throwIfAbort, onDomEventFn } from "../utils.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
@@ -25,8 +24,6 @@ type ConnectionStatus =
   | "connected"
   | "disconnected"
   | "error";
-
-const HEARTBEAT_INTERVAL_MS = 30_000;
 
 // Hardcoded Talker model per epic #10297. No model picker in candidate v1.
 const TALKER_MODEL = "gpt-realtime-mini";
@@ -120,16 +117,16 @@ export const vccError$ = computed((get) => {
   return get(internalError$);
 });
 
-export const vccMuted$ = computed((get) => {
+const vccMuted$ = computed((get) => {
   return get(internalMuted$);
 });
 
-export const vccEnabled$ = computed(async (get) => {
+const vccEnabled$ = computed(async (get) => {
   const features = await get(featureSwitch$);
   return features[FeatureSwitchKey.VoiceChat] ?? false;
 });
 
-export const vccAgentId$ = computed(async (get) => {
+const vccAgentId$ = computed(async (get) => {
   return await get(defaultAgentId$);
 });
 
@@ -141,29 +138,29 @@ export const vccTasksById$ = computed((get) => {
   return get(internalTasksById$);
 });
 
-export const vccConversationSummary$ = computed((get) => {
+const vccConversationSummary$ = computed((get) => {
   return get(internalConversationSummary$);
 });
 
-export const vccSummarySeq$ = computed((get) => {
+const vccSummarySeq$ = computed((get) => {
   return get(internalSummarySeq$);
 });
 
-export const vccLastSummaryAt$ = computed((get) => {
+const vccLastSummaryAt$ = computed((get) => {
   return get(internalLastSummaryAt$);
 });
 
-export const vccTalkerInstructionTokens$ = computed((get) => {
+const vccTalkerInstructionTokens$ = computed((get) => {
   return get(internalTalkerInstructionTokens$);
 });
 
-export const vccTalkerInstructions$ = computed((get) => {
+const vccTalkerInstructions$ = computed((get) => {
   return get(internalTalkerInstructions$);
 });
 
 const sessionListRefreshToken$ = state(0);
 
-export const vccSessionList$ = computed(async (get) => {
+const vccSessionList$ = computed(async (get) => {
   get(sessionListRefreshToken$);
   const createClient = get(zeroClient$);
   const client = createClient(zeroVoiceChatCandidateContract);
@@ -769,27 +766,6 @@ const setupWebRTC$ = command(
 // Heartbeat + Ably loops
 // ---------------------------------------------------------------------------
 
-const startHeartbeat$ = command(async ({ get }, signal: AbortSignal) => {
-  await setLoop(
-    async () => {
-      const sid = get(internalSessionId$);
-      if (!sid) {
-        return true;
-      }
-      const createClient = get(zeroClient$);
-      const client = createClient(zeroVoiceChatCandidateContract);
-      await accept(
-        client.heartbeat({ params: { id: sid }, body: {} }),
-        [200, 401, 404],
-        { toast: false },
-      );
-      return false;
-    },
-    HEARTBEAT_INTERVAL_MS,
-    signal,
-  );
-});
-
 const pushTalkerInstructions$ = command(({ get }) => {
   const dc = get(internalDc$);
   if (!dc || dc.readyState !== "open") {
@@ -919,10 +895,6 @@ const startAblyLoop$ = command(
           set(internalTalkerInstructionTokens$, nextTokens);
           set(pushTalkerInstructions$);
         }
-        if (session.status !== "active") {
-          set(internalStatus$, "disconnected");
-          return true;
-        }
       }
 
       const tasksRes = await accept(
@@ -1031,11 +1003,8 @@ const releaseWakeLock$ = command(({ get, set }) => {
 // ---------------------------------------------------------------------------
 
 export const startVoiceChatCandidate$ = command(
-  async (
-    { get, set },
-    reenterSessionId: string | undefined,
-    signal: AbortSignal,
-  ) => {
+  async ({ get, set }, _unused: undefined, signal: AbortSignal) => {
+    void _unused;
     const status = get(internalStatus$);
     if (status === "connecting" || status === "connected") {
       return;
@@ -1065,54 +1034,29 @@ export const startVoiceChatCandidate$ = command(
     const createClient = get(zeroClient$);
     const client = createClient(zeroVoiceChatCandidateContract);
 
-    type SessionResBody = {
-      session: VoiceChatCandidateSession;
-      recentTaskLogs: string;
-      finishedTasksFullText: string;
-      talkerInstructions: string;
-      talkerInstructionTokens: number;
-    };
+    const agentId = await get(defaultAgentId$);
+    signal.throwIfAborted();
 
-    let sessionBody: SessionResBody;
-    if (reenterSessionId) {
-      const res = await accept(
-        client.reenterSession({
-          params: { id: reenterSessionId },
-          body: {},
-        }),
-        [200, 401, 403, 404],
-        { toast: false },
-      );
-      signal.throwIfAborted();
-      if (res.status !== 200) {
-        set(internalError$, res.body.error.message);
-        set(internalStatus$, "error");
-        return;
-      }
-      sessionBody = res.body;
-    } else {
-      const agentId = await get(defaultAgentId$);
-      signal.throwIfAborted();
-
-      if (!agentId) {
-        set(internalError$, "No agent selected");
-        set(internalStatus$, "error");
-        return;
-      }
-
-      const res = await accept(
-        client.createSession({ body: { agentId } }),
-        [200, 400, 401, 403],
-        { toast: false },
-      );
-      signal.throwIfAborted();
-      if (res.status !== 200) {
-        set(internalError$, res.body.error.message);
-        set(internalStatus$, "error");
-        return;
-      }
-      sessionBody = res.body;
+    if (!agentId) {
+      set(internalError$, "No agent selected");
+      set(internalStatus$, "error");
+      return;
     }
+
+    // createSession is get-or-create on the server side: same (userId,
+    // agentId) returns the existing session row, so this doubles as resume.
+    const res = await accept(
+      client.createSession({ body: { agentId } }),
+      [200, 400, 401, 403],
+      { toast: false },
+    );
+    signal.throwIfAborted();
+    if (res.status !== 200) {
+      set(internalError$, res.body.error.message);
+      set(internalStatus$, "error");
+      return;
+    }
+    const sessionBody = res.body;
 
     const session = sessionBody.session;
     set(internalSessionId$, session.id);
@@ -1124,37 +1068,37 @@ export const startVoiceChatCandidate$ = command(
     set(internalTalkerInstructions$, sessionBody.talkerInstructions);
     set(internalTalkerInstructionTokens$, sessionBody.talkerInstructionTokens);
 
-    if (reenterSessionId) {
-      const [itemsRes, tasksRes] = await Promise.all([
-        accept(
-          client.readItems({ params: { id: session.id }, query: {} }),
-          [200, 401, 404],
-          { toast: false },
-        ),
-        accept(
-          client.listTasks({ params: { id: session.id } }),
-          [200, 401, 404],
-          { toast: false },
-        ),
-      ]);
-      signal.throwIfAborted();
-      if (itemsRes.status === 200) {
-        set(internalItems$, itemsRes.body.items);
-        const lastSeq = itemsRes.body.items.reduce((acc, item) => {
-          return Math.max(acc, item.seq);
-        }, 0);
-        set(internalMaxSeq$, lastSeq);
+    // Always hydrate existing items + tasks — we don't know whether the
+    // server just created this session or handed back a prior one.
+    const [itemsRes, tasksRes] = await Promise.all([
+      accept(
+        client.readItems({ params: { id: session.id }, query: {} }),
+        [200, 401, 404],
+        { toast: false },
+      ),
+      accept(
+        client.listTasks({ params: { id: session.id } }),
+        [200, 401, 404],
+        { toast: false },
+      ),
+    ]);
+    signal.throwIfAborted();
+    if (itemsRes.status === 200) {
+      set(internalItems$, itemsRes.body.items);
+      const lastSeq = itemsRes.body.items.reduce((acc, item) => {
+        return Math.max(acc, item.seq);
+      }, 0);
+      set(internalMaxSeq$, lastSeq);
+    }
+    if (tasksRes.status === 200) {
+      const next: Record<string, VoiceChatCandidateTask> = {};
+      const byCallId: Record<string, VoiceChatCandidateTask> = {};
+      for (const task of tasksRes.body.tasks) {
+        next[task.id] = task;
+        byCallId[task.callId] = task;
       }
-      if (tasksRes.status === 200) {
-        const next: Record<string, VoiceChatCandidateTask> = {};
-        const byCallId: Record<string, VoiceChatCandidateTask> = {};
-        for (const task of tasksRes.body.tasks) {
-          next[task.id] = task;
-          byCallId[task.callId] = task;
-        }
-        set(internalTasksById$, next);
-        set(internalTasksByCallId$, byCallId);
-      }
+      set(internalTasksById$, next);
+      set(internalTasksByCallId$, byCallId);
     }
 
     const tokenRes = await accept(
@@ -1208,28 +1152,17 @@ export const startVoiceChatCandidate$ = command(
     await set(acquireWakeLock$, sessionSignal);
     signal.throwIfAborted();
 
-    await Promise.allSettled([
-      set(startHeartbeat$, sessionSignal),
-      set(startAblyLoop$, session.id, sessionSignal),
-    ]);
+    await set(startAblyLoop$, session.id, sessionSignal);
   },
 );
 
+/**
+ * Exit voice-chat mode: tear down the WebRTC / microphone / wake-lock /
+ * Ably loop. The session row itself is left alone — voice-chat-candidate
+ * sessions are stateless, so next time startVoiceChatCandidate$ runs with
+ * the same (user, agent) it will resume this one via get-or-create.
+ */
 export const endVoiceChatCandidate$ = command(({ get, set }) => {
-  const sid = get(internalSessionId$);
-
-  if (sid) {
-    const createClient = get(zeroClient$);
-    const client = createClient(zeroVoiceChatCandidateContract);
-    accept(
-      client.endSession({ params: { id: sid }, body: {} }),
-      [200, 401, 404],
-      { toast: false },
-    ).catch(() => {
-      return undefined;
-    });
-  }
-
   set(resetSessionSignal$);
   set(releaseWakeLock$);
 
@@ -1279,7 +1212,7 @@ export const endVoiceChatCandidate$ = command(({ get, set }) => {
   set(sessionListRefreshToken$, get(sessionListRefreshToken$) + 1);
 });
 
-export const toggleVoiceChatCandidateMute$ = command(({ get, set }) => {
+const toggleVoiceChatCandidateMute$ = command(({ get, set }) => {
   const stream = get(internalStream$);
   if (!stream) {
     return;
@@ -1299,7 +1232,7 @@ export const toggleVoiceChatCandidateMute$ = command(({ get, set }) => {
  * via `after()`; the usual CAS lock + debounce path still applies on the
  * server, so spamming this button is safe.
  */
-export const triggerReasoningCandidate$ = command(
+const triggerReasoningCandidate$ = command(
   async ({ get }, signal: AbortSignal) => {
     const sid = get(internalSessionId$);
     if (!sid) {

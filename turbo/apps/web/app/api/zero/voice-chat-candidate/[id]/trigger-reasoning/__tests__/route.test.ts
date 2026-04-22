@@ -8,7 +8,6 @@ import {
   seedCandidateAgent,
   seedCandidateSession,
   setupCandidateOrg,
-  endCandidateSession,
 } from "../../../__tests__/_helpers";
 
 vi.mock("@vm0/core", async (importOriginal) => {
@@ -92,20 +91,7 @@ describe("POST /api/zero/voice-chat-candidate/:id/trigger-reasoning", () => {
     expect(body.error.code).toBe("NOT_FOUND");
   });
 
-  it("returns 404 when the session has ended", async () => {
-    const { agentId } = await seedCandidateAgent(userId, orgId);
-    const session = await seedCandidateSession({ orgId, userId, agentId });
-    await endCandidateSession(session.id);
-    const response = await POST(
-      postRequest(`/${session.id}/trigger-reasoning`),
-      paramsFor(session.id),
-    );
-    const body = await response.json();
-    expect(response.status).toBe(404);
-    expect(body.error.code).toBe("NOT_FOUND");
-  });
-
-  it("returns 200 with ok:true for an active session", async () => {
+  it("returns 200 with ok:true for an existing session", async () => {
     const { agentId } = await seedCandidateAgent(userId, orgId);
     const session = await seedCandidateSession({ orgId, userId, agentId });
     const response = await POST(
