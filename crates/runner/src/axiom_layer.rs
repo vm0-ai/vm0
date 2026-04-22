@@ -42,6 +42,22 @@ const FLUSH_DEADLINE: Duration = Duration::from_secs(15);
 /// stuck ingest call can hold up the dispatcher's batch loop. Must stay
 /// `<= FLUSH_DEADLINE` (see above).
 const HTTP_TIMEOUT: Duration = Duration::from_secs(10);
+// Compile-time enforcement of the FLUSH_DEADLINE >= HTTP_TIMEOUT invariant —
+// without this, a slow flush gets aborted mid-request during shutdown and
+// the final batch (usually the most valuable one) never reaches Axiom.
+const _: () = assert!(
+    FLUSH_DEADLINE.as_secs() >= HTTP_TIMEOUT.as_secs(),
+    "FLUSH_DEADLINE must be >= HTTP_TIMEOUT; see FLUSH_DEADLINE doc comment",
+);
+/// Max bytes we'll serialize from a single `Debug`-formatted field.
+///
+/// Covers typical legit Debug output (errors, configs — nearly all under
+/// ~2 KiB) while flagging accidental huge-struct dumps: `tracing::warn!(v
+/// = ?gigantic, ...)` would otherwise embed megabytes into a single event
+/// and blow past Axiom's per-request body limit. Oversized values are
+/// truncated on a UTF-8 boundary with a `…[truncated]` marker so the
+/// condition is visible in the log.
+const DEBUG_FIELD_MAX_BYTES: usize = 4 * 1024;
 const DEFAULT_AXIOM_URL: &str = "https://api.axiom.co";
 const SERVICE_NAME: &str = "runner";
 /// Target used for this layer's own diagnostics (channel-full warnings,
@@ -52,13 +68,20 @@ const INTERNAL_TARGET: &str = "runner::axiom_layer::internal";
 
 /// Holds the dispatcher task. `shutdown().await` drains the queue; dropping
 /// without calling `shutdown` leaves the tokio runtime to abort the task.
-pub struct AxiomGuard {
+///
+/// **Abnormal-exit caveat**: on `panic!`, `std::process::exit`, or
+/// `std::process::abort`, `shutdown` does not run — the tokio runtime tears
+/// down mid-flight and the events buffered at that moment (often the most
+/// valuable batch, since they include whatever triggered the exit) are lost.
+/// Sentry's panic integration still captures the panic itself; Axiom just
+/// does not receive the corresponding structured log.
+pub(crate) struct AxiomGuard {
     tx: mpsc::Sender<Msg>,
     handle: Option<JoinHandle<()>>,
 }
 
 impl AxiomGuard {
-    pub async fn shutdown(mut self) {
+    pub(crate) async fn shutdown(mut self) {
         // Single deadline covers both `send(Close)` (may wait for a slot if
         // the channel is full) and `handle.await` (may wait for in-flight
         // HTTP flushes). Without wrapping both, a full backlog could stall
@@ -76,7 +99,7 @@ impl AxiomGuard {
 /// Initialize the Axiom layer. Returns `None` when required env is missing —
 /// caller should install a `None` layer in that case (no-op). Production
 /// entry point; always targets `DEFAULT_AXIOM_URL`.
-pub fn init() -> Option<(AxiomLayer, AxiomGuard)> {
+pub(crate) fn init() -> Option<(AxiomLayer, AxiomGuard)> {
     let token = std::env::var("AXIOM_TOKEN_TELEMETRY")
         .ok()
         .filter(|s| !s.is_empty())?;
@@ -90,7 +113,7 @@ pub fn init() -> Option<(AxiomLayer, AxiomGuard)> {
 /// at an `httpmock` server without leaking an `AXIOM_URL` override into the
 /// runner's production env surface — production code should always call
 /// [`init`], which hard-codes [`DEFAULT_AXIOM_URL`].
-pub fn init_with_base_url(
+pub(crate) fn init_with_base_url(
     base_url: &str,
     token: &str,
     suffix: &str,
@@ -127,7 +150,7 @@ pub fn init_with_base_url(
     ))
 }
 
-pub struct AxiomLayer {
+pub(crate) struct AxiomLayer {
     tx: mpsc::Sender<Msg>,
     dropped: AtomicU64,
 }
@@ -278,8 +301,20 @@ fn serialize_event(event: &Event<'_>) -> Value {
             self.0.insert(f.name().into(), Value::Object(obj));
         }
         fn record_debug(&mut self, f: &Field, v: &dyn std::fmt::Debug) {
+            // Cap per-field size so a user who logs a huge struct via `?v`
+            // can't blow past Axiom's body limit or starve the dispatcher.
             let mut s = String::new();
             let _ = write!(s, "{v:?}");
+            if s.len() > DEBUG_FIELD_MAX_BYTES {
+                // Truncate on a char boundary so the resulting String is
+                // still valid UTF-8.
+                let mut cut = DEBUG_FIELD_MAX_BYTES;
+                while !s.is_char_boundary(cut) {
+                    cut -= 1;
+                }
+                s.truncate(cut);
+                s.push_str("…[truncated]");
+            }
             self.0.insert(f.name().into(), Value::String(s));
         }
     }
