@@ -3,6 +3,7 @@ import { http, HttpResponse } from "msw";
 import {
   zeroVoiceChatSessionsContract,
   zeroVoiceChatContextContract,
+  zeroVoiceChatTasksContract,
   type ContextEvent,
 } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
@@ -87,6 +88,14 @@ function mockHeartbeat() {
   server.use(
     mockApi(zeroVoiceChatSessionsContract.heartbeat, ({ respond }) => {
       return respond(200, { ok: true as const });
+    }),
+  );
+}
+
+function mockListTasks() {
+  server.use(
+    mockApi(zeroVoiceChatTasksContract.listTasks, ({ respond }) => {
+      return respond(200, { tasks: [] });
     }),
   );
 }
@@ -238,6 +247,7 @@ describe("voice-chat fast-brain injection", () => {
     mockToken();
     mockActivate();
     mockHeartbeat();
+    mockListTasks();
 
     detach(
       context.store.set(startVoiceChat$, context.signal),
