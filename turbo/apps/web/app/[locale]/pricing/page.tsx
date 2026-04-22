@@ -78,7 +78,7 @@ const faqItems = [
   {
     question: "Can I change plans at any time?",
     answer:
-      "Yes! You can upgrade or downgrade your plan at any time. When you upgrade, leftover credits remain in your account with their original expiration date and are used first. Changes take effect immediately, and we'll prorate charges accordingly.",
+      "Yes! You can upgrade or downgrade your plan at any time. When you upgrade, leftover credits remain in your account with their original expiration date and are used first. Changes take effect immediately.",
   },
   {
     question: "What happens when I run out of credits?",

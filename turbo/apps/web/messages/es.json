@@ -191,7 +191,7 @@
       "whatAreCredits": "¿Qué son los créditos?",
       "whatAreCreditsAnswer": "Los créditos se consumen cuando tus agentes usan modelos de IA. Diferentes modelos consumen créditos a diferentes tasas. Por ejemplo, una tarea simple puede usar pocos créditos, mientras que un flujo de trabajo complejo de varios pasos usa más.",
       "changePlans": "¿Puedo cambiar de plan en cualquier momento?",
-      "changePlansAnswer": "¡Sí! Puedes actualizar o reducir tu plan en cualquier momento. Al actualizar, los créditos sobrantes permanecen en tu cuenta con su fecha de caducidad original y se usan primero. Los cambios surten efecto inmediatamente y prorrateamos los cargos en consecuencia.",
+      "changePlansAnswer": "¡Sí! Puedes actualizar o reducir tu plan en cualquier momento. Al actualizar, los créditos sobrantes permanecen en tu cuenta con su fecha de caducidad original y se usan primero. Los cambios surten efecto inmediatamente.",
       "runOutOfCredits": "¿Qué pasa cuando se me acaban los créditos?",
       "runOutOfCreditsAnswer": "Cuando tus créditos se agoten, tus agentes dejarán de funcionar. Puedes comprar créditos adicionales mediante recarga automática, actualizar a un plan superior para más créditos mensuales, o comprar créditos de pago por uso que nunca expiran.",
       "doCreditsRollOver": "¿Caducan los créditos?",

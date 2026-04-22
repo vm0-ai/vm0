@@ -191,7 +191,7 @@
       "whatAreCredits": "Was sind Credits?",
       "whatAreCreditsAnswer": "Credits werden verbraucht, wenn Ihre Agenten KI-Modelle nutzen. Verschiedene Modelle verbrauchen Credits mit unterschiedlichen Raten. Zum Beispiel verbraucht eine einfache Aufgabe wenige Credits, während ein komplexer mehrstufiger Workflow mehr benötigt.",
       "changePlans": "Kann ich den Plan jederzeit wechseln?",
-      "changePlansAnswer": "Ja! Sie können Ihren Plan jederzeit upgraden oder downgraden. Beim Upgrade verbleiben vorhandene Credits mit ihrem ursprünglichen Ablaufdatum im Konto und werden zuerst verbraucht. Änderungen werden sofort wirksam, und wir berechnen die Kosten anteilig.",
+      "changePlansAnswer": "Ja! Sie können Ihren Plan jederzeit upgraden oder downgraden. Beim Upgrade verbleiben vorhandene Credits mit ihrem ursprünglichen Ablaufdatum im Konto und werden zuerst verbraucht. Änderungen werden sofort wirksam.",
       "runOutOfCredits": "Was passiert, wenn meine Credits aufgebraucht sind?",
       "runOutOfCreditsAnswer": "Wenn Ihre Credits aufgebraucht sind, stoppen Ihre Agenten. Sie können zusätzliche Credits per automatischem Aufladen kaufen, auf einen höheren Plan upgraden oder Pay-as-you-go-Credits kaufen, die nie verfallen.",
       "doCreditsRollOver": "Verfallen Credits?",

@@ -191,7 +191,7 @@
       "whatAreCredits": "What are credits?",
       "whatAreCreditsAnswer": "Credits are consumed when your agents use AI models. Different models consume credits at different rates. For example, a simple task might use a few credits, while a complex multi-step workflow uses more.",
       "changePlans": "Can I change plans at any time?",
-      "changePlansAnswer": "Yes! You can upgrade or downgrade your plan at any time. When you upgrade, leftover credits remain in your account with their original expiration date and are used first. Changes take effect immediately, and we'll prorate charges accordingly.",
+      "changePlansAnswer": "Yes! You can upgrade or downgrade your plan at any time. When you upgrade, leftover credits remain in your account with their original expiration date and are used first. Changes take effect immediately.",
       "runOutOfCredits": "What happens when I run out of credits?",
       "runOutOfCreditsAnswer": "When your credits are depleted, your agents will stop running. You can purchase additional credits via auto-recharge, upgrade to a higher plan for more monthly credits, or buy pay-as-you-go credits that never expire.",
       "doCreditsRollOver": "Do credits expire?",
