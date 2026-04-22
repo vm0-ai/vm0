@@ -18,13 +18,20 @@ export const defaultAgentId$ = computed(async (get) => {
   return status.defaultAgentId;
 });
 
+const internalAgentByIdReload$ = state(0);
+
 export function agentById(id: string) {
   return computed(async (get) => {
+    get(internalAgentByIdReload$);
     const client = get(zeroClient$)(zeroAgentsByIdContract);
     const result = await accept(client.get({ params: { id } }), [200]);
     return result.body;
   });
 }
+
+export const reloadAgentById$ = command(({ set }) => {
+  set(internalAgentByIdReload$, (prev) => prev + 1);
+});
 
 const defaultAgent$ = computed(async (get) => {
   const defaultId = await get(defaultAgentId$);
@@ -112,11 +119,6 @@ export interface SubagentInfo {
 }
 
 export const leadAgentAvatarUrl$ = computed(async (get) => {
-  const agentId = await get(defaultAgentId$);
-  if (!agentId) {
-    return null;
-  }
-  const client = get(zeroClient$)(zeroAgentsByIdContract);
-  const result = await accept(client.get({ params: { id: agentId } }), [200]);
-  return result.body.avatarUrl ?? null;
+  const agent = await get(defaultAgent$);
+  return agent?.avatarUrl ?? null;
 });

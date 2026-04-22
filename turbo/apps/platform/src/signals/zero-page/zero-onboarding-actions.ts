@@ -15,7 +15,7 @@ import { currentChatAgentDisplayName$ } from "../agent-chat.ts";
 import { detachedNavigateTo$, searchParams$ } from "../route.ts";
 import { slackOrgData$ } from "./zero-slack.ts";
 import { reloadBillingStatus$ } from "./billing.ts";
-import { reloadAgents$ } from "../agent.ts";
+import { reloadAgentById$, reloadAgents$ } from "../agent.ts";
 import { reloadPinnedAgents$ } from "./zero-pinned-agents.ts";
 import { showAppSkeleton$, startSkeletonCycling$ } from "../app-skeleton.ts";
 import { logger } from "../log.ts";
@@ -233,6 +233,7 @@ const completeOnboarding$ = command(
       : await set(completeMemberOnboarding$, signal);
 
     set(reloadAgents$);
+    set(reloadAgentById$);
     set(reloadPinnedAgents$);
     return agentId;
   },
