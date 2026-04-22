@@ -477,7 +477,6 @@ export {
 export {
   matchFirewallPath,
   findMatchingPermissions,
-  type GraphQLBody,
 } from "./firewall-rule-matcher";
 
 export {

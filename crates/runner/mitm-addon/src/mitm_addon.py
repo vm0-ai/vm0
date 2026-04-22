@@ -239,7 +239,6 @@ async def request(flow: http.HTTPFlow) -> None:
             flow.request.method,
             vm_firewalls,
             network_policies,
-            body=flow.request.content,
         )
         if isinstance(result, FirewallBlock):
             proxy_log_path = flow.metadata.get("vm_proxy_log_path", "")
