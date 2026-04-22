@@ -1,5 +1,31 @@
 # Changelog
 
+## [12.284.0](https://github.com/vm0-ai/vm0/compare/web-v12.283.1...web-v12.284.0) (2026-04-22)
+
+
+### Features
+
+* multi-mount artifact backend + checkpoint schema ([#10629](https://github.com/vm0-ai/vm0/issues/10629)) ([0f8af96](https://github.com/vm0-ai/vm0/commit/0f8af96cd55dedd89534ff430765cc34661a55fc))
+* **voice-chat:** restore slow-brain tasker dispatch guidance ([#10672](https://github.com/vm0-ai/vm0/issues/10672)) ([32800c0](https://github.com/vm0-ai/vm0/commit/32800c09e9aac8650b6d4552d4e73533906e0f78))
+* **zero:** dual-read memory storage (artifact→memory fallback) ([#10677](https://github.com/vm0-ai/vm0/issues/10677)) ([dff842b](https://github.com/vm0-ai/vm0/commit/dff842b869cf5d786b9b7ca3f6aff9bc846ff52e)), closes [#10600](https://github.com/vm0-ai/vm0/issues/10600)
+
+
+### Bug Fixes
+
+* **billing:** gate webhook credit grants on credit_expires_record insert ([#10668](https://github.com/vm0-ai/vm0/issues/10668)) ([26e8e31](https://github.com/vm0-ai/vm0/commit/26e8e315db51ffc7f79af0c0d2bf0a56ac7c48dd))
+
+
+### Refactoring
+
+* **web:** consolidate api-error factories and document sentry filter chain ([#10673](https://github.com/vm0-ai/vm0/issues/10673)) ([fa010ff](https://github.com/vm0-ai/vm0/commit/fa010ff1800f36dfdfc736fa6194ec2ef4840874)), closes [#10666](https://github.com/vm0-ai/vm0/issues/10666)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.226.0
+
 ## [12.283.1](https://github.com/vm0-ai/vm0/compare/web-v12.283.0...web-v12.283.1) (2026-04-22)
 
 

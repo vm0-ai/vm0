@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.283.0](https://github.com/vm0-ai/vm0/compare/app-v0.282.1...app-v0.283.0) (2026-04-22)
+
+
+### Features
+
+* **voice-chat:** add right-column active tasks panel ([#10675](https://github.com/vm0-ai/vm0/issues/10675)) ([6b53c26](https://github.com/vm0-ai/vm0/commit/6b53c265952ab487cf0ed2f934b7a7ab932e591b)), closes [#10665](https://github.com/vm0-ai/vm0/issues/10665)
+* **voice-chat:** render fast-brain request-slow-brain events in ui ([#10674](https://github.com/vm0-ai/vm0/issues/10674)) ([dc91e6a](https://github.com/vm0-ai/vm0/commit/dc91e6a26bdcd4c6cfc24e34e98167152018c788)), closes [#10671](https://github.com/vm0-ai/vm0/issues/10671)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.226.0
+
 ## [0.282.1](https://github.com/vm0-ai/vm0/compare/app-v0.282.0...app-v0.282.1) (2026-04-22)
 
 

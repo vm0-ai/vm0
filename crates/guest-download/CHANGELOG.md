@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.0](https://github.com/vm0-ai/vm0/compare/guest-download-v0.18.3...guest-download-v0.19.0) (2026-04-22)
+
+
+### Features
+
+* multi-mount artifact backend + checkpoint schema ([#10629](https://github.com/vm0-ai/vm0/issues/10629)) ([0f8af96](https://github.com/vm0-ai/vm0/commit/0f8af96cd55dedd89534ff430765cc34661a55fc))
+
 ## [0.18.3](https://github.com/vm0-ai/vm0/compare/guest-download-v0.18.2...guest-download-v0.18.3) (2026-04-22)
 
 
