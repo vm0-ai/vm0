@@ -168,6 +168,20 @@ describe("getVm0VisibleModels", () => {
     });
     expect(models).toContain("deepseek-chat");
   });
+
+  it("hides deepseek-reasoner when Vm0DeepseekModel flag is disabled", () => {
+    const models = getVm0VisibleModels({
+      [FeatureSwitchKey.Vm0DeepseekModel]: false,
+    });
+    expect(models).not.toContain("deepseek-reasoner");
+  });
+
+  it("shows deepseek-reasoner when Vm0DeepseekModel flag is enabled", () => {
+    const models = getVm0VisibleModels({
+      [FeatureSwitchKey.Vm0DeepseekModel]: true,
+    });
+    expect(models).toContain("deepseek-reasoner");
+  });
 });
 
 describe("firewall base URL scoped to /v1/messages (#9560)", () => {
