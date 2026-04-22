@@ -328,6 +328,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the DeepSeek-V3.2 (deepseek-chat) VM0 managed model",
     enabled: false,
   },
+  [FeatureSwitchKey.Trinity]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Embed the candidate voice-chat mic toggle + voice-mode layout into the agent chat page. Gates the mic launcher, composer swap, and status/subtitle/task-card UI.",
+    enabled: false,
+  },
 };
 
 interface ResolvedHashes {

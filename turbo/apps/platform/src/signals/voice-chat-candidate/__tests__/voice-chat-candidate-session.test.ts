@@ -360,7 +360,11 @@ describe("voice-chat-candidate session", () => {
     mockGetSessionOk();
     mockListTasksOk();
     detach(
-      context.store.set(startVoiceChatCandidate$, undefined, context.signal),
+      context.store.set(
+        startVoiceChatCandidate$,
+        DEFAULT_AGENT_ID,
+        context.signal,
+      ),
       Reason.DomCallback,
     );
     await vi.waitFor(() => {
@@ -404,7 +408,7 @@ describe("voice-chat-candidate session", () => {
 
       await context.store.set(
         startVoiceChatCandidate$,
-        undefined,
+        DEFAULT_AGENT_ID,
         context.signal,
       );
 
@@ -419,7 +423,7 @@ describe("voice-chat-candidate session", () => {
 
       await context.store.set(
         startVoiceChatCandidate$,
-        undefined,
+        DEFAULT_AGENT_ID,
         context.signal,
       );
 
@@ -571,7 +575,11 @@ describe("voice-chat-candidate session", () => {
       );
 
       detach(
-        context.store.set(startVoiceChatCandidate$, undefined, context.signal),
+        context.store.set(
+          startVoiceChatCandidate$,
+          DEFAULT_AGENT_ID,
+          context.signal,
+        ),
         Reason.DomCallback,
       );
       await vi.waitFor(() => {

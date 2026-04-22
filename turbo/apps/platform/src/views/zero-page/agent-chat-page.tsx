@@ -26,8 +26,11 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@vm0/ui";
-import { FeatureSwitchKey } from "@vm0/core";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import { FeatureSwitchKey, type VoiceChatCandidateTask } from "@vm0/core";
+import {
+  featureSwitch$,
+  trinityEnabled$,
+} from "../../signals/external/feature-switch.ts";
 import {
   currentChatAgentId$,
   currentChatAgentDisplayName$,
@@ -66,8 +69,18 @@ import {
   startNewZeroSession$,
 } from "../../signals/chat-page/chat-message.ts";
 import { navigateToChat$ } from "../../signals/zero-page/zero-nav.ts";
-import { vcEnabled$ } from "../../signals/voice-chat/voice-chat-session.ts";
-import { ROUTES } from "../../signals/route-paths.ts";
+import {
+  vccStatus$,
+  vccError$,
+} from "../../signals/voice-chat-candidate/voice-chat-candidate-session.ts";
+import {
+  agentChatVoiceMode$,
+  enterAgentChatVoiceMode$,
+  exitAgentChatVoiceMode$,
+  lastUserMessage$,
+  lastAgentMessage$,
+  agentChatPendingTasks$,
+} from "../../signals/zero-page/agent-chat-voice-mode.ts";
 
 function getTagline(
   agentName: string,
@@ -271,32 +284,149 @@ function PinPill() {
 }
 
 function VoiceChatLauncher() {
-  const vcEnabled = useLastResolved(vcEnabled$) ?? false;
-  const navigate = useSet(detachedNavigateTo$);
-  if (!vcEnabled) {
+  const trinityEnabled = useLastResolved(trinityEnabled$) ?? false;
+  const voiceMode = useGet(agentChatVoiceMode$);
+  const vccStatus = useGet(vccStatus$);
+  const currentChatAgentId = useLastResolved(currentChatAgentId$);
+  const enterVoice = useSet(enterAgentChatVoiceMode$);
+  const exitVoice = useSet(exitAgentChatVoiceMode$);
+  const pageSignal = useGet(pageSignal$);
+
+  if (!trinityEnabled) {
     return null;
   }
+
+  const handleClick = () => {
+    if (voiceMode === "on") {
+      exitVoice();
+      return;
+    }
+    if (currentChatAgentId) {
+      detach(enterVoice(currentChatAgentId, pageSignal), Reason.DomCallback);
+    }
+  };
+
+  const isConnecting = voiceMode === "on" && vccStatus === "connecting";
+  const isConnected = voiceMode === "on" && vccStatus === "connected";
+  const colorClass = isConnected
+    ? "text-green-600 hover:text-green-700"
+    : isConnecting
+      ? "text-primary animate-pulse"
+      : "text-muted-foreground hover:text-foreground";
+
+  const tooltipText =
+    voiceMode === "on" ? "Exit voice chat" : "Start voice chat";
+
   return (
     <TooltipProvider delayDuration={200}>
       <Tooltip>
         <TooltipTrigger asChild>
           <button
             type="button"
-            onClick={() => {
-              navigate(ROUTES.voiceChat);
-            }}
-            className="shrink-0 flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground cursor-pointer"
-            aria-label="Start voice chat"
+            onClick={handleClick}
+            data-testid="voice-chat-launcher"
+            aria-label={tooltipText}
+            aria-pressed={voiceMode === "on"}
+            className={`shrink-0 flex h-9 w-9 items-center justify-center rounded-lg transition-colors hover:bg-accent cursor-pointer ${colorClass}`}
           >
             <IconMicrophone size={20} stroke={1.5} />
           </button>
         </TooltipTrigger>
         <TooltipContent side="bottom">
-          <p className="text-xs">Voice chat</p>
+          <p className="text-xs">{tooltipText}</p>
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
   );
+}
+
+function formatElapsed(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const mins = Math.floor(total / 60);
+  const secs = total % 60;
+  return `${mins.toString()}:${secs.toString().padStart(2, "0")}`;
+}
+
+/**
+ * Elapsed display refreshes when the task list changes — which happens every
+ * Ably poll. That's coarser than a 1Hz tick, but avoids a ccstate clock
+ * signal for a non-essential visual.
+ */
+function TaskCard({ task }: { task: VoiceChatCandidateTask }) {
+  const startedAt = task.startedAt ? new Date(task.startedAt).getTime() : null;
+  const createdAt = new Date(task.createdAt).getTime();
+  const elapsedMs = Date.now() - (startedAt ?? createdAt);
+  const statusLabel =
+    task.status === "running"
+      ? "Running"
+      : task.status === "queued"
+        ? "Queued"
+        : "Pending";
+  return (
+    <div
+      className="zero-card p-3 flex flex-col gap-1"
+      data-testid="voice-task-card"
+      data-task-status={task.status}
+    >
+      <p className="text-sm text-foreground line-clamp-2">{task.prompt}</p>
+      <div className="flex items-center justify-between text-xs text-muted-foreground">
+        <span>{statusLabel}</span>
+        <span>{formatElapsed(elapsedMs)}</span>
+      </div>
+    </div>
+  );
+}
+
+function VoiceModeSubtitle() {
+  const lastUser = useGet(lastUserMessage$);
+  const lastAgent = useGet(lastAgentMessage$);
+  return (
+    <div className="w-full flex flex-col gap-2" data-testid="voice-subtitle">
+      <p
+        className="text-sm text-muted-foreground line-clamp-1"
+        data-testid="voice-subtitle-user"
+      >
+        {lastUser || " "}
+      </p>
+      <p
+        className="text-base text-foreground line-clamp-2"
+        data-testid="voice-subtitle-agent"
+      >
+        {lastAgent || " "}
+      </p>
+    </div>
+  );
+}
+
+function VoiceModeTaskList() {
+  const tasks = useGet(agentChatPendingTasks$);
+  if (tasks.length === 0) {
+    return null;
+  }
+  return (
+    <div
+      className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full"
+      data-testid="voice-task-list"
+    >
+      {tasks.map((task) => {
+        return <TaskCard key={task.id} task={task} />;
+      })}
+    </div>
+  );
+}
+
+function voiceStatusText(
+  status: "idle" | "connecting" | "connected" | "disconnected" | "error",
+  agentName: string,
+  hasError: boolean,
+): string {
+  if (hasError || status === "error") {
+    return "Error";
+  }
+  if (status === "connecting" || status === "idle") {
+    return "Connecting…";
+  }
+  return `${agentName} is online`;
 }
 
 export function AgentChatPage() {
@@ -360,6 +490,18 @@ export function AgentChatPage() {
   const navigate = useSet(detachedNavigateTo$);
   const pageSignal = useGet(pageSignal$);
 
+  const voiceMode = useGet(agentChatVoiceMode$);
+  const vccStatus = useGet(vccStatus$);
+  const vccError = useGet(vccError$);
+  const voiceActive = voiceMode === "on";
+  const statusText = voiceActive
+    ? voiceStatusText(
+        vccStatus,
+        currentChatAgentDisplayName ?? "Agent",
+        vccError !== null,
+      )
+    : tagline;
+
   const handleSend = (text: string) => {
     setInput("");
     handleSendMessage(text);
@@ -415,108 +557,121 @@ export function AgentChatPage() {
             <div className="flex-1 min-w-0 flex items-center gap-3">
               <VoiceChatLauncher />
               <h2
-                aria-label={tagline}
+                aria-label={statusText}
                 data-testid="chat-tagline"
                 className="text-2xl sm:text-3xl font-semibold tracking-tight text-foreground"
               >
-                <TypewriterText text={tagline} />
+                {voiceActive ? (
+                  statusText
+                ) : (
+                  <TypewriterText text={statusText} />
+                )}
               </h2>
             </div>
           </div>
 
-          {/* Composer */}
-          <ZeroChatComposer
-            className="w-full"
-            input={input}
-            onInputChange={setInput}
-            onSend={handleSend}
-            displayName={currentChatAgentDisplayName ?? ""}
-            autoFocus
-            modelPicker={
-              modelFeatureEnabled &&
-              orgProviders &&
-              orgProviders.modelProviders.length > 0
-                ? {
-                    providers: orgProviders.modelProviders,
-                    value: modelSelection,
-                    onChange: setModelSelection,
-                    // No prior session exists on the landing page.
-                    sessionProviderType: null,
-                  }
-                : undefined
-            }
-          />
-
-          {/* Suggested prompts */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 w-full">
-            {suggestedPrompts.map(
-              ({ title, description, connectors, prompt }) => {
-                return (
-                  <button
-                    key={title}
-                    type="button"
-                    className="zero-card cursor-pointer p-4 text-left flex flex-col relative group hover:bg-muted/30 transition-colors"
-                    onClick={() => {
-                      return setInput(prompt);
-                    }}
-                  >
-                    <IconArrowUpRight
-                      size={14}
-                      stroke={2}
-                      className="absolute top-4 right-4 text-muted-foreground/0 group-hover:text-muted-foreground transition-colors"
-                    />
-                    <p className="text-sm font-semibold text-foreground pr-5">
-                      {title}
-                    </p>
-                    <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
-                      {description}
-                    </p>
-                    {connectors && connectors.length > 0 && (
-                      <div className="flex items-center gap-1.5 mt-auto pt-2.5">
-                        {connectors.map((type) => {
-                          return (
-                            <span
-                              key={type}
-                              className="flex h-7 w-7 items-center justify-center rounded-md border border-border/60 bg-background"
-                            >
-                              <ConnectorIcon type={type} size={14} />
-                            </span>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </button>
-                );
-              },
-            )}
-            <button
-              type="button"
-              className="zero-card cursor-pointer p-4 text-left flex flex-col relative group hover:bg-muted/30 transition-colors"
-              onClick={() => {
-                if (currentChatAgentId) {
-                  navigate("/agents/:agentId/ideas", {
-                    pathParams: { agentId: currentChatAgentId },
-                  });
+          {voiceActive ? (
+            <>
+              <VoiceModeSubtitle />
+              <VoiceModeTaskList />
+            </>
+          ) : (
+            <>
+              {/* Composer */}
+              <ZeroChatComposer
+                className="w-full"
+                input={input}
+                onInputChange={setInput}
+                onSend={handleSend}
+                displayName={currentChatAgentDisplayName ?? ""}
+                autoFocus
+                modelPicker={
+                  modelFeatureEnabled &&
+                  orgProviders &&
+                  orgProviders.modelProviders.length > 0
+                    ? {
+                        providers: orgProviders.modelProviders,
+                        value: modelSelection,
+                        onChange: setModelSelection,
+                        // No prior session exists on the landing page.
+                        sessionProviderType: null,
+                      }
+                    : undefined
                 }
-              }}
-            >
-              <IconArrowUpRight
-                size={14}
-                stroke={2}
-                className="absolute top-4 right-4 text-muted-foreground/0 group-hover:text-muted-foreground transition-colors"
               />
-              <p className="text-sm font-semibold text-foreground pr-5">
-                Ideas &amp; use cases
-              </p>
-              <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
-                Browse use cases across all connectors
-              </p>
-              <div className="flex items-center gap-1.5 mt-auto pt-2.5 text-sm font-medium text-primary">
-                <span>View all</span>
-                <IconArrowUpRight size={14} stroke={2} />
+
+              {/* Suggested prompts */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 w-full">
+                {suggestedPrompts.map(
+                  ({ title, description, connectors, prompt }) => {
+                    return (
+                      <button
+                        key={title}
+                        type="button"
+                        className="zero-card cursor-pointer p-4 text-left flex flex-col relative group hover:bg-muted/30 transition-colors"
+                        onClick={() => {
+                          return setInput(prompt);
+                        }}
+                      >
+                        <IconArrowUpRight
+                          size={14}
+                          stroke={2}
+                          className="absolute top-4 right-4 text-muted-foreground/0 group-hover:text-muted-foreground transition-colors"
+                        />
+                        <p className="text-sm font-semibold text-foreground pr-5">
+                          {title}
+                        </p>
+                        <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
+                          {description}
+                        </p>
+                        {connectors && connectors.length > 0 && (
+                          <div className="flex items-center gap-1.5 mt-auto pt-2.5">
+                            {connectors.map((type) => {
+                              return (
+                                <span
+                                  key={type}
+                                  className="flex h-7 w-7 items-center justify-center rounded-md border border-border/60 bg-background"
+                                >
+                                  <ConnectorIcon type={type} size={14} />
+                                </span>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </button>
+                    );
+                  },
+                )}
+                <button
+                  type="button"
+                  className="zero-card cursor-pointer p-4 text-left flex flex-col relative group hover:bg-muted/30 transition-colors"
+                  onClick={() => {
+                    if (currentChatAgentId) {
+                      navigate("/agents/:agentId/ideas", {
+                        pathParams: { agentId: currentChatAgentId },
+                      });
+                    }
+                  }}
+                >
+                  <IconArrowUpRight
+                    size={14}
+                    stroke={2}
+                    className="absolute top-4 right-4 text-muted-foreground/0 group-hover:text-muted-foreground transition-colors"
+                  />
+                  <p className="text-sm font-semibold text-foreground pr-5">
+                    Ideas &amp; use cases
+                  </p>
+                  <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
+                    Browse use cases across all connectors
+                  </p>
+                  <div className="flex items-center gap-1.5 mt-auto pt-2.5 text-sm font-medium text-primary">
+                    <span>View all</span>
+                    <IconArrowUpRight size={14} stroke={2} />
+                  </div>
+                </button>
               </div>
-            </button>
-          </div>
+            </>
+          )}
         </div>
       </main>
     </div>
