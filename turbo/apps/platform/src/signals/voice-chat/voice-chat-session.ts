@@ -602,9 +602,56 @@ const injectSlowBrainEvents$ = command(
   },
 );
 
+type NoiseReductionType = "near_field" | "far_field";
+
+interface AudioConfig {
+  constraints: MediaTrackConstraints;
+  noiseReduction: NoiseReductionType;
+}
+
+async function resolveAudioConfig(): Promise<AudioConfig> {
+  // Hint to OS that this is a call-like app — Chrome Android 116+ routes
+  // audio through the phone call path, enabling hardware AEC for speakerphone.
+  if ("audioSession" in navigator) {
+    (
+      navigator as unknown as { audioSession: { type: string } }
+    ).audioSession.type = "play-and-record";
+  }
+
+  const isMobile =
+    navigator.maxTouchPoints > 0 && /Mobi|Android/i.test(navigator.userAgent);
+
+  let hasExternalAudio = false;
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    hasExternalAudio = devices.some(
+      (d) =>
+        d.kind === "audiooutput" &&
+        d.deviceId !== "default" &&
+        d.deviceId !== "",
+    );
+  } catch {
+    // enumerateDevices can fail in some environments; fall back to safe defaults
+  }
+
+  // Mobile without headphones/BT = speakerphone risk
+  const speakerRisk = isMobile && !hasExternalAudio;
+
+  return {
+    constraints: {
+      echoCancellation: true,
+      noiseSuppression: true,
+      // AGC pumps mic gain during AI speech pauses, worsening echo on speaker
+      autoGainControl: !speakerRisk,
+    },
+    noiseReduction: speakerRisk ? "near_field" : "far_field",
+  };
+}
+
 interface WebRTCConfig {
   token: string;
   model: RealtimeModel;
+  noiseReduction: NoiseReductionType;
 }
 
 const setupWebRTC$ = command(
@@ -644,7 +691,7 @@ const setupWebRTC$ = command(
             modalities: ["text", "audio"],
             instructions: FAST_BRAIN_INSTRUCTIONS,
             input_audio_transcription: { model: "gpt-4o-mini-transcribe" },
-            input_audio_noise_reduction: { type: "far_field" },
+            input_audio_noise_reduction: { type: config.noiseReduction },
             turn_detection: HANDS_FREE_VAD_CONFIG,
             tools: SESSION_TOOLS,
           },
@@ -916,6 +963,9 @@ const reconnectVoiceSession$ = command(
       const { client_secret: clientSecret } = tokenRes.body;
       signal.throwIfAborted();
 
+      const audioConfig = await resolveAudioConfig();
+      signal.throwIfAborted();
+
       // Check if existing mic stream is still active
       let stream = get(internalStream$);
       if (
@@ -927,11 +977,7 @@ const reconnectVoiceSession$ = command(
         // eslint-disable-next-line no-restricted-syntax -- getUserMedia can fail due to permission denial
         try {
           stream = await navigator.mediaDevices.getUserMedia({
-            audio: {
-              echoCancellation: true,
-              noiseSuppression: true,
-              autoGainControl: true,
-            },
+            audio: audioConfig.constraints,
           });
           set(internalStream$, stream);
         } catch (error) {
@@ -947,7 +993,7 @@ const reconnectVoiceSession$ = command(
       const ok = await set(
         setupWebRTC$,
         stream,
-        { token: clientSecret.value, model },
+        { token: clientSecret.value, model, noiseReduction: audioConfig.noiseReduction },
         parentSignal,
         signal,
       );
@@ -1085,15 +1131,14 @@ const connectVoiceSession$ = command(
     const { client_secret: clientSecret } = tokenRes.body;
     sessionSignal.throwIfAborted();
 
+    const audioConfig = await resolveAudioConfig();
+    sessionSignal.throwIfAborted();
+
     let stream: MediaStream;
     // eslint-disable-next-line no-restricted-syntax -- getUserMedia can fail due to permission denial or missing hardware
     try {
       stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
+        audio: audioConfig.constraints,
       });
     } catch (error) {
       throwIfAbort(error);
@@ -1110,7 +1155,7 @@ const connectVoiceSession$ = command(
     const ok = await set(
       setupWebRTC$,
       stream,
-      { token: clientSecret.value, model },
+      { token: clientSecret.value, model, noiseReduction: audioConfig.noiseReduction },
       parentSignal,
       sessionSignal,
     );
