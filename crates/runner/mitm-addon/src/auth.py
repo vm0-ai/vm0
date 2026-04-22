@@ -442,6 +442,15 @@ async def handle_firewall_request(
             type="firewall",
             firewall_base=firewall_base,
         )
+        # `firewall_action` records the firewall's permission decision
+        # (ALLOW/DENY/BLOCK); `firewall_error` records post-decision
+        # execution failures. They are orthogonal — the firewall granted
+        # the request, but we cannot fulfill it because auth is missing,
+        # so action=ALLOW + error=<reason> is the correct combination
+        # (applies to the two analogous 502 paths below as well).
+        # Permission-usage analytics should read `action`; execution error
+        # rates should aggregate independently on `firewall_error`.
+        # See #10493 for why this is not a miscategorization.
         flow.metadata["firewall_action"] = "ALLOW"
         flow.metadata["firewall_error"] = "auth_unavailable"
         flow.response = http.Response.make(
