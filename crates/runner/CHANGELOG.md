@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.93.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.92.0...runner-rs-v0.93.0) (2026-04-22)
+
+
+### Features
+
+* **billing:** unify connector_billing into usage_event table ([#10704](https://github.com/vm0-ai/vm0/issues/10704)) ([6f9c462](https://github.com/vm0-ai/vm0/commit/6f9c4622a47619404b31adb3c980e80546094528))
+
+
+### Refactoring
+
+* drop residual memory plumbing, legacy snapshot columns, and vm0 memory cli ([#10707](https://github.com/vm0-ai/vm0/issues/10707)) ([08f3ce8](https://github.com/vm0-ai/vm0/commit/08f3ce81273faf8ea7e2e4df67b69e774bcb963e))
+* emit memory as artifacts[] entry and delete guest-agent symlink bootstrap ([#10700](https://github.com/vm0-ai/vm0/issues/10700)) ([e3f0120](https://github.com/vm0-ai/vm0/commit/e3f0120fbd90d9b9fb750e13440a9f21ea809d3a))
+* **runner:** collapse duplicated wire/info struct pairs in doctor.rs ([#10711](https://github.com/vm0-ai/vm0/issues/10711)) ([05628c2](https://github.com/vm0-ai/vm0/commit/05628c29b574caea5992bee6170e5533cf258182)), closes [#10654](https://github.com/vm0-ai/vm0/issues/10654)
+* **runner:** simplify extract_field to single-line iterator chain ([#10682](https://github.com/vm0-ai/vm0/issues/10682)) ([89fcbdd](https://github.com/vm0-ai/vm0/commit/89fcbdd609c7803f8f0e7eaf52b7a63ef6039f32)), closes [#10656](https://github.com/vm0-ai/vm0/issues/10656)
+
 ## [0.92.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.91.1...runner-rs-v0.92.0) (2026-04-22)
 
 

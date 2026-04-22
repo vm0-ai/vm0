@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.286.0](https://github.com/vm0-ai/vm0/compare/app-v0.285.0...app-v0.286.0) (2026-04-22)
+
+
+### Features
+
+* add onyx connector ([#10703](https://github.com/vm0-ai/vm0/issues/10703)) ([4e84b4f](https://github.com/vm0-ai/vm0/commit/4e84b4f208fe448966794cb7bb3caa8b9dacd160))
+* **usage:** add today/yesterday ranges, replace 24h, fix 7d/28d window ([#10697](https://github.com/vm0-ai/vm0/issues/10697)) ([ccd9569](https://github.com/vm0-ai/vm0/commit/ccd95696da7ddaea0549a30792da336a0027962a))
+* **voice-chat-candidate:** trinity voice-mode embed + stateless sessions ([#10699](https://github.com/vm0-ai/vm0/issues/10699)) ([02177db](https://github.com/vm0-ai/vm0/commit/02177db00bcd759d0b4c29d36aa1d064726058e8))
+
+
+### Bug Fixes
+
+* **platform:** add iOS safe-area padding to chat composer footer ([#10701](https://github.com/vm0-ai/vm0/issues/10701)) ([46c73a3](https://github.com/vm0-ai/vm0/commit/46c73a3eaacf68bf6f6477fcd373ed393f8419a5))
+
+
+### Refactoring
+
+* drop residual memory plumbing, legacy snapshot columns, and vm0 memory cli ([#10707](https://github.com/vm0-ai/vm0/issues/10707)) ([08f3ce8](https://github.com/vm0-ai/vm0/commit/08f3ce81273faf8ea7e2e4df67b69e774bcb963e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.229.0
+
 ## [0.285.0](https://github.com/vm0-ai/vm0/compare/app-v0.284.0...app-v0.285.0) (2026-04-22)
 
 
