@@ -28,6 +28,7 @@ import { server } from "../../../../../../src/mocks/server";
 import { http } from "../../../../../../src/__tests__/msw";
 import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
 import { mockAblyPublish } from "../../../../../../src/__tests__/ably-mock";
+import { createQueryCounter } from "../../../../../../src/__tests__/db-query-counter";
 import { GET as getChatThreadById } from "../../../chat-threads/[id]/route";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
@@ -559,6 +560,69 @@ describe("POST /api/zero/chat/messages", () => {
       expect(userMsg.attachFiles[0].id).toBe("resolve-uuid-1");
       expect(userMsg.attachFiles[0].filename).toBe("data.csv");
       expect(userMsg.attachFiles[0].url).toBe("https://presigned-url/data.csv");
+    });
+
+    // Two `org_metadata` SELECTs remain per POST after this dedup (Round 2
+    // tier via getOrgMetadata + Round 3 credits via checkOrgCredits). Dedup
+    // target is the duplicate `resolveOrg ↔ Round 2` pair in the
+    // modelSelection branch (3→2) plus the `zero_agents` pair on every POST
+    // (2→1). The checkOrgCredits read is a separate credits-admission path
+    // tracked as a follow-up (out of scope for #10594).
+    describe("deduplicates per-request reads", () => {
+      it("reads zero_agents once and org_metadata twice without modelSelection", async () => {
+        const counter = createQueryCounter();
+        try {
+          const response = await POST(
+            createTestRequest(URL, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                agentId,
+                prompt: "dedup without modelSelection",
+              }),
+            }),
+          );
+
+          expect(response.status).toBe(201);
+          expect(counter.countMatching(/from\s+"?zero_agents"?/i)).toBe(1);
+          expect(counter.countMatching(/from\s+"?org_metadata"?/i)).toBe(2);
+        } finally {
+          counter.restore();
+        }
+      });
+
+      it("reads zero_agents once and org_metadata twice with modelSelection (duplicate pair eliminated)", async () => {
+        const providerId = await getTestModelProviderIdByType(
+          user.orgId,
+          "anthropic-api-key",
+        );
+        const counter = createQueryCounter();
+        try {
+          const response = await POST(
+            createTestRequest(URL, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                agentId,
+                prompt: "dedup with modelSelection",
+                modelSelection: {
+                  modelProviderId: providerId,
+                  selectedModel: "claude-opus-4-7",
+                },
+              }),
+            }),
+          );
+
+          expect(response.status).toBe(201);
+          expect(counter.countMatching(/from\s+"?zero_agents"?/i)).toBe(1);
+          // 3→2: resolveOrg still reads org_metadata for tier+credits, Round 3
+          // checkOrgCredits reads credits; Round 2 now hits the preload path
+          // built from resolveOrg's already-fetched tier (the eliminated dup).
+          expect(counter.countMatching(/from\s+"?org_metadata"?/i)).toBe(2);
+        } finally {
+          counter.restore();
+        }
+      });
     });
 
     describe("per-run model selection (composer picker)", () => {

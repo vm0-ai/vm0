@@ -14,6 +14,8 @@ import {
   type FirewallPolicies,
   type ConnectorType,
   type RunStatus,
+  type RawPermissionPolicies,
+  type FirewallPolicyValue,
   connectorTypeSchema,
 } from "@vm0/core";
 import {
@@ -41,7 +43,7 @@ import {
 import { generateZeroToken, generateSandboxToken } from "../auth/sandbox-token";
 import { loadFeatureSwitchOverrides } from "./user/feature-switches-service";
 import { buildZeroExecutionContext } from "./build-zero-context";
-import { getOrgMetadata } from "./org/org-metadata-service";
+import { getOrgMetadata, type OrgMetadata } from "./org/org-metadata-service";
 import { isConcurrentRunLimit } from "../shared/errors";
 import {
   DISALLOWED_TOOLS,
@@ -82,6 +84,52 @@ function toAllowedCustomConnectorIds(
 }
 
 /**
+ * Union projection of zero_agents columns consumed by a run — covers both the
+ * route handler's needs (id / modelProviderId / selectedModel) and the service
+ * Round 1 needs (identity + permission policies + customSkills + orgId).
+ */
+export interface ZeroAgentForRun {
+  id: string;
+  displayName: string | null;
+  description: string | null;
+  sound: string | null;
+  permissionPolicies: RawPermissionPolicies | null;
+  unknownPermissionPolicies: Record<string, FirewallPolicyValue> | null;
+  orgId: string;
+  customSkills: string[];
+  modelProviderId: string | null;
+  selectedModel: string | null;
+}
+
+/**
+ * Fetch the union projection of zero_agents needed to create a run. Shared by
+ * the web chat route (404 check + model override fields) and the service's
+ * Round 1 pre-flight — callers that pre-fetch pass the result through as
+ * `preloadedAgent` so the service skips this query.
+ */
+export async function fetchZeroAgentForRun(
+  agentId: string,
+): Promise<ZeroAgentForRun | undefined> {
+  const [row] = await globalThis.services.db
+    .select({
+      id: zeroAgents.id,
+      displayName: zeroAgents.displayName,
+      description: zeroAgents.description,
+      sound: zeroAgents.sound,
+      permissionPolicies: zeroAgents.permissionPolicies,
+      unknownPermissionPolicies: zeroAgents.unknownPermissionPolicies,
+      orgId: zeroAgents.orgId,
+      customSkills: zeroAgents.customSkills,
+      modelProviderId: zeroAgents.modelProviderId,
+      selectedModel: zeroAgents.selectedModel,
+    })
+    .from(zeroAgents)
+    .where(eq(zeroAgents.id, agentId))
+    .limit(1);
+  return row;
+}
+
+/**
  * Parameters accepted by createZeroRun().
  * All zero trigger paths (web, schedule, telegram, slack, email, github)
  * use this interface to create agent runs with consistent defaults.
@@ -114,6 +162,20 @@ export interface CreateZeroRunParams {
   userInfoExtras?: UserInfoOptions;
   /** Force real Claude in mock environments (internal debugging / e2e only). */
   debugNoMockClaude?: boolean;
+  /**
+   * Pre-fetched zero_agents row passed in by callers that have already read it
+   * (e.g. the web chat route's 404 check). When present, Round 1 skips its own
+   * duplicate SELECT. When absent, Round 1 falls back to fetchZeroAgentForRun.
+   */
+  preloadedAgent?: ZeroAgentForRun;
+  /**
+   * Pre-fetched org tier scoped to the caller's active org. Round 2 uses it
+   * only when resolved.orgId === preloadedOrgTier.orgId (cross-org composes
+   * still read fresh org_metadata). Typed as a structural Pick so that the
+   * caller cannot accidentally populate a fake .credits — and so future code
+   * cannot read .credits via this preload.
+   */
+  preloadedOrgTier?: Pick<OrgMetadata, "orgId" | "tier">;
 }
 
 /**
@@ -134,6 +196,23 @@ interface ZeroRunRecordResult {
   featureSwitchOverrides?: Partial<Record<FeatureSwitchKey, boolean>>;
   /** Pre-fetched user timezone in Phase 1 — passed to buildZeroExecutionContext */
   userTimezone?: string;
+}
+
+function loadZeroAgentForRun(
+  preloaded: ZeroAgentForRun | undefined,
+  agentId: string,
+): Promise<ZeroAgentForRun | undefined> {
+  return preloaded ? Promise.resolve(preloaded) : fetchZeroAgentForRun(agentId);
+}
+
+function loadOrgTier(
+  preloaded: Pick<OrgMetadata, "orgId" | "tier"> | undefined,
+  orgId: string,
+): Promise<Pick<OrgMetadata, "orgId" | "tier">> {
+  if (preloaded && preloaded.orgId === orgId) {
+    return Promise.resolve(preloaded);
+  }
+  return getOrgMetadata(orgId);
 }
 
 /**
@@ -178,23 +257,9 @@ async function createZeroRunRecord(
 
   // ── Round 1: Independent operations (need only params) ──────────────
   const [row, resolved, cachedUser] = await Promise.all([
-    // Fetch agent metadata (displayName, description, sound, permissionPolicies, orgId)
-    db
-      .select({
-        displayName: zeroAgents.displayName,
-        description: zeroAgents.description,
-        sound: zeroAgents.sound,
-        permissionPolicies: zeroAgents.permissionPolicies,
-        unknownPermissionPolicies: zeroAgents.unknownPermissionPolicies,
-        orgId: zeroAgents.orgId,
-        customSkills: zeroAgents.customSkills,
-      })
-      .from(zeroAgents)
-      .where(eq(zeroAgents.id, params.agentId))
-      .limit(1)
-      .then(([r]) => {
-        return r;
-      }),
+    // Agent metadata — reuse caller's pre-fetched row when available (web chat
+    // route reads it for the 404 check), otherwise fetch the union projection.
+    loadZeroAgentForRun(params.preloadedAgent, params.agentId),
     // Resolve compose version + org context
     resolveStartRunCompose({
       userId: params.userId,
@@ -269,8 +334,11 @@ async function createZeroRunRecord(
             ),
           )
       : Promise.resolve([]),
-    // Org metadata (needs resolved.orgId)
-    getOrgMetadata(resolved.orgId),
+    // Org metadata (needs resolved.orgId). Reuse caller's pre-fetched tier
+    // when the compose org matches the caller's active org — cross-org
+    // composes (rare; also caught by authorizeCompose below) fall through to
+    // a fresh SELECT because the preload's tier is scoped to authCtx.orgId.
+    loadOrgTier(params.preloadedOrgTier, resolved.orgId),
     // User preferences (needs resolved.orgId)
     getUserPreferences(resolved.orgId, params.userId),
     // Feature switch overrides (needs resolved.orgId)

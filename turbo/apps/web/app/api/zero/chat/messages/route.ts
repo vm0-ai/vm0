@@ -7,7 +7,10 @@ import {
   requireAuth,
   isAuthError,
 } from "../../../../../src/lib/auth/require-auth";
-import { createZeroRun } from "../../../../../src/lib/zero/zero-run-service";
+import {
+  createZeroRun,
+  fetchZeroAgentForRun,
+} from "../../../../../src/lib/zero/zero-run-service";
 import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
 import { modelProviders } from "../../../../../src/db/schema/model-provider";
 import { chatThreads } from "../../../../../src/db/schema/chat-thread";
@@ -31,7 +34,6 @@ import {
   publishThreadListChanged,
 } from "../../../../../src/lib/zero/chat-thread/chat-message-service";
 import { generateChatTitle } from "../../../../../src/lib/zero/ai/lightweight-model";
-import { zeroAgents } from "../../../../../src/db/schema/zero-agent";
 import { zeroRuns } from "../../../../../src/db/schema/zero-run";
 import { zeroAgentSchedules } from "../../../../../src/db/schema/zero-agent-schedule";
 import {
@@ -283,16 +285,10 @@ const router = tsr.router(chatMessagesContract, {
     });
     if (isAuthError(authCtx)) return authCtx;
 
-    // Verify agent exists and fetch model provider override
-    const [agent] = await globalThis.services.db
-      .select({
-        id: zeroAgents.id,
-        modelProviderId: zeroAgents.modelProviderId,
-        selectedModel: zeroAgents.selectedModel,
-      })
-      .from(zeroAgents)
-      .where(eq(zeroAgents.id, body.agentId))
-      .limit(1);
+    // Verify agent exists and fetch the union projection (404 check + model
+    // override fields here; full row passed through to createZeroRun so the
+    // service's Round 1 skips its duplicate SELECT).
+    const agent = await fetchZeroAgentForRun(body.agentId);
 
     if (!agent) {
       return {
@@ -305,8 +301,12 @@ const router = tsr.router(chatMessagesContract, {
 
     // Validate per-run model selection belongs to the caller's org before
     // we trust it to write onto the thread or override the agent's default.
+    // resolveOrg already fetches org_metadata — capture the tier here so the
+    // service's Round 2 can skip its duplicate getOrgMetadata call.
+    let preloadedOrgTier: { orgId: string; tier: string } | undefined;
     if (body.modelSelection) {
       const { org } = await resolveOrg(authCtx);
+      preloadedOrgTier = { orgId: org.orgId, tier: org.tier };
       const [provider] = await globalThis.services.db
         .select({ id: modelProviders.id })
         .from(modelProviders)
@@ -420,6 +420,8 @@ const router = tsr.router(chatMessagesContract, {
         ),
         callbacks: [chatCallback],
         chatThreadId: threadId,
+        preloadedAgent: agent,
+        preloadedOrgTier,
       });
 
       // Persist user message to chat_messages.
