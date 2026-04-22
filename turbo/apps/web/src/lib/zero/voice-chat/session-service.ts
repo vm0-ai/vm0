@@ -9,6 +9,7 @@ import { buildVoiceChatQuickPrepPrompt } from "../integration-prompt";
 import { notFound, badRequest, forbidden } from "../../shared/errors";
 import { hasAgentSessionId } from "../run-result";
 import { adaptVoiceChatSessionTrigger } from "./adapt-voice-chat-session-trigger";
+import { cancelSessionPendingRuns } from "./task-service";
 
 // ---------------------------------------------------------------------------
 // Session CRUD
@@ -21,7 +22,7 @@ export async function createSession(
 ) {
   const db = globalThis.services.db;
 
-  return await db.transaction(async (tx) => {
+  const { session, staleIds } = await db.transaction(async (tx) => {
     // Graceful auto-end: slow-brain sees session-end within 5s and self-exits,
     // populating result.agentSessionId so the new run can resume via
     // getPriorVoiceChatAgentSessionId. Do NOT cancelRun — that skips the webhook.
@@ -48,7 +49,7 @@ export async function createSession(
         .where(eq(voiceChatSessions.id, row.id));
     }
 
-    const [session] = await tx
+    const [inserted] = await tx
       .insert(voiceChatSessions)
       .values({
         orgId,
@@ -58,8 +59,21 @@ export async function createSession(
       })
       .returning();
 
-    return session!;
+    return {
+      session: inserted!,
+      staleIds: stale.map((s) => {
+        return s.id;
+      }),
+    };
   });
+
+  // Cancel any in-flight tasker runs on the sessions we just force-ended.
+  // Outside the transaction because cancelRun issues sandbox HTTP calls.
+  for (const staleId of staleIds) {
+    await cancelSessionPendingRuns(staleId);
+  }
+
+  return session;
 }
 
 async function getSession(sessionId: string) {
@@ -168,6 +182,10 @@ export async function endSession(
       .set({ status: "ended", endedAt: new Date() })
       .where(eq(voiceChatSessions.id, sessionId));
   });
+
+  // Ephemeral tasker runs don't poll the event log, so they cannot self-exit
+  // on session-end the way slow-brain does. Cancel them explicitly.
+  await cancelSessionPendingRuns(sessionId);
 }
 
 // ---------------------------------------------------------------------------

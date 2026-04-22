@@ -9,10 +9,17 @@ import {
   endSession,
   getPriorVoiceChatAgentSessionId,
 } from "../session-service";
+// eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: seed tasks on the stale/ended session to assert cancel hook
+import {
+  attachTaskRun,
+  createVoiceChatTask,
+  listVoiceChatTasks,
+} from "../task-service";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: verify DB side-effects directly
 import {
   voiceChatSessions,
   voiceChatEvents,
+  voiceChatTasks,
 } from "../../../../db/schema/voice-chat";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: verify agent_runs is not mutated by endSession
 import { agentRuns } from "../../../../db/schema/agent-run";
@@ -64,6 +71,46 @@ async function seedSessionWithRun(options: {
     .returning();
   return { sessionId: row!.id, runId };
 }
+
+describe("endSession — cancelSessionPendingRuns hook", () => {
+  it("cancels in-flight tasker runs and marks their task rows failed", async () => {
+    context.setupMocks();
+    const { userId, orgId, agentId } = await seedAgent();
+
+    const session = await createSession(orgId, userId, agentId);
+    // Activate so endSession accepts it.
+    // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: flip status without going through activateSession
+    await globalThis.services.db
+      .update(voiceChatSessions)
+      .set({ status: "active" })
+      .where(eq(voiceChatSessions.id, session.id));
+
+    const task = await createVoiceChatTask({
+      sessionId: session.id,
+      prompt: "ongoing",
+    });
+    const { runId } = await seedTestRun(userId, agentId, {
+      orgId,
+      status: "running",
+      triggerSource: "voice-chat",
+    });
+    await attachTaskRun({ taskId: task.id, runId });
+
+    await endSession(session.id, orgId, userId);
+
+    const tasks = await listVoiceChatTasks(session.id);
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0]!.status).toBe("failed");
+    expect(tasks[0]!.error).toBe("session ended");
+
+    // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: verify backing run was cancelled
+    const [run] = await globalThis.services.db
+      .select({ status: agentRuns.status })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, runId));
+    expect(run!.status).toBe("cancelled");
+  });
+});
 
 describe("endSession — graceful slow-brain exit", () => {
   it("updates session status to 'ended' and leaves the slow-brain run untouched", async () => {
@@ -340,6 +387,46 @@ describe("createSession — auto-end stale rows", () => {
 
     const prior = await getPriorVoiceChatAgentSessionId(orgId, userId);
     expect(prior).toBe("prior-cc-session");
+  });
+
+  it("cancels in-flight tasks on the stale session it force-ends", async () => {
+    context.setupMocks();
+    const { userId, orgId, agentId } = await seedAgent();
+
+    const { sessionId: staleId } = await seedSessionWithRun({
+      orgId,
+      userId,
+      agentId,
+      sessionStatus: "active",
+    });
+
+    const staleTask = await createVoiceChatTask({
+      sessionId: staleId,
+      prompt: "stale-task",
+    });
+    const { runId: staleTaskRunId } = await seedTestRun(userId, agentId, {
+      orgId,
+      status: "running",
+      triggerSource: "voice-chat",
+    });
+    await attachTaskRun({ taskId: staleTask.id, runId: staleTaskRunId });
+
+    await createSession(orgId, userId, agentId);
+
+    // eslint-disable-next-line web/no-direct-db-in-tests -- verify stale session's task row was marked failed
+    const db = globalThis.services.db;
+    const [taskRow] = await db
+      .select()
+      .from(voiceChatTasks)
+      .where(eq(voiceChatTasks.id, staleTask.id));
+    expect(taskRow!.status).toBe("failed");
+    expect(taskRow!.error).toBe("session ended");
+
+    const [runRow] = await db
+      .select({ status: agentRuns.status })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, staleTaskRunId));
+    expect(runRow!.status).toBe("cancelled");
   });
 
   it("does not touch other users' active rows", async () => {
