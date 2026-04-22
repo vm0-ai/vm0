@@ -67,19 +67,7 @@ pub async fn ensure(home: &HomePaths) -> RunnerResult<()> {
     // runners upgraded from versions that wrote `0o644` key/combined get fixed.
     if exists(&cert).await? && exists(&key).await? && exists(&combined).await? {
         tracing::info!("CA certificates already exist, skipping generation");
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            tokio::fs::set_permissions(&cert, std::fs::Permissions::from_mode(0o644))
-                .await
-                .map_err(|e| RunnerError::Internal(format!("chmod CA cert: {e}")))?;
-            tokio::fs::set_permissions(&key, std::fs::Permissions::from_mode(0o600))
-                .await
-                .map_err(|e| RunnerError::Internal(format!("chmod CA key: {e}")))?;
-            tokio::fs::set_permissions(&combined, std::fs::Permissions::from_mode(0o600))
-                .await
-                .map_err(|e| RunnerError::Internal(format!("chmod CA combined: {e}")))?;
-        }
+        apply_perms(&cert, &key, &combined).await?;
         return Ok(());
     }
 
@@ -90,46 +78,8 @@ pub async fn ensure(home: &HomePaths) -> RunnerResult<()> {
     // trust the current cert.
     if exists(&cert).await? && exists(&key).await? {
         tracing::info!("combined CA missing; rebuilding from existing cert + key");
-        let cert_content = tokio::fs::read(&cert)
-            .await
-            .map_err(|e| RunnerError::Internal(format!("read CA cert: {e}")))?;
-        let key_content = tokio::fs::read(&key)
-            .await
-            .map_err(|e| RunnerError::Internal(format!("read CA key: {e}")))?;
-        let mut combined_content = cert_content;
-        combined_content.extend_from_slice(&key_content);
-
-        {
-            use tokio::io::AsyncWriteExt;
-            let mut opts = tokio::fs::OpenOptions::new();
-            opts.write(true).create(true).truncate(true);
-            #[cfg(unix)]
-            opts.mode(0o600);
-            let mut f = opts
-                .open(&combined)
-                .await
-                .map_err(|e| RunnerError::Internal(format!("open CA combined: {e}")))?;
-            f.write_all(&combined_content)
-                .await
-                .map_err(|e| RunnerError::Internal(format!("write CA combined: {e}")))?;
-            f.flush()
-                .await
-                .map_err(|e| RunnerError::Internal(format!("flush CA combined: {e}")))?;
-        }
-
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            tokio::fs::set_permissions(&cert, std::fs::Permissions::from_mode(0o644))
-                .await
-                .map_err(|e| RunnerError::Internal(format!("chmod CA cert: {e}")))?;
-            tokio::fs::set_permissions(&key, std::fs::Permissions::from_mode(0o600))
-                .await
-                .map_err(|e| RunnerError::Internal(format!("chmod CA key: {e}")))?;
-            tokio::fs::set_permissions(&combined, std::fs::Permissions::from_mode(0o600))
-                .await
-                .map_err(|e| RunnerError::Internal(format!("chmod CA combined: {e}")))?;
-        }
+        build_combined(&cert, &key, &combined).await?;
+        apply_perms(&cert, &key, &combined).await?;
         return Ok(());
     }
 
@@ -166,48 +116,11 @@ pub async fn ensure(home: &HomePaths) -> RunnerResult<()> {
     ])
     .await?;
 
-    // Create combined PEM (cert + key) for mitmproxy.
-    let cert_content = tokio::fs::read(&cert)
-        .await
-        .map_err(|e| RunnerError::Internal(format!("read CA cert: {e}")))?;
-    let key_content = tokio::fs::read(&key)
-        .await
-        .map_err(|e| RunnerError::Internal(format!("read CA key: {e}")))?;
-    let mut combined_content = cert_content;
-    combined_content.extend_from_slice(&key_content);
-
-    // Write combined with mode 0o600 on creation. `create(true).truncate(true)`
-    // (not `create_new`) preserves idempotence if a partial prior state left
-    // the combined file behind. The explicit `set_permissions` below covers
-    // that case, where truncation retains pre-existing (wrong) perms.
-    {
-        use tokio::io::AsyncWriteExt;
-        let mut opts = tokio::fs::OpenOptions::new();
-        opts.write(true).create(true).truncate(true);
-        #[cfg(unix)]
-        opts.mode(0o600);
-        let mut f = opts
-            .open(&combined)
-            .await
-            .map_err(|e| RunnerError::Internal(format!("open CA combined: {e}")))?;
-        f.write_all(&combined_content)
-            .await
-            .map_err(|e| RunnerError::Internal(format!("write CA combined: {e}")))?;
-        f.flush()
-            .await
-            .map_err(|e| RunnerError::Internal(format!("flush CA combined: {e}")))?;
-    }
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        tokio::fs::set_permissions(&combined, std::fs::Permissions::from_mode(0o600))
-            .await
-            .map_err(|e| RunnerError::Internal(format!("chmod CA combined: {e}")))?;
-        tokio::fs::set_permissions(&cert, std::fs::Permissions::from_mode(0o644))
-            .await
-            .map_err(|e| RunnerError::Internal(format!("chmod CA cert: {e}")))?;
-    }
+    // Create combined PEM (cert + key) for mitmproxy, then apply perms to
+    // all three files.  The explicit chmod covers the truncation case where
+    // a stale `combined` kept its old (possibly loose) perms.
+    build_combined(&cert, &key, &combined).await?;
+    apply_perms(&cert, &key, &combined).await?;
 
     tracing::info!("CA certificates generated at {}", ca_dir.display());
     Ok(())
@@ -217,6 +130,57 @@ async fn exists(path: &Path) -> RunnerResult<bool> {
     tokio::fs::try_exists(path)
         .await
         .map_err(|e| RunnerError::Internal(format!("check {}: {e}", path.display())))
+}
+
+/// Read `cert` + `key` and write their concatenation to `combined` with mode
+/// `0o600` on Unix. `create(true).truncate(true)` (not `create_new`) preserves
+/// idempotence if a stale `combined` file is left from a prior run.
+async fn build_combined(cert: &Path, key: &Path, combined: &Path) -> RunnerResult<()> {
+    let cert_content = tokio::fs::read(cert)
+        .await
+        .map_err(|e| RunnerError::Internal(format!("read CA cert: {e}")))?;
+    let key_content = tokio::fs::read(key)
+        .await
+        .map_err(|e| RunnerError::Internal(format!("read CA key: {e}")))?;
+    let mut combined_content = cert_content;
+    combined_content.extend_from_slice(&key_content);
+
+    use tokio::io::AsyncWriteExt;
+    let mut opts = tokio::fs::OpenOptions::new();
+    opts.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    opts.mode(0o600);
+    let mut f = opts
+        .open(combined)
+        .await
+        .map_err(|e| RunnerError::Internal(format!("open CA combined: {e}")))?;
+    f.write_all(&combined_content)
+        .await
+        .map_err(|e| RunnerError::Internal(format!("write CA combined: {e}")))?;
+    f.flush()
+        .await
+        .map_err(|e| RunnerError::Internal(format!("flush CA combined: {e}")))?;
+    Ok(())
+}
+
+/// Chmod the three CA files: cert 0o644, key 0o600, combined 0o600.
+/// Migrates legacy runners that shipped with looser perms. No-op on non-Unix.
+#[cfg_attr(not(unix), allow(unused_variables))]
+async fn apply_perms(cert: &Path, key: &Path, combined: &Path) -> RunnerResult<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        tokio::fs::set_permissions(cert, std::fs::Permissions::from_mode(0o644))
+            .await
+            .map_err(|e| RunnerError::Internal(format!("chmod CA cert: {e}")))?;
+        tokio::fs::set_permissions(key, std::fs::Permissions::from_mode(0o600))
+            .await
+            .map_err(|e| RunnerError::Internal(format!("chmod CA key: {e}")))?;
+        tokio::fs::set_permissions(combined, std::fs::Permissions::from_mode(0o600))
+            .await
+            .map_err(|e| RunnerError::Internal(format!("chmod CA combined: {e}")))?;
+    }
+    Ok(())
 }
 
 async fn run_openssl(args: &[&str]) -> RunnerResult<()> {
