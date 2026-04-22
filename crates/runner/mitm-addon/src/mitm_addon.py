@@ -30,6 +30,7 @@ from mitmproxy.addonmanager import Loader
 #      here — no mock-placement pitfalls.
 import body_utils
 import usage
+import vendor_check  # noqa: F401  (side effect: verify vendored packages won)
 from auth import (
     _firewall_header_cache,
     evict_stale_cache_keys,
