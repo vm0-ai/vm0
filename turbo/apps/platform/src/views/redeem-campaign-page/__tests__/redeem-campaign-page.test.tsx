@@ -1,6 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { setMockRedeemResponse } from "../../../mocks/handlers/api-billing.ts";
@@ -8,12 +7,9 @@ import { setMockRedeemResponse } from "../../../mocks/handlers/api-billing.ts";
 const context = testContext();
 
 describe("redeem campaign page", () => {
-  it("renders the landing card and redirects to Stripe on click when ready", async () => {
+  it("renders the landing card with an <a href> that points to Stripe when ready", async () => {
     const checkoutUrl = "https://checkout.stripe.com/test/session-ready";
     setMockRedeemResponse({ status: "ready", checkoutUrl });
-    const assignSpy = vi
-      .spyOn(window.location, "assign")
-      .mockImplementation(() => {});
 
     detachedSetupPage({ context, path: "/redeem/ZERO100" });
 
@@ -26,12 +22,8 @@ describe("redeem campaign page", () => {
       ),
     ).toBeInTheDocument();
 
-    const button = screen.getByText("Redeem credits");
-    await userEvent.setup().click(button);
-
-    expect(assignSpy).toHaveBeenCalledWith(checkoutUrl);
-
-    assignSpy.mockRestore();
+    const link = screen.getByRole("link", { name: "Redeem credits" });
+    expect(link).toHaveAttribute("href", checkoutUrl);
   });
 
   it("renders already_redeemed copy when credits are already in the account", async () => {
