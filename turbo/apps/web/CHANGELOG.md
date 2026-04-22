@@ -1,5 +1,20 @@
 # Changelog
 
+## [12.282.0](https://github.com/vm0-ai/vm0/compare/web-v12.281.0...web-v12.282.0) (2026-04-22)
+
+
+### Features
+
+* **platform:** re-land chat thread model lock from [#10442](https://github.com/vm0-ai/vm0/issues/10442) ([#10571](https://github.com/vm0-ai/vm0/issues/10571)) ([ee11b28](https://github.com/vm0-ai/vm0/commit/ee11b28128fd1a9d5049214d3a94d87bcb71c433))
+* **voice-chat:** add tasker backend service and routes ([#10561](https://github.com/vm0-ai/vm0/issues/10561)) ([402280f](https://github.com/vm0-ai/vm0/commit/402280f8c9484dab67972f5d8f8ce2cb22aa6897))
+* **voice-chat:** enable tasker dispatch via slow-brain prompt ([#10570](https://github.com/vm0-ai/vm0/issues/10570)) ([5ca3824](https://github.com/vm0-ai/vm0/commit/5ca38248a95ee69548090363b7a852597e526965))
+
+
+### Bug Fixes
+
+* **credits:** admission gate subtracts unsettled expired credits ([#10567](https://github.com/vm0-ai/vm0/issues/10567)) ([2561567](https://github.com/vm0-ai/vm0/commit/2561567936c741a6ccd1246713ce95cf6fca2b1a))
+* **uploads:** allow image/avif in zero upload allow-list ([#10568](https://github.com/vm0-ai/vm0/issues/10568)) ([752c22f](https://github.com/vm0-ai/vm0/commit/752c22ff38cbd5c72dd8d7ba791bb3c5ab9172c2)), closes [#10511](https://github.com/vm0-ai/vm0/issues/10511)
+
 ## [12.281.0](https://github.com/vm0-ai/vm0/compare/web-v12.280.0...web-v12.281.0) (2026-04-22)
 
 

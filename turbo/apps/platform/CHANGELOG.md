@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.281.0](https://github.com/vm0-ai/vm0/compare/app-v0.280.1...app-v0.281.0) (2026-04-22)
+
+
+### Features
+
+* **platform:** re-land chat thread model lock from [#10442](https://github.com/vm0-ai/vm0/issues/10442) ([#10571](https://github.com/vm0-ai/vm0/issues/10571)) ([ee11b28](https://github.com/vm0-ai/vm0/commit/ee11b28128fd1a9d5049214d3a94d87bcb71c433))
+
 ## [0.280.1](https://github.com/vm0-ai/vm0/compare/app-v0.280.0...app-v0.280.1) (2026-04-22)
 
 
