@@ -9,6 +9,7 @@ import {
   VoiceCandidateSystemNoteBubble,
   VoiceCandidateUserBubble,
   VoiceCandidateAssistantBubble,
+  VoiceCandidateToolCallBubble,
 } from "../voice-chat-candidate-bubbles.tsx";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -30,7 +31,6 @@ describe("voice-chat-candidate page - feature disabled (VCC-001)", () => {
       context: pageContext,
       path: "/voice-chat-candidate",
     });
-    // `findBy*` auto-waits; `.resolves` satisfies jest-prefer-expect-resolves.
     await expect(
       screen.findByText(/not available for your account/i),
     ).resolves.toBeInTheDocument();
@@ -49,8 +49,6 @@ describe("voice-chat-candidate page - idle state quick chat (VCC-002)", () => {
       featureSwitches: { voiceChat: true },
     });
 
-    // Mirrors sibling VC-003 (voice-chat-page.test.tsx): waitFor retries the
-    // compound predicate (button exists AND is enabled) across render cycles.
     const btn = await waitFor(() => {
       const el = screen.getAllByRole("button").find((b) => {
         return /start voice chat/i.test(b.textContent ?? "");
@@ -89,6 +87,35 @@ describe("voice-candidate-item-bubble dispatcher", () => {
     };
   }
 
+  function makeTask(
+    overrides: Partial<{
+      id: string;
+      prompt: string;
+      status: "pending" | "queued" | "running" | "done" | "failed";
+      assistantMessages: {
+        type: "assistant";
+        content: string;
+        at: string;
+      }[];
+      error: string | null;
+    }>,
+  ) {
+    return {
+      id: "33333333-3333-4333-8333-333333333333",
+      sessionId: SESSION_ID,
+      runId: null,
+      callId: "call-1",
+      prompt: "do the thing",
+      status: "done" as const,
+      assistantMessages: [],
+      error: null,
+      createdAt: "2026-04-20T00:00:00Z",
+      startedAt: null,
+      finishedAt: null,
+      ...overrides,
+    };
+  }
+
   it("renders user role via user bubble", () => {
     renderWithStore(
       <VoiceCandidateItemBubble
@@ -111,25 +138,7 @@ describe("voice-candidate-item-bubble dispatcher", () => {
 
   it("renders task_result role with task prompt from taskById", () => {
     const taskId = "33333333-3333-4333-8333-333333333333";
-    const task = {
-      id: taskId,
-      sessionId: SESSION_ID,
-      runId: null,
-      callId: "call-1",
-      prompt: "do the thing",
-      status: "done" as const,
-      assistantMessages: [
-        {
-          type: "assistant" as const,
-          content: "done!",
-          at: "2026-04-20T00:00:00Z",
-        },
-      ],
-      error: null,
-      createdAt: "2026-04-20T00:00:00Z",
-      startedAt: null,
-      finishedAt: null,
-    };
+    const task = makeTask({ id: taskId, assistantMessages: [] });
     renderWithStore(
       <VoiceCandidateItemBubble
         item={item({
@@ -154,7 +163,128 @@ describe("voice-candidate-item-bubble dispatcher", () => {
     );
     expect(screen.getByText("connection restored")).toBeInTheDocument();
   });
+
+  // ---------------------------------------------------------------------------
+  // VCC-003: task_result uses assistantMessages when item.content is absent
+  // ---------------------------------------------------------------------------
+
+  it("task_result falls back to joinResultEntries(task.assistantMessages) when item.content is null", () => {
+    const taskId = "44444444-4444-4444-8444-444444444444";
+    const task = makeTask({
+      id: taskId,
+      assistantMessages: [
+        {
+          type: "assistant" as const,
+          content: "step 1 done",
+          at: "2026-04-20T00:00:00Z",
+        },
+        {
+          type: "assistant" as const,
+          content: "step 2 done",
+          at: "2026-04-20T00:01:00Z",
+        },
+      ],
+    });
+    renderWithStore(
+      <VoiceCandidateItemBubble
+        item={item({ role: "task_result", content: null, taskId })}
+        taskById={{ [taskId]: task }}
+      />,
+    );
+    expect(screen.getByText(/task result/i)).toBeInTheDocument();
+    expect(screen.getByText("do the thing")).toBeInTheDocument();
+    // joined with double newline separator — Markdown renders each paragraph separately
+    expect(screen.getByText("step 1 done")).toBeInTheDocument();
+    expect(screen.getByText("step 2 done")).toBeInTheDocument();
+  });
+
+  it("task_result prefers item.content over assistantMessages when both are present", () => {
+    const taskId = "55555555-5555-4555-8555-555555555555";
+    const task = makeTask({
+      id: taskId,
+      assistantMessages: [
+        {
+          type: "assistant" as const,
+          content: "from messages",
+          at: "2026-04-20T00:00:00Z",
+        },
+      ],
+    });
+    renderWithStore(
+      <VoiceCandidateItemBubble
+        item={item({ role: "task_result", content: "from content", taskId })}
+        taskById={{ [taskId]: task }}
+      />,
+    );
+    expect(screen.getByText("from content")).toBeInTheDocument();
+    expect(screen.queryByText("from messages")).not.toBeInTheDocument();
+  });
+
+  it("task_result with empty assistantMessages shows prompt but no result text", () => {
+    const taskId = "66666666-6666-4666-8666-666666666666";
+    const task = makeTask({ id: taskId, assistantMessages: [] });
+    renderWithStore(
+      <VoiceCandidateItemBubble
+        item={item({ role: "task_result", content: null, taskId })}
+        taskById={{ [taskId]: task }}
+      />,
+    );
+    expect(screen.getByText(/task result/i)).toBeInTheDocument();
+    expect(screen.getByText("do the thing")).toBeInTheDocument();
+    // no result text rendered when both content and assistantMessages are falsy
+    expect(screen.queryByText(/step [12] done/)).not.toBeInTheDocument();
+  });
 });
+
+// ---------------------------------------------------------------------------
+// VCC-004: VoiceCandidateToolCallBubble
+// ---------------------------------------------------------------------------
+
+describe("voiceCandidateToolCallBubble", () => {
+  it("renders prompt and status label for pending status", () => {
+    renderWithStore(
+      <VoiceCandidateToolCallBubble
+        prompt="book me a flight"
+        status="pending"
+      />,
+    );
+    expect(screen.getByText("book me a flight")).toBeInTheDocument();
+    expect(screen.getByText("calling")).toBeInTheDocument(); // pending → "calling"
+    expect(screen.getByText("create_task")).toBeInTheDocument();
+  });
+
+  it("renders queued status label", () => {
+    renderWithStore(
+      <VoiceCandidateToolCallBubble prompt="some task" status="queued" />,
+    );
+    expect(screen.getByText("queued")).toBeInTheDocument();
+  });
+
+  it("renders running status label", () => {
+    renderWithStore(
+      <VoiceCandidateToolCallBubble prompt="running task" status="running" />,
+    );
+    expect(screen.getByText("running")).toBeInTheDocument();
+  });
+
+  it("renders done status label", () => {
+    renderWithStore(
+      <VoiceCandidateToolCallBubble prompt="done task" status="done" />,
+    );
+    expect(screen.getByText("done")).toBeInTheDocument();
+  });
+
+  it("renders failed status label", () => {
+    renderWithStore(
+      <VoiceCandidateToolCallBubble prompt="failed task" status="failed" />,
+    );
+    expect(screen.getByText("failed")).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// VCC-005: bubble components direct render
+// ---------------------------------------------------------------------------
 
 describe("bubble components (direct)", () => {
   it("user bubble returns null for whitespace-only content", () => {
