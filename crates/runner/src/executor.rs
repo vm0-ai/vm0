@@ -1213,20 +1213,13 @@ fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, 
                 })
             })
             .collect();
-        // Defensive size guardrail: refuse absurdly large payloads rather
-        // than silently producing a broken env. 256KB is orders of magnitude
-        // larger than any realistic run would produce.
-        let serialized = serde_json::to_string(&payload).unwrap_or_default();
-        const MAX_VM0_ARTIFACTS_BYTES: usize = 256 * 1024;
-        if serialized.len() > MAX_VM0_ARTIFACTS_BYTES {
-            warn!(
-                size = serialized.len(),
-                max = MAX_VM0_ARTIFACTS_BYTES,
-                "VM0_ARTIFACTS payload exceeds size guardrail; truncating to empty"
-            );
-        } else {
-            env.insert("VM0_ARTIFACTS".into(), serialized);
-        }
+        // Serialization cannot fail — payload is a Vec of String-only JSON
+        // objects. Use `.expect` to make the invariant explicit; falling
+        // back to an empty string would silently produce a broken env.
+        #[allow(clippy::expect_used)]
+        let serialized = serde_json::to_string(&payload)
+            .expect("VM0_ARTIFACTS payload must serialize (String-only Values)");
+        env.insert("VM0_ARTIFACTS".into(), serialized);
     }
 
     // Memory config

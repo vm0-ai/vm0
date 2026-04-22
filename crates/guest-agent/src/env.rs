@@ -66,19 +66,24 @@ pub struct ArtifactEnv {
     pub version_id: String,
 }
 
-static ARTIFACTS: LazyLock<Vec<ArtifactEnv>> = LazyLock::new(|| {
+/// Parse `VM0_ARTIFACTS`, which the runner writes as a JSON array.
+///
+/// # Panics
+/// Panics if the env var is set but not valid JSON. This indicates a
+/// runner/guest-agent version-skew bug and is not user-recoverable;
+/// failing loudly is preferable to silently producing a zero-snapshot
+/// run that looks successful in dashboards.
+#[allow(clippy::expect_used)]
+fn load_artifacts() -> Vec<ArtifactEnv> {
     let raw = std::env::var("VM0_ARTIFACTS").unwrap_or_default();
     if raw.is_empty() {
         return Vec::new();
     }
-    match serde_json::from_str::<Vec<ArtifactEnv>>(&raw) {
-        Ok(list) => list,
-        Err(err) => {
-            eprintln!("[WARN] VM0_ARTIFACTS is not valid JSON ({err}), treating as empty");
-            Vec::new()
-        }
-    }
-});
+    serde_json::from_str::<Vec<ArtifactEnv>>(&raw)
+        .expect("VM0_ARTIFACTS must be a valid JSON array")
+}
+
+static ARTIFACTS: LazyLock<Vec<ArtifactEnv>> = LazyLock::new(load_artifacts);
 
 // ---------------------------------------------------------------------------
 // Memory
