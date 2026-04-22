@@ -155,7 +155,7 @@ describe("GET /redeem/[campaign]", () => {
     expect(location).toContain(encodeURIComponent(`/redeem/${CAMPAIGN}`));
   });
 
-  it("redirects to the error page with an unknown reason when an unexpected error is thrown", async () => {
+  it("lets unexpected (non-Stripe) errors propagate so Next surfaces a 500 and Sentry captures the stack", async () => {
     await updateOrgStripeFields(user.orgId, {
       stripeCustomerId: uniqueId("cus"),
     });
@@ -164,14 +164,15 @@ describe("GET /redeem/[campaign]", () => {
       new Error("boom: database unreachable"),
     );
 
-    const response = await GET(createTestRequest(REDEEM_URL), {
-      params: params(CAMPAIGN),
-    });
-
-    expect(response.status).toBe(307);
-    expect(response.headers.get("location")).toContain(
-      "http://app.localhost:3002/redeem/error?reason=unknown",
-    );
+    // Route intentionally does not wrap itself in a catch-all try/catch:
+    // truly unknown failures (DB down, auth blip, etc.) should bubble up
+    // to Next's error boundary and Sentry instead of being papered over
+    // with a generic branded redirect that masks the root cause.
+    await expect(
+      GET(createTestRequest(REDEEM_URL), {
+        params: params(CAMPAIGN),
+      }),
+    ).rejects.toThrow("boom: database unreachable");
   });
 
   it("redirects non-admin org members home with admin_required error", async () => {

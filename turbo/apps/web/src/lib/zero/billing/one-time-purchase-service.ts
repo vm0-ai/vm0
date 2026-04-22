@@ -265,16 +265,12 @@ async function cleanupStaleRedemption(
 ): Promise<void> {
   const db = globalThis.services.db;
   const stripe = getStripe();
-  // Expire the Stripe session first so it stops showing up in dashboard
-  // listings; failure to expire is non-fatal (session will 24h itself).
-  try {
-    await stripe.checkout.sessions.expire(stripeSessionId);
-  } catch (err) {
-    log.warn("failed to expire stale stripe session", {
-      sessionId: stripeSessionId,
-      err: err instanceof Error ? err.message : String(err),
-    });
-  }
+  // Expire the Stripe session so it stops showing up in dashboard listings.
+  // If this throws, let it propagate — the original error (coupon gone, price
+  // archived, etc.) is lost but so is the need to surface it once we can no
+  // longer keep Stripe state in sync. Sessions auto-expire after 24h anyway,
+  // so the side effect of a failed expire is cosmetic.
+  await stripe.checkout.sessions.expire(stripeSessionId);
   await db
     .delete(orgPromoRedemption)
     .where(

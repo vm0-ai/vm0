@@ -42,104 +42,94 @@ export async function GET(
     return new URL(`/redeem/status?state=${state}`, NEXT_PUBLIC_APP_URL);
   };
 
+  if (!STRIPE_SECRET_KEY) {
+    return NextResponse.redirect(errorPage("billing_unavailable"));
+  }
+
+  const { campaign: campaignKey } = await ctx.params;
+
+  // Layer 1: route-level whitelist. Reject before even calling Stripe so an
+  // attacker can't use the endpoint to enumerate campaigns or kick off
+  // checkout for an unintended price/coupon combo.
+  if (!getCampaign(campaignKey)) {
+    return new NextResponse("Not Found", { status: 404 });
+  }
+
+  const { userId, orgId, orgRole } = await auth();
+
+  // Preserve the full current URL (path + query) so Clerk's post-flow
+  // redirect drops the user right back at this handler.
+  const redirectUrl = req.nextUrl.pathname + req.nextUrl.search;
+
+  if (!userId) {
+    const target = new URL("/sign-in", origin);
+    target.searchParams.set("redirect_url", redirectUrl);
+    return NextResponse.redirect(target);
+  }
+  if (!orgId) {
+    // Let Clerk's org-selection task handle org choice; on completion it
+    // brings the user back to the redemption URL.
+    const target = new URL("/sign-in/tasks/choose-organization", origin);
+    target.searchParams.set("redirect_url", redirectUrl);
+    return NextResponse.redirect(target);
+  }
+  if (orgRole !== "org:admin") {
+    return NextResponse.redirect(errorPage("admin_required"));
+  }
+
+  // Stripe success/cancel always return to the platform app, not the web
+  // origin. Credits are visible in the app dashboard, and using the env
+  // URL means devs hitting localhost:3000/redeem/... still end up on the
+  // real platform after payment instead of bouncing to a local marketing
+  // page.
+  // success → status page so users see a branded confirmation card
+  // (matches what they see on repeat clicks via startOrResumeRedemption).
+  const appHome = new URL("/", NEXT_PUBLIC_APP_URL).toString();
+  let outcome;
   try {
-    if (!STRIPE_SECRET_KEY) {
-      return NextResponse.redirect(errorPage("billing_unavailable"));
-    }
-
-    const { campaign: campaignKey } = await ctx.params;
-
-    // Layer 1: route-level whitelist. Reject before even calling Stripe so an
-    // attacker can't use the endpoint to enumerate campaigns or kick off
-    // checkout for an unintended price/coupon combo.
-    if (!getCampaign(campaignKey)) {
-      return new NextResponse("Not Found", { status: 404 });
-    }
-
-    const { userId, orgId, orgRole } = await auth();
-
-    // Preserve the full current URL (path + query) so Clerk's post-flow
-    // redirect drops the user right back at this handler.
-    const redirectUrl = req.nextUrl.pathname + req.nextUrl.search;
-
-    if (!userId) {
-      const target = new URL("/sign-in", origin);
-      target.searchParams.set("redirect_url", redirectUrl);
-      return NextResponse.redirect(target);
-    }
-    if (!orgId) {
-      // Let Clerk's org-selection task handle org choice; on completion it
-      // brings the user back to the redemption URL.
-      const target = new URL("/sign-in/tasks/choose-organization", origin);
-      target.searchParams.set("redirect_url", redirectUrl);
-      return NextResponse.redirect(target);
-    }
-    if (orgRole !== "org:admin") {
-      return NextResponse.redirect(errorPage("admin_required"));
-    }
-
-    // Stripe success/cancel always return to the platform app, not the web
-    // origin. Credits are visible in the app dashboard, and using the env
-    // URL means devs hitting localhost:3000/redeem/... still end up on the
-    // real platform after payment instead of bouncing to a local marketing
-    // page.
-    // success → status page so users see a branded confirmation card
-    // (matches what they see on repeat clicks via startOrResumeRedemption).
-    const appHome = new URL("/", NEXT_PUBLIC_APP_URL).toString();
-    let outcome;
-    try {
-      outcome = await startOrResumeRedemption({
+    outcome = await startOrResumeRedemption({
+      orgId,
+      campaignKey,
+      // First-time success lands on the `redeemed` state — the webhook may
+      // still be in-flight when Stripe redirects the user here, so copy
+      // says "credits on the way" rather than implying they're already in
+      // the ledger. Repeat clicks after the webhook lands are handled by
+      // the `already_granted` outcome branch below.
+      successUrl: statusPage("redeemed").toString(),
+      cancelUrl: appHome,
+    });
+  } catch (err) {
+    // Anything Stripe complains about at this point is about the
+    // campaign's configuration: coupon deleted / expired (runtime error) /
+    // maxed out, wrong priceId, expired api key, etc. We've already
+    // validated auth/org/local env — the user-facing outcome is the same
+    // regardless of the specific stripe error subclass, so catch the
+    // whole StripeError base. Full type/code/message still hits the log
+    // for on-call. Non-Stripe errors (DB down, auth blip, etc.) bubble up
+    // so Next surfaces them as 500 and Sentry captures the full stack.
+    if (err instanceof Stripe.errors.StripeError) {
+      log.error("campaign unavailable — stripe rejected the session", {
         orgId,
         campaignKey,
-        // First-time success lands on the `redeemed` state — the webhook may
-        // still be in-flight when Stripe redirects the user here, so copy
-        // says "credits on the way" rather than implying they're already in
-        // the ledger. Repeat clicks after the webhook lands are handled by
-        // the `already_granted` outcome branch below.
-        successUrl: statusPage("redeemed").toString(),
-        cancelUrl: appHome,
+        type: err.type,
+        code: err.code,
+        message: err.message,
       });
-    } catch (err) {
-      // Anything Stripe complains about at this point is about the
-      // campaign's configuration: coupon deleted / expired (runtime error) /
-      // maxed out, wrong priceId, expired api key, etc. We've already
-      // validated auth/org/local env — the user-facing outcome is the same
-      // regardless of the specific stripe error subclass, so catch the
-      // whole StripeError base. Full type/code/message still hits the log
-      // for on-call.
-      if (err instanceof Stripe.errors.StripeError) {
-        log.error("campaign unavailable — stripe rejected the session", {
-          orgId,
-          campaignKey,
-          type: err.type,
-          code: err.code,
-          message: err.message,
-        });
-        return NextResponse.redirect(errorPage("campaign_misconfigured"));
-      }
-      throw err;
+      return NextResponse.redirect(errorPage("campaign_misconfigured"));
     }
+    throw err;
+  }
 
-    switch (outcome.kind) {
-      case "redirect":
-        log.info("one_time_purchase redirecting to Stripe", {
-          orgId,
-          campaignKey,
-        });
-        return NextResponse.redirect(outcome.url);
-      case "already_granted":
-        return NextResponse.redirect(statusPage("already_redeemed"));
-      case "processing":
-        return NextResponse.redirect(statusPage("processing"));
-    }
-  } catch (err) {
-    // Outer safety net: anything unexpected (DB down, Stripe 5xx, auth blip,
-    // etc.) should still surface as the branded error page, not a bare 500.
-    // on-call still gets full detail via the log + Sentry hook.
-    log.error("redeem route unexpected error", {
-      err: err instanceof Error ? err.message : String(err),
-      stack: err instanceof Error ? err.stack : undefined,
-    });
-    return NextResponse.redirect(errorPage("unknown"));
+  switch (outcome.kind) {
+    case "redirect":
+      log.info("one_time_purchase redirecting to Stripe", {
+        orgId,
+        campaignKey,
+      });
+      return NextResponse.redirect(outcome.url);
+    case "already_granted":
+      return NextResponse.redirect(statusPage("already_redeemed"));
+    case "processing":
+      return NextResponse.redirect(statusPage("processing"));
   }
 }
