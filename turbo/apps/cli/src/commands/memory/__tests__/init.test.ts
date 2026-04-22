@@ -102,7 +102,10 @@ describe("memory init", () => {
   });
 
   describe("existing config", () => {
-    it("should show already initialized message for existing memory", async () => {
+    it("should treat legacy type: memory dirs as already-initialized artifact", async () => {
+      // storage-utils normalises legacy `type: memory` → `artifact` on read.
+      // `memory init` therefore falls through to the non-memory branch and
+      // tells the user the dir is already initialized as an artifact.
       await fs.mkdir(path.join(tempDir, ".vm0"), { recursive: true });
       await fs.writeFile(
         path.join(tempDir, ".vm0", "storage.yaml"),
@@ -112,7 +115,7 @@ describe("memory init", () => {
       await initCommand.parseAsync(["node", "cli", "--name", "new-name"]);
 
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("Memory already initialized"),
+        expect.stringContaining("initialized as artifact"),
       );
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("existing-memory"),

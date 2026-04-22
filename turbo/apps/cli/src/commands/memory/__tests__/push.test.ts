@@ -3,13 +3,13 @@
  *
  * Covers:
  * - Config validation (no config, wrong type)
- * - Successful push scenarios (normal, deduplicated, empty)
- * - Error handling
+ * - Legacy type:memory dir rejection after storage-utils compat
+ *
+ * The push happy path is exercised via E2E — removal of `vm0 memory push`
+ * itself is tracked in sibling sub-issues of #10577.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { http, HttpResponse } from "msw";
-import { server } from "../../../mocks/server";
 import { pushCommand } from "../push";
 import { mkdtempSync, rmSync } from "fs";
 import * as fs from "fs/promises";
@@ -104,172 +104,29 @@ describe("memory push", () => {
     });
   });
 
-  describe("push operation", () => {
-    beforeEach(async () => {
+  describe("legacy type: memory dirs", () => {
+    // After the storage-utils one-release compat lands, `type: memory` is
+    // normalised to `artifact` at read time. `vm0 memory push` therefore
+    // rejects such dirs and directs users to `vm0 artifact push`. Removal of
+    // `vm0 memory push` itself is tracked in sibling sub-issues of #10577.
+    it("should reject legacy type: memory dirs as artifact", async () => {
       await fs.mkdir(path.join(tempDir, ".vm0"), { recursive: true });
       await fs.writeFile(
         path.join(tempDir, ".vm0", "storage.yaml"),
         "name: test-memory\ntype: memory",
       );
-    });
 
-    it("should show pushing message", async () => {
-      server.use(
-        http.post("http://localhost:3000/api/storages/prepare", () => {
-          return HttpResponse.json({
-            versionId: "a1b2c3d4e5f6g7h8",
-            existing: true,
-          });
-        }),
-        http.post("http://localhost:3000/api/storages/commit", () => {
-          return HttpResponse.json({
-            success: true,
-            versionId: "a1b2c3d4e5f6g7h8",
-            storageName: "test-memory",
-            size: 0,
-            fileCount: 0,
-            deduplicated: true,
-          });
-        }),
+      await expect(async () => {
+        await pushCommand.parseAsync(["node", "cli"]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("initialized as an artifact"),
       );
-
-      await pushCommand.parseAsync(["node", "cli"]);
-
-      expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("Pushing memory: test-memory"),
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("vm0 artifact push"),
       );
-    });
-
-    it("should show deduplicated message when content unchanged", async () => {
-      await fs.writeFile(path.join(tempDir, "test-file.txt"), "test content");
-
-      server.use(
-        http.post("http://localhost:3000/api/storages/prepare", () => {
-          return HttpResponse.json({
-            versionId: "a1b2c3d4e5f6g7h8",
-            existing: true,
-          });
-        }),
-        http.post("http://localhost:3000/api/storages/commit", () => {
-          return HttpResponse.json({
-            success: true,
-            versionId: "a1b2c3d4e5f6g7h8",
-            storageName: "test-memory",
-            size: 12,
-            fileCount: 1,
-            deduplicated: true,
-          });
-        }),
-      );
-
-      await pushCommand.parseAsync(["node", "cli"]);
-
-      expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("Content unchanged"),
-      );
-    });
-
-    it("should show version info after push", async () => {
-      server.use(
-        http.post("http://localhost:3000/api/storages/prepare", () => {
-          return HttpResponse.json({
-            versionId: "a1b2c3d4e5f6g7h8",
-            existing: true,
-          });
-        }),
-        http.post("http://localhost:3000/api/storages/commit", () => {
-          return HttpResponse.json({
-            success: true,
-            versionId: "a1b2c3d4e5f6g7h8",
-            storageName: "test-memory",
-            size: 0,
-            fileCount: 0,
-            deduplicated: true,
-          });
-        }),
-      );
-
-      await pushCommand.parseAsync(["node", "cli"]);
-
-      expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("Version: a1b2c3d4"),
-      );
-    });
-
-    it("should exclude .vm0 directory from upload", async () => {
-      await fs.writeFile(path.join(tempDir, "data.txt"), "user data");
-      await fs.writeFile(
-        path.join(tempDir, ".vm0", "some-other-config.yaml"),
-        "additional config",
-      );
-
-      let filesInRequest: Array<{ path: string }> = [];
-
-      server.use(
-        http.post("http://localhost:3000/api/storages/prepare", async (req) => {
-          const body = (await req.request.json()) as {
-            files: Array<{ path: string }>;
-          };
-          filesInRequest = body.files;
-          return HttpResponse.json({
-            versionId: "a1b2c3d4e5f6g7h8",
-            existing: true,
-          });
-        }),
-        http.post("http://localhost:3000/api/storages/commit", () => {
-          return HttpResponse.json({
-            success: true,
-            versionId: "a1b2c3d4e5f6g7h8",
-            storageName: "test-memory",
-            size: 9,
-            fileCount: 1,
-            deduplicated: true,
-          });
-        }),
-      );
-
-      await pushCommand.parseAsync(["node", "cli"]);
-
-      expect(filesInRequest).toHaveLength(1);
-      expect(filesInRequest[0]?.path).toBe("data.txt");
-      expect(
-        filesInRequest.some((f) => {
-          return f.path.startsWith(".vm0");
-        }),
-      ).toBe(false);
-    });
-  });
-
-  describe("options", () => {
-    beforeEach(async () => {
-      await fs.mkdir(path.join(tempDir, ".vm0"), { recursive: true });
-      await fs.writeFile(
-        path.join(tempDir, ".vm0", "storage.yaml"),
-        "name: test-memory\ntype: memory",
-      );
-    });
-
-    it("should accept --force option", async () => {
-      server.use(
-        http.post("http://localhost:3000/api/storages/prepare", () => {
-          return HttpResponse.json({
-            versionId: "a1b2c3d4e5f6g7h8",
-            existing: true,
-          });
-        }),
-        http.post("http://localhost:3000/api/storages/commit", () => {
-          return HttpResponse.json({
-            success: true,
-            versionId: "a1b2c3d4e5f6g7h8",
-            storageName: "test-memory",
-            size: 0,
-            fileCount: 0,
-            deduplicated: true,
-          });
-        }),
-      );
-
-      await pushCommand.parseAsync(["node", "cli", "--force"]);
+      expect(mockExit).toHaveBeenCalledWith(1);
     });
   });
 });

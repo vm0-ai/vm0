@@ -8,14 +8,14 @@ import {
 import {
   collectKeyValue,
   collectVolumeVersions,
-  collectVolumes,
+  collectMounts,
+  collectArtifacts,
   isUUID,
   extractVarNames,
   extractSecretNames,
   loadValues,
   parsePermissionPolicies,
   parseIdentifier,
-  parseArtifact,
   pollEvents,
   showNextSteps,
   renderRunCreated,
@@ -53,8 +53,10 @@ export const mainRunCommand = new Command()
     {},
   )
   .option(
-    "--artifact <name[:version]>",
-    "Artifact storage (format: name or name:version)",
+    "--artifact <artifact>",
+    "Mount an artifact (repeatable, format: name:/path or name:version:/path)",
+    collectArtifacts,
+    [],
   )
   .option(
     "--volume-version <name=version>",
@@ -65,7 +67,7 @@ export const mainRunCommand = new Command()
   .option(
     "--volume <volume>",
     "Mount a volume (repeatable, format: name:/path or name:version:/path)",
-    collectVolumes,
+    collectMounts,
     [],
   )
   .option("--memory <name>", "Memory storage name")
@@ -109,7 +111,11 @@ export const mainRunCommand = new Command()
           envFile?: string;
           vars: Record<string, string>;
           secrets: Record<string, string>;
-          artifact?: string;
+          artifact: Array<{
+            name: string;
+            version?: string;
+            mountPath: string;
+          }>;
           memory?: string;
           volumeVersion: Record<string, string>;
           volume: Array<{ name: string; version?: string; mountPath: string }>;
@@ -184,18 +190,17 @@ export const mainRunCommand = new Command()
           options.envFile,
         );
 
-        // 5. Parse artifact flag
-        const parsedArtifact = parseArtifact(options.artifact);
-
-        // 6. Prepare optional fields
+        // 5. Prepare optional fields
         const volumeVersions =
           Object.keys(options.volumeVersion).length > 0
             ? options.volumeVersion
             : undefined;
         const additionalVolumes =
           options.volume.length > 0 ? options.volume : undefined;
+        const artifacts =
+          options.artifact.length > 0 ? options.artifact : undefined;
 
-        // 7. Call unified API (server handles all variable expansion)
+        // 6. Call unified API (server handles all variable expansion)
         const response = await createRun({
           // Use agentComposeVersionId if resolved, otherwise use agentComposeId (resolves to HEAD)
           ...(agentComposeVersionId
@@ -204,8 +209,7 @@ export const mainRunCommand = new Command()
           prompt,
           vars,
           secrets,
-          artifactName: parsedArtifact?.artifactName,
-          artifactVersion: parsedArtifact?.artifactVersion,
+          artifacts,
           memoryName: options.memory,
           volumeVersions,
           additionalVolumes,

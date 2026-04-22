@@ -18,6 +18,10 @@ interface StorageConfig {
 const CONFIG_DIR = ".vm0";
 const CONFIG_FILE = "storage.yaml";
 
+// Tracks paths we've already warned about so a repeated read during a single
+// process doesn't spam stderr with duplicate deprecation notices.
+const memoryTypeWarnedPaths = new Set<string>();
+
 /**
  * Validate storage name format
  * Length: 3-64 characters
@@ -61,6 +65,19 @@ export async function readStorageConfig(
   // Default to "volume" type for backward compatibility
   if (!config.type) {
     config.type = "volume";
+  }
+
+  // One-release read compat: legacy `type: "memory"` is normalised to
+  // "artifact" so downstream read sites see a single modern shape. Emits a
+  // deprecation warning once per path.
+  if (config.type === "memory") {
+    if (!memoryTypeWarnedPaths.has(actualPath)) {
+      memoryTypeWarnedPaths.add(actualPath);
+      process.stderr.write(
+        `warning: type: "memory" in ${actualPath} is deprecated; rewrite as type: "artifact" (removed in next major)\n`,
+      );
+    }
+    config.type = "artifact";
   }
 
   return config;

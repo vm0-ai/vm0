@@ -2,10 +2,10 @@ import { Command, Option } from "commander";
 import { getSession, createRun } from "../../lib/api";
 import {
   collectKeyValue,
-  collectVolumes,
+  collectMounts,
+  collectArtifacts,
   isUUID,
   loadValues,
-  parseArtifact,
   parsePermissionPolicies,
   pollEvents,
   showNextSteps,
@@ -37,13 +37,15 @@ export const continueCommand = new Command()
     {},
   )
   .option(
-    "--artifact <name[:version]>",
-    "Artifact storage (format: name or name:version)",
+    "--artifact <artifact>",
+    "Mount an artifact (repeatable, format: name:/path or name:version:/path)",
+    collectArtifacts,
+    [],
   )
   .option(
     "--volume <volume>",
     "Mount a volume (repeatable, format: name:/path or name:version:/path)",
-    collectVolumes,
+    collectMounts,
     [],
   )
   .option(
@@ -77,7 +79,11 @@ export const continueCommand = new Command()
           envFile?: string;
           vars: Record<string, string>;
           secrets: Record<string, string>;
-          artifact?: string;
+          artifact: Array<{
+            name: string;
+            version?: string;
+            mountPath: string;
+          }>;
           appendSystemPrompt?: string;
           disallowedTools?: string[];
           tools?: string[];
@@ -94,7 +100,11 @@ export const continueCommand = new Command()
           envFile?: string;
           vars: Record<string, string>;
           secrets: Record<string, string>;
-          artifact?: string;
+          artifact: Array<{
+            name: string;
+            version?: string;
+            mountPath: string;
+          }>;
           volume: Array<{ name: string; version?: string; mountPath: string }>;
           appendSystemPrompt?: string;
           disallowedTools?: string[];
@@ -127,10 +137,14 @@ export const continueCommand = new Command()
         const envFile = options.envFile || allOpts.envFile;
         const loadedSecrets = loadValues(secrets, requiredSecretNames, envFile);
 
-        // 4. Parse artifact flag
-        const artifactParsed = parseArtifact(
-          options.artifact || allOpts.artifact,
-        );
+        // 4. Prepare optional fields
+        // Commander routes the repeatable --artifact to either the subcommand's
+        // own options or the parent's, depending on where the user put the flag.
+        // Prefer the one with entries; fall back to the other.
+        const artifactsInput =
+          options.artifact.length > 0 ? options.artifact : allOpts.artifact;
+        const artifacts =
+          artifactsInput.length > 0 ? artifactsInput : undefined;
 
         // 5. Call unified API with sessionId
         const response = await createRun({
@@ -138,8 +152,7 @@ export const continueCommand = new Command()
           prompt,
           vars: Object.keys(vars).length > 0 ? vars : undefined,
           secrets: loadedSecrets,
-          artifactName: artifactParsed?.artifactName,
-          artifactVersion: artifactParsed?.artifactVersion,
+          artifacts,
           additionalVolumes:
             allOpts.volume.length > 0 ? allOpts.volume : undefined,
           appendSystemPrompt:
