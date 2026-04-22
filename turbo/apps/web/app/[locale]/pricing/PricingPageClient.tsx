@@ -572,6 +572,10 @@ export function PricingPageClient() {
                 answer={t("faq.doCreditsRollOverAnswer")}
               />
               <FAQItem
+                question={t("faq.upgradeCredits")}
+                answer={t("faq.upgradeCreditsAnswer")}
+              />
+              <FAQItem
                 question={t("faq.bringOwnModel")}
                 answer={t("faq.bringOwnModelAnswer")}
               />
