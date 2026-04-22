@@ -3,7 +3,9 @@ import {
   FeatureSwitchKey,
   zeroVoiceChatSessionsContract,
   zeroVoiceChatContextContract,
+  zeroVoiceChatTasksContract,
   type ContextEvent,
+  type VoiceChatTask,
 } from "@vm0/core";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import { defaultAgentId$ } from "../agent.ts";
@@ -58,7 +60,10 @@ function upsertUserTranscript(
 }
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
-const PREP_TIMEOUT_CHAT_MS = 60_000;
+// 120s absorbs runner VM cold-start variance. Prep normally finishes in well
+// under 30s; the buffer guards against occasional cold sandboxes without
+// failing the UI too eagerly. Revisit (tighten) once cold-start p95 stabilises.
+const PREP_TIMEOUT_CHAT_MS = 120_000;
 const MAX_RECONNECT_ATTEMPTS = 5;
 const RECONNECT_BASE_DELAY_MS = 1000;
 export type RealtimeModel = "gpt-realtime" | "gpt-realtime-mini";
@@ -148,6 +153,7 @@ function formatInjectionMessage(event: ContextEvent): string {
 const internalStatus$ = state<ConnectionStatus>("idle");
 const internalTranscript$ = state<TranscriptEntry[]>([]);
 const internalEvents$ = state<ContextEvent[]>([]);
+const internalTasksById$ = state<Record<string, VoiceChatTask>>({});
 const internalMuted$ = state(false);
 const internalError$ = state<string | null>(null);
 const internalSessionId$ = state<string | null>(null);
@@ -250,6 +256,26 @@ export const vcModel$ = computed((get) => {
 });
 export const setVcModel$ = command(({ set }, model: RealtimeModel) => {
   set(internalModel$, model);
+});
+
+export const vcTasksById$ = computed((get) => {
+  return get(internalTasksById$);
+});
+
+export const vcActiveTasks$ = computed((get) => {
+  return Object.values(get(internalTasksById$))
+    .filter((t) => {
+      return t.status === "queued" || t.status === "running";
+    })
+    .sort((a, b) => {
+      return b.createdAt.localeCompare(a.createdAt);
+    });
+});
+
+export const vcAllTasksSorted$ = computed((get) => {
+  return Object.values(get(internalTasksById$)).sort((a, b) => {
+    return b.createdAt.localeCompare(a.createdAt);
+  });
 });
 
 // --- Internal commands ---
@@ -693,6 +719,22 @@ const startPoll$ = command(async ({ get, set }, signal: AbortSignal) => {
       }
       set(injectSlowBrainEvents$, res.body.events);
     }
+
+    const tasksClient = createClient(zeroVoiceChatTasksContract);
+    const tasksRes = await accept(
+      tasksClient.listTasks({ params: { id: innerSid } }),
+      [200, 401, 404],
+      { toast: false },
+    );
+    loopSignal.throwIfAborted();
+    if (tasksRes.status === 200) {
+      const next: Record<string, VoiceChatTask> = {};
+      for (const task of tasksRes.body.tasks) {
+        next[task.id] = task;
+      }
+      set(internalTasksById$, next);
+    }
+
     return false;
   });
 
@@ -1145,6 +1187,7 @@ export const startVoiceChat$ = command(
     set(internalError$, null);
     set(internalTranscript$, []);
     set(internalEvents$, []);
+    set(internalTasksById$, {});
     set(internalMuted$, false);
     set(internalSessionId$, null);
     set(internalLastSeq$, 0);
@@ -1247,6 +1290,7 @@ export const endVoiceChat$ = command(({ get, set }) => {
   }
 
   set(internalSessionId$, null);
+  set(internalTasksById$, {});
   set(internalPrepStartTime$, null);
   set(internalPrepElapsedMs$, 0);
   set(internalReconnectAttempt$, 0);

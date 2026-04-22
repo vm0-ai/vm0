@@ -39,6 +39,8 @@ export function getClerkAppearance(theme: "light" | "dark"): ClerkAppearance {
         "h-9 w-9 bg-input border border-border rounded-lg text-center text-base font-medium uppercase text-foreground focus:border-primary focus:ring-[3px] focus:ring-primary/10",
       formResendCodeLink: "text-primary",
       footer: "hidden",
+      organizationListCreateOrganizationActionButton: "!hidden",
+      taskChooseOrganizationCreateOrganizationActionButton: "!hidden",
     },
   };
 }

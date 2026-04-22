@@ -132,6 +132,35 @@ describe("connectors page - connector status indicators", () => {
       expect(screen.getByText("@octocat")).toBeInTheDocument();
     });
   });
+
+  it("platform-auth connector renders the VM0 Managed badge", async () => {
+    mockConnectors([{ type: "openai", authMethod: "platform" }]);
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    await waitFor(() => {
+      expect(screen.getByText("VM0 Managed")).toBeInTheDocument();
+    });
+  });
+
+  it("oauth-auth connector does not render the VM0 Managed badge", async () => {
+    mockConnectors([
+      {
+        type: "github",
+        authMethod: "oauth",
+        oauthScopes: ["repo", "project", "workflow"],
+      },
+    ]);
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    // Wait for the connector card to render — "Connected" pills onto the
+    // card once mockConnectors resolves.
+    await waitFor(() => {
+      expect(screen.getByText("Connected")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("VM0 Managed")).not.toBeInTheDocument();
+  });
 });
 
 describe("connectors page - loading state", () => {

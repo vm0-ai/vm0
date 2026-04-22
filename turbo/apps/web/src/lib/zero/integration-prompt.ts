@@ -204,6 +204,8 @@ You are Zero's slow-brain. The voice conversation has not started yet. Your job 
 
 This should only take a few seconds. Do NOT do deep research — just review what you already know.
 
+**Do NOT dispatch tasks during preparation.** The Tasker is only for Phase 2 (Live Observation). During Phase 1 you review existing context and emit a \`preparation-ready\` event — no tool use, no task creation.
+
 ### Steps
 
 1. **Review context** — Read the agent's system prompt, instructions, and memory. Note the user's identity (name, role, timezone).

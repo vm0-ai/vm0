@@ -30,6 +30,7 @@ import { FeatureSwitchKey } from "@vm0/core";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
   currentChatAgentId$,
+  currentChatAgent$,
   currentChatAgentDisplayName$,
 } from "../../signals/agent-chat.ts";
 import {
@@ -299,6 +300,47 @@ function VoiceChatLauncher() {
   );
 }
 
+function ChatAgentAvatar({ agentId }: { agentId: string | null | undefined }) {
+  return (
+    <div className="relative shrink-0">
+      {agentId ? (
+        <TooltipProvider delayDuration={200}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Link
+                pathname="/agents/:agentId"
+                options={{
+                  pathParams: { agentId },
+                }}
+                aria-label="View agent profile"
+                className="h-14 w-14 shrink-0 sm:h-16 sm:w-16 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-accent cursor-pointer"
+              >
+                <AgentAvatarImg
+                  name={agentId}
+                  alt=""
+                  className="h-14 w-14 rounded-full object-cover object-top sm:h-16 sm:w-16"
+                />
+              </Link>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              <p className="text-xs">View agent profile</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      ) : (
+        <div className="h-14 w-14 shrink-0 sm:h-16 sm:w-16 flex items-center justify-center overflow-hidden rounded-xl">
+          <AgentAvatarImg
+            name=""
+            alt=""
+            className="h-14 w-14 rounded-full object-cover object-top sm:h-16 sm:w-16"
+          />
+        </div>
+      )}
+      <PinPill />
+    </div>
+  );
+}
+
 export function AgentChatPage() {
   const currentChatAgentId = useLastResolved(currentChatAgentId$);
   const currentChatAgentDisplayName = useLastResolved(
@@ -318,6 +360,14 @@ export function AgentChatPage() {
   const orgProviders = useLastResolved(orgModelProviders$);
   const modelSelection = useLastResolved(chatPageModelSelection$) ?? null;
   const setModelSelection = useSet(setChatPageModelSelection$);
+  const currentAgent = useLastResolved(currentChatAgent$);
+  const agentModelDefault =
+    currentAgent?.modelProviderId && currentAgent?.selectedModel
+      ? {
+          modelProviderId: currentAgent.modelProviderId,
+          selectedModel: currentAgent.selectedModel,
+        }
+      : null;
 
   const handleSendMessage = (message: string) => {
     if (!currentChatAgentId) {
@@ -376,42 +426,7 @@ export function AgentChatPage() {
       <main className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6">
         <div className="mx-auto w-full max-w-[900px] flex flex-col items-stretch gap-6 pt-8 pb-12 sm:pt-[15vh] sm:pb-[10vh]">
           <div className="flex items-center gap-4 w-full">
-            <div className="relative shrink-0">
-              {currentChatAgentId ? (
-                <TooltipProvider delayDuration={200}>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Link
-                        pathname="/agents/:agentId"
-                        options={{
-                          pathParams: { agentId: currentChatAgentId },
-                        }}
-                        aria-label="View agent profile"
-                        className="h-14 w-14 shrink-0 sm:h-16 sm:w-16 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-accent cursor-pointer"
-                      >
-                        <AgentAvatarImg
-                          name={currentChatAgentId}
-                          alt=""
-                          className="h-14 w-14 rounded-full object-cover object-top sm:h-16 sm:w-16"
-                        />
-                      </Link>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom">
-                      <p className="text-xs">View agent profile</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              ) : (
-                <div className="h-14 w-14 shrink-0 sm:h-16 sm:w-16 flex items-center justify-center overflow-hidden rounded-xl">
-                  <AgentAvatarImg
-                    name=""
-                    alt=""
-                    className="h-14 w-14 rounded-full object-cover object-top sm:h-16 sm:w-16"
-                  />
-                </div>
-              )}
-              <PinPill />
-            </div>
+            <ChatAgentAvatar agentId={currentChatAgentId} />
             <div className="flex-1 min-w-0 flex items-center gap-3">
               <VoiceChatLauncher />
               <h2
@@ -442,6 +457,7 @@ export function AgentChatPage() {
                     onChange: setModelSelection,
                     // No prior session exists on the landing page.
                     sessionProviderType: null,
+                    agentDefault: agentModelDefault,
                   }
                 : undefined
             }

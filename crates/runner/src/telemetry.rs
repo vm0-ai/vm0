@@ -102,6 +102,16 @@ impl JobTelemetry {
             .collect()
     }
 
+    /// Rewind the oldest-pending marker to simulate a buffered op that has
+    /// aged past the auto-flush threshold, without needing a real sleep or a
+    /// paused tokio clock.
+    #[cfg(test)]
+    pub(crate) fn rewind_oldest_pending_for_test(&mut self, by: Duration) {
+        if let Some(instant) = self.oldest_pending {
+            self.oldest_pending = Some(instant - by);
+        }
+    }
+
     /// Spawn a fire-and-forget flush for auto-threshold flushes.
     fn fire_and_forget_flush(&mut self) {
         let ops = std::mem::take(&mut self.pending_ops);
@@ -220,5 +230,37 @@ mod tests {
         assert!(!telemetry.pending_ops[1].success);
         assert_eq!(telemetry.pending_ops[1].error.as_deref(), Some("timeout"));
         assert!(telemetry.oldest_pending.is_some());
+    }
+
+    #[tokio::test]
+    async fn record_within_threshold_does_not_flush() {
+        let http = HttpClient::new("http://localhost".to_string()).unwrap();
+        let mut telemetry = JobTelemetry::new(http, RunId::nil(), "tok".to_string());
+
+        telemetry.record("op1", Duration::from_millis(10), true, None);
+        telemetry.record("op2", Duration::from_millis(10), true, None);
+
+        assert_eq!(telemetry.pending_ops_snapshot().len(), 2);
+        assert!(telemetry.oldest_pending.is_some());
+    }
+
+    #[tokio::test]
+    async fn auto_flush_triggers_after_threshold() {
+        let http = HttpClient::new("http://localhost".to_string()).unwrap();
+        let mut telemetry = JobTelemetry::new(http, RunId::nil(), "tok".to_string());
+
+        telemetry.record("op1", Duration::from_millis(10), true, None);
+        assert_eq!(telemetry.pending_ops_snapshot().len(), 1);
+
+        // Age the oldest-pending marker past the threshold so the next record
+        // trips fire_and_forget_flush.
+        telemetry.rewind_oldest_pending_for_test(FLUSH_THRESHOLD + Duration::from_millis(1));
+        telemetry.record("op2", Duration::from_millis(10), true, None);
+
+        // fire_and_forget_flush drains the buffer (including the op that
+        // tripped the threshold) and resets the oldest-pending marker so the
+        // next record re-seeds it.
+        assert!(telemetry.pending_ops_snapshot().is_empty());
+        assert!(telemetry.oldest_pending.is_none());
     }
 }

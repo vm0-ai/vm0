@@ -16,18 +16,30 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 PORT=3000
 ENV_LOCAL_FILE="$WEB_APP_DIR/.env.local"
 
+# Kill stale background processes from prior runs that may have been orphaned
+# (e.g. previous run SIGKILLed, container stopped, or trap didn't fire).
+kill_stale() {
+  local pidfile="$1" pattern="$2"
+  local pid
+  pid=$(cat "$pidfile" 2>/dev/null || true)
+  if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+    kill "$pid" 2>/dev/null || true
+    sleep 1
+    kill -9 "$pid" 2>/dev/null || true
+  fi
+  rm -f "$pidfile"
+  if [[ -n "$pattern" ]]; then
+    pkill -f "$pattern" 2>/dev/null || true
+  fi
+}
+
+kill_stale "/tmp/cloudflared-${PORT}.pid" "cloudflared tunnel .*localhost:${PORT}"
+kill_stale "/tmp/stripe-listen.pid" "stripe listen .*--forward-to localhost:${PORT}/api/webhooks/stripe"
+
 # Cleanup background processes on exit
 cleanup() {
-  TUNNEL_PID=$(cat "/tmp/cloudflared-${PORT}.pid" 2>/dev/null || true)
-  if [[ -n "$TUNNEL_PID" ]] && kill -0 "$TUNNEL_PID" 2>/dev/null; then
-    kill "$TUNNEL_PID" 2>/dev/null || true
-    sleep 1
-    kill -9 "$TUNNEL_PID" 2>/dev/null || true
-  fi
-  STRIPE_PID=$(cat "/tmp/stripe-listen.pid" 2>/dev/null || true)
-  if [[ -n "$STRIPE_PID" ]] && kill -0 "$STRIPE_PID" 2>/dev/null; then
-    kill "$STRIPE_PID" 2>/dev/null || true
-  fi
+  kill_stale "/tmp/cloudflared-${PORT}.pid" ""
+  kill_stale "/tmp/stripe-listen.pid" ""
 }
 trap cleanup EXIT INT TERM
 

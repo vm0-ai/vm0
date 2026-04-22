@@ -22,11 +22,7 @@ import {
 } from "../../signals/connectors-page/directed-authorize-type.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { IconCheck, IconLoader2 } from "@tabler/icons-react";
-import {
-  MinimalSidebarLayout,
-  Vm0LogoLink,
-  GoogleOAuthNotice,
-} from "./zero-directed-shared.tsx";
+import { Vm0LogoLink, GoogleOAuthNotice } from "./zero-directed-shared.tsx";
 
 // ---------------------------------------------------------------------------
 // Action button / authorized badge
@@ -171,9 +167,5 @@ function DirectedAuthorizeCard() {
 }
 
 export function ZeroDirectedAuthorizePage() {
-  return (
-    <MinimalSidebarLayout>
-      <DirectedAuthorizeCard />
-    </MinimalSidebarLayout>
-  );
+  return <DirectedAuthorizeCard />;
 }

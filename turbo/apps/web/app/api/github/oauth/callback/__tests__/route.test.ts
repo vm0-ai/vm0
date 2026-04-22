@@ -69,7 +69,7 @@ describe("/api/github/oauth/callback", () => {
     const userId = uniqueId("gh-user");
     mockClerk({ userId });
     await createTestOrg(uniqueId("gh-org"));
-    const { composeId } = await createTestCompose("gh-test-agent");
+    const { composeId } = await createTestCompose(uniqueId("gh-test-agent"));
 
     const state = buildSignedState(userId, composeId);
     const request = createTestRequest(
@@ -117,7 +117,7 @@ describe("/api/github/oauth/callback", () => {
     const userId = uniqueId("gh-user");
     mockClerk({ userId });
     await createTestOrg(uniqueId("gh-org"));
-    const { composeId } = await createTestCompose("gh-test-agent");
+    const { composeId } = await createTestCompose(uniqueId("gh-test-agent"));
 
     const installationId = uniqueNumericId();
     server.use(
@@ -146,7 +146,7 @@ describe("/api/github/oauth/callback", () => {
     const userId = uniqueId("gh-user");
     mockClerk({ userId });
     await createTestOrg(uniqueId("gh-org"));
-    const { composeId } = await createTestCompose("gh-test-agent");
+    const { composeId } = await createTestCompose(uniqueId("gh-test-agent"));
 
     const installationId = uniqueNumericId();
     setupGitHubMocks(installationId);
@@ -176,7 +176,7 @@ describe("/api/github/oauth/callback", () => {
     const userId = uniqueId("gh-user");
     mockClerk({ userId });
     await createTestOrg(uniqueId("gh-org"));
-    const { composeId } = await createTestCompose("gh-test-agent");
+    const { composeId } = await createTestCompose(uniqueId("gh-test-agent"));
 
     const state = buildSignedState(userId, composeId);
     const targetId = uniqueId("target");
@@ -219,7 +219,7 @@ describe("/api/github/oauth/callback", () => {
     const userId = uniqueId("gh-user");
     mockClerk({ userId });
     await createTestOrg(uniqueId("gh-org"));
-    const { composeId } = await createTestCompose("gh-test-agent");
+    const { composeId } = await createTestCompose(uniqueId("gh-test-agent"));
 
     const installationId = uniqueNumericId();
     setupGitHubMocks(installationId);

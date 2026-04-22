@@ -58,8 +58,11 @@ export async function createPhoneOrg(orgId: string): Promise<{
   // Ensure org_metadata row exists for this org
   await ensureOrgRow(orgId);
 
-  // Create a compose with headVersionId via the API so it can be used in run creation
-  const { composeId } = await createTestCompose("phone-test-agent");
+  // Create a compose with headVersionId via the API so it can be used in run creation.
+  // Agent name is randomized per call so the content-addressed compose version id
+  // differs across concurrent tests — otherwise identical compose content hashes to
+  // the same primary key and racing inserts collide on agent_compose_versions_pkey.
+  const { composeId } = await createTestCompose(uniqueId("phone-agent"));
 
   // Configure org_metadata with agentphone agent ID and default agent
   await globalThis.services.db

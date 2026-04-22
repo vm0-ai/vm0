@@ -1,4 +1,4 @@
-import { eq, asc, desc, and, sql } from "drizzle-orm";
+import { eq, asc, desc, and, sql, inArray, isNotNull } from "drizzle-orm";
 import {
   chatMessages,
   type ChatMessageAttachFiles,
@@ -8,6 +8,54 @@ import { agentRuns } from "../../../db/schema/agent-run";
 import { zeroRuns } from "../../../db/schema/zero-run";
 import { publishUserSignal } from "../../infra/realtime/client";
 import { hasAgentSessionId } from "../run-result";
+import { recordChatSpan, type ChatSpanDimensions } from "../../infra/metrics";
+import { CHAT_REQUEST_OPS, timed } from "./request-span-ops";
+
+/**
+ * Number of most-recent prior-context messages consumed by prompt builders
+ * (chat send's `previousContext` and chat callback's title context). Rows
+ * returned by `getLatestMessagesByThreadId` are already filtered by
+ * `content IS NOT NULL` and role IN ('user','assistant') in SQL, so this
+ * bound is the exact count of usable rows — not a raw scan size.
+ */
+export const PREVIOUS_CONTEXT_MESSAGES = 10;
+
+const messageRowProjection = {
+  id: chatMessages.id,
+  role: chatMessages.role,
+  content: chatMessages.content,
+  runId: chatMessages.runId,
+  error: chatMessages.error,
+  sequenceNumber: chatMessages.sequenceNumber,
+  createdAt: chatMessages.createdAt,
+  runStatus: agentRuns.status,
+  runError: agentRuns.error,
+  attachFiles: chatMessages.attachFiles,
+} as const;
+
+type MessageRow = {
+  id: string;
+  role: string;
+  content: string | null;
+  runId: string | null;
+  error: string | null;
+  sequenceNumber: number | null;
+  createdAt: Date;
+  runStatus: string | null;
+  runError: string | null;
+  attachFiles: ChatMessageAttachFiles | null;
+};
+
+/**
+ * Narrower row shape returned by `getLatestMessagesByThreadId`. The SQL
+ * query enforces `role IN ('user','assistant')` and `content IS NOT NULL`,
+ * so callers can treat those fields as already narrowed without reaching
+ * for `as` casts.
+ */
+type PromptContextMessageRow = Omit<MessageRow, "role" | "content"> & {
+  role: "user" | "assistant";
+  content: string;
+};
 
 /**
  * Insert a chat message (user row on send, or assistant row on terminal
@@ -31,29 +79,59 @@ export async function insertChatMessage(params: {
   error?: string | null;
   attachFiles?: ChatMessageAttachFiles;
   id?: string;
+  spanDims?: ChatSpanDimensions;
 }): Promise<{ id: string; createdAt: Date }> {
-  const [row] = await globalThis.services.db
-    .insert(chatMessages)
-    .values({
-      ...(params.id ? { id: params.id } : {}),
-      chatThreadId: params.chatThreadId,
-      role: params.role,
-      content: params.content,
-      runId: params.runId,
-      error: params.error ?? null,
-      attachFiles: params.attachFiles ?? null,
-    })
-    .returning({ id: chatMessages.id, createdAt: chatMessages.createdAt });
+  const { result: insertedRow, ms: insertMs } = await timed(async () => {
+    return globalThis.services.db
+      .insert(chatMessages)
+      .values({
+        ...(params.id ? { id: params.id } : {}),
+        chatThreadId: params.chatThreadId,
+        role: params.role,
+        content: params.content,
+        runId: params.runId,
+        error: params.error ?? null,
+        attachFiles: params.attachFiles ?? null,
+      })
+      .returning({ id: chatMessages.id, createdAt: chatMessages.createdAt });
+  });
+  const [row] = insertedRow;
+  if (params.spanDims) {
+    recordChatSpan(
+      CHAT_REQUEST_OPS.insert_chat_message_insert,
+      insertMs,
+      params.spanDims,
+    );
+  }
 
   if (!row) {
     throw new Error("Failed to insert chat message");
   }
 
-  await publishUserSignal(
-    [params.userId],
-    `chatThreadMessageCreated:${params.chatThreadId}`,
-  );
-  await publishThreadListChanged(params.userId);
+  const { ms: publishSignalMs } = await timed(async () => {
+    await publishUserSignal(
+      [params.userId],
+      `chatThreadMessageCreated:${params.chatThreadId}`,
+    );
+  });
+  if (params.spanDims) {
+    recordChatSpan(
+      CHAT_REQUEST_OPS.insert_chat_message_publish_signal,
+      publishSignalMs,
+      params.spanDims,
+    );
+  }
+
+  const { ms: publishListMs } = await timed(async () => {
+    await publishThreadListChanged(params.userId);
+  });
+  if (params.spanDims) {
+    recordChatSpan(
+      CHAT_REQUEST_OPS.insert_chat_message_publish_list,
+      publishListMs,
+      params.spanDims,
+    );
+  }
 
   return row;
 }
@@ -163,38 +241,71 @@ export async function publishThreadListChanged(userId: string): Promise<void> {
 
 /**
  * Get all messages for a thread with run status, ordered by createdAt ASC.
+ *
+ * Unbounded — only callers that truly need the full thread (e.g., the SPA's
+ * thread-bootstrap endpoint) should use this. Prompt-context builders must
+ * use `getLatestMessagesByThreadId`, which bounds the scan to `LIMIT N` and
+ * pushes usability filters into SQL so thread length does not compound
+ * latency on every send.
  */
-export async function getMessagesByThreadId(chatThreadId: string): Promise<
-  Array<{
-    id: string;
-    role: string;
-    content: string | null;
-    runId: string | null;
-    error: string | null;
-    sequenceNumber: number | null;
-    createdAt: Date;
-    runStatus: string | null;
-    runError: string | null;
-    attachFiles: ChatMessageAttachFiles | null;
-  }>
-> {
+export async function getMessagesByThreadId(
+  chatThreadId: string,
+): Promise<MessageRow[]> {
   return globalThis.services.db
-    .select({
-      id: chatMessages.id,
-      role: chatMessages.role,
-      content: chatMessages.content,
-      runId: chatMessages.runId,
-      error: chatMessages.error,
-      sequenceNumber: chatMessages.sequenceNumber,
-      createdAt: chatMessages.createdAt,
-      runStatus: agentRuns.status,
-      runError: agentRuns.error,
-      attachFiles: chatMessages.attachFiles,
-    })
+    .select(messageRowProjection)
     .from(chatMessages)
     .leftJoin(agentRuns, eq(chatMessages.runId, agentRuns.id))
     .where(eq(chatMessages.chatThreadId, chatThreadId))
     .orderBy(asc(chatMessages.createdAt), asc(chatMessages.sequenceNumber));
+}
+
+/**
+ * Fetch the latest `limit` messages for a thread that are eligible for
+ * prompt-context inclusion, returned in chronological order.
+ *
+ * Filters applied in SQL (so `limit` bounds the usable output, not the raw
+ * scan):
+ *  - `content IS NOT NULL` — placeholder assistant rows are excluded
+ *  - `role IN ('user','assistant')` — defensive; matches the downstream cast
+ *  - optional `excludeRunId` — chat callback excludes the current run's own
+ *    rows so the title-context window only contains prior rounds
+ *
+ * Using `ORDER BY createdAt DESC LIMIT N` then `reverse()` in memory keeps
+ * the query driven by `idx_chat_messages_thread_created` (thread_id,
+ * created_at).
+ */
+export async function getLatestMessagesByThreadId(
+  chatThreadId: string,
+  limit: number,
+  options?: { excludeRunId?: string },
+): Promise<PromptContextMessageRow[]> {
+  const conditions = [
+    eq(chatMessages.chatThreadId, chatThreadId),
+    isNotNull(chatMessages.content),
+    inArray(chatMessages.role, ["user", "assistant"]),
+  ];
+  if (options?.excludeRunId !== undefined) {
+    conditions.push(
+      sql`(${chatMessages.runId} IS NULL OR ${chatMessages.runId} != ${options.excludeRunId})`,
+    );
+  }
+
+  const rows = await globalThis.services.db
+    .select(messageRowProjection)
+    .from(chatMessages)
+    .leftJoin(agentRuns, eq(chatMessages.runId, agentRuns.id))
+    .where(and(...conditions))
+    .orderBy(desc(chatMessages.createdAt), desc(chatMessages.sequenceNumber))
+    .limit(limit);
+  // SQL guarantees role ∈ {'user','assistant'} and content IS NOT NULL, so
+  // narrow once here instead of pushing the cast out to every caller.
+  return rows.reverse().map((row) => {
+    return {
+      ...row,
+      role: row.role as "user" | "assistant",
+      content: row.content as string,
+    };
+  });
 }
 
 /**
@@ -356,6 +467,17 @@ export async function getIncompleteRoundsSinceLastSuccess(
 ): Promise<IncompleteRoundRow[]> {
   const maxRounds = options?.maxRounds ?? 20;
 
+  // Single query with a session-anchor subquery:
+  //  - anchor: MAX(created_at) among this thread's rows whose run persisted
+  //    a string-typed agentSessionId — matches `hasAgentSessionId` exactly.
+  //  - outer scan: only rows strictly after that anchor with an incomplete
+  //    run status and a valid role, already sorted for the caller.
+  //
+  // INNER JOIN is equivalent to the old LEFT JOIN + `isIncompleteRunStatus(
+  // null) === false` discard, because the status filter only matches when
+  // a matching `agent_runs` row exists. Pushing the status/role filters
+  // into SQL lets Postgres skip the full-thread scan of `agent_runs.result`
+  // JSONB that the old "load every row + JS scan" pattern required.
   const rows = await globalThis.services.db
     .select({
       runId: chatMessages.runId,
@@ -366,23 +488,31 @@ export async function getIncompleteRoundsSinceLastSuccess(
       createdAt: chatMessages.createdAt,
       sequenceNumber: chatMessages.sequenceNumber,
       runStatus: agentRuns.status,
-      runResult: agentRuns.result,
     })
     .from(chatMessages)
-    .leftJoin(agentRuns, eq(chatMessages.runId, agentRuns.id))
-    .where(eq(chatMessages.chatThreadId, chatThreadId))
+    .innerJoin(agentRuns, eq(chatMessages.runId, agentRuns.id))
+    .where(
+      and(
+        eq(chatMessages.chatThreadId, chatThreadId),
+        inArray(agentRuns.status, ["cancelled", "failed", "timeout"]),
+        inArray(chatMessages.role, ["user", "assistant"]),
+        sql`${chatMessages.createdAt} > COALESCE(
+          (
+            SELECT MAX(cm2.created_at)
+            FROM chat_messages cm2
+            INNER JOIN agent_runs ar2 ON cm2.run_id = ar2.id
+            WHERE cm2.chat_thread_id = ${chatThreadId}
+              AND ar2.result ? 'agentSessionId'
+              AND jsonb_typeof(ar2.result->'agentSessionId') = 'string'
+          ),
+          '-infinity'::timestamptz
+        )`,
+      ),
+    )
     .orderBy(asc(chatMessages.createdAt), asc(chatMessages.sequenceNumber));
 
-  let anchorIndex = -1;
-  for (let i = 0; i < rows.length; i++) {
-    if (hasAgentSessionId(rows[i]!.runResult)) {
-      anchorIndex = i;
-    }
-  }
-
   const candidates: IncompleteRoundRow[] = [];
-  for (let i = anchorIndex + 1; i < rows.length; i++) {
-    const row = rows[i]!;
+  for (const row of rows) {
     if (row.runId === null) continue;
     if (!isIncompleteRunStatus(row.runStatus)) continue;
     if (row.role !== "user" && row.role !== "assistant") continue;

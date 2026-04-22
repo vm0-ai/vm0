@@ -1,7 +1,7 @@
 import { pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
 /**
- * org_promo_redemption — serializes concurrent `/redeem/[campaign]` attempts
+ * org_promo_redemption — serializes concurrent redemption attempts
  * for the same (org, campaign) pair. The UNIQUE index is the race-safe dedup
  * mechanism: only one concurrent insert wins, so two admins in the same org
  * can't both kick off a fresh Stripe Checkout.

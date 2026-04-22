@@ -7,7 +7,10 @@ import {
   getOrgDefaultAgent,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { deleteTestCompose } from "../../../../../src/__tests__/db-test-seeders/agents";
-import { testContext } from "../../../../../src/__tests__/test-helpers";
+import {
+  testContext,
+  uniqueId,
+} from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 
 const context = testContext();
@@ -35,7 +38,7 @@ describe("PUT /api/zero/default-agent", () => {
 
   it("should allow admin to set default agent", async () => {
     await context.setupUser();
-    const compose = await createTestCompose("test-agent");
+    const compose = await createTestCompose(uniqueId("default-agent"));
 
     const response = await putDefaultAgent(compose.composeId);
     expect(response.status).toBe(200);
@@ -46,7 +49,7 @@ describe("PUT /api/zero/default-agent", () => {
 
   it("should return 409 when trying to unset an already-configured default agent", async () => {
     await context.setupUser();
-    const compose = await createTestCompose("test-agent");
+    const compose = await createTestCompose(uniqueId("default-agent"));
 
     // Set first
     await putDefaultAgent(compose.composeId);
@@ -61,7 +64,7 @@ describe("PUT /api/zero/default-agent", () => {
 
   it("should reject non-admin members", async () => {
     await context.setupUser();
-    const compose = await createTestCompose("test-agent");
+    const compose = await createTestCompose(uniqueId("default-agent"));
 
     // Create a second user (different prefix = different user, no org admin)
     await context.setupUser({ prefix: "member" });
@@ -84,7 +87,7 @@ describe("PUT /api/zero/default-agent", () => {
 
   it("should write default agent to org table", async () => {
     const { orgId } = await context.setupUser();
-    const compose = await createTestCompose("test-agent");
+    const compose = await createTestCompose(uniqueId("default-agent"));
 
     await putDefaultAgent(compose.composeId);
 
@@ -95,7 +98,7 @@ describe("PUT /api/zero/default-agent", () => {
 
   it("should not update org table when 409 conflict prevents unsetting", async () => {
     const { orgId } = await context.setupUser();
-    const compose = await createTestCompose("test-agent");
+    const compose = await createTestCompose(uniqueId("default-agent"));
 
     await putDefaultAgent(compose.composeId);
 
@@ -110,7 +113,7 @@ describe("PUT /api/zero/default-agent", () => {
 
   it("should return 409 when setting default agent twice", async () => {
     await context.setupUser();
-    const compose = await createTestCompose("test-agent");
+    const compose = await createTestCompose(uniqueId("default-agent"));
 
     // Set default
     const response1 = await putDefaultAgent(compose.composeId);
@@ -126,7 +129,7 @@ describe("PUT /api/zero/default-agent", () => {
 
   it("should allow re-setting default agent when previous compose was deleted", async () => {
     await context.setupUser();
-    const compose1 = await createTestCompose("agent-1");
+    const compose1 = await createTestCompose(uniqueId("agent-1"));
 
     // Set first default agent
     const response1 = await putDefaultAgent(compose1.composeId);
@@ -136,7 +139,7 @@ describe("PUT /api/zero/default-agent", () => {
     await deleteTestCompose(compose1.composeId);
 
     // Setting a new default should succeed since the old one no longer exists
-    const compose2 = await createTestCompose("agent-2");
+    const compose2 = await createTestCompose(uniqueId("agent-2"));
     const response2 = await putDefaultAgent(compose2.composeId);
     expect(response2.status).toBe(200);
 
@@ -146,7 +149,7 @@ describe("PUT /api/zero/default-agent", () => {
 
   it("should allow setting default agent when none is configured", async () => {
     await context.setupUser();
-    const compose = await createTestCompose("test-agent");
+    const compose = await createTestCompose(uniqueId("default-agent"));
 
     // No default agent configured yet — should succeed
     const response = await putDefaultAgent(compose.composeId);
@@ -158,7 +161,7 @@ describe("PUT /api/zero/default-agent", () => {
 
   it("should succeed when org row does not exist in org table", async () => {
     const { orgId } = await context.setupUser();
-    const compose = await createTestCompose("test-agent");
+    const compose = await createTestCompose(uniqueId("default-agent"));
 
     // Remove the org row to simulate a free-tier org that never triggered lazy migration
     await deleteOrgRow(orgId);

@@ -1648,6 +1648,89 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
     });
   });
 
+  describe("Multi-Mount Artifacts (body.artifacts)", () => {
+    it("should pipe body.artifacts through storage manifest", async () => {
+      // Pre-seed two artifacts so resolveAdditionalArtifact finds real storages.
+      const artifactA = uniqueId("multi-art-a");
+      const artifactB = uniqueId("multi-art-b");
+      await createTestArtifact(artifactA);
+      await createTestArtifact(artifactB);
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/runs",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentComposeId: testComposeId,
+            prompt: "Multi-mount artifact test",
+            artifacts: [
+              { name: artifactA, mountPath: "/mnt/a" },
+              { name: artifactB, mountPath: "/mnt/b" },
+            ],
+          }),
+        },
+      );
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(201);
+      expect(data.status).toBe("pending");
+
+      const job = await findTestRunnerJobEntry(data.runId);
+      expect(job).toBeDefined();
+      const artifacts = job!.executionContext.storageManifest!.artifacts;
+      expect(artifacts).toHaveLength(2);
+      const mountPaths = artifacts.map((a) => {
+        return a.mountPath;
+      });
+      expect(mountPaths).toContain("/mnt/a");
+      expect(mountPaths).toContain("/mnt/b");
+      const names = artifacts.map((a) => {
+        return a.vasStorageName;
+      });
+      expect(names).toContain(artifactA);
+      expect(names).toContain(artifactB);
+    });
+
+    it("should prefer body.artifacts over legacy artifactName when both are set", async () => {
+      const legacyName = uniqueId("legacy-art");
+      const newArtifact = uniqueId("new-art");
+      await createTestArtifact(legacyName);
+      await createTestArtifact(newArtifact);
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/runs",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentComposeId: testComposeId,
+            prompt: "Precedence test",
+            artifactName: legacyName,
+            artifacts: [{ name: newArtifact, mountPath: "/mnt/new" }],
+          }),
+        },
+      );
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(201);
+      expect(data.status).toBe("pending");
+
+      const job = await findTestRunnerJobEntry(data.runId);
+      expect(job).toBeDefined();
+      const artifacts = job!.executionContext.storageManifest!.artifacts;
+      // Only the multi-mount entry should be present; the legacy singleton
+      // is dropped when body.artifacts is non-empty.
+      const names = artifacts.map((a) => {
+        return a.vasStorageName;
+      });
+      expect(names).toContain(newArtifact);
+      expect(names).not.toContain(legacyName);
+    });
+  });
+
   describe("Optional Volumes", () => {
     /**
      * Helper to create a compose with volume configuration

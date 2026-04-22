@@ -1,6 +1,5 @@
 import { command } from "ccstate";
 import { createElement } from "react";
-import { SidebarLayout } from "../../views/zero-page/sidebar-layout.tsx";
 import { ZeroChatListPage } from "../../views/zero-page/zero-chat-list-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
@@ -14,10 +13,7 @@ export const setupChatListPage$ = command(
     const params = get(searchParams$);
     const agentId = params.get("agentId");
 
-    set(
-      updatePage$,
-      createElement(SidebarLayout, null, createElement(ZeroChatListPage)),
-    );
+    set(updatePage$, createElement(ZeroChatListPage), "sidebar");
     set(updateDocumentTitle$, "Chats");
 
     await set(hideAppSkeleton$, signal);

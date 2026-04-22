@@ -57,7 +57,7 @@ describe("deleteUserData", () => {
     context.setupMocks();
     const { userId } = await context.setupUser();
 
-    const { composeId } = await createTestCompose("cancel-test");
+    const { composeId } = await createTestCompose(uniqueId("cancel-test"));
     const { runId: queuedRunId } = await seedTestRun(userId, composeId, {
       status: "queued",
     });
@@ -87,7 +87,9 @@ describe("deleteUserData", () => {
     context.setupMocks();
     const { userId } = await context.setupUser();
 
-    const { composeId } = await createTestCompose("cascade-compose-test");
+    const { composeId } = await createTestCompose(
+      uniqueId("cascade-compose-test"),
+    );
     await createTestAgentSession(userId, composeId);
 
     await deleteUserData(userId);
@@ -99,7 +101,7 @@ describe("deleteUserData", () => {
     context.setupMocks();
     const { userId, orgId } = await context.setupUser();
 
-    const { composeId } = await createTestCompose("cascade-run-test");
+    const { composeId } = await createTestCompose(uniqueId("cascade-run-test"));
     const { runId } = await seedTestRun(userId, composeId, {
       status: "completed",
       completedAt: new Date(),
@@ -178,7 +180,7 @@ describe("deleteUserData", () => {
       vm0UserId: userId,
     });
 
-    const { composeId } = await createTestCompose("slack-test");
+    const { composeId } = await createTestCompose(uniqueId("slack-test"));
     await createTestAgentSession(userId, composeId);
 
     await insertTestSlackOrgThreadSession({ connectionId: connection.id });
@@ -192,7 +194,9 @@ describe("deleteUserData", () => {
     context.setupMocks();
     const { userId } = await context.setupUser();
 
-    const { composeId } = await createTestCompose("external-links-test");
+    const { composeId } = await createTestCompose(
+      uniqueId("external-links-test"),
+    );
 
     // GitHub: compose → installation → user link
     const ghInstallation = await insertTestGithubInstallation({ composeId });
@@ -266,7 +270,9 @@ describe("deleteUserData", () => {
     const { userId, orgId } = await context.setupUser();
 
     // Composes, sessions, runs
-    const { composeId, agentId } = await createTestCompose("full-user-test");
+    const { composeId, agentId } = await createTestCompose(
+      uniqueId("full-user-test"),
+    );
     const session = await createTestAgentSession(userId, composeId);
     const { runId } = await seedTestRun(userId, composeId, {
       status: "running",
@@ -379,7 +385,7 @@ describe("deleteUserData", () => {
     context.setupMocks();
     const { userId } = await context.setupUser();
 
-    const { composeId } = await createTestCompose("idempotent-test");
+    const { composeId } = await createTestCompose(uniqueId("idempotent-test"));
     await seedTestRun(userId, composeId, {
       status: "running",
       startedAt: new Date(),

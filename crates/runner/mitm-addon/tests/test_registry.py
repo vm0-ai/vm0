@@ -13,6 +13,7 @@ def _reset_cache():
     """Reset the module-level registry cache between tests."""
     mitm_addon._registry_cache = {}
     mitm_addon._registry_cache_key = (0, 0)
+    mitm_addon._registry_load_error_logged = False
     auth._firewall_header_cache.clear()
     auth._cache_locks.clear()
 
@@ -57,6 +58,62 @@ class TestLoadRegistry:
             result2 = mitm_addon.load_registry()
             assert "10.200.0.99" in result2
             assert "10.200.0.1" not in result2
+
+    def test_missing_file_logs_once_across_calls(self, tmp_path):
+        """Stat-path failures repeated across requests emit at most one warn."""
+        missing = str(tmp_path / "nonexistent.json")
+        log = MagicMock()
+        with (
+            patch.object(mitm_addon, "get_registry_path", return_value=missing),
+            patch.object(mitm_addon.ctx, "log", log, create=True),
+        ):
+            for _ in range(5):
+                assert mitm_addon.load_registry() == {}
+
+        assert log.warn.call_count == 1
+        assert "Failed to stat" in log.warn.call_args_list[0].args[0]
+
+    def test_parse_failure_logs_once_and_does_not_reparse(self, tmp_path):
+        """Parse failure on a fixed file: key match short-circuits re-parse."""
+        bad = tmp_path / "bad.json"
+        bad.write_text("{ not valid json")
+        log = MagicMock()
+        with (
+            patch.object(mitm_addon, "get_registry_path", return_value=str(bad)),
+            patch.object(mitm_addon.ctx, "log", log, create=True),
+            patch.object(mitm_addon.json, "load", wraps=mitm_addon.json.load) as spy,
+        ):
+            for _ in range(5):
+                assert mitm_addon.load_registry() == {}
+
+        assert spy.call_count == 1
+        assert log.warn.call_count == 1
+        assert "Failed to parse" in log.warn.call_args_list[0].args[0]
+
+    def test_recovery_after_parse_failure_rewarns_on_next_failure(self, tmp_path):
+        """Successful load clears the flag so a later failure re-warns once."""
+        path = tmp_path / "registry.json"
+        path.write_text("{ broken")
+        log = MagicMock()
+        with (
+            patch.object(mitm_addon, "get_registry_path", return_value=str(path)),
+            patch.object(mitm_addon.ctx, "log", log, create=True),
+        ):
+            mitm_addon.load_registry()  # parse fails → warn #1
+            assert log.warn.call_count == 1
+
+            # File becomes valid → successful load clears the flag.
+            path.write_text(json.dumps({"vms": {"10.0.0.1": {"runId": "r1"}}}))
+            result = mitm_addon.load_registry()
+            assert "10.0.0.1" in result
+            assert log.warn.call_count == 1  # no new warn on success
+
+            # File breaks again. Different size than the good content above
+            # busts the cache key so the parse re-runs; the successful load
+            # reset the flag, so this failure warns again.
+            path.write_text("{ broken again, different size")
+            mitm_addon.load_registry()
+            assert log.warn.call_count == 2
 
     def test_evicts_header_cache_on_run_removal(self, registry_file):
         """When a run disappears from registry, its header cache entries are evicted."""

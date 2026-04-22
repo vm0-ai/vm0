@@ -381,6 +381,12 @@ function ChatThreadComposer({
   const orgProviders = useLastResolved(orgModelProviders$);
   const modelSelection = useLastResolved(thread.modelSelection$) ?? null;
   const setModelSelection = useSet(thread.setModelSelection$);
+  const agentModelDefault = useLastResolved(thread.agentModelDefault$) ?? null;
+  // During thread switch the thread-level skeleton is visible and
+  // `threadData` / `allFinished$` may still reflect the previous thread;
+  // render the whole action cluster as a skeleton so we don't flash stale
+  // picker state or a wrong send/stop button.
+  const skeletonVisible = useGet(thread.skeletonVisible$);
 
   const handleInputChange = (text: string) => {
     setInput(text);
@@ -425,6 +431,7 @@ function ChatThreadComposer({
           composerFileInput$={thread.composerFileInput$}
           setComposerFileInput$={thread.setComposerFileInput$}
           setInputRef={setInputRef}
+          actionsLoading={skeletonVisible}
           modelPicker={
             modelFeatureEnabled &&
             orgProviders &&
@@ -440,6 +447,7 @@ function ChatThreadComposer({
                   disabled: Boolean(
                     threadData?.modelProviderId && threadData?.selectedModel,
                   ),
+                  agentDefault: agentModelDefault,
                 }
               : undefined
           }

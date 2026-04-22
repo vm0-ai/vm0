@@ -1,5 +1,49 @@
 # Changelog
 
+## [0.282.1](https://github.com/vm0-ai/vm0/compare/app-v0.282.0...app-v0.282.1) (2026-04-22)
+
+
+### Bug Fixes
+
+* **platform:** polish model picker sizing and dropdown styling ([#10206](https://github.com/vm0-ai/vm0/issues/10206)) ([b4ea355](https://github.com/vm0-ai/vm0/commit/b4ea355da19003df681577d2ffee7d7b4109b9e5))
+* **platform:** rotate clerk jwt before reload on org switch ([#10607](https://github.com/vm0-ai/vm0/issues/10607)) ([9a4a685](https://github.com/vm0-ai/vm0/commit/9a4a685b1b979863d6557a8746e205c9ff6586e3))
+
+
+### Refactoring
+
+* migrate /redeem/{campaign} flow from web to platform ([#10612](https://github.com/vm0-ai/vm0/issues/10612)) ([276f710](https://github.com/vm0-ai/vm0/commit/276f710ad2ab12f550175520a21960d2c9fc41b9))
+
+
+### Performance Improvements
+
+* **platform:** lift sidebar layout above router to stop full-tree re-renders on navigation ([#10575](https://github.com/vm0-ai/vm0/issues/10575)) ([a93cfb4](https://github.com/vm0-ai/vm0/commit/a93cfb432c27a273d6a7f03752688839fb3444cf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.225.1
+
+## [0.282.0](https://github.com/vm0-ai/vm0/compare/app-v0.281.0...app-v0.282.0) (2026-04-22)
+
+
+### Features
+
+* add openai platform auth skeleton behind PlatformConnectors flag ([#10580](https://github.com/vm0-ai/vm0/issues/10580)) ([6f7614d](https://github.com/vm0-ai/vm0/commit/6f7614d0a8bf0f5119f6c8f3f8c110c3ab1a478d))
+
+
+### Bug Fixes
+
+* **voice-chat:** resolve preparation timeout from task dispatch pollution ([#10582](https://github.com/vm0-ai/vm0/issues/10582)) ([6138f35](https://github.com/vm0-ai/vm0/commit/6138f353fe84dbbba286332035208712c57035a7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.225.0
+
 ## [0.281.0](https://github.com/vm0-ai/vm0/compare/app-v0.280.1...app-v0.281.0) (2026-04-22)
 
 

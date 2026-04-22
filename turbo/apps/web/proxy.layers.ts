@@ -14,7 +14,6 @@ import { locales, defaultLocale } from "./i18n";
 const SKIP_I18N_PREFIXES = [
   "/api/",
   "/_next/",
-  "/redeem/",
   "/cli-auth",
   "/connector/",
   "/slack/",
@@ -25,6 +24,7 @@ const SKIP_I18N_PREFIXES = [
   "/terms-of-use",
   "/support",
   "/export",
+  "/f/",
 ] as const;
 
 const STATIC_FILE_RE = /\.(ico|png|jpg|jpeg|svg|gif|webp|woff|woff2|ttf|eot)$/i;

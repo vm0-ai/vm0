@@ -39,6 +39,37 @@
         state: stopped
       become: true
 
+    # unattended-upgrades + needrestart (default on Ubuntu 22.04+) would
+    # `systemctl restart` our runner when a depended-on library (libc,
+    # libssl, systemd, ...) is patched. That sends SIGTERM, which the
+    # runner handles as a hard shutdown and cancels every in-flight job
+    # with exit 137. Graceful drain requires SIGUSR1 via `runner service
+    # drain`, which only the release-please promote path knows to send.
+    # Tell needrestart to leave vm0-runner units alone; the next promote
+    # picks up whatever library updates matter.
+    - name: Ensure needrestart conf.d exists
+      file:
+        path: /etc/needrestart/conf.d
+        state: directory
+        mode: '0755'
+      become: true
+
+    - name: Exempt vm0-runner services from needrestart auto-restart
+      copy:
+        dest: /etc/needrestart/conf.d/vm0-runner.conf
+        content: |
+          # Managed by ansible/playbooks/provision-runner.yml — do not edit.
+          # Prefix match (no `.service` anchor) so this fires regardless of
+          # whether needrestart's code path hands us the short or full name.
+          # Belt-and-braces: override_rc is consulted at the per-service
+          # restart-decision layer; blacklist_rc short-circuits earlier in
+          # the scan path. Setting both means any future refactor of
+          # needrestart that drops one layer still leaves the other intact.
+          $nrconf{override_rc}->{qr(^vm0-runner-)} = 0;
+          push(@{$nrconf{blacklist_rc}}, qr(^vm0-runner-));
+        mode: '0644'
+      become: true
+
     - name: Add user to kvm group
       user:
         name: "{{ ansible_user }}"

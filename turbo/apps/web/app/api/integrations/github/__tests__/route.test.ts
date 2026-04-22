@@ -55,7 +55,8 @@ describe("/api/integrations/github", () => {
       const userId = uniqueId("gh-user");
       mockClerk({ userId });
       await createTestOrg(uniqueId("gh-org"));
-      const { composeId } = await createTestCompose("gh-agent");
+      const agentName = uniqueId("gh-agent");
+      const { composeId } = await createTestCompose(agentName);
 
       await insertTestGitHubInstallationWithAdmin(composeId, userId);
 
@@ -70,14 +71,14 @@ describe("/api/integrations/github", () => {
       expect(data.installation).toBeDefined();
       expect(data.installation.installationId).toBeTruthy();
       expect(data.agent).toBeDefined();
-      expect(data.agent.name).toBe("gh-agent");
+      expect(data.agent.name).toBe(agentName);
     });
 
     it("should return environment data in response", async () => {
       const userId = uniqueId("gh-user");
       mockClerk({ userId });
       await createTestOrg(uniqueId("gh-org"));
-      const { composeId } = await createTestCompose("gh-agent");
+      const { composeId } = await createTestCompose(uniqueId("gh-agent"));
 
       await insertTestGitHubInstallationWithAdmin(composeId, userId);
 
@@ -130,7 +131,7 @@ describe("/api/integrations/github", () => {
       const userId = uniqueId("gh-user");
       mockClerk({ userId });
       await createTestOrg(uniqueId("gh-org"));
-      const { composeId } = await createTestCompose("gh-agent");
+      const { composeId } = await createTestCompose(uniqueId("gh-agent"));
 
       const { installation } = await insertTestGitHubInstallationWithAdmin(
         composeId,
@@ -159,7 +160,7 @@ describe("/api/integrations/github", () => {
       const userId = uniqueId("gh-user");
       mockClerk({ userId });
       await createTestOrg(uniqueId("gh-org"));
-      const { composeId } = await createTestCompose("gh-agent");
+      const { composeId } = await createTestCompose(uniqueId("gh-agent"));
 
       const installation = await insertTestGitHubInstallation(composeId);
       // Link user but leave adminGithubUserId as null (default)
@@ -191,7 +192,7 @@ describe("/api/integrations/github", () => {
       const adminUserId = uniqueId("admin-user");
       mockClerk({ userId: adminUserId });
       await createTestOrg(uniqueId("gh-org"));
-      const { composeId } = await createTestCompose("gh-agent");
+      const { composeId } = await createTestCompose(uniqueId("gh-agent"));
       const { installation } = await insertTestGitHubInstallationWithAdmin(
         composeId,
         adminUserId,
@@ -246,7 +247,7 @@ describe("/api/integrations/github", () => {
       const userId = uniqueId("gh-user");
       mockClerk({ userId });
       await createTestOrg(uniqueId("gh-org"));
-      const { composeId } = await createTestCompose("gh-agent");
+      const { composeId } = await createTestCompose(uniqueId("gh-agent"));
       await insertTestGitHubInstallationWithAdmin(composeId, userId);
 
       const request = createTestRequest(
@@ -291,7 +292,7 @@ describe("/api/integrations/github", () => {
       const userId = uniqueId("gh-user");
       mockClerk({ userId });
       await createTestOrg(uniqueId("gh-org"));
-      const { composeId } = await createTestCompose("gh-agent");
+      const { composeId } = await createTestCompose(uniqueId("gh-agent"));
 
       const installation = await insertTestGitHubInstallation(composeId);
       // Link user but leave adminGithubUserId as null (default)
@@ -323,7 +324,7 @@ describe("/api/integrations/github", () => {
       const adminUserId = uniqueId("admin-user");
       mockClerk({ userId: adminUserId });
       await createTestOrg(uniqueId("gh-org"));
-      const { composeId } = await createTestCompose("gh-agent");
+      const { composeId } = await createTestCompose(uniqueId("gh-agent"));
       const { installation } = await insertTestGitHubInstallationWithAdmin(
         composeId,
         adminUserId,
@@ -360,7 +361,7 @@ describe("/api/integrations/github", () => {
       const userId = uniqueId("gh-user");
       mockClerk({ userId });
       await createTestOrg(uniqueId("gh-org"));
-      const { composeId } = await createTestCompose("gh-agent");
+      const { composeId } = await createTestCompose(uniqueId("gh-agent"));
       await insertTestGitHubInstallationWithAdmin(composeId, userId);
 
       const request = createTestRequest(
@@ -384,11 +385,12 @@ describe("/api/integrations/github", () => {
       const userId = uniqueId("gh-user");
       mockClerk({ userId });
       await createTestOrg(uniqueId("gh-org"));
-      const { composeId } = await createTestCompose("gh-agent");
+      const { composeId } = await createTestCompose(uniqueId("gh-agent"));
       await insertTestGitHubInstallationWithAdmin(composeId, userId);
 
       // Create a new agent to switch to
-      await createTestCompose("new-agent");
+      const newAgentName = uniqueId("new-agent");
+      await createTestCompose(newAgentName);
 
       const request = createTestRequest(
         "http://localhost:3000/api/integrations/github",
@@ -397,7 +399,7 @@ describe("/api/integrations/github", () => {
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ agentName: "new-agent" }),
+          body: JSON.stringify({ agentName: newAgentName }),
         },
       );
       const response = await PATCH(request);
@@ -412,7 +414,7 @@ describe("/api/integrations/github", () => {
       );
       const getData = await getResponse.json();
 
-      expect(getData.agent.name).toBe("new-agent");
+      expect(getData.agent.name).toBe(newAgentName);
     });
   });
 });

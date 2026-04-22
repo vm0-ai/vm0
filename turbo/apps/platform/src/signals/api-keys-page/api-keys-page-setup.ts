@@ -1,7 +1,6 @@
 import { command } from "ccstate";
 import { createElement } from "react";
 import { FeatureSwitchKey } from "@vm0/core";
-import { SidebarLayout } from "../../views/zero-page/sidebar-layout.tsx";
 import { ApiKeysPage } from "../../views/zero-page/api-keys-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
@@ -20,10 +19,7 @@ export const setupApiKeysPage$ = command(
       return;
     }
 
-    set(
-      updatePage$,
-      createElement(SidebarLayout, null, createElement(ApiKeysPage)),
-    );
+    set(updatePage$, createElement(ApiKeysPage), "sidebar");
     set(updateDocumentTitle$, "API Keys");
     await set(hideAppSkeleton$, signal);
 

@@ -32,6 +32,7 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
+  Skeleton,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -152,6 +153,14 @@ interface ZeroChatComposerProps {
   /** Called after attachment upload/remove mutations so the caller can trigger side-effects (e.g. draft sync). */
   onDraftChange?: () => void;
   /**
+   * When true, render skeleton placeholders in place of the right-side
+   * action cluster (model picker, mic, send/stop). Used during thread switch
+   * while thread data is still resolving — prevents briefly flashing stale
+   * picker state and a wrong send/stop button derived from prior
+   * `allFinished`.
+   */
+  actionsLoading?: boolean;
+  /**
    * Per-run model picker wiring. When present, a compact picker is rendered
    * immediately to the left of the Send button; the parent owns the selected
    * value and decides when to include it in the send payload. Undefined
@@ -168,6 +177,8 @@ interface ZeroChatComposerProps {
     sessionProviderType: ModelProviderType | null;
     // When true, picker is read-only (e.g. existing chat thread).
     disabled?: boolean;
+    /** The agent-level default model, shown as a "Default" tag in the dropdown. */
+    agentDefault?: ModelProviderSelection | null;
   };
 }
 
@@ -644,6 +655,7 @@ export function ZeroChatComposer({
   setComposerFileInput$: setComposerFileInputProp$,
   setInputRef,
   onDraftChange,
+  actionsLoading = false,
   modelPicker,
 }: ZeroChatComposerProps) {
   const showAddDialog = useGet(showAddDialog$);
@@ -934,55 +946,68 @@ export function ZeroChatComposer({
                 />
               </div>
               <div className="flex items-center gap-2">
-                {modelPicker && (
-                  <ModelProviderPicker
-                    providers={modelPicker.providers}
-                    value={modelPicker.value}
-                    onChange={modelPicker.onChange}
-                    placeholder="Default"
-                    triggerClassName={cn(
-                      // Resting state: borderless ghost — trigger reads like
-                      // plain text in the toolbar.
-                      "h-8 w-auto max-w-[12rem] gap-1 border-transparent bg-transparent px-2 text-xs text-muted-foreground transition-colors",
-                      // Discoverable affordance only when the user targets it.
-                      "hover:bg-accent hover:text-foreground focus:bg-accent focus:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground",
+                {actionsLoading ? (
+                  <Skeleton
+                    className={cn(
+                      "h-9 rounded-md",
+                      modelPicker ? "w-[184px]" : "w-20",
                     )}
-                    sessionProviderType={modelPicker.sessionProviderType}
-                    compactTrigger
-                    open={modelPickerOpen}
-                    onOpenChange={setModelPickerOpen}
-                    disabled={modelPicker.disabled}
                   />
-                )}
-                <MicButton
-                  onTranscribed={(text) => {
-                    const base = input;
-                    const separator =
-                      base.length > 0 && !base.endsWith(" ") ? " " : "";
-                    onInputChange(base + separator + text);
-                    onDraftChange?.();
-                  }}
-                />
-                {sending && onCancel ? (
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    className="rounded-lg h-9 w-9 p-0 shrink-0"
-                    onClick={onCancel}
-                    aria-label="Stop"
-                  >
-                    <IconPlayerStop size={16} />
-                  </Button>
                 ) : (
-                  <Button
-                    size="sm"
-                    className="rounded-lg h-9 w-9 p-0 shrink-0"
-                    onClick={handleSend}
-                    disabled={!canSend || !!sending}
-                    aria-label="Send"
-                  >
-                    <IconArrowUp size={18} stroke={2} />
-                  </Button>
+                  <>
+                    {modelPicker && (
+                      <ModelProviderPicker
+                        providers={modelPicker.providers}
+                        value={modelPicker.value}
+                        onChange={modelPicker.onChange}
+                        placeholder="Default"
+                        triggerClassName={cn(
+                          // Resting state: borderless ghost — trigger reads like
+                          // plain text in the toolbar.
+                          "h-9 w-auto max-w-[12rem] gap-1 border-transparent bg-transparent px-2 text-sm text-muted-foreground transition-colors",
+                          // Discoverable affordance only when the user targets it.
+                          "hover:bg-accent hover:text-foreground focus:bg-accent focus:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground",
+                        )}
+                        sessionProviderType={modelPicker.sessionProviderType}
+                        compactTrigger
+                        open={modelPickerOpen}
+                        onOpenChange={setModelPickerOpen}
+                        disabled={modelPicker.disabled}
+                        agentDefault={modelPicker.agentDefault}
+                        inheritLabel="agent"
+                      />
+                    )}
+                    <MicButton
+                      onTranscribed={(text) => {
+                        const base = input;
+                        const separator =
+                          base.length > 0 && !base.endsWith(" ") ? " " : "";
+                        onInputChange(base + separator + text);
+                        onDraftChange?.();
+                      }}
+                    />
+                    {sending && onCancel ? (
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        className="rounded-lg h-9 w-9 p-0 shrink-0"
+                        onClick={onCancel}
+                        aria-label="Stop"
+                      >
+                        <IconPlayerStop size={16} />
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        className="rounded-lg h-9 w-9 p-0 shrink-0"
+                        onClick={handleSend}
+                        disabled={!canSend || !!sending}
+                        aria-label="Send"
+                      >
+                        <IconArrowUp size={18} stroke={2} />
+                      </Button>
+                    )}
+                  </>
                 )}
               </div>
             </div>

@@ -3,6 +3,8 @@ import {
   zeroPlatformConnectorContract,
   createErrorResponse,
   CONNECTOR_TYPES,
+  FeatureSwitchKey,
+  isFeatureEnabled,
 } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
@@ -11,6 +13,7 @@ import {
 } from "../../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
 import { createPlatformConnector } from "../../../../../src/lib/zero/connector/connector-service";
+import { loadFeatureSwitchOverrides } from "../../../../../src/lib/zero/user/feature-switches-service";
 
 const router = tsr.router(zeroPlatformConnectorContract, {
   create: async ({ params, headers }) => {
@@ -19,6 +22,20 @@ const router = tsr.router(zeroPlatformConnectorContract, {
     const authCtx = await requireAuth(headers.authorization);
     if (isAuthError(authCtx)) return authCtx;
     const { userId } = authCtx;
+
+    const { org } = await resolveOrg(authCtx);
+
+    const overrides = await loadFeatureSwitchOverrides(org.orgId, userId);
+    const platformConnectorsEnabled = isFeatureEnabled(
+      FeatureSwitchKey.PlatformConnectors,
+      { userId, orgId: org.orgId, overrides },
+    );
+    if (!platformConnectorsEnabled) {
+      return createErrorResponse(
+        "NOT_FOUND",
+        `Connector "${params.type}" not found`,
+      );
+    }
 
     // Only connector types that declare a `platform` auth method can be
     // enabled via this endpoint. Anything else is a client bug — OAuth /
@@ -31,7 +48,6 @@ const router = tsr.router(zeroPlatformConnectorContract, {
       );
     }
 
-    const { org } = await resolveOrg(authCtx);
     const connector = await createPlatformConnector(
       org.orgId,
       userId,

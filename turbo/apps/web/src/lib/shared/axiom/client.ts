@@ -221,12 +221,23 @@ export function ingestRunContext(snapshot: RunContextSnapshot): void {
   ]);
 }
 
+/**
+ * End-to-end pipeline op log entry. One dataset covers:
+ *   - `source: "web"` — api_to_executor / api_to_claim spans from the run dispatch path
+ *   - `source: "web-chat"` — Phase-1 `/api/zero/chat/messages` stage spans; `run_id`
+ *     is absent until the transaction commits, so it's optional here.
+ *   - `source: "runner"` — runner-side step.op spans
+ *   - `source: "sandbox"` — in-sandbox op spans
+ * Additional dimensions (agent_id, thread_id, org_id, …) are spread in
+ * schemaless by callers.
+ */
 interface SandboxOpLogEntry {
-  source: "web" | "runner" | "sandbox";
+  source: "web" | "web-chat" | "runner" | "sandbox";
   op_type: string;
   sandbox_type: string;
   duration_ms: number;
-  run_id: string;
+  run_id?: string;
+  [key: string]: unknown;
 }
 
 /**

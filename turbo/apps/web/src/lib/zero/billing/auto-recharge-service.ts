@@ -2,6 +2,7 @@ import { eq, sql } from "drizzle-orm";
 import type Stripe from "stripe";
 import { orgMetadata } from "../../../db/schema/org-metadata";
 import { grantOrgCredits } from "../org/org-service";
+import { createExpiresRecord } from "../credit/credit-expires-service";
 import { getStripe } from "../stripe";
 import { logger } from "../../shared/logger";
 
@@ -12,6 +13,16 @@ const CREDITS_PER_DOLLAR = 1000;
 
 /** Pending recharge older than this is considered stale and can be retried. */
 const STALE_THRESHOLD_MINUTES = 10;
+
+/**
+ * Sentinel "never expires" timestamp for auto-recharge credits. Writing a
+ * real (far-future) value lets us reuse the `(org_id, stripe_invoice_id)`
+ * unique index on `credit_expires_record` as the idempotency guard for
+ * auto-recharge invoices, while keeping the promised PAYG semantics: the
+ * row is never selected by `expireCredits` (which only touches records
+ * with `expires_at <= NOW()`).
+ */
+const AUTO_RECHARGE_NEVER_EXPIRES_AT = new Date("2999-12-31T00:00:00Z");
 
 interface OrgRechargeState {
   credits: number;
@@ -190,7 +201,16 @@ export async function triggerAutoRecharge(orgId: string): Promise<void> {
  * Handle an auto-recharge invoice.paid webhook event.
  * Grants credits to the org and clears the pending flag.
  *
- * @returns true if the invoice was an auto-recharge invoice and was handled
+ * Idempotent: the `(org_id, stripe_invoice_id)` unique index on
+ * `credit_expires_record` gates `grantOrgCredits`. A duplicate delivery
+ * (Stripe retry, dual-listener, etc.) inserts with ON CONFLICT DO NOTHING,
+ * sees `inserted=false`, and bails before re-granting. `expires_at` is set
+ * far in the future so `expireCredits` never settles these records — the
+ * row exists only as the idempotency marker, the PAYG "never expires"
+ * contract is preserved.
+ *
+ * @returns true if the invoice was an auto-recharge invoice (regardless of
+ *   whether credits were freshly granted or the delivery was a duplicate)
  */
 export async function handleAutoRechargeInvoicePaid(invoice: {
   id: string;
@@ -214,19 +234,37 @@ export async function handleAutoRechargeInvoicePaid(invoice: {
 
   const db = globalThis.services.db;
 
-  await db.transaction(async (tx) => {
+  const granted = await db.transaction(async (tx) => {
+    const inserted = await createExpiresRecord(tx, orgId, {
+      source: "auto_recharge",
+      stripeInvoiceId: invoice.id,
+      amount: creditsAmount,
+      expiresAt: AUTO_RECHARGE_NEVER_EXPIRES_AT,
+    });
+    if (!inserted) {
+      log.info(
+        "Auto-recharge invoice already processed — skipping (duplicate delivery)",
+        { orgId, invoiceId: invoice.id },
+      );
+      return false;
+    }
+
     await grantOrgCredits(tx, orgId, creditsAmount);
     await tx
       .update(orgMetadata)
       .set({ autoRechargePendingAt: null, updatedAt: new Date() })
       .where(eq(orgMetadata.orgId, orgId));
+
+    return true;
   });
 
-  log.info("Auto-recharge credits granted", {
-    orgId,
-    creditsAmount,
-    invoiceId: invoice.id,
-  });
+  if (granted) {
+    log.info("Auto-recharge credits granted", {
+      orgId,
+      creditsAmount,
+      invoiceId: invoice.id,
+    });
+  }
 
   return true;
 }

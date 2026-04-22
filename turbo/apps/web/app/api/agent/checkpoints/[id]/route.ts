@@ -84,6 +84,8 @@ const router = tsr.router(checkpointsByIdContract, {
       checkpoint.agentComposeSnapshot as AgentComposeSnapshot;
     const artifactSnapshot =
       checkpoint.artifactSnapshot as ArtifactSnapshot | null;
+    const artifactSnapshots =
+      (checkpoint.artifactSnapshots as Record<string, string> | null) ?? null;
     const volumeVersionsSnapshot =
       checkpoint.volumeVersionsSnapshot as VolumeVersionsSnapshot | null;
 
@@ -104,6 +106,7 @@ const router = tsr.router(checkpointsByIdContract, {
               artifactVersion: artifactSnapshot.artifactVersion,
             }
           : null,
+        artifactSnapshots,
         volumeVersionsSnapshot: volumeVersionsSnapshot
           ? {
               versions: volumeVersionsSnapshot.versions,

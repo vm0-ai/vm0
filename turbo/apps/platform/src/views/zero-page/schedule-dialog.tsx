@@ -31,6 +31,7 @@ import {
   updateDialogForm$,
   showConfirm$,
   setShowConfirm$,
+  dialogAgentModelDefault$,
 } from "../../signals/schedule-page/schedule-form.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { orgModelProviders$ } from "../../signals/external/org-model-providers.ts";
@@ -567,6 +568,8 @@ function ScheduleFormDialogInner({
     features?.[FeatureSwitchKey.ModelProviderSelection] ?? false;
   const orgProviders = useLastResolved(orgModelProviders$);
 
+  const agentModelDefault = useLastResolved(dialogAgentModelDefault$) ?? null;
+
   const current: ScheduleFormValues = {
     prompt: form.prompt,
     description: form.description,
@@ -754,10 +757,7 @@ function ScheduleFormDialogInner({
             orgProviders &&
             orgProviders.modelProviders.length > 0 && (
               <div className="flex flex-col gap-2">
-                <label
-                  htmlFor="schedule-dialog-model"
-                  className="text-sm font-medium text-foreground"
-                >
+                <label className="text-sm font-medium text-foreground">
                   Model
                   <span className="text-muted-foreground font-normal ml-1">
                     (optional)
@@ -779,6 +779,8 @@ function ScheduleFormDialogInner({
                       selectedModel: sel?.selectedModel ?? null,
                     });
                   }}
+                  agentDefault={agentModelDefault}
+                  inheritLabel="agent"
                 />
               </div>
             )}

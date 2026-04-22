@@ -9,7 +9,8 @@ import {
   insertChatMessage,
   insertAssistantEventMessages,
   publishChatThreadRunUpdated,
-  getMessagesByThreadId,
+  getLatestMessagesByThreadId,
+  PREVIOUS_CONTEXT_MESSAGES,
 } from "../../../../../src/lib/zero/chat-thread/chat-message-service";
 import {
   generateChatTitle,
@@ -94,20 +95,22 @@ async function queryAssistantEvents(
  * Load the prior conversation turns to feed into title generation, excluding
  * the current exchange (this run's user message and assistant events).
  * Returns up to the last 10 messages (~5 rounds), oldest → newest.
+ *
+ * All filters (content not null, role user/assistant, exclude current run)
+ * run in SQL so the scan is bounded by `LIMIT N` even on long threads.
  */
 async function loadPriorTitleContext(
   threadId: string,
   currentRunId: string,
 ): Promise<TitleContextMessage[]> {
-  const messages = await getMessagesByThreadId(threadId);
-  const prior: TitleContextMessage[] = [];
-  for (const m of messages) {
-    if (m.runId === currentRunId) continue;
-    if (m.content === null) continue;
-    if (m.role !== "user" && m.role !== "assistant") continue;
-    prior.push({ role: m.role, content: m.content });
-  }
-  return prior.slice(-10);
+  const messages = await getLatestMessagesByThreadId(
+    threadId,
+    PREVIOUS_CONTEXT_MESSAGES,
+    { excludeRunId: currentRunId },
+  );
+  return messages.map((m) => {
+    return { role: m.role, content: m.content };
+  });
 }
 
 /**

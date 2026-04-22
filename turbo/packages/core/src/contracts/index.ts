@@ -477,7 +477,6 @@ export {
 export {
   matchFirewallPath,
   findMatchingPermissions,
-  type GraphQLBody,
 } from "./firewall-rule-matcher";
 
 export {
@@ -775,12 +774,14 @@ export {
   zeroBillingAutoRechargeContract,
   zeroBillingInvoicesContract,
   zeroBillingDowngradeContract,
+  zeroBillingRedeemContract,
   type ZeroBillingStatusContract,
   type ZeroBillingCheckoutContract,
   type ZeroBillingPortalContract,
   type ZeroBillingAutoRechargeContract,
   type ZeroBillingInvoicesContract,
   type ZeroBillingDowngradeContract,
+  type ZeroBillingRedeemContract,
   // Inferred types
   type BillingStatusResponse,
   type AutoRechargeConfig,
@@ -789,6 +790,8 @@ export {
   type BillingInvoice,
   type BillingInvoicesResponse,
   type DowngradeResponse,
+  type RedeemRequest,
+  type RedeemResponse,
 } from "./zero-billing";
 export {
   zeroUsageMembersContract,

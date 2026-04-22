@@ -1,5 +1,5 @@
 import type { ArtifactSnapshot } from "../checkpoint/types";
-import type { AdditionalVolume } from "../storage/types";
+import type { AdditionalArtifact, AdditionalVolume } from "../storage/types";
 import type { Firewalls, NetworkPolicies } from "@vm0/core";
 
 /**
@@ -65,6 +65,10 @@ export interface ExecutionContext {
   // Artifact settings (new runs only)
   artifactName?: string;
   artifactVersion?: string;
+
+  // Additional artifacts passed at run time (beyond the primary artifact
+  // derived from compose working_dir). Each entry carries its own mountPath.
+  artifacts?: AdditionalArtifact[];
 
   // Memory storage name
   memoryName?: string;

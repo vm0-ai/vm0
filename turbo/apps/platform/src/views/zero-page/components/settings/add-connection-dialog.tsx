@@ -31,6 +31,7 @@ import {
 } from "../../../../signals/zero-page/settings/connectors.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { ConnectorIcon } from "./connector-icons.tsx";
+import { Vm0ManagedBadge } from "./vm0-managed-badge.tsx";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { GoogleOAuthNotice } from "../../zero-directed-shared.tsx";
 
@@ -313,6 +314,17 @@ function ConnectModalContent({
         <ApiTokenForm type={item.type} item={item} onSuccess={onSuccess} />
       )}
 
+      {hasApiToken && hasPlatform && (
+        <div className="relative">
+          <div className="absolute inset-0 flex items-center">
+            <span className="w-full zero-border-t" />
+          </div>
+          <div className="relative flex justify-center text-xs">
+            <span className="bg-background px-2 text-muted-foreground">or</span>
+          </div>
+        </div>
+      )}
+
       {hasPlatform && (
         <PlatformConfirmationForm type={item.type} onSuccess={onSuccess} />
       )}
@@ -362,8 +374,9 @@ export function ConnectModal({
         </DialogHeader>
 
         {item.connected && (
-          <p className="text-sm text-muted-foreground">
-            {connectedStatusText(item)}
+          <p className="flex items-center gap-2 text-sm text-muted-foreground">
+            <span>{connectedStatusText(item)}</span>
+            {item.connector?.authMethod === "platform" && <Vm0ManagedBadge />}
           </p>
         )}
 

@@ -1,5 +1,33 @@
 # Changelog
 
+## [9.129.1](https://github.com/vm0-ai/vm0/compare/cli-v9.129.0...cli-v9.129.1) (2026-04-22)
+
+
+### Bug Fixes
+
+* **cli:** show hint when schedule prompt is truncated in status command ([#10584](https://github.com/vm0-ai/vm0/issues/10584)) ([2e519af](https://github.com/vm0-ai/vm0/commit/2e519af3746827f639484b081ba0ea7c8b26f065))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.225.1
+
+## [9.129.0](https://github.com/vm0-ai/vm0/compare/cli-v9.128.0...cli-v9.129.0) (2026-04-22)
+
+
+### Features
+
+* **uploads:** serve permanent /f file redirect via public api host ([#10526](https://github.com/vm0-ai/vm0/issues/10526)) ([a5003fc](https://github.com/vm0-ai/vm0/commit/a5003fcc41e76139fcaea8be8a59058386998ce8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.225.0
+
 ## [9.128.0](https://github.com/vm0-ai/vm0/compare/cli-v9.127.3...cli-v9.128.0) (2026-04-22)
 
 

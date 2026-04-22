@@ -1,4 +1,4 @@
-import { IconBrain } from "@tabler/icons-react";
+import { IconArrowRight, IconBrain } from "@tabler/icons-react";
 import type { ContextEvent } from "@vm0/core";
 import { Markdown } from "../components/markdown.tsx";
 
@@ -6,7 +6,12 @@ import { Markdown } from "../components/markdown.tsx";
 // Event classification
 // ---------------------------------------------------------------------------
 
-type EventCategory = "user" | "assistant" | "slow-brain" | "system";
+type EventCategory =
+  | "user"
+  | "assistant"
+  | "fast-brain-request"
+  | "slow-brain"
+  | "system";
 
 function categorizeEvent(event: ContextEvent): EventCategory {
   if (event.source === "user" && event.type === "speech") {
@@ -14,6 +19,9 @@ function categorizeEvent(event: ContextEvent): EventCategory {
   }
   if (event.source === "fast-brain" && event.type === "response") {
     return "assistant";
+  }
+  if (event.source === "fast-brain" && event.type === "request-slow-brain") {
+    return "fast-brain-request";
   }
   if (event.source === "slow-brain") {
     return "slow-brain";
@@ -94,6 +102,26 @@ export function SlowBrainIndicator({
   );
 }
 
+function FastBrainRequestIndicator({ content }: { content: string | null }) {
+  return (
+    <div className="flex items-start gap-2 px-2 py-1.5 text-xs text-muted-foreground">
+      <IconArrowRight size={14} className="shrink-0 mt-0.5" />
+      <div className="min-w-0">
+        <span className="font-medium">Delegated to slow-brain</span>
+        {content?.trim() && (
+          <details className="group mt-0.5 cursor-pointer">
+            <summary className="list-none">
+              <p className="text-muted-foreground/80 line-clamp-3 group-open:line-clamp-none break-words">
+                {content}
+              </p>
+            </summary>
+          </details>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Event renderer
 // ---------------------------------------------------------------------------
@@ -106,6 +134,9 @@ export function VoiceChatEventItem({ event }: { event: ContextEvent }) {
     }
     case "assistant": {
       return <VoiceAssistantBubble content={event.content ?? ""} />;
+    }
+    case "fast-brain-request": {
+      return <FastBrainRequestIndicator content={event.content} />;
     }
     case "slow-brain": {
       return <SlowBrainIndicator type={event.type} content={event.content} />;

@@ -10,7 +10,7 @@ import { logger } from "../../shared/logger";
 const log = logger("one-time-purchase");
 
 /**
- * The outcome of a `/redeem/[campaign]` attempt.
+ * The outcome of a `POST /api/zero/billing/redeem/:campaign` attempt.
  *
  * - `redirect` — send the user to Stripe Checkout at `url`.
  * - `already_granted` — credits are already in the org ledger; the user has

@@ -3,10 +3,7 @@
 Pure functions with no module-level state or I/O.
 """
 
-import json
 from typing import NamedTuple
-
-from graphql_fields import extract_field_paths
 
 _SEGMENT_ERROR_HINT = 'use "{name}", "prefix{name}", "{name}suffix", or "prefix{name}suffix"'
 
@@ -373,222 +370,6 @@ class FirewallBlock(NamedTuple):
     permissions: tuple[str, ...]  # denied permission names; empty for unknown-endpoint blocks
 
 
-def parse_graphql_rule(rest: str) -> tuple[str, str | None, str | None, list[str] | None] | None:
-    """Parse a rule's path+suffix into (path, type_filter, op_filter, field_filters).
-
-    If the rule contains the ``GraphQL`` keyword, returns the path portion
-    and optional ``type:`` / ``operationName:`` / ``field:`` filters.
-    The ``field:`` value may be comma-separated for OR semantics
-    (e.g., ``field:createIssue,closeIssue``).
-    Returns None when the ``GraphQL`` keyword is absent (plain REST rule).
-    """
-    gql_idx = rest.find(" GraphQL")
-    if gql_idx == -1:
-        return None
-
-    path = rest[:gql_idx] if gql_idx > 0 else "/"
-    suffix_parts = rest[gql_idx + 1 :].split()  # ["GraphQL", "type:query", ...]
-
-    type_filter: str | None = None
-    op_filter: str | None = None
-    field_filters: list[str] | None = None
-
-    for part in suffix_parts[1:]:  # skip "GraphQL" itself
-        if part.startswith("type:"):
-            type_filter = part[5:]
-        elif part.startswith("operationName:"):
-            op_filter = part[14:]
-        elif part.startswith("field:"):
-            field_filters = part[6:].split(",")
-
-    return path, type_filter, op_filter, field_filters
-
-
-def _match_wildcard(value: str, pattern: str) -> bool:
-    """Match a value against a pattern with optional trailing wildcard."""
-    if pattern.endswith("*"):
-        return value.startswith(pattern[:-1])
-    return value == pattern
-
-
-def _extract_op_type(query_str: str) -> str:
-    """Extract the GraphQL operation type from a query string.
-
-    Returns ``"query"``, ``"mutation"``, or ``"subscription"`` based on the
-    leading keyword.  Defaults to ``"query"`` when no keyword is present
-    (bare ``{ … }`` shorthand).
-    """
-    stripped = query_str.lstrip()
-    end = 0
-    while end < len(stripped) and stripped[end].isalpha():
-        end += 1
-    return stripped[:end].lower() if end > 0 else "query"
-
-
-def match_graphql_body(
-    body: bytes | None,
-    type_filter: str | None,
-    op_filter: str | None,
-    field_filters: list[str] | None = None,
-) -> bool:
-    """Match a GraphQL request body against type, operationName, and field filters.
-
-    Multiple field filters (from comma-separated ``field:a,b,c``) use OR
-    semantics: the body matches if any extracted field matches any pattern.
-
-    Fail-closed: returns False if the body cannot be parsed or required
-    fields are missing.
-    """
-    if not body:
-        return False
-
-    try:
-        data = json.loads(body)
-    except (json.JSONDecodeError, UnicodeDecodeError):
-        return False
-
-    if not isinstance(data, dict):
-        return False
-
-    # Extract query string early if any filter needs it.
-    query_str: str | None = None
-    if type_filter is not None or field_filters is not None:
-        raw = data.get("query")
-        if not isinstance(raw, str):
-            return False
-        query_str = raw
-
-    # Match operation type (query / mutation / subscription).
-    if type_filter is not None and query_str is not None:
-        if not query_str.lstrip():
-            return False
-        if _extract_op_type(query_str) != type_filter:
-            return False
-
-    # Match operationName
-    if op_filter is not None:
-        op_name = data.get("operationName")
-        if not isinstance(op_name, str) or not op_name:
-            return False
-        if not _match_wildcard(op_name, op_filter):
-            return False
-
-    # Match field filters (OR semantics: any pattern matching any field)
-    if field_filters is not None and query_str is not None:
-        fields = extract_field_paths(query_str)
-        if not fields:
-            return False
-        if not any(_match_wildcard(f, pattern) for pattern in field_filters for f in fields):
-            return False
-
-    return True
-
-
-def _collect_field_patterns(
-    permissions: list,
-    method: str,
-    op_type: str,
-) -> list[str] | None:
-    """Collect all GraphQL field patterns from rules matching the operation type.
-
-    Returns ``None`` when a broad rule (matching method and type but with no
-    field filter) exists — the caller should skip the coverage check entirely
-    because the broad rule allows any field.
-    """
-    patterns: list[str] = []
-    for perm in permissions:
-        for rule_str in perm.get("rules", []):
-            parts = rule_str.split(" ", 1)
-            if len(parts) != _RULE_TOKEN_COUNT:
-                continue
-            rule_method = parts[0].upper()
-            if rule_method not in ("ANY", method):
-                continue
-            gql = parse_graphql_rule(parts[1])
-            if gql is None:
-                continue
-            _, type_filter, _, field_filters = gql
-            if type_filter is not None and type_filter != op_type:
-                continue
-            if field_filters is None:
-                # Broad rule with no field filter — covers everything.
-                return None
-            patterns.extend(field_filters)
-    return patterns
-
-
-def _is_field_covered(field: str, patterns: list[str]) -> bool:
-    """Check if a field is covered by any pattern.
-
-    A field is covered if:
-    - It matches a pattern (exact or wildcard), OR
-    - A pattern is a prefix of it (field is under a covered parent), OR
-    - It is a prefix of a pattern (structural parent of a covered field)
-    """
-    for pattern in patterns:
-        if _match_wildcard(field, pattern):
-            return True
-        # Field is descendant of exact pattern
-        if not pattern.endswith("*") and field.startswith(pattern + "."):
-            return True
-        # Field is ancestor of any pattern (structural parent)
-        if pattern.startswith(field + "."):
-            return True
-    return False
-
-
-def _find_uncovered_graphql_fields(
-    body: bytes,
-    permissions: list,
-    method: str,
-) -> list[str]:
-    """Find GraphQL body fields not covered by any field rule.
-
-    Parses the body to extract operation type and field paths, then checks
-    each field against all field patterns from all permissions. Returns a
-    list of uncovered fields (empty if all fields are covered or if no
-    field rules exist for the operation type).
-
-    Returns ``[]`` on parse failure.  This is safe because the caller
-    (``match_firewall_request``) only reaches the coverage check after
-    ``match_graphql_body()`` has already successfully parsed the body —
-    so a parse failure here cannot happen in practice.
-    """
-    try:
-        data = json.loads(body)
-    except (json.JSONDecodeError, UnicodeDecodeError):
-        return []
-
-    if not isinstance(data, dict):
-        return []
-
-    query_str = data.get("query")
-    if not isinstance(query_str, str):
-        return []
-
-    fields = extract_field_paths(query_str)
-    if not fields:
-        return []
-
-    op_type = _extract_op_type(query_str)
-
-    # Collect field patterns matching this operation type.
-    # None means a broad rule exists — skip coverage check.
-    all_patterns = _collect_field_patterns(permissions, method, op_type)
-    if all_patterns is None or len(all_patterns) == 0:
-        return []
-
-    return [
-        f
-        for f in fields
-        # __typename is a built-in introspection field on every type.
-        # Many clients (Apollo, Relay) inject it automatically.
-        # It carries no data access beyond what the parent covers.
-        if not (f == "__typename" or f.endswith(".__typename"))
-        and not _is_field_covered(f, all_patterns)
-    ]
-
-
 def _build_block_set(
     fw_name: str,
     network_policies: dict,
@@ -627,13 +408,8 @@ def match_firewall_request(
     method: str,
     vm_firewalls: list | None,
     network_policies: dict | None = None,
-    body: bytes | None = None,
 ) -> FirewallAllow | FirewallBlock | None:
     """Match request against firewall permissions with three-level matching.
-
-    For GraphQL requests with field-level rules, ALL fields in the query
-    body must be covered by some rule in the permissions. A query that
-    includes both authorized and unauthorized fields is blocked.
 
     Returns:
       FirewallAllow — granted permission matched or unknown endpoint allowed
@@ -690,11 +466,6 @@ def match_firewall_request(
                 # No permissions defined — handled by unknown logic below
                 continue
 
-            # Lazy cache for GraphQL field coverage check.  The inputs
-            # (body, permissions, upper_method) are constant within an
-            # api_entry, so we compute at most once and reuse.
-            gql_uncovered: list[str] | None = None
-
             for perm in permissions:
                 perm_name = perm.get("name", "")
                 for rule_str in perm.get("rules", []):
@@ -706,45 +477,8 @@ def match_firewall_request(
                     if rule_method not in ("ANY", upper_method):
                         continue
 
-                    # Check for GraphQL suffix
-                    gql = parse_graphql_rule(rest)
-                    if gql is not None:
-                        rule_pattern, type_filter, op_filter, field_filters = gql
-                    else:
-                        rule_pattern = rest
-                        type_filter, op_filter, field_filters = None, None, None
-
-                    params = match_path(rel_path, rule_pattern)
+                    params = match_path(rel_path, rest)
                     if params is not None:
-                        # If GraphQL rule, also check body
-                        has_gql_filter = (
-                            type_filter is not None
-                            or op_filter is not None
-                            or field_filters is not None
-                        )
-                        if has_gql_filter and not match_graphql_body(
-                            body, type_filter, op_filter, field_filters
-                        ):
-                            continue
-
-                        # For GraphQL rules with field filters, verify ALL
-                        # body fields are covered by some rule in the
-                        # permissions. Blocks queries that mix authorized
-                        # and unauthorized fields.
-                        if field_filters is not None and body is not None:
-                            if gql_uncovered is None:
-                                gql_uncovered = _find_uncovered_graphql_fields(
-                                    body, permissions, upper_method
-                                )
-                            if gql_uncovered:
-                                return FirewallBlock(
-                                    base,
-                                    fw_name,
-                                    upper_method,
-                                    rel_path,
-                                    (),
-                                )
-
                         # Merge base params with rule params
                         all_params = {**base_params, **params}
 

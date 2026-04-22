@@ -642,15 +642,14 @@ export async function deleteConnector(
     deleted = true;
   }
 
-  if (deleted) {
-    await publishUserSignal([userId], "connector:changed");
-    return;
-  }
-
-  // No DB record — check if type supports api-token and delete secrets + variables
+  // Always clean up api-token secrets/variables, even if an OAuth or
+  // platform record was already deleted above. A connector can legitimately
+  // hold both credential forms simultaneously (e.g. openai: user sets an
+  // API key AND clicks Enable for platform access), so a DELETE must
+  // remove every trace or the UI will still treat the connector as
+  // connected via the leftover secret.
   const fields = getApiTokenFieldsByType(type);
-  if (fields && (fields.secrets.length > 0 || fields.variables.length > 0)) {
-    let deletedAny = false;
+  if (fields) {
     for (const name of fields.secrets) {
       const result = await db
         .delete(secrets)
@@ -663,7 +662,7 @@ export async function deleteConnector(
           ),
         )
         .returning({ id: secrets.id });
-      if (result.length > 0) deletedAny = true;
+      if (result.length > 0) deleted = true;
     }
     for (const name of fields.variables) {
       const result = await db
@@ -676,19 +675,15 @@ export async function deleteConnector(
           ),
         )
         .returning({ id: variables.id });
-      if (result.length > 0) deletedAny = true;
-    }
-    if (deletedAny) {
-      log.debug("api-token connector deleted via user secrets/variables", {
-        orgId,
-        type,
-      });
-      await publishUserSignal([userId], "connector:changed");
-      return;
+      if (result.length > 0) deleted = true;
     }
   }
 
-  throw notFound("Connector not found");
+  if (!deleted) {
+    throw notFound("Connector not found");
+  }
+
+  await publishUserSignal([userId], "connector:changed");
 }
 
 /**

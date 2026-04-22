@@ -56,6 +56,8 @@ function buildRunResult(
 ): RunResult {
   const artifactSnapshot =
     checkpoint.artifactSnapshot as ArtifactSnapshot | null;
+  const artifactSnapshots =
+    (checkpoint.artifactSnapshots as Record<string, string> | null) ?? null;
   const memorySnapshot = checkpoint.memorySnapshot as MemorySnapshot | null;
   const volumeVersions = checkpoint.volumeVersionsSnapshot as
     | { versions: Record<string, string> }
@@ -68,7 +70,12 @@ function buildRunResult(
     volumes: volumeVersions?.versions,
   };
 
-  if (artifactSnapshot) {
+  // Prefer the multi-entry map when present (it's the authoritative shape).
+  // Fall back to the legacy single-entry column for checkpoints written
+  // before the multi-mount rollout.
+  if (artifactSnapshots && Object.keys(artifactSnapshots).length > 0) {
+    result.artifact = artifactSnapshots;
+  } else if (artifactSnapshot) {
     result.artifact = {
       [artifactSnapshot.artifactName]: artifactSnapshot.artifactVersion,
     };

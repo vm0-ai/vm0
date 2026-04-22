@@ -34,6 +34,7 @@ import {
   VoiceAssistantBubble,
   SlowBrainIndicator,
 } from "./voice-chat-bubbles.tsx";
+import { TasksPanel } from "./tasks-panel.tsx";
 
 type ConnectionStatus =
   | "idle"
@@ -292,39 +293,44 @@ export function VoiceChatPage() {
         </div>
       )}
 
-      {/* Main content: unified conversation view */}
-      <div ref={setScrollContainer} className="flex-1 min-h-0 overflow-y-auto">
-        <div className="mx-auto w-full max-w-[900px] px-4 pt-4 pb-8">
-          <div className="flex flex-col gap-4">
-            {conversationItems.length === 0 && (
-              <p className="text-sm text-muted-foreground text-center py-8">
-                {status === "preparing"
-                  ? "Waiting for preparation to begin..."
-                  : status === "connecting"
-                    ? "Connecting..."
-                    : "Speak to start the conversation."}
-              </p>
-            )}
-            {conversationItems.map((item) => {
-              if (item.kind === "transcript") {
-                return item.entry.role === "user" ? (
-                  <VoiceUserBubble key={item.key} content={item.entry.text} />
-                ) : (
-                  <VoiceAssistantBubble
+      {/* Main content: conversation + tasks side panel on md+ */}
+      <div className="grid grid-cols-1 md:grid-cols-[1fr_320px] flex-1 min-h-0">
+        <div ref={setScrollContainer} className="min-h-0 overflow-y-auto">
+          <div className="mx-auto w-full max-w-[900px] px-4 pt-4 pb-8">
+            <div className="flex flex-col gap-4">
+              {conversationItems.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-8">
+                  {status === "preparing"
+                    ? "Waiting for preparation to begin..."
+                    : status === "connecting"
+                      ? "Connecting..."
+                      : "Speak to start the conversation."}
+                </p>
+              )}
+              {conversationItems.map((item) => {
+                if (item.kind === "transcript") {
+                  return item.entry.role === "user" ? (
+                    <VoiceUserBubble key={item.key} content={item.entry.text} />
+                  ) : (
+                    <VoiceAssistantBubble
+                      key={item.key}
+                      content={item.entry.text}
+                    />
+                  );
+                }
+                return (
+                  <SlowBrainIndicator
                     key={item.key}
-                    content={item.entry.text}
+                    type={item.event.type}
+                    content={item.event.content}
                   />
                 );
-              }
-              return (
-                <SlowBrainIndicator
-                  key={item.key}
-                  type={item.event.type}
-                  content={item.event.content}
-                />
-              );
-            })}
+              })}
+            </div>
           </div>
+        </div>
+        <div className="hidden md:block min-h-0">
+          <TasksPanel />
         </div>
       </div>
 

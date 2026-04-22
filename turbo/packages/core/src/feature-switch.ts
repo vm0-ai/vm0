@@ -328,6 +328,16 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the DeepSeek-V3.2 (deepseek-chat) VM0 managed model",
     enabled: false,
   },
+  [FeatureSwitchKey.PlatformConnectors]: {
+    maintainer: "liangyou@vm0.ai",
+    description:
+      "Gate the entire platform-managed connector UI (Enable button and " +
+      "POST /api/zero/platform-connectors/:type). When off, only api-token " +
+      "and OAuth methods surface in connectors list/search, and the enable " +
+      "endpoint 404s. Staff-only during rollout.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
 };
 
 interface ResolvedHashes {

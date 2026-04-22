@@ -90,6 +90,17 @@ export interface AdditionalVolume {
 }
 
 /**
+ * Additional artifact passed directly at run time, each with an explicit
+ * mountPath. Extras beyond the primary artifact (whose mount path is derived
+ * from compose's working_dir). Resolved against the runtime org.
+ */
+export interface AdditionalArtifact {
+  name: string; // Artifact storage name
+  version?: string; // Version hash or "latest" (defaults to "latest")
+  mountPath: string; // Absolute path in sandbox
+}
+
+/**
  * Storage entry in manifest
  */
 export interface ManifestStorage {
@@ -120,6 +131,6 @@ export interface ManifestArtifact {
  */
 export interface StorageManifest {
   storages: ManifestStorage[];
-  artifact: ManifestArtifact | null;
+  artifacts: ManifestArtifact[];
   memory: ManifestArtifact | null;
 }

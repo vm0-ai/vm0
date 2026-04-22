@@ -1,6 +1,5 @@
 import { command } from "ccstate";
 import { createElement } from "react";
-import { SidebarLayout } from "../../views/zero-page/sidebar-layout.tsx";
 import { ZeroActivityPage } from "../../views/zero-page/zero-activity-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
@@ -11,10 +10,7 @@ import { hideAppSkeleton$ } from "../app-skeleton.ts";
 
 export const setupActivityPage$ = command(
   async ({ set }, signal: AbortSignal) => {
-    set(
-      updatePage$,
-      createElement(SidebarLayout, null, createElement(ZeroActivityPage)),
-    );
+    set(updatePage$, createElement(ZeroActivityPage), "sidebar");
     set(updateDocumentTitle$, "Activity");
     set(refreshZeroActivity$);
     await set(initZeroActivity$, signal);

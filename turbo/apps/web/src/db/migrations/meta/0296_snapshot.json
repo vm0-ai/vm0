@@ -1,6 +1,6 @@
 {
-  "id": "7dd5936c-87ae-4621-b2aa-ecf96f64c1b0",
-  "prevId": "5c58968c-8dfb-4cb6-82fd-6c05864355a8",
+  "id": "5c58968c-8dfb-4cb6-82fd-6c05864355a8",
+  "prevId": "476ac302-6f36-4d4f-b56b-500fac5e0c09",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1427,6 +1427,12 @@
         },
         "artifact_snapshot": {
           "name": "artifact_snapshot",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "artifact_snapshots": {
+          "name": "artifact_snapshots",
           "type": "jsonb",
           "primaryKey": false,
           "notNull": false
@@ -8574,18 +8580,6 @@
         "last_summary_at": {
           "name": "last_summary_at",
           "type": "timestamp",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "last_reasoning_started_at": {
-          "name": "last_reasoning_started_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "last_reasoning_duration_ms": {
-          "name": "last_reasoning_duration_ms",
-          "type": "integer",
           "primaryKey": false,
           "notNull": false
         },

@@ -36,7 +36,7 @@ async function setupIMessageCallback() {
   const userId = uniqueId("user");
   mockClerk({ userId });
 
-  const { composeId } = await createTestCompose("imessage-test-agent");
+  const { composeId } = await createTestCompose(uniqueId("imessage-agent"));
   const { runId } = await seedTestRun(userId, composeId, {
     prompt: "Hello from iMessage",
   });

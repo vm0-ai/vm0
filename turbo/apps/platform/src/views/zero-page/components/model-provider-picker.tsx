@@ -1,4 +1,4 @@
-import type React from "react";
+import type { MouseEvent, ReactNode } from "react";
 import {
   Select,
   SelectContent,
@@ -8,6 +8,11 @@ import {
   SelectSeparator,
   SelectTrigger,
   SelectValue,
+  Switch,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
   cn,
 } from "@vm0/ui";
 import {
@@ -20,27 +25,9 @@ import {
   type ModelProviderType,
 } from "@vm0/core";
 import {
-  getUIDefaultModel,
   getUILabel,
   getVm0ModelMultiplier,
 } from "./settings/provider-ui-config";
-
-function resolveDefaultModel(
-  providers: ModelProviderResponse[],
-): string | null {
-  const defaultProvider = providers.find((p) => {
-    return p.isDefault;
-  });
-  if (!defaultProvider) {
-    return null;
-  }
-  return (
-    defaultProvider.selectedModel ??
-    getUIDefaultModel(defaultProvider.type) ??
-    getDefaultModel(defaultProvider.type) ??
-    null
-  );
-}
 
 export interface ModelProviderSelection {
   modelProviderId: string;
@@ -50,7 +37,7 @@ export interface ModelProviderSelection {
 interface ModelProviderPickerProps {
   providers: ModelProviderResponse[];
   value: ModelProviderSelection | null;
-  onChange?: (value: ModelProviderSelection | null) => void;
+  onChange: (value: ModelProviderSelection | null) => void;
   placeholder?: string;
   /**
    * Classes applied to the SelectTrigger. Defaults to `h-9 w-full`. The
@@ -76,6 +63,19 @@ interface ModelProviderPickerProps {
   onOpenChange?: (open: boolean) => void;
   // When true, picker is read-only (e.g. existing chat thread).
   disabled?: boolean;
+  /**
+   * The agent-level default model. When set, a "Default" tag is shown next
+   * to the matching model in the dropdown.
+   */
+  agentDefault?: ModelProviderSelection | null;
+  /**
+   * Override the label shown in the "Use default" toggle row.
+   * Defaults to the auto-detected source ("agent" or "workspace").
+   * Chat and schedule pickers should pass `"agent"` since they
+   * always inherit from the agent level regardless of whether
+   * the agent itself falls back to workspace.
+   */
+  inheritLabel?: "agent" | "workspace";
 }
 
 // Radix Select reserves the empty string for "no value" and throws if a
@@ -98,13 +98,142 @@ function decodeValue(s: string): ModelProviderSelection | null {
 }
 
 function formatMultiplier(multiplier: number): string {
-  return `${multiplier}x`;
+  return `×${multiplier}`;
+}
+
+function MultiplierBadge({ multiplier }: { multiplier: number }) {
+  return (
+    <TooltipProvider delayDuration={300}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="shrink-0 rounded border border-border/60 bg-muted/50 px-1.5 py-px text-[11px] font-medium tabular-nums text-muted-foreground">
+            {formatMultiplier(multiplier)}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="text-xs">
+          Credit cost multiplier
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+type DefaultSource = "agent" | "workspace";
+
+/**
+ * Resolve the effective default model: agent override → workspace default.
+ * The source is "agent" only when the agent itself specifies a default;
+ * any fallback to workspace is labeled "workspace", so the dropdown never
+ * tells users an inherited workspace default is "Agent default".
+ */
+function resolveEffectiveDefault(
+  agentDefault: ModelProviderSelection | null | undefined,
+  providers: ModelProviderResponse[],
+): {
+  effectiveDefault: ModelProviderSelection | null;
+  defaultSource: DefaultSource;
+} {
+  if (agentDefault) {
+    return { effectiveDefault: agentDefault, defaultSource: "agent" };
+  }
+  const wsDefault = providers.find((p) => {
+    return p.isDefault;
+  });
+  if (!wsDefault) {
+    return { effectiveDefault: null, defaultSource: "workspace" };
+  }
+  const model = wsDefault.selectedModel ?? getDefaultModel(wsDefault.type);
+  if (!model) {
+    return { effectiveDefault: null, defaultSource: "workspace" };
+  }
+  return {
+    effectiveDefault: { modelProviderId: wsDefault.id, selectedModel: model },
+    defaultSource: "workspace",
+  };
+}
+
+function InheritToggleRow({
+  effectiveDefault,
+  defaultSource,
+  providers,
+  isInheriting,
+  onToggle,
+}: {
+  effectiveDefault: ModelProviderSelection | null;
+  defaultSource: DefaultSource;
+  providers: ModelProviderResponse[];
+  isInheriting: boolean;
+  onToggle: (inherit: boolean) => void;
+}) {
+  const sourceLabel = defaultSource === "agent" ? "agent" : "workspace";
+  const defaultProvider = effectiveDefault
+    ? providers.find((p) => {
+        return p.id === effectiveDefault.modelProviderId;
+      })
+    : undefined;
+  const multiplier =
+    effectiveDefault && defaultProvider?.type === "vm0"
+      ? getVm0ModelMultiplier(effectiveDefault.selectedModel)
+      : undefined;
+  return (
+    <>
+      {/*
+       * Radix `<Select>` validates that the controlled `value` matches a
+       * registered `<SelectItem>`; otherwise it falls back to the placeholder
+       * and logs a warning. We drive the Select with `encodeValue(value)` —
+       * which returns `INHERIT_SENTINEL` when the caller inherits — but the
+       * inherit affordance is a non-item `<div>` with a `<Switch>` (a normal
+       * `<SelectItem>` here would close the menu on click, breaking the UX).
+       *
+       * This hidden `<SelectItem>` registers the sentinel so Radix accepts it
+       * as a valid value. `hidden absolute` keeps it out of the layout and
+       * keyboard focus while still being a mounted descendant of
+       * `<SelectContent>`. See Radix issue radix-ui/primitives#2090 for the
+       * long-standing request to allow non-item rows inside `SelectContent`.
+       */}
+      <SelectItem value={INHERIT_SENTINEL} className="hidden absolute">
+        Use {sourceLabel} default
+      </SelectItem>
+      <div
+        className="flex items-center justify-between gap-3 rounded-md px-2 py-1.5 text-sm cursor-pointer hover:bg-accent transition-colors"
+        onClick={(e) => {
+          e.preventDefault();
+          onToggle(!isInheriting);
+        }}
+      >
+        <div className="flex flex-col gap-0.5 min-w-0">
+          <span className="font-medium text-foreground">
+            Use {sourceLabel} default
+          </span>
+          {effectiveDefault && (
+            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <span className="truncate">
+                {getModelDisplayName(effectiveDefault.selectedModel)}
+              </span>
+              {multiplier !== undefined && (
+                <MultiplierBadge multiplier={multiplier} />
+              )}
+            </span>
+          )}
+        </div>
+        <Switch
+          size="sm"
+          checked={isInheriting}
+          onCheckedChange={onToggle}
+          onClick={(e: MouseEvent) => {
+            e.stopPropagation();
+          }}
+          aria-label={`Use ${sourceLabel} default model`}
+        />
+      </div>
+    </>
+  );
 }
 
 interface TriggerLabelProps {
   providers: ModelProviderResponse[];
   value: ModelProviderSelection | null;
-  defaultModelName: string | null;
+  effectiveDefault: ModelProviderSelection | null;
   placeholder: string;
   compact: boolean;
 }
@@ -112,55 +241,28 @@ interface TriggerLabelProps {
 function TriggerLabel({
   providers,
   value,
-  defaultModelName,
+  effectiveDefault,
   placeholder,
   compact,
 }: TriggerLabelProps) {
-  if (!value) {
-    if (!defaultModelName) {
-      return <span>{placeholder}</span>;
-    }
-    const displayName = getModelDisplayName(defaultModelName);
-    if (compact) {
-      return <span className="truncate">{displayName}</span>;
-    }
-    const defaultProvider = providers.find((p) => {
-      return p.isDefault;
-    });
-    if (!defaultProvider) {
-      return <span className="truncate">{displayName}</span>;
-    }
-    const multiplier =
-      defaultProvider.type === "vm0"
-        ? getVm0ModelMultiplier(defaultModelName)
-        : undefined;
-    return (
-      <span className="flex items-center gap-1.5 min-w-0">
-        <span className="truncate">{displayName}</span>
-        <span className="shrink-0 text-xs text-muted-foreground">
-          · {getUILabel(defaultProvider.type)}
-        </span>
-        {multiplier !== undefined && (
-          <span className="shrink-0 rounded border border-border/60 bg-muted/50 px-1 text-[10px] font-medium tabular-nums text-muted-foreground">
-            {formatMultiplier(multiplier)}
-          </span>
-        )}
-      </span>
-    );
+  // When no explicit value, show the effective default model name
+  const resolved = value ?? effectiveDefault;
+  if (!resolved) {
+    return <span>{placeholder}</span>;
   }
-  const displayName = getModelDisplayName(value.selectedModel);
+  const displayName = getModelDisplayName(resolved.selectedModel);
   if (compact) {
     return <span className="truncate">{displayName}</span>;
   }
   const provider = providers.find((p) => {
-    return p.id === value.modelProviderId;
+    return p.id === resolved.modelProviderId;
   });
   if (!provider) {
     return <span>{displayName}</span>;
   }
   const multiplier =
     provider.type === "vm0"
-      ? getVm0ModelMultiplier(value.selectedModel)
+      ? getVm0ModelMultiplier(resolved.selectedModel)
       : undefined;
   return (
     <span className="flex items-center gap-1.5 min-w-0">
@@ -168,13 +270,28 @@ function TriggerLabel({
       <span className="shrink-0 text-xs text-muted-foreground">
         · {getUILabel(provider.type)}
       </span>
-      {multiplier !== undefined && (
-        <span className="shrink-0 rounded border border-border/60 bg-muted/50 px-1 text-[10px] font-medium tabular-nums text-muted-foreground">
-          {formatMultiplier(multiplier)}
-        </span>
-      )}
+      {multiplier !== undefined && <MultiplierBadge multiplier={multiplier} />}
     </span>
   );
+}
+
+// Read-only span reuses the trigger's geometry classes but must not echo
+// its interactive affordances (hover/focus/open-state), so callers don't
+// have to branch their className for the disabled case.
+function stripInteractiveClasses(cls: string | undefined): string | undefined {
+  if (!cls) {
+    return cls;
+  }
+  return cls
+    .split(/\s+/)
+    .filter((c) => {
+      return (
+        !c.startsWith("hover:") &&
+        !c.startsWith("focus:") &&
+        !c.startsWith("data-[state=")
+      );
+    })
+    .join(" ");
 }
 
 function DisabledPickerLabel({
@@ -183,31 +300,36 @@ function DisabledPickerLabel({
   placeholder,
   compactTrigger,
   triggerClassName,
+  agentDefault,
 }: Pick<
   ModelProviderPickerProps,
-  "providers" | "value" | "placeholder" | "compactTrigger" | "triggerClassName"
+  | "providers"
+  | "value"
+  | "placeholder"
+  | "compactTrigger"
+  | "triggerClassName"
+  | "agentDefault"
 > & {
   placeholder: string;
   compactTrigger: boolean;
 }) {
-  const defaultModelName = resolveDefaultModel(providers);
-  const triggerAriaLabel = value
-    ? getModelDisplayName(value.selectedModel)
-    : defaultModelName !== null
-      ? getModelDisplayName(defaultModelName)
-      : placeholder;
+  const { effectiveDefault } = resolveEffectiveDefault(agentDefault, providers);
+  const resolved = value ?? effectiveDefault;
+  const triggerAriaLabel = resolved
+    ? getModelDisplayName(resolved.selectedModel)
+    : placeholder;
   return (
     <span
       aria-label={triggerAriaLabel}
       className={cn(
-        "inline-flex items-center px-2 text-sm text-muted-foreground",
-        triggerClassName,
+        "inline-flex items-center px-2 text-sm text-muted-foreground cursor-default",
+        stripInteractiveClasses(triggerClassName),
       )}
     >
       <TriggerLabel
         providers={providers}
         value={value}
-        defaultModelName={defaultModelName}
+        effectiveDefault={effectiveDefault}
         placeholder={placeholder}
         compact={compactTrigger}
       />
@@ -261,43 +383,85 @@ function buildProviderGroups(
     });
 }
 
-export function ModelProviderPicker({
-  providers,
+function renderProviderGroup(
+  group: ProviderGroup,
+  idx: number,
+  last: number,
+): ReactNode[] {
+  const rendered: ReactNode[] = [
+    <SelectGroup key={group.provider.id}>
+      <SelectLabel className="pl-2 pr-8 py-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/60">
+        {group.label}
+        {group.incompatible && (
+          <span className="ml-1.5 font-normal normal-case text-[10px] text-muted-foreground/80">
+            (incompatible with current session)
+          </span>
+        )}
+      </SelectLabel>
+      {group.models.map((model) => {
+        const multiplier = group.isVm0
+          ? getVm0ModelMultiplier(model)
+          : undefined;
+        return (
+          <SelectItem
+            key={`${group.provider.id}::${model}`}
+            value={`${group.provider.id}::${model}`}
+            disabled={group.incompatible}
+          >
+            <span className="flex items-center gap-3 w-full">
+              <span className="truncate">{getModelDisplayName(model)}</span>
+              {multiplier !== undefined && (
+                <MultiplierBadge multiplier={multiplier} />
+              )}
+            </span>
+          </SelectItem>
+        );
+      })}
+    </SelectGroup>,
+  ];
+  if (idx < last) {
+    rendered.push(<SelectSeparator key={`sep-${group.provider.id}`} />);
+  }
+  return rendered;
+}
+
+function ModelSelectDropdown({
+  groups,
   value,
-  onChange,
-  placeholder = "Inherit from org default",
+  effectiveDefault,
+  defaultSource,
+  providers,
+  placeholder,
   triggerClassName,
-  sessionProviderType,
-  compactTrigger = false,
+  compactTrigger,
+  onChange,
   open,
   onOpenChange,
-  disabled = false,
-}: ModelProviderPickerProps) {
-  if (disabled) {
-    return (
-      <DisabledPickerLabel
-        providers={providers}
-        value={value}
-        placeholder={placeholder}
-        compactTrigger={compactTrigger}
-        triggerClassName={triggerClassName}
-      />
-    );
-  }
-
-  const groups = buildProviderGroups(providers, sessionProviderType);
-  const defaultModelName = resolveDefaultModel(providers);
-  const triggerAriaLabel = value
-    ? getModelDisplayName(value.selectedModel)
-    : defaultModelName !== null
-      ? getModelDisplayName(defaultModelName)
-      : placeholder;
-
+  showUseDefault,
+}: {
+  groups: ProviderGroup[];
+  value: ModelProviderSelection | null;
+  effectiveDefault: ModelProviderSelection | null;
+  defaultSource: DefaultSource;
+  providers: ModelProviderResponse[];
+  placeholder: string;
+  triggerClassName: string | undefined;
+  compactTrigger: boolean;
+  onChange: (value: ModelProviderSelection | null) => void;
+  open: boolean | undefined;
+  onOpenChange: ((open: boolean) => void) | undefined;
+  showUseDefault: boolean;
+}) {
+  const resolved = value ?? effectiveDefault;
+  const triggerAriaLabel = resolved
+    ? getModelDisplayName(resolved.selectedModel)
+    : placeholder;
+  const lastGroupIdx = groups.length - 1;
   return (
     <Select
       value={encodeValue(value)}
       onValueChange={(raw) => {
-        onChange?.(decodeValue(raw));
+        onChange(decodeValue(raw));
       }}
       open={open}
       onOpenChange={onOpenChange}
@@ -310,57 +474,91 @@ export function ModelProviderPicker({
           <TriggerLabel
             providers={providers}
             value={value}
-            defaultModelName={defaultModelName}
+            effectiveDefault={effectiveDefault}
             placeholder={placeholder}
             compact={compactTrigger}
           />
         </SelectValue>
       </SelectTrigger>
-      <SelectContent>
-        <SelectItem value={INHERIT_SENTINEL}>{placeholder}</SelectItem>
-        {groups.length > 0 && <SelectSeparator key="sep-inherit" />}
-        {groups.flatMap((group, idx) => {
-          const rendered: React.ReactNode[] = [
-            <SelectGroup key={group.provider.id}>
-              <SelectLabel className="px-2 pt-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                {group.label}
-                {group.incompatible && (
-                  <span className="ml-1.5 font-normal normal-case text-[10px] text-muted-foreground/80">
-                    (incompatible with current session)
-                  </span>
-                )}
-              </SelectLabel>
-              {group.models.map((model) => {
-                const multiplier = group.isVm0
-                  ? getVm0ModelMultiplier(model)
-                  : undefined;
-                return (
-                  <SelectItem
-                    key={`${group.provider.id}::${model}`}
-                    value={`${group.provider.id}::${model}`}
-                    disabled={group.incompatible}
-                  >
-                    <span className="flex items-center gap-3 w-full">
-                      <span className="truncate">
-                        {getModelDisplayName(model)}
-                      </span>
-                      {multiplier !== undefined && (
-                        <span className="ml-auto shrink-0 rounded border border-border/60 bg-muted/50 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">
-                          {formatMultiplier(multiplier)}
-                        </span>
-                      )}
-                    </span>
-                  </SelectItem>
-                );
-              })}
-            </SelectGroup>,
-          ];
-          if (idx < groups.length - 1) {
-            rendered.push(<SelectSeparator key={`sep-${group.provider.id}`} />);
-          }
-          return rendered;
-        })}
+      <SelectContent className="max-h-64">
+        {showUseDefault && (
+          <InheritToggleRow
+            effectiveDefault={effectiveDefault}
+            defaultSource={defaultSource}
+            providers={providers}
+            isInheriting={value === null}
+            onToggle={(inherit) => {
+              if (inherit) {
+                onChange(null);
+                // Close dropdown — user is done (reverted to default).
+                // No-op for uncontrolled callers; they dismiss via click-outside.
+                onOpenChange?.(false);
+              } else {
+                // Seed with the effective default; dropdown stays open
+                // so the user can pick a different model if they want.
+                onChange(effectiveDefault);
+              }
+            }}
+          />
+        )}
+        {(!showUseDefault || value !== null) && groups.length > 0 && (
+          <SelectSeparator key="sep-inherit" className="my-0" />
+        )}
+        {(!showUseDefault || value !== null) &&
+          groups.flatMap((group, idx) => {
+            return renderProviderGroup(group, idx, lastGroupIdx);
+          })}
       </SelectContent>
     </Select>
+  );
+}
+
+export function ModelProviderPicker({
+  providers,
+  value,
+  onChange,
+  placeholder = "Inherit from org default",
+  triggerClassName,
+  sessionProviderType,
+  compactTrigger = false,
+  open,
+  onOpenChange,
+  disabled = false,
+  agentDefault,
+  inheritLabel,
+}: ModelProviderPickerProps) {
+  if (disabled) {
+    return (
+      <DisabledPickerLabel
+        providers={providers}
+        value={value}
+        placeholder={placeholder}
+        compactTrigger={compactTrigger}
+        triggerClassName={triggerClassName}
+        agentDefault={agentDefault}
+      />
+    );
+  }
+
+  const { effectiveDefault, defaultSource: autoSource } =
+    resolveEffectiveDefault(agentDefault, providers);
+  const defaultSource: DefaultSource = inheritLabel ?? autoSource;
+
+  const groups = buildProviderGroups(providers, sessionProviderType);
+  return (
+    <ModelSelectDropdown
+      groups={groups}
+      value={value}
+      effectiveDefault={effectiveDefault}
+      defaultSource={defaultSource}
+      providers={providers}
+      placeholder={placeholder}
+      triggerClassName={triggerClassName}
+      compactTrigger={compactTrigger}
+      onChange={onChange}
+      open={open}
+      onOpenChange={onOpenChange}
+      showUseDefault
+    />
   );
 }

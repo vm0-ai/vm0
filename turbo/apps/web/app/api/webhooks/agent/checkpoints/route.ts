@@ -73,6 +73,7 @@ const router = tsr.router(webhookCheckpointsContract, {
         agentSessionId: result.agentSessionId,
         conversationId: result.conversationId,
         artifact: result.artifact,
+        artifacts: result.artifacts,
         volumes: result.volumes,
       },
     };

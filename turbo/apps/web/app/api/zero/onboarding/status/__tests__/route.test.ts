@@ -9,7 +9,10 @@ import {
   createTestZeroAgent,
   seedOrphanCompose,
 } from "../../../../../../src/__tests__/db-test-seeders/agents";
-import { testContext } from "../../../../../../src/__tests__/test-helpers";
+import {
+  testContext,
+  uniqueId,
+} from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { PUT as setDefaultAgent } from "../../../default-agent/route";
 import { POST as completeOnboarding } from "../../complete/route";
@@ -74,7 +77,7 @@ describe("GET /api/zero/onboarding/status", () => {
     await context.setupUser();
 
     // Create a compose and set as default via API
-    const compose = await createTestCompose("test-agent");
+    const compose = await createTestCompose(uniqueId("onboarding-agent"));
 
     const setDefaultRequest = createTestRequest(
       "http://localhost:3000/api/zero/default-agent",
@@ -119,11 +122,12 @@ describe("GET /api/zero/onboarding/status", () => {
   it("should return defaultAgentMetadata when compose has metadata", async () => {
     const user = await context.setupUser();
 
-    // Create a compose
-    const compose = await createTestCompose("test-agent");
+    // Create a compose; zero_agents metadata must match the compose agent name
+    const agentName = uniqueId("onboarding-agent");
+    const compose = await createTestCompose(agentName);
 
     // Seed zero_agents with metadata (metadata now lives in this table)
-    await createTestZeroAgent(user.orgId, "test-agent", {
+    await createTestZeroAgent(user.orgId, agentName, {
       displayName: "My Agent",
       sound: "friendly",
     });
@@ -172,7 +176,7 @@ describe("GET /api/zero/onboarding/status", () => {
     await context.setupUser();
 
     // Create a compose and set as default via API (no model provider created)
-    const compose = await createTestCompose("test-agent");
+    const compose = await createTestCompose(uniqueId("onboarding-agent"));
 
     const setDefaultRequest = createTestRequest(
       "http://localhost:3000/api/zero/default-agent",

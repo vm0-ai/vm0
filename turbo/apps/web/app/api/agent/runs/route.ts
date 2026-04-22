@@ -15,7 +15,10 @@ import {
   agentComposeVersions,
 } from "../../../../src/db/schema/agent-compose";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
-import type { AdditionalVolume } from "../../../../src/lib/infra/storage/types";
+import type {
+  AdditionalArtifact,
+  AdditionalVolume,
+} from "../../../../src/lib/infra/storage/types";
 import { and, eq, inArray, desc, gte, lte, sql } from "drizzle-orm";
 import {
   loadCompose,
@@ -64,6 +67,41 @@ function resolveRunAdditionalVolumes(params: {
   const merged =
     params.bodyAdditionalVolumes ?? params.resolvedAdditionalVolumes;
   return merged && merged.length > 0 ? merged : undefined;
+}
+
+/**
+ * Consolidate singleton + multi-mount artifact inputs into one shape.
+ *
+ * body.artifacts (multi-mount) takes precedence — when non-empty, the legacy
+ * singleton artifactName/Version fields are dropped so the infra layer only
+ * speaks the new multi-mount contract.
+ */
+function consolidateArtifactInputs(
+  body: {
+    artifactName?: string;
+    artifactVersion?: string;
+    artifacts?: AdditionalArtifact[];
+  },
+  resolved: { artifactName?: string; artifactVersion?: string },
+): {
+  artifactName: string | undefined;
+  artifactVersion: string | undefined;
+  artifacts: AdditionalArtifact[] | undefined;
+} {
+  const useMultiArtifact =
+    Array.isArray(body.artifacts) && body.artifacts.length > 0;
+  if (useMultiArtifact) {
+    return {
+      artifactName: undefined,
+      artifactVersion: undefined,
+      artifacts: body.artifacts,
+    };
+  }
+  return {
+    artifactName: resolved.artifactName ?? body.artifactName,
+    artifactVersion: resolved.artifactVersion ?? body.artifactVersion,
+    artifacts: undefined,
+  };
 }
 
 /**
@@ -338,6 +376,14 @@ const router = tsr.router(runsMainContract, {
         resolvedAdditionalVolumes: resolved.additionalVolumes,
       });
 
+      // 6a. Route-handler shim: collapse legacy singleton + new multi-mount
+      // artifact fields into the unified shape the infra layer consumes.
+      const {
+        artifactName: effectiveArtifactName,
+        artifactVersion: effectiveArtifactVersion,
+        artifacts: effectiveArtifacts,
+      } = consolidateArtifactInputs(body, resolved);
+
       // 7. Concurrency check + INSERT (transaction with advisory lock)
       const run = await globalThis.services.db.transaction(async (tx) => {
         await tx.execute(
@@ -356,7 +402,7 @@ const router = tsr.router(runsMainContract, {
           additionalVolumes: finalAdditionalVolumes,
           resumedFromCheckpointId: body.checkpointId,
           sessionId: body.sessionId,
-          artifactName: resolved.artifactName ?? body.artifactName,
+          artifactName: effectiveArtifactName,
           memoryName: resolved.memoryName ?? body.memoryName,
         });
       });
@@ -380,8 +426,9 @@ const router = tsr.router(runsMainContract, {
           vars: resolved.vars ?? body.vars,
           secrets: resolved.secrets ?? body.secrets,
           secretConnectorMap: resolved.secretConnectorMap,
-          artifactName: resolved.artifactName ?? body.artifactName,
-          artifactVersion: resolved.artifactVersion ?? body.artifactVersion,
+          artifactName: effectiveArtifactName,
+          artifactVersion: effectiveArtifactVersion,
+          artifacts: effectiveArtifacts,
           memoryName: resolved.memoryName ?? body.memoryName,
           volumeVersions: resolved.volumeVersions ?? body.volumeVersions,
           additionalVolumes: finalAdditionalVolumes,

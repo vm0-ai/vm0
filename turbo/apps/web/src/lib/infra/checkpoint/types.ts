@@ -55,6 +55,10 @@ export interface CheckpointRequest {
   cliAgentSessionId: string;
   cliAgentSessionHistoryHash: string;
   artifactSnapshot?: ArtifactSnapshot;
+  // Multi-artifact snapshot map: artifactName -> versionId. Emitted
+  // unconditionally by the guest-agent during the multi-mount rollout;
+  // may be empty or missing when the guest snapshotted nothing.
+  artifactSnapshots?: Record<string, string>;
   memorySnapshot?: MemorySnapshot;
   volumeVersionsSnapshot?: VolumeVersionsSnapshot;
 }
@@ -67,5 +71,6 @@ export interface CheckpointResponse {
   agentSessionId: string;
   conversationId: string;
   artifact?: ArtifactSnapshot;
+  artifacts?: Record<string, string>;
   volumes?: Record<string, string>;
 }

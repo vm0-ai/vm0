@@ -1,6 +1,5 @@
 import { command } from "ccstate";
 import { createElement } from "react";
-import { SidebarLayout } from "../../views/zero-page/sidebar-layout.tsx";
 import { ZeroWorksPage } from "../../views/zero-page/zero-works-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
@@ -17,10 +16,7 @@ import { hideAppSkeleton$ } from "../app-skeleton.ts";
 const L = logger("WorksPage");
 
 export const setupWorksPage$ = command(async ({ set }, signal: AbortSignal) => {
-  set(
-    updatePage$,
-    createElement(SidebarLayout, null, createElement(ZeroWorksPage)),
-  );
+  set(updatePage$, createElement(ZeroWorksPage), "sidebar");
   set(updateDocumentTitle$, "Works");
   set(initSlackOrg$);
   await set(hideAppSkeleton$, signal);

@@ -48,6 +48,7 @@ describe("voice-chat slow-brain prompt includes tasker guidance", () => {
     ["task-completed event", "task-completed"],
     ["never-block rule", "Never block"],
     ["natural language rule", "natural language"],
+    ["phase 1 dispatch guard", "Do NOT dispatch tasks during preparation"],
   ])("includes %s", (_name, substring) => {
     expect(prompt).toContain(substring);
   });

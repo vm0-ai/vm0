@@ -1,6 +1,5 @@
 import { command } from "ccstate";
 import { createElement } from "react";
-import { SidebarLayout } from "../../views/zero-page/sidebar-layout.tsx";
 import { AgentDetailPage } from "../../views/team-page/zero-team-detail-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
@@ -12,10 +11,7 @@ import { setChatAgentId$ } from "../agent-chat.ts";
 
 export const setupAgentDetailPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    set(
-      updatePage$,
-      createElement(SidebarLayout, null, createElement(AgentDetailPage)),
-    );
+    set(updatePage$, createElement(AgentDetailPage), "sidebar");
 
     const agentId = get(currentAgentId$);
     if (!agentId) {

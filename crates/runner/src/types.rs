@@ -164,7 +164,7 @@ pub struct NetworkPolicy {
 pub struct StorageManifest {
     pub storages: Vec<StorageEntry>,
     #[serde(default)]
-    pub artifact: Option<ArtifactEntry>,
+    pub artifacts: Vec<ArtifactEntry>,
     #[serde(default)]
     pub memory: Option<ArtifactEntry>,
     /// Paths to clean before downloading (computed from previous fingerprints).
@@ -577,18 +577,49 @@ mod tests {
     fn storage_manifest_camel_case() {
         let json = json!({
             "storages": [{"mountPath": "/workspace"}],
-            "artifact": {
+            "artifacts": [{
                 "mountPath": "/artifacts",
                 "vasStorageName": "my-artifact",
                 "vasVersionId": "v1"
-            }
+            }]
         });
         let manifest: StorageManifest = serde_json::from_value(json).unwrap();
         assert_eq!(manifest.storages[0].mount_path, "/workspace");
-        assert_eq!(
-            manifest.artifact.as_ref().unwrap().vas_storage_name,
-            "my-artifact"
-        );
+        assert_eq!(manifest.artifacts.len(), 1);
+        assert_eq!(manifest.artifacts[0].vas_storage_name, "my-artifact");
+        assert!(manifest.memory.is_none());
+    }
+
+    #[test]
+    fn storage_manifest_multiple_artifacts() {
+        let json = json!({
+            "storages": [],
+            "artifacts": [
+                {
+                    "mountPath": "/workspace",
+                    "vasStorageName": "art-a",
+                    "vasVersionId": "v1"
+                },
+                {
+                    "mountPath": "/data",
+                    "vasStorageName": "art-b",
+                    "vasVersionId": "v2"
+                }
+            ]
+        });
+        let manifest: StorageManifest = serde_json::from_value(json).unwrap();
+        assert_eq!(manifest.artifacts.len(), 2);
+        assert_eq!(manifest.artifacts[0].mount_path, "/workspace");
+        assert_eq!(manifest.artifacts[1].vas_storage_name, "art-b");
+    }
+
+    #[test]
+    fn storage_manifest_empty_artifacts_defaults() {
+        let json = json!({
+            "storages": []
+        });
+        let manifest: StorageManifest = serde_json::from_value(json).unwrap();
+        assert!(manifest.artifacts.is_empty());
         assert!(manifest.memory.is_none());
     }
 

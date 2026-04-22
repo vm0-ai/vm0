@@ -1,5 +1,46 @@
 # Changelog
 
+## [12.283.1](https://github.com/vm0-ai/vm0/compare/web-v12.283.0...web-v12.283.1) (2026-04-22)
+
+
+### Refactoring
+
+* migrate /redeem/{campaign} flow from web to platform ([#10612](https://github.com/vm0-ai/vm0/issues/10612)) ([276f710](https://github.com/vm0-ai/vm0/commit/276f710ad2ab12f550175520a21960d2c9fc41b9))
+
+
+### Performance Improvements
+
+* **chat:** dedupe zero_agents and org_metadata reads on message post ([#10617](https://github.com/vm0-ai/vm0/issues/10617)) ([b83b480](https://github.com/vm0-ai/vm0/commit/b83b480388a5e76b6fafb6766c835d075d2f1e3e)), closes [#10594](https://github.com/vm0-ai/vm0/issues/10594)
+* **chat:** parallelize thread resolution and bound message scans ([#10615](https://github.com/vm0-ai/vm0/issues/10615)) ([56b281f](https://github.com/vm0-ai/vm0/commit/56b281f4d58f18ca5ee86901bcebc4edac01aaa4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.225.1
+
+## [12.283.0](https://github.com/vm0-ai/vm0/compare/web-v12.282.0...web-v12.283.0) (2026-04-22)
+
+
+### Features
+
+* add openai platform auth skeleton behind PlatformConnectors flag ([#10580](https://github.com/vm0-ai/vm0/issues/10580)) ([6f7614d](https://github.com/vm0-ai/vm0/commit/6f7614d0a8bf0f5119f6c8f3f8c110c3ab1a478d))
+* **uploads:** serve permanent /f file redirect via public api host ([#10526](https://github.com/vm0-ai/vm0/issues/10526)) ([a5003fc](https://github.com/vm0-ai/vm0/commit/a5003fcc41e76139fcaea8be8a59058386998ce8))
+
+
+### Bug Fixes
+
+* **auth:** hide clerk create-organization buttons in sign-in ui ([#10581](https://github.com/vm0-ai/vm0/issues/10581)) ([4dd4b9a](https://github.com/vm0-ai/vm0/commit/4dd4b9a2c91c7e8e571e8717c83d213ef46c9485))
+* **voice-chat:** resolve preparation timeout from task dispatch pollution ([#10582](https://github.com/vm0-ai/vm0/issues/10582)) ([6138f35](https://github.com/vm0-ai/vm0/commit/6138f353fe84dbbba286332035208712c57035a7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.225.0
+
 ## [12.282.0](https://github.com/vm0-ai/vm0/compare/web-v12.281.0...web-v12.282.0) (2026-04-22)
 
 

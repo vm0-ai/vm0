@@ -1,13 +1,11 @@
-import { eq, and, inArray, desc, isNotNull } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import {
   voiceChatSessions,
   voiceChatEvents,
 } from "../../../db/schema/voice-chat";
-import { agentRuns } from "../../../db/schema/agent-run";
 import { createZeroRun, type CreateZeroRunResult } from "../zero-run-service";
 import { buildVoiceChatQuickPrepPrompt } from "../integration-prompt";
 import { notFound, badRequest, forbidden } from "../../shared/errors";
-import { hasAgentSessionId } from "../run-result";
 import { adaptVoiceChatSessionTrigger } from "./adapt-voice-chat-session-trigger";
 import { cancelSessionPendingRuns } from "./task-service";
 
@@ -23,9 +21,9 @@ export async function createSession(
   const db = globalThis.services.db;
 
   const { session, staleIds } = await db.transaction(async (tx) => {
-    // Graceful auto-end: slow-brain sees session-end within 5s and self-exits,
-    // populating result.agentSessionId so the new run can resume via
-    // getPriorVoiceChatAgentSessionId. Do NOT cancelRun — that skips the webhook.
+    // Graceful auto-end: emit session-end and flip status, letting the stale
+    // slow-brain run self-exit on its next 5s poll. Do NOT cancelRun — that
+    // would abort the run mid-step and lose the session-end event trail.
     const stale = await tx
       .select({ id: voiceChatSessions.id })
       .from(voiceChatSessions)
@@ -86,47 +84,6 @@ async function getSession(sessionId: string) {
   return session ?? null;
 }
 
-/**
- * Find the most recent agentSessionId for a user's prior voice chats.
- *
- * Joins voice_chat_sessions with agent_runs via runId and scans the last 5
- * terminated sessions (status IN ('ended', 'timeout')) for this (orgId,
- * userId) — both graceful-exit paths populate result.agentSessionId via the
- * agent-complete webhook. Returns the first populated agentSessionId found,
- * or null when no suitable prior session exists.
- *
- * The 5-row scan (same as chat-thread's getLatestSessionIdForThread) tolerates
- * the race where a just-ended session's run hasn't yet written its result.
- */
-export async function getPriorVoiceChatAgentSessionId(
-  orgId: string,
-  userId: string,
-): Promise<string | null> {
-  const db = globalThis.services.db;
-
-  const rows = await db
-    .select({ result: agentRuns.result })
-    .from(voiceChatSessions)
-    .innerJoin(agentRuns, eq(voiceChatSessions.runId, agentRuns.id))
-    .where(
-      and(
-        eq(voiceChatSessions.userId, userId),
-        eq(voiceChatSessions.orgId, orgId),
-        inArray(voiceChatSessions.status, ["ended", "timeout"]),
-        isNotNull(voiceChatSessions.runId),
-      ),
-    )
-    .orderBy(desc(voiceChatSessions.createdAt))
-    .limit(5);
-
-  for (const row of rows) {
-    if (hasAgentSessionId(row.result)) {
-      return row.result.agentSessionId;
-    }
-  }
-  return null;
-}
-
 export async function heartbeat(
   sessionId: string,
   orgId: string,
@@ -167,10 +124,8 @@ export async function endSession(
   }
 
   // Write session-end event and update status atomically. Slow-brain sees the
-  // event within its 5s poll window and self-exits via the agent-complete
-  // webhook path — which is what populates `agent_runs.result.agentSessionId`
-  // so the next voice chat can resume this CC session. Hard-cancelling here
-  // would skip that webhook and lose the session id.
+  // event within its 5s poll window and self-exits gracefully. Hard-cancelling
+  // here would abort the run mid-step and drop the event trail.
   await db.transaction(async (tx) => {
     await tx.insert(voiceChatEvents).values({
       sessionId,
@@ -194,7 +149,6 @@ export async function endSession(
 
 export async function dispatchSlowBrain(
   session: { id: string },
-  orgId: string,
   userId: string,
   agentId: string,
   options: { apiStartTime: number },
@@ -203,9 +157,6 @@ export async function dispatchSlowBrain(
   const appendSystemPrompt = buildVoiceChatQuickPrepPrompt(session.id);
   const prompt = `You are Zero's slow-brain for voice-chat session ${session.id}. Review the agent configuration and user context, then prepare an initial directive before the conversation begins.`;
 
-  const continueFromAgentSessionId =
-    (await getPriorVoiceChatAgentSessionId(orgId, userId)) ?? undefined;
-
   const result = await createZeroRun(
     adaptVoiceChatSessionTrigger({
       userId,
@@ -213,7 +164,6 @@ export async function dispatchSlowBrain(
       prompt,
       appendSystemPrompt,
       sessionId: session.id,
-      continueFromAgentSessionId,
       apiStartTime: options.apiStartTime,
     }),
   );

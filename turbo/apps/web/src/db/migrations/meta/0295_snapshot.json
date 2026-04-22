@@ -1,5 +1,5 @@
 {
-  "id": "5c58968c-8dfb-4cb6-82fd-6c05864355a8",
+  "id": "476ac302-6f36-4d4f-b56b-500fac5e0c09",
   "prevId": "cd385d64-3c1e-43c3-9597-9ad5ea9d11b2",
   "version": "7",
   "dialect": "postgresql",
@@ -1427,6 +1427,12 @@
         },
         "artifact_snapshot": {
           "name": "artifact_snapshot",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "artifact_snapshots": {
+          "name": "artifact_snapshots",
           "type": "jsonb",
           "primaryKey": false,
           "notNull": false
@@ -8701,12 +8707,6 @@
         "result": {
           "name": "result",
           "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "result_updated_at": {
-          "name": "result_updated_at",
-          "type": "timestamp",
           "primaryKey": false,
           "notNull": false
         },

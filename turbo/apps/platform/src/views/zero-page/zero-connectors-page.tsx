@@ -27,6 +27,7 @@ import {
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { CustomConnectorsPanel } from "./components/settings/custom-connectors-panel.tsx";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
+import { Vm0ManagedBadge } from "./components/settings/vm0-managed-badge.tsx";
 import {
   allConnectorTypes$,
   connectConnector$,
@@ -123,12 +124,16 @@ function GlobalConnectorCard({
       );
     }
     if (connector.connected) {
+      const isPlatformAuth = connector.connector?.authMethod === "platform";
       return (
         <span className="flex items-center gap-2 text-xs text-muted-foreground truncate">
           <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
-          {connector.connector?.externalUsername
-            ? `@${connector.connector.externalUsername}`
-            : "Connected"}
+          <span className="truncate">
+            {connector.connector?.externalUsername
+              ? `@${connector.connector.externalUsername}`
+              : "Connected"}
+          </span>
+          {isPlatformAuth && <Vm0ManagedBadge />}
         </span>
       );
     }
@@ -321,10 +326,12 @@ export function ZeroConnectorsPage() {
     const ct = allConnectors.find((c) => {
       return c.type === type;
     });
+    // Any connector without OAuth opens the ConnectModal — the modal handles
+    // api-token and platform (and both simultaneously) via its dual-form
+    // render. Only pure-OAuth connectors skip the modal and jump straight
+    // to the popup flow.
     if (
-      (ct &&
-        ct.availableAuthMethods.length === 1 &&
-        ct.availableAuthMethods[0] !== "oauth") ||
+      (ct && !ct.availableAuthMethods.includes("oauth")) ||
       isGoogleOAuthConnector(type)
     ) {
       setSelected(type);

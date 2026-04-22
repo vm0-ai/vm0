@@ -66,7 +66,7 @@ export async function POST(request: Request) {
   try {
     const session = await createSession(org.orgId, userId, agentId);
 
-    const run = await dispatchSlowBrain(session, org.orgId, userId, agentId, {
+    const run = await dispatchSlowBrain(session, userId, agentId, {
       apiStartTime,
     });
 
