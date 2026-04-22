@@ -43,46 +43,61 @@ function displayName(m: OrgMember): string {
 // Credit breakdown bar chart
 // ---------------------------------------------------------------------------
 
-const CATEGORY_COLORS: Record<string, string> = {
+type CreditSegment = BillingStatusResponse["creditBreakdown"][number];
+
+const CATEGORY_COLORS: Readonly<
+  Record<Exclude<CreditSegment["category"], "plan">, string>
+> = {
   free: "bg-[#3EB7B8]",
   promotional: "bg-[#E88033]",
   payAsYouGo: "bg-[#97918A]",
 };
 
-const PLAN_COLORS: Record<string, string> = {
-  "Pro plan": "bg-[#EDC43E]",
-  "Team plan": "bg-[#6B8DE3]",
+const PLAN_COLORS: Readonly<
+  Record<NonNullable<CreditSegment["tier"]>, string>
+> = {
+  pro: "bg-[#EDC43E]",
+  team: "bg-[#6B8DE3]",
 };
 
-function colorForSegment(seg: { category: string; label: string }): string {
+function colorForSegment(seg: CreditSegment): string {
   if (seg.category === "plan") {
-    return PLAN_COLORS[seg.label] ?? "bg-[#EDC43E]";
+    return seg.tier ? PLAN_COLORS[seg.tier] : "bg-[#EDC43E]";
   }
-  return CATEGORY_COLORS[seg.category] ?? "bg-[#97918A]";
+  return CATEGORY_COLORS[seg.category];
 }
 
-const CATEGORY_DESCRIPTIONS: Record<string, string> = {
+const CATEGORY_DESCRIPTIONS: Readonly<
+  Record<Exclude<CreditSegment["category"], "plan">, string>
+> = {
   free: "Starter credits, use until depleted",
   promotional: "Campaign credits, expires after a set period",
   payAsYouGo: "Auto-recharge credits, never expire",
 };
 
+function segmentKey(seg: CreditSegment): string {
+  // `buildCreditBreakdown` keys segments by `category:tier`, so the same
+  // composite is stable and unique across the array.
+  return seg.tier ? `${seg.category}:${seg.tier}` : seg.category;
+}
+
 function descriptionForSegment(
-  seg: { category: string; label: string },
+  seg: CreditSegment,
   currentTier: string,
 ): string {
   if (seg.category !== "plan") {
-    return CATEGORY_DESCRIPTIONS[seg.category] ?? "";
+    return CATEGORY_DESCRIPTIONS[seg.category];
   }
-  const segTier = seg.label.replace(" plan", "").toLowerCase();
-  if (segTier === currentTier) {
+  if (seg.tier === currentTier) {
     return "Monthly plan credits, resets each billing cycle";
   }
   return "Leftover credits from previous plan";
 }
 
 function CreditBalanceChart({ billing }: { billing: BillingStatusResponse }) {
-  const segments = billing.creditBreakdown.filter((s) => s.credits > 0);
+  const segments = billing.creditBreakdown.filter((s) => {
+    return s.credits > 0;
+  });
   const total = billing.credits;
 
   return (
@@ -96,11 +111,11 @@ function CreditBalanceChart({ billing }: { billing: BillingStatusResponse }) {
           {/* Bar */}
           <TooltipProvider delayDuration={100}>
             <div className="flex h-2.5 w-full rounded-full bg-muted/40">
-              {segments.map((s, i) => {
+              {segments.map((s) => {
                 const color = colorForSegment(s);
                 const desc = descriptionForSegment(s, billing.tier);
                 return (
-                  <Tooltip key={`${s.category}-${i}`}>
+                  <Tooltip key={segmentKey(s)}>
                     <TooltipTrigger asChild>
                       <div
                         className={`h-2.5 ${color} cursor-default first:rounded-l-full last:rounded-r-full ring-0 hover:ring-2 hover:ring-foreground/30 hover:z-10 transition-shadow`}
@@ -128,11 +143,11 @@ function CreditBalanceChart({ billing }: { billing: BillingStatusResponse }) {
 
           {/* Legend */}
           <div className="flex flex-wrap gap-x-4 gap-y-1">
-            {segments.map((s, i) => {
+            {segments.map((s) => {
               const color = colorForSegment(s);
               return (
                 <div
-                  key={`${s.category}-${i}`}
+                  key={segmentKey(s)}
                   className="flex items-center gap-1.5 text-xs text-muted-foreground"
                 >
                   <span

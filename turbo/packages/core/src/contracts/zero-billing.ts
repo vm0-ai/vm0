@@ -20,9 +20,13 @@ const creditExpirySchema = z.object({
 });
 
 const creditBreakdownSegmentSchema = z.object({
-  category: z.string(),
+  category: z.enum(["plan", "free", "promotional", "payAsYouGo"]),
   label: z.string(),
   credits: z.number(),
+  // Only set on `plan` segments. Lets the UI decide whether a segment
+  // represents the current plan or leftover credits from a previous plan
+  // without round-tripping through the `label` string.
+  tier: z.enum(["pro", "team"]).optional(),
 });
 
 const billingStatusResponseSchema = z.object({

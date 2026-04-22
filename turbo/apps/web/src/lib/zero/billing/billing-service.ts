@@ -842,10 +842,14 @@ export async function getOrgInvoices(orgId: string): Promise<{
   return { invoices };
 }
 
+type CreditBreakdownCategory = "plan" | "free" | "promotional" | "payAsYouGo";
+
 interface CreditBreakdownSegment {
-  category: string;
+  category: CreditBreakdownCategory;
   label: string;
   credits: number;
+  /** Only set on `plan` segments. */
+  tier?: "pro" | "team";
 }
 
 /**
@@ -854,34 +858,45 @@ interface CreditBreakdownSegment {
  * - `subscription_renewal` → "<Tier> plan" under category `plan`, tier derived
  *   from the record's amount so leftover credits from a previous tier (e.g. a
  *   Team user that dropped to Pro) render under their original tier label.
+ *   The raw `tier` (`"pro" | "team"`) is also emitted on each plan segment so
+ *   UI callers don't have to round-trip through the display label.
  * - `starter_grant` → "Free plan".
  * - `one_time_purchase` → "Promotional".
  * - `auto_recharge` → "Pay as you go" (sentinel record from #10668).
  *
  * Legacy balance not backed by any active record (pre-sentinel top-ups,
  * ledger drift) is surfaced as "Pay as you go" for paid tiers or "Free plan"
- * for free, so the segments always sum to `displayedCredits`.
+ * for free, so the segments always sum to `displayedCredits`. When a non-zero
+ * untracked delta is observed we emit a `logger.warn` so ops can track drift.
  */
 function buildCreditBreakdown(args: {
+  orgId: string;
   tier: string;
   displayedCredits: number;
   records: Array<{ source: string; amount: number; remaining: number }>;
 }): CreditBreakdownSegment[] {
-  const { tier, displayedCredits, records } = args;
+  const { orgId, tier, displayedCredits, records } = args;
 
-  const planTierFromAmount = (amount: number): string => {
-    if (amount === TIER_MONTHLY_CREDITS.team) return "Team";
-    if (amount === TIER_MONTHLY_CREDITS.pro) return "Pro";
-    return tier.charAt(0).toUpperCase() + tier.slice(1);
+  // Returns `null` when the amount doesn't match any known tier — caller will
+  // skip emitting a plan segment for such a record, avoiding a fabricated tier.
+  const planTierFromAmount = (amount: number): "pro" | "team" | null => {
+    if (amount === TIER_MONTHLY_CREDITS.team) return "team";
+    if (amount === TIER_MONTHLY_CREDITS.pro) return "pro";
+    return null;
   };
 
-  const labelCredits = new Map<string, CreditBreakdownSegment>();
-  const addSegment = (category: string, label: string, credits: number) => {
-    const existing = labelCredits.get(label);
+  const segmentKey = (category: CreditBreakdownCategory, tierKey?: string) => {
+    return tierKey ? `${category}:${tierKey}` : category;
+  };
+
+  const byKey = new Map<string, CreditBreakdownSegment>();
+  const addSegment = (segment: CreditBreakdownSegment) => {
+    const key = segmentKey(segment.category, segment.tier);
+    const existing = byKey.get(key);
     if (existing) {
-      existing.credits += credits;
+      existing.credits += segment.credits;
     } else {
-      labelCredits.set(label, { category, label, credits });
+      byKey.set(key, { ...segment });
     }
   };
 
@@ -889,27 +904,77 @@ function buildCreditBreakdown(args: {
   for (const r of records) {
     trackedTotal += r.remaining;
     if (r.source === "subscription_renewal") {
-      addSegment("plan", `${planTierFromAmount(r.amount)} plan`, r.remaining);
+      const planTier = planTierFromAmount(r.amount);
+      if (!planTier) {
+        log.warn("subscription_renewal amount does not match any tier", {
+          orgId,
+          amount: r.amount,
+          remaining: r.remaining,
+        });
+        // Fall through: surface the remaining as untracked so the bar still
+        // sums to `displayedCredits`.
+        trackedTotal -= r.remaining;
+        continue;
+      }
+      const label = planTier === "team" ? "Team plan" : "Pro plan";
+      addSegment({
+        category: "plan",
+        label,
+        credits: r.remaining,
+        tier: planTier,
+      });
     } else if (r.source === "starter_grant") {
-      addSegment("free", "Free plan", r.remaining);
+      addSegment({
+        category: "free",
+        label: "Free plan",
+        credits: r.remaining,
+      });
     } else if (r.source === "one_time_purchase") {
-      addSegment("promotional", "Promotional", r.remaining);
+      addSegment({
+        category: "promotional",
+        label: "Promotional",
+        credits: r.remaining,
+      });
     } else if (r.source === "auto_recharge") {
-      addSegment("payAsYouGo", "Pay as you go", r.remaining);
+      addSegment({
+        category: "payAsYouGo",
+        label: "Pay as you go",
+        credits: r.remaining,
+      });
     }
   }
 
   const untracked = Math.max(displayedCredits - trackedTotal, 0);
   if (untracked > 0) {
+    log.warn("credit breakdown has untracked balance", {
+      orgId,
+      tier,
+      displayedCredits,
+      trackedTotal,
+      untracked,
+    });
     if (tier === "free") {
-      addSegment("free", "Free plan", untracked);
+      addSegment({
+        category: "free",
+        label: "Free plan",
+        credits: untracked,
+      });
     } else {
-      addSegment("payAsYouGo", "Pay as you go", untracked);
+      addSegment({
+        category: "payAsYouGo",
+        label: "Pay as you go",
+        credits: untracked,
+      });
     }
   }
 
-  const categoryOrder = ["plan", "free", "promotional", "payAsYouGo"];
-  const segments = Array.from(labelCredits.values());
+  const categoryOrder: CreditBreakdownCategory[] = [
+    "plan",
+    "free",
+    "promotional",
+    "payAsYouGo",
+  ];
+  const segments = Array.from(byKey.values());
   segments.sort((a, b) => {
     return (
       categoryOrder.indexOf(a.category) - categoryOrder.indexOf(b.category)
@@ -937,7 +1002,12 @@ export async function getBillingStatus(orgId: string): Promise<{
     expiringNextCycle: number;
     nextExpiryDate: Date | null;
   };
-  creditBreakdown: Array<{ category: string; label: string; credits: number }>;
+  creditBreakdown: Array<{
+    category: CreditBreakdownCategory;
+    label: string;
+    credits: number;
+    tier?: "pro" | "team";
+  }>;
 }> {
   const db = globalThis.services.db;
   const [org] = await db
@@ -966,7 +1036,12 @@ export async function getBillingStatus(orgId: string): Promise<{
   const displayedCredits = Math.max(rawCredits - unsettledExpired, 0);
   const tier = org?.tier ?? "free";
 
-  const breakdown = buildCreditBreakdown({ tier, displayedCredits, records });
+  const breakdown = buildCreditBreakdown({
+    orgId,
+    tier,
+    displayedCredits,
+    records,
+  });
 
   return {
     tier,
