@@ -30,8 +30,22 @@ function hasInlineData(part: unknown): part is InlineDataPart {
   );
 }
 
-function loadGcpConfig() {
+let cachedClient: GoogleGenAI | undefined;
+
+// Prefer the Gemini Developer API key when present (local/dev: one shared
+// string in 1Password, no gcloud required). Fall back to Vertex AI via
+// Vercel OIDC → GCP Workload Identity Federation → SA impersonation on
+// production, where no long-lived credential exists by design.
+function buildClient(): GoogleGenAI | null {
+  if (cachedClient) return cachedClient;
+
   const validated = env();
+
+  if (validated.GEMINI_API_KEY) {
+    cachedClient = new GoogleGenAI({ apiKey: validated.GEMINI_API_KEY });
+    return cachedClient;
+  }
+
   if (
     !validated.GCP_PROJECT_ID ||
     !validated.GCP_PROJECT_NUMBER ||
@@ -42,26 +56,12 @@ function loadGcpConfig() {
     return null;
   }
 
-  return {
-    projectId: validated.GCP_PROJECT_ID,
-    projectNumber: validated.GCP_PROJECT_NUMBER,
-    serviceAccountEmail: validated.GCP_SERVICE_ACCOUNT_EMAIL,
-    poolId: validated.GCP_WORKLOAD_IDENTITY_POOL_ID,
-    providerId: validated.GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID,
-  };
-}
-
-let cachedClient: GoogleGenAI | undefined;
-
-function getGenAiClient(config: NonNullable<ReturnType<typeof loadGcpConfig>>) {
-  if (cachedClient) return cachedClient;
-
   const authClient = ExternalAccountClient.fromJSON({
     type: "external_account",
-    audience: `//iam.googleapis.com/projects/${config.projectNumber}/locations/global/workloadIdentityPools/${config.poolId}/providers/${config.providerId}`,
+    audience: `//iam.googleapis.com/projects/${validated.GCP_PROJECT_NUMBER}/locations/global/workloadIdentityPools/${validated.GCP_WORKLOAD_IDENTITY_POOL_ID}/providers/${validated.GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID}`,
     subject_token_type: "urn:ietf:params:oauth:token-type:jwt",
     token_url: "https://sts.googleapis.com/v1/token",
-    service_account_impersonation_url: `https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/${config.serviceAccountEmail}:generateAccessToken`,
+    service_account_impersonation_url: `https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/${validated.GCP_SERVICE_ACCOUNT_EMAIL}:generateAccessToken`,
     subject_token_supplier: {
       getSubjectToken: async () => {
         return await getVercelOidcToken();
@@ -75,7 +75,7 @@ function getGenAiClient(config: NonNullable<ReturnType<typeof loadGcpConfig>>) {
 
   cachedClient = new GoogleGenAI({
     vertexai: true,
-    project: config.projectId,
+    project: validated.GCP_PROJECT_ID,
     location: "us-central1",
     googleAuthOptions: { authClient },
   });
@@ -84,8 +84,8 @@ function getGenAiClient(config: NonNullable<ReturnType<typeof loadGcpConfig>>) {
 }
 
 export async function POST(req: NextRequest) {
-  const config = loadGcpConfig();
-  if (!config) {
+  const ai = buildClient();
+  if (!ai) {
     return NextResponse.json(
       {
         error: {
@@ -111,7 +111,6 @@ export async function POST(req: NextRequest) {
   }
   const prompt = body.prompt;
 
-  const ai = getGenAiClient(config);
   const result = await ai.models.generateContent({
     model: "gemini-2.5-flash-image",
     contents: [{ role: "user", parts: [{ text: prompt }] }],

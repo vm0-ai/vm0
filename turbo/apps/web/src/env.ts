@@ -243,6 +243,11 @@ function initEnv() {
       GCP_SERVICE_ACCOUNT_EMAIL: z.string().min(1).optional(),
       GCP_WORKLOAD_IDENTITY_POOL_ID: z.string().min(1).optional(),
       GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID: z.string().min(1).optional(),
+      // Gemini Developer API key — local/dev escape hatch for /api/generate-image.
+      // When set, the route uses generativelanguage.googleapis.com instead of
+      // Vertex AI, bypassing OIDC. Production must NOT set this; it should use
+      // the GCP_* vars above so auth stays on the Vercel OIDC path.
+      GEMINI_API_KEY: z.string().min(1).optional(),
     },
     client: {
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: z.string().min(1),
@@ -411,6 +416,7 @@ function initEnv() {
       GCP_WORKLOAD_IDENTITY_POOL_ID: process.env.GCP_WORKLOAD_IDENTITY_POOL_ID,
       GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID:
         process.env.GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID,
+      GEMINI_API_KEY: process.env.GEMINI_API_KEY,
 
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:
         process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
