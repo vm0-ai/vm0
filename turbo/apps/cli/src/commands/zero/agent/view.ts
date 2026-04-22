@@ -16,6 +16,7 @@ import {
   type ConnectorResponse,
 } from "@vm0/core";
 import { policyIcon } from "../../../lib/utils/format-utils";
+import { formatAvatar } from "./avatar";
 
 interface ConnectorPermissionInfo {
   type: string;
@@ -200,6 +201,8 @@ Examples:
         if (agent.description)
           console.log(`Description:  ${agent.description}`);
         if (agent.sound) console.log(`Sound:        ${agent.sound}`);
+        const avatar = formatAvatar(agent.avatarUrl);
+        if (avatar) console.log(`Avatar:       ${avatar}`);
 
         if (options.permissions && connectorInfos.length > 0) {
           console.log();

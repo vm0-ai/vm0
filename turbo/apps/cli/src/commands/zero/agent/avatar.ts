@@ -133,3 +133,98 @@ export function resolveAvatarUrl(opts: AvatarOptions): string | undefined {
 
   return buildCustomSvgAvatar(opts);
 }
+
+const REVERSE_SKIN_MAP: Record<number, string> = {
+  0: "light",
+  1: "light-medium",
+  2: "medium",
+  3: "medium-dark",
+  4: "dark",
+};
+
+const REVERSE_HAIR_COLOR_MAP: Record<number, string> = {
+  1: "blonde",
+  2: "teal",
+  3: "grey",
+  4: "pink",
+  5: "brown",
+};
+
+const REVERSE_EXPRESSION_MAP: Record<number, string> = {
+  1: "calm",
+  2: "content",
+  3: "neutral",
+  4: "pleasant",
+  5: "excited",
+};
+
+const REVERSE_INTENSITY_MAP: Record<string, string> = {
+  d: "chill",
+  m: "normal",
+  h: "hyped",
+};
+
+const PRESET_DESCRIPTIONS: Record<string, string> = {
+  "preset:0": "light skin, brown hair, calm, hyped",
+  "preset:1": "light-medium skin, grey hair, calm, normal",
+  "preset:2": "medium skin, pink hair, neutral, chill",
+  "preset:3": "medium-dark skin, blonde hair, pleasant, hyped",
+  "preset:4": "dark skin, teal hair, excited, normal",
+};
+
+function parseSvgAvatar(svg: string): string | undefined {
+  const match = svg.match(/^svg:r(\d)s(\d)h(\d)c(\d)f(\d)([dmh])$/);
+  if (!match) return undefined;
+
+  const [, r, s, h, c, f, i] = match as RegExpExecArray;
+  const parts: string[] = [];
+
+  const skin = REVERSE_SKIN_MAP[Number(s)];
+  if (skin) parts.push(`${skin} skin`);
+
+  const hairColor = REVERSE_HAIR_COLOR_MAP[Number(c)];
+  if (hairColor) parts.push(`${hairColor} hair`);
+
+  const expression = REVERSE_EXPRESSION_MAP[Number(f)];
+  if (expression) parts.push(expression);
+
+  const intensity = REVERSE_INTENSITY_MAP[i!];
+  if (intensity) parts.push(intensity);
+
+  if (parts.length === 0) return undefined;
+
+  let desc = parts.join(", ");
+  if (r !== "3") {
+    const rotationLabels: Record<string, string> = {
+      "1": "far-left",
+      "2": "left",
+      "4": "right",
+      "5": "far-right",
+    };
+    const rot = rotationLabels[r!];
+    if (rot) desc += `, ${rot}`;
+  }
+  if (h !== "1") {
+    desc += `, hair style ${h}`;
+  }
+
+  return desc;
+}
+
+export function formatAvatar(
+  avatarUrl: string | null | undefined,
+): string | undefined {
+  if (!avatarUrl) return undefined;
+
+  if (avatarUrl.startsWith("preset:")) {
+    const desc = PRESET_DESCRIPTIONS[avatarUrl];
+    return desc ? `${avatarUrl} (${desc})` : avatarUrl;
+  }
+
+  if (avatarUrl.startsWith("svg:")) {
+    const desc = parseSvgAvatar(avatarUrl);
+    return desc ? `custom (${desc})` : avatarUrl;
+  }
+
+  return avatarUrl;
+}

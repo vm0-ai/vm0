@@ -95,6 +95,81 @@ describe("zero agent view command", () => {
       expect(logCalls).toContain("github (full access)");
     });
 
+    it("should display preset avatar", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
+          return HttpResponse.json({
+            ...mockAgent,
+            avatarUrl: "preset:2",
+          });
+        }),
+        http.get(
+          "http://localhost:3000/api/zero/agents/my-agent/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: [] });
+          },
+        ),
+        mockConnectorListHandler(),
+      );
+
+      await viewCommand.parseAsync(["node", "cli", "my-agent"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Avatar:");
+      expect(logCalls).toContain(
+        "preset:2 (medium skin, pink hair, neutral, chill)",
+      );
+    });
+
+    it("should display custom svg avatar", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
+          return HttpResponse.json({
+            ...mockAgent,
+            avatarUrl: "svg:r3s4h1c2f5h",
+          });
+        }),
+        http.get(
+          "http://localhost:3000/api/zero/agents/my-agent/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: [] });
+          },
+        ),
+        mockConnectorListHandler(),
+      );
+
+      await viewCommand.parseAsync(["node", "cli", "my-agent"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Avatar:");
+      expect(logCalls).toContain(
+        "custom (dark skin, teal hair, excited, hyped)",
+      );
+    });
+
+    it("should not display avatar when null", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
+          return HttpResponse.json({
+            ...mockAgent,
+            avatarUrl: null,
+          });
+        }),
+        http.get(
+          "http://localhost:3000/api/zero/agents/my-agent/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: [] });
+          },
+        ),
+        mockConnectorListHandler(),
+      );
+
+      await viewCommand.parseAsync(["node", "cli", "my-agent"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).not.toContain("Avatar:");
+    });
+
     it("should show permission summary with permission policies", async () => {
       server.use(
         http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
