@@ -166,6 +166,52 @@ describe("chat-d-067: markdown image URL renders inline", () => {
   });
 });
 
+describe("chat-d-069: markdown image syntax renders inline thumbnail", () => {
+  it("should render ![alt](url) image syntax through the thumbnail override so it matches the link-syntax sizing", async () => {
+    const src = "https://example.com/dog.png";
+    server.use(
+      mockApi(chatThreadMessagesContract.list, ({ query, respond }) => {
+        if (query.sinceId) {
+          return respond(200, { messages: [] });
+        }
+        return respond(200, {
+          messages: [
+            {
+              id: "msg-1",
+              role: "assistant",
+              content: `![dog](${src})`,
+              createdAt: "2026-01-01T00:00:00Z",
+            },
+          ],
+        });
+      }),
+      mockApi(chatThreadByIdContract.get, ({ respond }) => {
+        return respond(200, {
+          id: "thread-img-syntax",
+          ...makeThreadBase(),
+          chatMessages: [
+            {
+              role: "assistant",
+              content: `![dog](${src})`,
+              createdAt: "2026-01-01T00:00:00Z",
+            },
+          ],
+        });
+      }),
+    );
+
+    detachedSetupPage({ context, path: "/chats/thread-img-syntax" });
+
+    await waitFor(() => {
+      const img = document.querySelector(`img[src="${src}"]`);
+      expect(img).toBeInTheDocument();
+      // Must carry the thumbnail clamp so image-syntax URLs don't render at
+      // natural size (regression from PR #10254 which only overrode <a>).
+      expect(img?.className).toContain("max-h-32");
+    });
+  });
+});
+
 describe("chat-d-068: markdown video URL renders inline", () => {
   it("should render a <video controls> for video link", async () => {
     const src = "https://example.com/clip.mp4";

@@ -173,10 +173,10 @@ describe("inline settings row - conditional (ORG-C-109)", () => {
       context,
       path: `/schedules/${TEST_SCHEDULE_ID}`,
     });
-    // The "Agent" InlineSettingsRow has description "Which agent runs when this schedule fires."
+    // The "Agent" InlineSettingsRow has a description explaining the field is read-only.
     await waitFor(() => {
       expect(
-        screen.getByText("Which agent runs when this schedule fires."),
+        screen.getByText(/The agent is fixed once a schedule is created/i),
       ).toBeInTheDocument();
     });
   });

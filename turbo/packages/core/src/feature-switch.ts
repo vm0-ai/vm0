@@ -279,16 +279,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable the Zoom connector (OAuth 2.0) for meetings, past participants, and cloud recordings access",
     enabled: false,
   },
-  [FeatureSwitchKey.Vm0GlmModel]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Expose Z.AI GLM-5.1 as a selectable model under the VM0 managed provider",
-    enabled: false,
-  },
+
   [FeatureSwitchKey.ApiKeys]: {
     maintainer: "ethan@vm0.ai",
     description:
-      "Show the API Keys tab in Manage Account (Clerk UserProfile). When disabled, the tab is hidden even if API Keys are enabled in the Clerk dashboard.",
+      "Gate the custom /settings/api-keys UI for issuing personal access tokens used by the /api/v1 public surface. When disabled, the settings page redirects to / and the sidebar menu item is hidden. The backend /api/v1 verification does NOT consult this flag — previously issued PATs continue to work.",
     enabled: false,
   },
   [FeatureSwitchKey.SlackAgentSwitch]: {
@@ -335,15 +330,10 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "still uses the current-agent fallback.",
     enabled: false,
   },
-  [FeatureSwitchKey.RedemptionCodes]: {
-    maintainer: "yuma@vm0.ai",
-    description:
-      "Show the internal /_/redemption-codes page (mint + redeem UI). " +
-      "UI-visibility gate only — the mint endpoint is independently " +
-      "protected by a STAFF_ORG_ID_HASHES identity check on the server, " +
-      "so this flag does NOT authorize minting.",
+  [FeatureSwitchKey.Vm0DeepseekModel]: {
+    maintainer: "ethan@vm0.ai",
+    description: "Enable the DeepSeek-V3.2 (deepseek-chat) VM0 managed model",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
 };
 

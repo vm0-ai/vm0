@@ -10,6 +10,7 @@ import {
   updateOrgStripeFields,
   updateOrgAutoRecharge,
   getOrgAutoRechargeFields,
+  setOrgCredits,
 } from "../../../../__tests__/api-test-helpers";
 
 // Stripe mock — must be defined before importing the service
@@ -62,6 +63,7 @@ describe("auto-recharge-service", () => {
   beforeEach(async () => {
     context.setupMocks();
     user = await context.setupUser();
+    await setOrgCredits(user.orgId, 100_000);
 
     vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_fake");
     reloadEnv();
@@ -126,7 +128,7 @@ describe("auto-recharge-service", () => {
         autoRechargeThreshold: 500,
         autoRechargeAmount: 5000,
       });
-      // Default credits = 100000, threshold = 500 → above threshold
+      // Seeded credits = 100000 (see beforeEach), threshold = 500 → above threshold
 
       await triggerAutoRecharge(user.orgId);
 
@@ -159,7 +161,7 @@ describe("auto-recharge-service", () => {
       });
       await updateOrgAutoRecharge(user.orgId, {
         autoRechargeEnabled: true,
-        autoRechargeThreshold: 110_000, // balance (100000) is below this
+        autoRechargeThreshold: 110_000, // seeded balance (100000) is below this
         autoRechargeAmount: 10_000,
       });
 

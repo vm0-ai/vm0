@@ -65,7 +65,6 @@ export const VM0_MODEL_TO_PROVIDER: Record<string, Vm0ModelConfig> = {
     concreteType: "openrouter-api-key",
     vendor: "openrouter",
     apiModel: "z-ai/glm-5.1",
-    featureFlag: FeatureSwitchKey.Vm0GlmModel,
   },
   "claude-haiku-4-5": {
     concreteType: "anthropic-api-key",
@@ -82,6 +81,11 @@ export const VM0_MODEL_TO_PROVIDER: Record<string, Vm0ModelConfig> = {
   "MiniMax-M2.7": {
     concreteType: "minimax-api-key",
     vendor: "minimax",
+  },
+  "deepseek-chat": {
+    concreteType: "deepseek-api-key",
+    vendor: "deepseek",
+    featureFlag: FeatureSwitchKey.Vm0DeepseekModel,
   },
 };
 

@@ -1,5 +1,107 @@
 # Changelog
 
+## [12.279.0](https://github.com/vm0-ai/vm0/compare/web-v12.278.0...web-v12.279.0) (2026-04-22)
+
+
+### Features
+
+* add deepseek-chat to vm0 managed models with feature flag ([#10501](https://github.com/vm0-ai/vm0/issues/10501)) ([6d13890](https://github.com/vm0-ai/vm0/commit/6d13890d1c73f94372810b251241609579a16ce2))
+
+
+### Bug Fixes
+
+* skip auto-focus on touch devices in ZeroChatComposer ([#10496](https://github.com/vm0-ai/vm0/issues/10496)) ([2c90017](https://github.com/vm0-ai/vm0/commit/2c90017ef46dae13b52426038025e22bb9cc9f88))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.222.0
+
+## [12.278.0](https://github.com/vm0-ai/vm0/compare/web-v12.277.0...web-v12.278.0) (2026-04-22)
+
+
+### Features
+
+* **voice-chat-candidate:** three-column layout with live task event stream ([#10452](https://github.com/vm0-ai/vm0/issues/10452)) ([df2a3d5](https://github.com/vm0-ai/vm0/commit/df2a3d5a8e72186508e7b40fbc739db91ebb133e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.221.0
+
+## [12.277.0](https://github.com/vm0-ai/vm0/compare/web-v12.276.6...web-v12.277.0) (2026-04-21)
+
+
+### Features
+
+* custom api keys management page with org context support ([#10469](https://github.com/vm0-ai/vm0/issues/10469)) ([aa14355](https://github.com/vm0-ai/vm0/commit/aa14355b8b6ed0a961f50c04a29376fcb965194e))
+* **uploads:** serve permanent /f file redirect for attachments ([#10460](https://github.com/vm0-ai/vm0/issues/10460)) ([85fd3d4](https://github.com/vm0-ai/vm0/commit/85fd3d4338e18db10fdfc0f62b1f8c0b1adf9f6f))
+* **voice-chat:** slow-brain graceful self-exit + session continue across (org, user) ([#10434](https://github.com/vm0-ai/vm0/issues/10434)) ([1c7d57d](https://github.com/vm0-ai/vm0/commit/1c7d57d344bf3998d9fb231ebcd325594c08dfa2))
+
+
+### Bug Fixes
+
+* **zero/billing:** return 4xx for downgrade preconditions instead of 500 ([#10465](https://github.com/vm0-ai/vm0/issues/10465)) ([7309a21](https://github.com/vm0-ai/vm0/commit/7309a213afbc54ce2f11548376d8f486e15653fc))
+
+
+### Refactoring
+
+* **billing:** unify connector billing gate on firewall_billable ([#10446](https://github.com/vm0-ai/vm0/issues/10446)) ([d8e23b9](https://github.com/vm0-ai/vm0/commit/d8e23b9b110b3979322ba44869a7cffe6cf289cf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.220.0
+
+## [12.276.6](https://github.com/vm0-ai/vm0/compare/web-v12.276.5...web-v12.276.6) (2026-04-21)
+
+
+### Bug Fixes
+
+* **db:** delete agent_runs whose compose was cascade-deleted (a2b bucket) ([#10456](https://github.com/vm0-ai/vm0/issues/10456)) ([b574303](https://github.com/vm0-ai/vm0/commit/b57430371f8e99dc0725583386c1bb75c231f7f7)), closes [#10447](https://github.com/vm0-ai/vm0/issues/10447)
+* **web:** guard [locale] page against asset-like paths before auth() ([#10458](https://github.com/vm0-ai/vm0/issues/10458)) ([0df30e7](https://github.com/vm0-ai/vm0/commit/0df30e72fb63ea4507ba7266cfef7b4c7fb4fbe4))
+
+## [12.276.5](https://github.com/vm0-ai/vm0/compare/web-v12.276.4...web-v12.276.5) (2026-04-21)
+
+
+### Bug Fixes
+
+* **zero:** gate firewall injection on credential presence again ([#10437](https://github.com/vm0-ai/vm0/issues/10437)) ([1f4abad](https://github.com/vm0-ai/vm0/commit/1f4abadcf6b6f3bcc74dc4a203ad8662bf0645ee))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.219.1
+
+## [12.276.4](https://github.com/vm0-ai/vm0/compare/web-v12.276.3...web-v12.276.4) (2026-04-21)
+
+
+### Bug Fixes
+
+* **db:** delete 310 dangling agent_runs with missing sessions ([#10428](https://github.com/vm0-ai/vm0/issues/10428)) ([61de5bf](https://github.com/vm0-ai/vm0/commit/61de5bf42d0c677875097295edbe6832f5994181))
+
+
+### Refactoring
+
+* **activity:** tighten runner-tab types at api + seeder boundaries ([#10403](https://github.com/vm0-ai/vm0/issues/10403)) ([b5451e2](https://github.com/vm0-ai/vm0/commit/b5451e26aaf49f6f6f17e62d8e5b19ce5318da02))
+
+## [12.276.3](https://github.com/vm0-ai/vm0/compare/web-v12.276.2...web-v12.276.3) (2026-04-21)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.219.0
+
 ## [12.276.2](https://github.com/vm0-ai/vm0/compare/web-v12.276.1...web-v12.276.2) (2026-04-21)
 
 

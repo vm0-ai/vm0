@@ -8,7 +8,6 @@ import {
   createTestOrg,
   createTestCompose,
 } from "../../../../../src/__tests__/api-test-helpers";
-import { findTestOutboxItems } from "../../../../../src/__tests__/db-test-assertions/email";
 import {
   testContext,
   uniqueId,

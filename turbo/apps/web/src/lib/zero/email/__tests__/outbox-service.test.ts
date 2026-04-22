@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render } from "@react-email/components";
 import type { CreateEmailOptions } from "resend";
 import { Resend } from "resend";
-import { testContext } from "../../../../__tests__/test-helpers";
+import { testContext, uniqueId } from "../../../../__tests__/test-helpers";
 import {
   createTestCompose,
   createTestAgentSession,
@@ -16,7 +16,6 @@ import {
   findTestOutboxItems,
   findTestOutboxItemById,
 } from "../../../../__tests__/db-test-assertions/email";
-import { uniqueId } from "../../../../__tests__/test-helpers";
 import { generateReplyToken } from "../handlers/shared";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route
 import {

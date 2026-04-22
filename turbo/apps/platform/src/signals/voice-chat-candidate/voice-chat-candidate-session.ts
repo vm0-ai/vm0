@@ -6,6 +6,7 @@ import {
   zeroVoiceChatCandidateContract,
   type VoiceChatCandidateItem,
   type VoiceChatCandidateItemRole,
+  type VoiceChatCandidateSession,
   type VoiceChatCandidateTask,
 } from "@vm0/core";
 import { featureSwitch$ } from "../external/feature-switch.ts";
@@ -58,38 +59,6 @@ const SESSION_TOOLS = [
   },
 ] as const;
 
-const TALKER_INSTRUCTIONS_BASE = `
-You are Zero, vm0's AI workspace assistant. You are speaking with the user in real time through voice.
-
-## Tools
-
-Call create_task(prompt) when the user asks for something that requires action beyond conversation — code, data lookups, external systems like GitHub or Slack, file operations, or any task that needs tool use. Include all relevant details in the prompt.
-
-After calling create_task, acknowledge naturally:
-- "Let me look into that."
-- "I'll check on that for you."
-- "Give me a moment to work on that."
-
-Do NOT say "I can't do that." You CAN do it — it just takes a moment.
-
-## Receiving task results
-
-When you receive a message starting with [Task ...], it is the result of a task you created. Incorporate the information naturally. Use your own voice — do not read it verbatim.
-
-## Communication style
-
-- Keep responses concise and natural. You are speaking, not writing.
-- No markdown, bullet points, or code blocks.
-- Be warm and conversational.
-`.trim();
-
-function composeInstructions(context: string): string {
-  if (!context.trim()) {
-    return TALKER_INSTRUCTIONS_BASE;
-  }
-  return `${TALKER_INSTRUCTIONS_BASE}\n\n## Context\n${context}`;
-}
-
 function shortPrompt(prompt: string, max = 60): string {
   const trimmed = prompt.trim();
   if (trimmed.length <= max) {
@@ -114,8 +83,16 @@ const internalTasksByCallId$ = state<Record<string, VoiceChatCandidateTask>>(
   {},
 );
 const internalTasksById$ = state<Record<string, VoiceChatCandidateTask>>({});
-const internalContext$ = state<string>("");
-const internalContextVersion$ = state<number>(0);
+const internalConversationSummary$ = state<string>("");
+const internalWorkingTasksSummary$ = state<string>("");
+const internalFinishedTasksSummary$ = state<string>("");
+const internalRecentTaskLogs$ = state<string>("");
+const internalSummaryVersion$ = state<number>(0);
+const internalSummarySeq$ = state<number>(0);
+const internalLastSummaryAt$ = state<string | null>(null);
+const internalTalkerInstructions$ = state<string>("");
+const internalTalkerInstructionTokens$ = state<number>(0);
+const internalFinishedTasksFullText$ = state<string>("");
 const internalStreamingAssistant$ = state<{
   responseId: string;
   itemId: string | null;
@@ -166,6 +143,49 @@ export const vccTasksById$ = computed((get) => {
   return get(internalTasksById$);
 });
 
+export const vccConversationSummary$ = computed((get) => {
+  return get(internalConversationSummary$);
+});
+
+export const vccWorkingTasksSummary$ = computed((get) => {
+  return get(internalWorkingTasksSummary$);
+});
+
+export const vccRecentTaskLogs$ = computed((get) => {
+  return get(internalRecentTaskLogs$);
+});
+
+export const vccSummarySeq$ = computed((get) => {
+  return get(internalSummarySeq$);
+});
+
+export const vccLastSummaryAt$ = computed((get) => {
+  return get(internalLastSummaryAt$);
+});
+
+export const vccTalkerInstructionTokens$ = computed((get) => {
+  return get(internalTalkerInstructionTokens$);
+});
+
+export const vccFinishedTasksFullText$ = computed((get) => {
+  return get(internalFinishedTasksFullText$);
+});
+
+const sessionListRefreshToken$ = state(0);
+
+export const vccSessionList$ = computed(async (get) => {
+  get(sessionListRefreshToken$);
+  const createClient = get(zeroClient$);
+  const client = createClient(zeroVoiceChatCandidateContract);
+  const res = await accept(client.listSessions({}), [200, 401, 403], {
+    toast: false,
+  });
+  if (res.status !== 200) {
+    return [];
+  }
+  return res.body.sessions;
+});
+
 type StreamingItem = {
   kind: "streaming";
   key: string;
@@ -179,15 +199,23 @@ type ServerItem = {
   item: VoiceChatCandidateItem;
 };
 
-type VccConversationEntry = StreamingItem | ServerItem;
+type ToolCallItem = {
+  kind: "tool_call";
+  key: string;
+  task: VoiceChatCandidateTask;
+};
+
+type VccConversationEntry = StreamingItem | ServerItem | ToolCallItem;
 
 /**
- * Merged stream: finalized server items (ordered by seq) followed by any
- * in-flight streaming text from the active Realtime turn. Server items are
- * the source of truth; streaming text is a per-turn UX nicety.
+ * Merged stream: finalized server items + create_task tool calls (ordered by
+ * createdAt) followed by any in-flight streaming text from the active
+ * Realtime turn. Server items are the source of truth; streaming text is a
+ * per-turn UX nicety.
  */
 export const vccConversationItems$ = computed((get) => {
   const items = get(internalItems$);
+  const tasksById = get(internalTasksById$);
   const streamingAssistant = get(internalStreamingAssistant$);
   const pendingUserItemId = get(internalPendingUserItemId$);
 
@@ -197,12 +225,29 @@ export const vccConversationItems$ = computed((get) => {
     }),
   );
 
-  const sorted = [...items].sort((a, b) => {
-    return a.seq - b.seq;
+  type Timestamped = { at: number; entry: VccConversationEntry };
+  const timeline: Timestamped[] = [];
+
+  for (const item of items) {
+    timeline.push({
+      at: new Date(item.createdAt).getTime(),
+      entry: { kind: "server", key: item.id, item },
+    });
+  }
+
+  for (const task of Object.values(tasksById)) {
+    timeline.push({
+      at: new Date(task.createdAt).getTime(),
+      entry: { kind: "tool_call", key: `tool-${task.id}`, task },
+    });
+  }
+
+  timeline.sort((a, b) => {
+    return a.at - b.at;
   });
 
-  const entries: VccConversationEntry[] = sorted.map((item) => {
-    return { kind: "server", key: item.id, item };
+  const entries: VccConversationEntry[] = timeline.map((t) => {
+    return t.entry;
   });
 
   if (pendingUserItemId && !seenRealtimeIds.has(pendingUserItemId)) {
@@ -379,6 +424,126 @@ function sendFunctionOutput(
   );
 }
 
+function flattenAssistantMessages(task: VoiceChatCandidateTask): string {
+  if (task.assistantMessages.length === 0) {
+    return "";
+  }
+  return task.assistantMessages
+    .map((e) => {
+      return e.content;
+    })
+    .join("\n");
+}
+
+function taskReplayOutput(task: VoiceChatCandidateTask): string {
+  if (task.error) {
+    return `Task failed: ${task.error}`;
+  }
+  const body = flattenAssistantMessages(task);
+  if (body) {
+    return body;
+  }
+  if (task.status === "done") {
+    return "(empty result)";
+  }
+  return `Task '${task.prompt.slice(0, 60)}' queued.`;
+}
+
+/**
+ * Replay prior conversation state into a fresh OpenAI Realtime session so the
+ * Talker picks up with full history instead of only the summary in its
+ * instructions. Called on reenter right after session.update. Items + tasks
+ * are interleaved by createdAt; each task emits a function_call + its
+ * function_call_output pair so Talker sees the tool exchange.
+ */
+function replayHistoryToTalker(
+  dc: RTCDataChannel,
+  items: VoiceChatCandidateItem[],
+  tasksById: Record<string, VoiceChatCandidateTask>,
+): void {
+  type Entry =
+    | { kind: "item"; at: number; item: VoiceChatCandidateItem }
+    | { kind: "task"; at: number; task: VoiceChatCandidateTask };
+
+  const timeline: Entry[] = [];
+  for (const item of items) {
+    timeline.push({
+      kind: "item",
+      at: new Date(item.createdAt).getTime(),
+      item,
+    });
+  }
+  for (const task of Object.values(tasksById)) {
+    timeline.push({
+      kind: "task",
+      at: new Date(task.createdAt).getTime(),
+      task,
+    });
+  }
+  timeline.sort((a, b) => {
+    return a.at - b.at;
+  });
+
+  for (const entry of timeline) {
+    if (entry.kind === "item") {
+      const item = entry.item;
+      const text = item.content?.trim();
+      if (!text) {
+        continue;
+      }
+      if (item.role === "user") {
+        dc.send(
+          JSON.stringify({
+            type: "conversation.item.create",
+            item: {
+              type: "message",
+              role: "user",
+              content: [{ type: "input_text", text }],
+            },
+          }),
+        );
+      } else if (item.role === "assistant") {
+        dc.send(
+          JSON.stringify({
+            type: "conversation.item.create",
+            item: {
+              type: "message",
+              role: "assistant",
+              content: [{ type: "text", text }],
+            },
+          }),
+        );
+      }
+      // task_result items are replayed via the function_call_output emitted
+      // when the task entry is processed below; system_note items are
+      // session-local annotations with no OpenAI-side representation.
+    } else {
+      const task = entry.task;
+      dc.send(
+        JSON.stringify({
+          type: "conversation.item.create",
+          item: {
+            type: "function_call",
+            call_id: task.callId,
+            name: "create_task",
+            arguments: JSON.stringify({ prompt: task.prompt }),
+          },
+        }),
+      );
+      dc.send(
+        JSON.stringify({
+          type: "conversation.item.create",
+          item: {
+            type: "function_call_output",
+            call_id: task.callId,
+            output: taskReplayOutput(task),
+          },
+        }),
+      );
+    }
+  }
+}
+
 type RealtimeDCEvent = {
   type: string;
   item_id?: string;
@@ -524,13 +689,12 @@ const setupWebRTC$ = command(
     set(internalDc$, dc);
 
     dc.addEventListener("open", () => {
-      const context = get(internalContext$);
       dc.send(
         JSON.stringify({
           type: "session.update",
           session: {
             modalities: ["text", "audio"],
-            instructions: composeInstructions(context),
+            instructions: get(internalTalkerInstructions$),
             input_audio_transcription: { model: "gpt-4o-mini-transcribe" },
             input_audio_noise_reduction: { type: "far_field" },
             turn_detection: HANDS_FREE_VAD_CONFIG,
@@ -538,6 +702,11 @@ const setupWebRTC$ = command(
           },
         }),
       );
+      const priorItems = get(internalItems$);
+      const priorTasks = get(internalTasksById$);
+      if (priorItems.length > 0 || Object.keys(priorTasks).length > 0) {
+        replayHistoryToTalker(dc, priorItems, priorTasks);
+      }
       set(internalStatus$, "connected");
     });
 
@@ -622,7 +791,7 @@ const startHeartbeat$ = command(async ({ get }, signal: AbortSignal) => {
   );
 });
 
-const refreshInstructionsIfChanged$ = command(({ get }, context: string) => {
+const pushTalkerInstructions$ = command(({ get }) => {
   const dc = get(internalDc$);
   if (!dc || dc.readyState !== "open") {
     return;
@@ -630,7 +799,7 @@ const refreshInstructionsIfChanged$ = command(({ get }, context: string) => {
   dc.send(
     JSON.stringify({
       type: "session.update",
-      session: { instructions: composeInstructions(context) },
+      session: { instructions: get(internalTalkerInstructions$) },
     }),
   );
 });
@@ -680,18 +849,54 @@ const startAblyLoop$ = command(
 
       if (sessionRes.status === 200) {
         const session = sessionRes.body.session;
-        const prevVersion = get(internalContextVersion$);
-        const nextContext = session.context ?? "";
-        if (session.contextVersion > prevVersion) {
-          set(internalContext$, nextContext);
-          set(internalContextVersion$, session.contextVersion);
-          set(refreshInstructionsIfChanged$, nextContext);
+        const nextRecentLogs = sessionRes.body.recentTaskLogs;
+        const nextInstructions = sessionRes.body.talkerInstructions;
+        const nextTokens = sessionRes.body.talkerInstructionTokens;
+        const prevVersion = get(internalSummaryVersion$);
+        const prevInstructions = get(internalTalkerInstructions$);
+
+        if (session.summaryVersion > prevVersion) {
+          set(internalConversationSummary$, session.conversationSummary ?? "");
+          set(internalWorkingTasksSummary$, session.workingTasksSummary ?? "");
+          set(
+            internalFinishedTasksSummary$,
+            session.finishedTasksSummary ?? "",
+          );
+          set(internalSummaryVersion$, session.summaryVersion);
+          set(internalSummarySeq$, session.summarySeq);
+          set(internalLastSummaryAt$, session.lastSummaryAt);
+        }
+        set(internalRecentTaskLogs$, nextRecentLogs);
+        set(
+          internalFinishedTasksFullText$,
+          sessionRes.body.finishedTasksFullText,
+        );
+        if (nextInstructions !== prevInstructions) {
+          set(internalTalkerInstructions$, nextInstructions);
+          set(internalTalkerInstructionTokens$, nextTokens);
+          set(pushTalkerInstructions$);
         }
         if (session.status !== "active") {
           set(internalStatus$, "disconnected");
           return true;
         }
       }
+
+      const tasksRes = await accept(
+        client.listTasks({ params: { id: sid } }),
+        [200, 401, 404],
+        { toast: false },
+      );
+      loopSignal.throwIfAborted();
+
+      if (tasksRes.status === 200) {
+        const next: Record<string, VoiceChatCandidateTask> = {};
+        for (const task of tasksRes.body.tasks) {
+          next[task.id] = task;
+        }
+        set(internalTasksById$, next);
+      }
+
       return false;
     });
 
@@ -783,7 +988,11 @@ const releaseWakeLock$ = command(({ get, set }) => {
 // ---------------------------------------------------------------------------
 
 export const startVoiceChatCandidate$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
+  async (
+    { get, set },
+    reenterSessionId: string | undefined,
+    signal: AbortSignal,
+  ) => {
     const status = get(internalStatus$);
     if (status === "connecting" || status === "connected") {
       return;
@@ -795,8 +1004,16 @@ export const startVoiceChatCandidate$ = command(
     set(internalMaxSeq$, 0);
     set(internalTasksByCallId$, {});
     set(internalTasksById$, {});
-    set(internalContext$, "");
-    set(internalContextVersion$, 0);
+    set(internalConversationSummary$, "");
+    set(internalWorkingTasksSummary$, "");
+    set(internalFinishedTasksSummary$, "");
+    set(internalRecentTaskLogs$, "");
+    set(internalSummaryVersion$, 0);
+    set(internalSummarySeq$, 0);
+    set(internalLastSummaryAt$, null);
+    set(internalTalkerInstructions$, "");
+    set(internalTalkerInstructionTokens$, 0);
+    set(internalFinishedTasksFullText$, "");
     set(internalStreamingAssistant$, null);
     set(internalPendingUserItemId$, null);
     set(internalMuted$, false);
@@ -805,35 +1022,103 @@ export const startVoiceChatCandidate$ = command(
 
     const sessionSignal = set(resetSessionSignal$, signal);
 
-    const agentId = await get(defaultAgentId$);
-    signal.throwIfAborted();
-
-    if (!agentId) {
-      set(internalError$, "No agent selected");
-      set(internalStatus$, "error");
-      return;
-    }
-
     const createClient = get(zeroClient$);
     const client = createClient(zeroVoiceChatCandidateContract);
 
-    const sessionRes = await accept(
-      client.createSession({ body: { agentId } }),
-      [200, 400, 401, 403],
-      { toast: false },
-    );
-    signal.throwIfAborted();
+    type SessionResBody = {
+      session: VoiceChatCandidateSession;
+      recentTaskLogs: string;
+      finishedTasksFullText: string;
+      talkerInstructions: string;
+      talkerInstructionTokens: number;
+    };
 
-    if (sessionRes.status !== 200) {
-      set(internalError$, sessionRes.body.error.message);
-      set(internalStatus$, "error");
-      return;
+    let sessionBody: SessionResBody;
+    if (reenterSessionId) {
+      const res = await accept(
+        client.reenterSession({
+          params: { id: reenterSessionId },
+          body: {},
+        }),
+        [200, 401, 403, 404],
+        { toast: false },
+      );
+      signal.throwIfAborted();
+      if (res.status !== 200) {
+        set(internalError$, res.body.error.message);
+        set(internalStatus$, "error");
+        return;
+      }
+      sessionBody = res.body;
+    } else {
+      const agentId = await get(defaultAgentId$);
+      signal.throwIfAborted();
+
+      if (!agentId) {
+        set(internalError$, "No agent selected");
+        set(internalStatus$, "error");
+        return;
+      }
+
+      const res = await accept(
+        client.createSession({ body: { agentId } }),
+        [200, 400, 401, 403],
+        { toast: false },
+      );
+      signal.throwIfAborted();
+      if (res.status !== 200) {
+        set(internalError$, res.body.error.message);
+        set(internalStatus$, "error");
+        return;
+      }
+      sessionBody = res.body;
     }
 
-    const session = sessionRes.body.session;
+    const session = sessionBody.session;
     set(internalSessionId$, session.id);
-    set(internalContext$, session.context ?? "");
-    set(internalContextVersion$, session.contextVersion);
+    set(internalConversationSummary$, session.conversationSummary ?? "");
+    set(internalWorkingTasksSummary$, session.workingTasksSummary ?? "");
+    set(internalFinishedTasksSummary$, session.finishedTasksSummary ?? "");
+    set(internalSummaryVersion$, session.summaryVersion);
+    set(internalSummarySeq$, session.summarySeq);
+    set(internalLastSummaryAt$, session.lastSummaryAt);
+    set(internalRecentTaskLogs$, sessionBody.recentTaskLogs);
+    set(internalFinishedTasksFullText$, sessionBody.finishedTasksFullText);
+    set(internalTalkerInstructions$, sessionBody.talkerInstructions);
+    set(internalTalkerInstructionTokens$, sessionBody.talkerInstructionTokens);
+
+    if (reenterSessionId) {
+      const [itemsRes, tasksRes] = await Promise.all([
+        accept(
+          client.readItems({ params: { id: session.id }, query: {} }),
+          [200, 401, 404],
+          { toast: false },
+        ),
+        accept(
+          client.listTasks({ params: { id: session.id } }),
+          [200, 401, 404],
+          { toast: false },
+        ),
+      ]);
+      signal.throwIfAborted();
+      if (itemsRes.status === 200) {
+        set(internalItems$, itemsRes.body.items);
+        const lastSeq = itemsRes.body.items.reduce((acc, item) => {
+          return Math.max(acc, item.seq);
+        }, 0);
+        set(internalMaxSeq$, lastSeq);
+      }
+      if (tasksRes.status === 200) {
+        const next: Record<string, VoiceChatCandidateTask> = {};
+        const byCallId: Record<string, VoiceChatCandidateTask> = {};
+        for (const task of tasksRes.body.tasks) {
+          next[task.id] = task;
+          byCallId[task.callId] = task;
+        }
+        set(internalTasksById$, next);
+        set(internalTasksByCallId$, byCallId);
+      }
+    }
 
     const tokenRes = await accept(
       client.token({ body: { model: TALKER_MODEL } }),
@@ -943,12 +1228,21 @@ export const endVoiceChatCandidate$ = command(({ get, set }) => {
   set(internalMaxSeq$, 0);
   set(internalTasksByCallId$, {});
   set(internalTasksById$, {});
-  set(internalContext$, "");
-  set(internalContextVersion$, 0);
+  set(internalConversationSummary$, "");
+  set(internalWorkingTasksSummary$, "");
+  set(internalFinishedTasksSummary$, "");
+  set(internalRecentTaskLogs$, "");
+  set(internalSummaryVersion$, 0);
+  set(internalSummarySeq$, 0);
+  set(internalLastSummaryAt$, null);
+  set(internalTalkerInstructions$, "");
+  set(internalTalkerInstructionTokens$, 0);
+  set(internalFinishedTasksFullText$, "");
   set(internalStreamingAssistant$, null);
   set(internalPendingUserItemId$, null);
   set(internalParentSignal$, null);
   set(internalStatus$, "idle");
+  set(sessionListRefreshToken$, get(sessionListRefreshToken$) + 1);
 });
 
 export const toggleVoiceChatCandidateMute$ = command(({ get, set }) => {

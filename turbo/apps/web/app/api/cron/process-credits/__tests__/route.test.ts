@@ -20,6 +20,7 @@ import {
   insertCreditExpiresRecord,
   findCreditExpiresRecords,
   grantCreditsToOrg,
+  setOrgCredits,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { reloadEnv } from "../../../../../src/env";
 
@@ -44,6 +45,7 @@ describe("GET /api/cron/process-credits", () => {
     vi.stubEnv("CRON_SECRET", "test-cron-secret");
     reloadEnv();
     user = await context.setupUser();
+    await setOrgCredits(user.orgId, 100_000);
   });
 
   describe("auth", () => {
@@ -346,7 +348,7 @@ describe("GET /api/cron/process-credits", () => {
         stripeInvoiceId: uniqueId("inv-expired"),
       });
       // Mirror the inflated ledger: seed org with the expired amount on top
-      // of the default 100k starter credits
+      // of the 100k baseline seeded in beforeEach via setOrgCredits
       await grantCreditsToOrg(user.orgId, 5000);
 
       // 100 input + 100 output → 200 credits charged

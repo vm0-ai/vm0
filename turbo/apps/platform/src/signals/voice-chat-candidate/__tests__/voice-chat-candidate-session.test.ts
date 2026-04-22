@@ -32,9 +32,12 @@ function sessionPayload(overrides: Record<string, unknown> = {}) {
     agentId: DEFAULT_AGENT_ID,
     mode: "chat" as const,
     status: "active" as const,
-    context: null,
-    contextSeq: 0,
-    contextVersion: 0,
+    conversationSummary: null,
+    workingTasksSummary: null,
+    finishedTasksSummary: null,
+    summarySeq: 0,
+    summaryVersion: 0,
+    lastSummaryAt: null,
     createdAt: "2026-04-20T00:00:00Z",
     lastHeartbeatAt: "2026-04-20T00:00:00Z",
     endedAt: null,
@@ -64,7 +67,7 @@ function taskPayload(overrides: Record<string, unknown> = {}) {
     callId: "call-1",
     prompt: "do the thing",
     status: "pending" as const,
-    result: null,
+    assistantMessages: [],
     error: null,
     createdAt: "2026-04-20T00:00:00Z",
     startedAt: null,
@@ -100,7 +103,13 @@ function mockCreateSessionOk() {
       zeroVoiceChatCandidateContract.createSession,
       ({ body, respond }) => {
         calls.push(body);
-        return respond(200, { session: sessionPayload() });
+        return respond(200, {
+          session: sessionPayload(),
+          recentTaskLogs: "",
+          finishedTasksFullText: "",
+          talkerInstructions: "",
+          talkerInstructionTokens: 0,
+        });
       },
     ),
   );
@@ -197,7 +206,21 @@ function mockReadItemsEmpty() {
 function mockGetSessionOk() {
   server.use(
     mockApi(zeroVoiceChatCandidateContract.getSession, ({ respond }) => {
-      return respond(200, { session: sessionPayload() });
+      return respond(200, {
+        session: sessionPayload(),
+        recentTaskLogs: "",
+        finishedTasksFullText: "",
+        talkerInstructions: "",
+        talkerInstructionTokens: 0,
+      });
+    }),
+  );
+}
+
+function mockListTasksOk() {
+  server.use(
+    mockApi(zeroVoiceChatCandidateContract.listTasks, ({ respond }) => {
+      return respond(200, { tasks: [] });
     }),
   );
 }
@@ -358,9 +381,10 @@ describe("voice-chat-candidate session", () => {
     mockTokenOk();
     mockReadItemsEmpty();
     mockGetSessionOk();
+    mockListTasksOk();
     mockHeartbeatOk();
     detach(
-      context.store.set(startVoiceChatCandidate$, context.signal),
+      context.store.set(startVoiceChatCandidate$, undefined, context.signal),
       Reason.DomCallback,
     );
     await vi.waitFor(() => {
@@ -402,7 +426,11 @@ describe("voice-chat-candidate session", () => {
       await setup();
       mockCreateSessionError(400, "forbidden");
 
-      await context.store.set(startVoiceChatCandidate$, context.signal);
+      await context.store.set(
+        startVoiceChatCandidate$,
+        undefined,
+        context.signal,
+      );
 
       expect(context.store.get(vccStatus$)).toBe("error");
       expect(context.store.get(vccError$)).toBe("forbidden");
@@ -413,7 +441,11 @@ describe("voice-chat-candidate session", () => {
       mockCreateSessionOk();
       mockTokenError();
 
-      await context.store.set(startVoiceChatCandidate$, context.signal);
+      await context.store.set(
+        startVoiceChatCandidate$,
+        undefined,
+        context.signal,
+      );
 
       expect(context.store.get(vccStatus$)).toBe("error");
       expect(context.store.get(vccError$)).toBe("token failed");
@@ -552,6 +584,7 @@ describe("voice-chat-candidate session", () => {
       mockCreateSessionOk();
       mockTokenOk();
       mockGetSessionOk();
+      mockListTasksOk();
       mockHeartbeatOk();
       let itemsBatch: ReturnType<typeof itemPayload>[] = [];
       server.use(
@@ -563,7 +596,7 @@ describe("voice-chat-candidate session", () => {
       );
 
       detach(
-        context.store.set(startVoiceChatCandidate$, context.signal),
+        context.store.set(startVoiceChatCandidate$, undefined, context.signal),
         Reason.DomCallback,
       );
       await vi.waitFor(() => {

@@ -9,7 +9,7 @@ interface LanguageSwitcherProps {
   openDirection?: "up" | "down";
 }
 
-export default function LanguageSwitcher({
+export function LanguageSwitcher({
   openDirection = "down",
 }: LanguageSwitcherProps) {
   const [isOpen, setIsOpen] = useState(false);

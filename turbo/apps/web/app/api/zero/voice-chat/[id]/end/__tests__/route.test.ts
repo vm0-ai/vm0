@@ -136,7 +136,7 @@ describe("POST /api/zero/voice-chat/[id]/end", () => {
     expect(event.source).toBe("system");
   });
 
-  it("should end active session, write event, and cancel run", async () => {
+  it("should end active session and preserve run for graceful slow-brain shutdown", async () => {
     // Create a run record for FK constraint
     const compose = await createTestCompose(uniqueId("vc-agent"));
     const testRun = await seedTestRun(userId, compose.composeId);
@@ -166,8 +166,13 @@ describe("POST /api/zero/voice-chat/[id]/end", () => {
     expect(event.type).toBe("session-end");
     expect(event.source).toBe("system");
 
-    // Verify run was cancelled (cancelRun ran for real — pure DB operation)
+    // Regression guard for #10429: endSession MUST NOT hard-cancel the run.
+    // Slow-brain self-exits on its next 5s poll after seeing session-end,
+    // which routes through the agent-complete webhook that populates
+    // agent_runs.result.agentSessionId for cross-session continuation.
+    // seedTestRun defaults to "pending" and endSession must leave it
+    // untouched — any write to agent_runs.status is a regression.
     const runRecord = await findTestRunRecord(testRun.runId);
-    expect(runRecord?.status).toBe("cancelled");
+    expect(runRecord?.status).toBe("pending");
   });
 });

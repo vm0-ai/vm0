@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.6](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.5...nbd-cow-v0.4.6) (2026-04-22)
+
+
+### Bug Fixes
+
+* skip auto-focus on touch devices in ZeroChatComposer ([#10496](https://github.com/vm0-ai/vm0/issues/10496)) ([2c90017](https://github.com/vm0-ai/vm0/commit/2c90017ef46dae13b52426038025e22bb9cc9f88))
+
 ## [0.4.5](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.4...nbd-cow-v0.4.5) (2026-04-18)
 
 

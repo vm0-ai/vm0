@@ -5,8 +5,12 @@
  * metadata, and avatar signals. Downstream code should import from here
  * instead of reaching into individual signal files.
  */
-import { command, computed, state } from "ccstate";
-import { zeroAgentsByIdContract, zeroTeamContract } from "@vm0/core";
+import { command, computed, type Computed, state } from "ccstate";
+import {
+  type ZeroAgentResponse,
+  zeroAgentsByIdContract,
+  zeroTeamContract,
+} from "@vm0/core";
 import { pathParams$ } from "./route.ts";
 import { activeRoute$ } from "./active-route.ts";
 import { zeroOnboardingStatus$ } from "./zero-page/zero-onboarding.ts";
@@ -18,13 +22,35 @@ export const defaultAgentId$ = computed(async (get) => {
   return status.defaultAgentId;
 });
 
-export function agentById(id: string) {
-  return computed(async (get) => {
-    const client = get(zeroClient$)(zeroAgentsByIdContract);
-    const result = await accept(client.get({ params: { id } }), [200]);
-    return result.body;
-  });
+const internalAgentByIdReload$ = state(0);
+
+function createAgentByIdFactory(): (
+  id: string,
+) => Computed<Promise<ZeroAgentResponse>> {
+  const cache = new Map<string, Computed<Promise<ZeroAgentResponse>>>();
+  return (id: string) => {
+    const existing = cache.get(id);
+    if (existing) {
+      return existing;
+    }
+    const atom$ = computed(async (get) => {
+      get(internalAgentByIdReload$);
+      const client = get(zeroClient$)(zeroAgentsByIdContract);
+      const result = await accept(client.get({ params: { id } }), [200]);
+      return result.body;
+    });
+    cache.set(id, atom$);
+    return atom$;
+  };
 }
+
+export const agentById = createAgentByIdFactory();
+
+export const reloadAgentById$ = command(({ set }) => {
+  set(internalAgentByIdReload$, (prev) => {
+    return prev + 1;
+  });
+});
 
 const defaultAgent$ = computed(async (get) => {
   const defaultId = await get(defaultAgentId$);
@@ -112,11 +138,6 @@ export interface SubagentInfo {
 }
 
 export const leadAgentAvatarUrl$ = computed(async (get) => {
-  const agentId = await get(defaultAgentId$);
-  if (!agentId) {
-    return null;
-  }
-  const client = get(zeroClient$)(zeroAgentsByIdContract);
-  const result = await accept(client.get({ params: { id: agentId } }), [200]);
-  return result.body.avatarUrl ?? null;
+  const agent = await get(defaultAgent$);
+  return agent?.avatarUrl ?? null;
 });

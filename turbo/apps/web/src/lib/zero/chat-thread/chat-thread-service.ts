@@ -398,14 +398,3 @@ export async function getActiveRunIdsForThread(
     return r.id;
   });
 }
-
-type ChatMessageWithId = {
-  id: string;
-  role: "user" | "assistant";
-  content: string | null;
-  runId?: string;
-  error?: string;
-  status?: string;
-  sequenceNumber?: number | null;
-  createdAt: string;
-};

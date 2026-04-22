@@ -43,9 +43,7 @@ const router = tsr.router(chatThreadV1MessagesContract, {
           id: row.id,
           role: messageRoleSchema.parse(row.role),
           content: row.content,
-          runId: row.runId ?? undefined,
           error: effectiveError,
-          status: row.runStatus ?? undefined,
           createdAt: row.createdAt.toISOString(),
         };
       });

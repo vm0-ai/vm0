@@ -1,4 +1,4 @@
-export default function Particles() {
+export function Particles() {
   const particles = [];
   for (let i = 0; i < 12; i++) {
     const size = i % 3 === 0 ? "large" : i % 3 === 1 ? "medium" : "small";

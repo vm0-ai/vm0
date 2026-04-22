@@ -37,6 +37,9 @@ CLAUDE_CODE_VERSION_URL=https://storage.googleapis.com/claude-code-dist-86c565f3
 # Optional: Analytics (Plausible)
 PLAUSIBLE_SCRIPT_URL=
 
+# Required: OpenAI (voice-chat ephemeral token minting, STT, TTS)
+OPENAI_API_KEY=op://Development/openai/OPENAI_API_KEY
+
 # Optional: LLM API (OpenRouter)
 OPENROUTER_API_KEY=op://Development/openrouter/OPENROUTER_API_KEY
 

@@ -27,6 +27,7 @@ from mitmproxy.test import tflow, tutils
 import auth
 import mitm_addon
 import usage
+from usage.providers import connectors as _usage_connectors
 
 
 @pytest.fixture(autouse=True)
@@ -48,6 +49,8 @@ def _reset_module_state() -> None:
     auth._cache_locks.clear()
     auth._force_refresh_markers.clear()
     auth._last_force_refresh_at.clear()
+    _usage_connectors._unregistered_handler_warned.clear()
+    usage.counters._pending_write_error_logged = False
 
 
 def _headers(*pairs: tuple[str, str]) -> http.Headers:
@@ -287,7 +290,7 @@ def fake_firewall_headers():
 
 @pytest.fixture
 def sync_usage_executor():
-    """Swap ``usage.usage_executor`` for a synchronous stub.
+    """Swap ``usage.webhook.usage_executor`` for a synchronous stub.
 
     Tests that mock ``usage._opener`` and want the webhook payloads to
     appear on the mock by the time they inspect it need submission to
@@ -302,17 +305,17 @@ def sync_usage_executor():
         def submit(self, fn, *args, **kwargs):
             fn(*args, **kwargs)
 
-    original = usage.usage_executor
-    usage.usage_executor = _SyncExecutor()
+    original = usage.webhook.usage_executor
+    usage.webhook.usage_executor = _SyncExecutor()
     try:
-        yield usage.usage_executor
+        yield usage.webhook.usage_executor
     finally:
-        usage.usage_executor = original
+        usage.webhook.usage_executor = original
 
 
 @pytest.fixture
 def fresh_usage_executor():
-    """Swap ``usage.usage_executor`` for a throw-away pool for one test.
+    """Swap ``usage.webhook.usage_executor`` for a throw-away pool for one test.
 
     Tests that call ``shutdown(wait=True)`` to flush pending webhook
     reports need a fresh executor afterwards so later tests still see a
@@ -322,13 +325,15 @@ def fresh_usage_executor():
     idempotent, so we always call it on the way out regardless of
     whether the test already did.
     """
-    original = usage.usage_executor
-    usage.usage_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="usage-test")
+    original = usage.webhook.usage_executor
+    usage.webhook.usage_executor = ThreadPoolExecutor(
+        max_workers=4, thread_name_prefix="usage-test"
+    )
     try:
-        yield usage.usage_executor
+        yield usage.webhook.usage_executor
     finally:
-        usage.usage_executor.shutdown(wait=True)
-        usage.usage_executor = original
+        usage.webhook.usage_executor.shutdown(wait=True)
+        usage.webhook.usage_executor = original
 
 
 @pytest.fixture

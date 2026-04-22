@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ThemeProvider } from "../ThemeProvider";
-import Navbar from "../Navbar";
+import { Navbar } from "../Navbar";
 
 // External: next-intl/navigation (used by navigation.ts -> Link, usePathname, useRouter)
 vi.mock("next-intl/navigation", () => {

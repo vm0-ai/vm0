@@ -107,7 +107,7 @@ accept_legal_consent() {
   local snap_i
   snap_i=$(agent-browser snapshot -i 2>/dev/null || true)
   local ref
-  ref=$(echo "$snap_i" | grep -iE 'checkbox.*(terms|legal|agree|privacy|consent)' | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
+  ref=$(echo "$snap_i" | grep -iE 'checkbox.*(terms|legal|agree|privacy|consent)' | grep -oE 'ref=e[0-9]+' | head -1 | sed 's/ref=/@/')
   if [[ -n "$ref" ]]; then
     agent-browser click "$ref" 2>/dev/null || true
     agent-browser wait 300
@@ -120,7 +120,7 @@ accept_legal_consent() {
 click_continue() {
   local snap_i ref
   snap_i=$(agent-browser snapshot -i 2>/dev/null || true)
-  ref=$(echo "$snap_i" | grep -E 'button "Continue" \[ref=' | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
+  ref=$(echo "$snap_i" | grep -E 'button "Continue".*ref=e[0-9]+' | grep -oE 'ref=e[0-9]+' | head -1 | sed 's/ref=/@/')
   if [[ -n "$ref" ]]; then
     agent-browser scrollintoview "$ref" 2>/dev/null || true
     agent-browser wait 300

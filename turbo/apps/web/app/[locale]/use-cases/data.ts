@@ -108,13 +108,6 @@ const NOTION: ConnectorRef = {
   dark: true,
 };
 
-const INTERCOM: ConnectorRef = {
-  id: "intercom",
-  label: "Intercom",
-  icon: "/assets/connectors/intercom.svg",
-  dark: true,
-};
-
 const AXIOM: ConnectorRef = {
   id: "axiom",
   label: "Axiom",
@@ -132,37 +125,6 @@ const VM0: ConnectorRef = {
   id: "vm0",
   label: "vm0",
   icon: "/assets/connectors/vm0.svg",
-};
-
-const HUBSPOT: ConnectorRef = {
-  id: "hubspot",
-  label: "HubSpot",
-  icon: "/assets/connectors/hubspot.svg",
-};
-
-const VERCEL: ConnectorRef = {
-  id: "vercel",
-  label: "Vercel",
-  icon: "/assets/connectors/vercel.svg",
-  dark: true,
-};
-
-const FIGMA: ConnectorRef = {
-  id: "figma",
-  label: "Figma",
-  icon: "/assets/connectors/figma.svg",
-};
-
-const AIRTABLE: ConnectorRef = {
-  id: "airtable",
-  label: "Airtable",
-  icon: "/assets/connectors/airtable.svg",
-};
-
-const DROPBOX: ConnectorRef = {
-  id: "dropbox",
-  label: "Dropbox",
-  icon: "/assets/connectors/dropbox.svg",
 };
 
 const ANTHROPIC_MANAGED_AGENTS: ConnectorRef = {

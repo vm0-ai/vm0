@@ -3,7 +3,10 @@ import { getAuthContext } from "../../../../../../src/lib/auth/get-auth-context"
 import { initServices } from "../../../../../../src/lib/init-services";
 import { getVoiceChatCandidateSession } from "../../../../../../src/lib/zero/voice-chat-candidate/session-service";
 import { readVoiceChatCandidateItems } from "../../../../../../src/lib/zero/voice-chat-candidate/item-service";
-import { createVoiceChatCandidateTask } from "../../../../../../src/lib/zero/voice-chat-candidate/task-service";
+import {
+  createVoiceChatCandidateTask,
+  listSessionTasks,
+} from "../../../../../../src/lib/zero/voice-chat-candidate/task-service";
 import {
   resolveAgentSystemPrompt,
   triggerReasoning,
@@ -82,9 +85,18 @@ export async function POST(
             return `[${i.seq}] ${i.role}: ${i.content ?? ""}`;
           })
           .join("\n");
+  const reasonerSummary = [
+    session.conversationSummary?.trim(),
+    session.workingTasksSummary?.trim(),
+    session.finishedTasksSummary?.trim(),
+  ]
+    .filter((s): s is string => {
+      return Boolean(s);
+    })
+    .join("\n\n");
   const appendSystemPrompt = [
     `[Voice chat context]\n${agentSystemPrompt.trim() || "(none)"}`,
-    `[Reasoner context]\n${session.context?.trim() || "(none)"}`,
+    `[Reasoner context]\n${reasonerSummary || "(none)"}`,
     `[Recent items]\n${recentFormatted}`,
   ].join("\n\n");
 
@@ -112,5 +124,36 @@ export async function POST(
 
   return NextResponse.json({
     task: serializeVoiceChatCandidateTask(task),
+  });
+}
+
+export async function GET(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
+): Promise<Response> {
+  initServices();
+
+  const authCtx = await getAuthContext(
+    request.headers.get("authorization") ?? undefined,
+  );
+  if (!authCtx?.orgId) return unauthorizedResponse();
+
+  if (!(await isVoiceChatCandidateEnabled(authCtx))) {
+    return notFoundResponse("Voice-chat-candidate session not found");
+  }
+
+  const { id } = await params;
+  const session = await getVoiceChatCandidateSession(id);
+  if (
+    !session ||
+    session.orgId !== authCtx.orgId ||
+    session.userId !== authCtx.userId
+  ) {
+    return notFoundResponse("Voice-chat-candidate session not found");
+  }
+
+  const tasks = await listSessionTasks(id);
+  return NextResponse.json({
+    tasks: tasks.map(serializeVoiceChatCandidateTask),
   });
 }

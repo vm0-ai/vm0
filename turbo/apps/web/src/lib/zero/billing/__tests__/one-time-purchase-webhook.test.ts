@@ -35,8 +35,10 @@ vi.mock("stripe", () => {
   };
 });
 
-// eslint-disable-next-line web/no-direct-db-in-tests -- Webhook handler is triggered by Stripe, not an HTTP route the test can POST to
+/* eslint-disable web/no-direct-db-in-tests -- Webhook handler is triggered by Stripe, not an HTTP route the test can POST to */
+// oxlint-disable-next-line import/first -- import must follow vi.mock so stripe is stubbed before billing-service evaluates getStripe.
 import { handleCheckoutCompleted } from "../billing-service";
+/* eslint-enable web/no-direct-db-in-tests */
 
 const context = testContext();
 

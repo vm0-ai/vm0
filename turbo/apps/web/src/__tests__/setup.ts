@@ -50,6 +50,8 @@ const resetEnv = vi.hoisted(() => {
     vi.stubEnv("AGENTPHONE_API_KEY", "test-agentphone-api-key");
     // Realtime pub/sub (Ably) — required env; tests use a mocked Ably client
     vi.stubEnv("ABLY_API_KEY", "test-key:test-secret");
+    // OpenAI (voice-chat ephemeral token minting, STT, TTS) — required env
+    vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
     // Stripe billing — `vi.mock("stripe", ...)` replaces the constructor, but
     // init-services.ts throws before reaching it if STRIPE_SECRET_KEY is unset.
     vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_fake_for_testing");
@@ -273,7 +275,7 @@ vi.mock("@axiomhq/logging", () => {
 // Uses shared spy instances from ably-mock.ts so test files can import
 // mockAblyPublish / mockAblyCreateTokenRequest without repeating vi.mock.
 vi.mock("ably", async () => {
-  const { mockAblyPublish, mockAblyCreateTokenRequest, mockAblyChannelsGet } =
+  const { mockAblyCreateTokenRequest, mockAblyChannelsGet } =
     await import("./ably-mock");
   return {
     default: {

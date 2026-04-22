@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.3](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v0.7.2...ably-subscriber-v0.7.3) (2026-04-22)
+
+
+### Bug Fixes
+
+* skip auto-focus on touch devices in ZeroChatComposer ([#10496](https://github.com/vm0-ai/vm0/issues/10496)) ([2c90017](https://github.com/vm0-ai/vm0/commit/2c90017ef46dae13b52426038025e22bb9cc9f88))
+
 ## [0.7.2](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v0.7.1...ably-subscriber-v0.7.2) (2026-04-16)
 
 

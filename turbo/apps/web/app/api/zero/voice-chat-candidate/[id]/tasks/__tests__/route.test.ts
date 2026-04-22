@@ -6,6 +6,7 @@ import { findTestZeroRun } from "../../../../../../../src/__tests__/db-test-asse
 import {
   endCandidateSession,
   postRequest,
+  getRequest,
   paramsFor,
   seedCandidateAgent,
   seedCandidateSession,
@@ -23,7 +24,7 @@ vi.mock("@vm0/core", async (importOriginal) => {
 const { isFeatureEnabled } = await import("@vm0/core");
 const mockIsFeatureEnabled = isFeatureEnabled as ReturnType<typeof vi.fn>;
 
-const { POST } = await import("../route");
+const { POST, GET } = await import("../route");
 
 const context = testContext();
 
@@ -148,4 +149,85 @@ describe("POST /api/zero/voice-chat-candidate/:id/tasks (createTask)", () => {
     const zeroRun = await findTestZeroRun(body.task.runId);
     expect(zeroRun?.triggerSource).toBe("voice-chat");
   });
+});
+
+describe("GET /api/zero/voice-chat-candidate/:id/tasks (listTasks)", () => {
+  let orgId: string;
+  let userId: string;
+
+  beforeEach(async () => {
+    context.setupMocks();
+    const user = await context.setupUser();
+    userId = user.userId;
+    const org = await setupCandidateOrg(userId);
+    orgId = org.orgId;
+    mockIsFeatureEnabled.mockReturnValue(true);
+  });
+
+  it("returns 401 when not authenticated", async () => {
+    mockClerk({ userId: null });
+    const response = await GET(
+      getRequest(`/${randomUUID()}/tasks`),
+      paramsFor(randomUUID()),
+    );
+    expect(response.status).toBe(401);
+  });
+
+  it("returns 404 when session does not exist", async () => {
+    const response = await GET(
+      getRequest(`/${randomUUID()}/tasks`),
+      paramsFor(randomUUID()),
+    );
+    expect(response.status).toBe(404);
+  });
+
+  it("returns empty list for a session with no tasks", async () => {
+    const { agentId } = await seedCandidateAgent(userId, orgId);
+    const session = await seedCandidateSession({ orgId, userId, agentId });
+    const response = await GET(
+      getRequest(`/${session.id}/tasks`),
+      paramsFor(session.id),
+    );
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.tasks).toEqual([]);
+  });
+
+  it("returns tasks in createdAt DESC order with result as an array", async () => {
+    const { agentId } = await seedCandidateAgent(userId, orgId);
+    const session = await seedCandidateSession({ orgId, userId, agentId });
+
+    await POST(
+      postRequest(
+        `/${session.id}/tasks`,
+        taskBody({ prompt: "older", callId: randomUUID() }),
+      ),
+      paramsFor(session.id),
+    );
+    await new Promise((r) => {
+      setTimeout(r, 5);
+    });
+    await POST(
+      postRequest(
+        `/${session.id}/tasks`,
+        taskBody({ prompt: "newer", callId: randomUUID() }),
+      ),
+      paramsFor(session.id),
+    );
+
+    const response = await GET(
+      getRequest(`/${session.id}/tasks`),
+      paramsFor(session.id),
+    );
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.tasks).toHaveLength(2);
+    expect(body.tasks[0].prompt).toBe("newer");
+    expect(body.tasks[1].prompt).toBe("older");
+    expect(body.tasks[0].assistantMessages).toEqual([]);
+  });
+
+  // Silence the "unused" warning for endCandidateSession — kept imported for
+  // symmetry with adjacent test files that share _helpers.
+  void endCandidateSession;
 });

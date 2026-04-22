@@ -92,6 +92,14 @@ const MODEL_PRICING: (typeof creditPricing.$inferInsert)[] = [
     cacheReadTokenPrice: usd(0.06),
     cacheCreationTokenPrice: usd(0.375),
   },
+  {
+    model: "deepseek-chat",
+    modelProvider: "vm0",
+    inputTokenPrice: usd(0.28),
+    outputTokenPrice: usd(0.42),
+    cacheReadTokenPrice: usd(0.028),
+    cacheCreationTokenPrice: 0,
+  },
 ];
 
 /**

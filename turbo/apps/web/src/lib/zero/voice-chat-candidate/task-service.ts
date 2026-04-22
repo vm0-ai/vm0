@@ -1,4 +1,5 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import type { VoiceChatCandidateTaskResultEntry } from "@vm0/core";
 import {
   featureCandidateVoiceChatItems,
   featureCandidateVoiceChatSessions,
@@ -131,11 +132,20 @@ export async function completeVoiceChatCandidateTask(params: {
     }
 
     const finalStatus = params.error ? "failed" : "done";
+    const finalEntries: VoiceChatCandidateTaskResultEntry[] = params.result
+      ? [
+          {
+            type: "assistant",
+            content: params.result,
+            at: now.toISOString(),
+          },
+        ]
+      : [];
     const [completedTask] = await tx
       .update(featureCandidateVoiceChatTasks)
       .set({
         status: finalStatus,
-        result: params.result,
+        assistantMessages: sql`${featureCandidateVoiceChatTasks.assistantMessages} || ${JSON.stringify(finalEntries)}::jsonb`,
         error: params.error,
         finishedAt: now,
       })
@@ -192,6 +202,88 @@ export async function listPendingVoiceChatCandidateTasks(
         inArray(featureCandidateVoiceChatTasks.status, ["pending", "queued"]),
       ),
     );
+}
+
+export async function listSessionTasks(sessionId: string): Promise<TaskRow[]> {
+  const db = globalThis.services.db;
+  return db
+    .select()
+    .from(featureCandidateVoiceChatTasks)
+    .where(eq(featureCandidateVoiceChatTasks.sessionId, sessionId))
+    .orderBy(desc(featureCandidateVoiceChatTasks.createdAt));
+}
+
+/**
+ * Flip a task from pending/queued to running on the first event seen. No-op
+ * when the task row is absent (not a voice-chat run) or already past the
+ * running transition. Returns the session + user for Ably fan-out when a row
+ * was updated.
+ */
+export async function markTaskRunningIfQueued(
+  runId: string,
+): Promise<{ sessionId: string; userId: string } | null> {
+  const db = globalThis.services.db;
+  const [row] = await db
+    .update(featureCandidateVoiceChatTasks)
+    .set({ status: "running", startedAt: new Date() })
+    .where(
+      and(
+        eq(featureCandidateVoiceChatTasks.runId, runId),
+        inArray(featureCandidateVoiceChatTasks.status, ["pending", "queued"]),
+      ),
+    )
+    .returning({ sessionId: featureCandidateVoiceChatTasks.sessionId });
+
+  if (!row) return null;
+
+  const [session] = await db
+    .select({ userId: featureCandidateVoiceChatSessions.userId })
+    .from(featureCandidateVoiceChatSessions)
+    .where(eq(featureCandidateVoiceChatSessions.id, row.sessionId))
+    .limit(1);
+
+  if (!session) return null;
+  return { sessionId: row.sessionId, userId: session.userId };
+}
+
+/**
+ * Append assistant-message entries to `tasks.assistant_messages`. Silent no-op when
+ * the task is unknown (not a voice-chat run) or terminal. Returns session+user
+ * on success.
+ */
+export async function appendTaskAssistantResult(params: {
+  runId: string;
+  entries: VoiceChatCandidateTaskResultEntry[];
+}): Promise<{ sessionId: string; userId: string } | null> {
+  if (params.entries.length === 0) return null;
+  const db = globalThis.services.db;
+  const [row] = await db
+    .update(featureCandidateVoiceChatTasks)
+    .set({
+      assistantMessages: sql`${featureCandidateVoiceChatTasks.assistantMessages} || ${JSON.stringify(params.entries)}::jsonb`,
+    })
+    .where(
+      and(
+        eq(featureCandidateVoiceChatTasks.runId, params.runId),
+        inArray(featureCandidateVoiceChatTasks.status, [
+          "pending",
+          "queued",
+          "running",
+        ]),
+      ),
+    )
+    .returning({ sessionId: featureCandidateVoiceChatTasks.sessionId });
+
+  if (!row) return null;
+
+  const [session] = await db
+    .select({ userId: featureCandidateVoiceChatSessions.userId })
+    .from(featureCandidateVoiceChatSessions)
+    .where(eq(featureCandidateVoiceChatSessions.id, row.sessionId))
+    .limit(1);
+
+  if (!session) return null;
+  return { sessionId: row.sessionId, userId: session.userId };
 }
 
 export async function cancelSessionPendingRuns(session: {

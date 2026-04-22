@@ -18,5 +18,66 @@
         ]
       }
     ]
-  }
+  },
+  "overrides": [
+    {
+      "files": [
+        "drizzle.config.ts",
+        "eslint.config.js",
+        "i18n.ts",
+        "next.config.js",
+        "postcss.config.js",
+        "proxy.ts",
+        "vitest.config.ts",
+        "custom-eslint/index.ts",
+        "custom-eslint/rules/no-direct-db-in-tests.ts",
+        "custom-eslint/rules/no-duplicate-migration-prefix.ts",
+        "custom-eslint/rules/no-relative-vi-mock.ts",
+        "custom-eslint/rules/no-request-json-as.ts",
+        "app/**/page.tsx",
+        "app/**/layout.tsx",
+        "app/**/error.tsx",
+        "app/**/not-found.tsx",
+        "app/**/global-error.tsx",
+        "app/**/loading.tsx",
+        "app/**/template.tsx",
+        "app/**/default.tsx",
+        "app/**/route.ts",
+        "app/**/route.tsx",
+        "app/robots.ts",
+        "app/sitemap.ts"
+      ],
+      "rules": {
+        "import/no-default-export": "off"
+      }
+    },
+    {
+      "files": [
+        "src/__tests__/setup.ts",
+        "__tests__/proxy.legal-pages.test.ts",
+        "__tests__/proxy.locale-guard.test.ts",
+        "__tests__/proxy.sandbox-token.test.ts",
+        "app/api/webhooks/clerk/__tests__/route.test.ts",
+        "app/api/webhooks/stripe/__tests__/route.test.ts",
+        "app/api/zero/billing/auto-recharge/__tests__/route.test.ts",
+        "app/api/zero/billing/checkout/__tests__/route.test.ts",
+        "app/api/zero/billing/downgrade/__tests__/route.test.ts",
+        "app/api/zero/billing/invoices/__tests__/route.test.ts",
+        "app/api/zero/billing/portal/__tests__/route.test.ts",
+        "app/api/zero/billing/status/__tests__/route.test.ts",
+        "app/api/zero/usage/members/__tests__/route.test.ts",
+        "app/api/zero/usage/runs/__tests__/route.test.ts",
+        "app/*/__tests__/layout.test.ts",
+        "app/*/blog/__tests__/page.test.ts",
+        "app/*/blog/posts/*/__tests__/page.test.ts",
+        "src/lib/__tests__/ts-rest-handler.test.ts",
+        "src/lib/infra/run/__tests__/extract-run-output.test.ts",
+        "src/lib/shared/axiom/__tests__/client.test.ts",
+        "src/lib/zero/billing/__tests__/auto-recharge-service.test.ts"
+      ],
+      "rules": {
+        "import/first": "off"
+      }
+    }
+  ]
 }

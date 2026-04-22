@@ -14,18 +14,11 @@
  *   const cache = new Map();
  */
 
-import type { TypeOrValueSpecifier } from "@typescript-eslint/type-utils";
-import {
-  AST_NODE_TYPES,
-  ESLintUtils,
-  type ParserServicesWithTypeInformation,
-  type TSESTree,
-} from "@typescript-eslint/utils";
-import type { TypeChecker } from "typescript";
-import { createRule, isMutableObjectType } from "../utils.ts";
+import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import { createRule } from "../utils.ts";
 
 interface Options {
-  allowedMutableTypes?: TypeOrValueSpecifier[];
+  allowedConstructors?: string[];
 }
 
 function isPackageScope(node: TSESTree.Node): boolean {
@@ -45,83 +38,57 @@ function isPackageScope(node: TSESTree.Node): boolean {
   return true;
 }
 
-function checkObjectPattern(
-  node: TSESTree.ObjectPattern,
-  services: ParserServicesWithTypeInformation,
-  checker: TypeChecker,
-  allowedMutableTypes: TypeOrValueSpecifier[] = [],
-): boolean {
-  for (const property of node.properties) {
-    if (
-      property.type === AST_NODE_TYPES.Property &&
-      property.value.type === AST_NODE_TYPES.Identifier
-    ) {
-      const tsNode = services.esTreeNodeToTSNodeMap.get(property.value);
-      const type = checker.getTypeAtLocation(tsNode);
-
-      if (isMutableObjectType(type, services, checker, allowedMutableTypes)) {
-        return true;
-      }
-    }
+/**
+ * Returns true if the type annotation on a declarator indicates the value is
+ * explicitly declared as readonly, e.g.:
+ *   const x: Readonly<Record<K, V>> = {...}
+ *   const x: readonly Foo[] = [...]
+ */
+function isReadonlyAnnotated(declarator: TSESTree.VariableDeclarator): boolean {
+  if (
+    declarator.id.type !== AST_NODE_TYPES.Identifier ||
+    declarator.id.typeAnnotation === null ||
+    declarator.id.typeAnnotation === undefined
+  ) {
+    return false;
+  }
+  const typeNode = declarator.id.typeAnnotation.typeAnnotation;
+  // readonly Foo[] or readonly [...]
+  if (
+    typeNode.type === AST_NODE_TYPES.TSTypeOperator &&
+    typeNode.operator === "readonly"
+  ) {
+    return true;
+  }
+  // Readonly<...>
+  if (
+    typeNode.type === AST_NODE_TYPES.TSTypeReference &&
+    typeNode.typeName.type === AST_NODE_TYPES.Identifier &&
+    typeNode.typeName.name === "Readonly"
+  ) {
+    return true;
   }
   return false;
 }
 
-function checkIdentifier(
-  node: TSESTree.Identifier,
-  services: ParserServicesWithTypeInformation,
-  checker: TypeChecker,
-  allowedMutableTypes: TypeOrValueSpecifier[] = [],
+function isMutableInit(
+  init: TSESTree.Expression,
+  allowedConstructors: ReadonlySet<string>,
 ): boolean {
-  const tsNode = services.esTreeNodeToTSNodeMap.get(node);
-  const type = checker.getTypeAtLocation(tsNode);
-
-  return isMutableObjectType(type, services, checker, allowedMutableTypes);
-}
-
-function checkArrayPattern(
-  node: TSESTree.ArrayPattern,
-  services: ParserServicesWithTypeInformation,
-  checker: TypeChecker,
-  allowedMutableTypes: TypeOrValueSpecifier[] = [],
-): boolean {
-  for (const element of node.elements) {
-    if (!element || element.type !== AST_NODE_TYPES.Identifier) {
-      continue;
+  if (init.type === AST_NODE_TYPES.NewExpression) {
+    const callee = init.callee;
+    if (callee.type === AST_NODE_TYPES.Identifier) {
+      return !allowedConstructors.has(callee.name);
     }
-    const tsNode = services.esTreeNodeToTSNodeMap.get(element);
-    const type = checker.getTypeAtLocation(tsNode);
-
-    if (isMutableObjectType(type, services, checker, allowedMutableTypes)) {
-      return true;
-    }
+    return true; // complex new expression — flag
+  }
+  if (init.type === AST_NODE_TYPES.ArrayExpression) {
+    return true;
+  }
+  if (init.type === AST_NODE_TYPES.ObjectExpression) {
+    return true;
   }
   return false;
-}
-
-function checkDeclarator(
-  declarator: TSESTree.VariableDeclarator,
-  services: ParserServicesWithTypeInformation,
-  checker: TypeChecker,
-  allowedMutableTypes: TypeOrValueSpecifier[] = [],
-): boolean {
-  if (declarator.id.type === AST_NODE_TYPES.ObjectPattern) {
-    return checkObjectPattern(
-      declarator.id,
-      services,
-      checker,
-      allowedMutableTypes,
-    );
-  }
-  if (declarator.id.type === AST_NODE_TYPES.ArrayPattern) {
-    return checkArrayPattern(
-      declarator.id,
-      services,
-      checker,
-      allowedMutableTypes,
-    );
-  }
-  return checkIdentifier(declarator.id, services, checker, allowedMutableTypes);
 }
 
 export default createRule<[Options] | [], "noPackageVariable">({
@@ -132,31 +99,15 @@ export default createRule<[Options] | [], "noPackageVariable">({
     docs: {
       description: "Prevent using package scope variables",
       recommended: true,
-      requiresTypeChecking: true,
+      requiresTypeChecking: false,
     },
     schema: [
       {
         type: "object",
         properties: {
-          allowedMutableTypes: {
+          allowedConstructors: {
             type: "array",
-            items: {
-              type: "object",
-              properties: {
-                from: {
-                  type: "string",
-                  enum: ["file", "lib", "package"],
-                },
-                name: {
-                  type: "string",
-                },
-                package: {
-                  type: "string",
-                },
-              },
-              required: ["from", "name"],
-              additionalProperties: false,
-            },
+            items: { type: "string" },
           },
         },
         additionalProperties: false,
@@ -169,9 +120,9 @@ export default createRule<[Options] | [], "noPackageVariable">({
   },
   create(context) {
     const options = context.options[0];
-    const allowedMutableTypes = options?.allowedMutableTypes ?? [];
-    const services = ESLintUtils.getParserServices(context);
-    const checker = services.program.getTypeChecker();
+    const allowedConstructors = new Set<string>(
+      options?.allowedConstructors ?? [],
+    );
 
     return {
       VariableDeclaration(node: TSESTree.VariableDeclaration) {
@@ -193,8 +144,17 @@ export default createRule<[Options] | [], "noPackageVariable">({
           }
 
           if (
-            checkDeclarator(declarator, services, checker, allowedMutableTypes)
+            declarator.id.type === AST_NODE_TYPES.ObjectPattern ||
+            declarator.id.type === AST_NODE_TYPES.ArrayPattern
           ) {
+            continue;
+          }
+
+          if (isReadonlyAnnotated(declarator)) {
+            continue;
+          }
+
+          if (isMutableInit(declarator.init, allowedConstructors)) {
             context.report({
               node: declarator,
               messageId: "noPackageVariable",

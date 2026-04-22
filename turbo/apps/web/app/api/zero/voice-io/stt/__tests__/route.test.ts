@@ -88,17 +88,6 @@ describe("POST /api/zero/voice-io/stt", () => {
     expect(body.error.code).toBe("FORBIDDEN");
   });
 
-  it("should return 503 when OPENAI_API_KEY is not configured", async () => {
-    const userId = uniqueId("stt-nokey");
-    await setupOrg(userId);
-    vi.stubEnv("OPENAI_API_KEY", "");
-    reloadEnv();
-    const response = await POST(createSttRequest(createAudioFile()));
-    const body = await response.json();
-    expect(response.status).toBe(503);
-    expect(body.error.code).toBe("SERVICE_UNAVAILABLE");
-  });
-
   it("should return 400 when no file is provided", async () => {
     const userId = uniqueId("stt-nofile");
     await setupOrg(userId);

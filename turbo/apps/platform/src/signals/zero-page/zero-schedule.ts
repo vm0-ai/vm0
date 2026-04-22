@@ -18,7 +18,8 @@ import {
   type ScheduleBody,
   type CronTimeOption,
 } from "./cron.ts";
-import { accept } from "../../lib/accept.ts";
+import { accept, ApiError } from "../../lib/accept.ts";
+import { throwIfAbort } from "../utils.ts";
 
 // ---------------------------------------------------------------------------
 // State
@@ -254,19 +255,37 @@ export interface ZeroScheduleSaveParams {
   selectedModel?: string | null;
 }
 
+// Non-API errors (e.g. validation from buildScheduleBody) would otherwise be
+// silently swallowed by detach(Reason.DomCallback). ApiError is skipped
+// because accept() already toasts it. AbortError is skipped because aborts
+// on DomCallback paths are intentionally silent (component unmount, navigation).
+function runWithErrorToast<T>(fn: () => Promise<T>): Promise<T> {
+  return fn().catch((error: unknown) => {
+    throwIfAbort(error);
+    if (!(error instanceof ApiError)) {
+      const message = error instanceof Error ? error.message : "Save failed";
+      toast.error(message);
+    }
+    throw error;
+  });
+}
+
 export const saveZeroSchedule$ = command(
   async ({ get, set }, params: ZeroScheduleSaveParams, signal: AbortSignal) => {
-    const status = await get(zeroOnboardingStatus$);
-    signal.throwIfAborted();
-    const composeId = status.defaultAgentId;
-    if (!composeId) {
-      throw new Error("No default agent configured");
-    }
+    await runWithErrorToast(async () => {
+      const status = await get(zeroOnboardingStatus$);
+      signal.throwIfAborted();
+      const composeId = status.defaultAgentId;
+      if (!composeId) {
+        throw new Error("No default agent configured");
+      }
 
-    const body = buildScheduleBody(composeId, params);
+      const body = buildScheduleBody(composeId, params);
 
-    const client = get(zeroClient$)(zeroSchedulesMainContract);
-    await accept(client.deploy({ body }), [200, 201]);
+      const client = get(zeroClient$)(zeroSchedulesMainContract);
+      await accept(client.deploy({ body }), [200, 201]);
+      signal.throwIfAborted();
+    });
     signal.throwIfAborted();
 
     toast.success(params.editName ? "Schedule updated" : "Schedule created");
@@ -415,13 +434,16 @@ export const saveOrgSchedule$ = command(
     params: ZeroScheduleSaveParams & { agentId: string },
     signal: AbortSignal,
   ) => {
-    const body = buildScheduleBody(params.agentId, params);
+    const scheduleId = await runWithErrorToast(async () => {
+      const body = buildScheduleBody(params.agentId, params);
 
-    const client = get(zeroClient$)(zeroSchedulesMainContract);
-    const result = await accept(client.deploy({ body }), [200, 201]);
+      const client = get(zeroClient$)(zeroSchedulesMainContract);
+      const result = await accept(client.deploy({ body }), [200, 201]);
+      signal.throwIfAborted();
+
+      return result.body.schedule.id;
+    });
     signal.throwIfAborted();
-
-    const scheduleId = result.body.schedule.id;
 
     toast.success(params.editName ? "Schedule updated" : "Schedule created");
     await set(fetchAllOrgSchedules$, signal);

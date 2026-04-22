@@ -45,16 +45,6 @@ vi.mock("web-push", async (importActual) => {
 
 const context = testContext();
 
-interface ChatCallbackBody {
-  runId: string;
-  status: "completed" | "failed" | "progress";
-  error?: string;
-  payload: {
-    threadId: string;
-    agentId: string;
-  };
-}
-
 describe("POST /api/internal/callbacks/chat", () => {
   let user: UserContext;
   let agentId: string;

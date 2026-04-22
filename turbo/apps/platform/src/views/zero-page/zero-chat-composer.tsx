@@ -98,6 +98,8 @@ import {
   setPopoverSearch$,
   popoverSortOrder$,
   setPopoverSortOrder$,
+  modelPickerOpen$,
+  setModelPickerOpen$,
 } from "../../signals/zero-page/zero-chat-composer.ts";
 import {
   audioInputAvailable$,
@@ -110,6 +112,16 @@ import {
 import { setBillingDialogOpen$ } from "../../signals/zero-page/billing.ts";
 
 const MAX_FILE_SIZE = 1024 * 1024 * 1024; // 1 GB — keep in sync with web constants
+
+// iOS auto-focus pops the on-screen keyboard and scrolls the viewport, which is
+// jarring when landing on a chat page. Desktop/Android behavior is unchanged.
+function isIOSDevice(): boolean {
+  const ua = navigator.userAgent;
+  return (
+    /iPad|iPhone|iPod/.test(ua) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Props
@@ -634,6 +646,8 @@ export function ZeroChatComposer({
 }: ZeroChatComposerProps) {
   const showAddDialog = useGet(showAddDialog$);
   const setShowAddDialog = useSet(setShowAddDialog$);
+  const modelPickerOpen = useGet(modelPickerOpen$);
+  const setModelPickerOpen = useSet(setModelPickerOpen$);
 
   const resolved = useResolvedComposerSignals(
     input,
@@ -814,6 +828,11 @@ export function ZeroChatComposer({
         "mod+b": () => {
           toggleSidebar();
         },
+        "mod+alt+.": () => {
+          if (modelPicker) {
+            setModelPickerOpen(true);
+          }
+        },
       },
       e,
     );
@@ -872,7 +891,7 @@ export function ZeroChatComposer({
             )}
             <textarea
               ref={(el) => {
-                if (el && autoFocus) {
+                if (el && autoFocus && !isIOSDevice()) {
                   el.focus();
                 }
                 setInputRef?.(el);
@@ -928,6 +947,8 @@ export function ZeroChatComposer({
                     )}
                     sessionProviderType={modelPicker.sessionProviderType}
                     compactTrigger
+                    open={modelPickerOpen}
+                    onOpenChange={setModelPickerOpen}
                   />
                 )}
                 <MicButton

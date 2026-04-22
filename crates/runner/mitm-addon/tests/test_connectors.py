@@ -1405,6 +1405,7 @@ class TestHandleFirewallRequest:
             "sandboxToken": "tok-xyz",
             "encryptedSecrets": "iv:tag:data",
             "networkLogPath": str(tmp_path / "net.jsonl"),
+            "billableFirewalls": [],
         }
         match_info = {
             "name": "github",
@@ -1447,6 +1448,47 @@ class TestHandleFirewallRequest:
         assert flow.metadata["firewall_rule_match"] == "GET /repos/{owner}/{repo}"
         assert flow.metadata["firewall_params"] == {"owner": "octocat", "repo": "hello"}
 
+    async def test_missing_billable_firewalls_falls_back_to_empty(
+        self, real_flow, headers, mitm_ctx, tmp_path
+    ):
+        """billableFirewalls is optional in the TS schema — a vm_info without
+        the key must not KeyError; firewall_billable should be False."""
+        flow = real_flow(with_response=False, host="api.github.com", path="/repos")
+        flow.metadata["vm_run_id"] = "test-run"
+        api_entry = {
+            "id": "run-1:0",
+            "base": "https://api.github.com",
+            "auth": {"headers": {}},
+        }
+        vm_info = {
+            "runId": "run-1",
+            "sandboxToken": "tok-xyz",
+            "encryptedSecrets": "iv:tag:data",
+            "networkLogPath": str(tmp_path / "net.jsonl"),
+            # intentionally no "billableFirewalls" key
+        }
+        match_info = {
+            "name": "github",
+            "permission": "repo-read",
+            "rule": "GET /repos",
+            "params": {},
+        }
+        token_meta = {
+            "headers": {},
+            "resolved_secrets": [],
+            "refreshed_connectors": [],
+            "refreshed_secrets": [],
+            "cache_hit": False,
+        }
+
+        with (
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            mitm_ctx(),
+        ):
+            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
+
+        assert flow.metadata["firewall_billable"] is False
+
     async def test_failure_returns_502(self, real_flow, headers, mitm_ctx, tmp_path):
         flow = real_flow(with_response=False, host="api.github.com", path="/repos")
         flow.metadata["vm_run_id"] = "test-run"
@@ -1456,6 +1498,7 @@ class TestHandleFirewallRequest:
             "sandboxToken": "tok-xyz",
             "encryptedSecrets": "iv:tag:data",
             "networkLogPath": str(tmp_path / "net.jsonl"),
+            "billableFirewalls": [],
         }
         match_info = {"name": "github"}
 
@@ -1489,6 +1532,7 @@ class TestHandleFirewallRequest:
             "sandboxToken": "tok-xyz",
             "encryptedSecrets": "iv:tag:data",
             "networkLogPath": "",
+            "billableFirewalls": [],
         }
         match_info = {"name": "github"}
 
@@ -1524,6 +1568,7 @@ class TestHandleFirewallRequest:
             "sandboxToken": "tok-xyz",
             "encryptedSecrets": "iv:tag:data",
             "networkLogPath": str(tmp_path / "net.jsonl"),
+            "billableFirewalls": [],
         }
         match_info = {"name": "github"}
 
@@ -1562,6 +1607,7 @@ class TestHandleFirewallRequest:
             "sandboxToken": "tok-xyz",
             "encryptedSecrets": "iv:tag:data",
             "networkLogPath": str(tmp_path / "net.jsonl"),
+            "billableFirewalls": [],
         }
         match_info = {"name": "htmlcsstoimage"}
 
@@ -1591,7 +1637,12 @@ class TestHandleFirewallRequest:
         flow = real_flow(with_response=False, host="api.github.com", path="/repos")
         flow.metadata["vm_run_id"] = "test-run"
         api_entry = {"base": "https://api.github.com", "auth": {"headers": {}}}
-        vm_info = {"runId": "run-1", "sandboxToken": "tok-xyz", "networkLogPath": ""}
+        vm_info = {
+            "runId": "run-1",
+            "sandboxToken": "tok-xyz",
+            "networkLogPath": "",
+            "billableFirewalls": [],
+        }
         match_info = {"name": "github"}
 
         with mitm_ctx():
@@ -1750,6 +1801,44 @@ class TestFetchFirewallHeaders:
         ):
             auth._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai")
 
+    def test_closes_response_on_success(self):
+        """Success path must close the urlopen response — FD leak guard (#10475)."""
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = json.dumps({"headers": {}}).encode()
+
+        with (
+            patch("auth.urllib.request.Request"),
+            patch("auth.urllib.request.urlopen", return_value=mock_resp),
+            patch.object(auth, "VERCEL_BYPASS", ""),
+        ):
+            auth._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai")
+
+        mock_resp.close.assert_called_once()  # urllib external boundary (#9991)
+
+    def test_closes_http_error_response(self):
+        """HTTPError path must close the underlying socket — FD leak guard (#10475)."""
+        error_body = json.dumps(
+            {"error": {"message": "Bad request", "code": "BAD_REQUEST"}}
+        ).encode()
+        http_error = urllib.error.HTTPError(
+            "https://api.vm0.ai/api/webhooks/agent/firewall/auth",
+            400,
+            "Bad Request",
+            {},
+            io.BytesIO(error_body),
+        )
+        http_error.close = MagicMock()
+
+        with (
+            patch("auth.urllib.request.Request"),
+            patch("auth.urllib.request.urlopen", side_effect=http_error),
+            patch.object(auth, "VERCEL_BYPASS", ""),
+            pytest.raises(urllib.error.HTTPError),
+        ):
+            auth._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai")
+
+        http_error.close.assert_called_once()  # urllib external boundary (#9991)
+
     async def test_async_wrapper_passes_api_url_from_ctx(self, headers):
         """fetch_firewall_headers reads api_url on the event loop and passes it to the sync fn."""
         mock_resp = MagicMock()
@@ -1810,6 +1899,49 @@ class TestForwardRequestSecurity:
         assert result is None
 
 
+class TestForwardRequestResourceCleanup:
+    """Regression tests for #10476: urllib response/HTTPError must be closed
+    or sustained auth.base URL-rewrite traffic will leak sockets and
+    eventually exhaust the mitmproxy process FD limit.
+    """
+
+    def test_closes_response_on_success(self):
+        resp = MagicMock()
+        resp.__enter__.return_value = resp
+        resp.status = 200
+        resp.read.return_value = b"ok"
+        resp.headers = {"Content-Type": "application/json"}
+        with patch.object(auth._opener, "open", return_value=resp):
+            status, body, _ = auth._forward_request_sync("https://example.com", "GET", {}, None)
+        assert status == 200
+        assert body == b"ok"
+        resp.__exit__.assert_called_once()
+
+    def test_closes_httperror_on_error(self):
+        err = urllib.error.HTTPError(
+            "https://example.com", 500, "Server Error", {}, io.BytesIO(b"oops")
+        )
+        err.close = MagicMock(wraps=err.close)
+        with patch.object(auth._opener, "open", side_effect=err):
+            status, body, _ = auth._forward_request_sync("https://example.com", "GET", {}, None)
+        assert status == 500
+        assert body == b"oops"
+        err.close.assert_called_once()
+
+    def test_closes_response_when_read_raises(self):
+        resp = MagicMock()
+        resp.__enter__.return_value = resp
+        resp.status = 200
+        resp.read.side_effect = OSError("socket closed")
+        resp.headers = {}
+        with (
+            patch.object(auth._opener, "open", return_value=resp),
+            pytest.raises(OSError, match="socket closed"),
+        ):
+            auth._forward_request_sync("https://example.com", "GET", {}, None)
+        resp.__exit__.assert_called_once()
+
+
 # =========================================================================
 # auth.base URL rewriting
 # =========================================================================
@@ -1831,6 +1963,7 @@ class TestAuthBaseUrlRewrite:
             "sandboxToken": "tok-xyz",
             "encryptedSecrets": "iv:tag:data",
             "networkLogPath": str(tmp_path / "net.jsonl"),
+            "billableFirewalls": [],
         }
         match_info = {
             "name": "discord-webhook",
@@ -1875,6 +2008,7 @@ class TestAuthBaseUrlRewrite:
             "sandboxToken": "tok-xyz",
             "encryptedSecrets": "iv:tag:data",
             "networkLogPath": str(tmp_path / "net.jsonl"),
+            "billableFirewalls": [],
         }
         match_info = {
             "name": "bitrix",
@@ -1921,6 +2055,7 @@ class TestAuthBaseUrlRewrite:
             "sandboxToken": "tok-xyz",
             "encryptedSecrets": "iv:tag:data",
             "networkLogPath": str(tmp_path / "net.jsonl"),
+            "billableFirewalls": [],
         }
         match_info = {
             "name": "discord-webhook",
@@ -1965,6 +2100,7 @@ class TestAuthBaseUrlRewrite:
             "sandboxToken": "tok-xyz",
             "encryptedSecrets": "iv:tag:data",
             "networkLogPath": str(tmp_path / "net.jsonl"),
+            "billableFirewalls": [],
         }
         match_info = {
             "name": "bitrix",
@@ -2010,6 +2146,7 @@ class TestAuthBaseUrlRewrite:
             "sandboxToken": "tok-xyz",
             "encryptedSecrets": "iv:tag:data",
             "networkLogPath": str(tmp_path / "net.jsonl"),
+            "billableFirewalls": [],
         }
         match_info = {
             "name": "test",
@@ -2051,6 +2188,7 @@ class TestAuthBaseUrlRewrite:
             "sandboxToken": "tok-xyz",
             "encryptedSecrets": "iv:tag:data",
             "networkLogPath": str(tmp_path / "net.jsonl"),
+            "billableFirewalls": [],
         }
         match_info = {
             "name": "github",
@@ -2214,6 +2352,7 @@ class TestAuthBaseUrlRewriteEdgeCases:
             "sandboxToken": "tok",
             "encryptedSecrets": "iv:tag:data",
             "networkLogPath": str(tmp_path / "net.jsonl"),
+            "billableFirewalls": [],
         }
         match_info = {
             "name": "test",
@@ -2266,6 +2405,7 @@ class TestAuthBaseUrlRewriteEdgeCases:
             "sandboxToken": "tok",
             "encryptedSecrets": "iv:tag:data",
             "networkLogPath": str(tmp_path / "net.jsonl"),
+            "billableFirewalls": [],
         }
         match_info = {
             "name": "gh",
@@ -2380,6 +2520,7 @@ class TestAuthQueryInjection:
             "runId": "run-1",
             "sandboxToken": "tok",
             "encryptedSecrets": "iv:tag:data",
+            "billableFirewalls": [],
         }
         match_info = {
             "name": "serpapi",
@@ -2417,6 +2558,7 @@ class TestAuthQueryInjection:
             "runId": "run-1",
             "sandboxToken": "tok",
             "encryptedSecrets": "iv:tag:data",
+            "billableFirewalls": [],
         }
         match_info = {
             "name": "serpapi",
@@ -2455,6 +2597,7 @@ class TestAuthQueryInjection:
             "runId": "run-1",
             "sandboxToken": "tok",
             "encryptedSecrets": "iv:tag:data",
+            "billableFirewalls": [],
         }
         match_info = {
             "name": "ex",
@@ -2492,6 +2635,7 @@ class TestAuthQueryInjection:
             "runId": "run-1",
             "sandboxToken": "tok",
             "encryptedSecrets": "iv:tag:data",
+            "billableFirewalls": [],
         }
         match_info = {
             "name": "test",
@@ -2533,6 +2677,7 @@ class TestAuthQueryInjection:
             "runId": "run-1",
             "sandboxToken": "tok",
             "encryptedSecrets": "iv:tag:data",
+            "billableFirewalls": [],
         }
         match_info = {
             "name": "gh",

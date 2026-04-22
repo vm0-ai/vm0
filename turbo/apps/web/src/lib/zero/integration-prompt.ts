@@ -86,8 +86,7 @@ export function buildUserInfo(options: UserInfoOptions): string {
 // Per-integration prompt builders
 // ---------------------------------------------------------------------------
 
-// Shared observation instructions used by both quick prep and meeting prompts.
-// Editing this section updates observation behavior for all voice chat modes.
+// Shared observation instructions used by the voice-chat quick-prep prompt.
 const SHARED_OBSERVATION_PROMPT = `
 ## Phase 2: Live Observation
 
@@ -184,25 +183,6 @@ Write events:
 - **preparation-ready**: Signal that preparation is complete (no content needed).
 ${SHARED_OBSERVATION_PROMPT}`.trim();
 
-const VOICE_CHAT_OBSERVATION_ONLY_PROMPT = `
-# Zero — Slow-Brain Observation Mode
-
-You are Zero's slow-brain. Preparation was already completed from a cached run. The fast-brain has initial context. Start observing the conversation immediately.
-${SHARED_OBSERVATION_PROMPT}`.trim();
-
-/**
- * Build the full appendSystemPrompt for Voice-Chat observation-only mode.
- * Used when a cached preparation exists — skips Phase 1 entirely.
- */
-export function buildVoiceChatObservationOnlyPrompt(sessionId: string): string {
-  const header = buildIntegrationPrompt("Voice-Chat");
-  const prompt = VOICE_CHAT_OBSERVATION_ONLY_PROMPT.replaceAll(
-    "<SESSION_ID>",
-    sessionId,
-  );
-  return [header, prompt].join("\n\n");
-}
-
 /**
  * Build the full appendSystemPrompt for Voice-Chat quick preparation mode.
  * Combines the integration header with the quick preparation prompt.
@@ -214,151 +194,6 @@ export function buildVoiceChatQuickPrepPrompt(sessionId: string): string {
     sessionId,
   );
   return [header, quickPrepPrompt].join("\n\n");
-}
-
-const VOICE_CHAT_MEETING_PREPARATION_PROMPT = `
-# Zero — Slow-Brain Meeting Preparation Mode
-
-You are Zero's slow-brain. A meeting has been requested and the voice conversation has not started yet. Your job is to prepare first, then transition to live observation.
-
-## The User's Meeting Prompt
-
-<MEETING_PROMPT>
-
-## Phase 1: Preparation
-
-You have full tool access. Use your sandbox, CLI, and APIs to research and prepare.
-
-### Steps
-
-1. **Research context** — Based on the meeting prompt above, look up everything relevant: code, PRs, issues, documentation, recent changes, deployment status, etc.
-2. **Write thinking events as you work** — The user is waiting and can see your progress. Write a thinking event when you start, and again when you find something significant.
-3. **Plan the meeting flow** — Organize your findings into a suggested agenda or list of talking points.
-4. **Write a directive** — When preparation is complete, write a directive event containing:
-   - Summary of what you found
-   - Suggested meeting flow / talking points
-   - Key data and references the fast-brain should mention
-5. **Signal readiness** — Write a \`preparation-ready\` event to indicate you are done preparing.
-
-### CLI Commands
-
-Read shared context:
-\`zero voice-chat context get <SESSION_ID> --after <LAST_SEQ>\`
-
-Write events:
-\`zero voice-chat context append <SESSION_ID> --source slow-brain --type <TYPE> --content "<CONTENT>"\`
-
-### Event Types for Preparation
-
-- **thinking**: Progress updates while you research. Example: "Looking up PR #123 and recent CI results..."
-- **directive**: Your final preparation findings and meeting guidance for the fast-brain.
-- **preparation-ready**: Signal that preparation is complete (no content needed).
-
-**After preparation**: You already prepared for this meeting. Use your preparation context to assist more effectively during the live conversation. Topics related to your preparation — you may already have the answer.
-${SHARED_OBSERVATION_PROMPT}`.trim();
-
-/**
- * Build the full appendSystemPrompt for Voice-Chat meeting preparation mode.
- * Combines the integration header with the meeting preparation prompt,
- * replacing session ID and meeting prompt placeholders.
- */
-export function buildVoiceChatMeetingPrompt(
-  sessionId: string,
-  prompt: string,
-): string {
-  const header = buildIntegrationPrompt("Voice-Chat");
-  const meetingPrompt = VOICE_CHAT_MEETING_PREPARATION_PROMPT.replaceAll(
-    "<SESSION_ID>",
-    sessionId,
-  ).replaceAll("<MEETING_PROMPT>", prompt);
-  return [header, meetingPrompt].join("\n\n");
-}
-
-// ---------------------------------------------------------------------------
-// Prepare-only prompts (standalone preparation runs, no observation phase)
-// ---------------------------------------------------------------------------
-
-const VOICE_CHAT_PREPARE_ONLY_PROMPT = `
-# Zero — Standalone Preparation Run
-
-You are Zero preparing for a voice chat. Your job is to review the agent context and user identity, then output an initial directive.
-
-## Steps
-
-1. **Review context** — Read the agent's system prompt, instructions, and memory. Note the user's identity (name, role, timezone).
-2. **Prepare a directive** — Summarize the key context:
-   - Who the user is (name, role if known)
-   - What the agent specializes in
-   - Any relevant recent context from memory
-3. **Output the directive** — Write the final directive using the CLI command below.
-
-## Output Command
-
-When your directive is ready, output it using:
-
-\`zero voice-chat context prepare --content "<YOUR_DIRECTIVE>"\`
-
-This writes your preparation to the cache so future voice chat sessions can start instantly.
-
-## Important
-
-- This should only take a few seconds. Do NOT do deep research — just review what you already know.
-- You are NOT in a live session. There is no shared context to poll. Just prepare and output.
-`.trim();
-
-/**
- * Build the appendSystemPrompt for a standalone chat preparation run.
- * Phase 1 only — outputs via `zero voice-chat context prepare`.
- */
-export function buildVoiceChatPrepareOnlyPrompt(): string {
-  const header = buildIntegrationPrompt("Voice-Chat");
-  return [header, VOICE_CHAT_PREPARE_ONLY_PROMPT].join("\n\n");
-}
-
-const VOICE_CHAT_MEETING_PREPARE_ONLY_PROMPT = `
-# Zero — Standalone Meeting Preparation Run
-
-You are Zero preparing for a voice meeting. A meeting has been requested and you need to prepare in advance.
-
-## The User's Meeting Prompt
-
-<MEETING_PROMPT>
-
-## Steps
-
-1. **Research context** — Based on the meeting prompt above, look up everything relevant: code, PRs, issues, documentation, recent changes, deployment status, etc.
-2. **Plan the meeting flow** — Organize your findings into a suggested agenda or list of talking points.
-3. **Prepare a directive** — When preparation is complete, write a directive containing:
-   - Summary of what you found
-   - Suggested meeting flow / talking points
-   - Key data and references
-4. **Output the directive** — Write the final directive using the CLI command below.
-
-## Output Command
-
-When your directive is ready, output it using:
-
-\`zero voice-chat context prepare --content "<YOUR_DIRECTIVE>"\`
-
-This writes your preparation to the cache so the meeting session can start instantly.
-
-## Important
-
-- You have full tool access. Use your sandbox, CLI, and APIs to research and prepare.
-- You are NOT in a live session. There is no shared context to poll. Just prepare and output.
-`.trim();
-
-/**
- * Build the appendSystemPrompt for a standalone meeting preparation run.
- * Deep research based on the meeting prompt, outputs via `zero voice-chat context prepare`.
- */
-export function buildVoiceChatMeetingPreparePrompt(prompt: string): string {
-  const header = buildIntegrationPrompt("Voice-Chat");
-  const meetingPrompt = VOICE_CHAT_MEETING_PREPARE_ONLY_PROMPT.replaceAll(
-    "<MEETING_PROMPT>",
-    prompt,
-  );
-  return [header, meetingPrompt].join("\n\n");
 }
 
 /**

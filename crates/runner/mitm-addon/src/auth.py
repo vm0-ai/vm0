@@ -163,17 +163,23 @@ def _fetch_firewall_headers_sync(
         # ctx.options.vm0_api_url (operator-set at mitmdump launch).
         resp = urllib.request.urlopen(req, timeout=10)  # noqa: S310
     except urllib.error.HTTPError as e:
-        try:
-            error_body = json.loads(e.read())
-        except (json.JSONDecodeError, OSError):
-            raise e from None
-        error_info = error_body.get("error", {})
-        if error_info.get("code") == "CONNECTOR_NOT_CONFIGURED":
-            raise ConnectorNotConfiguredError(
-                error_info.get("message", "Connector not configured"),
-            ) from None
-        raise
-    return json.loads(resp.read())
+        # HTTPError wraps an open socket; `with e` closes on every exit
+        # path to avoid FD exhaustion under sustained cache-miss load (#10475).
+        with e:
+            try:
+                error_body = json.loads(e.read())
+            except (json.JSONDecodeError, OSError):
+                raise e from None
+            error_info = error_body.get("error", {})
+            if error_info.get("code") == "CONNECTOR_NOT_CONFIGURED":
+                raise ConnectorNotConfiguredError(
+                    error_info.get("message", "Connector not configured"),
+                ) from None
+            raise
+    try:
+        return json.loads(resp.read())
+    finally:
+        resp.close()
 
 
 async def fetch_firewall_headers(
@@ -277,10 +283,14 @@ def _forward_request_sync(
             continue
         req.add_header(k, v)
     try:
-        resp = _opener.open(req, timeout=30)
-        return resp.status, resp.read(), _filter_response_headers(dict(resp.headers))
+        with _opener.open(req, timeout=30) as resp:
+            return resp.status, resp.read(), _filter_response_headers(dict(resp.headers))
     except urllib.error.HTTPError as e:
-        return e.code, e.read(), _filter_response_headers(dict(e.headers))
+        # HTTPError wraps an open socket; context-manage it or the fd leaks
+        # (sustained auth.base URL-rewrite traffic would eventually exhaust
+        # the mitmproxy process FD limit).
+        with e:
+            return e.code, e.read(), _filter_response_headers(dict(e.headers))
 
 
 async def forward_request(
@@ -417,6 +427,12 @@ async def handle_firewall_request(
     flow.metadata["firewall_permission"] = match_info.get("permission", "")
     flow.metadata["firewall_rule_match"] = match_info.get("rule", "")
     flow.metadata["firewall_params"] = match_info.get("params", {})
+    # billableFirewalls is optional in the TS schema; runner may omit the
+    # field entirely for non-vm0 / no-billable-connector runs.  Fall back
+    # to an empty list so a missing key doesn't KeyError the auth handler.
+    flow.metadata["firewall_billable"] = match_info.get("name", "") in (
+        vm_info.get("billableFirewalls") or []
+    )
 
     if not encrypted_secrets:
         log_proxy_entry(

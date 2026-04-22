@@ -218,6 +218,12 @@ function collectDetails(entry: NetworkLogEntry): [string, string][] {
   );
   addField(
     out,
+    "Billable",
+    entry.firewall_billable,
+    entry.firewall_billable ? "Yes" : "No",
+  );
+  addField(
+    out,
     "Permission Error",
     entry.firewall_error,
     formatValue(entry.firewall_error),

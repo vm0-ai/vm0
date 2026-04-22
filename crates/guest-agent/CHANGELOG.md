@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.21.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.21.6...guest-agent-v0.21.7) (2026-04-22)
+
+
+### Bug Fixes
+
+* skip auto-focus on touch devices in ZeroChatComposer ([#10496](https://github.com/vm0-ai/vm0/issues/10496)) ([2c90017](https://github.com/vm0-ai/vm0/commit/2c90017ef46dae13b52426038025e22bb9cc9f88))
+
+## [0.21.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.21.5...guest-agent-v0.21.6) (2026-04-21)
+
+
+### Bug Fixes
+
+* **guest-agent:** bump stuck tool timeout from 60s to 180s ([#10453](https://github.com/vm0-ai/vm0/issues/10453)) ([ef2e832](https://github.com/vm0-ai/vm0/commit/ef2e832e15813203614c4a754dc67e3033fdb4bb)), closes [#10450](https://github.com/vm0-ai/vm0/issues/10450)
+
 ## [0.21.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.21.4...guest-agent-v0.21.5) (2026-04-19)
 
 

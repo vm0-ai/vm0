@@ -9,13 +9,11 @@ import {
   useResolved,
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
-import { toast } from "@vm0/ui/components/ui/sonner";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
 import { user$ } from "../../signals/auth.ts";
 import {
   IconArrowUpRight,
-  IconGift,
   IconMicrophone,
   IconPin,
   IconPlus,
@@ -23,29 +21,13 @@ import {
 } from "@tabler/icons-react";
 import {
   Button,
-  Input,
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@vm0/ui";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@vm0/ui/components/ui/dialog";
 import { FeatureSwitchKey } from "@vm0/core";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
-import {
-  redeemCode$,
-  redeemCodeDialogOpen$,
-  redeemCodeInput$,
-  setRedeemCodeDialogOpen$,
-  setRedeemCodeInput$,
-} from "../../signals/zero-page/redeem-code-dialog.ts";
 import {
   currentChatAgentId$,
   currentChatAgentDisplayName$,
@@ -178,125 +160,6 @@ class TypewriterText extends Component<
       </>
     );
   }
-}
-
-function RedeemCodeButton() {
-  const setOpen = useSet(setRedeemCodeDialogOpen$);
-  return (
-    <TooltipProvider delayDuration={200}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            onClick={() => {
-              setOpen(true);
-            }}
-            className="shrink-0 flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground cursor-pointer"
-            aria-label="Redeem code"
-            data-testid="redeem-code-button"
-          >
-            <IconGift size={20} stroke={1.5} />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">
-          <p className="text-xs">Redeem code</p>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
-}
-
-function RedeemCodeDialog() {
-  const open = useGet(redeemCodeDialogOpen$);
-  const code = useGet(redeemCodeInput$);
-  const setOpen = useSet(setRedeemCodeDialogOpen$);
-  const setCode = useSet(setRedeemCodeInput$);
-  const [redeemLoadable, redeem] = useLoadableSet(redeemCode$);
-  const pageSignal = useGet(pageSignal$);
-
-  const inFlight = redeemLoadable.state === "loading";
-
-  const handleRedeem = () => {
-    const trimmed = code.trim();
-    if (!trimmed) {
-      return;
-    }
-    // On 4xx/5xx, `accept()` inside `redeemCode$` shows the error toast and
-    // throws an ApiError — `detach()` swallows the rejection here, so we
-    // neither re-toast nor close the dialog. On success, toast + close.
-    detach(
-      (async () => {
-        const result = await redeem(trimmed, pageSignal);
-        toast.success(
-          `Added ${result.credits.toLocaleString()} credits. New balance: ${result.newBalance.toLocaleString()}.`,
-        );
-        setOpen(false);
-      })(),
-      Reason.DomCallback,
-      "redeemCode",
-    );
-  };
-
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={(v) => {
-        if (inFlight) {
-          return;
-        }
-        if (!v) {
-          setOpen(false);
-        }
-      }}
-    >
-      <DialogContent className="w-[calc(100vw-2rem)] sm:max-w-[420px]">
-        <DialogHeader>
-          <DialogTitle>Redeem code</DialogTitle>
-          <DialogDescription>
-            Enter the redemption code you received (format:{" "}
-            <code className="font-mono">VM0-XXXX-XXXX-XXXX-XXXX</code>) to add
-            credits to your workspace.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="py-2">
-          <Input
-            value={code}
-            onChange={(e) => {
-              setCode(e.target.value);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                handleRedeem();
-              }
-            }}
-            placeholder="VM0-XXXX-XXXX-XXXX-XXXX"
-            disabled={inFlight}
-            autoFocus
-            className="font-mono"
-            data-testid="redeem-code-input"
-          />
-        </div>
-        <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={() => {
-              setOpen(false);
-            }}
-            disabled={inFlight}
-          >
-            Cancel
-          </Button>
-          <Button
-            onClick={handleRedeem}
-            disabled={inFlight || !code.trim()}
-            data-testid="redeem-code-submit"
-          >
-            {inFlight ? "Redeeming…" : "Redeem"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
 }
 
 function InviteButton({ pageSignal }: { pageSignal: AbortSignal }) {
@@ -506,7 +369,6 @@ export function AgentChatPage() {
     <div className="relative flex flex-1 flex-col min-h-0">
       <header className="hidden md:block shrink-0 bg-transparent px-4 sm:px-6 pt-4 pb-2">
         <div className="flex justify-end items-center gap-2">
-          <RedeemCodeButton />
           <ChatHeaderAction pageSignal={pageSignal} />
         </div>
       </header>
@@ -657,7 +519,6 @@ export function AgentChatPage() {
           </div>
         </div>
       </main>
-      <RedeemCodeDialog />
     </div>
   );
 }

@@ -1,5 +1,60 @@
 # Changelog
 
+## [0.89.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.89.2...runner-rs-v0.89.3) (2026-04-22)
+
+
+### Bug Fixes
+
+* skip auto-focus on touch devices in ZeroChatComposer ([#10496](https://github.com/vm0-ai/vm0/issues/10496)) ([2c90017](https://github.com/vm0-ai/vm0/commit/2c90017ef46dae13b52426038025e22bb9cc9f88))
+
+## [0.89.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.89.1...runner-rs-v0.89.2) (2026-04-22)
+
+
+### Bug Fixes
+
+* **runner:** close urllib response in firewall auth fetch ([#10489](https://github.com/vm0-ai/vm0/issues/10489)) ([30a80ca](https://github.com/vm0-ai/vm0/commit/30a80caf4b598eb84dc39547b11378c56c6b5412))
+
+## [0.89.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.89.0...runner-rs-v0.89.1) (2026-04-22)
+
+
+### Bug Fixes
+
+* **mitm-addon:** close urllib response and error in _forward_request_sync ([#10490](https://github.com/vm0-ai/vm0/issues/10490)) ([f65241b](https://github.com/vm0-ai/vm0/commit/f65241bb88d0dc333327685b25cc3b243db64406)), closes [#10476](https://github.com/vm0-ai/vm0/issues/10476)
+
+
+### Refactoring
+
+* **mitm-addon:** split usage.py into package with per-connector dispatch ([#10478](https://github.com/vm0-ai/vm0/issues/10478)) ([a9d9f14](https://github.com/vm0-ai/vm0/commit/a9d9f14b47de14a3c255b76e1d59e91cf4b2fe37))
+* **runner:** make image gc top-n global across rootfs ([#10480](https://github.com/vm0-ai/vm0/issues/10480)) ([3ab0924](https://github.com/vm0-ai/vm0/commit/3ab09242f143ddbc62ad32ebbb2517ee3f0c5f9d))
+
+## [0.89.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.88.6...runner-rs-v0.89.0) (2026-04-21)
+
+
+### Features
+
+* **runner:** emit vm_reuse telemetry for every reuse decision ([#10441](https://github.com/vm0-ai/vm0/issues/10441)) ([ac947c3](https://github.com/vm0-ai/vm0/commit/ac947c30e57b90312dfba90a2f8fd95a66e91ebe))
+
+
+### Refactoring
+
+* **billing:** unify connector billing gate on firewall_billable ([#10446](https://github.com/vm0-ai/vm0/issues/10446)) ([d8e23b9](https://github.com/vm0-ai/vm0/commit/d8e23b9b110b3979322ba44869a7cffe6cf289cf))
+
+## [0.88.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.88.5...runner-rs-v0.88.6) (2026-04-21)
+
+## [0.88.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.88.4...runner-rs-v0.88.5) (2026-04-21)
+
+
+### Bug Fixes
+
+* **billing:** gate model-provider proxy usage to vm0 meta-provider only ([#10406](https://github.com/vm0-ai/vm0/issues/10406)) ([8370578](https://github.com/vm0-ai/vm0/commit/8370578496b91bbaf3a79c0ae6f4c824aabf887c))
+
+## [0.88.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.88.3...runner-rs-v0.88.4) (2026-04-21)
+
+
+### Bug Fixes
+
+* **runner:** pre-register signal handlers before slow startup ([#10419](https://github.com/vm0-ai/vm0/issues/10419)) ([9c3ec4d](https://github.com/vm0-ai/vm0/commit/9c3ec4daea8fc3f0843655a6b4bfd72519da8629)), closes [#10416](https://github.com/vm0-ai/vm0/issues/10416)
+
 ## [0.88.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.88.2...runner-rs-v0.88.3) (2026-04-21)
 
 

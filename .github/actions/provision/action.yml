@@ -17,6 +17,9 @@ inputs:
   grafana-cloud-api-key:
     description: "Grafana Cloud API key"
     required: true
+  env-label:
+    description: "env_label passed to provision-monitoring (e.g. dev, prod)"
+    required: true
 
 runs:
   using: "composite"
@@ -33,6 +36,7 @@ runs:
         GRAFANA_CLOUD_PROMETHEUS_URL: ${{ inputs.grafana-cloud-prometheus-url }}
         GRAFANA_CLOUD_PROMETHEUS_USER: ${{ inputs.grafana-cloud-prometheus-user }}
         GRAFANA_CLOUD_API_KEY: ${{ inputs.grafana-cloud-api-key }}
+        ENV_LABEL: ${{ inputs.env-label }}
         ANSIBLE_CONFIG: ansible/ansible.cfg
       run: |
         if [ -z "${GRAFANA_CLOUD_API_KEY}" ]; then
@@ -71,7 +75,7 @@ runs:
           -e "grafana_cloud_prometheus_url=${GRAFANA_CLOUD_PROMETHEUS_URL}" \
           -e "grafana_cloud_prometheus_user=${GRAFANA_CLOUD_PROMETHEUS_USER}" \
           -e "grafana_cloud_api_key=${GRAFANA_CLOUD_API_KEY}" \
-          -e "env_label=dev" -v
+          -e "env_label=${ENV_LABEL}" -v
 
         for HOST in $(echo "$STALE_HOSTS" | tr ',' ' '); do
           ssh "${METAL_USER}@${HOST}" "echo ${ANSIBLE_HASH} > ~/.vm0-provision-hash"

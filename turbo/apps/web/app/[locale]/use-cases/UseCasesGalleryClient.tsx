@@ -4,8 +4,8 @@ import Image from "next/image";
 import { useTranslations } from "next-intl";
 import { useMemo, useState } from "react";
 import { Link } from "../../../navigation";
-import Footer from "../../components/Footer";
-import Particles from "../../components/Particles";
+import { Footer } from "../../components/Footer";
+import { Particles } from "../../components/Particles";
 import { getAppUrl } from "../../../src/lib/zero/url";
 import { USE_CASES, buildPromptHref } from "./data";
 import type { UseCase, ConnectorRef, AvatarConfig, Role } from "./data";
@@ -147,7 +147,7 @@ function UseCaseCard({
   );
 }
 
-export default function UseCasesGalleryClient() {
+export function UseCasesGalleryClient() {
   const t = useTranslations("useCases");
   const [activeRole, setActiveRole] = useState<RoleFilter>("all");
 

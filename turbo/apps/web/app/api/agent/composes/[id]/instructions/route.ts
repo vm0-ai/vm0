@@ -10,7 +10,13 @@
  */
 import { gunzipSync } from "node:zlib";
 import { createHandler, tsr } from "../../../../../../src/lib/ts-rest-handler";
-import { composesInstructionsContract } from "@vm0/core";
+import {
+  composesInstructionsContract,
+  getInstructionsStorageName,
+  getInstructionsFilename,
+  stripMetadataFrontmatter,
+  agentComposeApiContentSchema,
+} from "@vm0/core";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { eq, and } from "drizzle-orm";
 import {
@@ -33,12 +39,6 @@ import {
   downloadS3Buffer,
 } from "../../../../../../src/lib/infra/s3/s3-client";
 import { env } from "../../../../../../src/env";
-import {
-  getInstructionsStorageName,
-  getInstructionsFilename,
-  stripMetadataFrontmatter,
-  agentComposeApiContentSchema,
-} from "@vm0/core";
 import { extractFileFromTar } from "../../../../../../src/lib/infra/tar";
 
 const router = tsr.router(composesInstructionsContract, {

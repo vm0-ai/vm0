@@ -25,7 +25,11 @@ export default [
     },
     rules: {
       "react/react-in-jsx-scope": "off",
-      // Non-type-aware rules
+      // Moved to oxlint (react plugin) — not in eslint-plugin-oxlint mapping, explicit off required.
+      "react/require-render-return": "off",
+      // Redundant in TypeScript projects (type system enforces these) and not in oxlint.
+      "react/prop-types": "off",
+      "react/no-deprecated": "off",
       "ccstate/signal-dollar-suffix": "error",
       "ccstate/no-export-state": "error",
       "ccstate/signal-check-await": "error",
@@ -42,36 +46,8 @@ export default [
       "ccstate/no-void-statement": "error",
       "ccstate/no-abort-swallower": "error",
       "ccstate/require-accept": "error",
-    },
-  },
-  // Type-aware rules (only for TypeScript files)
-  {
-    files: ["**/*.ts", "**/*.tsx"],
-    languageOptions: {
-      parserOptions: {
-        projectService: true,
-        tsconfigRootDir: import.meta.dirname,
-      },
-    },
-    rules: {
-      "ccstate/no-package-variable": [
-        "error",
-        {
-          allowedMutableTypes: [
-            { from: "package", name: "State", package: "ccstate" },
-            { from: "package", name: "Computed", package: "ccstate" },
-            { from: "package", name: "Command", package: "ccstate" },
-            { from: "file", name: "ConsoleLogger" },
-            { from: "file", name: "TestContext" },
-            { from: "package", name: "Store", package: "ccstate" },
-            { from: "file", name: "LocationOverrides" },
-            { from: "file", name: "PromiseTracker" },
-            { from: "file", name: "LoggerRegistry" },
-          ],
-        },
-      ],
-      "ccstate/no-get-signal": "error",
-      "ccstate/computed-const-args-package-scope": "error",
+      "ccstate/command-async-signal": "error",
+      "ccstate/no-getter-setter-params": "error",
       "ccstate/no-store-in-params": [
         "error",
         {
@@ -80,8 +56,18 @@ export default [
           allowedFunctions: ["setupRouter"],
         },
       ],
-      "ccstate/command-async-signal": "error",
-      "ccstate/no-getter-setter-params": "error",
+      "ccstate/no-get-signal": "error",
+      "ccstate/no-package-variable": [
+        "error",
+        {
+          allowedConstructors: [
+            "LocationOverrides",
+            "PromiseTracker",
+            "LoggerRegistry",
+          ],
+        },
+      ],
+      "ccstate/computed-const-args-package-scope": "error",
     },
   },
   {
@@ -234,7 +220,18 @@ export default [
       "custom-eslint/**",
       "src/mocks/**",
       "src/__tests__/**",
+      "eslint.config.ablation.mjs",
+      // Asset files — not JS/TS, would cause parse errors when matched by
+      // broad file globs in .oxlintrc.json overrides (e.g. src/views/**/*.*)
+      "**/*.svg",
+      "**/*.png",
+      "**/*.webp",
+      "**/*.css",
     ],
   },
-  ...oxlint.buildFromOxlintConfigFile("../../.oxlintrc.json"),
+  ...oxlint.buildFromOxlintConfigFile("./.oxlintrc.json"),
+  // react/jsx-uses-vars marked JSX identifiers as "used" for ESLint's no-unused-vars.
+  // Both no-unused-vars and @typescript-eslint/no-unused-vars are now handled by
+  // oxlint, so this rule is no longer needed.
+  { rules: { "react/jsx-uses-vars": "off" } },
 ];

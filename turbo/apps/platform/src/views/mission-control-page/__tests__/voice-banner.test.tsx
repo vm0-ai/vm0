@@ -84,7 +84,6 @@ describe("voiceBanner — preparing state (MC-VC-003)", () => {
         return respond(200, {
           session: {
             id: "vc-prep-session",
-            mode: "chat",
             status: "preparing",
             runId: "run-test-1",
             createdAt: "2026-01-01T00:00:00Z",

@@ -9,10 +9,6 @@ import {
   enrichTelegramPrompt,
   formatReplyQuote,
   appendPhotoContext,
-} from "./shared";
-import { fetchTelegramContext } from "../context";
-import { runAgentForTelegram } from "./run-agent";
-import {
   lookupTelegramThreadSession,
   storeTelegramMessage,
   getWorkspaceAgent,
@@ -21,6 +17,8 @@ import {
   buildAgentLogsUrl,
   buildLogsUrl,
 } from "./shared";
+import { fetchTelegramContext } from "../context";
+import { runAgentForTelegram } from "./run-agent";
 import { buildTelegramErrorResponse, escapeHtml } from "../format";
 import { logger } from "../../../shared/logger";
 import type { TelegramHandlerUpdate } from "./types";

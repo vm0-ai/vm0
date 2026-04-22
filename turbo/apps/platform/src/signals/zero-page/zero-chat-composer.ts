@@ -69,3 +69,13 @@ export const setPopoverSortOrder$ = command(
     set(internalPopoverSortOrder$, order);
   },
 );
+
+// -- Model picker open state ------------------------------------------------
+
+const internalModelPickerOpen$ = state(false);
+export const modelPickerOpen$ = computed((get) => {
+  return get(internalModelPickerOpen$);
+});
+export const setModelPickerOpen$ = command(({ set }, open: boolean) => {
+  set(internalModelPickerOpen$, open);
+});

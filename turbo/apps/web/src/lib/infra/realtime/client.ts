@@ -9,7 +9,7 @@ let ablyClient: Ably.Rest | null = null;
 
 function getAblyClient(): Ably.Rest {
   if (!ablyClient) {
-    ablyClient = new Ably.Rest({ key: env().ABLY_API_KEY });
+    ablyClient = new Ably.Rest({ key: env().ABLY_API_KEY, queryTime: true });
     log.debug("Ably client initialized");
   }
 

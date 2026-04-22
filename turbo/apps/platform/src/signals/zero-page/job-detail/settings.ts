@@ -3,7 +3,7 @@ import { zeroAgentsByIdContract } from "@vm0/core";
 import { zeroClient$ } from "../../api-client.ts";
 import { accept } from "../../../lib/accept.ts";
 import { zeroJobDetail$, reloadJobDetail$ } from "./detail.ts";
-import { reloadAgents$ } from "../../agent.ts";
+import { reloadAgentById$, reloadAgents$ } from "../../agent.ts";
 
 // ---------------------------------------------------------------------------
 // Settings: update agent metadata (displayName, sound)
@@ -38,5 +38,6 @@ export const zeroJobUpdateSettings$ = command(
 
     set(reloadJobDetail$);
     set(reloadAgents$);
+    set(reloadAgentById$);
   },
 );

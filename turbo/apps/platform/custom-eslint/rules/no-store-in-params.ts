@@ -20,12 +20,7 @@
  *   "ccstate/no-store-in-params": ["error", { allowedFunctions: ["setupRouter"] }]
  */
 
-import {
-  AST_NODE_TYPES,
-  ESLintUtils,
-  type TSESTree,
-} from "@typescript-eslint/utils";
-import type { Type } from "typescript";
+import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 import { createRule } from "../utils.ts";
 
 interface Options {
@@ -33,6 +28,88 @@ interface Options {
 }
 
 type MessageIds = "noStoreInParams" | "noStoreInObjectParams";
+
+// Returns the dot-path where Store was found, or null if not found.
+// path=[] means Store is the direct type; path=["store"] means { store: Store }.
+//
+// Note: checks type annotation text only, not symbol origin. False positives are
+// possible for user-defined types named Store from non-ccstate packages, but are
+// acceptable in this codebase where this name is ccstate-specific by convention.
+// Also note: type aliases (e.g. `type MyStore = Store; fn(s: MyStore)`) are not
+// detected — only explicit Store annotations are matched.
+function findStorePath(
+  typeNode: TSESTree.TypeNode,
+  path: string[] = [],
+  depth = 0,
+): string[] | null {
+  if (depth > 3) {
+    return null;
+  }
+
+  switch (typeNode.type) {
+    case AST_NODE_TYPES.TSTypeReference: {
+      const { typeName } = typeNode;
+      if (
+        typeName.type === AST_NODE_TYPES.Identifier &&
+        typeName.name === "Store"
+      ) {
+        return path;
+      }
+      // Recurse into generic type arguments: e.g. Array<Store>, Map<string, Store>
+      if (typeNode.typeArguments) {
+        for (const arg of typeNode.typeArguments.params) {
+          const found = findStorePath(arg, path, depth + 1);
+          if (found !== null) {
+            return found;
+          }
+        }
+      }
+      return null;
+    }
+
+    case AST_NODE_TYPES.TSUnionType:
+    case AST_NODE_TYPES.TSIntersectionType: {
+      for (const t of typeNode.types) {
+        const found = findStorePath(t, path, depth + 1);
+        if (found !== null) {
+          return found;
+        }
+      }
+      return null;
+    }
+
+    case AST_NODE_TYPES.TSArrayType: {
+      return findStorePath(typeNode.elementType, [...path, "[]"], depth + 1);
+    }
+
+    case AST_NODE_TYPES.TSTypeLiteral: {
+      for (const member of typeNode.members) {
+        if (
+          member.type === AST_NODE_TYPES.TSPropertySignature &&
+          member.typeAnnotation
+        ) {
+          const propName =
+            member.key.type === AST_NODE_TYPES.Identifier
+              ? member.key.name
+              : "?";
+          const found = findStorePath(
+            member.typeAnnotation.typeAnnotation,
+            [...path, propName],
+            depth + 1,
+          );
+          if (found !== null) {
+            return found;
+          }
+        }
+      }
+      return null;
+    }
+
+    default: {
+      return null;
+    }
+  }
+}
 
 export default createRule<[Options?], MessageIds>({
   name: "no-store-in-params",
@@ -42,7 +119,7 @@ export default createRule<[Options?], MessageIds>({
     docs: {
       description: "Prevent Store type in function parameters",
       recommended: true,
-      requiresTypeChecking: true,
+      requiresTypeChecking: false,
     },
     schema: [
       {
@@ -68,137 +145,33 @@ export default createRule<[Options?], MessageIds>({
     const options = context.options[0] ?? {};
     const allowedFunctions = new Set(options.allowedFunctions ?? []);
 
-    const services = ESLintUtils.getParserServices(context);
-    const checker = services.program.getTypeChecker();
-
-    function isStoreType(type: Type): boolean {
-      const typeString = checker.typeToString(type);
-      if (!typeString.includes("Store")) {
-        return false;
-      }
-
-      const symbol = type.getSymbol();
-      if (!symbol || symbol.getName() !== "Store") {
-        return false;
-      }
-      const declarations = symbol.getDeclarations();
-      if (!declarations?.length) {
-        return false;
-      }
-      const sourceFile = declarations[0].getSourceFile();
-      return sourceFile.fileName.includes("ccstate");
-    }
-
-    function checkTypeRecursively(
-      type: Type,
-      paramName: string,
-      node: TSESTree.Node,
-      path: string[] = [],
-      visitedTypes = new Set<Type>(),
-    ): void {
-      if (visitedTypes.has(type)) {
-        return;
-      }
-      visitedTypes.add(type);
-
-      if (path.length > 3) {
-        return;
-      }
-      if (isStoreType(type)) {
-        if (path.length === 0) {
-          context.report({
-            node,
-            messageId: "noStoreInParams",
-            data: { param: paramName },
-          });
-        } else {
-          context.report({
-            node,
-            messageId: "noStoreInObjectParams",
-            data: {
-              param: paramName,
-              property: path.join("."),
-            },
-          });
-        }
-        return;
-      }
-      if (type.isUnion() || type.isIntersection()) {
-        for (const subType of type.types) {
-          checkTypeRecursively(subType, paramName, node, path, visitedTypes);
-        }
-        return;
-      }
-      const typeAsString = checker.typeToString(type);
-      if (
-        typeAsString.includes("Store[]") ||
-        typeAsString.includes("Array<Store")
-      ) {
-        const numberIndexType = checker.getIndexTypeOfType(
-          type,
-          1 /* IndexKind.Number */,
-        );
-        if (numberIndexType) {
-          checkTypeRecursively(
-            numberIndexType,
-            paramName,
-            node,
-            [...path, "[]"],
-            visitedTypes,
-          );
-        }
-        return;
-      }
-
-      if (
-        path.length <= 1 &&
-        (type.isClassOrInterface() ||
-          type.getFlags() & 524_288) /* TypeFlags.Object */
-      ) {
-        const properties = type.getProperties();
-        const propsToCheck = properties.slice(0, 10);
-        for (const prop of propsToCheck) {
-          const propDeclaration = prop.valueDeclaration;
-          if (propDeclaration) {
-            const propType = checker.getTypeOfSymbolAtLocation(
-              prop,
-              propDeclaration,
-            );
-            const propTypeString = checker.typeToString(propType);
-            if (propTypeString.includes("Store")) {
-              checkTypeRecursively(
-                propType,
-                paramName,
-                node,
-                [...path, prop.getName()],
-                visitedTypes,
-              );
-            }
-          }
-        }
-      }
-    }
-
     function checkParameter(param: TSESTree.Parameter) {
       if (param.type !== AST_NODE_TYPES.Identifier) {
         return;
       }
-      const tsNode = services.esTreeNodeToTSNodeMap.get(param);
-      const type = checker.getTypeAtLocation(tsNode);
-
-      const typeFlags = type.getFlags();
-      if (
-        typeFlags &
-        (16 /* TypeFlags.Boolean */ |
-          32 /* TypeFlags.String */ |
-          64 /* TypeFlags.Number */ |
-          1024 /* TypeFlags.Null */ |
-          2048 /* TypeFlags.Undefined */ |
-          4096) /* TypeFlags.Void */
-      ) {
+      const ann = param.typeAnnotation?.typeAnnotation;
+      if (!ann) {
         return;
       }
-      checkTypeRecursively(type, param.name, param);
+
+      const storePath = findStorePath(ann);
+      if (storePath === null) {
+        return;
+      }
+
+      if (storePath.length === 0) {
+        context.report({
+          node: param,
+          messageId: "noStoreInParams",
+          data: { param: param.name },
+        });
+      } else {
+        context.report({
+          node: param,
+          messageId: "noStoreInObjectParams",
+          data: { param: param.name, property: storePath.join(".") },
+        });
+      }
     }
 
     function getFunctionName(
@@ -210,7 +183,6 @@ export default createRule<[Options?], MessageIds>({
       if (node.type === AST_NODE_TYPES.FunctionDeclaration) {
         return node.id?.name;
       }
-      // Arrow function or function expression assigned to a variable
       if (
         node.parent?.type === AST_NODE_TYPES.VariableDeclarator &&
         node.parent.id.type === AST_NODE_TYPES.Identifier

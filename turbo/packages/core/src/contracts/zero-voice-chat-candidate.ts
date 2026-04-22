@@ -49,9 +49,12 @@ export const voiceChatCandidateSessionSchema = z.object({
   agentId: z.uuid().nullable(),
   mode: z.literal("chat"),
   status: voiceChatCandidateSessionStatusSchema,
-  context: z.string().nullable(),
-  contextSeq: z.number().int(),
-  contextVersion: z.number().int(),
+  conversationSummary: z.string().nullable(),
+  workingTasksSummary: z.string().nullable(),
+  finishedTasksSummary: z.string().nullable(),
+  summarySeq: z.number().int(),
+  summaryVersion: z.number().int(),
+  lastSummaryAt: z.string().nullable(),
   createdAt: z.string(),
   lastHeartbeatAt: z.string(),
   endedAt: z.string().nullable(),
@@ -74,6 +77,15 @@ export type VoiceChatCandidateItem = z.infer<
   typeof voiceChatCandidateItemSchema
 >;
 
+export const voiceChatCandidateTaskResultEntrySchema = z.object({
+  type: z.literal("assistant"),
+  content: z.string(),
+  at: z.string(),
+});
+export type VoiceChatCandidateTaskResultEntry = z.infer<
+  typeof voiceChatCandidateTaskResultEntrySchema
+>;
+
 export const voiceChatCandidateTaskSchema = z.object({
   id: z.uuid(),
   sessionId: z.uuid(),
@@ -81,7 +93,7 @@ export const voiceChatCandidateTaskSchema = z.object({
   callId: z.string(),
   prompt: z.string(),
   status: voiceChatCandidateTaskStatusSchema,
-  result: z.string().nullable(),
+  assistantMessages: z.array(voiceChatCandidateTaskResultEntrySchema),
   error: z.string().nullable(),
   createdAt: z.string(),
   startedAt: z.string().nullable(),
@@ -135,7 +147,13 @@ export const zeroVoiceChatCandidateContract = c.router({
     headers: authHeadersSchema,
     body: createSessionBodySchema,
     responses: {
-      200: z.object({ session: voiceChatCandidateSessionSchema }),
+      200: z.object({
+        session: voiceChatCandidateSessionSchema,
+        recentTaskLogs: z.string(),
+        finishedTasksFullText: z.string(),
+        talkerInstructions: z.string(),
+        talkerInstructionTokens: z.number().int().nonnegative(),
+      }),
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
@@ -149,11 +167,53 @@ export const zeroVoiceChatCandidateContract = c.router({
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.uuid() }),
     responses: {
-      200: z.object({ session: voiceChatCandidateSessionSchema }),
+      200: z.object({
+        session: voiceChatCandidateSessionSchema,
+        recentTaskLogs: z.string(),
+        finishedTasksFullText: z.string(),
+        talkerInstructions: z.string(),
+        talkerInstructionTokens: z.number().int().nonnegative(),
+      }),
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Get a voice-chat-candidate session (including context)",
+    summary: "Get a voice-chat-candidate session with recent task logs",
+  },
+
+  listSessions: {
+    method: "GET",
+    path: "/api/zero/voice-chat-candidate",
+    headers: authHeadersSchema,
+    responses: {
+      200: z.object({
+        sessions: z.array(voiceChatCandidateSessionSchema),
+      }),
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+    },
+    summary: "List voice-chat-candidate sessions for the current user",
+  },
+
+  reenterSession: {
+    method: "POST",
+    path: "/api/zero/voice-chat-candidate/:id/reenter",
+    headers: authHeadersSchema,
+    pathParams: z.object({ id: z.uuid() }),
+    body: z.object({}),
+    responses: {
+      200: z.object({
+        session: voiceChatCandidateSessionSchema,
+        recentTaskLogs: z.string(),
+        finishedTasksFullText: z.string(),
+        talkerInstructions: z.string(),
+        talkerInstructionTokens: z.number().int().nonnegative(),
+      }),
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary:
+      "Reactivate and load a voice-chat-candidate session, re-computing talker instructions",
   },
 
   endSession: {
@@ -226,6 +286,19 @@ export const zeroVoiceChatCandidateContract = c.router({
       404: apiErrorSchema,
     },
     summary: "Create a task from the Talker's createTask tool call",
+  },
+
+  listTasks: {
+    method: "GET",
+    path: "/api/zero/voice-chat-candidate/:id/tasks",
+    headers: authHeadersSchema,
+    pathParams: z.object({ id: z.uuid() }),
+    responses: {
+      200: z.object({ tasks: z.array(voiceChatCandidateTaskSchema) }),
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "List voice-chat-candidate tasks for a session",
   },
 
   token: {

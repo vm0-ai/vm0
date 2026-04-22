@@ -50,7 +50,7 @@ function SignInTokenContent() {
   );
 }
 
-export default function SignInTokenClient() {
+export function SignInTokenClient() {
   return (
     <Suspense
       fallback={

@@ -1,7 +1,6 @@
 import { command, computed, state } from "ccstate";
 import {
   FeatureSwitchKey,
-  zeroVoiceChatPrepareTriggerContract,
   zeroVoiceChatSessionsContract,
   zeroVoiceChatContextContract,
   type ContextEvent,
@@ -11,12 +10,8 @@ import { defaultAgentId$ } from "../agent.ts";
 import { delay } from "signal-timers";
 import { resetSignal, throwIfAbort, onDomEventFn, setLoop } from "../utils.ts";
 import { setAblyLoop$ } from "../realtime.ts";
-import { clerk$ } from "../auth.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { accept, ApiError } from "../../lib/accept.ts";
-import { logger } from "../log.ts";
-
-const L = logger("VoiceChat");
 
 type ConnectionStatus =
   | "idle"
@@ -64,7 +59,6 @@ function upsertUserTranscript(
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
 const PREP_TIMEOUT_CHAT_MS = 60_000;
-const PREP_TIMEOUT_MEETING_MS = 300_000;
 const MAX_RECONNECT_ATTEMPTS = 5;
 const RECONNECT_BASE_DELAY_MS = 1000;
 export type RealtimeModel = "gpt-realtime" | "gpt-realtime-mini";
@@ -166,16 +160,12 @@ const internalPc$ = state<RTCPeerConnection | null>(null);
 const internalDc$ = state<RTCDataChannel | null>(null);
 const internalStream$ = state<MediaStream | null>(null);
 const internalAudioEl$ = state<HTMLAudioElement | null>(null);
-const internalPrompt$ = state<string | null>(null);
 const internalPrepStartTime$ = state<number | null>(null);
 const internalPrepElapsedMs$ = state(0);
 const internalReconnectAttempt$ = state(0);
 const internalModel$ = state<RealtimeModel>("gpt-realtime-mini");
 
-const internalParentSignal$ = state<AbortSignal | null>(null);
 const internalWakeLock$ = state<WakeLockSentinel | null>(null);
-
-const meetingPromptInput$ = state("");
 
 const resetSessionSignal$ = resetSignal();
 
@@ -187,10 +177,6 @@ export const vcStatus$ = computed((get) => {
 export const vcTranscript$ = computed((get) => {
   return get(internalTranscript$);
 });
-export const vcEvents$ = computed((get) => {
-  return get(internalEvents$);
-});
-
 type ConversationItem =
   | { kind: "transcript"; entry: TranscriptEntry; order: number; key: string }
   | { kind: "slow-brain"; event: ContextEvent; order: number; key: string };
@@ -253,20 +239,11 @@ export const vcEnabled$ = computed(async (get) => {
 export const vcAgentId$ = computed(async (get) => {
   return await get(defaultAgentId$);
 });
-export const vcPrompt$ = computed((get) => {
-  return get(internalPrompt$);
-});
 export const vcPrepElapsedMs$ = computed((get) => {
   return get(internalPrepElapsedMs$);
 });
 export const vcReconnectAttempt$ = computed((get) => {
   return get(internalReconnectAttempt$);
-});
-export const vcMeetingPromptInput$ = computed((get) => {
-  return get(meetingPromptInput$);
-});
-export const setMeetingPromptInput$ = command(({ set }, value: string) => {
-  set(meetingPromptInput$, value);
 });
 export const vcModel$ = computed((get) => {
   return get(internalModel$);
@@ -300,37 +277,6 @@ const logContextEvent$ = command(
     ).catch(() => {
       return undefined;
     });
-  },
-);
-
-const prefetchCachedEvents$ = command(
-  async (
-    { get },
-    sessionId: string,
-    signal: AbortSignal,
-  ): Promise<ContextEvent[] | null> => {
-    const createClient = get(zeroClient$);
-    const client = createClient(zeroVoiceChatContextContract);
-    // eslint-disable-next-line no-restricted-syntax -- accept() throws on non-200; caller tolerates null on failure
-    try {
-      const res = await accept(
-        client.getEvents({ params: { id: sessionId }, query: { after: 0 } }),
-        [200],
-        { toast: false },
-      );
-      signal.throwIfAborted();
-      return res.body.events;
-    } catch (error) {
-      throwIfAbort(error);
-      if (error instanceof ApiError) {
-        L.warn("Failed to pre-fetch cached events", {
-          status: error.status,
-          sessionId,
-        });
-        return null;
-      }
-      throw error;
-    }
   },
 );
 
@@ -549,14 +495,20 @@ const injectSlowBrainEvents$ = command(
   },
 );
 
+interface WebRTCConfig {
+  token: string;
+  model: RealtimeModel;
+}
+
 const setupWebRTC$ = command(
   async (
     { get, set },
     stream: MediaStream,
-    token: string,
-    model: RealtimeModel,
+    config: WebRTCConfig,
+    parentSignal: AbortSignal,
     signal: AbortSignal,
   ): Promise<boolean> => {
+    const { token, model } = config;
     const pc = new RTCPeerConnection();
     set(internalPc$, pc);
 
@@ -611,7 +563,7 @@ const setupWebRTC$ = command(
       "close",
       onDomEventFn((): void | Promise<void> => {
         if (get(internalStatus$) === "connected") {
-          return set(reconnectVoiceSession$, signal);
+          return set(reconnectVoiceSession$, signal, parentSignal);
         }
       }),
     );
@@ -624,7 +576,7 @@ const setupWebRTC$ = command(
           pc.iceConnectionState === "disconnected"
         ) {
           if (get(internalStatus$) === "connected") {
-            return set(reconnectVoiceSession$, signal);
+            return set(reconnectVoiceSession$, signal, parentSignal);
           }
         }
       }),
@@ -773,7 +725,7 @@ const cleanupWebRTC$ = command(({ get, set }) => {
 // --- Reconnect logic ---
 
 const reconnectVoiceSession$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
+  async ({ get, set }, signal: AbortSignal, parentSignal: AbortSignal) => {
     set(internalStatus$, "reconnecting");
     set(internalError$, null);
     set(internalReconnectAttempt$, 0);
@@ -872,8 +824,8 @@ const reconnectVoiceSession$ = command(
       const ok = await set(
         setupWebRTC$,
         stream,
-        clientSecret.value,
-        model,
+        { token: clientSecret.value, model },
+        parentSignal,
         signal,
       );
       if (ok) {
@@ -881,12 +833,6 @@ const reconnectVoiceSession$ = command(
         set(internalReconnectAttempt$, 0);
         await set(acquireWakeLock$, signal);
         signal.throwIfAborted();
-        const parentSignal = get(internalParentSignal$);
-        if (!parentSignal) {
-          set(internalError$, "No parent signal for reconnect");
-          set(internalStatus$, "error");
-          return;
-        }
         const sessionSignal = set(resetSessionSignal$, parentSignal);
         await Promise.allSettled([
           set(startHeartbeat$, sessionSignal),
@@ -989,7 +935,11 @@ const releaseWakeLock$ = command(({ get, set }) => {
 // --- Shared connection logic ---
 
 const connectVoiceSession$ = command(
-  async ({ get, set }, sessionSignal: AbortSignal) => {
+  async (
+    { get, set },
+    sessionSignal: AbortSignal,
+    parentSignal: AbortSignal,
+  ) => {
     const model = get(internalModel$);
 
     set(internalStatus$, "connecting");
@@ -1037,8 +987,8 @@ const connectVoiceSession$ = command(
     const ok = await set(
       setupWebRTC$,
       stream,
-      clientSecret.value,
-      model,
+      { token: clientSecret.value, model },
+      parentSignal,
       sessionSignal,
     );
     sessionSignal.throwIfAborted();
@@ -1058,14 +1008,20 @@ const connectVoiceSession$ = command(
 
 // --- Shared preparation → activate → connect flow ---
 
+interface PrepareActivateConfig {
+  sessionId: string;
+  timeoutMs: number;
+}
+
 const prepareActivateConnect$ = command(
   async (
     { get, set },
-    sessionId: string,
+    config: PrepareActivateConfig,
     sessionSignal: AbortSignal,
-    timeoutMs: number,
+    parentSignal: AbortSignal,
     signal: AbortSignal,
   ) => {
+    const { sessionId, timeoutMs } = config;
     const startTime = Date.now();
     let preparationReady = false;
 
@@ -1167,57 +1123,8 @@ const prepareActivateConnect$ = command(
     // Connect voice (token → mic → WebRTC → poll/heartbeat)
     await Promise.allSettled([
       heartbeatPromise,
-      set(connectVoiceSession$, sessionSignal),
+      set(connectVoiceSession$, sessionSignal, parentSignal),
     ]);
-  },
-);
-
-// --- Chat preparation helper ---
-
-/**
- * Ensures the chat preparation cache is populated before session creation.
- * If preparation is already cached ("ready"), returns immediately.
- * If still preparing, polls until ready or timeout.
- * Falls through on failure so session creation can handle the unprepared case.
- */
-const awaitChatPreparation$ = command(
-  async ({ get, set }, agentId: string, signal: AbortSignal) => {
-    const createClient = get(zeroClient$);
-    const prepClient = createClient(zeroVoiceChatPrepareTriggerContract);
-    const prepRes = await accept(
-      prepClient.trigger({ body: { agentId, mode: "chat" } }),
-      [200],
-      { toast: false },
-    );
-    signal.throwIfAborted();
-
-    if (prepRes.body.preparation.status === "ready") {
-      return;
-    }
-
-    const prepStart = Date.now();
-    const clerkInstance = await get(clerk$);
-    signal.throwIfAborted();
-    const prepUserId = clerkInstance.user?.id;
-    if (!prepUserId) {
-      throw new Error(
-        "awaitChatPreparation$ called without authenticated user",
-      );
-    }
-    const chatPollBody$ = command(async (_store, loopSignal: AbortSignal) => {
-      if (Date.now() - prepStart > PREP_TIMEOUT_CHAT_MS) {
-        return true; // Timeout — proceed without cache
-      }
-      const pollRes = await accept(
-        prepClient.trigger({ body: { agentId, mode: "chat" } }),
-        [200],
-        { toast: false },
-      );
-      loopSignal.throwIfAborted();
-      const status = pollRes.body.preparation.status;
-      return status === "ready" || status === "failed";
-    });
-    await set(setAblyLoop$, `voice:prep:${prepUserId}`, chatPollBody$, signal);
   },
 );
 
@@ -1242,118 +1149,7 @@ export const startVoiceChat$ = command(
     set(internalSessionId$, null);
     set(internalLastSeq$, 0);
     set(internalCurrentAssistant$, null);
-    set(internalPrompt$, null);
     set(internalPrepStartTime$, Date.now());
-    set(internalParentSignal$, signal);
-
-    const sessionSignal = set(resetSessionSignal$, signal);
-
-    const agentId = await get(defaultAgentId$);
-    signal.throwIfAborted();
-
-    if (!agentId) {
-      set(internalError$, "No agent selected");
-      set(internalStatus$, "error");
-      return;
-    }
-
-    // Ensure preparation cache is populated before session creation.
-    // If preparation is already cached ("ready"), this returns instantly.
-    // If preparation fails, fall through to session creation which
-    // handles the unprepared case via inline slow-brain.
-    await set(awaitChatPreparation$, agentId, signal).catch(
-      (error: unknown) => {
-        throwIfAbort(error);
-        L.warn(
-          "Chat preparation failed, falling back to unprepared session",
-          error,
-        );
-      },
-    );
-    signal.throwIfAborted();
-
-    const createClient = get(zeroClient$);
-    const sessionsClient = createClient(zeroVoiceChatSessionsContract);
-    const sessionRes = await accept(
-      sessionsClient.create({ body: { agentId, mode: "chat" } }),
-      [200, 400, 401, 403],
-      { toast: false },
-    );
-    signal.throwIfAborted();
-
-    if (sessionRes.status !== 200) {
-      set(internalError$, sessionRes.body.error.message);
-      set(internalStatus$, "error");
-      return;
-    }
-
-    const { session } = sessionRes.body;
-    set(internalSessionId$, session.id);
-
-    if (session.prepared) {
-      const heartbeatPromise = set(startHeartbeat$, sessionSignal);
-
-      const activateRes = await accept(
-        sessionsClient.activate({ params: { id: session.id }, body: {} }),
-        [200, 401, 404],
-        { toast: false },
-      );
-      signal.throwIfAborted();
-
-      if (activateRes.status !== 200) {
-        set(internalError$, "Failed to activate session");
-        set(internalStatus$, "error");
-        return;
-      }
-
-      // Pre-fetch cached preparation events so they're available when DC opens
-      const cachedEvents = await set(prefetchCachedEvents$, session.id, signal);
-      if (cachedEvents && cachedEvents.length > 0) {
-        set(internalEvents$, cachedEvents);
-        const lastEvent = cachedEvents[cachedEvents.length - 1];
-        if (lastEvent) {
-          set(internalLastSeq$, lastEvent.seq);
-        }
-      }
-
-      await Promise.allSettled([
-        heartbeatPromise,
-        set(connectVoiceSession$, sessionSignal),
-      ]);
-    } else {
-      await set(
-        prepareActivateConnect$,
-        session.id,
-        sessionSignal,
-        PREP_TIMEOUT_CHAT_MS,
-        signal,
-      );
-    }
-  },
-);
-
-export const startVoiceMeeting$ = command(
-  async ({ get, set }, prompt: string, signal: AbortSignal) => {
-    if (
-      get(internalStatus$) === "connecting" ||
-      get(internalStatus$) === "connected" ||
-      get(internalStatus$) === "preparing" ||
-      get(internalStatus$) === "reconnecting"
-    ) {
-      return;
-    }
-
-    set(internalStatus$, "preparing");
-    set(internalError$, null);
-    set(internalTranscript$, []);
-    set(internalEvents$, []);
-    set(internalMuted$, false);
-    set(internalSessionId$, null);
-    set(internalLastSeq$, 0);
-    set(internalCurrentAssistant$, null);
-    set(internalPrompt$, prompt);
-    set(internalPrepStartTime$, Date.now());
-    set(internalParentSignal$, signal);
 
     const sessionSignal = set(resetSessionSignal$, signal);
 
@@ -1369,9 +1165,7 @@ export const startVoiceMeeting$ = command(
     const createClient = get(zeroClient$);
     const sessionsClient = createClient(zeroVoiceChatSessionsContract);
     const sessionRes = await accept(
-      sessionsClient.create({
-        body: { agentId, mode: "meeting", prompt },
-      }),
+      sessionsClient.create({ body: { agentId } }),
       [200, 400, 401, 403],
       { toast: false },
     );
@@ -1386,45 +1180,13 @@ export const startVoiceMeeting$ = command(
     const { session } = sessionRes.body;
     set(internalSessionId$, session.id);
 
-    if (session.prepared) {
-      const heartbeatPromise = set(startHeartbeat$, sessionSignal);
-
-      const activateRes = await accept(
-        sessionsClient.activate({ params: { id: session.id }, body: {} }),
-        [200, 401, 404],
-        { toast: false },
-      );
-      signal.throwIfAborted();
-
-      if (activateRes.status !== 200) {
-        set(internalError$, "Failed to activate session");
-        set(internalStatus$, "error");
-        return;
-      }
-
-      // Pre-fetch cached preparation events so they're available when DC opens
-      const cachedEvents = await set(prefetchCachedEvents$, session.id, signal);
-      if (cachedEvents && cachedEvents.length > 0) {
-        set(internalEvents$, cachedEvents);
-        const lastEvent = cachedEvents[cachedEvents.length - 1];
-        if (lastEvent) {
-          set(internalLastSeq$, lastEvent.seq);
-        }
-      }
-
-      await Promise.allSettled([
-        heartbeatPromise,
-        set(connectVoiceSession$, sessionSignal),
-      ]);
-    } else {
-      await set(
-        prepareActivateConnect$,
-        session.id,
-        sessionSignal,
-        PREP_TIMEOUT_MEETING_MS,
-        signal,
-      );
-    }
+    await set(
+      prepareActivateConnect$,
+      { sessionId: session.id, timeoutMs: PREP_TIMEOUT_CHAT_MS },
+      sessionSignal,
+      signal,
+      signal,
+    );
   },
 );
 
@@ -1475,12 +1237,10 @@ export const endVoiceChat$ = command(({ get, set }) => {
   }
 
   set(internalSessionId$, null);
-  set(internalPrompt$, null);
   set(internalPrepStartTime$, null);
   set(internalPrepElapsedMs$, 0);
   set(internalReconnectAttempt$, 0);
   set(internalModel$, "gpt-realtime-mini");
-  set(internalParentSignal$, null);
   set(internalStatus$, "idle");
 });
 
@@ -1490,7 +1250,7 @@ export const retryVoiceChat$ = command(
     if (status !== "disconnected") {
       return;
     }
-    await set(reconnectVoiceSession$, signal);
+    await set(reconnectVoiceSession$, signal, signal);
   },
 );
 

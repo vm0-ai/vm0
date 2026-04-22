@@ -10,7 +10,7 @@ import {
   appendVoiceChatCandidateItem,
   readVoiceChatCandidateItems,
 } from "./item-service";
-import { listPendingVoiceChatCandidateTasks } from "./task-service";
+import { listSessionTasks } from "./task-service";
 import { callReasoner } from "./reasoner";
 import { publishUserSignal } from "../../infra/realtime/client";
 import { isBadRequest } from "../../shared/errors";
@@ -64,10 +64,9 @@ export async function triggerReasoning(sessionId: string): Promise<void> {
 
   // Step 1b — re-read the session after winning the CAS lock. The snapshot
   // from step 0 may be stale if another tick completed between step 0 and the
-  // CAS acquisition (e.g. concurrent triggers where the first tick finished
-  // and released the lock before the second tick ran its CAS). Using the stale
-  // contextSeq / contextVersion would cause a spurious reasoner call and a
-  // guaranteed version-contention drop on the write, wasting an LLM round-trip.
+  // CAS acquisition. Using the stale summarySeq / summaryVersion would cause
+  // a spurious reasoner call and a guaranteed version-contention drop on the
+  // write, wasting an LLM round-trip.
   const [freshSession] = await db
     .select()
     .from(featureCandidateVoiceChatSessions)
@@ -80,18 +79,33 @@ export async function triggerReasoning(sessionId: string): Promise<void> {
       .where(eq(featureCandidateVoiceChatSessions.id, sessionId));
     return;
   }
-  // Replace the stale snapshot with the fresh one for all subsequent steps.
   const currentSession = freshSession;
 
-  // Step 2 — snapshot new items + pending tasks. If neither has anything to
-  // reason about, skip the LLM call entirely and just release the lock.
-  const newItems = await readVoiceChatCandidateItems(
-    sessionId,
-    currentSession.contextSeq,
-  );
-  const pendingTasks = await listPendingVoiceChatCandidateTasks(sessionId);
+  // Step 2 — snapshot full transcript + all tasks. The Reasoner compacts
+  // everything itself, so we give it the full state each tick rather than
+  // deltas. If nothing has happened since the last tick, skip the LLM call.
+  const transcript = await readVoiceChatCandidateItems(sessionId);
+  const tasks = await listSessionTasks(sessionId);
 
-  if (newItems.length === 0 && pendingTasks.length === 0) {
+  const maxSeq =
+    transcript.length > 0
+      ? Math.max(
+          ...transcript.map((i) => {
+            return i.seq;
+          }),
+        )
+      : currentSession.summarySeq;
+
+  // Debounce bail-out: no new items since the last summary AND no in-flight
+  // tasks that might warrant a re-summarization. The loser of a concurrent
+  // trigger race lands here after the winner completes, avoiding a redundant
+  // LLM round-trip.
+  const hasInFlightTask = tasks.some((t) => {
+    return (
+      t.status === "pending" || t.status === "queued" || t.status === "running"
+    );
+  });
+  if (maxSeq === currentSession.summarySeq && !hasInFlightTask) {
     await releaseAndDrain(sessionId);
     return;
   }
@@ -103,56 +117,55 @@ export async function triggerReasoning(sessionId: string): Promise<void> {
     currentSession.agentId,
   );
 
-  // Step 4 — determine the highest seq we are about to snapshot against,
-  // which becomes the session's new contextSeq on a successful write.
-  const newMaxSeq =
-    newItems.length > 0
-      ? Math.max(
-          ...newItems.map((i) => {
-            return i.seq;
-          }),
-        )
-      : currentSession.contextSeq;
-
-  // Step 5 — call the Reasoner. Returns null on any failure path.
-  const newContext = await callReasoner({
+  // Step 4 — call the Reasoner. Returns null on any failure path.
+  const result = await callReasoner({
     agentSystemPrompt,
-    currentContext: currentSession.context,
-    newItems: newItems.map((i) => {
+    priorConversationSummary: currentSession.conversationSummary,
+    priorWorkingTasksSummary: currentSession.workingTasksSummary,
+    priorFinishedTasksSummary: currentSession.finishedTasksSummary,
+    transcript: transcript.map((i) => {
       return {
         seq: i.seq,
         role: i.role,
         content: i.content,
+        createdAt: i.createdAt.toISOString(),
       };
     }),
-    pendingTasks: pendingTasks.map((t) => {
+    tasks: tasks.map((t) => {
       return {
         id: t.id,
         status: t.status,
         prompt: t.prompt,
+        resultText: flattenTaskResult(t.assistantMessages),
+        error: t.error,
+        createdAt: t.createdAt.toISOString(),
+        startedAt: t.startedAt?.toISOString() ?? null,
+        finishedAt: t.finishedAt?.toISOString() ?? null,
       };
     }),
   });
 
-  if (newContext !== null) {
-    // Step 6a — optimistic context_version write. If another tick wrote
+  if (result !== null) {
+    // Step 5a — optimistic summary_version write. If another tick wrote
     // ahead of us, the update affects 0 rows and we silently drop — the
     // next trigger cycle will reconcile.
     const updated = await db
       .update(featureCandidateVoiceChatSessions)
       .set({
-        context: newContext,
-        contextSeq: newMaxSeq,
-        contextVersion: currentSession.contextVersion + 1,
-        lastReasoningAt: new Date(),
+        conversationSummary: result.conversationSummary,
+        workingTasksSummary: result.workingTasksSummary,
+        finishedTasksSummary: result.finishedTasksSummary,
+        summarySeq: maxSeq,
+        summaryVersion: currentSession.summaryVersion + 1,
+        lastSummaryAt: new Date(),
         reasoningStatus: "idle",
       })
       .where(
         and(
           eq(featureCandidateVoiceChatSessions.id, sessionId),
           eq(
-            featureCandidateVoiceChatSessions.contextVersion,
-            currentSession.contextVersion,
+            featureCandidateVoiceChatSessions.summaryVersion,
+            currentSession.summaryVersion,
           ),
         ),
       )
@@ -171,7 +184,7 @@ export async function triggerReasoning(sessionId: string): Promise<void> {
         .where(eq(featureCandidateVoiceChatSessions.id, sessionId));
     }
   } else {
-    // Step 6b — reasoner returned null (missing key / HTTP error / empty /
+    // Step 5b — reasoner returned null (missing key / HTTP error / empty /
     // timeout / network). Record a system_note so the session transcript
     // carries the failure signal, then release the lock. If the session
     // ended between acquire and now, append throws badRequest — swallow
@@ -188,14 +201,25 @@ export async function triggerReasoning(sessionId: string): Promise<void> {
     }
     await db
       .update(featureCandidateVoiceChatSessions)
-      .set({ reasoningStatus: "idle", lastReasoningAt: new Date() })
+      .set({ reasoningStatus: "idle", lastSummaryAt: new Date() })
       .where(eq(featureCandidateVoiceChatSessions.id, sessionId));
   }
 
-  // Step 7 — drain pending flag. If another trigger arrived while we were
+  // Step 6 — drain pending flag. If another trigger arrived while we were
   // running, the flag was set; clear it and schedule a re-tick so the new
   // items are picked up.
   await drainPending(sessionId);
+}
+
+function flattenTaskResult(
+  result: Array<{ type: "assistant"; content: string; at: string }>,
+): string | null {
+  if (result.length === 0) return null;
+  return result
+    .map((entry) => {
+      return entry.content;
+    })
+    .join("\n");
 }
 
 async function releaseAndDrain(sessionId: string): Promise<void> {

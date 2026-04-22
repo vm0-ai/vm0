@@ -24,6 +24,7 @@ import { setupAgentsPage$ } from "./agents-page/agents-page-setup.ts";
 import { setupAgentDetailPage$ } from "./agents-page/agent-detail-page-setup.ts";
 import { setupWorksPage$ } from "./works-page/works-page-setup.ts";
 import { setupPreferencesPage$ } from "./preferences-page/preferences-page-setup.ts";
+import { setupApiKeysPage$ } from "./api-keys-page/api-keys-page-setup.ts";
 import { setupSchedulePage$ } from "./schedule-page/schedule-page-setup.ts";
 import { setupScheduleDetailPage$ } from "./schedule-page/schedule-detail-page-setup.ts";
 import { setupAgentChatPage$ } from "./zero-page/agent-chat-page-setup.ts";
@@ -49,7 +50,6 @@ import { initSlackOrg$ as handleSlackRedirect$ } from "./zero-page/zero-slack.ts
 import { setupSkeletonPage$, setupErrorPage$ } from "./skeleton-page-setup.ts";
 import { startSkeletonCycling$ } from "./app-skeleton.ts";
 import { setupMissionControlPage$ } from "./mission-control-page/mission-control-page.ts";
-import { setupRedemptionCodesPage$ } from "./redemption-codes-page/redemption-codes-page-setup.ts";
 import { setupRedeemErrorPage$ } from "./redeem-error/redeem-error-page-setup.ts";
 import { setupRedeemStatusPage$ } from "./redeem-status/redeem-status-page-setup.ts";
 import { setupRealtime$ } from "./realtime.ts";
@@ -175,6 +175,10 @@ const ROUTE_CONFIG = [
     setup: setupAuthPageWrapper(setupPreferencesPage$),
   },
   {
+    path: ROUTES.settingsApiKeys,
+    setup: setupAuthPageWrapper(setupApiKeysPage$),
+  },
+  {
     path: ROUTES.scheduleDetail,
     setup: setupAuthPageWrapper(setupScheduleDetailPage$),
   },
@@ -217,10 +221,6 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.missionControl,
     setup: setupAuthPageWrapper(setupMissionControlPage$),
-  },
-  {
-    path: ROUTES.redemptionCodes,
-    setup: setupAuthPageWrapper(setupRedemptionCodesPage$),
   },
   {
     path: ROUTES.redeemError,

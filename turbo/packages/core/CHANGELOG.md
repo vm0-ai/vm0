@@ -1,5 +1,62 @@
 # Changelog
 
+## [8.222.0](https://github.com/vm0-ai/vm0/compare/core-v8.221.0...core-v8.222.0) (2026-04-22)
+
+
+### Features
+
+* add deepseek-chat to vm0 managed models with feature flag ([#10501](https://github.com/vm0-ai/vm0/issues/10501)) ([6d13890](https://github.com/vm0-ai/vm0/commit/6d13890d1c73f94372810b251241609579a16ce2))
+
+
+### Bug Fixes
+
+* skip auto-focus on touch devices in ZeroChatComposer ([#10496](https://github.com/vm0-ai/vm0/issues/10496)) ([2c90017](https://github.com/vm0-ai/vm0/commit/2c90017ef46dae13b52426038025e22bb9cc9f88))
+
+## [8.221.0](https://github.com/vm0-ai/vm0/compare/core-v8.220.0...core-v8.221.0) (2026-04-22)
+
+
+### Features
+
+* remove Vm0GlmModel feature flag, fully enable GLM-5.1 ([#10497](https://github.com/vm0-ai/vm0/issues/10497)) ([cff31ff](https://github.com/vm0-ai/vm0/commit/cff31ffbc2f68e27d56742efafaf0832d7e5362f))
+* **voice-chat-candidate:** three-column layout with live task event stream ([#10452](https://github.com/vm0-ai/vm0/issues/10452)) ([df2a3d5](https://github.com/vm0-ai/vm0/commit/df2a3d5a8e72186508e7b40fbc739db91ebb133e))
+
+
+### Refactoring
+
+* **mitm-addon:** split usage.py into package with per-connector dispatch ([#10478](https://github.com/vm0-ai/vm0/issues/10478)) ([a9d9f14](https://github.com/vm0-ai/vm0/commit/a9d9f14b47de14a3c255b76e1d59e91cf4b2fe37))
+
+## [8.220.0](https://github.com/vm0-ai/vm0/compare/core-v8.219.1...core-v8.220.0) (2026-04-21)
+
+
+### Features
+
+* custom api keys management page with org context support ([#10469](https://github.com/vm0-ai/vm0/issues/10469)) ([aa14355](https://github.com/vm0-ai/vm0/commit/aa14355b8b6ed0a961f50c04a29376fcb965194e))
+* **uploads:** serve permanent /f file redirect for attachments ([#10460](https://github.com/vm0-ai/vm0/issues/10460)) ([85fd3d4](https://github.com/vm0-ai/vm0/commit/85fd3d4338e18db10fdfc0f62b1f8c0b1adf9f6f))
+
+
+### Bug Fixes
+
+* **zero/billing:** return 4xx for downgrade preconditions instead of 500 ([#10465](https://github.com/vm0-ai/vm0/issues/10465)) ([7309a21](https://github.com/vm0-ai/vm0/commit/7309a213afbc54ce2f11548376d8f486e15653fc))
+
+
+### Refactoring
+
+* **billing:** unify connector billing gate on firewall_billable ([#10446](https://github.com/vm0-ai/vm0/issues/10446)) ([d8e23b9](https://github.com/vm0-ai/vm0/commit/d8e23b9b110b3979322ba44869a7cffe6cf289cf))
+
+## [8.219.1](https://github.com/vm0-ai/vm0/compare/core-v8.219.0...core-v8.219.1) (2026-04-21)
+
+
+### Bug Fixes
+
+* **billing:** gate model-provider proxy usage to vm0 meta-provider only ([#10406](https://github.com/vm0-ai/vm0/issues/10406)) ([8370578](https://github.com/vm0-ai/vm0/commit/8370578496b91bbaf3a79c0ae6f4c824aabf887c))
+
+## [8.219.0](https://github.com/vm0-ai/vm0/compare/core-v8.218.0...core-v8.219.0) (2026-04-21)
+
+
+### Features
+
+* **zero/uploads:** raise presigned upload cap to 1 gb and migrate chat to presigned put ([#10409](https://github.com/vm0-ai/vm0/issues/10409)) ([e9ddfd8](https://github.com/vm0-ai/vm0/commit/e9ddfd8455087357d2d10e32a335e9c6a6d95f1b))
+
 ## [8.218.0](https://github.com/vm0-ai/vm0/compare/core-v8.217.0...core-v8.218.0) (2026-04-21)
 
 

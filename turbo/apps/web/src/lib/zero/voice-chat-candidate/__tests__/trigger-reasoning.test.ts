@@ -28,6 +28,21 @@ function openRouterResponse(content: string) {
   };
 }
 
+function threeSectionPayload(parts: {
+  conversation?: string;
+  working?: string;
+  finished?: string;
+}): string {
+  return [
+    "---CONVERSATION---",
+    parts.conversation ?? "",
+    "---WORKING---",
+    parts.working ?? "",
+    "---FINISHED---",
+    parts.finished ?? "",
+  ].join("\n");
+}
+
 async function seedActiveSession(): Promise<{
   userId: string;
   orgId: string;
@@ -61,7 +76,7 @@ async function readSession(id: string) {
 }
 
 describe("triggerReasoning", () => {
-  it("H1 — writes context, bumps seq/version, and publishes on success", async () => {
+  it("H1 — writes 3 summaries, bumps seq/version, and publishes on success", async () => {
     context.setupMocks();
     vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key");
     reloadEnv();
@@ -81,19 +96,29 @@ describe("triggerReasoning", () => {
     });
 
     const handler = http.post(OPENROUTER_URL, () => {
-      return HttpResponse.json(openRouterResponse("updated context"));
+      return HttpResponse.json(
+        openRouterResponse(
+          threeSectionPayload({
+            conversation: "Focus: greeting",
+            working: "",
+            finished: "",
+          }),
+        ),
+      );
     });
     server.use(handler.handler);
 
     await triggerReasoning(sessionId);
 
     const row = await readSession(sessionId);
-    expect(row.context).toBe("updated context");
-    expect(row.contextSeq).toBe(b!.seq);
-    expect(row.contextVersion).toBe(1);
+    expect(row.conversationSummary).toBe("Focus: greeting");
+    expect(row.workingTasksSummary).toBe("");
+    expect(row.finishedTasksSummary).toBe("");
+    expect(row.summarySeq).toBe(b!.seq);
+    expect(row.summaryVersion).toBe(1);
     expect(row.reasoningStatus).toBe("idle");
     expect(row.reasoningPending).toBe(false);
-    expect(row.lastReasoningAt).not.toBeNull();
+    expect(row.lastSummaryAt).not.toBeNull();
     expect(handler.mocked).toHaveBeenCalledTimes(1);
 
     expect(mockAblyPublish).toHaveBeenCalledWith(
@@ -117,12 +142,12 @@ describe("triggerReasoning", () => {
     await triggerReasoning(sessionId);
 
     const row = await readSession(sessionId);
-    expect(row.context).toBeNull();
-    expect(row.contextVersion).toBe(0);
+    expect(row.conversationSummary).toBeNull();
+    expect(row.summaryVersion).toBe(0);
     expect(row.reasoningStatus).toBe("idle");
-    // lastReasoningAt is bumped on both success and failure branches so
+    // lastSummaryAt is bumped on both success and failure branches so
     // operators can distinguish "ticks running but failing" from "no tick ran".
-    expect(row.lastReasoningAt).not.toBeNull();
+    expect(row.lastSummaryAt).not.toBeNull();
 
     const items = await readVoiceChatCandidateItems(sessionId);
     const systemNotes = items.filter((i) => {
@@ -148,7 +173,9 @@ describe("triggerReasoning", () => {
     });
 
     const handler = http.post(OPENROUTER_URL, () => {
-      return HttpResponse.json(openRouterResponse("ctx"));
+      return HttpResponse.json(
+        openRouterResponse(threeSectionPayload({ conversation: "ctx" })),
+      );
     });
     server.use(handler.handler);
 
@@ -164,14 +191,14 @@ describe("triggerReasoning", () => {
     const row = await readSession(sessionId);
     expect(row.reasoningStatus).toBe("idle");
     expect(row.reasoningPending).toBe(false);
-    expect(row.contextVersion).toBe(1);
+    expect(row.summaryVersion).toBe(1);
     // Exactly one OpenRouter call — the drain re-tick sees no new items and
     // takes the debounce bailout (Decision H6).
     expect(handler.mocked).toHaveBeenCalledTimes(1);
     expect(mockAblyPublish).toHaveBeenCalledTimes(1);
   });
 
-  it("H4 — a concurrent contextVersion bump causes the write to drop silently", async () => {
+  it("H4 — a concurrent summaryVersion bump causes the write to drop silently", async () => {
     context.setupMocks();
     vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key");
     reloadEnv();
@@ -191,17 +218,24 @@ describe("triggerReasoning", () => {
       const db = globalThis.services.db;
       await db
         .update(featureCandidateVoiceChatSessions)
-        .set({ contextVersion: 99, context: "written by another tick" })
+        .set({
+          summaryVersion: 99,
+          conversationSummary: "written by another tick",
+        })
         .where(eq(featureCandidateVoiceChatSessions.id, sessionId));
-      return HttpResponse.json(openRouterResponse("stale context"));
+      return HttpResponse.json(
+        openRouterResponse(
+          threeSectionPayload({ conversation: "stale context" }),
+        ),
+      );
     });
     server.use(handler.handler);
 
     await triggerReasoning(sessionId);
 
     const row = await readSession(sessionId);
-    expect(row.context).toBe("written by another tick");
-    expect(row.contextVersion).toBe(99);
+    expect(row.conversationSummary).toBe("written by another tick");
+    expect(row.summaryVersion).toBe(99);
     expect(row.reasoningStatus).toBe("idle");
     expect(mockAblyPublish).not.toHaveBeenCalled();
   });
@@ -231,15 +265,17 @@ describe("triggerReasoning", () => {
     let capturedBody: unknown;
     const handler = http.post(OPENROUTER_URL, async ({ request }) => {
       capturedBody = await request.json();
-      return HttpResponse.json(openRouterResponse("orphan ctx"));
+      return HttpResponse.json(
+        openRouterResponse(threeSectionPayload({ conversation: "orphan ctx" })),
+      );
     });
     server.use(handler.handler);
 
     await triggerReasoning(sessionId);
 
     const row = await readSession(sessionId);
-    expect(row.context).toBe("orphan ctx");
-    expect(row.contextVersion).toBe(1);
+    expect(row.conversationSummary).toBe("orphan ctx");
+    expect(row.summaryVersion).toBe(1);
 
     const body = capturedBody as {
       messages: Array<{ role: string; content: string }>;
@@ -247,7 +283,7 @@ describe("triggerReasoning", () => {
     expect(body.messages[1]!.content).toContain("Agent system prompt:\n(none)");
   });
 
-  it("H6 — skips the reasoner call when there are no new items or pending tasks", async () => {
+  it("H6 — skips the reasoner call when there are no items or tasks", async () => {
     context.setupMocks();
     vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key");
     reloadEnv();
@@ -255,15 +291,19 @@ describe("triggerReasoning", () => {
     const { sessionId } = await seedActiveSession();
 
     const handler = http.post(OPENROUTER_URL, () => {
-      return HttpResponse.json(openRouterResponse("should-not-be-called"));
+      return HttpResponse.json(
+        openRouterResponse(
+          threeSectionPayload({ conversation: "should-not-be-called" }),
+        ),
+      );
     });
     server.use(handler.handler);
 
     await triggerReasoning(sessionId);
 
     const row = await readSession(sessionId);
-    expect(row.context).toBeNull();
-    expect(row.contextVersion).toBe(0);
+    expect(row.conversationSummary).toBeNull();
+    expect(row.summaryVersion).toBe(0);
     expect(row.reasoningStatus).toBe("idle");
     expect(row.reasoningPending).toBe(false);
     expect(handler.mocked).not.toHaveBeenCalled();

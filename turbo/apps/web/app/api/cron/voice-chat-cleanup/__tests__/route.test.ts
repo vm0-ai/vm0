@@ -5,8 +5,6 @@ import {
   insertTestVoiceChatSession,
   getTestVoiceChatSessionStatus,
   getTestVoiceChatEvents,
-  insertTestVoiceChatPreparation,
-  getTestVoiceChatPreparation,
   insertTestVoiceChatCandidateSession,
   getTestVoiceChatCandidateSession,
   countTestVoiceChatCandidateSessionsByStatus,
@@ -167,63 +165,6 @@ describe("GET /api/cron/voice-chat-cleanup", () => {
     expect(body.cleaned).toBe(0);
   });
 
-  it("should delete expired preparations (>24h)", async () => {
-    const expiredTime = new Date(Date.now() - 25 * 60 * 60 * 1000); // 25h ago
-    const prepId = await insertTestVoiceChatPreparation({
-      orgId: "org_test",
-      userId: "user_test",
-      status: "ready",
-      createdAt: expiredTime,
-    });
-
-    const response = await GET(cronRequest("test-cron-secret"));
-    const body = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(body.preparationsCleaned).toBe(1);
-    expect(await getTestVoiceChatPreparation(prepId)).toBeUndefined();
-  });
-
-  it("should not delete fresh preparations (<24h)", async () => {
-    const recentTime = new Date(Date.now() - 60 * 1000); // 1 min ago
-    const prepId = await insertTestVoiceChatPreparation({
-      orgId: "org_test",
-      userId: "user_test",
-      status: "ready",
-      createdAt: recentTime,
-    });
-
-    const response = await GET(cronRequest("test-cron-secret"));
-    const body = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(body.preparationsCleaned).toBe(0);
-    expect(await getTestVoiceChatPreparation(prepId)).toBeDefined();
-  });
-
-  it("should return preparationsCleaned count in response", async () => {
-    const expiredTime = new Date(Date.now() - 25 * 60 * 60 * 1000);
-    await insertTestVoiceChatPreparation({
-      orgId: "org_test",
-      userId: "user_test1",
-      status: "preparing",
-      createdAt: expiredTime,
-    });
-    await insertTestVoiceChatPreparation({
-      orgId: "org_test",
-      userId: "user_test2",
-      status: "ready",
-      createdAt: expiredTime,
-    });
-
-    const response = await GET(cronRequest("test-cron-secret"));
-    const body = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(body.preparationsCleaned).toBe(2);
-    expect(body.cleaned).toBe(0);
-  });
-
   describe("voice-chat-candidate passes", () => {
     it("T1 — times out candidate sessions with stale heartbeat and publishes signal", async () => {
       const mocks = context.setupMocks();
@@ -309,7 +250,7 @@ describe("GET /api/cron/voice-chat-cleanup", () => {
         orgId: "org_test",
         userId: "user_test",
         reasoningStatus: "running",
-        lastReasoningAt: staleReasoningAt,
+        lastSummaryAt: staleReasoningAt,
       });
 
       // Pre-cron: after() queue is empty.
@@ -328,13 +269,13 @@ describe("GET /api/cron/voice-chat-cleanup", () => {
       expect(globalThis.nextAfterCallbacks.length).toBe(1);
     });
 
-    it("T6 — does not touch a non-stuck reasoner (lastReasoningAt within 5 min)", async () => {
+    it("T6 — does not touch a non-stuck reasoner (lastSummaryAt within 5 min)", async () => {
       const freshReasoningAt = new Date(Date.now() - 2 * 60 * 1000);
       const sessionId = await insertTestVoiceChatCandidateSession({
         orgId: "org_test",
         userId: "user_test",
         reasoningStatus: "running",
-        lastReasoningAt: freshReasoningAt,
+        lastSummaryAt: freshReasoningAt,
       });
 
       const response = await GET(cronRequest("test-cron-secret"));
@@ -343,7 +284,7 @@ describe("GET /api/cron/voice-chat-cleanup", () => {
       expect(body.reasonerReset).toBe(0);
       const row = await getTestVoiceChatCandidateSession(sessionId);
       expect(row?.reasoningStatus).toBe("running");
-      expect(row?.lastReasoningAt?.getTime()).toBe(freshReasoningAt.getTime());
+      expect(row?.lastSummaryAt?.getTime()).toBe(freshReasoningAt.getTime());
     });
 
     it("T7 — idempotent: a second run within the same tick processes nothing", async () => {
@@ -403,7 +344,7 @@ describe("GET /api/cron/voice-chat-cleanup", () => {
           orgId,
           userId: `user_t9_${i}`,
           reasoningStatus: "running",
-          lastReasoningAt: staleReasoningAt,
+          lastSummaryAt: staleReasoningAt,
         });
       }
 

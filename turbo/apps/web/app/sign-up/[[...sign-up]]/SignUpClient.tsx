@@ -5,7 +5,7 @@ import { useTheme } from "../../components/ThemeProvider";
 import { AuthLayout } from "../../components/auth/AuthLayout";
 import { getClerkAppearance } from "../../components/auth/clerk-appearance";
 
-export default function SignUpClient() {
+export function SignUpClient() {
   const { theme } = useTheme();
 
   return (

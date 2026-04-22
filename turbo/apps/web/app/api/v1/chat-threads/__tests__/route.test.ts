@@ -11,14 +11,15 @@ import {
   uniqueId,
   type UserContext,
 } from "../../../../../src/__tests__/test-helpers";
-import {
-  mockClerk,
-  registerMockApiKey,
-} from "../../../../../src/__tests__/clerk-mock";
+import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 import {
   insertTestChatThread,
   insertTestChatMessage,
 } from "../../../../../src/__tests__/db-test-seeders/agents";
+import {
+  createTestCliToken,
+  deleteTestCliToken,
+} from "../../../../../src/__tests__/db-test-seeders/auth";
 import { updateOrgDefaultAgent } from "../../../../../src/__tests__/db-test-seeders/org";
 import { getTestZeroAgentId } from "../../../../../src/__tests__/db-test-assertions/agents";
 import { randomUUID } from "crypto";
@@ -40,18 +41,8 @@ function bearerHeaders(secret: string) {
   };
 }
 
-function seedApiKey(
-  secret: string,
-  user: UserContext,
-  overrides?: { revoked?: boolean; expired?: boolean },
-) {
-  registerMockApiKey(secret, {
-    id: uniqueId("api-key"),
-    subject: user.userId,
-    claims: { orgId: user.orgId },
-    revoked: overrides?.revoked,
-    expired: overrides?.expired,
-  });
+async function mintApiKey(user: UserContext): Promise<string> {
+  return createTestCliToken(user.userId, undefined, user.orgId);
 }
 
 describe("GET /api/v1/chat-threads/:threadId", () => {
@@ -73,35 +64,49 @@ describe("GET /api/v1/chat-threads/:threadId", () => {
     expect(res.status).toBe(401);
   });
 
-  it("returns 401 for unknown API key", async () => {
+  it("returns 401 for opaque (non-vm0_pat_) bearer token", async () => {
     const res = await getThread(
       createTestRequest(GET_THREAD_URL(threadId), {
         method: "GET",
-        headers: bearerHeaders("ak_unknown"),
+        headers: bearerHeaders("ak_unknown_opaque_secret"),
       }),
     );
     expect(res.status).toBe(401);
   });
 
-  it("returns 401 when key is revoked", async () => {
-    const secret = `ak_${uniqueId("secret")}`;
-    seedApiKey(secret, user, { revoked: true });
+  it("returns 401 when PAT is revoked (row deleted)", async () => {
+    const token = await mintApiKey(user);
+    await deleteTestCliToken(token);
     const res = await getThread(
       createTestRequest(GET_THREAD_URL(threadId), {
         method: "GET",
-        headers: bearerHeaders(secret),
+        headers: bearerHeaders(token),
       }),
     );
     expect(res.status).toBe(401);
   });
 
-  it("returns 200 with thread detail when key owns thread", async () => {
-    const secret = `ak_${uniqueId("secret")}`;
-    seedApiKey(secret, user);
+  it("returns 401 when PAT is expired", async () => {
+    const token = await createTestCliToken(
+      user.userId,
+      new Date(Date.now() - 1000),
+      user.orgId,
+    );
     const res = await getThread(
       createTestRequest(GET_THREAD_URL(threadId), {
         method: "GET",
-        headers: bearerHeaders(secret),
+        headers: bearerHeaders(token),
+      }),
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 200 with thread detail when PAT owns thread", async () => {
+    const token = await mintApiKey(user);
+    const res = await getThread(
+      createTestRequest(GET_THREAD_URL(threadId), {
+        method: "GET",
+        headers: bearerHeaders(token),
       }),
     );
     expect(res.status).toBe(200);
@@ -115,13 +120,12 @@ describe("GET /api/v1/chat-threads/:threadId", () => {
   });
 
   it("returns 404 when thread belongs to another user", async () => {
-    const secret = `ak_${uniqueId("secret")}`;
-    seedApiKey(secret, user);
+    const token = await mintApiKey(user);
     const otherThreadId = randomUUID();
     const res = await getThread(
       createTestRequest(GET_THREAD_URL(otherThreadId), {
         method: "GET",
-        headers: bearerHeaders(secret),
+        headers: bearerHeaders(token),
       }),
     );
     expect(res.status).toBe(404);
@@ -158,12 +162,11 @@ describe("GET /api/v1/chat-threads/:threadId/messages", () => {
   });
 
   it("returns 200 with messages", async () => {
-    const secret = `ak_${uniqueId("secret")}`;
-    seedApiKey(secret, user);
+    const token = await mintApiKey(user);
     const res = await getMessages(
       createTestRequest(GET_MESSAGES_URL(threadId), {
         method: "GET",
-        headers: bearerHeaders(secret),
+        headers: bearerHeaders(token),
       }),
     );
     expect(res.status).toBe(200);
@@ -171,18 +174,19 @@ describe("GET /api/v1/chat-threads/:threadId/messages", () => {
     expect(body.messages).toHaveLength(2);
     expect(body.messages[0].role).toBe("user");
     expect(body.messages[0].content).toBe("hello");
+    expect(body.messages[0].runId).toBeUndefined();
+    expect(body.messages[0].status).toBeUndefined();
     expect(body.messages[1].role).toBe("assistant");
     expect(body.messages[1].content).toBe("world");
   });
 
   it("returns 404 when thread belongs to another user", async () => {
-    const secret = `ak_${uniqueId("secret")}`;
-    seedApiKey(secret, user);
+    const token = await mintApiKey(user);
     const otherThreadId = randomUUID();
     const res = await getMessages(
       createTestRequest(GET_MESSAGES_URL(otherThreadId), {
         method: "GET",
-        headers: bearerHeaders(secret),
+        headers: bearerHeaders(token),
       }),
     );
     expect(res.status).toBe(404);
@@ -210,12 +214,11 @@ describe("POST /api/v1/chat-threads/messages", () => {
   });
 
   it("returns 400 when no default agent is configured", async () => {
-    const secret = `ak_${uniqueId("secret")}`;
-    seedApiKey(secret, user);
+    const token = await mintApiKey(user);
     const res = await sendMessage(
       createTestRequest(POST_MESSAGE_URL, {
         method: "POST",
-        headers: bearerHeaders(secret),
+        headers: bearerHeaders(token),
         body: JSON.stringify({ prompt: "hi" }),
       }),
     );
@@ -225,13 +228,12 @@ describe("POST /api/v1/chat-threads/messages", () => {
   });
 
   it("returns 404 when posting to another user's existing thread", async () => {
-    const secret = `ak_${uniqueId("secret")}`;
-    seedApiKey(secret, user);
+    const token = await mintApiKey(user);
     const otherThreadId = randomUUID();
     const res = await sendMessage(
       createTestRequest(POST_MESSAGE_URL, {
         method: "POST",
-        headers: bearerHeaders(secret),
+        headers: bearerHeaders(token),
         body: JSON.stringify({
           prompt: "hi",
           threadId: otherThreadId,
@@ -241,8 +243,8 @@ describe("POST /api/v1/chat-threads/messages", () => {
     expect(res.status).toBe(404);
   });
 
-  it("rejects session auth (Clerk cookie) — v1 is api_key only", async () => {
-    // Session is configured via setupUser() but no Bearer api_key sent.
+  it("rejects session auth (Clerk cookie) — v1 is PAT-only", async () => {
+    // Session is configured via setupUser() but no Bearer PAT sent.
     const res = await sendMessage(
       createTestRequest(POST_MESSAGE_URL, {
         method: "POST",
@@ -253,12 +255,12 @@ describe("POST /api/v1/chat-threads/messages", () => {
     expect(res.status).toBe(401);
   });
 
-  it("rejects a CLI PAT token — v1 is api_key only", async () => {
+  it("rejects opaque (non-vm0_pat_) bearer token — v1 is PAT-only", async () => {
     const res = await sendMessage(
       createTestRequest(POST_MESSAGE_URL, {
         method: "POST",
         headers: {
-          Authorization: "Bearer vm0_pat_not_a_real_token",
+          Authorization: "Bearer ak_opaque_legacy_secret",
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ prompt: "hi" }),
@@ -267,21 +269,20 @@ describe("POST /api/v1/chat-threads/messages", () => {
     expect(res.status).toBe(401);
   });
 
-  // NOTE: Full happy-path coverage (201 with runId) is shared with the
-  // existing /api/zero/chat/messages test — that route uses the same
-  // createZeroRun pipeline we reuse here. We stop at the pre-run validation
-  // layer to avoid duplicating heavy model-provider / runner fixtures.
+  // NOTE: Full happy-path coverage is shared with the existing
+  // /api/zero/chat/messages test — that route uses the same createZeroRun
+  // pipeline we reuse here. We stop at the pre-run validation layer to avoid
+  // duplicating heavy model-provider / runner fixtures.
   it("reaches the run pipeline once default agent is configured", async () => {
     const compose = await createTestCompose(uniqueId("v1-send"));
     const agentId = await getTestZeroAgentId(user.orgId, compose.name);
     await updateOrgDefaultAgent(user.orgId, agentId);
 
-    const secret = `ak_${uniqueId("secret")}`;
-    seedApiKey(secret, user);
+    const token = await mintApiKey(user);
     const res = await sendMessage(
       createTestRequest(POST_MESSAGE_URL, {
         method: "POST",
-        headers: bearerHeaders(secret),
+        headers: bearerHeaders(token),
         body: JSON.stringify({ prompt: "hi" }),
       }),
     );
@@ -293,5 +294,13 @@ describe("POST /api/v1/chat-threads/messages", () => {
     expect(res.status).not.toBe(401);
     expect(res.status).not.toBe(403);
     expect([201, 500]).toContain(res.status);
+    if (res.status === 201) {
+      const body = await res.json();
+      expect(body.runId).toBeUndefined();
+      expect(body.status).toBeUndefined();
+      expect(body.threadId).toBeDefined();
+      expect(body.messageId).toBeDefined();
+      expect(body.createdAt).toBeDefined();
+    }
   });
 });

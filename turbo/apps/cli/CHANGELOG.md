@@ -1,5 +1,72 @@
 # Changelog
 
+## [9.127.2](https://github.com/vm0-ai/vm0/compare/cli-v9.127.1...cli-v9.127.2) (2026-04-22)
+
+
+### Bug Fixes
+
+* skip auto-focus on touch devices in ZeroChatComposer ([#10496](https://github.com/vm0-ai/vm0/issues/10496)) ([2c90017](https://github.com/vm0-ai/vm0/commit/2c90017ef46dae13b52426038025e22bb9cc9f88))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.222.0
+
+## [9.127.1](https://github.com/vm0-ai/vm0/compare/cli-v9.127.0...cli-v9.127.1) (2026-04-22)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.221.0
+
+## [9.127.0](https://github.com/vm0-ai/vm0/compare/cli-v9.126.2...cli-v9.127.0) (2026-04-21)
+
+
+### Features
+
+* **uploads:** serve permanent /f file redirect for attachments ([#10460](https://github.com/vm0-ai/vm0/issues/10460)) ([85fd3d4](https://github.com/vm0-ai/vm0/commit/85fd3d4338e18db10fdfc0f62b1f8c0b1adf9f6f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.220.0
+
+## [9.126.2](https://github.com/vm0-ai/vm0/compare/cli-v9.126.1...cli-v9.126.2) (2026-04-21)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.219.1
+
+## [9.126.1](https://github.com/vm0-ai/vm0/compare/cli-v9.126.0...cli-v9.126.1) (2026-04-21)
+
+
+### Performance Improvements
+
+* **eslint:** reduce type-checking overhead in @vm0/app ccstate rules ([#10418](https://github.com/vm0-ai/vm0/issues/10418)) ([46facd2](https://github.com/vm0-ai/vm0/commit/46facd209c29cd6c0a922edb1e4f76f044aac9fe))
+
+## [9.126.0](https://github.com/vm0-ai/vm0/compare/cli-v9.125.7...cli-v9.126.0) (2026-04-21)
+
+
+### Features
+
+* **zero/uploads:** raise presigned upload cap to 1 gb and migrate chat to presigned put ([#10409](https://github.com/vm0-ai/vm0/issues/10409)) ([e9ddfd8](https://github.com/vm0-ai/vm0/commit/e9ddfd8455087357d2d10e32a335e9c6a6d95f1b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.219.0
+
 ## [9.125.7](https://github.com/vm0-ai/vm0/compare/cli-v9.125.6...cli-v9.125.7) (2026-04-21)
 
 

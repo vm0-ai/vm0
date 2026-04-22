@@ -171,20 +171,17 @@ describe("VM0 managed model provider", () => {
     });
 
     it("should have all VM0 provider models mapped", () => {
-      const vm0Models = [
+      expect(Object.keys(VM0_MODEL_TO_PROVIDER)).toEqual([
         "claude-opus-4-7",
         "claude-opus-4-6",
         "claude-sonnet-4-6",
-        "claude-haiku-4-5",
         "glm-5.1",
+        "claude-haiku-4-5",
         "kimi-k2.6",
         "kimi-k2.5",
         "MiniMax-M2.7",
-      ];
-      for (const model of vm0Models) {
-        expect(VM0_MODEL_TO_PROVIDER[model]).toBeDefined();
-      }
-      expect(Object.keys(VM0_MODEL_TO_PROVIDER)).toHaveLength(vm0Models.length);
+        "deepseek-chat",
+      ]);
     });
   });
 

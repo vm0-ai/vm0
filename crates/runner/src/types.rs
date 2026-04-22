@@ -93,6 +93,8 @@ pub struct ExecutionContext {
     // Feature flags evaluated at job creation time (all switch states for user/org)
     #[serde(default)]
     pub feature_flags: Option<HashMap<String, bool>>,
+    #[serde(default)]
+    pub billable_firewalls: Vec<String>,
 }
 
 /// A single firewall config with its name and API entries.
@@ -338,7 +340,8 @@ mod tests {
             "prompt": "hello",
             "sandboxToken": "tok-123",
             "workingDir": "/home/user",
-            "cliAgentType": "claude_code"
+            "cliAgentType": "claude_code",
+            "billableFirewalls": []
         });
         let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
         assert_eq!(ctx.prompt, "hello");
@@ -349,6 +352,7 @@ mod tests {
         assert!(ctx.vars.is_none());
         assert!(ctx.firewalls.is_none());
         assert!(ctx.secret_values.is_none());
+        assert!(ctx.billable_firewalls.is_empty());
     }
 
     #[test]
@@ -393,7 +397,8 @@ mod tests {
             "tools": ["Bash", "Read"],
             "settings": "{\"hooks\":{}}",
             "experimentalProfile": "browser",
-            "featureFlags": {"computerUse": true, "voiceChat": false}
+            "featureFlags": {"computerUse": true, "voiceChat": false},
+            "billableFirewalls": ["model-provider:vm0"]
         });
         let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
         assert_eq!(ctx.append_system_prompt.as_deref(), Some("be concise"));
@@ -411,6 +416,10 @@ mod tests {
         let flags = ctx.feature_flags.as_ref().unwrap();
         assert_eq!(flags.get("computerUse"), Some(&true));
         assert_eq!(flags.get("voiceChat"), Some(&false));
+        assert_eq!(
+            ctx.billable_firewalls,
+            vec!["model-provider:vm0".to_string()]
+        );
     }
 
     #[test]
@@ -539,7 +548,8 @@ mod tests {
             "prompt": "hello",
             "sandboxToken": "tok",
             "workingDir": "/home/user",
-            "cliAgentType": "claude_code"
+            "cliAgentType": "claude_code",
+            "billableFirewalls": []
         });
         let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
         assert!(ctx.session_id().is_none());
@@ -556,7 +566,8 @@ mod tests {
             "resumeSession": {
                 "sessionId": "sess-abc-123",
                 "sessionHistory": "{}"
-            }
+            },
+            "billableFirewalls": []
         });
         let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
         assert_eq!(ctx.session_id(), Some("sess-abc-123"));

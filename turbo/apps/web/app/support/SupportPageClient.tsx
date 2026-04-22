@@ -1,8 +1,8 @@
 "use client";
 
-import Footer from "../components/Footer";
+import { Footer } from "../components/Footer";
 
-export default function SupportPageClient() {
+export function SupportPageClient() {
   return (
     <div className="landing-page min-h-screen bg-[hsl(var(--gray-0))] text-[hsl(var(--foreground))]">
       <main className="px-6 pb-20 pt-[calc(var(--total-header-height)+48px)] md:pb-28 md:pt-[calc(var(--total-header-height)+72px)]">

@@ -17,6 +17,17 @@
  */
 import { vi, afterEach, type Mock, type MockInstance } from "vitest";
 import { randomUUID } from "crypto";
+import { inArray } from "drizzle-orm";
+import { Axiom } from "@axiomhq/js";
+import { mockClerk, clearClerkMock } from "./clerk-mock";
+import { initServices } from "../lib/init-services";
+import * as s3Client from "../lib/infra/s3/s3-client";
+import * as axiomClient from "../lib/shared/axiom/client";
+import { agentComposes } from "../db/schema/agent-compose";
+import { connectors } from "../db/schema/connector";
+import { orgCache } from "../db/schema/org-cache";
+import { orgMetadata } from "../db/schema/org-metadata";
+import { userCache } from "../db/schema/user-cache";
 
 /**
  * Generate a unique 8-character suffix for test isolation.
@@ -43,18 +54,6 @@ export function uniqueId(prefix: string): string {
 export function uniqueNumericId(): string {
   return String(Math.floor(Math.random() * 900_000_000) + 100_000_000);
 }
-
-import { inArray } from "drizzle-orm";
-import { Axiom } from "@axiomhq/js";
-import { mockClerk, clearClerkMock } from "./clerk-mock";
-import { initServices } from "../lib/init-services";
-import * as s3Client from "../lib/infra/s3/s3-client";
-import * as axiomClient from "../lib/shared/axiom/client";
-import { agentComposes } from "../db/schema/agent-compose";
-import { connectors } from "../db/schema/connector";
-import { orgCache } from "../db/schema/org-cache";
-import { orgMetadata } from "../db/schema/org-metadata";
-import { userCache } from "../db/schema/user-cache";
 
 /**
  * S3 client mock structure
@@ -217,7 +216,11 @@ export async function insertOrgCacheEntry(entry: {
 
 /**
  * Ensure an org row exists in the `org` table.
- * Inserts with defaults if missing, does nothing if already present.
+ *
+ * Creates an empty org_metadata row (credits=0 per column default, no
+ * credit_expires_record). Tests that need a specific balance should call
+ * setOrgCredits; tests that exercise the full starter-grant path should
+ * go through the onboarding API or call ensureStarterCreditGrant directly.
  */
 export async function ensureOrgRow(orgId: string): Promise<void> {
   initServices();

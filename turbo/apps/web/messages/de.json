@@ -98,7 +98,7 @@
     "free": {
       "description": "Starten Sie kostenlos mit Ihrem KI-Teamkollegen.",
       "features": {
-        "starterCredits": "100.000 Starter-Credits",
+        "starterCredits": "10.000 Starter-Credits",
         "concurrentRun": "1 gleichzeitige Ausführung",
         "unlimitedAgents": "Unbegrenzte Agenten insgesamt",
         "bringOwnLLM": "Eigene LLM-Schlüssel verwenden",
@@ -179,7 +179,7 @@
       "prioritySupportDesc": "Dedizierter Support mit schnelleren Reaktionszeiten"
     },
     "tableValues": {
-      "starter": "100.000 Starter",
+      "starter": "10.000 Starter",
       "20k": "20.000",
       "120k": "120.000",
       "unlimited": "Unbegrenzt",
@@ -195,7 +195,7 @@
       "runOutOfCredits": "Was passiert, wenn meine Credits aufgebraucht sind?",
       "runOutOfCreditsAnswer": "Wenn Ihre Credits aufgebraucht sind, stoppen Ihre Agenten. Sie können zusätzliche Credits per automatischem Aufladen kaufen oder auf einen höheren Plan upgraden.",
       "doCreditsRollOver": "Werden ungenutzte Credits übertragen?",
-      "doCreditsRollOverAnswer": "Beim Free-Plan verfallen Starter-Credits nicht, werden aber nicht aufgefüllt. Bei Pro werden ungenutzte Credits 1 Monat übertragen. Bei Team werden Credits 1 Monat übertragen.",
+      "doCreditsRollOverAnswer": "Beim Free-Plan verfallen Starter-Credits 1 Monat nach Registrierung und werden nicht aufgefüllt. Bei Pro werden ungenutzte Credits 1 Monat übertragen. Bei Team werden Credits 1 Monat übertragen.",
       "bringOwnModel": "Kann ich meinen eigenen Modellanbieter verwenden?",
       "bringOwnModelAnswer": "Ja! Alle Pläne unterstützen eigene LLM-API-Schlüssel (Anthropic usw.). Bei Verwendung eigener Schlüssel werden keine VM0-Credits für die Modellnutzung verbraucht.",
       "howSecure": "Wie sicher ist VM0?",

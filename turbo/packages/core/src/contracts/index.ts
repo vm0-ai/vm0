@@ -717,6 +717,20 @@ export {
   type ZeroVariablesByNameContract,
 } from "./zero-secrets";
 export {
+  apiKeysContract,
+  apiKeysByIdContract,
+  apiKeyItemSchema,
+  apiKeyListResponseSchema,
+  createApiKeyRequestSchema,
+  createApiKeyResponseSchema,
+  type ApiKeysContract,
+  type ApiKeysByIdContract,
+  type ApiKeyItem,
+  type ApiKeyListResponse,
+  type CreateApiKeyRequest,
+  type CreateApiKeyResponse,
+} from "./api-keys";
+export {
   zeroCustomConnectorsContract,
   zeroCustomConnectorByIdContract,
   zeroCustomConnectorSecretContract,
@@ -849,21 +863,6 @@ export {
   type ZeroComputerUseHostContract,
 } from "./zero-computer-use";
 export {
-  zeroRedemptionCodesMintContract,
-  zeroRedemptionCodesRedeemContract,
-  zeroRedemptionCodesListContract,
-  MAX_CREDITS_PER_CODE,
-  MAX_QUANTITY_PER_MINT,
-  type ZeroRedemptionCodesMintContract,
-  type ZeroRedemptionCodesRedeemContract,
-  type ZeroRedemptionCodesListContract,
-  type MintRedemptionCodesRequest,
-  type MintRedemptionCodesResponse,
-  type RedeemRedemptionCodeRequest,
-  type RedeemRedemptionCodeResponse,
-  type ListRedemptionCodesResponse,
-} from "./zero-redemption-codes";
-export {
   zeroInsightsContract,
   zeroInsightsRangeContract,
   type ZeroInsightsContract,
@@ -886,22 +885,12 @@ export {
 export {
   zeroVoiceChatSessionsContract,
   type ZeroVoiceChatSessionsContract,
-  type VoiceChatMode,
   type VoiceChatSession,
   type VoiceChatSessionCreated,
   type CreateVoiceChatSessionBody,
   type VoiceChatTokenBody,
   type VoiceChatTokenResponse,
 } from "./zero-voice-chat-sessions";
-export {
-  zeroVoiceChatPrepareTriggerContract,
-  zeroVoiceChatPrepareCompleteContract,
-  zeroVoiceChatPrepareListContract,
-  type ZeroVoiceChatPrepareCompleteContract,
-  type PrepareCompleteBody,
-  type PrepareCompleteResponse,
-  type FreshPreparation,
-} from "./zero-voice-chat-prepare";
 export {
   zeroVoiceIoQuotaContract,
   audioInputQuotaResponseSchema,
@@ -917,6 +906,7 @@ export {
   voiceChatCandidateSessionSchema,
   voiceChatCandidateItemSchema,
   voiceChatCandidateTaskSchema,
+  voiceChatCandidateTaskResultEntrySchema,
   type ZeroVoiceChatCandidateContract,
   type VoiceChatCandidateSessionStatus,
   type VoiceChatCandidateItemRole,
@@ -925,6 +915,7 @@ export {
   type VoiceChatCandidateSession,
   type VoiceChatCandidateItem,
   type VoiceChatCandidateTask,
+  type VoiceChatCandidateTaskResultEntry,
   type VoiceChatCandidateTokenBody,
   type VoiceChatCandidateTokenResponse,
   type CreateVoiceChatCandidateSessionBody,

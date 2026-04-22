@@ -44,12 +44,14 @@ describe("createVoiceChatCandidateSession", () => {
     expect(session.agentId).toBe(agentId);
     expect(session.mode).toBe("chat");
     expect(session.status).toBe("active");
-    expect(session.context).toBeNull();
-    expect(session.contextSeq).toBe(0);
-    expect(session.contextVersion).toBe(0);
+    expect(session.conversationSummary).toBeNull();
+    expect(session.workingTasksSummary).toBeNull();
+    expect(session.finishedTasksSummary).toBeNull();
+    expect(session.summarySeq).toBe(0);
+    expect(session.summaryVersion).toBe(0);
     expect(session.reasoningStatus).toBe("idle");
     expect(session.reasoningPending).toBe(false);
-    expect(session.lastReasoningAt).toBeNull();
+    expect(session.lastSummaryAt).toBeNull();
     expect(session.endedAt).toBeNull();
     expect(session.createdAt).toBeInstanceOf(Date);
     expect(session.lastHeartbeatAt).toBeInstanceOf(Date);

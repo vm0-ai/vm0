@@ -391,16 +391,10 @@ function ScheduleSettingsForm({
         <CardContent className="p-4 sm:p-5">
           <InlineSettingsRow
             label="Agent"
-            description="Which agent runs when this schedule fires."
+            description="The agent is fixed once a schedule is created. Delete and recreate the schedule to run it on a different agent."
           >
             <div className={SCHEDULE_DETAIL_CONTROL_WIDTH}>
-              <Select
-                value={form.agentId}
-                onValueChange={(v) => {
-                  return updateForm({ agentId: v });
-                }}
-                disabled={saving || agents.length === 0}
-              >
+              <Select value={form.agentId} disabled>
                 <SelectTrigger className="h-9 w-full">
                   <SelectValue placeholder="Select agent" />
                 </SelectTrigger>

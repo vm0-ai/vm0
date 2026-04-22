@@ -13,7 +13,6 @@ import {
   insertTestPendingGitHubInstallation,
   findTestGitHubInstallationsByTargetId,
   findMostRecentRunForUser,
-  findTestZeroRun,
   findTestRunCallbacks,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";

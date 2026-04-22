@@ -98,7 +98,7 @@
     "free": {
       "description": "AIチームメイトと無料で始めましょう。",
       "features": {
-        "starterCredits": "100,000スタータークレジット",
+        "starterCredits": "10,000スタータークレジット",
         "concurrentRun": "1同時実行",
         "unlimitedAgents": "エージェント数無制限",
         "bringOwnLLM": "自分のLLMキーを使用",
@@ -179,7 +179,7 @@
       "prioritySupportDesc": "より速い応答時間の専用サポート"
     },
     "tableValues": {
-      "starter": "100,000スターター",
+      "starter": "10,000スターター",
       "20k": "20,000",
       "120k": "120,000",
       "unlimited": "無制限",
@@ -195,7 +195,7 @@
       "runOutOfCredits": "クレジットがなくなったらどうなりますか？",
       "runOutOfCreditsAnswer": "クレジットが枯渇すると、エージェントは実行を停止します。自動チャージで追加クレジットを購入するか、より上位のプランにアップグレードして月間クレジットを増やすことができます。",
       "doCreditsRollOver": "未使用のクレジットは繰り越されますか？",
-      "doCreditsRollOverAnswer": "Freeプランでは、スタータークレジットは期限切れになりませんが補充されません。Proでは未使用クレジットが1ヶ月繰り越されます。Teamでもクレジットは1ヶ月繰り越されます。",
+      "doCreditsRollOverAnswer": "Freeプランでは、スタータークレジットは登録から1ヶ月で期限切れになり、補充されません。Proでは未使用クレジットが1ヶ月繰り越されます。Teamでもクレジットは1ヶ月繰り越されます。",
       "bringOwnModel": "自分のモデルプロバイダーを使えますか？",
       "bringOwnModelAnswer": "はい！すべてのプランで独自のLLM APIキー（Anthropicなど）の使用をサポートしています。独自のキーを使用する場合、モデル使用にVM0クレジットは消費されません。",
       "howSecure": "VM0はどれくらい安全ですか？",

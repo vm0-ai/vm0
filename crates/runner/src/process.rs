@@ -52,89 +52,82 @@ pub struct DiscoveredProcesses {
 // Pure parsers — unit-testable without a running system
 // ---------------------------------------------------------------------------
 
-/// Parse a runner cmdline for `start`/`benchmark` subcommand and `--config` path.
+/// Parse a runner argv for `start`/`benchmark` subcommand and `--config` path.
 ///
-/// Returns `(config_path, subcommand)` or `None` if the cmdline doesn't match.
-fn parse_runner_cmdline(cmdline: &str) -> Option<(PathBuf, String)> {
-    let tokens: Vec<&str> = cmdline.split_whitespace().collect();
-
-    // Must have "start" or "benchmark" subcommand
-    let subcmd_pos = tokens
+/// Returns `(config_path, subcommand)` or `None` if the argv doesn't match.
+fn parse_runner_cmdline(argv: &[String]) -> Option<(PathBuf, String)> {
+    let subcmd = argv
         .iter()
-        .position(|&t| t == "start" || t == "benchmark")?;
-    let subcmd = (*tokens.get(subcmd_pos)?).to_string();
+        .find(|t| *t == "start" || *t == "benchmark")?
+        .clone();
 
-    // Must have "--config" (or "-c") followed by a path
-    let config_pos = tokens.iter().position(|&t| t == "--config" || t == "-c")?;
-    let config_path = *tokens.get(config_pos + 1)?;
+    let config_pos = argv.iter().position(|t| t == "--config" || t == "-c")?;
+    let config_path = argv.get(config_pos + 1)?;
 
     Some((PathBuf::from(config_path), subcmd))
 }
 
-/// Check if a cmdline belongs to a firecracker process.
+/// Check if an argv belongs to a firecracker process.
 ///
-/// Looks at the binary name (first token) — the run ID and base directory
+/// Looks at the binary name (argv[0]) — the run ID and base directory
 /// are resolved from `/proc/{pid}/cwd` instead of argument parsing,
 /// since our sandbox always sets `current_dir` to the workspace.
-fn is_firecracker_cmdline(cmdline: &str) -> bool {
-    let binary = cmdline.split_whitespace().next().unwrap_or("");
+fn is_firecracker_cmdline(argv: &[String]) -> bool {
+    let Some(binary) = argv.first() else {
+        return false;
+    };
     Path::new(binary).file_name().and_then(|n| n.to_str()) == Some("firecracker")
 }
 
-/// Parse a mitmdump cmdline for the listen port.
+/// Parse a mitmdump argv for the listen port.
 ///
 /// Identifies our mitmdump by `vm0_proxy_registry_path=` and extracts
 /// the `--listen-port` value.
-fn parse_mitmdump_cmdline(cmdline: &str) -> Option<u16> {
-    let tokens: Vec<&str> = cmdline.split_whitespace().collect();
-    // Must be our mitmdump (has vm0_proxy_registry_path)
-    if !tokens
+fn parse_mitmdump_cmdline(argv: &[String]) -> Option<u16> {
+    if !argv
         .iter()
         .any(|t| t.starts_with("vm0_proxy_registry_path="))
     {
         return None;
     }
-    // Extract --listen-port value
-    let pos = tokens.iter().position(|&t| t == "--listen-port")?;
-    tokens.get(pos + 1)?.parse().ok()
+    let pos = argv.iter().position(|t| t == "--listen-port")?;
+    argv.get(pos + 1)?.parse().ok()
 }
 
-/// Parse a dnsmasq cmdline for the listen port.
+/// Parse a dnsmasq argv for the listen port.
 ///
 /// Identifies dnsmasq by binary name and extracts the `--port` value.
-fn parse_dnsmasq_cmdline(cmdline: &str) -> Option<u16> {
-    let tokens: Vec<&str> = cmdline.split_whitespace().collect();
-    let binary = tokens.first()?;
+fn parse_dnsmasq_cmdline(argv: &[String]) -> Option<u16> {
+    let binary = argv.first()?;
     if !binary.ends_with("dnsmasq") {
         return None;
     }
-    let pos = tokens.iter().position(|&t| t == "--port")?;
-    tokens.get(pos + 1)?.parse().ok()
+    let pos = argv.iter().position(|t| t == "--port")?;
+    argv.get(pos + 1)?.parse().ok()
 }
 
 // ---------------------------------------------------------------------------
 // /proc helpers
 // ---------------------------------------------------------------------------
 
-/// Read `/proc/{pid}/cmdline`, replacing NUL separators with spaces.
-async fn read_cmdline(pid: u32) -> Option<String> {
+/// Read `/proc/{pid}/cmdline` as the NUL-separated argv.
+///
+/// Returns `None` for kernel threads (empty cmdline) and for processes whose
+/// cmdline has been rewritten (via `prctl(PR_SET_NAME)` or similar) into a
+/// single NUL-free blob — those aren't the exec-spawned processes we care
+/// about identifying here.
+async fn read_cmdline(pid: u32) -> Option<Vec<String>> {
     let path = format!("/proc/{pid}/cmdline");
-    let mut bytes = tokio::fs::read(&path).await.ok()?;
+    let bytes = tokio::fs::read(&path).await.ok()?;
     if bytes.is_empty() {
         return None;
     }
-    for b in &mut bytes {
-        if *b == 0 {
-            *b = b' ';
-        }
-    }
-    let s = String::from_utf8_lossy(&bytes);
-    let trimmed = s.trim();
-    if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed.to_string())
-    }
+    let argv: Vec<String> = bytes
+        .split(|&b| b == 0)
+        .filter(|s| !s.is_empty())
+        .map(|s| String::from_utf8_lossy(s).into_owned())
+        .collect();
+    if argv.is_empty() { None } else { Some(argv) }
 }
 
 /// Read `/proc/{pid}/status` and extract the PPid field.
@@ -195,10 +188,10 @@ pub async fn read_service_unit(pid: u32) -> Option<String> {
     None
 }
 
-/// Scan `/proc` for all process cmdlines.
+/// Scan `/proc` for all process argvs.
 ///
-/// Returns `(pid, cmdline)` pairs for every readable process.
-async fn scan_proc_cmdlines() -> Vec<(u32, String)> {
+/// Returns `(pid, argv)` pairs for every readable process.
+async fn scan_proc_cmdlines() -> Vec<(u32, Vec<String>)> {
     let mut result = Vec::new();
     let mut entries = match tokio::fs::read_dir("/proc").await {
         Ok(e) => e,
@@ -223,8 +216,8 @@ async fn scan_proc_cmdlines() -> Vec<(u32, String)> {
         let Ok(pid) = name_str.parse::<u32>() else {
             continue;
         };
-        if let Some(cmdline) = read_cmdline(pid).await {
-            result.push((pid, cmdline));
+        if let Some(argv) = read_cmdline(pid).await {
+            result.push((pid, argv));
         }
     }
     result
@@ -259,21 +252,21 @@ pub async fn discover_all() -> DiscoveredProcesses {
     let mut mitmdumps = Vec::new();
     let mut dnsmasqs = Vec::new();
 
-    for (pid, cmdline) in &procs {
-        if let Some((config_path, subcommand)) = parse_runner_cmdline(cmdline) {
+    for (pid, argv) in &procs {
+        if let Some((config_path, subcommand)) = parse_runner_cmdline(argv) {
             runners.push(RunnerProcessInfo {
                 pid: *pid,
                 config_path,
                 subcommand,
             });
         }
-        if is_firecracker_cmdline(cmdline) {
+        if is_firecracker_cmdline(argv) {
             firecrackers.push(*pid);
         }
-        if let Some(port) = parse_mitmdump_cmdline(cmdline) {
+        if let Some(port) = parse_mitmdump_cmdline(argv) {
             mitmdumps.push((*pid, port));
         }
-        if let Some(port) = parse_dnsmasq_cmdline(cmdline) {
+        if let Some(port) = parse_dnsmasq_cmdline(argv) {
             dnsmasqs.push(DnsmasqProcessInfo { pid: *pid, port });
         }
     }
@@ -510,110 +503,176 @@ pub(crate) fn resolve_run_to_sandbox(
 mod tests {
     use super::*;
 
+    fn argv(parts: &[&str]) -> Vec<String> {
+        parts.iter().map(|s| (*s).to_string()).collect()
+    }
+
     // -- Runner parser tests --
 
     #[test]
     fn parse_runner_start_cmdline() {
-        let cmdline = "/var/lib/vm0-runner/bin/runner start --config /data/runner-01/config.yaml";
-        let (config, subcmd) = parse_runner_cmdline(cmdline).unwrap();
+        let a = argv(&[
+            "/var/lib/vm0-runner/bin/runner",
+            "start",
+            "--config",
+            "/data/runner-01/config.yaml",
+        ]);
+        let (config, subcmd) = parse_runner_cmdline(&a).unwrap();
         assert_eq!(config, Path::new("/data/runner-01/config.yaml"));
         assert_eq!(subcmd, "start");
     }
 
     #[test]
     fn parse_runner_benchmark_cmdline() {
-        let cmdline = "/usr/local/bin/runner benchmark --config /etc/runner/bench.yaml";
-        let (config, subcmd) = parse_runner_cmdline(cmdline).unwrap();
+        let a = argv(&[
+            "/usr/local/bin/runner",
+            "benchmark",
+            "--config",
+            "/etc/runner/bench.yaml",
+        ]);
+        let (config, subcmd) = parse_runner_cmdline(&a).unwrap();
         assert_eq!(config, Path::new("/etc/runner/bench.yaml"));
         assert_eq!(subcmd, "benchmark");
     }
 
     #[test]
     fn parse_runner_short_config_flag() {
-        let cmdline = "runner start -c /data/runner.yaml";
-        let (config, subcmd) = parse_runner_cmdline(cmdline).unwrap();
+        let a = argv(&["runner", "start", "-c", "/data/runner.yaml"]);
+        let (config, subcmd) = parse_runner_cmdline(&a).unwrap();
         assert_eq!(config, Path::new("/data/runner.yaml"));
         assert_eq!(subcmd, "start");
     }
 
     #[test]
+    fn parse_runner_config_path_with_spaces() {
+        // Regression for #10479: a path argument containing spaces must stay
+        // as a single argv element, not be split into multiple tokens.
+        let a = argv(&["runner", "start", "--config", "/data/my config/config.yaml"]);
+        let (config, subcmd) = parse_runner_cmdline(&a).unwrap();
+        assert_eq!(config, Path::new("/data/my config/config.yaml"));
+        assert_eq!(subcmd, "start");
+    }
+
+    #[test]
     fn parse_runner_no_config_returns_none() {
-        assert!(parse_runner_cmdline("runner start").is_none());
+        assert!(parse_runner_cmdline(&argv(&["runner", "start"])).is_none());
     }
 
     #[test]
     fn parse_runner_no_subcommand_returns_none() {
-        assert!(parse_runner_cmdline("runner --config /data/config.yaml").is_none());
+        assert!(
+            parse_runner_cmdline(&argv(&["runner", "--config", "/data/config.yaml"])).is_none()
+        );
     }
 
     #[test]
     fn parse_runner_empty_cmdline() {
-        assert!(parse_runner_cmdline("").is_none());
+        assert!(parse_runner_cmdline(&[]).is_none());
     }
 
     // -- Firecracker identification tests --
 
     #[test]
     fn is_firecracker_bare_name() {
-        assert!(is_firecracker_cmdline(
-            "firecracker --api-sock /run/vm0/sock/abc/api.sock"
-        ));
+        assert!(is_firecracker_cmdline(&argv(&[
+            "firecracker",
+            "--api-sock",
+            "/run/vm0/sock/abc/api.sock",
+        ])));
     }
 
     #[test]
     fn is_firecracker_full_path() {
-        assert!(is_firecracker_cmdline(
-            "/var/lib/vm0-runner/firecracker/v1.10.1/firecracker --no-api"
-        ));
+        assert!(is_firecracker_cmdline(&argv(&[
+            "/var/lib/vm0-runner/firecracker/v1.10.1/firecracker",
+            "--no-api",
+        ])));
     }
 
     #[test]
     fn is_firecracker_not_runner() {
-        assert!(!is_firecracker_cmdline(
-            "runner start --config /data/config.yaml"
-        ));
+        assert!(!is_firecracker_cmdline(&argv(&[
+            "runner",
+            "start",
+            "--config",
+            "/data/config.yaml",
+        ])));
     }
 
     #[test]
     fn is_firecracker_empty() {
-        assert!(!is_firecracker_cmdline(""));
+        assert!(!is_firecracker_cmdline(&[]));
     }
 
     // -- Mitmdump parser tests --
 
     #[test]
     fn parse_mitmdump_listen_port() {
-        let cmdline = "mitmdump --mode transparent --listen-port 8080 --set vm0_proxy_registry_path=/data/runner-01/proxy-registry.json";
-        assert_eq!(parse_mitmdump_cmdline(cmdline), Some(8080));
+        let a = argv(&[
+            "mitmdump",
+            "--mode",
+            "transparent",
+            "--listen-port",
+            "8080",
+            "--set",
+            "vm0_proxy_registry_path=/data/runner-01/proxy-registry.json",
+        ]);
+        assert_eq!(parse_mitmdump_cmdline(&a), Some(8080));
+    }
+
+    #[test]
+    fn parse_mitmdump_registry_path_with_spaces() {
+        // Regression for #10479.
+        let a = argv(&[
+            "mitmdump",
+            "--listen-port",
+            "8080",
+            "--set",
+            "vm0_proxy_registry_path=/data/my runner/proxy-registry.json",
+        ]);
+        assert_eq!(parse_mitmdump_cmdline(&a), Some(8080));
     }
 
     #[test]
     fn parse_mitmdump_no_registry_returns_none() {
-        assert!(parse_mitmdump_cmdline("mitmdump --mode transparent --listen-port 8080").is_none());
+        let a = argv(&["mitmdump", "--mode", "transparent", "--listen-port", "8080"]);
+        assert!(parse_mitmdump_cmdline(&a).is_none());
     }
 
     #[test]
     fn parse_mitmdump_no_listen_port_returns_none() {
-        let cmdline = "mitmdump --set vm0_proxy_registry_path=/data/proxy-registry.json";
-        assert!(parse_mitmdump_cmdline(cmdline).is_none());
+        let a = argv(&[
+            "mitmdump",
+            "--set",
+            "vm0_proxy_registry_path=/data/proxy-registry.json",
+        ]);
+        assert!(parse_mitmdump_cmdline(&a).is_none());
     }
 
     // -- Dnsmasq parser tests --
 
     #[test]
     fn parse_dnsmasq_port() {
-        let cmdline = "dnsmasq --no-daemon --no-resolv --port 5353 --server 8.8.8.8";
-        assert_eq!(parse_dnsmasq_cmdline(cmdline), Some(5353));
+        let a = argv(&[
+            "dnsmasq",
+            "--no-daemon",
+            "--no-resolv",
+            "--port",
+            "5353",
+            "--server",
+            "8.8.8.8",
+        ]);
+        assert_eq!(parse_dnsmasq_cmdline(&a), Some(5353));
     }
 
     #[test]
     fn parse_dnsmasq_not_dnsmasq_returns_none() {
-        assert!(parse_dnsmasq_cmdline("mitmdump --port 5353").is_none());
+        assert!(parse_dnsmasq_cmdline(&argv(&["mitmdump", "--port", "5353"])).is_none());
     }
 
     #[test]
     fn parse_dnsmasq_no_port_returns_none() {
-        assert!(parse_dnsmasq_cmdline("dnsmasq --no-daemon").is_none());
+        assert!(parse_dnsmasq_cmdline(&argv(&["dnsmasq", "--no-daemon"])).is_none());
     }
 
     // -- CWD workspace parsing --

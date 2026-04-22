@@ -10,6 +10,7 @@ import {
   createTestVariable,
   createTestUserConnector,
   findTestRunnerJobEntry,
+  insertTestConnectorSecret,
 } from "../../../__tests__/api-test-helpers";
 import { getTestZeroAgentId } from "../../../__tests__/db-test-assertions/agents";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route
@@ -114,6 +115,76 @@ describe("Org-Level Runtime Resolution (Zero Layer)", () => {
       await expect(
         createZeroRun(baseParams({ agentId: noKeyAgentId })),
       ).rejects.toSatisfy(isNoModelProvider);
+    });
+
+    it("should leave billableFirewalls empty for user-paid providers", async () => {
+      // User brings their own Anthropic key; the firewall still exists to
+      // enforce rules, but runs must NOT charge platform credits.
+      const agentName = uniqueId("user-paid-agent");
+      await createTestCompose(agentName, {
+        skipDefaultApiKey: true,
+      });
+      const userPaidAgentId = await getTestZeroAgentId(user.orgId, agentName);
+
+      await upsertOrgModelProvider(
+        user.orgId,
+        "anthropic-api-key",
+        "org-api-key",
+      );
+
+      const result = await createZeroRun(
+        baseParams({ agentId: userPaidAgentId }),
+      );
+      await context.mocks.flushAfter();
+      const job = await findTestRunnerJobEntry(result.runId);
+      expect(job!.executionContext.billableFirewalls).toEqual([]);
+    });
+
+    it("should include billable connector firewall names when attached", async () => {
+      // The x connector is platform-billable: per-call billing is computed
+      // from firewall_billable metadata, so "x" must appear in
+      // billableFirewalls whenever the firewall is attached to the run.
+      // Build-zero-context only attaches connector firewalls when BOTH the
+      // agent authorized the connector (userConnectors row) AND the user
+      // has linked it (connectors row + OAuth tokens), so seed all three.
+      const agentName = uniqueId("x-connector-agent");
+      await createTestCompose(agentName, {
+        skipDefaultApiKey: true,
+      });
+      const connAgentId = await getTestZeroAgentId(user.orgId, agentName);
+
+      await upsertOrgModelProvider(
+        user.orgId,
+        "anthropic-api-key",
+        "org-api-key",
+      );
+      await context.createConnector(user.orgId, {
+        userId: user.userId,
+        type: "x",
+        authMethod: "oauth",
+      });
+      await insertTestConnectorSecret(
+        user.orgId,
+        user.userId,
+        "X_ACCESS_TOKEN",
+        "user-x-access",
+      );
+      await insertTestConnectorSecret(
+        user.orgId,
+        user.userId,
+        "X_REFRESH_TOKEN",
+        "user-x-refresh",
+      );
+      await createTestUserConnector(user.orgId, user.userId, connAgentId, "x");
+
+      const result = await createZeroRun(baseParams({ agentId: connAgentId }));
+      await context.mocks.flushAfter();
+      const job = await findTestRunnerJobEntry(result.runId);
+      expect(job!.executionContext.billableFirewalls).toContain("x");
+      // User-paid model provider → model-provider firewall stays off the list.
+      expect(job!.executionContext.billableFirewalls).not.toContain(
+        "model-provider:anthropic-api-key",
+      );
     });
   });
 
@@ -340,6 +411,38 @@ describe("Org-Level Runtime Resolution (Zero Layer)", () => {
       expect(job!.executionContext.environment?.["AXIOM_TOKEN"]).not.toBe(
         "${{ secrets.AXIOM_TOKEN }}",
       );
+    });
+
+    // Regression for production crash:
+    //   Firewall "jira" base URL requires variable "JIRA_DOMAIN" but it was not provided
+    // When a user was authorized for a connector but never set the required
+    // secrets/variables, the firewall for that connector must not be injected.
+    it("should not inject connector firewall when user has no credentials", async () => {
+      const agentName = uniqueId("jira-agent");
+      await createTestCompose(agentName);
+      const jiraAgentId = await getTestZeroAgentId(user.orgId, agentName);
+
+      // Authorize jira for this agent but never set JIRA_API_TOKEN/DOMAIN/EMAIL
+      await createTestUserConnector(
+        user.orgId,
+        user.userId,
+        jiraAgentId,
+        "jira",
+      );
+
+      const result = await createZeroRun(baseParams({ agentId: jiraAgentId }));
+
+      await context.mocks.flushAfter();
+      const job = await findTestRunnerJobEntry(result.runId);
+      expect(job).toBeDefined();
+      // jira firewall must not appear — its base url templates on JIRA_DOMAIN
+      // which would fail to resolve
+      const firewallNames = (job!.executionContext.firewalls ?? []).map(
+        (fw) => {
+          return fw.name;
+        },
+      );
+      expect(firewallNames).not.toContain("jira");
     });
 
     it("should not filter custom user secrets that do not belong to any connector", async () => {

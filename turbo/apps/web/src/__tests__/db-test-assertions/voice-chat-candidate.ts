@@ -12,7 +12,7 @@ export async function getTestVoiceChatCandidateSession(id: string): Promise<
       status: string;
       endedAt: Date | null;
       reasoningStatus: string;
-      lastReasoningAt: Date | null;
+      lastSummaryAt: Date | null;
     }
   | undefined
 > {
@@ -22,7 +22,7 @@ export async function getTestVoiceChatCandidateSession(id: string): Promise<
       status: featureCandidateVoiceChatSessions.status,
       endedAt: featureCandidateVoiceChatSessions.endedAt,
       reasoningStatus: featureCandidateVoiceChatSessions.reasoningStatus,
-      lastReasoningAt: featureCandidateVoiceChatSessions.lastReasoningAt,
+      lastSummaryAt: featureCandidateVoiceChatSessions.lastSummaryAt,
     })
     .from(featureCandidateVoiceChatSessions)
     .where(eq(featureCandidateVoiceChatSessions.id, id));

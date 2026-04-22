@@ -1,4 +1,26 @@
 {
   "$schema": "https://raw.githubusercontent.com/oxc-project/oxlint/main/npm/oxlint/configuration_schema.json",
-  "extends": ["../../.oxlintrc.json"]
+  "extends": ["../../.oxlintrc.json"],
+  "overrides": [
+    {
+      "files": ["eslint.config.mjs", "tsup.config.ts", "vitest.config.ts"],
+      "rules": {
+        "import/no-default-export": "off"
+      }
+    },
+    {
+      "files": [
+        "src/commands/compose/__tests__/index.test.ts",
+        "src/commands/run/__tests__/dynamic-volume.test.ts",
+        "src/commands/run/__tests__/index.test.ts",
+        "src/commands/run/__tests__/volume-version.test.ts",
+        "src/commands/upgrade/__tests__/index.test.ts",
+        "src/lib/api/__tests__/config.test.ts",
+        "src/lib/computer-use/__tests__/desktop-server.test.ts"
+      ],
+      "rules": {
+        "import/first": "off"
+      }
+    }
+  ]
 }

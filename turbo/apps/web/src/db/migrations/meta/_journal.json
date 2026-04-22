@@ -1986,8 +1986,71 @@
     {
       "idx": 283,
       "version": "7",
-      "when": 1776764288241,
-      "tag": "0283_chunky_nighthawk",
+      "when": 1776757874338,
+      "tag": "0283_delete_dangling_agent_runs",
+      "breakpoints": true
+    },
+    {
+      "idx": 284,
+      "version": "7",
+      "when": 1776759477305,
+      "tag": "0284_starter_credit_expiry",
+      "breakpoints": true
+    },
+    {
+      "idx": 285,
+      "version": "7",
+      "when": 1776763403291,
+      "tag": "0285_drop_redemption_codes",
+      "breakpoints": true
+    },
+    {
+      "idx": 286,
+      "version": "7",
+      "when": 1776763403292,
+      "tag": "0286_backfill_session_for_failed_runs",
+      "breakpoints": true
+    },
+    {
+      "idx": 287,
+      "version": "7",
+      "when": 1776767199805,
+      "tag": "0287_delete_compose_gone_runs",
+      "breakpoints": true
+    },
+    {
+      "idx": 288,
+      "version": "7",
+      "when": 1776770000000,
+      "tag": "0288_backfill_session_for_a2b_alive",
+      "breakpoints": true
+    },
+    {
+      "idx": 289,
+      "version": "7",
+      "when": 1776770909171,
+      "tag": "0289_complete_zeigeist",
+      "breakpoints": true
+    },
+    {
+      "idx": 290,
+      "version": "7",
+      "when": 1776774932965,
+      "tag": "0290_drop_voice_meeting",
+      "breakpoints": true
+    },
+    {
+      "idx": 291,
+      "version": "7",
+      "when": 1776775000000,
+      "tag": "0291_vcc_assistant_messages_and_summary_split",
+      "breakpoints": true
+    },
+    {
+      "idx": 292,
+      "version": "7",
+      "when": 1776830776523,
+      "tag": "0292_premium_greymalkin",
       "breakpoints": true
     }
   ]

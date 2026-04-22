@@ -1,5 +1,120 @@
 # Changelog
 
+## [0.279.0](https://github.com/vm0-ai/vm0/compare/app-v0.278.0...app-v0.279.0) (2026-04-22)
+
+
+### Features
+
+* add deepseek-chat to vm0 managed models with feature flag ([#10501](https://github.com/vm0-ai/vm0/issues/10501)) ([6d13890](https://github.com/vm0-ai/vm0/commit/6d13890d1c73f94372810b251241609579a16ce2))
+* add mod+alt+. keyboard shortcut to open model picker ([#10503](https://github.com/vm0-ai/vm0/issues/10503)) ([ece4fb2](https://github.com/vm0-ai/vm0/commit/ece4fb25b091792403682cc949a2553a7596d179))
+
+
+### Bug Fixes
+
+* invalidate agentById cache after agent mutations ([#10502](https://github.com/vm0-ai/vm0/issues/10502)) ([4eeac62](https://github.com/vm0-ai/vm0/commit/4eeac62d2d42152f2269e37e5891e22ced02cd79))
+* skip auto-focus on touch devices in ZeroChatComposer ([#10496](https://github.com/vm0-ai/vm0/issues/10496)) ([2c90017](https://github.com/vm0-ai/vm0/commit/2c90017ef46dae13b52426038025e22bb9cc9f88))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.222.0
+
+## [0.278.0](https://github.com/vm0-ai/vm0/compare/app-v0.277.0...app-v0.278.0) (2026-04-22)
+
+
+### Features
+
+* extend chatHeaderNewButton to mobile top bar ([#10500](https://github.com/vm0-ai/vm0/issues/10500)) ([e913bc5](https://github.com/vm0-ai/vm0/commit/e913bc53d1bdafe2f832a50b8b448e460ee2fee8))
+
+## [0.277.0](https://github.com/vm0-ai/vm0/compare/app-v0.276.0...app-v0.277.0) (2026-04-22)
+
+
+### Features
+
+* remove Vm0GlmModel feature flag, fully enable GLM-5.1 ([#10497](https://github.com/vm0-ai/vm0/issues/10497)) ([cff31ff](https://github.com/vm0-ai/vm0/commit/cff31ffbc2f68e27d56742efafaf0832d7e5362f))
+* **voice-chat-candidate:** three-column layout with live task event stream ([#10452](https://github.com/vm0-ai/vm0/issues/10452)) ([df2a3d5](https://github.com/vm0-ai/vm0/commit/df2a3d5a8e72186508e7b40fbc739db91ebb133e))
+
+
+### Bug Fixes
+
+* **platform:** add hidden class to collapsed sidebar to prevent mobile display ([#10481](https://github.com/vm0-ai/vm0/issues/10481)) ([e53baba](https://github.com/vm0-ai/vm0/commit/e53baba369f781ae40a09f18f871b16900c941bd))
+* skip chat composer auto-focus on iOS ([#10498](https://github.com/vm0-ai/vm0/issues/10498)) ([a2bc7a0](https://github.com/vm0-ai/vm0/commit/a2bc7a04d2432223e16d123c4a8c3818278c2cea))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.221.0
+
+## [0.276.0](https://github.com/vm0-ai/vm0/compare/app-v0.275.2...app-v0.276.0) (2026-04-21)
+
+
+### Features
+
+* custom api keys management page with org context support ([#10469](https://github.com/vm0-ai/vm0/issues/10469)) ([aa14355](https://github.com/vm0-ai/vm0/commit/aa14355b8b6ed0a961f50c04a29376fcb965194e))
+
+
+### Performance Improvements
+
+* **eslint:** replace type-checker with ast-only analysis in computed-const-args-package-scope ([#10449](https://github.com/vm0-ai/vm0/issues/10449)) ([6de4f6d](https://github.com/vm0-ai/vm0/commit/6de4f6d77fe47e255e263111914e710642800676))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.220.0
+
+## [0.275.2](https://github.com/vm0-ai/vm0/compare/app-v0.275.1...app-v0.275.2) (2026-04-21)
+
+
+### Bug Fixes
+
+* **platform:** align custom connector ui with platform conventions ([#10395](https://github.com/vm0-ai/vm0/issues/10395)) ([5c58db3](https://github.com/vm0-ai/vm0/commit/5c58db3e04c843a5c1963fac0ff20df7b988dbed))
+
+## [0.275.1](https://github.com/vm0-ai/vm0/compare/app-v0.275.0...app-v0.275.1) (2026-04-21)
+
+
+### Performance Improvements
+
+* **platform:** reduce activity log poll interval from 10s to 3s ([#10440](https://github.com/vm0-ai/vm0/issues/10440)) ([0284532](https://github.com/vm0-ai/vm0/commit/0284532eb41ceb1089480964846f12d03d4d6b5c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.219.1
+
+## [0.275.0](https://github.com/vm0-ai/vm0/compare/app-v0.274.1...app-v0.275.0) (2026-04-21)
+
+
+### Features
+
+* **platform:** fall back to agent default model in chat composer ([#10431](https://github.com/vm0-ai/vm0/issues/10431)) ([f0f96ab](https://github.com/vm0-ai/vm0/commit/f0f96ab26e8139b56a69c8937aef4126374db4a7))
+
+
+### Refactoring
+
+* **platform:** split voice-chat-candidate-session.ts large commands ([#10432](https://github.com/vm0-ai/vm0/issues/10432)) ([36aa24a](https://github.com/vm0-ai/vm0/commit/36aa24ab3521ac8301dd1ec68468d13ba1a46917))
+
+
+### Performance Improvements
+
+* **eslint:** reduce type-checking overhead in @vm0/app ccstate rules ([#10418](https://github.com/vm0-ai/vm0/issues/10418)) ([46facd2](https://github.com/vm0-ai/vm0/commit/46facd209c29cd6c0a922edb1e4f76f044aac9fe))
+
+## [0.274.1](https://github.com/vm0-ai/vm0/compare/app-v0.274.0...app-v0.274.1) (2026-04-21)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.219.0
+
 ## [0.274.0](https://github.com/vm0-ai/vm0/compare/app-v0.273.0...app-v0.274.0) (2026-04-21)
 
 

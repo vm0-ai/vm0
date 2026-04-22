@@ -1,7 +1,7 @@
 // Build scripts are compile-time only — panic/expect/unwrap are appropriate for fatal errors.
 #![allow(clippy::panic, clippy::expect_used, clippy::unwrap_used)]
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::{env, fs};
 
 fn main() {
@@ -72,43 +72,59 @@ fn main() {
     }
 }
 
-/// Scan `mitm-addon/src/*.py` and generate `addon_files.rs` with all file contents
-/// embedded via `include_str!()`. Adding a new `.py` file requires zero Rust changes.
+/// Recursively scan `mitm-addon/src/**/*.py` and generate `addon_files.rs` with
+/// all file contents embedded via `include_str!()`. Keys are paths relative to
+/// `src/` (e.g. `"usage/counters.py"`) so the runtime extractor can recreate the
+/// directory structure. Adding a new `.py` file — at any depth — requires zero
+/// Rust changes.
 fn generate_addon_files() {
     let src_dir = PathBuf::from("mitm-addon/src");
 
-    // Rebuild when any file in the directory changes (additions/deletions).
+    // Rebuild when any file in the directory tree changes (additions/deletions).
     println!("cargo::rerun-if-changed={}", src_dir.display());
 
-    let mut entries: Vec<(String, PathBuf)> = fs::read_dir(&src_dir)
-        .unwrap_or_else(|e| panic!("read {}: {e}", src_dir.display()))
-        .filter_map(|entry| {
-            let path = entry.unwrap().path();
-            if path.extension().is_some_and(|ext| ext == "py") {
-                let name = path.file_name().unwrap().to_str().unwrap().to_string();
-                let abs = fs::canonicalize(&path)
-                    .unwrap_or_else(|e| panic!("canonicalize {}: {e}", path.display()));
-                println!("cargo::rerun-if-changed={}", abs.display());
-                Some((name, abs))
-            } else {
-                None
-            }
-        })
-        .collect();
+    let mut entries: Vec<(String, PathBuf)> = Vec::new();
+    collect_py_files(&src_dir, &src_dir, &mut entries);
 
-    // Sort for deterministic output.
+    // Sort by relative path for deterministic output (multiple `__init__.py`
+    // entries share a basename but differ by directory).
     entries.sort_by(|a, b| a.0.cmp(&b.0));
 
     let mut code = String::from("const ADDON_FILES: &[(&str, &str)] = &[\n");
-    for (name, abs) in &entries {
+    for (rel, abs) in &entries {
         // Use forward slashes for include_str! paths (works on all platforms).
         let path_str = abs.display().to_string().replace('\\', "/");
-        code.push_str(&format!(
-            "    (\"{name}\", include_str!(\"{path_str}\")),\n"
-        ));
+        code.push_str(&format!("    (\"{rel}\", include_str!(\"{path_str}\")),\n"));
     }
     code.push_str("];\n");
 
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
     fs::write(out_dir.join("addon_files.rs"), code).unwrap();
+}
+
+fn collect_py_files(root: &Path, cur: &Path, out: &mut Vec<(String, PathBuf)>) {
+    for entry in fs::read_dir(cur).unwrap_or_else(|e| panic!("read {}: {e}", cur.display())) {
+        let path = entry.unwrap().path();
+        if path.is_dir() {
+            // Skip Python byte-cache / venv directories that may appear during
+            // local test runs — the addon image must not ship compiled caches.
+            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if name == "__pycache__" || name.starts_with('.') {
+                continue;
+            }
+            collect_py_files(root, &path, out);
+            continue;
+        }
+        if path.extension().is_some_and(|ext| ext == "py") {
+            let abs = fs::canonicalize(&path)
+                .unwrap_or_else(|e| panic!("canonicalize {}: {e}", path.display()));
+            println!("cargo::rerun-if-changed={}", abs.display());
+            let rel = path
+                .strip_prefix(root)
+                .unwrap()
+                .to_string_lossy()
+                .replace('\\', "/");
+            out.push((rel, abs));
+        }
+    }
 }

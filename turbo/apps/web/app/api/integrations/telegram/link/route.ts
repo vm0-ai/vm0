@@ -17,14 +17,13 @@ import {
 } from "../../../../../src/lib/zero/telegram/client";
 import { escapeHtml } from "../../../../../src/lib/zero/telegram/format";
 import { logger } from "../../../../../src/lib/shared/logger";
-
-const log = logger("api:telegram:link");
-
 import {
   telegramAuthSchema,
   verifyTelegramLogin,
 } from "../../../../../src/lib/zero/telegram/verify-login";
 import { verifyConnectSignature } from "../../../../../src/lib/zero/telegram/connect-token";
+
+const log = logger("api:telegram:link");
 
 /**
  * DELETE /api/integrations/telegram/link
