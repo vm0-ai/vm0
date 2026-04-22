@@ -1,5 +1,13 @@
 # Changelog
 
+## [8.225.1](https://github.com/vm0-ai/vm0/compare/core-v8.225.0...core-v8.225.1) (2026-04-22)
+
+
+### Refactoring
+
+* **firewall:** remove graphql-specific rule support ([#10622](https://github.com/vm0-ai/vm0/issues/10622)) ([7654336](https://github.com/vm0-ai/vm0/commit/7654336d644fe7bdae7e9fcc49777c0f9aa4216b))
+* migrate /redeem/{campaign} flow from web to platform ([#10612](https://github.com/vm0-ai/vm0/issues/10612)) ([276f710](https://github.com/vm0-ai/vm0/commit/276f710ad2ab12f550175520a21960d2c9fc41b9))
+
 ## [8.225.0](https://github.com/vm0-ai/vm0/compare/core-v8.224.0...core-v8.225.0) (2026-04-22)
 
 

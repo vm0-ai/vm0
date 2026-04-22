@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.91.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.91.0...runner-rs-v0.91.1) (2026-04-22)
+
+
+### Refactoring
+
+* **firewall:** remove graphql-specific rule support ([#10622](https://github.com/vm0-ai/vm0/issues/10622)) ([7654336](https://github.com/vm0-ai/vm0/commit/7654336d644fe7bdae7e9fcc49777c0f9aa4216b))
+
 ## [0.91.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.90.0...runner-rs-v0.91.0) (2026-04-22)
 
 

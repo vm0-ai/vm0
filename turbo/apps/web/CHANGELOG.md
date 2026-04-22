@@ -1,5 +1,25 @@
 # Changelog
 
+## [12.283.1](https://github.com/vm0-ai/vm0/compare/web-v12.283.0...web-v12.283.1) (2026-04-22)
+
+
+### Refactoring
+
+* migrate /redeem/{campaign} flow from web to platform ([#10612](https://github.com/vm0-ai/vm0/issues/10612)) ([276f710](https://github.com/vm0-ai/vm0/commit/276f710ad2ab12f550175520a21960d2c9fc41b9))
+
+
+### Performance Improvements
+
+* **chat:** dedupe zero_agents and org_metadata reads on message post ([#10617](https://github.com/vm0-ai/vm0/issues/10617)) ([b83b480](https://github.com/vm0-ai/vm0/commit/b83b480388a5e76b6fafb6766c835d075d2f1e3e)), closes [#10594](https://github.com/vm0-ai/vm0/issues/10594)
+* **chat:** parallelize thread resolution and bound message scans ([#10615](https://github.com/vm0-ai/vm0/issues/10615)) ([56b281f](https://github.com/vm0-ai/vm0/commit/56b281f4d58f18ca5ee86901bcebc4edac01aaa4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.225.1
+
 ## [12.283.0](https://github.com/vm0-ai/vm0/compare/web-v12.282.0...web-v12.283.0) (2026-04-22)
 
 
