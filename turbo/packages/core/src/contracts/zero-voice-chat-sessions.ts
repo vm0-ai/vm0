@@ -43,6 +43,7 @@ export const zeroVoiceChatSessionsContract = c.router({
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
+      500: apiErrorSchema,
     },
     summary: "Create a new voice-chat session",
   },

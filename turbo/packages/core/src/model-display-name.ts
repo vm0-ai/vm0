@@ -16,6 +16,7 @@ const MODEL_DISPLAY_NAMES = Object.freeze<Record<string, string>>({
   "anthropic/claude-haiku-4.5": "Claude Haiku 4.5",
   // DeepSeek
   "deepseek-chat": "DeepSeek Chat",
+  "deepseek-reasoner": "DeepSeek Reasoner",
   // MiniMax
   "MiniMax-M2.7": "MiniMax M2.7",
   "MiniMax-M2.1": "MiniMax M2.1",

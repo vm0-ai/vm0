@@ -167,6 +167,45 @@ describe("voiceBanner — error on session creation (MC-VC-004)", () => {
   });
 });
 
+describe("voiceBanner — unexpected server error (MC-VC-006)", () => {
+  it("shows 'Voice error' instead of sticking on 'Enabling...' when POST returns 500", async () => {
+    setMockFeatureSwitches({ voiceChat: true });
+
+    server.use(
+      mockApi(zeroVoiceChatSessionsContract.create, ({ respond }) => {
+        return respond(500, {
+          error: { message: "Internal error", code: "INTERNAL" },
+        });
+      }),
+      mockApi(zeroVoiceChatSessionsContract.end, ({ respond }) => {
+        return respond(200, { ok: true });
+      }),
+    );
+
+    const user = userEvent.setup();
+    detachedSetupPage({ context, path: "/_/mission-control" });
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByRole("button").find((el) => {
+          return /Voice On/i.test(el.textContent ?? "");
+        }),
+      ).toBeDefined();
+    });
+
+    await user.click(
+      screen.getAllByRole("button").find((el) => {
+        return /Voice On/i.test(el.textContent ?? "");
+      })!,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Voice error")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Enabling...")).toBeNull();
+  });
+});
+
 describe("voiceBanner — dismiss error restores idle (MC-VC-005)", () => {
   it("hides error banner and shows Voice On again when Dismiss is clicked", async () => {
     setMockFeatureSwitches({ voiceChat: true });

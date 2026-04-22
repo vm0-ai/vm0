@@ -10,7 +10,10 @@ import {
   getPriorVoiceChatAgentSessionId,
 } from "../session-service";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: verify DB side-effects directly
-import { voiceChatSessions } from "../../../../db/schema/voice-chat";
+import {
+  voiceChatSessions,
+  voiceChatEvents,
+} from "../../../../db/schema/voice-chat";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: verify agent_runs is not mutated by endSession
 import { agentRuns } from "../../../../db/schema/agent-run";
 
@@ -234,5 +237,147 @@ describe("getPriorVoiceChatAgentSessionId", () => {
 
     const result = await getPriorVoiceChatAgentSessionId(orgId, userId);
     expect(result).toBeNull();
+  });
+});
+
+describe("createSession — auto-end stale rows", () => {
+  it("transitions an existing 'active' row to 'ended' and creates a new row", async () => {
+    context.setupMocks();
+    const { userId, orgId, agentId } = await seedAgent();
+
+    const { sessionId: staleId } = await seedSessionWithRun({
+      orgId,
+      userId,
+      agentId,
+      sessionStatus: "active",
+    });
+
+    const fresh = await createSession(orgId, userId, agentId);
+
+    expect(fresh.id).not.toBe(staleId);
+    expect(fresh.status).toBe("preparing");
+
+    // eslint-disable-next-line web/no-direct-db-in-tests -- verify DB side effects directly
+    const db = globalThis.services.db;
+    const [stale] = await db
+      .select()
+      .from(voiceChatSessions)
+      .where(eq(voiceChatSessions.id, staleId));
+    expect(stale!.status).toBe("ended");
+    expect(stale!.endedAt).not.toBeNull();
+
+    const events = await db
+      .select()
+      .from(voiceChatEvents)
+      .where(eq(voiceChatEvents.sessionId, staleId));
+    const endEvents = events.filter((e) => {
+      return e.type === "session-end";
+    });
+    expect(endEvents).toHaveLength(1);
+    expect(endEvents[0]!.source).toBe("system");
+  });
+
+  it("transitions an existing 'preparing' row to 'ended' and creates a new row", async () => {
+    context.setupMocks();
+    const { userId, orgId, agentId } = await seedAgent();
+
+    const { sessionId: staleId } = await seedSessionWithRun({
+      orgId,
+      userId,
+      agentId,
+      sessionStatus: "preparing",
+    });
+
+    const fresh = await createSession(orgId, userId, agentId);
+
+    expect(fresh.id).not.toBe(staleId);
+
+    // eslint-disable-next-line web/no-direct-db-in-tests -- verify DB side effects directly
+    const db = globalThis.services.db;
+    const [stale] = await db
+      .select()
+      .from(voiceChatSessions)
+      .where(eq(voiceChatSessions.id, staleId));
+    expect(stale!.status).toBe("ended");
+  });
+
+  it("leaves stale run's agent_runs.status untouched (graceful-exit invariant)", async () => {
+    context.setupMocks();
+    const { userId, orgId, agentId } = await seedAgent();
+
+    const { runId } = await seedSessionWithRun({
+      orgId,
+      userId,
+      agentId,
+      sessionStatus: "active",
+      runStatus: "running",
+    });
+
+    await createSession(orgId, userId, agentId);
+
+    // eslint-disable-next-line web/no-direct-db-in-tests -- invariant check from #10429
+    const db = globalThis.services.db;
+    const [run] = await db
+      .select({ status: agentRuns.status })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, runId));
+    expect(run!.status).toBe("running");
+  });
+
+  it("hands the stale run's agentSessionId to getPriorVoiceChatAgentSessionId for continuation", async () => {
+    context.setupMocks();
+    const { userId, orgId, agentId } = await seedAgent();
+
+    await seedSessionWithRun({
+      orgId,
+      userId,
+      agentId,
+      sessionStatus: "active",
+      runResult: { agentSessionId: "prior-cc-session" },
+    });
+
+    await createSession(orgId, userId, agentId);
+
+    const prior = await getPriorVoiceChatAgentSessionId(orgId, userId);
+    expect(prior).toBe("prior-cc-session");
+  });
+
+  it("does not touch other users' active rows", async () => {
+    context.setupMocks();
+    const { userId, orgId, agentId } = await seedAgent();
+    const other = await context.setupUser({ prefix: "other-user" });
+
+    const { sessionId: otherStaleId } = await seedSessionWithRun({
+      orgId: other.orgId,
+      userId: other.userId,
+      agentId,
+      sessionStatus: "active",
+    });
+
+    await createSession(orgId, userId, agentId);
+
+    // eslint-disable-next-line web/no-direct-db-in-tests -- cross-user isolation check
+    const db = globalThis.services.db;
+    const [untouched] = await db
+      .select()
+      .from(voiceChatSessions)
+      .where(eq(voiceChatSessions.id, otherStaleId));
+    expect(untouched!.status).toBe("active");
+    expect(untouched!.endedAt).toBeNull();
+  });
+
+  it("creates the row without emitting a session-end event when no stale row exists", async () => {
+    context.setupMocks();
+    const { userId, orgId, agentId } = await seedAgent();
+
+    const fresh = await createSession(orgId, userId, agentId);
+
+    // eslint-disable-next-line web/no-direct-db-in-tests -- verify no stray events
+    const db = globalThis.services.db;
+    const events = await db
+      .select()
+      .from(voiceChatEvents)
+      .where(eq(voiceChatEvents.sessionId, fresh.id));
+    expect(events).toHaveLength(0);
   });
 });

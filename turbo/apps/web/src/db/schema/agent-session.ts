@@ -5,6 +5,7 @@ import {
   text,
   timestamp,
   index,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { agentComposes } from "./agent-compose";
 import { conversations } from "./conversation";
@@ -29,7 +30,7 @@ export const agentSessions = pgTable(
       )
       .notNull(),
     conversationId: uuid("conversation_id").references(
-      () => {
+      (): AnyPgColumn => {
         return conversations.id;
       },
       {

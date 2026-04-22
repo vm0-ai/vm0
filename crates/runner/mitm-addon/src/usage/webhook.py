@@ -22,11 +22,13 @@ def _post_webhook(url: str, sandbox_token: str, payload: dict) -> None:
     data = json.dumps(payload).encode()
     req = make_api_request(url, data, sandbox_token)
     try:
-        resp = _opener.open(req, timeout=10)
-        resp.close()
+        with _opener.open(req, timeout=10):
+            pass
     except urllib.error.HTTPError as exc:
-        exc.close()  # HTTPError holds an open socket
-        raise
+        # HTTPError wraps an open socket; context-manage it so the fd is
+        # released on every exit path (matches _forward_request_sync #10476).
+        with exc:
+            raise
 
 
 def _post_webhook_with_retry(
