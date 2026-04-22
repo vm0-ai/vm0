@@ -221,6 +221,7 @@ const VM0_MODEL_CREDIT_MULTIPLIER = Object.freeze<Record<string, number>>({
   "kimi-k2.6": 0.3,
   "kimi-k2.5": 0.2,
   "MiniMax-M2.7": 0.1,
+  "deepseek-chat": 0.2,
 });
 
 export function getVm0ModelMultiplier(model: string): number | undefined {
