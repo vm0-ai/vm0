@@ -16,7 +16,7 @@ interface SqlParams {
   tzLit: string;
 }
 
-function startOfDayInTz(date: Date, tz: string): Date {
+export function startOfDayInTz(date: Date, tz: string): Date {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: tz,
     hour: "2-digit",

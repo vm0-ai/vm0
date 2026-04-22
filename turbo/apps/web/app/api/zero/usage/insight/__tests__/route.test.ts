@@ -198,7 +198,7 @@ describe("GET /api/zero/usage/insight", () => {
     expect(seriesKeys.has("others")).toBe(true);
   });
 
-  it("24h produces hourly bucket strings differing by hour", async () => {
+  it("today produces hourly bucket strings", async () => {
     const { userId, orgId } = await context.user;
     const { composeId } = await seedTestCompose({
       userId,
@@ -206,9 +206,13 @@ describe("GET /api/zero/usage/insight", () => {
       orgId,
     });
 
-    // Seed two runs 3 hours apart
     const now = new Date();
-    const threeHoursAgo = new Date(now.getTime() - 3 * 60 * 60 * 1000);
+    const todayStart = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+    );
+    // Seed two runs at fixed hours today (09:00 and 12:00 UTC)
+    const t1 = new Date(todayStart.getTime() + 9 * 3600000);
+    const t2 = new Date(todayStart.getTime() + 12 * 3600000);
 
     const { runId: run1 } = await seedTestRun(userId, composeId, {
       triggerSource: "cli",
@@ -221,7 +225,7 @@ describe("GET /api/zero/usage/insight", () => {
       creditsCharged: 10,
       status: "processed",
     });
-    await setTestCreditUsageCreatedAt(cu1Id, now);
+    await setTestCreditUsageCreatedAt(cu1Id, t1);
 
     const { runId: run2 } = await seedTestRun(userId, composeId, {
       triggerSource: "cli",
@@ -234,10 +238,67 @@ describe("GET /api/zero/usage/insight", () => {
       creditsCharged: 10,
       status: "processed",
     });
-    await setTestCreditUsageCreatedAt(cu2Id, threeHoursAgo);
+    await setTestCreditUsageCreatedAt(cu2Id, t2);
 
     const response = await GET(
-      makeRequest({ range: "24h", groupBy: "source", tz: "UTC" }),
+      makeRequest({ range: "today", groupBy: "source", tz: "UTC" }),
+    );
+    expect(response.status).toBe(200);
+    const data = (await response.json()) as UsageInsightResponse;
+
+    // At least one bucket should exist
+    expect(data.buckets.length).toBeGreaterThanOrEqual(1);
+
+    // All bucket timestamps should be truncated to the hour
+    for (const bucket of data.buckets) {
+      expect(bucket.ts).toMatch(/:00:00/);
+    }
+  });
+
+  it("yesterday produces hourly bucket strings for prior calendar day", async () => {
+    const { userId, orgId } = await context.user;
+    const { composeId } = await seedTestCompose({
+      userId,
+      name: uniqueId("compose"),
+      orgId,
+    });
+
+    const now = new Date();
+    const yesterdayStart = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 1),
+    );
+    // Seed two runs at fixed hours yesterday (10:00 and 14:00 UTC)
+    const t1 = new Date(yesterdayStart.getTime() + 10 * 3600000);
+    const t2 = new Date(yesterdayStart.getTime() + 14 * 3600000);
+
+    const { runId: run1 } = await seedTestRun(userId, composeId, {
+      triggerSource: "cli",
+      status: "completed",
+    });
+    const { id: cu1Id } = await insertTestCreditUsageForRun({
+      runId: run1,
+      orgId,
+      userId,
+      creditsCharged: 10,
+      status: "processed",
+    });
+    await setTestCreditUsageCreatedAt(cu1Id, t1);
+
+    const { runId: run2 } = await seedTestRun(userId, composeId, {
+      triggerSource: "cli",
+      status: "completed",
+    });
+    const { id: cu2Id } = await insertTestCreditUsageForRun({
+      runId: run2,
+      orgId,
+      userId,
+      creditsCharged: 10,
+      status: "processed",
+    });
+    await setTestCreditUsageCreatedAt(cu2Id, t2);
+
+    const response = await GET(
+      makeRequest({ range: "yesterday", groupBy: "source", tz: "UTC" }),
     );
     expect(response.status).toBe(200);
     const data = (await response.json()) as UsageInsightResponse;
@@ -245,14 +306,63 @@ describe("GET /api/zero/usage/insight", () => {
     // Should have at least 2 buckets (different hours)
     expect(data.buckets.length).toBeGreaterThanOrEqual(2);
 
-    // The two buckets should have different timestamps
-    if (data.buckets.length >= 2) {
-      const first = data.buckets[0];
-      const last = data.buckets[data.buckets.length - 1];
-      if (first && last) {
-        expect(first.ts).not.toBe(last.ts);
-      }
+    // All bucket timestamps should be truncated to the hour and contain yesterday's date
+    const yesterdayDate = yesterdayStart.toISOString().split("T")[0];
+    for (const bucket of data.buckets) {
+      expect(bucket.ts).toMatch(/:00:00/);
+      expect(bucket.ts).toContain(yesterdayDate);
     }
+
+    // The two buckets should have different timestamps
+    const first = data.buckets[0];
+    const last = data.buckets[data.buckets.length - 1];
+    if (first && last) {
+      expect(first.ts).not.toBe(last.ts);
+    }
+  });
+
+  it("7d window includes data from midnight 6 days ago", async () => {
+    const { userId, orgId } = await context.user;
+    const { composeId } = await seedTestCompose({
+      userId,
+      name: uniqueId("compose"),
+      orgId,
+    });
+
+    const now = new Date();
+    const todayStart = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+    );
+    const sixDaysAgo = new Date(todayStart.getTime() - 6 * 86400000);
+    const runTime = new Date(sixDaysAgo.getTime() + 3600000); // 1 hour after midnight
+
+    const { runId } = await seedTestRun(userId, composeId, {
+      triggerSource: "cli",
+      status: "completed",
+    });
+    const { id: cuId } = await insertTestCreditUsageForRun({
+      runId,
+      orgId,
+      userId,
+      creditsCharged: 42,
+      status: "processed",
+    });
+    await setTestCreditUsageCreatedAt(cuId, runTime);
+
+    const response = await GET(
+      makeRequest({ range: "7d", groupBy: "day", tz: "UTC" }),
+    );
+    expect(response.status).toBe(200);
+    const data = (await response.json()) as UsageInsightResponse;
+
+    // Find the bucket containing our 42 credits
+    const bucket = data.buckets.find((b) => {
+      return Object.values(b.series).some((v) => {
+        return v === 42;
+      });
+    });
+    expect(bucket).toBeDefined();
+    expect(bucket!.ts).toContain(sixDaysAgo.toISOString().split("T")[0]);
   });
 
   it("TZ shift — same row appears in different date buckets by timezone", async () => {
