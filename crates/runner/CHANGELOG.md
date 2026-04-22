@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.91.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.90.0...runner-rs-v0.91.0) (2026-04-22)
+
+
+### Features
+
+* **runner:** ship error logs to axiom via tracing layer ([#10576](https://github.com/vm0-ai/vm0/issues/10576)) ([4abb780](https://github.com/vm0-ai/vm0/commit/4abb780656c2423cd66791423128885aa9e7f053))
+
+
+### Bug Fixes
+
+* **mitm-addon:** stop load_registry log spam on sustained failure ([#10572](https://github.com/vm0-ai/vm0/issues/10572)) ([1d946a1](https://github.com/vm0-ai/vm0/commit/1d946a1b9074ac8e1116463c94191470ad065621))
+
 ## [0.90.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.89.3...runner-rs-v0.90.0) (2026-04-22)
 
 

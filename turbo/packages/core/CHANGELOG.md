@@ -1,5 +1,13 @@
 # Changelog
 
+## [8.225.0](https://github.com/vm0-ai/vm0/compare/core-v8.224.0...core-v8.225.0) (2026-04-22)
+
+
+### Features
+
+* add openai platform auth skeleton behind PlatformConnectors flag ([#10580](https://github.com/vm0-ai/vm0/issues/10580)) ([6f7614d](https://github.com/vm0-ai/vm0/commit/6f7614d0a8bf0f5119f6c8f3f8c110c3ab1a478d))
+* **uploads:** serve permanent /f file redirect via public api host ([#10526](https://github.com/vm0-ai/vm0/issues/10526)) ([a5003fc](https://github.com/vm0-ai/vm0/commit/a5003fcc41e76139fcaea8be8a59058386998ce8))
+
 ## [8.224.0](https://github.com/vm0-ai/vm0/compare/core-v8.223.0...core-v8.224.0) (2026-04-22)
 
 

@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.129.0](https://github.com/vm0-ai/vm0/compare/cli-v9.128.0...cli-v9.129.0) (2026-04-22)
+
+
+### Features
+
+* **uploads:** serve permanent /f file redirect via public api host ([#10526](https://github.com/vm0-ai/vm0/issues/10526)) ([a5003fc](https://github.com/vm0-ai/vm0/commit/a5003fcc41e76139fcaea8be8a59058386998ce8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.225.0
+
 ## [9.128.0](https://github.com/vm0-ai/vm0/compare/cli-v9.127.3...cli-v9.128.0) (2026-04-22)
 
 

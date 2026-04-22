@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.282.0](https://github.com/vm0-ai/vm0/compare/app-v0.281.0...app-v0.282.0) (2026-04-22)
+
+
+### Features
+
+* add openai platform auth skeleton behind PlatformConnectors flag ([#10580](https://github.com/vm0-ai/vm0/issues/10580)) ([6f7614d](https://github.com/vm0-ai/vm0/commit/6f7614d0a8bf0f5119f6c8f3f8c110c3ab1a478d))
+
+
+### Bug Fixes
+
+* **voice-chat:** resolve preparation timeout from task dispatch pollution ([#10582](https://github.com/vm0-ai/vm0/issues/10582)) ([6138f35](https://github.com/vm0-ai/vm0/commit/6138f353fe84dbbba286332035208712c57035a7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.225.0
+
 ## [0.281.0](https://github.com/vm0-ai/vm0/compare/app-v0.280.1...app-v0.281.0) (2026-04-22)
 
 
