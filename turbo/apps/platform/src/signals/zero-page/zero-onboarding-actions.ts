@@ -222,7 +222,7 @@ export const onboardingDisplayName$ = computed(async (get) => {
   return await get(currentChatAgentDisplayName$);
 });
 
-const completeOnboarding$ = command(
+export const completeOnboarding$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     set(reloadBillingStatus$);
 

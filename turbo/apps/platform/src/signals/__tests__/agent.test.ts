@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { zeroAgentsByIdContract } from "@vm0/core";
+import { onboardingCompleteContract, zeroAgentsByIdContract } from "@vm0/core";
 import { server } from "../../mocks/server.ts";
 import { mockApi } from "../../mocks/msw-contract.ts";
 import { setMockOnboardingStatus } from "../../mocks/handlers/api-onboarding.ts";
@@ -17,6 +17,7 @@ import {
   setActiveAgent$,
   zeroJobDetail$,
 } from "../zero-page/zero-job-detail.ts";
+import { completeOnboarding$ } from "../zero-page/zero-onboarding-actions.ts";
 
 const context = testContext();
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
@@ -66,9 +67,8 @@ describe("agentById$ cache invalidation", () => {
 
     detachedSetupPage({ context, path: "/", withoutRender: true });
 
-    // `agentById()` constructs a new `computed` per call — hold one instance
-    // so repeated reads exercise ccstate's cache rather than building fresh
-    // computeds that always refetch.
+    // `agentById()` is memoized — the same computed is returned for the same
+    // id so ccstate's caching logic applies and repeated reads do not refetch.
     const agent$ = agentById(AGENT_ID);
 
     const first = await context.store.get(agent$);
@@ -197,6 +197,40 @@ describe("agent mutations trigger reloadAgentById$", () => {
     // The only guarantee we need from the fix: reloadAgentById$ was bumped so
     // any consumer still subscribed to agentById(deletedId) re-reads and sees
     // the server's post-delete state instead of the cached pre-delete body.
+    expect(counter.getCalls).toBeGreaterThan(callsBeforeMutation);
+  });
+
+  it("completeOnboarding$ invalidates agentById so a later read refetches", async () => {
+    // Use the member-onboarding path (needsOnboarding + hasDefaultAgent) so the
+    // test does not need to exercise the Clerk JWT-refresh logic from the admin
+    // path — the important assertion is that completeOnboarding$ bumps
+    // reloadAgentById$ regardless of which branch runs.
+    setMockOnboardingStatus({
+      needsOnboarding: true,
+      hasDefaultAgent: true,
+      defaultAgentId: AGENT_ID,
+    });
+    server.use(
+      mockApi(onboardingCompleteContract.complete, ({ respond }) => {
+        return respond(200, { ok: true });
+      }),
+    );
+
+    const state = { current: { displayName: "Before" } as AgentOverrides };
+    const counter = serveAgent(state);
+
+    detachedSetupPage({ context, path: "/", withoutRender: true });
+
+    // Prime the agentById cache so we can observe the invalidation.
+    const before = await context.store.get(agentById(AGENT_ID));
+    expect(before.displayName).toBe("Before");
+    const callsBeforeMutation = counter.getCalls;
+
+    state.current = { displayName: "After" };
+    await context.store.set(completeOnboarding$, context.signal);
+
+    const after = await context.store.get(agentById(AGENT_ID));
+    expect(after.displayName).toBe("After");
     expect(counter.getCalls).toBeGreaterThan(callsBeforeMutation);
   });
 });
