@@ -214,12 +214,12 @@ describe("org billing tab - auto-recharge section", () => {
     const thresholdInput = screen.getByLabelText(
       /credit threshold for auto-recharge/i,
     );
-    expect(thresholdInput).toHaveValue(5000);
+    expect(thresholdInput).toHaveValue("5000");
 
     const amountInput = screen.getByLabelText(
       /auto-recharge credit amount in credits/i,
     );
-    expect(amountInput).toHaveValue(50_000);
+    expect(amountInput).toHaveValue("50000");
   });
 
   it("should show toggle off when server auto-recharge is disabled", async () => {
@@ -332,7 +332,9 @@ describe("org billing tab - auto-recharge section", () => {
 
     await fill(thresholdInput, "2000");
     await fill(amountInput, "10000");
-    amountInput.blur();
+
+    const unsavedBar = await screen.findByTestId("auto-recharge-unsaved-bar");
+    await user.click(within(unsavedBar).getByTestId("save-button"));
 
     await waitFor(() => {
       expect(capturedBody).toStrictEqual({
@@ -344,6 +346,7 @@ describe("org billing tab - auto-recharge section", () => {
   });
 
   it("should send correct data when saving auto-recharge config", async () => {
+    const user = userEvent.setup();
     let capturedBody: unknown = null;
     server.use(
       mockApi(zeroBillingAutoRechargeContract.update, ({ body, respond }) => {
@@ -375,13 +378,15 @@ describe("org billing tab - auto-recharge section", () => {
       const input = screen.getByLabelText(
         /credit threshold for auto-recharge/i,
       );
-      expect(input).toHaveValue(2000);
+      expect(input).toHaveValue("2000");
       return input;
     });
 
-    // Change threshold and blur to trigger save
+    // Change threshold and click Save from UnsavedBar
     await fill(thresholdInput, "3000");
-    thresholdInput.blur();
+
+    const unsavedBar = await screen.findByTestId("auto-recharge-unsaved-bar");
+    await user.click(within(unsavedBar).getByTestId("save-button"));
 
     await waitFor(() => {
       expect(capturedBody).toStrictEqual({
@@ -390,6 +395,68 @@ describe("org billing tab - auto-recharge section", () => {
         amount: 10_000,
       });
     });
+  });
+
+  it("should reject negative and decimal input in threshold/amount fields", async () => {
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+      autoRecharge: { enabled: true, threshold: 2000, amount: 10_000 },
+    });
+
+    await openBillingTab();
+
+    const thresholdInput = await waitFor(() => {
+      const input = screen.getByLabelText(
+        /credit threshold for auto-recharge/i,
+      );
+      expect(input).toHaveValue("2000");
+      return input;
+    });
+
+    await fill(thresholdInput, "-5");
+    expect(thresholdInput).toHaveValue("2000");
+
+    await fill(thresholdInput, "12.5");
+    expect(thresholdInput).toHaveValue("2000");
+
+    await fill(thresholdInput, "3000");
+    expect(thresholdInput).toHaveValue("3000");
+  });
+
+  it("should discard unsaved auto-recharge changes when Discard is clicked", async () => {
+    const user = userEvent.setup();
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+      autoRecharge: { enabled: true, threshold: 2000, amount: 10_000 },
+    });
+
+    await openBillingTab();
+
+    const thresholdInput = await waitFor(() => {
+      const input = screen.getByLabelText(
+        /credit threshold for auto-recharge/i,
+      );
+      expect(input).toHaveValue("2000");
+      return input;
+    });
+
+    await fill(thresholdInput, "9999");
+
+    const unsavedBar = await screen.findByTestId("auto-recharge-unsaved-bar");
+    await user.click(within(unsavedBar).getByTestId("discard-button"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("auto-recharge-unsaved-bar"),
+      ).not.toBeInTheDocument();
+    });
+    expect(thresholdInput).toHaveValue("2000");
   });
 });
 

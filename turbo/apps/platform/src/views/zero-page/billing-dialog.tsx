@@ -6,6 +6,7 @@ import {
   useLastLoadable,
   useLastResolved,
 } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
@@ -26,6 +27,8 @@ import {
   openDowngradeDialog$,
   saveAutoRecharge$,
   autoRechargeConfig$,
+  autoRechargeDirty$,
+  discardAutoRecharge$,
   pendingEnabled$,
   setPendingEnabled$,
   formThreshold$,
@@ -39,6 +42,7 @@ import {
 } from "../../signals/zero-page/billing-dialog-state.ts";
 import { SaveAutoRechargeButton } from "./save-auto-recharge-button.tsx";
 import { CheckoutButton } from "./checkout-button.tsx";
+import { UnsavedBar } from "./components/org-manage/unsaved-bar.tsx";
 
 const PLANS = [
   {
@@ -164,6 +168,11 @@ export function AutoRechargeSection({
   const setThreshold = useSet(setFormThreshold$);
   const setAmount = useSet(setFormAmount$);
 
+  const dirty = useLastResolved(autoRechargeDirty$) ?? false;
+  const discard = useSet(discardAutoRecharge$);
+  const [saveLoadable, doSave] = useLoadableSet(saveAutoRecharge$);
+  const saving = saveLoadable.state === "loading";
+
   if (currentTier === "free") {
     return null;
   }
@@ -212,9 +221,6 @@ export function AutoRechargeSection({
   } | null => {
     const { threshold: t, amount: a } = parseFormNumbers();
     if (!loading && (!displayEnabled || (t > 0 && a >= CREDITS_PER_DOLLAR))) {
-      if (displayEnabled) {
-        setPendingEnabled(null);
-      }
       return {
         enabled: displayEnabled,
         ...(displayEnabled ? { threshold: t, amount: a } : {}),
@@ -223,123 +229,121 @@ export function AutoRechargeSection({
     return null;
   };
 
-  const persistIfValid = () => {
+  const handleSave = () => {
     const values = getFormValues();
-    if (values) {
-      saveCurrent({
-        enabled: values.enabled,
-        threshold: values.threshold,
-        amount: values.amount,
-      });
+    if (!values) {
+      return;
     }
+    detach(doSave(values, pageSignal), Reason.DomCallback);
   };
 
   const inputRowClass = "h-9 w-[200px] shrink-0";
 
   if (variant === "settings") {
     return (
-      <section className="flex flex-col gap-3">
-        <h3 className="text-sm font-medium text-foreground">Auto-recharge</h3>
-        <div
-          className="overflow-hidden rounded-xl bg-card"
-          style={settingsCardBorder}
-        >
-          <div className="flex items-center justify-between gap-4 px-5 py-4">
-            <div className="min-w-0">
-              <p className="text-sm font-medium text-foreground">
-                Automatic top-ups
-              </p>
-              <p className="text-[13px] text-muted-foreground mt-0.5">
-                Purchase credits when your balance falls below a threshold.
-              </p>
+      <>
+        <section className="flex flex-col gap-3">
+          <h3 className="text-sm font-medium text-foreground">Auto-recharge</h3>
+          <div
+            className="overflow-hidden rounded-xl bg-card"
+            style={settingsCardBorder}
+          >
+            <div className="flex items-center justify-between gap-4 px-5 py-4">
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-foreground">
+                  Automatic top-ups
+                </p>
+                <p className="text-[13px] text-muted-foreground mt-0.5">
+                  Purchase credits when your balance falls below a threshold.
+                </p>
+              </div>
+              <Switch
+                checked={displayEnabled}
+                onCheckedChange={(v) => {
+                  setPendingEnabled(v === enabled ? null : v);
+                }}
+                disabled={loading || saving}
+                className="shrink-0"
+                aria-label="Enable auto-recharge"
+              />
             </div>
-            <Switch
-              checked={displayEnabled}
-              onCheckedChange={(v) => {
-                if (!v) {
-                  setPendingEnabled(null);
-                  saveCurrent({ enabled: false });
-                  return;
-                }
-                const t = Number(config.threshold);
-                const a = Number(config.amount);
-                if (!loading && t > 0 && a >= CREDITS_PER_DOLLAR) {
-                  saveCurrent({ enabled: true, threshold: t, amount: a });
-                } else {
-                  setPendingEnabled(true);
-                }
-              }}
-              disabled={loading}
-              className="shrink-0"
-              aria-label="Enable auto-recharge"
-            />
-          </div>
-          {displayEnabled && (
-            <>
-              <div className="h-0 zero-border-t mx-5" />
-              <div className="flex items-center justify-between gap-4 px-5 py-4">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-foreground">
-                    When credits drop below
-                  </p>
-                  <p className="text-[13px] text-muted-foreground mt-0.5">
-                    Trigger a purchase when your credit balance goes under this
-                    number.
-                  </p>
-                </div>
-                <Input
-                  type="number"
-                  min={1}
-                  value={thresholdValue}
-                  onChange={(e) => {
-                    setThreshold(e.target.value);
-                  }}
-                  onBlur={() => {
-                    return persistIfValid();
-                  }}
-                  placeholder="e.g. 2000"
-                  className={inputRowClass}
-                  aria-label="Credit threshold for auto-recharge"
-                />
-              </div>
-              <div className="h-0 zero-border-t mx-5" />
-              <div className="flex items-center justify-between gap-4 px-5 py-4">
-                <div className="min-w-0 flex flex-col gap-1">
-                  <span className="text-xl font-semibold tabular-nums tracking-tight text-foreground">
-                    ${dollarAmount}
-                  </span>
-                  <p className="text-[13px] font-normal text-muted-foreground">
-                    Recharge amount
-                  </p>
-                </div>
-                <div className="relative w-[200px] shrink-0">
+            {displayEnabled && (
+              <>
+                <div className="h-0 zero-border-t mx-5" />
+                <div className="flex items-center justify-between gap-4 px-5 py-4">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-foreground">
+                      When credits drop below
+                    </p>
+                    <p className="text-[13px] text-muted-foreground mt-0.5">
+                      Trigger a purchase when your credit balance goes under
+                      this number.
+                    </p>
+                  </div>
                   <Input
-                    type="number"
-                    min={CREDITS_PER_DOLLAR}
-                    step={CREDITS_PER_DOLLAR}
-                    value={amountValue}
+                    type="text"
+                    inputMode="numeric"
+                    value={thresholdValue}
                     onChange={(e) => {
-                      setAmount(e.target.value);
+                      const v = e.target.value;
+                      if (v !== "" && !/^\d+$/.test(v)) {
+                        return;
+                      }
+                      setThreshold(v);
                     }}
-                    onBlur={() => {
-                      return persistIfValid();
-                    }}
-                    placeholder="100000"
-                    className={`${inputRowClass} pr-[4.25rem] tabular-nums`}
-                    aria-label="Auto-recharge credit amount in credits"
+                    placeholder="e.g. 2000"
+                    className={inputRowClass}
+                    aria-label="Credit threshold for auto-recharge"
                   />
-                  <span
-                    className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[13px] text-muted-foreground"
-                    aria-hidden
-                  >
-                    credits
-                  </span>
                 </div>
-              </div>
-            </>
-          )}
-        </div>
-      </section>
+                <div className="h-0 zero-border-t mx-5" />
+                <div className="flex items-center justify-between gap-4 px-5 py-4">
+                  <div className="min-w-0 flex flex-col gap-1">
+                    <span className="text-xl font-semibold tabular-nums tracking-tight text-foreground">
+                      ${dollarAmount}
+                    </span>
+                    <p className="text-[13px] font-normal text-muted-foreground">
+                      Recharge amount
+                    </p>
+                  </div>
+                  <div className="relative w-[200px] shrink-0">
+                    <Input
+                      type="text"
+                      inputMode="numeric"
+                      value={amountValue}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (v !== "" && !/^\d+$/.test(v)) {
+                          return;
+                        }
+                        setAmount(v);
+                      }}
+                      placeholder="100000"
+                      className={`${inputRowClass} pr-[4.25rem] tabular-nums`}
+                      aria-label="Auto-recharge credit amount in credits"
+                    />
+                    <span
+                      className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[13px] text-muted-foreground"
+                      aria-hidden
+                    >
+                      credits
+                    </span>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </section>
+        {dirty && (
+          <UnsavedBar
+            onDiscard={discard}
+            onSave={handleSave}
+            saving={saving}
+            saveDisabled={getFormValues() === null}
+            testId="auto-recharge-unsaved-bar"
+          />
+        )}
+      </>
     );
   }
 

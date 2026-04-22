@@ -1,10 +1,10 @@
 import { useGet, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
-import { createPortal } from "react-dom";
 import type { OrgMember, MemberUsage } from "@vm0/core";
-import { IconUsers, IconPencil, IconLoader2 } from "@tabler/icons-react";
-import { Button, Input } from "@vm0/ui";
+import { IconUsers } from "@tabler/icons-react";
+import { Input } from "@vm0/ui";
 import { toast } from "@vm0/ui/components/ui/sonner";
+import { UnsavedBar } from "./unsaved-bar.tsx";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { usageMembersAsync$ } from "../../../../signals/usage-page/usage-signals.ts";
 import { orgMembers$ } from "../../../../signals/external/org-members.ts";
@@ -84,67 +84,6 @@ function InlineCapInput({ member }: { member: MemberUsage }) {
       }}
       className="h-8 w-full text-[13px] tabular-nums placeholder:text-xs"
     />
-  );
-}
-
-function UnsavedBar({
-  onDiscard,
-  onSave,
-  saving,
-}: {
-  onDiscard: () => void;
-  onSave: () => void;
-  saving: boolean;
-}) {
-  const container = document.getElementById("org-manage-content");
-  if (!container) {
-    return null;
-  }
-  return createPortal(
-    <div className="absolute bottom-6 left-0 right-0 z-10 flex justify-center px-4">
-      <div
-        data-testid="unsaved-bar"
-        className="zero-card flex max-w-md items-center justify-between gap-4 px-5 py-4 shadow-lg"
-      >
-        <div className="flex items-center gap-2 text-sm text-foreground">
-          <IconPencil
-            size={18}
-            stroke={1.5}
-            className="shrink-0 text-muted-foreground"
-          />
-          <span>You have unsaved changes</span>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <Button
-            data-testid="discard-button"
-            variant="ghost"
-            size="sm"
-            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-            onClick={onDiscard}
-            disabled={saving}
-          >
-            Discard
-          </Button>
-          <Button
-            data-testid="save-button"
-            size="sm"
-            className="h-9 rounded-lg px-4 bg-primary text-primary-foreground hover:bg-primary/90"
-            onClick={onSave}
-            disabled={saving}
-          >
-            {saving ? (
-              <IconLoader2
-                size={14}
-                stroke={1.5}
-                className="animate-spin mr-1.5"
-              />
-            ) : null}
-            Save
-          </Button>
-        </div>
-      </div>
-    </div>,
-    container,
   );
 }
 
