@@ -201,7 +201,7 @@ teardown_file() {
     # Run agent that echoes the variable value
     echo "# Running agent that echoes variable value..."
     run $VM0_CLI run "$AGENT_EXPAND" \
-        --artifact "$ARTIFACT_NAME" \
+        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
         "echo MY_VAR=\$MY_VAR"
 
     echo "# Output:"
@@ -228,7 +228,7 @@ teardown_file() {
     echo "# Running agent with CLI var override..."
     run $VM0_CLI run "$AGENT_OVERRIDE" \
         --vars "$VAR_NAME_OVERRIDE=$cli_value" \
-        --artifact "$ARTIFACT_NAME" \
+        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
         "echo MY_VAR=\$MY_VAR"
 
     echo "# Output:"

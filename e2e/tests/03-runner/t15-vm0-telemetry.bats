@@ -76,7 +76,7 @@ teardown() {
     # Step 2: Run agent with a simple command
     echo "# Step 2: Running agent to trigger telemetry collection..."
     run $VM0_CLI run "$AGENT_NAME" \
-        --artifact "$ARTIFACT_NAME" \
+        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
         "echo 'hello from agent'"
 
     assert_success

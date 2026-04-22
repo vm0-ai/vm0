@@ -179,7 +179,7 @@ EOF
     echo "# Running agent to verify instructions is mounted..."
     # The instructions is mounted at /home/user/.claude/CLAUDE.md
     run $VM0_CLI run "$AGENT_NAME" \
-        --artifact "$ARTIFACT_NAME" \
+        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
         "cat /home/user/.claude/CLAUDE.md"
     assert_success
 
@@ -210,7 +210,7 @@ EOF
 
     echo "# Running agent to verify gh cli is installed in base image..."
     run $VM0_CLI run "$AGENT_NAME" \
-        --artifact "$ARTIFACT_NAME" \
+        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
         "gh --version"
     assert_success
 

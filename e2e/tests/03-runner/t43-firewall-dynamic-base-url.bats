@@ -69,7 +69,7 @@ EOF
     assert_success
 
     run $VM0_CLI run "${AGENT_NAME}-placeholder" \
-        --artifact "$ARTIFACT_NAME" \
+        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
         "echo \"TOKEN=\$ZENDESK_API_TOKEN\" && echo \"SUBDOMAIN=\$ZENDESK_SUBDOMAIN\""
 
     echo "$output"
@@ -105,7 +105,7 @@ EOF
     # If proxy matched: zendesk returns 401 (bad token) or 404 (subdomain not found)
     # If proxy blocked: returns 403 with "no matching permission" error
     run $VM0_CLI run "${AGENT_NAME}-proxy" \
-        --artifact "$ARTIFACT_NAME" \
+        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
         "STATUS=\$(curl -s -o /dev/null -w '%{http_code}' https://${TEST_SUBDOMAIN}.zendesk.com/api/v2/users/me.json) && echo \"ZENDESK_STATUS=\$STATUS\""
 
     echo "$output"

@@ -67,7 +67,7 @@ teardown() {
 
     # Step 2: Run agent using unified --artifact flag (name only = latest)
     run $VM0_CLI run "$AGENT_NAME" \
-        --artifact "$ARTIFACT_NAME" \
+        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
         --verbose \
         "cat /home/user/workspace/marker.txt"
 
@@ -95,7 +95,7 @@ teardown() {
 
     # Step 3: Run agent with --artifact name:version to pin to version 1
     run $VM0_CLI run "$AGENT_NAME" \
-        --artifact "$ARTIFACT_NAME:$VERSION1" \
+        --artifact "$ARTIFACT_NAME:$VERSION1:/home/user/workspace" \
         --verbose \
         "cat /home/user/workspace/marker.txt"
 

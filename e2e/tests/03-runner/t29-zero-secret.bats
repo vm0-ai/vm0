@@ -188,7 +188,7 @@ teardown_file() {
     echo "# Running agent that echoes secret value..."
     run $VM0_CLI run "$AGENT_MASK" \
         --secrets "MY_SECRET=${secret_value}" \
-        --artifact "$ARTIFACT_NAME" \
+        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
         "echo SECRET=\$MY_SECRET"
 
     echo "# Output:"
@@ -214,7 +214,7 @@ teardown_file() {
     run $VM0_CLI run "$AGENT_MULTI" \
         --secrets "API_KEY=${secret1_value}" \
         --secrets "CLI_SECRET=${secret2_value}" \
-        --artifact "$ARTIFACT_NAME" \
+        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
         "echo API_KEY=\$API_KEY && echo CLI_SECRET=\$CLI_SECRET"
 
     echo "# Output:"
