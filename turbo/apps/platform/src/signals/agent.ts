@@ -5,8 +5,12 @@
  * metadata, and avatar signals. Downstream code should import from here
  * instead of reaching into individual signal files.
  */
-import { command, computed, state } from "ccstate";
-import { zeroAgentsByIdContract, zeroTeamContract } from "@vm0/core";
+import { command, computed, type Computed, state } from "ccstate";
+import {
+  type ZeroAgentResponse,
+  zeroAgentsByIdContract,
+  zeroTeamContract,
+} from "@vm0/core";
 import { pathParams$ } from "./route.ts";
 import { activeRoute$ } from "./active-route.ts";
 import { zeroOnboardingStatus$ } from "./zero-page/zero-onboarding.ts";
@@ -20,14 +24,27 @@ export const defaultAgentId$ = computed(async (get) => {
 
 const internalAgentByIdReload$ = state(0);
 
-export function agentById(id: string) {
-  return computed(async (get) => {
-    get(internalAgentByIdReload$);
-    const client = get(zeroClient$)(zeroAgentsByIdContract);
-    const result = await accept(client.get({ params: { id } }), [200]);
-    return result.body;
-  });
+function createAgentByIdFactory(): (
+  id: string,
+) => Computed<Promise<ZeroAgentResponse>> {
+  const cache = new Map<string, Computed<Promise<ZeroAgentResponse>>>();
+  return (id: string) => {
+    const existing = cache.get(id);
+    if (existing) {
+      return existing;
+    }
+    const atom$ = computed(async (get) => {
+      get(internalAgentByIdReload$);
+      const client = get(zeroClient$)(zeroAgentsByIdContract);
+      const result = await accept(client.get({ params: { id } }), [200]);
+      return result.body;
+    });
+    cache.set(id, atom$);
+    return atom$;
+  };
 }
+
+export const agentById = createAgentByIdFactory();
 
 export const reloadAgentById$ = command(({ set }) => {
   set(internalAgentByIdReload$, (prev) => {
