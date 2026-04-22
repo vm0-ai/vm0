@@ -17,4 +17,3 @@ export const etsyHandler: ProviderHandler = {
     return "ETSY_TOKEN";
   },
 };
-
