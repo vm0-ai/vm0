@@ -109,6 +109,7 @@ import { mondayHandler } from "./providers/monday-handler";
 import { msg9Handler } from "./providers/msg9-handler";
 import { neonHandler } from "./providers/neon-handler";
 import { notionHandler } from "./providers/notion-handler";
+import { onyxHandler } from "./providers/onyx-handler";
 import { openaiHandler } from "./providers/openai-handler";
 import { redditHandler } from "./providers/reddit-handler";
 import { reporteiHandler } from "./providers/reportei-handler";
@@ -284,6 +285,7 @@ export const PROVIDER_HANDLERS: Record<
   msg9: msg9Handler,
   neon: neonHandler,
   notion: notionHandler,
+  onyx: onyxHandler,
   openai: openaiHandler,
   "outlook-calendar": outlookCalendarHandler,
   "outlook-mail": outlookMailHandler,
