@@ -4,7 +4,6 @@ import { testContext } from "../../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
 import { findTestZeroRun } from "../../../../../../../src/__tests__/db-test-assertions/runs";
 import {
-  endCandidateSession,
   postRequest,
   getRequest,
   paramsFor,
@@ -92,19 +91,6 @@ describe("POST /api/zero/voice-chat-candidate/:id/tasks (createTask)", () => {
       paramsFor(otherSession.id),
     );
     expect(response.status).toBe(404);
-  });
-
-  it("returns 400 when the session has ended", async () => {
-    const { agentId } = await seedCandidateAgent(userId, orgId);
-    const session = await seedCandidateSession({ orgId, userId, agentId });
-    await endCandidateSession(session.id);
-    const response = await POST(
-      postRequest(`/${session.id}/tasks`, taskBody()),
-      paramsFor(session.id),
-    );
-    const body = await response.json();
-    expect(response.status).toBe(400);
-    expect(body.error.code).toBe("BAD_REQUEST");
   });
 
   it("returns 400 when prompt is missing", async () => {
@@ -226,8 +212,4 @@ describe("GET /api/zero/voice-chat-candidate/:id/tasks (listTasks)", () => {
     expect(body.tasks[1].prompt).toBe("older");
     expect(body.tasks[0].assistantMessages).toEqual([]);
   });
-
-  // Silence the "unused" warning for endCandidateSession — kept imported for
-  // symmetry with adjacent test files that share _helpers.
-  void endCandidateSession;
 });

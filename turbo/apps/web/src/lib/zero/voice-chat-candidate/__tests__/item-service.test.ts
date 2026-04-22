@@ -4,10 +4,7 @@ import { testContext, uniqueId } from "../../../../__tests__/test-helpers";
 import { seedTestCompose } from "../../../../__tests__/db-test-seeders/agents";
 import { initServices } from "../../../init-services";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route covers these services yet
-import {
-  createVoiceChatCandidateSession,
-  endVoiceChatCandidateSession,
-} from "../session-service";
+import { createVoiceChatCandidateSession } from "../session-service";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route covers these services yet
 import {
   appendVoiceChatCandidateItem,
@@ -96,21 +93,6 @@ describe("appendVoiceChatCandidateItem", () => {
     expect(a).not.toBeNull();
     expect(b).not.toBeNull();
     expect(a!.id).not.toBe(b!.id);
-  });
-
-  it("rejects when the session is ended", async () => {
-    context.setupMocks();
-    const { session } = await seedActiveSession();
-    await endVoiceChatCandidateSession(session.id);
-
-    await expect(
-      appendVoiceChatCandidateItem({
-        sessionId: session.id,
-        role: "user",
-        content: "after end",
-        realtimeItemId: uniqueId("rt"),
-      }),
-    ).rejects.toMatchObject({ statusCode: 400 });
   });
 
   it("throws notFound when the session does not exist", async () => {

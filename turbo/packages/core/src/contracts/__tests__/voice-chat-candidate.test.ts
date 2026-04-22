@@ -2,21 +2,21 @@ import { describe, it, expect } from "vitest";
 import {
   voiceChatCandidateItemRoleSchema,
   voiceChatCandidateReasoningStatusSchema,
-  voiceChatCandidateSessionStatusSchema,
   voiceChatCandidateTaskStatusSchema,
   zeroVoiceChatCandidateContract,
 } from "../zero-voice-chat-candidate";
 
 describe("zeroVoiceChatCandidateContract", () => {
-  it("exposes the 8 expected routes with correct HTTP methods", () => {
+  it("exposes the expected routes with correct HTTP methods", () => {
     const expected: Record<string, "GET" | "POST"> = {
       createSession: "POST",
       getSession: "GET",
-      endSession: "POST",
-      heartbeat: "POST",
+      listSessions: "GET",
+      triggerReasoning: "POST",
       appendItem: "POST",
       readItems: "GET",
       createTask: "POST",
+      listTasks: "GET",
       token: "POST",
     };
     const contract = zeroVoiceChatCandidateContract as unknown as Record<
@@ -40,17 +40,19 @@ describe("zeroVoiceChatCandidateContract", () => {
       );
     }
   });
+
+  it("no longer exposes session lifecycle routes (end/heartbeat/reenter)", () => {
+    const contract = zeroVoiceChatCandidateContract as unknown as Record<
+      string,
+      unknown
+    >;
+    expect(contract.endSession).toBeUndefined();
+    expect(contract.heartbeat).toBeUndefined();
+    expect(contract.reenterSession).toBeUndefined();
+  });
 });
 
 describe("voice-chat-candidate enum schemas", () => {
-  it("session status covers active | ended | timeout", () => {
-    expect(voiceChatCandidateSessionStatusSchema.options).toEqual([
-      "active",
-      "ended",
-      "timeout",
-    ]);
-  });
-
   it("item role covers user | assistant | task_result | system_note", () => {
     expect(voiceChatCandidateItemRoleSchema.options).toEqual([
       "user",

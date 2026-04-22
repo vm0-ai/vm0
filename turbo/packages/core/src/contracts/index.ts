@@ -901,7 +901,6 @@ export {
 } from "./zero-voice-io-quota";
 export {
   zeroVoiceChatCandidateContract,
-  voiceChatCandidateSessionStatusSchema,
   voiceChatCandidateItemRoleSchema,
   voiceChatCandidateTaskStatusSchema,
   voiceChatCandidateReasoningStatusSchema,
@@ -910,7 +909,6 @@ export {
   voiceChatCandidateTaskSchema,
   voiceChatCandidateTaskResultEntrySchema,
   type ZeroVoiceChatCandidateContract,
-  type VoiceChatCandidateSessionStatus,
   type VoiceChatCandidateItemRole,
   type VoiceChatCandidateTaskStatus,
   type VoiceChatCandidateReasoningStatus,

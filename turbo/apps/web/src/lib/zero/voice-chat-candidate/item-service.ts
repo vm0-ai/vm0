@@ -3,23 +3,20 @@ import {
   featureCandidateVoiceChatItems,
   featureCandidateVoiceChatSessions,
 } from "../../../db/schema/voice-chat-candidate";
-import { badRequest, notFound } from "../../shared/errors";
+import { notFound } from "../../shared/errors";
 
 type ItemRow = typeof featureCandidateVoiceChatItems.$inferSelect;
 type ItemRole = "user" | "assistant" | "task_result" | "system_note";
 
-async function assertSessionActive(sessionId: string): Promise<void> {
+async function assertSessionExists(sessionId: string): Promise<void> {
   const db = globalThis.services.db;
   const [session] = await db
-    .select({ status: featureCandidateVoiceChatSessions.status })
+    .select({ id: featureCandidateVoiceChatSessions.id })
     .from(featureCandidateVoiceChatSessions)
     .where(eq(featureCandidateVoiceChatSessions.id, sessionId))
     .limit(1);
   if (!session) {
     throw notFound("Voice-chat-candidate session not found");
-  }
-  if (session.status !== "active") {
-    throw badRequest("Session is not active");
   }
 }
 
@@ -31,7 +28,7 @@ export async function appendVoiceChatCandidateItem(params: {
   realtimeItemId?: string | null;
 }): Promise<ItemRow | null> {
   const db = globalThis.services.db;
-  await assertSessionActive(params.sessionId);
+  await assertSessionExists(params.sessionId);
 
   const [inserted] = await db
     .insert(featureCandidateVoiceChatItems)

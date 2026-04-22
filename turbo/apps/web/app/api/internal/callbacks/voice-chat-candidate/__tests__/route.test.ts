@@ -16,9 +16,8 @@ import { initServices } from "../../../../../../src/lib/init-services";
 import { createVoiceChatCandidateSession } from "../../../../../../src/lib/zero/voice-chat-candidate/session-service";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: voice-chat-candidate tasks route (#10310) not yet on main
 import { createVoiceChatCandidateTask } from "../../../../../../src/lib/zero/voice-chat-candidate/task-service";
-// eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: assert DB-level callback side effects (status, session end, system_note)
+// eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: assert DB-level callback side effects (task status, system_note)
 import {
-  featureCandidateVoiceChatSessions,
   featureCandidateVoiceChatTasks,
   featureCandidateVoiceChatItems,
 } from "../../../../../../src/db/schema/voice-chat-candidate";
@@ -91,16 +90,6 @@ async function readTask(id: string) {
     .select()
     .from(featureCandidateVoiceChatTasks)
     .where(eq(featureCandidateVoiceChatTasks.id, id))
-    .limit(1);
-  return row;
-}
-
-async function readSession(id: string) {
-  // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: assert session termination on agent mismatch
-  const [row] = await globalThis.services.db
-    .select()
-    .from(featureCandidateVoiceChatSessions)
-    .where(eq(featureCandidateVoiceChatSessions.id, id))
     .limit(1);
   return row;
 }
@@ -277,8 +266,8 @@ describe("POST /api/internal/callbacks/voice-chat-candidate", () => {
     expect(taskRow!.status).toBe("failed");
     expect(taskRow!.error).toMatch(/agent mismatch/i);
 
-    const sessionRow = await readSession(session.id);
-    expect(sessionRow!.status).toBe("ended");
+    // Sessions are stateless — the mismatch branch no longer flips a
+    // session-level field, it just emits a system_note and fails the task.
 
     const items = await listItems(session.id);
     const note = items.find((i) => {

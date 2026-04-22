@@ -16,10 +16,7 @@ import {
   type SpawnRun,
 } from "../task-service";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: verify DB side-effects directly
-import {
-  featureCandidateVoiceChatSessions,
-  featureCandidateVoiceChatTasks,
-} from "../../../../db/schema/voice-chat-candidate";
+import { featureCandidateVoiceChatTasks } from "../../../../db/schema/voice-chat-candidate";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: verify DB side-effects directly
 import { agentRuns } from "../../../../db/schema/agent-run";
 
@@ -278,15 +275,12 @@ describe("completeVoiceChatCandidateTask", () => {
     expect(completed.item.role).toBe("system_note");
     expect(completed.item.content).toMatch(/agent mismatch/i);
 
-    // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: verify teardown
-    const db = globalThis.services.db;
-    const [sessionRow] = await db
-      .select()
-      .from(featureCandidateVoiceChatSessions)
-      .where(eq(featureCandidateVoiceChatSessions.id, session.id));
-    expect(sessionRow!.status).toBe("ended");
-    expect(sessionRow!.endedAt).not.toBeNull();
+    // Sessions are stateless in the candidate model — an agent-mismatch
+    // callback fails the task and emits a system_note but leaves the
+    // session row alone.
 
+    // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: verify pending run was cancelled
+    const db = globalThis.services.db;
     const [otherRun] = await db
       .select()
       .from(agentRuns)

@@ -93,6 +93,9 @@ export async function completeVoiceChatCandidateTask(params: {
     const now = new Date();
 
     if (sessionRow.agentId !== params.agentId) {
+      // Defensive: task run callback arrived with the wrong agentId. Fail
+      // the task and emit a system note; the session itself stays put —
+      // sessions are stateless containers in the candidate model.
       const [failedTask] = await tx
         .update(featureCandidateVoiceChatTasks)
         .set({
@@ -108,16 +111,11 @@ export async function completeVoiceChatCandidateTask(params: {
         .values({
           sessionId: taskRow.sessionId,
           role: "system_note",
-          content: "agent mismatch — session ended",
+          content: "agent mismatch — task failed",
           taskId: taskRow.id,
           realtimeItemId: null,
         })
         .returning();
-
-      await tx
-        .update(featureCandidateVoiceChatSessions)
-        .set({ status: "ended", endedAt: now })
-        .where(eq(featureCandidateVoiceChatSessions.id, taskRow.sessionId));
 
       return {
         task: failedTask ?? taskRow,

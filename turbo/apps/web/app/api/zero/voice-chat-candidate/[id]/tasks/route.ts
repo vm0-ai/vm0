@@ -52,9 +52,6 @@ export async function POST(
   ) {
     return notFoundResponse("Voice-chat-candidate session not found");
   }
-  if (session.status !== "active") {
-    return badRequestResponse("Session is not active");
-  }
   if (!session.agentId) {
     // Null-agent sessions exist in schema (agentId is nullable) but cannot
     // spawn a task run — createZeroRun requires an agentId.

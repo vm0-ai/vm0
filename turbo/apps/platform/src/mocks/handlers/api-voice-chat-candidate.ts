@@ -30,6 +30,20 @@ export function resetMockVoiceChatCandidate(): void {
 
 export const apiVoiceChatCandidateHandlers = [
   mockApi(zeroVoiceChatCandidateContract.createSession, ({ body, respond }) => {
+    // Get-or-create by (userId, agentId): if an existing mock session
+    // matches the agent, return it instead of creating a fresh row.
+    const existing = Array.from(mockSessions.values()).find((s) => {
+      return s.userId === MOCK_USER_ID && s.agentId === body.agentId;
+    });
+    if (existing) {
+      return respond(200, {
+        session: existing,
+        recentTaskLogs: "",
+        finishedTasksFullText: "",
+        talkerInstructions: "",
+        talkerInstructionTokens: 0,
+      });
+    }
     const now = new Date().toISOString();
     const session: VoiceChatCandidateSession = {
       id: crypto.randomUUID(),
@@ -37,7 +51,6 @@ export const apiVoiceChatCandidateHandlers = [
       userId: MOCK_USER_ID,
       agentId: body.agentId,
       mode: "chat",
-      status: "active",
       conversationSummary: null,
       workingTasksSummary: null,
       finishedTasksSummary: null,
@@ -45,8 +58,6 @@ export const apiVoiceChatCandidateHandlers = [
       summaryVersion: 0,
       lastSummaryAt: null,
       createdAt: now,
-      lastHeartbeatAt: now,
-      endedAt: null,
     };
     mockSessions.set(session.id, session);
     mockItems.set(session.id, []);
@@ -80,7 +91,7 @@ export const apiVoiceChatCandidateHandlers = [
   }),
 
   mockApi(
-    zeroVoiceChatCandidateContract.reenterSession,
+    zeroVoiceChatCandidateContract.triggerReasoning,
     ({ params, respond }) => {
       const session = mockSessions.get(params.id);
       if (!session) {
@@ -88,41 +99,9 @@ export const apiVoiceChatCandidateHandlers = [
           error: { code: "NOT_FOUND", message: "Session not found" },
         });
       }
-      session.status = "active";
-      session.endedAt = null;
-      session.lastHeartbeatAt = new Date().toISOString();
-      return respond(200, {
-        session,
-        recentTaskLogs: "",
-        finishedTasksFullText: "",
-        talkerInstructions: "",
-        talkerInstructionTokens: 0,
-      });
+      return respond(200, { ok: true });
     },
   ),
-
-  mockApi(zeroVoiceChatCandidateContract.endSession, ({ params, respond }) => {
-    const session = mockSessions.get(params.id);
-    if (!session) {
-      return respond(404, {
-        error: { code: "NOT_FOUND", message: "Session not found" },
-      });
-    }
-    session.status = "ended";
-    session.endedAt = new Date().toISOString();
-    return respond(200, { ok: true });
-  }),
-
-  mockApi(zeroVoiceChatCandidateContract.heartbeat, ({ params, respond }) => {
-    const session = mockSessions.get(params.id);
-    if (!session || session.status !== "active") {
-      return respond(404, {
-        error: { code: "NOT_FOUND", message: "Active session not found" },
-      });
-    }
-    session.lastHeartbeatAt = new Date().toISOString();
-    return respond(200, { ok: true });
-  }),
 
   mockApi(
     zeroVoiceChatCandidateContract.appendItem,

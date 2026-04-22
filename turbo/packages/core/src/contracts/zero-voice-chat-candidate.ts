@@ -4,15 +4,6 @@ import { apiErrorSchema } from "./errors";
 
 const c = initContract();
 
-export const voiceChatCandidateSessionStatusSchema = z.enum([
-  "active",
-  "ended",
-  "timeout",
-]);
-export type VoiceChatCandidateSessionStatus = z.infer<
-  typeof voiceChatCandidateSessionStatusSchema
->;
-
 export const voiceChatCandidateItemRoleSchema = z.enum([
   "user",
   "assistant",
@@ -48,7 +39,6 @@ export const voiceChatCandidateSessionSchema = z.object({
   userId: z.string(),
   agentId: z.uuid().nullable(),
   mode: z.literal("chat"),
-  status: voiceChatCandidateSessionStatusSchema,
   conversationSummary: z.string().nullable(),
   workingTasksSummary: z.string().nullable(),
   finishedTasksSummary: z.string().nullable(),
@@ -56,8 +46,6 @@ export const voiceChatCandidateSessionSchema = z.object({
   summaryVersion: z.number().int(),
   lastSummaryAt: z.string().nullable(),
   createdAt: z.string(),
-  lastHeartbeatAt: z.string(),
-  endedAt: z.string().nullable(),
 });
 export type VoiceChatCandidateSession = z.infer<
   typeof voiceChatCandidateSessionSchema
@@ -194,56 +182,6 @@ export const zeroVoiceChatCandidateContract = c.router({
       403: apiErrorSchema,
     },
     summary: "List voice-chat-candidate sessions for the current user",
-  },
-
-  reenterSession: {
-    method: "POST",
-    path: "/api/zero/voice-chat-candidate/:id/reenter",
-    headers: authHeadersSchema,
-    pathParams: z.object({ id: z.uuid() }),
-    body: z.object({}),
-    responses: {
-      200: z.object({
-        session: voiceChatCandidateSessionSchema,
-        recentTaskLogs: z.string(),
-        finishedTasksFullText: z.string(),
-        talkerInstructions: z.string(),
-        talkerInstructionTokens: z.number().int().nonnegative(),
-      }),
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary:
-      "Reactivate and load a voice-chat-candidate session, re-computing talker instructions",
-  },
-
-  endSession: {
-    method: "POST",
-    path: "/api/zero/voice-chat-candidate/:id/end",
-    headers: authHeadersSchema,
-    pathParams: z.object({ id: z.uuid() }),
-    body: z.object({}),
-    responses: {
-      200: okResponseSchema,
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "End a voice-chat-candidate session",
-  },
-
-  heartbeat: {
-    method: "POST",
-    path: "/api/zero/voice-chat-candidate/:id/heartbeat",
-    headers: authHeadersSchema,
-    pathParams: z.object({ id: z.uuid() }),
-    body: z.object({}),
-    responses: {
-      200: okResponseSchema,
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Keep a voice-chat-candidate session alive",
   },
 
   triggerReasoning: {

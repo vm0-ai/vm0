@@ -2080,6 +2080,13 @@
       "when": 1776838892039,
       "tag": "0296_free_junta",
       "breakpoints": true
+    },
+    {
+      "idx": 297,
+      "version": "7",
+      "when": 1776848438437,
+      "tag": "0297_careless_polaris",
+      "breakpoints": true
     }
   ]
 }
