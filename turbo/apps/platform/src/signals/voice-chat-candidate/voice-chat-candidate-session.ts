@@ -823,6 +823,12 @@ const injectTaskResultsToTalker$ = command(
       return;
     }
     for (const item of taskResults) {
+      // Wrap with `[Task <short-id>] result:` so the Talker prompt rule
+      // ("a message starting with [Task ...] is the slow brain reporting
+      // back") matches. Without this the raw task body looks like a user
+      // turn and the Talker treats it as the user speaking.
+      const shortId = item.taskId?.slice(0, 8) ?? "unknown";
+      const framed = `[Task ${shortId}] result:\n${item.content ?? ""}`;
       dc.send(
         JSON.stringify({
           type: "conversation.item.create",
@@ -832,7 +838,7 @@ const injectTaskResultsToTalker$ = command(
             content: [
               {
                 type: "input_text",
-                text: item.content ?? "",
+                text: framed,
               },
             ],
           },
