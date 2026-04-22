@@ -1,7 +1,6 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
 import type React from "react";
-import { useState } from "react";
 import type { ChangeEvent, ClipboardEvent, DragEvent } from "react";
 import {
   useGet,
@@ -99,6 +98,8 @@ import {
   setPopoverSearch$,
   popoverSortOrder$,
   setPopoverSortOrder$,
+  modelPickerOpen$,
+  setModelPickerOpen$,
 } from "../../signals/zero-page/zero-chat-composer.ts";
 import {
   audioInputAvailable$,
@@ -645,7 +646,8 @@ export function ZeroChatComposer({
 }: ZeroChatComposerProps) {
   const showAddDialog = useGet(showAddDialog$);
   const setShowAddDialog = useSet(setShowAddDialog$);
-  const [modelPickerOpen, setModelPickerOpen] = useState(false);
+  const modelPickerOpen = useGet(modelPickerOpen$);
+  const setModelPickerOpen = useSet(setModelPickerOpen$);
 
   const resolved = useResolvedComposerSignals(
     input,
