@@ -401,6 +401,30 @@ describe("GET /redeem/[campaign]", () => {
     expect(stripeMocks.checkoutSessionsRetrieve).not.toHaveBeenCalled();
   });
 
+  it("redirects to campaign_misconfigured when Stripe rejects the session at create time with a non-invalid-request error (e.g. runtime coupon expiry)", async () => {
+    await updateOrgStripeFields(user.orgId, {
+      stripeCustomerId: uniqueId("cus"),
+    });
+
+    // Stripe classifies "coupon expired at apply time" as StripeAPIError,
+    // not StripeInvalidRequestError. The catch must cover the base class.
+    stripeMocks.checkoutSessionsCreate.mockRejectedValue(
+      new Stripe.errors.StripeAPIError({
+        type: "api_error",
+        message: "Coupon ZERO100 is expired and cannot be applied.",
+      }),
+    );
+
+    const response = await GET(createTestRequest(REDEEM_URL), {
+      params: params(CAMPAIGN),
+    });
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toContain(
+      "/redeem/error?reason=campaign_misconfigured",
+    );
+  });
+
   it("redirects home with campaign_misconfigured when Stripe coupon is missing", async () => {
     await updateOrgStripeFields(user.orgId, {
       stripeCustomerId: uniqueId("cus"),

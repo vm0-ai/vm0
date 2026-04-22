@@ -100,16 +100,19 @@ export async function GET(
         cancelUrl: appHome,
       });
     } catch (err) {
-      // Config drift: env points at a priceId/couponId Stripe doesn't have.
-      // Redirect instead of 500ing so admin users see a readable signal.
-      if (
-        err instanceof Stripe.errors.StripeInvalidRequestError &&
-        err.code === "resource_missing"
-      ) {
-        log.error("campaign misconfigured — Stripe resource missing", {
+      // Anything Stripe complains about at this point is about the
+      // campaign's configuration: coupon deleted / expired (runtime error) /
+      // maxed out, wrong priceId, expired api key, etc. We've already
+      // validated auth/org/local env — the user-facing outcome is the same
+      // regardless of the specific stripe error subclass, so catch the
+      // whole StripeError base. Full type/code/message still hits the log
+      // for on-call.
+      if (err instanceof Stripe.errors.StripeError) {
+        log.error("campaign unavailable — stripe rejected the session", {
           orgId,
           campaignKey,
-          param: err.param,
+          type: err.type,
+          code: err.code,
           message: err.message,
         });
         return NextResponse.redirect(errorPage("campaign_misconfigured"));
