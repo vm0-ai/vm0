@@ -2,13 +2,13 @@ import { eq, and } from "drizzle-orm";
 import { checkpoints } from "../../../../db/schema/checkpoint";
 import { conversations } from "../../../../db/schema/conversation";
 import { agentRuns } from "../../../../db/schema/agent-run";
+import { agentSessions } from "../../../../db/schema/agent-session";
 import { agentComposeVersions } from "../../../../db/schema/agent-compose";
 import { notFound, unauthorized, badRequest } from "../../../shared/errors";
 import { logger } from "../../../shared/logger";
 import type {
   ArtifactSnapshot,
   AgentComposeSnapshot,
-  MemorySnapshot,
   VolumeVersionsSnapshot,
 } from "../../checkpoint/types";
 import type { AgentComposeYaml } from "../../agent-compose/types";
@@ -44,13 +44,15 @@ export async function resolveCheckpoint(
     throw notFound("Checkpoint not found");
   }
 
-  // Extract snapshots (artifactSnapshot may be null for runs without artifact)
+  // Extract snapshots (artifactSnapshot may be null for runs without artifact).
+  // memorySnapshot is vestigial post-#10602 — the guest-agent no longer emits
+  // it since memory rides in artifactSnapshots[]. memoryName is now sourced
+  // from agent_sessions.memory_name (populated at run creation), which matches
+  // the resolveSession path.
   const agentComposeSnapshot =
     checkpoint.agentComposeSnapshot as unknown as AgentComposeSnapshot;
   const checkpointArtifact =
     checkpoint.artifactSnapshot as unknown as ArtifactSnapshot | null;
-  const checkpointMemory =
-    checkpoint.memorySnapshot as unknown as MemorySnapshot | null;
   const checkpointVolumeVersions =
     checkpoint.volumeVersionsSnapshot as VolumeVersionsSnapshot | null;
 
@@ -70,10 +72,16 @@ export async function resolveCheckpoint(
     throw badRequest("Invalid checkpoint: missing agentComposeVersionId");
   }
 
-  // Verify checkpoint belongs to user (must complete before doing further work)
+  // Verify checkpoint belongs to user and fetch session memoryName in one
+  // query (must complete before doing further work). Memory name lives on
+  // agent_sessions (set eagerly at run creation), not on checkpoint snapshots.
   const [originalRun] = await globalThis.services.db
-    .select()
+    .select({
+      runId: agentRuns.id,
+      sessionMemoryName: agentSessions.memoryName,
+    })
     .from(agentRuns)
+    .innerJoin(agentSessions, eq(agentRuns.sessionId, agentSessions.id))
     .where(
       and(eq(agentRuns.id, checkpoint.runId), eq(agentRuns.userId, userId)),
     )
@@ -133,7 +141,7 @@ export async function resolveCheckpoint(
     },
     artifactName: checkpointArtifact?.artifactName,
     artifactVersion: checkpointArtifact?.artifactVersion,
-    memoryName: checkpointMemory?.memoryName,
+    memoryName: originalRun.sessionMemoryName ?? undefined,
     vars: agentComposeSnapshot.vars || {},
     volumeVersions: checkpointVolumeVersions?.versions,
     additionalVolumes: checkpointAdditionalVolumes,
