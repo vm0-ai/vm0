@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.128.0](https://github.com/vm0-ai/vm0/compare/cli-v9.127.3...cli-v9.128.0) (2026-04-22)
+
+
+### Features
+
+* **cli:** add zero voice-chat task commands ([#10557](https://github.com/vm0-ai/vm0/issues/10557)) ([8d11478](https://github.com/vm0-ai/vm0/commit/8d11478ed4ac7a84f85392c0ead9be63966963c3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.224.0
+
 ## [9.127.3](https://github.com/vm0-ai/vm0/compare/cli-v9.127.2...cli-v9.127.3) (2026-04-22)
 
 

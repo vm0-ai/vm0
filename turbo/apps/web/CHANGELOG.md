@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.281.0](https://github.com/vm0-ai/vm0/compare/web-v12.280.0...web-v12.281.0) (2026-04-22)
+
+
+### Features
+
+* **db:** add voice_chat_tasks schema and contracts ([#10550](https://github.com/vm0-ai/vm0/issues/10550)) ([2ff102a](https://github.com/vm0-ai/vm0/commit/2ff102a9e8a510f533346ec25d0c0ad26bc61d1e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.224.0
+
 ## [12.280.0](https://github.com/vm0-ai/vm0/compare/web-v12.279.0...web-v12.280.0) (2026-04-22)
 
 

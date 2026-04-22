@@ -1,5 +1,17 @@
 # Changelog
 
+## [8.224.0](https://github.com/vm0-ai/vm0/compare/core-v8.223.0...core-v8.224.0) (2026-04-22)
+
+
+### Features
+
+* **db:** add voice_chat_tasks schema and contracts ([#10550](https://github.com/vm0-ai/vm0/issues/10550)) ([2ff102a](https://github.com/vm0-ai/vm0/commit/2ff102a9e8a510f533346ec25d0c0ad26bc61d1e))
+
+
+### Refactoring
+
+* **core:** inline billable-connectors into firewalls/index ([#10556](https://github.com/vm0-ai/vm0/issues/10556)) ([09a7f4d](https://github.com/vm0-ai/vm0/commit/09a7f4d46dbb417fdf56860b314ec88840e87aa2))
+
 ## [8.223.0](https://github.com/vm0-ai/vm0/compare/core-v8.222.0...core-v8.223.0) (2026-04-22)
 
 
