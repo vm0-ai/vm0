@@ -1,4 +1,4 @@
-import type React from "react";
+import React from "react";
 import {
   Select,
   SelectContent,
@@ -177,7 +177,20 @@ function InheritToggleRow({
       : undefined;
   return (
     <>
-      {/* Hidden item so Radix recognises the sentinel as a valid value */}
+      {/*
+       * Radix `<Select>` validates that the controlled `value` matches a
+       * registered `<SelectItem>`; otherwise it falls back to the placeholder
+       * and logs a warning. We drive the Select with `encodeValue(value)` —
+       * which returns `INHERIT_SENTINEL` when the caller inherits — but the
+       * inherit affordance is a non-item `<div>` with a `<Switch>` (a normal
+       * `<SelectItem>` here would close the menu on click, breaking the UX).
+       *
+       * This hidden `<SelectItem>` registers the sentinel so Radix accepts it
+       * as a valid value. `hidden absolute` keeps it out of the layout and
+       * keyboard focus while still being a mounted descendant of
+       * `<SelectContent>`. See Radix issue radix-ui/primitives#2090 for the
+       * long-standing request to allow non-item rows inside `SelectContent`.
+       */}
       <SelectItem value={INHERIT_SENTINEL} className="hidden absolute">
         Use {sourceLabel} default
       </SelectItem>
@@ -399,14 +412,27 @@ function ModelSelectDropdown({
   const triggerAriaLabel = resolved
     ? getModelDisplayName(resolved.selectedModel)
     : placeholder;
+  // Mirror the controlled `open` prop into local state so the inherit-toggle
+  // handler can close the dropdown deterministically (via `setOpen(false)`)
+  // without reaching through `document.dispatchEvent`. When the caller
+  // provides `open`/`onOpenChange`, we propagate to them as well.
+  const [internalOpen, setInternalOpen] = React.useState(false);
+  const isOpen = open ?? internalOpen;
+  const setOpen = React.useCallback(
+    (next: boolean) => {
+      setInternalOpen(next);
+      onOpenChange?.(next);
+    },
+    [onOpenChange],
+  );
   return (
     <Select
       value={encodeValue(value)}
       onValueChange={(raw) => {
         onChange(decodeValue(raw));
       }}
-      open={open}
-      onOpenChange={onOpenChange}
+      open={isOpen}
+      onOpenChange={setOpen}
     >
       <SelectTrigger
         aria-label={triggerAriaLabel}
@@ -432,10 +458,8 @@ function ModelSelectDropdown({
             onToggle={(inherit) => {
               if (inherit) {
                 onChange(null);
-                // Close dropdown — user is done (reverted to default)
-                document.dispatchEvent(
-                  new KeyboardEvent("keydown", { key: "Escape" }),
-                );
+                // Close dropdown — user is done (reverted to default).
+                setOpen(false);
               } else {
                 // Seed with the effective default; dropdown stays open
                 // so the user can pick a different model if they want.

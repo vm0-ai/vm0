@@ -12,10 +12,10 @@
  * signals, MSW handlers, and rendering all run for real — only the Web API
  * is mocked, per project testing principles.
  *
- * Note: tests that require useLastResolved(currentChatAgent$) to propagate
- * agent-level model defaults to the component are omitted — the ccstate-react
- * reactive chain does not settle reliably within the 5 s test timeout in CI.
- * The workspace-default tests (AD-002, AD-004) cover the critical regressions.
+ * Agent-has-a-model tests wait on `document.title` (set by the same reactive
+ * chain that feeds the picker) to confirm the agent data has propagated
+ * before asserting on the trigger label — the pattern used throughout
+ * `chat-default-model-resolution.test.tsx`.
  */
 
 import { beforeEach, describe, expect, it } from "vitest";
@@ -32,6 +32,10 @@ import {
   resetMockOrgModelProviders,
 } from "../../../mocks/handlers/api-org-model-providers.ts";
 import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-switches.ts";
+import {
+  setMockOnboardingStatus,
+  resetMockOnboardingStatus,
+} from "../../../mocks/handlers/api-onboarding.ts";
 
 const context = testContext();
 
@@ -90,6 +94,18 @@ function setupProviders() {
   ]);
 }
 
+/**
+ * Wait for the agent chat page to finish initialising. `document.title` is
+ * updated by the same reactive chain (`currentChatAgent$` -> display name)
+ * that feeds the picker's `agentDefault` prop, so once the title contains
+ * the agent name, the picker has received the agent-level default.
+ */
+async function expectAgentChatLoaded(): Promise<void> {
+  await waitFor(() => {
+    expect(document.title).toContain("Scout");
+  });
+}
+
 async function openPickerOnAgentChat(
   user: ReturnType<typeof userEvent.setup>,
   initialLabel: string,
@@ -109,7 +125,11 @@ async function openPickerOnAgentChat(
 describe("model-provider-picker - agent/workspace default source", () => {
   beforeEach(() => {
     resetMockOrgModelProviders();
+    resetMockOnboardingStatus();
     setMockFeatureSwitches({ [FeatureSwitchKey.ModelProviderSelection]: true });
+    // Pin currentChatAgentId$ resolution to the test agent so route setup
+    // on `/agents/:id/chat` doesn't race with the default-agent lookup.
+    setMockOnboardingStatus({ defaultAgentId: AGENT_ID });
     setupProviders();
   });
 
@@ -139,5 +159,52 @@ describe("model-provider-picker - agent/workspace default source", () => {
     const toggle = screen.getByLabelText("Use agent default model");
     expect(toggle).toBeInTheDocument();
     expect(screen.getAllByText("Claude Sonnet 4.6").length).toBeGreaterThan(0);
+  });
+
+  // MPKR-AD-005: When the agent specifies its own default (Opus 4.7), the
+  // picker trigger shows the agent model — not the workspace default. This
+  // pins the primary regression scenario for Bug 1 (agent default mislabel).
+  it("trigger shows the agent model when the agent specifies one (MPKR-AD-005)", async () => {
+    mockAgentWith({
+      modelProviderId: ANTHROPIC_PROVIDER_ID,
+      selectedModel: "claude-opus-4-7",
+    });
+
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    await expectAgentChatLoaded();
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("combobox", { name: "Claude Opus 4.7" }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  // MPKR-AD-006: Opening the dropdown when the agent has its own model still
+  // surfaces the "Use agent default" toggle, reflecting the agent's model
+  // (Opus 4.7) — not the workspace default (Sonnet 4.6).
+  it("toggle reflects the agent model as the inherited default (MPKR-AD-006)", async () => {
+    const user = userEvent.setup();
+    mockAgentWith({
+      modelProviderId: ANTHROPIC_PROVIDER_ID,
+      selectedModel: "claude-opus-4-7",
+    });
+
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    await expectAgentChatLoaded();
+
+    const trigger = await waitFor(() => {
+      return screen.getByRole("combobox", { name: "Claude Opus 4.7" });
+    });
+    await user.click(trigger);
+
+    const toggle = await waitFor(() => {
+      return screen.getByLabelText("Use agent default model");
+    });
+    expect(toggle).toBeInTheDocument();
+    // The toggle row must show the agent's model as the inherited value,
+    // and the Sonnet-based workspace default must not leak through as the
+    // inherited label.
+    expect(screen.getAllByText("Claude Opus 4.7").length).toBeGreaterThan(0);
   });
 });
