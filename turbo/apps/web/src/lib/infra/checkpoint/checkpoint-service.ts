@@ -136,16 +136,36 @@ export async function createCheckpoint(
       }
     : null;
 
-  // Upsert checkpoint record (handles retries atomically)
+  // Consolidate artifact snapshots. The guest-agent emits artifactSnapshots
+  // (name -> version map) as the authoritative multi-mount payload, and still
+  // emits artifactSnapshot for backward compat when exactly one artifact is
+  // snapshotted. Prefer the map when present: derive a legacy single-entry
+  // record from its first entry so readers of the old column keep working.
+  const artifactSnapshotsMap = request.artifactSnapshots ?? null;
+  const hasArtifactSnapshots =
+    artifactSnapshotsMap !== null &&
+    Object.keys(artifactSnapshotsMap).length > 0;
+  const legacyArtifactSnapshot: ArtifactSnapshot | null = hasArtifactSnapshots
+    ? (() => {
+        const [artifactName, artifactVersion] =
+          Object.entries(artifactSnapshotsMap)[0]!;
+        return { artifactName, artifactVersion };
+      })()
+    : (request.artifactSnapshot ?? null);
+
+  // Upsert checkpoint record (handles retries atomically). Double-write both
+  // the legacy singleton column and the new multi-entry JSONB column for the
+  // duration of the rollout (see migration 0295).
   const snapshotFields = {
     conversationId: conversation.id,
     agentComposeSnapshot: agentComposeSnapshot as unknown as Record<
       string,
       unknown
     >,
-    artifactSnapshot: request.artifactSnapshot
-      ? (request.artifactSnapshot as unknown as Record<string, unknown>)
+    artifactSnapshot: legacyArtifactSnapshot
+      ? (legacyArtifactSnapshot as unknown as Record<string, unknown>)
       : null,
+    artifactSnapshots: artifactSnapshotsMap as Record<string, string> | null,
     memorySnapshot: request.memorySnapshot
       ? (request.memorySnapshot as unknown as Record<string, unknown>)
       : null,
@@ -177,9 +197,6 @@ export async function createCheckpoint(
   // agent_runs.session_id NOT NULL) to this conversation and record per-run
   // snapshot fields that were not known when the session was created eagerly
   // at run insertion.
-  const artifactSnapshot = request.artifactSnapshot as
-    | ArtifactSnapshot
-    | undefined;
   const memorySnapshot = request.memorySnapshot as MemorySnapshot | undefined;
   const volumeSnapshot = request.volumeVersionsSnapshot as
     | VolumeVersionsSnapshot
@@ -192,7 +209,7 @@ export async function createCheckpoint(
     run.sessionId,
     conversation.id,
     {
-      artifactName: artifactSnapshot?.artifactName,
+      artifactName: legacyArtifactSnapshot?.artifactName,
       memoryName: memorySnapshot?.memoryName,
     },
   );
@@ -206,7 +223,10 @@ export async function createCheckpoint(
     checkpointId: checkpoint.id,
     agentSessionId: agentSession.id,
     conversationId: conversation.id,
-    artifact: artifactSnapshot,
+    artifact: legacyArtifactSnapshot ?? undefined,
+    artifacts: hasArtifactSnapshots
+      ? (artifactSnapshotsMap ?? undefined)
+      : undefined,
     volumes,
   };
 }
