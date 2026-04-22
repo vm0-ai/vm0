@@ -67,6 +67,8 @@ function taskPayload(overrides: Record<string, unknown> = {}) {
     callId: "call-1",
     prompt: "do the thing",
     status: "pending" as const,
+    result: null,
+    resultUpdatedAt: null,
     assistantMessages: [],
     error: null,
     createdAt: "2026-04-20T00:00:00Z",
@@ -419,7 +421,7 @@ describe("voice-chat-candidate session", () => {
         session: { tools: { name: string }[] };
       };
       expect(parsed.type).toBe("session.update");
-      expect(parsed.session.tools[0]?.name).toBe("create_task");
+      expect(parsed.session.tools[0]?.name).toBe("inform_slow_brain");
     });
 
     it("surfaces create-session error in vccError$", async () => {
@@ -514,7 +516,7 @@ describe("voice-chat-candidate session", () => {
     });
   });
 
-  describe("create_task tool", () => {
+  describe("inform_slow_brain tool", () => {
     it("posts /tasks and sends function_call_output with truncated prompt", async () => {
       await setup();
       const taskCalls = mockCreateTaskOk();
@@ -526,7 +528,7 @@ describe("voice-chat-candidate session", () => {
       dcRef.current?.emitMessage({
         type: "response.function_call_arguments.done",
         call_id: "call-abc",
-        name: "create_task",
+        name: "inform_slow_brain",
         arguments: JSON.stringify({ prompt: "do the laundry" }),
       });
 
@@ -549,7 +551,7 @@ describe("voice-chat-candidate session", () => {
       expect(parsed.type).toBe("conversation.item.create");
       expect(parsed.item.type).toBe("function_call_output");
       expect(parsed.item.call_id).toBe("call-abc");
-      expect(parsed.item.output).toContain("queued");
+      expect(parsed.item.output).toMatch(/slow brain/i);
 
       const tasks = context.store.get(vccTasksById$);
       expect(Object.values(tasks)).toHaveLength(1);
@@ -565,7 +567,7 @@ describe("voice-chat-candidate session", () => {
       dcRef.current?.emitMessage({
         type: "response.function_call_arguments.done",
         call_id: "call-err",
-        name: "create_task",
+        name: "inform_slow_brain",
         arguments: JSON.stringify({ prompt: "oops" }),
       });
 
@@ -574,7 +576,7 @@ describe("voice-chat-candidate session", () => {
       });
       const sent = dcRef.current?.send.mock.calls[0]?.[0] as string;
       const parsed = JSON.parse(sent) as { item: { output: string } };
-      expect(parsed.item.output).toMatch(/failed/i);
+      expect(parsed.item.output).toMatch(/fail/i);
     });
   });
 

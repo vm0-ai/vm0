@@ -12,6 +12,7 @@ import {
 } from "./item-service";
 import { listSessionTasks } from "./task-service";
 import { callReasoner } from "./reasoner";
+import { compactVoiceChatCandidateTaskResults } from "./compact-task-results";
 import { publishUserSignal } from "../../infra/realtime/client";
 import { isBadRequest } from "../../shared/errors";
 import { logger } from "../../shared/logger";
@@ -32,10 +33,17 @@ export async function triggerReasoning(sessionId: string): Promise<void> {
 
   // Step 1 — CAS acquire. Only the tick that flips idle→running owns the
   // lock. A losing racer sets reasoning_pending=true and exits; whichever
-  // tick releases the lock will observe and drain the pending flag.
+  // tick releases the lock will observe and drain the pending flag. We also
+  // stamp lastReasoningStartedAt here so that releaseLock below can compute
+  // the tick duration on any exit path.
+  const startedAt = new Date();
   const acquired = await db
     .update(featureCandidateVoiceChatSessions)
-    .set({ reasoningStatus: "running" })
+    .set({
+      reasoningStatus: "running",
+      lastReasoningStartedAt: startedAt,
+      lastReasoningDurationMs: null,
+    })
     .where(
       and(
         eq(featureCandidateVoiceChatSessions.id, sessionId),
@@ -75,7 +83,10 @@ export async function triggerReasoning(sessionId: string): Promise<void> {
   if (!freshSession || freshSession.status !== "active") {
     await db
       .update(featureCandidateVoiceChatSessions)
-      .set({ reasoningStatus: "idle" })
+      .set({
+        reasoningStatus: "idle",
+        lastReasoningDurationMs: Date.now() - startedAt.getTime(),
+      })
       .where(eq(featureCandidateVoiceChatSessions.id, sessionId));
     return;
   }
@@ -106,7 +117,15 @@ export async function triggerReasoning(sessionId: string): Promise<void> {
     );
   });
   if (maxSeq === currentSession.summarySeq && !hasInFlightTask) {
-    await releaseAndDrain(sessionId);
+    // Even when reasoner has nothing to do, old finished-task results may
+    // have drifted past the compaction interval — run the compactor before
+    // releasing the lock. The compactor itself fans out an Ably signal when
+    // it actually shrinks a row, so we don't publish here.
+    await compactVoiceChatCandidateTaskResults(
+      sessionId,
+      currentSession.userId,
+    );
+    await releaseAndDrain(sessionId, startedAt);
     return;
   }
 
@@ -121,8 +140,6 @@ export async function triggerReasoning(sessionId: string): Promise<void> {
   const result = await callReasoner({
     agentSystemPrompt,
     priorConversationSummary: currentSession.conversationSummary,
-    priorWorkingTasksSummary: currentSession.workingTasksSummary,
-    priorFinishedTasksSummary: currentSession.finishedTasksSummary,
     transcript: transcript.map((i) => {
       return {
         seq: i.seq,
@@ -136,7 +153,7 @@ export async function triggerReasoning(sessionId: string): Promise<void> {
         id: t.id,
         status: t.status,
         prompt: t.prompt,
-        resultText: flattenTaskResult(t.assistantMessages),
+        resultText: t.result ?? flattenTaskResult(t.assistantMessages),
         error: t.error,
         createdAt: t.createdAt.toISOString(),
         startedAt: t.startedAt?.toISOString() ?? null,
@@ -149,16 +166,18 @@ export async function triggerReasoning(sessionId: string): Promise<void> {
     // Step 5a — optimistic summary_version write. If another tick wrote
     // ahead of us, the update affects 0 rows and we silently drop — the
     // next trigger cycle will reconcile.
+    // Reasoner now only produces conversationSummary. The working/finished
+    // summary columns still exist in the schema but are unused — the Talker's
+    // Task board reads live state from the tasks table.
     const updated = await db
       .update(featureCandidateVoiceChatSessions)
       .set({
         conversationSummary: result.conversationSummary,
-        workingTasksSummary: result.workingTasksSummary,
-        finishedTasksSummary: result.finishedTasksSummary,
         summarySeq: maxSeq,
         summaryVersion: currentSession.summaryVersion + 1,
         lastSummaryAt: new Date(),
         reasoningStatus: "idle",
+        lastReasoningDurationMs: Date.now() - startedAt.getTime(),
       })
       .where(
         and(
@@ -180,7 +199,10 @@ export async function triggerReasoning(sessionId: string): Promise<void> {
       log.info(`reasoner version contention for ${sessionId}, dropping tick`);
       await db
         .update(featureCandidateVoiceChatSessions)
-        .set({ reasoningStatus: "idle" })
+        .set({
+          reasoningStatus: "idle",
+          lastReasoningDurationMs: Date.now() - startedAt.getTime(),
+        })
         .where(eq(featureCandidateVoiceChatSessions.id, sessionId));
     }
   } else {
@@ -201,11 +223,22 @@ export async function triggerReasoning(sessionId: string): Promise<void> {
     }
     await db
       .update(featureCandidateVoiceChatSessions)
-      .set({ reasoningStatus: "idle", lastSummaryAt: new Date() })
+      .set({
+        reasoningStatus: "idle",
+        lastSummaryAt: new Date(),
+        lastReasoningDurationMs: Date.now() - startedAt.getTime(),
+      })
       .where(eq(featureCandidateVoiceChatSessions.id, sessionId));
   }
 
-  // Step 6 — drain pending flag. If another trigger arrived while we were
+  // Step 6 — compact old finished-task results along the exponential
+  // schedule. Cheap no-op when nothing is due. The compactor itself fans
+  // out an Ably signal when it actually shrinks a row, so the browser
+  // picks up post-compact task results even if the reasoner write above
+  // lost to version contention.
+  await compactVoiceChatCandidateTaskResults(sessionId, currentSession.userId);
+
+  // Step 7 — drain pending flag. If another trigger arrived while we were
   // running, the flag was set; clear it and schedule a re-tick so the new
   // items are picked up.
   await drainPending(sessionId);
@@ -222,11 +255,17 @@ function flattenTaskResult(
     .join("\n");
 }
 
-async function releaseAndDrain(sessionId: string): Promise<void> {
+async function releaseAndDrain(
+  sessionId: string,
+  startedAt: Date,
+): Promise<void> {
   const db = globalThis.services.db;
   await db
     .update(featureCandidateVoiceChatSessions)
-    .set({ reasoningStatus: "idle" })
+    .set({
+      reasoningStatus: "idle",
+      lastReasoningDurationMs: Date.now() - startedAt.getTime(),
+    })
     .where(eq(featureCandidateVoiceChatSessions.id, sessionId));
   await drainPending(sessionId);
 }

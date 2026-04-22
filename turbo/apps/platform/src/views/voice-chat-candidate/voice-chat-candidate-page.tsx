@@ -21,16 +21,15 @@ import {
   vccTasksById$,
   vccConversationItems$,
   vccConversationSummary$,
-  vccWorkingTasksSummary$,
-  vccFinishedTasksFullText$,
-  vccRecentTaskLogs$,
   vccSummarySeq$,
   vccLastSummaryAt$,
   vccTalkerInstructionTokens$,
   vccSessionList$,
+  vccTalkerInstructions$,
   startVoiceChatCandidate$,
   endVoiceChatCandidate$,
   toggleVoiceChatCandidateMute$,
+  triggerReasoningCandidate$,
 } from "../../signals/voice-chat-candidate/voice-chat-candidate-session.ts";
 import { setVoiceChatCandidateScrollContainer$ } from "../../signals/voice-chat-candidate/voice-chat-candidate-auto-scroll.ts";
 import {
@@ -111,37 +110,35 @@ function formatTokenPercent(tokens: number): string {
   return `${Math.round(pct)}%`;
 }
 
-function ReasonerSection({ title, body }: { title: string; body: string }) {
-  if (!body.trim()) {
-    return null;
-  }
-  return (
-    <section>
-      <h3 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">
-        {title}
-      </h3>
-      <pre className="whitespace-pre-wrap font-mono text-xs text-foreground/80">
-        {body}
-      </pre>
-    </section>
-  );
-}
-
 function ReasonerPanel() {
   const conversation = useGet(vccConversationSummary$);
-  const working = useGet(vccWorkingTasksSummary$);
-  const finished = useGet(vccFinishedTasksFullText$);
-  const recentLogs = useGet(vccRecentTaskLogs$);
+  const instructions = useGet(vccTalkerInstructions$);
+  const tasksById = useGet(vccTasksById$);
   const summarySeq = useGet(vccSummarySeq$);
   const lastAt = useGet(vccLastSummaryAt$);
   const tokens = useGet(vccTalkerInstructionTokens$);
+  const pageSignal = useGet(pageSignal$);
+  const triggerReasoning = useSet(triggerReasoningCandidate$);
 
   const updatedLabel = lastAt ? new Date(lastAt).toLocaleTimeString() : "never";
-  const hasAny =
-    conversation.trim() ||
-    working.trim() ||
-    finished.trim() ||
-    recentLogs.trim();
+  const snapshot = {
+    conversation: conversation.trim() || null,
+    tasks: Object.values(tasksById)
+      .sort((a, b) => {
+        return (
+          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+        );
+      })
+      .map((t) => {
+        return {
+          id: t.id,
+          status: t.status,
+          prompt: t.prompt,
+          result: t.result,
+          resultUpdatedAt: t.resultUpdatedAt,
+        };
+      }),
+  };
 
   return (
     <aside className="flex flex-col min-h-0 overflow-hidden text-xs">
@@ -153,18 +150,35 @@ function ReasonerPanel() {
           {formatTokenPercent(tokens)}
         </span>
         <span>updated {updatedLabel}</span>
+        <Button
+          size="sm"
+          variant="outline"
+          className="ml-auto h-6 px-2 text-[10px]"
+          onClick={() => {
+            detach(triggerReasoning(pageSignal), Reason.DomCallback);
+          }}
+        >
+          Compact
+        </Button>
       </div>
-      <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-3">
-        {hasAny ? (
-          <>
-            <ReasonerSection title="Conversation" body={conversation} />
-            <ReasonerSection title="Working tasks" body={working} />
-            <ReasonerSection title="Finished tasks" body={finished} />
-            <ReasonerSection title="Recent task activity" body={recentLogs} />
-          </>
-        ) : (
-          <p className="text-muted-foreground italic">No context yet.</p>
-        )}
+      <div className="flex-1 min-h-0 flex flex-col">
+        <div className="basis-1/2 min-h-0 flex flex-col border-b">
+          <h3 className="shrink-0 px-4 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Realtime instruction
+          </h3>
+          <pre className="flex-1 min-h-0 overflow-y-auto px-4 pb-3 whitespace-pre-wrap font-mono text-xs text-foreground/80">
+            {instructions.trim() ||
+              "(empty — Talker session has not started or received no instruction yet)"}
+          </pre>
+        </div>
+        <div className="basis-1/2 min-h-0 flex flex-col">
+          <h3 className="shrink-0 px-4 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Latest compact snapshot
+          </h3>
+          <pre className="flex-1 min-h-0 overflow-y-auto px-4 pb-3 whitespace-pre-wrap font-mono text-xs text-foreground/80">
+            {JSON.stringify(snapshot, null, 2)}
+          </pre>
+        </div>
       </div>
     </aside>
   );

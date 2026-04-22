@@ -75,6 +75,10 @@ export function serializeVoiceChatCandidateTask(task: TaskRow) {
     callId: task.callId,
     prompt: task.prompt,
     status: task.status,
+    result: task.result,
+    resultUpdatedAt: task.resultUpdatedAt
+      ? task.resultUpdatedAt.toISOString()
+      : null,
     assistantMessages: task.assistantMessages,
     error: task.error,
     createdAt: task.createdAt.toISOString(),

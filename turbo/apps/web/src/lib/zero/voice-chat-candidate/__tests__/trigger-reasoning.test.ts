@@ -112,8 +112,10 @@ describe("triggerReasoning", () => {
 
     const row = await readSession(sessionId);
     expect(row.conversationSummary).toBe("Focus: greeting");
-    expect(row.workingTasksSummary).toBe("");
-    expect(row.finishedTasksSummary).toBe("");
+    // workingTasksSummary and finishedTasksSummary are no longer written —
+    // the Talker's Task board reads live state from the tasks table.
+    expect(row.workingTasksSummary).toBeNull();
+    expect(row.finishedTasksSummary).toBeNull();
     expect(row.summarySeq).toBe(b!.seq);
     expect(row.summaryVersion).toBe(1);
     expect(row.reasoningStatus).toBe("idle");

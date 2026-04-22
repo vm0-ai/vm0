@@ -52,6 +52,11 @@ export const featureCandidateVoiceChatSessions = pgTable(
       .default("idle"),
     reasoningPending: boolean("reasoning_pending").notNull().default(false),
     lastSummaryAt: timestamp("last_summary_at"),
+    // Set when the current reasoner tick wins the CAS lock; cleared to
+    // current timestamp on release. Use together with lastReasoningDurationMs
+    // to diagnose "why is the reasoner slow".
+    lastReasoningStartedAt: timestamp("last_reasoning_started_at"),
+    lastReasoningDurationMs: integer("last_reasoning_duration_ms"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     lastHeartbeatAt: timestamp("last_heartbeat_at").defaultNow().notNull(),
     endedAt: timestamp("ended_at"),
@@ -138,7 +143,12 @@ export const featureCandidateVoiceChatTasks = pgTable(
     prompt: text("prompt").notNull(),
     // Valid values: "pending" | "queued" | "running" | "done" | "failed"
     status: varchar("status", { length: 20 }).notNull(),
+    // Consolidated final result. Populated on task completion with the full
+    // text, then periodically compacted by the Reasoner tick.
     result: text("result"),
+    // Last time `result` was written (either on completion or a compaction
+    // pass). NULL while the task is in-flight.
+    resultUpdatedAt: timestamp("result_updated_at"),
     assistantMessages: jsonb("assistant_messages")
       .$type<VoiceChatCandidateTaskResultEntry[]>()
       .notNull()

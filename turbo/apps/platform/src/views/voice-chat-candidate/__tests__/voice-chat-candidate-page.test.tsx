@@ -118,6 +118,8 @@ describe("voice-candidate-item-bubble dispatcher", () => {
       callId: "call-1",
       prompt: "do the thing",
       status: "done" as const,
+      result: "done!",
+      resultUpdatedAt: "2026-04-20T00:00:00Z",
       assistantMessages: [
         {
           type: "assistant" as const,

@@ -93,6 +93,8 @@ export const voiceChatCandidateTaskSchema = z.object({
   callId: z.string(),
   prompt: z.string(),
   status: voiceChatCandidateTaskStatusSchema,
+  result: z.string().nullable(),
+  resultUpdatedAt: z.string().nullable(),
   assistantMessages: z.array(voiceChatCandidateTaskResultEntrySchema),
   error: z.string().nullable(),
   createdAt: z.string(),
@@ -242,6 +244,21 @@ export const zeroVoiceChatCandidateContract = c.router({
       404: apiErrorSchema,
     },
     summary: "Keep a voice-chat-candidate session alive",
+  },
+
+  triggerReasoning: {
+    method: "POST",
+    path: "/api/zero/voice-chat-candidate/:id/trigger-reasoning",
+    headers: authHeadersSchema,
+    pathParams: z.object({ id: z.uuid() }),
+    body: z.object({}),
+    responses: {
+      200: okResponseSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary:
+      "Queue a reasoner tick for a voice-chat-candidate session (respects CAS lock and debounce)",
   },
 
   appendItem: {

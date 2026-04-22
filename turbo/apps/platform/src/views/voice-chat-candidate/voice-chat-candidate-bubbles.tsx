@@ -111,7 +111,7 @@ export function VoiceCandidateToolCallBubble({
       <div className="rounded-xl max-w-[85%] bg-muted/40 border border-dashed border-border px-3 py-2 text-xs leading-relaxed text-muted-foreground font-mono break-words">
         <div className="flex items-center gap-1.5 mb-0.5">
           <IconTool size={12} />
-          <span className="font-medium">create_task</span>
+          <span className="font-medium">inform_slow_brain</span>
           <span className="text-[10px] uppercase tracking-wider">
             {TOOL_STATUS_LABEL[status]}
           </span>

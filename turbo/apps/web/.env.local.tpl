@@ -192,3 +192,8 @@ VAPID_PRIVATE_KEY=op://Development/vapid/VAPID_PRIVATE_KEY
 # Optional: Self-hosted Runner (for local development with runner on dev-1)
 # RUNNER_DEFAULT_GROUP is auto-configured by sync-env.sh — do not add here
 OFFICIAL_RUNNER_SECRET=0000000000000000000000000000000000000000000000000000000000000000
+
+# Required for the dev-only cron scheduler that emulates vercel.json crons in
+# `pnpm dev`. A fixed local value is fine — production uses a Vercel-managed
+# secret and never touches this file.
+CRON_SECRET=local-dev-cron-secret

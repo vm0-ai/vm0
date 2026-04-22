@@ -7,11 +7,13 @@ import {
   createVoiceChatCandidateTask,
   listSessionTasks,
 } from "../../../../../../src/lib/zero/voice-chat-candidate/task-service";
+import { buildSlowBrainAppendSystemPrompt } from "../../../../../../src/lib/zero/voice-chat-candidate/build-slow-brain-prompt";
 import {
   resolveAgentSystemPrompt,
   triggerReasoning,
 } from "../../../../../../src/lib/zero/voice-chat-candidate/trigger-reasoning";
 import { adaptVoiceChatCandidateTaskTrigger } from "../../../../../../src/lib/zero/voice-chat-candidate/adapt-task-trigger";
+import { publishUserSignal } from "../../../../../../src/lib/infra/realtime/client";
 import { createZeroRun } from "../../../../../../src/lib/zero/zero-run-service";
 import {
   badRequestResponse,
@@ -23,8 +25,6 @@ import {
 } from "../../_support";
 
 export const maxDuration = 60;
-
-const RECENT_ITEMS_LIMIT = 20;
 
 export async function POST(
   request: Request,
@@ -71,34 +71,16 @@ export async function POST(
     return badRequestResponse(issue?.message ?? "Invalid request body");
   }
 
-  // Decision H prompt assembly: agent system prompt + reasoner context +
-  // recent N items. The adapter is a stateless builder; the route owns the
-  // business logic of fetching and formatting these four inputs.
-  const agentSystemPrompt = await resolveAgentSystemPrompt(session.agentId);
-  const allItems = await readVoiceChatCandidateItems(id);
-  const recentItems = allItems.slice(-RECENT_ITEMS_LIMIT);
-  const recentFormatted =
-    recentItems.length === 0
-      ? "(none)"
-      : recentItems
-          .map((i) => {
-            return `[${i.seq}] ${i.role}: ${i.content ?? ""}`;
-          })
-          .join("\n");
-  const reasonerSummary = [
-    session.conversationSummary?.trim(),
-    session.workingTasksSummary?.trim(),
-    session.finishedTasksSummary?.trim(),
-  ]
-    .filter((s): s is string => {
-      return Boolean(s);
-    })
-    .join("\n\n");
-  const appendSystemPrompt = [
-    `[Voice chat context]\n${agentSystemPrompt.trim() || "(none)"}`,
-    `[Reasoner context]\n${reasonerSummary || "(none)"}`,
-    `[Recent items]\n${recentFormatted}`,
-  ].join("\n\n");
+  const [agentSystemPrompt, allItems, sessionTasks] = await Promise.all([
+    resolveAgentSystemPrompt(session.agentId),
+    readVoiceChatCandidateItems(id),
+    listSessionTasks(id),
+  ]);
+  const appendSystemPrompt = buildSlowBrainAppendSystemPrompt({
+    agentSystemPrompt,
+    items: allItems,
+    sessionTasks,
+  });
 
   const agentId = session.agentId;
   const task = await createVoiceChatCandidateTask({
@@ -118,6 +100,12 @@ export async function POST(
     },
   });
 
+  // Fast path: publish immediately so the browser refreshes the Talker
+  // instruction and sees the new task in the DB-backed Task board, without
+  // waiting for the reasoner LLM. The reasoner tick runs in after() and will
+  // publish again when it completes (for the conversation summary + compact
+  // side-effects).
+  await publishUserSignal([session.userId], `voice-chat-candidate:${id}`);
   after(() => {
     return triggerReasoning(id);
   });

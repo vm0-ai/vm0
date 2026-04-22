@@ -3,9 +3,7 @@ import { env } from "../../../env";
 import { logger } from "../../shared/logger";
 import {
   CONVERSATION_SECTION,
-  FINISHED_SECTION,
   REASONER_SYSTEM_PROMPT,
-  WORKING_SECTION,
   buildReasonerUserPrompt,
 } from "./reasoner-prompts";
 
@@ -46,16 +44,12 @@ interface TaskForReasoner {
 interface CallReasonerParams {
   agentSystemPrompt: string;
   priorConversationSummary: string | null;
-  priorWorkingTasksSummary: string | null;
-  priorFinishedTasksSummary: string | null;
   transcript: ItemForReasoner[];
   tasks: TaskForReasoner[];
 }
 
 interface ReasonerResult {
   conversationSummary: string;
-  workingTasksSummary: string;
-  finishedTasksSummary: string;
 }
 
 export async function callReasoner(
@@ -127,13 +121,8 @@ export async function callReasoner(
 }
 
 function parseReasonerSections(raw: string): ReasonerResult {
-  const conv = extractSection(raw, CONVERSATION_SECTION);
-  const working = extractSection(raw, WORKING_SECTION);
-  const finished = extractSection(raw, FINISHED_SECTION);
   return {
-    conversationSummary: conv,
-    workingTasksSummary: working,
-    finishedTasksSummary: finished,
+    conversationSummary: extractSection(raw, CONVERSATION_SECTION),
   };
 }
 

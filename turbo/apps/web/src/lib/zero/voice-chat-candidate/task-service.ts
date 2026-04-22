@@ -141,11 +141,27 @@ export async function completeVoiceChatCandidateTask(params: {
           },
         ]
       : [];
+    // Build the consolidated `result` column from the full assistant-message
+    // stream (prior appended entries plus this final one). The Reasoner tick
+    // later compacts this column in place.
+    const priorContent = taskRow.assistantMessages
+      .map((e) => {
+        return e.content;
+      })
+      .join("\n");
+    const finalContent = params.result ?? "";
+    const consolidatedResult = [priorContent, finalContent]
+      .filter((s) => {
+        return s.length > 0;
+      })
+      .join("\n");
     const [completedTask] = await tx
       .update(featureCandidateVoiceChatTasks)
       .set({
         status: finalStatus,
         assistantMessages: sql`${featureCandidateVoiceChatTasks.assistantMessages} || ${JSON.stringify(finalEntries)}::jsonb`,
+        result: consolidatedResult.length > 0 ? consolidatedResult : null,
+        resultUpdatedAt: consolidatedResult.length > 0 ? now : null,
         error: params.error,
         finishedAt: now,
       })

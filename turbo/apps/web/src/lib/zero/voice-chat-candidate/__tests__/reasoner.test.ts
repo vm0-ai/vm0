@@ -16,8 +16,6 @@ function emptyParams() {
   return {
     agentSystemPrompt: "",
     priorConversationSummary: null,
-    priorWorkingTasksSummary: null,
-    priorFinishedTasksSummary: null,
     transcript: [],
     tasks: [],
   };
@@ -42,7 +40,7 @@ describe("callReasoner", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("parses the 3 sections on a successful response", async () => {
+  it("parses the conversation section on a successful response", async () => {
     vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key");
     reloadEnv();
 
@@ -50,12 +48,6 @@ describe("callReasoner", () => {
       "---CONVERSATION---",
       "User: backend eng",
       "Focus: reviewing PR",
-      "",
-      "---WORKING---",
-      "[t1] running — fetch PRs — user is waiting — 3 so far",
-      "",
-      "---FINISHED---",
-      "[t0] done — earlier lookup — outcome: 5 PRs",
     ].join("\n");
 
     const handler = http.post(OPENROUTER_URL, () => {
@@ -68,8 +60,6 @@ describe("callReasoner", () => {
     const result = await callReasoner({
       agentSystemPrompt: "be helpful",
       priorConversationSummary: "prior",
-      priorWorkingTasksSummary: null,
-      priorFinishedTasksSummary: null,
       transcript: [
         {
           seq: 1,
@@ -84,8 +74,6 @@ describe("callReasoner", () => {
     expect(result).not.toBeNull();
     expect(result?.conversationSummary).toContain("User: backend eng");
     expect(result?.conversationSummary).toContain("Focus: reviewing PR");
-    expect(result?.workingTasksSummary).toContain("[t1] running");
-    expect(result?.finishedTasksSummary).toContain("[t0] done");
     expect(handler.mocked).toHaveBeenCalledTimes(1);
   });
 

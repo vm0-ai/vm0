@@ -43,15 +43,16 @@ const HANDS_FREE_VAD_CONFIG = {
 const SESSION_TOOLS = [
   {
     type: "function",
-    name: "create_task",
+    name: "inform_slow_brain",
     description:
-      "Spawn a background task when the user asks for something that requires action beyond conversation.",
+      "Call this the instant you form any intent to act — the moment you think or say 'I'll ...', 'let me ...', '我要 ...', '我会 ...', '我帮你 ...', '给我一下时间 ...', or any other acknowledgement that something will be done. You have no ability to act on your own — this call is how the slow brain learns there's something to do. Describe the user's ask and any context the slow brain will need.",
     parameters: {
       type: "object",
       properties: {
         prompt: {
           type: "string",
-          description: "The task prompt to spawn.",
+          description:
+            "What to tell the slow brain about the user's request, including relevant details from the conversation.",
         },
       },
       required: ["prompt"],
@@ -84,15 +85,12 @@ const internalTasksByCallId$ = state<Record<string, VoiceChatCandidateTask>>(
 );
 const internalTasksById$ = state<Record<string, VoiceChatCandidateTask>>({});
 const internalConversationSummary$ = state<string>("");
-const internalWorkingTasksSummary$ = state<string>("");
 const internalFinishedTasksSummary$ = state<string>("");
-const internalRecentTaskLogs$ = state<string>("");
 const internalSummaryVersion$ = state<number>(0);
 const internalSummarySeq$ = state<number>(0);
 const internalLastSummaryAt$ = state<string | null>(null);
 const internalTalkerInstructions$ = state<string>("");
 const internalTalkerInstructionTokens$ = state<number>(0);
-const internalFinishedTasksFullText$ = state<string>("");
 const internalStreamingAssistant$ = state<{
   responseId: string;
   itemId: string | null;
@@ -147,14 +145,6 @@ export const vccConversationSummary$ = computed((get) => {
   return get(internalConversationSummary$);
 });
 
-export const vccWorkingTasksSummary$ = computed((get) => {
-  return get(internalWorkingTasksSummary$);
-});
-
-export const vccRecentTaskLogs$ = computed((get) => {
-  return get(internalRecentTaskLogs$);
-});
-
 export const vccSummarySeq$ = computed((get) => {
   return get(internalSummarySeq$);
 });
@@ -167,8 +157,8 @@ export const vccTalkerInstructionTokens$ = computed((get) => {
   return get(internalTalkerInstructionTokens$);
 });
 
-export const vccFinishedTasksFullText$ = computed((get) => {
-  return get(internalFinishedTasksFullText$);
+export const vccTalkerInstructions$ = computed((get) => {
+  return get(internalTalkerInstructions$);
 });
 
 const sessionListRefreshToken$ = state(0);
@@ -208,10 +198,10 @@ type ToolCallItem = {
 type VccConversationEntry = StreamingItem | ServerItem | ToolCallItem;
 
 /**
- * Merged stream: finalized server items + create_task tool calls (ordered by
- * createdAt) followed by any in-flight streaming text from the active
- * Realtime turn. Server items are the source of truth; streaming text is a
- * per-turn UX nicety.
+ * Merged stream: finalized server items + inform_slow_brain tool calls
+ * (ordered by createdAt) followed by any in-flight streaming text from the
+ * active Realtime turn. Server items are the source of truth; streaming text
+ * is a per-turn UX nicety.
  */
 export const vccConversationItems$ = computed((get) => {
   const items = get(internalItems$);
@@ -338,7 +328,7 @@ const appendItem$ = command(
   },
 );
 
-const handleCreateTask$ = command(
+const handleInformSlowBrain$ = command(
   async (
     { get, set },
     callId: string,
@@ -357,14 +347,14 @@ const handleCreateTask$ = command(
       parsed = JSON.parse(argsJson) as { prompt?: unknown };
     } catch (error) {
       throwIfAbort(error);
-      L.warn("Failed to parse create_task args", { callId, argsJson });
-      sendFunctionOutput(dc, callId, "Task creation failed: invalid args.");
+      L.warn("Failed to parse inform_slow_brain args", { callId, argsJson });
+      sendFunctionOutput(dc, callId, "Inform failed: invalid args.");
       return;
     }
 
     const prompt = typeof parsed.prompt === "string" ? parsed.prompt : "";
     if (!prompt.trim()) {
-      sendFunctionOutput(dc, callId, "Task creation failed: empty prompt.");
+      sendFunctionOutput(dc, callId, "Inform failed: empty prompt.");
       return;
     }
 
@@ -381,11 +371,11 @@ const handleCreateTask$ = command(
     signal.throwIfAborted();
 
     if (res.status !== 200) {
-      L.warn("createTask failed", { status: res.status, sid });
+      L.warn("inform_slow_brain failed", { status: res.status, sid });
       sendFunctionOutput(
         dc,
         callId,
-        "Task creation failed. Please try again or rephrase.",
+        "Failed to reach the slow brain. Please try again or rephrase.",
       );
       return;
     }
@@ -400,7 +390,7 @@ const handleCreateTask$ = command(
     sendFunctionOutput(
       dc,
       callId,
-      `Task '${shortPrompt(prompt)}' queued. I'll report back when it's ready.`,
+      `Slow brain informed: '${shortPrompt(prompt)}'. It will decide what to do and report back.`,
     );
   },
 );
@@ -437,7 +427,7 @@ function flattenAssistantMessages(task: VoiceChatCandidateTask): string {
 
 function taskReplayOutput(task: VoiceChatCandidateTask): string {
   if (task.error) {
-    return `Task failed: ${task.error}`;
+    return `Slow brain reported failure: ${task.error}`;
   }
   const body = flattenAssistantMessages(task);
   if (body) {
@@ -446,7 +436,7 @@ function taskReplayOutput(task: VoiceChatCandidateTask): string {
   if (task.status === "done") {
     return "(empty result)";
   }
-  return `Task '${task.prompt.slice(0, 60)}' queued.`;
+  return `Slow brain informed: '${task.prompt.slice(0, 60)}'.`;
 }
 
 /**
@@ -525,7 +515,7 @@ function replayHistoryToTalker(
           item: {
             type: "function_call",
             call_id: task.callId,
-            name: "create_task",
+            name: "inform_slow_brain",
             arguments: JSON.stringify({ prompt: task.prompt }),
           },
         }),
@@ -648,8 +638,17 @@ const handleDCMessage$ = command(
         break;
       }
       case "response.function_call_arguments.done": {
-        if (event.call_id && event.name === "create_task" && event.arguments) {
-          await set(handleCreateTask$, event.call_id, event.arguments, signal);
+        if (
+          event.call_id &&
+          event.name === "inform_slow_brain" &&
+          event.arguments
+        ) {
+          await set(
+            handleInformSlowBrain$,
+            event.call_id,
+            event.arguments,
+            signal,
+          );
         }
         break;
       }
@@ -804,6 +803,50 @@ const pushTalkerInstructions$ = command(({ get }) => {
   );
 });
 
+/**
+ * Push any newly-arrived task_result items into the Realtime conversation so
+ * the Talker can see them directly, and trigger a response if (and only if)
+ * the model is idle — not mid-turn and not holding a pending user input.
+ * Injecting without response.create is still valuable: the item lands in
+ * the conversation state and is picked up on the next natural turn.
+ */
+const injectTaskResultsToTalker$ = command(
+  ({ get }, newItems: VoiceChatCandidateItem[]) => {
+    const dc = get(internalDc$);
+    if (!dc || dc.readyState !== "open") {
+      return;
+    }
+    const taskResults = newItems.filter((i) => {
+      return i.role === "task_result" && (i.content ?? "").trim().length > 0;
+    });
+    if (taskResults.length === 0) {
+      return;
+    }
+    for (const item of taskResults) {
+      dc.send(
+        JSON.stringify({
+          type: "conversation.item.create",
+          item: {
+            type: "message",
+            role: "user",
+            content: [
+              {
+                type: "input_text",
+                text: item.content ?? "",
+              },
+            ],
+          },
+        }),
+      );
+    }
+    const streaming = get(internalStreamingAssistant$);
+    const pendingUser = get(internalPendingUserItemId$);
+    if (!streaming && !pendingUser) {
+      dc.send(JSON.stringify({ type: "response.create" }));
+    }
+  },
+);
+
 const startAblyLoop$ = command(
   async ({ set }, sessionId: string, signal: AbortSignal) => {
     const pollBody$ = command(async ({ get, set }, loopSignal: AbortSignal) => {
@@ -838,6 +881,7 @@ const startAblyLoop$ = command(
           return Math.max(acc, item.seq);
         }, maxSeq);
         set(internalMaxSeq$, lastSeq);
+        set(injectTaskResultsToTalker$, newItems);
       }
 
       const sessionRes = await accept(
@@ -849,7 +893,6 @@ const startAblyLoop$ = command(
 
       if (sessionRes.status === 200) {
         const session = sessionRes.body.session;
-        const nextRecentLogs = sessionRes.body.recentTaskLogs;
         const nextInstructions = sessionRes.body.talkerInstructions;
         const nextTokens = sessionRes.body.talkerInstructionTokens;
         const prevVersion = get(internalSummaryVersion$);
@@ -857,7 +900,6 @@ const startAblyLoop$ = command(
 
         if (session.summaryVersion > prevVersion) {
           set(internalConversationSummary$, session.conversationSummary ?? "");
-          set(internalWorkingTasksSummary$, session.workingTasksSummary ?? "");
           set(
             internalFinishedTasksSummary$,
             session.finishedTasksSummary ?? "",
@@ -866,11 +908,6 @@ const startAblyLoop$ = command(
           set(internalSummarySeq$, session.summarySeq);
           set(internalLastSummaryAt$, session.lastSummaryAt);
         }
-        set(internalRecentTaskLogs$, nextRecentLogs);
-        set(
-          internalFinishedTasksFullText$,
-          sessionRes.body.finishedTasksFullText,
-        );
         if (nextInstructions !== prevInstructions) {
           set(internalTalkerInstructions$, nextInstructions);
           set(internalTalkerInstructionTokens$, nextTokens);
@@ -1005,15 +1042,12 @@ export const startVoiceChatCandidate$ = command(
     set(internalTasksByCallId$, {});
     set(internalTasksById$, {});
     set(internalConversationSummary$, "");
-    set(internalWorkingTasksSummary$, "");
     set(internalFinishedTasksSummary$, "");
-    set(internalRecentTaskLogs$, "");
     set(internalSummaryVersion$, 0);
     set(internalSummarySeq$, 0);
     set(internalLastSummaryAt$, null);
     set(internalTalkerInstructions$, "");
     set(internalTalkerInstructionTokens$, 0);
-    set(internalFinishedTasksFullText$, "");
     set(internalStreamingAssistant$, null);
     set(internalPendingUserItemId$, null);
     set(internalMuted$, false);
@@ -1077,13 +1111,10 @@ export const startVoiceChatCandidate$ = command(
     const session = sessionBody.session;
     set(internalSessionId$, session.id);
     set(internalConversationSummary$, session.conversationSummary ?? "");
-    set(internalWorkingTasksSummary$, session.workingTasksSummary ?? "");
     set(internalFinishedTasksSummary$, session.finishedTasksSummary ?? "");
     set(internalSummaryVersion$, session.summaryVersion);
     set(internalSummarySeq$, session.summarySeq);
     set(internalLastSummaryAt$, session.lastSummaryAt);
-    set(internalRecentTaskLogs$, sessionBody.recentTaskLogs);
-    set(internalFinishedTasksFullText$, sessionBody.finishedTasksFullText);
     set(internalTalkerInstructions$, sessionBody.talkerInstructions);
     set(internalTalkerInstructionTokens$, sessionBody.talkerInstructionTokens);
 
@@ -1229,15 +1260,12 @@ export const endVoiceChatCandidate$ = command(({ get, set }) => {
   set(internalTasksByCallId$, {});
   set(internalTasksById$, {});
   set(internalConversationSummary$, "");
-  set(internalWorkingTasksSummary$, "");
   set(internalFinishedTasksSummary$, "");
-  set(internalRecentTaskLogs$, "");
   set(internalSummaryVersion$, 0);
   set(internalSummarySeq$, 0);
   set(internalLastSummaryAt$, null);
   set(internalTalkerInstructions$, "");
   set(internalTalkerInstructionTokens$, 0);
-  set(internalFinishedTasksFullText$, "");
   set(internalStreamingAssistant$, null);
   set(internalPendingUserItemId$, null);
   set(internalParentSignal$, null);
@@ -1258,3 +1286,26 @@ export const toggleVoiceChatCandidateMute$ = command(({ get, set }) => {
   track.enabled = wasMuted;
   set(internalMuted$, !wasMuted);
 });
+
+/**
+ * Ask the server to run one reasoner tick (which also drives the compactor).
+ * Fire-and-forget: the route returns 200 immediately and schedules the work
+ * via `after()`; the usual CAS lock + debounce path still applies on the
+ * server, so spamming this button is safe.
+ */
+export const triggerReasoningCandidate$ = command(
+  async ({ get }, signal: AbortSignal) => {
+    const sid = get(internalSessionId$);
+    if (!sid) {
+      return;
+    }
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroVoiceChatCandidateContract);
+    await accept(
+      client.triggerReasoning({ params: { id: sid }, body: {} }),
+      [200, 401, 404],
+      { toast: false },
+    );
+    signal.throwIfAborted();
+  },
+);

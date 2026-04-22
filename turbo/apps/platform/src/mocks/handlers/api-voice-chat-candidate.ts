@@ -194,6 +194,8 @@ export const apiVoiceChatCandidateHandlers = [
         callId: body.callId,
         prompt: body.prompt,
         status: "pending",
+        result: null,
+        resultUpdatedAt: null,
         assistantMessages: [],
         error: null,
         createdAt: new Date().toISOString(),

@@ -109,9 +109,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     throw err;
   }
 
-  after(async () => {
-    await triggerReasoning(sessionId);
-    await publishUserSignal([userId], `voice-chat-candidate:${sessionId}`);
+  // Fast path: the task row just flipped to done/failed and the task_result
+  // item is already written. Publish before returning so the browser can
+  // refresh the Talker instruction against the updated DB-backed Task board
+  // — without waiting for the reasoner LLM. The after() reasoner tick still
+  // runs and will publish again once it has new conversation summary /
+  // compacted results.
+  await publishUserSignal([userId], `voice-chat-candidate:${sessionId}`);
+  after(() => {
+    return triggerReasoning(sessionId);
   });
 
   return NextResponse.json({ success: true });
