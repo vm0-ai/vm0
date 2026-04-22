@@ -38,7 +38,7 @@ describe("POST /api/zero/platform-connectors/:type", () => {
     mockClerk({ userId: null });
 
     const response = await POST(
-      createTestRequest(enableUrl("github"), {
+      createTestRequest(enableUrl("test-oauth"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
@@ -48,11 +48,15 @@ describe("POST /api/zero/platform-connectors/:type", () => {
   });
 
   it("rejects types that don't declare a platform auth method", async () => {
+    // `test-oauth` is the internal synthetic OAuth connector — it passes
+    // `connectorTypeSchema` (so the request reaches the handler) and will
+    // never grow a `platform` auth method by contract, so the 400 branch
+    // is stable under future contract changes.
     const userId = uniqueId("zpl-np");
     await setupOrg(userId);
 
     const response = await POST(
-      createTestRequest(enableUrl("github"), {
+      createTestRequest(enableUrl("test-oauth"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
