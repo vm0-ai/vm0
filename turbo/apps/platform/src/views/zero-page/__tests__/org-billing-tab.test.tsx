@@ -444,10 +444,16 @@ describe("org billing tab - auto-recharge section", () => {
 
     // First fetch returns the pre-save state (enabled=false). Subsequent
     // fetches are held open so the window between override-clear and
-    // refetch-complete is long enough to observe.
+    // refetch-complete is long enough to observe. Entering the gated branch
+    // signals that the PATCH has resolved and the reload has been kicked off
+    // — i.e. we are inside the bug's danger window.
     let releaseRefetch = (): void => {};
     const refetchStarted = new Promise<void>((resolve) => {
       releaseRefetch = resolve;
+    });
+    let markRefetchEntered = (): void => {};
+    const refetchEntered = new Promise<void>((resolve) => {
+      markRefetchEntered = resolve;
     });
     let refetchCount = 0;
     server.use(
@@ -455,6 +461,7 @@ describe("org billing tab - auto-recharge section", () => {
         refetchCount++;
         const enabled = refetchCount > 1;
         if (refetchCount > 1) {
+          markRefetchEntered();
           await refetchStarted;
         }
         return respond(200, {
@@ -486,12 +493,17 @@ describe("org billing tab - auto-recharge section", () => {
     const bar = await screen.findByTestId("auto-recharge-unsaved-bar");
     const savePromise = user.click(within(bar).getByTestId("save-button"));
 
-    // While the refetch is blocked, the toggle must stay ON (no flash).
-    // Poll for a beat then assert state hasn't regressed.
-    await new Promise((r) => {
-      return setTimeout(r, 50);
+    // Wait until the refetch has entered the gated branch — at this point the
+    // PATCH has resolved and billingReload$ has been bumped, so we are inside
+    // the exact window where the regression would have cleared the optimistic
+    // overrides. Flush microtasks so any regressed state update propagates.
+    await refetchEntered;
+    await waitFor(() => {
+      expect(toggle).toHaveAttribute("aria-checked", "true");
+      expect(
+        screen.getByTestId("auto-recharge-unsaved-bar"),
+      ).toBeInTheDocument();
     });
-    expect(toggle).toHaveAttribute("aria-checked", "true");
 
     // Release the refetch and let the save finish.
     releaseRefetch();

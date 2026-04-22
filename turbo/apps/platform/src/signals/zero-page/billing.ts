@@ -250,14 +250,13 @@ export const saveAutoRecharge$ = command(
     // last-resolved config (useLastLoadable returns the pre-save value):
     // toggling ON and saving would blink to OFF for ~one network RTT, and
     // the unsaved-bar briefly disappears because `autoRechargeDirty$` goes
-    // false when all overrides are null against the stale config.
-    try {
-      await get(autoRechargeConfig$);
-    } finally {
-      set(internalPendingEnabled$, null);
-      set(internalFormThresholdOverride$, null);
-      set(internalFormAmountOverride$, null);
-    }
+    // false when all overrides are null against the stale config. If the
+    // refetch fails, `accept()` inside billingStatusAsync$ already surfaces
+    // the error; leaving overrides in place lets the user retry or discard.
+    await get(autoRechargeConfig$);
+    set(internalPendingEnabled$, null);
+    set(internalFormThresholdOverride$, null);
+    set(internalFormAmountOverride$, null);
     toast.success("Auto-recharge updated");
   },
 );
