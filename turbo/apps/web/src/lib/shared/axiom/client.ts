@@ -248,3 +248,41 @@ export function ingestSandboxOpLog(entry: SandboxOpLogEntry): void {
   ]);
   // Don't await flush - let it batch automatically
 }
+
+/**
+ * Per-stage span for a chat request flow. Emitted once per Phase-1 stage of
+ * `POST /api/zero/chat/messages`. Dimensions are optional because some values
+ * (run_id, org_id) are not known at the earliest stages of the request.
+ */
+interface ChatRequestSpanEntry {
+  op_type: string;
+  duration_ms: number;
+  run_id?: string | null;
+  org_id?: string | null;
+  user_id?: string;
+  agent_id?: string;
+  thread_id?: string;
+  token_type?: string;
+  model_selection_present?: boolean;
+  thread_length?: number;
+  thread_is_new?: boolean;
+}
+
+/**
+ * Ingest a chat-request span to Axiom.
+ * Fire-and-forget - doesn't block the response.
+ */
+export function ingestChatRequestSpan(entry: ChatRequestSpanEntry): void {
+  const client = getTelemetryInstance(env().AXIOM_TOKEN_TELEMETRY);
+  if (!client) {
+    return;
+  }
+
+  const dataset = getDatasetName(DATASETS.CHAT_REQUEST_SPANS);
+  client.ingest(dataset, [
+    {
+      _time: new Date().toISOString(),
+      ...entry,
+    },
+  ]);
+}
