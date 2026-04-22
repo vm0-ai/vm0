@@ -273,7 +273,8 @@ async function resolveThread(
   );
 
   let continueFromSchedulePrompt: string | undefined;
-  if (thread.sourceScheduleRunId && messages.length === 0) {
+  const sourceScheduleRunId = thread.sourceScheduleRunId;
+  if (sourceScheduleRunId && messages.length === 0) {
     const continueFromT = await timed(async () => {
       return globalThis.services.db
         .select({ name: zeroAgentSchedules.name })
@@ -282,13 +283,13 @@ async function resolveThread(
           zeroAgentSchedules,
           eq(zeroRuns.scheduleId, zeroAgentSchedules.id),
         )
-        .where(eq(zeroRuns.id, thread.sourceScheduleRunId!))
+        .where(eq(zeroRuns.id, sourceScheduleRunId))
         .limit(1);
     });
     emit(CHAT_REQUEST_OPS.resolve_thread_continue_from, continueFromT.ms);
     const [sourceSchedule] = continueFromT.result;
     continueFromSchedulePrompt = buildContinueFromScheduleSystemPrompt(
-      thread.sourceScheduleRunId,
+      sourceScheduleRunId,
       sourceSchedule?.name ?? null,
     );
   }
@@ -417,8 +418,10 @@ const router = tsr.router(chatMessagesContract, {
     }
 
     if (body.threadId !== undefined && body.modelSelection !== undefined) {
+      const threadId = body.threadId;
+      const modelSelection = body.modelSelection;
       const lockT = await timed(async () => {
-        return rejectIfThreadModelLocked(body.threadId!, body.modelSelection!);
+        return rejectIfThreadModelLocked(threadId, modelSelection);
       });
       emit(CHAT_REQUEST_OPS.model_selection_lock_check, lockT.ms);
       if (lockT.result) {
