@@ -40,9 +40,6 @@ export interface PreparedContext {
   artifactName: string | null;
   artifactVersion: string | null;
 
-  // Memory storage name
-  memoryName: string | null;
-
   // Firewall for proxy-side token replacement (complete config, all permissions)
   firewalls: Firewalls | null;
 

@@ -87,7 +87,6 @@ export const artifactEntrySchema = z.object({
 export const storageManifestSchema = z.object({
   storages: z.array(storageEntrySchema),
   artifacts: z.array(artifactEntrySchema),
-  memory: artifactEntrySchema.nullable(),
 });
 
 /**
@@ -120,8 +119,6 @@ export const storedExecutionContextSchema = z.object({
   apiStartTime: z.number().optional(),
   // User's timezone preference (IANA format, e.g., "Asia/Shanghai")
   userTimezone: z.string().optional(),
-  // Memory storage name (for first-run when manifest.memory is null)
-  memoryName: z.string().optional(),
   // Firewall for proxy-side token replacement (complete config, all permissions)
   firewalls: firewallsSchema.optional(),
   // Per-firewall network policies: which permissions are granted + unknownPolicy
@@ -171,8 +168,6 @@ export const executionContextSchema = z.object({
   apiStartTime: z.number().optional(),
   // User's timezone preference (IANA format, e.g., "Asia/Shanghai")
   userTimezone: z.string().optional(),
-  // Memory storage name (for first-run when manifest.memory is null)
-  memoryName: z.string().optional(),
   // Firewall for proxy-side token replacement (complete config, all permissions)
   firewalls: firewallsSchema.optional(),
   // Per-firewall network policies: which permissions are granted + unknownPolicy

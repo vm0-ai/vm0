@@ -69,7 +69,6 @@ function makeSnapshot(runId: string, userId: string): RunContextSnapshot {
       vasStorageName: "art-1",
       vasVersionId: "art-ver-1",
     },
-    memory: null,
     networkPolicies: null,
     featureFlags: { computerUse: true, voiceChat: false },
   };
@@ -108,7 +107,6 @@ describe("GET /api/zero/runs/:id/context", () => {
     expect(data.firewalls[0].name).toBe("test-fw");
     expect(data.volumes).toHaveLength(1);
     expect(data.artifact).toBeDefined();
-    expect(data.memory).toBeNull();
     expect(data.networkPolicies).toBeNull();
     expect(data.featureFlags).toEqual({ computerUse: true, voiceChat: false });
   });

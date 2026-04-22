@@ -26,15 +26,7 @@ export const checkpoints = pgTable("checkpoints", {
     )
     .notNull(),
   agentComposeSnapshot: jsonb("agent_compose_snapshot").notNull(),
-  // Legacy single-entry snapshot kept alongside artifactSnapshots for the
-  // duration of the multi-mount rollout. New writers double-write both, and
-  // readers that only need the first entry can keep reading this column.
-  artifactSnapshot: jsonb("artifact_snapshot"),
-  // Multi-entry artifact snapshot: { [artifactName]: versionId }. Emitted by
-  // the guest-agent per checkpoint. Null for legacy rows created before the
-  // migration.
   artifactSnapshots: jsonb("artifact_snapshots"),
-  memorySnapshot: jsonb("memory_snapshot"),
   volumeVersionsSnapshot: jsonb("volume_versions_snapshot"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

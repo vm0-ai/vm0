@@ -7,7 +7,6 @@ import { agentComposeVersions } from "../../../../db/schema/agent-compose";
 import { notFound, unauthorized, badRequest } from "../../../shared/errors";
 import { logger } from "../../../shared/logger";
 import type {
-  ArtifactSnapshot,
   AgentComposeSnapshot,
   VolumeVersionsSnapshot,
 } from "../../checkpoint/types";
@@ -44,15 +43,14 @@ export async function resolveCheckpoint(
     throw notFound("Checkpoint not found");
   }
 
-  // Extract snapshots (artifactSnapshot may be null for runs without artifact).
-  // memorySnapshot is vestigial post-#10602 — the guest-agent no longer emits
-  // it since memory rides in artifactSnapshots[]. memoryName is now sourced
-  // from agent_sessions.memory_name (populated at run creation), which matches
-  // the resolveSession path.
+  // Extract snapshots. The primary artifact name is sourced from
+  // agent_sessions.artifact_name (populated at run creation); the version is
+  // looked up in the artifactSnapshots map. memoryName is sourced from
+  // agent_sessions.memory_name, matching the resolveSession path.
   const agentComposeSnapshot =
     checkpoint.agentComposeSnapshot as unknown as AgentComposeSnapshot;
-  const checkpointArtifact =
-    checkpoint.artifactSnapshot as unknown as ArtifactSnapshot | null;
+  const artifactSnapshotsMap =
+    (checkpoint.artifactSnapshots as Record<string, string> | null) ?? null;
   const checkpointVolumeVersions =
     checkpoint.volumeVersionsSnapshot as VolumeVersionsSnapshot | null;
 
@@ -72,12 +70,13 @@ export async function resolveCheckpoint(
     throw badRequest("Invalid checkpoint: missing agentComposeVersionId");
   }
 
-  // Verify checkpoint belongs to user and fetch session memoryName in one
-  // query (must complete before doing further work). Memory name lives on
-  // agent_sessions (set eagerly at run creation), not on checkpoint snapshots.
+  // Verify checkpoint belongs to user and fetch session artifact/memory names
+  // in one query. Both live on agent_sessions (set eagerly at run creation),
+  // not on checkpoint snapshots.
   const [originalRun] = await globalThis.services.db
     .select({
       runId: agentRuns.id,
+      sessionArtifactName: agentSessions.artifactName,
       sessionMemoryName: agentSessions.memoryName,
     })
     .from(agentRuns)
@@ -130,6 +129,12 @@ export async function resolveCheckpoint(
   }
   const agentCompose = version.content as AgentComposeYaml;
 
+  const primaryArtifactName = originalRun.sessionArtifactName ?? undefined;
+  const primaryArtifactVersion =
+    primaryArtifactName && artifactSnapshotsMap
+      ? artifactSnapshotsMap[primaryArtifactName]
+      : undefined;
+
   return {
     conversationId: checkpoint.conversationId,
     agentComposeVersionId,
@@ -139,12 +144,12 @@ export async function resolveCheckpoint(
       cliAgentSessionId: conversation.cliAgentSessionId,
       cliAgentSessionHistory: sessionHistory,
     },
-    artifactName: checkpointArtifact?.artifactName,
-    artifactVersion: checkpointArtifact?.artifactVersion,
+    artifactName: primaryArtifactName,
+    artifactVersion: primaryArtifactVersion,
     memoryName: originalRun.sessionMemoryName ?? undefined,
     vars: agentComposeSnapshot.vars || {},
     volumeVersions: checkpointVolumeVersions?.versions,
     additionalVolumes: checkpointAdditionalVolumes,
-    buildResumeArtifact: !!checkpointArtifact, // Only build resumeArtifact if checkpoint has artifact
+    buildResumeArtifact: !!primaryArtifactName,
   };
 }

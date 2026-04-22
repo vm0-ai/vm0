@@ -9,7 +9,7 @@ import type { PollResult, EventRenderingOptions } from "../../run/shared";
  * Safely narrow GetRunResponse.result to RunResult.
  * GetRunResponse.result has all fields optional (due to .passthrough()),
  * but RunResult requires checkpointId, agentSessionId, conversationId.
- * Extra fields (artifact, volumes, memory) are preserved at runtime via passthrough.
+ * Extra fields (artifact, volumes) are preserved at runtime via passthrough.
  */
 function toRunResult(result: {
   output?: string;

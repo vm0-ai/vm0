@@ -12,7 +12,7 @@ import { getClientConfig, handleError } from "../core/client-factory";
  */
 export async function prepareStorage(body: {
   storageName: string;
-  storageType: "volume" | "artifact" | "memory";
+  storageType: "volume" | "artifact";
   files: Array<{ path: string; hash: string; size: number }>;
   force?: boolean;
 }): Promise<{
@@ -40,7 +40,7 @@ export async function prepareStorage(body: {
  */
 export async function commitStorage(body: {
   storageName: string;
-  storageType: "volume" | "artifact" | "memory";
+  storageType: "volume" | "artifact";
   versionId: string;
   files: Array<{ path: string; hash: string; size: number }>;
 }): Promise<{
@@ -68,7 +68,7 @@ export async function commitStorage(body: {
  */
 export async function getStorageDownload(query: {
   name: string;
-  type: "volume" | "artifact" | "memory";
+  type: "volume" | "artifact";
   version?: string;
 }): Promise<
   | {
@@ -106,7 +106,7 @@ export async function getStorageDownload(query: {
  * List storages (volumes or artifacts)
  */
 export async function listStorages(query: {
-  type: "volume" | "artifact" | "memory";
+  type: "volume" | "artifact";
 }): Promise<
   Array<{
     name: string;

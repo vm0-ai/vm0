@@ -17,7 +17,6 @@ import {
   findTestRunRecord,
   findTestQueueEntry,
   enqueueTestRun,
-  getTestAgentSessionWithConversation,
   addTestRunToThread,
   insertTestChatThread,
 } from "../../../../../../src/__tests__/api-test-helpers";
@@ -258,71 +257,6 @@ describe("POST /api/webhooks/agent/complete", () => {
       expect(data.status).toBe("completed");
     });
 
-    it("should not include memory in result even when checkpoint has memorySnapshot", async () => {
-      // Post-#10602: result.memory is no longer populated. Memory rides in
-      // result.artifact (keyed by storage name "memory") via artifactSnapshots.
-      // The memorySnapshot column remains on the checkpoint record until
-      // #10603 for backward compatibility but the webhook ignores it.
-      const checkpointRequest = createTestRequest(
-        "http://localhost:3000/api/webhooks/agent/checkpoints",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${testToken}`,
-          },
-          body: JSON.stringify({
-            runId: testRunId,
-            cliAgentType: "claude-code",
-            cliAgentSessionId: "test-session-mem",
-            cliAgentSessionHistoryHash:
-              "ec3ac9679505be3bb8233c4ef0b39c8ee206d2c37fc8610edc19f41fbfb9661e",
-            artifactSnapshot: {
-              artifactName: "test-artifact",
-              artifactVersion: "v1",
-            },
-            memorySnapshot: {
-              memoryName: "my-memory",
-              memoryVersion: "mem-v1",
-            },
-          }),
-        },
-      );
-      const checkpointResponse = await checkpointWebhook(checkpointRequest);
-      expect(checkpointResponse.status).toBe(200);
-
-      // Complete the run
-      const request = createTestRequest(
-        "http://localhost:3000/api/webhooks/agent/complete",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${testToken}`,
-          },
-          body: JSON.stringify({
-            runId: testRunId,
-            exitCode: 0,
-          }),
-        },
-      );
-
-      const response = await POST(request);
-      expect(response.status).toBe(200);
-
-      // Verify run result does NOT include memory (memory now flows via artifacts)
-      const run = await findTestRunRecord(testRunId);
-      expect(run).toBeDefined();
-      expect(run!.status).toBe("completed");
-
-      const result = run!.result as {
-        memory?: Record<string, string>;
-        artifact?: Record<string, string>;
-      };
-      expect(result.memory).toBeUndefined();
-      expect(result.artifact).toEqual({ "test-artifact": "v1" });
-    });
-
     it("should surface full artifact map in result when checkpoint has artifactSnapshots", async () => {
       const artifactSnapshots = {
         "frontend-build": "v-frontend-1",
@@ -372,44 +306,6 @@ describe("POST /api/webhooks/agent/complete", () => {
       expect(run!.status).toBe("completed");
       const result = run!.result as { artifact?: Record<string, string> };
       expect(result.artifact).toEqual(artifactSnapshots);
-    });
-
-    it("should store memoryName in agent session when checkpoint has memorySnapshot", async () => {
-      // Create checkpoint with memorySnapshot
-      const checkpointRequest = createTestRequest(
-        "http://localhost:3000/api/webhooks/agent/checkpoints",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${testToken}`,
-          },
-          body: JSON.stringify({
-            runId: testRunId,
-            cliAgentType: "claude-code",
-            cliAgentSessionId: "test-session-mem-store",
-            cliAgentSessionHistoryHash:
-              "ec3ac9679505be3bb8233c4ef0b39c8ee206d2c37fc8610edc19f41fbfb9661e",
-            memorySnapshot: {
-              memoryName: "persist-memory",
-              memoryVersion: "mem-v1",
-            },
-          }),
-        },
-      );
-      const checkpointResponse = await checkpointWebhook(checkpointRequest);
-      expect(checkpointResponse.status).toBe(200);
-
-      const checkpointData = (await checkpointResponse.json()) as {
-        agentSessionId: string;
-      };
-
-      // Verify agent session has memoryName
-      const session = await getTestAgentSessionWithConversation(
-        checkpointData.agentSessionId,
-      );
-      expect(session).toBeDefined();
-      expect(session!.memoryName).toBe("persist-memory");
     });
 
     it("should store error with report URL on failed completion", async () => {

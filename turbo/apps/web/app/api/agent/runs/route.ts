@@ -50,6 +50,15 @@ import { generateSandboxToken } from "../../../../src/lib/auth/sandbox-token";
 import { buildInfraExecutionContext } from "../../../../src/lib/infra/run/context/build-context";
 import { getCachedUser } from "../../../../src/lib/auth/user-cache-service";
 import { env } from "../../../../src/env";
+import { z } from "zod";
+
+// Legacy compat: accept `memoryName` on the HTTP body even though the shared
+// contract no longer names it. Enabled by `.passthrough()` on the request
+// schema. Older CLIs pinned to pre-unification builds continue to work while
+// the field is dropped from docs and typed clients.
+const legacyRunBodyExtrasSchema = z
+  .object({ memoryName: z.string().optional() })
+  .passthrough();
 
 const log = logger("api:runs");
 
@@ -316,6 +325,9 @@ const router = tsr.router(runsMainContract, {
     try {
       await enforceCaptureNetworkBodiesGate(userId, body.captureNetworkBodies);
 
+      const { memoryName: legacyMemoryName } =
+        legacyRunBodyExtrasSchema.parse(body);
+
       const resolved = await resolveCliRunContext({
         orgId: org.orgId,
         userId,
@@ -329,7 +341,7 @@ const router = tsr.router(runsMainContract, {
         permissionPolicies: body.permissionPolicies,
         artifactName: body.artifactName,
         artifactVersion: body.artifactVersion,
-        memoryName: body.memoryName,
+        memoryName: legacyMemoryName,
         volumeVersions: body.volumeVersions,
       });
 
@@ -403,7 +415,7 @@ const router = tsr.router(runsMainContract, {
           resumedFromCheckpointId: body.checkpointId,
           sessionId: body.sessionId,
           artifactName: effectiveArtifactName,
-          memoryName: resolved.memoryName ?? body.memoryName,
+          memoryName: resolved.memoryName ?? legacyMemoryName,
         });
       });
       const transactionTime = Date.now();
@@ -429,7 +441,7 @@ const router = tsr.router(runsMainContract, {
           artifactName: effectiveArtifactName,
           artifactVersion: effectiveArtifactVersion,
           artifacts: effectiveArtifacts,
-          memoryName: resolved.memoryName ?? body.memoryName,
+          memoryName: resolved.memoryName ?? legacyMemoryName,
           volumeVersions: resolved.volumeVersions ?? body.volumeVersions,
           additionalVolumes: finalAdditionalVolumes,
           environment: resolved.environment,

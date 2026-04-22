@@ -275,7 +275,6 @@ export {
   sessionResponseSchema,
   checkpointResponseSchema,
   agentComposeSnapshotSchema,
-  artifactSnapshotSchema,
   volumeVersionsSnapshotSchema,
   type SessionsByIdContract,
   type CheckpointsByIdContract,
@@ -283,7 +282,6 @@ export {
   type SessionResponse,
   type CheckpointResponse,
   type AgentComposeSnapshot,
-  type ArtifactSnapshot,
   type VolumeVersionsSnapshot,
 } from "./sessions";
 export {

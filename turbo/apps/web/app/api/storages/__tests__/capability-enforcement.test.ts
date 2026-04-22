@@ -7,7 +7,6 @@ import {
   createTestRequest,
   createTestVolume,
   createTestArtifact,
-  createTestMemory,
   createTestCompose,
   createTestCliToken,
 } from "../../../../src/__tests__/api-test-helpers";
@@ -78,24 +77,6 @@ describe("Storage capability enforcement", () => {
       expect(body[0].name).toBe("test-art");
     });
 
-    it("should accept sandbox token with agent:read for memory list", async () => {
-      await createTestMemory("test-mem");
-      const token = await generateSandboxToken(userId, runId);
-      mockClerk({ userId: null });
-
-      const response = await listRoute(
-        createTestRequest(
-          "http://localhost:3000/api/storages/list?type=memory",
-          { headers: { authorization: `Bearer ${token}` } },
-        ),
-      );
-
-      expect(response.status).toBe(200);
-      const body = await response.json();
-      expect(body).toHaveLength(1);
-      expect(body[0].name).toBe("test-mem");
-    });
-
     it("should accept sandbox token regardless of specific capability", async () => {
       await createTestVolume("test-vol");
       const token = await generateSandboxToken(userId, runId);
@@ -164,28 +145,6 @@ describe("Storage capability enforcement", () => {
           body: JSON.stringify({
             storageName: "test-vol",
             storageType: "volume",
-            files: [{ path: "a.txt", hash: TEST_HASH, size: 10 }],
-          }),
-        }),
-      );
-
-      expect(response.status).toBe(200);
-    });
-
-    it("should accept sandbox token for memory prepare", async () => {
-      const token = await generateSandboxToken(userId, runId);
-      mockClerk({ userId: null });
-
-      const response = await prepareRoute(
-        createTestRequest("http://localhost:3000/api/storages/prepare", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            storageName: "test-mem",
-            storageType: "memory",
             files: [{ path: "a.txt", hash: TEST_HASH, size: 10 }],
           }),
         }),

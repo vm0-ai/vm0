@@ -188,7 +188,6 @@ describe("zeroActivityDetailPageInteraction", () => {
       firewalls: [],
       volumes: [],
       artifact: null,
-      memory: null,
       networkPolicies: null,
       featureFlags: null,
     };

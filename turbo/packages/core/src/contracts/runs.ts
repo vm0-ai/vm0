@@ -28,74 +28,77 @@ const runStatusSchema = z.enum(ALL_RUN_STATUSES);
 /**
  * Unified run request schema - supports all run modes via optional parameters
  */
-const unifiedRunRequestSchema = z.object({
-  // High-level shortcuts (mutually exclusive with each other)
-  checkpointId: z.string().optional(),
-  sessionId: z.string().optional(),
+const unifiedRunRequestSchema = z
+  .object({
+    // High-level shortcuts (mutually exclusive with each other)
+    checkpointId: z.string().optional(),
+    sessionId: z.string().optional(),
 
-  // Base parameters (can be used directly or overridden after shortcut expansion)
-  agentComposeId: z.string().optional(),
-  agentComposeVersionId: z.string().optional(),
-  conversationId: z.string().optional(),
-  // @deprecated Legacy singleton artifact fields retained for a one-release
-  // compat window. The POST /api/agent/runs handler rewrites them into the
-  // new `artifacts` array before dispatch — prefer `artifacts` in new code.
-  artifactName: z.string().optional(),
-  artifactVersion: z.string().optional(),
-  // Multi-mount artifacts, each with its own mountPath. When provided, the
-  // server ignores artifactName/artifactVersion.
-  artifacts: z
-    .array(
-      z.object({
-        name: z.string(),
-        version: z.string().optional(),
-        mountPath: z.string(),
-      }),
-    )
-    .optional(),
-  vars: z.record(z.string(), z.string()).optional(),
-  secrets: z.record(z.string(), z.string()).optional(),
-  volumeVersions: z.record(z.string(), z.string()).optional(),
-  memoryName: z.string().optional(),
+    // Base parameters (can be used directly or overridden after shortcut expansion)
+    agentComposeId: z.string().optional(),
+    agentComposeVersionId: z.string().optional(),
+    conversationId: z.string().optional(),
+    // @deprecated Legacy singleton artifact fields retained for a one-release
+    // compat window. The POST /api/agent/runs handler rewrites them into the
+    // new `artifacts` array before dispatch — prefer `artifacts` in new code.
+    artifactName: z.string().optional(),
+    artifactVersion: z.string().optional(),
+    // Multi-mount artifacts, each with its own mountPath. When provided, the
+    // server ignores artifactName/artifactVersion.
+    artifacts: z
+      .array(
+        z.object({
+          name: z.string(),
+          version: z.string().optional(),
+          mountPath: z.string(),
+        }),
+      )
+      .optional(),
+    vars: z.record(z.string(), z.string()).optional(),
+    secrets: z.record(z.string(), z.string()).optional(),
+    volumeVersions: z.record(z.string(), z.string()).optional(),
 
-  // Additional volumes passed directly at run time (bypass compose)
-  additionalVolumes: z
-    .array(
-      z.object({
-        name: z.string(),
-        version: z.string().optional(),
-        mountPath: z.string(),
-      }),
-    )
-    .optional(),
+    // Additional volumes passed directly at run time (bypass compose)
+    additionalVolumes: z
+      .array(
+        z.object({
+          name: z.string(),
+          version: z.string().optional(),
+          mountPath: z.string(),
+        }),
+      )
+      .optional(),
 
-  // Debug flag to force real Claude in mock environments (internal use only)
-  debugNoMockClaude: z.boolean().optional(),
+    // Debug flag to force real Claude in mock environments (internal use only)
+    debugNoMockClaude: z.boolean().optional(),
 
-  // Capture HTTP request headers, request bodies, and response bodies in network logs
-  captureNetworkBodies: z.boolean().optional(),
+    // Capture HTTP request headers, request bodies, and response bodies in network logs
+    captureNetworkBodies: z.boolean().optional(),
 
-  // Required
-  prompt: z.string().min(1, "Missing prompt"),
+    // Required
+    prompt: z.string().min(1, "Missing prompt"),
 
-  // Optional system prompt to append to the agent's system prompt
-  appendSystemPrompt: z.string().optional(),
+    // Optional system prompt to append to the agent's system prompt
+    appendSystemPrompt: z.string().optional(),
 
-  // Optional list of tools to disable in Claude CLI (passed as --disallowed-tools)
-  disallowedTools: z.array(z.string()).optional(),
+    // Optional list of tools to disable in Claude CLI (passed as --disallowed-tools)
+    disallowedTools: z.array(z.string()).optional(),
 
-  // Optional list of tools to make available in Claude CLI (passed as --tools)
-  tools: z.array(z.string()).optional(),
+    // Optional list of tools to make available in Claude CLI (passed as --tools)
+    tools: z.array(z.string()).optional(),
 
-  // Settings JSON to pass to Claude CLI (passed as --settings)
-  settings: z.string().optional(),
+    // Settings JSON to pass to Claude CLI (passed as --settings)
+    settings: z.string().optional(),
 
-  // How the run was triggered (defaults to "cli" on the server if not provided)
-  triggerSource: triggerSourceSchema.optional(),
+    // How the run was triggered (defaults to "cli" on the server if not provided)
+    triggerSource: triggerSourceSchema.optional(),
 
-  // Per-permission policies (e.g., { "github": { "actions:read": "allow" } })
-  permissionPolicies: firewallPoliciesSchema.optional(),
-});
+    // Per-permission policies (e.g., { "github": { "actions:read": "allow" } })
+    permissionPolicies: firewallPoliciesSchema.optional(),
+  })
+  // Preserve unknown keys so route handlers can accept legacy compat fields
+  // at the HTTP boundary without naming them in the shared contract.
+  .passthrough();
 
 /**
  * Create run response schema
@@ -158,7 +161,6 @@ const runResultSchema = z.object({
   conversationId: z.string(),
   artifact: z.record(z.string(), z.string()).optional(), // optional when run has no artifact
   volumes: z.record(z.string(), z.string()).optional(),
-  memory: z.record(z.string(), z.string()).optional(),
 });
 
 /**

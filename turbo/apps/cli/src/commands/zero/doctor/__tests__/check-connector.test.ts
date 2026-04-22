@@ -87,7 +87,6 @@ const runContextResponse = {
   },
   volumes: [],
   artifact: null,
-  memory: null,
   featureFlags: null,
 };
 

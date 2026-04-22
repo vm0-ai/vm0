@@ -67,9 +67,10 @@ export function buildInfraExecutionContext(
       params.secrets,
     ).environment;
 
-  // Fold memory into artifacts[] so downstream treats memory as just another
-  // artifact entry (#10602). memoryName stays on the context for session-row
-  // bookkeeping (agent_sessions.memory_name) and runner wire compat.
+  // Fold legacy memoryName into artifacts[] so the execution context only
+  // speaks the multi-mount shape. Session-row bookkeeping
+  // (agent_sessions.memory_name) happens separately in the route handler via
+  // insertRunRecord — the field is not propagated through the context.
   const artifacts: AdditionalArtifact[] | undefined = params.memoryName
     ? [
         ...(params.artifacts ?? []),
@@ -92,7 +93,6 @@ export function buildInfraExecutionContext(
     artifactName: params.artifactName,
     artifactVersion: params.artifactVersion,
     artifacts,
-    memoryName: params.memoryName,
     volumeVersions: params.volumeVersions,
     additionalVolumes: params.additionalVolumes,
     environment,

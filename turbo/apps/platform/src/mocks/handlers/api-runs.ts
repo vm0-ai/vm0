@@ -69,7 +69,6 @@ export const apiRunsHandlers = [
       networkPolicies: null,
       volumes: [],
       artifact: null,
-      memory: null,
       featureFlags: null,
     }),
   ),

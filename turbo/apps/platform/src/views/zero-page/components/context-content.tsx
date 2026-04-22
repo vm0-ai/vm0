@@ -258,19 +258,6 @@ export function ContextContent({ context }: { context: RunContextResponse }) {
           <p className="text-sm text-muted-foreground">None</p>
         )}
       </section>
-
-      {/* Memory */}
-      <section>
-        <SectionHeader title="Memory" />
-        {context.memory ? (
-          <StorageTable
-            items={[context.memory]}
-            columns={["Mount Path", "Storage Name", "Version"]}
-          />
-        ) : (
-          <p className="text-sm text-muted-foreground">None</p>
-        )}
-      </section>
     </div>
   );
 }

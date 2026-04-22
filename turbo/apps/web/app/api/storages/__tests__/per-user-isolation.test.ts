@@ -4,7 +4,6 @@ import {
   createTestRequest,
   createTestArtifact,
   createTestVolume,
-  createTestMemory,
   findTestStorage,
 } from "../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../src/__tests__/test-helpers";
@@ -45,16 +44,6 @@ describe("Storage per-user isolation", () => {
     expect(record!.userId).toBe(user.userId);
   });
 
-  it("should store memory with real userId in database", async () => {
-    const user = await context.user;
-
-    await createTestMemory("my-memory");
-
-    const record = await findTestStorage(user.orgId, "my-memory", "memory");
-    expect(record).toBeDefined();
-    expect(record!.userId).toBe(user.userId);
-  });
-
   it("should isolate artifacts per user - different users cannot see each other's artifacts", async () => {
     // User A creates an artifact
     await createTestArtifact("shared-name");
@@ -71,24 +60,6 @@ describe("Storage per-user isolation", () => {
     const userBResponse = await listStorages("artifact");
     const userBArtifacts = await userBResponse.json();
     expect(userBArtifacts).toHaveLength(0);
-  });
-
-  it("should isolate memory per user - different users cannot see each other's memory", async () => {
-    // User A creates a memory storage
-    await createTestMemory("agent-memory");
-
-    const userAResponse = await listStorages("memory");
-    const userAMemories = await userAResponse.json();
-    expect(userAMemories).toHaveLength(1);
-    expect(userAMemories[0].name).toBe("agent-memory");
-
-    // User B should not see User A's memory
-    const userB = await context.setupUser({ prefix: "other-user" });
-    mockClerk({ userId: userB.userId });
-
-    const userBResponse = await listStorages("memory");
-    const userBMemories = await userBResponse.json();
-    expect(userBMemories).toHaveLength(0);
   });
 
   it("should allow same artifact name for different users", async () => {

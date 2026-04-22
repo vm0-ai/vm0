@@ -45,7 +45,6 @@ describe("zero CLI program", () => {
       "compose",
       "volume",
       "artifact",
-      "memory",
 
       "init",
       "upgrade",

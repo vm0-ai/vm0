@@ -58,7 +58,6 @@ const router = tsr.router(zeroRunContextContract, {
         networkPolicies: snapshot.networkPolicies ?? null,
         volumes: snapshot.volumes,
         artifact: snapshot.artifact,
-        memory: snapshot.memory,
         featureFlags: snapshot.featureFlags,
       },
     };

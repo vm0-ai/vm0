@@ -25,7 +25,6 @@ export async function createRun(body: {
   agentComposeId?: string;
   agentComposeVersionId?: string;
   conversationId?: string;
-  memoryName?: string;
   vars?: Record<string, string>;
   secrets?: Record<string, string>;
   volumeVersions?: Record<string, string>;

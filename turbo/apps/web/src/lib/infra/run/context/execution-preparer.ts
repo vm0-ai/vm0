@@ -235,9 +235,6 @@ function buildPreparedContext(
     artifactName: context.artifactName || null,
     artifactVersion: context.artifactVersion || null,
 
-    // Memory storage name
-    memoryName: context.memoryName || null,
-
     // Firewall for proxy-side token replacement
     firewalls: toNullable(context.firewalls),
 

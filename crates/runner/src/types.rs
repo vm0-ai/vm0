@@ -70,10 +70,6 @@ pub struct ExecutionContext {
     pub api_start_time: Option<f64>,
     #[serde(default)]
     pub user_timezone: Option<String>,
-    // Memory storage name for first-run init — not yet consumed by runner
-    #[allow(dead_code)]
-    #[serde(default)]
-    pub memory_name: Option<String>,
     #[serde(default)]
     pub capture_network_bodies: Option<bool>,
     #[serde(default)]
@@ -165,8 +161,6 @@ pub struct StorageManifest {
     pub storages: Vec<StorageEntry>,
     #[serde(default)]
     pub artifacts: Vec<ArtifactEntry>,
-    #[serde(default)]
-    pub memory: Option<ArtifactEntry>,
     /// Paths to clean before downloading (computed from previous fingerprints).
     /// Used on VM reuse to remove stale files from changed/removed storages.
     #[serde(default)]
@@ -373,11 +367,6 @@ mod tests {
                     "mountPath": "/artifacts",
                     "vasStorageName": "art-1",
                     "vasVersionId": "v1"
-                },
-                "memory": {
-                    "mountPath": "/memory",
-                    "vasStorageName": "mem-1",
-                    "vasVersionId": "v2"
                 }
             },
             "environment": {"NODE_ENV": "production"},
@@ -587,7 +576,6 @@ mod tests {
         assert_eq!(manifest.storages[0].mount_path, "/workspace");
         assert_eq!(manifest.artifacts.len(), 1);
         assert_eq!(manifest.artifacts[0].vas_storage_name, "my-artifact");
-        assert!(manifest.memory.is_none());
     }
 
     #[test]
@@ -620,7 +608,6 @@ mod tests {
         });
         let manifest: StorageManifest = serde_json::from_value(json).unwrap();
         assert!(manifest.artifacts.is_empty());
-        assert!(manifest.memory.is_none());
     }
 
     #[test]

@@ -37,15 +37,15 @@ function createEmptyTarGz(): Buffer {
  * @param orgId - Clerk org ID for storage access
  * @param userId - User ID for storage record ownership
  * @param storageName - Storage name
- * @param storageType - Storage type ("artifact" or "memory")
+ * @param storageType - Storage type ("artifact")
  */
 export async function ensureStorageExists(
   orgId: string,
   userId: string,
   storageName: string,
-  storageType: "artifact" | "memory",
+  storageType: "artifact",
 ): Promise<void> {
-  // Find or create storage record (artifact/memory use real userId)
+  // Find or create storage record (artifact uses real userId)
   let [storage] = await globalThis.services.db
     .select()
     .from(storages)
@@ -179,15 +179,15 @@ export async function ensureStorageExists(
  * Resolve version ID from version string
  * @param orgId - Clerk org ID for storage access
  * @param storageName - Storage name
- * @param storageType - Storage type ("volume", "artifact", or "memory")
+ * @param storageType - Storage type ("volume" or "artifact")
  * @param version - Version string ("latest" or specific hash)
- * @param userId - User ID (real userId for artifact/memory, VOLUME_ORG_USER_ID for volumes)
+ * @param userId - User ID (real userId for artifact, VOLUME_ORG_USER_ID for volumes)
  * @returns Version ID and S3 key
  */
 async function resolveVersion(
   orgId: string,
   storageName: string,
-  storageType: "volume" | "artifact" | "memory",
+  storageType: "volume" | "artifact",
   version: string,
   userId: string,
 ): Promise<{ versionId: string; s3Key: string }> {
@@ -269,7 +269,7 @@ interface StorageLookup {
   orgId: string;
   userId: string;
   name: string;
-  type: "volume" | "artifact" | "memory";
+  type: "volume" | "artifact";
 }
 
 function lookupKey(
@@ -457,36 +457,13 @@ async function resolveAdditionalArtifact(
   bucketName: string,
 ): Promise<ManifestArtifact> {
   const version = entry.version || "latest";
-  let resolved: { versionId: string; s3Key: string };
-  try {
-    resolved = await resolveVersion(
-      runtimeClerkOrgId,
-      entry.name,
-      "artifact",
-      version,
-      userId,
-    );
-  } catch (err) {
-    // Dual-read compat for epic #10577 Phase 2 type flip (#10601):
-    // fall back to type='memory' for storages not yet flipped. Any artifact
-    // row missing under type='artifact' is retried as type='memory'; in
-    // practice only legacy memory storages match. Removed in #10603.
-    if (!(err instanceof Error && err.message.includes("not found"))) {
-      throw err;
-    }
-    log.info("memory dual-read fallback hit", {
-      name: entry.name,
-      orgId: runtimeClerkOrgId,
-      userId,
-    });
-    resolved = await resolveVersion(
-      runtimeClerkOrgId,
-      entry.name,
-      "memory",
-      version,
-      userId,
-    );
-  }
+  const resolved = await resolveVersion(
+    runtimeClerkOrgId,
+    entry.name,
+    "artifact",
+    version,
+    userId,
+  );
   const { versionId, s3Key } = resolved;
   const archiveKey = `${s3Key}/archive.tar.gz`;
   const manifestKey = `${s3Key}/manifest.json`;
@@ -573,7 +550,7 @@ export async function prepareStorageManifest(
     (!additionalVolumes || additionalVolumes.length === 0) &&
     (!additionalArtifacts || additionalArtifacts.length === 0)
   ) {
-    return { storages: [], artifacts: [], memory: null };
+    return { storages: [], artifacts: [] };
   }
 
   // Resolve volumes from agent config.
@@ -1097,11 +1074,6 @@ async function buildManifestFromResults(
     bucketName,
   );
 
-  // Memory is always null post-#10602 — memory now flows through
-  // manifest.artifacts[] (zero synthesizes it from memoryName). The slot is
-  // retained for runner wire compat and is removed in #10603.
-  const memory: ManifestArtifact | null = null;
-
   // Deduplicate mount paths: additional volumes override compose volumes
   const additionalMountPaths = new Set(
     resolvedAdditional.map((s) => {
@@ -1116,12 +1088,11 @@ async function buildManifestFromResults(
   const filteredStorages = [...filteredCompose, ...resolvedAdditional];
 
   log.debug(
-    `Storage manifest prepared: ${filteredStorages.length} storages (${filteredCompose.length} compose + ${resolvedAdditional.length} additional), ${artifact ? "1 artifact" : "no artifact"}, ${memory ? "1 memory" : "no memory"}`,
+    `Storage manifest prepared: ${filteredStorages.length} storages (${filteredCompose.length} compose + ${resolvedAdditional.length} additional), ${artifact ? "1 artifact" : "no artifact"}`,
   );
 
   return {
     storages: filteredStorages,
     artifacts: artifact ? [artifact] : [],
-    memory,
   };
 }

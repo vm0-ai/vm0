@@ -711,9 +711,9 @@ export async function buildZeroExecutionContext(
   // Synthesize memory as an additional artifact mounted directly at Claude
   // Code's auto-memory path. This replaces the guest-agent symlink bootstrap:
   // the runner mounts memory at AUTO_MEMORY_MOUNT_PATH so Claude Code finds
-  // it without any in-sandbox symlink work. memoryName stays on the context
-  // for session-row bookkeeping (agent_sessions.memory_name). manifest.memory
-  // is always null after this — infra treats memory as just another artifact.
+  // it without any in-sandbox symlink work. Session-row bookkeeping
+  // (agent_sessions.memory_name) is handled separately by the write path;
+  // the field is not propagated through the execution context.
   const memoryArtifacts: AdditionalArtifact[] | undefined = memoryName
     ? [{ name: memoryName, mountPath: AUTO_MEMORY_MOUNT_PATH }]
     : undefined;
@@ -735,7 +735,6 @@ export async function buildZeroExecutionContext(
       artifactName,
       artifactVersion,
       artifacts: memoryArtifacts,
-      memoryName,
       volumeVersions,
       additionalVolumes,
       environment,

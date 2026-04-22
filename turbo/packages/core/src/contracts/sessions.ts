@@ -28,14 +28,6 @@ const agentComposeSnapshotSchema = z.object({
 });
 
 /**
- * Artifact snapshot schema
- */
-const artifactSnapshotSchema = z.object({
-  artifactName: z.string(),
-  artifactVersion: z.string(),
-});
-
-/**
  * Volume versions snapshot schema
  */
 const volumeVersionsSnapshotSchema = z.object({
@@ -51,11 +43,8 @@ const checkpointResponseSchema = z.object({
   runId: z.string(),
   conversationId: z.string(),
   agentComposeSnapshot: agentComposeSnapshotSchema,
-  // Legacy single-artifact snapshot. Populated from artifact_snapshots when
-  // the checkpoint has exactly one entry, left null otherwise.
-  artifactSnapshot: artifactSnapshotSchema.nullable(),
   // Multi-artifact snapshot map: artifact name → version id. Null when the
-  // checkpoint predates the multi-mount migration or has no artifacts.
+  // checkpoint has no artifacts.
   artifactSnapshots: z.record(z.string(), z.string()).nullable(),
   volumeVersionsSnapshot: volumeVersionsSnapshotSchema.nullable(),
   createdAt: z.string(),
@@ -119,7 +108,6 @@ export {
   sessionResponseSchema,
   checkpointResponseSchema,
   agentComposeSnapshotSchema,
-  artifactSnapshotSchema,
   volumeVersionsSnapshotSchema,
 };
 
@@ -127,7 +115,6 @@ export {
 export type SessionResponse = z.infer<typeof sessionResponseSchema>;
 export type CheckpointResponse = z.infer<typeof checkpointResponseSchema>;
 export type AgentComposeSnapshot = z.infer<typeof agentComposeSnapshotSchema>;
-export type ArtifactSnapshot = z.infer<typeof artifactSnapshotSchema>;
 export type VolumeVersionsSnapshot = z.infer<
   typeof volumeVersionsSnapshotSchema
 >;

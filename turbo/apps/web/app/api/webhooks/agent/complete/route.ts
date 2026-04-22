@@ -14,7 +14,6 @@ import {
   dispatchTerminalSideEffects,
 } from "../../../../../src/lib/infra/run/run-status";
 import { getSandboxAuthForRun } from "../../../../../src/lib/auth/get-sandbox-auth";
-import type { ArtifactSnapshot } from "../../../../../src/lib/infra/checkpoint";
 import type { RunResult } from "../../../../../src/lib/infra/run/types";
 import { logger } from "../../../../../src/lib/shared/logger";
 import {
@@ -51,8 +50,6 @@ function buildRunResult(
   checkpoint: typeof checkpoints.$inferSelect,
   sessionId: string | undefined,
 ): RunResult {
-  const artifactSnapshot =
-    checkpoint.artifactSnapshot as ArtifactSnapshot | null;
   const artifactSnapshots =
     (checkpoint.artifactSnapshots as Record<string, string> | null) ?? null;
   const volumeVersions = checkpoint.volumeVersionsSnapshot as
@@ -66,16 +63,8 @@ function buildRunResult(
     volumes: volumeVersions?.versions,
   };
 
-  // Prefer the multi-entry map when present (it's the authoritative shape).
-  // Fall back to the legacy single-entry column for checkpoints written
-  // before the multi-mount rollout. Memory now flows through artifactSnapshots
-  // keyed by "memory" (see #10602).
   if (artifactSnapshots && Object.keys(artifactSnapshots).length > 0) {
     result.artifact = artifactSnapshots;
-  } else if (artifactSnapshot) {
-    result.artifact = {
-      [artifactSnapshot.artifactName]: artifactSnapshot.artifactVersion,
-    };
   }
 
   return result;

@@ -2108,6 +2108,13 @@
       "when": 1776871523055,
       "tag": "0300_clammy_johnny_blaze",
       "breakpoints": true
+    },
+    {
+      "idx": 301,
+      "version": "7",
+      "when": 1776881000000,
+      "tag": "0301_drop_memory_and_artifact_snapshot",
+      "breakpoints": true
     }
   ]
 }

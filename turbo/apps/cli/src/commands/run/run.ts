@@ -70,7 +70,6 @@ export const mainRunCommand = new Command()
     collectMounts,
     [],
   )
-  .option("--memory <name>", "Memory storage name")
   .option(
     "--conversation <id>",
     "Resume from conversation ID (for fine-grained control)",
@@ -116,7 +115,6 @@ export const mainRunCommand = new Command()
             version?: string;
             mountPath: string;
           }>;
-          memory?: string;
           volumeVersion: Record<string, string>;
           volume: Array<{ name: string; version?: string; mountPath: string }>;
           conversation?: string;
@@ -210,7 +208,6 @@ export const mainRunCommand = new Command()
           vars,
           secrets,
           artifacts,
-          memoryName: options.memory,
           volumeVersions,
           additionalVolumes,
           conversationId: options.conversation,

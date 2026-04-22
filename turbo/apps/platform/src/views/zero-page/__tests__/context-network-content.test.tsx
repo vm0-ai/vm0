@@ -76,7 +76,6 @@ function makeBaseContext(
     firewalls: [],
     volumes: [],
     artifact: null,
-    memory: null,
     networkPolicies: null,
     featureFlags: null,
     ...overrides,
@@ -368,26 +367,6 @@ describe("contextContent", () => {
     });
     expect(screen.getByText("art-store")).toBeInTheDocument();
     expect(screen.getByText("v2")).toBeInTheDocument();
-  });
-
-  it("should render memory storage data (ACT-C-009)", async () => {
-    setupMocks({
-      contextResponse: makeBaseContext({
-        memory: {
-          mountPath: "/memory",
-          vasStorageName: "mem-store",
-          vasVersionId: "v3",
-        },
-      }),
-    });
-
-    await setupAndNavigateToTab("Context");
-
-    await waitFor(() => {
-      expect(screen.getByText("/memory")).toBeInTheDocument();
-    });
-    expect(screen.getByText("mem-store")).toBeInTheDocument();
-    expect(screen.getByText("v3")).toBeInTheDocument();
   });
 });
 

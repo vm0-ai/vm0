@@ -75,12 +75,6 @@ struct Manifest {
     storages: Vec<Storage>,
     #[serde(default)]
     artifacts: Vec<Artifact>,
-    /// Legacy wire-compat slot — always null since #10602 (memory now rides
-    /// in `artifacts` above). Deserialized and ignored; field is dropped
-    /// entirely in #10603 when the TS manifest type stops emitting the key.
-    #[serde(default)]
-    #[allow(dead_code)]
-    memory: Option<Artifact>,
     /// Paths to clean before downloading (stale file cleanup on VM reuse).
     #[serde(default)]
     cleanup_paths: Vec<String>,
@@ -202,10 +196,6 @@ pub fn run(manifest_path: &str) -> bool {
             });
         }
     }
-
-    // Memory (post-#10602): flows through manifest.artifacts[], no dedicated
-    // download task. The manifest.memory slot is retained for wire compat
-    // and is removed in #10603.
 
     // Pre-create all target directories before parallel downloads.
     // This avoids races between parent-child mount paths (e.g. /home/user/.claude
@@ -785,14 +775,12 @@ mod tests {
                 {"mountPath": "/data", "archiveUrl": null, "cached": true},
                 {"mountPath": "/other", "archiveUrl": "https://s3/v1", "cached": false}
             ],
-            "artifacts": [{"mountPath": "/workspace", "archiveUrl": null, "cached": true}],
-            "memory": {"mountPath": "/memory", "archiveUrl": "https://s3/mem", "cached": false}
+            "artifacts": [{"mountPath": "/workspace", "archiveUrl": null, "cached": true}]
         }"#;
         let manifest: Manifest = serde_json::from_str(json).unwrap();
         assert!(manifest.storages[0].cached);
         assert!(!manifest.storages[1].cached);
         assert!(manifest.artifacts[0].cached);
-        assert!(!manifest.memory.as_ref().unwrap().cached);
     }
 
     #[test]

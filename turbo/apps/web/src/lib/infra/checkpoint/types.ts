@@ -24,14 +24,6 @@ export interface ArtifactSnapshot {
 }
 
 /**
- * Memory snapshot for VAS managed memory
- */
-export interface MemorySnapshot {
-  memoryName: string;
-  memoryVersion: string;
-}
-
-/**
  * Volume versions snapshot for checkpoint
  * Stores resolved volume versions at checkpoint time for exact reproducibility
  */
@@ -59,7 +51,6 @@ export interface CheckpointRequest {
   // unconditionally by the guest-agent during the multi-mount rollout;
   // may be empty or missing when the guest snapshotted nothing.
   artifactSnapshots?: Record<string, string>;
-  memorySnapshot?: MemorySnapshot;
   volumeVersionsSnapshot?: VolumeVersionsSnapshot;
 }
 

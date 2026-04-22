@@ -25,11 +25,6 @@ pub struct StorageFingerprints {
     pub storages: HashMap<String, (String, String)>,
     /// mount_path → (vas_storage_name, vas_version_id) for artifacts.
     pub artifacts: HashMap<String, (String, String)>,
-    /// Legacy slot — always `None` since #10602 (memory now folds into
-    /// `artifacts` above). Read nowhere; dropped entirely in #10603 when the
-    /// manifest's top-level `memory` field goes away.
-    #[allow(dead_code)]
-    pub memory: Option<(String, String)>,
 }
 
 impl StorageFingerprints {
@@ -47,13 +42,9 @@ impl StorageFingerprints {
                 (a.vas_storage_name.clone(), a.vas_version_id.clone()),
             );
         }
-        fn version_tuple(e: &crate::types::ArtifactEntry) -> (String, String) {
-            (e.vas_storage_name.clone(), e.vas_version_id.clone())
-        }
         Self {
             storages,
             artifacts,
-            memory: manifest.memory.as_ref().map(version_tuple),
         }
     }
 }

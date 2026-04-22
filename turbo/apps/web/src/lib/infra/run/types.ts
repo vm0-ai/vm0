@@ -24,7 +24,6 @@ export interface RunResult {
   conversationId: string;
   artifact?: Record<string, string>; // { artifactName: version } - optional when run has no artifact
   volumes?: Record<string, string>; // { volumeName: version }
-  memory?: Record<string, string>; // { memoryName: version }
 }
 
 /**
@@ -69,9 +68,6 @@ export interface ExecutionContext {
   // Additional artifacts passed at run time (beyond the primary artifact
   // derived from compose working_dir). Each entry carries its own mountPath.
   artifacts?: AdditionalArtifact[];
-
-  // Memory storage name
-  memoryName?: string;
 
   // Volume version overrides (volume name -> version)
   volumeVersions?: Record<string, string>;

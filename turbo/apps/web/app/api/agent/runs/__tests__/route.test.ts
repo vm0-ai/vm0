@@ -21,7 +21,6 @@ import {
   updateOrgTier,
   createTestVolume,
   createTestArtifact,
-  createTestSandboxToken,
   findTestRunRecord,
   findTestRunnerJobEntry,
   findTestStorage,
@@ -1553,52 +1552,20 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(data.status).toBe("pending");
     });
 
-    it("should restore memoryName from session in continue flow", async () => {
-      // Allow concurrent runs for this test
-      vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "0");
-      reloadEnv();
+    it("should persist memoryName on session row for continue flow resolution", async () => {
+      // Post-#10603: memoryName is stored on agent_sessions.memory_name by
+      // insertRunRecord, so a later continue-flow resolver can pull it back
+      // even when the continue request omits memoryName.
+      const initial = await createTestRun(testComposeId, "Initial run", {
+        memoryName: "restored-memory",
+      });
+      expect(initial.sessionId).toBeDefined();
 
-      // Step 1: Create a run and checkpoint with memorySnapshot
-      const { runId } = await createTestRun(testComposeId, "Initial run");
-      const sandboxToken = await createTestSandboxToken(user.userId, runId);
-
-      const checkpointRequest = createTestRequest(
-        "http://localhost:3000/api/webhooks/agent/checkpoints",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${sandboxToken}`,
-          },
-          body: JSON.stringify({
-            runId,
-            cliAgentType: "claude-code",
-            cliAgentSessionId: "session-for-continue",
-            cliAgentSessionHistoryHash:
-              "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
-            memorySnapshot: {
-              memoryName: "restored-memory",
-              memoryVersion: "v1",
-            },
-          }),
-        },
+      const session = await getTestAgentSessionWithConversation(
+        initial.sessionId!,
       );
-      const checkpointResponse = await checkpointWebhook(checkpointRequest);
-      expect(checkpointResponse.status).toBe(200);
-
-      const { agentSessionId } = (await checkpointResponse.json()) as {
-        agentSessionId: string;
-      };
-
-      // Step 2: Continue from session WITHOUT specifying memoryName
-      const continueResult = await createTestRun(
-        testComposeId,
-        "Continue prompt",
-        { sessionId: agentSessionId },
-      );
-
-      expect(continueResult.runId).toBeDefined();
-      expect(continueResult.status).toBe("pending");
+      expect(session).toBeDefined();
+      expect(session!.memoryName).toBe("restored-memory");
     });
   });
 

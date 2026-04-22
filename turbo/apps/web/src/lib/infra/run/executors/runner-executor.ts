@@ -156,7 +156,6 @@ function buildStoredContext(
     captureNetworkBodies: context.captureNetworkBodies || undefined,
     apiStartTime: context.apiStartTime,
     userTimezone: context.userTimezone ?? undefined,
-    memoryName: context.memoryName ?? undefined,
     featureFlags: context.featureFlags ?? undefined,
     billableFirewalls: context.billableFirewalls,
   };
@@ -213,13 +212,6 @@ function buildRunContextSnapshot(context: PreparedContext): RunContextSnapshot {
             vasVersionId: manifest.artifacts[0]!.vasVersionId,
           }
         : null,
-    memory: manifest?.memory
-      ? {
-          mountPath: manifest.memory.mountPath,
-          vasStorageName: manifest.memory.vasStorageName,
-          vasVersionId: manifest.memory.vasVersionId,
-        }
-      : null,
     featureFlags: context.featureFlags,
   };
 }

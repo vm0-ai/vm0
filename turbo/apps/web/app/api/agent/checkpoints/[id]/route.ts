@@ -17,11 +17,6 @@ interface AgentComposeSnapshot {
   secretNames?: string[];
 }
 
-interface ArtifactSnapshot {
-  artifactName: string;
-  artifactVersion: string;
-}
-
 interface VolumeVersionsSnapshot {
   versions: Record<string, string>;
 }
@@ -82,8 +77,6 @@ const router = tsr.router(checkpointsByIdContract, {
 
     const agentComposeSnapshot =
       checkpoint.agentComposeSnapshot as AgentComposeSnapshot;
-    const artifactSnapshot =
-      checkpoint.artifactSnapshot as ArtifactSnapshot | null;
     const artifactSnapshots =
       (checkpoint.artifactSnapshots as Record<string, string> | null) ?? null;
     const volumeVersionsSnapshot =
@@ -100,12 +93,6 @@ const router = tsr.router(checkpointsByIdContract, {
           vars: agentComposeSnapshot.vars,
           secretNames: agentComposeSnapshot.secretNames,
         },
-        artifactSnapshot: artifactSnapshot
-          ? {
-              artifactName: artifactSnapshot.artifactName,
-              artifactVersion: artifactSnapshot.artifactVersion,
-            }
-          : null,
         artifactSnapshots,
         volumeVersionsSnapshot: volumeVersionsSnapshot
           ? {

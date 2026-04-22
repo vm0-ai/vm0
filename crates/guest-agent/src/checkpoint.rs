@@ -282,22 +282,6 @@ async fn create_checkpoint_impl() -> Result<(), AgentError> {
     if let Some(snaps) = artifact_snapshots
         && let Some(obj) = payload.as_object_mut()
     {
-        // Legacy single-entry compat: if exactly one artifact was snapshotted,
-        // also emit the old `artifactSnapshot: {artifactName, artifactVersion}`
-        // shape so the server's double-write path (which reads the legacy
-        // column on resume) stays populated. Multi-artifact checkpoints omit
-        // the legacy field since it cannot represent N entries.
-        if snaps.len() == 1
-            && let Some((name, version)) = snaps.iter().next()
-        {
-            obj.insert(
-                "artifactSnapshot".to_string(),
-                json!({
-                    "artifactName": name,
-                    "artifactVersion": version,
-                }),
-            );
-        }
         obj.insert(
             "artifactSnapshots".to_string(),
             serde_json::Value::Object(snaps),

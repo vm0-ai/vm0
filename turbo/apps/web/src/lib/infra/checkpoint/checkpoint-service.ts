@@ -11,31 +11,35 @@ import type {
   CheckpointRequest,
   CheckpointResponse,
   AgentComposeSnapshot,
-  ArtifactSnapshot,
-  MemorySnapshot,
   VolumeVersionsSnapshot,
 } from "./types";
 
 const log = logger("checkpoint");
 
 /**
- * Resolve the artifact snapshot pair (legacy single + new multi-entry map)
- * from a checkpoint request. The multi-entry map is authoritative; a legacy
- * single-entry record is derived from its first entry so old readers keep
- * working for the duration of the rollout.
+ * Resolve the artifact snapshot map from a checkpoint request. During the
+ * deployment window the guest-agent may still send the legacy singleton
+ * `artifactSnapshot`; fold it into the map when the map is missing/empty so
+ * no data is lost in mixed old-guest/new-server states.
  */
 function resolveArtifactSnapshots(request: CheckpointRequest): {
-  legacy: ArtifactSnapshot | null;
   map: Record<string, string> | null;
-  hasMap: boolean;
+  primaryArtifactName: string | undefined;
 } {
-  const map = request.artifactSnapshots ?? null;
-  const hasMap = map !== null && Object.keys(map).length > 0;
+  const rawMap = request.artifactSnapshots ?? null;
+  const hasMap = rawMap !== null && Object.keys(rawMap).length > 0;
   if (hasMap) {
-    const [artifactName, artifactVersion] = Object.entries(map)[0]!;
-    return { legacy: { artifactName, artifactVersion }, map, hasMap };
+    const primaryArtifactName = Object.keys(rawMap)[0];
+    return { map: rawMap, primaryArtifactName };
   }
-  return { legacy: request.artifactSnapshot ?? null, map, hasMap };
+  const legacy = request.artifactSnapshot;
+  if (legacy) {
+    return {
+      map: { [legacy.artifactName]: legacy.artifactVersion },
+      primaryArtifactName: legacy.artifactName,
+    };
+  }
+  return { map: null, primaryArtifactName: undefined };
 }
 
 /**
@@ -156,32 +160,19 @@ export async function createCheckpoint(
       }
     : null;
 
-  // Consolidate artifact snapshots. The guest-agent emits artifactSnapshots
-  // (name -> version map) as the authoritative multi-mount payload, and still
-  // emits artifactSnapshot for backward compat when exactly one artifact is
-  // snapshotted. See resolveArtifactSnapshots above.
-  const {
-    legacy: legacyArtifactSnapshot,
-    map: artifactSnapshotsMap,
-    hasMap: hasArtifactSnapshots,
-  } = resolveArtifactSnapshots(request);
+  // Consolidate artifact snapshots. The guest-agent's authoritative payload
+  // is artifactSnapshots (name -> version map); during rollout a legacy
+  // singleton artifactSnapshot is folded into the map if present.
+  const { map: artifactSnapshotsMap, primaryArtifactName } =
+    resolveArtifactSnapshots(request);
 
-  // Upsert checkpoint record (handles retries atomically). Double-write both
-  // the legacy singleton column and the new multi-entry JSONB column for the
-  // duration of the rollout (see migration 0295).
   const snapshotFields = {
     conversationId: conversation.id,
     agentComposeSnapshot: agentComposeSnapshot as unknown as Record<
       string,
       unknown
     >,
-    artifactSnapshot: legacyArtifactSnapshot
-      ? (legacyArtifactSnapshot as unknown as Record<string, unknown>)
-      : null,
-    artifactSnapshots: artifactSnapshotsMap as Record<string, string> | null,
-    memorySnapshot: request.memorySnapshot
-      ? (request.memorySnapshot as unknown as Record<string, unknown>)
-      : null,
+    artifactSnapshots: artifactSnapshotsMap,
     volumeVersionsSnapshot: enrichedVolumeSnapshot as unknown as Record<
       string,
       unknown
@@ -209,8 +200,8 @@ export async function createCheckpoint(
   // Bind the pre-created agent session (always populated since #10323 made
   // agent_runs.session_id NOT NULL) to this conversation and record per-run
   // snapshot fields that were not known when the session was created eagerly
-  // at run insertion.
-  const memorySnapshot = request.memorySnapshot as MemorySnapshot | undefined;
+  // at run insertion. memoryName on agent_sessions is populated at run
+  // creation (see insertRunRecord); the complete webhook no longer updates it.
   const volumeSnapshot = request.volumeVersionsSnapshot as
     | VolumeVersionsSnapshot
     | undefined;
@@ -222,8 +213,7 @@ export async function createCheckpoint(
     run.sessionId,
     conversation.id,
     {
-      artifactName: legacyArtifactSnapshot?.artifactName,
-      memoryName: memorySnapshot?.memoryName,
+      artifactName: primaryArtifactName,
     },
   );
 
@@ -236,10 +226,7 @@ export async function createCheckpoint(
     checkpointId: checkpoint.id,
     agentSessionId: agentSession.id,
     conversationId: conversation.id,
-    artifact: legacyArtifactSnapshot ?? undefined,
-    artifacts: hasArtifactSnapshots
-      ? (artifactSnapshotsMap ?? undefined)
-      : undefined,
+    artifacts: artifactSnapshotsMap ?? undefined,
     volumes,
   };
 }

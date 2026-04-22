@@ -320,10 +320,13 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       expect(data.checkpointId).toBeDefined();
       expect(data.agentSessionId).toBeDefined();
       expect(data.conversationId).toBeDefined();
-      expect(data.artifact).toEqual(artifactSnapshot);
+      // Legacy singleton body gets folded into the artifacts map by the server.
+      expect(data.artifacts).toEqual({
+        [artifactSnapshot.artifactName]: artifactSnapshot.artifactVersion,
+      });
     });
 
-    it("should double-write artifactSnapshots map and derive legacy column", async () => {
+    it("should persist artifactSnapshots map", async () => {
       const artifactSnapshots = {
         "artifact-a": "version-aaa",
         "artifact-b": "version-bbb",
@@ -352,20 +355,10 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.artifacts).toEqual(artifactSnapshots);
-      // Legacy singleton response field derived from the first entry so older
-      // clients that only read `artifact` still see a usable value.
-      expect(data.artifact).toEqual({
-        artifactName: "artifact-a",
-        artifactVersion: "version-aaa",
-      });
 
       const checkpoint = await findTestCheckpoint(testRunId);
       expect(checkpoint).toBeDefined();
       expect(checkpoint!.artifactSnapshots).toEqual(artifactSnapshots);
-      expect(checkpoint!.artifactSnapshot).toEqual({
-        artifactName: "artifact-a",
-        artifactVersion: "version-aaa",
-      });
     });
 
     it("should prefer artifactSnapshots map when both legacy and map are sent", async () => {
@@ -401,11 +394,6 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       expect(response.status).toBe(200);
       const checkpoint = await findTestCheckpoint(testRunId);
       expect(checkpoint!.artifactSnapshots).toEqual(artifactSnapshots);
-      // Map wins over the legacy body field.
-      expect(checkpoint!.artifactSnapshot).toEqual({
-        artifactName: "canonical-artifact",
-        artifactVersion: "canonical-version",
-      });
     });
   });
 

@@ -49,14 +49,6 @@ const artifactSnapshotSchema = z.object({
 });
 
 /**
- * Memory snapshot schema
- */
-const memorySnapshotSchema = z.object({
-  memoryName: z.string(),
-  memoryVersion: z.string(),
-});
-
-/**
  * Volume versions snapshot schema
  */
 const volumeVersionsSnapshotSchema = z.object({
@@ -156,16 +148,13 @@ export const webhookCheckpointsContract = c.router({
           64,
           "cliAgentSessionHistoryHash must be a 64-character SHA-256 hex string",
         ),
-      // Legacy singleton artifact snapshot. The guest-agent still emits this
-      // when exactly one artifact is snapshotted so older servers can read it;
-      // new code must read artifactSnapshots instead.
+      // Legacy singleton artifact snapshot. The guest-agent may still emit
+      // this when exactly one artifact is snapshotted during rollout; the
+      // server folds it into artifactSnapshots before persisting.
       artifactSnapshot: artifactSnapshotSchema.optional(),
-      // Multi-artifact snapshot map: artifact name → version id. Emitted
-      // unconditionally by the guest-agent (empty object when nothing to
-      // snapshot). Double-written to both the legacy single-entry column and
-      // the new artifact_snapshots JSONB column on checkpoints.
+      // Multi-artifact snapshot map: artifact name → version id. Authoritative
+      // payload persisted to checkpoints.artifact_snapshots.
       artifactSnapshots: z.record(z.string(), z.string()).optional(),
-      memorySnapshot: memorySnapshotSchema.optional(),
       volumeVersionsSnapshot: volumeVersionsSnapshotSchema.optional(),
     }),
     responses: {
@@ -173,9 +162,7 @@ export const webhookCheckpointsContract = c.router({
         checkpointId: z.string(),
         agentSessionId: z.string(),
         conversationId: z.string(),
-        artifact: artifactSnapshotSchema.optional(),
         artifacts: z.record(z.string(), z.string()).optional(),
-        memory: memorySnapshotSchema.optional(),
         volumes: z.record(z.string(), z.string()).optional(),
       }),
       400: apiErrorSchema,
