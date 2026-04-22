@@ -161,7 +161,8 @@ def _fetch_firewall_headers_sync(
     try:
         # S310 is satisfied by provenance: `req` always targets
         # ctx.options.vm0_api_url (operator-set at mitmdump launch).
-        resp = urllib.request.urlopen(req, timeout=10)  # noqa: S310
+        with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
+            return json.loads(resp.read())
     except urllib.error.HTTPError as e:
         # HTTPError wraps an open socket; `with e` closes on every exit
         # path to avoid FD exhaustion under sustained cache-miss load (#10475).
@@ -176,10 +177,6 @@ def _fetch_firewall_headers_sync(
                     error_info.get("message", "Connector not configured"),
                 ) from None
             raise
-    try:
-        return json.loads(resp.read())
-    finally:
-        resp.close()
 
 
 async def fetch_firewall_headers(
