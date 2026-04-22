@@ -6,6 +6,7 @@ import { eq, sql } from "drizzle-orm";
 import { VM0_MODEL_TO_PROVIDER, getEligibleConnectorTypes } from "@vm0/core";
 import { schema } from "../src/db/db";
 import { creditPricing } from "../src/db/schema/credit-pricing";
+import { usagePricing } from "../src/db/schema/usage-pricing";
 import { vm0ApiKeys } from "../src/db/schema/vm0-api-key";
 import { skills } from "../src/db/schema/skill";
 import { SEED_SKILLS, buildSeedSkillValues } from "../src/lib/zero/seed-skills";
@@ -110,6 +111,35 @@ const MODEL_PRICING: (typeof creditPricing.$inferInsert)[] = [
   },
 ];
 
+const X_CONNECTOR_PRICING: Array<{
+  category: string;
+  unitPrice: number;
+}> = [
+  { category: "block.read", unitPrice: usd(0.01) },
+  { category: "bookmark.read", unitPrice: usd(0.01) },
+  { category: "bookmark.write", unitPrice: usd(0.005) },
+  { category: "dm.read", unitPrice: usd(0.01) },
+  { category: "dm.write", unitPrice: usd(0.015) },
+  { category: "follows.read", unitPrice: usd(0.01) },
+  { category: "follows.write", unitPrice: usd(0.015) },
+  { category: "like.read", unitPrice: usd(0.01) },
+  { category: "like.write", unitPrice: usd(0.015) },
+  { category: "list.read", unitPrice: usd(0.005) },
+  { category: "list.write", unitPrice: usd(0.01) },
+  { category: "media.read", unitPrice: usd(0.005) },
+  { category: "media.write", unitPrice: usd(0.015) },
+  { category: "mute.read", unitPrice: usd(0.01) },
+  { category: "mute.write", unitPrice: usd(0.015) },
+  { category: "places.read", unitPrice: usd(0.01) },
+  { category: "polls.read", unitPrice: usd(0.01) },
+  { category: "space.read", unitPrice: usd(0.005) },
+  { category: "timeline.read", unitPrice: usd(0.005) },
+  { category: "topics.read", unitPrice: usd(0.01) },
+  { category: "tweet.read", unitPrice: usd(0.01) },
+  { category: "tweet.write", unitPrice: usd(0.2) },
+  { category: "users.read", unitPrice: usd(0.01) },
+];
+
 /**
  * Build vm0_api_keys entries from environment variables.
  * Vendor-to-model mapping is derived from VM0_MODEL_TO_PROVIDER
@@ -169,6 +199,36 @@ async function devSeed() {
       );
     }
     console.log(`✅ Seeded ${MODEL_PRICING.length} credit pricing entries`);
+
+    // --- usage_pricing (connector / x) ---
+    console.log("Seeding usage_pricing (connector/x)...");
+    for (const p of X_CONNECTOR_PRICING) {
+      await db
+        .insert(usagePricing)
+        .values({
+          kind: "connector",
+          provider: "x",
+          category: p.category,
+          unitPrice: p.unitPrice,
+          unitSize: 1,
+        })
+        .onConflictDoUpdate({
+          target: [
+            usagePricing.kind,
+            usagePricing.provider,
+            usagePricing.category,
+          ],
+          set: {
+            unitPrice: sql`excluded.unit_price`,
+            unitSize: sql`excluded.unit_size`,
+            updatedAt: new Date(),
+          },
+        });
+      console.log(`  connector/x/${p.category}: ${p.unitPrice} credits/call`);
+    }
+    console.log(
+      `✅ Seeded ${X_CONNECTOR_PRICING.length} X connector pricing entries`,
+    );
 
     // --- vm0_api_keys (transactional replace) ---
     console.log("Seeding vm0_api_keys...");
