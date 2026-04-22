@@ -123,6 +123,22 @@ describe("POST /api/zero/uploads/prepare", () => {
       expect(body.id).toMatch(/^[0-9a-f-]{36}$/);
     });
 
+    it("accepts image/avif uploads", async () => {
+      const response = await POST(
+        createPrepareRequest({
+          filename: "screenshot.avif",
+          contentType: "image/avif",
+          size: 4096,
+        }),
+      );
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body).toMatchObject({
+        filename: "screenshot.avif",
+        contentType: "image/avif",
+      });
+    });
+
     it("sanitizes filenames when building the S3 key", async () => {
       const response = await POST(
         createPrepareRequest({

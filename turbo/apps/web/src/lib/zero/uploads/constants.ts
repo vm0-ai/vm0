@@ -14,6 +14,7 @@ export const ALLOWED_UPLOAD_TYPES: ReadonlySet<string> = new Set([
   "image/jpeg",
   "image/gif",
   "image/webp",
+  "image/avif",
   "image/svg+xml",
   "video/mp4",
   "video/webm",
