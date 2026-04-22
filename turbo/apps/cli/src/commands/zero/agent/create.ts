@@ -4,128 +4,7 @@ import chalk from "chalk";
 import { zeroAgentCustomSkillNameSchema } from "@vm0/core";
 import { createZeroAgent, updateZeroAgentInstructions } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
-
-const SKIN_MAP: Record<string, number> = {
-  light: 0,
-  "light-medium": 1,
-  medium: 2,
-  "medium-dark": 3,
-  dark: 4,
-};
-
-const HAIR_COLOR_MAP: Record<string, number> = {
-  blonde: 1,
-  teal: 2,
-  grey: 3,
-  pink: 4,
-  brown: 5,
-};
-
-const EXPRESSION_MAP: Record<string, number> = {
-  calm: 1,
-  content: 2,
-  neutral: 3,
-  pleasant: 4,
-  excited: 5,
-};
-
-const INTENSITY_MAP: Record<string, "d" | "m" | "h"> = {
-  chill: "d",
-  normal: "m",
-  hyped: "h",
-};
-
-function lookupRequired<T>(
-  value: string,
-  map: Readonly<Record<string, T>>,
-  flag: string,
-): T {
-  if (!(value in map)) {
-    throw new Error(
-      `Invalid ${flag} "${value}". Must be one of: ${Object.keys(map).join(", ")}`,
-    );
-  }
-  return map[value]!;
-}
-
-interface AvatarOptions {
-  avatar?: string;
-  avatarRotation?: string;
-  avatarSkin?: string;
-  avatarHairStyle?: string;
-  avatarHairColor?: string;
-  avatarExpression?: string;
-  avatarIntensity?: string;
-}
-
-function resolveAvatarUrl(opts: AvatarOptions): string | undefined {
-  const hasPreset = opts.avatar !== undefined;
-  const hasCustom =
-    opts.avatarRotation !== undefined ||
-    opts.avatarSkin !== undefined ||
-    opts.avatarHairStyle !== undefined ||
-    opts.avatarHairColor !== undefined ||
-    opts.avatarExpression !== undefined ||
-    opts.avatarIntensity !== undefined;
-
-  if (!hasPreset && !hasCustom) return undefined;
-
-  if (hasPreset && hasCustom) {
-    throw new Error(
-      "--avatar cannot be combined with --avatar-* attribute options",
-    );
-  }
-
-  if (hasPreset) {
-    if (!/^preset:[0-4]$/.test(opts.avatar!)) {
-      throw new Error(
-        `Invalid --avatar "${opts.avatar}". Use preset:0 through preset:4`,
-      );
-    }
-    return opts.avatar;
-  }
-
-  let r = 3;
-  if (opts.avatarRotation !== undefined) {
-    const n = Number(opts.avatarRotation);
-    if (!Number.isInteger(n) || n < 1 || n > 5) {
-      throw new Error(
-        `Invalid --avatar-rotation "${opts.avatarRotation}". Must be 1–5`,
-      );
-    }
-    r = n;
-  }
-
-  let h = 1;
-  if (opts.avatarHairStyle !== undefined) {
-    const n = Number(opts.avatarHairStyle);
-    if (!Number.isInteger(n) || n < 1 || n > 5) {
-      throw new Error(
-        `Invalid --avatar-hair-style "${opts.avatarHairStyle}". Must be 1–5`,
-      );
-    }
-    h = n;
-  }
-
-  const s =
-    opts.avatarSkin !== undefined
-      ? lookupRequired(opts.avatarSkin, SKIN_MAP, "--avatar-skin")
-      : 2;
-  const c =
-    opts.avatarHairColor !== undefined
-      ? lookupRequired(opts.avatarHairColor, HAIR_COLOR_MAP, "--avatar-hair-color")
-      : 5;
-  const f =
-    opts.avatarExpression !== undefined
-      ? lookupRequired(opts.avatarExpression, EXPRESSION_MAP, "--avatar-expression")
-      : 1;
-  const i =
-    opts.avatarIntensity !== undefined
-      ? lookupRequired(opts.avatarIntensity, INTENSITY_MAP, "--avatar-intensity")
-      : "m";
-
-  return `svg:r${r}s${s}h${h}c${c}f${f}${i}`;
-}
+import { resolveAvatarUrl } from "./avatar";
 
 export const createCommand = new Command()
   .name("create")
@@ -141,7 +20,10 @@ export const createCommand = new Command()
     "Agent tone: professional, friendly, direct, supportive",
   )
   .option("--avatar <preset>", "Avatar preset: preset:0 through preset:4")
-  .option("--avatar-rotation <1-5>", "Head angle: 1=far-left  3=center  5=far-right")
+  .option(
+    "--avatar-rotation <1-5>",
+    "Head angle: 1=far-left  3=center  5=far-right",
+  )
   .option(
     "--avatar-skin <tone>",
     "Skin tone: light | light-medium | medium | medium-dark | dark",
