@@ -123,12 +123,20 @@ function GlobalConnectorCard({
       );
     }
     if (connector.connected) {
+      const isPlatform = connector.connector?.authMethod === "platform";
       return (
         <span className="flex items-center gap-2 text-xs text-muted-foreground truncate">
           <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
-          {connector.connector?.externalUsername
-            ? `@${connector.connector.externalUsername}`
-            : "Connected"}
+          <span className="truncate">
+            {connector.connector?.externalUsername
+              ? `@${connector.connector.externalUsername}`
+              : "Connected"}
+          </span>
+          {isPlatform && (
+            <span className="shrink-0 rounded-sm border border-border bg-muted px-1.5 py-0.5 text-[10px] font-medium leading-none text-muted-foreground">
+              VM0 Managed
+            </span>
+          )}
         </span>
       );
     }

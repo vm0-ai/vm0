@@ -373,8 +373,13 @@ export function ConnectModal({
         </DialogHeader>
 
         {item.connected && (
-          <p className="text-sm text-muted-foreground">
-            {connectedStatusText(item)}
+          <p className="flex items-center gap-2 text-sm text-muted-foreground">
+            <span>{connectedStatusText(item)}</span>
+            {item.connector?.authMethod === "platform" && (
+              <span className="shrink-0 rounded-sm border border-border bg-muted px-1.5 py-0.5 text-[10px] font-medium leading-none text-muted-foreground">
+                VM0 Managed
+              </span>
+            )}
           </p>
         )}
 
