@@ -2927,6 +2927,95 @@
           "Geben Sie Zero Markenkontext. Fügen Sie Ihre Brand-Voice-Richtlinien oder einen Beispielbeitrag aus der Zielsprache ein - die Ausgabe wird spürbar markengerechter."
         ]
       },
+      "blog-pipeline": {
+        "title": "SEO-optimierte Blog-Beiträge mit KI-generierten Visuals veröffentlichen",
+        "description": "Recherchieren Sie Keywords mit Ahrefs, erstellen Sie maßgeschneiderte Illustrationen mit Fal.ai und veröffentlichen Sie direkt in Strapi – alles in einem Gespräch.",
+        "timeSaved": "~45 Min. gespart",
+        "headings": {
+          "scenario": "Warum Content-Erstellung sich wie ein Fließband anfühlt",
+          "prompt": "So führen Sie Ihren gesamten Blog-Workflow aus",
+          "steps": "Wie Zero das Publishing optimiert",
+          "nextActions": "Veröffentlichte Beiträge in Vertriebserfolge verwandeln",
+          "integrations": "Erforderliche Integrationen: Ahrefs, Strapi und Fal.ai",
+          "tips": "Best Practices für Content im großen Maßstab"
+        },
+        "scenario": "Es ist Dienstagmorgen und Ihr Redaktionskalender starrt Sie an. Bis Freitag müssen Sie einen Blog-Beitrag veröffentlichen, aber Sie springen immer noch zwischen Tabs hin und her – Ahrefs für Keyword-Recherche, Fal.ai für Bildgenerierung und Strapi für die eigentliche Veröffentlichung. Bis Sie Daten exportiert, Visuals erstellt und den Beitrag formatiert haben, ist der halbe Morgen vorbei. Was, wenn Sie Zero zu Ihrem Thema briefen und es Recherche, Visuals und Publishing übernehmen lassen könnten, während Sie sich aufs Schreiben konzentrieren?",
+        "promptVariants": [
+          {
+            "label": "Kompletter Workflow",
+            "prompt": "@Zero recherche Keywords für 'KI-Produktivitätstools' auf Ahrefs, generiere dann mit Fal.ai ein Hero-Image mit modernem Arbeitsplatz und erstelle einen Blog-Beitrag in Strapi für das Top-Keyword mit 1000+ monatlichen Suchen"
+          },
+          {
+            "label": "Schnell veröffentlichen",
+            "prompt": "@Zero veröffentliche diesen Blog in Strapi mit dem Titel 'Die Zukunft der Remote-Arbeit' und nutze Fal.ai für ein Featured Image"
+          },
+          {
+            "label": "Geplant",
+            "prompt": "@Zero jeden Montag: Prüfe Ahrefs auf Trending-Keywords in unserer Branche und erstelle einen Blog-Outline in Strapi für die beste Chance"
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Marketing",
+            "text": "@Zero Ich muss einen Blog über nachhaltige Verpackung veröffentlichen. Kannst du auf Ahrefs Keywords mit geringer Konkurrenz finden und mit Fal.ai ein Header-Bild generieren?"
+          },
+          {
+            "name": "Zero",
+            "text": "Erledigt! Ich habe 3 vielversprechende Keywords auf Ahrefs gefunden:\n• 'umweltfreundliche Verpackungslösungen' (1.200 Suchen/Monat, KD: 28)\n• 'nachhaltige Verpackungsmaterialien' (890 Suchen/Monat, KD: 22)\n• 'biologisch abbaubare Verpackungsoptionen' (650 Suchen/Monat, KD: 18)\n\nIch habe ein Hero-Image mit recycelbaren Materialien generiert und einen Entwurf in Strapi erstellt für 'umweltfreundliche Verpackungslösungen'. Bereit für deinen Content!"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero verbindet sich mit Ahrefs",
+            "description": "Zero fragt Ihr Ahrefs-Konto ab, um High-Opportunity-Keywords basierend auf Suchvolumen, Keyword-Schwierigkeit und SERP-Features zu identifizieren. Erhalten Sie datengesteuerte Themenempfehlungen, ohne Slack zu verlassen."
+          },
+          {
+            "title": "Zero generiert Visuals mit Fal.ai",
+            "description": "Zero erstellt detaillierte Prompts und generiert maßgeschneiderte Illustrationen, Hero-Images oder Infografiken mit den Bildgenerierungsmodellen von Fal.ai. Nie wieder Stock-Fotos suchen."
+          },
+          {
+            "title": "Zero erstellt Entwürfe in Strapi",
+            "description": "Zero erstellt einen neuen Blog-Eintrag in Ihrem Strapi-CMS mit SEO-optimierten Metadaten, angehängtem Featured Image und einem Content-Outline, bereit für Ihr Schreiben."
+          },
+          {
+            "title": "Sie schreiben, Zero veröffentlicht",
+            "description": "Sobald Sie den Content bereitstellen, formatiert und veröffentlicht Zero den Beitrag – oder plant ihn für Ihr optimales Veröffentlichungsfenster. Ihr Content geht live ohne manuelle CMS-Arbeit."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Auf Social-Kanälen promoten",
+            "description": "Erstellen Sie Social-Post-Copy und veröffentlichen Sie auf X, LinkedIn oder anderen Plattformen",
+            "examplePrompt": "@Zero erstelle Social-Posts für diesen Blog und plane sie auf X und LinkedIn ein"
+          },
+          {
+            "title": "Newsletter versenden",
+            "description": "Fügen Sie den Beitrag zu Ihrem E-Mail-Newsletter hinzu und benachrichtigen Sie Abonnenten",
+            "examplePrompt": "@Zero erstelle einen Newsletter mit diesem Blog-Beitrag und plane ihn für Donnerstagmorgen"
+          },
+          {
+            "title": "Zur Routine machen",
+            "description": "Planen Sie wöchentliche Keyword-Recherche und Content-Erstellung",
+            "examplePrompt": "@Zero jeden Montag um 9 Uhr: Recherchiere Trending-Keywords und erstelle einen Blog-Outline in Strapi"
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Ahrefs – Greifen Sie auf Site Explorer und Keywords Explorer zu, um Ranking-Chancen zu identifizieren und Content-Lücken von Wettbewerbern zu analysieren."
+          },
+          {
+            "description": "Strapi – Erstellen, aktualisieren und veröffentlichen Sie Blog-Einträge in Ihrem Headless-CMS mit voller Kontrolle über Content-Typen und Workflows."
+          },
+          {
+            "description": "Fal.ai (optional) – Generieren Sie maßgeschneiderte Bilder, Illustrationen und visuelle Assets, angepasst an Ihr Blog-Thema und Ihren Markenstil."
+          }
+        ],
+        "tips": [
+          "Seien Sie spezifisch bei Keyword-Kriterien – nennen Sie Ziel-Suchvolumen, Schwierigkeitswerte oder Intent-Typen (informational, commercial, transactional).",
+          "Generieren Sie 2-3 Bild-Varianten mit verschiedenen Stilen und wählen Sie den besten Fit für Ihre Markenästhetik.",
+          "Verketten Sie diesen Use Case mit Social-Scheduling für einen End-to-End-Content-Vertriebs-Workflow."
+        ]
+      },
       "daily-email-triage": {
         "title": "Sortieren Sie Ihren Posteingang in zwei Minuten nicht in zwei Stunden",
         "description": "Zero liest Ihre Gmail, trennt Signal von Rauschen und sendet eine priorisierte Slack-Zusammenfassung mit Handlungselementen - damit Sie informiert in den Tag starten, nicht begraben.",

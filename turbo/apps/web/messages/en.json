@@ -2927,6 +2927,95 @@
           "Pair with Document Decisions to auto-log the brief to Notion - useful for recurring reviews where you want a historical snapshot per week."
         ]
       },
+      "blog-pipeline": {
+        "title": "Publish SEO-optimized blog posts with AI-generated visuals",
+        "description": "Research keywords with Ahrefs, generate custom illustrations with Fal.ai, and publish directly to Strapi—all in one conversation.",
+        "timeSaved": "~45 min saved",
+        "headings": {
+          "scenario": "Why content creation feels like an assembly line",
+          "prompt": "How to run your entire blog workflow",
+          "steps": "How Zero streamlines publishing",
+          "nextActions": "Turn published posts into distribution wins",
+          "integrations": "Required integrations: Ahrefs, Strapi, and Fal.ai",
+          "tips": "Best practices for content at scale"
+        },
+        "scenario": "It's Tuesday morning and your editorial calendar is staring back at you. You need to publish a blog post by Friday, but you're still jumping between tabs—Ahrefs for keyword research, Fal.ai for image generation, and Strapi to actually publish. By the time you've exported data, generated visuals, and formatted the post, half your morning is gone. What if you could brief Zero on your topic and let it handle the research, visuals, and publishing while you focus on the writing?",
+        "promptVariants": [
+          {
+            "label": "Full Pipeline",
+            "prompt": "@Zero research keywords for 'AI productivity tools' on Ahrefs, then generate a hero image with Fal.ai showing a modern workspace, and draft a blog post in Strapi targeting the top keyword with 1000+ monthly searches"
+          },
+          {
+            "label": "Quick Publish",
+            "prompt": "@Zero publish this blog to Strapi with the title 'The Future of Remote Work' and use Fal.ai to create a featured image"
+          },
+          {
+            "label": "Scheduled",
+            "prompt": "@Zero every Monday, check Ahrefs for trending keywords in our industry, then draft a blog outline in Strapi for the best opportunity"
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Marketing",
+            "text": "@Zero I need to publish a blog about sustainable packaging. Can you find low-competition keywords on Ahrefs and generate a header image with Fal.ai?"
+          },
+          {
+            "name": "Zero",
+            "text": "Done! I found 3 promising keywords on Ahrefs:\n• 'eco friendly packaging solutions' (1,200 searches/mo, KD: 28)\n• 'sustainable packaging materials' (890 searches/mo, KD: 22)\n• 'biodegradable packaging options' (650 searches/mo, KD: 18)\n\nI've generated a hero image showing recyclable materials and created a draft in Strapi targeting 'eco friendly packaging solutions'. Ready for your content!"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero connects to Ahrefs",
+            "description": "Zero queries your Ahrefs account to identify high-opportunity keywords based on search volume, keyword difficulty, and SERP features. Get data-driven topic suggestions without leaving Slack."
+          },
+          {
+            "title": "Zero generates visuals with Fal.ai",
+            "description": "Zero crafts detailed prompts and generates custom illustrations, hero images, or infographics using Fal.ai's image generation models. No more hunting for stock photos."
+          },
+          {
+            "title": "Zero drafts in Strapi",
+            "description": "Zero creates a new blog entry in your Strapi CMS with SEO-optimized metadata, featured image attached, and a content outline ready for your writing."
+          },
+          {
+            "title": "You write, Zero publishes",
+            "description": "Once you provide the content, Zero formats and publishes the post—or schedules it for your optimal publish window. Your content goes live without manual CMS work."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Promote on social channels",
+            "description": "Generate social post copy and publish to X, LinkedIn, or other platforms",
+            "examplePrompt": "@Zero create social posts for this blog and schedule them on X and LinkedIn"
+          },
+          {
+            "title": "Send newsletter",
+            "description": "Add the post to your email newsletter and notify subscribers",
+            "examplePrompt": "@Zero draft a newsletter featuring this blog post and schedule it for Thursday morning"
+          },
+          {
+            "title": "Make it routine",
+            "description": "Schedule weekly keyword research and content drafting",
+            "examplePrompt": "@Zero every Monday at 9am, research trending keywords and draft a blog outline in Strapi"
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Ahrefs — Access your Site Explorer and Keywords Explorer to identify ranking opportunities and analyze competitor content gaps."
+          },
+          {
+            "description": "Strapi — Create, update, and publish blog entries in your headless CMS with full control over content types and workflows."
+          },
+          {
+            "description": "Fal.ai (optional) — Generate custom images, illustrations, and visual assets tailored to your blog topic and brand style."
+          }
+        ],
+        "tips": [
+          "Be specific about keyword criteria—mention target search volume, difficulty scores, or intent types (informational, commercial, transactional).",
+          "Generate 2-3 image variants with different styles, then pick the best fit for your brand aesthetic.",
+          "Chain this use case with social scheduling to create an end-to-end content distribution workflow."
+        ]
+      },
       "daily-email-triage": {
         "title": "Triage your inbox in two minutes not two hours",
         "description": "Zero reads your Gmail, separates signal from noise, and sends a prioritized Slack summary with action items - so you start the day informed, not buried.",

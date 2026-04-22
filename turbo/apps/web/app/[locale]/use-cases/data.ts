@@ -153,6 +153,18 @@ const PLAUSIBLE: ConnectorRef = {
   icon: "/assets/connectors/plausible.svg",
 };
 
+const AHREFS: ConnectorRef = {
+  id: "ahrefs",
+  label: "Ahrefs",
+  icon: "/assets/connectors/ahref.svg",
+};
+
+const FAL: ConnectorRef = {
+  id: "fal",
+  label: "Fal.ai",
+  icon: "/assets/connectors/fal.svg",
+};
+
 // ---------------------------------------------------------------------------
 // Full use cases
 // ---------------------------------------------------------------------------
@@ -1313,6 +1325,39 @@ export const USE_CASES: UseCase[] = [
     integrationCount: 4,
     tipCount: 3,
     promptVariantCount: 4,
+    slackPreviewCount: 2,
+  },
+
+  {
+    slug: "blog-pipeline",
+    color: "#8B5CF6",
+    avatar: {
+      rotation: 2,
+      skin: 2,
+      hairStyle: 3,
+      hairColor: 3,
+      expression: 2,
+      intensity: "m",
+    },
+    roles: ["ops", "everyone"],
+    capability: "multi-tool",
+    model: "Claude 4 Sonnet",
+    connectors: [AHREFS, FAL, STRAPI],
+    integrations: [
+      { connector: AHREFS, required: true },
+      { connector: FAL, required: false },
+      { connector: STRAPI, required: true },
+    ],
+    relatedSlugs: [
+      "kol-cold-outreach",
+      "competitor-audit",
+      "product-health-briefing",
+    ],
+    stepCount: 4,
+    nextActionCount: 3,
+    integrationCount: 3,
+    tipCount: 3,
+    promptVariantCount: 3,
     slackPreviewCount: 2,
   },
 ];
