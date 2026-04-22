@@ -155,26 +155,29 @@ export async function listConnectors(
     getApiTokenConnectorTypes(orgId, userId),
   ]);
 
+  // Both tables store `type` as varchar, so either can outlive a connector's
+  // removal from the contract (a type dropped from `CONNECTOR_TYPES` while
+  // stale rows remain). Skip unknown types instead of throwing, so the list
+  // endpoint stays usable while ops cleans up orphans.
   const dbConnectors: ConnectorResponse[] = [
-    ...oauthRows.map((row) => {
-      return {
-        id: row.id,
-        type: parseConnectorType(row.type),
-        authMethod: row.authMethod,
-        externalId: row.externalId,
-        externalUsername: row.externalUsername,
-        externalEmail: row.externalEmail,
-        oauthScopes: row.oauthScopes ? JSON.parse(row.oauthScopes) : null,
-        needsReconnect: row.needsReconnect,
-        createdAt: row.createdAt.toISOString(),
-        updatedAt: row.updatedAt.toISOString(),
-      };
+    ...oauthRows.flatMap((row) => {
+      const parsed = connectorTypeSchema.safeParse(row.type);
+      if (!parsed.success) return [];
+      return [
+        {
+          id: row.id,
+          type: parsed.data,
+          authMethod: row.authMethod,
+          externalId: row.externalId,
+          externalUsername: row.externalUsername,
+          externalEmail: row.externalEmail,
+          oauthScopes: row.oauthScopes ? JSON.parse(row.oauthScopes) : null,
+          needsReconnect: row.needsReconnect,
+          createdAt: row.createdAt.toISOString(),
+          updatedAt: row.updatedAt.toISOString(),
+        },
+      ];
     }),
-    // Platform rows are indexed by varchar, so the table can outlive a
-    // connector's removal from the contract (e.g. a type dropped from
-    // `CONNECTOR_TYPES` while stale rows remain). Silently skip unknown
-    // types instead of throwing, so the list endpoint stays usable while
-    // ops/back-office cleans up the orphan rows.
     ...platformRows.flatMap((row) => {
       const parsed = connectorTypeSchema.safeParse(row.type);
       return parsed.success ? [platformRowToResponse(row, parsed.data)] : [];
