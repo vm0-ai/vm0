@@ -3,6 +3,8 @@ import { HttpResponse } from "msw";
 import { eq } from "drizzle-orm";
 import { testContext, uniqueId } from "../../../../__tests__/test-helpers";
 import { seedTestCompose } from "../../../../__tests__/db-test-seeders/agents";
+import { insertTestVoiceChatCandidateTask } from "../../../../__tests__/db-test-seeders/voice-chat-candidate";
+import { getTestVoiceChatCandidateTask } from "../../../../__tests__/db-test-assertions/voice-chat-candidate";
 import { server } from "../../../../mocks/server";
 import { http } from "../../../../__tests__/msw";
 import { mockAblyPublish } from "../../../../__tests__/ably-mock";
@@ -310,5 +312,140 @@ describe("triggerReasoning", () => {
     expect(row.reasoningPending).toBe(false);
     expect(handler.mocked).not.toHaveBeenCalled();
     expect(mockAblyPublish).not.toHaveBeenCalled();
+  });
+});
+
+describe("triggerReasoning — task compaction", () => {
+  it("C1 — no-ops when OPENROUTER_API_KEY is absent", async () => {
+    context.setupMocks();
+    // No OPENROUTER_API_KEY set — env() returns it as undefined
+    const { sessionId } = await seedActiveSession();
+    await insertTestVoiceChatCandidateTask(sessionId);
+
+    const handler = http.post(OPENROUTER_URL, () => {
+      return HttpResponse.json(openRouterResponse("compacted"));
+    });
+    server.use(handler.handler);
+
+    await triggerReasoning(sessionId);
+
+    // Reasoner skips (no items), compactor also skips (no API key) — one call max
+    expect(handler.mocked).not.toHaveBeenCalled();
+  });
+
+  it("C2 — skips tasks whose result is at or below 300 chars", async () => {
+    context.setupMocks();
+    vi.stubEnv("OPENROUTER_API_KEY", "test-key");
+    reloadEnv();
+
+    const { sessionId } = await seedActiveSession();
+    const taskId = await insertTestVoiceChatCandidateTask(sessionId, {
+      result: "Short result",
+    });
+
+    const handler = http.post(OPENROUTER_URL, () => {
+      return HttpResponse.json(openRouterResponse("compacted"));
+    });
+    server.use(handler.handler);
+
+    await triggerReasoning(sessionId);
+
+    // Only the reasoner debounce path runs (no items); compactor skips short result
+    const task = await getTestVoiceChatCandidateTask(taskId);
+    expect(task?.result).toBe("Short result");
+  });
+
+  it("C3 — skips tasks updated within 60 seconds", async () => {
+    context.setupMocks();
+    vi.stubEnv("OPENROUTER_API_KEY", "test-key");
+    reloadEnv();
+
+    const { sessionId } = await seedActiveSession();
+    const tenSecondsAgo = new Date(Date.now() - 10_000);
+    const taskId = await insertTestVoiceChatCandidateTask(sessionId, {
+      resultUpdatedAt: tenSecondsAgo,
+    });
+
+    const handler = http.post(OPENROUTER_URL, () => {
+      return HttpResponse.json(openRouterResponse("compacted"));
+    });
+    server.use(handler.handler);
+
+    await triggerReasoning(sessionId);
+
+    const task = await getTestVoiceChatCandidateTask(taskId);
+    expect(task?.result).not.toBe("compacted");
+  });
+
+  it("C4 — compacts eligible task and publishes Ably signal", async () => {
+    context.setupMocks();
+    vi.stubEnv("OPENROUTER_API_KEY", "test-key");
+    reloadEnv();
+
+    const { sessionId } = await seedActiveSession();
+    const taskId = await insertTestVoiceChatCandidateTask(sessionId);
+
+    const compactedText = "B".repeat(400) + " key facts retained";
+    // triggerReasoning takes the debounce bail-out (no items), then calls
+    // compactVoiceChatCandidateTaskResults which hits OpenRouter for the task.
+    const handler = http.post(OPENROUTER_URL, () => {
+      return HttpResponse.json(openRouterResponse(compactedText));
+    });
+    server.use(handler.handler);
+
+    await triggerReasoning(sessionId);
+
+    const task = await getTestVoiceChatCandidateTask(taskId);
+    expect(task?.result).toBe(compactedText);
+    expect(task?.resultUpdatedAt).not.toBeNull();
+
+    expect(mockAblyPublish).toHaveBeenCalledWith(
+      `voice-chat-candidate:${sessionId}`,
+      null,
+    );
+  });
+
+  it("C5 — LLM network error leaves the task unchanged", async () => {
+    context.setupMocks();
+    vi.stubEnv("OPENROUTER_API_KEY", "test-key");
+    reloadEnv();
+
+    const { sessionId } = await seedActiveSession();
+    const originalResult = "C".repeat(500) + " original content";
+    const taskId = await insertTestVoiceChatCandidateTask(sessionId, {
+      result: originalResult,
+    });
+
+    const handler = http.post(OPENROUTER_URL, () => {
+      return HttpResponse.error();
+    });
+    server.use(handler.handler);
+
+    await triggerReasoning(sessionId);
+
+    const task = await getTestVoiceChatCandidateTask(taskId);
+    expect(task?.result).toBe(originalResult);
+  });
+
+  it("C6 — running tasks are not compacted", async () => {
+    context.setupMocks();
+    vi.stubEnv("OPENROUTER_API_KEY", "test-key");
+    reloadEnv();
+
+    const { sessionId } = await seedActiveSession();
+    const taskId = await insertTestVoiceChatCandidateTask(sessionId, {
+      result: "D".repeat(600) + " partial result",
+      status: "running",
+    });
+
+    const handler = http.post(OPENROUTER_URL, () => {
+      return HttpResponse.json(openRouterResponse("compacted"));
+    });
+    server.use(handler.handler);
+
+    await triggerReasoning(sessionId);
+
+    const task = await getTestVoiceChatCandidateTask(taskId);
+    expect(task?.result).toContain("partial result");
   });
 });

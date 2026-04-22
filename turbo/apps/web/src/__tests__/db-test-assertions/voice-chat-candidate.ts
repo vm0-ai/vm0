@@ -1,6 +1,9 @@
 import { eq, and } from "drizzle-orm";
 import { initServices } from "../../lib/init-services";
-import { featureCandidateVoiceChatSessions } from "../../db/schema/voice-chat-candidate";
+import {
+  featureCandidateVoiceChatSessions,
+  featureCandidateVoiceChatTasks,
+} from "../../db/schema/voice-chat-candidate";
 
 /**
  * Read a candidate voice-chat session's mutable state.
@@ -71,4 +74,29 @@ export async function countTestVoiceChatCandidateSessionsByReasoningStatus(
       ),
     );
   return rows.length;
+}
+
+/**
+ * Read a task's result and resultUpdatedAt for compaction assertions.
+ * @why-db-direct Compaction side-effects are only observable via the task row;
+ * there is no public read API for individual task state in the candidate table.
+ */
+export async function getTestVoiceChatCandidateTask(id: string): Promise<
+  | {
+      result: string | null;
+      resultUpdatedAt: Date | null;
+      status: string;
+    }
+  | undefined
+> {
+  initServices();
+  const [row] = await globalThis.services.db
+    .select({
+      result: featureCandidateVoiceChatTasks.result,
+      resultUpdatedAt: featureCandidateVoiceChatTasks.resultUpdatedAt,
+      status: featureCandidateVoiceChatTasks.status,
+    })
+    .from(featureCandidateVoiceChatTasks)
+    .where(eq(featureCandidateVoiceChatTasks.id, id));
+  return row;
 }
