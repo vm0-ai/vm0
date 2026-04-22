@@ -11,7 +11,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import {
   CONNECTOR_TYPES,
   type ConnectorType,
@@ -137,8 +137,6 @@ describe("directed connect page", () => {
   });
 
   it("opens api-token dialog for a connector without oauth", async () => {
-    const user = userEvent.setup();
-
     // Find a connector type that only has api-token auth
     const apiTokenOnlyType = (
       Object.keys(CONNECTOR_TYPES) as ConnectorType[]
@@ -165,7 +163,7 @@ describe("directed connect page", () => {
       ).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText("Connect"));
+    click(screen.getByText("Connect"));
 
     // Dialog should open with the connector label as title
     await waitFor(() => {
@@ -213,7 +211,7 @@ describe("directed connect page", () => {
       return el.textContent?.trim() === "Connect";
     });
     expect(connectBtn1).toBeDefined();
-    await user.click(connectBtn1!);
+    click(connectBtn1!);
 
     await waitFor(() => {
       expect(screen.getByPlaceholderText("xaat-...")).toBeInTheDocument();
@@ -224,7 +222,7 @@ describe("directed connect page", () => {
       return el.textContent?.trim() === "Save";
     });
     expect(saveBtn1).toBeDefined();
-    await user.click(saveBtn1!);
+    click(saveBtn1!);
 
     await waitFor(() => {
       expect(screen.getByText("Invalid API token")).toBeInTheDocument();
@@ -232,7 +230,6 @@ describe("directed connect page", () => {
   });
 
   it("connect button opens OAuth flow for OAuth-enabled connector (CONN-I-047)", async () => {
-    const user = userEvent.setup();
     const openSpy = vi
       .spyOn(window, "open")
       .mockReturnValue({ closed: true } as Window);
@@ -251,7 +248,7 @@ describe("directed connect page", () => {
       return el.textContent?.trim() === "Connect";
     });
     expect(connectBtn2).toBeDefined();
-    await user.click(connectBtn2!);
+    click(connectBtn2!);
 
     expect(openSpy).toHaveBeenCalledWith(
       expect.stringContaining("/api/zero/connectors/gmail/authorize"),
@@ -293,7 +290,7 @@ describe("directed connect page", () => {
       return el.textContent?.trim() === "Connect";
     });
     expect(connectBtn3).toBeDefined();
-    await user.click(connectBtn3!);
+    click(connectBtn3!);
 
     await waitFor(() => {
       expect(screen.getByPlaceholderText("xaat-...")).toBeInTheDocument();
@@ -307,7 +304,7 @@ describe("directed connect page", () => {
       return el.textContent?.trim() === "Save";
     });
     expect(saveBtn2).toBeDefined();
-    await user.click(saveBtn2!);
+    click(saveBtn2!);
 
     await waitFor(() => {
       expect(capturedBody).toBeDefined();
@@ -356,7 +353,7 @@ describe("directed connect page", () => {
       return el.textContent?.trim() === "Connect";
     });
     expect(connectBtn).toBeDefined();
-    await user.click(connectBtn!);
+    click(connectBtn!);
 
     await waitFor(() => {
       expect(screen.getByPlaceholderText("xaat-...")).toBeInTheDocument();
@@ -370,7 +367,7 @@ describe("directed connect page", () => {
       return el.textContent?.trim() === "Save";
     });
     expect(saveBtn).toBeDefined();
-    await user.click(saveBtn!);
+    click(saveBtn!);
 
     await waitFor(() => {
       expect(authorizeCalled).toBeTruthy();
@@ -474,7 +471,7 @@ describe("directed connect page", () => {
       return el.textContent?.trim() === "Connect";
     });
     expect(connectBtn).toBeDefined();
-    await user.click(connectBtn!);
+    click(connectBtn!);
 
     await waitFor(() => {
       expect(screen.getByPlaceholderText("xaat-...")).toBeInTheDocument();
@@ -488,7 +485,7 @@ describe("directed connect page", () => {
       return el.textContent?.trim() === "Save";
     });
     expect(saveBtn).toBeDefined();
-    await user.click(saveBtn!);
+    click(saveBtn!);
 
     // Wait for the token to be submitted
     await waitFor(() => {

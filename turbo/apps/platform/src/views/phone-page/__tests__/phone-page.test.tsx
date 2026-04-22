@@ -3,7 +3,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { setMockPhoneStatus } from "../../../mocks/handlers/api-phone.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 import {
@@ -72,7 +72,6 @@ describe("phone page - org phone not configured", () => {
   });
 
   it("should call setup API when request button is clicked", async () => {
-    const user = userEvent.setup();
     let setupCalled = false;
 
     mockPhoneStatusAPI({ orgPhone: null });
@@ -92,7 +91,7 @@ describe("phone page - org phone not configured", () => {
       expect(screen.getByText("Request Org Phone Number")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText("Request Org Phone Number"));
+    click(screen.getByText("Request Org Phone Number"));
 
     await waitFor(() => {
       expect(setupCalled).toBeTruthy();
@@ -176,7 +175,7 @@ describe("phone page - user phone not linked", () => {
       screen.getByPlaceholderText("+14155551234"),
       "+14155559999",
     );
-    await user.click(screen.getByText("Save"));
+    click(screen.getByText("Save"));
 
     await waitFor(() => {
       expect(linkCalled).toBeTruthy();
@@ -237,7 +236,7 @@ describe("phone page - error display", () => {
       screen.getByPlaceholderText("+14155551234"),
       "+14155559999",
     );
-    await user.click(screen.getByText("Save"));
+    click(screen.getByText("Save"));
 
     await waitFor(() => {
       expect(

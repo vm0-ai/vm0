@@ -14,10 +14,9 @@
 
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-switches.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 import { setMockTasks } from "../../../mocks/handlers/api-tasks.ts";
@@ -98,7 +97,6 @@ describe("voiceBanner — preparing state (MC-VC-003)", () => {
       }),
     );
 
-    const user = userEvent.setup();
     detachedSetupPage({ context, path: "/_/mission-control" });
 
     await waitFor(() => {
@@ -109,7 +107,7 @@ describe("voiceBanner — preparing state (MC-VC-003)", () => {
       ).toBeDefined();
     });
 
-    await user.click(
+    click(
       screen.getAllByRole("button").find((el) => {
         return /Voice On/i.test(el.textContent ?? "");
       })!,
@@ -139,7 +137,6 @@ describe("voiceBanner — error on session creation (MC-VC-004)", () => {
       }),
     );
 
-    const user = userEvent.setup();
     detachedSetupPage({ context, path: "/_/mission-control" });
 
     await waitFor(() => {
@@ -150,7 +147,7 @@ describe("voiceBanner — error on session creation (MC-VC-004)", () => {
       ).toBeDefined();
     });
 
-    await user.click(
+    click(
       screen.getAllByRole("button").find((el) => {
         return /Voice On/i.test(el.textContent ?? "");
       })!,
@@ -182,7 +179,6 @@ describe("voiceBanner — unexpected server error (MC-VC-006)", () => {
       }),
     );
 
-    const user = userEvent.setup();
     detachedSetupPage({ context, path: "/_/mission-control" });
 
     await waitFor(() => {
@@ -193,7 +189,7 @@ describe("voiceBanner — unexpected server error (MC-VC-006)", () => {
       ).toBeDefined();
     });
 
-    await user.click(
+    click(
       screen.getAllByRole("button").find((el) => {
         return /Voice On/i.test(el.textContent ?? "");
       })!,
@@ -222,7 +218,6 @@ describe("voiceBanner — dismiss error restores idle (MC-VC-005)", () => {
       }),
     );
 
-    const user = userEvent.setup();
     detachedSetupPage({ context, path: "/_/mission-control" });
 
     await waitFor(() => {
@@ -233,7 +228,7 @@ describe("voiceBanner — dismiss error restores idle (MC-VC-005)", () => {
       ).toBeDefined();
     });
 
-    await user.click(
+    click(
       screen.getAllByRole("button").find((el) => {
         return /Voice On/i.test(el.textContent ?? "");
       })!,
@@ -249,7 +244,7 @@ describe("voiceBanner — dismiss error restores idle (MC-VC-005)", () => {
     const dismiss = screen.getAllByRole("button").find((el) => {
       return el.textContent === "Dismiss";
     })!;
-    await user.click(dismiss);
+    click(dismiss);
 
     await waitFor(() => {
       expect(screen.queryByText("Voice error")).toBeNull();

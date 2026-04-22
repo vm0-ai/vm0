@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  fill,
+  click,
+} from "../../../__tests__/page-helper.ts";
 import { getCategories } from "../zero-ideation-data.ts";
 import { pathname } from "../../../signals/location.ts";
 import {
@@ -98,7 +101,6 @@ describe("ideation page - category tabs", () => {
   });
 
   it("should highlight the selected category tab as active", async () => {
-    const user = userEvent.setup();
     await renderIdeationPage();
 
     const allTab = await waitFor(() => {
@@ -114,7 +116,7 @@ describe("ideation page - category tabs", () => {
     expect(githubTab!.className).not.toContain("bg-muted text-foreground");
 
     // Click GitHub tab
-    await user.click(githubTab!);
+    click(githubTab!);
 
     // GitHub tab should now have active styling, All should not
     await waitFor(() => {
@@ -124,7 +126,6 @@ describe("ideation page - category tabs", () => {
   });
 
   it("should filter to a single category when its tab is clicked", async () => {
-    const user = userEvent.setup();
     await renderIdeationPage();
 
     await waitFor(() => {
@@ -135,7 +136,7 @@ describe("ideation page - category tabs", () => {
       ).toBeDefined();
     });
 
-    await user.click(
+    click(
       screen.getAllByRole("button").find((el) => {
         return el.textContent?.trim() === "GitHub";
       })!,
@@ -154,7 +155,6 @@ describe("ideation page - category tabs", () => {
   });
 
   it("should show all categories again when All tab is clicked after filtering", async () => {
-    const user = userEvent.setup();
     await renderIdeationPage();
 
     await waitFor(() => {
@@ -165,7 +165,7 @@ describe("ideation page - category tabs", () => {
       ).toBeDefined();
     });
 
-    await user.click(
+    click(
       screen.getAllByRole("button").find((el) => {
         return el.textContent?.trim() === "GitHub";
       })!,
@@ -177,7 +177,7 @@ describe("ideation page - category tabs", () => {
       ).not.toBeInTheDocument();
     });
 
-    await user.click(screen.getByText("All"));
+    click(screen.getByText("All"));
 
     await waitFor(() => {
       expect(
@@ -276,14 +276,13 @@ describe("ideation page - sidebar layout", () => {
 
 describe("ideation page - navigation", () => {
   it("should navigate to /talk/:id when a use case card is clicked", async () => {
-    const user = userEvent.setup();
     await renderIdeationPage();
 
     await waitFor(() => {
       expect(screen.getByText("Daily standup report")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText("Daily standup report"));
+    click(screen.getByText("Daily standup report"));
 
     await waitFor(() => {
       expect(pathname()).toBe(`/agents/${AGENT_ID}/chat`);
@@ -291,14 +290,13 @@ describe("ideation page - navigation", () => {
   });
 
   it("should navigate to /talk/:id when Chat breadcrumb is clicked", async () => {
-    const user = userEvent.setup();
     await renderIdeationPage();
 
     const chatBreadcrumb = await waitFor(() => {
       return screen.getByText("Chat").closest("button")!;
     });
 
-    await user.click(chatBreadcrumb!);
+    click(chatBreadcrumb!);
 
     await waitFor(() => {
       expect(pathname()).toBe(`/agents/${AGENT_ID}/chat`);
@@ -339,9 +337,8 @@ describe("ideation page - navigation", () => {
     });
 
     // Navigate back via breadcrumb — should go to the same agent's chat
-    const user = userEvent.setup();
     const chatBreadcrumb = screen.getByText("Chat").closest("button")!;
-    await user.click(chatBreadcrumb);
+    click(chatBreadcrumb);
 
     await waitFor(() => {
       expect(pathname()).toBe(`/agents/${customAgentId}/chat`);

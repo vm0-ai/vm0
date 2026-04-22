@@ -12,7 +12,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import {
   orgOpenAddDialog$,
   orgOpenEditDialog$,
@@ -170,11 +170,10 @@ describe("org-provider-dialog - interaction", () => {
 
   // ORG-I-093: model selector dropdown shows available models
   it("shows available models in dropdown for openrouter provider", async () => {
-    const user = userEvent.setup();
     await openAddDialog("openrouter-api-key", /Add workspace/i);
 
     const trigger = screen.getByRole("combobox");
-    await user.click(trigger);
+    click(trigger);
 
     await waitFor(() => {
       expect(screen.getByText("Claude Sonnet 4.6")).toBeInTheDocument();
@@ -184,7 +183,6 @@ describe("org-provider-dialog - interaction", () => {
 
   // ORG-I-094: auth method selector for multi-auth providers
   it("shows auth method options for aws-bedrock multi-auth provider", async () => {
-    const user = userEvent.setup();
     await openAddDialog("aws-bedrock", /Add AWS Bedrock provider/i);
 
     expect(
@@ -192,7 +190,7 @@ describe("org-provider-dialog - interaction", () => {
     ).toBeInTheDocument();
 
     const trigger = screen.getByRole("combobox");
-    await user.click(trigger);
+    click(trigger);
 
     await waitFor(() => {
       expect(screen.getAllByText("Bedrock API key").length).toBeGreaterThan(0);
@@ -209,7 +207,6 @@ describe("org-provider-dialog - interaction", () => {
   });
 
   it("shows custom model input when default model toggle is disabled for azure-foundry", async () => {
-    const user = userEvent.setup();
     await openAddDialog("azure-foundry", /Add Azure foundry portal provider/i);
 
     // Custom model input should not be visible when toggle is on (default)
@@ -219,7 +216,7 @@ describe("org-provider-dialog - interaction", () => {
 
     // Click toggle to disable "use default model"
     const switchEl = screen.getByRole("switch");
-    await user.click(switchEl);
+    click(switchEl);
 
     await waitFor(() => {
       expect(
@@ -234,7 +231,7 @@ describe("org-provider-dialog - interaction", () => {
     await openAddDialog("azure-foundry", /Add Azure foundry portal provider/i);
 
     const switchEl = screen.getByRole("switch");
-    await user.click(switchEl);
+    click(switchEl);
 
     const customInput = await screen.findByPlaceholderText("claude-sonnet-4-5");
     await user.type(customInput, "my-custom-model");
@@ -244,12 +241,11 @@ describe("org-provider-dialog - interaction", () => {
 
   // ORG-I-097: cancel button closes dialog
   it("closes dialog when cancel button is clicked", async () => {
-    const user = userEvent.setup();
     await openAddDialog("anthropic-api-key", /Add workspace/i);
 
     expect(screen.getByText(/Add workspace Anthropic/i)).toBeInTheDocument();
 
-    await user.click(screen.getByText("Cancel"));
+    click(screen.getByText("Cancel"));
 
     await waitFor(() => {
       expect(
@@ -283,7 +279,7 @@ describe("org-provider-dialog - interaction", () => {
     await user.type(input, "sk-ant-some-key-value");
 
     const addButton = screen.getByText("Add");
-    await user.click(addButton);
+    click(addButton);
 
     await waitFor(() => {
       expect(
@@ -302,10 +298,9 @@ describe("org-provider-dialog - interaction", () => {
 describe("org-provider-dialog - validation", () => {
   // ORG-D-091 / ORG-V-102: form field validation errors are displayed
   it("shows api key required error when submitting empty form for anthropic-api-key", async () => {
-    const user = userEvent.setup();
     await openAddDialog("anthropic-api-key", /Add workspace/i);
 
-    await user.click(screen.getByText("Add"));
+    click(screen.getByText("Add"));
 
     await waitFor(() => {
       expect(screen.getByText("API key is required")).toBeInTheDocument();

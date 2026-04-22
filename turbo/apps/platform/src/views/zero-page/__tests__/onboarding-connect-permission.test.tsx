@@ -1,9 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  fill,
+  click,
+} from "../../../__tests__/page-helper.ts";
 import { permissionDialogType$ } from "../../../signals/zero-page/settings/connectors.ts";
 import {
   type ConnectorListResponse,
@@ -57,7 +60,6 @@ function mockAdminOnboarding() {
 
 describe("onboarding connector permission dialog suppression", () => {
   it("should not set permissionDialogType$ after OAuth connect during onboarding", async () => {
-    const user = userEvent.setup();
     mockAdminOnboarding();
 
     const mockWindow = { closed: false, close: vi.fn() };
@@ -71,14 +73,14 @@ describe("onboarding connector permission dialog suppression", () => {
     });
     const input = screen.getByPlaceholderText("e.g. Acme Corp");
     await fill(input, "Test Workspace");
-    await user.click(screen.getByText("Next"));
+    click(screen.getByText("Next"));
 
     // Step 2: Choose your tools — select GitHub
     await waitFor(() => {
       expect(screen.getByText("Choose your tools")).toBeInTheDocument();
     });
-    await user.click(screen.getByTestId("connector-card-github"));
-    await user.click(screen.getByText("Next"));
+    click(screen.getByTestId("connector-card-github"));
+    click(screen.getByText("Next"));
 
     // Step 3: Connect your apps
     await waitFor(() => {
@@ -96,7 +98,7 @@ describe("onboarding connector permission dialog suppression", () => {
     // Click "Connect" on GitHub — this triggers connectConnector$ which
     // normally sets permissionDialogType$, but the onboarding wrapper
     // clears it immediately after.
-    await user.click(screen.getByText("Connect"));
+    click(screen.getByText("Connect"));
 
     // Wait for the Ably subscription to be registered, then simulate the
     // OAuth callback publishing `connector:changed` so connectConnector$

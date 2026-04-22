@@ -4,7 +4,11 @@ import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  fill,
+  click,
+} from "../../../__tests__/page-helper.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 import {
@@ -84,14 +88,14 @@ function renderSchedulePage() {
 
 /** Open the dropdown menu for a schedule row, then click a menu item. */
 async function openMenuAndClick(
-  user: ReturnType<typeof userEvent.setup>,
+  _user: ReturnType<typeof userEvent.setup>,
   timeLabel: string,
   action: "Edit" | "Delete" | "Run now",
 ) {
   const menuTrigger = screen.getAllByLabelText(
     `More actions for ${timeLabel}`,
   )[0];
-  await user.click(menuTrigger);
+  click(menuTrigger);
   await waitFor(() => {
     expect(
       screen.getAllByRole("menuitem").find((el) => {
@@ -99,7 +103,7 @@ async function openMenuAndClick(
       }),
     ).toBeDefined();
   });
-  await user.click(
+  click(
     screen.getAllByRole("menuitem").find((el) => {
       return el.textContent?.includes(action);
     })!,
@@ -354,7 +358,6 @@ describe("zero schedule page - list view", () => {
   });
 
   it("should expose Run now, Edit, and Delete in the row menu", async () => {
-    const user = userEvent.setup();
     mockScheduleAPI();
     await renderSchedulePage();
 
@@ -366,7 +369,7 @@ describe("zero schedule page - list view", () => {
     const menuTrigger = screen.getAllByLabelText(
       "More actions for Every weekday at 9:00 AM",
     )[0];
-    await user.click(menuTrigger);
+    click(menuTrigger);
     await waitFor(() => {
       expect(screen.getByText(/Run now/)).toBeInTheDocument();
       expect(screen.getByText("Edit")).toBeInTheDocument();
@@ -377,7 +380,6 @@ describe("zero schedule page - list view", () => {
 
 describe("zero schedule page - create dialog", () => {
   it("should open create dialog when Add schedule is clicked", async () => {
-    const user = userEvent.setup();
     mockScheduleAPI();
     await renderSchedulePage();
 
@@ -388,7 +390,7 @@ describe("zero schedule page - create dialog", () => {
       ).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText(/Add schedule/i));
+    click(screen.getByText(/Add schedule/i));
 
     await waitFor(() => {
       expect(
@@ -399,7 +401,6 @@ describe("zero schedule page - create dialog", () => {
   });
 
   it("should save a new schedule via API", async () => {
-    const user = userEvent.setup();
     let capturedPrompt: string | null = null;
 
     setMockSchedules(createMockSchedules());
@@ -419,7 +420,7 @@ describe("zero schedule page - create dialog", () => {
       ).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText(/Add schedule/i));
+    click(screen.getByText(/Add schedule/i));
 
     await waitFor(() => {
       expect(
@@ -432,7 +433,7 @@ describe("zero schedule page - create dialog", () => {
     await fill(promptInput, "Daily standup summary");
 
     // Click Create
-    await user.click(screen.getByText("Create"));
+    click(screen.getByText("Create"));
 
     await waitFor(() => {
       expect(capturedPrompt).toBeTruthy();
@@ -443,7 +444,6 @@ describe("zero schedule page - create dialog", () => {
 
 describe("zero schedule page - toggle enabled", () => {
   it("should send PATCH request when toggling schedule enabled state", async () => {
-    const user = userEvent.setup();
     let capturedAction: string | null = null;
 
     setMockSchedules(createMockSchedules());
@@ -471,7 +471,7 @@ describe("zero schedule page - toggle enabled", () => {
     const toggleSwitch = screen.getAllByLabelText(
       "Disable Every weekday at 9:00 AM",
     )[0];
-    await user.click(toggleSwitch);
+    click(toggleSwitch);
 
     await waitFor(() => {
       expect(capturedAction).toBe("disable");
@@ -527,7 +527,7 @@ describe("zero schedule page - delete confirmation", () => {
       expect(screen.getByText("Delete schedule?")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText("Cancel"));
+    click(screen.getByText("Cancel"));
 
     await waitFor(() => {
       expect(screen.queryByText("Delete schedule?")).not.toBeInTheDocument();
@@ -561,7 +561,7 @@ describe("zero schedule page - delete confirmation", () => {
       expect(screen.getByText("Delete schedule?")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText("Delete"));
+    click(screen.getByText("Delete"));
 
     await waitFor(() => {
       expect(deletedName).toBe("morning-briefing");
@@ -597,7 +597,7 @@ describe("zero schedule page - delete confirmation", () => {
       expect(screen.getByText("Delete schedule?")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText("Delete"));
+    click(screen.getByText("Delete"));
 
     // Dialog stays open with loading state
     await waitFor(() => {
@@ -641,7 +641,7 @@ describe("zero schedule page - delete confirmation", () => {
       expect(screen.getByText("Delete schedule?")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText("Delete"));
+    click(screen.getByText("Delete"));
 
     // Dialog should close immediately
     await waitFor(() => {
@@ -653,7 +653,6 @@ describe("zero schedule page - delete confirmation", () => {
 
 describe("zero schedule page - create dialog confirm close", () => {
   it("should show confirm overlay when Cancel is clicked with prompt text", async () => {
-    const user = userEvent.setup();
     mockScheduleAPI();
     await renderSchedulePage();
 
@@ -661,7 +660,7 @@ describe("zero schedule page - create dialog confirm close", () => {
       expect(screen.getByText(/Add schedule/i)).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText(/Add schedule/i));
+    click(screen.getByText(/Add schedule/i));
 
     await waitFor(() => {
       expect(
@@ -672,7 +671,7 @@ describe("zero schedule page - create dialog confirm close", () => {
     const promptInput = screen.getByLabelText("Prompt");
     await fill(promptInput, "Some new task");
 
-    await user.click(screen.getByText("Cancel"));
+    click(screen.getByText("Cancel"));
 
     await waitFor(() => {
       expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();
@@ -680,7 +679,6 @@ describe("zero schedule page - create dialog confirm close", () => {
   });
 
   it("should close create dialog directly when Cancel is clicked without changes", async () => {
-    const user = userEvent.setup();
     mockScheduleAPI();
     await renderSchedulePage();
 
@@ -688,7 +686,7 @@ describe("zero schedule page - create dialog confirm close", () => {
       expect(screen.getByText(/Add schedule/i)).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText(/Add schedule/i));
+    click(screen.getByText(/Add schedule/i));
 
     await waitFor(() => {
       expect(
@@ -696,7 +694,7 @@ describe("zero schedule page - create dialog confirm close", () => {
       ).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText("Cancel"));
+    click(screen.getByText("Cancel"));
 
     await waitFor(() => {
       expect(
@@ -711,7 +709,6 @@ describe("zero schedule page - create dialog confirm close", () => {
 
 describe("zero schedule page - schedule dialog fields", () => {
   it("should show agent selector in create dialog", async () => {
-    const user = userEvent.setup();
     mockScheduleAPI();
     await renderSchedulePage();
 
@@ -719,7 +716,7 @@ describe("zero schedule page - schedule dialog fields", () => {
       expect(screen.getByText(/Add schedule/i)).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText(/Add schedule/i));
+    click(screen.getByText(/Add schedule/i));
 
     await waitFor(() => {
       expect(
@@ -731,7 +728,6 @@ describe("zero schedule page - schedule dialog fields", () => {
   });
 
   it("should disable Create button when prompt is empty", async () => {
-    const user = userEvent.setup();
     mockScheduleAPI();
     await renderSchedulePage();
 
@@ -739,7 +735,7 @@ describe("zero schedule page - schedule dialog fields", () => {
       expect(screen.getByText(/Add schedule/i)).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText(/Add schedule/i));
+    click(screen.getByText(/Add schedule/i));
 
     await waitFor(() => {
       expect(
@@ -751,7 +747,6 @@ describe("zero schedule page - schedule dialog fields", () => {
   });
 
   it("should enable Create button when prompt is filled", async () => {
-    const user = userEvent.setup();
     mockScheduleAPI();
     await renderSchedulePage();
 
@@ -759,7 +754,7 @@ describe("zero schedule page - schedule dialog fields", () => {
       expect(screen.getByText(/Add schedule/i)).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText(/Add schedule/i));
+    click(screen.getByText(/Add schedule/i));
 
     await waitFor(() => {
       expect(
@@ -773,7 +768,6 @@ describe("zero schedule page - schedule dialog fields", () => {
   });
 
   it("should surface save error via toast and keep dialog open", async () => {
-    const user = userEvent.setup();
     setMockSchedules(createMockSchedules());
     server.use(
       mockApi(zeroSchedulesMainContract.deploy, ({ respond }) => {
@@ -792,7 +786,7 @@ describe("zero schedule page - schedule dialog fields", () => {
       expect(screen.getByText(/Add schedule/i)).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText(/Add schedule/i));
+    click(screen.getByText(/Add schedule/i));
 
     await waitFor(() => {
       expect(
@@ -802,7 +796,7 @@ describe("zero schedule page - schedule dialog fields", () => {
 
     await fill(screen.getByLabelText("Prompt"), "Some task");
 
-    await user.click(screen.getByText("Create"));
+    click(screen.getByText("Create"));
 
     await waitFor(() => {
       expect(screen.getByText(/Schedule limit reached/)).toBeInTheDocument();
@@ -825,7 +819,6 @@ describe("zero schedule page - view modes", () => {
   });
 
   it("should switch to calendar view when Calendar tab is clicked", async () => {
-    const user = userEvent.setup();
     mockScheduleAPI();
     await renderSchedulePage();
 
@@ -833,7 +826,7 @@ describe("zero schedule page - view modes", () => {
       expect(screen.getByText(/Calendar/i)).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText(/Calendar/i));
+    click(screen.getByText(/Calendar/i));
 
     await waitFor(() => {
       expect(screen.getByText("Week view")).toBeInTheDocument();
@@ -863,7 +856,6 @@ describe("zero schedule page - loading state", () => {
 
 describe("zero schedule page - create dialog timezone default", () => {
   it("should use preference timezone in submitted request when set", async () => {
-    const user = userEvent.setup();
     setMockUserPreferences({ timezone: "Asia/Tokyo" });
 
     let capturedTimezone: string | null = null;
@@ -884,7 +876,7 @@ describe("zero schedule page - create dialog timezone default", () => {
       ).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText(/Add schedule/i));
+    click(screen.getByText(/Add schedule/i));
     await waitFor(() => {
       expect(
         screen.getByRole("heading", { name: "Add schedule" }),
@@ -892,7 +884,7 @@ describe("zero schedule page - create dialog timezone default", () => {
     });
 
     await fill(screen.getByLabelText("Prompt"), "Daily task");
-    await user.click(screen.getByText("Create"));
+    click(screen.getByText("Create"));
 
     await waitFor(() => {
       expect(capturedTimezone).toBeTruthy();
@@ -901,7 +893,6 @@ describe("zero schedule page - create dialog timezone default", () => {
   });
 
   it("should fall back to local timezone in submitted request when preference not set", async () => {
-    const user = userEvent.setup();
     // timezone is null by default (reset via resetAllMockHandlers in afterEach)
     const localTimezone = new Intl.DateTimeFormat().resolvedOptions().timeZone;
 
@@ -922,7 +913,7 @@ describe("zero schedule page - create dialog timezone default", () => {
       ).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText(/Add schedule/i));
+    click(screen.getByText(/Add schedule/i));
     await waitFor(() => {
       expect(
         screen.getByRole("heading", { name: "Add schedule" }),
@@ -930,7 +921,7 @@ describe("zero schedule page - create dialog timezone default", () => {
     });
 
     await fill(screen.getByLabelText("Prompt"), "Daily task");
-    await user.click(screen.getByText("Create"));
+    click(screen.getByText("Create"));
 
     await waitFor(() => {
       expect(capturedTimezone).toBeTruthy();

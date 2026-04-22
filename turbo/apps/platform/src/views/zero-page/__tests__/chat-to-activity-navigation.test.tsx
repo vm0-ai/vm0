@@ -1,9 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import type {
   LogDetail,
   AgentEventsResponse,
@@ -125,7 +124,6 @@ function mockActivityDetailAPIs() {
 
 describe("chat to activity navigation", () => {
   it("should initialize activity detail page when clicking activity link from chat", async () => {
-    const user = userEvent.setup();
     mockChatWithActivityLink();
     mockActivityDetailAPIs();
 
@@ -144,7 +142,7 @@ describe("chat to activity navigation", () => {
     // Find and click the "View run logs" link that navigates to /activity/a0000000-0000-4000-a000-000000000011
     const activityLink = screen.getByLabelText("View run logs");
     expect(activityLink).toBeInTheDocument();
-    await user.click(activityLink);
+    click(activityLink);
 
     // The activity detail page should fully initialize and show the agent name heading
     await waitFor(() => {

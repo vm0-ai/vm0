@@ -5,10 +5,9 @@
  */
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import {
   type UserPreferencesResponse,
   zeroUserPreferencesContract,
@@ -90,7 +89,6 @@ describe("zero-account-page - send mode display", () => {
 
 describe("zero-account-page - tab switching", () => {
   it("switches to timezone tab when clicking Time Zone (PREF-D-004)", async () => {
-    const user = userEvent.setup();
     mockPreferencesAPI({
       timezone: "Etc/UTC",
       pinnedAgentIds: [],
@@ -102,7 +100,7 @@ describe("zero-account-page - tab switching", () => {
       expect(screen.getByText("Theme")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText("Time Zone"));
+    click(screen.getByText("Time Zone"));
 
     await waitFor(() => {
       expect(screen.getByText("Time zone")).toBeInTheDocument();
@@ -113,7 +111,6 @@ describe("zero-account-page - tab switching", () => {
 
 describe("zero-account-page - theme interaction", () => {
   it("activates light mode when Light button is clicked (PREF-D-005)", async () => {
-    const user = userEvent.setup();
     mockPreferencesAPI({
       timezone: null,
       pinnedAgentIds: [],
@@ -127,7 +124,7 @@ describe("zero-account-page - theme interaction", () => {
       return btn as HTMLElement;
     });
 
-    await user.click(lightBtn);
+    click(lightBtn);
 
     await waitFor(() => {
       expect(lightBtn).toHaveAttribute("aria-pressed", "true");
@@ -139,7 +136,6 @@ describe("zero-account-page - theme interaction", () => {
   });
 
   it("activates dark mode when Dark button is clicked (PREF-D-006)", async () => {
-    const user = userEvent.setup();
     mockPreferencesAPI({
       timezone: null,
       pinnedAgentIds: [],
@@ -153,7 +149,7 @@ describe("zero-account-page - theme interaction", () => {
       return btn as HTMLElement;
     });
 
-    await user.click(darkBtn);
+    click(darkBtn);
 
     await waitFor(() => {
       expect(darkBtn).toHaveAttribute("aria-pressed", "true");
@@ -165,7 +161,6 @@ describe("zero-account-page - theme interaction", () => {
   });
 
   it("activates system mode when System button is clicked after switching away (PREF-D-007)", async () => {
-    const user = userEvent.setup();
     mockPreferencesAPI({
       timezone: null,
       pinnedAgentIds: [],
@@ -179,13 +174,13 @@ describe("zero-account-page - theme interaction", () => {
       return btn as HTMLElement;
     });
 
-    await user.click(lightBtn);
+    click(lightBtn);
     await waitFor(() => {
       expect(lightBtn).toHaveAttribute("aria-pressed", "true");
     });
 
     const systemBtn = findButtonByText("System") as HTMLElement;
-    await user.click(systemBtn);
+    click(systemBtn);
 
     await waitFor(() => {
       expect(systemBtn).toHaveAttribute("aria-pressed", "true");
@@ -196,7 +191,6 @@ describe("zero-account-page - theme interaction", () => {
 
 describe("zero-account-page - send mode interaction", () => {
   it("selects Enter send mode when Enter button is clicked (PREF-D-008)", async () => {
-    const user = userEvent.setup();
     const deferred = makeDeferred();
     setMockUserPreferences({
       timezone: null,
@@ -224,7 +218,7 @@ describe("zero-account-page - send mode interaction", () => {
 
     const enterBtn = findButtonByText("Enter") as HTMLElement;
     expect(enterBtn).toBeInTheDocument();
-    await user.click(enterBtn);
+    click(enterBtn);
 
     await waitFor(() => {
       expect(enterBtn).toHaveAttribute("aria-pressed", "true");
@@ -234,7 +228,6 @@ describe("zero-account-page - send mode interaction", () => {
   });
 
   it("selects Cmd+Enter send mode when Cmd+Enter button is clicked (PREF-D-009)", async () => {
-    const user = userEvent.setup();
     const deferred = makeDeferred();
     setMockUserPreferences({
       timezone: null,
@@ -262,7 +255,7 @@ describe("zero-account-page - send mode interaction", () => {
 
     const cmdEnterBtn = findCmdEnterButton() as HTMLElement;
     expect(cmdEnterBtn).toBeInTheDocument();
-    await user.click(cmdEnterBtn);
+    click(cmdEnterBtn);
 
     await waitFor(() => {
       expect(cmdEnterBtn).toHaveAttribute("aria-pressed", "true");

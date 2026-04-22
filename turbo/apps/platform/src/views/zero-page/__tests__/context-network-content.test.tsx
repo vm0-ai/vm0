@@ -1,9 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import {
   FeatureSwitchKey,
   type RunContextResponse,
@@ -153,8 +152,6 @@ function setupMocks(options: {
 }
 
 async function setupAndNavigateToTab(tabName: "Context" | "Network") {
-  const user = userEvent.setup();
-
   detachedSetupPage({
     context,
     path: `/activities/${LOG_ID}`,
@@ -168,9 +165,7 @@ async function setupAndNavigateToTab(tabName: "Context" | "Network") {
   });
 
   const tab = screen.getByText(tabName);
-  await user.click(tab);
-
-  return user;
+  click(tab);
 }
 
 // ---------------------------------------------------------------------------
@@ -553,7 +548,7 @@ describe("networkContent", () => {
       },
     });
 
-    const user = await setupAndNavigateToTab("Network");
+    await setupAndNavigateToTab("Network");
 
     await waitFor(() => {
       expect(
@@ -562,9 +557,7 @@ describe("networkContent", () => {
     });
 
     // Click the row to expand
-    await user.click(
-      screen.getByText("https://detail.example.com/path").closest("tr")!,
-    );
+    click(screen.getByText("https://detail.example.com/path").closest("tr")!);
 
     // Detail fields should now be visible
     await waitFor(() => {
@@ -589,7 +582,7 @@ describe("networkContent", () => {
       },
     });
 
-    const user = await setupAndNavigateToTab("Network");
+    await setupAndNavigateToTab("Network");
 
     await waitFor(() => {
       expect(
@@ -600,7 +593,7 @@ describe("networkContent", () => {
     const row = screen.getByText("https://toggle.example.com").closest("tr")!;
 
     // Click to expand
-    await user.click(row);
+    click(row);
 
     await waitFor(() => {
       // Detail row shows Timestamp label
@@ -608,7 +601,7 @@ describe("networkContent", () => {
     });
 
     // Click to collapse
-    await user.click(row);
+    click(row);
 
     await waitFor(() => {
       // "Timestamp" as a detail label should no longer be visible
@@ -656,7 +649,7 @@ describe("networkContent", () => {
       }),
     );
 
-    const user = await setupAndNavigateToTab("Network");
+    await setupAndNavigateToTab("Network");
 
     // First page renders
     await waitFor(() => {
@@ -668,7 +661,7 @@ describe("networkContent", () => {
     expect(loadMoreButton).toBeInTheDocument();
 
     // Click to load next page
-    await user.click(loadMoreButton);
+    click(loadMoreButton);
 
     // Second page appended
     await waitFor(() => {

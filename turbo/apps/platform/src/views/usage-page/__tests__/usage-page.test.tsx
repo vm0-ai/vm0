@@ -1,8 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { setMockUsageInsight } from "../../../mocks/handlers/api-usage-insight.ts";
 import { resetAllMockHandlers } from "../../../mocks/handlers/index.ts";
 
@@ -13,8 +12,6 @@ beforeEach(() => {
 });
 
 describe("/_/usage page", () => {
-  const user = userEvent.setup();
-
   it("renders the page header and usage insight content", async () => {
     setMockUsageInsight({
       buckets: [
@@ -77,7 +74,7 @@ describe("/_/usage page", () => {
       return /Chats/.test(el.textContent ?? "");
     });
     expect(chatsTab).toBeInTheDocument();
-    await user.click(chatsTab!);
+    click(chatsTab!);
 
     await waitFor(() => {
       expect(screen.getByText("Chat with Agent")).toBeInTheDocument();

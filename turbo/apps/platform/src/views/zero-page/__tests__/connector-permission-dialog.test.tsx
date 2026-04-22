@@ -12,7 +12,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { setPermissionDialogType$ } from "../../../signals/zero-page/settings/connectors.ts";
 import { permissionDialogSelected$ } from "../../../signals/zero-page/settings/permission-dialog.ts";
 import { type ConnectorType, zeroUserConnectorsContract } from "@vm0/core";
@@ -101,7 +101,6 @@ describe("connector permission dialog", () => {
   });
 
   it("toggles agent selection on click", async () => {
-    const user = userEvent.setup();
     mockAgents([{ id: "agent-1", displayName: "Agent Alpha" }]);
 
     await openPermissionDialog("github");
@@ -114,20 +113,19 @@ describe("connector permission dialog", () => {
     const agentButton = screen.getAllByRole("button").find((el) => {
       return /Agent Alpha/.test(el.textContent ?? "");
     })!;
-    await user.click(agentButton);
+    click(agentButton);
 
     // The check icon (svg) should now be rendered instead of the avatar img
     expect(agentButton.querySelector("svg")).toBeInTheDocument();
 
     // Click again to deselect — the transparent placeholder span should return
     // (no img: avatarUrl is null, so no default preset flashes)
-    await user.click(agentButton);
+    click(agentButton);
     expect(agentButton.querySelector("img")).toBeNull();
     expect(agentButton.querySelector("span[aria-hidden]")).toBeInTheDocument();
   });
 
   it("closes dialog without saving when clicking Later", async () => {
-    const user = userEvent.setup();
     mockAgents([{ id: "agent-1", displayName: "Agent Alpha" }]);
 
     let putCalled = false;
@@ -145,10 +143,10 @@ describe("connector permission dialog", () => {
     });
 
     // Select an agent
-    await user.click(screen.getByText(/Agent Alpha/));
+    click(screen.getByText(/Agent Alpha/));
 
     // Click Later
-    await user.click(screen.getByText("Later"));
+    click(screen.getByText("Later"));
 
     // Dialog should close
     await waitFor(() => {
@@ -162,7 +160,6 @@ describe("connector permission dialog", () => {
   });
 
   it("closes dialog without API calls when confirming with no selection", async () => {
-    const user = userEvent.setup();
     mockAgents([{ id: "agent-1", displayName: "Agent Alpha" }]);
 
     let putCalled = false;
@@ -180,7 +177,7 @@ describe("connector permission dialog", () => {
     });
 
     // Confirm without selecting any agent
-    await user.click(screen.getByText("Confirm"));
+    click(screen.getByText("Confirm"));
 
     await waitFor(() => {
       expect(
@@ -192,7 +189,6 @@ describe("connector permission dialog", () => {
   });
 
   it("persists permissions via API when confirming with selected agents", async () => {
-    const user = userEvent.setup();
     mockAgents([{ id: "agent-1", displayName: "Agent Alpha" }]);
 
     let updatedAgentId: string | undefined;
@@ -213,10 +209,10 @@ describe("connector permission dialog", () => {
     });
 
     // Select the agent
-    await user.click(screen.getByText(/Agent Alpha/));
+    click(screen.getByText(/Agent Alpha/));
 
     // Confirm
-    await user.click(screen.getByText("Confirm"));
+    click(screen.getByText("Confirm"));
 
     // Success toast and dialog close
     await waitFor(() => {
@@ -270,7 +266,7 @@ describe("connector permission dialog", () => {
     });
 
     // Select Agent Alpha
-    await user.click(screen.getByText("Agent Alpha"));
+    click(screen.getByText("Agent Alpha"));
 
     // Reopen for a different connector — setPermissionDialogType$ should reset state
     context.store.set(setPermissionDialogType$, "linear");

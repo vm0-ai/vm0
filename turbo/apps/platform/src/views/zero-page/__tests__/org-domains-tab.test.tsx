@@ -3,7 +3,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { type OrgDomain, zeroOrgDomainsContract } from "@vm0/core";
 import { setMockOrg, resetMockOrg } from "../../../mocks/handlers/api-org.ts";
 import {
@@ -94,7 +94,6 @@ describe("org domains tab - display loading", () => {
 describe("org domains tab - interaction", () => {
   it("opens add domain dialog with input field when 'Add domain' button is clicked", async () => {
     // ORG-I-077
-    const user = userEvent.setup();
     setMockOrg({ role: "admin" });
     await openDomainsTab();
 
@@ -102,7 +101,7 @@ describe("org domains tab - interaction", () => {
       expect(screen.queryAllByTestId("domain-row")).toHaveLength(0);
     });
 
-    await user.click(screen.getByText(/Add domain/i));
+    click(screen.getByText(/Add domain/i));
 
     await waitFor(() => {
       expect(
@@ -114,11 +113,10 @@ describe("org domains tab - interaction", () => {
 
   it("shows all enrollment mode options in the dropdown", async () => {
     // ORG-I-079
-    const user = userEvent.setup();
     setMockOrg({ role: "admin" });
     await openDomainsTab();
 
-    await user.click(screen.getByText(/Add domain/i));
+    click(screen.getByText(/Add domain/i));
 
     await waitFor(() => {
       expect(
@@ -127,7 +125,7 @@ describe("org domains tab - interaction", () => {
     });
 
     const dialog = screen.getByRole("dialog");
-    await user.click(within(dialog).getByRole("combobox"));
+    click(within(dialog).getByRole("combobox"));
 
     await waitFor(() => {
       expect(
@@ -144,7 +142,6 @@ describe("org domains tab - interaction", () => {
 
   it("shows verify/unverify and remove options in the domain action menu", async () => {
     // ORG-I-080
-    const user = userEvent.setup();
     setMockOrg({ role: "admin" });
     setMockOrgDomains([verifiedDomain]);
     await openDomainsTab();
@@ -154,7 +151,7 @@ describe("org domains tab - interaction", () => {
     });
 
     const row = screen.getByTestId("domain-row");
-    await user.click(within(row).getByRole("button"));
+    click(within(row).getByRole("button"));
 
     await waitFor(() => {
       expect(screen.getByText(/Unverify/i)).toBeInTheDocument();
@@ -164,7 +161,6 @@ describe("org domains tab - interaction", () => {
 
   it("shows remove confirmation dialog when Remove is clicked from action menu", async () => {
     // ORG-I-081
-    const user = userEvent.setup();
     setMockOrg({ role: "admin" });
     setMockOrgDomains([verifiedDomain]);
     await openDomainsTab();
@@ -174,12 +170,12 @@ describe("org domains tab - interaction", () => {
     });
 
     const row = screen.getByTestId("domain-row");
-    await user.click(within(row).getByRole("button"));
+    click(within(row).getByRole("button"));
 
     await waitFor(() => {
       expect(screen.getByText(/Remove/i)).toBeInTheDocument();
     });
-    await user.click(screen.getByText(/Remove/i));
+    click(screen.getByText(/Remove/i));
 
     await waitFor(() => {
       expect(
@@ -196,7 +192,7 @@ describe("org domains tab - validation", () => {
     setMockOrg({ role: "admin" });
     await openDomainsTab();
 
-    await user.click(screen.getByText(/Add domain/i));
+    click(screen.getByText(/Add domain/i));
 
     await waitFor(() => {
       expect(

@@ -1,9 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import type {
   LogDetail,
   AgentEvent,
@@ -468,7 +467,6 @@ describe("toolSummary", () => {
   });
 
   it("collapsible tool details toggle (ACT-D-082)", async () => {
-    const user = userEvent.setup();
     mockDetailAPI([
       {
         sequenceNumber: 0,
@@ -520,17 +518,16 @@ describe("toolSummary", () => {
     // Click the summary to open
     const summary = detailsEl.querySelector("summary");
     expect(summary).not.toBeNull();
-    await user.click(summary!);
+    click(summary!);
 
     expect(detailsEl.open).toBeTruthy();
 
     // Click again to close
-    await user.click(summary!);
+    click(summary!);
     expect(detailsEl.open).toBeFalsy();
   });
 
   it("expandable result preview shows more lines (ACT-D-083)", async () => {
-    const user = userEvent.setup();
     const content = "alpha\nbeta\ngamma\ndelta\nepsilon";
     mockDetailAPI([
       {
@@ -591,7 +588,7 @@ describe("toolSummary", () => {
     expect(innerDetails.open).toBeFalsy();
 
     // Click "+2 lines" to expand
-    await user.click(expandSummary);
+    click(expandSummary);
 
     // Inner details is now open
     await waitFor(() => {

@@ -12,10 +12,9 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 import { resetMockBilling } from "../../../mocks/handlers/api-billing.ts";
@@ -118,7 +117,6 @@ beforeEach(() => {
 
 describe("zero sidebar - chat session list collapses and expands (SIDEBAR-D-011)", () => {
   it("toggles chat thread list visibility when Chats header is clicked", async () => {
-    const user = userEvent.setup();
     mockBaseAPIs({
       threads: [
         makeThread("thread-1", "Deploy to prod", "2026-03-10T00:00:00Z"),
@@ -133,7 +131,7 @@ describe("zero sidebar - chat session list collapses and expands (SIDEBAR-D-011)
 
     // Collapse: click the "Chats with Zero" header span
     const chatsHeader = screen.getByText(/Chats with/);
-    await user.click(chatsHeader);
+    click(chatsHeader);
 
     // Thread list should be hidden
     await waitFor(() => {
@@ -141,7 +139,7 @@ describe("zero sidebar - chat session list collapses and expands (SIDEBAR-D-011)
     });
 
     // Expand: click the header again
-    await user.click(chatsHeader);
+    click(chatsHeader);
 
     // Thread list should be visible again
     await waitFor(() => {
@@ -152,7 +150,6 @@ describe("zero sidebar - chat session list collapses and expands (SIDEBAR-D-011)
 
 describe("zero sidebar - agent list collapses and expands (SIDEBAR-D-012)", () => {
   it("toggles pinned agent visibility when Pinned header is clicked", async () => {
-    const user = userEvent.setup();
     mockBaseAPIs({ agents: [makeDefaultAgent(), makePinnedAgent()] });
     setMockUserPreferences({ pinnedAgentIds: [PINNED_AGENT_ID] });
 
@@ -165,7 +162,7 @@ describe("zero sidebar - agent list collapses and expands (SIDEBAR-D-012)", () =
 
     // Collapse: click the Pinned section header
     const pinnedHeader = screen.getByTestId("pinned-section-header");
-    await user.click(pinnedHeader);
+    click(pinnedHeader);
 
     // Agent list should be hidden
     await waitFor(() => {
@@ -173,7 +170,7 @@ describe("zero sidebar - agent list collapses and expands (SIDEBAR-D-012)", () =
     });
 
     // Expand: click again
-    await user.click(pinnedHeader);
+    click(pinnedHeader);
 
     // Agent list should be visible again
     await waitFor(() => {
@@ -184,7 +181,6 @@ describe("zero sidebar - agent list collapses and expands (SIDEBAR-D-012)", () =
 
 describe("zero sidebar - tab navigation switches active section (SIDEBAR-D-023)", () => {
   it("navigates to /agents when the Agents nav link is clicked", async () => {
-    const user = userEvent.setup();
     mockBaseAPIs();
     detachedSetupPage({ context, path: "/" });
 
@@ -195,7 +191,7 @@ describe("zero sidebar - tab navigation switches active section (SIDEBAR-D-023)"
     });
 
     const agentsLink = screen.getByText("Agents");
-    await user.click(agentsLink);
+    click(agentsLink);
 
     await waitFor(() => {
       expect(pathname()).toBe("/agents");
@@ -203,7 +199,6 @@ describe("zero sidebar - tab navigation switches active section (SIDEBAR-D-023)"
   });
 
   it("navigates to /schedules when the Scheduled nav link is clicked", async () => {
-    const user = userEvent.setup();
     mockBaseAPIs();
     detachedSetupPage({ context, path: "/" });
 
@@ -214,7 +209,7 @@ describe("zero sidebar - tab navigation switches active section (SIDEBAR-D-023)"
     });
 
     const scheduledLink = screen.getByText("Scheduled");
-    await user.click(scheduledLink);
+    click(scheduledLink);
 
     await waitFor(() => {
       expect(pathname()).toBe("/schedules");
@@ -224,7 +219,6 @@ describe("zero sidebar - tab navigation switches active section (SIDEBAR-D-023)"
 
 describe("zero sidebar - billing button opens billing dialog (SIDEBAR-D-024)", () => {
   it("opens the org manage dialog on billing tab when Get Pro button is clicked", async () => {
-    const user = userEvent.setup();
     mockBaseAPIs();
     // Default billing: tier = "free" → shows "Get Pro" card
     // Default org role from api-org handler: "admin" → upgrade card is shown
@@ -236,7 +230,7 @@ describe("zero sidebar - billing button opens billing dialog (SIDEBAR-D-024)", (
       return screen.getByText("Get Pro");
     });
 
-    await user.click(upgradeBtn);
+    click(upgradeBtn);
 
     // The org manage dialog should open
     await waitFor(() => {
@@ -247,7 +241,6 @@ describe("zero sidebar - billing button opens billing dialog (SIDEBAR-D-024)", (
 
 describe("zero sidebar - settings button navigates to settings (SIDEBAR-D-025)", () => {
   it("navigates to /settings when Preferences is clicked in account dropdown", async () => {
-    const user = userEvent.setup();
     mockBaseAPIs();
     detachedSetupPage({ context, path: "/" });
 
@@ -256,13 +249,13 @@ describe("zero sidebar - settings button navigates to settings (SIDEBAR-D-025)",
     });
 
     // Open account dropdown
-    await user.click(screen.getByText("Test User"));
+    click(screen.getByText("Test User"));
 
     // Click Preferences
     const preferencesItem = await waitFor(() => {
       return screen.getByText("Preferences");
     });
-    await user.click(preferencesItem);
+    click(preferencesItem);
 
     await waitFor(() => {
       expect(pathname()).toBe("/settings");

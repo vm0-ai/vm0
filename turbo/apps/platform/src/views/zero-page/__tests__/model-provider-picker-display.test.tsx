@@ -21,7 +21,7 @@ import {
 } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 import {
@@ -72,14 +72,14 @@ function setupMockAgent() {
   );
 }
 
-async function openProfileTab(user: ReturnType<typeof userEvent.setup>) {
+async function openProfileTab(_user: ReturnType<typeof userEvent.setup>) {
   detachedSetupPage({ context, path: "/agents/my-agent" });
   await waitFor(() => {
     expect(
       screen.getByRole("heading", { name: "My Agent" }),
     ).toBeInTheDocument();
   });
-  await user.click(screen.getByText(/Profile/i));
+  click(screen.getByText(/Profile/i));
   await waitFor(() => {
     expect(screen.getByLabelText(/name/i)).toBeInTheDocument();
   });

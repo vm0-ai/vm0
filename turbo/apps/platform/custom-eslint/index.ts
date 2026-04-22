@@ -43,7 +43,6 @@ import noNonZeroApi from "./rules/no-non-zero-api.ts";
 import commandAsyncSignal from "./rules/command-async-signal.ts";
 import noGetterSetterParams from "./rules/no-getter-setter-params.ts";
 import noNewAbortController from "./rules/no-new-abort-controller.ts";
-import preferUserEvent from "./rules/prefer-user-event.ts";
 import noDirectLocalStorage from "./rules/no-direct-local-storage.ts";
 import noDetachInSignals from "./rules/no-detach-in-signals.ts";
 import noDirectFetch from "./rules/no-direct-fetch.ts";
@@ -79,7 +78,6 @@ const plugin = {
     "command-async-signal": commandAsyncSignal,
     "no-getter-setter-params": noGetterSetterParams,
     "no-new-abort-controller": noNewAbortController,
-    "prefer-user-event": preferUserEvent,
     "no-direct-local-storage": noDirectLocalStorage,
     "no-detach-in-signals": noDetachInSignals,
     "no-direct-fetch": noDirectFetch,

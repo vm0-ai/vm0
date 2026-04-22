@@ -7,7 +7,11 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  fill,
+  click,
+} from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 import {
@@ -77,14 +81,14 @@ function mockAPIs(detailOverrides: Record<string, unknown> = {}) {
   );
 }
 
-async function openProfileTab(user: ReturnType<typeof userEvent.setup>) {
+async function openProfileTab(_user: ReturnType<typeof userEvent.setup>) {
   detachedSetupPage({ context, path: "/agents/my-agent" });
   await waitFor(() => {
     expect(
       screen.getByRole("heading", { name: "My Agent" }),
     ).toBeInTheDocument();
   });
-  await user.click(screen.getByText(/Profile/i));
+  click(screen.getByText(/Profile/i));
   await waitFor(() => {
     expect(screen.getByLabelText(/name/i)).toBeInTheDocument();
   });
@@ -187,12 +191,11 @@ describe("zero settings tab - display", () => {
       }),
     );
 
-    const user = userEvent.setup();
     detachedSetupPage({ context, path: "/agents/zero" });
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Zero" })).toBeInTheDocument();
     });
-    await user.click(screen.getByText(/Profile/i));
+    click(screen.getByText(/Profile/i));
     await waitFor(() => {
       expect(screen.getByLabelText(/name/i)).toBeInTheDocument();
     });
@@ -254,7 +257,7 @@ describe("zero settings tab - avatar", () => {
     await waitFor(() => {
       expect(screen.getByLabelText("Create custom avatar")).toBeInTheDocument();
     });
-    await user.click(screen.getByLabelText("Create custom avatar"));
+    click(screen.getByLabelText("Create custom avatar"));
 
     // The avatar maker dialog should open
     await waitFor(() => {
@@ -262,7 +265,7 @@ describe("zero settings tab - avatar", () => {
     });
 
     // Click "Use this avatar" to save
-    await user.click(screen.getByText("Use this avatar"));
+    click(screen.getByText("Use this avatar"));
 
     await waitFor(() => {
       expect(capturedPayload).toBeTruthy();
@@ -305,7 +308,7 @@ describe("zero settings tab - interaction", () => {
       expect(screen.getByText("Clear and polished")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText(/Direct/i));
+    click(screen.getByText(/Direct/i));
 
     await waitFor(() => {
       expect(screen.getByText("To the point")).toBeInTheDocument();
@@ -334,7 +337,7 @@ describe("zero settings tab - interaction", () => {
       expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText(/^Save$/i));
+    click(screen.getByText(/^Save$/i));
 
     await waitFor(() => {
       expect(
@@ -355,7 +358,7 @@ describe("zero settings tab - interaction", () => {
       expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText(/Discard/i));
+    click(screen.getByText(/Discard/i));
 
     await waitFor(() => {
       expect(screen.getByDisplayValue("My Agent")).toBeInTheDocument();
@@ -374,7 +377,7 @@ describe("zero settings tab - interaction", () => {
       expect(screen.getByText(/Delete agent/i)).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText(/Delete agent/i));
+    click(screen.getByText(/Delete agent/i));
 
     await waitFor(() => {
       expect(screen.getByText("Delete My Agent?")).toBeInTheDocument();
@@ -390,13 +393,13 @@ describe("zero settings tab - interaction", () => {
       expect(screen.getByText(/Delete agent/i)).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText(/Delete agent/i));
+    click(screen.getByText(/Delete agent/i));
 
     await waitFor(() => {
       expect(screen.getByText("Delete My Agent?")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText(/^Cancel$/i));
+    click(screen.getByText(/^Cancel$/i));
 
     await waitFor(() => {
       expect(screen.queryByText("Delete My Agent?")).not.toBeInTheDocument();
@@ -417,7 +420,7 @@ describe("zero settings tab - interaction", () => {
       expect(screen.getByText(/Delete agent/i)).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText(/Delete agent/i));
+    click(screen.getByText(/Delete agent/i));
 
     await waitFor(() => {
       expect(screen.getByText("Delete My Agent?")).toBeInTheDocument();
@@ -426,7 +429,7 @@ describe("zero settings tab - interaction", () => {
     const deleteButtons = screen.getAllByRole("button").filter((el) => {
       return /Delete agent/i.test(el.textContent ?? "");
     });
-    await user.click(deleteButtons[deleteButtons.length - 1]);
+    click(deleteButtons[deleteButtons.length - 1]);
 
     await waitFor(() => {
       expect(pathname()).toBe("/agents");

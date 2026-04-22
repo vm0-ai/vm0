@@ -1,9 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 import {
@@ -170,7 +169,6 @@ describe("schedule list view - running action indicator (SCHED-D-085)", () => {
         return respond(201, { runId: "run-1" });
       }),
     );
-    const user = userEvent.setup();
     detachedSetupPage({ context, path: "/schedules" });
 
     await waitFor(() => {
@@ -182,7 +180,7 @@ describe("schedule list view - running action indicator (SCHED-D-085)", () => {
     });
 
     // Open the menu
-    await user.click(
+    click(
       screen.getAllByLabelText("More actions for Every weekday at 9:00 AM")[0],
     );
     await waitFor(() => {
@@ -194,14 +192,14 @@ describe("schedule list view - running action indicator (SCHED-D-085)", () => {
     });
 
     // Click Run now — API hangs
-    await user.click(
+    click(
       screen.getAllByRole("menuitem").find((el) => {
         return el.textContent?.includes("Run now");
       })!,
     );
 
     // Re-open the menu to see "Starting…"
-    await user.click(
+    click(
       screen.getAllByLabelText("More actions for Every weekday at 9:00 AM")[0],
     );
     await waitFor(() => {
@@ -214,7 +212,6 @@ describe("schedule list view - running action indicator (SCHED-D-085)", () => {
 
 describe("schedule list view - empty state add schedule button (SCHED-D-086)", () => {
   it("opens the schedule form dialog when Add schedule is clicked in empty state", async () => {
-    const user = userEvent.setup();
     mockScheduleAPI([]);
     detachedSetupPage({ context, path: "/schedules" });
 
@@ -228,7 +225,7 @@ describe("schedule list view - empty state add schedule button (SCHED-D-086)", (
     });
     // At least one Add schedule button exists in the empty state
     expect(addButtons.length).toBeGreaterThan(0);
-    await user.click(addButtons[addButtons.length - 1]);
+    click(addButtons[addButtons.length - 1]);
 
     await waitFor(() => {
       expect(
@@ -240,7 +237,6 @@ describe("schedule list view - empty state add schedule button (SCHED-D-086)", (
 
 describe("schedule list view - row click navigates to detail (SCHED-D-087)", () => {
   it("navigates to the schedule detail page when a schedule row is clicked", async () => {
-    const user = userEvent.setup();
     mockScheduleAPI();
     detachedSetupPage({ context, path: "/schedules" });
 
@@ -252,7 +248,7 @@ describe("schedule list view - row click navigates to detail (SCHED-D-087)", () 
       ).toBeInTheDocument();
     });
 
-    await user.click(
+    click(
       screen.getAllByLabelText(
         /Open schedule Summarize yesterday's threads/,
       )[0],
@@ -292,7 +288,6 @@ describe("schedule list view - row renders as anchor link (SCHED-D-087b)", () =>
 
 describe("schedule list view - toggle switch (SCHED-D-088)", () => {
   it("sends enable action when a disabled schedule toggle is clicked", async () => {
-    const user = userEvent.setup();
     let capturedAction: string | null = null;
 
     setMockSchedules([createDisabledSchedule()]);
@@ -315,9 +310,7 @@ describe("schedule list view - toggle switch (SCHED-D-088)", () => {
       ).toBeInTheDocument();
     });
 
-    await user.click(
-      screen.getAllByLabelText(/^Enable Every day at 12:00 PM/)[0],
-    );
+    click(screen.getAllByLabelText(/^Enable Every day at 12:00 PM/)[0]);
 
     await waitFor(() => {
       expect(capturedAction).toBe("enable");
@@ -327,7 +320,6 @@ describe("schedule list view - toggle switch (SCHED-D-088)", () => {
 
 describe("schedule list view - more actions dropdown (SCHED-D-089)", () => {
   it("opens a dropdown with Run now, Edit, and Delete options", async () => {
-    const user = userEvent.setup();
     mockScheduleAPI();
     detachedSetupPage({ context, path: "/schedules" });
 
@@ -339,7 +331,7 @@ describe("schedule list view - more actions dropdown (SCHED-D-089)", () => {
       ).toBeInTheDocument();
     });
 
-    await user.click(
+    click(
       screen.getAllByLabelText("More actions for Every weekday at 9:00 AM")[0],
     );
 
@@ -365,7 +357,6 @@ describe("schedule list view - more actions dropdown (SCHED-D-089)", () => {
 
 describe("schedule list view - run now action (SCHED-D-090)", () => {
   it("calls the run API with the schedule id when Run now is clicked", async () => {
-    const user = userEvent.setup();
     let capturedScheduleId: string | null = null;
 
     setMockSchedules([createEnabledSchedule()]);
@@ -386,7 +377,7 @@ describe("schedule list view - run now action (SCHED-D-090)", () => {
       ).toBeInTheDocument();
     });
 
-    await user.click(
+    click(
       screen.getAllByLabelText("More actions for Every weekday at 9:00 AM")[0],
     );
 
@@ -398,7 +389,7 @@ describe("schedule list view - run now action (SCHED-D-090)", () => {
       ).toBeDefined();
     });
 
-    await user.click(
+    click(
       screen.getAllByRole("menuitem").find((el) => {
         return el.textContent?.includes("Run now");
       })!,
@@ -413,7 +404,6 @@ describe("schedule list view - run now action (SCHED-D-090)", () => {
 
 describe("schedule list view - edit action (SCHED-D-091)", () => {
   it("navigates to the schedule detail page when Edit is clicked", async () => {
-    const user = userEvent.setup();
     mockScheduleAPI();
     detachedSetupPage({ context, path: "/schedules" });
 
@@ -425,7 +415,7 @@ describe("schedule list view - edit action (SCHED-D-091)", () => {
       ).toBeInTheDocument();
     });
 
-    await user.click(
+    click(
       screen.getAllByLabelText("More actions for Every weekday at 9:00 AM")[0],
     );
 
@@ -437,7 +427,7 @@ describe("schedule list view - edit action (SCHED-D-091)", () => {
       ).toBeDefined();
     });
 
-    await user.click(
+    click(
       screen.getAllByRole("menuitem").find((el) => {
         return el.textContent?.includes("Edit");
       })!,
@@ -453,7 +443,6 @@ describe("schedule list view - edit action (SCHED-D-091)", () => {
 
 describe("schedule list view - delete action (SCHED-D-092)", () => {
   it("shows delete confirmation dialog when Delete is clicked", async () => {
-    const user = userEvent.setup();
     mockScheduleAPI();
     detachedSetupPage({ context, path: "/schedules" });
 
@@ -465,7 +454,7 @@ describe("schedule list view - delete action (SCHED-D-092)", () => {
       ).toBeInTheDocument();
     });
 
-    await user.click(
+    click(
       screen.getAllByLabelText("More actions for Every weekday at 9:00 AM")[0],
     );
 
@@ -477,7 +466,7 @@ describe("schedule list view - delete action (SCHED-D-092)", () => {
       ).toBeDefined();
     });
 
-    await user.click(
+    click(
       screen.getAllByRole("menuitem").find((el) => {
         return el.textContent?.includes("Delete");
       })!,

@@ -9,9 +9,8 @@
 
 import { expect, test } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import {
   setPermissionDialogType$,
   submitApiToken$,
@@ -21,8 +20,6 @@ import { mockConnectors } from "./zero-connectors-page-test-helpers.ts";
 const context = testContext();
 
 test("disconnect moves a just-connected connector out of Connected (regression #10272)", async () => {
-  const user = userEvent.setup();
-
   // Start with Ahrefs already connected — mirrors the screenshot in #10272.
   mockConnectors([{ type: "ahrefs" }]);
 
@@ -43,8 +40,8 @@ test("disconnect moves a just-connected connector out of Connected (regression #
     expect(screen.getByText("Connected (1)")).toBeInTheDocument();
   });
 
-  await user.click(screen.getByLabelText("More options"));
-  await user.click(screen.getByText("Disconnect"));
+  click(screen.getByLabelText("More options"));
+  click(screen.getByText("Disconnect"));
 
   // After a successful disconnect the card must leave the Connected section
   // regardless of whether a search filter is active.

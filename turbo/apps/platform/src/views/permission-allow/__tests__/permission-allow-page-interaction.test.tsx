@@ -10,7 +10,11 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  fill,
+  click,
+} from "../../../__tests__/page-helper.ts";
 import {
   type PermissionAccessRequestResponse,
   zeroAgentsByIdContract,
@@ -121,8 +125,7 @@ describe("permission allow page - admin doctor mode", () => {
       expect(screen.getByText("Confirm")).toBeInTheDocument();
     });
 
-    const user = userEvent.setup();
-    await user.click(screen.getByText("Confirm"));
+    click(screen.getByText("Confirm"));
 
     await waitFor(() => {
       expect(savedBody).toBeDefined();
@@ -159,8 +162,7 @@ describe("permission allow page - admin doctor mode", () => {
       expect(screen.getByText("Confirm")).toBeInTheDocument();
     });
 
-    const user = userEvent.setup();
-    await user.click(screen.getByText("Confirm"));
+    click(screen.getByText("Confirm"));
 
     // action=deny → after save the "Permissions denied" confirmation card appears
     await waitFor(() => {
@@ -198,8 +200,7 @@ describe("permission allow page - admin doctor mode", () => {
       expect(screen.getByText("Confirm")).toBeInTheDocument();
     });
 
-    const user = userEvent.setup();
-    await user.click(screen.getByText("Confirm"));
+    click(screen.getByText("Confirm"));
 
     await waitFor(() => {
       expect(screen.getByText("Permissions denied")).toBeInTheDocument();
@@ -242,8 +243,7 @@ describe("permission allow page - admin request mode", () => {
       expect(screen.getByText("Approve change")).toBeInTheDocument();
     });
 
-    const user = userEvent.setup();
-    await user.click(screen.getByText("Approve change"));
+    click(screen.getByText("Approve change"));
 
     await waitFor(() => {
       expect(screen.getByText("Permissions updated")).toBeInTheDocument();
@@ -280,8 +280,7 @@ describe("permission allow page - admin request mode", () => {
       expect(screen.getByText("Deny change")).toBeInTheDocument();
     });
 
-    const user = userEvent.setup();
-    await user.click(screen.getByText("Deny change"));
+    click(screen.getByText("Deny change"));
 
     await waitFor(() => {
       expect(screen.getByText("Permissions denied")).toBeInTheDocument();
@@ -352,8 +351,7 @@ describe("permission allow page - member request form", () => {
       expect(screen.getByText("Request approval")).toBeInTheDocument();
     });
 
-    const user = userEvent.setup();
-    await user.click(screen.getByText("Request approval"));
+    click(screen.getByText("Request approval"));
 
     await waitFor(() => {
       expect(requestBody).toBeDefined();
@@ -456,11 +454,10 @@ describe("permission allow page - member request form", () => {
       expect(screen.getByRole("textbox")).toBeInTheDocument();
     });
 
-    const user = userEvent.setup();
     const textarea = screen.getByRole("textbox");
     await fill(textarea, "Edited reason");
 
-    await user.click(screen.getByText("Request approval"));
+    click(screen.getByText("Request approval"));
 
     await waitFor(() => {
       expect(requestBody).toBeDefined();

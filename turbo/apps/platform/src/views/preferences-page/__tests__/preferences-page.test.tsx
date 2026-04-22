@@ -1,9 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import {
   type UserPreferencesResponse,
   zeroUserPreferencesContract,
@@ -35,7 +34,6 @@ function renderPreferencesPage() {
 
 describe("zero preferences page - tab navigation", () => {
   it("should show appearance tab by default and switch to time zone tab", async () => {
-    const user = userEvent.setup();
     mockPreferencesAPI();
     await renderPreferencesPage();
 
@@ -43,7 +41,7 @@ describe("zero preferences page - tab navigation", () => {
       expect(screen.getByText("Theme")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText("Time Zone"));
+    click(screen.getByText("Time Zone"));
 
     await waitFor(() => {
       expect(screen.getByText("Time zone")).toBeInTheDocument();
@@ -51,7 +49,6 @@ describe("zero preferences page - tab navigation", () => {
   });
 
   it("should switch back to appearance tab from time zone", async () => {
-    const user = userEvent.setup();
     mockPreferencesAPI();
     await renderPreferencesPage();
 
@@ -59,13 +56,13 @@ describe("zero preferences page - tab navigation", () => {
       expect(screen.getByText("Time Zone")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText("Time Zone"));
+    click(screen.getByText("Time Zone"));
 
     await waitFor(() => {
       expect(screen.getByText("Time zone")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText("Appearance"));
+    click(screen.getByText("Appearance"));
 
     await waitFor(() => {
       expect(screen.getByText("Theme")).toBeInTheDocument();
@@ -75,7 +72,6 @@ describe("zero preferences page - tab navigation", () => {
 
 describe("zero preferences page - send mode interaction", () => {
   it("should send update request when changing send mode", async () => {
-    const user = userEvent.setup();
     let capturedBody: Record<string, unknown> | null = null;
 
     setMockUserPreferences(createMockPreferences({ sendMode: "enter" }));
@@ -99,7 +95,7 @@ describe("zero preferences page - send mode interaction", () => {
       );
     });
     expect(cmdEnterButton).toBeInTheDocument();
-    await user.click(cmdEnterButton as HTMLElement);
+    click(cmdEnterButton as HTMLElement);
 
     await waitFor(() => {
       expect(capturedBody).toBeTruthy();
@@ -110,7 +106,6 @@ describe("zero preferences page - send mode interaction", () => {
 
 describe("zero preferences page - timezone update", () => {
   it("should render timezone settings with current value when switching to timezone tab", async () => {
-    const user = userEvent.setup();
     mockPreferencesAPI(createMockPreferences({ timezone: "Asia/Tokyo" }));
     await renderPreferencesPage();
 
@@ -118,7 +113,7 @@ describe("zero preferences page - timezone update", () => {
       expect(screen.getByText("Time Zone")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText("Time Zone"));
+    click(screen.getByText("Time Zone"));
 
     await waitFor(() => {
       expect(screen.getByText("Time zone")).toBeInTheDocument();
@@ -129,7 +124,6 @@ describe("zero preferences page - timezone update", () => {
   });
 
   it("should send update request when changing timezone", async () => {
-    const user = userEvent.setup();
     let capturedBody: Record<string, unknown> | null = null;
 
     setMockUserPreferences(createMockPreferences({ timezone: "UTC" }));
@@ -149,7 +143,7 @@ describe("zero preferences page - timezone update", () => {
       expect(screen.getByText("Time Zone")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText("Time Zone"));
+    click(screen.getByText("Time Zone"));
 
     await waitFor(() => {
       expect(screen.getByText("Time zone")).toBeInTheDocument();
@@ -157,13 +151,13 @@ describe("zero preferences page - timezone update", () => {
 
     // Open the select dropdown
     const selectTrigger = screen.getByRole("combobox");
-    await user.click(selectTrigger);
+    click(selectTrigger);
 
     // Select a different timezone
     await waitFor(() => {
       expect(screen.getByText(/Eastern Time \(ET\)/)).toBeInTheDocument();
     });
-    await user.click(screen.getByText(/Eastern Time \(ET\)/));
+    click(screen.getByText(/Eastern Time \(ET\)/));
 
     await waitFor(() => {
       expect(capturedBody).toBeTruthy();

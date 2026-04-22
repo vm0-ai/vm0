@@ -1,9 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 import { chatThreadMessagesContract, chatThreadByIdContract } from "@vm0/core";
@@ -52,7 +51,6 @@ function mockChatSessionAPIs() {
 
 describe("chat session page wrapper navigation", () => {
   it("should navigate to agent profile when clicking chat avatar", async () => {
-    const user = userEvent.setup();
     mockChatSessionAPIs();
 
     detachedSetupPage({ context, path: "/chats/session-thread-1" });
@@ -64,7 +62,7 @@ describe("chat session page wrapper navigation", () => {
 
     // Click the avatar button in the session header
     const avatarButton = screen.getByLabelText("View agent profile");
-    await user.click(avatarButton);
+    click(avatarButton);
 
     // Verify navigation to /team/c0000000-0000-4000-a000-000000000001 (no tab param)
     await waitFor(() => {

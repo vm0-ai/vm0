@@ -1,4 +1,4 @@
-import { render } from "@testing-library/react";
+import { fireEvent, render } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { command } from "ccstate";
 
@@ -177,4 +177,17 @@ export async function fill(element: Element, value: string): Promise<void> {
   await fastUser.click(element);
   await fastUser.keyboard("{Control>}a{/Control}");
   await fastUser.paste(value);
+}
+
+/**
+ * Fire a click on `element` that works for both regular buttons and Radix
+ * triggers (Dropdown/Select/Popover open on `pointerdown`, not `click`).
+ *
+ * Roughly 3x faster than `userEvent.click(el)` in happy-dom because it skips
+ * the full pointer-event simulation (pointermove, hover, focus tracking)
+ * that userEvent runs. Dispatches `pointerdown` + `click` only.
+ */
+export function click(element: Element): void {
+  fireEvent.pointerDown(element, { button: 0 });
+  fireEvent.click(element);
 }

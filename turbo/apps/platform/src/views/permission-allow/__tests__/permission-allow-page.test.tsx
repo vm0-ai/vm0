@@ -1,9 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import {
   zeroAgentsByIdContract,
   type PermissionAccessRequestResponse,
@@ -456,8 +455,6 @@ describe("permission allow page", () => {
     mockAgentWithPolicy(null, "other-owner");
     mockPermissionRequests([makePendingRequest({ status: "rejected" })]);
 
-    const user = userEvent.setup();
-
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/permissions?request=${REQUEST_ID}`,
@@ -467,7 +464,7 @@ describe("permission allow page", () => {
       expect(screen.getByText("Resend request")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText("Resend request"));
+    click(screen.getByText("Resend request"));
 
     await waitFor(() => {
       expect(screen.getByText("Request approval")).toBeInTheDocument();

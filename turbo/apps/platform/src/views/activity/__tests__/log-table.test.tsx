@@ -1,9 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import type {
   LogEntry,
   LogsListResponse,
@@ -189,8 +188,6 @@ describe("log-table", () => {
 
     detachedSetupPage({ context, path: "/activities" });
 
-    const user = userEvent.setup();
-
     await waitFor(() => {
       expect(screen.getByText("Nav Agent")).toBeInTheDocument();
     });
@@ -198,7 +195,7 @@ describe("log-table", () => {
     // Click the log row link
     const logRowLink = screen.getByText("Nav Agent").closest("a");
     expect(logRowLink).not.toBeNull();
-    await user.click(logRowLink!);
+    click(logRowLink!);
 
     // After navigation, the detail page should show the agent name as heading
     await waitFor(() => {

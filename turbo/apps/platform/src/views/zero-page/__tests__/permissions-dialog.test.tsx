@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import {
   type FirewallPolicies,
   zeroAgentsByIdContract,
@@ -10,7 +9,7 @@ import {
 } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
@@ -93,8 +92,6 @@ function mockAPIs({
 }
 
 async function openPermissionsDrawer() {
-  const user = userEvent.setup();
-
   await waitFor(() => {
     expect(
       screen.getByRole("heading", { name: "My Agent" }),
@@ -108,7 +105,7 @@ async function openPermissionsDrawer() {
     ).toBeInTheDocument();
   });
 
-  await user.click(screen.getByLabelText(/Manage Slack permissions/i));
+  click(screen.getByLabelText(/Manage Slack permissions/i));
 
   // Wait for drawer to open
   await waitFor(() => {
@@ -116,8 +113,6 @@ async function openPermissionsDrawer() {
       screen.getByRole("heading", { name: /Slack permissions/i }),
     ).toBeInTheDocument();
   });
-
-  return user;
 }
 
 describe("permissions dialog - grouped connector (Slack)", () => {
@@ -142,12 +137,12 @@ describe("permissions dialog - grouped connector (Slack)", () => {
   it("should expand a group when its header is clicked and collapse when clicked again", async () => {
     mockAPIs();
     detachedSetupPage({ context, path: "/agents/my-agent" });
-    const user = await openPermissionsDrawer();
+    await openPermissionsDrawer();
 
     const readButton = screen.getByText(/Read \(\d+\)/i);
 
     // Click to expand
-    await user.click(readButton);
+    click(readButton);
 
     // Individual read permissions should now be visible
     await waitFor(() => {
@@ -155,7 +150,7 @@ describe("permissions dialog - grouped connector (Slack)", () => {
     });
 
     // Click again to collapse
-    await user.click(readButton);
+    click(readButton);
 
     await waitFor(() => {
       expect(screen.queryByText("bookmarks:read")).not.toBeInTheDocument();
@@ -225,7 +220,7 @@ describe("permissions dialog - grouped connector (Slack)", () => {
   it("should set all permissions in a group when group-level Allow/Deny is clicked", async () => {
     mockAPIs();
     detachedSetupPage({ context, path: "/agents/my-agent" });
-    const user = await openPermissionsDrawer();
+    await openPermissionsDrawer();
 
     // Click Deny on the Read group
     const readButton = screen.getByText(/Read \(\d+\)/i);
@@ -237,10 +232,10 @@ describe("permissions dialog - grouped connector (Slack)", () => {
     const denyBtn = pillButtons.find((b) => {
       return b.textContent?.includes("Deny") ?? false;
     });
-    await user.click(denyBtn!);
+    click(denyBtn!);
 
     // Expand the group to verify individual permissions
-    await user.click(readButton);
+    click(readButton);
 
     // All individual Read permissions should now show "Deny" as active
     await waitFor(() => {

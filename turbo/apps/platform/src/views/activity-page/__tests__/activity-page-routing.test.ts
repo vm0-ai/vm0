@@ -1,9 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import {
   FeatureSwitchKey,
   logsListContract,
@@ -109,7 +108,6 @@ function mockActivityAPIs() {
 
 describe("activity page routing", () => {
   it("should load detail view when clicking an activity row from the list", async () => {
-    const user = userEvent.setup();
     mockActivityAPIs();
 
     detachedSetupPage({
@@ -125,7 +123,7 @@ describe("activity page routing", () => {
     // Click the activity row — this navigates to /activity/a0000000-0000-4000-a000-000000000001
     const row = screen.getByText("Test Agent").closest("a");
     expect(row).not.toBeNull();
-    await user.click(row!);
+    click(row!);
 
     // The detail page should render with the agent name heading
     await waitFor(() => {
@@ -139,7 +137,6 @@ describe("activity page routing", () => {
   });
 
   it("should navigate back to list from detail breadcrumb", async () => {
-    const user = userEvent.setup();
     mockActivityAPIs();
 
     detachedSetupPage({
@@ -155,7 +152,7 @@ describe("activity page routing", () => {
 
     // Navigate to detail
     const row = screen.getByText("Test Agent").closest("a");
-    await user.click(row!);
+    click(row!);
 
     // Wait for detail
     await waitFor(() => {
@@ -167,7 +164,7 @@ describe("activity page routing", () => {
     // Click the "Activity" breadcrumb to go back
     const breadcrumb = screen.getByText("Activity").closest("a");
     expect(breadcrumb).not.toBeNull();
-    await user.click(breadcrumb!);
+    click(breadcrumb!);
 
     // Should be back on the list page with the "Activity" heading
     await waitFor(() => {

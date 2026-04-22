@@ -1,9 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
@@ -48,7 +47,6 @@ function mockMemberOnboardingDeferred() {
 
 describe("onboarding continue in web → skeleton → chat page (#7902)", () => {
   it("should show skeleton immediately on click, then hide after chat page loads", async () => {
-    const user = userEvent.setup();
     const mock = mockMemberOnboardingDeferred();
 
     detachedSetupPage({ context, path: "/onboarding" });
@@ -58,7 +56,7 @@ describe("onboarding continue in web → skeleton → chat page (#7902)", () => 
       expect(screen.getByText("Choose your tools")).toBeInTheDocument();
     });
     // Advance without selecting a connector — skips step 3, lands on step 4
-    await user.click(screen.getByText("Next"));
+    click(screen.getByText("Next"));
 
     await waitFor(() => {
       expect(
@@ -74,7 +72,7 @@ describe("onboarding continue in web → skeleton → chat page (#7902)", () => 
 
     // Click starts the async onboarding completion; the POST API is deferred
     // so the command is in-flight while we assert skeleton visibility.
-    await user.click(screen.getByText(/Continue in web/));
+    click(screen.getByText(/Continue in web/));
 
     // Skeleton must be visible during the transition (the fix for #7902)
     await waitFor(() => {

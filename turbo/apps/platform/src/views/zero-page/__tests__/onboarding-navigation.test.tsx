@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  fill,
+  click,
+} from "../../../__tests__/page-helper.ts";
 import { pathname, search } from "../../../signals/location.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 import {
@@ -72,7 +75,6 @@ describe("onboarding navigation", () => {
   });
 
   it("should navigate to / after completing admin onboarding via web", async () => {
-    const user = userEvent.setup();
     mockOnboardingNeededAdmin();
 
     detachedSetupPage({ context, path: "/onboarding" });
@@ -85,20 +87,20 @@ describe("onboarding navigation", () => {
     // Fill name and advance
     const input = screen.getByPlaceholderText("e.g. Acme Corp");
     await fill(input, "Test Workspace");
-    await user.click(screen.getByText("Next"));
+    click(screen.getByText("Next"));
 
     // Step 2: Choose your tools — select a connector so step 3 is visible
     await waitFor(() => {
       expect(screen.getByText("Choose your tools")).toBeInTheDocument();
     });
-    await user.click(screen.getByTestId("connector-card-github"));
-    await user.click(screen.getByText("Next"));
+    click(screen.getByTestId("connector-card-github"));
+    click(screen.getByText("Next"));
 
     // Step 3: Connect your apps → Next
     await waitFor(() => {
       expect(screen.getByText("Connect your apps")).toBeInTheDocument();
     });
-    await user.click(screen.getByText("Next"));
+    click(screen.getByText("Next"));
 
     // Step 4: Where to work
     await waitFor(() => {
@@ -123,7 +125,7 @@ describe("onboarding navigation", () => {
 
     // Click "Continue in web" to trigger handleContinueWithWeb -> navigate("/")
     const continueButton = screen.getByText(/Continue in web/);
-    await user.click(continueButton);
+    click(continueButton);
 
     // Verify navigation to / (which then redirects to /talk/:name)
     await waitFor(() => {
@@ -148,7 +150,6 @@ describe("onboarding navigation", () => {
   });
 
   it("should navigate to / after completing member onboarding via web", async () => {
-    const user = userEvent.setup();
     mockOnboardingNeededMember();
 
     detachedSetupPage({ context, path: "/onboarding" });
@@ -158,7 +159,7 @@ describe("onboarding navigation", () => {
     await waitFor(() => {
       expect(screen.getByText("Choose your tools")).toBeInTheDocument();
     });
-    await user.click(screen.getByText("Next"));
+    click(screen.getByText("Next"));
 
     await waitFor(() => {
       expect(
@@ -182,7 +183,7 @@ describe("onboarding navigation", () => {
 
     // Click "Continue in web" to trigger handleContinueWeb -> navigate("/")
     const chatButton = screen.getByText(/Continue in web/);
-    await user.click(chatButton);
+    click(chatButton);
 
     // Verify navigation away from /onboarding (/ redirects to /talk/:name)
     await waitFor(() => {

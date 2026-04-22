@@ -1,9 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import {
   setMockSchedules,
   createMockScheduleResponse,
@@ -99,10 +98,7 @@ describe("zero schedule detail page - toggle loading state (SCHED-D-014)", () =>
       ).toBeInTheDocument();
     });
 
-    const user = userEvent.setup();
-    await user.click(
-      screen.getByRole("switch", { name: /Disable this schedule/i }),
-    );
+    click(screen.getByRole("switch", { name: /Disable this schedule/i }));
 
     // While toggle is pending, the switch becomes disabled
     await waitFor(() => {
@@ -122,13 +118,11 @@ describe("zero schedule detail page - instruction editor (SCHED-D-016)", () => {
     mockAPIs();
     detachedSetupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
 
-    const user = userEvent.setup();
-
     await waitFor(() => {
       expect(screen.getByText(/Instructions/i)).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText(/Instructions/i));
+    click(screen.getByText(/Instructions/i));
 
     await waitFor(() => {
       // Verify the editor is rendered with the actual prompt content
@@ -173,13 +167,11 @@ describe("zero schedule detail page - run history table with pagination (SCHED-D
     mockAPIs();
     detachedSetupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
 
-    const user = userEvent.setup();
-
     await waitFor(() => {
       expect(screen.getByText(/Run History/i)).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText(/Run History/i));
+    click(screen.getByText(/Run History/i));
 
     await waitFor(() => {
       // Status badge from log data ("completed" renders as "Done") indicates table rows are rendering
@@ -195,13 +187,11 @@ describe("zero schedule detail page - status filter dropdown (SCHED-D-018)", () 
     mockAPIs();
     detachedSetupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
 
-    const user = userEvent.setup();
-
     await waitFor(() => {
       expect(screen.getByText(/Run History/i)).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText(/Run History/i));
+    click(screen.getByText(/Run History/i));
 
     await waitFor(() => {
       expect(

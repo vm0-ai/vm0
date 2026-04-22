@@ -1,9 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
@@ -73,7 +72,6 @@ function mockAgentsWithThreads() {
 
 describe("recent thread skeleton (#7546)", () => {
   it("should retain recent threads without skeleton when navigating to a chat session", async () => {
-    const user = userEvent.setup();
     mockAgentsWithThreads();
 
     detachedSetupPage({ context, path: "/agents/agent-alpha/chat" });
@@ -101,7 +99,7 @@ describe("recent thread skeleton (#7546)", () => {
     );
 
     // Click the recent thread to navigate to /chats/:id
-    await user.click(within(sidebar).getByText("My test conversation"));
+    click(within(sidebar).getByText("My test conversation"));
 
     // After navigation, the sidebar should still show the thread text
     // (retained by useLastLoadable) instead of skeleton placeholders.

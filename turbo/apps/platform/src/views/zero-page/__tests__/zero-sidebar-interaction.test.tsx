@@ -19,7 +19,7 @@ import {
 import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { mockedClerk } from "../../../__tests__/mock-auth.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
@@ -168,7 +168,6 @@ beforeEach(() => {
 
 describe("zero sidebar - account dropdown opens (SIDEBAR-D-013)", () => {
   it("shows a dropdown menu with sign-out option when account trigger is clicked", async () => {
-    const user = userEvent.setup();
     mockBaseAPIs();
     detachedSetupPage({ context, path: "/" });
 
@@ -177,7 +176,7 @@ describe("zero sidebar - account dropdown opens (SIDEBAR-D-013)", () => {
     });
 
     const accountTrigger = screen.getByText("Test User");
-    await user.click(accountTrigger);
+    click(accountTrigger);
 
     await waitFor(() => {
       expect(screen.getByText("Sign out")).toBeInTheDocument();
@@ -187,7 +186,6 @@ describe("zero sidebar - account dropdown opens (SIDEBAR-D-013)", () => {
 
 describe("zero sidebar - sign-out option works (SIDEBAR-D-014)", () => {
   it("calls clerk signOut and closes the dropdown when sign-out is clicked", async () => {
-    const user = userEvent.setup();
     mockBaseAPIs();
     detachedSetupPage({ context, path: "/" });
 
@@ -196,12 +194,12 @@ describe("zero sidebar - sign-out option works (SIDEBAR-D-014)", () => {
     });
 
     const accountTrigger = screen.getByText("Test User");
-    await user.click(accountTrigger);
+    click(accountTrigger);
 
     const signOutItem = await waitFor(() => {
       return screen.getByText("Sign out");
     });
-    await user.click(signOutItem);
+    click(signOutItem);
 
     expect(mockedClerk.signOut).toHaveBeenCalledTimes(1);
 
@@ -224,7 +222,7 @@ describe("zero sidebar - search input accepts text (SIDEBAR-D-015)", () => {
     });
 
     const searchChatsBtn1 = screen.getByLabelText("Search chats");
-    await user.click(searchChatsBtn1);
+    click(searchChatsBtn1);
 
     const searchInput = screen.getByPlaceholderText(/Search chat with/);
     await user.type(searchInput, "hello");
@@ -250,7 +248,7 @@ describe("zero sidebar - clear search button resets search (SIDEBAR-D-016)", () 
     });
 
     const searchChatsBtn2 = screen.getByLabelText("Search chats");
-    await user.click(searchChatsBtn2);
+    click(searchChatsBtn2);
 
     const searchInput = screen.getByPlaceholderText(/Search chat with/);
     await user.type(searchInput, "First");
@@ -258,7 +256,7 @@ describe("zero sidebar - clear search button resets search (SIDEBAR-D-016)", () 
     expect(screen.queryByText("Second chat")).not.toBeInTheDocument();
 
     const closeSearchBtn = screen.getByLabelText("Close search");
-    await user.click(closeSearchBtn);
+    click(closeSearchBtn);
 
     await waitFor(() => {
       expect(screen.getByText("First chat")).toBeInTheDocument();
@@ -269,7 +267,6 @@ describe("zero sidebar - clear search button resets search (SIDEBAR-D-016)", () 
 
 describe("zero sidebar - new chat button creates session (SIDEBAR-D-017)", () => {
   it("creates a new chat session and navigates to it", async () => {
-    const user = userEvent.setup();
     mockBaseAPIs();
 
     server.use(
@@ -303,7 +300,7 @@ describe("zero sidebar - new chat button creates session (SIDEBAR-D-017)", () =>
       return screen.getByLabelText("New chat with Zero");
     });
 
-    await user.click(newChatButton);
+    click(newChatButton);
 
     await waitFor(() => {
       expect(pathname()).toBe("/chats/new-thread-id");
@@ -313,7 +310,6 @@ describe("zero sidebar - new chat button creates session (SIDEBAR-D-017)", () =>
 
 describe("zero sidebar - delete thread button shows confirmation (SIDEBAR-D-018)", () => {
   it("shows a confirmation dialog when the delete button is clicked", async () => {
-    const user = userEvent.setup();
     mockBaseAPIs({
       threads: [makeThread("thread-1", "First chat", "2026-03-10T00:00:00Z")],
     });
@@ -324,7 +320,7 @@ describe("zero sidebar - delete thread button shows confirmation (SIDEBAR-D-018)
     });
 
     const deleteButtons = screen.getAllByLabelText("Delete chat");
-    await user.click(deleteButtons[0]);
+    click(deleteButtons[0]);
 
     await waitFor(() => {
       const dialog = screen.getByRole("dialog");
@@ -335,8 +331,6 @@ describe("zero sidebar - delete thread button shows confirmation (SIDEBAR-D-018)
 
 describe("zero sidebar - confirm delete removes thread (SIDEBAR-D-019)", () => {
   it("removes the thread from the list after confirming deletion", async () => {
-    const user = userEvent.setup();
-
     let threads = [
       makeThread("thread-1", "First chat", "2026-03-10T00:00:00Z"),
       makeThread("thread-2", "Second chat", "2026-03-09T00:00:00Z"),
@@ -379,7 +373,7 @@ describe("zero sidebar - confirm delete removes thread (SIDEBAR-D-019)", () => {
     });
 
     const deleteButtons = screen.getAllByLabelText("Delete chat");
-    await user.click(deleteButtons[0]);
+    click(deleteButtons[0]);
 
     const dialog = await waitFor(() => {
       return screen.getByRole("dialog");
@@ -391,7 +385,7 @@ describe("zero sidebar - confirm delete removes thread (SIDEBAR-D-019)", () => {
         return el.textContent?.trim() === "Delete";
       });
     expect(confirmButton).toBeDefined();
-    await user.click(confirmButton!);
+    click(confirmButton!);
 
     await waitFor(() => {
       expect(screen.queryByText("First chat")).not.toBeInTheDocument();
@@ -403,7 +397,6 @@ describe("zero sidebar - confirm delete removes thread (SIDEBAR-D-019)", () => {
 
 describe("zero sidebar - agent card toggles chat list (SIDEBAR-D-020)", () => {
   it("hides pinned agent cards when the Pinned header is clicked", async () => {
-    const user = userEvent.setup();
     mockBaseAPIs({ agents: [makeDefaultAgent(), makePinnedAgent()] });
     setMockUserPreferences({ pinnedAgentIds: [PINNED_AGENT_ID] });
 
@@ -415,7 +408,7 @@ describe("zero sidebar - agent card toggles chat list (SIDEBAR-D-020)", () => {
     });
 
     const pinnedHeader = screen.getByTestId("pinned-section-header");
-    await user.click(pinnedHeader);
+    click(pinnedHeader);
 
     await waitFor(() => {
       expect(screen.queryByText("Research Agent")).not.toBeInTheDocument();
@@ -425,7 +418,6 @@ describe("zero sidebar - agent card toggles chat list (SIDEBAR-D-020)", () => {
 
 describe("zero sidebar - sidebar collapse button hides sidebar (SIDEBAR-D-022)", () => {
   it("collapses the sidebar and shows expand button when collapse is clicked", async () => {
-    const user = userEvent.setup();
     mockBaseAPIs();
     detachedSetupPage({ context, path: "/" });
 
@@ -436,7 +428,7 @@ describe("zero sidebar - sidebar collapse button hides sidebar (SIDEBAR-D-022)",
     });
 
     const collapseBtn = screen.getByLabelText("Collapse sidebar");
-    await user.click(collapseBtn);
+    click(collapseBtn);
 
     await waitFor(() => {
       expect(screen.getByLabelText("Expand sidebar")).toBeInTheDocument();
@@ -446,7 +438,6 @@ describe("zero sidebar - sidebar collapse button hides sidebar (SIDEBAR-D-022)",
 
 describe("zero sidebar - collapse button closes mobile overlay (SIDEBAR-M-023)", () => {
   it("sets sidebarExpanded to false when collapse button is clicked while sidebar is open as mobile overlay", async () => {
-    const user = userEvent.setup();
     mockBaseAPIs();
     detachedSetupPage({ context, path: "/" });
 
@@ -462,7 +453,7 @@ describe("zero sidebar - collapse button closes mobile overlay (SIDEBAR-M-023)",
     expect(context.store.get(sidebarExpanded$)).toBeTruthy();
 
     const collapseBtn = screen.getByLabelText("Collapse sidebar");
-    await user.click(collapseBtn);
+    click(collapseBtn);
 
     expect(context.store.get(sidebarExpanded$)).toBeFalsy();
   });

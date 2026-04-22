@@ -3,7 +3,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ScheduleResponse } from "@vm0/core";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 import { setCalendarSelectedDay$ } from "../../../signals/schedule-page/schedule-page-ui.ts";
 import { setMockSchedules } from "../../../mocks/handlers/api-schedules.ts";
@@ -150,7 +150,7 @@ function mockScheduleAPI(schedules: ScheduleResponse[]) {
   setMockSchedules(schedules);
 }
 
-async function switchToCalendarView(user: ReturnType<typeof userEvent.setup>) {
+async function switchToCalendarView(_user: ReturnType<typeof userEvent.setup>) {
   // Wait for the page to finish loading (schedule list or empty state is visible)
   await waitFor(() => {
     const hasScheduled =
@@ -167,7 +167,7 @@ async function switchToCalendarView(user: ReturnType<typeof userEvent.setup>) {
     return /Calendar/i.test(el.textContent ?? "");
   });
   expect(calendarTab).toBeDefined();
-  await user.click(calendarTab!);
+  click(calendarTab!);
   await waitFor(() => {
     expect(
       screen.getByRole("heading", { name: "Week view" }),
@@ -264,7 +264,7 @@ describe("schedule calendar view - previous day navigation (SCHED-D-075)", () =>
     const initialLabel = navBar.textContent;
 
     const prevDayBtn = screen.getByLabelText("Previous day");
-    await user.click(prevDayBtn);
+    click(prevDayBtn);
 
     await waitFor(() => {
       expect(navBar.textContent).not.toBe(initialLabel);
@@ -285,7 +285,7 @@ describe("schedule calendar view - next day navigation (SCHED-D-076)", () => {
     const initialLabel = navBar.textContent;
 
     const nextDayBtn = screen.getByLabelText("Next day");
-    await user.click(nextDayBtn);
+    click(nextDayBtn);
 
     await waitFor(() => {
       expect(navBar.textContent).not.toBe(initialLabel);

@@ -1,9 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import type {
   LogEntry,
   LogsListResponse,
@@ -101,12 +100,11 @@ describe("zeroActivityPage", () => {
     );
     detachedSetupPage({ context, path: "/activities" });
 
-    const user = userEvent.setup();
     const agentFilter = await waitFor(() => {
       return screen.getByRole("combobox", { name: "Agent filter" });
     });
 
-    await user.click(agentFilter);
+    click(agentFilter);
     await waitFor(() => {
       expect(
         screen.getByRole("option", { name: "All agents" }),
@@ -123,12 +121,11 @@ describe("zeroActivityPage", () => {
     );
     detachedSetupPage({ context, path: "/activities" });
 
-    const user = userEvent.setup();
     const statusFilter = await waitFor(() => {
       return screen.getByRole("combobox", { name: "Status filter" });
     });
 
-    await user.click(statusFilter);
+    click(statusFilter);
     await waitFor(() => {
       expect(
         screen.getByRole("option", { name: "All status" }),
@@ -146,12 +143,11 @@ describe("zeroActivityPage", () => {
     mockLogsAPI(makeLogsResponse([makeLog()], {}, { sources: ["cli", "web"] }));
     detachedSetupPage({ context, path: "/activities" });
 
-    const user = userEvent.setup();
     const sourceFilter = await waitFor(() => {
       return screen.getByRole("combobox", { name: "Source filter" });
     });
 
-    await user.click(sourceFilter);
+    click(sourceFilter);
     await waitFor(() => {
       expect(
         screen.getByRole("option", { name: "All sources" }),
@@ -254,15 +250,14 @@ describe("zeroActivityPage", () => {
       expect(screen.getByText("All Agents Log")).toBeInTheDocument();
     });
 
-    const user = userEvent.setup();
     const agentFilter = screen.getByRole("combobox", { name: "Agent filter" });
-    await user.click(agentFilter);
+    click(agentFilter);
     await waitFor(() => {
       expect(
         screen.getByRole("option", { name: "My Agent" }),
       ).toBeInTheDocument();
     });
-    await user.click(screen.getByRole("option", { name: "My Agent" }));
+    click(screen.getByRole("option", { name: "My Agent" }));
 
     await waitFor(() => {
       expect(screen.getByText("Filtered Agent Log")).toBeInTheDocument();
@@ -293,17 +288,16 @@ describe("zeroActivityPage", () => {
       expect(screen.getByText("All Status Log")).toBeInTheDocument();
     });
 
-    const user = userEvent.setup();
     const statusFilter = screen.getByRole("combobox", {
       name: "Status filter",
     });
-    await user.click(statusFilter);
+    click(statusFilter);
     await waitFor(() => {
       expect(
         screen.getByRole("option", { name: "Failed" }),
       ).toBeInTheDocument();
     });
-    await user.click(screen.getByRole("option", { name: "Failed" }));
+    click(screen.getByRole("option", { name: "Failed" }));
 
     await waitFor(() => {
       expect(screen.getByText("Failed Log")).toBeInTheDocument();
@@ -331,15 +325,14 @@ describe("zeroActivityPage", () => {
       expect(screen.getByText("All Sources Log")).toBeInTheDocument();
     });
 
-    const user = userEvent.setup();
     const sourceFilter = screen.getByRole("combobox", {
       name: "Source filter",
     });
-    await user.click(sourceFilter);
+    click(sourceFilter);
     await waitFor(() => {
       expect(screen.getByRole("option", { name: "CLI" })).toBeInTheDocument();
     });
-    await user.click(screen.getByRole("option", { name: "CLI" }));
+    click(screen.getByRole("option", { name: "CLI" }));
 
     await waitFor(() => {
       expect(screen.getByText("CLI Log")).toBeInTheDocument();
@@ -379,10 +372,9 @@ describe("zeroActivityPage", () => {
       expect(screen.getByText(/Page 1 of 2/)).toBeInTheDocument();
     });
 
-    const user = userEvent.setup();
     const nextButton = screen.getByLabelText("Next page");
     expect(nextButton).not.toHaveAttribute("disabled");
-    await user.click(nextButton);
+    click(nextButton);
 
     await waitFor(() => {
       expect(screen.getByText("Page 2 Log")).toBeInTheDocument();
@@ -422,10 +414,9 @@ describe("zeroActivityPage", () => {
       expect(screen.getByText("Page 1 Log")).toBeInTheDocument();
     });
 
-    const user = userEvent.setup();
     const nextButton = screen.getByLabelText("Next page");
     expect(nextButton).not.toHaveAttribute("disabled");
-    await user.click(nextButton);
+    click(nextButton);
 
     await waitFor(() => {
       expect(screen.getByText("Page 2 Log")).toBeInTheDocument();
@@ -433,7 +424,7 @@ describe("zeroActivityPage", () => {
 
     const prevButton = screen.getByLabelText("Previous page");
     expect(prevButton).not.toHaveAttribute("disabled");
-    await user.click(prevButton);
+    click(prevButton);
 
     await waitFor(() => {
       expect(screen.getByText("Page 1 Log")).toBeInTheDocument();
@@ -482,10 +473,9 @@ describe("zeroActivityPage", () => {
       expect(screen.getByText("Page 1 Log")).toBeInTheDocument();
     });
 
-    const user = userEvent.setup();
     const forwardTwoButton = screen.getByLabelText("Forward 2 pages");
     expect(forwardTwoButton).not.toHaveAttribute("disabled");
-    await user.click(forwardTwoButton);
+    click(forwardTwoButton);
 
     await waitFor(() => {
       expect(screen.getByText("Page 3 Log")).toBeInTheDocument();
@@ -533,9 +523,8 @@ describe("zeroActivityPage", () => {
       expect(screen.getByText("Page 1 Log")).toBeInTheDocument();
     });
 
-    const user = userEvent.setup();
     const forwardTwoButton = screen.getByLabelText("Forward 2 pages");
-    await user.click(forwardTwoButton);
+    click(forwardTwoButton);
 
     await waitFor(() => {
       expect(screen.getByText("Page 3 Log")).toBeInTheDocument();
@@ -543,7 +532,7 @@ describe("zeroActivityPage", () => {
 
     const backTwoButton = screen.getByLabelText("Back 2 pages");
     expect(backTwoButton).not.toHaveAttribute("disabled");
-    await user.click(backTwoButton);
+    click(backTwoButton);
 
     await waitFor(() => {
       expect(screen.getByText("Page 1 Log")).toBeInTheDocument();
@@ -565,15 +554,14 @@ describe("zeroActivityPage", () => {
       expect(screen.getByText(/Page 1/)).toBeInTheDocument();
     });
 
-    const user = userEvent.setup();
     const rowsPerPageSelect = screen.getByRole("combobox", {
       name: "Rows per page",
     });
-    await user.click(rowsPerPageSelect);
+    click(rowsPerPageSelect);
     await waitFor(() => {
       expect(screen.getByRole("option", { name: "20" })).toBeInTheDocument();
     });
-    await user.click(screen.getByRole("option", { name: "20" }));
+    click(screen.getByRole("option", { name: "20" }));
 
     await waitFor(() => {
       expect(captured.limit).toBe("20");

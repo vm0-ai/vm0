@@ -4,10 +4,13 @@
  */
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  fill,
+  click,
+} from "../../../__tests__/page-helper.ts";
 import {
   setMockSchedules,
   createMockScheduleResponse,
@@ -53,7 +56,6 @@ describe("zero unsaved bar - unsaved changes indicator (SCHED-D-093)", () => {
 
 describe("zero unsaved bar - discard button reverts changes (SCHED-D-095)", () => {
   it("hides unsaved changes bar when Discard is clicked", async () => {
-    const user = userEvent.setup();
     mockAPIs();
     await loadAndMakeDirty();
 
@@ -61,7 +63,7 @@ describe("zero unsaved bar - discard button reverts changes (SCHED-D-095)", () =
       expect(screen.getByTestId("unsaved-bar")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByTestId("discard-button"));
+    click(screen.getByTestId("discard-button"));
 
     await waitFor(() => {
       expect(screen.queryByTestId("unsaved-bar")).not.toBeInTheDocument();
@@ -84,7 +86,6 @@ describe("zero unsaved bar - save button persists changes (SCHED-D-096)", () => 
       }),
     );
 
-    const user = userEvent.setup();
     mockAPIs();
     await loadAndMakeDirty();
 
@@ -92,7 +93,7 @@ describe("zero unsaved bar - save button persists changes (SCHED-D-096)", () => 
       expect(screen.getByTestId("unsaved-bar")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByTestId("save-button"));
+    click(screen.getByTestId("save-button"));
 
     await waitFor(() => {
       expect(screen.queryByTestId("unsaved-bar")).not.toBeInTheDocument();

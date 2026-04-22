@@ -3,7 +3,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 import {
   zeroAgentsByIdContract,
@@ -96,7 +96,6 @@ describe("zero job detail page", () => {
   });
 
   it("should switch to profile tab and show settings form", async () => {
-    const user = userEvent.setup();
     mockAPIs();
     detachedSetupPage({ context, path: "/agents/my-agent" });
 
@@ -111,7 +110,7 @@ describe("zero job detail page", () => {
       return /Profile/i.test(el.textContent ?? "");
     });
     expect(profileTab).toBeDefined();
-    await user.click(profileTab!);
+    click(profileTab!);
 
     // Profile tab should show settings form with agent name input
     await waitFor(() => {
@@ -213,18 +212,18 @@ function mockAPIsWithSchedules() {
 }
 
 async function openScheduleMenuAndClick(
-  user: ReturnType<typeof userEvent.setup>,
+  _user: ReturnType<typeof userEvent.setup>,
   timeLabel: string,
   action: "Edit" | "Delete" | "Run now",
 ) {
   const menuTrigger = screen.getAllByLabelText(
     `More actions for ${timeLabel}`,
   )[0];
-  await user.click(menuTrigger);
+  click(menuTrigger);
   await waitFor(() => {
     expect(screen.getByText(action)).toBeInTheDocument();
   });
-  await user.click(screen.getByText(action));
+  click(screen.getByText(action));
 }
 
 describe("zero job detail page - schedule card delete confirmation", () => {
@@ -275,7 +274,7 @@ describe("zero job detail page - schedule card delete confirmation", () => {
       expect(screen.getByText("Delete schedule?")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText("Cancel"));
+    click(screen.getByText("Cancel"));
 
     await waitFor(() => {
       expect(screen.queryByText("Delete schedule?")).not.toBeInTheDocument();
@@ -309,7 +308,7 @@ describe("zero job detail page - schedule card delete confirmation", () => {
       expect(screen.getByText("Delete schedule?")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText("Delete"));
+    click(screen.getByText("Delete"));
 
     await waitFor(() => {
       expect(deletedName).toBe("morning-briefing");
@@ -319,7 +318,6 @@ describe("zero job detail page - schedule card delete confirmation", () => {
 
 describe("zero job detail page - schedule tab toggle", () => {
   it("should not flash empty state when toggling schedule status", async () => {
-    const user = userEvent.setup();
     mockAPIsWithSchedules();
 
     server.use(
@@ -350,7 +348,7 @@ describe("zero job detail page - schedule tab toggle", () => {
     const toggle = screen.getByRole("switch", {
       name: /disable.*weekday/i,
     });
-    await user.click(toggle);
+    click(toggle);
 
     // Schedule content should remain visible — no flash to empty state
     expect(

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import {
   mockChatLifecycle,
   sendMessageInUI,
@@ -59,7 +59,7 @@ describe("chat failure and cancel", () => {
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByLabelText("Stop"));
+    click(screen.getByLabelText("Stop"));
     ctrl.cancelRun();
 
     // After server confirms cancellation, sending state ends and Send button returns

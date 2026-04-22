@@ -7,7 +7,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { getTimezoneLabel } from "../../../signals/zero-page/cron.ts";
 import {
   type UserPreferencesResponse,
@@ -27,9 +27,9 @@ function mockPreferencesAPI(
   });
 }
 
-async function openTimezoneTab(user: ReturnType<typeof userEvent.setup>) {
+async function openTimezoneTab(_user: ReturnType<typeof userEvent.setup>) {
   detachedSetupPage({ context, path: "/settings" });
-  await user.click(await screen.findByText("Time Zone"));
+  click(await screen.findByText("Time Zone"));
   await waitFor(() => {
     expect(screen.getByRole("combobox")).toBeInTheDocument();
   });
@@ -45,7 +45,7 @@ describe("timezone-settings - display", () => {
     });
     await openTimezoneTab(user);
 
-    await user.click(screen.getByRole("combobox"));
+    click(screen.getByRole("combobox"));
 
     await waitFor(() => {
       expect(screen.getByText(/Eastern Time \(ET\)/)).toBeInTheDocument();
@@ -70,11 +70,11 @@ describe("timezone-settings - display", () => {
     );
     await openTimezoneTab(user);
 
-    await user.click(screen.getByRole("combobox"));
+    click(screen.getByRole("combobox"));
     await waitFor(() => {
       expect(screen.getByText(/Eastern Time \(ET\)/)).toBeInTheDocument();
     });
-    await user.click(screen.getByText(/Eastern Time \(ET\)/));
+    click(screen.getByText(/Eastern Time \(ET\)/));
 
     await waitFor(() => {
       expect(screen.getByRole("combobox")).toBeDisabled();
@@ -87,10 +87,9 @@ describe("timezone-settings - display", () => {
         return new Promise<never>(() => {});
       }),
     );
-    const user = userEvent.setup();
     detachedSetupPage({ context, path: "/settings" });
 
-    await user.click(await screen.findByText("Time Zone"));
+    click(await screen.findByText("Time Zone"));
 
     await waitFor(() => {
       expect(screen.queryByRole("combobox")).not.toBeInTheDocument();

@@ -3,7 +3,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 import { chatThreadsContract, chatThreadByIdContract } from "@vm0/core";
@@ -89,7 +89,7 @@ function mockAPIs() {
 }
 
 async function deleteThread(
-  user: ReturnType<typeof userEvent.setup>,
+  _user: ReturnType<typeof userEvent.setup>,
   nthButton: number,
 ) {
   const deleteButtons = await waitFor(() => {
@@ -98,14 +98,14 @@ async function deleteThread(
     return btns;
   });
 
-  await user.click(deleteButtons[nthButton - 1]);
+  click(deleteButtons[nthButton - 1]);
 
   const dialog = await waitFor(() => {
     return screen.getByRole("dialog");
   });
 
   const confirmBtn = within(dialog).getByText("Delete");
-  await user.click(confirmBtn);
+  click(confirmBtn);
 }
 
 describe("sidebar chat delete", () => {

@@ -3,7 +3,11 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  fill,
+  click,
+} from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 import {
@@ -117,7 +121,6 @@ describe("talk navigation", () => {
   });
 
   it("should navigate to /agents/:id/chat after completing onboarding", async () => {
-    const user = userEvent.setup();
     const MOCK_AGENT_ID = "d0000000-0000-4000-a000-000000000001";
     // Track onboarding status: starts as needing onboarding, then completes
     let onboardingComplete = false;
@@ -163,20 +166,20 @@ describe("talk navigation", () => {
     // Fill name and advance
     const input = screen.getByPlaceholderText("e.g. Acme Corp");
     await fill(input, "Test Workspace");
-    await user.click(screen.getByText("Next"));
+    click(screen.getByText("Next"));
 
     // Step 2: Choose your tools — select a connector so step 3 is reachable
     await waitFor(() => {
       expect(screen.getByText("Choose your tools")).toBeInTheDocument();
     });
-    await user.click(screen.getByTestId("connector-card-github"));
-    await user.click(screen.getByText("Next"));
+    click(screen.getByTestId("connector-card-github"));
+    click(screen.getByText("Next"));
 
     // Step 3: Connect your apps → Next
     await waitFor(() => {
       expect(screen.getByText("Connect your apps")).toBeInTheDocument();
     });
-    await user.click(screen.getByText("Next"));
+    click(screen.getByText("Next"));
 
     // Step 4: Where to work
     await waitFor(() => {
@@ -189,7 +192,7 @@ describe("talk navigation", () => {
     // 1. completeZeroOnboarding$ (single setup API call)
     // 2. navigate to /agents/:id/chat
     const continueButton = screen.getByText(/Continue in web/);
-    await user.click(continueButton);
+    click(continueButton);
 
     // The final URL should be /agents/:id/chat (no auto-intro message)
     await waitFor(() => {

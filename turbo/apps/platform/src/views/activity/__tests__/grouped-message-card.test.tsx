@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import {
   loadInspectLogFile$,
   setInspectStepSearch$,
@@ -113,7 +112,6 @@ describe("groupedMessageCard", () => {
 
   // ACT-D-067
   it("renders todo items with their completion status icons", async () => {
-    const user = userEvent.setup();
     await renderInspectPage();
     await loadInspectData(
       makeInspectData([
@@ -152,7 +150,7 @@ describe("groupedMessageCard", () => {
     const details = todoHeading.closest("details") as HTMLDetailsElement;
     expect(details).not.toBeNull();
     const summary = details.querySelector("summary")!;
-    await user.click(summary);
+    click(summary);
 
     await waitFor(() => {
       expect(screen.getByText("Completed task")).toBeInTheDocument();
@@ -241,7 +239,6 @@ describe("groupedMessageCard", () => {
 
   // ACT-D-070
   it("renders tool operations and their results", async () => {
-    const user = userEvent.setup();
     await renderInspectPage();
     await loadInspectData(
       makeInspectData([
@@ -292,7 +289,7 @@ describe("groupedMessageCard", () => {
       "tool-summary",
     ) as HTMLDetailsElement;
     const toolSummarySummary = toolSummary.querySelector("summary")!;
-    await user.click(toolSummarySummary);
+    click(toolSummarySummary);
 
     await waitFor(() => {
       expect(screen.getByText("hello-070")).toBeInTheDocument();
@@ -420,7 +417,6 @@ describe("groupedMessageCard", () => {
 
   // ACT-D-073
   it("expands and collapses todo section on click", async () => {
-    const user = userEvent.setup();
     await renderInspectPage();
     await loadInspectData(
       makeInspectData([
@@ -461,17 +457,16 @@ describe("groupedMessageCard", () => {
     const summary = details.querySelector("summary")!;
 
     // Click to expand
-    await user.click(summary);
+    click(summary);
     expect(details.open).toBeTruthy();
 
     // Click again to collapse
-    await user.click(summary);
+    click(summary);
     expect(details.open).toBeFalsy();
   });
 
   // ACT-D-074
   it("expands and collapses tool operation details on click", async () => {
-    const user = userEvent.setup();
     await renderInspectPage();
     await loadInspectData(
       makeInspectData([
@@ -525,11 +520,11 @@ describe("groupedMessageCard", () => {
     const summary = toolSummary.querySelector("summary")!;
 
     // Click to expand
-    await user.click(summary);
+    click(summary);
     expect(toolSummary.open).toBeTruthy();
 
     // Click again to collapse
-    await user.click(summary);
+    click(summary);
     expect(toolSummary.open).toBeFalsy();
   });
 
@@ -627,7 +622,6 @@ describe("groupedMessageCard", () => {
 
   // ACT-D-077
   it("routes child assistant events into task childMessages and shows tool count", async () => {
-    const user = userEvent.setup();
     await renderInspectPage();
     await loadInspectData(
       makeInspectData([
@@ -684,7 +678,7 @@ describe("groupedMessageCard", () => {
     const details = taskHeading.closest("details") as HTMLDetailsElement;
     expect(details).not.toBeNull();
     const summary = details.querySelector("summary")!;
-    await user.click(summary);
+    click(summary);
 
     // Child bash tool should appear inside
     await waitFor(() => {

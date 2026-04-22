@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import {
   type ConnectorType,
   type FirewallPolicies,
@@ -11,7 +10,7 @@ import {
 } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
@@ -94,8 +93,6 @@ function mockAPIs({
 }
 
 async function openPermissionsDrawer(connectorLabel: string) {
-  const user = userEvent.setup();
-
   await waitFor(() => {
     expect(
       screen.getByRole("heading", { name: "My Agent" }),
@@ -108,9 +105,7 @@ async function openPermissionsDrawer(connectorLabel: string) {
     ).toBeInTheDocument();
   });
 
-  await user.click(
-    screen.getByLabelText(`Manage ${connectorLabel} permissions`),
-  );
+  click(screen.getByLabelText(`Manage ${connectorLabel} permissions`));
 
   await waitFor(() => {
     expect(
@@ -119,8 +114,6 @@ async function openPermissionsDrawer(connectorLabel: string) {
       }),
     ).toBeInTheDocument();
   });
-
-  return user;
 }
 
 describe("permissions dialog - flat list connector (Notion)", () => {
@@ -194,18 +187,18 @@ describe("permissions dialog - grouped connector (Slack)", () => {
   it("toggles group visibility on collapse/expand click (FW-D-035)", async () => {
     mockAPIs({ connectorType: "slack" });
     detachedSetupPage({ context, path: "/agents/my-agent" });
-    const user = await openPermissionsDrawer("Slack");
+    await openPermissionsDrawer("Slack");
 
     const readButton = screen.getByText(/Read \(\d+\)/i);
 
     // Expand
-    await user.click(readButton);
+    click(readButton);
     await waitFor(() => {
       return expect(screen.getByText("channels:read")).toBeInTheDocument();
     });
 
     // Collapse
-    await user.click(readButton);
+    click(readButton);
     await waitFor(() => {
       return expect(
         screen.queryByText("channels:read"),
@@ -232,9 +225,9 @@ describe("permissions dialog - grouped connector (Slack)", () => {
       }),
     );
     detachedSetupPage({ context, path: "/agents/my-agent" });
-    const user = await openPermissionsDrawer("Slack");
+    await openPermissionsDrawer("Slack");
 
-    await user.click(screen.getByText("Apply"));
+    click(screen.getByText("Apply"));
 
     await waitFor(() => {
       return expect(putCalled).toBeTruthy();

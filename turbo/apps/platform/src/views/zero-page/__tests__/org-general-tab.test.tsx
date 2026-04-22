@@ -1,9 +1,12 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  fill,
+  click,
+} from "../../../__tests__/page-helper.ts";
 import { mockedClerk } from "../../../__tests__/mock-auth.ts";
 import {
   setMockOrg,
@@ -70,7 +73,6 @@ describe("org general tab - profile section", () => {
   });
 
   it("should discard slug changes when clicking Discard", async () => {
-    const user = userEvent.setup();
     setMockOrg({ slug: "original-slug" });
     await openGeneralTab();
 
@@ -79,14 +81,13 @@ describe("org general tab - profile section", () => {
 
     expect(screen.getByDisplayValue("changed-slug")).toBeInTheDocument();
 
-    await user.click(screen.getByText("Discard"));
+    click(screen.getByText("Discard"));
 
     expect(screen.getByDisplayValue("original-slug")).toBeInTheDocument();
     expect(screen.queryByText("Save changes")).not.toBeInTheDocument();
   });
 
   it("should send slug in PUT request when saving slug change", async () => {
-    const user = userEvent.setup();
     const requestBody = vi.fn();
     setMockOrg({ name: "Test Org", slug: "old-slug" });
     server.use(
@@ -106,7 +107,7 @@ describe("org general tab - profile section", () => {
     const slugInput = await screen.findByDisplayValue("old-slug");
     await fill(slugInput, "new-slug");
 
-    await user.click(screen.getByText("Save changes"));
+    click(screen.getByText("Save changes"));
 
     await vi.waitFor(() => {
       expect(requestBody).toHaveBeenCalledWith({
@@ -117,7 +118,6 @@ describe("org general tab - profile section", () => {
   });
 
   it("should send both name and slug when both are changed", async () => {
-    const user = userEvent.setup();
     const requestBody = vi.fn();
     setMockOrg({ name: "Old Name", slug: "old-slug" });
     server.use(
@@ -140,7 +140,7 @@ describe("org general tab - profile section", () => {
     await fill(nameInput, "New Name");
     await fill(slugInput, "new-slug");
 
-    await user.click(screen.getByText("Save changes"));
+    click(screen.getByText("Save changes"));
 
     await vi.waitFor(() => {
       expect(requestBody).toHaveBeenCalledWith({
@@ -152,7 +152,6 @@ describe("org general tab - profile section", () => {
   });
 
   it("should show inline error when save fails", async () => {
-    const user = userEvent.setup();
     setMockOrg({ slug: "old-slug" });
     server.use(
       mockApi(zeroOrgContract.update, ({ respond }) => {
@@ -170,7 +169,7 @@ describe("org general tab - profile section", () => {
     const slugInput = await screen.findByDisplayValue("old-slug");
     await fill(slugInput, "taken-slug");
 
-    await user.click(screen.getByText("Save changes"));
+    click(screen.getByText("Save changes"));
 
     await waitFor(() => {
       expect(screen.getByText("Slug is already taken")).toBeInTheDocument();
@@ -178,7 +177,6 @@ describe("org general tab - profile section", () => {
   });
 
   it("should clear inline error on discard", async () => {
-    const user = userEvent.setup();
     setMockOrg({ slug: "old-slug" });
     server.use(
       mockApi(zeroOrgContract.update, ({ respond }) => {
@@ -196,13 +194,13 @@ describe("org general tab - profile section", () => {
     const slugInput = await screen.findByDisplayValue("old-slug");
     await fill(slugInput, "taken-slug");
 
-    await user.click(screen.getByText("Save changes"));
+    click(screen.getByText("Save changes"));
 
     await waitFor(() => {
       expect(screen.getByText("Slug is already taken")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText("Discard"));
+    click(screen.getByText("Discard"));
 
     expect(screen.queryByText("Slug is already taken")).not.toBeInTheDocument();
   });
@@ -219,7 +217,6 @@ describe("org general tab - profile section", () => {
   });
 
   it("should not send slug when only name is changed", async () => {
-    const user = userEvent.setup();
     const requestBody = vi.fn();
     setMockOrg({ name: "Old Name", slug: "keep-slug" });
     server.use(
@@ -239,7 +236,7 @@ describe("org general tab - profile section", () => {
     const nameInput = await screen.findByDisplayValue("Old Name");
     await fill(nameInput, "New Name");
 
-    await user.click(screen.getByText("Save changes"));
+    click(screen.getByText("Save changes"));
 
     await vi.waitFor(() => {
       expect(requestBody).toHaveBeenCalledWith({ name: "New Name" });
@@ -259,7 +256,6 @@ describe("org general tab - danger zone", () => {
   });
 
   it("leaves workspace: clears active org then navigates to choose-organization", async () => {
-    const user = userEvent.setup();
     const leaveCalled = vi.fn();
     setMockOrg({ role: "member", slug: "my-org" });
     server.use(
@@ -278,7 +274,7 @@ describe("org general tab - danger zone", () => {
       expect(btn).toBeInTheDocument();
       return btn as HTMLElement;
     });
-    await user.click(leaveTrigger);
+    click(leaveTrigger);
 
     const confirmBtn = await waitFor(() => {
       const buttons = screen.getAllByRole("button");
@@ -290,7 +286,7 @@ describe("org general tab - danger zone", () => {
       expect(btn).toBeInTheDocument();
       return btn as HTMLElement;
     });
-    await user.click(confirmBtn);
+    click(confirmBtn);
 
     await waitFor(() => {
       expect(leaveCalled).toHaveBeenCalledTimes(1);
@@ -308,7 +304,6 @@ describe("org general tab - danger zone", () => {
   });
 
   it("deletes workspace: clears active org then navigates to choose-organization", async () => {
-    const user = userEvent.setup();
     const deleteCalled = vi.fn();
     setMockOrg({ role: "admin", slug: "my-org" });
     server.use(
@@ -327,7 +322,7 @@ describe("org general tab - danger zone", () => {
       expect(btn).toBeInTheDocument();
       return btn as HTMLElement;
     });
-    await user.click(deleteTrigger);
+    click(deleteTrigger);
 
     const slugInput = await screen.findByPlaceholderText("my-org");
     await fill(slugInput, "my-org");
@@ -341,7 +336,7 @@ describe("org general tab - danger zone", () => {
       expect(btn).not.toBeDisabled();
       return btn as HTMLElement;
     });
-    await user.click(confirmBtn);
+    click(confirmBtn);
 
     await waitFor(() => {
       expect(deleteCalled).toHaveBeenCalledTimes(1);
@@ -359,7 +354,6 @@ describe("org general tab - danger zone", () => {
   });
 
   it("does not clear active org or navigate when leave API fails", async () => {
-    const user = userEvent.setup();
     const leaveCalled = vi.fn();
     setMockOrg({ role: "member", slug: "my-org" });
     server.use(
@@ -380,7 +374,7 @@ describe("org general tab - danger zone", () => {
       expect(btn).toBeInTheDocument();
       return btn as HTMLElement;
     });
-    await user.click(leaveTrigger);
+    click(leaveTrigger);
 
     const confirmBtn = await waitFor(() => {
       const buttons = screen.getAllByRole("button");
@@ -392,7 +386,7 @@ describe("org general tab - danger zone", () => {
       expect(btn).toBeInTheDocument();
       return btn as HTMLElement;
     });
-    await user.click(confirmBtn);
+    click(confirmBtn);
 
     await waitFor(() => {
       expect(leaveCalled).toHaveBeenCalledTimes(1);

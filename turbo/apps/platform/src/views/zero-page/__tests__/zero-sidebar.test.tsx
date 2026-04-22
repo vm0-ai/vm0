@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { testContext } from "../../../signals/__tests__/test-helpers";
-import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  fill,
+  click,
+} from "../../../__tests__/page-helper.ts";
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { featureSwitch$ } from "../../../signals/external/feature-switch";
 import {
   FeatureSwitchKey,
@@ -145,7 +148,6 @@ describe("zero sidebar", () => {
   });
 
   it("should filter chat sessions when searching", async () => {
-    const user = userEvent.setup();
     mockAPIs();
     detachedSetupPage({ context, path: "/" });
 
@@ -157,7 +159,7 @@ describe("zero sidebar", () => {
 
     // Click search button
     const searchButton = screen.getByLabelText("Search chats");
-    await user.click(searchButton);
+    click(searchButton);
 
     // Type search query
     const searchInput = screen.getByPlaceholderText("Search chat with Zero");
@@ -169,7 +171,6 @@ describe("zero sidebar", () => {
   });
 
   it("should close search and reset filter", async () => {
-    const user = userEvent.setup();
     mockAPIs();
     detachedSetupPage({ context, path: "/" });
 
@@ -180,7 +181,7 @@ describe("zero sidebar", () => {
 
     // Open search
     const searchButton = screen.getByLabelText("Search chats");
-    await user.click(searchButton);
+    click(searchButton);
 
     // Type search query that filters out one thread
     const searchInput = screen.getByPlaceholderText("Search chat with Zero");
@@ -190,7 +191,7 @@ describe("zero sidebar", () => {
 
     // Close search
     const closeButton = screen.getByLabelText("Close search");
-    await user.click(closeButton);
+    click(closeButton);
 
     // Both threads should be visible again (search term was reset)
     await waitFor(() => {

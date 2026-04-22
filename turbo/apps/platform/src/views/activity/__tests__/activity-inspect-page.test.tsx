@@ -3,7 +3,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { FeatureSwitchKey } from "@vm0/core";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import {
   loadInspectLogFile$,
   inspectStepSearch$,
@@ -306,7 +306,6 @@ describe("activityInspectPage", () => {
 
     // ACT-D-048
     it("tab triggers switch content to context view", async () => {
-      const user = userEvent.setup();
       detachedSetupPage({
         context,
         path: "/activities/inspect",
@@ -318,7 +317,7 @@ describe("activityInspectPage", () => {
         expect(screen.getByPlaceholderText("Search steps")).toBeInTheDocument();
       });
 
-      await user.click(screen.getByText("Context"));
+      click(screen.getByText("Context"));
 
       await waitFor(() => {
         expect(

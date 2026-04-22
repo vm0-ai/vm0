@@ -18,7 +18,7 @@ import { server } from "../../../mocks/server.ts";
 import { chatThreadsContract, zeroIntegrationsSlackContract } from "@vm0/core";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
@@ -178,7 +178,7 @@ describe("zero sidebar - search results filter (SIDEBAR-D-003)", () => {
     });
 
     const searchChatsBtn1 = screen.getByLabelText("Search chats");
-    await user.click(searchChatsBtn1);
+    click(searchChatsBtn1);
     const searchInput = screen.getByPlaceholderText(/Search chat with/);
     await user.type(searchInput, "deploy");
 
@@ -218,7 +218,7 @@ describe("zero sidebar - search term displays in input (SIDEBAR-D-004)", () => {
     });
 
     const searchChatsBtn2 = screen.getByLabelText("Search chats");
-    await user.click(searchChatsBtn2);
+    click(searchChatsBtn2);
     const searchInput = screen.getByPlaceholderText(/Search chat with/);
     await user.type(searchInput, "deploy");
 
@@ -383,7 +383,6 @@ describe("zero sidebar - new chat button enabled/disabled state (SIDEBAR-D-010)"
   });
 
   it("disables the new chat button while a POST to chat-threads is in flight", async () => {
-    const user = userEvent.setup();
     const deferred = createDeferredPromise<void>(context.signal);
 
     mockBaseAPIs();
@@ -406,7 +405,7 @@ describe("zero sidebar - new chat button enabled/disabled state (SIDEBAR-D-010)"
 
     // Trigger new chat creation
     const newChatBtn = screen.getByLabelText(/New chat with/i);
-    await user.click(newChatBtn);
+    click(newChatBtn);
 
     // Button should become disabled while POST is in flight
     await waitFor(() => {

@@ -8,10 +8,9 @@
 
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import type {
   LogEntry,
   LogsListResponse,
@@ -133,15 +132,14 @@ describe("pagination component", () => {
       expect(screen.getByText("Page 1 Log")).toBeInTheDocument();
     });
 
-    const user = userEvent.setup();
     const nextButton = screen.getByLabelText("Next page");
-    await user.click(nextButton);
+    click(nextButton);
 
     await waitFor(() => {
       expect(screen.getByText("Page 2 Log")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByLabelText("Next page"));
+    click(screen.getByLabelText("Next page"));
 
     await waitFor(() => {
       expect(screen.getByText(/Page 3 of/)).toBeInTheDocument();
@@ -186,11 +184,10 @@ describe("pagination component", () => {
     );
     detachedSetupPage({ context, path: "/activities" });
 
-    const user = userEvent.setup();
     const rowsPerPageSelect = await waitFor(() => {
       return screen.getByRole("combobox", { name: "Rows per page" });
     });
-    await user.click(rowsPerPageSelect);
+    click(rowsPerPageSelect);
 
     await waitFor(() => {
       expect(screen.getByRole("option", { name: "10" })).toBeInTheDocument();
@@ -215,15 +212,14 @@ describe("pagination component", () => {
       expect(screen.getByText(/Page 1/)).toBeInTheDocument();
     });
 
-    const user = userEvent.setup();
     const rowsPerPageSelect = screen.getByRole("combobox", {
       name: "Rows per page",
     });
-    await user.click(rowsPerPageSelect);
+    click(rowsPerPageSelect);
     await waitFor(() => {
       expect(screen.getByRole("option", { name: "50" })).toBeInTheDocument();
     });
-    await user.click(screen.getByRole("option", { name: "50" }));
+    click(screen.getByRole("option", { name: "50" }));
 
     await waitFor(() => {
       expect(captured.limit).toBe("50");
@@ -261,8 +257,7 @@ describe("pagination component", () => {
       expect(screen.getByText("Page 1 Log")).toBeInTheDocument();
     });
 
-    const user = userEvent.setup();
-    await user.click(screen.getByLabelText("Next page"));
+    click(screen.getByLabelText("Next page"));
 
     await waitFor(() => {
       expect(screen.getByText("Page 2 Log")).toBeInTheDocument();
@@ -270,7 +265,7 @@ describe("pagination component", () => {
 
     const prevButton = screen.getByLabelText("Previous page");
     expect(prevButton).not.toHaveAttribute("disabled");
-    await user.click(prevButton);
+    click(prevButton);
 
     await waitFor(() => {
       expect(screen.getByText("Page 1 Log")).toBeInTheDocument();
@@ -308,10 +303,9 @@ describe("pagination component", () => {
       expect(screen.getByText("Page 1 Log")).toBeInTheDocument();
     });
 
-    const user = userEvent.setup();
     const nextButton = screen.getByLabelText("Next page");
     expect(nextButton).not.toHaveAttribute("disabled");
-    await user.click(nextButton);
+    click(nextButton);
 
     await waitFor(() => {
       expect(screen.getByText("Page 2 Log")).toBeInTheDocument();
@@ -359,8 +353,7 @@ describe("pagination component", () => {
       expect(screen.getByText("Page 1 Log")).toBeInTheDocument();
     });
 
-    const user = userEvent.setup();
-    await user.click(screen.getByLabelText("Forward 2 pages"));
+    click(screen.getByLabelText("Forward 2 pages"));
 
     await waitFor(() => {
       expect(screen.getByText("Page 3 Log")).toBeInTheDocument();
@@ -368,7 +361,7 @@ describe("pagination component", () => {
 
     const backTwoButton = screen.getByLabelText("Back 2 pages");
     expect(backTwoButton).not.toHaveAttribute("disabled");
-    await user.click(backTwoButton);
+    click(backTwoButton);
 
     await waitFor(() => {
       expect(screen.getByText("Page 1 Log")).toBeInTheDocument();
@@ -416,10 +409,9 @@ describe("pagination component", () => {
       expect(screen.getByText("Page 1 Log")).toBeInTheDocument();
     });
 
-    const user = userEvent.setup();
     const forwardTwoButton = screen.getByLabelText("Forward 2 pages");
     expect(forwardTwoButton).not.toHaveAttribute("disabled");
-    await user.click(forwardTwoButton);
+    click(forwardTwoButton);
 
     await waitFor(() => {
       expect(screen.getByText("Page 3 Log")).toBeInTheDocument();
@@ -458,21 +450,20 @@ describe("pagination component", () => {
     });
 
     // At first page: clicking back buttons has no effect (still on page 1)
-    const user = userEvent.setup();
     const prevButton = screen.getByLabelText("Previous page");
-    await user.click(prevButton);
+    click(prevButton);
 
     await waitFor(() => {
       expect(screen.getByText("Page 1 Log")).toBeInTheDocument();
     });
 
     // Navigate to last page: next buttons have no effect (still on page 2)
-    await user.click(screen.getByLabelText("Next page"));
+    click(screen.getByLabelText("Next page"));
     await waitFor(() => {
       expect(screen.getByText("Page 2 Log")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByLabelText("Next page"));
+    click(screen.getByLabelText("Next page"));
     await waitFor(() => {
       expect(screen.getByText("Page 2 Log")).toBeInTheDocument();
     });
@@ -510,8 +501,7 @@ describe("pagination component", () => {
       expect(screen.getByText("Page 1 Log")).toBeInTheDocument();
     });
 
-    const user = userEvent.setup();
-    await user.click(screen.getByLabelText("Next page"));
+    click(screen.getByLabelText("Next page"));
 
     await waitFor(() => {
       expect(screen.getByText("Page 2 Log")).toBeInTheDocument();
@@ -531,8 +521,7 @@ describe("loading switch component", () => {
       return screen.getByRole("switch", { name: "Disable this schedule" });
     });
 
-    const user = userEvent.setup();
-    await user.click(switchEl);
+    click(switchEl);
 
     await waitFor(() => {
       expect(
@@ -550,8 +539,7 @@ describe("loading switch component", () => {
       return screen.getByRole("switch", { name: "Enable this schedule" });
     });
 
-    const user = userEvent.setup();
-    await user.click(switchEl);
+    click(switchEl);
 
     await waitFor(() => {
       expect(
@@ -565,13 +553,11 @@ describe("loading switch component", () => {
 
     detachedSetupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
 
-    const user = userEvent.setup();
-
     // Disable
     const disableSwitch = await waitFor(() => {
       return screen.getByRole("switch", { name: "Disable this schedule" });
     });
-    await user.click(disableSwitch);
+    click(disableSwitch);
 
     // Wait for it to settle as disabled
     const enableSwitch = await waitFor(() => {
@@ -579,7 +565,7 @@ describe("loading switch component", () => {
     });
 
     // Re-enable
-    await user.click(enableSwitch);
+    click(enableSwitch);
 
     await waitFor(() => {
       expect(

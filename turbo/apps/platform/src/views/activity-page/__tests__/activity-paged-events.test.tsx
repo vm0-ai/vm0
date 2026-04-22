@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import {
   FeatureSwitchKey,
@@ -9,7 +8,7 @@ import {
   zeroRunAgentEventsContract,
 } from "@vm0/core";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import type {
   LogDetail,
   AgentEventsResponse,
@@ -182,8 +181,6 @@ describe("activity paged events", () => {
       }),
     );
 
-    const user = userEvent.setup();
-
     // Start on the list page so setup can complete while the run is still
     // "running" (polling on the detail page would loop forever).
     // Enable ActivityLogList so the breadcrumb link back to /activities is rendered.
@@ -200,7 +197,7 @@ describe("activity paged events", () => {
     // Navigate to the detail page
     const row = screen.getByText("Test Agent").closest("a");
     expect(row).not.toBeNull();
-    await user.click(row!);
+    click(row!);
 
     await waitFor(() => {
       expect(
@@ -218,7 +215,7 @@ describe("activity paged events", () => {
     // Navigate away using the breadcrumb link
     const breadcrumb = screen.getByText("Activity").closest("a");
     expect(breadcrumb).not.toBeNull();
-    await user.click(breadcrumb!);
+    click(breadcrumb!);
 
     // Activity list heading should appear
     await waitFor(() => {

@@ -1,9 +1,12 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  fill,
+  click,
+} from "../../../__tests__/page-helper.ts";
 import { setMockBillingStatus } from "../../../mocks/handlers/api-billing.ts";
 import {
   setMockUsageMembers,
@@ -209,8 +212,7 @@ describe("org usage tab - inline cap editing", () => {
       expect(screen.getByTestId("unsaved-bar")).toBeInTheDocument();
     });
 
-    const user = userEvent.setup({ pointerEventsCheck: 0 });
-    await user.click(screen.getByTestId("save-button"));
+    click(screen.getByTestId("save-button"));
 
     // Wait for save to complete
     await waitFor(() => {
@@ -252,8 +254,7 @@ describe("org usage tab - inline cap editing", () => {
       expect(screen.getByTestId("unsaved-bar")).toBeInTheDocument();
     });
 
-    const user = userEvent.setup({ pointerEventsCheck: 0 });
-    await user.click(screen.getByTestId("discard-button"));
+    click(screen.getByTestId("discard-button"));
 
     await waitFor(() => {
       expect(screen.queryByTestId("unsaved-bar")).not.toBeInTheDocument();

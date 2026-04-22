@@ -1,9 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { setZeroShowAboutPage$ } from "../../../signals/zero-page/zero-nav.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 import { zeroAgentsByIdContract } from "@vm0/core";
@@ -72,7 +71,6 @@ describe("zero about page", () => {
 
   // AGENT-D-074: Back button navigates back
   it("back button hides the about page", async () => {
-    const user = userEvent.setup();
     mockBasicAPIs();
     detachedSetupPage({ context, path: "/" });
     context.store.set(setZeroShowAboutPage$, true);
@@ -81,7 +79,7 @@ describe("zero about page", () => {
       expect(screen.getByText(/back/i)).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText(/back/i));
+    click(screen.getByText(/back/i));
 
     await waitFor(() => {
       expect(

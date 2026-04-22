@@ -1,9 +1,12 @@
 import { describe, expect, it, beforeEach } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  fill,
+  click,
+} from "../../../__tests__/page-helper.ts";
 import type { OrgMember } from "../../../signals/external/org-members.ts";
 import {
   setMockOrgMembers,
@@ -64,7 +67,6 @@ function renderMembersTab() {
 
 describe("org members - invite dialog loading state", () => {
   it("should show loading state and close after invite completes", async () => {
-    const user = userEvent.setup();
     let resolveInvite: (() => void) | null = null;
 
     setupMembersAPI();
@@ -84,7 +86,7 @@ describe("org members - invite dialog loading state", () => {
       expect(screen.getByText("admin@example.com")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText("Add member"));
+    click(screen.getByText("Add member"));
     await waitFor(() => {
       expect(
         screen.getByRole("heading", { name: "Invite member" }),
@@ -93,7 +95,7 @@ describe("org members - invite dialog loading state", () => {
 
     const emailInput = screen.getByPlaceholderText("email@example.com");
     await fill(emailInput, "new@example.com");
-    await user.click(screen.getByText("Send invitation"));
+    click(screen.getByText("Send invitation"));
 
     // Should show loading state while dialog stays open
     await waitFor(() => {
@@ -119,7 +121,6 @@ describe("org members - invite dialog loading state", () => {
   });
 
   it("should disable input and cancel during invite", async () => {
-    const user = userEvent.setup();
     let resolveInvite: (() => void) | null = null;
 
     setupMembersAPI();
@@ -139,7 +140,7 @@ describe("org members - invite dialog loading state", () => {
       expect(screen.getByText("admin@example.com")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText("Add member"));
+    click(screen.getByText("Add member"));
     await waitFor(() => {
       expect(
         screen.getByRole("heading", { name: "Invite member" }),
@@ -148,7 +149,7 @@ describe("org members - invite dialog loading state", () => {
 
     const emailInput = screen.getByPlaceholderText("email@example.com");
     await fill(emailInput, "new@example.com");
-    await user.click(screen.getByText("Send invitation"));
+    click(screen.getByText("Send invitation"));
 
     await waitFor(() => {
       expect(screen.getByText("Sending...")).toBeInTheDocument();
@@ -169,7 +170,6 @@ describe("org members - invite dialog loading state", () => {
 
 describe("org members - invite dialog role selector", () => {
   it("should show role selector defaulting to Member", async () => {
-    const user = userEvent.setup();
     setupMembersAPI();
 
     await renderMembersTab();
@@ -179,7 +179,7 @@ describe("org members - invite dialog role selector", () => {
     });
 
     // Open invite dialog
-    await user.click(screen.getByText("Add member"));
+    click(screen.getByText("Add member"));
     await waitFor(() => {
       expect(
         screen.getByRole("heading", { name: "Invite member" }),
@@ -194,7 +194,6 @@ describe("org members - invite dialog role selector", () => {
   });
 
   it("should send invite with selected admin role", async () => {
-    const user = userEvent.setup();
     let capturedBody: Record<string, unknown> | null = null;
 
     setupMembersAPI();
@@ -212,7 +211,7 @@ describe("org members - invite dialog role selector", () => {
     });
 
     // Open invite dialog
-    await user.click(screen.getByText("Add member"));
+    click(screen.getByText("Add member"));
     await waitFor(() => {
       expect(
         screen.getByRole("heading", { name: "Invite member" }),
@@ -224,14 +223,14 @@ describe("org members - invite dialog role selector", () => {
     await fill(emailInput, "new-admin@example.com");
 
     // Change role to Admin
-    await user.click(screen.getByRole("combobox"));
+    click(screen.getByRole("combobox"));
     await waitFor(() => {
       expect(screen.getByRole("option", { name: "Admin" })).toBeInTheDocument();
     });
-    await user.click(screen.getByRole("option", { name: "Admin" }));
+    click(screen.getByRole("option", { name: "Admin" }));
 
     // Submit
-    await user.click(screen.getByText("Send invitation"));
+    click(screen.getByText("Send invitation"));
 
     // Wait for dialog to close (invite succeeded)
     await waitFor(() => {
@@ -250,7 +249,6 @@ describe("org members - invite dialog role selector", () => {
 
 describe("org members - role change loading state", () => {
   it("should disable action menu while role change API is pending", async () => {
-    const user = userEvent.setup();
     let resolveRoleChange: (() => void) | null = null;
 
     setupMembersAPI([adminMember, regularMember]);
@@ -274,12 +272,12 @@ describe("org members - role change loading state", () => {
     const actionButton = screen.getByLabelText(
       "Actions for member@example.com",
     );
-    await user.click(actionButton);
+    click(actionButton);
 
     await waitFor(() => {
       expect(screen.getByText("Make admin")).toBeInTheDocument();
     });
-    await user.click(screen.getByText("Make admin"));
+    click(screen.getByText("Make admin"));
 
     // The action button should be disabled while the role change is pending
     await waitFor(() => {

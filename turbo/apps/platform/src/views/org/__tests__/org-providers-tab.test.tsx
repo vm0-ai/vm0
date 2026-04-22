@@ -17,7 +17,7 @@ import {
 } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { setMockOrg, resetMockOrg } from "../../../mocks/handlers/api-org.ts";
 import {
   setMockOrgModelProviders,
@@ -123,7 +123,6 @@ describe("org providers tab - display", () => {
 describe("org providers tab - interaction", () => {
   // ORG-I-069
   it("opens add provider dialog when add provider button is clicked", async () => {
-    const user = userEvent.setup();
     mockAPIs({ providers: [] });
     await openProvidersPage();
     await waitFor(() => {
@@ -137,7 +136,7 @@ describe("org providers tab - interaction", () => {
       return /add provider/i.test(el.textContent ?? "");
     });
     expect(addProviderBtn1).toBeDefined();
-    await user.click(addProviderBtn1!);
+    click(addProviderBtn1!);
     await waitFor(() => {
       expect(
         screen.getByText("Add workspace model provider"),
@@ -147,7 +146,6 @@ describe("org providers tab - interaction", () => {
 
   // ORG-I-070
   it("opens edit dialog when provider card is clicked by admin", async () => {
-    const user = userEvent.setup();
     mockAPIs({
       providers: [makeProvider("anthropic-api-key", { isDefault: true })],
     });
@@ -163,7 +161,7 @@ describe("org providers tab - interaction", () => {
       return /Anthropic/i.test(el.textContent ?? "");
     });
     expect(anthropicBtn).toBeDefined();
-    await user.click(anthropicBtn!);
+    click(anthropicBtn!);
     await waitFor(() => {
       expect(screen.getByText(/Edit workspace Anthropic/i)).toBeInTheDocument();
     });
@@ -171,7 +169,6 @@ describe("org providers tab - interaction", () => {
 
   // ORG-I-071
   it("updates default provider when select dropdown value is changed", async () => {
-    const user = userEvent.setup();
     let capturedDefaultType: string | null = null;
     mockAPIs({
       providers: [
@@ -209,14 +206,14 @@ describe("org providers tab - interaction", () => {
     const defaultSelect = comboboxes.find((el) => {
       return el.textContent?.includes("Anthropic");
     })!;
-    await user.click(defaultSelect);
+    click(defaultSelect);
     await waitFor(() => {
       expect(screen.getAllByText("OpenRouter").length).toBeGreaterThan(0);
     });
     // Click the select option (not the provider card that also shows "OpenRouter")
     const openRouterOptions = screen.getAllByText("OpenRouter");
     const selectOption = openRouterOptions[openRouterOptions.length - 1];
-    await user.click(selectOption);
+    click(selectOption);
     await waitFor(() => {
       expect(capturedDefaultType).toBe("openrouter-api-key");
     });
@@ -224,7 +221,6 @@ describe("org providers tab - interaction", () => {
 
   // ORG-I-072
   it("shows edit and delete options in provider action menu", async () => {
-    const user = userEvent.setup();
     mockAPIs({
       providers: [makeProvider("anthropic-api-key", { isDefault: true })],
     });
@@ -233,7 +229,7 @@ describe("org providers tab - interaction", () => {
       expect(screen.getByLabelText("More options")).toBeInTheDocument();
     });
     const moreOptionsBtn1 = screen.getByLabelText("More options");
-    await user.click(moreOptionsBtn1);
+    click(moreOptionsBtn1);
     await waitFor(() => {
       expect(screen.getByText("Edit")).toBeInTheDocument();
       expect(screen.getByText("Delete")).toBeInTheDocument();
@@ -244,7 +240,6 @@ describe("org providers tab - interaction", () => {
 describe("org add provider dialog - display", () => {
   // ORG-D-082
   it("shows provider cards with icon and label in add dialog", async () => {
-    const user = userEvent.setup();
     mockAPIs({ providers: [] });
     await openProvidersPage();
     await waitFor(() => {
@@ -258,7 +253,7 @@ describe("org add provider dialog - display", () => {
       return /add provider/i.test(el.textContent ?? "");
     });
     expect(addProviderBtn2).toBeDefined();
-    await user.click(addProviderBtn2!);
+    click(addProviderBtn2!);
     await waitFor(() => {
       expect(
         screen.getByText("Add workspace model provider"),
@@ -295,7 +290,6 @@ describe("org add provider dialog - display", () => {
 describe("org add provider dialog - interaction", () => {
   // ORG-I-085
   it("triggers add flow when provider card is clicked", async () => {
-    const user = userEvent.setup();
     mockAPIs({ providers: [] });
     await openProvidersPage();
     await waitFor(() => {
@@ -309,13 +303,13 @@ describe("org add provider dialog - interaction", () => {
       return /add provider/i.test(el.textContent ?? "");
     });
     expect(addProviderBtn3).toBeDefined();
-    await user.click(addProviderBtn3!);
+    click(addProviderBtn3!);
     await waitFor(() => {
       expect(
         screen.getByTestId("org-provider-card-anthropic-api-key"),
       ).toBeInTheDocument();
     });
-    await user.click(screen.getByTestId("org-provider-card-anthropic-api-key"));
+    click(screen.getByTestId("org-provider-card-anthropic-api-key"));
     await waitFor(() => {
       expect(screen.getByText(/Add workspace Anthropic/i)).toBeInTheDocument();
     });
@@ -325,7 +319,6 @@ describe("org add provider dialog - interaction", () => {
 describe("org delete provider dialog - display", () => {
   // ORG-D-086
   it("shows confirmation message and consequences description", async () => {
-    const user = userEvent.setup();
     mockAPIs({
       providers: [makeProvider("anthropic-api-key", { isDefault: true })],
     });
@@ -334,11 +327,11 @@ describe("org delete provider dialog - display", () => {
       expect(screen.getByLabelText("More options")).toBeInTheDocument();
     });
     const moreOptionsBtn2 = screen.getByLabelText("More options");
-    await user.click(moreOptionsBtn2);
+    click(moreOptionsBtn2);
     await waitFor(() => {
       expect(screen.getByText("Delete")).toBeInTheDocument();
     });
-    await user.click(screen.getByText("Delete"));
+    click(screen.getByText("Delete"));
     await waitFor(() => {
       expect(
         screen.getByText(
@@ -352,16 +345,16 @@ describe("org delete provider dialog - display", () => {
   });
 });
 
-async function openDeleteDialog(user: ReturnType<typeof userEvent.setup>) {
+async function openDeleteDialog(_user: ReturnType<typeof userEvent.setup>) {
   await waitFor(() => {
     expect(screen.getByLabelText("More options")).toBeInTheDocument();
   });
   const moreOptionsBtn = screen.getByLabelText("More options");
-  await user.click(moreOptionsBtn);
+  click(moreOptionsBtn);
   await waitFor(() => {
     expect(screen.getByText("Delete")).toBeInTheDocument();
   });
-  await user.click(screen.getByText("Delete"));
+  click(screen.getByText("Delete"));
   await waitFor(() => {
     expect(
       screen.getByText(
@@ -384,7 +377,7 @@ describe("org delete provider dialog - interaction", () => {
       return el.textContent?.trim() === "Cancel";
     });
     expect(cancelBtn).toBeDefined();
-    await user.click(cancelBtn!);
+    click(cancelBtn!);
     await waitFor(() => {
       expect(
         screen.queryByText(
@@ -417,7 +410,7 @@ describe("org delete provider dialog - interaction", () => {
       return el.textContent?.trim() === "Delete";
     });
     expect(deleteBtn).toBeDefined();
-    await user.click(deleteBtn!);
+    click(deleteBtn!);
     await waitFor(() => {
       expect(
         screen.getAllByRole("button").find((el) => {

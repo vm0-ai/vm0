@@ -9,10 +9,9 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { setScopeReviewType$ } from "../../../signals/zero-page/settings/connectors.ts";
 import { type ConnectorType, zeroConnectorScopeDiffContract } from "@vm0/core";
 import { mockApi } from "../../../mocks/msw-contract.ts";
@@ -205,12 +204,11 @@ describe("scope review modal - interactions", () => {
       ).toBeDefined();
     });
 
-    const user = userEvent.setup();
     const reconnectBtn = screen.getAllByRole("button").find((el) => {
       return el.textContent?.trim() === "Reconnect";
     });
     expect(reconnectBtn).toBeDefined();
-    await user.click(reconnectBtn!);
+    click(reconnectBtn!);
 
     await waitFor(() => {
       expect(openSpy).toHaveBeenCalledWith(
@@ -233,7 +231,6 @@ describe("scope review modal - interactions", () => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
 
-    const user = userEvent.setup();
     const dialog = screen.getByRole("dialog");
     const closeButtons = within(dialog).getAllByRole("button");
     const textCloseButton = closeButtons.find((btn) => {
@@ -242,7 +239,7 @@ describe("scope review modal - interactions", () => {
     if (!textCloseButton) {
       throw new Error("Close button not found");
     }
-    await user.click(textCloseButton);
+    click(textCloseButton);
 
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();

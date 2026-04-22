@@ -7,7 +7,11 @@ import {
 } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  fill,
+  click,
+} from "../../../__tests__/page-helper.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 import { mockUploadSuccess } from "../../../mocks/upload-helpers.ts";
 import {
@@ -114,7 +118,6 @@ describe("zero chat composer - file input", () => {
 describe("zero chat composer - connectors popover", () => {
   // CHAT-I-024
   it("opens popover displaying connected connectors when clicked", async () => {
-    const user = userEvent.setup();
     mockChatLifecycle();
     mockConnectors();
 
@@ -124,7 +127,7 @@ describe("zero chat composer - connectors popover", () => {
       return screen.getByLabelText("Connectors");
     });
 
-    await user.click(connectorsButton);
+    click(connectorsButton);
 
     await waitFor(() => {
       expect(screen.getByText("GitHub")).toBeInTheDocument();
@@ -134,7 +137,6 @@ describe("zero chat composer - connectors popover", () => {
 
   // CHAT-I-025
   it("updates connector switch label in UI after toggling a connector", async () => {
-    const user = userEvent.setup();
     mockChatLifecycle();
 
     // Stateful connector: starts with GitHub enabled; after PUT, GET returns empty
@@ -174,14 +176,14 @@ describe("zero chat composer - connectors popover", () => {
     const connectorsButton = await waitFor(() => {
       return screen.getByLabelText("Connectors");
     });
-    await user.click(connectorsButton);
+    click(connectorsButton);
 
     // GitHub is enabled, so the switch label should be "Remove GitHub"
     const githubSwitch = await waitFor(() => {
       return screen.getByRole("switch", { name: "Remove GitHub" });
     });
 
-    await user.click(githubSwitch);
+    click(githubSwitch);
 
     // After toggling, the UI should reflect that GitHub is now removed
     await waitFor(() => {
@@ -193,7 +195,6 @@ describe("zero chat composer - connectors popover", () => {
 
   // CHAT-I-026
   it("shows add connectors dialog when Add connectors button is clicked", async () => {
-    const user = userEvent.setup();
     mockChatLifecycle();
 
     detachedSetupPage({ context, path: CHAT_PATH });
@@ -201,12 +202,12 @@ describe("zero chat composer - connectors popover", () => {
     const connectorsButton = await waitFor(() => {
       return screen.getByLabelText("Connectors");
     });
-    await user.click(connectorsButton);
+    click(connectorsButton);
 
     const addButton = await waitFor(() => {
       return screen.getByText("Add connectors");
     });
-    await user.click(addButton);
+    click(addButton);
 
     await waitFor(() => {
       expect(
@@ -221,7 +222,6 @@ describe("zero chat composer - connectors popover", () => {
 describe("zero chat composer - send and stop actions", () => {
   // CHAT-I-027
   it("sends message when Send button is clicked", async () => {
-    const user = userEvent.setup();
     mockChatLifecycle();
 
     detachedSetupPage({ context, path: CHAT_PATH });
@@ -235,7 +235,7 @@ describe("zero chat composer - send and stop actions", () => {
     const sendButton = await waitFor(() => {
       return screen.getByLabelText("Send");
     });
-    await user.click(sendButton);
+    click(sendButton);
 
     // After sending, the Stop button should appear (message is being processed)
     await waitFor(() => {
@@ -262,7 +262,7 @@ describe("zero chat composer - send and stop actions", () => {
     expect(stopButton).toBeInTheDocument();
 
     ctrl.cancelRun();
-    await user.click(stopButton);
+    click(stopButton);
 
     // After cancellation, send button should return
     await waitFor(() => {
@@ -307,7 +307,6 @@ describe("zero chat composer - send and stop actions", () => {
 describe("zero chat composer - add connectors dialog", () => {
   // CHAT-I-029
   it("filters connector list based on search query", async () => {
-    const user = userEvent.setup();
     mockChatLifecycle();
 
     detachedSetupPage({ context, path: CHAT_PATH });
@@ -315,12 +314,12 @@ describe("zero chat composer - add connectors dialog", () => {
     const connectorsButton = await waitFor(() => {
       return screen.getByLabelText("Connectors");
     });
-    await user.click(connectorsButton);
+    click(connectorsButton);
 
     const addButton = await waitFor(() => {
       return screen.getByText("Add connectors");
     });
-    await user.click(addButton);
+    click(addButton);
 
     const searchInput = await waitFor(() => {
       return screen.getByPlaceholderText("Find connectors...");
@@ -342,7 +341,6 @@ describe("zero chat composer - add connectors dialog", () => {
 
   // CHAT-I-030
   it("opens ConnectModal when a Connect button is clicked", async () => {
-    const user = userEvent.setup();
     mockChatLifecycle();
 
     detachedSetupPage({ context, path: CHAT_PATH });
@@ -350,18 +348,18 @@ describe("zero chat composer - add connectors dialog", () => {
     const connectorsButton = await waitFor(() => {
       return screen.getByLabelText("Connectors");
     });
-    await user.click(connectorsButton);
+    click(connectorsButton);
 
     const addButton = await waitFor(() => {
       return screen.getByText("Add connectors");
     });
-    await user.click(addButton);
+    click(addButton);
 
     // Verify unconnected connectors are listed
     const connectGitHubButton = await waitFor(() => {
       return screen.getByLabelText("Connect GitHub");
     });
-    await user.click(connectGitHubButton);
+    click(connectGitHubButton);
 
     // ConnectModal should appear as a dialog
     await waitFor(() => {

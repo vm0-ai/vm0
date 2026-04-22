@@ -13,9 +13,8 @@
 
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-switches.ts";
 import { mockSubagentThread } from "./chat-test-helpers.ts";
 import { autoReadEnabled$ } from "../../../signals/voice-io/voice-io-settings.ts";
@@ -86,7 +85,6 @@ describe("auto-read toggle - initial state is off (AR-003)", () => {
 
 describe("auto-read toggle - click enables auto-read (AR-004)", () => {
   it("sets autoReadEnabled$ to true after clicking the toggle once", async () => {
-    const user = userEvent.setup();
     setMockFeatureSwitches({ audioOutput: true });
     mockSubagentThread(THREAD_ID);
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
@@ -95,7 +93,7 @@ describe("auto-read toggle - click enables auto-read (AR-004)", () => {
       return screen.getAllByLabelText("Toggle auto-read")[0];
     });
 
-    await user.click(toggleBtn);
+    click(toggleBtn);
 
     expect(context.store.get(autoReadEnabled$)).toBeTruthy();
   });
@@ -107,7 +105,6 @@ describe("auto-read toggle - click enables auto-read (AR-004)", () => {
 
 describe("auto-read toggle - double-click returns to off (AR-005)", () => {
   it("returns autoReadEnabled$ to false after clicking toggle twice", async () => {
-    const user = userEvent.setup();
     setMockFeatureSwitches({ audioOutput: true });
     mockSubagentThread(THREAD_ID);
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
@@ -116,8 +113,8 @@ describe("auto-read toggle - double-click returns to off (AR-005)", () => {
       return screen.getAllByLabelText("Toggle auto-read")[0];
     });
 
-    await user.click(toggleBtn);
-    await user.click(toggleBtn);
+    click(toggleBtn);
+    click(toggleBtn);
 
     expect(context.store.get(autoReadEnabled$)).toBeFalsy();
   });

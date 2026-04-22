@@ -3,7 +3,11 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  fill,
+  click,
+} from "../../../__tests__/page-helper.ts";
 import {
   setMockSchedules,
   createMockScheduleResponse,
@@ -92,8 +96,8 @@ function mockLogsWithPagination() {
   );
 }
 
-async function openRunHistoryTab(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByText(/Run History/i));
+async function openRunHistoryTab(_user: ReturnType<typeof userEvent.setup>) {
+  click(screen.getByText(/Run History/i));
   await waitFor(() => {
     expect(screen.getByText(/Page 1/)).toBeInTheDocument();
   });
@@ -159,7 +163,6 @@ describe("zero schedule detail page - toggle switch changes enabled state (SCHED
       }),
     );
 
-    const user = userEvent.setup();
     detachedSetupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
 
     await waitFor(() => {
@@ -168,9 +171,7 @@ describe("zero schedule detail page - toggle switch changes enabled state (SCHED
       ).toBeInTheDocument();
     });
 
-    await user.click(
-      screen.getByRole("switch", { name: /Disable this schedule/i }),
-    );
+    click(screen.getByRole("switch", { name: /Disable this schedule/i }));
 
     await waitFor(() => {
       expect(
@@ -194,7 +195,6 @@ describe("zero schedule detail page - settings save button persists changes (SCH
         });
       }),
     );
-    const user = userEvent.setup();
     detachedSetupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
     await waitForPageLoad();
 
@@ -207,7 +207,7 @@ describe("zero schedule detail page - settings save button persists changes (SCH
       expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText("Save"));
+    click(screen.getByText("Save"));
 
     await waitFor(() => {
       expect(
@@ -221,11 +221,10 @@ describe("zero schedule detail page - settings save button persists changes (SCH
 describe("zero schedule detail page - delete button opens confirmation dialog (SCHED-D-023)", () => {
   it("should open a confirmation dialog when delete schedule is clicked", async () => {
     mockAPIs();
-    const user = userEvent.setup();
     detachedSetupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
     await waitForPageLoad();
 
-    await user.click(screen.getByText("Delete schedule"));
+    click(screen.getByText("Delete schedule"));
 
     await waitFor(() => {
       expect(screen.getByText("Delete schedule?")).toBeInTheDocument();
@@ -271,21 +270,21 @@ describe("zero schedule detail page - instruction save button saves instructions
     const instructionsTab = screen.getAllByRole("tab").find((el) => {
       return /Instructions/.test(el.textContent ?? "");
     });
-    await user.click(instructionsTab!);
+    click(instructionsTab!);
 
     await waitFor(() => {
       expect(document.querySelector("[contenteditable]")).toBeInTheDocument();
     });
 
     const editor = document.querySelector("[contenteditable]");
-    await user.click(editor!);
+    click(editor!);
     await user.keyboard("{Control>}a{/Control}New instruction content");
 
     await waitFor(() => {
       expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText("Save"));
+    click(screen.getByText("Save"));
 
     await waitFor(() => {
       expect(screen.getByText("Schedule updated")).toBeInTheDocument();
@@ -303,21 +302,21 @@ describe("zero schedule detail page - instruction discard button reverts changes
     const instructionsTab = screen.getAllByRole("tab").find((el) => {
       return /Instructions/.test(el.textContent ?? "");
     });
-    await user.click(instructionsTab!);
+    click(instructionsTab!);
 
     await waitFor(() => {
       expect(document.querySelector("[contenteditable]")).toBeInTheDocument();
     });
 
     const editor = document.querySelector("[contenteditable]");
-    await user.click(editor!);
+    click(editor!);
     await user.keyboard("{Control>}a{/Control}Something different");
 
     await waitFor(() => {
       expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText("Discard"));
+    click(screen.getByText("Discard"));
 
     await waitFor(() => {
       expect(
@@ -336,12 +335,12 @@ describe("zero schedule detail page - pagination previous button works (SCHED-D-
     await waitForPageLoad();
     await openRunHistoryTab(user);
 
-    await user.click(screen.getByLabelText("Next page"));
+    click(screen.getByLabelText("Next page"));
     await waitFor(() => {
       expect(screen.getByText(/Page 2/)).toBeInTheDocument();
     });
 
-    await user.click(screen.getByLabelText("Previous page"));
+    click(screen.getByLabelText("Previous page"));
     await waitFor(() => {
       expect(screen.getByText(/Page 1/)).toBeInTheDocument();
     });
@@ -357,7 +356,7 @@ describe("zero schedule detail page - pagination next button works (SCHED-D-027)
     await waitForPageLoad();
     await openRunHistoryTab(user);
 
-    await user.click(screen.getByLabelText("Next page"));
+    click(screen.getByLabelText("Next page"));
 
     await waitFor(() => {
       expect(screen.getByText(/Page 2 of 3/)).toBeInTheDocument();
@@ -374,7 +373,7 @@ describe("zero schedule detail page - pagination forward 2 button works (SCHED-D
     await waitForPageLoad();
     await openRunHistoryTab(user);
 
-    await user.click(screen.getByLabelText("Forward 2 pages"));
+    click(screen.getByLabelText("Forward 2 pages"));
 
     await waitFor(() => {
       expect(screen.getByText(/Page 3 of 3/)).toBeInTheDocument();
@@ -391,12 +390,12 @@ describe("zero schedule detail page - pagination back 2 button works (SCHED-D-02
     await waitForPageLoad();
     await openRunHistoryTab(user);
 
-    await user.click(screen.getByLabelText("Forward 2 pages"));
+    click(screen.getByLabelText("Forward 2 pages"));
     await waitFor(() => {
       expect(screen.getByText(/Page 3/)).toBeInTheDocument();
     });
 
-    await user.click(screen.getByLabelText("Back 2 pages"));
+    click(screen.getByLabelText("Back 2 pages"));
     await waitFor(() => {
       expect(screen.getByText(/Page 1/)).toBeInTheDocument();
     });
@@ -422,11 +421,10 @@ describe("zero schedule detail page - rows per page select changes page size (SC
         });
       }),
     );
-    const user = userEvent.setup();
     detachedSetupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
     await waitForPageLoad();
 
-    await user.click(screen.getByText(/Run History/i));
+    click(screen.getByText(/Run History/i));
 
     await waitFor(() => {
       expect(
@@ -434,13 +432,13 @@ describe("zero schedule detail page - rows per page select changes page size (SC
       ).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("combobox", { name: "Rows per page" }));
+    click(screen.getByRole("combobox", { name: "Rows per page" }));
 
     await waitFor(() => {
       expect(screen.getByRole("option", { name: "20" })).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("option", { name: "20" }));
+    click(screen.getByRole("option", { name: "20" }));
 
     await waitFor(() => {
       expect(capturedLimit).toBe("20");
@@ -467,11 +465,10 @@ describe("zero schedule detail page - status filter select filters runs (SCHED-D
         });
       }),
     );
-    const user = userEvent.setup();
     detachedSetupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
     await waitForPageLoad();
 
-    await user.click(screen.getByText(/Run History/i));
+    click(screen.getByText(/Run History/i));
 
     await waitFor(() => {
       expect(
@@ -479,7 +476,7 @@ describe("zero schedule detail page - status filter select filters runs (SCHED-D
       ).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("combobox", { name: "Status filter" }));
+    click(screen.getByRole("combobox", { name: "Status filter" }));
 
     await waitFor(() => {
       expect(
@@ -487,7 +484,7 @@ describe("zero schedule detail page - status filter select filters runs (SCHED-D
       ).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("option", { name: /completed/i }));
+    click(screen.getByRole("option", { name: /completed/i }));
 
     await waitFor(() => {
       expect(capturedStatus).toBe("completed");
@@ -503,11 +500,10 @@ describe("zero schedule detail page - run now button triggers immediate run (SCH
         return respond(201, { runId: "r0000000-0000-4000-a000-000000000001" });
       }),
     );
-    const user = userEvent.setup();
     detachedSetupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
     await waitForPageLoad();
 
-    await user.click(screen.getByText(/Run now/i));
+    click(screen.getByText(/Run now/i));
 
     await waitFor(() => {
       expect(screen.getByText(/Run started/i)).toBeInTheDocument();
@@ -541,14 +537,13 @@ describe("zero schedule detail page - agent field is read-only", () => {
 describe("zero schedule detail page - tab triggers switch between tabs (SCHED-D-033)", () => {
   it("should switch content when tab triggers are clicked", async () => {
     mockAPIs();
-    const user = userEvent.setup();
     detachedSetupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
     await waitForPageLoad();
 
     const instructionsTab = screen.getAllByRole("tab").find((el) => {
       return /Instructions/.test(el.textContent ?? "");
     });
-    await user.click(instructionsTab!);
+    click(instructionsTab!);
     await waitFor(() => {
       expect(document.querySelector("[contenteditable]")).toBeInTheDocument();
     });
@@ -556,7 +551,7 @@ describe("zero schedule detail page - tab triggers switch between tabs (SCHED-D-
     const runHistoryTab = screen.getAllByRole("tab").find((el) => {
       return /Run History/.test(el.textContent ?? "");
     });
-    await user.click(runHistoryTab!);
+    click(runHistoryTab!);
     await waitFor(() => {
       expect(
         screen.getByRole("combobox", { name: "Status filter" }),
@@ -566,7 +561,7 @@ describe("zero schedule detail page - tab triggers switch between tabs (SCHED-D-
     const settingsTab = screen.getAllByRole("tab").find((el) => {
       return /Settings/.test(el.textContent ?? "");
     });
-    await user.click(settingsTab!);
+    click(settingsTab!);
     await waitFor(() => {
       expect(
         screen.getByPlaceholderText("Leave blank to auto-generate"),

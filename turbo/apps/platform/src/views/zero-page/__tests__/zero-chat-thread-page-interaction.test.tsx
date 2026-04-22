@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { hasSubscription } from "../../../mocks/ably.ts";
 import { pathname } from "../../../signals/location.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
@@ -56,7 +56,6 @@ describe("zero chat thread page - sending state affects composer button display"
 // CHAT-N-045: Agent avatar Link navigates to /agents/:id
 describe("zero chat thread page - agent avatar link navigation", () => {
   it("navigates to /agents/:id when avatar link is clicked (CHAT-N-045)", async () => {
-    const user = userEvent.setup();
     mockSubagentThread(THREAD_ID);
 
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
@@ -69,7 +68,7 @@ describe("zero chat thread page - agent avatar link navigation", () => {
       return el;
     });
 
-    await user.click(link);
+    click(link);
 
     await waitFor(() => {
       expect(pathname()).toBe(`/agents/${SUB_AGENT_ID}`);
@@ -80,7 +79,6 @@ describe("zero chat thread page - agent avatar link navigation", () => {
 // CHAT-I-046: Pin button calls handlePin on click in thread
 describe("zero chat thread page - pin button toggles pin state", () => {
   it("pin button disappears after click when agent is added to pinned list (CHAT-I-046)", async () => {
-    const user = userEvent.setup();
     setMockUserPreferences({ pinnedAgentIds: [] });
     mockSubagentThread(THREAD_ID);
 
@@ -90,7 +88,7 @@ describe("zero chat thread page - pin button toggles pin state", () => {
       return screen.getByLabelText("Pin to sidebar");
     });
 
-    await user.click(pinButton);
+    click(pinButton);
 
     await waitFor(() => {
       expect(screen.queryByLabelText("Pin to sidebar")).not.toBeInTheDocument();
@@ -101,7 +99,6 @@ describe("zero chat thread page - pin button toggles pin state", () => {
 // CHAT-I-049 / CHAT-I-050: Image preview button opens ImageLightbox
 describe("zero chat thread page - image attachment opens lightbox", () => {
   it("clicking image preview button opens ImageLightbox (CHAT-I-049, CHAT-I-050)", async () => {
-    const user = userEvent.setup();
     mockChatLifecycle({
       chatMessages: [
         {
@@ -124,7 +121,7 @@ describe("zero chat thread page - image attachment opens lightbox", () => {
     const imageButton = screen
       .getByRole("img", { name: "photo.png" })
       .closest("button")!;
-    await user.click(imageButton);
+    click(imageButton);
 
     await waitFor(() => {
       const lightboxImg = screen.getAllByRole("img").find((img) => {
@@ -140,7 +137,6 @@ describe("zero chat thread page - image attachment opens lightbox", () => {
 // CHAT-I-052: Copy message button writes message content to clipboard
 describe("zero chat thread page - copy message button", () => {
   it("clicking copy button writes message content to clipboard (CHAT-I-052)", async () => {
-    const user = userEvent.setup();
     vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
 
     mockChatLifecycle({
@@ -171,7 +167,7 @@ describe("zero chat thread page - copy message button", () => {
     const copyButton = within(assistantBubble as HTMLElement).getByLabelText(
       "Copy message",
     );
-    await user.click(copyButton);
+    click(copyButton);
 
     await waitFor(() => {
       expect(navigator.clipboard.writeText).toHaveBeenCalledWith("Hello world");
@@ -185,7 +181,6 @@ describe("zero chat thread page - copy message button", () => {
 // CHAT-N-053: View activity logs Link navigates to /activities/:id
 describe("zero chat thread page - view activity logs link", () => {
   it("navigates to /activities/:id when view run logs link is clicked (CHAT-N-053)", async () => {
-    const user = userEvent.setup();
     mockChatLifecycle({
       chatMessages: [
         {
@@ -209,7 +204,7 @@ describe("zero chat thread page - view activity logs link", () => {
     });
 
     const logLink = screen.getByLabelText("View run logs");
-    await user.click(logLink);
+    click(logLink);
 
     await waitFor(() => {
       expect(pathname()).toBe("/activities/run-legacy-1");
@@ -220,7 +215,6 @@ describe("zero chat thread page - view activity logs link", () => {
 // CHAT-I-055: Attachment download links do not navigate away from the page
 describe("zero chat thread page - file attachment download does not navigate away", () => {
   it("clicking the download link does not change the pathname (CHAT-I-055)", async () => {
-    const user = userEvent.setup();
     mockChatLifecycle({
       chatMessages: [
         {
@@ -239,7 +233,7 @@ describe("zero chat thread page - file attachment download does not navigate awa
     });
 
     const initialPathname = pathname();
-    await user.click(downloadLink);
+    click(downloadLink);
 
     await waitFor(() => {
       expect(pathname()).toBe(initialPathname);

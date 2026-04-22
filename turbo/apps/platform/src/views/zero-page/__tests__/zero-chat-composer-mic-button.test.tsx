@@ -6,7 +6,7 @@ import { FeatureSwitchKey, zeroVoiceIoQuotaContract } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { mockChatLifecycle, PLACEHOLDER } from "./chat-test-helpers.ts";
 
 const context = testContext();
@@ -215,7 +215,6 @@ describe("chat-i-033: mic button recording interaction", () => {
   });
 
   it("should show stop recording button after clicking voice input", async () => {
-    const user = userEvent.setup();
     mockChatLifecycle();
 
     detachedSetupPage({
@@ -228,7 +227,7 @@ describe("chat-i-033: mic button recording interaction", () => {
       return screen.getByLabelText("Voice input");
     });
 
-    await user.click(micButton);
+    click(micButton);
 
     await waitFor(() => {
       expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
@@ -248,7 +247,6 @@ describe("chat-i-034: mic button transcription appends to draft", () => {
   });
 
   it("should populate composer input with transcribed text without sending", async () => {
-    const user = userEvent.setup();
     mockChatLifecycle();
 
     const transcribedText = "hello from voice";
@@ -268,13 +266,13 @@ describe("chat-i-034: mic button transcription appends to draft", () => {
       return screen.getByLabelText("Voice input");
     });
 
-    await user.click(micButton);
+    click(micButton);
 
     const stopButton = await waitFor(() => {
       return screen.getByLabelText("Stop recording");
     });
 
-    await user.click(stopButton);
+    click(stopButton);
 
     await waitFor(() => {
       expect(textarea.value).toBe(transcribedText);
@@ -308,13 +306,13 @@ describe("chat-i-034: mic button transcription appends to draft", () => {
       return screen.getByLabelText("Voice input");
     });
 
-    await user.click(micButton);
+    click(micButton);
 
     const stopButton = await waitFor(() => {
       return screen.getByLabelText("Stop recording");
     });
 
-    await user.click(stopButton);
+    click(stopButton);
 
     await waitFor(() => {
       expect(textarea.value).toBe(`hello ${transcribedText}`);
@@ -334,7 +332,6 @@ describe("chat-i-035: mic button gates on audio input quota", () => {
   });
 
   it("should start recording when quota is available", async () => {
-    const user = userEvent.setup();
     mockChatLifecycle();
     mockQuotaEndpoint({ allowed: true, count: 1, limit: 3 });
     mockSttEndpoint();
@@ -349,7 +346,7 @@ describe("chat-i-035: mic button gates on audio input quota", () => {
       return screen.getByLabelText("Voice input");
     });
 
-    await user.click(micButton);
+    click(micButton);
 
     await waitFor(() => {
       expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
@@ -358,7 +355,6 @@ describe("chat-i-035: mic button gates on audio input quota", () => {
   });
 
   it("should open billing dialog without recording when quota is exhausted", async () => {
-    const user = userEvent.setup();
     mockChatLifecycle();
     mockQuotaEndpoint({ allowed: false, count: 3, limit: 3 });
 
@@ -382,7 +378,7 @@ describe("chat-i-035: mic button gates on audio input quota", () => {
       return screen.getByLabelText("Voice input");
     });
 
-    await user.click(micButton);
+    click(micButton);
 
     await waitFor(() => {
       expect(screen.getByText("Choose your plan")).toBeInTheDocument();
@@ -393,7 +389,6 @@ describe("chat-i-035: mic button gates on audio input quota", () => {
   });
 
   it("should open billing dialog when STT returns 402 quota-exceeded after recording", async () => {
-    const user = userEvent.setup();
     mockChatLifecycle();
     mockQuotaEndpoint({ allowed: true, count: 2, limit: 3 });
     mockSttQuotaExceededEndpoint();
@@ -408,13 +403,13 @@ describe("chat-i-035: mic button gates on audio input quota", () => {
       return screen.getByLabelText("Voice input");
     });
 
-    await user.click(micButton);
+    click(micButton);
 
     const stopButton = await waitFor(() => {
       return screen.getByLabelText("Stop recording");
     });
 
-    await user.click(stopButton);
+    click(stopButton);
 
     await waitFor(() => {
       expect(screen.getByText("Choose your plan")).toBeInTheDocument();

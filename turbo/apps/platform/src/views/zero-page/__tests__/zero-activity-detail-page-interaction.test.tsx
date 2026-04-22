@@ -3,7 +3,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import {
   FeatureSwitchKey,
   type RunContextResponse,
@@ -146,8 +146,6 @@ describe("zeroActivityDetailPageInteraction", () => {
         return undefined;
       });
 
-    const user = userEvent.setup();
-
     detachedSetupPage({
       context,
       path: `/activities/${BASE_LOG_ID}`,
@@ -160,7 +158,7 @@ describe("zeroActivityDetailPageInteraction", () => {
     });
 
     const downloadButton = screen.getByLabelText("Download raw data");
-    await user.click(downloadButton);
+    click(downloadButton);
 
     await waitFor(() => {
       expect(createObjectURLSpy).toHaveBeenCalledOnce();
@@ -201,8 +199,6 @@ describe("zeroActivityDetailPageInteraction", () => {
       }),
     );
 
-    const user = userEvent.setup();
-
     detachedSetupPage({
       context,
       path: `/activities/${BASE_LOG_ID}`,
@@ -216,7 +212,7 @@ describe("zeroActivityDetailPageInteraction", () => {
     });
 
     const contextTab = screen.getByText("Context");
-    await user.click(contextTab);
+    click(contextTab);
 
     await waitFor(() => {
       expect(
@@ -227,8 +223,6 @@ describe("zeroActivityDetailPageInteraction", () => {
 
   it("should expand and collapse the system prompt section (ACT-D-031)", async () => {
     setupBaseMocks();
-
-    const user = userEvent.setup();
 
     detachedSetupPage({
       context,
@@ -248,13 +242,13 @@ describe("zeroActivityDetailPageInteraction", () => {
     };
     expect(promptParagraph()).not.toBeVisible();
 
-    await user.click(screen.getByText("System Prompt"));
+    click(screen.getByText("System Prompt"));
 
     await waitFor(() => {
       expect(promptParagraph()).toBeVisible();
     });
 
-    await user.click(screen.getByText("System Prompt"));
+    click(screen.getByText("System Prompt"));
 
     await waitFor(() => {
       expect(promptParagraph()).not.toBeVisible();

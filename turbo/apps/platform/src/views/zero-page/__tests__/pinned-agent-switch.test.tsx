@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 import { pathname } from "../../../signals/location.ts";
@@ -56,7 +55,6 @@ function getPinnedLink(name: string): HTMLAnchorElement {
 
 describe("pinned agent switch (#6897)", () => {
   it("should highlight the switched-to pinned agent after clicking it", async () => {
-    const user = userEvent.setup();
     mockPinnedAgents();
 
     detachedSetupPage({ context, path: "/agents/agent-alpha/chat" });
@@ -74,7 +72,7 @@ describe("pinned agent switch (#6897)", () => {
     expect(getPinnedLink("Alpha Bot").className).toContain("bg-gray-200");
 
     // Click Beta Bot pinned agent in sidebar
-    await user.click(getPinnedLink("Beta Bot"));
+    click(getPinnedLink("Beta Bot"));
 
     // URL should update to beta agent
     await waitFor(() => {
@@ -89,7 +87,6 @@ describe("pinned agent switch (#6897)", () => {
   });
 
   it("should highlight the switched-to pinned agent when switching back", async () => {
-    const user = userEvent.setup();
     mockPinnedAgents();
 
     detachedSetupPage({ context, path: "/agents/agent-alpha/chat" });
@@ -103,13 +100,13 @@ describe("pinned agent switch (#6897)", () => {
     });
 
     // Switch to Beta
-    await user.click(getPinnedLink("Beta Bot"));
+    click(getPinnedLink("Beta Bot"));
     await waitFor(() => {
       expect(getPinnedLink("Beta Bot").className).toContain("bg-gray-200");
     });
 
     // Switch back to Alpha
-    await user.click(getPinnedLink("Alpha Bot"));
+    click(getPinnedLink("Alpha Bot"));
     await waitFor(() => {
       expect(getPinnedLink("Alpha Bot").className).toContain("bg-gray-200");
     });

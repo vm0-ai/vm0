@@ -8,11 +8,10 @@
 
 import { afterEach, describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { zeroSlackConnectContract } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 import {
   setMockSlackConnectData,
@@ -123,7 +122,6 @@ describe("zero-slack-connect-page - back to settings link (CONN-N-055)", () => {
 // CONN-I-056: Connect button initiates Slack connection
 describe("zero-slack-connect-page - connect button (CONN-I-056)", () => {
   it("clicking Connect submits the workspace and user IDs to the Slack connect API", async () => {
-    const user = userEvent.setup();
     let submittedBody: unknown;
 
     server.use(
@@ -150,7 +148,7 @@ describe("zero-slack-connect-page - connect button (CONN-I-056)", () => {
       return /^Connect$/i.test(el.textContent ?? "");
     })!;
 
-    await user.click(connectButton);
+    click(connectButton);
 
     await waitFor(() => {
       expect(submittedBody).toMatchObject({
@@ -164,7 +162,6 @@ describe("zero-slack-connect-page - connect button (CONN-I-056)", () => {
 // CONN-I-057: Open Slack button navigates to slack://open on click
 describe("zero-slack-connect-page - open slack button on success (CONN-I-057)", () => {
   it("clicking Open Slack button sets window.location.href to slack://open", async () => {
-    const user = userEvent.setup();
     // Use isConnected: true via mock API to get success state without URL-triggered redirect
     setMockSlackConnectData({ isConnected: true });
     detachedSetupPage({ context, path: "/settings/slack?w=ws1&u=u1" });
@@ -177,7 +174,7 @@ describe("zero-slack-connect-page - open slack button on success (CONN-I-057)", 
       return btn!;
     });
 
-    await user.click(openSlackBtn);
+    click(openSlackBtn);
 
     expect(window.location.href).toBe("slack://open");
   });

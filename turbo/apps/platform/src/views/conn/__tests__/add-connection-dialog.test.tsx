@@ -17,7 +17,7 @@ import {
 } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { setSelectedConnectorType$ } from "../../../signals/zero-page/settings/connectors.ts";
 import { mockConnectors } from "../../zero-page/__tests__/zero-connectors-page-test-helpers.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
@@ -111,8 +111,7 @@ describe("connect modal - loading states", () => {
       expect(screen.getByText("Sign in with GitHub")).toBeInTheDocument();
     });
 
-    const user = userEvent.setup();
-    await user.click(screen.getByText("Sign in with GitHub"));
+    click(screen.getByText("Sign in with GitHub"));
 
     await waitFor(() => {
       expect(screen.getByText("Connecting...")).toBeInTheDocument();
@@ -133,8 +132,7 @@ describe("connect modal - interactions", () => {
       expect(screen.getByText("Sign in with GitHub")).toBeInTheDocument();
     });
 
-    const user = userEvent.setup();
-    await user.click(screen.getByText("Sign in with GitHub"));
+    click(screen.getByText("Sign in with GitHub"));
 
     expect(openSpy).toHaveBeenCalledWith(
       expect.stringContaining("/api/zero/connectors/github/authorize"),
@@ -172,7 +170,7 @@ describe("connect modal - interactions", () => {
       screen.getByPlaceholderText("xaat-..."),
       "test-token-value",
     );
-    await user.click(screen.getByText("Save"));
+    click(screen.getByText("Save"));
 
     await waitFor(() => {
       expect(submittedSecret).toBeDefined();
@@ -184,7 +182,6 @@ describe("connect modal - interactions", () => {
 
 describe("connect modal - state management", () => {
   it("dialog opens and closes correctly (CONN-S-024)", async () => {
-    const user = userEvent.setup();
     detachedSetupPage({ context, path: "/connectors" });
 
     await waitFor(() => {
@@ -205,7 +202,7 @@ describe("connect modal - state management", () => {
 
     // Close dialog via the close button
     const closeButton = screen.getByLabelText(/close/i);
-    await user.click(closeButton);
+    click(closeButton);
 
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();

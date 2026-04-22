@@ -5,7 +5,11 @@ import { zeroAgentsByIdContract, zeroUserConnectorsContract } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { setMockOrg } from "../../../mocks/handlers/api-org.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  fill,
+  click,
+} from "../../../__tests__/page-helper.ts";
 import { getCategories } from "../zero-ideation-data.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
@@ -65,7 +69,6 @@ describe("zero chat page - suggested prompts", () => {
   });
 
   it("should populate composer with the correct prompt when a card is clicked", async () => {
-    const user = userEvent.setup();
     await renderChatPage();
 
     const exploreText = await waitFor(() => {
@@ -85,7 +88,7 @@ describe("zero chat page - suggested prompts", () => {
     })!;
     const expectedPrompt = promptByTitle.get(cardTitle)!;
 
-    await user.click(promptCard);
+    click(promptCard);
 
     await waitFor(() => {
       const textarea = screen.getByPlaceholderText(
@@ -159,7 +162,6 @@ describe("zero chat page - composer", () => {
 
 describe("zero chat page - file input ref", () => {
   it("should open file picker when Attach button is clicked", async () => {
-    const user = userEvent.setup();
     await renderChatPage();
 
     const attachButton = await waitFor(() => {
@@ -178,7 +180,7 @@ describe("zero chat page - file input ref", () => {
     const clickSpy = vi.fn();
     fileInput.click = clickSpy;
 
-    await user.click(attachButton);
+    click(attachButton);
 
     expect(clickSpy).toHaveBeenCalledOnce();
   });
@@ -186,20 +188,19 @@ describe("zero chat page - file input ref", () => {
 
 describe("zero chat page - connectors popover", () => {
   it("should open add connectors dialog when clicking Add connectors in popover", async () => {
-    const user = userEvent.setup();
     await renderChatPage();
 
     const connectorsButton = await waitFor(() => {
       return screen.getByLabelText("Connectors");
     });
 
-    await user.click(connectorsButton);
+    click(connectorsButton);
 
     const addButton = await waitFor(() => {
       return screen.getByText("Add connectors");
     });
 
-    await user.click(addButton);
+    click(addButton);
 
     await waitFor(() => {
       expect(
@@ -209,18 +210,17 @@ describe("zero chat page - connectors popover", () => {
   });
 
   it("should show unconnected connectors in AddConnectorsDialog with connect buttons", async () => {
-    const user = userEvent.setup();
     await renderChatPage();
 
     const connectorsButton = await waitFor(() => {
       return screen.getByLabelText("Connectors");
     });
-    await user.click(connectorsButton);
+    click(connectorsButton);
 
     const addButton = await waitFor(() => {
       return screen.getByText("Add connectors");
     });
-    await user.click(addButton);
+    click(addButton);
 
     // Dialog should show available (unconnected) connectors with Connect buttons
     await waitFor(() => {
@@ -238,18 +238,17 @@ describe("zero chat page - connectors popover", () => {
   });
 
   it("should filter connectors when searching in AddConnectorsDialog", async () => {
-    const user = userEvent.setup();
     await renderChatPage();
 
     const connectorsButton = await waitFor(() => {
       return screen.getByLabelText("Connectors");
     });
-    await user.click(connectorsButton);
+    click(connectorsButton);
 
     const addButton = await waitFor(() => {
       return screen.getByText("Add connectors");
     });
-    await user.click(addButton);
+    click(addButton);
 
     const searchInput = await waitFor(() => {
       return screen.getByPlaceholderText("Find connectors...");
@@ -305,11 +304,10 @@ describe("zero chat page - connectors popover", () => {
     mockChatAPI();
     detachedSetupPage({ context, path: "/" });
 
-    const user = userEvent.setup();
     const connectorsButton = await waitFor(() => {
       return screen.getByLabelText("Connectors");
     });
-    await user.click(connectorsButton);
+    click(connectorsButton);
 
     // Both connectors should appear in the popover
     await waitFor(() => {
@@ -329,7 +327,6 @@ describe("zero chat page - connectors popover", () => {
 
 describe("zero chat page - connector label casing", () => {
   it("should display connector label from CONNECTOR_TYPES (e.g. 'Axiom') not the raw key ('axiom')", async () => {
-    const user = userEvent.setup();
     server.use(
       mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
         return respond(200, {
@@ -369,7 +366,7 @@ describe("zero chat page - connector label casing", () => {
       return screen.getByLabelText("Connectors");
     });
 
-    await user.click(connectorsButton);
+    click(connectorsButton);
 
     await waitFor(() => {
       expect(screen.getByText("Axiom")).toBeInTheDocument();
@@ -434,7 +431,6 @@ describe("zero chat page - agent avatar and greeting", () => {
 
 describe("zero chat page - ideation page", () => {
   it("should navigate to ideation page when explore card is clicked", async () => {
-    const user = userEvent.setup();
     await renderChatPage();
 
     await waitFor(() => {
@@ -446,7 +442,7 @@ describe("zero chat page - ideation page", () => {
     const exploreButton = exploreText.closest("button")!;
     expect(exploreButton).toBeInTheDocument();
 
-    await user.click(exploreButton);
+    click(exploreButton);
 
     await waitFor(() => {
       expect(
@@ -460,14 +456,14 @@ describe("zero chat page - ideation page", () => {
     expect(screen.getAllByText("GitHub").length).toBeGreaterThan(0);
   });
 
-  async function navigateToIdeation(user: ReturnType<typeof userEvent.setup>) {
+  async function navigateToIdeation(_user: ReturnType<typeof userEvent.setup>) {
     await waitFor(() => {
       expect(screen.getByText("Ideas & use cases")).toBeInTheDocument();
     });
     const exploreButton = screen
       .getByText("Ideas & use cases")
       .closest("button")!;
-    await user.click(exploreButton);
+    click(exploreButton);
     await waitFor(() => {
       expect(
         screen.getByText(/Click any card to start a conversation/),
@@ -485,7 +481,7 @@ describe("zero chat page - ideation page", () => {
       return el.textContent?.trim() === "GitHub";
     });
     expect(githubCategoryBtn).toBeDefined();
-    await user.click(githubCategoryBtn!);
+    click(githubCategoryBtn!);
 
     await waitFor(() => {
       // The selected category heading should be visible
@@ -506,7 +502,7 @@ describe("zero chat page - ideation page", () => {
     await navigateToIdeation(user);
 
     // Click a known use case card
-    await user.click(screen.getByText("Daily standup report"));
+    click(screen.getByText("Daily standup report"));
 
     // Should navigate back to chat page with the prompt set
     await waitFor(() => {
@@ -526,7 +522,7 @@ describe("zero chat page - ideation page", () => {
 
     // Click the Chat breadcrumb to go back
     const chatBreadcrumb = screen.getByText("Chat").closest("button")!;
-    await user.click(chatBreadcrumb);
+    click(chatBreadcrumb);
 
     // Should be back on the chat page
     await waitFor(() => {

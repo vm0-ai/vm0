@@ -1,8 +1,7 @@
 import { describe, expect, it, beforeEach } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { setMockOrg, resetMockOrg } from "../../../mocks/handlers/api-org.ts";
 import {
   setMockOrgMembers,
@@ -96,7 +95,6 @@ describe("org manage dialog - conditional", () => {
 
 describe("org manage dialog - interaction", () => {
   it("switches tab content when a sidebar button is clicked", async () => {
-    const user = userEvent.setup();
     setMockOrg({ slug: "test-org", name: "Test Org", role: "admin" });
     setMockOrgMembers({
       slug: "test-org",
@@ -114,7 +112,7 @@ describe("org manage dialog - interaction", () => {
       ).toBeInTheDocument();
     });
 
-    await user.click(
+    click(
       screen.getAllByRole("button").find((el) => {
         return /Members/i.test(el.textContent ?? "");
       })!,
@@ -128,7 +126,6 @@ describe("org manage dialog - interaction", () => {
   });
 
   it("switches tab content when the mobile select dropdown is changed", async () => {
-    const user = userEvent.setup();
     setMockOrg({ slug: "test-org", name: "Test Org", role: "admin" });
     setMockOrgMembers({
       slug: "test-org",
@@ -147,14 +144,14 @@ describe("org manage dialog - interaction", () => {
     });
 
     const combobox = screen.getByRole("combobox");
-    await user.click(combobox);
+    click(combobox);
 
     await waitFor(() => {
       expect(
         screen.getByRole("option", { name: /Members/i }),
       ).toBeInTheDocument();
     });
-    await user.click(screen.getByRole("option", { name: /Members/i }));
+    click(screen.getByRole("option", { name: /Members/i }));
 
     await waitFor(() => {
       expect(
@@ -166,13 +163,12 @@ describe("org manage dialog - interaction", () => {
 
 describe("org manage dialog - state", () => {
   it("opens and closes the dialog correctly", async () => {
-    const user = userEvent.setup();
     setMockOrg({ slug: "test-org", name: "Test Org", role: "admin" });
     await openDialog();
 
     expect(screen.getByRole("dialog")).toBeInTheDocument();
 
-    await user.click(screen.getByLabelText(/close/i));
+    click(screen.getByLabelText(/close/i));
 
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();

@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { chatMessagesContract } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 import {
   mockUploadPending,
@@ -204,7 +204,7 @@ describe("chat-i-059: image preview button opens lightbox", () => {
 
     const chipDiv = document.querySelector<HTMLElement>('[title="photo.png"]');
     const chipButton = chipDiv?.querySelector("button");
-    await user.click(chipButton!);
+    click(chipButton!);
 
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
@@ -253,13 +253,13 @@ describe("chat-i-060: close button closes lightbox", () => {
 
     const chipDiv = document.querySelector<HTMLElement>('[title="photo.png"]');
     const chipButton = chipDiv?.querySelector("button");
-    await user.click(chipButton!);
+    click(chipButton!);
 
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByLabelText("Close"));
+    click(screen.getByLabelText("Close"));
 
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -308,7 +308,7 @@ describe("chat-i-061: backdrop click closes lightbox", () => {
 
     const chipDiv = document.querySelector<HTMLElement>('[title="photo.png"]');
     const chipButton = chipDiv?.querySelector("button");
-    await user.click(chipButton!);
+    click(chipButton!);
 
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
@@ -316,7 +316,7 @@ describe("chat-i-061: backdrop click closes lightbox", () => {
 
     // Click the dialog backdrop (the dialog element itself, not a child)
     const dialog = screen.getByRole("dialog");
-    await user.click(dialog);
+    click(dialog);
 
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -360,7 +360,7 @@ describe("chat-i-062: remove button on attachment chip calls onRemove", () => {
       expect(screen.getByLabelText("Remove report.pdf")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByLabelText("Remove report.pdf"));
+    click(screen.getByLabelText("Remove report.pdf"));
 
     await waitFor(() => {
       expect(

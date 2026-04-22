@@ -21,7 +21,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { FeatureSwitchKey } from "@vm0/core";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import {
   setMockOrgModelProviders,
   resetMockOrgModelProviders,
@@ -93,7 +93,7 @@ describe("chat composer — mod+alt+. opens the model picker", () => {
     // No listbox yet — the picker is closed until the user invokes the shortcut.
     expect(screen.queryByRole("listbox")).toBeNull();
 
-    await user.click(textarea);
+    click(textarea);
     await user.keyboard("{Control>}{Alt>}.{/Alt}{/Control}");
 
     // Radix Select renders a role="listbox" when opened.
@@ -124,7 +124,7 @@ describe("chat composer — mod+alt+. opens the model picker", () => {
     // Picker trigger must not be present when the feature switch is off.
     expect(screen.queryByRole("combobox", { name: /claude/i })).toBeNull();
 
-    await user.click(textarea);
+    click(textarea);
     await user.keyboard("{Control>}{Alt>}.{/Alt}{/Control}");
 
     // Nothing opens — the binding guard (`if (modelPicker)`) must short-circuit.

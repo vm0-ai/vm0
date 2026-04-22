@@ -3,7 +3,11 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  fill,
+  click,
+} from "../../../__tests__/page-helper.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 import {
   type ZeroAgentRequest,
@@ -37,14 +41,14 @@ function mockTeamWithSubagent() {
   ]);
 }
 
-async function openCreateDialog(user: ReturnType<typeof userEvent.setup>) {
+async function openCreateDialog(_user: ReturnType<typeof userEvent.setup>) {
   detachedSetupPage({ context, path: "/agents" });
 
   await waitFor(() => {
     expect(screen.getByText("Research Agent")).toBeInTheDocument();
   });
 
-  await user.click(screen.getByText("New agent"));
+  click(screen.getByText("New agent"));
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
@@ -97,7 +101,7 @@ describe("create agent dialog - avatar", () => {
 
     const input = screen.getByPlaceholderText("e.g. Research Assistant");
     await fill(input, "My New Agent");
-    await user.click(screen.getByText("Create"));
+    click(screen.getByText("Create"));
 
     await waitFor(() => {
       expect(capturedPayload).toBeTruthy();

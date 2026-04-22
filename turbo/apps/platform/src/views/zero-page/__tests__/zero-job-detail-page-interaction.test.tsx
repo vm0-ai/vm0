@@ -8,7 +8,7 @@ import {
 } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
@@ -98,7 +98,6 @@ async function waitForPageLoad() {
 
 describe("zero job detail page - interaction and state", () => {
   it("should switch tabs when tab trigger buttons are clicked (AGENT-D-027)", async () => {
-    const user = userEvent.setup();
     mockAPIs();
     detachedSetupPage({ context, path: "/agents/my-agent" });
     await waitForPageLoad();
@@ -108,27 +107,26 @@ describe("zero job detail page - interaction and state", () => {
       return /Scheduled/i.test(el.textContent ?? "");
     });
     expect(scheduledTab).toBeDefined();
-    await user.click(scheduledTab!);
+    click(scheduledTab!);
     await waitFor(() => {
       expect(screen.getByText("No runs scheduled")).toBeInTheDocument();
     });
 
     // Switch to Authorization tab
-    await user.click(screen.getByText(/Authorization/i));
+    click(screen.getByText(/Authorization/i));
     await waitFor(() => {
       expect(screen.getByText("Slack")).toBeInTheDocument();
     });
   });
 
   it("should switch tabs via mobile select dropdown (AGENT-D-028)", async () => {
-    const user = userEvent.setup();
     mockAPIs();
     detachedSetupPage({ context, path: "/agents/my-agent" });
     await waitForPageLoad();
 
     // The mobile Select has a combobox role
     const combobox = screen.getByRole("combobox");
-    await user.click(combobox);
+    click(combobox);
 
     // Select "Profile" option
     await waitFor(() => {
@@ -136,7 +134,7 @@ describe("zero job detail page - interaction and state", () => {
         screen.getByRole("option", { name: /Profile/i }),
       ).toBeInTheDocument();
     });
-    await user.click(screen.getByRole("option", { name: /Profile/i }));
+    click(screen.getByRole("option", { name: /Profile/i }));
 
     // Profile tab content should show settings form
     await waitFor(() => {
@@ -145,12 +143,11 @@ describe("zero job detail page - interaction and state", () => {
   });
 
   it("should navigate to chat when chat button is clicked (AGENT-D-029)", async () => {
-    const user = userEvent.setup();
     mockAPIs();
     detachedSetupPage({ context, path: "/agents/my-agent" });
     await waitForPageLoad();
 
-    await user.click(screen.getByText("Chat with My Agent"));
+    click(screen.getByText("Chat with My Agent"));
 
     // Navigation should have updated the pathname to a chat path
     await waitFor(() => {
@@ -159,7 +156,6 @@ describe("zero job detail page - interaction and state", () => {
   });
 
   it("should toggle connector access when switch is clicked (AGENT-D-030)", async () => {
-    const user = userEvent.setup();
     let putCalled = false;
     mockAPIs();
     server.use(
@@ -179,9 +175,7 @@ describe("zero job detail page - interaction and state", () => {
     });
 
     // Toggle Slack off (it's currently enabled)
-    await user.click(
-      screen.getByRole("switch", { name: /Revoke Slack access/i }),
-    );
+    click(screen.getByRole("switch", { name: /Revoke Slack access/i }));
 
     await waitFor(() => {
       expect(putCalled).toBeTruthy();
@@ -189,7 +183,6 @@ describe("zero job detail page - interaction and state", () => {
   });
 
   it("should open permissions drawer when manage button is clicked (AGENT-D-031)", async () => {
-    const user = userEvent.setup();
     mockAPIs();
     detachedSetupPage({ context, path: "/agents/my-agent" });
     await waitForPageLoad();
@@ -201,7 +194,7 @@ describe("zero job detail page - interaction and state", () => {
       ).toBeInTheDocument();
     });
 
-    await user.click(screen.getByLabelText(/Manage Slack permissions/i));
+    click(screen.getByLabelText(/Manage Slack permissions/i));
 
     // Drawer should open with Slack permissions heading
     await waitFor(() => {
@@ -224,7 +217,7 @@ describe("zero job detail page - interaction and state", () => {
     });
 
     // Click search button to activate search
-    await user.click(screen.getByLabelText("Find connectors"));
+    click(screen.getByLabelText("Find connectors"));
 
     // Type search query
     const searchInput = screen.getByPlaceholderText("Find connectors...");
@@ -250,7 +243,7 @@ describe("zero job detail page - interaction and state", () => {
     });
 
     // Activate search and filter
-    await user.click(screen.getByLabelText("Find connectors"));
+    click(screen.getByLabelText("Find connectors"));
     const searchInput = screen.getByPlaceholderText("Find connectors...");
     await user.type(searchInput, "git");
 
@@ -259,7 +252,7 @@ describe("zero job detail page - interaction and state", () => {
     });
 
     // Click close search button
-    await user.click(screen.getByLabelText("Close search"));
+    click(screen.getByLabelText("Close search"));
 
     // Both connectors should be visible again
     await waitFor(() => {
@@ -269,13 +262,12 @@ describe("zero job detail page - interaction and state", () => {
   });
 
   it("should open delete confirmation dialog (AGENT-D-034)", async () => {
-    const user = userEvent.setup();
     mockAPIs();
     detachedSetupPage({ context, path: "/agents/my-agent" });
     await waitForPageLoad();
 
     // Switch to Profile tab
-    await user.click(screen.getByText(/Profile/i));
+    click(screen.getByText(/Profile/i));
 
     // Wait for settings form to load
     await waitFor(() => {
@@ -283,7 +275,7 @@ describe("zero job detail page - interaction and state", () => {
     });
 
     // Click delete agent button
-    await user.click(screen.getByText(/Delete agent/i));
+    click(screen.getByText(/Delete agent/i));
 
     // Confirmation dialog should appear
     await waitFor(() => {
@@ -292,7 +284,6 @@ describe("zero job detail page - interaction and state", () => {
   });
 
   it("should show loading state when toggling connector (AGENT-D-035)", async () => {
-    const user = userEvent.setup();
     let resolvePut: (() => void) | undefined;
     const putPromise = new Promise<void>((resolve) => {
       resolvePut = resolve;
@@ -316,9 +307,7 @@ describe("zero job detail page - interaction and state", () => {
     });
 
     // Toggle Slack connector
-    await user.click(
-      screen.getByRole("switch", { name: /Revoke Slack access/i }),
-    );
+    click(screen.getByRole("switch", { name: /Revoke Slack access/i }));
 
     // The switch should become disabled while the request is pending
     await waitFor(() => {
@@ -335,7 +324,6 @@ describe("zero job detail page - interaction and state", () => {
     // Regression test for #9141: toggling a connector triggers a refetch of
     // the user-connectors endpoint. The list must NOT flicker to the skeleton
     // during that refetch — the rows should stay visible the whole time.
-    const user = userEvent.setup();
 
     mockAPIs();
 
@@ -372,9 +360,7 @@ describe("zero job detail page - interaction and state", () => {
     });
 
     // Toggle Slack off — this triggers PUT then a GET refetch (which is held).
-    await user.click(
-      screen.getByRole("switch", { name: /Revoke Slack access/i }),
-    );
+    click(screen.getByRole("switch", { name: /Revoke Slack access/i }));
 
     // While the refetch is in-flight, the connector rows must remain rendered
     // (Slack and Linear are both visible — no skeleton swap).

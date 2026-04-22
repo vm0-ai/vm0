@@ -14,7 +14,7 @@ import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 import {
   setSidebarExpanded$,
@@ -124,14 +124,13 @@ describe("sidebar layout - invite button hidden for non-admins (SIDEBAR-D-049)",
 
 describe("sidebar layout - menu toggle expands sidebar (SIDEBAR-D-050)", () => {
   it("expands the sidebar overlay when the menu toggle button is clicked", async () => {
-    const user = userEvent.setup();
     mockBaseAPIs();
     detachedSetupPage({ context, path: "/" });
 
     const menuButton = await waitFor(() => {
       return screen.getByLabelText("Open menu");
     });
-    await user.click(menuButton);
+    click(menuButton);
 
     await waitFor(() => {
       expect(screen.getByLabelText("Sidebar overlay")).toBeInTheDocument();
@@ -141,7 +140,6 @@ describe("sidebar layout - menu toggle expands sidebar (SIDEBAR-D-050)", () => {
 
 describe("sidebar layout - breadcrumb section link navigates (SIDEBAR-D-051)", () => {
   it("navigates to the section root when clicking the breadcrumb section link", async () => {
-    const user = userEvent.setup();
     setMockTeam([
       {
         id: DEFAULT_AGENT_ID,
@@ -170,7 +168,7 @@ describe("sidebar layout - breadcrumb section link navigates (SIDEBAR-D-051)", (
         el.textContent?.trim() === "Agents"
       );
     })!;
-    await user.click(agentsLink);
+    click(agentsLink);
 
     await waitFor(() => {
       expect(pathname()).toBe("/agents");
@@ -180,7 +178,6 @@ describe("sidebar layout - breadcrumb section link navigates (SIDEBAR-D-051)", (
 
 describe("sidebar layout - invite button opens member dialog (SIDEBAR-D-052)", () => {
   it("opens the org manage dialog on the members tab when Invite is clicked", async () => {
-    const user = userEvent.setup();
     mockBaseAPIs();
     setMockOrgMembers({
       slug: "test-org",
@@ -195,7 +192,7 @@ describe("sidebar layout - invite button opens member dialog (SIDEBAR-D-052)", (
     const inviteButton = await waitFor(() => {
       return screen.getByText("Invite");
     });
-    await user.click(inviteButton);
+    click(inviteButton);
 
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
@@ -232,7 +229,6 @@ describe("sidebar layout - mod+b toggles desktop sidebar (SIDEBAR-D-055)", () =>
 
 describe("sidebar layout - overlay click collapses sidebar (SIDEBAR-D-054)", () => {
   it("hides the sidebar overlay when the overlay is clicked", async () => {
-    const user = userEvent.setup();
     mockBaseAPIs();
     detachedSetupPage({ context, path: "/" });
 
@@ -244,7 +240,7 @@ describe("sidebar layout - overlay click collapses sidebar (SIDEBAR-D-054)", () 
     });
 
     const overlay = screen.getByLabelText("Sidebar overlay");
-    await user.click(overlay);
+    click(overlay);
 
     await waitFor(() => {
       expect(screen.queryByLabelText("Open menu")).toBeInTheDocument();

@@ -1,9 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { type SlackOrgStatus, zeroIntegrationsSlackContract } from "@vm0/core";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 
@@ -90,7 +89,6 @@ describe("zero works page - slack card connected state", () => {
   });
 
   it("should show Disconnect option in popover when connected", async () => {
-    const user = userEvent.setup();
     mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
     await renderWorksPage();
 
@@ -98,7 +96,7 @@ describe("zero works page - slack card connected state", () => {
       expect(screen.getByLabelText("More options")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByLabelText("More options"));
+    click(screen.getByLabelText("More options"));
 
     await waitFor(() => {
       expect(screen.getByText("Disconnect")).toBeInTheDocument();
@@ -106,7 +104,6 @@ describe("zero works page - slack card connected state", () => {
   });
 
   it("should show Uninstall option for admin in popover", async () => {
-    const user = userEvent.setup();
     mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
     await renderWorksPage();
 
@@ -114,7 +111,7 @@ describe("zero works page - slack card connected state", () => {
       expect(screen.getByLabelText("More options")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByLabelText("More options"));
+    click(screen.getByLabelText("More options"));
 
     await waitFor(() => {
       expect(screen.getByText("Uninstall")).toBeInTheDocument();
@@ -213,7 +210,6 @@ describe("zero works page - slack installed but not connected", () => {
 
 describe("zero works page - uninstall confirmation dialog", () => {
   it("should show uninstall confirmation dialog when Uninstall is clicked", async () => {
-    const user = userEvent.setup();
     mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
     await renderWorksPage();
 
@@ -221,13 +217,13 @@ describe("zero works page - uninstall confirmation dialog", () => {
       expect(screen.getByLabelText("More options")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByLabelText("More options"));
+    click(screen.getByLabelText("More options"));
 
     await waitFor(() => {
       expect(screen.getByText("Uninstall")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText("Uninstall"));
+    click(screen.getByText("Uninstall"));
 
     await waitFor(() => {
       expect(
@@ -240,7 +236,6 @@ describe("zero works page - uninstall confirmation dialog", () => {
   });
 
   it("should close dialog when Cancel is clicked", async () => {
-    const user = userEvent.setup();
     mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
     await renderWorksPage();
 
@@ -248,13 +243,13 @@ describe("zero works page - uninstall confirmation dialog", () => {
       expect(screen.getByLabelText("More options")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByLabelText("More options"));
+    click(screen.getByLabelText("More options"));
 
     await waitFor(() => {
       expect(screen.getByText("Uninstall")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText("Uninstall"));
+    click(screen.getByText("Uninstall"));
 
     await waitFor(() => {
       expect(
@@ -262,7 +257,7 @@ describe("zero works page - uninstall confirmation dialog", () => {
       ).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText("Cancel"));
+    click(screen.getByText("Cancel"));
 
     await waitFor(() => {
       expect(
@@ -272,7 +267,6 @@ describe("zero works page - uninstall confirmation dialog", () => {
   });
 
   it("should call uninstall API when confirming uninstall", async () => {
-    const user = userEvent.setup();
     let uninstallCalled = false;
 
     mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
@@ -294,13 +288,13 @@ describe("zero works page - uninstall confirmation dialog", () => {
       expect(screen.getByLabelText("More options")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByLabelText("More options"));
+    click(screen.getByLabelText("More options"));
 
     await waitFor(() => {
       expect(screen.getByText("Uninstall")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText("Uninstall"));
+    click(screen.getByText("Uninstall"));
 
     await waitFor(() => {
       expect(
@@ -310,7 +304,7 @@ describe("zero works page - uninstall confirmation dialog", () => {
 
     // Click "Uninstall" button in dialog to confirm
     const dialog = screen.getByRole("dialog");
-    await user.click(within(dialog).getByText("Uninstall"));
+    click(within(dialog).getByText("Uninstall"));
 
     await waitFor(() => {
       expect(uninstallCalled).toBeTruthy();
@@ -335,7 +329,6 @@ describe("zero works page - admin vs non-admin permissions", () => {
   });
 
   it("should show more options for non-admin when connected (for disconnect)", async () => {
-    const user = userEvent.setup();
     mockSlackAPI({
       isConnected: true,
       isInstalled: true,
@@ -347,7 +340,7 @@ describe("zero works page - admin vs non-admin permissions", () => {
       expect(screen.getByLabelText("More options")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByLabelText("More options"));
+    click(screen.getByLabelText("More options"));
 
     await waitFor(() => {
       expect(screen.getByText("Disconnect")).toBeInTheDocument();
@@ -360,7 +353,6 @@ describe("zero works page - admin vs non-admin permissions", () => {
 
 describe("zero works page - disconnect", () => {
   it("should call disconnect API when Disconnect is clicked", async () => {
-    const user = userEvent.setup();
     let disconnectCalled = false;
 
     mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
@@ -382,13 +374,13 @@ describe("zero works page - disconnect", () => {
       expect(screen.getByLabelText("More options")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByLabelText("More options"));
+    click(screen.getByLabelText("More options"));
 
     await waitFor(() => {
       expect(screen.getByText("Disconnect")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText("Disconnect"));
+    click(screen.getByText("Disconnect"));
 
     await waitFor(() => {
       expect(disconnectCalled).toBeTruthy();

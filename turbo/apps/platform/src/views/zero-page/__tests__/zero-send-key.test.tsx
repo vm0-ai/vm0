@@ -1,5 +1,4 @@
 import { describe, expect, it, beforeEach, vi } from "vitest";
-// eslint-disable-next-line ccstate/prefer-user-event -- fireEvent needed for simulating IME keydown with isComposing; confirmed by ethan@vm0.ai
 import { screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";

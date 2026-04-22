@@ -8,7 +8,7 @@ import {
 } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
 import { setMockOrg } from "../../../mocks/handlers/api-org.ts";
@@ -197,7 +197,7 @@ describe("zero job detail page - connector display", () => {
       expect(screen.getByText("Linear")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByLabelText("Find connectors"));
+    click(screen.getByLabelText("Find connectors"));
     await user.type(screen.getByPlaceholderText("Find connectors..."), "sla");
 
     await waitFor(() => {
@@ -316,8 +316,6 @@ describe("zero job detail page - tab visibility", () => {
 });
 
 describe("zero job detail page - delete dialog", () => {
-  const user = userEvent.setup();
-
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -333,14 +331,14 @@ describe("zero job detail page - delete dialog", () => {
     });
 
     // Switch to Profile tab
-    await user.click(screen.getByText(/Profile/i));
+    click(screen.getByText(/Profile/i));
 
     // Wait for settings form
     await waitFor(() => {
       expect(screen.getByLabelText(/name/i)).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText(/Delete agent/i));
+    click(screen.getByText(/Delete agent/i));
 
     // Confirm the dialog is open via its accessible role
     await waitFor(() => {

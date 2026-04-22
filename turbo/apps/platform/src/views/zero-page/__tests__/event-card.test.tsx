@@ -1,9 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import type {
   LogDetail,
   AgentEventsResponse,
@@ -218,15 +217,13 @@ describe("eventCard", () => {
       },
     ]);
 
-    const user = userEvent.setup();
-
     await renderActivityPage();
 
     await waitFor(() => {
       expect(screen.getByText("2 tools")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText("2 tools"));
+    click(screen.getByText("2 tools"));
 
     await waitFor(() => {
       expect(screen.getByText("Bash")).toBeInTheDocument();
@@ -252,15 +249,13 @@ describe("eventCard", () => {
       },
     ]);
 
-    const user = userEvent.setup();
-
     await renderActivityPage();
 
     await waitFor(() => {
       expect(screen.getByText("1 models")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText("1 models"));
+    click(screen.getByText("1 models"));
 
     await waitFor(() => {
       expect(screen.getByText("claude-sonnet-4")).toBeInTheDocument();

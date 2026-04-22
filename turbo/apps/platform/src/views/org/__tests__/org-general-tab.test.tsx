@@ -3,7 +3,11 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  fill,
+  click,
+} from "../../../__tests__/page-helper.ts";
 import { refreshOrg$ } from "../../../signals/org.ts";
 import {
   setMockOrg,
@@ -93,7 +97,6 @@ describe("org general tab - display", () => {
 
   // ORG-D-012
   it("error messages shown during save failure", async () => {
-    const user = userEvent.setup();
     setMockOrg({ slug: "old-slug" });
     server.use(
       mockApi(zeroOrgContract.update, ({ respond }) => {
@@ -108,7 +111,7 @@ describe("org general tab - display", () => {
     await openGeneralTab();
     const slugInput = await screen.findByDisplayValue("old-slug");
     await fill(slugInput, "taken-slug");
-    await user.click(screen.getByText("Save changes"));
+    click(screen.getByText("Save changes"));
     await waitFor(() => {
       expect(screen.getByText("Slug already taken")).toBeInTheDocument();
     });
@@ -154,7 +157,6 @@ describe("org general tab - interaction", () => {
 
   // ORG-I-017
   it("save changes button submits form", async () => {
-    const user = userEvent.setup();
     const requestBody = vi.fn();
     setMockOrg({ name: "Old Name", slug: "test-org" });
     server.use(
@@ -174,7 +176,7 @@ describe("org general tab - interaction", () => {
     await openGeneralTab();
     const nameInput = await screen.findByDisplayValue("Old Name");
     await fill(nameInput, "New Name");
-    await user.click(screen.getByText("Save changes"));
+    click(screen.getByText("Save changes"));
     await waitFor(() => {
       expect(requestBody).toHaveBeenCalledWith({ name: "New Name" });
       // After a successful save the unsaved-changes toolbar disappears
@@ -184,20 +186,18 @@ describe("org general tab - interaction", () => {
 
   // ORG-I-018
   it("discard button reverts changes", async () => {
-    const user = userEvent.setup();
     setMockOrg({ name: "Original Name" });
     await openGeneralTab();
     const nameInput = await screen.findByDisplayValue("Original Name");
     await fill(nameInput, "Changed Name");
     expect(screen.getByDisplayValue("Changed Name")).toBeInTheDocument();
-    await user.click(screen.getByText("Discard"));
+    click(screen.getByText("Discard"));
     expect(screen.getByDisplayValue("Original Name")).toBeInTheDocument();
     expect(screen.queryByText("Save changes")).not.toBeInTheDocument();
   });
 
   // ORG-I-019
   it("leave workspace button opens confirmation dialog", async () => {
-    const user = userEvent.setup();
     setMockOrg({ role: "member" });
     await openGeneralTab();
     await waitFor(() => {
@@ -207,7 +207,7 @@ describe("org general tab - interaction", () => {
         }),
       ).toBeInTheDocument();
     });
-    await user.click(
+    click(
       screen.getAllByRole("button").find((el) => {
         return el.textContent?.trim() === "Leave";
       })!,
@@ -219,7 +219,6 @@ describe("org general tab - interaction", () => {
 
   // ORG-I-020
   it("delete workspace button opens confirmation dialog requiring slug", async () => {
-    const user = userEvent.setup();
     setMockOrg({ slug: "acme-org" });
     await openGeneralTab();
     // Wait for page to load
@@ -228,7 +227,7 @@ describe("org general tab - interaction", () => {
       return el.textContent?.trim() === "Delete";
     });
     expect(deleteButton).toBeDefined();
-    await user.click(deleteButton!);
+    click(deleteButton!);
     await waitFor(() => {
       expect(screen.getByText("Delete workspace?")).toBeInTheDocument();
     });
@@ -248,7 +247,7 @@ describe("org general tab - validation", () => {
       return el.textContent?.trim() === "Delete";
     });
     expect(deleteWorkspaceBtn).toBeDefined();
-    await user.click(deleteWorkspaceBtn!);
+    click(deleteWorkspaceBtn!);
     await waitFor(() => {
       expect(screen.getByText("Delete workspace?")).toBeInTheDocument();
     });

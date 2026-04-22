@@ -1,8 +1,7 @@
 import { describe, expect, it, beforeEach } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import {
   fireClerkListeners,
   mockedClerk,
@@ -51,12 +50,10 @@ describe("zero org switcher - organization slug renders (SIDEBAR-D-055)", () => 
       },
     });
 
-    const user = userEvent.setup();
-
     await waitFor(() => {
       expect(screen.getByText("Acme Corp")).toBeInTheDocument();
     });
-    await user.click(screen.getByText("Acme Corp"));
+    click(screen.getByText("Acme Corp"));
 
     await waitFor(() => {
       expect(screen.getByText("acme-corp")).toBeInTheDocument();
@@ -120,12 +117,10 @@ describe("zero org switcher - pending invitations list renders (SIDEBAR-D-057)",
       },
     });
 
-    const user = userEvent.setup();
-
     await waitFor(() => {
       expect(screen.getByText("Current Org")).toBeInTheDocument();
     });
-    await user.click(screen.getByText("Current Org"));
+    click(screen.getByText("Current Org"));
 
     await waitFor(() => {
       expect(screen.getByText("Invited Org")).toBeInTheDocument();
@@ -148,12 +143,10 @@ describe("zero org switcher - other org memberships list renders (SIDEBAR-D-058)
       },
     });
 
-    const user = userEvent.setup();
-
     await waitFor(() => {
       expect(screen.getByText("Current Org")).toBeInTheDocument();
     });
-    await user.click(screen.getByText("Current Org"));
+    click(screen.getByText("Current Org"));
 
     await waitFor(() => {
       expect(screen.getByText("Other Org")).toBeInTheDocument();
@@ -173,12 +166,10 @@ describe("zero org switcher - dropdown opens (SIDEBAR-D-059)", () => {
     });
     mockedClerk.user!.createOrganizationEnabled = true;
 
-    const user = userEvent.setup();
-
     await waitFor(() => {
       expect(screen.getByText("Current Org")).toBeInTheDocument();
     });
-    await user.click(screen.getByText("Current Org"));
+    click(screen.getByText("Current Org"));
 
     await waitFor(() => {
       expect(screen.getByText("Create workspace")).toBeInTheDocument();
@@ -206,12 +197,10 @@ describe("zero org switcher - manage button opens org management (SIDEBAR-D-060)
       },
     });
 
-    const user = userEvent.setup();
-
     await waitFor(() => {
       expect(screen.getByText("Current Org")).toBeInTheDocument();
     });
-    await user.click(screen.getByText("Current Org"));
+    click(screen.getByText("Current Org"));
 
     const manageBtn = await waitFor(() => {
       const btn = screen.getAllByRole("button").find((el) => {
@@ -220,7 +209,7 @@ describe("zero org switcher - manage button opens org management (SIDEBAR-D-060)
       expect(btn).toBeInTheDocument();
       return btn as HTMLElement;
     });
-    await user.click(manageBtn);
+    click(manageBtn);
 
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
@@ -267,17 +256,15 @@ describe("zero org switcher - org switch menu item switches organization (SIDEBA
       },
     });
 
-    const user = userEvent.setup();
-
     await waitFor(() => {
       expect(screen.getByText("Current Org")).toBeInTheDocument();
     });
-    await user.click(screen.getByText("Current Org"));
+    click(screen.getByText("Current Org"));
 
     await waitFor(() => {
       expect(screen.getByText("Other Org")).toBeInTheDocument();
     });
-    await user.click(screen.getByText("Other Org"));
+    click(screen.getByText("Other Org"));
 
     // Dropdown closes after selection (visible UI outcome)
     await waitFor(() => {
@@ -316,17 +303,15 @@ describe("zero org switcher - join button accepts invitation (SIDEBAR-D-062)", (
       },
     });
 
-    const user = userEvent.setup();
-
     await waitFor(() => {
       expect(screen.getByText("Current Org")).toBeInTheDocument();
     });
-    await user.click(screen.getByText("Current Org"));
+    click(screen.getByText("Current Org"));
 
     await waitFor(() => {
       expect(screen.getByText("Join")).toBeInTheDocument();
     });
-    await user.click(screen.getByText("Join"));
+    click(screen.getByText("Join"));
 
     // After acceptance, the invitation is refreshed and removed from the list
     await waitFor(() => {
@@ -368,17 +353,15 @@ describe("zero org switcher - create workspace item starts creation flow (SIDEBA
     });
     mockedClerk.user!.createOrganizationEnabled = true;
 
-    const user = userEvent.setup();
-
     await waitFor(() => {
       expect(screen.getByText("Current Org")).toBeInTheDocument();
     });
-    await user.click(screen.getByText("Current Org"));
+    click(screen.getByText("Current Org"));
 
     await waitFor(() => {
       expect(screen.getByText("Create workspace")).toBeInTheDocument();
     });
-    await user.click(screen.getByText("Create workspace"));
+    click(screen.getByText("Create workspace"));
 
     // Dropdown closes after activation (visible UI outcome)
     await waitFor(() => {
@@ -419,11 +402,10 @@ describe("zero org switcher - create workspace visibility based on createOrganiz
       },
     });
 
-    const user = userEvent.setup();
     await waitFor(() => {
       expect(screen.getByText("My Org")).toBeInTheDocument();
     });
-    await user.click(screen.getByText("My Org"));
+    click(screen.getByText("My Org"));
 
     await waitFor(() => {
       expect(screen.getAllByText("Manage").length).toBeGreaterThan(0);
@@ -442,11 +424,10 @@ describe("zero org switcher - create workspace visibility based on createOrganiz
     });
     mockedClerk.user!.createOrganizationEnabled = true;
 
-    const user = userEvent.setup();
     await waitFor(() => {
       expect(screen.getByText("My Org")).toBeInTheDocument();
     });
-    await user.click(screen.getByText("My Org"));
+    click(screen.getByText("My Org"));
 
     await waitFor(() => {
       expect(screen.getByText("Create workspace")).toBeInTheDocument();

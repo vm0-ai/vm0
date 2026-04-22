@@ -6,10 +6,13 @@
  */
 import { beforeEach, describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  fill,
+  click,
+} from "../../../__tests__/page-helper.ts";
 import {
   resetMockBilling,
   setMockBillingStatus,
@@ -51,7 +54,6 @@ describe("chat-i-078: auto-recharge switch toggles enabled state", () => {
       }),
     );
 
-    const user = userEvent.setup();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -68,7 +70,7 @@ describe("chat-i-078: auto-recharge switch toggles enabled state", () => {
       ).toHaveAttribute("aria-checked", "false");
     });
 
-    await user.click(screen.getByRole("switch", { name: /auto-recharge/i }));
+    click(screen.getByRole("switch", { name: /auto-recharge/i }));
 
     await waitFor(() => {
       expect(capturedBody).toMatchObject({ enabled: true });
@@ -128,7 +130,6 @@ describe("chat-i-079: threshold input updates form state on change", () => {
       }),
     );
 
-    const user = userEvent.setup();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -150,7 +151,7 @@ describe("chat-i-079: threshold input updates form state on change", () => {
       return el.textContent?.trim() === "Save";
     });
     expect(saveBtn1).toBeDefined();
-    await user.click(saveBtn1!);
+    click(saveBtn1!);
 
     await waitFor(() => {
       expect(capturedBody).toMatchObject({ threshold: 2000 });
@@ -172,7 +173,6 @@ describe("chat-i-080: amount input updates form state on change", () => {
       }),
     );
 
-    const user = userEvent.setup();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -194,7 +194,7 @@ describe("chat-i-080: amount input updates form state on change", () => {
       return el.textContent?.trim() === "Save";
     });
     expect(saveBtn2).toBeDefined();
-    await user.click(saveBtn2!);
+    click(saveBtn2!);
 
     await waitFor(() => {
       expect(capturedBody).toMatchObject({ amount: 20_000 });
@@ -216,7 +216,6 @@ describe("chat-i-081: save button saves auto-recharge settings", () => {
       }),
     );
 
-    const user = userEvent.setup();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -239,7 +238,7 @@ describe("chat-i-081: save button saves auto-recharge settings", () => {
       return el.textContent?.trim() === "Save";
     });
     expect(saveBtn3).toBeDefined();
-    await user.click(saveBtn3!);
+    click(saveBtn3!);
 
     await waitFor(() => {
       expect(capturedBody).toMatchObject({
@@ -261,7 +260,6 @@ describe("chat-i-081: save button saves auto-recharge settings", () => {
 
 describe("chat-i-082: plan card click updates selected tier", () => {
   it("sets Team card to aria-pressed=true when clicked", async () => {
-    const user = userEvent.setup();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -279,7 +277,7 @@ describe("chat-i-082: plan card click updates selected tier", () => {
     });
 
     const teamBtn1 = screen.getByLabelText("Team");
-    await user.click(teamBtn1);
+    click(teamBtn1);
 
     await waitFor(() => {
       expect(screen.getByLabelText("Team")).toHaveAttribute(
@@ -302,7 +300,6 @@ describe("chat-i-083: upgrade/downgrade button triggers plan change action", () 
       }),
     );
 
-    const user = userEvent.setup();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -317,7 +314,7 @@ describe("chat-i-083: upgrade/downgrade button triggers plan change action", () 
     });
 
     const teamBtn2 = screen.getByLabelText("Team");
-    await user.click(teamBtn2);
+    click(teamBtn2);
 
     await waitFor(() => {
       expect(
@@ -331,7 +328,7 @@ describe("chat-i-083: upgrade/downgrade button triggers plan change action", () 
       return /Upgrade to Team/i.test(el.textContent ?? "");
     });
     expect(upgradeBtn1).toBeDefined();
-    await user.click(upgradeBtn1!);
+    click(upgradeBtn1!);
 
     await waitFor(() => {
       expect(capturedCheckoutBody).toMatchObject({ tier: "team" });
@@ -339,7 +336,6 @@ describe("chat-i-083: upgrade/downgrade button triggers plan change action", () 
   });
 
   it("opens downgrade dialog when Downgrade is clicked after selecting Free", async () => {
-    const user = userEvent.setup();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -354,7 +350,7 @@ describe("chat-i-083: upgrade/downgrade button triggers plan change action", () 
     });
 
     const freeBtn1 = screen.getByLabelText("Free");
-    await user.click(freeBtn1);
+    click(freeBtn1);
 
     await waitFor(() => {
       expect(
@@ -368,7 +364,7 @@ describe("chat-i-083: upgrade/downgrade button triggers plan change action", () 
       return /^Downgrade$/i.test(el.textContent ?? "");
     });
     expect(downgradeBtn).toBeDefined();
-    await user.click(downgradeBtn!);
+    click(downgradeBtn!);
 
     await waitFor(() => {
       expect(context.store.get(downgradeDialogOpen$)).toBeTruthy();
@@ -420,7 +416,6 @@ describe("chat-i-086: form overrides clear after successful save", () => {
       }),
     );
 
-    const user = userEvent.setup();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -446,7 +441,7 @@ describe("chat-i-086: form overrides clear after successful save", () => {
       return el.textContent?.trim() === "Save";
     });
     expect(saveBtn).toBeDefined();
-    await user.click(saveBtn!);
+    click(saveBtn!);
 
     // After save completes, overrides are cleared and billingStatus reloads.
     // Inputs should revert to the server-returned values (4000 and 20000).

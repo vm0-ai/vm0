@@ -6,10 +6,9 @@
  */
 import { beforeEach, describe, expect, it } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import {
   resetMockBilling,
   setMockBillingStatus,
@@ -113,7 +112,6 @@ describe("chat-s-070: Loading state disables Save button during save", () => {
       }),
     );
 
-    const user = userEvent.setup();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -136,7 +134,7 @@ describe("chat-s-070: Loading state disables Save button during save", () => {
       return el.textContent?.trim() === "Save";
     });
     expect(saveBtn1).toBeDefined();
-    await user.click(saveBtn1!);
+    click(saveBtn1!);
 
     await waitFor(() => {
       expect(
@@ -246,7 +244,6 @@ describe("chat-d-075: Selected plan ring highlight renders on chosen PlanCard", 
 
 describe("chat-c-076: Button text changes based on isUpgrade/isDowngrade determination", () => {
   it("shows Upgrade to Team when team is selected and pro is current", async () => {
-    const user = userEvent.setup();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -261,7 +258,7 @@ describe("chat-c-076: Button text changes based on isUpgrade/isDowngrade determi
     });
 
     const teamBtn1 = screen.getByLabelText("Team");
-    await user.click(teamBtn1);
+    click(teamBtn1);
 
     await waitFor(() => {
       expect(
@@ -273,7 +270,6 @@ describe("chat-c-076: Button text changes based on isUpgrade/isDowngrade determi
   });
 
   it("shows Downgrade when free is selected and pro is current", async () => {
-    const user = userEvent.setup();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -288,7 +284,7 @@ describe("chat-c-076: Button text changes based on isUpgrade/isDowngrade determi
     });
 
     const freeBtn1 = screen.getByLabelText("Free");
-    await user.click(freeBtn1);
+    click(freeBtn1);
 
     await waitFor(() => {
       expect(
@@ -317,7 +313,6 @@ describe("chat-c-077: Action button is disabled during redirect", () => {
       }),
     );
 
-    const user = userEvent.setup();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -332,7 +327,7 @@ describe("chat-c-077: Action button is disabled during redirect", () => {
     });
 
     const teamBtn2 = screen.getByLabelText("Team");
-    await user.click(teamBtn2);
+    click(teamBtn2);
 
     await waitFor(() => {
       expect(
@@ -346,7 +341,7 @@ describe("chat-c-077: Action button is disabled during redirect", () => {
       return /Upgrade to Team/i.test(el.textContent ?? "");
     });
     expect(upgradeBtn1).toBeDefined();
-    await user.click(upgradeBtn1!);
+    click(upgradeBtn1!);
 
     await waitFor(() => {
       expect(

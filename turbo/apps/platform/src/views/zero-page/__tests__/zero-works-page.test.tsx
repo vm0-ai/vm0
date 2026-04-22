@@ -10,10 +10,9 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { type SlackOrgStatus, zeroIntegrationsSlackContract } from "@vm0/core";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 
@@ -123,7 +122,6 @@ describe("works page - install and connect button visibility", () => {
 
 describe("works page - install to slack interaction", () => {
   it("clicking Install to Slack opens the install OAuth URL in a new tab (CONN-I-062)", async () => {
-    const user = userEvent.setup({ delay: null });
     const openSpy = vi.spyOn(window, "open").mockImplementation(() => {
       return null;
     });
@@ -140,7 +138,7 @@ describe("works page - install to slack interaction", () => {
       expect(screen.getByTestId("slack-install-button")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByTestId("slack-install-button"));
+    click(screen.getByTestId("slack-install-button"));
 
     expect(openSpy).toHaveBeenCalledWith(
       expect.stringContaining("slack.com/oauth/install"),
@@ -151,7 +149,6 @@ describe("works page - install to slack interaction", () => {
 
 describe("works page - more options dropdown", () => {
   it("more options popover contains Disconnect and Uninstall items (CONN-I-063)", async () => {
-    const user = userEvent.setup();
     mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
     await renderWorksPage();
 
@@ -159,7 +156,7 @@ describe("works page - more options dropdown", () => {
       expect(screen.getByLabelText("More options")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByLabelText("More options"));
+    click(screen.getByLabelText("More options"));
 
     await waitFor(() => {
       expect(screen.getByText("Disconnect")).toBeInTheDocument();
@@ -168,7 +165,6 @@ describe("works page - more options dropdown", () => {
   });
 
   it("clicking Uninstall opens confirmation dialog with Cancel and Uninstall buttons (CONN-I-064)", async () => {
-    const user = userEvent.setup();
     mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
     await renderWorksPage();
 
@@ -176,12 +172,12 @@ describe("works page - more options dropdown", () => {
       expect(screen.getByLabelText("More options")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByLabelText("More options"));
+    click(screen.getByLabelText("More options"));
 
     await waitFor(() => {
       expect(screen.getByText("Uninstall")).toBeInTheDocument();
     });
-    await user.click(screen.getByText("Uninstall"));
+    click(screen.getByText("Uninstall"));
 
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText(/cancel/i)).toBeInTheDocument();
@@ -189,7 +185,6 @@ describe("works page - more options dropdown", () => {
   });
 
   it("clicking Disconnect calls the disconnect API (CONN-I-066)", async () => {
-    const user = userEvent.setup();
     let disconnectCalled = false;
 
     mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
@@ -211,12 +206,12 @@ describe("works page - more options dropdown", () => {
       expect(screen.getByLabelText("More options")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByLabelText("More options"));
+    click(screen.getByLabelText("More options"));
 
     await waitFor(() => {
       expect(screen.getByText("Disconnect")).toBeInTheDocument();
     });
-    await user.click(screen.getByText("Disconnect"));
+    click(screen.getByText("Disconnect"));
 
     await waitFor(() => {
       expect(disconnectCalled).toBeTruthy();
@@ -226,7 +221,6 @@ describe("works page - more options dropdown", () => {
 
 describe("works page - disconnect loading state", () => {
   it("shows Disconnecting… while disconnect API is pending", async () => {
-    const user = userEvent.setup();
     let resolveDisconnect: (() => void) | null = null;
 
     mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
@@ -246,12 +240,12 @@ describe("works page - disconnect loading state", () => {
       expect(screen.getByLabelText("More options")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByLabelText("More options"));
+    click(screen.getByLabelText("More options"));
 
     await waitFor(() => {
       expect(screen.getByText("Disconnect")).toBeInTheDocument();
     });
-    await user.click(screen.getByText("Disconnect"));
+    click(screen.getByText("Disconnect"));
 
     await waitFor(() => {
       expect(screen.getByText("Disconnecting…")).toBeInTheDocument();
@@ -267,7 +261,6 @@ describe("works page - disconnect loading state", () => {
 
 describe("works page - uninstall loading state", () => {
   it("shows Uninstalling… and disables buttons while uninstall API is pending", async () => {
-    const user = userEvent.setup();
     let resolveUninstall: (() => void) | null = null;
 
     mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
@@ -287,15 +280,15 @@ describe("works page - uninstall loading state", () => {
       expect(screen.getByLabelText("More options")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByLabelText("More options"));
+    click(screen.getByLabelText("More options"));
 
     await waitFor(() => {
       expect(screen.getByText("Uninstall")).toBeInTheDocument();
     });
-    await user.click(screen.getByText("Uninstall"));
+    click(screen.getByText("Uninstall"));
 
     const dialog = await screen.findByRole("dialog");
-    await user.click(within(dialog).getByText("Uninstall"));
+    click(within(dialog).getByText("Uninstall"));
 
     // Dialog stays open with loading text and disabled buttons
     await waitFor(() => {
@@ -315,7 +308,6 @@ describe("works page - uninstall loading state", () => {
 
 describe("works page - update permissions interaction", () => {
   it("clicking Update Permissions opens the reinstall OAuth URL in a new tab (CONN-I-065)", async () => {
-    const user = userEvent.setup();
     const openSpy = vi.spyOn(window, "open").mockImplementation(() => {
       return null;
     });
@@ -333,7 +325,7 @@ describe("works page - update permissions interaction", () => {
       expect(screen.getByText(/update permissions/i)).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText(/update permissions/i));
+    click(screen.getByText(/update permissions/i));
 
     expect(openSpy).toHaveBeenCalledWith(
       expect.stringContaining("slack.com/oauth/reinstall"),

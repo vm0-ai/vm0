@@ -6,10 +6,9 @@
  */
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { setMockOrg } from "../../../mocks/handlers/api-org.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 import { zeroInsightsContract, type InsightsResponse } from "@vm0/core";
@@ -398,7 +397,6 @@ describe("network insights page - date range filter", () => {
   });
 
   it("should switch to Last 30 Days range", async () => {
-    const user = userEvent.setup();
     mockInsightsAPI([
       sampleDay(day1Ago),
       sampleDay(day25Ago, {
@@ -417,11 +415,11 @@ describe("network insights page - date range filter", () => {
     expect(screen.queryByText("OldBot")).not.toBeInTheDocument();
 
     // Open dropdown and select "Last 30 Days"
-    await user.click(screen.getByText("Last 7 Days"));
+    click(screen.getByText("Last 7 Days"));
     await waitFor(() => {
       expect(screen.getByText("Last 30 Days")).toBeInTheDocument();
     });
-    await user.click(screen.getByText("Last 30 Days"));
+    click(screen.getByText("Last 30 Days"));
 
     await waitFor(() => {
       expect(screen.getByText("OldBot")).toBeInTheDocument();
@@ -686,7 +684,6 @@ describe("network insights page - allowed permissions load more", () => {
   });
 
   it("should expand all permissions on Load more click", async () => {
-    const user = userEvent.setup();
     const manyPermissions = Array.from({ length: 7 }, (_, i) => {
       return {
         label: `action-${i}`,
@@ -707,7 +704,7 @@ describe("network insights page - allowed permissions load more", () => {
     // Only first 5 visible initially; permission 6 (action-6) should not be visible
     expect(screen.queryByText("action-6")).not.toBeInTheDocument();
 
-    await user.click(screen.getByText("Load more"));
+    click(screen.getByText("Load more"));
 
     await waitFor(() => {
       expect(screen.getByText("action-6")).toBeInTheDocument();

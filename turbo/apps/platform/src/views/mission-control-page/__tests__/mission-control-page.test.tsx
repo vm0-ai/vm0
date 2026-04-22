@@ -16,7 +16,7 @@ import {
 import { server } from "../../../mocks/server.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 import {
   addOptimisticTask$,
@@ -172,15 +172,13 @@ describe("mission control page", () => {
       }),
     );
 
-    const user = userEvent.setup();
-
     detachedSetupPage({ context, path: "/_/mission-control" });
 
     const title = await waitFor(() => {
       return screen.getByText("Chat task");
     });
 
-    await user.click(title);
+    click(title);
 
     await waitFor(() => {
       expect(screen.getByLabelText("Close task")).toBeInTheDocument();
@@ -207,15 +205,13 @@ describe("mission control page", () => {
 
     mockActivityAPIs("run-xyz");
 
-    const user = userEvent.setup();
-
     detachedSetupPage({ context, path: "/_/mission-control" });
 
     const title = await waitFor(() => {
       return screen.getByText("Scheduled task");
     });
 
-    await user.click(title);
+    click(title);
 
     await waitFor(() => {
       expect(screen.getByLabelText("Close task")).toBeInTheDocument();
@@ -242,15 +238,13 @@ describe("mission control page", () => {
 
     mockActivityAPIs("run-email-1");
 
-    const user = userEvent.setup();
-
     detachedSetupPage({ context, path: "/_/mission-control" });
 
     const title = await waitFor(() => {
       return screen.getByText("Email task");
     });
 
-    await user.click(title);
+    click(title);
 
     await waitFor(() => {
       expect(screen.getByLabelText("Close task")).toBeInTheDocument();
@@ -277,15 +271,13 @@ describe("mission control page", () => {
 
     mockActivityAPIs("run-slack-1");
 
-    const user = userEvent.setup();
-
     detachedSetupPage({ context, path: "/_/mission-control" });
 
     const title = await waitFor(() => {
       return screen.getByText("Slack task");
     });
 
-    await user.click(title);
+    click(title);
 
     await waitFor(() => {
       expect(screen.getByLabelText("Close task")).toBeInTheDocument();
@@ -328,7 +320,7 @@ describe("mission control page", () => {
     const card = title.closest("[role=button]") as HTMLElement;
 
     // Focus the card so its data-task-id is picked up by the y shortcut
-    await user.click(card);
+    click(card);
     card.focus();
 
     await user.keyboard("y");
@@ -379,7 +371,7 @@ describe("mission control page", () => {
     });
     const card = title.closest("[role=button]") as HTMLElement;
 
-    await user.click(card);
+    click(card);
     card.focus();
 
     await user.keyboard("y");
@@ -408,7 +400,7 @@ describe("mission control page", () => {
     const agentName = await waitFor(() => {
       return screen.getByText("Zero");
     });
-    await user.click(agentName);
+    click(agentName);
 
     // Optimistic task card should appear immediately (no polling needed)
     await waitFor(() => {
@@ -540,13 +532,12 @@ describe("mission control page", () => {
       }),
     );
 
-    const user = userEvent.setup();
     detachedSetupPage({ context, path: "/_/mission-control" });
 
     const title = await waitFor(() => {
       return screen.getByText("Completed Schedule Task");
     });
-    await user.click(title);
+    click(title);
 
     await waitFor(() => {
       expect(screen.getByText("Send the daily report")).toBeInTheDocument();
@@ -609,13 +600,12 @@ describe("mission control page", () => {
       }),
     );
 
-    const user = userEvent.setup();
     detachedSetupPage({ context, path: "/_/mission-control" });
 
     const title = await waitFor(() => {
       return screen.getByText("Schedule Task With Result");
     });
-    await user.click(title);
+    click(title);
 
     await waitFor(() => {
       expect(screen.getByText("Here is your daily report")).toBeInTheDocument();
@@ -675,13 +665,12 @@ describe("mission control page", () => {
       }),
     );
 
-    const user = userEvent.setup();
     detachedSetupPage({ context, path: "/_/mission-control" });
 
     const title = await waitFor(() => {
       return screen.getByText("Running Email Task");
     });
-    await user.click(title);
+    click(title);
 
     await waitFor(() => {
       expect(
@@ -743,13 +732,12 @@ describe("mission control page", () => {
       }),
     );
 
-    const user = userEvent.setup();
     detachedSetupPage({ context, path: "/_/mission-control" });
 
     const title = await waitFor(() => {
       return screen.getByText("Task With No Result");
     });
-    await user.click(title);
+    click(title);
 
     await waitFor(() => {
       expect(screen.getByText("Fetch news summary")).toBeInTheDocument();
@@ -800,7 +788,7 @@ describe("mission control page", () => {
     const archiveBtn = await waitFor(() => {
       return screen.getByLabelText("Archive task");
     });
-    await user.click(archiveBtn);
+    click(archiveBtn);
 
     await waitFor(() => {
       expect(screen.queryByText("Archivable Task")).not.toBeInTheDocument();
@@ -864,7 +852,6 @@ describe("mission control page", () => {
       }),
     );
 
-    const user = userEvent.setup();
     detachedSetupPage({
       context,
       path: "/_/mission-control",
@@ -875,7 +862,7 @@ describe("mission control page", () => {
       return screen.getByText("Voice chat with Zero");
     });
 
-    await user.click(title);
+    click(title);
 
     await waitFor(() => {
       expect(screen.getByLabelText("Close task")).toBeInTheDocument();
@@ -930,7 +917,6 @@ describe("mission control page", () => {
       }),
     );
 
-    const user = userEvent.setup();
     detachedSetupPage({
       context,
       path: "/_/mission-control",
@@ -941,7 +927,7 @@ describe("mission control page", () => {
       return screen.getByText("Live voice session");
     });
 
-    await user.click(title);
+    click(title);
 
     await waitFor(() => {
       expect(screen.getByLabelText("Close task")).toBeInTheDocument();
@@ -1074,14 +1060,13 @@ describe("mission control page", () => {
       },
     ]);
 
-    const user = userEvent.setup();
     detachedSetupPage({ context, path: "/_/mission-control" });
 
     const readAllBtn = await waitFor(() => {
       return screen.getByText("Read all");
     });
 
-    await user.click(readAllBtn);
+    click(readAllBtn);
 
     // After marking all read, the button should disappear
     await waitFor(() => {
@@ -1107,7 +1092,6 @@ describe("mission control page", () => {
 
     mockActivityAPIs("run-open-read-1");
 
-    const user = userEvent.setup();
     detachedSetupPage({ context, path: "/_/mission-control" });
 
     // Confirm task is unread before opening
@@ -1119,7 +1103,7 @@ describe("mission control page", () => {
     const title = await waitFor(() => {
       return screen.getByText("Open To Read Task");
     });
-    await user.click(title);
+    click(title);
 
     await waitFor(() => {
       expect(screen.getByLabelText("Close task")).toBeInTheDocument();
@@ -1159,7 +1143,6 @@ describe("mission control page", () => {
 
     mockActivityAPIs("run-v1");
 
-    const user = userEvent.setup();
     detachedSetupPage({ context, path: "/_/mission-control" });
 
     // Wait for unread indicator
@@ -1169,7 +1152,7 @@ describe("mission control page", () => {
 
     // Open the panel — markRead$ records run-v1 as seen
     const title = screen.getByText("Poll Read Task");
-    await user.click(title);
+    click(title);
 
     await waitFor(() => {
       expect(screen.getByLabelText("Close task")).toBeInTheDocument();
@@ -1197,7 +1180,6 @@ describe("mission control page", () => {
       },
     ]);
 
-    const user = userEvent.setup();
     detachedSetupPage({ context, path: "/_/mission-control" });
 
     // Initially unread
@@ -1206,7 +1188,7 @@ describe("mission control page", () => {
     });
 
     // Mark all read
-    await user.click(readAllBtn);
+    click(readAllBtn);
 
     await waitFor(() => {
       expect(screen.queryByText("Read all")).not.toBeInTheDocument();
@@ -1291,14 +1273,13 @@ describe("mission control page", () => {
       }),
     );
 
-    const user = userEvent.setup();
     detachedSetupPage({ context, path: "/_/mission-control" });
 
     // Open the panel — it should show the v1 prompt
     const title = await waitFor(() => {
       return screen.getByText("Refresh Panel Task");
     });
-    await user.click(title);
+    click(title);
 
     await waitFor(() => {
       expect(screen.getByText("Prompt from run v1")).toBeInTheDocument();
@@ -1378,21 +1359,20 @@ describe("mission control page", () => {
       }),
     );
 
-    const user = userEvent.setup();
     detachedSetupPage({ context, path: "/_/mission-control" });
 
     // Open the panel
     const title = await waitFor(() => {
       return screen.getByText("Close Panel Task");
     });
-    await user.click(title);
+    click(title);
 
     const closeBtn = await waitFor(() => {
       return screen.getByLabelText("Close task");
     });
 
     // Close the panel
-    await user.click(closeBtn);
+    click(closeBtn);
 
     // Close button should disappear once the panel is dismissed
     await waitFor(() => {

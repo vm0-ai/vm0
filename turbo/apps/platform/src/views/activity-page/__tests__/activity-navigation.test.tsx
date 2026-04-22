@@ -1,9 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import type {
   LogDetail,
   AgentEventsResponse,
@@ -97,7 +96,6 @@ function mockActivityAPIs() {
 
 describe("activity navigation", () => {
   it("should load detail page when clicking an activity row from the list", async () => {
-    const user = userEvent.setup();
     mockActivityAPIs();
 
     detachedSetupPage({
@@ -111,7 +109,7 @@ describe("activity navigation", () => {
     });
 
     // Click the activity row to navigate to detail
-    await user.click(screen.getByText("Test Agent"));
+    click(screen.getByText("Test Agent"));
 
     // The detail page should render with the agent name as heading
     await waitFor(() => {

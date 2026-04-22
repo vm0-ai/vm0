@@ -3,7 +3,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import {
   FeatureSwitchKey,
   logsByIdContract,
@@ -349,8 +349,7 @@ describe("zeroActivityDetailPageDisplay", () => {
     };
     expect(promptParagraph()).not.toBeVisible();
 
-    const user = userEvent.setup();
-    await user.click(screen.getByText("Prompt"));
+    click(screen.getByText("Prompt"));
 
     await waitFor(() => {
       expect(promptParagraph()).toBeVisible();
@@ -379,8 +378,7 @@ describe("zeroActivityDetailPageDisplay", () => {
     expect(promptParagraph()).not.toBeVisible();
 
     // Expand the system prompt section
-    const user = userEvent.setup();
-    await user.click(screen.getByText("System Prompt"));
+    click(screen.getByText("System Prompt"));
 
     await waitFor(() => {
       expect(promptParagraph()).toBeVisible();

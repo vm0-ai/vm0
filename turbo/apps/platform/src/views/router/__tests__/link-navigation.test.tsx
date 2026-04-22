@@ -9,7 +9,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 import { chatThreadsContract } from "@vm0/core";
@@ -55,8 +55,7 @@ describe("link component", () => {
       return screen.getByText("Agents").closest("a")!;
     });
 
-    const user = userEvent.setup();
-    await user.click(link!);
+    click(link!);
 
     await waitFor(() => {
       expect(pathname()).toBe("/agents");
@@ -82,7 +81,7 @@ describe("link component", () => {
 
     // meta click
     await user.keyboard("{Meta>}");
-    await user.click(link!);
+    click(link!);
     await user.keyboard("{/Meta}");
 
     await waitFor(() => {
@@ -96,7 +95,7 @@ describe("link component", () => {
 
     // ctrl click
     await user.keyboard("{Control>}");
-    await user.click(link!);
+    click(link!);
     await user.keyboard("{/Control}");
 
     await waitFor(() => {
@@ -110,7 +109,7 @@ describe("link component", () => {
 
     // shift click
     await user.keyboard("{Shift>}");
-    await user.click(link!);
+    click(link!);
     await user.keyboard("{/Shift}");
 
     await waitFor(() => {

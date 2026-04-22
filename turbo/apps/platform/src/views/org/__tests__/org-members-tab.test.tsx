@@ -1,9 +1,12 @@
 import { expect, test, beforeEach } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  fill,
+  click,
+} from "../../../__tests__/page-helper.ts";
 import type {
   OrgMember,
   OrgPendingInvitation,
@@ -184,7 +187,6 @@ test("filters member list when search input is used", async () => {
 
 // ORG-I-030
 test("opens invite dialog when Add member button is clicked", async () => {
-  const user = userEvent.setup();
   setupMembersAPI();
   await renderMembersTab();
   await waitFor(() => {
@@ -194,7 +196,7 @@ test("opens invite dialog when Add member button is clicked", async () => {
     return /Add member/i.test(el.textContent ?? "");
   });
   expect(addMemberButton).toBeDefined();
-  await user.click(addMemberButton!);
+  click(addMemberButton!);
   await waitFor(() => {
     expect(
       screen.getByRole("heading", { name: "Invite member" }),
@@ -204,7 +206,6 @@ test("opens invite dialog when Add member button is clicked", async () => {
 
 // ORG-I-031
 test("sends invite with typed email when Send invitation is clicked", async () => {
-  const user = userEvent.setup();
   let capturedEmail: string | null = null;
   setupMembersAPI();
   server.use(
@@ -221,7 +222,7 @@ test("sends invite with typed email when Send invitation is clicked", async () =
     return /Add member/i.test(el.textContent ?? "");
   });
   expect(addMemberButton031).toBeDefined();
-  await user.click(addMemberButton031!);
+  click(addMemberButton031!);
   await waitFor(() => {
     expect(
       screen.getByRole("heading", { name: "Invite member" }),
@@ -233,7 +234,7 @@ test("sends invite with typed email when Send invitation is clicked", async () =
     return el.textContent === "Send invitation";
   });
   expect(sendButton031).toBeDefined();
-  await user.click(sendButton031!);
+  click(sendButton031!);
   await waitFor(() => {
     expect(capturedEmail).toBe("test@invite.com");
   });
@@ -241,7 +242,6 @@ test("sends invite with typed email when Send invitation is clicked", async () =
 
 // ORG-I-032
 test("sends invite with Admin role when Admin is selected in role dropdown", async () => {
-  const user = userEvent.setup();
   let capturedRole: string | null = null;
   setupMembersAPI();
   server.use(
@@ -258,7 +258,7 @@ test("sends invite with Admin role when Admin is selected in role dropdown", asy
     return /Add member/i.test(el.textContent ?? "");
   });
   expect(addMemberButton032).toBeDefined();
-  await user.click(addMemberButton032!);
+  click(addMemberButton032!);
   await waitFor(() => {
     expect(
       screen.getByRole("heading", { name: "Invite member" }),
@@ -266,16 +266,16 @@ test("sends invite with Admin role when Admin is selected in role dropdown", asy
   });
   const emailInput = screen.getByPlaceholderText("email@example.com");
   await fill(emailInput, "newadmin@example.com");
-  await user.click(screen.getByRole("combobox"));
+  click(screen.getByRole("combobox"));
   await waitFor(() => {
     expect(screen.getByRole("option", { name: "Admin" })).toBeInTheDocument();
   });
-  await user.click(screen.getByRole("option", { name: "Admin" }));
+  click(screen.getByRole("option", { name: "Admin" }));
   const sendButton032 = screen.getAllByRole("button").find((el) => {
     return el.textContent === "Send invitation";
   });
   expect(sendButton032).toBeDefined();
-  await user.click(sendButton032!);
+  click(sendButton032!);
   await waitFor(() => {
     expect(capturedRole).toBe("admin");
   });
@@ -283,7 +283,6 @@ test("sends invite with Admin role when Admin is selected in role dropdown", asy
 
 // ORG-I-033
 test("sends role update when Make admin is clicked in member action menu", async () => {
-  const user = userEvent.setup();
   let capturedRoleUpdate: { email: string; role: string } | null = null;
   setupMembersAPI({ members: [adminMember, regularMember] });
   server.use(
@@ -296,11 +295,11 @@ test("sends role update when Make admin is clicked in member action menu", async
   await waitFor(() => {
     expect(screen.getByText("member@example.com")).toBeInTheDocument();
   });
-  await user.click(screen.getByLabelText("Actions for member@example.com"));
+  click(screen.getByLabelText("Actions for member@example.com"));
   await waitFor(() => {
     expect(screen.getByText("Make admin")).toBeInTheDocument();
   });
-  await user.click(screen.getByText("Make admin"));
+  click(screen.getByText("Make admin"));
   await waitFor(() => {
     expect(capturedRoleUpdate).toStrictEqual({
       email: "member@example.com",
@@ -311,17 +310,16 @@ test("sends role update when Make admin is clicked in member action menu", async
 
 // ORG-I-034
 test("shows self-demote confirmation dialog when admin switches to member", async () => {
-  const user = userEvent.setup();
   setupMembersAPI({ members: [adminMember, secondAdmin, regularMember] });
   await renderMembersTab();
   await waitFor(() => {
     expect(screen.getByTestId("current-user-indicator")).toBeInTheDocument();
   });
-  await user.click(screen.getByLabelText("Actions for admin@example.com"));
+  click(screen.getByLabelText("Actions for admin@example.com"));
   await waitFor(() => {
     expect(screen.getByText("Switch to member")).toBeInTheDocument();
   });
-  await user.click(screen.getByText("Switch to member"));
+  click(screen.getByText("Switch to member"));
   await waitFor(() => {
     expect(
       screen.getByRole("heading", { name: "Switch to member?" }),
@@ -331,17 +329,16 @@ test("shows self-demote confirmation dialog when admin switches to member", asyn
 
 // ORG-I-035
 test("shows revoke invitation confirmation dialog when revoke is clicked", async () => {
-  const user = userEvent.setup();
   setupMembersAPI({ pendingInvitations: [pendingInvitation] });
   await renderMembersTab();
   await waitFor(() => {
     expect(screen.getByText("invited@example.com")).toBeInTheDocument();
   });
-  await user.click(screen.getByLabelText("Actions for invited@example.com"));
+  click(screen.getByLabelText("Actions for invited@example.com"));
   await waitFor(() => {
     expect(screen.getByText("Revoke invitation")).toBeInTheDocument();
   });
-  await user.click(screen.getByText("Revoke invitation"));
+  click(screen.getByText("Revoke invitation"));
   await waitFor(() => {
     expect(
       screen.getByRole("heading", { name: "Revoke invitation?" }),
@@ -351,7 +348,6 @@ test("shows revoke invitation confirmation dialog when revoke is clicked", async
 
 // ORG-I-036
 test("sends accept request when Accept button is clicked", async () => {
-  const user = userEvent.setup();
   let capturedRequestId: string | null = null;
   setupMembersAPI({ membershipRequests: [membershipRequest] });
   server.use(
@@ -364,7 +360,7 @@ test("sends accept request when Accept button is clicked", async () => {
   await waitFor(() => {
     expect(screen.getByTitle("Accept request")).toBeInTheDocument();
   });
-  await user.click(screen.getByTitle("Accept request"));
+  click(screen.getByTitle("Accept request"));
   await waitFor(() => {
     expect(capturedRequestId).toBe("req-001");
   });
@@ -372,7 +368,6 @@ test("sends accept request when Accept button is clicked", async () => {
 
 // ORG-I-037
 test("sends reject request when Reject button is clicked", async () => {
-  const user = userEvent.setup();
   let capturedRequestId: string | null = null;
   setupMembersAPI({ membershipRequests: [membershipRequest] });
   server.use(
@@ -385,7 +380,7 @@ test("sends reject request when Reject button is clicked", async () => {
   await waitFor(() => {
     expect(screen.getByTitle("Reject request")).toBeInTheDocument();
   });
-  await user.click(screen.getByTitle("Reject request"));
+  click(screen.getByTitle("Reject request"));
   await waitFor(() => {
     expect(capturedRequestId).toBe("req-001");
   });

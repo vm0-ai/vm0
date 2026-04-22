@@ -9,10 +9,13 @@
 
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  fill,
+  click,
+} from "../../../__tests__/page-helper.ts";
 import { mockConnectors } from "./zero-connectors-page-test-helpers.ts";
 import { zeroConnectorsByTypeContract } from "@vm0/core";
 import { mockApi } from "../../../mocks/msw-contract.ts";
@@ -129,7 +132,6 @@ describe("connectors page", () => {
   });
 
   it("shows loading toast then success toast on disconnect", async () => {
-    const user = userEvent.setup();
     mockConnectors([{ type: "github", externalUsername: "testuser" }]);
 
     let deleteResolve: () => void;
@@ -153,12 +155,12 @@ describe("connectors page", () => {
 
     // Radix DropdownMenu opens on click
     const moreButton = screen.getByLabelText("More options");
-    await user.click(moreButton);
+    click(moreButton);
 
     await waitFor(() => {
       expect(screen.getByText("Disconnect")).toBeInTheDocument();
     });
-    await user.click(screen.getByText("Disconnect"));
+    click(screen.getByText("Disconnect"));
 
     // Loading toast should appear while API is in-flight
     await waitFor(() => {
@@ -175,7 +177,6 @@ describe("connectors page", () => {
   });
 
   it("shows error toast when disconnect fails", async () => {
-    const user = userEvent.setup();
     mockConnectors([{ type: "github", externalUsername: "testuser" }]);
 
     server.use(
@@ -194,12 +195,12 @@ describe("connectors page", () => {
 
     // Radix DropdownMenu opens on click
     const moreButton = screen.getByLabelText("More options");
-    await user.click(moreButton);
+    click(moreButton);
 
     await waitFor(() => {
       expect(screen.getByText("Disconnect")).toBeInTheDocument();
     });
-    await user.click(screen.getByText("Disconnect"));
+    click(screen.getByText("Disconnect"));
 
     await waitFor(() => {
       expect(

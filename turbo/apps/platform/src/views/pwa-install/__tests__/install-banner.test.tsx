@@ -18,9 +18,8 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 
 const context = testContext();
 
@@ -79,7 +78,6 @@ describe("install banner - visible on iOS Safari (PWA-D-001)", () => {
 
 describe("install banner - install opens iOS modal (PWA-D-002)", () => {
   it("opens the 'Add to Home Screen' modal on iOS Safari with no deferred prompt", async () => {
-    const user = userEvent.setup();
     mockDisplayModeStandalone(false);
     mockIOSSafariUA(true);
     detachedSetupPage({ context, path: "/" });
@@ -87,7 +85,7 @@ describe("install banner - install opens iOS modal (PWA-D-002)", () => {
     const installButton = await waitFor(() => {
       return screen.getByLabelText("Install app");
     });
-    await user.click(installButton);
+    click(installButton);
 
     await waitFor(() => {
       expect(
@@ -103,7 +101,6 @@ describe("install banner - install opens iOS modal (PWA-D-002)", () => {
 
 describe("install banner - dismiss hides banner (PWA-D-003)", () => {
   it("removes the banner from the DOM after the dismiss button is clicked", async () => {
-    const user = userEvent.setup();
     mockDisplayModeStandalone(false);
     mockIOSSafariUA(true);
     detachedSetupPage({ context, path: "/" });
@@ -111,7 +108,7 @@ describe("install banner - dismiss hides banner (PWA-D-003)", () => {
     const dismissButton = await waitFor(() => {
       return screen.getByLabelText("Dismiss install banner");
     });
-    await user.click(dismissButton);
+    click(dismissButton);
 
     await waitFor(() => {
       expect(

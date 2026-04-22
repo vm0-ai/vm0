@@ -73,25 +73,6 @@ export default [
   {
     files: ["**/__tests__/**/*.{ts,tsx}"],
     rules: {
-      "ccstate/prefer-user-event": [
-        "error",
-        {
-          // scroll and wheel events cannot be simulated by userEvent; allow
-          // dispatchEvent with these event types for tests that verify
-          // auto-scroll behaviour (including the user-input gate check).
-          // beforeinstallprompt and appinstalled are browser-generated PWA events
-          // that cannot be triggered via userEvent.
-          allowedEventTypes: [
-            "appinstalled",
-            "beforeinstallprompt",
-            // Custom class used in pwa-install tests to carry the prompt()
-            // callback; cannot be replaced by userEvent (browser-generated PWA event).
-            "beforeinstallpromptevent",
-            "scroll",
-            "wheel",
-          ],
-        },
-      ],
       "ccstate/no-test-delay": "error",
       "ccstate/no-get-by-role-name": "error",
       "ccstate/no-user-clear-tab": "error",
