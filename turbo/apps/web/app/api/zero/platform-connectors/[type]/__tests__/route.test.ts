@@ -3,6 +3,7 @@ import { POST } from "../route";
 import {
   createTestRequest,
   createTestOrg,
+  countPlatformConnectorRows,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -24,11 +25,16 @@ function enableUrl(type: string): string {
   return `http://localhost:3000/api/zero/platform-connectors/${type}`;
 }
 
-// With no connector currently declaring `platform` auth the success path is
-// unreachable (validated upstream by `connectorTypeSchema`). These tests
-// cover the two branches that stay exercisable: auth rejection and the
-// "type doesn't support platform enable" rejection. Expand to cover 200
-// again when the next platform connector lands.
+function enablePost(type: string) {
+  return POST(
+    createTestRequest(enableUrl(type), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    }),
+  );
+}
+
 describe("POST /api/zero/platform-connectors/:type", () => {
   beforeEach(() => {
     context.setupMocks();
@@ -37,13 +43,7 @@ describe("POST /api/zero/platform-connectors/:type", () => {
   it("returns 401 when not authenticated", async () => {
     mockClerk({ userId: null });
 
-    const response = await POST(
-      createTestRequest(enableUrl("test-oauth"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      }),
-    );
+    const response = await enablePost("openai");
     expect(response.status).toBe(401);
   });
 
@@ -55,13 +55,33 @@ describe("POST /api/zero/platform-connectors/:type", () => {
     const userId = uniqueId("zpl-np");
     await setupOrg(userId);
 
-    const response = await POST(
-      createTestRequest(enableUrl("test-oauth"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      }),
-    );
+    const response = await enablePost("test-oauth");
     expect(response.status).toBe(400);
+  });
+
+  it("enables openai and persists a platform row", async () => {
+    const userId = uniqueId("zpl-ok");
+    const { orgId } = await setupOrg(userId);
+
+    const response = await enablePost("openai");
+    expect(response.status).toBe(200);
+
+    const body = await response.json();
+    expect(body.type).toBe("openai");
+    expect(body.authMethod).toBe("platform");
+
+    expect(await countPlatformConnectorRows(orgId, userId, "openai")).toBe(1);
+  });
+
+  it("is idempotent — repeat POSTs yield one row", async () => {
+    const userId = uniqueId("zpl-idem");
+    const { orgId } = await setupOrg(userId);
+
+    const first = await enablePost("openai");
+    expect(first.status).toBe(200);
+    const second = await enablePost("openai");
+    expect(second.status).toBe(200);
+
+    expect(await countPlatformConnectorRows(orgId, userId, "openai")).toBe(1);
   });
 });

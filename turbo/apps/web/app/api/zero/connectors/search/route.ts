@@ -5,6 +5,7 @@ import {
   CONNECTOR_TYPES,
   ConnectorType,
   ConnectorSearchAuthMethod,
+  FeatureSwitchKey,
   getAllFeatureStates,
 } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
@@ -31,28 +32,36 @@ const router = tsr.router(zeroConnectorsSearchContract, {
     });
     const keyword = query.keyword?.toLowerCase();
 
+    const platformGloballyEnabled =
+      !!featureStates[FeatureSwitchKey.PlatformConnectors];
+
     const connectors = (
       Object.keys(CONNECTOR_TYPES) as ConnectorType[]
     ).flatMap((type) => {
       const config = CONNECTOR_TYPES[type];
       const flag = config.featureFlag;
       const flagEnabled = !flag || !!featureStates[flag];
-      const hasOauth = "oauth" in config.authMethods;
-      const hasApiToken = "api-token" in config.authMethods;
-      const hasPlatform = "platform" in config.authMethods;
+      // api-token is always available; oauth requires the per-connector
+      // flag; platform requires both the per-connector flag and the global
+      // PlatformConnectors flag.
+      const showOauth = flagEnabled && "oauth" in config.authMethods;
+      const showApiToken = "api-token" in config.authMethods;
+      const showPlatform =
+        flagEnabled &&
+        platformGloballyEnabled &&
+        "platform" in config.authMethods;
 
-      // Hidden unless the flag allows an OAuth/platform method or an api-token
-      // method exists (api-token is always available regardless of flag).
-      if (!flagEnabled && !hasApiToken) return [];
+      // Hidden unless at least one auth method shows.
+      if (!showOauth && !showApiToken && !showPlatform) return [];
 
       const availableAuthMethods: ConnectorSearchAuthMethod[] = [];
-      if (flagEnabled && hasOauth) {
+      if (showOauth) {
         availableAuthMethods.push("oauth");
       }
-      if (hasApiToken) {
+      if (showApiToken) {
         availableAuthMethods.push("api-token");
       }
-      if (flagEnabled && hasPlatform) {
+      if (showPlatform) {
         availableAuthMethods.push("platform");
       }
 

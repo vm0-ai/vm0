@@ -3,6 +3,7 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import { accept } from "../../../lib/accept.ts";
 import {
   CONNECTOR_TYPES,
+  FeatureSwitchKey,
   hasRequiredScopes,
   zeroConnectorScopeDiffContract,
   zeroConnectorsMainContract,
@@ -102,38 +103,46 @@ export const allConnectorTypes$ = computed(async (get) => {
   );
   const features = await get(featureSwitch$);
 
+  const platformGloballyEnabled =
+    !!features?.[FeatureSwitchKey.PlatformConnectors];
+
   const items = (Object.keys(CONNECTOR_TYPES) as ConnectorType[])
     .filter((type) => {
       const flag = CONNECTOR_TYPES[type].featureFlag;
       const flagEnabled = !flag || !!features?.[flag];
       const methods = CONNECTOR_TYPES[type].authMethods;
-      const hasOauth = "oauth" in methods;
-      const hasApiToken = "api-token" in methods;
-      const hasPlatform = "platform" in methods;
-      // Connector visible if:
-      //  - the feature flag (if any) allows it AND an OAuth or platform method exists, or
-      //  - it has an api-token method (api-token is always available regardless of flag).
-      return (flagEnabled && (hasOauth || hasPlatform)) || hasApiToken;
+      // Connector visible if any auth method should be shown. api-token is
+      // always available regardless of flag; oauth requires the per-connector
+      // flag; platform requires both the per-connector flag and the global
+      // PlatformConnectors flag.
+      const showOauth = flagEnabled && "oauth" in methods;
+      const showApiToken = "api-token" in methods;
+      const showPlatform =
+        flagEnabled && platformGloballyEnabled && "platform" in methods;
+      return showOauth || showApiToken || showPlatform;
     })
     .map((type) => {
       const config = CONNECTOR_TYPES[type];
       const connector = connectorMap.get(type) ?? null;
       const flag = CONNECTOR_TYPES[type].featureFlag;
       const flagEnabled = !flag || !!features?.[flag];
-      const hasOauth = "oauth" in config.authMethods;
-      const hasApiToken = "api-token" in config.authMethods;
-      const hasPlatform = "platform" in config.authMethods;
+      const showOauth = flagEnabled && "oauth" in config.authMethods;
+      const showApiToken = "api-token" in config.authMethods;
+      const showPlatform =
+        flagEnabled &&
+        platformGloballyEnabled &&
+        "platform" in config.authMethods;
       const availableAuthMethods: string[] = [];
-      if (flagEnabled && hasOauth) {
+      if (showOauth) {
         availableAuthMethods.push("oauth");
       }
-      if (hasApiToken) {
+      if (showApiToken) {
         availableAuthMethods.push("api-token");
       }
-      if (flagEnabled && hasPlatform) {
+      if (showPlatform) {
         availableAuthMethods.push("platform");
       }
-      const isExperimental = !!flag && !hasApiToken;
+      const isExperimental = !!flag && !showApiToken;
       return {
         type,
         label: isExperimental ? `[Experimental] ${config.label}` : config.label,

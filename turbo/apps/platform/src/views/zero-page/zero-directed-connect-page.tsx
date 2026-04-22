@@ -57,7 +57,18 @@ function runDirectedConnect(params: {
   openTokenDialog: () => void;
 }): void {
   const hasOAuth = params.authMethods.includes("oauth");
+  const hasApiToken = params.authMethods.includes("api-token");
   const hasPlatform = params.authMethods.includes("platform");
+
+  // Priority: OAuth launches the external popup; api-token (with or without
+  // platform) opens the modal so the user picks explicitly; platform-only
+  // falls through to silent enable. The api-token + platform combo MUST go
+  // through the modal — auto-enabling platform would bypass the api-token
+  // form entirely for a directed-connect link.
+  if (!hasOAuth && hasApiToken) {
+    params.openTokenDialog();
+    return;
+  }
   if (!hasOAuth && !hasPlatform) {
     params.openTokenDialog();
     return;

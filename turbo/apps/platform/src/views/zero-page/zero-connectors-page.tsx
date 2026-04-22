@@ -321,10 +321,12 @@ export function ZeroConnectorsPage() {
     const ct = allConnectors.find((c) => {
       return c.type === type;
     });
+    // Any connector without OAuth opens the ConnectModal — the modal handles
+    // api-token and platform (and both simultaneously) via its dual-form
+    // render. Only pure-OAuth connectors skip the modal and jump straight
+    // to the popup flow.
     if (
-      (ct &&
-        ct.availableAuthMethods.length === 1 &&
-        ct.availableAuthMethods[0] !== "oauth") ||
+      (ct && !ct.availableAuthMethods.includes("oauth")) ||
       isGoogleOAuthConnector(type)
     ) {
       setSelected(type);

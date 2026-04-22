@@ -158,4 +158,41 @@ describe("GET /api/zero/connectors/search", () => {
       expect(found).toBeDefined();
     }
   });
+
+  it("exposes openai platform auth method for staff orgs", async () => {
+    // Staff orgId hash is in STAFF_ORG_ID_HASHES, so the PlatformConnectors
+    // feature switch fires automatically and `platform` surfaces alongside
+    // `api-token` in the response.
+    mockClerk({
+      userId: "staff-user-openai-platform",
+      orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
+    });
+    const response = await searchConnectors();
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    const openai = data.connectors.find((c: { id: string }) => {
+      return c.id === "openai";
+    });
+    expect(openai).toBeDefined();
+    expect(openai.authMethods).toEqual(
+      expect.arrayContaining(["api-token", "platform"]),
+    );
+  });
+
+  it("hides openai platform auth method for non-staff orgs", async () => {
+    // Non-staff default: the PlatformConnectors gate is off, so `platform`
+    // is filtered out and the connector looks identical to pre-skeleton.
+    mockClerk({
+      userId: "non-staff-user-openai-platform",
+      orgId: "org_non_staff_openai",
+    });
+    const response = await searchConnectors();
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    const openai = data.connectors.find((c: { id: string }) => {
+      return c.id === "openai";
+    });
+    expect(openai).toBeDefined();
+    expect(openai.authMethods).toEqual(["api-token"]);
+  });
 });

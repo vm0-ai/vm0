@@ -313,6 +313,17 @@ function ConnectModalContent({
         <ApiTokenForm type={item.type} item={item} onSuccess={onSuccess} />
       )}
 
+      {hasApiToken && hasPlatform && (
+        <div className="relative">
+          <div className="absolute inset-0 flex items-center">
+            <span className="w-full zero-border-t" />
+          </div>
+          <div className="relative flex justify-center text-xs">
+            <span className="bg-background px-2 text-muted-foreground">or</span>
+          </div>
+        </div>
+      )}
+
       {hasPlatform && (
         <PlatformConfirmationForm type={item.type} onSuccess={onSuccess} />
       )}
