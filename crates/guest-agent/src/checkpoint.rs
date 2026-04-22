@@ -12,9 +12,20 @@ use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_error, log_info};
 use serde_json::json;
 use sha2::{Digest, Sha256};
+use std::io::ErrorKind;
 use std::path::Path;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
+
+/// Log the message, record a failed `sandbox_op`, and build a matching
+/// `Checkpoint` error — all three channels share the same message so
+/// telemetry and logs stay in sync.
+fn fail(op: &str, start: std::time::Instant, msg: impl Into<String>) -> AgentError {
+    let msg = msg.into();
+    log_error!(LOG_TAG, "{msg}");
+    record_sandbox_op(op, start.elapsed(), false, Some(&msg));
+    AgentError::Checkpoint(msg)
+}
 
 /// Create a checkpoint after a successful run.
 pub async fn create_checkpoint() -> Result<(), AgentError> {
@@ -27,113 +38,82 @@ pub async fn create_checkpoint() -> Result<(), AgentError> {
 async fn create_checkpoint_impl() -> Result<(), AgentError> {
     log_info!(LOG_TAG, "Creating checkpoint...");
 
-    // Read session ID
+    // Read session ID. Let `read_to_string` surface `NotFound` directly — an
+    // explicit `exists()` check would be a redundant stat plus a TOCTOU race
+    // between check and read.
     let session_id_start = std::time::Instant::now();
-    let session_id_path = paths::session_id_file();
-    if !Path::new(session_id_path).exists() {
-        log_error!(LOG_TAG, "No session ID found, checkpoint creation failed");
-        record_sandbox_op(
-            "session_id_read",
-            session_id_start.elapsed(),
-            false,
-            Some("Session ID file not found"),
-        );
-        return Err(AgentError::Checkpoint("No session ID found".into()));
-    }
-    let session_id = match std::fs::read_to_string(session_id_path) {
+    let session_id = match std::fs::read_to_string(paths::session_id_file()) {
         Ok(s) => s.trim().to_string(),
-        Err(e) => {
-            let msg = format!("Failed to read session ID: {e}");
-            record_sandbox_op(
+        Err(e) if e.kind() == ErrorKind::NotFound => {
+            return Err(fail(
                 "session_id_read",
-                session_id_start.elapsed(),
-                false,
-                Some(&msg),
-            );
-            return Err(AgentError::Checkpoint(msg));
+                session_id_start,
+                "No session ID found",
+            ));
+        }
+        Err(e) => {
+            return Err(fail(
+                "session_id_read",
+                session_id_start,
+                format!("Failed to read session ID: {e}"),
+            ));
         }
     };
     if session_id.is_empty() {
-        log_error!(LOG_TAG, "Session ID is empty");
-        record_sandbox_op(
+        return Err(fail(
             "session_id_read",
-            session_id_start.elapsed(),
-            false,
-            Some("Empty"),
-        );
-        return Err(AgentError::Checkpoint("Session ID is empty".into()));
+            session_id_start,
+            "Session ID is empty",
+        ));
     }
     record_sandbox_op("session_id_read", session_id_start.elapsed(), true, None);
 
-    // Read session history path
+    // Read session history path file then the history file itself. Both
+    // steps record under `session_history_read` with a shared start instant
+    // so the duration covers the end-to-end read.
     let history_read_start = std::time::Instant::now();
-    let history_path_file = paths::session_history_path_file();
-    if !Path::new(history_path_file).exists() {
-        log_error!(LOG_TAG, "No session history path found");
-        record_sandbox_op(
-            "session_history_read",
-            history_read_start.elapsed(),
-            false,
-            Some("Path file not found"),
-        );
-        return Err(AgentError::Checkpoint(
-            "No session history path found".into(),
-        ));
-    }
-    let session_history_path = match std::fs::read_to_string(history_path_file) {
+    let session_history_path = match std::fs::read_to_string(paths::session_history_path_file()) {
         Ok(s) => s.trim().to_string(),
-        Err(e) => {
-            let msg = format!("Failed to read history path: {e}");
-            record_sandbox_op(
+        Err(e) if e.kind() == ErrorKind::NotFound => {
+            return Err(fail(
                 "session_history_read",
-                history_read_start.elapsed(),
-                false,
-                Some(&msg),
-            );
-            return Err(AgentError::Checkpoint(msg));
+                history_read_start,
+                "No session history path found",
+            ));
+        }
+        Err(e) => {
+            return Err(fail(
+                "session_history_read",
+                history_read_start,
+                format!("Failed to read history path: {e}"),
+            ));
         }
     };
 
-    // Read session history
-    if !Path::new(&session_history_path).exists() {
-        log_error!(
-            LOG_TAG,
-            "Session history file not found at {session_history_path}"
-        );
-        record_sandbox_op(
-            "session_history_read",
-            history_read_start.elapsed(),
-            false,
-            Some("File not found"),
-        );
-        return Err(AgentError::Checkpoint(
-            "Session history file not found".into(),
-        ));
-    }
-
     let session_history = match std::fs::read_to_string(&session_history_path) {
         Ok(s) => s,
-        Err(e) => {
-            let msg = format!("Failed to read session history: {e}");
-            record_sandbox_op(
+        Err(e) if e.kind() == ErrorKind::NotFound => {
+            return Err(fail(
                 "session_history_read",
-                history_read_start.elapsed(),
-                false,
-                Some(&msg),
-            );
-            return Err(AgentError::Checkpoint(msg));
+                history_read_start,
+                format!("Session history file not found at {session_history_path}"),
+            ));
+        }
+        Err(e) => {
+            return Err(fail(
+                "session_history_read",
+                history_read_start,
+                format!("Failed to read session history: {e}"),
+            ));
         }
     };
 
     if session_history.trim().is_empty() {
-        log_error!(LOG_TAG, "Session history is empty");
-        record_sandbox_op(
+        return Err(fail(
             "session_history_read",
-            history_read_start.elapsed(),
-            false,
-            Some("Empty"),
-        );
-        return Err(AgentError::Checkpoint("Session history is empty".into()));
+            history_read_start,
+            "Session history is empty",
+        ));
     }
 
     let line_count = session_history.lines().count();
