@@ -47,12 +47,21 @@
     # drain`, which only the release-please promote path knows to send.
     # Tell needrestart to leave vm0-runner units alone; the next promote
     # picks up whatever library updates matter.
+    - name: Ensure needrestart conf.d exists
+      file:
+        path: /etc/needrestart/conf.d
+        state: directory
+        mode: '0755'
+      become: true
+
     - name: Exempt vm0-runner services from needrestart auto-restart
       copy:
         dest: /etc/needrestart/conf.d/vm0-runner.conf
         content: |
           # Managed by ansible/playbooks/provision-runner.yml — do not edit.
-          $nrconf{override_rc}->{qr(^vm0-runner-.*\.service$)} = 0;
+          # Prefix match (no `.service` anchor) so this fires regardless of
+          # whether needrestart's code path hands us the short or full name.
+          $nrconf{override_rc}->{qr(^vm0-runner-)} = 0;
         mode: '0644'
       become: true
 
