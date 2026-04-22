@@ -41,6 +41,11 @@ const FLUSH_DEADLINE: Duration = Duration::from_secs(5);
 const HTTP_TIMEOUT: Duration = Duration::from_secs(10);
 const DEFAULT_AXIOM_URL: &str = "https://api.axiom.co";
 const SERVICE_NAME: &str = "runner";
+/// Target used for this layer's own diagnostics (channel-full warnings,
+/// non-success ingest responses, HTTP errors). Filtered out in `enabled()`
+/// so diagnostics reach stderr + the rolling log file via the fmt layer
+/// without looping back into this layer and re-flooding the dispatcher.
+const INTERNAL_TARGET: &str = "runner::axiom_layer::internal";
 
 /// Holds the dispatcher task. `shutdown().await` drains the queue; dropping
 /// without calling `shutdown` leaves the tokio runtime to abort the task.
@@ -135,20 +140,24 @@ where
 {
     fn enabled(&self, metadata: &Metadata<'_>, _: Context<'_, S>) -> bool {
         // Fixed WARN+ threshold. Errors and warnings only; INFO/DEBUG stay out
-        // of Axiom to keep ingest volume predictable.
-        *metadata.level() <= tracing::Level::WARN
+        // of Axiom to keep ingest volume predictable. The internal-target
+        // check prevents our own diagnostics from feeding back into the
+        // layer (and re-hammering the full channel).
+        *metadata.level() <= tracing::Level::WARN && metadata.target() != INTERNAL_TARGET
     }
 
     fn on_event(&self, event: &Event<'_>, _: Context<'_, S>) {
         let value = serialize_event(event);
         if self.tx.try_send(Msg::Event(value)).is_err() {
-            // Bounded-channel full or dispatcher gone. Surface periodically —
-            // never through `tracing` itself (feedback loop).
+            // Bounded-channel full or dispatcher gone. Surface periodically
+            // under `INTERNAL_TARGET` so the message hits stderr + rolling
+            // file via the fmt layer but `enabled()` filters it out here.
             let prev = self.dropped.fetch_add(1, Ordering::Relaxed);
             if prev.is_multiple_of(1000) {
-                eprintln!(
-                    "warn: axiom channel full, {} event(s) dropped so far",
-                    prev + 1
+                tracing::warn!(
+                    target: INTERNAL_TARGET,
+                    dropped = prev + 1,
+                    "axiom channel full",
                 );
             }
         }
@@ -202,11 +211,21 @@ async fn flush(client: &Client, ingest_url: &str, token: &str, batch: &mut Vec<V
         Ok(resp) => {
             // Drop events on non-success. Retry-from-inside-tracing risks
             // feedback loops; if 429s become routine, add a real backoff
-            // wrapper then.
-            eprintln!("warn: axiom ingest returned {}", resp.status());
+            // wrapper then. Diagnostics go under INTERNAL_TARGET so they
+            // reach stderr + the rolling file via the fmt layer but don't
+            // get re-ingested here.
+            tracing::warn!(
+                target: INTERNAL_TARGET,
+                status = %resp.status(),
+                "axiom ingest returned non-success",
+            );
         }
         Err(e) => {
-            eprintln!("warn: axiom ingest failed: {e}");
+            tracing::warn!(
+                target: INTERNAL_TARGET,
+                error = %e,
+                "axiom ingest failed",
+            );
         }
     }
 }
