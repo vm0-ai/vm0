@@ -314,12 +314,12 @@ Avatar:
     preset:4  dark skin, teal hair, excited, normal
 
   Custom attributes (--avatar-* flags, replace the entire avatar):
-    --avatar-rotation   1=far-left  3=center(default)  5=far-right
-    --avatar-skin       light / light-medium / medium(default) / medium-dark / dark
-    --avatar-hair-style 1–5 (default: 1)
-    --avatar-hair-color blonde / teal / grey / pink / brown(default)
-    --avatar-expression calm(default) / content / neutral / pleasant / excited
-    --avatar-intensity  chill / normal(default) / hyped
+    --avatar-rotation    1=far-left  3=center(default)  5=far-right
+    --avatar-skin        light / light-medium / medium(default) / medium-dark / dark
+    --avatar-hair-style  1–5 (default: 1)
+    --avatar-hair-color  blonde / teal / grey / pink / brown(default)
+    --avatar-expression  calm(default) / content / neutral / pleasant / excited
+    --avatar-intensity   chill / normal(default) / hyped
 
   Note: --avatar and --avatar-* cannot be used together.
 
