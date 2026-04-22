@@ -309,7 +309,7 @@ async function handleOneTimePurchaseCompleted(
 }
 
 // ---------------------------------------------------------------------------
-// One-time Checkout Session creation (used by /redeem/[campaign])
+// One-time Checkout Session creation (used by POST /api/zero/billing/redeem/:campaign)
 // ---------------------------------------------------------------------------
 
 /**

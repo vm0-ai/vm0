@@ -32,8 +32,7 @@ export const ROUTES = {
   internalConnectorLogos: "/__internal-connector-logos",
   reportError: "/runs/:runId/report-error",
   missionControl: "/_/mission-control",
-  redeemError: "/redeem/error",
-  redeemStatus: "/redeem/status",
+  redeemCampaign: "/redeem/:campaign",
   skeleton: "/_/skeleton",
   error: "/_/error",
 } as const;

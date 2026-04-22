@@ -11,8 +11,10 @@ import {
   zeroBillingDowngradeContract,
   zeroBillingAutoRechargeContract,
   zeroBillingInvoicesContract,
+  zeroBillingRedeemContract,
   type BillingStatusResponse,
   type BillingInvoice,
+  type RedeemResponse,
 } from "@vm0/core";
 import { mockApi } from "../msw-contract.ts";
 
@@ -51,9 +53,23 @@ export function setMockBillingStatus(
   mockBillingStatus = { ...mockBillingStatus, ...status };
 }
 
+function defaultRedeemResponse(): RedeemResponse {
+  return {
+    status: "ready",
+    checkoutUrl: "https://checkout.stripe.com/test/redeem",
+  };
+}
+
+let mockRedeemResponse: RedeemResponse = defaultRedeemResponse();
+
+export function setMockRedeemResponse(response: RedeemResponse): void {
+  mockRedeemResponse = response;
+}
+
 export function resetMockBilling(): void {
   mockBillingStatus = defaultBillingStatus();
   mockBillingInvoices = [];
+  mockRedeemResponse = defaultRedeemResponse();
 }
 
 export const apiBillingHandlers = [
@@ -95,5 +111,9 @@ export const apiBillingHandlers = [
 
   mockApi(zeroBillingInvoicesContract.get, ({ respond }) => {
     return respond(200, { invoices: mockBillingInvoices });
+  }),
+
+  mockApi(zeroBillingRedeemContract.create, ({ respond }) => {
+    return respond(200, mockRedeemResponse);
   }),
 ];
