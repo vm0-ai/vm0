@@ -10,6 +10,7 @@ import {
 } from "../../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
+  uniqueId,
   type UserContext,
 } from "../../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
@@ -56,7 +57,9 @@ describe("GET /api/agent/composes/:id/instructions", () => {
 
   it("should return null content when compose has no instructions", async () => {
     // Create compose without instructions field
-    const { composeId } = await createTestCompose("no-instructions-agent");
+    const { composeId } = await createTestCompose(
+      uniqueId("no-instructions-agent"),
+    );
 
     const request = createTestRequest(
       `http://localhost:3000/api/agent/composes/${composeId}/instructions`,
@@ -74,9 +77,12 @@ describe("GET /api/agent/composes/:id/instructions", () => {
 
   it("should return null content when instructions volume does not exist", async () => {
     // Create compose WITH instructions field but no storage volume
-    const { composeId } = await createTestCompose("has-instructions-agent", {
-      overrides: { instructions: "AGENTS.md" },
-    });
+    const { composeId } = await createTestCompose(
+      uniqueId("has-instructions-agent"),
+      {
+        overrides: { instructions: "AGENTS.md" },
+      },
+    );
 
     const request = createTestRequest(
       `http://localhost:3000/api/agent/composes/${composeId}/instructions`,
@@ -184,7 +190,7 @@ describe("GET /api/agent/composes/:id/instructions", () => {
   it("should return 404 for non-shared user", async () => {
     // Owner creates agent
     await context.setupUser({ prefix: "private-owner" });
-    const { composeId } = await createTestCompose("private-agent", {
+    const { composeId } = await createTestCompose(uniqueId("private-agent"), {
       overrides: { instructions: "AGENTS.md" },
     });
 

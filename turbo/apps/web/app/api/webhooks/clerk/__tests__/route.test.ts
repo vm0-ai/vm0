@@ -252,7 +252,9 @@ describe("organization.deleted e2e cleanup", () => {
     // --- Populate org with data across all table types ---
 
     // Composes + sessions + runs
-    const { composeId, agentId } = await createTestCompose("e2e-org-test");
+    const { composeId, agentId } = await createTestCompose(
+      uniqueId("e2e-org-test"),
+    );
     const session = await createTestAgentSession(userId, composeId);
     await seedTestRun(userId, composeId, {
       status: "running",
@@ -288,8 +290,9 @@ describe("organization.deleted e2e cleanup", () => {
     });
 
     // Zero agent (need compose first since zero_agents.id = composeId)
-    await createTestCompose("e2e-zero-agent");
-    await createTestZeroAgent(orgId, "e2e-zero-agent", {
+    const zeroAgentName = uniqueId("e2e-zero-agent");
+    await createTestCompose(zeroAgentName);
+    await createTestZeroAgent(orgId, zeroAgentName, {
       displayName: "E2E",
     });
 
@@ -415,7 +418,9 @@ describe("user.deleted e2e cleanup", () => {
     // --- Populate user data across all table types ---
 
     // Composes + sessions + runs
-    const { composeId, agentId } = await createTestCompose("e2e-user-test");
+    const { composeId, agentId } = await createTestCompose(
+      uniqueId("e2e-user-test"),
+    );
     const session = await createTestAgentSession(userId, composeId);
     await seedTestRun(userId, composeId, {
       status: "running",

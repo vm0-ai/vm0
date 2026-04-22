@@ -86,7 +86,7 @@ async function setupTelegramCallback() {
 
   // Create org + compose (with version) through API
   await createTestOrg(uniqueId("org"));
-  const { composeId } = await createTestCompose("test-agent");
+  const { composeId } = await createTestCompose(uniqueId("telegram-agent"));
 
   // Create installation with encrypted bot token + user link via helper
   const { installationId, userLinkId } =

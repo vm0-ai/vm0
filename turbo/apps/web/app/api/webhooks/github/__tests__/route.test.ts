@@ -560,7 +560,9 @@ describe("POST /api/webhooks/github", () => {
       const userId = uniqueId("gh-user");
       mockClerk({ userId });
       await createTestOrg(uniqueId("gh-org"));
-      const { composeId } = await createTestCompose("gh-webhook-agent");
+      const { composeId } = await createTestCompose(
+        uniqueId("gh-webhook-agent"),
+      );
 
       const targetId = String(Math.floor(Math.random() * 1_000_000_000));
       const ghInstallationId = Math.floor(Math.random() * 1_000_000_000);

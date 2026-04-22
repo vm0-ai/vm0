@@ -83,7 +83,7 @@ async function givenGitHubCallbackSetup(overrides?: {
   const userId = uniqueId("gh-cb-user");
   mockClerk({ userId });
   await createTestOrg(uniqueId("gh-cb-org"));
-  const { composeId } = await createTestCompose("gh-callback-agent");
+  const { composeId } = await createTestCompose(uniqueId("gh-callback-agent"));
 
   const { runId } = await seedTestRun(userId, composeId, {
     prompt: "Test GitHub prompt",
@@ -293,7 +293,9 @@ describe("POST /api/internal/callbacks/github/issues", () => {
       const userId = uniqueId("gh-missing-user");
       mockClerk({ userId });
       await createTestOrg(uniqueId("gh-missing-org"));
-      const { composeId } = await createTestCompose("gh-missing-agent");
+      const { composeId } = await createTestCompose(
+        uniqueId("gh-missing-agent"),
+      );
 
       const { runId } = await seedTestRun(userId, composeId, {
         prompt: "Test prompt",
