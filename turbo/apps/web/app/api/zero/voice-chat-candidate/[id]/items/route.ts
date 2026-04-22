@@ -3,10 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { getAuthContext } from "../../../../../../src/lib/auth/get-auth-context";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { getVoiceChatCandidateSession } from "../../../../../../src/lib/zero/voice-chat-candidate/session-service";
-import {
-  appendVoiceChatCandidateItem,
-  readVoiceChatCandidateItems,
-} from "../../../../../../src/lib/zero/voice-chat-candidate/item-service";
+import { appendVoiceChatCandidateItem } from "../../../../../../src/lib/zero/voice-chat-candidate/item-service";
 import { triggerReasoning } from "../../../../../../src/lib/zero/voice-chat-candidate/trigger-reasoning";
 import { featureCandidateVoiceChatItems } from "../../../../../../src/db/schema/voice-chat-candidate";
 import { isBadRequest } from "../../../../../../src/lib/shared/errors";
@@ -66,9 +63,12 @@ export async function POST(
     });
 
     if (inserted) {
-      // Fresh insert — tick the reasoner asynchronously. Silent-dedupe
-      // replays (null return, see below) intentionally skip this to avoid
-      // wasted reasoner calls on idempotent retries.
+      // Fresh insert — tick the reasoner asynchronously. The Trinity client
+      // maintains its own `last user / assistant` in local state and does
+      // not listen on the session Ably channel for transcript rows, so we
+      // no longer publish here on a plain user/assistant append. Silent-
+      // dedupe replays (null return, see below) skip the reasoner trigger
+      // for idempotency.
       after(() => {
         return triggerReasoning(id);
       });
@@ -110,41 +110,3 @@ export async function POST(
   }
 }
 
-export async function GET(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> },
-): Promise<Response> {
-  initServices();
-
-  const authCtx = await getAuthContext(
-    request.headers.get("authorization") ?? undefined,
-  );
-  if (!authCtx?.orgId) return unauthorizedResponse();
-
-  if (!(await isVoiceChatCandidateEnabled(authCtx))) {
-    return notFoundResponse("Voice-chat-candidate session not found");
-  }
-
-  const { id } = await params;
-  const session = await getVoiceChatCandidateSession(id);
-  if (
-    !session ||
-    session.orgId !== authCtx.orgId ||
-    session.userId !== authCtx.userId
-  ) {
-    return notFoundResponse("Voice-chat-candidate session not found");
-  }
-
-  const afterParam = new URL(request.url).searchParams.get("after");
-  const afterSeq = afterParam !== null ? Number(afterParam) : undefined;
-  if (afterSeq !== undefined && !Number.isFinite(afterSeq)) {
-    return badRequestResponse("Invalid 'after' query parameter");
-  }
-
-  const items = await readVoiceChatCandidateItems(id, afterSeq);
-  return NextResponse.json({
-    items: items.map((i) => {
-      return serializeVoiceChatCandidateItem(i);
-    }),
-  });
-}

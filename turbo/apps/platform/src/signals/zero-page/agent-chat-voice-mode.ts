@@ -2,8 +2,9 @@ import { command, computed, state } from "ccstate";
 import {
   startVoiceChatCandidate$,
   endVoiceChatCandidate$,
-  vccConversationItems$,
-  vccTasksById$,
+  vccLastUserMessage$,
+  vccLastAssistantMessage$,
+  vccActiveTasks$,
 } from "../voice-chat-candidate/voice-chat-candidate-session.ts";
 
 type VoiceMode = "off" | "on";
@@ -36,63 +37,17 @@ export const exitAgentChatVoiceMode$ = command(({ set }) => {
   set(endVoiceChatCandidate$);
 });
 
-export const lastUserMessage$ = computed((get) => {
-  const entries = get(vccConversationItems$);
-  for (let i = entries.length - 1; i >= 0; i--) {
-    const entry = entries[i];
-    if (!entry) {
-      continue;
-    }
-    if (
-      entry.kind === "server" &&
-      entry.item.role === "user" &&
-      (entry.item.content ?? "").trim().length > 0
-    ) {
-      return entry.item.content ?? "";
-    }
-    if (entry.kind === "streaming" && entry.role === "user") {
-      return entry.content;
-    }
-  }
-  return "";
-});
-
-export const lastAgentMessage$ = computed((get) => {
-  const entries = get(vccConversationItems$);
-  for (let i = entries.length - 1; i >= 0; i--) {
-    const entry = entries[i];
-    if (!entry) {
-      continue;
-    }
-    if (
-      entry.kind === "server" &&
-      entry.item.role === "assistant" &&
-      (entry.item.content ?? "").trim().length > 0
-    ) {
-      return entry.item.content ?? "";
-    }
-    if (entry.kind === "streaming" && entry.role === "assistant") {
-      return entry.content;
-    }
-  }
-  return "";
-});
+// Subtitle computeds mirror the per-role local state maintained by the
+// voice-chat-candidate signal module. Those states are set directly in
+// `appendItem$` after each successful DB write, so re-rendering is driven
+// purely by the user's and Talker's finalized turns — no server roundtrip.
+export const lastUserMessage$ = vccLastUserMessage$;
+export const lastAgentMessage$ = vccLastAssistantMessage$;
 
 /**
- * Task cards shown in voice mode: pending / queued / running only. Done and
- * failed tasks are intentionally hidden.
+ * Task cards shown in voice mode. The server endpoint already filters to
+ * pending / queued / running, so this is just a pass-through.
  */
 export const agentChatPendingTasks$ = computed((get) => {
-  const tasksById = get(vccTasksById$);
-  return Object.values(tasksById)
-    .filter((task) => {
-      return (
-        task.status === "pending" ||
-        task.status === "queued" ||
-        task.status === "running"
-      );
-    })
-    .sort((a, b) => {
-      return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-    });
+  return get(vccActiveTasks$);
 });

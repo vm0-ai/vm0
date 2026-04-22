@@ -108,6 +108,15 @@ function mockCandidateEndpoints(options: {
   items: ReturnType<typeof itemPayload>[];
   tasks: ReturnType<typeof taskPayload>[];
 }) {
+  const itemsForRole = (role: "user" | "assistant" | "task_result") => {
+    return options.items
+      .filter((i) => {
+        return i.role === role;
+      })
+      .sort((a, b) => {
+        return a.seq - b.seq;
+      });
+  };
   server.use(
     mockApi(zeroVoiceChatCandidateContract.createSession, ({ respond }) => {
       return respond(200, {
@@ -123,9 +132,23 @@ function mockCandidateEndpoints(options: {
         client_secret: { value: "ek_test", expires_at: 9_999_999_999 },
       });
     }),
-    mockApi(zeroVoiceChatCandidateContract.readItems, ({ respond }) => {
-      return respond(200, { items: options.items });
-    }),
+    mockApi(
+      zeroVoiceChatCandidateContract.listTaskResults,
+      ({ query, respond }) => {
+        const all = itemsForRole("task_result");
+        if (query.sinceSeq === undefined) {
+          return respond(200, {
+            items: all.length > 0 ? [all[all.length - 1]!] : [],
+          });
+        }
+        const since = query.sinceSeq;
+        return respond(200, {
+          items: all.filter((i) => {
+            return i.seq > since;
+          }),
+        });
+      },
+    ),
     mockApi(zeroVoiceChatCandidateContract.getSession, ({ respond }) => {
       return respond(200, {
         session: sessionPayload(),
@@ -136,7 +159,18 @@ function mockCandidateEndpoints(options: {
       });
     }),
     mockApi(zeroVoiceChatCandidateContract.listTasks, ({ respond }) => {
-      return respond(200, { tasks: options.tasks });
+      const active = options.tasks
+        .filter((t) => {
+          return (
+            t.status === "pending" ||
+            t.status === "queued" ||
+            t.status === "running"
+          );
+        })
+        .sort((a, b) => {
+          return a.createdAt.localeCompare(b.createdAt);
+        });
+      return respond(200, { tasks: active });
     }),
   );
 }
@@ -300,7 +334,10 @@ describe("agent-chat-voice-mode", () => {
   });
 
   describe("derived message signals", () => {
-    it("lastUserMessage$ / lastAgentMessage$ pick the most recent of each role and ignore task_result items", async () => {
+    it("baseline suppresses history: lastUserMessage$ / lastAgentMessage$ are empty after re-entry, even when the session has prior transcript", async () => {
+      // This is the core Trinity re-entry guarantee. The subtitle must not
+      // replay the previous session's last line — only utterances that land
+      // AFTER the user steps back in should appear.
       await driveSession(
         [
           itemPayload({
@@ -318,20 +355,6 @@ describe("agent-chat-voice-mode", () => {
             createdAt: "2026-04-20T00:00:02Z",
           }),
           itemPayload({
-            id: "a3333333-3333-4333-8333-333333333333",
-            seq: 3,
-            role: "user",
-            content: "second user",
-            createdAt: "2026-04-20T00:00:03Z",
-          }),
-          itemPayload({
-            id: "a4444444-4444-4444-8444-444444444444",
-            seq: 4,
-            role: "task_result",
-            content: "result body — must NOT overwrite either line",
-            createdAt: "2026-04-20T00:00:04Z",
-          }),
-          itemPayload({
             id: "a5555555-5555-4555-8555-555555555555",
             seq: 5,
             role: "assistant",
@@ -342,8 +365,8 @@ describe("agent-chat-voice-mode", () => {
         [],
       );
 
-      expect(context.store.get(lastUserMessage$)).toBe("second user");
-      expect(context.store.get(lastAgentMessage$)).toBe("second agent");
+      expect(context.store.get(lastUserMessage$)).toBe("");
+      expect(context.store.get(lastAgentMessage$)).toBe("");
     });
 
     it("returns empty string when no items exist", async () => {
