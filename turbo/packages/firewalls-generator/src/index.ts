@@ -105,6 +105,7 @@ import { generate as generateMsg9 } from "./msg9";
 import { generate as generateN8n } from "./n8n";
 import { generate as generateNeon } from "./neon";
 import { generate as generateNotion } from "./notion";
+import { generate as generateOnyx } from "./onyx";
 import { generate as generateOpenai } from "./openai";
 import { generate as generateOutlookCalendar } from "./outlook-calendar";
 import { generate as generateOutlookMail } from "./outlook-mail";
@@ -272,6 +273,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   n8n: generateN8n,
   neon: generateNeon,
   notion: generateNotion,
+  onyx: generateOnyx,
   openai: generateOpenai,
   "outlook-calendar": generateOutlookCalendar,
   "outlook-mail": generateOutlookMail,
