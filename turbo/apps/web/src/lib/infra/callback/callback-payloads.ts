@@ -91,6 +91,17 @@ export interface VoiceChatCandidateCallbackPayload {
   taskId: string;
 }
 
+/**
+ * Consumed by the callback route /api/internal/callbacks/voice-chat-task that
+ * finalizes a voice-chat task row after its Zero sandbox run terminates
+ * (Epic #10545, Wave 3). Declared here ahead of the route handler so the
+ * contract and service layers that land in Wave 1–2 can import it.
+ * @public
+ */
+export interface VoiceChatTaskCallbackPayload {
+  taskId: string;
+}
+
 export interface PhoneCallbackPayload {
   callId: string;
   userId: string;

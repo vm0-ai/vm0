@@ -2059,6 +2059,13 @@
       "when": 1776832784074,
       "tag": "0293_curious_hercules",
       "breakpoints": true
+    },
+    {
+      "idx": 294,
+      "version": "7",
+      "when": 1776834558378,
+      "tag": "0294_striped_ender_wiggin",
+      "breakpoints": true
     }
   ]
 }

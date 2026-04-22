@@ -877,10 +877,12 @@ export {
 } from "./push-subscriptions";
 export {
   zeroVoiceChatContextContract,
+  voiceChatEventTypeSchema,
   type ZeroVoiceChatContextContract,
   type ContextEvent,
   type ContextEventsResponse,
   type AppendContextEventBody,
+  type VoiceChatEventType,
 } from "./zero-voice-chat-context";
 export {
   zeroVoiceChatSessionsContract,
@@ -922,6 +924,17 @@ export {
   type AppendVoiceChatCandidateItemBody,
   type CreateVoiceChatCandidateTaskBody,
 } from "./zero-voice-chat-candidate";
+export {
+  zeroVoiceChatTasksContract,
+  voiceChatTaskStatusSchema,
+  voiceChatTaskResultEntrySchema,
+  voiceChatTaskSchema,
+  type ZeroVoiceChatTasksContract,
+  type VoiceChatTaskStatus,
+  type VoiceChatTaskResultEntry,
+  type VoiceChatTask,
+  type CreateVoiceChatTaskBody,
+} from "./zero-voice-chat-tasks";
 export {
   tasksContract,
   taskItemSchema,
