@@ -33,11 +33,14 @@ const BATCH_SIZE: usize = 50;
 /// events from sitting in the buffer indefinitely when traffic is sparse.
 const BATCH_INTERVAL: Duration = Duration::from_secs(5);
 /// Upper bound on how long `AxiomGuard::shutdown` waits for the dispatcher
-/// to drain before returning — caps process-exit latency even if the
-/// channel is backed up or Axiom is slow/unresponsive.
-const FLUSH_DEADLINE: Duration = Duration::from_secs(5);
+/// to drain before returning. Must stay `>= HTTP_TIMEOUT` with enough slack
+/// for queued events to reach the `Close` marker — otherwise the final
+/// in-flight flush gets aborted mid-request and the most valuable batch
+/// (errors emitted right before shutdown) never reaches Axiom.
+const FLUSH_DEADLINE: Duration = Duration::from_secs(15);
 /// Per-request HTTP timeout on the reqwest client — bounds the time a single
-/// stuck ingest call can hold up the dispatcher's batch loop.
+/// stuck ingest call can hold up the dispatcher's batch loop. Must stay
+/// `<= FLUSH_DEADLINE` (see above).
 const HTTP_TIMEOUT: Duration = Duration::from_secs(10);
 const DEFAULT_AXIOM_URL: &str = "https://api.axiom.co";
 const SERVICE_NAME: &str = "runner";
@@ -172,6 +175,11 @@ async fn dispatcher(
 ) {
     let mut batch: Vec<Value> = Vec::with_capacity(BATCH_SIZE);
     let mut interval = tokio::time::interval(BATCH_INTERVAL);
+    // `Delay` prevents the default `Burst` from firing a run of catch-up
+    // ticks after a slow flush — each tick is only useful if it wakes us
+    // up with a non-empty batch, and missed ticks during a flush would
+    // just re-fire as empty no-ops.
+    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     loop {
         tokio::select! {
             msg = rx.recv() => match msg {
