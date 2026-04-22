@@ -215,6 +215,52 @@ function DisabledPickerLabel({
   );
 }
 
+interface ProviderGroup {
+  provider: ModelProviderResponse;
+  label: string;
+  models: readonly string[];
+  isVm0: boolean;
+  incompatible: boolean;
+}
+
+function buildProviderGroups(
+  providers: ModelProviderResponse[],
+  sessionProviderType: ModelProviderType | null | undefined,
+): ProviderGroup[] {
+  return providers
+    .map((provider): ProviderGroup | null => {
+      const typeConfig = MODEL_PROVIDER_TYPES[provider.type];
+      if (!typeConfig) {
+        return null;
+      }
+      const models = getModels(provider.type);
+      if (!models || models.length === 0) {
+        return null;
+      }
+      const incompatible = sessionProviderType
+        ? !areProvidersCompatible(provider.type, sessionProviderType)
+        : false;
+      return {
+        provider,
+        label: getUILabel(provider.type),
+        models,
+        isVm0: provider.type === "vm0",
+        incompatible,
+      };
+    })
+    .filter((g): g is ProviderGroup => {
+      return g !== null;
+    })
+    .sort((a, b) => {
+      // Surface the VM0 Managed group first — it's the recommended option
+      // and the only one showing the credit multiplier.
+      if (a.isVm0 === b.isVm0) {
+        return 0;
+      }
+      return a.isVm0 ? -1 : 1;
+    });
+}
+
 export function ModelProviderPicker({
   providers,
   value,
@@ -239,39 +285,7 @@ export function ModelProviderPicker({
     );
   }
 
-  const groups = providers
-    .map((provider) => {
-      const typeConfig = MODEL_PROVIDER_TYPES[provider.type];
-      if (!typeConfig) {
-        return null;
-      }
-      const models = getModels(provider.type);
-      if (!models || models.length === 0) {
-        return null;
-      }
-      const incompatible = sessionProviderType
-        ? !areProvidersCompatible(provider.type, sessionProviderType)
-        : false;
-      return {
-        provider,
-        label: getUILabel(provider.type),
-        models,
-        isVm0: provider.type === "vm0",
-        incompatible,
-      };
-    })
-    .filter((g): g is NonNullable<typeof g> => {
-      return g !== null;
-    })
-    .sort((a, b) => {
-      // Surface the VM0 Managed group first — it's the recommended option
-      // and the only one showing the credit multiplier.
-      if (a.isVm0 === b.isVm0) {
-        return 0;
-      }
-      return a.isVm0 ? -1 : 1;
-    });
-
+  const groups = buildProviderGroups(providers, sessionProviderType);
   const defaultModelName = resolveDefaultModel(providers);
   const triggerAriaLabel = value
     ? getModelDisplayName(value.selectedModel)
