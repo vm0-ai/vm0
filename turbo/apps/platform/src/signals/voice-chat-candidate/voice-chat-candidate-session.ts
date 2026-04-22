@@ -249,7 +249,6 @@ const handleTalkerToolCall$ = command(
     }
 
     let parsed: { prompt?: unknown };
-    // eslint-disable-next-line no-restricted-syntax -- JSON.parse can throw on malformed Realtime function args; we recover with an error output so Talker doesn't hang on the pending call
     try {
       parsed = JSON.parse(argsJson) as { prompt?: unknown };
     } catch (error) {
@@ -634,7 +633,6 @@ const acquireWakeLock$ = command(async ({ set }, signal: AbortSignal) => {
     }
     pending = true;
     let lock: WakeLockSentinel | undefined;
-    // eslint-disable-next-line no-restricted-syntax -- wakeLock.request rejects if the document is hidden; treat as non-critical
     try {
       lock = await navigator.wakeLock.request("screen");
     } catch {
@@ -792,7 +790,6 @@ export const startVoiceChatCandidate$ = command(
     const { client_secret: clientSecret } = tokenRes.body;
 
     let stream: MediaStream;
-    // eslint-disable-next-line no-restricted-syntax -- getUserMedia can reject on permission denial or missing hardware
     try {
       stream = await navigator.mediaDevices.getUserMedia({
         audio: {

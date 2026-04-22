@@ -12,7 +12,7 @@ import { logger } from "../../shared/logger";
 
 const log = logger("zero:voice-chat-candidate:task");
 
-export type SpawnRun = (taskId: string) => Promise<CreateZeroRunResult>;
+type SpawnRun = (taskId: string) => Promise<CreateZeroRunResult>;
 
 type TaskRow = typeof featureCandidateVoiceChatTasks.$inferSelect;
 type ItemRow = typeof featureCandidateVoiceChatItems.$inferSelect;
@@ -203,7 +203,7 @@ export async function completeVoiceChatCandidateTask(params: {
   };
 }
 
-export async function listPendingVoiceChatCandidateTasks(
+async function listPendingVoiceChatCandidateTasks(
   sessionId: string,
 ): Promise<TaskRow[]> {
   const db = globalThis.services.db;
@@ -345,7 +345,7 @@ export async function appendTaskAssistantResult(params: {
   return { sessionId: row.sessionId, userId: session.userId };
 }
 
-export async function cancelSessionPendingRuns(session: {
+async function cancelSessionPendingRuns(session: {
   id: string;
   orgId: string;
   userId: string;

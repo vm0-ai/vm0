@@ -1,8 +1,10 @@
 import { eq, and } from "drizzle-orm";
+import type { VoiceChatCandidateTaskResultEntry } from "@vm0/core";
 import { initServices } from "../../lib/init-services";
 import {
   featureCandidateVoiceChatItems,
   featureCandidateVoiceChatSessions,
+  featureCandidateVoiceChatItems,
   featureCandidateVoiceChatTasks,
 } from "../../db/schema/voice-chat-candidate";
 
@@ -128,6 +130,8 @@ export async function getTestVoiceChatCandidateTask(id: string): Promise<
       result: string | null;
       resultUpdatedAt: Date | null;
       status: string;
+      assistantMessages: VoiceChatCandidateTaskResultEntry[];
+      error: string | null;
     }
   | undefined
 > {
@@ -137,8 +141,30 @@ export async function getTestVoiceChatCandidateTask(id: string): Promise<
       result: featureCandidateVoiceChatTasks.result,
       resultUpdatedAt: featureCandidateVoiceChatTasks.resultUpdatedAt,
       status: featureCandidateVoiceChatTasks.status,
+      assistantMessages: featureCandidateVoiceChatTasks.assistantMessages,
+      error: featureCandidateVoiceChatTasks.error,
     })
     .from(featureCandidateVoiceChatTasks)
     .where(eq(featureCandidateVoiceChatTasks.id, id));
   return row;
+}
+
+/**
+ * Read all items for a session for callback side-effect assertions.
+ * @why-db-direct Callback tests need to assert task_result and system_note
+ * items written by the callback handler; there is no public list-items API
+ * that returns all roles for a session.
+ */
+export async function listTestVoiceChatCandidateItems(
+  sessionId: string,
+): Promise<{ id: string; role: string; content: string | null }[]> {
+  initServices();
+  return globalThis.services.db
+    .select({
+      id: featureCandidateVoiceChatItems.id,
+      role: featureCandidateVoiceChatItems.role,
+      content: featureCandidateVoiceChatItems.content,
+    })
+    .from(featureCandidateVoiceChatItems)
+    .where(eq(featureCandidateVoiceChatItems.sessionId, sessionId));
 }

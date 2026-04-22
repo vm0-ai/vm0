@@ -411,6 +411,25 @@ export async function setTestRunStatus(
 }
 
 /**
+ * Set `agent_runs.vars` JSONB for a run.
+ *
+ * @why-db-direct `agent_runs.vars` is written by the runner during execution;
+ * no API surface sets it directly. Tests that need to control ZERO_AGENT_ID
+ * for agent-mismatch scenarios (e.g. voice-chat-candidate callback tests)
+ * must seed it directly.
+ */
+export async function setTestRunVars(
+  runId: string,
+  vars: Record<string, unknown>,
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .update(agentRuns)
+    .set({ vars })
+    .where(eq(agentRuns.id, runId));
+}
+
+/**
  * Overwrite the `agent_runs.result` JSONB blob for a run.
  *
  * @why-db-direct `agent_runs.result` is populated by the runner / complete

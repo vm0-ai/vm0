@@ -1,5 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
-import { eq } from "drizzle-orm";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
   testContext,
   uniqueId,
@@ -8,108 +7,87 @@ import {
   createTestCallback,
   createSignedCallbackRequest,
 } from "../../../../../../src/__tests__/api-test-helpers";
-import { seedTestCompose } from "../../../../../../src/__tests__/db-test-seeders/agents";
-import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
+import { setTestRunVars } from "../../../../../../src/__tests__/db-test-seeders/runs";
 import { mockAblyPublish } from "../../../../../../src/__tests__/ably-mock";
-import { initServices } from "../../../../../../src/lib/init-services";
-// eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: voice-chat-candidate tasks/sessions route (#10310) not yet on main
-import { createVoiceChatCandidateSession } from "../../../../../../src/lib/zero/voice-chat-candidate/session-service";
-// eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: voice-chat-candidate tasks route (#10310) not yet on main
-import { createVoiceChatCandidateTask } from "../../../../../../src/lib/zero/voice-chat-candidate/task-service";
-// eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: assert DB-level callback side effects (task status, system_note)
 import {
-  featureCandidateVoiceChatTasks,
-  featureCandidateVoiceChatItems,
-} from "../../../../../../src/db/schema/voice-chat-candidate";
-// eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: set vars.ZERO_AGENT_ID on seeded run for agent-mismatch coverage
-import { agentRuns } from "../../../../../../src/db/schema/agent-run";
+  getTestVoiceChatCandidateTask,
+  listTestVoiceChatCandidateItems,
+} from "../../../../../../src/__tests__/db-test-assertions/voice-chat-candidate";
+import {
+  postRequest,
+  paramsFor,
+  setupCandidateOrg,
+  seedCandidateAgent,
+  seedCandidateSession,
+} from "../../../../zero/voice-chat-candidate/__tests__/_helpers";
 import { POST } from "../route";
+
+vi.mock("@vm0/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@vm0/core")>();
+  return {
+    ...actual,
+    isFeatureEnabled: vi.fn().mockReturnValue(true),
+  };
+});
+
+const { isFeatureEnabled } = await import("@vm0/core");
+const mockIsFeatureEnabled = isFeatureEnabled as ReturnType<typeof vi.fn>;
+
+const { POST: createTaskPOST } =
+  await import("../../../../zero/voice-chat-candidate/[id]/tasks/route");
 
 const context = testContext();
 const CALLBACK_URL =
   "http://localhost/api/internal/callbacks/voice-chat-candidate";
 
-async function setupTaskWithCallback(options: {
-  agentIdOnRun?: string;
-  runStatus?: string;
-}) {
-  // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route for session/task create on this surface yet
-  initServices();
+async function setupTaskWithCallback(options: { agentIdOnRun?: string }) {
   const { userId, orgId } = await context.setupUser();
-  const { composeId } = await seedTestCompose({
+  const { orgId: candidateOrgId } = await setupCandidateOrg(userId);
+  const { agentId } = await seedCandidateAgent(userId, candidateOrgId);
+
+  const session = await seedCandidateSession({
+    orgId: candidateOrgId,
     userId,
-    orgId,
-    name: uniqueId("vcc-cb"),
+    agentId,
   });
 
-  const session = await createVoiceChatCandidateSession({
-    orgId,
-    userId,
-    agentId: composeId,
-  });
-
-  const { runId } = await seedTestRun(userId, composeId, {
-    status: options.runStatus ?? "running",
-    orgId,
-  });
+  const taskResponse = await createTaskPOST(
+    postRequest(`/${session.id}/tasks`, {
+      prompt: "do a thing",
+      callId: uniqueId("call"),
+    }),
+    paramsFor(session.id),
+  );
+  const taskBody = (await taskResponse.json()) as {
+    task: { id: string; runId: string };
+  };
+  const taskId = taskBody.task.id;
+  const runId = taskBody.task.runId;
 
   // Set vars.ZERO_AGENT_ID so the callback's readRunAgentId can resolve it.
   // Defaults to the session's agent (happy path); tests override for mismatch.
-  // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: direct update required — no API surface sets vars for seeded runs
-  await globalThis.services.db
-    .update(agentRuns)
-    .set({ vars: { ZERO_AGENT_ID: options.agentIdOnRun ?? composeId } })
-    .where(eq(agentRuns.id, runId));
-
-  const task = await createVoiceChatCandidateTask({
-    sessionId: session.id,
-    callId: uniqueId("call"),
-    prompt: "do a thing",
-    spawnRun: async () => {
-      return {
-        runId,
-        status: "running",
-        createdAt: new Date(),
-        sessionId: session.id,
-      };
-    },
+  await setTestRunVars(runId, {
+    ZERO_AGENT_ID: options.agentIdOnRun ?? agentId,
   });
 
   const { secret } = await createTestCallback({
     runId,
     url: CALLBACK_URL,
-    payload: { taskId: task.id },
+    payload: { taskId },
   });
 
-  return { userId, orgId, composeId, session, runId, task, secret };
-}
-
-async function readTask(id: string) {
-  // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: assert terminal task state written by callback
-  const [row] = await globalThis.services.db
-    .select()
-    .from(featureCandidateVoiceChatTasks)
-    .where(eq(featureCandidateVoiceChatTasks.id, id))
-    .limit(1);
-  return row;
-}
-
-async function listItems(sessionId: string) {
-  // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: assert task_result/system_note items written by callback
-  return globalThis.services.db
-    .select()
-    .from(featureCandidateVoiceChatItems)
-    .where(eq(featureCandidateVoiceChatItems.sessionId, sessionId));
+  return { userId, orgId, agentId, session, runId, taskId, secret };
 }
 
 describe("POST /api/internal/callbacks/voice-chat-candidate", () => {
   beforeEach(() => {
     mockAblyPublish.mockClear();
     context.setupMocks();
+    mockIsFeatureEnabled.mockReturnValue(true);
   });
 
   it("returns 200 for progress status without touching the task", async () => {
-    const { runId, task, secret } = await setupTaskWithCallback({});
+    const { runId, taskId, secret } = await setupTaskWithCallback({});
 
     const response = await POST(
       createSignedCallbackRequest(
@@ -117,19 +95,19 @@ describe("POST /api/internal/callbacks/voice-chat-candidate", () => {
         {
           runId,
           status: "progress",
-          payload: { taskId: task.id },
+          payload: { taskId },
         },
         secret,
       ),
     );
 
     expect(response.status).toBe(200);
-    const taskRow = await readTask(task.id);
+    const taskRow = await getTestVoiceChatCandidateTask(taskId);
     expect(taskRow!.status).toBe("pending");
   });
 
   it("completes the task and writes a task_result item on completed", async () => {
-    const { runId, task, session, userId, secret } =
+    const { runId, taskId, session, userId, secret } =
       await setupTaskWithCallback({});
 
     context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
@@ -142,7 +120,7 @@ describe("POST /api/internal/callbacks/voice-chat-candidate", () => {
         {
           runId,
           status: "completed",
-          payload: { taskId: task.id },
+          payload: { taskId },
         },
         secret,
       ),
@@ -150,14 +128,14 @@ describe("POST /api/internal/callbacks/voice-chat-candidate", () => {
 
     expect(response.status).toBe(200);
 
-    const taskRow = await readTask(task.id);
+    const taskRow = await getTestVoiceChatCandidateTask(taskId);
     expect(taskRow!.status).toBe("done");
     expect(taskRow!.assistantMessages).toEqual([
       { type: "assistant", content: "final answer", at: expect.any(String) },
     ]);
     expect(taskRow!.error).toBeNull();
 
-    const items = await listItems(session.id);
+    const items = await listTestVoiceChatCandidateItems(session.id);
     const resultItem = items.find((i) => {
       return i.role === "task_result";
     });
@@ -174,7 +152,7 @@ describe("POST /api/internal/callbacks/voice-chat-candidate", () => {
   });
 
   it("marks the task failed and records the error text on failed", async () => {
-    const { runId, task, session, secret } = await setupTaskWithCallback({});
+    const { runId, taskId, session, secret } = await setupTaskWithCallback({});
 
     const response = await POST(
       createSignedCallbackRequest(
@@ -183,7 +161,7 @@ describe("POST /api/internal/callbacks/voice-chat-candidate", () => {
           runId,
           status: "failed",
           error: "runner crashed",
-          payload: { taskId: task.id },
+          payload: { taskId },
         },
         secret,
       ),
@@ -191,11 +169,11 @@ describe("POST /api/internal/callbacks/voice-chat-candidate", () => {
 
     expect(response.status).toBe(200);
 
-    const taskRow = await readTask(task.id);
+    const taskRow = await getTestVoiceChatCandidateTask(taskId);
     expect(taskRow!.status).toBe("failed");
     expect(taskRow!.error).toBe("runner crashed");
 
-    const items = await listItems(session.id);
+    const items = await listTestVoiceChatCandidateItems(session.id);
     const resultItem = items.find((i) => {
       return i.role === "task_result";
     });
@@ -203,7 +181,7 @@ describe("POST /api/internal/callbacks/voice-chat-candidate", () => {
   });
 
   it("returns 401 on invalid signature", async () => {
-    const { runId, task, secret } = await setupTaskWithCallback({});
+    const { runId, taskId, secret } = await setupTaskWithCallback({});
 
     const response = await POST(
       createSignedCallbackRequest(
@@ -211,7 +189,7 @@ describe("POST /api/internal/callbacks/voice-chat-candidate", () => {
         {
           runId,
           status: "completed",
-          payload: { taskId: task.id },
+          payload: { taskId },
         },
         secret,
         { invalidSignature: true },
@@ -219,7 +197,7 @@ describe("POST /api/internal/callbacks/voice-chat-candidate", () => {
     );
 
     expect(response.status).toBe(401);
-    const taskRow = await readTask(task.id);
+    const taskRow = await getTestVoiceChatCandidateTask(taskId);
     expect(taskRow!.status).toBe("pending");
   });
 
@@ -242,7 +220,7 @@ describe("POST /api/internal/callbacks/voice-chat-candidate", () => {
   });
 
   it("ends the session on agent mismatch (vars.ZERO_AGENT_ID differs from session.agentId)", async () => {
-    const { runId, task, session, secret } = await setupTaskWithCallback({
+    const { runId, taskId, session, secret } = await setupTaskWithCallback({
       agentIdOnRun: "00000000-0000-0000-0000-000000000000",
     });
 
@@ -254,7 +232,7 @@ describe("POST /api/internal/callbacks/voice-chat-candidate", () => {
         {
           runId,
           status: "completed",
-          payload: { taskId: task.id },
+          payload: { taskId },
         },
         secret,
       ),
@@ -262,14 +240,14 @@ describe("POST /api/internal/callbacks/voice-chat-candidate", () => {
 
     expect(response.status).toBe(200);
 
-    const taskRow = await readTask(task.id);
+    const taskRow = await getTestVoiceChatCandidateTask(taskId);
     expect(taskRow!.status).toBe("failed");
     expect(taskRow!.error).toMatch(/agent mismatch/i);
 
     // Sessions are stateless — the mismatch branch no longer flips a
     // session-level field, it just emits a system_note and fails the task.
 
-    const items = await listItems(session.id);
+    const items = await listTestVoiceChatCandidateItems(session.id);
     const note = items.find((i) => {
       return i.role === "system_note";
     });

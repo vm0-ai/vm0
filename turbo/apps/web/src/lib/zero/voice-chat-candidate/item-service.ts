@@ -67,13 +67,6 @@ export async function readVoiceChatCandidateItems(
     .orderBy(asc(featureCandidateVoiceChatItems.seq));
 }
 
-export async function readVoiceChatCandidateItemsSince(
-  sessionId: string,
-  fromSeq: number,
-): Promise<ItemRow[]> {
-  return readVoiceChatCandidateItems(sessionId, fromSeq);
-}
-
 /**
  * Role-scoped transcript read with seq cursor.
  *
