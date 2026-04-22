@@ -338,6 +338,21 @@ const router = tsr.router(runsMainContract, {
         resolvedAdditionalVolumes: resolved.additionalVolumes,
       });
 
+      // 6a. Consolidate artifact inputs. body.artifacts (multi-mount) takes
+      // precedence — when present, the legacy singleton artifactName/Version
+      // fields are ignored per the unifiedRunRequestSchema contract. This is
+      // the route-handler shim that lets the infra layer speak only the new
+      // multi-mount shape while the public API still accepts both.
+      const useMultiArtifact =
+        Array.isArray(body.artifacts) && body.artifacts.length > 0;
+      const effectiveArtifactName = useMultiArtifact
+        ? undefined
+        : (resolved.artifactName ?? body.artifactName);
+      const effectiveArtifactVersion = useMultiArtifact
+        ? undefined
+        : (resolved.artifactVersion ?? body.artifactVersion);
+      const effectiveArtifacts = useMultiArtifact ? body.artifacts : undefined;
+
       // 7. Concurrency check + INSERT (transaction with advisory lock)
       const run = await globalThis.services.db.transaction(async (tx) => {
         await tx.execute(
@@ -356,7 +371,7 @@ const router = tsr.router(runsMainContract, {
           additionalVolumes: finalAdditionalVolumes,
           resumedFromCheckpointId: body.checkpointId,
           sessionId: body.sessionId,
-          artifactName: resolved.artifactName ?? body.artifactName,
+          artifactName: effectiveArtifactName,
           memoryName: resolved.memoryName ?? body.memoryName,
         });
       });
@@ -380,8 +395,9 @@ const router = tsr.router(runsMainContract, {
           vars: resolved.vars ?? body.vars,
           secrets: resolved.secrets ?? body.secrets,
           secretConnectorMap: resolved.secretConnectorMap,
-          artifactName: resolved.artifactName ?? body.artifactName,
-          artifactVersion: resolved.artifactVersion ?? body.artifactVersion,
+          artifactName: effectiveArtifactName,
+          artifactVersion: effectiveArtifactVersion,
+          artifacts: effectiveArtifacts,
           memoryName: resolved.memoryName ?? body.memoryName,
           volumeVersions: resolved.volumeVersions ?? body.volumeVersions,
           additionalVolumes: finalAdditionalVolumes,

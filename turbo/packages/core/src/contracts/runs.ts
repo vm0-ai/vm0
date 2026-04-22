@@ -37,14 +37,13 @@ const unifiedRunRequestSchema = z.object({
   agentComposeId: z.string().optional(),
   agentComposeVersionId: z.string().optional(),
   conversationId: z.string().optional(),
-  // Legacy singleton artifact fields — accepted for backwards compat with
-  // older CLI clients and merged into the new `artifacts` array inside the
-  // server (see storage-service.prepareStorageManifest). Prefer `artifacts`
-  // in new code.
+  // @deprecated Legacy singleton artifact fields retained for a one-release
+  // compat window. The POST /api/agent/runs handler rewrites them into the
+  // new `artifacts` array before dispatch — prefer `artifacts` in new code.
   artifactName: z.string().optional(),
   artifactVersion: z.string().optional(),
-  // Multiple artifacts, each with its own mount path. If present, it takes
-  // precedence over the legacy artifactName/artifactVersion pair.
+  // Multi-mount artifacts, each with its own mountPath. When provided, the
+  // server ignores artifactName/artifactVersion.
   artifacts: z
     .array(
       z.object({

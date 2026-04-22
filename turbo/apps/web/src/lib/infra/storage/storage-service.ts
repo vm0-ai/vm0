@@ -5,6 +5,7 @@ import { logger } from "../../shared/logger";
 import { badRequest } from "../../shared/errors";
 import {
   DEFAULT_MEMORY_MOUNT_PATH,
+  type AdditionalArtifact,
   type AdditionalVolume,
   type AgentVolumeConfig,
   type ResolvedArtifact,
@@ -382,6 +383,41 @@ async function resolveAdditionalVolume(
 }
 
 /**
+ * Resolve a single additional artifact by name/version against the runtime
+ * org, returning a ManifestArtifact with presigned URLs. Missing storages
+ * bubble up — additional artifacts are treated as required (unlike additional
+ * volumes) because the caller explicitly opted them in by name.
+ */
+async function resolveAdditionalArtifact(
+  entry: AdditionalArtifact,
+  runtimeClerkOrgId: string,
+  userId: string,
+  bucketName: string,
+): Promise<ManifestArtifact> {
+  const version = entry.version || "latest";
+  const { versionId, s3Key } = await resolveVersion(
+    runtimeClerkOrgId,
+    entry.name,
+    "artifact",
+    version,
+    userId,
+  );
+  const archiveKey = `${s3Key}/archive.tar.gz`;
+  const manifestKey = `${s3Key}/manifest.json`;
+  const [archiveUrl, manifestUrl] = await Promise.all([
+    generatePresignedUrl(bucketName, archiveKey),
+    generatePresignedUrl(bucketName, manifestKey),
+  ]);
+  return {
+    mountPath: entry.mountPath,
+    vasStorageName: entry.name,
+    vasVersionId: versionId,
+    archiveUrl,
+    manifestUrl,
+  };
+}
+
+/**
  * Determine the artifact source: use resumeArtifact if provided, otherwise fall back to resolved artifact.
  */
 function resolveArtifactSource(
@@ -433,6 +469,7 @@ export async function prepareStorageManifest(
   resumeArtifactMountPath?: string,
   memoryName?: string,
   additionalVolumes?: AdditionalVolume[],
+  additionalArtifacts?: AdditionalArtifact[],
 ): Promise<StorageManifest> {
   log.debug("Preparing storage manifest with presigned URLs...");
 
@@ -445,12 +482,13 @@ export async function prepareStorageManifest(
   // Skip artifact in resolveVolumes if we're using resumeArtifact (we'll handle it separately)
   const skipArtifact = !!resumeArtifact;
 
-  // If no agent config and no resume artifact and no memory and no additional volumes, return empty manifest
+  // If no agent config and no resume artifact and no memory and no additional volumes/artifacts, return empty manifest
   if (
     !agentConfig &&
     !resumeArtifact &&
     !memoryName &&
-    (!additionalVolumes || additionalVolumes.length === 0)
+    (!additionalVolumes || additionalVolumes.length === 0) &&
+    (!additionalArtifacts || additionalArtifacts.length === 0)
   ) {
     return { storages: [], artifacts: [], memory: null };
   }
@@ -517,8 +555,23 @@ export async function prepareStorageManifest(
     }),
   );
 
+  // Resolve additional artifacts in parallel. These are always resolved
+  // individually (no batching) because the list is typically small and each
+  // entry carries an explicit mountPath, so there's no shared agent/system
+  // fallback path to optimize.
+  const resolvedAdditionalArtifacts = await Promise.all(
+    (additionalArtifacts ?? []).map((entry) => {
+      return resolveAdditionalArtifact(
+        entry,
+        runtimeClerkOrgId,
+        userId,
+        bucketName,
+      );
+    }),
+  );
+
   // Map batch results to manifest entries
-  return buildManifestFromResults(
+  const manifest = await buildManifestFromResults(
     allResults,
     partitioned,
     agentClerkOrgId,
@@ -530,6 +583,23 @@ export async function prepareStorageManifest(
     nonLatestResolved,
     nonLatestAdditionalResolved,
   );
+
+  if (resolvedAdditionalArtifacts.length === 0) return manifest;
+
+  // Merge additional artifacts, deduplicating by mount path. Additional
+  // artifacts override any primary artifact mounted at the same path.
+  const additionalMountPaths = new Set(
+    resolvedAdditionalArtifacts.map((a) => {
+      return a.mountPath;
+    }),
+  );
+  const filteredArtifacts = manifest.artifacts.filter((a) => {
+    return !additionalMountPaths.has(a.mountPath);
+  });
+  return {
+    ...manifest,
+    artifacts: [...filteredArtifacts, ...resolvedAdditionalArtifacts],
+  };
 }
 
 /** Partitioned volumes for batch vs individual resolution */
