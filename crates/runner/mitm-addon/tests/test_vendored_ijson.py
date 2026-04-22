@@ -14,6 +14,8 @@ is responsible for:
 
 import io
 
+import pytest
+
 import ijson
 
 
@@ -94,14 +96,10 @@ def test_malformed_json_raises():
     """Truncated buffers produce a real ijson error, not silent zero —
     the billing module uses this to skip rather than undercount."""
     truncated = b'{"candidates":[{"content":{"parts":[{"inlineData":'
-    with_error = False
-    try:
+    with pytest.raises(ijson.IncompleteJSONError):
         list(
             ijson.items(
                 io.BytesIO(truncated),
                 "candidates.item.content.parts.item.inlineData",
             )
         )
-    except ijson.IncompleteJSONError:
-        with_error = True
-    assert with_error

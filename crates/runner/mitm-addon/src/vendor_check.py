@@ -1,11 +1,12 @@
 """Runtime guard: vendored packages must resolve to *this* addon tree.
 
+Call :func:`verify` from ``mitm_addon.py`` top-level.
+
 mitmdump's ``load_script`` (``mitmproxy/addons/script.py:load_script``)
 prepends the addon's directory to ``sys.path`` before ``exec_module`` and
 restores it after, so any ``import <pkg>`` reached while the addon is
-being loaded resolves against our tree first.  This module runs during
-that window via ``mitm_addon.py``'s top-level imports, then freezes the
-verdict in ``sys.modules``.
+being loaded resolves against our tree first.  :func:`verify` runs during
+that window and freezes the verdict in ``sys.modules``.
 
 What we guard against: a future mitmdump release starts bundling a
 package we also vendor (today: ``ijson``).  At the moment we ship
@@ -42,4 +43,10 @@ def _verify(module: ModuleType, expected_parent: Path) -> None:
         )
 
 
-_verify(ijson, _ADDON_DIR)
+def verify() -> None:
+    """Assert every vendored package loaded above this call resolves to the
+    addon source tree.  Raises :class:`RuntimeError` on mismatch — intended
+    to run during ``mitm_addon.py``'s top-level import phase so mitmdump
+    aborts loudly instead of silently using a shadowing copy.
+    """
+    _verify(ijson, _ADDON_DIR)
