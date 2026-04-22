@@ -78,7 +78,7 @@ export function ConnectorPermissionDialog({
         aria-describedby={undefined}
       >
         <DialogHeader className="mt-5 items-center gap-2.5 text-center">
-          <div className="flex items-center justify-center rounded-[10px] bg-[#f3f5f8] p-2.5">
+          <div className="flex items-center justify-center rounded-[10px] bg-muted p-2.5">
             <ConnectorIcon type={connectorType} size={20} />
           </div>
           <DialogTitle className="text-base font-medium">
