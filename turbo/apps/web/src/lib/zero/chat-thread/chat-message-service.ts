@@ -8,6 +8,8 @@ import { agentRuns } from "../../../db/schema/agent-run";
 import { zeroRuns } from "../../../db/schema/zero-run";
 import { publishUserSignal } from "../../infra/realtime/client";
 import { hasAgentSessionId } from "../run-result";
+import { recordChatSpan, type ChatSpanDimensions } from "../../infra/metrics";
+import { CHAT_REQUEST_OPS, timed } from "./request-span-ops";
 
 /**
  * Number of most-recent prior-context messages consumed by prompt builders
@@ -77,29 +79,59 @@ export async function insertChatMessage(params: {
   error?: string | null;
   attachFiles?: ChatMessageAttachFiles;
   id?: string;
+  spanDims?: ChatSpanDimensions;
 }): Promise<{ id: string; createdAt: Date }> {
-  const [row] = await globalThis.services.db
-    .insert(chatMessages)
-    .values({
-      ...(params.id ? { id: params.id } : {}),
-      chatThreadId: params.chatThreadId,
-      role: params.role,
-      content: params.content,
-      runId: params.runId,
-      error: params.error ?? null,
-      attachFiles: params.attachFiles ?? null,
-    })
-    .returning({ id: chatMessages.id, createdAt: chatMessages.createdAt });
+  const { result: insertedRow, ms: insertMs } = await timed(async () => {
+    return globalThis.services.db
+      .insert(chatMessages)
+      .values({
+        ...(params.id ? { id: params.id } : {}),
+        chatThreadId: params.chatThreadId,
+        role: params.role,
+        content: params.content,
+        runId: params.runId,
+        error: params.error ?? null,
+        attachFiles: params.attachFiles ?? null,
+      })
+      .returning({ id: chatMessages.id, createdAt: chatMessages.createdAt });
+  });
+  const [row] = insertedRow;
+  if (params.spanDims) {
+    recordChatSpan(
+      CHAT_REQUEST_OPS.insert_chat_message_insert,
+      insertMs,
+      params.spanDims,
+    );
+  }
 
   if (!row) {
     throw new Error("Failed to insert chat message");
   }
 
-  await publishUserSignal(
-    [params.userId],
-    `chatThreadMessageCreated:${params.chatThreadId}`,
-  );
-  await publishThreadListChanged(params.userId);
+  const { ms: publishSignalMs } = await timed(async () => {
+    await publishUserSignal(
+      [params.userId],
+      `chatThreadMessageCreated:${params.chatThreadId}`,
+    );
+  });
+  if (params.spanDims) {
+    recordChatSpan(
+      CHAT_REQUEST_OPS.insert_chat_message_publish_signal,
+      publishSignalMs,
+      params.spanDims,
+    );
+  }
+
+  const { ms: publishListMs } = await timed(async () => {
+    await publishThreadListChanged(params.userId);
+  });
+  if (params.spanDims) {
+    recordChatSpan(
+      CHAT_REQUEST_OPS.insert_chat_message_publish_list,
+      publishListMs,
+      params.spanDims,
+    );
+  }
 
   return row;
 }
