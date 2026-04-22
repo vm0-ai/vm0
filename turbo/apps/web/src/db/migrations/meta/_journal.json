@@ -2052,6 +2052,13 @@
       "when": 1776828084130,
       "tag": "0292_agent_runs_session_id_not_null_fk",
       "breakpoints": true
+    },
+    {
+      "idx": 293,
+      "version": "7",
+      "when": 1776832784074,
+      "tag": "0293_curious_hercules",
+      "breakpoints": true
     }
   ]
 }
