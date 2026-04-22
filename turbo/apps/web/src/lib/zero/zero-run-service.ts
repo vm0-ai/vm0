@@ -62,6 +62,8 @@ import { getCachedUser } from "../auth/user-cache-service";
 import { buildUserInfo, type UserInfoOptions } from "./integration-prompt";
 import { SEED_SKILLS } from "./seed-skills";
 import { logger } from "../shared/logger";
+import { recordChatSpan, type ChatSpanDimensions } from "../infra/metrics";
+import { CHAT_REQUEST_OPS, timed } from "./chat-thread/request-span-ops";
 
 const log = logger("service:zero-run");
 
@@ -176,6 +178,15 @@ export interface CreateZeroRunParams {
    * cannot read .credits via this preload.
    */
   preloadedOrgTier?: Pick<OrgMetadata, "orgId" | "tier">;
+  /**
+   * When present, each Phase-1 sub-stage emits a span to the `sandbox-op-log`
+   * Axiom dataset with `source: "web-chat"`, carrying these dimensions. The
+   * object is mutated in place as dimensions become known (`org_id` after
+   * Round 1, `run_id` after the tx commits) so later spans carry richer
+   * context. Only the chat route passes this today; other callers (schedule,
+   * slack, telegram, email, github, phone) omit it for zero behavior change.
+   */
+  spanDims?: ChatSpanDimensions;
 }
 
 /**
@@ -254,22 +265,51 @@ async function createZeroRunRecord(
   params: CreateZeroRunParams,
 ): Promise<ZeroRunRecordResult> {
   const db = globalThis.services.db;
+  const dims = params.spanDims;
+
+  const emit = (op: string, ms: number): void => {
+    if (dims) recordChatSpan(op, ms, dims);
+  };
+  const stamp = (updates: Partial<ChatSpanDimensions>): void => {
+    if (dims) Object.assign(dims, updates);
+  };
 
   // ── Round 1: Independent operations (need only params) ──────────────
-  const [row, resolved, cachedUser] = await Promise.all([
-    // Agent metadata — reuse caller's pre-fetched row when available (web chat
-    // route reads it for the 404 check), otherwise fetch the union projection.
-    loadZeroAgentForRun(params.preloadedAgent, params.agentId),
-    // Resolve compose version + org context
-    resolveStartRunCompose({
+  // Agent metadata — reuse caller's pre-fetched row when available (web chat
+  // route reads it for the 404 check), otherwise fetch the union projection.
+  const round1Agent = timed(async () => {
+    return loadZeroAgentForRun(params.preloadedAgent, params.agentId);
+  });
+  const round1Compose = timed(async () => {
+    return resolveStartRunCompose({
       userId: params.userId,
       prompt: params.prompt,
       composeId: params.agentId,
       sessionId: params.sessionId,
-    }),
-    // Fetch cached user (only needs userId)
-    getCachedUser(params.userId),
+    });
+  });
+  const round1CachedUser = timed(async () => {
+    return getCachedUser(params.userId);
+  });
+
+  const [agentTimed, composeTimed, cachedUserTimed] = await Promise.all([
+    round1Agent,
+    round1Compose,
+    round1CachedUser,
   ]);
+  const row = agentTimed.result;
+  const resolved = composeTimed.result;
+  const cachedUser = cachedUserTimed.result;
+
+  emit(CHAT_REQUEST_OPS.create_run_round1_agent, agentTimed.ms);
+  emit(CHAT_REQUEST_OPS.create_run_round1_compose, composeTimed.ms);
+  emit(CHAT_REQUEST_OPS.create_run_round1_cached_user, cachedUserTimed.ms);
+
+  // org_id is now known from resolveStartRunCompose — stamp it on the shared
+  // dims object so all subsequent Phase-1 spans carry it. Round 1 spans above
+  // intentionally emit with org_id absent since the resolution is still in
+  // flight for two of the three parallel queries.
+  stamp({ org_id: resolved.orgId });
 
   const agent: {
     displayName: string | null;
@@ -297,16 +337,8 @@ async function createZeroRunRecord(
       };
 
   // ── Round 2: Operations needing agent.orgId or resolved.orgId ───────
-  const [
-    connectorRows,
-    customConnectorRows,
-    orgMeta,
-    userPrefs,
-    featureOverrides,
-    preloadedCompose,
-  ] = await Promise.all([
-    // Fetch connector permissions for this user+agent
-    agent.orgId
+  const round2Connectors = timed(async () => {
+    return agent.orgId
       ? db
           .select({ connectorType: userConnectors.connectorType })
           .from(userConnectors)
@@ -317,10 +349,11 @@ async function createZeroRunRecord(
               eq(userConnectors.agentId, params.agentId),
             ),
           )
-      : Promise.resolve([]),
-    // Fetch custom connector authorizations for this user+agent.
+      : [];
+  });
+  const round2CustomConnectors = timed(async () => {
     // Parallel to userConnectors but keyed on the org_custom_connectors UUID.
-    agent.orgId
+    return agent.orgId
       ? db
           .select({
             customConnectorId: userCustomConnectors.customConnectorId,
@@ -333,19 +366,56 @@ async function createZeroRunRecord(
               eq(userCustomConnectors.agentId, params.agentId),
             ),
           )
-      : Promise.resolve([]),
-    // Org metadata (needs resolved.orgId). Reuse caller's pre-fetched tier
-    // when the compose org matches the caller's active org — cross-org
-    // composes (rare; also caught by authorizeCompose below) fall through to
-    // a fresh SELECT because the preload's tier is scoped to authCtx.orgId.
-    loadOrgTier(params.preloadedOrgTier, resolved.orgId),
-    // User preferences (needs resolved.orgId)
-    getUserPreferences(resolved.orgId, params.userId),
-    // Feature switch overrides (needs resolved.orgId)
-    loadFeatureSwitchOverrides(resolved.orgId, params.userId),
-    // Load compose content (needs resolved.agentComposeVersionId)
-    loadCompose(resolved.agentComposeVersionId, resolved.composeId),
+      : [];
+  });
+  // Org metadata (needs resolved.orgId). Reuse caller's pre-fetched tier
+  // when the compose org matches the caller's active org — cross-org
+  // composes (rare; also caught by authorizeCompose below) fall through to
+  // a fresh SELECT because the preload's tier is scoped to authCtx.orgId.
+  const round2OrgMeta = timed(async () => {
+    return loadOrgTier(params.preloadedOrgTier, resolved.orgId);
+  });
+  const round2UserPrefs = timed(async () => {
+    return getUserPreferences(resolved.orgId, params.userId);
+  });
+  const round2FeatureSw = timed(async () => {
+    return loadFeatureSwitchOverrides(resolved.orgId, params.userId);
+  });
+  const round2LoadCompose = timed(async () => {
+    return loadCompose(resolved.agentComposeVersionId, resolved.composeId);
+  });
+
+  const [
+    connectorRowsT,
+    customConnectorRowsT,
+    orgMetaT,
+    userPrefsT,
+    featureOverridesT,
+    preloadedComposeT,
+  ] = await Promise.all([
+    round2Connectors,
+    round2CustomConnectors,
+    round2OrgMeta,
+    round2UserPrefs,
+    round2FeatureSw,
+    round2LoadCompose,
   ]);
+  const connectorRows = connectorRowsT.result;
+  const customConnectorRows = customConnectorRowsT.result;
+  const orgMeta = orgMetaT.result;
+  const userPrefs = userPrefsT.result;
+  const featureOverrides = featureOverridesT.result;
+  const preloadedCompose = preloadedComposeT.result;
+
+  emit(CHAT_REQUEST_OPS.create_run_round2_connectors, connectorRowsT.ms);
+  emit(
+    CHAT_REQUEST_OPS.create_run_round2_custom_connectors,
+    customConnectorRowsT.ms,
+  );
+  emit(CHAT_REQUEST_OPS.create_run_round2_org_meta, orgMetaT.ms);
+  emit(CHAT_REQUEST_OPS.create_run_round2_user_prefs, userPrefsT.ms);
+  emit(CHAT_REQUEST_OPS.create_run_round2_feature_sw, featureOverridesT.ms);
+  emit(CHAT_REQUEST_OPS.create_run_round2_load_compose, preloadedComposeT.ms);
 
   const orgTier = orgTierSchema.parse(orgMeta.tier);
 
@@ -445,15 +515,31 @@ async function createZeroRunRecord(
     await validateComposeRequirements(preloadedCompose.composeContent);
   }
 
-  const [, , captureNetworkBodies] = await Promise.all([
-    checkOrgCredits(resolved.orgId, params.userId, params.modelProvider),
-    checkModelProviderConfigured(
+  const round3Credits = timed(async () => {
+    return checkOrgCredits(resolved.orgId, params.userId, params.modelProvider);
+  });
+  const round3ModelProvider = timed(async () => {
+    return checkModelProviderConfigured(
       resolved.orgId,
       params.modelProvider,
       preloadedCompose.composeContent,
-    ),
-    consumeCaptureNetworkBodies(resolved.orgId, params.userId),
+    );
+  });
+  const round3Capture = timed(async () => {
+    return consumeCaptureNetworkBodies(resolved.orgId, params.userId);
+  });
+
+  const [creditsT, modelProviderT, captureT] = await Promise.all([
+    round3Credits,
+    round3ModelProvider,
+    round3Capture,
   ]);
+  const captureNetworkBodies = captureT.result;
+
+  emit(CHAT_REQUEST_OPS.create_run_round3_credits, creditsT.ms);
+  emit(CHAT_REQUEST_OPS.create_run_round3_model_provider, modelProviderT.ms);
+  emit(CHAT_REQUEST_OPS.create_run_round3_capture, captureT.ms);
+
   if (captureNetworkBodies) {
     runParams.captureNetworkBodies = true;
   }
@@ -462,25 +548,36 @@ async function createZeroRunRecord(
   let run;
   try {
     run = await globalThis.services.db.transaction(async (tx) => {
+      const lockStart = Date.now();
       await tx.execute(
         sql`SELECT pg_advisory_xact_lock(hashtext(${resolved.orgId}))`,
       );
-      await checkRunConcurrencyLimit(resolved.orgId, orgTier, tx);
-      return insertRunRecord(tx, {
-        userId: runParams.userId,
-        orgId: resolved.orgId,
-        agentComposeId: preloadedCompose.compose.id,
-        agentComposeVersionId: runParams.agentComposeVersionId,
-        prompt: runParams.prompt,
-        appendSystemPrompt: runParams.appendSystemPrompt,
-        vars: runParams.vars,
-        secrets: runParams.secrets,
-        additionalVolumes: runParams.additionalVolumes,
-        resumedFromCheckpointId: runParams.resumedFromCheckpointId,
-        sessionId: runParams.sessionId,
-        artifactName: runParams.artifactName,
-        memoryName: runParams.memoryName,
+      emit(CHAT_REQUEST_OPS.create_run_advisory_lock, Date.now() - lockStart);
+
+      const concurrencyT = await timed(async () => {
+        return checkRunConcurrencyLimit(resolved.orgId, orgTier, tx);
       });
+      emit(CHAT_REQUEST_OPS.create_run_concurrency_check, concurrencyT.ms);
+
+      const insertT = await timed(async () => {
+        return insertRunRecord(tx, {
+          userId: runParams.userId,
+          orgId: resolved.orgId,
+          agentComposeId: preloadedCompose.compose.id,
+          agentComposeVersionId: runParams.agentComposeVersionId,
+          prompt: runParams.prompt,
+          appendSystemPrompt: runParams.appendSystemPrompt,
+          vars: runParams.vars,
+          secrets: runParams.secrets,
+          additionalVolumes: runParams.additionalVolumes,
+          resumedFromCheckpointId: runParams.resumedFromCheckpointId,
+          sessionId: runParams.sessionId,
+          artifactName: runParams.artifactName,
+          memoryName: runParams.memoryName,
+        });
+      });
+      emit(CHAT_REQUEST_OPS.create_run_insert_run_record, insertT.ms);
+      return insertT.result;
     });
   } catch (error) {
     if (isConcurrentRunLimit(error)) {
@@ -488,8 +585,13 @@ async function createZeroRunRecord(
       // token at dispatch time.
       const queueResult = await enqueueRun(runParams);
 
-      // Persist zero-layer metadata
-      await persistZeroRunMetadata(queueResult.runId, params);
+      // run_id is now known — stamp it so the persist span below carries it.
+      stamp({ run_id: queueResult.runId });
+
+      const persistT = await timed(async () => {
+        return persistZeroRunMetadata(queueResult.runId, params);
+      });
+      emit(CHAT_REQUEST_OPS.persist_zero_run_metadata, persistT.ms);
 
       return {
         runId: queueResult.runId,
@@ -503,10 +605,19 @@ async function createZeroRunRecord(
 
   const transactionTime = Date.now();
 
+  // run_id is now known after the tx committed — stamp it on the shared dims
+  // object so the persist span (and any future Phase-1 spans) carry it. The
+  // in-tx emissions above intentionally emit with run_id absent since the
+  // record wasn't yet durable.
+  stamp({ run_id: run.id });
+
   // Persist zero-layer metadata immediately so that activity queries
   // (LEFT JOIN zero_runs) see the correct triggerSource before dispatch
   // completes. Model fields are updated later in dispatchZeroRun().
-  await persistZeroRunMetadata(run.id, params);
+  const persistT = await timed(async () => {
+    return persistZeroRunMetadata(run.id, params);
+  });
+  emit(CHAT_REQUEST_OPS.persist_zero_run_metadata, persistT.ms);
 
   const record: CreateRunRecordResult = {
     run: { id: run.id, createdAt: run.createdAt },
