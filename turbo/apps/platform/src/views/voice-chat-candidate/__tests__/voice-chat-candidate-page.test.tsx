@@ -254,7 +254,7 @@ describe("voiceCandidateToolCallBubble", () => {
     );
     expect(screen.getByText("book me a flight")).toBeInTheDocument();
     expect(screen.getByText("calling")).toBeInTheDocument(); // pending → "calling"
-    expect(screen.getByText("create_task")).toBeInTheDocument();
+    expect(screen.getByText("inform_slow_brain")).toBeInTheDocument();
   });
 
   it("renders queued status label", () => {
