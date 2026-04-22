@@ -6,14 +6,14 @@ import {
   insertCreditExpiresRecord,
   insertOrgPromoRedemption,
   updateOrgStripeFields,
-} from "../../../../src/__tests__/api-test-helpers";
+} from "../../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
   uniqueId,
   type UserContext,
-} from "../../../../src/__tests__/test-helpers";
-import { mockClerk } from "../../../../src/__tests__/clerk-mock";
-import { reloadEnv } from "../../../../src/env";
+} from "../../../../../../../src/__tests__/test-helpers";
+import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
+import { reloadEnv } from "../../../../../../../src/env";
 
 const stripeMocks = vi.hoisted(() => {
   return {
@@ -55,33 +55,49 @@ vi.mock("stripe", async (importOriginal) => {
   return { default: MockStripe };
 });
 
-// oxlint-disable-next-line import/first -- import must follow vi.mock so the stripe mock is registered before the route module evaluates getStripe.
-import { GET } from "../route";
+// `import` must follow `vi.mock("stripe", ...)` so the stripe constructor is
+// stubbed before the route module evaluates `getStripe`. This file is listed
+// in `.oxlintrc.json` under the `import/first` override to allow that order.
+import { POST } from "../route";
 
 const context = testContext();
 
 const CAMPAIGN = "ZERO100";
 const PRICE_ID = "price_test_campaign";
 const COUPON_ID = "ZERO100";
-const REDEEM_URL = `http://localhost:3000/redeem/${CAMPAIGN}`;
+const APP_ORIGIN = "http://app.localhost:3002";
+const API_URL = `http://localhost:3000/api/zero/billing/redeem/${CAMPAIGN}`;
+const SUCCESS_URL = `${APP_ORIGIN}/redeem/${CAMPAIGN}?stripe=success`;
+const CANCEL_URL = `${APP_ORIGIN}/redeem/${CAMPAIGN}`;
 const CAMPAIGN_ENV = JSON.stringify({
   [CAMPAIGN]: { priceId: PRICE_ID, couponId: COUPON_ID },
 });
 
-function params(campaign: string) {
-  return Promise.resolve({ campaign });
+function makeRequest(
+  overrides?: Partial<{
+    url: string;
+    successUrl: string;
+    cancelUrl: string;
+  }>,
+) {
+  return createTestRequest(overrides?.url ?? API_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      successUrl: overrides?.successUrl ?? SUCCESS_URL,
+      cancelUrl: overrides?.cancelUrl ?? CANCEL_URL,
+    }),
+  });
 }
 
-describe("GET /redeem/[campaign]", () => {
+describe("POST /api/zero/billing/redeem/:campaign", () => {
   let user: UserContext;
 
   beforeEach(async () => {
     context.setupMocks();
     user = await context.setupUser();
     vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_fake");
-    // Distinct host from the request origin (localhost:3000) so assertions
-    // can verify error redirects cross over to the platform app domain.
-    vi.stubEnv("NEXT_PUBLIC_APP_URL", "http://app.localhost:3002");
+    vi.stubEnv("NEXT_PUBLIC_APP_URL", APP_ORIGIN);
     vi.stubEnv("ZERO_ONE_TIME_CAMPAIGN", CAMPAIGN_ENV);
     reloadEnv();
 
@@ -92,11 +108,7 @@ describe("GET /redeem/[campaign]", () => {
     stripeMocks.couponsRetrieve.mockReset();
     stripeMocks.pricesRetrieve.mockReset();
 
-    // If tests seed a Stripe customer on the org, customers.create shouldn't be
-    // called; but default the fallback to a known id just in case.
     stripeMocks.customersCreate.mockResolvedValue({ id: "cus_test" });
-    // Defaults: coupon live + valid, price live + active. Resume tests
-    // override these to simulate deletion / expiry / max_redemptions / archive.
     stripeMocks.couponsRetrieve.mockResolvedValue({
       id: COUPON_ID,
       valid: true,
@@ -107,55 +119,54 @@ describe("GET /redeem/[campaign]", () => {
     });
   });
 
-  it("redirects unauthenticated users to /sign-in with round-trip redirect_url", async () => {
+  it("returns 401 when the caller is unauthenticated", async () => {
     mockClerk({ userId: null });
 
-    const response = await GET(createTestRequest(REDEEM_URL), {
-      params: params(CAMPAIGN),
-    });
-
-    expect(response.status).toBe(307);
-    const location = response.headers.get("location");
-    expect(location).toContain("/sign-in");
-    expect(location).toContain(encodeURIComponent(`/redeem/${CAMPAIGN}`));
+    const response = await POST(makeRequest());
+    expect(response.status).toBe(401);
   });
 
-  it("returns 404 for an unknown campaign", async () => {
-    const response = await GET(
-      createTestRequest("http://localhost:3000/redeem/UNKNOWN"),
-      { params: params("UNKNOWN") },
+  it("returns campaign_misconfigured for an unknown campaign", async () => {
+    const response = await POST(
+      makeRequest({
+        url: "http://localhost:3000/api/zero/billing/redeem/UNKNOWN",
+      }),
     );
-    expect(response.status).toBe(404);
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data).toEqual({
+      status: "error",
+      reason: "campaign_misconfigured",
+    });
   });
 
-  it("returns 404 when the campaign is missing from env config", async () => {
+  it("returns campaign_misconfigured when the campaign is missing from env config", async () => {
     vi.stubEnv("ZERO_ONE_TIME_CAMPAIGN", JSON.stringify({}));
     reloadEnv();
 
-    const response = await GET(createTestRequest(REDEEM_URL), {
-      params: params(CAMPAIGN),
+    const response = await POST(makeRequest());
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data).toEqual({
+      status: "error",
+      reason: "campaign_misconfigured",
     });
-    expect(response.status).toBe(404);
   });
 
-  it("redirects logged-in users without an active org to choose-organization", async () => {
+  it("returns 400 when the caller has no active org", async () => {
     mockClerk({
       userId: user.userId,
       orgId: null,
       orgRole: null,
     });
 
-    const response = await GET(createTestRequest(REDEEM_URL), {
-      params: params(CAMPAIGN),
-    });
-
-    expect(response.status).toBe(307);
-    const location = response.headers.get("location");
-    expect(location).toContain("/sign-in/tasks/choose-organization");
-    expect(location).toContain(encodeURIComponent(`/redeem/${CAMPAIGN}`));
+    const response = await POST(makeRequest());
+    expect(response.status).toBe(400);
+    const data = await response.json();
+    expect(data.error.code).toBe("BAD_REQUEST");
   });
 
-  it("lets unexpected (non-Stripe) errors propagate so Next surfaces a 500 and Sentry captures the stack", async () => {
+  it("lets unexpected (non-Stripe) errors propagate so Sentry captures the full stack", async () => {
     await updateOrgStripeFields(user.orgId, {
       stripeCustomerId: uniqueId("cus"),
     });
@@ -164,32 +175,28 @@ describe("GET /redeem/[campaign]", () => {
       new Error("boom: database unreachable"),
     );
 
-    // Route intentionally does not wrap itself in a catch-all try/catch:
-    // truly unknown failures (DB down, auth blip, etc.) should bubble up
-    // to Next's error boundary and Sentry instead of being papered over
-    // with a generic branded redirect that masks the root cause.
-    await expect(
-      GET(createTestRequest(REDEEM_URL), {
-        params: params(CAMPAIGN),
-      }),
-    ).rejects.toThrow("boom: database unreachable");
+    // The route only catches Stripe.errors.StripeError. Plain errors bubble
+    // up to ts-rest-handler's default error handler and become a generic
+    // 500 — matches the old web route's behaviour where non-Stripe errors
+    // reached Next's error boundary.
+    const response = await POST(makeRequest());
+    expect(response.status).toBe(500);
   });
 
-  it("redirects non-admin org members home with admin_required error", async () => {
+  it("returns admin_required for non-admin org members", async () => {
     mockClerk({
       userId: user.userId,
       orgId: user.orgId,
       orgRole: "org:member",
     });
 
-    const response = await GET(createTestRequest(REDEEM_URL), {
-      params: params(CAMPAIGN),
+    const response = await POST(makeRequest());
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data).toEqual({
+      status: "error",
+      reason: "admin_required",
     });
-
-    expect(response.status).toBe(307);
-    expect(response.headers.get("location")).toContain(
-      "http://app.localhost:3002/redeem/error?reason=admin_required",
-    );
   });
 
   it("creates a Stripe Checkout session on first visit and records the row", async () => {
@@ -202,26 +209,23 @@ describe("GET /redeem/[campaign]", () => {
       url: "https://stripe.test/checkout/cs_fresh_1",
     });
 
-    const response = await GET(createTestRequest(REDEEM_URL), {
-      params: params(CAMPAIGN),
+    const response = await POST(makeRequest());
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data).toEqual({
+      status: "ready",
+      checkoutUrl: "https://stripe.test/checkout/cs_fresh_1",
     });
-
-    expect(response.status).toBe(307);
-    expect(response.headers.get("location")).toBe(
-      "https://stripe.test/checkout/cs_fresh_1",
-    );
 
     expect(stripeMocks.checkoutSessionsCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         mode: "payment",
         line_items: [{ price: PRICE_ID, quantity: 1 }],
         discounts: [{ coupon: COUPON_ID }],
-        // Stripe returns to the platform app (NEXT_PUBLIC_APP_URL), never
-        // back to the web origin — so localhost dev entry still lands on
-        // the real dashboard after payment. Success lands on the status
-        // page so the user sees a branded confirmation; cancel goes home.
-        success_url: "http://app.localhost:3002/redeem/status?state=redeemed",
-        cancel_url: "http://app.localhost:3002/",
+        // Client-supplied URLs are threaded straight through to Stripe so the
+        // same API can serve different platform origins (prod / staging / dev).
+        success_url: SUCCESS_URL,
+        cancel_url: CANCEL_URL,
         metadata: {
           orgId: user.orgId,
           campaignKey: CAMPAIGN,
@@ -253,18 +257,17 @@ describe("GET /redeem/[campaign]", () => {
       url: "https://stripe.test/checkout/cs_open_1",
     });
 
-    const response = await GET(createTestRequest(REDEEM_URL), {
-      params: params(CAMPAIGN),
+    const response = await POST(makeRequest());
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data).toEqual({
+      status: "ready",
+      checkoutUrl: "https://stripe.test/checkout/cs_open_1",
     });
-
-    expect(response.status).toBe(307);
-    expect(response.headers.get("location")).toBe(
-      "https://stripe.test/checkout/cs_open_1",
-    );
     expect(stripeMocks.checkoutSessionsCreate).not.toHaveBeenCalled();
   });
 
-  it("drops the cached session and redirects to campaign_misconfigured when the coupon was deleted", async () => {
+  it("drops the cached session and returns campaign_misconfigured when the coupon was deleted", async () => {
     await updateOrgStripeFields(user.orgId, {
       stripeCustomerId: uniqueId("cus"),
     });
@@ -286,14 +289,13 @@ describe("GET /redeem/[campaign]", () => {
       }),
     );
 
-    const response = await GET(createTestRequest(REDEEM_URL), {
-      params: params(CAMPAIGN),
+    const response = await POST(makeRequest());
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data).toEqual({
+      status: "error",
+      reason: "campaign_misconfigured",
     });
-
-    expect(response.status).toBe(307);
-    expect(response.headers.get("location")).toContain(
-      "/redeem/error?reason=campaign_misconfigured",
-    );
     expect(stripeMocks.checkoutSessionsExpire).toHaveBeenCalledWith(
       "cs_open_stale",
     );
@@ -304,7 +306,7 @@ describe("GET /redeem/[campaign]", () => {
     expect(row).toBeUndefined();
   });
 
-  it("drops the cached session and redirects to campaign_misconfigured when the coupon is no longer valid", async () => {
+  it("drops the cached session and returns campaign_misconfigured when the coupon is no longer valid", async () => {
     await updateOrgStripeFields(user.orgId, {
       stripeCustomerId: uniqueId("cus"),
     });
@@ -318,22 +320,19 @@ describe("GET /redeem/[campaign]", () => {
       status: "open",
       url: "https://stripe.test/checkout/cs_open_invalid",
     });
-    // Stripe computes `valid: false` when `redeem_by` has passed,
-    // `max_redemptions` is reached, or the coupon is manually disabled.
     stripeMocks.couponsRetrieve.mockResolvedValue({
       id: COUPON_ID,
       valid: false,
       redeem_by: Math.floor(Date.now() / 1000) - 60,
     });
 
-    const response = await GET(createTestRequest(REDEEM_URL), {
-      params: params(CAMPAIGN),
+    const response = await POST(makeRequest());
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data).toEqual({
+      status: "error",
+      reason: "campaign_misconfigured",
     });
-
-    expect(response.status).toBe(307);
-    expect(response.headers.get("location")).toContain(
-      "/redeem/error?reason=campaign_misconfigured",
-    );
     expect(stripeMocks.checkoutSessionsExpire).toHaveBeenCalledWith(
       "cs_open_invalid",
     );
@@ -344,7 +343,7 @@ describe("GET /redeem/[campaign]", () => {
     expect(row).toBeUndefined();
   });
 
-  it("drops the cached session and redirects to campaign_misconfigured when the price was deleted", async () => {
+  it("drops the cached session and returns campaign_misconfigured when the price was deleted", async () => {
     await updateOrgStripeFields(user.orgId, {
       stripeCustomerId: uniqueId("cus"),
     });
@@ -366,14 +365,13 @@ describe("GET /redeem/[campaign]", () => {
       }),
     );
 
-    const response = await GET(createTestRequest(REDEEM_URL), {
-      params: params(CAMPAIGN),
+    const response = await POST(makeRequest());
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data).toEqual({
+      status: "error",
+      reason: "campaign_misconfigured",
     });
-
-    expect(response.status).toBe(307);
-    expect(response.headers.get("location")).toContain(
-      "/redeem/error?reason=campaign_misconfigured",
-    );
     expect(stripeMocks.checkoutSessionsExpire).toHaveBeenCalledWith(
       "cs_open_price_gone",
     );
@@ -384,7 +382,7 @@ describe("GET /redeem/[campaign]", () => {
     expect(row).toBeUndefined();
   });
 
-  it("drops the cached session and redirects to campaign_misconfigured when the price is archived", async () => {
+  it("drops the cached session and returns campaign_misconfigured when the price is archived", async () => {
     await updateOrgStripeFields(user.orgId, {
       stripeCustomerId: uniqueId("cus"),
     });
@@ -403,14 +401,13 @@ describe("GET /redeem/[campaign]", () => {
       active: false,
     });
 
-    const response = await GET(createTestRequest(REDEEM_URL), {
-      params: params(CAMPAIGN),
+    const response = await POST(makeRequest());
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data).toEqual({
+      status: "error",
+      reason: "campaign_misconfigured",
     });
-
-    expect(response.status).toBe(307);
-    expect(response.headers.get("location")).toContain(
-      "/redeem/error?reason=campaign_misconfigured",
-    );
     expect(stripeMocks.checkoutSessionsExpire).toHaveBeenCalledWith(
       "cs_open_price_archived",
     );
@@ -441,14 +438,13 @@ describe("GET /redeem/[campaign]", () => {
       url: "https://stripe.test/checkout/cs_fresh_2",
     });
 
-    const response = await GET(createTestRequest(REDEEM_URL), {
-      params: params(CAMPAIGN),
+    const response = await POST(makeRequest());
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data).toEqual({
+      status: "ready",
+      checkoutUrl: "https://stripe.test/checkout/cs_fresh_2",
     });
-
-    expect(response.status).toBe(307);
-    expect(response.headers.get("location")).toBe(
-      "https://stripe.test/checkout/cs_fresh_2",
-    );
 
     const row = await findOrgPromoRedemption({
       orgId: user.orgId,
@@ -457,7 +453,7 @@ describe("GET /redeem/[campaign]", () => {
     expect(row?.stripeSessionId).toBe("cs_fresh_2");
   });
 
-  it("redirects home with already_redeemed when credits have landed", async () => {
+  it("returns already_granted when credits have landed", async () => {
     await updateOrgStripeFields(user.orgId, {
       stripeCustomerId: uniqueId("cus"),
     });
@@ -474,25 +470,19 @@ describe("GET /redeem/[campaign]", () => {
       expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
     });
 
-    const response = await GET(createTestRequest(REDEEM_URL), {
-      params: params(CAMPAIGN),
-    });
-
-    expect(response.status).toBe(307);
-    expect(response.headers.get("location")).toContain(
-      "http://app.localhost:3002/redeem/status?state=already_redeemed",
-    );
+    const response = await POST(makeRequest());
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data).toEqual({ status: "already_granted" });
     expect(stripeMocks.checkoutSessionsCreate).not.toHaveBeenCalled();
     expect(stripeMocks.checkoutSessionsRetrieve).not.toHaveBeenCalled();
   });
 
-  it("redirects to campaign_misconfigured when Stripe rejects the session at create time with a non-invalid-request error (e.g. runtime coupon expiry)", async () => {
+  it("returns campaign_misconfigured when Stripe rejects the session at create time with a non-invalid-request error", async () => {
     await updateOrgStripeFields(user.orgId, {
       stripeCustomerId: uniqueId("cus"),
     });
 
-    // Stripe classifies "coupon expired at apply time" as StripeAPIError,
-    // not StripeInvalidRequestError. The catch must cover the base class.
     stripeMocks.checkoutSessionsCreate.mockRejectedValue(
       new Stripe.errors.StripeAPIError({
         type: "api_error",
@@ -500,17 +490,16 @@ describe("GET /redeem/[campaign]", () => {
       }),
     );
 
-    const response = await GET(createTestRequest(REDEEM_URL), {
-      params: params(CAMPAIGN),
+    const response = await POST(makeRequest());
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data).toEqual({
+      status: "error",
+      reason: "campaign_misconfigured",
     });
-
-    expect(response.status).toBe(307);
-    expect(response.headers.get("location")).toContain(
-      "/redeem/error?reason=campaign_misconfigured",
-    );
   });
 
-  it("redirects home with campaign_misconfigured when Stripe coupon is missing", async () => {
+  it("returns campaign_misconfigured when Stripe coupon is missing at create time", async () => {
     await updateOrgStripeFields(user.orgId, {
       stripeCustomerId: uniqueId("cus"),
     });
@@ -524,17 +513,16 @@ describe("GET /redeem/[campaign]", () => {
       }),
     );
 
-    const response = await GET(createTestRequest(REDEEM_URL), {
-      params: params(CAMPAIGN),
+    const response = await POST(makeRequest());
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data).toEqual({
+      status: "error",
+      reason: "campaign_misconfigured",
     });
-
-    expect(response.status).toBe(307);
-    expect(response.headers.get("location")).toContain(
-      "http://app.localhost:3002/redeem/error?reason=campaign_misconfigured",
-    );
   });
 
-  it("redirects home with processing when Stripe session is complete but webhook hasn't landed yet", async () => {
+  it("returns processing when Stripe session is complete but webhook hasn't landed yet", async () => {
     await updateOrgStripeFields(user.orgId, {
       stripeCustomerId: uniqueId("cus"),
     });
@@ -549,13 +537,35 @@ describe("GET /redeem/[campaign]", () => {
       url: null,
     });
 
-    const response = await GET(createTestRequest(REDEEM_URL), {
-      params: params(CAMPAIGN),
-    });
+    const response = await POST(makeRequest());
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data).toEqual({ status: "processing" });
+  });
 
-    expect(response.status).toBe(307);
-    expect(response.headers.get("location")).toContain(
-      "http://app.localhost:3002/redeem/status?state=processing",
+  it("returns billing_unavailable before auth when STRIPE_SECRET_KEY is not configured", async () => {
+    vi.stubEnv("STRIPE_SECRET_KEY", "");
+    reloadEnv();
+    // Even without a session the billing_unavailable branch fires.
+    mockClerk({ userId: null });
+
+    const response = await POST(makeRequest());
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data).toEqual({
+      status: "error",
+      reason: "billing_unavailable",
+    });
+  });
+
+  it("rejects successUrl/cancelUrl whose origin does not match NEXT_PUBLIC_APP_URL", async () => {
+    const response = await POST(
+      makeRequest({
+        successUrl: "https://evil.example.com/redeem/callback?stripe=success",
+      }),
     );
+    expect(response.status).toBe(400);
+    const data = await response.json();
+    expect(data.error.code).toBe("BAD_REQUEST");
   });
 });

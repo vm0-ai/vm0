@@ -585,7 +585,7 @@ describe("run resume command", () => {
   });
 
   describe("--artifact flag", () => {
-    it("should send artifactName when using --artifact with name only", async () => {
+    it("sends artifacts[] for a single --artifact name:/path", async () => {
       let capturedBody: Record<string, unknown> | undefined;
 
       server.use(
@@ -604,19 +604,20 @@ describe("run resume command", () => {
         testCheckpointId,
         "test prompt",
         "--artifact",
-        "my-data",
+        "my-data:/workspace",
       ]);
 
       expect(capturedBody).toEqual(
         expect.objectContaining({
           checkpointId: testCheckpointId,
-          artifactName: "my-data",
+          artifacts: [{ name: "my-data", mountPath: "/workspace" }],
         }),
       );
+      expect(capturedBody?.artifactName).toBeUndefined();
       expect(capturedBody?.artifactVersion).toBeUndefined();
     });
 
-    it("should send artifactName and artifactVersion when using --artifact with name:version", async () => {
+    it("accepts repeatable --artifact flags", async () => {
       let capturedBody: Record<string, unknown> | undefined;
 
       server.use(
@@ -635,16 +636,32 @@ describe("run resume command", () => {
         testCheckpointId,
         "test prompt",
         "--artifact",
-        "my-data:abc123",
+        "foo:/ws",
+        "--artifact",
+        "bar:abc123:/data",
       ]);
 
       expect(capturedBody).toEqual(
         expect.objectContaining({
-          checkpointId: testCheckpointId,
-          artifactName: "my-data",
-          artifactVersion: "abc123",
+          artifacts: [
+            { name: "foo", mountPath: "/ws" },
+            { name: "bar", version: "abc123", mountPath: "/data" },
+          ],
         }),
       );
+    });
+
+    it("rejects --artifact without a mount path", async () => {
+      await expect(async () => {
+        await resumeCommand.parseAsync([
+          "node",
+          "cli",
+          testCheckpointId,
+          "test prompt",
+          "--artifact",
+          "only-name",
+        ]);
+      }).rejects.toThrow(/Invalid artifact format/);
     });
   });
 

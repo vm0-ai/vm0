@@ -11,6 +11,7 @@ import {
   expireCredits,
   getExpiresRecordsSummary,
   getUnsettledExpiredAmount,
+  getCreditBreakdownRecords,
 } from "../credit/credit-expires-service";
 import { getCampaign } from "./one-time-products";
 import { ensureStarterCreditGrant } from "../credit/starter-grant-service";
@@ -309,7 +310,7 @@ async function handleOneTimePurchaseCompleted(
 }
 
 // ---------------------------------------------------------------------------
-// One-time Checkout Session creation (used by /redeem/[campaign])
+// One-time Checkout Session creation (used by POST /api/zero/billing/redeem/:campaign)
 // ---------------------------------------------------------------------------
 
 /**
@@ -443,39 +444,56 @@ export async function handleInvoicePaid(invoice: InvoiceInput): Promise<void> {
     return;
   }
 
-  // Grant credits and mark invoice as processed in a transaction
-  await db.transaction(async (tx) => {
-    // Settle expired credits before granting new ones
+  // The subscription line item's period.end is the actual subscription
+  // billing-cycle end — i.e. the time the customer is paying through.
+  // (The top-level invoice.period_end is the "period over which billables
+  // accrued" and for a renewal invoice collapses to the invoice creation
+  // moment, not the next renewal date — do NOT use it here.)
+  const subscriptionLine = invoice.lines.data.find((line) => {
+    return line.parent?.type === "subscription_item_details";
+  });
+  const periodEndUnix = subscriptionLine?.period.end;
+  if (!periodEndUnix) {
+    throw new Error(
+      `invoice.paid has no subscription line item with period.end — cannot create expiry record (invoiceId=${invoice.id}, orgId=${org.orgId})`,
+    );
+  }
+  const periodEndDate = new Date(periodEndUnix * 1000);
+  const expiresAt = new Date(periodEndDate);
+  expiresAt.setMonth(expiresAt.getMonth() + 1);
+
+  // Grant credits and mark invoice as processed in a transaction.
+  //
+  // The `lastProcessedInvoiceId` fast path above catches sequential retries
+  // (first delivery commits, later retry sees the updated value). It fails
+  // open when two deliveries race: both reads see the old value, both pass,
+  // and both would grant credits. The durable guard is `createExpiresRecord`
+  // — it inserts with ON CONFLICT DO NOTHING on the
+  // `(org_id, stripe_invoice_id)` unique index, and a losing concurrent tx
+  // blocks until the winner commits then observes the conflict, so only one
+  // caller sees `inserted=true`. Gate `grantOrgCredits` on that flag.
+  const granted = await db.transaction(async (tx) => {
+    // Settle expired credits before granting new ones. Safe to run in the
+    // losing tx too: `expireCredits` takes SELECT FOR UPDATE on expired
+    // rows, so the loser sees `remaining = 0` once the winner commits and
+    // no-ops.
     await expireCredits(tx, org.orgId);
 
-    await grantOrgCredits(tx, org.orgId, credits);
-
-    // The subscription line item's period.end is the actual subscription
-    // billing-cycle end — i.e. the time the customer is paying through.
-    // (The top-level invoice.period_end is the "period over which billables
-    // accrued" and for a renewal invoice collapses to the invoice creation
-    // moment, not the next renewal date — do NOT use it here.)
-    const subscriptionLine = invoice.lines.data.find((line) => {
-      return line.parent?.type === "subscription_item_details";
-    });
-    const periodEndUnix = subscriptionLine?.period.end;
-    if (!periodEndUnix) {
-      throw new Error(
-        `invoice.paid has no subscription line item with period.end — cannot create expiry record (invoiceId=${invoice.id}, orgId=${org.orgId})`,
-      );
-    }
-
-    // Calculate expires_at: currentPeriodEnd + 1 month
-    const periodEndDate = new Date(periodEndUnix * 1000);
-    const expiresAt = new Date(periodEndDate);
-    expiresAt.setMonth(expiresAt.getMonth() + 1);
-
-    await createExpiresRecord(tx, org.orgId, {
+    const inserted = await createExpiresRecord(tx, org.orgId, {
       source: "subscription_renewal",
       stripeInvoiceId: invoice.id,
       amount: credits,
       expiresAt,
     });
+    if (!inserted) {
+      log.info(
+        "invoice.paid already processed — skipping (concurrent delivery)",
+        { invoiceId: invoice.id, orgId: org.orgId },
+      );
+      return false;
+    }
+
+    await grantOrgCredits(tx, org.orgId, credits);
 
     await tx
       .update(orgMetadata)
@@ -485,7 +503,11 @@ export async function handleInvoicePaid(invoice: InvoiceInput): Promise<void> {
         updatedAt: new Date(),
       })
       .where(eq(orgMetadata.orgId, org.orgId));
+
+    return true;
   });
+
+  if (!granted) return;
 
   // Reset member credit cap flags for the new billing period
   await resetMemberCreditFlags(org.orgId);
@@ -820,6 +842,147 @@ export async function getOrgInvoices(orgId: string): Promise<{
   return { invoices };
 }
 
+type CreditBreakdownCategory = "plan" | "free" | "promotional" | "payAsYouGo";
+
+interface CreditBreakdownSegment {
+  category: CreditBreakdownCategory;
+  label: string;
+  credits: number;
+  /** Only set on `plan` segments. */
+  tier?: "pro" | "team";
+}
+
+/**
+ * Build the Usage-tab credit breakdown from active expires records.
+ *
+ * - `subscription_renewal` → "<Tier> plan" under category `plan`, tier derived
+ *   from the record's amount so leftover credits from a previous tier (e.g. a
+ *   Team user that dropped to Pro) render under their original tier label.
+ *   The raw `tier` (`"pro" | "team"`) is also emitted on each plan segment so
+ *   UI callers don't have to round-trip through the display label.
+ * - `starter_grant` → "Free plan".
+ * - `one_time_purchase` → "Promotional".
+ * - `auto_recharge` → "Pay as you go" (sentinel record from #10668).
+ *
+ * Legacy balance not backed by any active record (pre-sentinel top-ups,
+ * ledger drift) is surfaced as "Pay as you go" for paid tiers or "Free plan"
+ * for free, so the segments always sum to `displayedCredits`. When a non-zero
+ * untracked delta is observed we emit a `logger.warn` so ops can track drift.
+ */
+function buildCreditBreakdown(args: {
+  orgId: string;
+  tier: string;
+  displayedCredits: number;
+  records: Array<{ source: string; amount: number; remaining: number }>;
+}): CreditBreakdownSegment[] {
+  const { orgId, tier, displayedCredits, records } = args;
+
+  // Returns `null` when the amount doesn't match any known tier — caller will
+  // skip emitting a plan segment for such a record, avoiding a fabricated tier.
+  const planTierFromAmount = (amount: number): "pro" | "team" | null => {
+    if (amount === TIER_MONTHLY_CREDITS.team) return "team";
+    if (amount === TIER_MONTHLY_CREDITS.pro) return "pro";
+    return null;
+  };
+
+  const segmentKey = (category: CreditBreakdownCategory, tierKey?: string) => {
+    return tierKey ? `${category}:${tierKey}` : category;
+  };
+
+  const byKey = new Map<string, CreditBreakdownSegment>();
+  const addSegment = (segment: CreditBreakdownSegment) => {
+    const key = segmentKey(segment.category, segment.tier);
+    const existing = byKey.get(key);
+    if (existing) {
+      existing.credits += segment.credits;
+    } else {
+      byKey.set(key, { ...segment });
+    }
+  };
+
+  let trackedTotal = 0;
+  for (const r of records) {
+    trackedTotal += r.remaining;
+    if (r.source === "subscription_renewal") {
+      const planTier = planTierFromAmount(r.amount);
+      if (!planTier) {
+        log.warn("subscription_renewal amount does not match any tier", {
+          orgId,
+          amount: r.amount,
+          remaining: r.remaining,
+        });
+        // Fall through: surface the remaining as untracked so the bar still
+        // sums to `displayedCredits`.
+        trackedTotal -= r.remaining;
+        continue;
+      }
+      const label = planTier === "team" ? "Team plan" : "Pro plan";
+      addSegment({
+        category: "plan",
+        label,
+        credits: r.remaining,
+        tier: planTier,
+      });
+    } else if (r.source === "starter_grant") {
+      addSegment({
+        category: "free",
+        label: "Free plan",
+        credits: r.remaining,
+      });
+    } else if (r.source === "one_time_purchase") {
+      addSegment({
+        category: "promotional",
+        label: "Promotional",
+        credits: r.remaining,
+      });
+    } else if (r.source === "auto_recharge") {
+      addSegment({
+        category: "payAsYouGo",
+        label: "Pay as you go",
+        credits: r.remaining,
+      });
+    }
+  }
+
+  const untracked = Math.max(displayedCredits - trackedTotal, 0);
+  if (untracked > 0) {
+    log.warn("credit breakdown has untracked balance", {
+      orgId,
+      tier,
+      displayedCredits,
+      trackedTotal,
+      untracked,
+    });
+    if (tier === "free") {
+      addSegment({
+        category: "free",
+        label: "Free plan",
+        credits: untracked,
+      });
+    } else {
+      addSegment({
+        category: "payAsYouGo",
+        label: "Pay as you go",
+        credits: untracked,
+      });
+    }
+  }
+
+  const categoryOrder: CreditBreakdownCategory[] = [
+    "plan",
+    "free",
+    "promotional",
+    "payAsYouGo",
+  ];
+  const segments = Array.from(byKey.values());
+  segments.sort((a, b) => {
+    return (
+      categoryOrder.indexOf(a.category) - categoryOrder.indexOf(b.category)
+    );
+  });
+  return segments;
+}
+
 /**
  * Get billing status for an org.
  */
@@ -839,6 +1002,7 @@ export async function getBillingStatus(orgId: string): Promise<{
     expiringNextCycle: number;
     nextExpiryDate: Date | null;
   };
+  creditBreakdown: CreditBreakdownSegment[];
 }> {
   const db = globalThis.services.db;
   const [org] = await db
@@ -857,18 +1021,25 @@ export async function getBillingStatus(orgId: string): Promise<{
     .where(eq(orgMetadata.orgId, orgId))
     .limit(1);
 
-  const expirySummary = await getExpiresRecordsSummary(orgId);
+  const [expirySummary, unsettledExpired, records] = await Promise.all([
+    getExpiresRecordsSummary(orgId),
+    getUnsettledExpiredAmount(orgId),
+    getCreditBreakdownRecords(orgId),
+  ]);
 
-  // Subtract not-yet-settled expired credits so the displayed balance matches
-  // what the user can actually spend. Dormant non-subscription orgs never hit
-  // `expireCredits` until their next run, so the raw `credits` column can be
-  // inflated until then — this keeps the UI honest in the meantime.
-  const unsettledExpired = await getUnsettledExpiredAmount(orgId);
   const rawCredits = org?.credits ?? 0;
   const displayedCredits = Math.max(rawCredits - unsettledExpired, 0);
+  const tier = org?.tier ?? "free";
+
+  const breakdown = buildCreditBreakdown({
+    orgId,
+    tier,
+    displayedCredits,
+    records,
+  });
 
   return {
-    tier: org?.tier ?? "free",
+    tier,
     credits: displayedCredits,
     subscriptionStatus: org?.subscriptionStatus ?? null,
     currentPeriodEnd: org?.currentPeriodEnd ?? null,
@@ -880,5 +1051,6 @@ export async function getBillingStatus(orgId: string): Promise<{
       amount: org?.autoRechargeAmount ?? null,
     },
     creditExpiry: expirySummary,
+    creditBreakdown: breakdown,
   };
 }

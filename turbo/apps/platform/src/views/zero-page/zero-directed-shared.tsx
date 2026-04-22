@@ -12,7 +12,6 @@ import {
 import { OrgManageDialog } from "./components/org-manage/org-manage-dialog.tsx";
 import { ZeroOrgSwitcher } from "./zero-org-switcher.tsx";
 import { AccountDropdown } from "./zero-sidebar.tsx";
-import { VM0ClerkProvider } from "../clerk/clerk-provider.tsx";
 import { Link } from "../router/link.tsx";
 
 export function MinimalSidebarLayout({ children }: { children: ReactNode }) {
@@ -29,17 +28,15 @@ export function MinimalSidebarLayout({ children }: { children: ReactNode }) {
           detach(setDialogOpen(open, pageSignal), Reason.DomCallback);
         }}
       />
-      <VM0ClerkProvider>
-        <aside className="zero-nav hidden md:flex h-full w-[255px] shrink-0 flex-col bg-sidebar">
-          <div className="shrink-0 px-2 pt-1.5">
-            <ZeroOrgSwitcher />
-          </div>
-          <div className="flex-1" />
-          <div className="p-2">
-            <AccountDropdown onAccountAction={onAccountAction} />
-          </div>
-        </aside>
-      </VM0ClerkProvider>
+      <aside className="zero-nav hidden md:flex h-full w-[255px] shrink-0 flex-col bg-sidebar">
+        <div className="shrink-0 px-2 pt-1.5">
+          <ZeroOrgSwitcher />
+        </div>
+        <div className="flex-1" />
+        <div className="p-2">
+          <AccountDropdown onAccountAction={onAccountAction} />
+        </div>
+      </aside>
       <div className="flex flex-1 flex-col min-w-0 min-h-0 zero-workspace-bg">
         {children}
       </div>

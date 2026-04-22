@@ -1,6 +1,5 @@
 import { command } from "ccstate";
 import { createElement } from "react";
-import { MinimalSidebarLayout } from "../../views/zero-page/zero-directed-shared.tsx";
 import { PermissionAllowPage } from "../../views/permission-allow/permission-allow-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
@@ -22,14 +21,7 @@ import { hideAppSkeleton$ } from "../app-skeleton.ts";
 
 export const setupPermissionAllowPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    set(
-      updatePage$,
-      createElement(
-        MinimalSidebarLayout,
-        null,
-        createElement(PermissionAllowPage),
-      ),
-    );
+    set(updatePage$, createElement(PermissionAllowPage), "minimal");
     set(updateDocumentTitle$, "Permissions");
     set(resetFocusedState$);
 

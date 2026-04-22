@@ -86,7 +86,7 @@ teardown_file() {
     # Step 2: Run agent (~15s)
     echo "# Running agent..."
     run $VM0_CLI run "$AGENT_NAME" \
-        --artifact "$ARTIFACT_NAME" \
+        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
         "echo 'hello world'"
 
     assert_success
@@ -128,7 +128,7 @@ teardown_file() {
     # Step 2: Run agent to create initial conversation (~15s)
     echo "# Running agent to create conversation..."
     run $VM0_CLI run "$AGENT_NAME" \
-        --artifact "$ARTIFACT_NAME" \
+        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
         "echo 'original run' && cat version.txt && echo 200 > counter.txt"
 
     assert_success
@@ -159,7 +159,7 @@ teardown_file() {
     # but with a different (newer) artifact version
     echo "# Forking from conversation with new artifact..."
     run $VM0_CLI run "$AGENT_NAME" \
-        --artifact "$ARTIFACT_NAME" \
+        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
         --conversation "$conversation_id" \
         --verbose \
         "cat version.txt && cat counter.txt && ls"

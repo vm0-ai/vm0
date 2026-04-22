@@ -84,7 +84,7 @@ EOF
 
     echo "# Step 4: Running with name format..."
     run $VM0_CLI run "$AGENT_NAME" \
-        --artifact "$ARTIFACT_NAME" \
+        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
         "echo hello from name test"
     assert_success
     assert_output --partial "● Bash("

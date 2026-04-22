@@ -214,12 +214,12 @@ describe("org billing tab - auto-recharge section", () => {
     const thresholdInput = screen.getByLabelText(
       /credit threshold for auto-recharge/i,
     );
-    expect(thresholdInput).toHaveValue(5000);
+    expect(thresholdInput).toHaveValue("5000");
 
     const amountInput = screen.getByLabelText(
       /auto-recharge credit amount in credits/i,
     );
-    expect(amountInput).toHaveValue(50_000);
+    expect(amountInput).toHaveValue("50000");
   });
 
   it("should show toggle off when server auto-recharge is disabled", async () => {
@@ -332,7 +332,9 @@ describe("org billing tab - auto-recharge section", () => {
 
     await fill(thresholdInput, "2000");
     await fill(amountInput, "10000");
-    amountInput.blur();
+
+    const unsavedBar = await screen.findByTestId("auto-recharge-unsaved-bar");
+    await user.click(within(unsavedBar).getByTestId("save-button"));
 
     await waitFor(() => {
       expect(capturedBody).toStrictEqual({
@@ -344,6 +346,7 @@ describe("org billing tab - auto-recharge section", () => {
   });
 
   it("should send correct data when saving auto-recharge config", async () => {
+    const user = userEvent.setup();
     let capturedBody: unknown = null;
     server.use(
       mockApi(zeroBillingAutoRechargeContract.update, ({ body, respond }) => {
@@ -375,13 +378,15 @@ describe("org billing tab - auto-recharge section", () => {
       const input = screen.getByLabelText(
         /credit threshold for auto-recharge/i,
       );
-      expect(input).toHaveValue(2000);
+      expect(input).toHaveValue("2000");
       return input;
     });
 
-    // Change threshold and blur to trigger save
+    // Change threshold and click Save from UnsavedBar
     await fill(thresholdInput, "3000");
-    thresholdInput.blur();
+
+    const unsavedBar = await screen.findByTestId("auto-recharge-unsaved-bar");
+    await user.click(within(unsavedBar).getByTestId("save-button"));
 
     await waitFor(() => {
       expect(capturedBody).toStrictEqual({
@@ -390,6 +395,160 @@ describe("org billing tab - auto-recharge section", () => {
         amount: 10_000,
       });
     });
+  });
+
+  it("should reject negative and decimal input in threshold/amount fields", async () => {
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+      autoRecharge: { enabled: true, threshold: 2000, amount: 10_000 },
+    });
+
+    await openBillingTab();
+
+    const thresholdInput = await waitFor(() => {
+      const input = screen.getByLabelText(
+        /credit threshold for auto-recharge/i,
+      );
+      expect(input).toHaveValue("2000");
+      return input;
+    });
+
+    await fill(thresholdInput, "-5");
+    expect(thresholdInput).toHaveValue("2000");
+
+    await fill(thresholdInput, "12.5");
+    expect(thresholdInput).toHaveValue("2000");
+
+    await fill(thresholdInput, "3000");
+    expect(thresholdInput).toHaveValue("3000");
+  });
+
+  it("should not flash the toggle state between save-resolve and refetch-complete", async () => {
+    // Regression: saveAutoRecharge$ used to clear optimistic overrides before
+    // waiting for billingReload$ to produce a fresh config, so useLastLoadable
+    // (keepLastResolved=true) handed back the stale pre-save config for one
+    // network RTT. On a toggle-ON save the user briefly saw the switch blink
+    // back to OFF and the threshold/amount section collapse; dirty also
+    // flipped false, briefly hiding UnsavedBar.
+    const user = userEvent.setup();
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+      autoRecharge: { enabled: false, threshold: 2000, amount: 10_000 },
+    });
+
+    // First fetch returns the pre-save state (enabled=false). Subsequent
+    // fetches are held open so the window between override-clear and
+    // refetch-complete is long enough to observe. Entering the gated branch
+    // signals that the PATCH has resolved and the reload has been kicked off
+    // — i.e. we are inside the bug's danger window.
+    let releaseRefetch = (): void => {};
+    const refetchStarted = new Promise<void>((resolve) => {
+      releaseRefetch = resolve;
+    });
+    let markRefetchEntered = (): void => {};
+    const refetchEntered = new Promise<void>((resolve) => {
+      markRefetchEntered = resolve;
+    });
+    let refetchCount = 0;
+    server.use(
+      mockApi(zeroBillingStatusContract.get, async ({ respond }) => {
+        refetchCount++;
+        const enabled = refetchCount > 1;
+        if (refetchCount > 1) {
+          markRefetchEntered();
+          await refetchStarted;
+        }
+        return respond(200, {
+          tier: "pro",
+          credits: 20_000,
+          subscriptionStatus: "active",
+          currentPeriodEnd: null,
+          cancelAtPeriodEnd: false,
+          hasSubscription: true,
+          autoRecharge: { enabled, threshold: 2000, amount: 10_000 },
+          creditExpiry: { expiringNextCycle: 0, nextExpiryDate: null },
+          creditBreakdown: [],
+        });
+      }),
+    );
+
+    await openBillingTab();
+
+    const toggle = await waitFor(() => {
+      const t = screen.getByRole("switch", { name: /enable auto-recharge/i });
+      expect(t).toHaveAttribute("aria-checked", "false");
+      return t;
+    });
+
+    await user.click(toggle);
+    await waitFor(() => {
+      expect(toggle).toHaveAttribute("aria-checked", "true");
+    });
+
+    const bar = await screen.findByTestId("auto-recharge-unsaved-bar");
+    const savePromise = user.click(within(bar).getByTestId("save-button"));
+
+    // Wait until the refetch has entered the gated branch — at this point the
+    // PATCH has resolved and billingReload$ has been bumped, so we are inside
+    // the exact window where the regression would have cleared the optimistic
+    // overrides. Flush microtasks so any regressed state update propagates.
+    await refetchEntered;
+    await waitFor(() => {
+      expect(toggle).toHaveAttribute("aria-checked", "true");
+      expect(
+        screen.getByTestId("auto-recharge-unsaved-bar"),
+      ).toBeInTheDocument();
+    });
+
+    // Release the refetch and let the save finish.
+    releaseRefetch();
+    await savePromise;
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("auto-recharge-unsaved-bar"),
+      ).not.toBeInTheDocument();
+    });
+    expect(toggle).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("should discard unsaved auto-recharge changes when Discard is clicked", async () => {
+    const user = userEvent.setup();
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+      autoRecharge: { enabled: true, threshold: 2000, amount: 10_000 },
+    });
+
+    await openBillingTab();
+
+    const thresholdInput = await waitFor(() => {
+      const input = screen.getByLabelText(
+        /credit threshold for auto-recharge/i,
+      );
+      expect(input).toHaveValue("2000");
+      return input;
+    });
+
+    await fill(thresholdInput, "9999");
+
+    const unsavedBar = await screen.findByTestId("auto-recharge-unsaved-bar");
+    await user.click(within(unsavedBar).getByTestId("discard-button"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("auto-recharge-unsaved-bar"),
+      ).not.toBeInTheDocument();
+    });
+    expect(thresholdInput).toHaveValue("2000");
   });
 });
 

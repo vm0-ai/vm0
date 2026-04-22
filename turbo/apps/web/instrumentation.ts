@@ -1,3 +1,7 @@
+// Dynamic imports are required throughout this file: Next.js instrumentation
+// runs in a restricted module scope before the full app bundle is loaded.
+// Top-level imports from app code would cause build-time circular dependency
+// errors; dynamic imports are the recommended pattern for this hook.
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
     await import("./sentry.server.config");

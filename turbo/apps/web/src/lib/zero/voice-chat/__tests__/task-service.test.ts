@@ -154,7 +154,30 @@ describe("getVoiceChatTask / listVoiceChatTasks", () => {
 });
 
 describe("appendTaskEvent", () => {
-  it("inserts a system-source event that bypasses the active-session gate", async () => {
+  it("writes a task-dispatched event with taskId + prompt in content", async () => {
+    context.setupMocks();
+    const { sessionId } = await seedActiveSession();
+
+    await appendTaskEvent(sessionId, {
+      type: "task-dispatched",
+      taskId: "task-abc",
+      prompt: "check PR #123",
+    });
+
+    const rows = await globalThis.services.db
+      .select()
+      .from(voiceChatEvents)
+      .where(eq(voiceChatEvents.sessionId, sessionId));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.source).toBe("system");
+    expect(rows[0]!.type).toBe("task-dispatched");
+    expect(JSON.parse(rows[0]!.content!)).toStrictEqual({
+      taskId: "task-abc",
+      prompt: "check PR #123",
+    });
+  });
+
+  it("writes a task-completed event with status/result/error and bypasses the active-session gate", async () => {
     context.setupMocks();
     const { sessionId } = await seedActiveSession();
 
@@ -163,7 +186,13 @@ describe("appendTaskEvent", () => {
       .set({ status: "ended", endedAt: new Date() })
       .where(eq(voiceChatSessions.id, sessionId));
 
-    await appendTaskEvent(sessionId, "task-completed", "task-abc");
+    await appendTaskEvent(sessionId, {
+      type: "task-completed",
+      taskId: "task-abc",
+      status: "done",
+      result: "PR #123 merged by @alice",
+      error: null,
+    });
 
     const rows = await globalThis.services.db
       .select()
@@ -172,7 +201,32 @@ describe("appendTaskEvent", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]!.source).toBe("system");
     expect(rows[0]!.type).toBe("task-completed");
-    expect(rows[0]!.content).toBe(JSON.stringify({ taskId: "task-abc" }));
+    expect(JSON.parse(rows[0]!.content!)).toStrictEqual({
+      taskId: "task-abc",
+      status: "done",
+      result: "PR #123 merged by @alice",
+      error: null,
+    });
+  });
+
+  it("truncates overly long prompts at the 2000-char server cap", async () => {
+    context.setupMocks();
+    const { sessionId } = await seedActiveSession();
+    const huge = "x".repeat(2500);
+
+    await appendTaskEvent(sessionId, {
+      type: "task-dispatched",
+      taskId: "t",
+      prompt: huge,
+    });
+
+    const rows = await globalThis.services.db
+      .select()
+      .from(voiceChatEvents)
+      .where(eq(voiceChatEvents.sessionId, sessionId));
+    const parsed = JSON.parse(rows[0]!.content!);
+    expect(parsed.prompt.length).toBe(2001);
+    expect(parsed.prompt.endsWith("…")).toBe(true);
   });
 });
 

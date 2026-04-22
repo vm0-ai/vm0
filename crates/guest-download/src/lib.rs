@@ -73,7 +73,8 @@ const LOG_TAG: &str = "sandbox:download";
 struct Manifest {
     #[serde(default)]
     storages: Vec<Storage>,
-    artifact: Option<Artifact>,
+    #[serde(default)]
+    artifacts: Vec<Artifact>,
     #[serde(default)]
     memory: Option<Artifact>,
     /// Paths to clean before downloading (stale file cleanup on VM reuse).
@@ -157,9 +158,7 @@ pub fn run(manifest_path: &str) -> bool {
             .filter(|s| s.cached)
             .map(|s| s.mount_path.as_str())
             .collect();
-        if let Some(a) = &manifest.artifact
-            && a.cached
-        {
+        for a in manifest.artifacts.iter().filter(|a| a.cached) {
             preserved.push(a.mount_path.as_str());
         }
         if let Some(m) = &manifest.memory
@@ -189,18 +188,19 @@ pub fn run(manifest_path: &str) -> bool {
         }
     }
 
-    // Artifact: 404 is non-fatal (may not exist on first run)
-    if let Some(artifact) = &manifest.artifact
-        && is_valid_url(&artifact.archive_url)
-        && let Some(url) = artifact.archive_url.clone()
-    {
-        tasks.push(DownloadTask {
-            label: "artifact".to_string(),
-            op_name: "artifact_download",
-            url,
-            mount_path: artifact.mount_path.clone(),
-            allow_404: true,
-        });
+    // Artifacts: 404 is non-fatal (may not exist on first run)
+    for (idx, artifact) in manifest.artifacts.iter().enumerate() {
+        if is_valid_url(&artifact.archive_url)
+            && let Some(url) = artifact.archive_url.clone()
+        {
+            tasks.push(DownloadTask {
+                label: format!("artifact {}", idx + 1),
+                op_name: "artifact_download",
+                url,
+                mount_path: artifact.mount_path.clone(),
+                allow_404: true,
+            });
+        }
     }
 
     // Memory: 404 is non-fatal (may not exist on first run)
@@ -795,13 +795,13 @@ mod tests {
                 {"mountPath": "/data", "archiveUrl": null, "cached": true},
                 {"mountPath": "/other", "archiveUrl": "https://s3/v1", "cached": false}
             ],
-            "artifact": {"mountPath": "/workspace", "archiveUrl": null, "cached": true},
+            "artifacts": [{"mountPath": "/workspace", "archiveUrl": null, "cached": true}],
             "memory": {"mountPath": "/memory", "archiveUrl": "https://s3/mem", "cached": false}
         }"#;
         let manifest: Manifest = serde_json::from_str(json).unwrap();
         assert!(manifest.storages[0].cached);
         assert!(!manifest.storages[1].cached);
-        assert!(manifest.artifact.as_ref().unwrap().cached);
+        assert!(manifest.artifacts[0].cached);
         assert!(!manifest.memory.as_ref().unwrap().cached);
     }
 
@@ -810,5 +810,45 @@ mod tests {
         let json = r#"{"storages": [{"mountPath": "/data"}]}"#;
         let manifest: Manifest = serde_json::from_str(json).unwrap();
         assert!(!manifest.storages[0].cached);
+    }
+
+    #[test]
+    fn manifest_multi_artifacts_yield_two_tasks() {
+        let json = r#"{
+            "storages": [],
+            "artifacts": [
+                {"mountPath": "/workspace/a", "archiveUrl": "https://s3/a.tar.gz"},
+                {"mountPath": "/workspace/b", "archiveUrl": "https://s3/b.tar.gz"}
+            ]
+        }"#;
+        let manifest: Manifest = serde_json::from_str(json).unwrap();
+        assert_eq!(manifest.artifacts.len(), 2);
+
+        let tasks: Vec<DownloadTask> = manifest
+            .artifacts
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, a)| {
+                if is_valid_url(&a.archive_url)
+                    && let Some(url) = a.archive_url.clone()
+                {
+                    Some(DownloadTask {
+                        label: format!("artifact {}", idx + 1),
+                        op_name: "artifact_download",
+                        url,
+                        mount_path: a.mount_path.clone(),
+                        allow_404: true,
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        assert_eq!(tasks.len(), 2);
+        assert_eq!(tasks[0].label, "artifact 1");
+        assert_eq!(tasks[0].mount_path, "/workspace/a");
+        assert_eq!(tasks[1].label, "artifact 2");
+        assert_eq!(tasks[1].mount_path, "/workspace/b");
     }
 }

@@ -21,27 +21,24 @@ const mockAgent = {
   displayName: "New Agent",
   description: null,
   sound: null,
+  avatarUrl: null,
 };
 
 describe("zero agent create command", () => {
-  const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
-    throw new Error("process.exit called");
-  }) as never);
-  const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
-  const mockConsoleError = vi
-    .spyOn(console, "error")
-    .mockImplementation(() => {});
+  let mockExit: ReturnType<typeof vi.spyOn>;
+  let mockConsoleLog: ReturnType<typeof vi.spyOn>;
+  let mockConsoleError: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
+    vi.clearAllMocks();
+    mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
+      throw new Error("process.exit called");
+    }) as never);
+    mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
+    mockConsoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     chalk.level = 0;
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
-  });
-
-  afterEach(() => {
-    mockExit.mockClear();
-    mockConsoleLog.mockClear();
-    mockConsoleError.mockClear();
   });
 
   describe("successful create", () => {
@@ -100,6 +97,58 @@ describe("zero agent create command", () => {
       expect(logCalls).toContain("other-skill");
     });
 
+    it("should send preset avatar in request body", async () => {
+      let capturedBody: Record<string, unknown> | undefined;
+      server.use(
+        http.post(
+          "http://localhost:3000/api/zero/agents",
+          async ({ request }) => {
+            capturedBody = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json(mockAgent, { status: 201 });
+          },
+        ),
+      );
+
+      await createCommand.parseAsync([
+        "node",
+        "cli",
+        "--display-name",
+        "New Agent",
+        "--avatar",
+        "preset:2",
+      ]);
+
+      expect(capturedBody?.avatarUrl).toBe("preset:2");
+    });
+
+    it("should compose svg avatar from descriptive flags", async () => {
+      let capturedBody: Record<string, unknown> | undefined;
+      server.use(
+        http.post(
+          "http://localhost:3000/api/zero/agents",
+          async ({ request }) => {
+            capturedBody = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json(mockAgent, { status: 201 });
+          },
+        ),
+      );
+
+      await createCommand.parseAsync([
+        "node",
+        "cli",
+        "--display-name",
+        "New Agent",
+        "--avatar-skin",
+        "dark",
+        "--avatar-hair-color",
+        "teal",
+        "--avatar-intensity",
+        "hyped",
+      ]);
+
+      expect(capturedBody?.avatarUrl).toBe("svg:r3s4h1c2f1h");
+    });
+
     describe("with instructions file", () => {
       let instructionsPath: string;
 
@@ -146,6 +195,62 @@ describe("zero agent create command", () => {
   });
 
   describe("error handling", () => {
+    it("should reject invalid avatar preset", async () => {
+      await expect(async () => {
+        await createCommand.parseAsync([
+          "node",
+          "cli",
+          "--display-name",
+          "New Agent",
+          "--avatar",
+          "preset:9",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Invalid --avatar"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should reject invalid avatar skin value", async () => {
+      await expect(async () => {
+        await createCommand.parseAsync([
+          "node",
+          "cli",
+          "--display-name",
+          "New Agent",
+          "--avatar-skin",
+          "purple",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Invalid --avatar-skin"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should reject combining --avatar preset with --avatar-* flags", async () => {
+      await expect(async () => {
+        await createCommand.parseAsync([
+          "node",
+          "cli",
+          "--display-name",
+          "New Agent",
+          "--avatar",
+          "preset:1",
+          "--avatar-skin",
+          "dark",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("cannot be combined"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
     it("should handle authentication error", async () => {
       server.use(
         http.post("http://localhost:3000/api/zero/agents", () => {

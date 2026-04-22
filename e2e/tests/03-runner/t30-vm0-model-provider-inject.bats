@@ -53,7 +53,7 @@ EOF
     $VM0_CLI compose "$TEST_DIR/vm0.yaml"
 
     run $VM0_CLI run "$AGENT_NAME" \
-        --artifact "$ARTIFACT_NAME" \
+        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
         "echo INJECTED=\$CLAUDE_CODE_OAUTH_TOKEN"
 
     assert_success

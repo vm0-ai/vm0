@@ -9,8 +9,9 @@ import {
 } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
 import { parseModelFlag } from "../../../lib/domain/model-provider/shared";
+import { type AvatarOptions, resolveAvatarUrl } from "./avatar";
 
-interface AgentEditOptions {
+interface AgentEditOptions extends AvatarOptions {
   displayName?: string;
   description?: string;
   sound?: string;
@@ -22,11 +23,24 @@ interface AgentEditOptions {
   model?: string;
 }
 
+function hasAvatarUpdate(options: AvatarOptions): boolean {
+  return (
+    options.avatar !== undefined ||
+    options.avatarRotation !== undefined ||
+    options.avatarSkin !== undefined ||
+    options.avatarHairStyle !== undefined ||
+    options.avatarHairColor !== undefined ||
+    options.avatarExpression !== undefined ||
+    options.avatarIntensity !== undefined
+  );
+}
+
 function hasAgentFieldUpdate(options: AgentEditOptions): boolean {
   return (
     options.displayName !== undefined ||
     options.description !== undefined ||
     options.sound !== undefined ||
+    hasAvatarUpdate(options) ||
     options.skills !== undefined ||
     options.addSkill !== undefined ||
     options.removeSkill !== undefined ||
@@ -39,6 +53,9 @@ async function applyAgentUpdate(
   agentId: string,
   options: AgentEditOptions,
 ): Promise<void> {
+  const hasAvatar = hasAvatarUpdate(options);
+  const resolvedAvatarUrl = hasAvatar ? resolveAvatarUrl(options) : undefined;
+
   const current = await getZeroAgent(agentId);
   const customSkills = resolveCustomSkills(options, current.customSkills ?? []);
 
@@ -50,6 +67,10 @@ async function applyAgentUpdate(
     options.model !== undefined
       ? parseModelFlag(options.model)
       : current.selectedModel;
+
+  const avatarUrl = hasAvatar
+    ? resolvedAvatarUrl
+    : (current.avatarUrl ?? undefined);
 
   await updateZeroAgent(agentId, {
     displayName:
@@ -64,6 +85,7 @@ async function applyAgentUpdate(
       options.sound !== undefined
         ? options.sound
         : (current.sound ?? undefined),
+    avatarUrl,
     customSkills,
     modelProviderId,
     selectedModel,
@@ -131,6 +153,25 @@ export const editCommand = new Command()
     "--sound <tone>",
     "New tone: professional, friendly, direct, supportive",
   )
+  .option("--avatar <preset>", "Avatar preset: preset:0 through preset:4")
+  .option(
+    "--avatar-rotation <1-5>",
+    "Head angle: 1=far-left  3=center  5=far-right",
+  )
+  .option(
+    "--avatar-skin <tone>",
+    "Skin tone: light | light-medium | medium | medium-dark | dark",
+  )
+  .option("--avatar-hair-style <1-5>", "Hair style: 1–5")
+  .option(
+    "--avatar-hair-color <color>",
+    "Hair color: blonde | teal | grey | pink | brown",
+  )
+  .option(
+    "--avatar-expression <expr>",
+    "Expression: calm | content | neutral | pleasant | excited",
+  )
+  .option("--avatar-intensity <level>", "Intensity: chill | normal | hyped")
   .option(
     "--skills <items>",
     "Comma-separated custom skill names to attach (replaces existing)",
@@ -149,9 +190,29 @@ export const editCommand = new Command()
   .addHelpText(
     "after",
     `
+Avatar:
+  Quick presets (--avatar):
+    preset:0  light skin, brown hair, calm, hyped
+    preset:1  light-medium skin, grey hair, calm, normal
+    preset:2  medium skin, pink hair, neutral, chill
+    preset:3  medium-dark skin, blonde hair, pleasant, hyped
+    preset:4  dark skin, teal hair, excited, normal
+
+  Custom attributes (--avatar-* flags, replace the entire avatar):
+    --avatar-rotation    1=far-left  3=center(default)  5=far-right
+    --avatar-skin        light / light-medium / medium(default) / medium-dark / dark
+    --avatar-hair-style  1–5 (default: 1)
+    --avatar-hair-color  blonde / teal / grey / pink / brown(default)
+    --avatar-expression  calm(default) / content / neutral / pleasant / excited
+    --avatar-intensity   chill / normal(default) / hyped
+
+  Note: --avatar and --avatar-* cannot be used together.
+
 Examples:
   Update description:      zero agent edit <agent-id> --description "new role"
   Update tone:             zero agent edit <agent-id> --sound friendly
+  Quick preset avatar:     zero agent edit <agent-id> --avatar preset:2
+  Custom avatar:           zero agent edit <agent-id> --avatar-skin dark --avatar-hair-color teal --avatar-intensity hyped
   Replace all skills:      zero agent edit <agent-id> --skills my-skill,other-skill
   Add a skill:             zero agent edit <agent-id> --add-skill my-skill
   Remove a skill:          zero agent edit <agent-id> --remove-skill my-skill
@@ -174,7 +235,7 @@ Notes:
 
       if (!hasAgentUpdate && !options.instructionsFile) {
         throw new Error(
-          "At least one option is required (--display-name, --description, --sound, --skills, --add-skill, --remove-skill, --model-provider, --model, --instructions-file)",
+          "At least one option is required (--display-name, --description, --sound, --avatar, --avatar-*, --skills, --add-skill, --remove-skill, --model-provider, --model, --instructions-file)",
         );
       }
 

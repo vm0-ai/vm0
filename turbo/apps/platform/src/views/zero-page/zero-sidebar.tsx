@@ -65,7 +65,6 @@ import {
   manageSectionCollapsed$,
   setManageSectionCollapsed$,
 } from "../../signals/zero-page/zero-sidebar-state.ts";
-import { VM0ClerkProvider } from "../clerk/clerk-provider.tsx";
 import { ZeroOrgSwitcher } from "./zero-org-switcher.tsx";
 import { Link } from "../router/link.tsx";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
@@ -704,10 +703,10 @@ function SidebarNavContent() {
 
 export function ZeroSidebar() {
   return (
-    <VM0ClerkProvider>
+    <>
       <SidebarNavContent />
       <ManagePinnedAgentsDialogContainer />
       <BillingDialog />
-    </VM0ClerkProvider>
+    </>
   );
 }

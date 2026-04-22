@@ -110,6 +110,7 @@ import { firecrawl } from "./connectors/firecrawl";
 import { scrapeninja } from "./connectors/scrapeninja";
 import { pdfco } from "./connectors/pdfco";
 import { elevenlabs } from "./connectors/elevenlabs";
+import { etsy } from "./connectors/etsy";
 import { exa } from "./connectors/exa";
 import { explorium } from "./connectors/explorium";
 import { devto } from "./connectors/devto";
@@ -364,6 +365,7 @@ const CONNECTOR_TYPES_DEF = {
   ...scrapeninja,
   ...pdfco,
   ...elevenlabs,
+  ...etsy,
   ...exa,
   ...explorium,
   ...devto,

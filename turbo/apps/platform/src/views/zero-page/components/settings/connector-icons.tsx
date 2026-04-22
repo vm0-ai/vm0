@@ -92,6 +92,7 @@ const CONNECTOR_ICON_COLORFUL = {
   dropbox: true,
   "dropbox-sign": true,
   e2b: true,
+  etsy: true,
   exa: true,
   explorium: true,
   fal: true,

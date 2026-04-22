@@ -62,7 +62,6 @@ import {
 } from "@tabler/icons-react";
 import { detach, Reason } from "../../signals/utils.ts";
 import { AccountDropdown } from "./zero-sidebar.tsx";
-import { VM0ClerkProvider } from "../clerk/clerk-provider.tsx";
 import { handleZeroAccountAction$ } from "../../signals/zero-page/zero-nav.ts";
 
 // ---------------------------------------------------------------------------
@@ -835,11 +834,7 @@ function OnboardingIllustrationPanel() {
 
 function OnboardingAccountDropdown() {
   const onAccountAction = useSet(handleZeroAccountAction$);
-  return (
-    <VM0ClerkProvider>
-      <AccountDropdown onAccountAction={onAccountAction} hidePreferences />
-    </VM0ClerkProvider>
-  );
+  return <AccountDropdown onAccountAction={onAccountAction} hidePreferences />;
 }
 
 function OnboardingPageLayout({ children }: { children: React.ReactNode }) {

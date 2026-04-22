@@ -4,6 +4,7 @@ import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
 export function mockConnectors(
   connectors: {
     type: ConnectorType;
+    authMethod?: "oauth" | "api-token" | "platform";
     externalUsername?: string;
     needsReconnect?: boolean;
     oauthScopes?: string[];
@@ -14,7 +15,7 @@ export function mockConnectors(
       return {
         id: crypto.randomUUID(),
         type: c.type,
-        authMethod: "oauth",
+        authMethod: c.authMethod ?? "oauth",
         externalId: null,
         externalUsername: c.externalUsername ?? null,
         externalEmail: null,

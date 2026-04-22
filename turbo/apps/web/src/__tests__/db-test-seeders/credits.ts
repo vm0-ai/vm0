@@ -181,9 +181,9 @@ export async function insertCreditExpiresRecord(params: {
 
 /**
  * Insert an org_promo_redemption row — simulates the state after a previous
- * `/redeem/[campaign]` attempt claimed the (org, campaign) slot.
+ * `POST /api/zero/billing/redeem/:campaign` attempt claimed the (org, campaign) slot.
  *
- * @why-db-direct The row is normally written by the `/redeem/[campaign]`
+ * @why-db-direct The row is normally written by the `POST /api/zero/billing/redeem/:campaign`
  * route after a successful Stripe session create. Tests exercise the route's
  * resume branches (open/expired/complete) and need to pre-plant a session id
  * that the Stripe mock returns a specific status for.

@@ -45,6 +45,7 @@ def _reset_module_state() -> None:
     mitm_addon._request_start_times.clear()
     mitm_addon._registry_cache = {}
     mitm_addon._registry_cache_key = (0, 0)
+    mitm_addon._registry_load_error_logged = False
     auth._firewall_header_cache.clear()
     auth._cache_locks.clear()
     auth._force_refresh_markers.clear()

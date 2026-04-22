@@ -103,4 +103,19 @@ describe("GET /api/zero/connectors", () => {
     });
     expect(orphan).toBeUndefined();
   });
+
+  it("surfaces a platform row for openai with authMethod=platform", async () => {
+    const userId = uniqueId("zcon-openai-pl");
+    const { orgId } = await setupOrg(userId);
+    await insertTestPlatformConnector(orgId, userId, "openai");
+
+    const response = await GET(createTestRequest(connectorsUrl()));
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    const openai = data.connectors.find((c: { type: string }) => {
+      return c.type === "openai";
+    });
+    expect(openai).toBeDefined();
+    expect(openai.authMethod).toBe("platform");
+  });
 });

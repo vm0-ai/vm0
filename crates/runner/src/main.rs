@@ -1,3 +1,4 @@
+mod axiom_layer;
 mod ca;
 mod cmd;
 mod config;
@@ -33,6 +34,8 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 use tracing_subscriber::fmt::writer::MakeWriterExt;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
 
 #[derive(Parser)]
 #[command(name = "runner", version)]
@@ -120,12 +123,14 @@ fn sanitize_name(raw: &str) -> String {
     }
 }
 
-/// Initialize tracing with a tee writer (stderr + rolling log file).
+/// Initialize tracing with a tee writer (stderr + rolling log file) plus an
+/// optional Axiom layer.
 ///
 /// Returns the [`tracing_appender::non_blocking::WorkerGuard`] that must be
 /// held alive until the process exits so buffered logs are flushed.
 fn init_tracing_with_file(
     config_path: &Path,
+    axiom_layer: Option<axiom_layer::AxiomLayer>,
 ) -> Result<tracing_appender::non_blocking::WorkerGuard, Box<dyn std::error::Error>> {
     let home = paths::HomePaths::new()?;
     let log_dir = home.logs_dir();
@@ -144,17 +149,25 @@ fn init_tracing_with_file(
     let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
     let writer = std::io::stderr.and(non_blocking);
 
-    tracing_subscriber::fmt()
+    let fmt_layer = tracing_subscriber::fmt::layer()
         .with_writer(writer)
-        .with_ansi(false)
+        .with_ansi(false);
+    tracing_subscriber::registry()
+        .with(fmt_layer)
+        .with(axiom_layer)
         .init();
 
     Ok(guard)
 }
 
-/// Initialize tracing with stderr output only (no rolling log file on disk).
-fn init_tracing_stderr() {
-    tracing_subscriber::fmt().init();
+/// Initialize tracing with stderr output only (no rolling log file on disk),
+/// plus an optional Axiom layer.
+fn init_tracing_stderr(axiom_layer: Option<axiom_layer::AxiomLayer>) {
+    let fmt_layer = tracing_subscriber::fmt::layer();
+    tracing_subscriber::registry()
+        .with(fmt_layer)
+        .with(axiom_layer)
+        .init();
 }
 
 #[tokio::main]
@@ -178,17 +191,27 @@ async fn main() -> ExitCode {
 
     let cli = Cli::parse();
 
+    // Axiom layer (dual-write with fmt). Returns None — zero overhead — when
+    // AXIOM_TOKEN_TELEMETRY / AXIOM_DATASET_SUFFIX are unset.
+    let (axiom_layer, axiom_guard) = match axiom_layer::init() {
+        Some((layer, guard)) => (Some(layer), Some(guard)),
+        None => (None, None),
+    };
+
     let _guard = match &cli.command {
-        Command::Start(args) => match init_tracing_with_file(&args.config) {
+        Command::Start(args) => match init_tracing_with_file(&args.config, axiom_layer) {
             Ok(guard) => Some(guard),
             Err(e) => {
-                init_tracing_stderr();
+                // The failed `init_tracing_with_file` already consumed `axiom_layer`,
+                // so the stderr fallback runs without Axiom — acceptable degraded
+                // mode (home/log-dir setup is already broken at this point).
+                init_tracing_stderr(None);
                 tracing::warn!("file logging unavailable, using stderr only: {e}");
                 None
             }
         },
         _ => {
-            init_tracing_stderr();
+            init_tracing_stderr(axiom_layer);
             None
         }
     };
@@ -213,13 +236,19 @@ async fn main() -> ExitCode {
         Command::Local(args) => cmd::run_local(args).await,
     };
 
-    match result {
+    let exit = match result {
         Ok(code) => code,
         Err(e) => {
             eprintln!("error: {e}");
             ExitCode::FAILURE
         }
+    };
+
+    if let Some(g) = axiom_guard {
+        g.shutdown().await;
     }
+
+    exit
 }
 
 #[cfg(test)]

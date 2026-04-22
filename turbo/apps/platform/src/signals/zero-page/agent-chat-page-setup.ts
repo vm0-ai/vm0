@@ -1,6 +1,5 @@
 import { command } from "ccstate";
 import { createElement } from "react";
-import { SidebarLayout } from "../../views/zero-page/sidebar-layout.tsx";
 import { AgentChatPage } from "../../views/zero-page/agent-chat-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
@@ -20,10 +19,7 @@ import { exitAgentChatVoiceMode$ } from "./agent-chat-voice-mode.ts";
 
 export const setupAgentChatPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    set(
-      updatePage$,
-      createElement(SidebarLayout, null, createElement(AgentChatPage)),
-    );
+    set(updatePage$, createElement(AgentChatPage), "sidebar");
     set(updateDocumentTitle$, "Chat");
     set(reloadTagline$);
     set(setupAgentChatPageKeyboard$, signal);

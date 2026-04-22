@@ -36,11 +36,7 @@ import {
 import { authorizeConnector$ } from "../../signals/connectors-page/directed-authorize-type.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { IconCheck, IconLoader2 } from "@tabler/icons-react";
-import {
-  MinimalSidebarLayout,
-  Vm0LogoLink,
-  GoogleOAuthNotice,
-} from "./zero-directed-shared.tsx";
+import { Vm0LogoLink, GoogleOAuthNotice } from "./zero-directed-shared.tsx";
 
 function runDirectedConnect(params: {
   authMethods: string[];
@@ -57,7 +53,21 @@ function runDirectedConnect(params: {
   openTokenDialog: () => void;
 }): void {
   const hasOAuth = params.authMethods.includes("oauth");
+  const hasApiToken = params.authMethods.includes("api-token");
   const hasPlatform = params.authMethods.includes("platform");
+
+  // Priority: OAuth launches the external popup; api-token (with or without
+  // platform) opens the modal so the user picks explicitly; platform-only
+  // falls through to silent enable. The api-token + platform combo MUST go
+  // through the modal — auto-enabling platform would bypass the api-token
+  // form entirely for a directed-connect link.
+  if (!hasOAuth && hasApiToken) {
+    params.openTokenDialog();
+    return;
+  }
+  // Defensive fallback for the degenerate empty-authMethods case — the
+  // contract disallows it today, so in practice this is unreachable after
+  // the api-token branch above.
   if (!hasOAuth && !hasPlatform) {
     params.openTokenDialog();
     return;
@@ -341,9 +351,5 @@ function DirectedConnectCard() {
 }
 
 export function ZeroDirectedConnectPage() {
-  return (
-    <MinimalSidebarLayout>
-      <DirectedConnectCard />
-    </MinimalSidebarLayout>
-  );
+  return <DirectedConnectCard />;
 }

@@ -1,7 +1,6 @@
 import { command } from "ccstate";
 import { createElement } from "react";
 import { animationFrame } from "signal-timers";
-import { SidebarLayout } from "../../views/zero-page/sidebar-layout.tsx";
 import { ZeroChatThreadPage } from "../../views/zero-page/zero-chat-thread-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
@@ -30,11 +29,8 @@ export const setupChatPage$ = command(
 
     set(
       updatePage$,
-      createElement(
-        SidebarLayout,
-        null,
-        createElement(ZeroChatThreadPage, { key: threadId }),
-      ),
+      createElement(ZeroChatThreadPage, { key: threadId }),
+      "sidebar",
     );
     set(updateDocumentTitle$, "Chat");
     set(setupChatPageKeyboard$, signal);

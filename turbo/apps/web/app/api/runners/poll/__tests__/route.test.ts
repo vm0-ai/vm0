@@ -8,6 +8,7 @@ import {
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
+  uniqueId,
   type UserContext,
 } from "../../../../../src/__tests__/test-helpers";
 
@@ -37,7 +38,7 @@ describe("POST /api/runners/poll — heldSessions affinity", () => {
   beforeEach(async () => {
     context.setupMocks();
     user = await context.setupUser();
-    const compose = await createTestCompose("poll-test");
+    const compose = await createTestCompose(uniqueId("poll-test"));
     versionId = compose.versionId;
     group = `vm0/poll-test-${randomUUID().slice(0, 8)}`;
   });

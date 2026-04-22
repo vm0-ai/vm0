@@ -1,15 +1,42 @@
 /**
  * Unified ts-rest handler configuration with automatic log flushing.
  *
- * This module wraps createNextHandler to ensure all logs are flushed
- * to Axiom before the serverless function terminates.
+ * Wraps createNextHandler to ensure logs flush to Axiom before the
+ * serverless function terminates.
  *
  * Usage:
  *   import { createHandler, tsr } from "@/lib/ts-rest-handler";
- *
  *   const router = tsr.router(contract, { ... });
  *   const handler = createHandler(contract, router);
  *   export { handler as GET, handler as POST };
+ *
+ * ## Sentry capture rules
+ *
+ * Errors are filtered at three independent points: this handler's
+ * `createSafeErrorHandler`, Next.js's `instrumentation.onRequestError`
+ * (for non-ts-rest routes), and the browser SDK's `beforeSend` hook
+ * in `instrumentation-client.ts`. What reaches Sentry:
+ *
+ * | Origin                                    | Status / Class          | Reaches Sentry?       |
+ * |-------------------------------------------|-------------------------|-----------------------|
+ * | ts-rest, `createSafeErrorHandler`         | 4xx `ApiError`          | No (warn-log)         |
+ * | ts-rest, `createSafeErrorHandler`         | 4xx zod validation      | No (warn-log)         |
+ * | ts-rest, `createSafeErrorHandler`         | 400 malformed JSON body | No (warn-log)         |
+ * | ts-rest, `createSafeErrorHandler`         | unknown 5xx throw       | Yes (†)               |
+ * | ts-rest, `createSilentErrorHandler`       | any                     | No (‡)                |
+ * | non-ts-rest route (any thrown error)      | any                     | Yes (onRequestError)  |
+ * | Client, 4xx fetch/XHR response            | —                       | No (beforeSend drops) |
+ * | Client, 5xx response or JS error          | —                       | Yes                   |
+ *
+ * † Captured with `mechanism.type = "ts-rest-handler"` and
+ *   `tags.route = <routeName>`. 5xx `ApiError` instances (uncommon —
+ *   current factories top out at 422) are `log.error`'d but NOT
+ *   Sentry-captured; capture fires only for the final "unknown throw"
+ *   branch of `makeErrorHandler`.
+ *
+ * ‡ `createSilentErrorHandler` is used only by `/api/zero/report-error`
+ *   so the client-error sink does not feed its own failures back into
+ *   Sentry as fresh issues.
  */
 import "server-only";
 import { createNextHandler, tsr } from "@ts-rest/serverless/next";
@@ -241,7 +268,13 @@ export function createHandler<T extends AppRouter>(
     err: unknown,
     req: TsRestRequest,
   ): TsRestResponse | void => {
-    if (options.errorHandler) return options.errorHandler(err);
+    if (options.errorHandler) {
+      const result = options.errorHandler(err);
+      if (result) return result;
+      // Custom handler declined this error (returned undefined) — delegate to
+      // the default chain so ApiError → correct status, raw errors → log +
+      // Sentry. ts-rest's own dispatcher uses the same truthy-check semantic.
+    }
     if (perOpHandlers && opMap) {
       const op = opMap.get(`${req.method}:${req.route}`);
       const h = op ? perOpHandlers.get(op) : undefined;

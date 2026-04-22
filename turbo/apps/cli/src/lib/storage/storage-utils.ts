@@ -18,6 +18,10 @@ interface StorageConfig {
 const CONFIG_DIR = ".vm0";
 const CONFIG_FILE = "storage.yaml";
 
+// Tracks paths we've already warned about so a repeated read during a single
+// process doesn't spam stderr with duplicate deprecation notices.
+const memoryTypeWarnedPaths = new Set<string>();
+
 /**
  * Validate storage name format
  * Length: 3-64 characters
@@ -36,10 +40,19 @@ export function isValidStorageName(name: string): boolean {
 /**
  * Read storage config from .vm0/storage.yaml
  * Also supports legacy .vm0/volume.yaml for backward compatibility
+ *
+ * `normalizeMemoryToArtifact` (default true) controls the one-release read
+ * compat for legacy `type: "memory"` entries. Artifact-side callers keep the
+ * default so old memory dirs flow transparently into the new artifact shape;
+ * memory-side callers pass `false` so `vm0 memory *` commands keep working
+ * against the dirs they themselves write (until #10603 removes the memory
+ * CLI entirely).
  */
 export async function readStorageConfig(
   basePath: string = process.cwd(),
+  options: { normalizeMemoryToArtifact?: boolean } = {},
 ): Promise<StorageConfig | null> {
+  const { normalizeMemoryToArtifact = true } = options;
   const configPath = path.join(basePath, CONFIG_DIR, CONFIG_FILE);
   const legacyConfigPath = path.join(basePath, CONFIG_DIR, "volume.yaml");
 
@@ -61,6 +74,16 @@ export async function readStorageConfig(
   // Default to "volume" type for backward compatibility
   if (!config.type) {
     config.type = "volume";
+  }
+
+  if (config.type === "memory" && normalizeMemoryToArtifact) {
+    if (!memoryTypeWarnedPaths.has(actualPath)) {
+      memoryTypeWarnedPaths.add(actualPath);
+      process.stderr.write(
+        `warning: type: "memory" in ${actualPath} is deprecated; rewrite as type: "artifact" (removed in next major)\n`,
+      );
+    }
+    config.type = "artifact";
   }
 
   return config;

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.21.7...guest-agent-v0.22.0) (2026-04-22)
+
+
+### Features
+
+* multi-mount artifact backend + checkpoint schema ([#10629](https://github.com/vm0-ai/vm0/issues/10629)) ([0f8af96](https://github.com/vm0-ai/vm0/commit/0f8af96cd55dedd89534ff430765cc34661a55fc))
+
 ## [0.21.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.21.6...guest-agent-v0.21.7) (2026-04-22)
 
 

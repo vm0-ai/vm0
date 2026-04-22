@@ -70,6 +70,7 @@
         "app/api/zero/billing/downgrade/__tests__/route.test.ts",
         "app/api/zero/billing/invoices/__tests__/route.test.ts",
         "app/api/zero/billing/portal/__tests__/route.test.ts",
+        "app/api/zero/billing/redeem/**/__tests__/route.test.ts",
         "app/api/zero/billing/status/__tests__/route.test.ts",
         "app/api/zero/usage/members/__tests__/route.test.ts",
         "app/api/zero/usage/runs/__tests__/route.test.ts",

@@ -5,6 +5,7 @@ import { GET, DELETE } from "../route";
 import {
   createTestRequest,
   createTestOrg,
+  createTestSecret,
   insertTestPlatformConnector,
   countPlatformConnectorRows,
 } from "../../../../../../src/__tests__/api-test-helpers";
@@ -141,6 +142,27 @@ describe("DELETE /api/zero/connectors/:type", () => {
 
     expect(await countPlatformConnectorRows(orgId, userId, "github")).toBe(0);
     const after = await GET(createTestRequest(connectorUrl("github")));
+    expect(after.status).toBe(404);
+  });
+
+  it("clears api-token secret alongside platform row for openai", async () => {
+    // openai is the first connector that legitimately supports both
+    // api-token and platform auth methods. If a user sets the API key AND
+    // clicks Enable, DELETE must wipe both — otherwise the secret lingers
+    // and the connector still shows as connected via api-token derivation.
+    const userId = uniqueId("zcdel-openai-dual");
+    const { orgId } = await setupOrg(userId);
+    await createTestSecret("OPENAI_TOKEN", "sk-test-key");
+    await insertTestPlatformConnector(orgId, userId, "openai");
+    expect(await countPlatformConnectorRows(orgId, userId, "openai")).toBe(1);
+
+    const response = await DELETE(
+      createTestRequest(connectorUrl("openai"), { method: "DELETE" }),
+    );
+    expect(response.status).toBe(204);
+
+    expect(await countPlatformConnectorRows(orgId, userId, "openai")).toBe(0);
+    const after = await GET(createTestRequest(connectorUrl("openai")));
     expect(after.status).toBe(404);
   });
 });

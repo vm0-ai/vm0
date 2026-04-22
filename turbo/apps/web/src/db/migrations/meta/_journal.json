@@ -2070,22 +2070,36 @@
     {
       "idx": 295,
       "version": "7",
-      "when": 1776834558379,
-      "tag": "0295_watery_colleen_wing",
+      "when": 1776850289326,
+      "tag": "0295_friendly_mister_sinister",
       "breakpoints": true
     },
     {
       "idx": 296,
       "version": "7",
-      "when": 1776838892039,
-      "tag": "0296_free_junta",
+      "when": 1776850290326,
+      "tag": "0296_watery_colleen_wing",
       "breakpoints": true
     },
     {
       "idx": 297,
       "version": "7",
-      "when": 1776848438437,
-      "tag": "0297_careless_polaris",
+      "when": 1776850291326,
+      "tag": "0297_free_junta",
+      "breakpoints": true
+    },
+    {
+      "idx": 298,
+      "version": "7",
+      "when": 1776860068792,
+      "tag": "0298_flip_memory_storages_to_artifact",
+      "breakpoints": true
+    },
+    {
+      "idx": 299,
+      "version": "7",
+      "when": 1776862175793,
+      "tag": "0299_quick_emma_frost",
       "breakpoints": true
     }
   ]

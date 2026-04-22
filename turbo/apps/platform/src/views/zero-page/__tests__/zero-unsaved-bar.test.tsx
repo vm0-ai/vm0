@@ -7,7 +7,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import {
   setMockSchedules,
   createMockScheduleResponse,
@@ -30,24 +30,20 @@ function mockAPIs(overrides: Partial<ScheduleResponse> = {}) {
   ]);
 }
 
-async function loadAndMakeDirty(user: ReturnType<typeof userEvent.setup>) {
+async function loadAndMakeDirty() {
   detachedSetupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
-  await waitFor(() => {
-    expect(
-      screen.getByPlaceholderText("Leave blank to auto-generate"),
-    ).toBeInTheDocument();
+  const input = await waitFor(() => {
+    const el = screen.getByPlaceholderText("Leave blank to auto-generate");
+    expect(el).toBeInTheDocument();
+    return el;
   });
-  await user.type(
-    screen.getByPlaceholderText("Leave blank to auto-generate"),
-    "My description",
-  );
+  await fill(input, "My description");
 }
 
 describe("zero unsaved bar - unsaved changes indicator (SCHED-D-093)", () => {
   it("shows unsaved changes indicator when settings form is dirty", async () => {
-    const user = userEvent.setup();
     mockAPIs();
-    await loadAndMakeDirty(user);
+    await loadAndMakeDirty();
 
     await waitFor(() => {
       expect(screen.getByTestId("unsaved-bar")).toBeInTheDocument();
@@ -59,7 +55,7 @@ describe("zero unsaved bar - discard button reverts changes (SCHED-D-095)", () =
   it("hides unsaved changes bar when Discard is clicked", async () => {
     const user = userEvent.setup();
     mockAPIs();
-    await loadAndMakeDirty(user);
+    await loadAndMakeDirty();
 
     await waitFor(() => {
       expect(screen.getByTestId("unsaved-bar")).toBeInTheDocument();
@@ -81,7 +77,7 @@ describe("zero unsaved bar - save button persists changes (SCHED-D-096)", () => 
           schedule: createMockScheduleResponse({
             displayName: "Zero",
             timezone: "America/New_York",
-            description: "Daily morning briefingMy description",
+            description: "My description",
           }),
           created: false,
         });
@@ -90,7 +86,7 @@ describe("zero unsaved bar - save button persists changes (SCHED-D-096)", () => 
 
     const user = userEvent.setup();
     mockAPIs();
-    await loadAndMakeDirty(user);
+    await loadAndMakeDirty();
 
     await waitFor(() => {
       expect(screen.getByTestId("unsaved-bar")).toBeInTheDocument();

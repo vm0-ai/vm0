@@ -34,7 +34,7 @@ async function setupPhoneCallback() {
   mockClerk({ userId });
 
   await createTestOrg(uniqueId("org"));
-  const { composeId } = await createTestCompose("phone-test-agent");
+  const { composeId } = await createTestCompose(uniqueId("phone-agent"));
 
   const { runId } = await seedTestRun(userId, composeId, {
     prompt: "Phone call transcript",

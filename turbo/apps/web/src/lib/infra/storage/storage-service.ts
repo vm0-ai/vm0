@@ -5,6 +5,7 @@ import { logger } from "../../shared/logger";
 import { badRequest } from "../../shared/errors";
 import {
   DEFAULT_MEMORY_MOUNT_PATH,
+  type AdditionalArtifact,
   type AdditionalVolume,
   type AgentVolumeConfig,
   type ResolvedArtifact,
@@ -382,6 +383,104 @@ async function resolveAdditionalVolume(
 }
 
 /**
+ * Resolve the primary (compose-derived) artifact to a ManifestArtifact.
+ * Uses the batched latest lookup when possible and falls back to an
+ * individual resolveVersion call for pinned versions.
+ */
+async function resolvePrimaryArtifact(
+  artifactSource: ResolvedArtifact | null,
+  allResults: Map<string, { versionId: string; s3Key: string }>,
+  runtimeClerkOrgId: string,
+  userId: string,
+  bucketName: string,
+): Promise<ManifestArtifact | null> {
+  if (!artifactSource) return null;
+
+  const isLatest = artifactSource.vasVersion === "latest";
+  let versionId: string;
+  let s3Key: string;
+
+  if (isLatest) {
+    const key = lookupKey(
+      runtimeClerkOrgId,
+      userId,
+      artifactSource.vasStorageName,
+      "artifact",
+    );
+    const resolved = allResults.get(key);
+    if (!resolved) {
+      throw new Error(
+        `Storage "${artifactSource.vasStorageName}" not found in database`,
+      );
+    }
+    versionId = resolved.versionId;
+    s3Key = resolved.s3Key;
+  } else {
+    const resolved = await resolveVersion(
+      runtimeClerkOrgId,
+      artifactSource.vasStorageName,
+      "artifact",
+      artifactSource.vasVersion,
+      userId,
+    );
+    versionId = resolved.versionId;
+    s3Key = resolved.s3Key;
+  }
+
+  const archiveKey = `${s3Key}/archive.tar.gz`;
+  const manifestKey = `${s3Key}/manifest.json`;
+  const [archiveUrl, manifestUrl] = await Promise.all([
+    generatePresignedUrl(bucketName, archiveKey),
+    generatePresignedUrl(bucketName, manifestKey),
+  ]);
+  log.debug(
+    `Generated archive URL for artifact "${artifactSource.vasStorageName}"`,
+  );
+  return {
+    mountPath: artifactSource.mountPath,
+    vasStorageName: artifactSource.vasStorageName,
+    vasVersionId: versionId,
+    archiveUrl,
+    manifestUrl,
+  };
+}
+
+/**
+ * Resolve a single additional artifact by name/version against the runtime
+ * org, returning a ManifestArtifact with presigned URLs. Missing storages
+ * bubble up — additional artifacts are treated as required (unlike additional
+ * volumes) because the caller explicitly opted them in by name.
+ */
+async function resolveAdditionalArtifact(
+  entry: AdditionalArtifact,
+  runtimeClerkOrgId: string,
+  userId: string,
+  bucketName: string,
+): Promise<ManifestArtifact> {
+  const version = entry.version || "latest";
+  const { versionId, s3Key } = await resolveVersion(
+    runtimeClerkOrgId,
+    entry.name,
+    "artifact",
+    version,
+    userId,
+  );
+  const archiveKey = `${s3Key}/archive.tar.gz`;
+  const manifestKey = `${s3Key}/manifest.json`;
+  const [archiveUrl, manifestUrl] = await Promise.all([
+    generatePresignedUrl(bucketName, archiveKey),
+    generatePresignedUrl(bucketName, manifestKey),
+  ]);
+  return {
+    mountPath: entry.mountPath,
+    vasStorageName: entry.name,
+    vasVersionId: versionId,
+    archiveUrl,
+    manifestUrl,
+  };
+}
+
+/**
  * Determine the artifact source: use resumeArtifact if provided, otherwise fall back to resolved artifact.
  */
 function resolveArtifactSource(
@@ -433,6 +532,7 @@ export async function prepareStorageManifest(
   resumeArtifactMountPath?: string,
   memoryName?: string,
   additionalVolumes?: AdditionalVolume[],
+  additionalArtifacts?: AdditionalArtifact[],
 ): Promise<StorageManifest> {
   log.debug("Preparing storage manifest with presigned URLs...");
 
@@ -445,14 +545,15 @@ export async function prepareStorageManifest(
   // Skip artifact in resolveVolumes if we're using resumeArtifact (we'll handle it separately)
   const skipArtifact = !!resumeArtifact;
 
-  // If no agent config and no resume artifact and no memory and no additional volumes, return empty manifest
+  // If no agent config and no resume artifact and no memory and no additional volumes/artifacts, return empty manifest
   if (
     !agentConfig &&
     !resumeArtifact &&
     !memoryName &&
-    (!additionalVolumes || additionalVolumes.length === 0)
+    (!additionalVolumes || additionalVolumes.length === 0) &&
+    (!additionalArtifacts || additionalArtifacts.length === 0)
   ) {
-    return { storages: [], artifact: null, memory: null };
+    return { storages: [], artifacts: [], memory: null };
   }
 
   // Resolve volumes from agent config.
@@ -517,8 +618,23 @@ export async function prepareStorageManifest(
     }),
   );
 
+  // Resolve additional artifacts in parallel. These are always resolved
+  // individually (no batching) because the list is typically small and each
+  // entry carries an explicit mountPath, so there's no shared agent/system
+  // fallback path to optimize.
+  const resolvedAdditionalArtifacts = await Promise.all(
+    (additionalArtifacts ?? []).map((entry) => {
+      return resolveAdditionalArtifact(
+        entry,
+        runtimeClerkOrgId,
+        userId,
+        bucketName,
+      );
+    }),
+  );
+
   // Map batch results to manifest entries
-  return buildManifestFromResults(
+  const manifest = await buildManifestFromResults(
     allResults,
     partitioned,
     agentClerkOrgId,
@@ -530,6 +646,23 @@ export async function prepareStorageManifest(
     nonLatestResolved,
     nonLatestAdditionalResolved,
   );
+
+  if (resolvedAdditionalArtifacts.length === 0) return manifest;
+
+  // Merge additional artifacts, deduplicating by mount path. Additional
+  // artifacts override any primary artifact mounted at the same path.
+  const additionalMountPaths = new Set(
+    resolvedAdditionalArtifacts.map((a) => {
+      return a.mountPath;
+    }),
+  );
+  const filteredArtifacts = manifest.artifacts.filter((a) => {
+    return !additionalMountPaths.has(a.mountPath);
+  });
+  return {
+    ...manifest,
+    artifacts: [...filteredArtifacts, ...resolvedAdditionalArtifacts],
+  };
 }
 
 /** Partitioned volumes for batch vs individual resolution */
@@ -684,6 +817,15 @@ async function executeBatchResolution(
   }
 
   if (memoryName) {
+    // Dual-read compat for epic #10577 Phase 2 type flip (#10601):
+    // check type='artifact' first (post-flip state), fall back to
+    // type='memory' (pre-flip state). Removed in #10603.
+    remainingLookups.push({
+      orgId: runtimeClerkOrgId,
+      userId,
+      name: memoryName,
+      type: "artifact",
+    });
     remainingLookups.push({
       orgId: runtimeClerkOrgId,
       userId,
@@ -949,71 +1091,41 @@ async function buildManifestFromResults(
     }),
   ];
 
-  // Build artifact
-  const artifactIsLatest =
-    artifactSource && artifactSource.vasVersion === "latest";
-  let artifact: ManifestArtifact | null = null;
-
-  if (artifactSource && artifactIsLatest) {
-    const key = lookupKey(
-      runtimeClerkOrgId,
-      userId,
-      artifactSource.vasStorageName,
-      "artifact",
-    );
-    const resolved = allResults.get(key);
-    if (!resolved) {
-      throw new Error(
-        `Storage "${artifactSource.vasStorageName}" not found in database`,
-      );
-    }
-    const archiveKey = `${resolved.s3Key}/archive.tar.gz`;
-    const manifestKey = `${resolved.s3Key}/manifest.json`;
-    const [archiveUrl, manifestUrl] = await Promise.all([
-      generatePresignedUrl(bucketName, archiveKey),
-      generatePresignedUrl(bucketName, manifestKey),
-    ]);
-    artifact = {
-      mountPath: artifactSource.mountPath,
-      vasStorageName: artifactSource.vasStorageName,
-      vasVersionId: resolved.versionId,
-      archiveUrl,
-      manifestUrl,
-    };
-    log.debug(
-      `Generated archive URL for artifact "${artifactSource.vasStorageName}"`,
-    );
-  } else if (artifactSource) {
-    // Non-latest artifact: resolve individually
-    const { versionId, s3Key } = await resolveVersion(
-      runtimeClerkOrgId,
-      artifactSource.vasStorageName,
-      "artifact",
-      artifactSource.vasVersion,
-      userId,
-    );
-    const archiveKey = `${s3Key}/archive.tar.gz`;
-    const manifestKey = `${s3Key}/manifest.json`;
-    const [archiveUrl, manifestUrl] = await Promise.all([
-      generatePresignedUrl(bucketName, archiveKey),
-      generatePresignedUrl(bucketName, manifestKey),
-    ]);
-    artifact = {
-      mountPath: artifactSource.mountPath,
-      vasStorageName: artifactSource.vasStorageName,
-      vasVersionId: versionId,
-      archiveUrl,
-      manifestUrl,
-    };
-  }
+  const artifact = await resolvePrimaryArtifact(
+    artifactSource,
+    allResults,
+    runtimeClerkOrgId,
+    userId,
+    bucketName,
+  );
 
   // Build memory
   let memory: ManifestArtifact | null = null;
   if (memoryName) {
-    const key = lookupKey(runtimeClerkOrgId, userId, memoryName, "memory");
-    const resolved = allResults.get(key);
+    // Dual-read compat for epic #10577 Phase 2 type flip (#10601):
+    // prefer type='artifact' row, fall back to type='memory'. Removed in #10603.
+    const artifactKey = lookupKey(
+      runtimeClerkOrgId,
+      userId,
+      memoryName,
+      "artifact",
+    );
+    const memoryKey = lookupKey(
+      runtimeClerkOrgId,
+      userId,
+      memoryName,
+      "memory",
+    );
+    const resolved = lookupWithFallback(allResults, artifactKey, memoryKey);
     if (!resolved) {
       throw new Error(`Storage "${memoryName}" not found in database`);
+    }
+    if (!allResults.has(artifactKey)) {
+      log.info("memory dual-read fallback hit", {
+        memoryName,
+        orgId: runtimeClerkOrgId,
+        userId,
+      });
     }
     const archiveKey = `${resolved.s3Key}/archive.tar.gz`;
     const archiveUrl = await generatePresignedUrl(bucketName, archiveKey);
@@ -1045,7 +1157,7 @@ async function buildManifestFromResults(
 
   return {
     storages: filteredStorages,
-    artifact,
+    artifacts: artifact ? [artifact] : [],
     memory,
   };
 }

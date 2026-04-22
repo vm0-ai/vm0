@@ -154,6 +154,7 @@ export interface ChatThreadSignals {
   // ── Agent info (derived from threadData$.agentId) ─────────────────────────
   agentId$: Computed<Promise<string | null>>;
   agentDisplayName$: Computed<Promise<string | null>>;
+  agentModelDefault$: Computed<Promise<ModelProviderSelection | null>>;
   agentPinned$: Computed<Promise<boolean | null>>;
   // ── Per-thread UI state ───────────────────────────────────────────────────
   timelineExpandedIds$: Computed<Set<string>>;
@@ -324,6 +325,23 @@ function createAgentInfoSignals(
     return agent?.displayName ?? null;
   });
 
+  const agentModelDefault$ = computed(
+    async (get): Promise<ModelProviderSelection | null> => {
+      const agentId = await get(agentId$);
+      if (!agentId) {
+        return null;
+      }
+      const agent = await get(agentById(agentId));
+      if (!agent?.modelProviderId || !agent.selectedModel) {
+        return null;
+      }
+      return {
+        modelProviderId: agent.modelProviderId,
+        selectedModel: agent.selectedModel,
+      };
+    },
+  );
+
   const agentPinned$ = computed(async (get): Promise<boolean | null> => {
     const agentId = await get(agentId$);
     if (!agentId) {
@@ -333,7 +351,7 @@ function createAgentInfoSignals(
     return ids.includes(agentId);
   });
 
-  return { agentId$, agentDisplayName$, agentPinned$ };
+  return { agentId$, agentDisplayName$, agentModelDefault$, agentPinned$ };
 }
 
 // ---------------------------------------------------------------------------
@@ -977,58 +995,13 @@ function createSendMessage(deps: SendMessageDeps) {
 }
 
 // ---------------------------------------------------------------------------
-// Factory: createChatThreadSignals
+// Sub-factory: thinking phrase animation
 // ---------------------------------------------------------------------------
 
-export function createChatThreadSignals(
-  threadId: string,
-  draft: DraftSignals,
-): ChatThreadSignals {
-  const { threadData$, reloadThread$ } = createThreadData(threadId);
-  const { modelSelection$, setModelSelection$ } =
-    createModelSelection(threadData$);
-  const { setScrollContainer$, autoScroll$, scrollToBottom$, scrollToTop$ } =
-    createScrollSignals(threadId);
-  const { skeletonVisible$, hideSkeleton$ } = createSkeletonSignals();
-  const { composerFileInput$, setComposerFileInput$ } =
-    createComposerFileInput();
-  const { agentId$, agentDisplayName$, agentPinned$ } =
-    createAgentInfoSignals(threadData$);
-  const {
-    timelineExpandedIds$,
-    toggleTimelineExpanded$,
-    copiedMessageId$,
-    copyMessage$,
-  } = createThreadUIState();
-  const {
-    latestChatMessageId$,
-    groupedChatMessages$,
-    fetchNextPage$,
-    insertOptimisticMessage$,
-  } = createPagedMessages(threadId);
-
-  const { scheduleDraftSync$, cancelDraftSync$, flushDraftClear$ } =
-    createDraftSync(threadId, draft);
-
-  const { allFinished$, loadPagedMessages$, cancelRun$ } = createRunTracking(
-    threadId,
-    reloadThread$,
-    threadData$,
-    fetchNextPage$,
-    autoScroll$,
-  );
-
-  const { sendMessage$ } = createSendMessage({
-    threadId,
-    threadData$,
-    draft,
-    cancelDraftSync$,
-    flushDraftClear$,
-    insertOptimisticMessage$,
-    scrollToBottom$,
-  });
-
-  const { setInputRef$, focusInput$ } = createInputRef();
+function createPhraseLoop(
+  groupedChatMessages$: Computed<Promise<GroupedChatMessageGroup[]>>,
+  allFinished$: Computed<Promise<boolean>>,
+) {
   const internalBlockColors$ =
     state<[string, string, string]>(shuffleBlockColors());
   const blockColors$ = computed((get) => {
@@ -1078,6 +1051,64 @@ export function createChatThreadSignals(
     },
   );
 
+  return { blockColors$, rotatingPhrase$, donePhrase$, runPhraseLoop$ };
+}
+
+// ---------------------------------------------------------------------------
+// Factory: createChatThreadSignals
+// ---------------------------------------------------------------------------
+
+export function createChatThreadSignals(
+  threadId: string,
+  draft: DraftSignals,
+): ChatThreadSignals {
+  const { threadData$, reloadThread$ } = createThreadData(threadId);
+  const { modelSelection$, setModelSelection$ } =
+    createModelSelection(threadData$);
+  const { setScrollContainer$, autoScroll$, scrollToBottom$, scrollToTop$ } =
+    createScrollSignals(threadId);
+  const { skeletonVisible$, hideSkeleton$ } = createSkeletonSignals();
+  const { composerFileInput$, setComposerFileInput$ } =
+    createComposerFileInput();
+  const { agentId$, agentDisplayName$, agentModelDefault$, agentPinned$ } =
+    createAgentInfoSignals(threadData$);
+  const {
+    timelineExpandedIds$,
+    toggleTimelineExpanded$,
+    copiedMessageId$,
+    copyMessage$,
+  } = createThreadUIState();
+  const {
+    latestChatMessageId$,
+    groupedChatMessages$,
+    fetchNextPage$,
+    insertOptimisticMessage$,
+  } = createPagedMessages(threadId);
+
+  const { scheduleDraftSync$, cancelDraftSync$, flushDraftClear$ } =
+    createDraftSync(threadId, draft);
+  const { allFinished$, loadPagedMessages$, cancelRun$ } = createRunTracking(
+    threadId,
+    reloadThread$,
+    threadData$,
+    fetchNextPage$,
+    autoScroll$,
+  );
+
+  const { sendMessage$ } = createSendMessage({
+    threadId,
+    threadData$,
+    draft,
+    cancelDraftSync$,
+    flushDraftClear$,
+    insertOptimisticMessage$,
+    scrollToBottom$,
+  });
+
+  const { setInputRef$, focusInput$ } = createInputRef();
+  const { blockColors$, rotatingPhrase$, donePhrase$, runPhraseLoop$ } =
+    createPhraseLoop(groupedChatMessages$, allFinished$);
+
   return {
     threadData$,
     modelSelection$,
@@ -1095,6 +1126,7 @@ export function createChatThreadSignals(
     setComposerFileInput$,
     agentId$,
     agentDisplayName$,
+    agentModelDefault$,
     agentPinned$,
     timelineExpandedIds$,
     toggleTimelineExpanded$,

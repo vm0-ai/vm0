@@ -1,6 +1,5 @@
 import { command } from "ccstate";
 import { createElement } from "react";
-import { MinimalSidebarLayout } from "../../views/zero-page/zero-directed-shared.tsx";
 import { ReportErrorPage } from "../../views/report-error/report-error-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
@@ -10,10 +9,7 @@ import { resetReportState$ } from "./report-error-signals.ts";
 
 export const setupReportErrorPage$ = command(
   async ({ set }, signal: AbortSignal) => {
-    set(
-      updatePage$,
-      createElement(MinimalSidebarLayout, null, createElement(ReportErrorPage)),
-    );
+    set(updatePage$, createElement(ReportErrorPage), "minimal");
     set(updateDocumentTitle$, "Report Error");
     set(resetReportState$);
 

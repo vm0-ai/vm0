@@ -21,67 +21,6 @@ const VALID_RULE_METHODS = new Set([
   "ANY",
 ]);
 
-const VALID_GRAPHQL_TYPES = new Set(["query", "mutation", "subscription"]);
-
-const GRAPHQL_IDENTIFIER_RE = /^[a-zA-Z_][a-zA-Z0-9_]*\*?$/;
-
-/** Matches GraphQL field patterns: `name`, `name*`, `a.b.c`, `a.b.*` (bare `*` handled before regex). */
-const GRAPHQL_FIELD_PATTERN_RE =
-  /^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*\*?$|^([a-zA-Z_][a-zA-Z0-9_]*\.)+\*$/;
-
-function validateGraphQLModifiers(
-  modifiers: string[],
-  rule: string,
-  permName: string,
-  serviceName: string,
-): void {
-  if (modifiers.length === 0) {
-    throw new Error(
-      `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": GraphQL keyword requires at least one modifier (type:, operationName:, or field:)`,
-    );
-  }
-  for (const part of modifiers) {
-    if (part.startsWith("type:")) {
-      const val = part.slice(5);
-      if (!VALID_GRAPHQL_TYPES.has(val)) {
-        throw new Error(
-          `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": GraphQL type must be "query", "mutation", or "subscription", got "${val}"`,
-        );
-      }
-    } else if (part.startsWith("operationName:")) {
-      const val = part.slice(14);
-      if (!val) {
-        throw new Error(
-          `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": empty GraphQL operationName`,
-        );
-      }
-      if (val !== "*" && !GRAPHQL_IDENTIFIER_RE.test(val)) {
-        throw new Error(
-          `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": invalid GraphQL operationName pattern "${val}"`,
-        );
-      }
-    } else if (part.startsWith("field:")) {
-      const fields = part.slice(6).split(",");
-      for (const val of fields) {
-        if (!val) {
-          throw new Error(
-            `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": empty GraphQL field name`,
-          );
-        }
-        if (val !== "*" && !GRAPHQL_FIELD_PATTERN_RE.test(val)) {
-          throw new Error(
-            `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": invalid GraphQL field pattern "${val}"`,
-          );
-        }
-      }
-    } else {
-      throw new Error(
-        `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": unknown GraphQL modifier "${part}"`,
-      );
-    }
-  }
-}
-
 function validatePathSegments(
   path: string,
   rule: string,
@@ -153,18 +92,7 @@ export function validateRule(
     );
   }
 
-  // Check for GraphQL suffix: "POST /graphql GraphQL type:query operationName:foo"
-  const gqlIdx = rest.indexOf(" GraphQL");
-  if (gqlIdx !== -1) {
-    const path = rest.slice(0, gqlIdx);
-    const suffixStr = rest.slice(gqlIdx + 1); // "GraphQL type:query ..."
-    const suffixParts = suffixStr.split(/\s+/);
-    // suffixParts[0] is "GraphQL", rest are modifiers
-    validatePathSegments(path, rule, permName, serviceName);
-    validateGraphQLModifiers(suffixParts.slice(1), rule, permName, serviceName);
-  } else {
-    validatePathSegments(rest, rule, permName, serviceName);
-  }
+  validatePathSegments(rest, rule, permName, serviceName);
 }
 
 /**

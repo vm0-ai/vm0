@@ -25,6 +25,13 @@
   --color-sidebar-active: hsl(var(--primary) / 0.95);
   --color-sidebar-primary: hsl(var(--white));
   --color-sidebar-accent: hsl(var(--gray-100));
+
+  /* Credit balance breakdown segment colors (usage bar chart) */
+  --color-credit-free: #3eb7b8;
+  --color-credit-promotional: #e88033;
+  --color-credit-pay-as-you-go: #97918a;
+  --color-credit-plan-pro: #edc43e;
+  --color-credit-plan-team: #6b8de3;
 }
 
 /* Landing tagline carousel: smooth vertical fade-in */
@@ -126,9 +133,10 @@
 
 /* Zero app: inherits global cool gray tokens; only card-specific tokens defined here */
 .zero-app {
-  --zero-card-radius: 0.75rem;
+  --zero-card-radius: 1rem;
   --zero-card-border: hsl(var(--border));
-  --zero-card-shadow: 0 1px 3px hsl(220 12% 20% / 0.08);
+  --zero-card-shadow:
+    0 2px 12px hsl(220 12% 50% / 0.04), 0 0 0 0.5px hsl(220 12% 50% / 0.02);
 }
 
 /* Search bar / text input (matches form inputs: white surface in light theme) */
@@ -978,4 +986,75 @@ details[open] > summary > span:first-child {
 
 .sheet-content[data-side="right"][data-state="closed"] {
   animation: sheet-slide-out-right 0.25s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* ---------------------------------------------------------------------------
+ * Mic button – equalizer bars recording animation (#3EB7B8 teal)
+ * ------------------------------------------------------------------------- */
+
+@keyframes mic-eq-bar {
+  0%,
+  100% {
+    transform: scaleY(0.3);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+.mic-eq-bar {
+  width: 2px;
+  height: 14px;
+  border-radius: 1px;
+  background-color: white;
+  transform-origin: bottom;
+  animation: mic-eq-bar 0.8s ease-in-out infinite;
+}
+
+.mic-eq-bar:nth-child(1) {
+  animation-duration: 0.7s;
+}
+
+.mic-eq-bar:nth-child(2) {
+  animation-duration: 1.1s;
+  animation-delay: 0.15s;
+}
+
+.mic-eq-bar:nth-child(4) {
+  animation-duration: 0.9s;
+  animation-delay: 0.25s;
+}
+
+.mic-eq-bar:nth-child(5) {
+  animation-duration: 1.2s;
+  animation-delay: 0.1s;
+}
+
+/* Transcribing state — sequential bouncing dots */
+@keyframes mic-eq-dot-bounce {
+  0%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  50% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+
+.mic-eq-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background-color: white;
+  animation: mic-eq-dot-bounce 1.2s ease-in-out infinite;
+}
+
+.mic-eq-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.mic-eq-dot:nth-child(3) {
+  animation-delay: 0.4s;
 }

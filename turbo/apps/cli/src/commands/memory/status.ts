@@ -12,8 +12,12 @@ export const statusCommand = new Command()
     withErrorHandler(async () => {
       const cwd = process.cwd();
 
-      // Read config
-      const config = await readStorageConfig(cwd);
+      // Read config. Opt out of memory→artifact normalisation so this
+      // command keeps accepting the dirs `vm0 memory init` writes (removed
+      // in #10603 together with the rest of the memory CLI).
+      const config = await readStorageConfig(cwd, {
+        normalizeMemoryToArtifact: false,
+      });
       if (!config) {
         throw new Error("No memory initialized in this directory", {
           cause: new Error("Run: vm0 memory init"),

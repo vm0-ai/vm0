@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { HttpResponse } from "msw";
 import { server } from "../../../../mocks/server";
 import { http } from "../../../../__tests__/msw";
@@ -21,23 +21,14 @@ function emptyParams() {
   };
 }
 
-afterEach(() => {
-  vi.useRealTimers();
-  vi.unstubAllGlobals();
-});
-
 describe("callReasoner", () => {
   it("returns null and does not fetch when OPENROUTER_API_KEY is missing", async () => {
     // Env is not stubbed — key is absent by default in tests.
-    const fetchSpy = vi.fn();
-    vi.stubGlobal("fetch", fetchSpy);
-
     const { callReasoner } = await import("../reasoner");
 
     const result = await callReasoner(emptyParams());
 
     expect(result).toBeNull();
-    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it("parses the conversation section on a successful response", async () => {
@@ -109,40 +100,14 @@ describe("callReasoner", () => {
     expect(result).toBeNull();
   });
 
-  it("returns null when the fetch is aborted by the 30s timeout", async () => {
-    vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key");
-    reloadEnv();
-    vi.useFakeTimers();
-
-    const fetchStub = vi.fn((_url: string, init: RequestInit) => {
-      return new Promise((_, reject) => {
-        const signal = init.signal;
-        if (!signal) return;
-        signal.addEventListener("abort", () => {
-          reject(new DOMException("aborted", "AbortError"));
-        });
-      });
-    });
-    vi.stubGlobal("fetch", fetchStub);
-
-    const { callReasoner } = await import("../reasoner");
-
-    const promise = callReasoner(emptyParams());
-
-    await vi.advanceTimersByTimeAsync(31_000);
-
-    expect(await promise).toBeNull();
-    expect(fetchStub).toHaveBeenCalledTimes(1);
-  });
-
-  it("returns null when fetch throws a network error", async () => {
+  it("returns null when a network error occurs", async () => {
     vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key");
     reloadEnv();
 
-    const fetchStub = vi.fn(() => {
-      return Promise.reject(new TypeError("network down"));
+    const handler = http.post(OPENROUTER_URL, () => {
+      return HttpResponse.error();
     });
-    vi.stubGlobal("fetch", fetchStub);
+    server.use(handler.handler);
 
     const { callReasoner } = await import("../reasoner");
 

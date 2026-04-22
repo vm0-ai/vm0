@@ -205,13 +205,14 @@ function buildRunContextSnapshot(context: PreparedContext): RunContextSnapshot {
         vasVersionId: s.vasVersionId,
       };
     }),
-    artifact: manifest?.artifact
-      ? {
-          mountPath: manifest.artifact.mountPath,
-          vasStorageName: manifest.artifact.vasStorageName,
-          vasVersionId: manifest.artifact.vasVersionId,
-        }
-      : null,
+    artifact:
+      manifest && manifest.artifacts.length > 0
+        ? {
+            mountPath: manifest.artifacts[0]!.mountPath,
+            vasStorageName: manifest.artifacts[0]!.vasStorageName,
+            vasVersionId: manifest.artifacts[0]!.vasVersionId,
+          }
+        : null,
     memory: manifest?.memory
       ? {
           mountPath: manifest.memory.mountPath,

@@ -4,11 +4,7 @@ import { testContext, uniqueId } from "../../../../__tests__/test-helpers";
 import { seedTestCompose } from "../../../../__tests__/db-test-seeders/agents";
 import { seedTestRun } from "../../../../__tests__/db-test-seeders/runs";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route covers these services yet
-import {
-  createSession,
-  endSession,
-  getPriorVoiceChatAgentSessionId,
-} from "../session-service";
+import { createSession, endSession } from "../session-service";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: seed tasks on the stale/ended session to assert cancel hook
 import {
   attachTaskRun,
@@ -46,14 +42,12 @@ async function seedSessionWithRun(options: {
   userId: string;
   agentId: string;
   runStatus?: string;
-  runResult?: Record<string, unknown>;
   sessionStatus?: "active" | "preparing" | "ended" | "timeout";
   createdAt?: Date;
 }) {
   const { runId } = await seedTestRun(options.userId, options.agentId, {
     orgId: options.orgId,
     status: options.runStatus ?? "running",
-    result: options.runResult,
     triggerSource: "voice-chat",
   });
 
@@ -143,147 +137,13 @@ describe("endSession — graceful slow-brain exit", () => {
     expect(sessionAfter!.endedAt).not.toBeNull();
 
     // The critical invariant: agent_runs.status MUST NOT be mutated.
-    // Prior behaviour flipped it to 'cancelled' which prevented the
-    // agent-complete webhook from populating result.agentSessionId —
-    // and consequently blocked session continuation.
+    // Slow-brain sees session-end on its next poll and self-exits cleanly;
+    // hard-cancelling would abort mid-step and drop the event trail.
     const [runAfter] = await db
       .select({ status: agentRuns.status })
       .from(agentRuns)
       .where(eq(agentRuns.id, runId));
     expect(runAfter!.status).toBe("running");
-  });
-});
-
-describe("getPriorVoiceChatAgentSessionId", () => {
-  it("returns the agentSessionId from the most recent ended session", async () => {
-    context.setupMocks();
-    const { userId, orgId, agentId } = await seedAgent();
-
-    await seedSessionWithRun({
-      orgId,
-      userId,
-      agentId,
-      sessionStatus: "ended",
-      runResult: { agentSessionId: "older-cc-session" },
-      createdAt: new Date(Date.now() - 2 * 60_000),
-    });
-    await seedSessionWithRun({
-      orgId,
-      userId,
-      agentId,
-      sessionStatus: "ended",
-      runResult: { agentSessionId: "newer-cc-session" },
-      createdAt: new Date(Date.now() - 30_000),
-    });
-
-    const result = await getPriorVoiceChatAgentSessionId(orgId, userId);
-    expect(result).toBe("newer-cc-session");
-  });
-
-  it("skips recent sessions whose run did not write an agentSessionId", async () => {
-    context.setupMocks();
-    const { userId, orgId, agentId } = await seedAgent();
-
-    // Earlier session has a valid id.
-    await seedSessionWithRun({
-      orgId,
-      userId,
-      agentId,
-      sessionStatus: "ended",
-      runResult: { agentSessionId: "earlier-cc-session" },
-      createdAt: new Date(Date.now() - 2 * 60_000),
-    });
-    // More recent session's run never populated result.agentSessionId
-    // (e.g. crashed before the agent-complete webhook fired). The 5-row
-    // scan should fall through past it.
-    await seedSessionWithRun({
-      orgId,
-      userId,
-      agentId,
-      sessionStatus: "ended",
-      runResult: { other: "noise" },
-      createdAt: new Date(Date.now() - 30_000),
-    });
-
-    const result = await getPriorVoiceChatAgentSessionId(orgId, userId);
-    expect(result).toBe("earlier-cc-session");
-  });
-
-  it("returns null when no prior sessions exist for the user", async () => {
-    context.setupMocks();
-    const { userId, orgId } = await seedAgent();
-
-    const result = await getPriorVoiceChatAgentSessionId(orgId, userId);
-    expect(result).toBeNull();
-  });
-
-  it("returns null when every prior session's run lacks an agentSessionId", async () => {
-    context.setupMocks();
-    const { userId, orgId, agentId } = await seedAgent();
-
-    await seedSessionWithRun({
-      orgId,
-      userId,
-      agentId,
-      sessionStatus: "ended",
-      runResult: { other: "noise" },
-    });
-
-    const result = await getPriorVoiceChatAgentSessionId(orgId, userId);
-    expect(result).toBeNull();
-  });
-
-  it("matches both 'ended' and 'timeout' status values", async () => {
-    context.setupMocks();
-    const { userId, orgId, agentId } = await seedAgent();
-
-    await seedSessionWithRun({
-      orgId,
-      userId,
-      agentId,
-      sessionStatus: "timeout",
-      runResult: { agentSessionId: "cron-timeout-cc-session" },
-    });
-
-    const result = await getPriorVoiceChatAgentSessionId(orgId, userId);
-    expect(result).toBe("cron-timeout-cc-session");
-  });
-
-  it("ignores active and preparing sessions", async () => {
-    context.setupMocks();
-    const { userId, orgId, agentId } = await seedAgent();
-
-    // Active session should be ignored even if its run already has a session id
-    // — the session is still in flight, not a valid continuation source yet.
-    await seedSessionWithRun({
-      orgId,
-      userId,
-      agentId,
-      sessionStatus: "active",
-      runResult: { agentSessionId: "still-running-cc-session" },
-    });
-
-    const result = await getPriorVoiceChatAgentSessionId(orgId, userId);
-    expect(result).toBeNull();
-  });
-
-  it("is scoped by (orgId, userId) — does not leak across users", async () => {
-    context.setupMocks();
-    const { userId, orgId, agentId } = await seedAgent();
-
-    // Seed a prior session owned by a different user. setupUser() caches the
-    // default user — passing a distinct prefix forces a fresh (userId, orgId).
-    const other = await context.setupUser({ prefix: "other-user" });
-    await seedSessionWithRun({
-      orgId: other.orgId,
-      userId: other.userId,
-      agentId,
-      sessionStatus: "ended",
-      runResult: { agentSessionId: "other-user-cc-session" },
-    });
-
-    const result = await getPriorVoiceChatAgentSessionId(orgId, userId);
-    expect(result).toBeNull();
   });
 });
 
@@ -369,24 +229,6 @@ describe("createSession — auto-end stale rows", () => {
       .from(agentRuns)
       .where(eq(agentRuns.id, runId));
     expect(run!.status).toBe("running");
-  });
-
-  it("hands the stale run's agentSessionId to getPriorVoiceChatAgentSessionId for continuation", async () => {
-    context.setupMocks();
-    const { userId, orgId, agentId } = await seedAgent();
-
-    await seedSessionWithRun({
-      orgId,
-      userId,
-      agentId,
-      sessionStatus: "active",
-      runResult: { agentSessionId: "prior-cc-session" },
-    });
-
-    await createSession(orgId, userId, agentId);
-
-    const prior = await getPriorVoiceChatAgentSessionId(orgId, userId);
-    expect(prior).toBe("prior-cc-session");
   });
 
   it("cancels in-flight tasks on the stale session it force-ends", async () => {

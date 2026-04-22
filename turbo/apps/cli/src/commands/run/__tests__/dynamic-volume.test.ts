@@ -3,7 +3,7 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server";
 import { createMockChildProcess } from "../../../mocks/spawn-helpers";
 import { runCommand } from "../index";
-import { parseVolume, collectVolumes } from "../shared";
+import { parseMount, collectMounts } from "../shared";
 import chalk from "chalk";
 
 // Mock child_process.spawn since it's an external system call boundary
@@ -145,14 +145,14 @@ describe("--volume option", () => {
     mockConsoleError.mockClear();
   });
 
-  describe("parseVolume", () => {
+  describe("parseMount", () => {
     it("should parse name:/path format", () => {
-      const result = parseVolume("my-data:/mnt/data");
+      const result = parseMount("my-data:/mnt/data", "volume");
       expect(result).toEqual({ name: "my-data", mountPath: "/mnt/data" });
     });
 
     it("should parse name:version:/path format", () => {
-      const result = parseVolume("my-data:abc123:/mnt/data");
+      const result = parseMount("my-data:abc123:/mnt/data", "volume");
       expect(result).toEqual({
         name: "my-data",
         version: "abc123",
@@ -162,7 +162,7 @@ describe("--volume option", () => {
 
     it("should reject input with no mount path", () => {
       expect(() => {
-        return parseVolume("my-data");
+        return parseMount("my-data", "volume");
       }).toThrow(
         "Invalid volume format: my-data (expected name:/path or name:version:/path)",
       );
@@ -170,19 +170,19 @@ describe("--volume option", () => {
 
     it("should reject empty name", () => {
       expect(() => {
-        return parseVolume(":/mnt/data");
+        return parseMount(":/mnt/data", "volume");
       }).toThrow("Invalid volume format: :/mnt/data (name cannot be empty)");
     });
 
     it("should reject mount path not starting with /", () => {
       expect(() => {
-        return parseVolume("my-data:abc123:not-a-path");
+        return parseMount("my-data:abc123:not-a-path", "volume");
       }).toThrow("Invalid volume mount path: not-a-path (must start with /)");
     });
 
     it("should reject empty version in 3-part format", () => {
       expect(() => {
-        return parseVolume("my-data::/mnt/data");
+        return parseMount("my-data::/mnt/data", "volume");
       }).toThrow(
         "Invalid volume format: my-data::/mnt/data (version cannot be empty)",
       );
@@ -190,17 +190,17 @@ describe("--volume option", () => {
 
     it("should reject too many parts", () => {
       expect(() => {
-        return parseVolume("a:b:c:d");
+        return parseMount("a:b:c:d", "volume");
       }).toThrow(
         "Invalid volume format: a:b:c:d (expected name:/path or name:version:/path)",
       );
     });
   });
 
-  describe("collectVolumes", () => {
+  describe("collectMounts", () => {
     it("should accumulate volumes into array", () => {
-      let result = collectVolumes("vol-a:/mnt/a", []);
-      result = collectVolumes("vol-b:/mnt/b", result);
+      let result = collectMounts("vol-a:/mnt/a", []);
+      result = collectMounts("vol-b:/mnt/b", result);
       expect(result).toEqual([
         { name: "vol-a", mountPath: "/mnt/a" },
         { name: "vol-b", mountPath: "/mnt/b" },
@@ -208,7 +208,7 @@ describe("--volume option", () => {
     });
 
     it("should start with empty array", () => {
-      const result = collectVolumes("vol:/mnt/vol", []);
+      const result = collectMounts("vol:/mnt/vol", []);
       expect(result).toEqual([{ name: "vol", mountPath: "/mnt/vol" }]);
     });
   });
@@ -231,8 +231,6 @@ describe("--volume option", () => {
         "cli",
         testUuid,
         "test prompt",
-        "--artifact",
-        "test-artifact",
         "--volume",
         "my-data:/mnt/data",
       ]);
@@ -261,8 +259,6 @@ describe("--volume option", () => {
         "cli",
         testUuid,
         "test prompt",
-        "--artifact",
-        "test-artifact",
         "--volume",
         "vol-a:/mnt/a",
         "--volume",
@@ -291,14 +287,7 @@ describe("--volume option", () => {
         ),
       );
 
-      await runCommand.parseAsync([
-        "node",
-        "cli",
-        testUuid,
-        "test prompt",
-        "--artifact",
-        "test-artifact",
-      ]);
+      await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
 
       expect(capturedBody?.additionalVolumes).toBeUndefined();
     });
@@ -320,8 +309,6 @@ describe("--volume option", () => {
         "cli",
         testUuid,
         "test prompt",
-        "--artifact",
-        "test-artifact",
         "--volume",
         "dynamic-vol:/mnt/dynamic",
         "--volume-version",

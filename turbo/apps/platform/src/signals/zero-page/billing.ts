@@ -7,6 +7,7 @@ import {
   zeroBillingInvoicesContract,
   zeroBillingDowngradeContract,
 } from "@vm0/core";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 
@@ -197,6 +198,34 @@ export const setFormAmount$ = command(({ set }, value: string) => {
   set(internalFormAmountOverride$, value);
 });
 
+/**
+ * Auto-recharge has unsaved changes when the user has toggled the switch
+ * (pendingEnabled is non-null and differs from saved) or when threshold/amount
+ * overrides differ from the saved values.
+ */
+export const autoRechargeDirty$ = computed(async (get) => {
+  const config = await get(autoRechargeConfig$);
+  const pendingEnabled = get(internalPendingEnabled$);
+  if (pendingEnabled !== null && pendingEnabled !== config.enabled) {
+    return true;
+  }
+  const thresholdOverride = get(internalFormThresholdOverride$);
+  if (thresholdOverride !== null && thresholdOverride !== config.threshold) {
+    return true;
+  }
+  const amountOverride = get(internalFormAmountOverride$);
+  if (amountOverride !== null && amountOverride !== config.amount) {
+    return true;
+  }
+  return false;
+});
+
+export const discardAutoRecharge$ = command(({ set }) => {
+  set(internalPendingEnabled$, null);
+  set(internalFormThresholdOverride$, null);
+  set(internalFormAmountOverride$, null);
+});
+
 // ---------------------------------------------------------------------------
 // Auto-recharge save
 // ---------------------------------------------------------------------------
@@ -210,13 +239,25 @@ export const saveAutoRecharge$ = command(
     const createClient = get(zeroClient$);
     const client = createClient(zeroBillingAutoRechargeContract);
     await accept(client.update({ body: config }), [200]);
-    // Clear form overrides so fields fall back to fresh server values
-    set(internalFormThresholdOverride$, null);
-    set(internalFormAmountOverride$, null);
-    // Reload billing status — autoRechargeConfig$ re-derives automatically
+    // Kick off a refetch first so autoRechargeConfig$ has a new in-flight
+    // promise carrying the just-saved values.
     set(billingReload$, (x) => {
       return x + 1;
     });
+    // Keep the optimistic overrides in place until the refetch resolves.
+    // Otherwise there's a visible flash between the override-clear and the
+    // refetch-complete where `displayEnabled` falls back to the stale
+    // last-resolved config (useLastLoadable returns the pre-save value):
+    // toggling ON and saving would blink to OFF for ~one network RTT, and
+    // the unsaved-bar briefly disappears because `autoRechargeDirty$` goes
+    // false when all overrides are null against the stale config. If the
+    // refetch fails, `accept()` inside billingStatusAsync$ already surfaces
+    // the error; leaving overrides in place lets the user retry or discard.
+    await get(autoRechargeConfig$);
+    set(internalPendingEnabled$, null);
+    set(internalFormThresholdOverride$, null);
+    set(internalFormAmountOverride$, null);
+    toast.success("Auto-recharge updated");
   },
 );
 

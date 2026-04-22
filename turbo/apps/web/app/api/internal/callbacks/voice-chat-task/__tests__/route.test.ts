@@ -162,14 +162,21 @@ describe("POST /api/internal/callbacks/voice-chat-task", () => {
     });
     expect(completed).toBeTruthy();
     expect(completed!.source).toBe("system");
-    expect(completed!.content).toBe(JSON.stringify({ taskId }));
+    expect(completed!.content).toBe(
+      JSON.stringify({
+        taskId,
+        status: "done",
+        result: "final answer",
+        error: null,
+      }),
+    );
 
     await context.mocks.flushAfter();
     expect(mockAblyPublish).toHaveBeenCalledWith(`voice:${sessionId}`, null);
   });
 
   it("marks the task failed with the error text on failed", async () => {
-    const { runId, taskId, secret } = await setupTaskWithCallback();
+    const { runId, taskId, sessionId, secret } = await setupTaskWithCallback();
 
     const response = await POST(
       createSignedCallbackRequest(
@@ -189,10 +196,23 @@ describe("POST /api/internal/callbacks/voice-chat-task", () => {
     expect(row!.status).toBe("failed");
     expect(row!.error).toBe("runner crashed");
     expect(row!.result).toBeNull();
+
+    const events = await listEvents(sessionId);
+    const completed = events.find((e) => {
+      return e.type === "task-completed";
+    });
+    expect(completed!.content).toBe(
+      JSON.stringify({
+        taskId,
+        status: "failed",
+        result: null,
+        error: "runner crashed",
+      }),
+    );
   });
 
   it("maps cancelled to failed with 'Run cancelled' default error", async () => {
-    const { runId, taskId, secret } = await setupTaskWithCallback();
+    const { runId, taskId, sessionId, secret } = await setupTaskWithCallback();
 
     const response = await POST(
       createSignedCallbackRequest(
@@ -206,10 +226,23 @@ describe("POST /api/internal/callbacks/voice-chat-task", () => {
     const row = await readTask(taskId);
     expect(row!.status).toBe("failed");
     expect(row!.error).toBe("Run cancelled");
+
+    const events = await listEvents(sessionId);
+    const completed = events.find((e) => {
+      return e.type === "task-completed";
+    });
+    expect(completed!.content).toBe(
+      JSON.stringify({
+        taskId,
+        status: "failed",
+        result: null,
+        error: "Run cancelled",
+      }),
+    );
   });
 
   it("maps timeout to failed with 'Run timeout' default error", async () => {
-    const { runId, taskId, secret } = await setupTaskWithCallback();
+    const { runId, taskId, sessionId, secret } = await setupTaskWithCallback();
 
     const response = await POST(
       createSignedCallbackRequest(
@@ -223,6 +256,19 @@ describe("POST /api/internal/callbacks/voice-chat-task", () => {
     const row = await readTask(taskId);
     expect(row!.status).toBe("failed");
     expect(row!.error).toBe("Run timeout");
+
+    const events = await listEvents(sessionId);
+    const completed = events.find((e) => {
+      return e.type === "task-completed";
+    });
+    expect(completed!.content).toBe(
+      JSON.stringify({
+        taskId,
+        status: "failed",
+        result: null,
+        error: "Run timeout",
+      }),
+    );
   });
 
   it("writes the task-completed event even when the session has already ended", async () => {

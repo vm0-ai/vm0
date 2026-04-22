@@ -3,7 +3,9 @@ import {
   FeatureSwitchKey,
   zeroVoiceChatSessionsContract,
   zeroVoiceChatContextContract,
+  zeroVoiceChatTasksContract,
   type ContextEvent,
+  type VoiceChatTask,
 } from "@vm0/core";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import { defaultAgentId$ } from "../agent.ts";
@@ -58,7 +60,10 @@ function upsertUserTranscript(
 }
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
-const PREP_TIMEOUT_CHAT_MS = 60_000;
+// 120s absorbs runner VM cold-start variance. Prep normally finishes in well
+// under 30s; the buffer guards against occasional cold sandboxes without
+// failing the UI too eagerly. Revisit (tighten) once cold-start p95 stabilises.
+const PREP_TIMEOUT_CHAT_MS = 120_000;
 const MAX_RECONNECT_ATTEMPTS = 5;
 const RECONNECT_BASE_DELAY_MS = 1000;
 export type RealtimeModel = "gpt-realtime" | "gpt-realtime-mini";
@@ -126,6 +131,16 @@ Only after your slow-brain responds can you tell the user that something is not 
 
 When you receive a message starting with [Slow-brain...], it is from your slow-brain. Incorporate that information naturally into your response. Use your own voice — do not read it verbatim. The slow-brain message provides the substance; you provide the delivery.
 
+## Receiving task updates
+
+You may also receive messages starting with [Task dispatched] or [Task completed: ...]. These are background tasks your slow-brain has kicked off on your behalf. Use them purely for situational awareness:
+
+- If the user asks "what are you doing right now?" or similar, you can mention the subject naturally — "I'm looking up that PR for you" or "I was checking your calendar."
+- Do NOT read the task message verbatim. Do NOT announce dispatch or completion unless slow-brain explicitly directs you to via a directive.
+- Do NOT interrupt an ongoing utterance when you see these — they are background context, not commands.
+
+Directives from slow-brain remain the authoritative source for what to say next. Task messages just help you stay grounded when the user asks what is happening.
+
 ## Communication style
 
 - Keep responses concise and natural. You are speaking, not writing.
@@ -143,11 +158,55 @@ function formatInjectionMessage(event: ContextEvent): string {
   return `${label} ${event.content ?? ""}`.trim();
 }
 
+const SYSTEM_TASK_INJECTION_MAX = 400;
+
+function truncateForInjection(s: string | null | undefined): string {
+  if (!s) {
+    return "";
+  }
+  return s.length > SYSTEM_TASK_INJECTION_MAX
+    ? `${s.slice(0, SYSTEM_TASK_INJECTION_MAX)}…`
+    : s;
+}
+
+function formatSystemTaskMessage(event: ContextEvent): string | null {
+  if (!event.content) {
+    return null;
+  }
+  let parsed: unknown;
+  // eslint-disable-next-line no-restricted-syntax -- defensive parse: content is backend JSON, drop silently on malformed input rather than crashing the realtime loop
+  try {
+    parsed = JSON.parse(event.content);
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object") {
+    return null;
+  }
+  const p = parsed as Record<string, unknown>;
+
+  if (event.type === "task-dispatched") {
+    const prompt = typeof p.prompt === "string" ? p.prompt : "";
+    const body = truncateForInjection(prompt);
+    return body ? `[Task dispatched] ${body}` : "[Task dispatched]";
+  }
+  if (event.type === "task-completed") {
+    const status = typeof p.status === "string" ? p.status : "done";
+    const result = typeof p.result === "string" ? p.result : "";
+    const error = typeof p.error === "string" ? p.error : "";
+    const body = truncateForInjection(status === "failed" ? error : result);
+    const label = `[Task completed: ${status}]`;
+    return body ? `${label} ${body}` : label;
+  }
+  return null;
+}
+
 // --- Internal state ---
 
 const internalStatus$ = state<ConnectionStatus>("idle");
 const internalTranscript$ = state<TranscriptEntry[]>([]);
 const internalEvents$ = state<ContextEvent[]>([]);
+const internalTasksById$ = state<Record<string, VoiceChatTask>>({});
 const internalMuted$ = state(false);
 const internalError$ = state<string | null>(null);
 const internalSessionId$ = state<string | null>(null);
@@ -250,6 +309,26 @@ export const vcModel$ = computed((get) => {
 });
 export const setVcModel$ = command(({ set }, model: RealtimeModel) => {
   set(internalModel$, model);
+});
+
+export const vcTasksById$ = computed((get) => {
+  return get(internalTasksById$);
+});
+
+export const vcActiveTasks$ = computed((get) => {
+  return Object.values(get(internalTasksById$))
+    .filter((t) => {
+      return t.status === "queued" || t.status === "running";
+    })
+    .sort((a, b) => {
+      return b.createdAt.localeCompare(a.createdAt);
+    });
+});
+
+export const vcAllTasksSorted$ = computed((get) => {
+  return Object.values(get(internalTasksById$)).sort((a, b) => {
+    return b.createdAt.localeCompare(a.createdAt);
+  });
 });
 
 // --- Internal commands ---
@@ -449,6 +528,10 @@ const handleDCMessage$ = command(
 
 const injectSlowBrainEvents$ = command(
   ({ get, set }, events: ContextEvent[]) => {
+    // Historical name kept — this command also injects system/task-dispatched
+    // and system/task-completed events as non-interrupting situational
+    // awareness for fast-brain. `needsResponse` stays tied to slow-brain
+    // directive/observation only, so task events never fire response.cancel.
     const dc = get(internalDc$);
     if (!dc || dc.readyState !== "open") {
       return;
@@ -457,7 +540,13 @@ const injectSlowBrainEvents$ = command(
     const slowBrainEvents = events.filter((e) => {
       return e.source === "slow-brain" && e.content;
     });
-    if (slowBrainEvents.length === 0) {
+    const systemTaskEvents = events.filter((e) => {
+      return (
+        e.source === "system" &&
+        (e.type === "task-dispatched" || e.type === "task-completed")
+      );
+    });
+    if (slowBrainEvents.length === 0 && systemTaskEvents.length === 0) {
       return;
     }
 
@@ -483,6 +572,24 @@ const injectSlowBrainEvents$ = command(
             content: [
               { type: "input_text", text: formatInjectionMessage(event) },
             ],
+          },
+        }),
+      );
+    }
+
+    // Inject task-dispatched / task-completed as non-interrupting context
+    for (const event of systemTaskEvents) {
+      const text = formatSystemTaskMessage(event);
+      if (!text) {
+        continue;
+      }
+      dc.send(
+        JSON.stringify({
+          type: "conversation.item.create",
+          item: {
+            type: "message",
+            role: "user",
+            content: [{ type: "input_text", text }],
           },
         }),
       );
@@ -693,6 +800,22 @@ const startPoll$ = command(async ({ get, set }, signal: AbortSignal) => {
       }
       set(injectSlowBrainEvents$, res.body.events);
     }
+
+    const tasksClient = createClient(zeroVoiceChatTasksContract);
+    const tasksRes = await accept(
+      tasksClient.listTasks({ params: { id: innerSid } }),
+      [200, 401, 404],
+      { toast: false },
+    );
+    loopSignal.throwIfAborted();
+    if (tasksRes.status === 200) {
+      const next: Record<string, VoiceChatTask> = {};
+      for (const task of tasksRes.body.tasks) {
+        next[task.id] = task;
+      }
+      set(internalTasksById$, next);
+    }
+
     return false;
   });
 
@@ -1145,6 +1268,7 @@ export const startVoiceChat$ = command(
     set(internalError$, null);
     set(internalTranscript$, []);
     set(internalEvents$, []);
+    set(internalTasksById$, {});
     set(internalMuted$, false);
     set(internalSessionId$, null);
     set(internalLastSeq$, 0);
@@ -1247,6 +1371,7 @@ export const endVoiceChat$ = command(({ get, set }) => {
   }
 
   set(internalSessionId$, null);
+  set(internalTasksById$, {});
   set(internalPrepStartTime$, null);
   set(internalPrepElapsedMs$, 0);
   set(internalReconnectAttempt$, 0);

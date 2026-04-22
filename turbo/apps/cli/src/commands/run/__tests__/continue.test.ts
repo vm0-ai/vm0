@@ -290,7 +290,7 @@ describe("run continue command", () => {
   });
 
   describe("--artifact flag", () => {
-    it("should send artifactName when using --artifact with name only", async () => {
+    it("should send artifacts array when using --artifact with name:/path", async () => {
       let capturedBody: Record<string, unknown> | undefined;
 
       server.use(
@@ -309,19 +309,18 @@ describe("run continue command", () => {
         testSessionId,
         "test prompt",
         "--artifact",
-        "my-data",
+        "my-data:/mnt/data",
       ]);
 
       expect(capturedBody).toEqual(
         expect.objectContaining({
           sessionId: testSessionId,
-          artifactName: "my-data",
+          artifacts: [{ name: "my-data", mountPath: "/mnt/data" }],
         }),
       );
-      expect(capturedBody?.artifactVersion).toBeUndefined();
     });
 
-    it("should send artifactName and artifactVersion when using --artifact with name:version", async () => {
+    it("should send artifacts array when using --artifact with name:version:/path", async () => {
       let capturedBody: Record<string, unknown> | undefined;
 
       server.use(
@@ -340,16 +339,64 @@ describe("run continue command", () => {
         testSessionId,
         "test prompt",
         "--artifact",
-        "my-data:abc123",
+        "my-data:abc123:/mnt/data",
       ]);
 
       expect(capturedBody).toEqual(
         expect.objectContaining({
           sessionId: testSessionId,
-          artifactName: "my-data",
-          artifactVersion: "abc123",
+          artifacts: [
+            { name: "my-data", version: "abc123", mountPath: "/mnt/data" },
+          ],
         }),
       );
+    });
+
+    it("should send multiple artifacts when --artifact is repeated", async () => {
+      let capturedBody: Record<string, unknown> | undefined;
+
+      server.use(
+        http.post(
+          "http://localhost:3000/api/agent/runs",
+          async ({ request }) => {
+            capturedBody = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json(defaultRunResponse, { status: 201 });
+          },
+        ),
+      );
+
+      await continueCommand.parseAsync([
+        "node",
+        "cli",
+        testSessionId,
+        "test prompt",
+        "--artifact",
+        "first:/mnt/first",
+        "--artifact",
+        "second:v2:/mnt/second",
+      ]);
+
+      expect(capturedBody).toEqual(
+        expect.objectContaining({
+          artifacts: [
+            { name: "first", mountPath: "/mnt/first" },
+            { name: "second", version: "v2", mountPath: "/mnt/second" },
+          ],
+        }),
+      );
+    });
+
+    it("should reject --artifact without mount path", async () => {
+      await expect(async () => {
+        await continueCommand.parseAsync([
+          "node",
+          "cli",
+          testSessionId,
+          "test prompt",
+          "--artifact",
+          "my-data",
+        ]);
+      }).rejects.toThrow();
     });
   });
 

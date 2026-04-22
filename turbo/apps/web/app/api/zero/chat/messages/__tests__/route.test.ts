@@ -25,9 +25,11 @@ import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { generateSandboxToken } from "../../../../../../src/lib/auth/sandbox-token";
 import { reloadEnv } from "../../../../../../src/env";
 import { server } from "../../../../../../src/mocks/server";
+import * as axiomClient from "../../../../../../src/lib/shared/axiom/client";
 import { http } from "../../../../../../src/__tests__/msw";
 import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
 import { mockAblyPublish } from "../../../../../../src/__tests__/ably-mock";
+import { createQueryCounter } from "../../../../../../src/__tests__/db-query-counter";
 import { GET as getChatThreadById } from "../../../chat-threads/[id]/route";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
@@ -425,6 +427,101 @@ describe("POST /api/zero/chat/messages", () => {
       expect(openRouterHandler.mocked).toHaveBeenCalledTimes(1);
     });
 
+    describe("Phase-1 sandbox-op-log web-chat instrumentation", () => {
+      it("emits spans for key Phase-1 stages with dimensions stamped progressively", async () => {
+        // Spy on ingestSandboxOpLog at the module boundary. The chat spans
+        // reuse this single dataset with `source: "web-chat"`; filtering the
+        // spy's calls by source isolates chat spans from the run-dispatch
+        // `source: "web"` spans that also flow through it.
+        const spanSpy = vi
+          .spyOn(axiomClient, "ingestSandboxOpLog")
+          .mockImplementation(() => {
+            return;
+          });
+
+        try {
+          const response = await POST(
+            createTestRequest(URL, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                agentId,
+                prompt: "hello span test",
+              }),
+            }),
+          );
+          expect(response.status).toBe(201);
+          const data = await response.json();
+
+          expect(spanSpy).toHaveBeenCalled();
+          const chatSpanEvents = spanSpy.mock.calls
+            .map((c) => {
+              return c[0];
+            })
+            .filter((e) => {
+              return e.source === "web-chat";
+            });
+          expect(chatSpanEvents.length).toBeGreaterThan(0);
+          const opTypes = new Set(
+            chatSpanEvents.map((e) => {
+              return e.op_type;
+            }),
+          );
+
+          // Key anchors from entry, Round 1, Round 4, and post-insert.
+          expect(opTypes.has("api_chat_send_auth")).toBe(true);
+          expect(opTypes.has("api_chat_send_agent_lookup")).toBe(true);
+          expect(
+            opTypes.has("api_chat_send_resolve_thread_create_thread"),
+          ).toBe(true);
+          expect(opTypes.has("api_chat_send_create_run_round1_agent")).toBe(
+            true,
+          );
+          expect(
+            opTypes.has("api_chat_send_create_run_insert_run_record"),
+          ).toBe(true);
+          expect(opTypes.has("api_chat_send_persist_zero_run_metadata")).toBe(
+            true,
+          );
+          expect(opTypes.has("api_chat_send_insert_chat_message_insert")).toBe(
+            true,
+          );
+
+          // Every chat span should carry duration_ms, sandbox_type="chat",
+          // and the static agent_id dim.
+          for (const event of chatSpanEvents) {
+            expect(typeof event.duration_ms).toBe("number");
+            expect(event.sandbox_type).toBe("chat");
+            expect(event.agent_id).toBe(agentId);
+          }
+
+          // org_id is stamped after Round 1 finishes — Round 1 spans emit
+          // without it, Round 2+ spans carry it.
+          const round2ConnectorsSpan = chatSpanEvents.find((e) => {
+            return e.op_type === "api_chat_send_create_run_round2_connectors";
+          });
+          expect(round2ConnectorsSpan?.org_id).toBeTruthy();
+
+          // run_id is stamped after the tx commits — only post-commit spans
+          // carry it.
+          const persistSpan = chatSpanEvents.find((e) => {
+            return e.op_type === "api_chat_send_persist_zero_run_metadata";
+          });
+          expect(persistSpan?.run_id).toBe(data.runId);
+
+          // insert_run_record happens inside the tx, before commit — emits
+          // with run_id absent.
+          const insertRunRecordSpan = chatSpanEvents.find((e) => {
+            return e.op_type === "api_chat_send_create_run_insert_run_record";
+          });
+          expect(insertRunRecordSpan?.run_id).toBeUndefined();
+        } finally {
+          // Restore so the spy does not leak across tests in the same suite.
+          spanSpy.mockRestore();
+        }
+      });
+    });
+
     describe("Signal Publishing", () => {
       it("should publish chatThreadRunCreated and chatThreadMessageCreated signals after sending a message", async () => {
         const response = await POST(
@@ -497,7 +594,7 @@ describe("POST /api/zero/chat/messages", () => {
       expect(run.appendSystemPrompt).not.toContain("Web Attached Files");
     });
 
-    it("should resolve attach files with presigned URLs in thread detail", async () => {
+    it("should resolve attach files to permanent /f/ URLs in thread detail", async () => {
       // Create a thread with a message containing attach files via the API
       const attachFiles = [
         {
@@ -536,9 +633,6 @@ describe("POST /api/zero/chat/messages", () => {
           return [];
         },
       );
-      context.mocks.s3.generatePresignedUrl.mockResolvedValue(
-        "https://presigned-url/data.csv",
-      );
 
       // Fetch thread detail which resolves attach files
       const threadResponse = await getChatThreadById(
@@ -558,7 +652,72 @@ describe("POST /api/zero/chat/messages", () => {
       expect(userMsg.attachFiles).toHaveLength(1);
       expect(userMsg.attachFiles[0].id).toBe("resolve-uuid-1");
       expect(userMsg.attachFiles[0].filename).toBe("data.csv");
-      expect(userMsg.attachFiles[0].url).toBe("https://presigned-url/data.csv");
+      expect(userMsg.attachFiles[0].url).toBe(
+        `http://localhost:3000/f/${encodeURIComponent(user.userId)}/resolve-uuid-1/data.csv`,
+      );
+    });
+
+    // Two `org_metadata` SELECTs remain per POST after this dedup (Round 2
+    // tier via getOrgMetadata + Round 3 credits via checkOrgCredits). Dedup
+    // target is the duplicate `resolveOrg ↔ Round 2` pair in the
+    // modelSelection branch (3→2) plus the `zero_agents` pair on every POST
+    // (2→1). The checkOrgCredits read is a separate credits-admission path
+    // tracked as a follow-up (out of scope for #10594).
+    describe("deduplicates per-request reads", () => {
+      it("reads zero_agents once and org_metadata twice without modelSelection", async () => {
+        const counter = createQueryCounter();
+        try {
+          const response = await POST(
+            createTestRequest(URL, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                agentId,
+                prompt: "dedup without modelSelection",
+              }),
+            }),
+          );
+
+          expect(response.status).toBe(201);
+          expect(counter.countMatching(/from\s+"?zero_agents"?/i)).toBe(1);
+          expect(counter.countMatching(/from\s+"?org_metadata"?/i)).toBe(2);
+        } finally {
+          counter.restore();
+        }
+      });
+
+      it("reads zero_agents once and org_metadata twice with modelSelection (duplicate pair eliminated)", async () => {
+        const providerId = await getTestModelProviderIdByType(
+          user.orgId,
+          "anthropic-api-key",
+        );
+        const counter = createQueryCounter();
+        try {
+          const response = await POST(
+            createTestRequest(URL, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                agentId,
+                prompt: "dedup with modelSelection",
+                modelSelection: {
+                  modelProviderId: providerId,
+                  selectedModel: "claude-opus-4-7",
+                },
+              }),
+            }),
+          );
+
+          expect(response.status).toBe(201);
+          expect(counter.countMatching(/from\s+"?zero_agents"?/i)).toBe(1);
+          // 3→2: resolveOrg still reads org_metadata for tier+credits, Round 3
+          // checkOrgCredits reads credits; Round 2 now hits the preload path
+          // built from resolveOrg's already-fetched tier (the eliminated dup).
+          expect(counter.countMatching(/from\s+"?org_metadata"?/i)).toBe(2);
+        } finally {
+          counter.restore();
+        }
+      });
     });
 
     describe("per-run model selection (composer picker)", () => {

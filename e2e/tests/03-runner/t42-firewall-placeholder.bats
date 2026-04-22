@@ -154,7 +154,7 @@ EOF
 
     # Verify env vars from both firewall configs are set to placeholder values.
     run $VM0_CLI run "${AGENT_NAME}-multi" \
-        --artifact "$ARTIFACT_NAME-multi" \
+        --artifact "$ARTIFACT_NAME-multi:/home/user/workspace" \
         "echo \"GITHUB_TOKEN=\$GITHUB_TOKEN\" && echo \"SLACK_TOKEN=\$SLACK_TOKEN\""
 
     echo "$output"
@@ -189,7 +189,7 @@ EOF
     # Verify GITHUB_TOKEN is replaced with placeholder (firewall auto-added)
     # and a GitHub API call succeeds through the proxy (token replacement works).
     run $VM0_CLI run "${AGENT_NAME}-auto" \
-        --artifact "$ARTIFACT_NAME-auto" \
+        --artifact "$ARTIFACT_NAME-auto:/home/user/workspace" \
         "TOKEN_VAL=\$GITHUB_TOKEN && STARTS_WITH=\$(echo \$TOKEN_VAL | cut -c1-7) && STATUS=\$(curl -s -o /dev/null -w '%{http_code}' https://api.github.com/repos/vm0-ai/vm0) && echo \"PLACEHOLDER=\$STARTS_WITH\" && echo \"API_STATUS=\$STATUS\""
 
     echo "$output"
@@ -238,7 +238,7 @@ EOF
     # 2. curl to the placeholder URL triggers mitmproxy URL rewrite
     # 3. Discord returns 404 (fake webhook ID) proving the request reached Discord
     run $VM0_CLI run "${AGENT_NAME}-webhook" \
-        --artifact "$ARTIFACT_NAME-webhook" \
+        --artifact "$ARTIFACT_NAME-webhook:/home/user/workspace" \
         "echo \"DISCORD_WEBHOOK_URL=\$DISCORD_WEBHOOK_URL\" && curl -s -o /dev/null -w 'API_STATUS=%{http_code}\n' -X POST \"\$DISCORD_WEBHOOK_URL\" -H 'Content-Type: application/json' -d '{\"content\":\"e2e\"}'"
 
     echo "$output"

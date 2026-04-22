@@ -21,27 +21,24 @@ const mockAgent = {
   displayName: "My Agent",
   description: null,
   sound: null,
+  avatarUrl: null,
 };
 
 describe("zero agent edit command", () => {
-  const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
-    throw new Error("process.exit called");
-  }) as never);
-  const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
-  const mockConsoleError = vi
-    .spyOn(console, "error")
-    .mockImplementation(() => {});
+  let mockExit: ReturnType<typeof vi.spyOn>;
+  let mockConsoleLog: ReturnType<typeof vi.spyOn>;
+  let mockConsoleError: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
+    vi.clearAllMocks();
+    mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
+      throw new Error("process.exit called");
+    }) as never);
+    mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
+    mockConsoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     chalk.level = 0;
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
-  });
-
-  afterEach(() => {
-    mockExit.mockClear();
-    mockConsoleLog.mockClear();
-    mockConsoleError.mockClear();
   });
 
   describe("successful edit", () => {
@@ -101,6 +98,93 @@ describe("zero agent edit command", () => {
       expect(logCalls).toContain("updated");
     });
 
+    it("should update avatar with preset and include it in request body", async () => {
+      let capturedBody: Record<string, unknown> | undefined;
+      server.use(
+        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
+          return HttpResponse.json(mockAgent);
+        }),
+        http.put(
+          "http://localhost:3000/api/zero/agents/my-agent",
+          async ({ request }) => {
+            capturedBody = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json(mockAgent);
+          },
+        ),
+      );
+
+      await editCommand.parseAsync([
+        "node",
+        "cli",
+        "my-agent",
+        "--avatar",
+        "preset:3",
+      ]);
+
+      expect(capturedBody?.avatarUrl).toBe("preset:3");
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("updated");
+    });
+
+    it("should compose svg avatar from descriptive flags", async () => {
+      let capturedBody: Record<string, unknown> | undefined;
+      server.use(
+        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
+          return HttpResponse.json(mockAgent);
+        }),
+        http.put(
+          "http://localhost:3000/api/zero/agents/my-agent",
+          async ({ request }) => {
+            capturedBody = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json(mockAgent);
+          },
+        ),
+      );
+
+      await editCommand.parseAsync([
+        "node",
+        "cli",
+        "my-agent",
+        "--avatar-hair-color",
+        "teal",
+        "--avatar-expression",
+        "excited",
+        "--avatar-intensity",
+        "hyped",
+      ]);
+
+      expect(capturedBody?.avatarUrl).toBe("svg:r3s2h1c2f5h");
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("updated");
+    });
+
+    it("should preserve existing avatar when no avatar flags given", async () => {
+      const agentWithAvatar = { ...mockAgent, avatarUrl: "svg:r2s1h3c3f1m" };
+      let capturedBody: Record<string, unknown> | undefined;
+      server.use(
+        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
+          return HttpResponse.json(agentWithAvatar);
+        }),
+        http.put(
+          "http://localhost:3000/api/zero/agents/my-agent",
+          async ({ request }) => {
+            capturedBody = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json(agentWithAvatar);
+          },
+        ),
+      );
+
+      await editCommand.parseAsync([
+        "node",
+        "cli",
+        "my-agent",
+        "--display-name",
+        "Updated",
+      ]);
+
+      expect(capturedBody?.avatarUrl).toBe("svg:r2s1h3c3f1m");
+    });
+
     describe("with instructions file", () => {
       let instructionsPath: string;
 
@@ -152,6 +236,42 @@ describe("zero agent edit command", () => {
 
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("At least one option is required"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should reject invalid avatar hair color", async () => {
+      await expect(async () => {
+        await editCommand.parseAsync([
+          "node",
+          "cli",
+          "my-agent",
+          "--avatar-hair-color",
+          "purple",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Invalid --avatar-hair-color"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should reject combining --avatar preset with --avatar-* flags", async () => {
+      await expect(async () => {
+        await editCommand.parseAsync([
+          "node",
+          "cli",
+          "my-agent",
+          "--avatar",
+          "preset:0",
+          "--avatar-skin",
+          "dark",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("cannot be combined"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });

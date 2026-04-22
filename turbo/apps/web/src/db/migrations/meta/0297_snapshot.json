@@ -1,6 +1,6 @@
 {
-  "id": "e5bd41ad-8f83-42b1-a41c-e367cdc454e4",
-  "prevId": "7dd5936c-87ae-4621-b2aa-ecf96f64c1b0",
+  "id": "7dd5936c-87ae-4621-b2aa-ecf96f64c1b0",
+  "prevId": "5c58968c-8dfb-4cb6-82fd-6c05864355a8",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1427,6 +1427,12 @@
         },
         "artifact_snapshot": {
           "name": "artifact_snapshot",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "artifact_snapshots": {
+          "name": "artifact_snapshots",
           "type": "jsonb",
           "primaryKey": false,
           "notNull": false
@@ -8518,6 +8524,13 @@
           "notNull": true,
           "default": "'chat'"
         },
+        "status": {
+          "name": "status",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'active'"
+        },
         "conversation_summary": {
           "name": "conversation_summary",
           "type": "text",
@@ -8570,6 +8583,26 @@
           "primaryKey": false,
           "notNull": false
         },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "last_heartbeat_at": {
+          "name": "last_heartbeat_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "ended_at": {
+          "name": "ended_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
         "last_reasoning_started_at": {
           "name": "last_reasoning_started_at",
           "type": "timestamp",
@@ -8581,13 +8614,6 @@
           "type": "integer",
           "primaryKey": false,
           "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
         }
       },
       "indexes": {
@@ -8612,23 +8638,11 @@
           "method": "btree",
           "with": {}
         },
-        "idx_fc_voice_chat_sessions_user_agent_created": {
-          "name": "idx_fc_voice_chat_sessions_user_agent_created",
+        "idx_fc_voice_chat_sessions_status": {
+          "name": "idx_fc_voice_chat_sessions_status",
           "columns": [
             {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "agent_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
+              "expression": "status",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

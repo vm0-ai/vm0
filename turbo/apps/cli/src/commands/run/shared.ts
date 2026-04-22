@@ -48,13 +48,16 @@ export function collectVolumeVersions(
 }
 
 /**
- * Parse Docker-style volume declaration.
+ * Parse Docker-style mount declaration shared by --volume and --artifact.
  * Format: "name:/mount/path" (latest) or "name:version:/mount/path" (specific version)
  *
  * Parsing rule: split on ':', last segment starts with '/' = mount path,
  * first = storage name, middle (if present) = version.
  */
-export function parseVolume(value: string): {
+export function parseMount(
+  value: string,
+  flagLabel: "volume" | "artifact",
+): {
   name: string;
   version?: string;
   mountPath: string;
@@ -63,7 +66,7 @@ export function parseVolume(value: string): {
 
   if (parts.length < 2 || parts.length > 3) {
     throw new Error(
-      `Invalid volume format: ${value} (expected name:/path or name:version:/path)`,
+      `Invalid ${flagLabel} format: ${value} (expected name:/path or name:version:/path)`,
     );
   }
 
@@ -73,12 +76,14 @@ export function parseVolume(value: string): {
     parts.length === 3 ? (parts[2] as string) : (parts[1] as string);
 
   if (!name) {
-    throw new Error(`Invalid volume format: ${value} (name cannot be empty)`);
+    throw new Error(
+      `Invalid ${flagLabel} format: ${value} (name cannot be empty)`,
+    );
   }
 
   if (!mountPath.startsWith("/")) {
     throw new Error(
-      `Invalid volume mount path: ${mountPath} (must start with /)`,
+      `Invalid ${flagLabel} mount path: ${mountPath} (must start with /)`,
     );
   }
 
@@ -89,7 +94,7 @@ export function parseVolume(value: string): {
   const version = parts[1] as string;
   if (!version) {
     throw new Error(
-      `Invalid volume format: ${value} (version cannot be empty)`,
+      `Invalid ${flagLabel} format: ${value} (version cannot be empty)`,
     );
   }
 
@@ -98,13 +103,24 @@ export function parseVolume(value: string): {
 
 /**
  * Collector for repeatable --volume flags.
- * Accumulates into an array of parsed volume objects.
+ * Accumulates into an array of parsed mount objects.
  */
-export function collectVolumes(
+export function collectMounts(
   value: string,
   previous: Array<{ name: string; version?: string; mountPath: string }>,
 ): Array<{ name: string; version?: string; mountPath: string }> {
-  return [...previous, parseVolume(value)];
+  return [...previous, parseMount(value, "volume")];
+}
+
+/**
+ * Collector for repeatable --artifact flags.
+ * Accumulates into an array of parsed mount objects.
+ */
+export function collectArtifacts(
+  value: string,
+  previous: Array<{ name: string; version?: string; mountPath: string }>,
+): Array<{ name: string; version?: string; mountPath: string }> {
+  return [...previous, parseMount(value, "artifact")];
 }
 
 /**
@@ -252,30 +268,6 @@ export function parseIdentifier(identifier: string): {
   }
 
   return { name: identifier };
-}
-
-/**
- * Parse artifact identifier: "name" or "name:version"
- * Returns undefined when no value is provided.
- * Examples:
- *   "my-artifact"          → { artifactName: "my-artifact" }
- *   "my-artifact:abc123"   → { artifactName: "my-artifact", artifactVersion: "abc123" }
- */
-export function parseArtifact(value: string | undefined):
-  | {
-      artifactName: string;
-      artifactVersion?: string;
-    }
-  | undefined {
-  if (!value) return undefined;
-  const colonIndex = value.indexOf(":");
-  if (colonIndex > 0 && colonIndex < value.length - 1) {
-    return {
-      artifactName: value.slice(0, colonIndex),
-      artifactVersion: value.slice(colonIndex + 1),
-    };
-  }
-  return { artifactName: value };
 }
 
 /**

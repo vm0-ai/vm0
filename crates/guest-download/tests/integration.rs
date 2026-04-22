@@ -87,10 +87,10 @@ fn write_manifest_with_memory(
 
     let artifact_json = artifact.map(|(mount_path, archive_url)| match archive_url {
         Some(url) => format!(
-            r#","artifact":{{"mountPath":"{}","archiveUrl":"{}"}}"#,
+            r#","artifacts":[{{"mountPath":"{}","archiveUrl":"{}"}}]"#,
             mount_path, url
         ),
-        None => format!(r#","artifact":{{"mountPath":"{}"}}"#, mount_path),
+        None => format!(r#","artifacts":[{{"mountPath":"{}"}}]"#, mount_path),
     });
 
     let memory_json = memory.map(|(mount_path, archive_url)| match archive_url {

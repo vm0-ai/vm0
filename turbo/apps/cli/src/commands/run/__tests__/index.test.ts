@@ -138,20 +138,11 @@ describe("run command", () => {
         ),
       );
 
-      await runCommand.parseAsync([
-        "node",
-        "cli",
-        testUuid,
-        "test prompt",
-        "--artifact",
-        "test-artifact",
-      ]);
+      await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
 
       expect(capturedBody).toEqual({
         agentComposeId: testUuid,
         prompt: "test prompt",
-        artifactName: "test-artifact",
-        artifactVersion: undefined,
         memoryName: undefined,
         vars: undefined,
         secrets: undefined,
@@ -192,20 +183,11 @@ describe("run command", () => {
         ),
       );
 
-      await runCommand.parseAsync([
-        "node",
-        "cli",
-        "my-agent",
-        "test prompt",
-        "--artifact",
-        "test-artifact",
-      ]);
+      await runCommand.parseAsync(["node", "cli", "my-agent", "test prompt"]);
 
       expect(capturedBody).toEqual({
         agentComposeId: testUuid,
         prompt: "test prompt",
-        artifactName: "test-artifact",
-        artifactVersion: undefined,
         memoryName: undefined,
         vars: undefined,
         secrets: undefined,
@@ -235,8 +217,6 @@ describe("run command", () => {
           "cli",
           "nonexistent-agent",
           "test prompt",
-          "--artifact",
-          "test-artifact",
         ]);
       }).rejects.toThrow("process.exit called");
 
@@ -307,8 +287,6 @@ describe("run command", () => {
         "cli",
         "my-agent:abc12345",
         "test prompt",
-        "--artifact",
-        "test-artifact",
       ]);
 
       expect(capturedBody).toEqual(
@@ -357,8 +335,6 @@ describe("run command", () => {
         "cli",
         "my-agent:latest",
         "test prompt",
-        "--artifact",
-        "test-artifact",
       ]);
 
       // Should use agentComposeId (not agentComposeVersionId)
@@ -411,8 +387,6 @@ describe("run command", () => {
           "cli",
           "my-agent:deadbeef",
           "test prompt",
-          "--artifact",
-          "test-artifact",
         ]);
       }).rejects.toThrow("process.exit called");
 
@@ -472,8 +446,6 @@ describe("run command", () => {
         "cli",
         "user-abc123/my-agent",
         "test prompt",
-        "--artifact",
-        "test-artifact",
       ]);
 
       expect(capturedQueryParams).toEqual({
@@ -548,8 +520,6 @@ describe("run command", () => {
         "cli",
         "user-abc123/my-agent:abc12345",
         "test prompt",
-        "--artifact",
-        "test-artifact",
       ]);
 
       expect(capturedVersionParams).toEqual({
@@ -583,8 +553,6 @@ describe("run command", () => {
         "cli",
         testUuid,
         "test prompt",
-        "--artifact",
-        "test-artifact",
         "--vars",
         "KEY1=value1",
       ]);
@@ -592,8 +560,6 @@ describe("run command", () => {
       expect(capturedBody).toEqual({
         agentComposeId: testUuid,
         prompt: "test prompt",
-        artifactName: "test-artifact",
-        artifactVersion: undefined,
         memoryName: undefined,
         vars: { KEY1: "value1" },
         secrets: undefined,
@@ -619,8 +585,6 @@ describe("run command", () => {
         "cli",
         testUuid,
         "test prompt",
-        "--artifact",
-        "test-artifact",
         "--vars",
         "KEY1=value1",
         "--vars",
@@ -630,8 +594,6 @@ describe("run command", () => {
       expect(capturedBody).toEqual({
         agentComposeId: testUuid,
         prompt: "test prompt",
-        artifactName: "test-artifact",
-        artifactVersion: undefined,
         memoryName: undefined,
         vars: { KEY1: "value1", KEY2: "value2" },
         secrets: undefined,
@@ -657,8 +619,6 @@ describe("run command", () => {
         "cli",
         testUuid,
         "test prompt",
-        "--artifact",
-        "test-artifact",
         "--vars",
         "URL=https://example.com?foo=bar",
       ]);
@@ -666,8 +626,6 @@ describe("run command", () => {
       expect(capturedBody).toEqual({
         agentComposeId: testUuid,
         prompt: "test prompt",
-        artifactName: "test-artifact",
-        artifactVersion: undefined,
         memoryName: undefined,
         vars: { URL: "https://example.com?foo=bar" },
         secrets: undefined,
@@ -683,8 +641,6 @@ describe("run command", () => {
           "cli",
           testUuid,
           "test prompt",
-          "--artifact",
-          "test-artifact",
           "--vars",
           "EMPTY=",
         ]);
@@ -698,8 +654,6 @@ describe("run command", () => {
           "cli",
           testUuid,
           "test prompt",
-          "--artifact",
-          "test-artifact",
           "--vars",
           "INVALID",
         ]);
@@ -713,8 +667,6 @@ describe("run command", () => {
           "cli",
           testUuid,
           "test prompt",
-          "--artifact",
-          "test-artifact",
           "--vars",
           "=value",
         ]);
@@ -733,20 +685,11 @@ describe("run command", () => {
         ),
       );
 
-      await runCommand.parseAsync([
-        "node",
-        "cli",
-        testUuid,
-        "test prompt",
-        "--artifact",
-        "test-artifact",
-      ]);
+      await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
 
       expect(capturedBody).toEqual({
         agentComposeId: testUuid,
         prompt: "test prompt",
-        artifactName: "test-artifact",
-        artifactVersion: undefined,
         memoryName: undefined,
         vars: undefined,
         secrets: undefined,
@@ -774,8 +717,6 @@ describe("run command", () => {
         "cli",
         testUuid,
         "test prompt",
-        "--artifact",
-        "test-artifact",
         "--memory",
         "my-custom-memory",
       ]);
@@ -924,14 +865,7 @@ describe("run command", () => {
       );
 
       await expect(async () => {
-        await runCommand.parseAsync([
-          "node",
-          "cli",
-          testUuid,
-          "test prompt",
-          "--artifact",
-          "test-artifact",
-        ]);
+        await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
@@ -954,14 +888,7 @@ describe("run command", () => {
       );
 
       await expect(async () => {
-        await runCommand.parseAsync([
-          "node",
-          "cli",
-          testUuid,
-          "test prompt",
-          "--artifact",
-          "test-artifact",
-        ]);
+        await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
@@ -984,14 +911,7 @@ describe("run command", () => {
       );
 
       await expect(async () => {
-        await runCommand.parseAsync([
-          "node",
-          "cli",
-          testUuid,
-          "test prompt",
-          "--artifact",
-          "test-artifact",
-        ]);
+        await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
@@ -1011,14 +931,7 @@ describe("run command", () => {
       );
 
       await expect(async () => {
-        await runCommand.parseAsync([
-          "node",
-          "cli",
-          testUuid,
-          "test prompt",
-          "--artifact",
-          "test-artifact",
-        ]);
+        await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
       }).rejects.toThrow("process.exit called");
 
       // Network error from HttpResponse.error() manifests as "Failed to fetch"
@@ -1100,14 +1013,7 @@ describe("run command", () => {
         ),
       );
 
-      await runCommand.parseAsync([
-        "node",
-        "cli",
-        testUuid,
-        "test prompt",
-        "--artifact",
-        "test-artifact",
-      ]);
+      await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
 
       expect(pollCount).toBeGreaterThanOrEqual(2);
     });
@@ -1156,14 +1062,7 @@ describe("run command", () => {
         }),
       );
 
-      await runCommand.parseAsync([
-        "node",
-        "cli",
-        testUuid,
-        "test prompt",
-        "--artifact",
-        "test-artifact",
-      ]);
+      await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
 
       // Verify events are rendered to console (without ANSI colors due to chalk.level = 0)
       // The init event shows session ID in the completion summary
@@ -1217,14 +1116,7 @@ describe("run command", () => {
         }),
       );
 
-      await runCommand.parseAsync([
-        "node",
-        "cli",
-        testUuid,
-        "test prompt",
-        "--artifact",
-        "test-artifact",
-      ]);
+      await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
 
       // Should only call getEvents once since status is completed
       expect(pollCount).toBe(1);
@@ -1277,14 +1169,7 @@ describe("run command", () => {
         }),
       );
 
-      await runCommand.parseAsync([
-        "node",
-        "cli",
-        testUuid,
-        "test prompt",
-        "--artifact",
-        "test-artifact",
-      ]);
+      await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
 
       // Should only render the result event (unknown events are skipped)
       // Verify the result event is in console output
@@ -1324,14 +1209,7 @@ describe("run command", () => {
       );
 
       await expect(async () => {
-        await runCommand.parseAsync([
-          "node",
-          "cli",
-          testUuid,
-          "test prompt",
-          "--artifact",
-          "test-artifact",
-        ]);
+        await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
       }).rejects.toThrow("process.exit called");
 
       // Errors from polling bubble up and are formatted by withErrorHandler as ApiRequestError
@@ -1358,14 +1236,7 @@ describe("run command", () => {
       );
 
       await expect(async () => {
-        await runCommand.parseAsync([
-          "node",
-          "cli",
-          testUuid,
-          "test prompt",
-          "--artifact",
-          "test-artifact",
-        ]);
+        await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
       }).rejects.toThrow("process.exit called");
 
       // Verify error message is rendered to console
@@ -1389,14 +1260,7 @@ describe("run command", () => {
       );
 
       await expect(async () => {
-        await runCommand.parseAsync([
-          "node",
-          "cli",
-          testUuid,
-          "test prompt",
-          "--artifact",
-          "test-artifact",
-        ]);
+        await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
@@ -1426,14 +1290,7 @@ describe("run command", () => {
         }),
       );
 
-      await runCommand.parseAsync([
-        "node",
-        "cli",
-        testUuid,
-        "test prompt",
-        "--artifact",
-        "test-artifact",
-      ]);
+      await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
 
       // Should complete successfully and render completion info to console
       expect(mockConsoleLog).toHaveBeenCalledWith(
@@ -1476,8 +1333,6 @@ describe("run command", () => {
           "cli",
           "nonexistent-org-xyz123/my-agent",
           "test prompt",
-          "--artifact",
-          "test-artifact",
         ]);
       }).rejects.toThrow("process.exit called");
 
@@ -1508,8 +1363,6 @@ describe("run command", () => {
           "cli",
           "invalid-org/test-agent",
           "test prompt",
-          "--artifact",
-          "test-artifact",
         ]);
       }).rejects.toThrow("process.exit called");
 
@@ -1553,8 +1406,6 @@ describe("run command", () => {
           "cli",
           "user-abc12345/nonexistent-agent-xyz123",
           "test prompt",
-          "--artifact",
-          "test-artifact",
         ]);
       }).rejects.toThrow("process.exit called");
 
@@ -1585,8 +1436,6 @@ describe("run command", () => {
           "cli",
           "user-org/missing-agent",
           "test prompt",
-          "--artifact",
-          "test-artifact",
         ]);
       }).rejects.toThrow("process.exit called");
 
@@ -1626,8 +1475,6 @@ describe("run command", () => {
           "cli",
           "other-user-org/my-agent",
           "test prompt",
-          "--artifact",
-          "test-artifact",
         ]);
       }).rejects.toThrow("process.exit called");
 
@@ -1658,8 +1505,6 @@ describe("run command", () => {
           "cli",
           "another-org/secret-agent",
           "test prompt",
-          "--artifact",
-          "test-artifact",
         ]);
       }).rejects.toThrow("process.exit called");
 
@@ -1717,8 +1562,6 @@ describe("run command", () => {
           "test prompt",
           "--env-file",
           "/nonexistent/path/.env",
-          "--artifact",
-          "test-artifact",
         ]);
       }).rejects.toThrow("process.exit called");
 
@@ -1791,8 +1634,6 @@ describe("run command", () => {
         "API_URL=from-cli",
         "--env-file",
         envFilePath,
-        "--artifact",
-        "test-artifact",
       ]);
 
       // CLI --vars should take priority over --env-file
@@ -1826,8 +1667,6 @@ describe("run command", () => {
         "test prompt",
         "--env-file",
         envFilePath,
-        "--artifact",
-        "test-artifact",
       ]);
 
       // Both vars and secrets should be loaded from env file
@@ -1854,14 +1693,7 @@ describe("run command", () => {
         ),
       );
 
-      await runCommand.parseAsync([
-        "node",
-        "cli",
-        testUuid,
-        "test prompt",
-        "--artifact",
-        "test-artifact",
-      ]);
+      await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
 
       // Both vars and secrets should be loaded from environment
       expect(capturedBody?.vars).toEqual({ API_URL: "from-env" });
@@ -1898,8 +1730,6 @@ describe("run command", () => {
         "test prompt",
         "--env-file",
         envFilePath,
-        "--artifact",
-        "test-artifact",
       ]);
 
       // --env-file should override environment variables
@@ -1936,8 +1766,6 @@ describe("run command", () => {
         "test prompt",
         "--env-file",
         envFilePath,
-        "--artifact",
-        "test-artifact",
       ]);
 
       // API_URL from file, API_KEY from environment
@@ -1978,8 +1806,6 @@ describe("run command", () => {
         "API_URL=from-cli",
         "--env-file",
         envFilePath,
-        "--artifact",
-        "test-artifact",
       ]);
 
       // API_URL from CLI (highest priority), API_KEY from file (medium priority)
@@ -2025,14 +1851,7 @@ describe("run command", () => {
       );
 
       await expect(async () => {
-        await runCommand.parseAsync([
-          "node",
-          "cli",
-          testUuid,
-          "test prompt",
-          "--artifact",
-          "test-artifact",
-        ]);
+        await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
       }).rejects.toThrow("process.exit called");
 
       const allErrors = mockConsoleError.mock.calls
@@ -2079,14 +1898,7 @@ describe("run command", () => {
       );
 
       await expect(async () => {
-        await runCommand.parseAsync([
-          "node",
-          "cli",
-          testUuid,
-          "test prompt",
-          "--artifact",
-          "test-artifact",
-        ]);
+        await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
       }).rejects.toThrow("process.exit called");
 
       const allErrors = mockConsoleError.mock.calls
@@ -2121,14 +1933,7 @@ describe("run command", () => {
       );
 
       await expect(async () => {
-        await runCommand.parseAsync([
-          "node",
-          "cli",
-          testUuid,
-          "test prompt",
-          "--artifact",
-          "test-artifact",
-        ]);
+        await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
       }).rejects.toThrow("process.exit called");
 
       const allErrors = mockConsoleError.mock.calls
@@ -2176,14 +1981,7 @@ describe("run command", () => {
         );
 
         await expect(async () => {
-          await runCommand.parseAsync([
-            "node",
-            "cli",
-            testUuid,
-            "test prompt",
-            "--artifact",
-            "test-artifact",
-          ]);
+          await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
         }).rejects.toThrow("process.exit called");
 
         const allErrors = mockConsoleError.mock.calls
@@ -2204,7 +2002,7 @@ describe("run command", () => {
   });
 
   describe("--artifact flag", () => {
-    it("should send artifactName when using --artifact with name only", async () => {
+    it("sends artifacts[] for a single --artifact name:/path", async () => {
       let capturedBody: Record<string, unknown> | undefined;
       server.use(
         http.post(
@@ -2222,18 +2020,19 @@ describe("run command", () => {
         testUuid,
         "test prompt",
         "--artifact",
-        "my-data",
+        "my-data:/workspace",
       ]);
 
       expect(capturedBody).toEqual(
         expect.objectContaining({
-          artifactName: "my-data",
+          artifacts: [{ name: "my-data", mountPath: "/workspace" }],
         }),
       );
+      expect(capturedBody?.artifactName).toBeUndefined();
       expect(capturedBody?.artifactVersion).toBeUndefined();
     });
 
-    it("should send artifactName and artifactVersion when using --artifact with name:version", async () => {
+    it("sends artifacts[] with version for --artifact name:version:/path", async () => {
       let capturedBody: Record<string, unknown> | undefined;
       server.use(
         http.post(
@@ -2251,15 +2050,107 @@ describe("run command", () => {
         testUuid,
         "test prompt",
         "--artifact",
-        "my-data:abc123",
+        "my-data:abc123:/data",
       ]);
 
       expect(capturedBody).toEqual(
         expect.objectContaining({
-          artifactName: "my-data",
-          artifactVersion: "abc123",
+          artifacts: [
+            { name: "my-data", version: "abc123", mountPath: "/data" },
+          ],
         }),
       );
+    });
+
+    it("accepts multiple --artifact flags and preserves order", async () => {
+      let capturedBody: Record<string, unknown> | undefined;
+      server.use(
+        http.post(
+          "http://localhost:3000/api/agent/runs",
+          async ({ request }) => {
+            capturedBody = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json(defaultRunResponse, { status: 201 });
+          },
+        ),
+      );
+
+      await runCommand.parseAsync([
+        "node",
+        "cli",
+        testUuid,
+        "test prompt",
+        "--artifact",
+        "foo:/workspace",
+        "--artifact",
+        "bar:v3:/data",
+      ]);
+
+      expect(capturedBody).toEqual(
+        expect.objectContaining({
+          artifacts: [
+            { name: "foo", mountPath: "/workspace" },
+            { name: "bar", version: "v3", mountPath: "/data" },
+          ],
+        }),
+      );
+    });
+
+    it("omits artifacts when flag is not provided", async () => {
+      let capturedBody: Record<string, unknown> | undefined;
+      server.use(
+        http.post(
+          "http://localhost:3000/api/agent/runs",
+          async ({ request }) => {
+            capturedBody = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json(defaultRunResponse, { status: 201 });
+          },
+        ),
+      );
+
+      await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
+
+      expect(capturedBody?.artifacts).toBeUndefined();
+      expect(capturedBody?.artifactName).toBeUndefined();
+      expect(capturedBody?.artifactVersion).toBeUndefined();
+    });
+
+    it("rejects --artifact without a mount path", async () => {
+      await expect(async () => {
+        await runCommand.parseAsync([
+          "node",
+          "cli",
+          testUuid,
+          "test prompt",
+          "--artifact",
+          "only-name",
+        ]);
+      }).rejects.toThrow(/Invalid artifact format/);
+    });
+
+    it("rejects --artifact with an empty name", async () => {
+      await expect(async () => {
+        await runCommand.parseAsync([
+          "node",
+          "cli",
+          testUuid,
+          "test prompt",
+          "--artifact",
+          ":/workspace",
+        ]);
+      }).rejects.toThrow(/Invalid artifact format/);
+    });
+
+    it("rejects --artifact when mount path does not start with /", async () => {
+      await expect(async () => {
+        await runCommand.parseAsync([
+          "node",
+          "cli",
+          testUuid,
+          "test prompt",
+          "--artifact",
+          "name:workspace",
+        ]);
+      }).rejects.toThrow(/Invalid artifact mount path/);
     });
   });
 });

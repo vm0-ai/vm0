@@ -50,11 +50,16 @@ function printRunConfiguration(
   if (showFullPrompt) {
     console.log(`${"Prompt:".padEnd(16)}${chalk.dim(schedule.prompt)}`);
   } else {
-    const promptPreview =
-      schedule.prompt.length > 60
-        ? schedule.prompt.slice(0, 57) + "..."
-        : schedule.prompt;
+    const truncated = schedule.prompt.length > 60;
+    const promptPreview = truncated
+      ? schedule.prompt.slice(0, 57) + "..."
+      : schedule.prompt;
     console.log(`${"Prompt:".padEnd(16)}${chalk.dim(promptPreview)}`);
+    if (truncated) {
+      console.log(
+        chalk.dim("                Run with --prompt (-p) to see full prompt"),
+      );
+    }
   }
 
   if (schedule.vars && Object.keys(schedule.vars).length > 0) {

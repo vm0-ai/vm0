@@ -5,6 +5,10 @@
  * - Name validation (format rules)
  * - Existing config handling (memory vs volume vs artifact)
  * - Successful initialization
+ *
+ * Memory init opts out of the storage-utils memory→artifact normalisation so
+ * legacy dirs it wrote itself are still recognised as memory. Normalisation
+ * on the artifact read path is exercised in storage-utils.test.ts.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -103,6 +107,8 @@ describe("memory init", () => {
 
   describe("existing config", () => {
     it("should show already initialized message for existing memory", async () => {
+      // `memory init` opts out of the memory→artifact normalisation so it can
+      // still recognise dirs it previously wrote itself.
       await fs.mkdir(path.join(tempDir, ".vm0"), { recursive: true });
       await fs.writeFile(
         path.join(tempDir, ".vm0", "storage.yaml"),

@@ -25,12 +25,16 @@ export async function createRun(body: {
   agentComposeId?: string;
   agentComposeVersionId?: string;
   conversationId?: string;
-  artifactName?: string;
-  artifactVersion?: string;
   memoryName?: string;
   vars?: Record<string, string>;
   secrets?: Record<string, string>;
   volumeVersions?: Record<string, string>;
+  // Multi-mount artifacts passed directly at run time
+  artifacts?: Array<{
+    name: string;
+    version?: string;
+    mountPath: string;
+  }>;
   // Additional volumes passed directly at run time (bypass compose)
   additionalVolumes?: Array<{
     name: string;

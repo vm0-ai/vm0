@@ -11,7 +11,7 @@ import {
   createTestCompose,
   createTestCliToken,
 } from "../../../../src/__tests__/api-test-helpers";
-import { testContext } from "../../../../src/__tests__/test-helpers";
+import { testContext, uniqueId } from "../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../src/__tests__/clerk-mock";
 import { generateSandboxToken } from "../../../../src/lib/auth/sandbox-token";
 import { seedTestRun } from "../../../../src/__tests__/db-test-seeders/runs";
@@ -36,7 +36,7 @@ describe("Storage capability enforcement", () => {
     userId = user.userId;
 
     // Create a compose and run so sandbox tokens can resolve org
-    const { composeId } = await createTestCompose("test-agent");
+    const { composeId } = await createTestCompose(uniqueId("storage-agent"));
     const result = await seedTestRun(userId, composeId);
     runId = result.runId;
   });

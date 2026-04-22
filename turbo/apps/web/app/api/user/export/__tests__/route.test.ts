@@ -1,6 +1,9 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { POST, GET } from "../route";
-import { testContext } from "../../../../../src/__tests__/test-helpers";
+import {
+  testContext,
+  uniqueId,
+} from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 import {
   createTestRequest,
@@ -42,7 +45,7 @@ describe("POST /api/user/export", () => {
       mockClerk({ userId: user.userId, orgId: user.orgId });
 
       // Create test compose with version
-      const { composeId } = await createTestCompose("test-agent", {
+      const { composeId } = await createTestCompose(uniqueId("export-agent"), {
         framework: "claude-code",
       });
 
@@ -183,7 +186,7 @@ describe("POST /api/user/export", () => {
       const userA = await context.setupUser();
       mockClerk({ userId: userA.userId, orgId: userA.orgId });
 
-      await createTestCompose("user-a-agent");
+      await createTestCompose(uniqueId("user-a-agent"));
 
       // User B triggers export
       const userB = await context.setupUser({ prefix: "other" });

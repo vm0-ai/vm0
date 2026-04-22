@@ -62,7 +62,7 @@ EOF
     assert_success
 
     run $VM0_CLI run "${AGENT_NAME}-placeholder" \
-        --artifact "$ARTIFACT_NAME" \
+        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
         "echo \"TOKEN=\$SERPAPI_TOKEN\""
 
     echo "$output"
@@ -98,7 +98,7 @@ EOF
     # definitive proof that the proxy injected our fake api_key query param.
     # 403 = firewall blocked (proxy didn't match).
     run $VM0_CLI run "${AGENT_NAME}-proxy" \
-        --artifact "$ARTIFACT_NAME" \
+        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
         "STATUS=\$(curl -s -o /dev/null -w '%{http_code}' 'https://serpapi.com/search?q=test&engine=google') && echo \"SERPAPI_STATUS=\$STATUS\""
 
     echo "$output"

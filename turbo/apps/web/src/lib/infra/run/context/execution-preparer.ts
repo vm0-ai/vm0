@@ -114,7 +114,9 @@ export async function prepareForExecution(
 
   const agentOrgId = agentComposeInfo.orgId;
 
-  // Auto-create artifact and memory storages if they don't exist yet
+  // Auto-create artifact and memory storages if they don't exist yet.
+  // Additional artifacts are also auto-created so that first-run multi-mount
+  // callers don't have to pre-provision each storage record.
   const ensureStart = Date.now();
   await Promise.all([
     context.artifactName
@@ -123,6 +125,9 @@ export async function prepareForExecution(
     context.memoryName
       ? ensureStorageExists(orgId, userId, context.memoryName, "memory")
       : null,
+    ...(context.artifacts ?? []).map((entry) => {
+      return ensureStorageExists(orgId, userId, entry.name, "artifact");
+    }),
   ]);
   const ensureEnd = Date.now();
 
@@ -143,11 +148,12 @@ export async function prepareForExecution(
     workingDir,
     context.memoryName,
     context.additionalVolumes,
+    context.artifacts,
   );
   const storageEnd = Date.now();
 
   log.debug(
-    `Storage manifest prepared with dual orgs: agentClerkOrgId=${agentOrgId}, runtimeClerkOrgId=${orgId}, ${storageManifest.storages.length} storages, ${storageManifest.artifact ? "1 artifact" : "no artifact"}`,
+    `Storage manifest prepared with dual orgs: agentClerkOrgId=${agentOrgId}, runtimeClerkOrgId=${orgId}, ${storageManifest.storages.length} storages, ${storageManifest.artifacts.length} artifacts`,
   );
 
   // Build PreparedContext

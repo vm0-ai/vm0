@@ -1,5 +1,87 @@
 # Changelog
 
+## [12.285.0](https://github.com/vm0-ai/vm0/compare/web-v12.284.0...web-v12.285.0) (2026-04-22)
+
+
+### Features
+
+* **voice-chat-candidate:** add reasoner timing, task compaction, dev cron scheduler ([#10578](https://github.com/vm0-ai/vm0/issues/10578)) ([87d63eb](https://github.com/vm0-ai/vm0/commit/87d63eb187d75db495743d25292a79ce154c56e7))
+* **voice-chat:** inject system task events into fast-brain ([#10676](https://github.com/vm0-ai/vm0/issues/10676)) ([7830a36](https://github.com/vm0-ai/vm0/commit/7830a361c9abfdae2c626cce9e7a0228adf50756))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.227.0
+
+## [12.284.0](https://github.com/vm0-ai/vm0/compare/web-v12.283.1...web-v12.284.0) (2026-04-22)
+
+
+### Features
+
+* multi-mount artifact backend + checkpoint schema ([#10629](https://github.com/vm0-ai/vm0/issues/10629)) ([0f8af96](https://github.com/vm0-ai/vm0/commit/0f8af96cd55dedd89534ff430765cc34661a55fc))
+* **voice-chat:** restore slow-brain tasker dispatch guidance ([#10672](https://github.com/vm0-ai/vm0/issues/10672)) ([32800c0](https://github.com/vm0-ai/vm0/commit/32800c09e9aac8650b6d4552d4e73533906e0f78))
+* **zero:** dual-read memory storage (artifact→memory fallback) ([#10677](https://github.com/vm0-ai/vm0/issues/10677)) ([dff842b](https://github.com/vm0-ai/vm0/commit/dff842b869cf5d786b9b7ca3f6aff9bc846ff52e)), closes [#10600](https://github.com/vm0-ai/vm0/issues/10600)
+
+
+### Bug Fixes
+
+* **billing:** gate webhook credit grants on credit_expires_record insert ([#10668](https://github.com/vm0-ai/vm0/issues/10668)) ([26e8e31](https://github.com/vm0-ai/vm0/commit/26e8e315db51ffc7f79af0c0d2bf0a56ac7c48dd))
+
+
+### Refactoring
+
+* **web:** consolidate api-error factories and document sentry filter chain ([#10673](https://github.com/vm0-ai/vm0/issues/10673)) ([fa010ff](https://github.com/vm0-ai/vm0/commit/fa010ff1800f36dfdfc736fa6194ec2ef4840874)), closes [#10666](https://github.com/vm0-ai/vm0/issues/10666)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.226.0
+
+## [12.283.1](https://github.com/vm0-ai/vm0/compare/web-v12.283.0...web-v12.283.1) (2026-04-22)
+
+
+### Refactoring
+
+* migrate /redeem/{campaign} flow from web to platform ([#10612](https://github.com/vm0-ai/vm0/issues/10612)) ([276f710](https://github.com/vm0-ai/vm0/commit/276f710ad2ab12f550175520a21960d2c9fc41b9))
+
+
+### Performance Improvements
+
+* **chat:** dedupe zero_agents and org_metadata reads on message post ([#10617](https://github.com/vm0-ai/vm0/issues/10617)) ([b83b480](https://github.com/vm0-ai/vm0/commit/b83b480388a5e76b6fafb6766c835d075d2f1e3e)), closes [#10594](https://github.com/vm0-ai/vm0/issues/10594)
+* **chat:** parallelize thread resolution and bound message scans ([#10615](https://github.com/vm0-ai/vm0/issues/10615)) ([56b281f](https://github.com/vm0-ai/vm0/commit/56b281f4d58f18ca5ee86901bcebc4edac01aaa4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.225.1
+
+## [12.283.0](https://github.com/vm0-ai/vm0/compare/web-v12.282.0...web-v12.283.0) (2026-04-22)
+
+
+### Features
+
+* add openai platform auth skeleton behind PlatformConnectors flag ([#10580](https://github.com/vm0-ai/vm0/issues/10580)) ([6f7614d](https://github.com/vm0-ai/vm0/commit/6f7614d0a8bf0f5119f6c8f3f8c110c3ab1a478d))
+* **uploads:** serve permanent /f file redirect via public api host ([#10526](https://github.com/vm0-ai/vm0/issues/10526)) ([a5003fc](https://github.com/vm0-ai/vm0/commit/a5003fcc41e76139fcaea8be8a59058386998ce8))
+
+
+### Bug Fixes
+
+* **auth:** hide clerk create-organization buttons in sign-in ui ([#10581](https://github.com/vm0-ai/vm0/issues/10581)) ([4dd4b9a](https://github.com/vm0-ai/vm0/commit/4dd4b9a2c91c7e8e571e8717c83d213ef46c9485))
+* **voice-chat:** resolve preparation timeout from task dispatch pollution ([#10582](https://github.com/vm0-ai/vm0/issues/10582)) ([6138f35](https://github.com/vm0-ai/vm0/commit/6138f353fe84dbbba286332035208712c57035a7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.225.0
+
 ## [12.282.0](https://github.com/vm0-ai/vm0/compare/web-v12.281.0...web-v12.282.0) (2026-04-22)
 
 

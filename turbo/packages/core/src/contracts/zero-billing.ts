@@ -19,6 +19,16 @@ const creditExpirySchema = z.object({
   nextExpiryDate: z.string().nullable(),
 });
 
+const creditBreakdownSegmentSchema = z.object({
+  category: z.enum(["plan", "free", "promotional", "payAsYouGo"]),
+  label: z.string(),
+  credits: z.number(),
+  // Only set on `plan` segments. Lets the UI decide whether a segment
+  // represents the current plan or leftover credits from a previous plan
+  // without round-tripping through the `label` string.
+  tier: z.enum(["pro", "team"]).optional(),
+});
+
 const billingStatusResponseSchema = z.object({
   tier: z.string(),
   credits: z.number(),
@@ -28,6 +38,7 @@ const billingStatusResponseSchema = z.object({
   hasSubscription: z.boolean(),
   autoRecharge: autoRechargeSchema,
   creditExpiry: creditExpirySchema,
+  creditBreakdown: z.array(creditBreakdownSegmentSchema),
 });
 
 const checkoutResponseSchema = z.object({
@@ -37,6 +48,27 @@ const checkoutResponseSchema = z.object({
 const portalResponseSchema = z.object({
   url: z.string(),
 });
+
+const redeemResponseSchema = z.discriminatedUnion("status", [
+  z.object({
+    status: z.literal("ready"),
+    checkoutUrl: z.string().url(),
+  }),
+  z.object({
+    status: z.literal("already_granted"),
+  }),
+  z.object({
+    status: z.literal("processing"),
+  }),
+  z.object({
+    status: z.literal("error"),
+    reason: z.enum([
+      "campaign_misconfigured",
+      "admin_required",
+      "billing_unavailable",
+    ]),
+  }),
+]);
 
 // ---------------------------------------------------------------------------
 // Request schemas
@@ -56,6 +88,11 @@ const autoRechargeUpdateRequestSchema = z.object({
   enabled: z.boolean(),
   threshold: z.number().int().positive().optional(),
   amount: z.number().int().min(1000).optional(),
+});
+
+const redeemRequestSchema = z.object({
+  successUrl: z.string().url(),
+  cancelUrl: z.string().url(),
 });
 
 // ---------------------------------------------------------------------------
@@ -228,6 +265,35 @@ export const zeroBillingDowngradeContract = c.router({
 
 export type ZeroBillingDowngradeContract = typeof zeroBillingDowngradeContract;
 
+/**
+ * Zero contract for POST /api/zero/billing/redeem/:campaign
+ *
+ * One-time campaign redemption. The handler validates the campaign whitelist,
+ * creates (or resumes) a Stripe Checkout session, and returns a discriminated
+ * union so a single landing page on the platform can render the appropriate
+ * state (ready / already_granted / processing / error).
+ */
+export const zeroBillingRedeemContract = c.router({
+  create: {
+    method: "POST",
+    path: "/api/zero/billing/redeem/:campaign",
+    pathParams: z.object({
+      campaign: z.string(),
+    }),
+    headers: authHeadersSchema,
+    body: redeemRequestSchema,
+    responses: {
+      200: redeemResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Redeem a one-time campaign",
+  },
+});
+
+export type ZeroBillingRedeemContract = typeof zeroBillingRedeemContract;
+
 // Inferred types from Zod schemas
 export type BillingStatusResponse = z.infer<typeof billingStatusResponseSchema>;
 export type AutoRechargeConfig = z.infer<typeof autoRechargeSchema>;
@@ -238,3 +304,5 @@ export type BillingInvoicesResponse = z.infer<
   typeof billingInvoicesResponseSchema
 >;
 export type DowngradeResponse = z.infer<typeof downgradeResponseSchema>;
+export type RedeemRequest = z.infer<typeof redeemRequestSchema>;
+export type RedeemResponse = z.infer<typeof redeemResponseSchema>;

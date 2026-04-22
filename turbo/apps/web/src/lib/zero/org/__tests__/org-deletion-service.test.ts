@@ -53,7 +53,7 @@ describe("deleteOrgData", () => {
     context.setupMocks();
     const { userId, orgId } = await context.setupUser();
 
-    const { composeId } = await createTestCompose("cancel-test");
+    const { composeId } = await createTestCompose(uniqueId("cancel-test"));
     const { runId: queuedRunId } = await seedTestRun(userId, composeId, {
       status: "queued",
     });
@@ -83,7 +83,9 @@ describe("deleteOrgData", () => {
     context.setupMocks();
     const { userId, orgId } = await context.setupUser();
 
-    const { composeId } = await createTestCompose("cascade-compose-test");
+    const { composeId } = await createTestCompose(
+      uniqueId("cascade-compose-test"),
+    );
     await createTestAgentSession(userId, composeId);
 
     await deleteOrgData(orgId);
@@ -96,7 +98,7 @@ describe("deleteOrgData", () => {
     context.setupMocks();
     const { userId, orgId } = await context.setupUser();
 
-    const { composeId } = await createTestCompose("cascade-run-test");
+    const { composeId } = await createTestCompose(uniqueId("cascade-run-test"));
     const { runId } = await seedTestRun(userId, composeId, {
       status: "completed",
       completedAt: new Date(),
@@ -149,8 +151,9 @@ describe("deleteOrgData", () => {
     const { userId, orgId } = await context.setupUser();
 
     await createTestVariable("TEST_VAR", "test-value");
-    await createTestCompose("test-zero-agent");
-    await createTestZeroAgent(orgId, "test-zero-agent", {
+    const zeroAgentName = uniqueId("test-zero-agent");
+    await createTestCompose(zeroAgentName);
+    await createTestZeroAgent(orgId, zeroAgentName, {
       displayName: "Test",
     });
     await insertTestUsageDaily({ userId, orgId, date: "2026-01-01" });
@@ -183,7 +186,7 @@ describe("deleteOrgData", () => {
       vm0UserId: userId,
     });
 
-    const { composeId } = await createTestCompose("slack-test");
+    const { composeId } = await createTestCompose(uniqueId("slack-test"));
     await createTestAgentSession(userId, composeId);
 
     await insertTestSlackOrgThreadSession({ connectionId: connection.id });
@@ -214,7 +217,8 @@ describe("deleteOrgData", () => {
     const { userId, orgId } = await context.setupUser();
 
     // Composes, sessions, runs
-    const { composeId, agentId } = await createTestCompose("full-org-test");
+    const fullOrgAgentName = uniqueId("full-org-test");
+    const { composeId, agentId } = await createTestCompose(fullOrgAgentName);
     const session = await createTestAgentSession(userId, composeId);
     const { runId } = await seedTestRun(userId, composeId, {
       status: "running",
@@ -242,7 +246,7 @@ describe("deleteOrgData", () => {
 
     // Variables, zero agents, schedules, usage, exports
     await createTestVariable("FULL_TEST_VAR", "value");
-    await createTestZeroAgent(orgId, "full-org-test", {
+    await createTestZeroAgent(orgId, fullOrgAgentName, {
       displayName: "Full Test",
     });
     await createTestSchedule(composeId, "full-org-schedule");
@@ -339,7 +343,7 @@ describe("deleteOrgData", () => {
     context.setupMocks();
     const { userId, orgId } = await context.setupUser();
 
-    const { composeId } = await createTestCompose("idempotent-test");
+    const { composeId } = await createTestCompose(uniqueId("idempotent-test"));
     await seedTestRun(userId, composeId, {
       status: "running",
       startedAt: new Date(),

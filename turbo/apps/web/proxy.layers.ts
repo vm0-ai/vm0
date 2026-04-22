@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import createIntlMiddleware from "next-intl/middleware";
-import { handleCors } from "./proxy.cors";
 import { locales, defaultLocale } from "./i18n";
 
 // ---------------------------------------------------------------------------
@@ -14,7 +13,6 @@ import { locales, defaultLocale } from "./i18n";
 const SKIP_I18N_PREFIXES = [
   "/api/",
   "/_next/",
-  "/redeem/",
   "/cli-auth",
   "/connector/",
   "/slack/",
@@ -25,6 +23,7 @@ const SKIP_I18N_PREFIXES = [
   "/terms-of-use",
   "/support",
   "/export",
+  "/f/",
 ] as const;
 
 const STATIC_FILE_RE = /\.(ico|png|jpg|jpeg|svg|gif|webp|woff|woff2|ttf|eot)$/i;
@@ -152,14 +151,6 @@ export const legalRedirectLayer: ProxyLayer = (ctx) => {
     const target = new URL(ctx.request.nextUrl);
     target.pathname = `/${match[2]}${match[3] ?? ""}`;
     return NextResponse.redirect(target, 308);
-  }
-  return null;
-};
-
-/** Handle CORS for API routes. Always short-circuits for "api" routes. */
-export const corsLayer: ProxyLayer = (ctx) => {
-  if (ctx.routeKind === "api") {
-    return handleCors(ctx.request);
   }
   return null;
 };

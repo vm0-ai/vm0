@@ -97,7 +97,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ success: true });
   }
 
-  await appendTaskEvent(completed.sessionId, "task-completed", completed.id);
+  await appendTaskEvent(completed.sessionId, {
+    type: "task-completed",
+    taskId: completed.id,
+    status: taskStatus,
+    result: resultText ?? null,
+    error: errorText,
+  });
 
   const [session] = await globalThis.services.db
     .select({ userId: voiceChatSessions.userId })

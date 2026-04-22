@@ -92,7 +92,7 @@ teardown_file() {
 
     # Run agent with --volume pointing to a volume NOT in compose config
     run $VM0_CLI run "$AGENT_NAME" \
-        --artifact "$ARTIFACT_NAME" \
+        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
         --volume "$DYNAMIC_VOL_A:/home/user/data" \
         --verbose \
         "cat /home/user/data/data.txt"
@@ -125,7 +125,7 @@ teardown_file() {
 
     # Run with specific version — should see v1 content, not HEAD
     run $VM0_CLI run "$AGENT_NAME" \
-        --artifact "$ARTIFACT_NAME" \
+        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
         --volume "$DYNAMIC_VOL_A:$VERSION1:/home/user/data" \
         --verbose \
         "cat /home/user/data/data.txt"
@@ -152,7 +152,7 @@ teardown_file() {
 
     # Run with two dynamic volumes at different mount paths
     run $VM0_CLI run "$AGENT_NAME" \
-        --artifact "$ARTIFACT_NAME" \
+        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
         --volume "$DYNAMIC_VOL_A:/home/user/data-a" \
         --volume "$DYNAMIC_VOL_B:/home/user/data-b" \
         --verbose \
