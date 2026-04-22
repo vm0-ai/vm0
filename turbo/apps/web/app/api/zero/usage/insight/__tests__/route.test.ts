@@ -350,7 +350,7 @@ describe("GET /api/zero/usage/insight", () => {
     await setTestCreditUsageCreatedAt(cuId, runTime);
 
     const response = await GET(
-      makeRequest({ range: "7d", groupBy: "day", tz: "UTC" }),
+      makeRequest({ range: "7d", groupBy: "source", tz: "UTC" }),
     );
     expect(response.status).toBe(200);
     const data = (await response.json()) as UsageInsightResponse;
