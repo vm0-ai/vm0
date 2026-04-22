@@ -982,7 +982,7 @@ export function ZeroChatComposer({
                         inheritLabel="agent"
                       />
                     )}
-                    <div className="mx-0.5 h-4 w-px bg-border/60" />
+                    <div className="mx-0.5 h-5 w-px bg-border/60" />
                     <MicButton
                       onTranscribed={(text) => {
                         const base = input;
