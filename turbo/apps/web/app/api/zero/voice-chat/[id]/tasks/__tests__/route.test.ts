@@ -175,7 +175,9 @@ describe("POST /api/zero/voice-chat/[id]/tasks (createTask)", () => {
     });
     expect(dispatched).toBeTruthy();
     expect(dispatched!.source).toBe("system");
-    expect(dispatched!.content).toBe(JSON.stringify({ taskId: body.task.id }));
+    expect(dispatched!.content).toBe(
+      JSON.stringify({ taskId: body.task.id, prompt: "summarize this" }),
+    );
   });
 });
 
