@@ -55,7 +55,9 @@ vi.mock("stripe", async (importOriginal) => {
   return { default: MockStripe };
 });
 
-// oxlint-disable-next-line import/first -- import must follow vi.mock so the stripe mock is registered before the route module evaluates getStripe.
+// `import` must follow `vi.mock("stripe", ...)` so the stripe constructor is
+// stubbed before the route module evaluates `getStripe`. This file is listed
+// in `.oxlintrc.json` under the `import/first` override to allow that order.
 import { POST } from "../route";
 
 const context = testContext();
