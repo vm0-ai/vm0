@@ -3418,6 +3418,88 @@
           "Maintain a list of known flaky tests and tell Zero to exclude them from alerts. This prevents alert fatigue and keeps the signal strong.",
           "Chain with auto-merge-releases for a full release pipeline: merge-queue-monitor catches stuck PRs, auto-merge-releases ships the release once the queue clears."
         ]
+      },
+      "promo-video-production": {
+        "title": "Turn raw screen recordings into a polished promo video brief",
+        "description": "Upload silent screen recordings to Slack and ask Zero to produce a complete video production brief — narration script, scene-by-scene breakdown, and editing instructions ready for your editor.",
+        "timeSaved": "~45 min saved",
+        "headings": {
+          "scenario": "Why producing promo videos from screen recordings takes forever",
+          "prompt": "How to ask Zero to create a video production brief",
+          "steps": "How Zero analyzes recordings and builds your production brief",
+          "nextActions": "Refine the script, hand off to your editor, or schedule recurring updates",
+          "integrations": "Required integrations: Slack and Notion",
+          "tips": "Best practices for AI-assisted video production"
+        },
+        "scenario": "You just recorded a killer product demo — three screen captures showing the new feature in action. Now you need a 60-second promo video for social media. That means watching each recording, deciding which moments to keep, writing a narration script that tells a story, timing the voiceover to the visuals, and writing up editing notes your video editor can actually follow. It's an afternoon of work for a minute of video. You drop the files in Slack and let Zero handle the production planning.",
+        "promptVariants": [
+          {
+            "label": "Detailed",
+            "prompt": "@Zero I've uploaded 3 screen recordings of our new dashboard feature. Please create a 60-second promo video production brief:\n\n1. Watch each recording and identify the best moments\n2. Write a narration script (conversational tone, under 150 words)\n3. Create a scene-by-scene breakdown with timestamps\n4. Add editing instructions for transitions, callouts, and pacing"
+          },
+          {
+            "label": "Quick",
+            "prompt": "@Zero turn these screen recordings into a 60s promo video brief with narration script and scene breakdown."
+          },
+          {
+            "label": "Scheduled",
+            "prompt": "@Zero every Friday, check #product-demos for new screen recordings and draft a promo video brief for each. Post the brief to #marketing."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Scarlett",
+            "text": "@Zero I just uploaded 3 screen recordings of our new dashboard. Create a 60-second promo video brief with narration and scene breakdown."
+          },
+          {
+            "name": "Zero",
+            "text": "Here's your production brief (88s runtime, 6 scenes).\n\nScene Breakdown:\n#\tTimecode\tVisual\tNarration\n1\t0:00–0:08\tDashboard loading\t\"Your morning starts here.\"\n2\t0:08–0:22\tMetrics overview\t\"Every metric, one screen.\"\n3\t0:22–0:40\tDrill-down flow\t\"Click any card to go deeper.\"\n\nFull narration script, transition notes, and editor instructions saved to Notion."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero analyzes your screen recordings",
+            "description": "Zero processes each uploaded recording, identifying key moments, UI transitions, and visual highlights that would make compelling scenes for the promo."
+          },
+          {
+            "title": "Narration script and scene breakdown",
+            "description": "Zero writes a conversational narration script timed to the visuals, then creates a scene-by-scene table with timecodes, visual descriptions, voiceover lines, and pacing notes."
+          },
+          {
+            "title": "Editing instructions delivered",
+            "description": "Zero outputs a complete production brief — including transition suggestions, callout placements, music cues, and export specs — ready to hand off to your video editor or use in your own editing tool."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Refine the script",
+            "description": "Adjust tone, length, or messaging",
+            "examplePrompt": "@Zero make the narration more energetic and cut it down to 45 seconds. Emphasize the speed of the workflow, not the features."
+          },
+          {
+            "title": "Save to Notion",
+            "description": "Archive the production brief for your editor",
+            "examplePrompt": "@Zero save this production brief to the Video Projects database in Notion. Tag it as 'dashboard-promo' and set status to 'Ready for Edit'."
+          },
+          {
+            "title": "Make it a routine",
+            "description": "Automate video briefs for recurring demos",
+            "examplePrompt": "@Zero every Friday, check #product-demos for new recordings uploaded this week and draft a promo video brief for each."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Slack is the primary interface — upload screen recordings and receive the production brief in the same thread. Zero needs file read access."
+          },
+          {
+            "description": "Optional. Save production briefs, narration scripts, and scene breakdowns to a Notion database for your video editor to pick up."
+          }
+        ],
+        "tips": [
+          "Specify the target length and tone upfront. '60 seconds, conversational' gives Zero clear constraints to work with.",
+          "Upload recordings in the order you want them to appear. Zero will follow the sequence unless you say otherwise.",
+          "Ask for multiple script variants — 'draft one version for LinkedIn (professional) and one for X (punchy)' — to repurpose across channels."
+        ]
       }
     },
     "filter": {

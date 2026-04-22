@@ -3418,6 +3418,88 @@
           "Pflegen Sie eine Liste bekannter instabiler Tests und weisen Sie Zero an, sie von Alarmen auszunehmen. Das verhindert Alarmmüdigkeit.",
           "Kombinieren Sie mit auto-merge-releases für eine vollständige Release-Pipeline: merge-queue-monitor erkennt feststeckende PRs, auto-merge-releases liefert das Release, sobald die Queue frei ist."
         ]
+      },
+      "promo-video-production": {
+        "title": "Rohe Bildschirmaufnahmen in ein professionelles Promo-Video-Briefing verwandeln",
+        "description": "Laden Sie stumme Bildschirmaufnahmen in Slack hoch und lassen Sie Zero ein vollständiges Video-Produktionsbriefing erstellen — Sprecherskript, Szene-für-Szene-Aufschlüsselung und Schnittanweisungen für Ihren Editor.",
+        "timeSaved": "~45 Min. gespart",
+        "headings": {
+          "scenario": "Warum die Produktion von Promo-Videos aus Bildschirmaufnahmen so lange dauert",
+          "prompt": "So bitten Sie Zero, ein Video-Produktionsbriefing zu erstellen",
+          "steps": "Wie Zero Aufnahmen analysiert und Ihr Produktionsbriefing erstellt",
+          "nextActions": "Skript verfeinern, an den Editor übergeben oder wiederkehrende Updates planen",
+          "integrations": "Erforderliche Integrationen: Slack und Notion",
+          "tips": "Best Practices für KI-gestützte Videoproduktion"
+        },
+        "scenario": "Sie haben gerade eine großartige Produktdemo aufgenommen — drei Bildschirmaufnahmen, die das neue Feature in Aktion zeigen. Jetzt brauchen Sie ein 60-Sekunden-Promovideo für Social Media. Das bedeutet: jede Aufnahme ansehen, die besten Momente auswählen, ein Sprecherskript schreiben, das eine Geschichte erzählt, den Voiceover auf die Bilder abstimmen und Schnittnotizen verfassen, denen Ihr Video-Editor tatsächlich folgen kann. Ein ganzer Nachmittag Arbeit für eine Minute Video. Sie laden die Dateien in Slack hoch und lassen Zero die Produktionsplanung übernehmen.",
+        "promptVariants": [
+          {
+            "label": "Detailliert",
+            "prompt": "@Zero Ich habe 3 Bildschirmaufnahmen unseres neuen Dashboard-Features hochgeladen. Bitte erstelle ein 60-Sekunden-Promovideo-Produktionsbriefing:\n\n1. Sieh dir jede Aufnahme an und identifiziere die besten Momente\n2. Schreibe ein Sprecherskript (lockerer Ton, unter 150 Wörter)\n3. Erstelle eine Szene-für-Szene-Aufschlüsselung mit Zeitstempeln\n4. Füge Schnittanweisungen für Übergänge, Hervorhebungen und Tempo hinzu"
+          },
+          {
+            "label": "Schnell",
+            "prompt": "@Zero verwandle diese Bildschirmaufnahmen in ein 60s-Promovideo-Briefing mit Sprecherskript und Szenenaufschlüsselung."
+          },
+          {
+            "label": "Geplant",
+            "prompt": "@Zero jeden Freitag, prüfe #product-demos auf neue Bildschirmaufnahmen und erstelle für jede ein Promovideo-Briefing. Poste das Briefing in #marketing."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Scarlett",
+            "text": "@Zero Ich habe gerade 3 Bildschirmaufnahmen unseres neuen Dashboards hochgeladen. Erstelle ein 60-Sekunden-Promovideo-Briefing mit Sprecher und Szenenaufschlüsselung."
+          },
+          {
+            "name": "Zero",
+            "text": "Hier ist Ihr Produktionsbriefing (88s Laufzeit, 6 Szenen).\n\nSzenenaufschlüsselung:\n#\tTimecode\tVisuell\tSprecher\n1\t0:00–0:08\tDashboard lädt\t\"Ihr Morgen beginnt hier.\"\n2\t0:08–0:22\tMetriken-Übersicht\t\"Jede Metrik, ein Bildschirm.\"\n3\t0:22–0:40\tDrill-down-Ablauf\t\"Klicken Sie auf eine Karte für Details.\"\n\nVollständiges Sprecherskript, Übergangsnotizen und Editor-Anweisungen in Notion gespeichert."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero analysiert Ihre Bildschirmaufnahmen",
+            "description": "Zero verarbeitet jede hochgeladene Aufnahme und identifiziert Schlüsselmomente, UI-Übergänge und visuelle Highlights, die überzeugende Szenen für das Promovideo ergeben."
+          },
+          {
+            "title": "Sprecherskript und Szenenaufschlüsselung",
+            "description": "Zero schreibt ein lockeres Sprecherskript, das auf die Bilder abgestimmt ist, und erstellt dann eine Szene-für-Szene-Tabelle mit Timecodes, visuellen Beschreibungen, Voiceover-Text und Tempo-Notizen."
+          },
+          {
+            "title": "Schnittanweisungen geliefert",
+            "description": "Zero liefert ein vollständiges Produktionsbriefing — einschließlich Übergangsvorschlägen, Platzierung von Hervorhebungen, Musikhinweisen und Exportspezifikationen — bereit zur Übergabe an Ihren Video-Editor."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Skript verfeinern",
+            "description": "Ton, Länge oder Botschaft anpassen",
+            "examplePrompt": "@Zero mach die Erzählung energiegeladener und kürze auf 45 Sekunden. Betone die Geschwindigkeit des Workflows, nicht die Features."
+          },
+          {
+            "title": "In Notion speichern",
+            "description": "Produktionsbriefing für den Editor archivieren",
+            "examplePrompt": "@Zero speichere dieses Produktionsbriefing in der Video-Projekte-Datenbank in Notion. Tagge es als \"dashboard-promo\" und setze den Status auf \"Bereit zum Schnitt\"."
+          },
+          {
+            "title": "Zur Routine machen",
+            "description": "Video-Briefings für wiederkehrende Demos automatisieren",
+            "examplePrompt": "@Zero jeden Freitag, prüfe #product-demos auf neue Aufnahmen dieser Woche und erstelle für jede ein Promovideo-Briefing."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Slack ist die primäre Schnittstelle — laden Sie Bildschirmaufnahmen hoch und erhalten Sie das Produktionsbriefing im selben Thread. Zero benötigt Dateizugriff."
+          },
+          {
+            "description": "Optional. Speichern Sie Produktionsbriefings, Sprecherskripte und Szenenaufschlüsselungen in einer Notion-Datenbank, damit Ihr Video-Editor darauf zugreifen kann."
+          }
+        ],
+        "tips": [
+          "Geben Sie Ziellänge und Ton vorab an. \"60 Sekunden, locker\" gibt Zero klare Vorgaben.",
+          "Laden Sie Aufnahmen in der gewünschten Reihenfolge hoch. Zero folgt der Sequenz, sofern Sie nichts anderes angeben.",
+          "Fordern Sie mehrere Skriptvarianten an — \"erstelle eine Version für LinkedIn (professionell) und eine für X (knackig)\" — um Inhalte kanalübergreifend zu nutzen."
+        ]
       }
     },
     "filter": {

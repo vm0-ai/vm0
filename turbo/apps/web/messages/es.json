@@ -3418,6 +3418,88 @@
           "Mantén una lista de tests inestables conocidos y dile a Zero que los excluya de las alertas. Esto evita la fatiga de alertas y mantiene la señal limpia.",
           "Combínalo con auto-merge-releases para un pipeline de release completo: merge-queue-monitor detecta PRs bloqueados, auto-merge-releases publica el release cuando la cola se despeja."
         ]
+      },
+      "promo-video-production": {
+        "title": "Convierte grabaciones de pantalla en un briefing de video promocional pulido",
+        "description": "Sube grabaciones de pantalla silenciosas a Slack y pide a Zero que produzca un briefing de producción completo — guión de narración, desglose escena por escena e instrucciones de edición listas para tu editor.",
+        "timeSaved": "~45 min ahorrados",
+        "headings": {
+          "scenario": "Por qué producir videos promocionales a partir de grabaciones toma tanto tiempo",
+          "prompt": "Cómo pedir a Zero que cree un briefing de producción de video",
+          "steps": "Cómo Zero analiza las grabaciones y construye tu briefing de producción",
+          "nextActions": "Refinar el guión, entregarlo al editor o programar actualizaciones recurrentes",
+          "integrations": "Integraciones requeridas: Slack y Notion",
+          "tips": "Buenas prácticas para producción de video asistida por IA"
+        },
+        "scenario": "Acabas de grabar una demo de producto increíble — tres capturas de pantalla mostrando la nueva función en acción. Ahora necesitas un video promocional de 60 segundos para redes sociales. Eso significa ver cada grabación, decidir qué momentos conservar, escribir un guión de narración que cuente una historia, sincronizar la voz en off con las imágenes y redactar notas de edición que tu editor de video pueda seguir. Es una tarde de trabajo para un minuto de video. Subes los archivos a Slack y dejas que Zero se encargue de la planificación de producción.",
+        "promptVariants": [
+          {
+            "label": "Detallado",
+            "prompt": "@Zero He subido 3 grabaciones de pantalla de nuestra nueva función de dashboard. Por favor crea un briefing de producción de video promocional de 60 segundos:\n\n1. Revisa cada grabación e identifica los mejores momentos\n2. Escribe un guión de narración (tono conversacional, menos de 150 palabras)\n3. Crea un desglose escena por escena con marcas de tiempo\n4. Agrega instrucciones de edición para transiciones, destacados y ritmo"
+          },
+          {
+            "label": "Rápido",
+            "prompt": "@Zero convierte estas grabaciones de pantalla en un briefing de video promo de 60s con guión de narración y desglose de escenas."
+          },
+          {
+            "label": "Programado",
+            "prompt": "@Zero cada viernes, revisa #product-demos en busca de nuevas grabaciones y crea un briefing de video promo para cada una. Publica el briefing en #marketing."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Scarlett",
+            "text": "@Zero Acabo de subir 3 grabaciones de pantalla de nuestro nuevo dashboard. Crea un briefing de video promo de 60 segundos con narración y desglose de escenas."
+          },
+          {
+            "name": "Zero",
+            "text": "Aquí está tu briefing de producción (88s de duración, 6 escenas).\n\nDesglose de escenas:\n#\tTimecode\tVisual\tNarración\n1\t0:00–0:08\tCarga del dashboard\t\"Tu mañana empieza aquí.\"\n2\t0:08–0:22\tVista de métricas\t\"Cada métrica, una pantalla.\"\n3\t0:22–0:40\tFlujo de detalle\t\"Haz clic en cualquier tarjeta para profundizar.\"\n\nGuión completo de narración, notas de transición e instrucciones para el editor guardados en Notion."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero analiza tus grabaciones de pantalla",
+            "description": "Zero procesa cada grabación subida, identificando momentos clave, transiciones de interfaz y puntos visuales destacados que serían escenas atractivas para el video promocional."
+          },
+          {
+            "title": "Guión de narración y desglose de escenas",
+            "description": "Zero escribe un guión de narración conversacional sincronizado con las imágenes, y luego crea una tabla escena por escena con timecodes, descripciones visuales, líneas de voz en off y notas de ritmo."
+          },
+          {
+            "title": "Instrucciones de edición entregadas",
+            "description": "Zero produce un briefing de producción completo — incluyendo sugerencias de transiciones, ubicación de destacados, indicaciones musicales y especificaciones de exportación — listo para entregar a tu editor de video."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Refinar el guión",
+            "description": "Ajustar tono, duración o mensaje",
+            "examplePrompt": "@Zero haz la narración más enérgica y redúcela a 45 segundos. Enfatiza la velocidad del flujo de trabajo, no las funciones."
+          },
+          {
+            "title": "Guardar en Notion",
+            "description": "Archivar el briefing de producción para tu editor",
+            "examplePrompt": "@Zero guarda este briefing de producción en la base de datos Video Projects en Notion. Etiquétalo como \"dashboard-promo\" y establece el estado en \"Listo para edición\"."
+          },
+          {
+            "title": "Convertir en rutina",
+            "description": "Automatizar briefings de video para demos recurrentes",
+            "examplePrompt": "@Zero cada viernes, revisa #product-demos en busca de grabaciones nuevas de esta semana y crea un briefing de video promo para cada una."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Slack es la interfaz principal — sube grabaciones de pantalla y recibe el briefing de producción en el mismo hilo. Zero necesita acceso de lectura a archivos."
+          },
+          {
+            "description": "Opcional. Guarda briefings de producción, guiones de narración y desgloses de escenas en una base de datos de Notion para que tu editor de video los recoja."
+          }
+        ],
+        "tips": [
+          "Especifica la duración objetivo y el tono desde el inicio. \"60 segundos, conversacional\" le da a Zero restricciones claras con las que trabajar.",
+          "Sube las grabaciones en el orden en que quieres que aparezcan. Zero seguirá la secuencia a menos que indiques lo contrario.",
+          "Pide múltiples variantes del guión — \"redacta una versión para LinkedIn (profesional) y una para X (impactante)\" — para reutilizar en diferentes canales."
+        ]
       }
     },
     "filter": {

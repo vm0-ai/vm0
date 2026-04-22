@@ -1283,6 +1283,38 @@ export const USE_CASES: UseCase[] = [
   },
 
   {
+    slug: "promo-video-production",
+    color: "#c75ca8",
+    avatar: {
+      rotation: 3,
+      skin: 4,
+      hairStyle: 1,
+      hairColor: 3,
+      expression: 5,
+      intensity: "h",
+    },
+    roles: ["product", "ops"],
+    capability: "multi-tool",
+    model: "Claude 4 Sonnet",
+    connectors: [SLACK, NOTION],
+    integrations: [
+      { connector: SLACK, required: true },
+      { connector: NOTION, required: false },
+    ],
+    relatedSlugs: [
+      "marketing-content-automation",
+      "content-performance-report",
+      "competitor-audit",
+    ],
+    stepCount: 3,
+    nextActionCount: 3,
+    integrationCount: 2,
+    tipCount: 3,
+    promptVariantCount: 3,
+    slackPreviewCount: 2,
+  },
+
+  {
     slug: "cross-tool-context",
     color: "#7abebe",
     avatar: {
