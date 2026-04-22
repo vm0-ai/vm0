@@ -163,17 +163,23 @@ def _fetch_firewall_headers_sync(
         # ctx.options.vm0_api_url (operator-set at mitmdump launch).
         resp = urllib.request.urlopen(req, timeout=10)  # noqa: S310
     except urllib.error.HTTPError as e:
-        try:
-            error_body = json.loads(e.read())
-        except (json.JSONDecodeError, OSError):
-            raise e from None
-        error_info = error_body.get("error", {})
-        if error_info.get("code") == "CONNECTOR_NOT_CONFIGURED":
-            raise ConnectorNotConfiguredError(
-                error_info.get("message", "Connector not configured"),
-            ) from None
-        raise
-    return json.loads(resp.read())
+        # HTTPError wraps an open socket; `with e` closes on every exit
+        # path to avoid FD exhaustion under sustained cache-miss load (#10475).
+        with e:
+            try:
+                error_body = json.loads(e.read())
+            except (json.JSONDecodeError, OSError):
+                raise e from None
+            error_info = error_body.get("error", {})
+            if error_info.get("code") == "CONNECTOR_NOT_CONFIGURED":
+                raise ConnectorNotConfiguredError(
+                    error_info.get("message", "Connector not configured"),
+                ) from None
+            raise
+    try:
+        return json.loads(resp.read())
+    finally:
+        resp.close()
 
 
 async def fetch_firewall_headers(

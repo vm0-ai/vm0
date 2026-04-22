@@ -4,13 +4,24 @@ import {
   useSet,
   useLastLoadable,
   useLastResolved,
+  useResolved,
 } from "ccstate-react";
-import { IconMenu2, IconUserPlus, IconVolume2 } from "@tabler/icons-react";
+import { useLoadableSet } from "ccstate-react/experimental";
+import {
+  IconMenu2,
+  IconPlus,
+  IconUserPlus,
+  IconVolume2,
+} from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/core";
 import type { RouteKey } from "../../signals/route-paths.ts";
 import { cn } from "@vm0/ui";
 import { ZeroSidebar } from "./zero-sidebar.tsx";
-import { currentChatAgent$ } from "../../signals/agent-chat.ts";
+import {
+  currentChatAgent$,
+  currentChatAgentId$,
+} from "../../signals/agent-chat.ts";
+import { createNewChatThread$ } from "../../signals/chat-page/chat-message.ts";
 import { AvatarFromUrl } from "./zero-sidebar-shared.tsx";
 import { QueueDrawer } from "../queue-page/queue-drawer.tsx";
 import {
@@ -19,6 +30,7 @@ import {
   sidebarExpanded$,
   setSidebarExpanded$,
   isChatRoute,
+  navigateToChat$,
 } from "../../signals/zero-page/zero-nav.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { activeRoute$ } from "../../signals/active-route.ts";
@@ -132,12 +144,48 @@ function InviteButtonLeaf() {
   );
 }
 
+function NewChatButtonLeaf() {
+  const currentChatAgentId = useResolved(currentChatAgentId$);
+  const [creatingLoadable, createNewChat] =
+    useLoadableSet(createNewChatThread$);
+  const navigateToChatFn = useSet(navigateToChat$);
+  const pageSignal = useGet(pageSignal$);
+  const creating = creatingLoadable.state === "loading";
+
+  const handleNewChat = () => {
+    detach(
+      createNewChat(currentChatAgentId ?? null, pageSignal).then((threadId) => {
+        if (threadId) {
+          navigateToChatFn(threadId);
+        }
+      }),
+      Reason.DomCallback,
+    );
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handleNewChat}
+      disabled={creating}
+      className="flex items-center gap-1.5 h-8 px-3 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors shrink-0 disabled:opacity-50"
+    >
+      <IconPlus size={14} stroke={1.5} />
+      New
+    </button>
+  );
+}
+
 function MobileTopBarActions({ activeId }: { activeId: RouteKey | null }) {
   const inChatRoute = isChatRoute(activeId);
+  const features = useLastResolved(featureSwitch$);
+  const newButtonEnabled =
+    features?.[FeatureSwitchKey.ChatHeaderNewButton] ?? false;
   return (
     <>
       {inChatRoute && <AutoReadToggleLeaf />}
-      {inChatRoute && <InviteButtonLeaf />}
+      {inChatRoute &&
+        (newButtonEnabled ? <NewChatButtonLeaf /> : <InviteButtonLeaf />)}
     </>
   );
 }
