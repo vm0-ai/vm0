@@ -111,6 +111,16 @@ import { setBillingDialogOpen$ } from "../../signals/zero-page/billing.ts";
 
 const MAX_FILE_SIZE = 1024 * 1024 * 1024; // 1 GB — keep in sync with web constants
 
+// iOS auto-focus pops the on-screen keyboard and scrolls the viewport, which is
+// jarring when landing on a chat page. Desktop/Android behavior is unchanged.
+function isIOSDevice(): boolean {
+  const ua = navigator.userAgent;
+  return (
+    /iPad|iPhone|iPod/.test(ua) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Props
 // ---------------------------------------------------------------------------
@@ -872,7 +882,7 @@ export function ZeroChatComposer({
             )}
             <textarea
               ref={(el) => {
-                if (el && autoFocus) {
+                if (el && autoFocus && !isIOSDevice()) {
                   el.focus();
                 }
                 setInputRef?.(el);
