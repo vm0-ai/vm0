@@ -1,5 +1,18 @@
 # Changelog
 
+## [8.221.0](https://github.com/vm0-ai/vm0/compare/core-v8.220.0...core-v8.221.0) (2026-04-22)
+
+
+### Features
+
+* remove Vm0GlmModel feature flag, fully enable GLM-5.1 ([#10497](https://github.com/vm0-ai/vm0/issues/10497)) ([cff31ff](https://github.com/vm0-ai/vm0/commit/cff31ffbc2f68e27d56742efafaf0832d7e5362f))
+* **voice-chat-candidate:** three-column layout with live task event stream ([#10452](https://github.com/vm0-ai/vm0/issues/10452)) ([df2a3d5](https://github.com/vm0-ai/vm0/commit/df2a3d5a8e72186508e7b40fbc739db91ebb133e))
+
+
+### Refactoring
+
+* **mitm-addon:** split usage.py into package with per-connector dispatch ([#10478](https://github.com/vm0-ai/vm0/issues/10478)) ([a9d9f14](https://github.com/vm0-ai/vm0/commit/a9d9f14b47de14a3c255b76e1d59e91cf4b2fe37))
+
 ## [8.220.0](https://github.com/vm0-ai/vm0/compare/core-v8.219.1...core-v8.220.0) (2026-04-21)
 
 

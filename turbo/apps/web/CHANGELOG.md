@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.278.0](https://github.com/vm0-ai/vm0/compare/web-v12.277.0...web-v12.278.0) (2026-04-22)
+
+
+### Features
+
+* **voice-chat-candidate:** three-column layout with live task event stream ([#10452](https://github.com/vm0-ai/vm0/issues/10452)) ([df2a3d5](https://github.com/vm0-ai/vm0/commit/df2a3d5a8e72186508e7b40fbc739db91ebb133e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.221.0
+
 ## [12.277.0](https://github.com/vm0-ai/vm0/compare/web-v12.276.6...web-v12.277.0) (2026-04-21)
 
 

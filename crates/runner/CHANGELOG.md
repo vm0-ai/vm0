@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.89.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.89.0...runner-rs-v0.89.1) (2026-04-22)
+
+
+### Bug Fixes
+
+* **mitm-addon:** close urllib response and error in _forward_request_sync ([#10490](https://github.com/vm0-ai/vm0/issues/10490)) ([f65241b](https://github.com/vm0-ai/vm0/commit/f65241bb88d0dc333327685b25cc3b243db64406)), closes [#10476](https://github.com/vm0-ai/vm0/issues/10476)
+
+
+### Refactoring
+
+* **mitm-addon:** split usage.py into package with per-connector dispatch ([#10478](https://github.com/vm0-ai/vm0/issues/10478)) ([a9d9f14](https://github.com/vm0-ai/vm0/commit/a9d9f14b47de14a3c255b76e1d59e91cf4b2fe37))
+* **runner:** make image gc top-n global across rootfs ([#10480](https://github.com/vm0-ai/vm0/issues/10480)) ([3ab0924](https://github.com/vm0-ai/vm0/commit/3ab09242f143ddbc62ad32ebbb2517ee3f0c5f9d))
+
 ## [0.89.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.88.6...runner-rs-v0.89.0) (2026-04-21)
 
 

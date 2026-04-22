@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.277.0](https://github.com/vm0-ai/vm0/compare/app-v0.276.0...app-v0.277.0) (2026-04-22)
+
+
+### Features
+
+* remove Vm0GlmModel feature flag, fully enable GLM-5.1 ([#10497](https://github.com/vm0-ai/vm0/issues/10497)) ([cff31ff](https://github.com/vm0-ai/vm0/commit/cff31ffbc2f68e27d56742efafaf0832d7e5362f))
+* **voice-chat-candidate:** three-column layout with live task event stream ([#10452](https://github.com/vm0-ai/vm0/issues/10452)) ([df2a3d5](https://github.com/vm0-ai/vm0/commit/df2a3d5a8e72186508e7b40fbc739db91ebb133e))
+
+
+### Bug Fixes
+
+* **platform:** add hidden class to collapsed sidebar to prevent mobile display ([#10481](https://github.com/vm0-ai/vm0/issues/10481)) ([e53baba](https://github.com/vm0-ai/vm0/commit/e53baba369f781ae40a09f18f871b16900c941bd))
+* skip chat composer auto-focus on iOS ([#10498](https://github.com/vm0-ai/vm0/issues/10498)) ([a2bc7a0](https://github.com/vm0-ai/vm0/commit/a2bc7a04d2432223e16d123c4a8c3818278c2cea))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.221.0
+
 ## [0.276.0](https://github.com/vm0-ai/vm0/compare/app-v0.275.2...app-v0.276.0) (2026-04-21)
 
 
