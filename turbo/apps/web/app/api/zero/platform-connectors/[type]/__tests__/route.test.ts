@@ -13,12 +13,24 @@ import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 
 const context = testContext();
 
-async function setupOrg(userId: string) {
+// `STAFF_ORG_ID_HASHES` contains the hash of this orgId (see
+// `packages/core/src/identity-hash.ts`), so a user mocked into this org
+// satisfies the `PlatformConnectors` feature switch without any override.
+const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
+
+async function setupNonStaffOrg(userId: string) {
   const slug = uniqueId("zpl");
   const orgId = `org_mock_${userId}`;
   mockClerk({ userId, orgId, orgRole: "org:admin" });
   await createTestOrg(slug);
   return { slug, orgId };
+}
+
+async function setupStaffOrg(userId: string) {
+  const slug = uniqueId("zpl-staff");
+  mockClerk({ userId, orgId: STAFF_ORG_ID, orgRole: "org:admin" });
+  await createTestOrg(slug);
+  return { slug, orgId: STAFF_ORG_ID };
 }
 
 function enableUrl(type: string): string {
@@ -47,21 +59,31 @@ describe("POST /api/zero/platform-connectors/:type", () => {
     expect(response.status).toBe(401);
   });
 
-  it("rejects types that don't declare a platform auth method", async () => {
+  it("returns 404 when PlatformConnectors flag is off for this org", async () => {
+    // Non-staff org → flag is off → endpoint 404s as if it doesn't exist.
+    // Matches the UI, which also hides the Enable button for these users.
+    const userId = uniqueId("zpl-nostaff");
+    await setupNonStaffOrg(userId);
+
+    const response = await enablePost("openai");
+    expect(response.status).toBe(404);
+  });
+
+  it("rejects types that don't declare a platform auth method (staff)", async () => {
     // `test-oauth` is the internal synthetic OAuth connector — it passes
     // `connectorTypeSchema` (so the request reaches the handler) and will
     // never grow a `platform` auth method by contract, so the 400 branch
     // is stable under future contract changes.
     const userId = uniqueId("zpl-np");
-    await setupOrg(userId);
+    await setupStaffOrg(userId);
 
     const response = await enablePost("test-oauth");
     expect(response.status).toBe(400);
   });
 
-  it("enables openai and persists a platform row", async () => {
+  it("enables openai for a staff user and persists a platform row", async () => {
     const userId = uniqueId("zpl-ok");
-    const { orgId } = await setupOrg(userId);
+    const { orgId } = await setupStaffOrg(userId);
 
     const response = await enablePost("openai");
     expect(response.status).toBe(200);
@@ -75,7 +97,7 @@ describe("POST /api/zero/platform-connectors/:type", () => {
 
   it("is idempotent — repeat POSTs yield one row", async () => {
     const userId = uniqueId("zpl-idem");
-    const { orgId } = await setupOrg(userId);
+    const { orgId } = await setupStaffOrg(userId);
 
     const first = await enablePost("openai");
     expect(first.status).toBe(200);
