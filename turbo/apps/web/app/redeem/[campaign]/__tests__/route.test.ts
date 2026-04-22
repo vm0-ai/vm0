@@ -22,6 +22,7 @@ const stripeMocks = vi.hoisted(() => {
     checkoutSessionsExpire: vi.fn(),
     customersCreate: vi.fn(),
     couponsRetrieve: vi.fn(),
+    pricesRetrieve: vi.fn(),
   };
 });
 
@@ -33,7 +34,7 @@ vi.mock("stripe", async (importOriginal) => {
     function MockStripe() {
       return {
         products: { retrieve: vi.fn() },
-        prices: { list: vi.fn() },
+        prices: { list: vi.fn(), retrieve: stripeMocks.pricesRetrieve },
         checkout: {
           sessions: {
             create: stripeMocks.checkoutSessionsCreate,
@@ -88,15 +89,20 @@ describe("GET /redeem/[campaign]", () => {
     stripeMocks.checkoutSessionsExpire.mockReset();
     stripeMocks.customersCreate.mockReset();
     stripeMocks.couponsRetrieve.mockReset();
+    stripeMocks.pricesRetrieve.mockReset();
 
     // If tests seed a Stripe customer on the org, customers.create shouldn't be
     // called; but default the fallback to a known id just in case.
     stripeMocks.customersCreate.mockResolvedValue({ id: "cus_test" });
-    // Default: coupon is live and valid. Resume-branch tests can override
-    // this to simulate deletion / expiry / max_redemptions.
+    // Defaults: coupon live + valid, price live + active. Resume tests
+    // override these to simulate deletion / expiry / max_redemptions / archive.
     stripeMocks.couponsRetrieve.mockResolvedValue({
       id: COUPON_ID,
       valid: true,
+    });
+    stripeMocks.pricesRetrieve.mockResolvedValue({
+      id: PRICE_ID,
+      active: true,
     });
   });
 
@@ -328,6 +334,83 @@ describe("GET /redeem/[campaign]", () => {
     );
     expect(stripeMocks.checkoutSessionsExpire).toHaveBeenCalledWith(
       "cs_open_invalid",
+    );
+    const row = await findOrgPromoRedemption({
+      orgId: user.orgId,
+      campaignKey: CAMPAIGN,
+    });
+    expect(row).toBeUndefined();
+  });
+
+  it("drops the cached session and redirects to campaign_misconfigured when the price was deleted", async () => {
+    await updateOrgStripeFields(user.orgId, {
+      stripeCustomerId: uniqueId("cus"),
+    });
+    await insertOrgPromoRedemption({
+      orgId: user.orgId,
+      campaignKey: CAMPAIGN,
+      stripeSessionId: "cs_open_price_gone",
+    });
+    stripeMocks.checkoutSessionsRetrieve.mockResolvedValue({
+      id: "cs_open_price_gone",
+      status: "open",
+      url: "https://stripe.test/checkout/cs_open_price_gone",
+    });
+    stripeMocks.pricesRetrieve.mockRejectedValue(
+      new Stripe.errors.StripeInvalidRequestError({
+        type: "invalid_request_error",
+        message: `No such price: '${PRICE_ID}'`,
+        code: "resource_missing",
+      }),
+    );
+
+    const response = await GET(createTestRequest(REDEEM_URL), {
+      params: params(CAMPAIGN),
+    });
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toContain(
+      "/redeem/error?reason=campaign_misconfigured",
+    );
+    expect(stripeMocks.checkoutSessionsExpire).toHaveBeenCalledWith(
+      "cs_open_price_gone",
+    );
+    const row = await findOrgPromoRedemption({
+      orgId: user.orgId,
+      campaignKey: CAMPAIGN,
+    });
+    expect(row).toBeUndefined();
+  });
+
+  it("drops the cached session and redirects to campaign_misconfigured when the price is archived", async () => {
+    await updateOrgStripeFields(user.orgId, {
+      stripeCustomerId: uniqueId("cus"),
+    });
+    await insertOrgPromoRedemption({
+      orgId: user.orgId,
+      campaignKey: CAMPAIGN,
+      stripeSessionId: "cs_open_price_archived",
+    });
+    stripeMocks.checkoutSessionsRetrieve.mockResolvedValue({
+      id: "cs_open_price_archived",
+      status: "open",
+      url: "https://stripe.test/checkout/cs_open_price_archived",
+    });
+    stripeMocks.pricesRetrieve.mockResolvedValue({
+      id: PRICE_ID,
+      active: false,
+    });
+
+    const response = await GET(createTestRequest(REDEEM_URL), {
+      params: params(CAMPAIGN),
+    });
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toContain(
+      "/redeem/error?reason=campaign_misconfigured",
+    );
+    expect(stripeMocks.checkoutSessionsExpire).toHaveBeenCalledWith(
+      "cs_open_price_archived",
     );
     const row = await findOrgPromoRedemption({
       orgId: user.orgId,

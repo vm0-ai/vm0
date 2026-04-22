@@ -170,14 +170,19 @@ async function resumeExisting(
 
 /**
  * Throw a `resource_missing` StripeInvalidRequestError if the campaign's
- * coupon is not usable right now. Covers:
- *   - coupon was deleted in Stripe (retrieve → 404)
- *   - coupon has `valid: false` (computed by Stripe from `redeem_by`,
- *     `max_redemptions`, or manual invalidation)
+ * coupon or price isn't usable right now. Covers:
+ *   - coupon deleted in Stripe (retrieve → 404)
+ *   - coupon has `valid: false` (computed from `redeem_by`,
+ *     `max_redemptions`, or manual disable)
+ *   - price deleted/unrecognised (retrieve → 404)
+ *   - price archived (`active: false`)
  *
- * When invalid, expires the cached Stripe session and removes the dedup
- * row so the next `/redeem` hit takes the clean create-session path and
- * also fails cleanly at campaign_misconfigured.
+ * `checkout.sessions.create` validates both resources at session creation,
+ * but the cached open session we're about to reuse was minted some time
+ * ago. Stripe doesn't revalidate on retrieve, so drift between then and
+ * now has to be caught here. On failure we expire the stripe session,
+ * drop the dedup row, and let the outer route land the user on
+ * campaign_misconfigured.
  */
 async function ensureCampaignStillAvailable(
   params: RedemptionParams,
@@ -197,17 +202,25 @@ async function ensureCampaignStillAvailable(
 
   const stripe = getStripe();
   let coupon;
+  let price;
   try {
-    coupon = await stripe.coupons.retrieve(campaign.couponId);
+    // Parallel: each is an independent Stripe read; wall time is one RTT.
+    [coupon, price] = await Promise.all([
+      stripe.coupons.retrieve(campaign.couponId),
+      stripe.prices.retrieve(campaign.priceId),
+    ]);
   } catch (err) {
     if (
       err instanceof Stripe.errors.StripeInvalidRequestError &&
       err.code === "resource_missing"
     ) {
-      log.warn("one_time_purchase coupon missing on resume", {
+      log.warn("one_time_purchase stripe resource missing on resume", {
         orgId: params.orgId,
         campaignKey: params.campaignKey,
         couponId: campaign.couponId,
+        priceId: campaign.priceId,
+        // Stripe's message names the specific resource (coupon vs price).
+        stripeMessage: err.message,
       });
       await cleanupStaleRedemption(params, stripeSessionId);
     }
@@ -228,6 +241,20 @@ async function ensureCampaignStillAvailable(
       type: "invalid_request_error",
       code: "resource_missing",
       message: `Coupon ${campaign.couponId} is no longer valid (expired, maxed out, or disabled)`,
+    });
+  }
+
+  if (!price.active) {
+    log.warn("one_time_purchase price no longer active on resume", {
+      orgId: params.orgId,
+      campaignKey: params.campaignKey,
+      priceId: campaign.priceId,
+    });
+    await cleanupStaleRedemption(params, stripeSessionId);
+    throw new Stripe.errors.StripeInvalidRequestError({
+      type: "invalid_request_error",
+      code: "resource_missing",
+      message: `Price ${campaign.priceId} is no longer active`,
     });
   }
 }
