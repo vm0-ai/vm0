@@ -112,15 +112,24 @@ export const watchOrgSwitch$ = command(async ({ get }, signal: AbortSignal) => {
   prevOrgId = currentOrgId;
   persistOrgId(currentOrgId);
 
-  const unsubscribe = clerk.addListener(() => {
+  const unsubscribe = clerk.addListener(async () => {
     const newOrgId = clerk.organization?.id ?? undefined;
     if (newOrgId !== prevOrgId) {
       prevOrgId = newOrgId;
       persistOrgId(newOrgId);
-      // Navigate to the Zero homepage on org switch. A full page load is
-      // required because server-side data (agents, jobs, secrets, etc.) is
-      // scoped to the active organization, and multiple signal trees depend
-      // on the org context established at bootstrap time.
+      // Force a JWT rotation so the __session cookie carries the new
+      // org_id claim before the reload — a brand-new tab opened in
+      // parallel would otherwise read the stale cookie JWT (which bakes
+      // org_id at mint time) and see the old org until the ~60s TTL
+      // expires. Swallow refresh failures so the reload still runs — the
+      // fresh page load will re-establish Clerk state regardless.
+      await clerk.session?.getToken({ skipCache: true }).catch(() => {
+        return undefined;
+      });
+      // Full page load is required because server-side data (agents,
+      // jobs, secrets, etc.) is scoped to the active organization and
+      // multiple signal trees depend on the org context established at
+      // bootstrap time.
       location.href = "/";
     }
   });
