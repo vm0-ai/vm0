@@ -842,6 +842,82 @@ export async function getOrgInvoices(orgId: string): Promise<{
   return { invoices };
 }
 
+interface CreditBreakdownSegment {
+  category: string;
+  label: string;
+  credits: number;
+}
+
+/**
+ * Build the Usage-tab credit breakdown from active expires records.
+ *
+ * - `subscription_renewal` → "<Tier> plan" under category `plan`, tier derived
+ *   from the record's amount so leftover credits from a previous tier (e.g. a
+ *   Team user that dropped to Pro) render under their original tier label.
+ * - `starter_grant` → "Free plan".
+ * - `one_time_purchase` → "Promotional".
+ * - `auto_recharge` → "Pay as you go" (sentinel record from #10668).
+ *
+ * Legacy balance not backed by any active record (pre-sentinel top-ups,
+ * ledger drift) is surfaced as "Pay as you go" for paid tiers or "Free plan"
+ * for free, so the segments always sum to `displayedCredits`.
+ */
+function buildCreditBreakdown(args: {
+  tier: string;
+  displayedCredits: number;
+  records: Array<{ source: string; amount: number; remaining: number }>;
+}): CreditBreakdownSegment[] {
+  const { tier, displayedCredits, records } = args;
+
+  const planTierFromAmount = (amount: number): string => {
+    if (amount === TIER_MONTHLY_CREDITS.team) return "Team";
+    if (amount === TIER_MONTHLY_CREDITS.pro) return "Pro";
+    return tier.charAt(0).toUpperCase() + tier.slice(1);
+  };
+
+  const labelCredits = new Map<string, CreditBreakdownSegment>();
+  const addSegment = (category: string, label: string, credits: number) => {
+    const existing = labelCredits.get(label);
+    if (existing) {
+      existing.credits += credits;
+    } else {
+      labelCredits.set(label, { category, label, credits });
+    }
+  };
+
+  let trackedTotal = 0;
+  for (const r of records) {
+    trackedTotal += r.remaining;
+    if (r.source === "subscription_renewal") {
+      addSegment("plan", `${planTierFromAmount(r.amount)} plan`, r.remaining);
+    } else if (r.source === "starter_grant") {
+      addSegment("free", "Free plan", r.remaining);
+    } else if (r.source === "one_time_purchase") {
+      addSegment("promotional", "Promotional", r.remaining);
+    } else if (r.source === "auto_recharge") {
+      addSegment("payAsYouGo", "Pay as you go", r.remaining);
+    }
+  }
+
+  const untracked = Math.max(displayedCredits - trackedTotal, 0);
+  if (untracked > 0) {
+    if (tier === "free") {
+      addSegment("free", "Free plan", untracked);
+    } else {
+      addSegment("payAsYouGo", "Pay as you go", untracked);
+    }
+  }
+
+  const categoryOrder = ["plan", "free", "promotional", "payAsYouGo"];
+  const segments = Array.from(labelCredits.values());
+  segments.sort((a, b) => {
+    return (
+      categoryOrder.indexOf(a.category) - categoryOrder.indexOf(b.category)
+    );
+  });
+  return segments;
+}
+
 /**
  * Get billing status for an org.
  */
@@ -890,66 +966,7 @@ export async function getBillingStatus(orgId: string): Promise<{
   const displayedCredits = Math.max(rawCredits - unsettledExpired, 0);
   const tier = org?.tier ?? "free";
 
-  // Build breakdown segments from individual credit records.
-  // subscription_renewal records are matched to tier by amount.
-  const breakdown: Array<{
-    category: string;
-    label: string;
-    credits: number;
-  }> = [];
-  const planTierFromAmount = (amount: number): string => {
-    if (amount === TIER_MONTHLY_CREDITS.team) return "Team";
-    if (amount === TIER_MONTHLY_CREDITS.pro) return "Pro";
-    const name = tier.charAt(0).toUpperCase() + tier.slice(1);
-    return name;
-  };
-
-  // Accumulate by label to merge records with the same label
-  const labelCredits = new Map<
-    string,
-    { category: string; label: string; credits: number }
-  >();
-  const addSegment = (category: string, label: string, credits: number) => {
-    const existing = labelCredits.get(label);
-    if (existing) {
-      existing.credits += credits;
-    } else {
-      labelCredits.set(label, { category, label, credits });
-    }
-  };
-
-  for (const r of records) {
-    if (r.source === "subscription_renewal") {
-      const tierName = planTierFromAmount(r.amount);
-      addSegment("plan", `${tierName} plan`, r.remaining);
-    } else if (r.source === "starter_grant") {
-      addSegment("free", "Free plan", r.remaining);
-    } else if (r.source === "one_time_purchase") {
-      addSegment("promotional", "Promotional", r.remaining);
-    }
-  }
-
-  // Untracked credits (auto-recharge or legacy data)
-  const trackedTotal = records.reduce((sum, r) => sum + r.remaining, 0);
-  const untracked = Math.max(displayedCredits - trackedTotal, 0);
-  if (untracked > 0) {
-    if (tier === "free") {
-      addSegment("free", "Free plan", untracked);
-    } else {
-      addSegment("payAsYouGo", "Pay as you go", untracked);
-    }
-  }
-
-  // Order: plan entries first, then free, promotional, payAsYouGo
-  const categoryOrder = ["plan", "free", "promotional", "payAsYouGo"];
-  for (const [, seg] of labelCredits) {
-    breakdown.push(seg);
-  }
-  breakdown.sort((a, b) => {
-    return (
-      categoryOrder.indexOf(a.category) - categoryOrder.indexOf(b.category)
-    );
-  });
+  const breakdown = buildCreditBreakdown({ tier, displayedCredits, records });
 
   return {
     tier,

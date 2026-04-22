@@ -1,4 +1,4 @@
-import { eq, and, gt, lte, asc, sql, sum } from "drizzle-orm";
+import { eq, and, gt, lte, asc, sql } from "drizzle-orm";
 import { creditExpiresRecord } from "../../../db/schema/credit-expires-record";
 import { orgMetadata } from "../../../db/schema/org-metadata";
 import { logger } from "../../shared/logger";

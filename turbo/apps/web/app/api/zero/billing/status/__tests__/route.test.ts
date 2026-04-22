@@ -231,6 +231,58 @@ describe("GET /api/zero/billing/status", () => {
     expect(data.credits).toBe(100_000);
   });
 
+  it("maps auto_recharge expires records to Pay as you go segment", async () => {
+    const { orgId } = await context.setupUser({ prefix: "payg-user" });
+    await setOrgCredits(orgId, 40_000);
+
+    await updateOrgStripeFields(orgId, {
+      stripeCustomerId: uniqueId("cus-payg"),
+      stripeSubscriptionId: uniqueId("sub-payg"),
+      subscriptionStatus: "active",
+      currentPeriodEnd: new Date("2026-05-20T00:00:00Z"),
+      tier: "pro",
+    });
+
+    // Pro monthly grant
+    await insertCreditExpiresRecord({
+      orgId,
+      source: "subscription_renewal",
+      amount: 20_000,
+      expiresAt: new Date("2026-06-20T00:00:00Z"),
+      stripeInvoiceId: uniqueId("inv-sub"),
+    });
+    // Two separate auto-recharge top-ups — must merge into a single segment
+    await insertCreditExpiresRecord({
+      orgId,
+      source: "auto_recharge",
+      amount: 10_000,
+      expiresAt: new Date("2999-12-31T00:00:00Z"),
+      stripeInvoiceId: uniqueId("inv-ar1"),
+    });
+    await insertCreditExpiresRecord({
+      orgId,
+      source: "auto_recharge",
+      amount: 10_000,
+      expiresAt: new Date("2999-12-31T00:00:00Z"),
+      stripeInvoiceId: uniqueId("inv-ar2"),
+    });
+
+    const response = await GET(
+      createTestRequest("http://localhost:3000/api/zero/billing/status"),
+    );
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    const payg = data.creditBreakdown.find((s: { category: string }) => {
+      return s.category === "payAsYouGo";
+    });
+    expect(payg).toEqual({
+      category: "payAsYouGo",
+      label: "Pay as you go",
+      credits: 20_000,
+    });
+  });
+
   it("returns defaults when org row does not exist", async () => {
     const newOrgId = uniqueId("org-norow");
     const newSlug = `billing-norow-${Date.now()}`;

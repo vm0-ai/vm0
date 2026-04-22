@@ -1,6 +1,6 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import type { NextFetchEvent } from "next/server";
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import {
   runLayers,
   authRedirectLayer,
