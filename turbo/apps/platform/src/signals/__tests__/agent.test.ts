@@ -1,16 +1,22 @@
 import { describe, expect, it } from "vitest";
+import { waitFor } from "@testing-library/react";
 import { onboardingCompleteContract } from "@vm0/core/contracts/onboarding";
 import { zeroAgentsByIdContract } from "@vm0/core/contracts/zero-agents";
 import { server } from "../../mocks/server.ts";
 import { createMockApi } from "../../mocks/msw-contract.ts";
 import { setMockOnboardingStatus } from "../../mocks/handlers/api-onboarding.ts";
+import { setMockTeam } from "../../mocks/handlers/api-agents.ts";
 import { detachedSetupPage } from "../../__tests__/page-helper.ts";
+import { pathname } from "../location.ts";
 import { testContext } from "./test-helpers.ts";
 import {
   agentById,
   defaultAgentName$,
+  homeAgentId$,
+  lastUsedAgentId$,
   leadAgentAvatarUrl$,
   reloadAgentById$,
+  rememberLastUsedAgentId$,
 } from "../agent.ts";
 import { zeroJobUpdateSettings$ } from "../zero-page/job-detail/settings.ts";
 import { deleteZeroJobAgent$ } from "../zero-page/job-detail/delete.ts";
@@ -23,6 +29,7 @@ import { completeOnboarding$ } from "../zero-page/zero-onboarding-actions.ts";
 const context = testContext();
 const mockApi = createMockApi(context);
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
+const OTHER_AGENT_ID = "c0000000-0000-4000-a000-000000000002";
 
 interface AgentOverrides {
   displayName?: string | null;
@@ -234,5 +241,86 @@ describe("agent mutations trigger reloadAgentById$", () => {
     const after = await context.store.get(agentById(AGENT_ID));
     expect(after.displayName).toBe("After");
     expect(counter.getCalls).toBeGreaterThan(callsBeforeMutation);
+  });
+});
+
+describe("last used agent persistence", () => {
+  it("prefers the last used agent on home when it still exists", async () => {
+    setMockOnboardingStatus({ defaultAgentId: AGENT_ID });
+    setMockTeam([
+      {
+        id: AGENT_ID,
+        displayName: null,
+        description: null,
+        sound: null,
+        avatarUrl: null,
+        headVersionId: "version_1",
+        updatedAt: "2024-01-01T00:00:00Z",
+      },
+      {
+        id: OTHER_AGENT_ID,
+        displayName: "Other Agent",
+        description: null,
+        sound: null,
+        avatarUrl: null,
+        headVersionId: "version_2",
+        updatedAt: "2024-01-02T00:00:00Z",
+      },
+    ]);
+
+    context.store.set(rememberLastUsedAgentId$, OTHER_AGENT_ID);
+
+    expect(context.store.get(lastUsedAgentId$)).toBe(OTHER_AGENT_ID);
+    await expect(context.store.get(homeAgentId$)).resolves.toBe(OTHER_AGENT_ID);
+  });
+
+  it("falls back to the default agent when the last used agent no longer exists", async () => {
+    setMockOnboardingStatus({ defaultAgentId: AGENT_ID });
+    setMockTeam([
+      {
+        id: AGENT_ID,
+        displayName: null,
+        description: null,
+        sound: null,
+        avatarUrl: null,
+        headVersionId: "version_1",
+        updatedAt: "2024-01-01T00:00:00Z",
+      },
+    ]);
+
+    context.store.set(rememberLastUsedAgentId$, OTHER_AGENT_ID);
+
+    await expect(context.store.get(homeAgentId$)).resolves.toBe(AGENT_ID);
+  });
+
+  it("redirects / to the last used agent chat page", async () => {
+    setMockOnboardingStatus({ defaultAgentId: AGENT_ID });
+    setMockTeam([
+      {
+        id: AGENT_ID,
+        displayName: null,
+        description: null,
+        sound: null,
+        avatarUrl: null,
+        headVersionId: "version_1",
+        updatedAt: "2024-01-01T00:00:00Z",
+      },
+      {
+        id: OTHER_AGENT_ID,
+        displayName: "Other Agent",
+        description: null,
+        sound: null,
+        avatarUrl: null,
+        headVersionId: "version_2",
+        updatedAt: "2024-01-02T00:00:00Z",
+      },
+    ]);
+
+    context.store.set(rememberLastUsedAgentId$, OTHER_AGENT_ID);
+    detachedSetupPage({ context, path: "/", withoutRender: true });
+
+    await waitFor(() => {
+      expect(pathname()).toBe(`/agents/${OTHER_AGENT_ID}/chat`);
+    });
   });
 });

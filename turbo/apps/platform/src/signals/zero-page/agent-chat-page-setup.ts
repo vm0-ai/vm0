@@ -9,7 +9,11 @@ import {
   detachedNavigateTo$,
 } from "../route.ts";
 import { onboardGuard$ } from "./onboard-guard.ts";
-import { currentAgentId$, defaultAgentId$ } from "../agent.ts";
+import {
+  currentAgentId$,
+  defaultAgentId$,
+  rememberLastUsedAgentId$,
+} from "../agent.ts";
 import { setChatAgentId$, currentChatAgent$ } from "../agent-chat.ts";
 import { talkDraft$ } from "./chat-draft.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
@@ -32,6 +36,7 @@ export const setupAgentChatPage$ = command(
     const agentId = get(currentAgentId$);
     if (agentId) {
       set(setChatAgentId$, agentId);
+      set(rememberLastUsedAgentId$, agentId);
     }
 
     await set(hideAppSkeleton$, signal);
