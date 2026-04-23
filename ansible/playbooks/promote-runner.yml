@@ -19,6 +19,9 @@
 #
 # Optional Variables:
 #   - sentry_dsn: Forwarded to the systemd unit as SENTRY_DSN
+#   - axiom_token_telemetry / axiom_dataset_suffix:
+#       Forwarded to the systemd unit as AXIOM_TOKEN_TELEMETRY /
+#       AXIOM_DATASET_SUFFIX. Both must be set for Axiom telemetry to activate.
 #   - r2_account_id / r2_access_key_id / r2_secret_access_key / r2_bucket:
 #       Passed to `runner gc` so R2-side cache cleanup runs.
 
@@ -43,6 +46,12 @@
         --config {{ runner_dir }}/runner.yaml
         {% if sentry_dsn is defined and sentry_dsn %}
         --env SENTRY_DSN={{ sentry_dsn }}
+        {% endif %}
+        {% if axiom_token_telemetry is defined and axiom_token_telemetry %}
+        --env AXIOM_TOKEN_TELEMETRY={{ axiom_token_telemetry }}
+        {% endif %}
+        {% if axiom_dataset_suffix is defined and axiom_dataset_suffix %}
+        --env AXIOM_DATASET_SUFFIX={{ axiom_dataset_suffix }}
         {% endif %}
 
     # ========================================

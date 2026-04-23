@@ -1435,6 +1435,7 @@ jobs:
           AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
           AWS_METAL_RUNNER_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           SENTRY_DSN_RUNNER: ${{ secrets.SENTRY_DSN_RUNNER }}
+          AXIOM_TOKEN_TELEMETRY: ${{ secrets.AXIOM_TOKEN_TELEMETRY }}
           RUNNER_VERSION: ${{ needs.release-please.outputs.runner_rs_version }}
           R2_ACCOUNT_ID: ${{ needs.resolve-image-cache.outputs.r2-account-id }}
           R2_USER_STORAGES_BUCKET_NAME: ${{ needs.resolve-image-cache.outputs.r2-bucket }}
@@ -1445,6 +1446,8 @@ jobs:
             playbooks/promote-runner.yml \
             -e "ansible_user=${AWS_METAL_RUNNER_USER}" \
             -e "sentry_dsn=${SENTRY_DSN_RUNNER}" \
+            -e "axiom_token_telemetry=${AXIOM_TOKEN_TELEMETRY}" \
+            -e "axiom_dataset_suffix=prod" \
             -e "runner_version=${RUNNER_VERSION}" \
             -e "r2_account_id=${R2_ACCOUNT_ID:-}" \
             -e "r2_access_key_id=${R2_ACCESS_KEY_ID:-}" \
