@@ -1,5 +1,9 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { testContext, uniqueId, ensureOrgRow } from "../../../../__tests__/test-helpers";
+import {
+  testContext,
+  uniqueId,
+  ensureOrgRow,
+} from "../../../../__tests__/test-helpers";
 import {
   findCreditExpiresRecords,
   getOrgCredits,
@@ -11,10 +15,13 @@ import {
   STARTER_GRANT_AMOUNT,
   STARTER_GRANT_SOURCE,
 } from "../starter-grant-service";
+import { initServices } from "../../../../lib/init-services";
 
 const context = testContext();
 
 async function callEnsureStarterCreditGrant(orgId: string): Promise<void> {
+  // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: needed to initialise services for direct-DB tests
+  initServices();
   // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: helper accepts a tx
   await globalThis.services.db.transaction(async (tx) => {
     await ensureStarterCreditGrant(tx, orgId);
@@ -27,7 +34,7 @@ describe("ensureStarterCreditGrant", () => {
   });
 
   it("first call grants 10k credits and writes one starter_grant expires row", async () => {
-    const { orgId } = await context.setupUser();
+    const orgId = uniqueId("org");
 
     await callEnsureStarterCreditGrant(orgId);
 
@@ -49,7 +56,7 @@ describe("ensureStarterCreditGrant", () => {
   });
 
   it("second call is a no-op — no double grant, still one row", async () => {
-    const { orgId } = await context.setupUser();
+    const orgId = uniqueId("org");
 
     await callEnsureStarterCreditGrant(orgId);
     await callEnsureStarterCreditGrant(orgId);
@@ -60,7 +67,7 @@ describe("ensureStarterCreditGrant", () => {
   });
 
   it("coexists with a subscription_renewal expires row", async () => {
-    const { orgId } = await context.setupUser();
+    const orgId = uniqueId("org");
 
     const futureDate = new Date();
     futureDate.setMonth(futureDate.getMonth() + 2);
