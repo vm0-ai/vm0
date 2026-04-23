@@ -621,7 +621,9 @@ async function resolveAudioConfig(): Promise<AudioConfig> {
   const isMobile =
     navigator.maxTouchPoints > 0 && /Mobi|Android/i.test(navigator.userAgent);
 
-  const devices = await navigator.mediaDevices.enumerateDevices().catch(() => {
+  const devices = await (
+    navigator.mediaDevices?.enumerateDevices?.() ?? Promise.resolve([])
+  ).catch(() => {
     return [];
   });
   const hasExternalAudio = devices.some((d) => {
