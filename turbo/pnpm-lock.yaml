@@ -5,7 +5,7 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  fast-xml-parser: '>=5.7.0'
+  fast-xml-parser: '>=5.5.7'
   glob: '>=10.5.0'
   tar: '>=7.5.7'
   '@isaacs/brace-expansion': '>=5.0.1'
@@ -24,7 +24,6 @@ overrides:
   yaml: '>=2.8.3'
   smol-toml: '>=1.6.1'
   '@opentelemetry/instrumentation': '>=0.213.0'
-  uuid: '>=14.0.0'
   zod: 4.3.6
 
 importers:
@@ -4125,6 +4124,7 @@ packages:
 
   '@team-plain/typescript-sdk@5.12.1':
     resolution: {integrity: sha512-EgCzFDsRkFcexuOWJMFh99w86E86U5/1VN26Q6Dogtmi2ln5wFHeoJ8/0PQQmDj9GWRI/y63ltlE6I4KN0fvLA==}
+    deprecated: This package is now deprecated. Please use @team-plain/graphql, @team-plain/webhooks and @team-plain/ui-components (https://github.com/team-plain/sdk)
 
   '@testing-library/dom@10.4.1':
     resolution: {integrity: sha512-o4PXJQidqJl82ckFaXUeoAW+XysPLauYI43Abki5hABd853iMhitooc6znOnczgbTYmEP6U6/y1ZyKAIsvMKGg==}
@@ -8042,8 +8042,12 @@ packages:
   util-deprecate@1.0.2:
     resolution: {integrity: sha512-EPD5q1uXyFxJpCrLnCc1nHnq3gOa6DZBocAIiI2TaSCA7VCJ1UJDMagCzIkXNsUYfD1daK//LTEQ8xiIbrHtcw==}
 
-  uuid@14.0.0:
-    resolution: {integrity: sha512-Qo+uWgilfSmAhXCMav1uYFynlQO7fMFiMVZsQqZRMIXp0O7rR7qjkj+cPvBHLgBqi960QCoo/PH2/6ZtVqKvrg==}
+  uuid@10.0.0:
+    resolution: {integrity: sha512-8XkAphELsDnEGrDxUOHB3RGvXz6TeuYSGEZBOjtTtPm2lwhGBjLgOzLHB63IUWfBpNucQjND6d3AOudO+H3RWQ==}
+    hasBin: true
+
+  uuid@9.0.1:
+    resolution: {integrity: sha512-b+1eJOlsR9K8HJpow9Ok3fiWOWSIcIzXodvv0rQjVoOVNpWMpxf1wZNpt4y9h10odCNrqnYp1OBzRktckBe3sA==}
     hasBin: true
 
   vfile-location@5.0.3:
@@ -11225,7 +11229,7 @@ snapshots:
   '@sentry/webpack-plugin@5.1.1':
     dependencies:
       '@sentry/bundler-plugin-core': 5.1.1
-      uuid: 14.0.0
+      uuid: 9.0.1
     transitivePeerDependencies:
       - encoding
       - supports-color
@@ -16223,12 +16227,12 @@ snapshots:
   svix@1.86.0:
     dependencies:
       standardwebhooks: 1.0.0
-      uuid: 14.0.0
+      uuid: 10.0.0
 
   svix@1.89.0:
     dependencies:
       standardwebhooks: 1.0.0
-      uuid: 14.0.0
+      uuid: 10.0.0
 
   swr@2.3.4(react@19.2.4):
     dependencies:
@@ -16557,7 +16561,9 @@ snapshots:
 
   util-deprecate@1.0.2: {}
 
-  uuid@14.0.0: {}
+  uuid@10.0.0: {}
+
+  uuid@9.0.1: {}
 
   vfile-location@5.0.3:
     dependencies:
