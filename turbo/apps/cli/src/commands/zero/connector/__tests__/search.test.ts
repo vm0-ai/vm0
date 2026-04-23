@@ -341,6 +341,57 @@ describe("zero connector search command", () => {
     });
   });
 
+  describe("strictFeatureFlag filtering", () => {
+    it("excludes zapier from search results when ZapierConnector feature switch is disabled (default)", async () => {
+      server.use(
+        stubConnectors([]),
+        stubAgent(AGENT_UUID, "test"),
+        stubUserConnectors(AGENT_UUID, []),
+      );
+
+      await searchCommand.parseAsync([
+        "node",
+        "cli",
+        "zapier",
+        "--agent",
+        AGENT_UUID,
+      ]);
+
+      const lines = mockConsoleLog.mock.calls.flat() as string[];
+      const output = lines.join("\n");
+      const dataRows = findDataRows(lines);
+      const types = dataRows.map((row) => {
+        return row.split(/\s+/)[0];
+      });
+      expect(types).not.toContain("zapier");
+      expect(output).not.toContain("zapier");
+    });
+
+    it("includes connectors with api-token auth and no strictFeatureFlag even when their flag is disabled", async () => {
+      server.use(
+        stubConnectors([]),
+        stubAgent(AGENT_UUID, "test"),
+        stubUserConnectors(AGENT_UUID, []),
+      );
+
+      await searchCommand.parseAsync([
+        "node",
+        "cli",
+        "mercury",
+        "--agent",
+        AGENT_UUID,
+      ]);
+
+      const lines = mockConsoleLog.mock.calls.flat() as string[];
+      const dataRows = findDataRows(lines);
+      const types = dataRows.map((row) => {
+        return row.split(/\s+/)[0];
+      });
+      // mercury has api-token auth and no strictFeatureFlag so it is always visible
+      expect(types).toContain("mercury");
+    });
+  });
+
   describe("error handling", () => {
     it("surfaces auth errors from listZeroConnectors", async () => {
       server.use(
