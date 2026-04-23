@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
-import { VOLUME_ORG_USER_ID, SYSTEM_ORG_ID } from "@vm0/core";
+import { VOLUME_ORG_USER_ID, SYSTEM_ORG_ID } from "@vm0/core/storage-names";
 import { initServices } from "../../lib/init-services";
 import { skills } from "../../db/schema/skill";
 import { zeroAgents } from "../../db/schema/zero-agent";

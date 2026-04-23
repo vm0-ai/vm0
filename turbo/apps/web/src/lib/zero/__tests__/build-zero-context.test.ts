@@ -24,7 +24,7 @@ import { setVariable } from "../variable/variable-service";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
 import { isNoModelProvider } from "../../shared/errors";
 import { reloadEnv } from "../../../env";
-import type { TriggerSource } from "@vm0/core";
+import type { TriggerSource } from "@vm0/core/contracts/logs";
 
 const context = testContext();
 

@@ -20,13 +20,10 @@ import type { ExecutionContext, DispatchTimings } from "./types";
 import { recordSandboxOperation } from "../metrics";
 
 import { encryptSecretValue } from "../../shared/crypto/secrets-encryption";
-import {
-  type OrgTier,
-  type RunStatus,
-  type GetRunResponse,
-  type FirewallPolicies,
-  type ConnectorType,
-} from "@vm0/core";
+import { type RunStatus, type GetRunResponse } from "@vm0/core/contracts/runs";
+import type { OrgTier } from "@vm0/core/contracts/orgs";
+import type { FirewallPolicies } from "@vm0/core/contracts/firewalls";
+import type { ConnectorType } from "@vm0/core/contracts/connectors";
 import { publishCancelNotification } from "../realtime/client";
 import type { CancelRunResult } from "../../zero/zero-run-cancel";
 

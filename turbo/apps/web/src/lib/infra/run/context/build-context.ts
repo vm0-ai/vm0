@@ -5,7 +5,7 @@ import type {
   ArtifactSnapshot,
 } from "../types";
 import type { AdditionalArtifact, AdditionalVolume } from "../../storage/types";
-import type { Firewalls, NetworkPolicies } from "@vm0/core";
+import type { Firewalls, NetworkPolicies } from "@vm0/core/contracts/firewalls";
 
 interface BuildInfraContextParams {
   runId: string;

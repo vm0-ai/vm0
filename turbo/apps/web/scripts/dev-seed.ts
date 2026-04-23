@@ -3,7 +3,8 @@
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { eq, sql } from "drizzle-orm";
-import { VM0_MODEL_TO_PROVIDER, getEligibleConnectorTypes } from "@vm0/core";
+import { getEligibleConnectorTypes } from "@vm0/core/contracts/connector-utils";
+import { VM0_MODEL_TO_PROVIDER } from "@vm0/core/contracts/model-providers";
 import { schema } from "../src/db/db";
 import { creditPricing } from "../src/db/schema/credit-pricing";
 import { usagePricing } from "../src/db/schema/usage-pricing";

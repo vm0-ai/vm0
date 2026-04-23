@@ -10,7 +10,7 @@ import {
   uniqueId,
   type UserContext,
 } from "../../../../__tests__/test-helpers";
-import { SYSTEM_ORG_ID } from "@vm0/core";
+import { SYSTEM_ORG_ID } from "@vm0/core/storage-names";
 import type { AgentVolumeConfig } from "../types";
 
 const context = testContext();

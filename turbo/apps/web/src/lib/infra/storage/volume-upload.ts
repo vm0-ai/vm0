@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { eq, and } from "drizzle-orm";
 import * as tar from "tar";
-import { VOLUME_ORG_USER_ID } from "@vm0/core";
+import { VOLUME_ORG_USER_ID } from "@vm0/core/storage-names";
 import { storages, storageVersions } from "../../../db/schema/storage";
 import {
   putS3Object,

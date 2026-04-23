@@ -1,9 +1,9 @@
 import { eq, and } from "drizzle-orm";
+import { AGENT_NAME_REGEX } from "@vm0/core/contracts/composes";
 import {
-  AGENT_NAME_REGEX,
   isSupportedFramework,
   type SupportedFramework,
-} from "@vm0/core";
+} from "@vm0/core/frameworks";
 import type { AgentComposeYaml } from "../agent-compose/types";
 import { uploadInstructionsServerSide } from "../storage/instruction-upload";
 import { computeComposeVersionId } from "../agent-compose/content-hash";

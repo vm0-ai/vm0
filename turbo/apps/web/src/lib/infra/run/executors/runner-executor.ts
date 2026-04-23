@@ -1,8 +1,8 @@
 import {
   DEFAULT_PROFILE,
   type StoredExecutionContext,
-  type Firewalls,
-} from "@vm0/core";
+} from "@vm0/core/contracts/runners";
+import type { Firewalls } from "@vm0/core/contracts/firewalls";
 import { eq } from "drizzle-orm";
 import { agentRuns } from "../../../../db/schema/agent-run";
 import { runnerJobQueue } from "../../../../db/schema/runner-job-queue";

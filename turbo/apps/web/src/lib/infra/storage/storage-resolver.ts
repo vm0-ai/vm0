@@ -7,11 +7,9 @@ import type {
   VolumeError,
   StorageDriver,
 } from "./types";
-import {
-  expandVariablesInString,
-  getInstructionsStorageName,
-  getValidatedFramework,
-} from "@vm0/core";
+import { getValidatedFramework } from "@vm0/core/frameworks";
+import { expandVariablesInString } from "@vm0/core/variable-expander";
+import { getInstructionsStorageName } from "@vm0/core/storage-names";
 
 /**
  * Get the mount path for instructions based on framework

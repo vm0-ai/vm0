@@ -1,5 +1,5 @@
 import { and, eq, or } from "drizzle-orm";
-import type { SandboxReuseResult } from "@vm0/core";
+import type { SandboxReuseResult } from "@vm0/core/contracts/webhooks";
 import { agentRuns } from "../../db/schema/agent-run";
 import { agentSessions } from "../../db/schema/agent-session";
 import { zeroRuns } from "../../db/schema/zero-run";

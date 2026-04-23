@@ -20,7 +20,7 @@ import { getTestZeroAgentId } from "../../../__tests__/db-test-assertions/agents
 // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route
 import { createZeroRun } from "../zero-run-service";
 import { reloadEnv } from "../../../env";
-import type { TriggerSource } from "@vm0/core";
+import type { TriggerSource } from "@vm0/core/contracts/logs";
 
 // ---------------------------------------------------------------------------
 // Tests for createZeroRun parameters NOT exposed by the POST /api/zero/runs

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { eq, sql } from "drizzle-orm";
-import { VOLUME_ORG_USER_ID } from "@vm0/core";
+import { VOLUME_ORG_USER_ID } from "@vm0/core/storage-names";
 import { testContext, uniqueId } from "../../../__tests__/test-helpers";
 import { initServices } from "../../../lib/init-services";
 import { storages } from "../../schema/storage";
