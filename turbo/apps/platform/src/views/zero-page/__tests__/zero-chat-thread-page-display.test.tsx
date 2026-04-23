@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -76,7 +77,7 @@ describe("zero chat thread page display - attachment image preview", () => {
 
 // CHAT-D-037: Attachment document previews render in ChatMessageRow
 describe("zero chat thread page display - attachment document preview", () => {
-  it("renders markdown attachment content inline instead of only a file chip", async () => {
+  it("keeps markdown attachments as chips and opens preview on click", async () => {
     const docUrl = "https://example.com/notes.md";
     server.use(
       http.get(docUrl, () => {
@@ -98,10 +99,309 @@ describe("zero chat thread page display - attachment document preview", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByTestId("attachment-preview-markdown"),
+        screen.getByRole("button", {
+          name: "Open markdown preview for notes.md",
+        }),
       ).toBeInTheDocument();
+    });
+
+    await userEvent.click(
+      screen.getByRole("button", {
+        name: "Open markdown preview for notes.md",
+      }),
+    );
+
+    await waitFor(() => {
       expect(screen.getByText("PRD")).toBeInTheDocument();
       expect(screen.getByText("Preview body")).toBeInTheDocument();
+    });
+  });
+});
+
+describe("zero chat thread page display - body link document preview", () => {
+  it("renders markdown body links inline", async () => {
+    const docUrl = "https://example.com/notes.md";
+    server.use(
+      http.get(docUrl, () => {
+        return HttpResponse.text("# Linked PRD\n\nPreview body");
+      }),
+    );
+
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "assistant",
+          content: `[可爱文档](${docUrl})`,
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: "/chats/thread-test-1" });
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("attachment-preview-markdown"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", {
+          name: "Open markdown preview for notes.md",
+        }),
+      ).toBeInTheDocument();
+    });
+
+    await userEvent.click(
+      screen.getByRole("button", {
+        name: "Open markdown preview for notes.md",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Linked PRD")).toBeInTheDocument();
+      expect(screen.getByText("Preview body")).toBeInTheDocument();
+    });
+  });
+
+  it("renders html body links as preview cards", async () => {
+    const htmlUrl = "https://example.com/report.html";
+    server.use(
+      http.get(htmlUrl, () => {
+        return HttpResponse.html("<html><body>report preview</body></html>");
+      }),
+    );
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "assistant",
+          content: `[可爱小猫页面](${htmlUrl})`,
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: "/chats/thread-test-1" });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-preview-html")).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", {
+          name: "Open html preview for report.html",
+        }),
+      ).toBeInTheDocument();
+    });
+
+    await userEvent.click(
+      screen.getByRole("button", {
+        name: "Open html preview for report.html",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTitle("report.html preview")).toBeInTheDocument();
+    });
+  });
+
+  it("renders html body links wrapped in markdown formatting and preserves surrounding text", async () => {
+    const htmlUrl = "https://example.com/cute_kitten.html";
+    server.use(
+      http.get(htmlUrl, () => {
+        return HttpResponse.html("<html><body>kitten preview</body></html>");
+      }),
+    );
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "assistant",
+          content: `上传完成！点击下面的链接即可查看：\n\n**[可爱小猫页面](${htmlUrl})**\n\n页面包含居中卡片布局。`,
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: "/chats/thread-test-1" });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-preview-html")).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", {
+          name: "Open html preview for cute_kitten.html",
+        }),
+      ).toBeInTheDocument();
+    });
+
+    await userEvent.click(
+      screen.getByRole("button", {
+        name: "Open html preview for cute_kitten.html",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTitle("cute_kitten.html preview")).toBeInTheDocument();
+    });
+  });
+
+  it("renders json body links inline and supports collapse", async () => {
+    const jsonUrl = "https://example.com/data.json";
+    server.use(
+      http.get(jsonUrl, () => {
+        return HttpResponse.text('{"status":"ok","count":2}');
+      }),
+    );
+
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "assistant",
+          content: `[数据](${jsonUrl})`,
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: "/chats/thread-test-1" });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-preview-json")).toBeInTheDocument();
+      expect(screen.getByText('{"status":"ok","count":2}')).toBeInTheDocument();
+    });
+
+    await userEvent.click(
+      screen.getByRole("button", {
+        name: "Collapse json preview for data.json",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.queryByText('{"status":"ok","count":2}'),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("renders pdf body links as previewable document cards", async () => {
+    const pdfUrl = "https://example.com/document.pdf";
+    server.use(
+      http.get(pdfUrl, () => {
+        return new HttpResponse("%PDF-1.4", {
+          headers: { "Content-Type": "application/pdf" },
+        });
+      }),
+    );
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "assistant",
+          content: `[手册](${pdfUrl})`,
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: "/chats/thread-test-1" });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-preview-pdf")).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", {
+          name: "Open pdf preview for document.pdf",
+        }),
+      ).toBeInTheDocument();
+    });
+
+    await userEvent.click(
+      screen.getByRole("button", {
+        name: "Open pdf preview for document.pdf",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTitle("document.pdf preview")).toBeInTheDocument();
+    });
+  });
+
+  it("renders csv body links as previewable document cards", async () => {
+    const csvUrl = "https://example.com/report.csv";
+    server.use(
+      http.get(csvUrl, () => {
+        return HttpResponse.text("name,count\nkitten,2\npuppy,3", {
+          headers: { "Content-Type": "text/csv" },
+        });
+      }),
+    );
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "assistant",
+          content: `[报表](${csvUrl})`,
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: "/chats/thread-test-1" });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-preview-csv")).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", {
+          name: "Open csv preview for report.csv",
+        }),
+      ).toBeInTheDocument();
+    });
+
+    await userEvent.click(
+      screen.getByRole("button", {
+        name: "Open csv preview for report.csv",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("columnheader", { name: "name" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("columnheader", { name: "count" }),
+      ).toBeInTheDocument();
+      expect(screen.getByRole("cell", { name: "kitten" })).toBeInTheDocument();
+      expect(screen.getByRole("cell", { name: "2" })).toBeInTheDocument();
+    });
+  });
+
+  it("renders text body links inline and supports collapse", async () => {
+    const txtUrl = "https://example.com/readme.txt";
+    server.use(
+      http.get(txtUrl, () => {
+        return HttpResponse.text("hello from text preview");
+      }),
+    );
+
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "assistant",
+          content: `[readme](${txtUrl})`,
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: "/chats/thread-test-1" });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-preview-text")).toBeInTheDocument();
+      expect(screen.getByText("hello from text preview")).toBeInTheDocument();
+    });
+
+    await userEvent.click(
+      screen.getByRole("button", {
+        name: "Collapse text preview for readme.txt",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.queryByText("hello from text preview"),
+      ).not.toBeInTheDocument();
     });
   });
 });
@@ -143,8 +443,13 @@ describe("zero chat thread page display - attachment video preview", () => {
 });
 
 describe("zero chat thread page display - attachment html preview", () => {
-  it("renders html attachment through a dedicated controlled preview card", async () => {
+  it("keeps html attachments as chips and opens preview on click", async () => {
     const htmlUrl = "https://example.com/report.html";
+    server.use(
+      http.get(htmlUrl, () => {
+        return HttpResponse.html("<html><body>report preview</body></html>");
+      }),
+    );
     mockChatLifecycle({
       chatMessages: [
         {
@@ -158,14 +463,27 @@ describe("zero chat thread page display - attachment html preview", () => {
     detachedSetupPage({ context, path: "/chats/thread-test-1" });
 
     await waitFor(() => {
-      expect(screen.getByTestId("attachment-preview-html")).toBeInTheDocument();
-      expect(screen.getByText("Load preview")).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", {
+          name: "Open html preview for report.html",
+        }),
+      ).toBeInTheDocument();
+    });
+
+    await userEvent.click(
+      screen.getByRole("button", {
+        name: "Open html preview for report.html",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTitle("report.html preview")).toBeInTheDocument();
     });
   });
 });
 
 describe("zero chat thread page display - attachment json preview", () => {
-  it("renders json attachment in a structured preview block", async () => {
+  it("keeps json attachments as chips and opens preview on click", async () => {
     const jsonUrl = "https://example.com/data.json";
     server.use(
       http.get(jsonUrl, () => {
@@ -186,15 +504,35 @@ describe("zero chat thread page display - attachment json preview", () => {
     detachedSetupPage({ context, path: "/chats/thread-test-1" });
 
     await waitFor(() => {
-      expect(screen.getByTestId("attachment-preview-json")).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", {
+          name: "Open json preview for data.json",
+        }),
+      ).toBeInTheDocument();
+    });
+
+    await userEvent.click(
+      screen.getByRole("button", {
+        name: "Open json preview for data.json",
+      }),
+    );
+
+    await waitFor(() => {
       expect(screen.getByText('{"status":"ok","count":2}')).toBeInTheDocument();
     });
   });
 });
 
 describe("zero chat thread page display - attachment pdf preview", () => {
-  it("renders pdf attachment as a previewable document card", async () => {
+  it("keeps pdf attachments as chips and opens preview on click", async () => {
     const pdfUrl = "https://example.com/document.pdf";
+    server.use(
+      http.get(pdfUrl, () => {
+        return new HttpResponse("%PDF-1.4", {
+          headers: { "Content-Type": "application/pdf" },
+        });
+      }),
+    );
     mockChatLifecycle({
       chatMessages: [
         {
@@ -208,8 +546,21 @@ describe("zero chat thread page display - attachment pdf preview", () => {
     detachedSetupPage({ context, path: "/chats/thread-test-1" });
 
     await waitFor(() => {
-      expect(screen.getByTestId("attachment-preview-pdf")).toBeInTheDocument();
-      expect(screen.getByText("Load preview")).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", {
+          name: "Open pdf preview for document.pdf",
+        }),
+      ).toBeInTheDocument();
+    });
+
+    await userEvent.click(
+      screen.getByRole("button", {
+        name: "Open pdf preview for document.pdf",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTitle("document.pdf preview")).toBeInTheDocument();
     });
   });
 });

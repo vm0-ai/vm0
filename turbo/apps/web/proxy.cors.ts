@@ -47,6 +47,18 @@ function isOriginAllowed(origin: string | null): boolean {
   return false;
 }
 
+export function applyCorsHeaders(
+  request: NextRequest,
+  response: NextResponse,
+): NextResponse {
+  const origin = request.headers.get("origin");
+  if (origin && isOriginAllowed(origin)) {
+    response.headers.set("Access-Control-Allow-Origin", origin);
+    response.headers.set("Access-Control-Allow-Credentials", "true");
+  }
+  return response;
+}
+
 export function handleCors(request: NextRequest) {
   const origin = request.headers.get("origin");
 
@@ -69,10 +81,7 @@ export function handleCors(request: NextRequest) {
       });
     }
 
-    const response = NextResponse.next();
-    response.headers.set("Access-Control-Allow-Origin", origin);
-    response.headers.set("Access-Control-Allow-Credentials", "true");
-    return response;
+    return applyCorsHeaders(request, NextResponse.next());
   }
 
   return NextResponse.next();

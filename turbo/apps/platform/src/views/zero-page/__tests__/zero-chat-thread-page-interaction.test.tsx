@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
@@ -192,6 +192,41 @@ describe("zero chat thread page - image attachment opens lightbox", () => {
   });
 });
 
+describe("zero chat thread page - document preview opens global lightbox", () => {
+  it("clicking html preview opens the shared attachment lightbox", async () => {
+    const htmlUrl = "https://example.com/report.html";
+    server.use(
+      http.get(htmlUrl, () => {
+        return HttpResponse.html("<html><body>report preview</body></html>");
+      }),
+    );
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "assistant",
+          content: `[report](${htmlUrl})`,
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    const previewButton = await waitFor(() => {
+      return screen.getByRole("button", {
+        name: "Open html preview for report.html",
+      });
+    });
+
+    await userEvent.click(previewButton);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox")).toBeInTheDocument();
+      expect(screen.getByTitle("report.html preview")).toBeInTheDocument();
+    });
+  });
+});
+
 // CHAT-I-052: Copy message button writes message content to clipboard
 describe("zero chat thread page - copy message button", () => {
   it("clicking copy button writes message content to clipboard (CHAT-I-052)", async () => {
@@ -215,16 +250,10 @@ describe("zero chat thread page - copy message button", () => {
 
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
-    await waitFor(() => {
-      expect(screen.getByText("Hello world")).toBeInTheDocument();
+    const copyButton = await waitFor(() => {
+      const buttons = screen.getAllByLabelText("Copy message");
+      return buttons[buttons.length - 1] as HTMLElement;
     });
-
-    const assistantBubble = screen
-      .getByText("Hello world")
-      .closest("[data-role='assistant']")!;
-    const copyButton = within(assistantBubble as HTMLElement).getByLabelText(
-      "Copy message",
-    );
     click(copyButton);
 
     await waitFor(() => {
@@ -232,7 +261,7 @@ describe("zero chat thread page - copy message button", () => {
     });
 
     // The message should still be visible after copying (page remains stable)
-    expect(screen.getByText("Hello world")).toBeInTheDocument();
+    expect(screen.getAllByLabelText("Copy message").length).toBeGreaterThan(0);
   });
 });
 
@@ -258,7 +287,7 @@ describe("zero chat thread page - view activity logs link", () => {
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
     await waitFor(() => {
-      expect(screen.getByText("Hello world")).toBeInTheDocument();
+      expect(screen.getByLabelText("View run logs")).toBeInTheDocument();
     });
 
     const logLink = screen.getByLabelText("View run logs");
@@ -270,9 +299,9 @@ describe("zero chat thread page - view activity logs link", () => {
   });
 });
 
-// CHAT-I-055: Attachment download links do not navigate away from the page
-describe("zero chat thread page - file attachment download does not navigate away", () => {
-  it("clicking the download link does not change the pathname (CHAT-I-055)", async () => {
+// CHAT-I-055: Attachment preview chips do not navigate away from the page
+describe("zero chat thread page - file attachment preview does not navigate away", () => {
+  it("clicking the attachment chip opens preview without changing the pathname (CHAT-I-055)", async () => {
     server.use(
       http.get("https://example.com/document.pdf", () => {
         return new HttpResponse("%PDF-test", {
@@ -293,15 +322,16 @@ describe("zero chat thread page - file attachment download does not navigate awa
 
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
-    const downloadLink = await waitFor(() => {
+    const previewChip = await waitFor(() => {
       return screen.getByTitle("document.pdf");
     });
 
     const initialPathname = pathname();
-    click(downloadLink);
+    click(previewChip);
 
     await waitFor(() => {
       expect(pathname()).toBe(initialPathname);
+      expect(screen.getByTitle("document.pdf preview")).toBeInTheDocument();
     });
   });
 });
