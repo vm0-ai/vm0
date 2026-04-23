@@ -26,7 +26,6 @@ export const ROUTES = {
   signInToken: "/sign-in-token",
   phone: "/phone",
   lab: "/_/lab",
-  voiceChat: "/voice-chat",
   insights: "/insights",
   usage: "/_/usage",
   internalConnectorLogos: "/__internal-connector-logos",

@@ -38,13 +38,7 @@ const unifiedRunRequestSchema = z
     agentComposeId: z.string().optional(),
     agentComposeVersionId: z.string().optional(),
     conversationId: z.string().optional(),
-    // @deprecated Legacy singleton artifact fields retained for a one-release
-    // compat window. The POST /api/agent/runs handler rewrites them into the
-    // new `artifacts` array before dispatch — prefer `artifacts` in new code.
-    artifactName: z.string().optional(),
-    artifactVersion: z.string().optional(),
-    // Multi-mount artifacts, each with its own mountPath. When provided, the
-    // server ignores artifactName/artifactVersion.
+    // Multi-mount artifacts, each with its own mountPath.
     artifacts: z
       .array(
         z.object({
@@ -96,9 +90,7 @@ const unifiedRunRequestSchema = z
     // Per-permission policies (e.g., { "github": { "actions:read": "allow" } })
     permissionPolicies: firewallPoliciesSchema.optional(),
   })
-  // Preserve unknown keys so route handlers can accept legacy compat fields
-  // at the HTTP boundary without naming them in the shared contract.
-  .passthrough();
+  .strict();
 
 /**
  * Create run response schema
