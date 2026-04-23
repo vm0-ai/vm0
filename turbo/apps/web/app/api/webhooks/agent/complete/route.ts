@@ -21,6 +21,7 @@ import {
   dispatchQueuedZeroRun,
 } from "../../../../../src/lib/zero/zero-run-queue-service";
 import { processOrgCredits } from "../../../../../src/lib/zero/credit/credit-service";
+import { processOrgUsageEvents } from "../../../../../src/lib/zero/credit/usage-event-service";
 import { after } from "next/server";
 import { env } from "../../../../../src/env";
 
@@ -40,6 +41,7 @@ function scheduleTerminalSideEffects(
       return drainOrgQueue(orgId, dispatchQueuedZeroRun);
     });
     await processOrgCredits(orgId);
+    await processOrgUsageEvents(orgId);
   });
 }
 

@@ -19,17 +19,20 @@ const log = logger("service:usage-event");
  * Within a single advisory-locked transaction:
  * 1. Acquire the shared `credit_` org-level lock
  * 2. Fetch pending records and the pricing table
- * 3. Calculate and update each record via ceil(quantity × unit_price / unit_size)
- * 4. Mark records with no matching (kind, provider, category) in usage_pricing
- *    as processed with zero charge — consistent with credit-service for
- *    unconfigured or user-key usage
+ * 3. For each record, resolve pricing in order:
+ *    a. Exact `(kind, provider, category)` match → bill at that rate
+ *    b. `(kind, provider, "__fallback__")` safety-net row → bill at that
+ *       rate, stamp `billing_error = 'fallback_pricing'`
+ *    c. Neither → charge zero, stamp `billing_error = 'missing_pricing'`
+ * 4. Update each record with creditsCharged = ceil(quantity × unit_price /
+ *    unit_size) and status = 'processed'
  * 5. Deduct the total from org_metadata.credits
  *
  * Shares the `credit_` advisory lock with processOrgCredits() because both
  * flows settle expires records and deduct from org_metadata.credits, so they
  * must not interleave per org.
  */
-async function processOrgUsageEvents(orgId: string): Promise<void> {
+export async function processOrgUsageEvents(orgId: string): Promise<void> {
   const db = globalThis.services.db;
 
   const result = await db.transaction(async (tx) => {
