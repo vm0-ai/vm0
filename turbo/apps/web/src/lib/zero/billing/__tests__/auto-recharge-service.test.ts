@@ -1,11 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { eq } from "drizzle-orm";
 import {
   testContext,
   uniqueId,
   type UserContext,
 } from "../../../../__tests__/test-helpers";
-import { orgMetadata } from "../../../../db/schema/org-metadata";
 import {
   getOrgCredits,
   updateOrgTier,
@@ -13,6 +11,7 @@ import {
   updateOrgAutoRecharge,
   getOrgAutoRechargeFields,
   setOrgCredits,
+  lockOrgAndSetCredits,
 } from "../../../../__tests__/api-test-helpers";
 
 // Stripe mock — must be defined before importing the service
@@ -277,37 +276,13 @@ describe("auto-recharge-service", () => {
         autoRechargeAmount: 5000,
       });
 
-      let releaseLock!: () => void;
-      const rowUpdated = new Promise<void>((resolve) => {
-        releaseLock = resolve;
-      });
-      const blockerReady = new Promise<void>((resolve) => {
-        globalThis.services.db
-          .transaction(async (tx) => {
-            await tx
-              .select({ orgId: orgMetadata.orgId })
-              .from(orgMetadata)
-              .where(eq(orgMetadata.orgId, user.orgId))
-              .for("update");
-
-            await tx
-              .update(orgMetadata)
-              .set({ credits: 250_000, updatedAt: new Date() })
-              .where(eq(orgMetadata.orgId, user.orgId));
-
-            resolve();
-            await rowUpdated;
-          })
-          .catch((error: unknown) => {
-            throw error;
-          });
-      });
-
-      await blockerReady;
+      const blocker = await lockOrgAndSetCredits(user.orgId, 250_000);
+      await blocker.ready;
 
       const triggerPromise = triggerAutoRecharge(user.orgId);
-      releaseLock();
+      blocker.release();
       await triggerPromise;
+      await blocker.done;
 
       expect(stripeMocks.invoicesCreate).not.toHaveBeenCalled();
       const fields = await getOrgAutoRechargeFields(user.orgId);

@@ -241,3 +241,48 @@ export async function setOrgCredits(
       set: { credits, updatedAt: new Date() },
     });
 }
+
+/**
+ * Hold a row lock on org_metadata, update credits, and keep the transaction
+ * open until the returned release function is called.
+ *
+ * @why-db-direct Exercises lock-ordering race conditions in service tests;
+ * no API route can hold a row lock open for coordinated concurrency.
+ */
+export async function lockOrgAndSetCredits(
+  orgId: string,
+  credits: number,
+): Promise<{
+  release: () => void;
+  ready: Promise<void>;
+  done: Promise<void>;
+}> {
+  initServices();
+
+  let release!: () => void;
+  const releaseSignal = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let markReady!: () => void;
+  const ready = new Promise<void>((resolve) => {
+    markReady = resolve;
+  });
+
+  const done = globalThis.services.db.transaction(async (tx) => {
+    await tx
+      .select({ orgId: orgMetadata.orgId })
+      .from(orgMetadata)
+      .where(eq(orgMetadata.orgId, orgId))
+      .for("update");
+
+    await tx
+      .update(orgMetadata)
+      .set({ credits, updatedAt: new Date() })
+      .where(eq(orgMetadata.orgId, orgId));
+
+    markReady();
+    await releaseSignal;
+  });
+
+  return { release, ready, done };
+}
