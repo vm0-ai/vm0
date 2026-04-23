@@ -621,13 +621,14 @@ async function resolveAudioConfig(): Promise<AudioConfig> {
   const isMobile =
     navigator.maxTouchPoints > 0 && /Mobi|Android/i.test(navigator.userAgent);
 
-  const devices = await navigator.mediaDevices
-    .enumerateDevices()
-    .catch(() => []);
-  const hasExternalAudio = devices.some(
-    (d) =>
-      d.kind === "audiooutput" && d.deviceId !== "default" && d.deviceId !== "",
-  );
+  const devices = await navigator.mediaDevices.enumerateDevices().catch(() => {
+    return [];
+  });
+  const hasExternalAudio = devices.some((d) => {
+    return (
+      d.kind === "audiooutput" && d.deviceId !== "default" && d.deviceId !== ""
+    );
+  });
 
   // Mobile without headphones/BT = speakerphone risk
   const speakerRisk = isMobile && !hasExternalAudio;
