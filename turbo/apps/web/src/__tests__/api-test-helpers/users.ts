@@ -16,7 +16,6 @@ export {
   seedUserCacheEntry,
   insertUserCacheEntry,
   insertVm0ApiKeys,
-  createTestVoiceChatSession,
   insertTestVoiceChatSession,
 } from "../db-test-seeders/users";
 export { insertTestVoiceChatCandidateSession } from "../db-test-seeders/voice-chat-candidate";
@@ -25,9 +24,6 @@ export { insertTestVoiceChatCandidateSession } from "../db-test-seeders/voice-ch
 export {
   countUserRows,
   getPushSubscriptionsByEndpoint,
-  getTestVoiceChatSessionStatus,
-  getTestVoiceChatSessionHeartbeat,
-  getTestVoiceChatEvents,
 } from "../db-test-assertions/users";
 export {
   getTestVoiceChatCandidateSession,

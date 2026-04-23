@@ -69,23 +69,6 @@ export async function insertVm0ApiKeys(
 }
 
 /**
- * Create a voice-chat session directly in the database.
- * @why-db-direct Voice chat sessions are created by the voice-chat API which requires WebSocket infrastructure not available in tests
- */
-export async function createTestVoiceChatSession(
-  orgId: string,
-  userId: string,
-  status = "active",
-): Promise<{ id: string }> {
-  initServices();
-  const [session] = await globalThis.services.db
-    .insert(voiceChatSessions)
-    .values({ orgId, userId, status })
-    .returning({ id: voiceChatSessions.id });
-  return session!;
-}
-
-/**
  * Insert a voice-chat session with full override support.
  * @why-db-direct Voice chat sessions require WebSocket infrastructure; full override enables impossible-state testing (e.g., stale heartbeats)
  */
