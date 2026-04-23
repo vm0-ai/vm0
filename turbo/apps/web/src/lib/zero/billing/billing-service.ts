@@ -14,7 +14,6 @@ import {
   getCreditBreakdownRecords,
 } from "../credit/credit-expires-service";
 import { getCampaign } from "./one-time-products";
-import { ensureStarterCreditGrant } from "../credit/starter-grant-service";
 import { logger } from "../../shared/logger";
 
 const log = logger("billing");
@@ -115,9 +114,6 @@ async function getOrCreateStripeCustomer(orgId: string): Promise<string> {
       metadata: { orgId },
     });
 
-    // Guarantee the starter grant at first org_metadata materialisation — a
-    // free user may skip onboarding and first hit billing (pricing → upgrade).
-    await ensureStarterCreditGrant(tx, orgId);
     await tx
       .insert(orgMetadata)
       .values({ orgId, stripeCustomerId: customer.id })
