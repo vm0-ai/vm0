@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.229.4](https://github.com/vm0-ai/vm0/compare/core-v8.229.3...core-v8.229.4) (2026-04-23)
+
+
+### Refactoring
+
+* remove turbo core root imports ([#10820](https://github.com/vm0-ai/vm0/issues/10820)) ([ec85609](https://github.com/vm0-ai/vm0/commit/ec8560930db70e5c1f853961ff51606e601da875))
+
 ## [8.229.3](https://github.com/vm0-ai/vm0/compare/core-v8.229.2...core-v8.229.3) (2026-04-23)
 
 

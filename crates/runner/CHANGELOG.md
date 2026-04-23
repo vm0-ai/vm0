@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.93.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.93.5...runner-rs-v0.93.6) (2026-04-23)
+
+
+### Performance Improvements
+
+* **runner:** parallelize idle pool drain ([#10864](https://github.com/vm0-ai/vm0/issues/10864)) ([4db1306](https://github.com/vm0-ai/vm0/commit/4db1306de073f588a1b5d57aa642b5104d8f8550))
+* **runner:** post /complete from guest-agent after checkpoint lands ([#10787](https://github.com/vm0-ai/vm0/issues/10787)) ([69e00f0](https://github.com/vm0-ai/vm0/commit/69e00f0540348aaab547b13c7533bd97af88ad23))
+
 ## [0.93.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.93.4...runner-rs-v0.93.5) (2026-04-23)
 
 

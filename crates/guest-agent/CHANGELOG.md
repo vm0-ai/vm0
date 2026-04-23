@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.22.1...guest-agent-v0.22.2) (2026-04-23)
+
+
+### Performance Improvements
+
+* **runner:** post /complete from guest-agent after checkpoint lands ([#10787](https://github.com/vm0-ai/vm0/issues/10787)) ([69e00f0](https://github.com/vm0-ai/vm0/commit/69e00f0540348aaab547b13c7533bd97af88ad23))
+
 ## [0.22.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.22.0...guest-agent-v0.22.1) (2026-04-22)
 
 

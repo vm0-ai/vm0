@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.288.1](https://github.com/vm0-ai/vm0/compare/app-v0.288.0...app-v0.288.1) (2026-04-23)
+
+
+### Refactoring
+
+* remove turbo core root imports ([#10820](https://github.com/vm0-ai/vm0/issues/10820)) ([ec85609](https://github.com/vm0-ai/vm0/commit/ec8560930db70e5c1f853961ff51606e601da875))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.229.4
+
 ## [0.288.0](https://github.com/vm0-ai/vm0/compare/app-v0.287.1...app-v0.288.0) (2026-04-23)
 
 

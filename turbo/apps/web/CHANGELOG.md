@@ -1,5 +1,24 @@
 # Changelog
 
+## [12.293.0](https://github.com/vm0-ai/vm0/compare/web-v12.292.0...web-v12.293.0) (2026-04-23)
+
+
+### Features
+
+* **db:** rename feature_candidate_voice_chat_* tables and schema to voice_chat_* ([#10860](https://github.com/vm0-ai/vm0/issues/10860)) ([ce7ca21](https://github.com/vm0-ai/vm0/commit/ce7ca21fc22c936febeb6c1cfeb5a3a00cfd7d6f)), closes [#10854](https://github.com/vm0-ai/vm0/issues/10854)
+
+
+### Refactoring
+
+* remove turbo core root imports ([#10820](https://github.com/vm0-ai/vm0/issues/10820)) ([ec85609](https://github.com/vm0-ai/vm0/commit/ec8560930db70e5c1f853961ff51606e601da875))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.229.4
+
 ## [12.292.0](https://github.com/vm0-ai/vm0/compare/web-v12.291.1...web-v12.292.0) (2026-04-23)
 
 
