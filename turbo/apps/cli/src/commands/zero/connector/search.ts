@@ -56,8 +56,7 @@ export const searchCommand = new Command()
         const isTypeAvailable = (type: ConnectorType): boolean => {
           const config = CONNECTOR_TYPES[type];
           const flag = config.featureFlag;
-          const hasApiToken = "api-token" in config.authMethods;
-          return !flag || isFeatureEnabled(flag, { orgId }) || hasApiToken;
+          return !flag || isFeatureEnabled(flag, { orgId });
         };
 
         const { results, total } = searchConnectors(
