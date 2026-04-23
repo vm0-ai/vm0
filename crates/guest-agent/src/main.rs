@@ -223,15 +223,22 @@ async fn execute(
                 );
 
                 // Checkpoint row is in the DB — the complete route's only
-                // hard dependency is satisfied. Fire /complete now (in
-                // parallel with final_telemetry, which hits a different
-                // endpoint with no ordering constraint) so the host's
-                // `last_event_to_complete` timestamp isn't stretched by the
-                // final_telemetry tail + VM teardown + runner fallback that
-                // used to be the only trigger. Runner still posts /complete
-                // after VM exit; its call is idempotent-short-circuited.
+                // hard dependency is satisfied. Fire /complete now so the
+                // host's `last_event_to_complete` timestamp isn't stretched
+                // by VM teardown + runner fallback (which used to be the
+                // only trigger). Runner still posts /complete after VM
+                // exit; its call is idempotency-short-circuited.
+                //
+                // Serialize /complete before final_telemetry so the ack log
+                // line lands in the file before the telemetry uploader
+                // snapshots its EOF — parallelizing the two hides the ack
+                // from `vm0 logs --system`. The ~hundreds-of-ms we pay for
+                // serialization is invisible to users because the host's
+                // status transition already happened the moment /complete
+                // returned.
                 log_info!(LOG_TAG, "▷ Cleanup");
-                tokio::join!(complete::report_success(), final_telemetry(masker));
+                complete::report_success().await;
+                final_telemetry(masker).await;
             }
             Err(e) => {
                 let msg = format!("Checkpoint failed: {e}");
