@@ -3,7 +3,7 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../../src/lib/ts-rest-handler";
-import { composesVersionsContract } from "@vm0/core";
+import { composesVersionsContract } from "@vm0/core/contracts/composes";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
   agentComposes,

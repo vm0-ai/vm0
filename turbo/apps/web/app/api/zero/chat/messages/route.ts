@@ -1,7 +1,10 @@
 import { and, eq } from "drizzle-orm";
 import { after } from "next/server";
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
-import { chatMessagesContract, type AttachFile } from "@vm0/core";
+import {
+  chatMessagesContract,
+  type AttachFile,
+} from "@vm0/core/contracts/chat-threads";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
   requireAuth,

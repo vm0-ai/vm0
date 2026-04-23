@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import { onboardingCompleteContract } from "@vm0/core";
+import { onboardingCompleteContract } from "@vm0/core/contracts/onboarding";
 import { initServices } from "../../../../../src/lib/init-services";
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";

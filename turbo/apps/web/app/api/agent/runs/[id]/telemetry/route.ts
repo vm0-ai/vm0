@@ -3,7 +3,7 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../../../src/lib/ts-rest-handler";
-import { runTelemetryContract } from "@vm0/core";
+import { runTelemetryContract } from "@vm0/core/contracts/runs";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
 import { sandboxTelemetry } from "../../../../../../src/db/schema/sandbox-telemetry";

@@ -1,5 +1,5 @@
 import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
-import { zeroSchedulesMainContract } from "@vm0/core";
+import { zeroSchedulesMainContract } from "@vm0/core/contracts/zero-schedules";
 import { initServices } from "../../../../src/lib/init-services";
 import {
   requireAuth,

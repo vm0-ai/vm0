@@ -4,7 +4,8 @@ import {
   createSafeErrorHandler,
   tsr,
 } from "../../../../../src/lib/ts-rest-handler";
-import { apiKeysByIdContract, createErrorResponse } from "@vm0/core";
+import { apiKeysByIdContract } from "@vm0/core/contracts/api-keys";
+import { createErrorResponse } from "@vm0/core/contracts/errors";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
   requireAuth,
