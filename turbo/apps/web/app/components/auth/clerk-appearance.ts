@@ -12,6 +12,19 @@ export function getClerkAppearance(theme: "light" | "dark"): ClerkAppearance {
         theme === "dark" ? "/assets/vm0-logo.svg" : "/assets/vm0-logo-dark.svg",
       logoPlacement: "inside",
     },
+    variables: {
+      colorBackground: "hsl(var(--card))",
+      colorForeground: "hsl(var(--card-foreground))",
+      colorNeutral: "hsl(var(--foreground))",
+      colorPrimary: "hsl(var(--primary))",
+      colorPrimaryForeground: "hsl(var(--primary-foreground))",
+      colorMuted: "hsl(var(--muted))",
+      colorMutedForeground: "hsl(var(--muted-foreground))",
+      colorInput: "hsl(var(--input))",
+      colorInputForeground: "hsl(var(--foreground))",
+      colorDanger: "hsl(var(--destructive))",
+      colorRing: "hsl(var(--ring))",
+    },
     elements: {
       rootBox: {
         margin: "0 auto",
