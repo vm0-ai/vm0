@@ -187,7 +187,7 @@ describe("zero chat thread page - image attachment opens lightbox", () => {
     await waitFor(() => {
       expect(fetchSpy).toHaveBeenCalledWith(imageUrl, { mode: "cors" });
       expect(createObjectURLSpy).toHaveBeenCalledOnce();
-      expect(anchorClickSpy).toHaveBeenCalled();
+      expect(anchorClickSpy).toHaveBeenCalledWith();
     });
   });
 });
