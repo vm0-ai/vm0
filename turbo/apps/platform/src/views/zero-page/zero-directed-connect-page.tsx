@@ -307,12 +307,25 @@ function DirectedConnectCard() {
               )}
             </div>
             {!isLoading && (
-              <div className="flex items-center justify-center">
+              <div className="flex flex-col items-center justify-center gap-2">
                 {isConnected ? (
-                  <div className="inline-flex h-9 w-[100px] items-center justify-center gap-1.5 text-sm font-medium text-emerald-600">
-                    <IconCheck size={16} />
-                    Connected
-                  </div>
+                  <>
+                    <div className="inline-flex h-9 w-[100px] items-center justify-center gap-1.5 text-sm font-medium text-emerald-600">
+                      <IconCheck size={16} />
+                      Connected
+                    </div>
+                    <button
+                      type="button"
+                      disabled={isConnecting}
+                      onClick={handleConnect}
+                      className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline disabled:opacity-60 inline-flex items-center gap-1.5"
+                    >
+                      {isConnecting && (
+                        <IconLoader2 size={12} className="animate-spin" />
+                      )}
+                      {isConnecting ? "Reconnecting..." : "Reconnect"}
+                    </button>
+                  </>
                 ) : (
                   <button
                     type="button"
