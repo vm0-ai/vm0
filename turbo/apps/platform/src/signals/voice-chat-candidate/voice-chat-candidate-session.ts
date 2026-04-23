@@ -703,7 +703,7 @@ const recoverMicrophone$ = command(
 
 const monitorMicrophoneRecovery$ = command(
   ({ get, set }, signal: AbortSignal): void => {
-    const onVisibilityChange = (): void => {
+    const onVisibilityChange = onDomEventFn(() => {
       if (document.visibilityState !== "visible" || signal.aborted) {
         return;
       }
@@ -718,10 +718,8 @@ const monitorMicrophoneRecovery$ = command(
       if (!isDead) {
         return;
       }
-      set(recoverMicrophone$, signal).catch(() => {
-        return undefined;
-      });
-    };
+      return set(recoverMicrophone$, signal);
+    });
     document.addEventListener("visibilitychange", onVisibilityChange);
     signal.addEventListener("abort", () => {
       document.removeEventListener("visibilitychange", onVisibilityChange);

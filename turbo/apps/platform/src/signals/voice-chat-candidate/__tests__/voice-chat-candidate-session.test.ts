@@ -244,6 +244,12 @@ describe("voice-chat-candidate session", () => {
     current: { pause: ReturnType<typeof vi.fn>; currentTime: number } | null;
   } = { current: null };
 
+  // Ref to the RTCPeerConnection instance created during the session, so tests
+  // can inspect getSenders calls after startSuccessfully().
+  const pcRef: { current: { getSenders: ReturnType<typeof vi.fn> } | null } = {
+    current: null,
+  };
+
   function stubWebRTC(
     devices: Partial<MediaDeviceInfo>[] = [
       { kind: "audiooutput", deviceId: "default" },
@@ -252,7 +258,7 @@ describe("voice-chat-candidate session", () => {
   ) {
     const mediaStreamStub = {
       getAudioTracks() {
-        return [{ enabled: true }];
+        return [{ enabled: true, readyState: "live" as MediaStreamTrackState }];
       },
       getTracks() {
         return [{ stop: vi.fn() }];
@@ -279,8 +285,17 @@ describe("voice-chat-candidate session", () => {
       createOffer = vi.fn().mockResolvedValue({ sdp: "offer-sdp" });
       setLocalDescription = vi.fn().mockResolvedValue(undefined);
       setRemoteDescription = vi.fn().mockResolvedValue(undefined);
+      getSenders = vi
+        .fn()
+        .mockReturnValue([
+          {
+            track: { kind: "audio" },
+            replaceTrack: vi.fn().mockResolvedValue(undefined),
+          },
+        ]);
 
       createDataChannel(): FakeDC {
+        pcRef.current = this;
         const openListeners: (() => void)[] = [];
         const messageListeners: ((ev: MessageEvent) => void)[] = [];
         const closeListeners: (() => void)[] = [];
@@ -366,6 +381,7 @@ describe("voice-chat-candidate session", () => {
     });
     dcRef.current = null;
     audioRef.current = null;
+    pcRef.current = null;
     vi.unstubAllGlobals();
   }
 
@@ -833,6 +849,100 @@ describe("voice-chat-candidate session", () => {
         expect(context.store.get(vccStatus$)).toBe("idle");
       });
       expect(context.store.get(vccSessionId$)).toBeNull();
+    });
+  });
+
+  describe("microphone recovery", () => {
+    it("re-acquires getUserMedia and replaces the sender track when all audio tracks are ended on screen resume", async () => {
+      await setup();
+
+      // Simulate OS suspension: the initial stream has all tracks in "ended"
+      // state (what happens after screen lock on mobile/macOS).
+      const stoppedTrack = {
+        enabled: true,
+        readyState: "ended" as MediaStreamTrackState,
+        stop: vi.fn(),
+      };
+      const endedStream = {
+        getAudioTracks: () => {
+          return [stoppedTrack];
+        },
+        getTracks: () => {
+          return [stoppedTrack];
+        },
+      } as unknown as MediaStream;
+
+      // The fresh stream returned on recovery.
+      const freshTrack = {
+        kind: "audio",
+        enabled: true,
+        readyState: "live" as MediaStreamTrackState,
+        stop: vi.fn(),
+      };
+      const recoveredStream = {
+        getAudioTracks: () => {
+          return [freshTrack];
+        },
+        getTracks: () => {
+          return [freshTrack];
+        },
+      } as unknown as MediaStream;
+
+      // First getUserMedia call (initial connect) → ended stream so that
+      // visibilitychange sees all tracks dead and triggers recovery.
+      // Second call (inside recoverMicrophone$) → fresh stream.
+      Object.defineProperty(navigator, "mediaDevices", {
+        value: {
+          getUserMedia: vi
+            .fn()
+            .mockResolvedValueOnce(endedStream)
+            .mockResolvedValueOnce(recoveredStream),
+          enumerateDevices: vi.fn().mockResolvedValue([
+            { kind: "audiooutput", deviceId: "default" },
+            { kind: "audiooutput", deviceId: "bt-headset-1" },
+          ] as MediaDeviceInfo[]),
+        },
+        writable: true,
+        configurable: true,
+      });
+
+      mockCreateSessionOk();
+      mockTokenOk();
+      mockGetSessionOk();
+      mockListActiveTasksOk();
+      detach(
+        context.store.set(
+          startVoiceChatCandidate$,
+          DEFAULT_AGENT_ID,
+          context.signal,
+        ),
+        Reason.DomCallback,
+      );
+      await vi.waitFor(() => {
+        expect(dcRef.current).not.toBeNull();
+      });
+      dcRef.current?.emitOpen();
+      await vi.waitFor(() => {
+        expect(context.store.get(vccStatus$)).toBe("connected");
+      });
+
+      // Simulate screen unlock: document becomes visible again.
+      Object.defineProperty(document, "visibilityState", {
+        value: "visible",
+        configurable: true,
+      });
+      document.dispatchEvent(new Event("visibilitychange"));
+
+      // recoverMicrophone$ should have called getUserMedia a second time and
+      // replaced the sender's audio track with the new one.
+      await vi.waitFor(() => {
+        expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(2);
+      });
+      expect(pcRef.current?.getSenders).toHaveBeenCalledWith();
+      const sender = pcRef.current?.getSenders.mock.results[0]?.value[0] as {
+        replaceTrack: ReturnType<typeof vi.fn>;
+      };
+      expect(sender.replaceTrack).toHaveBeenCalledWith(freshTrack);
     });
   });
 });
