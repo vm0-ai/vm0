@@ -1192,5 +1192,89 @@ describe("voice-chat-candidate session", () => {
       expect(sender.replaceTrack).toHaveBeenCalledWith(freshTrack);
       expect(context.store.get(vccStatus$)).toBe("connected");
     });
+
+    it("re-attaches ended listener after recovery so a second interruption also triggers recovery", async () => {
+      await setup();
+      await startSuccessfully();
+
+      // First recovered stream — supports capturing its own "ended" listeners
+      // so we can simulate a second OS interruption on it.
+      const freshTrackEndedListeners: (() => void)[] = [];
+      const freshTrack = {
+        kind: "audio",
+        enabled: true,
+        readyState: "live" as MediaStreamTrackState,
+        stop: vi.fn(),
+        addEventListener: (
+          event: string,
+          cb: () => void,
+          _opts?: unknown,
+        ): void => {
+          if (event === "ended") {
+            freshTrackEndedListeners.push(cb);
+          }
+        },
+        removeEventListener: vi.fn(),
+        emitEnded: (): void => {
+          freshTrack.readyState = "ended";
+          for (const l of freshTrackEndedListeners) {
+            l();
+          }
+        },
+      };
+      const recoveredStream = {
+        getAudioTracks: () => {
+          return [freshTrack];
+        },
+        getTracks: () => {
+          return [freshTrack];
+        },
+      } as unknown as MediaStream;
+
+      const secondFreshTrack = {
+        kind: "audio",
+        enabled: true,
+        readyState: "live" as MediaStreamTrackState,
+        stop: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      };
+      const secondRecoveredStream = {
+        getAudioTracks: () => {
+          return [secondFreshTrack];
+        },
+        getTracks: () => {
+          return [secondFreshTrack];
+        },
+      } as unknown as MediaStream;
+
+      const getUserMedia = navigator.mediaDevices.getUserMedia as ReturnType<
+        typeof vi.fn
+      >;
+      getUserMedia.mockClear();
+      getUserMedia.mockResolvedValueOnce(recoveredStream);
+      getUserMedia.mockResolvedValueOnce(secondRecoveredStream);
+
+      // First interruption.
+      micTrackRef.current?.emitEnded();
+
+      await vi.waitFor(() => {
+        expect(getUserMedia).toHaveBeenCalledTimes(1);
+      });
+
+      // Second interruption on the recovered track — watchCurrentTracks() must
+      // have re-attached a listener for this to trigger another recovery.
+      freshTrack.emitEnded();
+
+      await vi.waitFor(() => {
+        expect(getUserMedia).toHaveBeenCalledTimes(2);
+      });
+
+      const sender = pcRef.current?.getSenders.mock.results[0]?.value[0] as {
+        replaceTrack: ReturnType<typeof vi.fn>;
+      };
+      expect(sender.replaceTrack).toHaveBeenLastCalledWith(secondFreshTrack);
+      expect(context.store.get(vccStatus$)).toBe("connected");
+    });
   });
 });

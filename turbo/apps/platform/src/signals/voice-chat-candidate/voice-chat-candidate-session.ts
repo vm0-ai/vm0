@@ -726,8 +726,11 @@ const monitorMicrophoneRecovery$ = command(
         return;
       }
       recovering = true;
-      await set(recoverMicrophone$, signal);
-      recovering = false;
+      try {
+        await set(recoverMicrophone$, signal);
+      } finally {
+        recovering = false;
+      }
       watchCurrentTracks();
     };
 
