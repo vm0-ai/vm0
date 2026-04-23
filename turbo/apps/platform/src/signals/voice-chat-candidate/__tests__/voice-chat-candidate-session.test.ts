@@ -133,13 +133,16 @@ function mockCreateSessionError(
 }
 
 function mockTokenOk() {
+  const calls: { noiseReduction?: string }[] = [];
   server.use(
-    mockApi(zeroVoiceChatCandidateContract.token, ({ respond }) => {
+    mockApi(zeroVoiceChatCandidateContract.token, ({ body, respond }) => {
+      calls.push({ noiseReduction: body.noiseReduction });
       return respond(200, {
         client_secret: { value: "ek_test", expires_at: 9_999_999_999 },
       });
     }),
   );
+  return calls;
 }
 
 function mockTokenError() {
@@ -173,6 +176,8 @@ function mockAppendItemOk() {
   return calls;
 }
 
+const TALKER_INSTRUCTIONS = "You are a helpful voice assistant.";
+
 function mockGetSessionOk() {
   server.use(
     mockApi(zeroVoiceChatCandidateContract.getSession, ({ respond }) => {
@@ -180,7 +185,7 @@ function mockGetSessionOk() {
         session: sessionPayload(),
         recentTaskLogs: "",
         finishedTasksFullText: "",
-        talkerInstructions: "",
+        talkerInstructions: TALKER_INSTRUCTIONS,
         talkerInstructionTokens: 0,
       });
     }),
@@ -239,7 +244,12 @@ describe("voice-chat-candidate session", () => {
     current: { pause: ReturnType<typeof vi.fn>; currentTime: number } | null;
   } = { current: null };
 
-  function stubWebRTC() {
+  function stubWebRTC(
+    devices: Partial<MediaDeviceInfo>[] = [
+      { kind: "audiooutput", deviceId: "default" },
+      { kind: "audiooutput", deviceId: "bt-headset-1" },
+    ],
+  ) {
     const mediaStreamStub = {
       getAudioTracks() {
         return [{ enabled: true }];
@@ -250,7 +260,12 @@ describe("voice-chat-candidate session", () => {
     } as unknown as MediaStream;
 
     Object.defineProperty(navigator, "mediaDevices", {
-      value: { getUserMedia: vi.fn().mockResolvedValue(mediaStreamStub) },
+      value: {
+        getUserMedia: vi.fn().mockResolvedValue(mediaStreamStub),
+        enumerateDevices: vi
+          .fn()
+          .mockResolvedValue(devices as MediaDeviceInfo[]),
+      },
       writable: true,
       configurable: true,
     });
@@ -394,15 +409,18 @@ describe("voice-chat-candidate session", () => {
 
       // Session config (tools / VAD / modalities) is preset server-side when
       // minting the ephemeral token; dc.open no longer emits session.update.
-      // The only DC write on happy-path connect comes from the Ably loop's
-      // baseline tick, which pushes the current server-side instructions via
-      // syncTalkerInstructions$ — a no-op idempotent sync with the preset.
+      // The Ably loop's baseline tick calls syncTalkerInstructions$ which
+      // fetches getSession and pushes the talkerInstructions to the live DC.
+      // Assert on the observable instructions value, not the wire-format type.
       await vi.waitFor(() => {
         expect(dcRef.current?.send.mock.calls.length ?? 0).toBeGreaterThan(0);
       });
       const sent = dcRef.current?.send.mock.calls[0]?.[0] as string;
-      const parsed = JSON.parse(sent) as { type: string };
-      expect(parsed.type).toBe("session.update");
+      const parsed = JSON.parse(sent) as {
+        type: string;
+        session: { instructions: string };
+      };
+      expect(parsed.session.instructions).toBe(TALKER_INSTRUCTIONS);
     });
 
     it("surfaces create-session error in vccError$", async () => {
@@ -432,6 +450,36 @@ describe("voice-chat-candidate session", () => {
 
       expect(context.store.get(vccStatus$)).toBe("error");
       expect(context.store.get(vccError$)).toBe("token failed");
+    });
+
+    it("sends near_field noiseReduction when mobile speakerphone is detected", async () => {
+      // Simulate a mobile device with no external audio output (speakerphone).
+      // resolveAudioConfig() should return near_field, which must be threaded
+      // through to the token request body.
+      vi.spyOn(navigator, "maxTouchPoints", "get").mockReturnValue(5);
+      vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+        "Mozilla/5.0 (Linux; Android 13) Mobile Safari/537.36",
+      );
+      stubWebRTC([{ kind: "audiooutput", deviceId: "default" }]);
+
+      await setup();
+      const tokenCalls = mockTokenOk();
+      mockCreateSessionOk();
+      mockGetSessionOk();
+      mockListActiveTasksOk();
+
+      detach(
+        context.store.set(
+          startVoiceChatCandidate$,
+          DEFAULT_AGENT_ID,
+          context.signal,
+        ),
+        Reason.DomCallback,
+      );
+      await vi.waitFor(() => {
+        expect(tokenCalls).toHaveLength(1);
+      });
+      expect(tokenCalls[0]?.noiseReduction).toBe("near_field");
     });
   });
 
