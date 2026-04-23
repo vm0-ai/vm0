@@ -12,11 +12,11 @@ import { gunzipSync } from "node:zlib";
 import { createHandler, tsr } from "../../../../../../src/lib/ts-rest-handler";
 import {
   composesInstructionsContract,
-  getInstructionsStorageName,
-  getInstructionsFilename,
-  stripMetadataFrontmatter,
   agentComposeApiContentSchema,
-} from "@vm0/core";
+} from "@vm0/core/contracts/composes";
+import { getInstructionsStorageName } from "@vm0/core/storage-names";
+import { getInstructionsFilename } from "@vm0/core/frameworks";
+import { stripMetadataFrontmatter } from "@vm0/core/instructions-frontmatter";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { eq, and } from "drizzle-orm";
 import {

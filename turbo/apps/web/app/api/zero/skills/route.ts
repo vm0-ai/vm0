@@ -1,8 +1,6 @@
 import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
-import {
-  zeroSkillsCollectionContract,
-  getCustomSkillStorageName,
-} from "@vm0/core";
+import { zeroSkillsCollectionContract } from "@vm0/core/contracts/zero-agents";
+import { getCustomSkillStorageName } from "@vm0/core/storage-names";
 import { initServices } from "../../../../src/lib/init-services";
 import {
   requireAuth,

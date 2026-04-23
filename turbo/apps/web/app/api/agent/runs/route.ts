@@ -7,8 +7,8 @@ import {
   runsMainContract,
   ALL_RUN_STATUSES,
   type RunStatus,
-  orgTierSchema,
-} from "@vm0/core";
+} from "@vm0/core/contracts/runs";
+import { orgTierSchema } from "@vm0/core/contracts/orgs";
 import { initServices } from "../../../../src/lib/init-services";
 import {
   agentComposes,

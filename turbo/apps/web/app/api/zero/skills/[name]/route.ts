@@ -1,10 +1,10 @@
 import { gunzipSync } from "node:zlib";
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
+import { zeroSkillsDetailContract } from "@vm0/core/contracts/zero-agents";
 import {
-  zeroSkillsDetailContract,
   getCustomSkillStorageName,
   VOLUME_ORG_USER_ID,
-} from "@vm0/core";
+} from "@vm0/core/storage-names";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
   requireAuth,

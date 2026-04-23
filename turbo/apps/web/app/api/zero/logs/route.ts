@@ -14,7 +14,7 @@ import {
   triggerSourceSchema,
   type LogStatus,
   type TriggerSource,
-} from "@vm0/core";
+} from "@vm0/core/contracts/logs";
 import { initServices } from "../../../../src/lib/init-services";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
 import {
