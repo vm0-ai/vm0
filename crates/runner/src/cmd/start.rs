@@ -1581,8 +1581,12 @@ async fn maybe_spawn_mitm_restart(
         return;
     }
     retry.clear_timer();
-    // Drain any stale crash notifications from the previous process to prevent
-    // a spurious restart cycle after this one completes.
+    // Defensive drain: clears any crash notification already buffered
+    // from the very crash that armed this restart timer, so it can't
+    // re-trigger the select loop after we're done. `begin_restart` no
+    // longer produces post-call signals — each child owns its own
+    // `stopping` Arc, locked to `true` before kill — so this only
+    // sweeps pre-existing entries.
     while crash_rx.try_recv().is_ok() {}
     let params = mitm.begin_restart().await;
     retry.handle = Some(tokio::spawn(params.spawn()));
