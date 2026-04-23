@@ -33,8 +33,7 @@ export const listCommand = new Command()
       const allTypes: ConnectorType[] = [];
       for (const type of allTypesRaw) {
         const flag = CONNECTOR_TYPES[type].featureFlag;
-        const hasApiToken = "api-token" in CONNECTOR_TYPES[type].authMethods;
-        if (flag && !isFeatureEnabled(flag, { orgId }) && !hasApiToken) {
+        if (flag && !isFeatureEnabled(flag, { orgId })) {
           continue;
         }
         allTypes.push(type);
