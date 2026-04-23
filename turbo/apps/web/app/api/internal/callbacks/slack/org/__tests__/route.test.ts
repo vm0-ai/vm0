@@ -643,7 +643,7 @@ describe("POST /api/internal/callbacks/slack/org", () => {
     expect(blocksStr).not.toContain("Responded by");
   });
 
-  it("omits model from footer when selectedModel matches org default", async () => {
+  it("shows model in footer even when selectedModel matches org default", async () => {
     await createTestOrgModelProvider(
       "anthropic-api-key",
       "test-api-key",
@@ -689,7 +689,7 @@ describe("POST /api/internal/callbacks/slack/org", () => {
     const call = (mockClient.chat.postMessage as ReturnType<typeof vi.fn>).mock
       .calls[0]![0] as { blocks: unknown[] };
     const blocksStr = JSON.stringify(call.blocks);
-    expect(blocksStr).not.toContain("Claude Sonnet 4.6");
+    expect(blocksStr).toContain("Claude Sonnet 4.6");
   });
 
   it("includes model in footer when selectedModel differs from org default", async () => {
@@ -786,7 +786,7 @@ describe("POST /api/internal/callbacks/slack/org", () => {
     expect(blocksStr).toContain(`Reply to <@${slackUserId}>`);
   });
 
-  it("omits `Reply to` when the thread has only two distinct mentioners", async () => {
+  it("omits `Reply to` when the thread has only one distinct mentioner", async () => {
     const { workspaceId, connectionId } = await setupOrgSlack();
     const { composeId } = await createTestCompose(uniqueId("agent"));
     const { runId } = await seedTestRun(user.userId, composeId, {
@@ -796,8 +796,7 @@ describe("POST /api/internal/callbacks/slack/org", () => {
 
     const channelId = uniqueId("C-ch");
     const threadTs = uniqueId("ts");
-    // One other mentioner + the current user = 2 distinct, below threshold.
-    await seedAdditionalMentioners(workspaceId, channelId, threadTs, 1);
+    // Only the current user mentioned the agent = 1 distinct, below threshold.
 
     const payload: OrgCallbackPayload = {
       workspaceId,
