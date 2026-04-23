@@ -36,7 +36,7 @@ struct CompletePayload<'a> {
     sandbox_reuse_result: Option<&'a str>,
 }
 
-fn optional_env(value: &'static str) -> Option<&'static str> {
+fn as_optional(value: &str) -> Option<&str> {
     if value.is_empty() { None } else { Some(value) }
 }
 
@@ -44,9 +44,13 @@ fn optional_env(value: &'static str) -> Option<&'static str> {
 /// `checkpoint::create_checkpoint()` returns Ok, which guarantees the
 /// `checkpoints` row exists so the complete route can build `RunResult`.
 ///
+/// `sandbox_id` and `sandbox_reuse_result` are relayed analytics values;
+/// empty strings are serialized as absent so an unset env var is equivalent
+/// to omitting the field.
+///
 /// Fire-and-forget. Returns `()` and never propagates errors — the runner's
 /// fallback call covers any failure here.
-pub async fn report_success() {
+pub async fn report_success(sandbox_id: &str, sandbox_reuse_result: &str) {
     if !env::has_api() {
         return;
     }
@@ -54,8 +58,8 @@ pub async fn report_success() {
     let payload = CompletePayload {
         run_id: env::run_id(),
         exit_code: 0,
-        sandbox_id: optional_env(env::sandbox_id()),
-        sandbox_reuse_result: optional_env(env::sandbox_reuse_result()),
+        sandbox_id: as_optional(sandbox_id),
+        sandbox_reuse_result: as_optional(sandbox_reuse_result),
     };
 
     // 1 attempt — the runner's fallback is the safety net. Retrying from the
@@ -126,8 +130,8 @@ mod tests {
     }
 
     #[test]
-    fn optional_env_treats_empty_as_none() {
-        assert_eq!(optional_env(""), None);
-        assert_eq!(optional_env("value"), Some("value"));
+    fn as_optional_treats_empty_as_none() {
+        assert_eq!(as_optional(""), None);
+        assert_eq!(as_optional("value"), Some("value"));
     }
 }

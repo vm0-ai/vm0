@@ -1187,12 +1187,10 @@ fn build_env_json(
     env.insert("VM0_RUN_ID".into(), context.run_id.to_string());
     env.insert("VM0_API_TOKEN".into(), context.sandbox_token.clone());
     env.insert("VM0_SANDBOX_ID".into(), sandbox_id.into());
-    // `serde_plain` reuses the enum's `#[serde(rename_all = "camelCase")]`,
-    // keeping this wire format lockstep with the Zod contract.
-    #[allow(clippy::expect_used)]
-    let reuse_wire = serde_plain::to_string(&reuse_result)
-        .expect("unit enum variant always serializes to string");
-    env.insert("VM0_SANDBOX_REUSE_RESULT".into(), reuse_wire);
+    env.insert(
+        "VM0_SANDBOX_REUSE_RESULT".into(),
+        reuse_result.as_wire().into(),
+    );
     env.insert("VM0_PROMPT".into(), context.prompt.clone());
     if let Some(asp) = &context.append_system_prompt
         && !asp.is_empty()

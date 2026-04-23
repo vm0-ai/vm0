@@ -237,7 +237,7 @@ async fn execute(
                 // status transition already happened the moment /complete
                 // returned.
                 log_info!(LOG_TAG, "▷ Cleanup");
-                complete::report_success().await;
+                complete::report_success(env::sandbox_id(), env::sandbox_reuse_result()).await;
                 final_telemetry(masker).await;
             }
             Err(e) => {

@@ -273,6 +273,20 @@ pub enum SandboxReuseResult {
     UnparkFailed,
 }
 
+impl SandboxReuseResult {
+    /// Wire-format string, kept lockstep with the `#[serde(rename_all =
+    /// "camelCase")]` derive via `as_wire_matches_serde_serialization`.
+    pub const fn as_wire(self) -> &'static str {
+        match self {
+            Self::Reused => "reused",
+            Self::NoSessionId => "noSessionId",
+            Self::PoolMiss => "poolMiss",
+            Self::ProfileMismatch => "profileMismatch",
+            Self::UnparkFailed => "unparkFailed",
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -509,6 +523,24 @@ mod tests {
             serde_json::to_value(SandboxReuseResult::UnparkFailed).unwrap(),
             serde_json::json!("unparkFailed"),
         );
+    }
+
+    /// `as_wire` is hand-written; pin it to the serde derive so adding a
+    /// variant forces both sides to stay in sync.
+    #[test]
+    fn as_wire_matches_serde_serialization() {
+        for variant in [
+            SandboxReuseResult::Reused,
+            SandboxReuseResult::NoSessionId,
+            SandboxReuseResult::PoolMiss,
+            SandboxReuseResult::ProfileMismatch,
+            SandboxReuseResult::UnparkFailed,
+        ] {
+            assert_eq!(
+                serde_json::to_value(variant).unwrap(),
+                serde_json::Value::String(variant.as_wire().to_string()),
+            );
+        }
     }
 
     #[test]
