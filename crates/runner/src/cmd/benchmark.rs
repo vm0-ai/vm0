@@ -20,9 +20,8 @@ struct Timing {
     exec_ms: u128,
 }
 
-/// Parse `KEY=VALUE` strings from `--env` into `(key, value)` tuples.
-/// Rejects entries missing `=` so typos like `--env FOO` fail loud instead
-/// of being silently dropped.
+/// Reject entries missing `=` so typos like `--env FOO` fail loud instead of
+/// being silently dropped.
 fn parse_env_args(env: &[String]) -> RunnerResult<Vec<(String, String)>> {
     env.iter()
         .map(|s| {
