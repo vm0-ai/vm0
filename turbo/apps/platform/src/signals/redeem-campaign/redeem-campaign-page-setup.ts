@@ -9,7 +9,6 @@ import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 import {
-  setRedeemCampaignCode$,
   setRedeemResponse$,
   setRedeemStripeSuccess$,
 } from "./redeem-campaign-signals.ts";
@@ -35,7 +34,6 @@ export const setupRedeemCampaignPage$ = command(
     const searchParams = get(searchParams$);
     const stripeSuccess = searchParams.get("stripe") === "success";
 
-    set(setRedeemCampaignCode$, campaign);
     set(setRedeemStripeSuccess$, stripeSuccess);
 
     if (stripeSuccess) {

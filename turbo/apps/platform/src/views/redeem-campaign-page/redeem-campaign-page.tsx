@@ -10,7 +10,6 @@ import {
 import { Button } from "@vm0/ui";
 import type { RedeemResponse } from "@vm0/core";
 import {
-  redeemCampaignCode$,
   redeemResponse$,
   redeemStripeSuccess$,
 } from "../../signals/redeem-campaign/redeem-campaign-signals.ts";
@@ -31,7 +30,6 @@ function resolveCard(
   response: RedeemResponse | null,
   stripeSuccess: boolean,
   orgName: string,
-  campaignCode: string,
 ): CardInfo {
   if (stripeSuccess) {
     return {
@@ -41,7 +39,6 @@ function resolveCard(
     };
   }
   if (!response) {
-    // Shouldn't render before setup sets the state, but keep a safe fallback.
     return {
       kind: "broken",
       title: "Something went wrong",
@@ -53,14 +50,14 @@ function resolveCard(
       return {
         kind: "ready",
         title: "Claim your credits",
-        body: `Redeem ${campaignCode} for ${orgName}. Complete checkout to add these credits to the organization's balance.`,
+        body: `Complete checkout to add these credits to ${orgName}'s balance.`,
       };
     }
     case "already_granted": {
       return {
         kind: "granted",
         title: "You've already redeemed this offer",
-        body: `Credits from ${campaignCode} are already in ${orgName}'s account. Head back to the app to start using them.`,
+        body: `Your credits are already in ${orgName}'s account. Head back to the app to start using them.`,
       };
     }
     case "processing": {
@@ -153,11 +150,10 @@ function PrimaryAction({
 export function RedeemCampaignPage() {
   const response = useGet(redeemResponse$);
   const stripeSuccess = useGet(redeemStripeSuccess$);
-  const campaignCode = useGet(redeemCampaignCode$);
   const clerkLoadable = useLastLoadable(clerk$);
   const clerk = clerkLoadable.state === "hasData" ? clerkLoadable.data : null;
   const orgName = clerk?.organization?.name ?? "your organization";
-  const info = resolveCard(response, stripeSuccess, orgName, campaignCode);
+  const info = resolveCard(response, stripeSuccess, orgName);
 
   return (
     <div className="flex min-h-0 flex-1 items-center justify-center px-6 md:-translate-x-[128px]">

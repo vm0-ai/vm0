@@ -17,9 +17,7 @@ describe("redeem campaign page", () => {
       expect(screen.getByText("Claim your credits")).toBeInTheDocument();
     });
     expect(
-      screen.getByText(
-        /Redeem ZERO100 for Default Org\. Complete checkout to add these credits/,
-      ),
+      screen.getByText(/Complete checkout to add these credits to Default Org/),
     ).toBeInTheDocument();
 
     const link = screen.getByText("Redeem credits");
@@ -37,7 +35,7 @@ describe("redeem campaign page", () => {
       ).toBeInTheDocument();
     });
     expect(
-      screen.getByText(/Credits from ZERO100 are already in Default Org/),
+      screen.getByText(/already in Default Org's account/),
     ).toBeInTheDocument();
     expect(screen.getByText("Back to VM0")).toBeInTheDocument();
   });
