@@ -514,7 +514,7 @@ describe("chat-d-063: download link renders for file attachment", () => {
         `a[download="${filename}"]`,
       );
       expect(link).toBeInTheDocument();
-      expect(link?.href).toBe(`${fileUrl}?download=1`);
+      expect(link?.getAttribute("href")).toBe(`${fileUrl}?download=1`);
     });
   });
 });
