@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { OrgTier } from "@vm0/core";
 import { getStripe } from "../stripe";
 import { env } from "../../../env";
@@ -30,6 +30,7 @@ interface CheckoutSessionInput {
   subscription: string | { id: string } | null;
   customer: string | { id: string } | null;
   metadata: Record<string, string> | null;
+  payment_status?: string | null;
 }
 
 /** Fields read by {@link handleInvoicePaid}. */
@@ -92,24 +93,30 @@ export function activePriceId(tier: "pro" | "team"): string | undefined {
  */
 async function getOrCreateStripeCustomer(orgId: string): Promise<string> {
   const db = globalThis.services.db;
-  const [row] = await db
-    .select({ stripeCustomerId: orgMetadata.stripeCustomerId })
-    .from(orgMetadata)
-    .where(eq(orgMetadata.orgId, orgId))
-    .limit(1);
+  return db.transaction(async (tx) => {
+    // Serialize customer materialization per org so concurrent checkout / redeem
+    // requests cannot mint multiple Stripe customers and orphan webhook events.
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtext('stripe_customer_' || ${orgId}))`,
+    );
 
-  if (row?.stripeCustomerId) {
-    return row.stripeCustomerId;
-  }
+    const [row] = await tx
+      .select({ stripeCustomerId: orgMetadata.stripeCustomerId })
+      .from(orgMetadata)
+      .where(eq(orgMetadata.orgId, orgId))
+      .limit(1);
 
-  const stripe = getStripe();
-  const customer = await stripe.customers.create({
-    metadata: { orgId },
-  });
+    if (row?.stripeCustomerId) {
+      return row.stripeCustomerId;
+    }
 
-  // Guarantee the starter grant at first org_metadata materialisation — a
-  // free user may skip onboarding and first hit billing (pricing → upgrade).
-  await db.transaction(async (tx) => {
+    const stripe = getStripe();
+    const customer = await stripe.customers.create({
+      metadata: { orgId },
+    });
+
+    // Guarantee the starter grant at first org_metadata materialisation — a
+    // free user may skip onboarding and first hit billing (pricing → upgrade).
     await ensureStarterCreditGrant(tx, orgId);
     await tx
       .insert(orgMetadata)
@@ -118,9 +125,9 @@ async function getOrCreateStripeCustomer(orgId: string): Promise<string> {
         target: orgMetadata.orgId,
         set: { stripeCustomerId: customer.id, updatedAt: new Date() },
       });
-  });
 
-  return customer.id;
+    return customer.id;
+  });
 }
 
 /**
@@ -167,6 +174,13 @@ export async function handleCheckoutCompleted(
   session: CheckoutSessionInput,
 ): Promise<void> {
   if (session.metadata?.purpose === "one_time_purchase") {
+    if (session.payment_status !== "paid") {
+      log.info("one_time_purchase checkout completed before payment settled", {
+        sessionId: session.id,
+        paymentStatus: session.payment_status ?? null,
+      });
+      return;
+    }
     await handleOneTimePurchaseCompleted(session);
     return;
   }

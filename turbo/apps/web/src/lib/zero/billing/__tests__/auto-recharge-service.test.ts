@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import { eq } from "drizzle-orm";
 import {
   testContext,
   uniqueId,
@@ -49,6 +50,8 @@ vi.mock("stripe", () => {
 });
 
 import { reloadEnv } from "../../../../env";
+// eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: deterministic row-lock race coverage
+import { orgMetadata } from "../../../../db/schema/org-metadata";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route
 import {
   triggerAutoRecharge,
@@ -261,6 +264,51 @@ describe("auto-recharge-service", () => {
 
       // Only one should have created an invoice
       expect(stripeMocks.invoicesCreate).toHaveBeenCalledTimes(1);
+    });
+
+    it("rechecks the latest balance before claiming a recharge slot", async () => {
+      const cusId = uniqueId("cus");
+      await updateOrgTier(user.orgId, "pro");
+      await updateOrgStripeFields(user.orgId, {
+        stripeCustomerId: cusId,
+      });
+      await updateOrgAutoRecharge(user.orgId, {
+        autoRechargeEnabled: true,
+        autoRechargeThreshold: 110_000,
+        autoRechargeAmount: 5000,
+      });
+
+      let releaseLock!: () => void;
+      const rowUpdated = new Promise<void>((resolve) => {
+        releaseLock = resolve;
+      });
+      const blockerReady = new Promise<void>((resolve) => {
+        void globalThis.services.db.transaction(async (tx) => {
+          await tx
+            .select({ orgId: orgMetadata.orgId })
+            .from(orgMetadata)
+            .where(eq(orgMetadata.orgId, user.orgId))
+            .for("update");
+
+          await tx
+            .update(orgMetadata)
+            .set({ credits: 250_000, updatedAt: new Date() })
+            .where(eq(orgMetadata.orgId, user.orgId));
+
+          resolve();
+          await rowUpdated;
+        });
+      });
+
+      await blockerReady;
+
+      const triggerPromise = triggerAutoRecharge(user.orgId);
+      releaseLock();
+      await triggerPromise;
+
+      expect(stripeMocks.invoicesCreate).not.toHaveBeenCalled();
+      const fields = await getOrgAutoRechargeFields(user.orgId);
+      expect(fields?.autoRechargePendingAt).toBeNull();
     });
 
     it("skips when Stripe customer is deleted", async () => {
