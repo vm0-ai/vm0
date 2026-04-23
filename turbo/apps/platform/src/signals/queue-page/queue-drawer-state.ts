@@ -3,25 +3,12 @@ import { searchParams$, replaceSearchParams$ } from "../route.ts";
 import { startQueuePolling$ } from "./queue-signals.ts";
 import { resetSignal } from "../utils.ts";
 import { logger } from "../log.ts";
-import { pageSignal$ } from "../page-signal.ts";
+import { maybePageSignal$ } from "../page-signal.ts";
 
 const L = logger("QueueDrawer");
 
 const internalQueueDrawerOpen$ = state(false);
 const resetQueuePollingSignal$ = resetSignal();
-
-function tryGetPageSignal(
-  get: (signal$: typeof pageSignal$) => AbortSignal,
-): AbortSignal | undefined {
-  try {
-    return get(pageSignal$);
-  } catch (error) {
-    if (error instanceof Error && error.message === "page signal not set") {
-      return undefined;
-    }
-    throw error;
-  }
-}
 
 export const queueDrawerOpen$ = computed((get) => {
   return get(internalQueueDrawerOpen$);
@@ -29,7 +16,7 @@ export const queueDrawerOpen$ = computed((get) => {
 
 export const setQueueDrawerOpen$ = command(({ get, set }, open: boolean) => {
   set(internalQueueDrawerOpen$, open);
-  const pageSignal = tryGetPageSignal(get);
+  const pageSignal = get(maybePageSignal$);
 
   const params = get(searchParams$);
   const next = new URLSearchParams(params);
