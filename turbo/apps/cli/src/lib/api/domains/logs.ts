@@ -5,12 +5,12 @@ import {
   runAgentEventsContract,
   runNetworkLogsContract,
   logsSearchContract,
-  type SystemLogResponse,
-  type MetricsResponse,
   type AgentEventsResponse,
-  type NetworkLogsResponse,
   type LogsSearchResponse,
-} from "@vm0/core";
+  type MetricsResponse,
+  type NetworkLogsResponse,
+  type SystemLogResponse,
+} from "@vm0/core/contracts/runs";
 import { getClientConfig, handleError } from "../core/client-factory";
 
 // Re-export types used by consumer commands (logs/index.ts, logs/search.ts)
@@ -19,7 +19,7 @@ export type {
   TelemetryMetric,
   NetworkLogEntry,
   LogsSearchResponse,
-} from "@vm0/core";
+} from "@vm0/core/contracts/runs";
 
 export async function getSystemLog(
   runId: string,
