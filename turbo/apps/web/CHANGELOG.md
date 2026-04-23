@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.288.0](https://github.com/vm0-ai/vm0/compare/web-v12.287.1...web-v12.288.0) (2026-04-23)
+
+
+### Features
+
+* update pricing FAQ to reflect credit logic ([#10664](https://github.com/vm0-ai/vm0/issues/10664)) ([122dbf9](https://github.com/vm0-ai/vm0/commit/122dbf9b65d17a36408e4d4ea9318917d26d8d97))
+
 ## [12.287.1](https://github.com/vm0-ai/vm0/compare/web-v12.287.0...web-v12.287.1) (2026-04-23)
 
 
