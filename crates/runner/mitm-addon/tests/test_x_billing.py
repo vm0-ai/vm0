@@ -1,8 +1,11 @@
-"""Unit tests for :mod:`usage.providers.connectors.x_billing`.
+"""Cross-file static invariants for :mod:`usage.providers.connectors.x_billing`.
 
-Each public function gets dedicated coverage so a regression in the
-classifier surface is caught without relying on the broader billing
-pipeline tests in ``test_handlers.py``.
+End-to-end classifier behaviour (defaults, overrides, body refinement)
+is covered by ``tests/test_handlers.py``.  This module only holds the
+consistency suites that can't be expressed at the integration level:
+every firewall scope must be classified or intentionally unmapped,
+every override must exist in the firewall generator output, every
+emitted bucket must have a dev-seed row, etc.
 """
 
 from __future__ import annotations
@@ -10,6 +13,7 @@ from __future__ import annotations
 import json
 import pathlib
 import re
+from typing import ClassVar
 
 import pytest
 
@@ -17,265 +21,8 @@ from usage.providers.connectors.x_billing import (
     _INCLUDES_TO_BUCKET,
     _PATH_OVERRIDES,
     _PERMISSION_TO_BUCKET,
-    classify_bucket,
-    classify_includes_bucket,
     refine_bucket_with_body,
 )
-
-
-class TestClassifyBucket:
-    """``classify_bucket(permission, method, path) -> bucket | None``."""
-
-    @pytest.mark.parametrize(
-        ("permission", "method", "path", "expected"),
-        [
-            # — clean 1:1 writes —
-            ("tweet.moderate.write", "PUT", "/2/tweets/1/hidden", "content.manage"),
-            ("bookmark.write", "POST", "/2/users/me/bookmarks", "bookmark"),
-            ("dm.write", "POST", "/2/dm_events", "dm_interaction.create"),
-            # — clean 1:1 reads —
-            ("dm.read", "GET", "/2/dm_events", "dm_event.read"),
-            ("follows.read", "GET", "/2/users/1/followers", "following_followers.read"),
-            ("like.read", "GET", "/2/tweets/1/liking_users", "posts.read"),
-            ("timeline.read", "GET", "/2/users/1/timelines/reverse_chronological", "posts.read"),
-            ("space.read", "GET", "/2/spaces/1", "space.read"),
-            ("list.read", "GET", "/2/lists/1", "list.read"),
-            ("block.read", "GET", "/2/users/me/blocking", "user.read"),
-            ("mute.read", "GET", "/2/users/me/muting", "user.read"),
-            ("bookmark.read", "GET", "/2/users/me/bookmarks", "posts.read"),
-            # — multi-bucket scopes default to the conservative bucket —
-            ("tweet.write", "POST", "/2/tweets", "content.create_with_url"),
-            ("media.write", "POST", "/2/media/upload", "content.create_with_url"),
-            ("like.write", "POST", "/2/users/me/likes", "user_interaction.create"),
-            ("follows.write", "POST", "/2/users/me/following", "user_interaction.create"),
-            ("mute.write", "POST", "/2/users/me/muting", "user_interaction.create"),
-            ("list.write", "POST", "/2/lists", "list.create"),
-            ("tweet.read", "GET", "/2/tweets", "posts.read"),
-            ("users.read", "GET", "/2/users/1", "user.read"),
-        ],
-    )
-    def test_defaults(self, permission, method, path, expected):
-        assert classify_bucket(permission, method, path) == expected
-
-    @pytest.mark.parametrize(
-        ("permission", "method", "path", "expected"),
-        [
-            # — tweet.read refinements —
-            ("tweet.read", "GET", "/2/tweets/1/retweeted_by", "user.read"),
-            ("tweet.read", "GET", "/2/insights/28hr", "analytics.read"),
-            ("tweet.read", "GET", "/2/insights/historical", "analytics.read"),
-            ("tweet.read", "GET", "/2/media/analytics", "analytics.read"),
-            ("tweet.read", "GET", "/2/tweets/analytics", "analytics.read"),
-            ("tweet.read", "GET", "/2/media", "media.read"),
-            ("tweet.read", "GET", "/2/media/abc", "media.read"),
-            ("tweet.read", "GET", "/2/notes/search/notes_written", "note.read"),
-            ("tweet.read", "GET", "/2/notes/search/posts_eligible_for_notes", "note.read"),
-            # — users.read refinements —
-            ("users.read", "GET", "/2/users/1/mentions", "posts.read"),
-            ("users.read", "GET", "/2/users/1/timelines/reverse_chronological", "posts.read"),
-            ("users.read", "GET", "/2/users/1/tweets", "posts.read"),
-            ("users.read", "GET", "/2/communities/search", "community.read"),
-            # — write DELETE → interaction.delete / mute.delete —
-            ("like.write", "DELETE", "/2/users/1/likes/2", "interaction.delete"),
-            ("follows.write", "DELETE", "/2/users/1/following/2", "interaction.delete"),
-            ("mute.write", "DELETE", "/2/users/1/muting/2", "mute.delete"),
-            # — list.write refinements: create stays, everything else is manage —
-            ("list.write", "PUT", "/2/lists/1", "list.manage"),
-            ("list.write", "DELETE", "/2/lists/1", "list.manage"),
-            ("list.write", "POST", "/2/lists/1/members", "list.manage"),
-            ("list.write", "DELETE", "/2/lists/1/members/2", "list.manage"),
-            ("list.write", "POST", "/2/users/1/followed_lists", "list.manage"),
-            ("list.write", "DELETE", "/2/users/1/followed_lists/2", "list.manage"),
-            ("list.write", "POST", "/2/users/1/pinned_lists", "list.manage"),
-            ("list.write", "DELETE", "/2/users/1/pinned_lists/2", "list.manage"),
-            # — bookmark DELETE stays on bookmark (not interaction.delete) —
-            ("bookmark.write", "DELETE", "/2/users/1/bookmarks/2", "bookmark"),
-            # — media.write refinements —
-            ("media.write", "GET", "/2/media/upload", "media.read"),
-            ("media.write", "GET", "/2/chat/media/abc/xyz", "media.read"),
-            ("media.write", "POST", "/2/media/metadata", "media_metadata"),
-            ("media.write", "POST", "/2/media/subtitles", "media_metadata"),
-            ("media.write", "DELETE", "/2/media/subtitles", "media_metadata"),
-            # — media.write: chat (DM) media uploads route to DM bucket —
-            (
-                "media.write",
-                "POST",
-                "/2/chat/media/upload/initialize",
-                "dm_interaction.create",
-            ),
-            (
-                "media.write",
-                "POST",
-                "/2/chat/media/upload/abc/append",
-                "dm_interaction.create",
-            ),
-            (
-                "media.write",
-                "POST",
-                "/2/chat/media/upload/abc/finalize",
-                "dm_interaction.create",
-            ),
-            # — tweet.write: DELETE of your own content → Content: Manage —
-            ("tweet.write", "DELETE", "/2/tweets/123", "content.manage"),
-            ("tweet.write", "DELETE", "/2/notes/abc", "content.manage"),
-            # — tweet.write: retweets are User Interaction (create/delete) —
-            ("tweet.write", "POST", "/2/users/1/retweets", "user_interaction.create"),
-            ("tweet.write", "DELETE", "/2/users/1/retweets/999", "interaction.delete"),
-            ("tweet.write", "POST", "/2/evaluate_note", "user_interaction.create"),
-            # — dm.write: deleting a DM → Content: Manage —
-            ("dm.write", "DELETE", "/2/dm_events/abc", "content.manage"),
-        ],
-    )
-    def test_path_overrides(self, permission, method, path, expected):
-        assert classify_bucket(permission, method, path) == expected
-
-    @pytest.mark.parametrize(
-        ("permission", "method", "path"),
-        [
-            # The "app-only" scope is in the firewall but intentionally
-            # unmapped here — BearerToken-only endpoints are not billed.
-            ("app-only", "GET", "/2/tweets/counts/all"),
-            # — any unknown scope falls through —
-            ("unknown.scope", "GET", "/anywhere"),
-            ("", "GET", "/2/tweets"),
-        ],
-    )
-    def test_returns_none_for_unmapped(self, permission, method, path):
-        assert classify_bucket(permission, method, path) is None
-
-    def test_method_is_case_insensitive(self):
-        # Override tables store methods uppercased; classifier must match
-        # regardless of what the caller passes in.
-        assert (
-            classify_bucket("like.write", "delete", "/2/users/me/likes/1") == "interaction.delete"
-        )
-        assert (
-            classify_bucket("like.write", "DELETE", "/2/users/me/likes/1") == "interaction.delete"
-        )
-
-
-class TestClassifyIncludesBucket:
-    @pytest.mark.parametrize(
-        ("key", "expected"),
-        [
-            ("users", "user.read"),
-            ("tweets", "posts.read"),
-            ("media", "media.read"),
-            ("polls", "posts.read"),
-            ("places", "posts.read"),
-            ("topics", "posts.read"),
-            ("spaces", "space.read"),
-        ],
-    )
-    def test_known_keys(self, key, expected):
-        assert classify_includes_bucket(key) == expected
-
-    @pytest.mark.parametrize("key", ["future_widget", "", "users_extended"])
-    def test_unknown_keys_return_none(self, key):
-        assert classify_includes_bucket(key) is None
-
-
-class TestRefineBucketWithBody:
-    """``refine_bucket_with_body`` only affects POST /2/tweets.
-    Everything else flows through unchanged.
-    """
-
-    def _body(self, obj: dict) -> bytes:
-        return json.dumps(obj).encode()
-
-    # — paths that bypass refinement —
-
-    @pytest.mark.parametrize(
-        ("bucket", "method", "path", "body"),
-        [
-            # Non-target bucket
-            ("posts.read", "POST", "/2/tweets", b'{"text": "no url"}'),
-            # Non-POST
-            ("content.create_with_url", "GET", "/2/tweets", b'{"text": "no url"}'),
-            # Non-target path
-            (
-                "content.create_with_url",
-                "POST",
-                "/2/tweets/1/hidden",
-                b'{"text": "no url"}',
-            ),
-        ],
-    )
-    def test_passthrough(self, bucket, method, path, body):
-        assert refine_bucket_with_body(bucket, method, path, body) == bucket
-
-    # — POST /2/tweets downgrade path —
-
-    def test_plain_text_downgrades(self):
-        body = self._body({"text": "hello world"})
-        assert (
-            refine_bucket_with_body("content.create_with_url", "POST", "/2/tweets", body)
-            == "content.create"
-        )
-
-    @pytest.mark.parametrize(
-        "text",
-        [
-            "check https://example.com out",
-            "http://legacy.example.com",
-            "prefix http://x.co suffix",
-        ],
-    )
-    def test_url_in_text_stays_on_with_url(self, text):
-        body = self._body({"text": text})
-        assert (
-            refine_bucket_with_body("content.create_with_url", "POST", "/2/tweets", body)
-            == "content.create_with_url"
-        )
-
-    def test_quote_tweet_stays_on_with_url(self):
-        body = self._body({"text": "nice", "quote_tweet_id": "abc"})
-        assert (
-            refine_bucket_with_body("content.create_with_url", "POST", "/2/tweets", body)
-            == "content.create_with_url"
-        )
-
-    def test_attached_media_stays_on_with_url(self):
-        body = self._body({"text": "pic", "media": {"media_ids": ["42"]}})
-        assert (
-            refine_bucket_with_body("content.create_with_url", "POST", "/2/tweets", body)
-            == "content.create_with_url"
-        )
-
-    def test_card_uri_stays_on_with_url(self):
-        # card_uri attaches a link preview card — the published tweet
-        # always renders a URL even if the text is plain.
-        body = self._body({"text": "plain", "card_uri": "card://12345"})
-        assert (
-            refine_bucket_with_body("content.create_with_url", "POST", "/2/tweets", body)
-            == "content.create_with_url"
-        )
-
-    def test_empty_media_ids_list_allows_downgrade(self):
-        body = self._body({"text": "no media", "media": {"media_ids": []}})
-        assert (
-            refine_bucket_with_body("content.create_with_url", "POST", "/2/tweets", body)
-            == "content.create"
-        )
-
-    @pytest.mark.parametrize(
-        "body",
-        [
-            None,
-            b"",
-            b"not json",
-            b'["unexpected array"]',
-            # Dict without `text`
-            b"{}",
-            # text is not a string
-            b'{"text": 42}',
-        ],
-    )
-    def test_defensive_cases_stay_on_with_url(self, body):
-        assert (
-            refine_bucket_with_body("content.create_with_url", "POST", "/2/tweets", body)
-            == "content.create_with_url"
-        )
 
 
 class TestFirewallConsistency:
@@ -413,6 +160,155 @@ class TestFirewallConsistency:
             "Either the firewall rule was renamed/removed upstream, or "
             "the override has a typo."
         )
+
+    # Firewall paths that deliberately take their scope's default bucket.
+    # Any firewall rule under a classified scope must either be in
+    # `_PATH_OVERRIDES` or listed here, forcing an explicit decision for
+    # every path instead of defaulting silently when a new endpoint is
+    # added upstream.  Review each entry: if the scope default is wrong
+    # for a path, move it into `_PATH_OVERRIDES` with the correct bucket.
+    _ACKNOWLEDGED_DEFAULT_PATHS: ClassVar[dict[str, set[tuple[str, str]]]] = {
+        "block.read": {("GET", "/2/users/{id}/blocking")},
+        "bookmark.read": {
+            ("GET", "/2/users/{id}/bookmarks"),
+            ("GET", "/2/users/{id}/bookmarks/folders"),
+            ("GET", "/2/users/{id}/bookmarks/folders/{folder_id}"),
+        },
+        "bookmark.write": {("POST", "/2/users/{id}/bookmarks")},
+        "dm.read": {
+            ("POST", "/2/activity/subscriptions"),
+            ("GET", "/2/chat/conversations"),
+            ("GET", "/2/chat/conversations/{id}"),
+            ("GET", "/2/dm_conversations/media/{dm_id}/{media_id}/{resource_id}"),
+            ("GET", "/2/dm_conversations/with/{participant_id}/dm_events"),
+            ("GET", "/2/dm_conversations/{id}/dm_events"),
+            ("GET", "/2/dm_events"),
+            ("GET", "/2/dm_events/{event_id}"),
+            ("GET", "/2/users/public_keys"),
+            ("GET", "/2/users/{id}/public_keys"),
+        },
+        "dm.write": {
+            ("GET", "/2/account_activity/webhooks/{webhook_id}/subscriptions/all"),
+            ("POST", "/2/account_activity/webhooks/{webhook_id}/subscriptions/all"),
+            ("POST", "/2/chat/conversations/group"),
+            ("POST", "/2/chat/conversations/group/initialize"),
+            ("POST", "/2/chat/conversations/{id}/keys"),
+            ("POST", "/2/chat/conversations/{id}/members"),
+            ("POST", "/2/chat/conversations/{id}/messages"),
+            ("POST", "/2/chat/conversations/{id}/read"),
+            ("POST", "/2/chat/conversations/{id}/typing"),
+            ("POST", "/2/dm_conversations"),
+            ("POST", "/2/dm_conversations/with/{participant_id}/messages"),
+            ("POST", "/2/dm_conversations/{dm_conversation_id}/messages"),
+            ("POST", "/2/users/{id}/dm/block"),
+            ("POST", "/2/users/{id}/dm/unblock"),
+            ("POST", "/2/users/{id}/public_keys"),
+        },
+        "follows.read": {
+            ("GET", "/2/users/{id}/followers"),
+            ("GET", "/2/users/{id}/following"),
+        },
+        "follows.write": {("POST", "/2/users/{id}/following")},
+        "like.read": {
+            ("GET", "/2/tweets/{id}/liking_users"),
+            ("GET", "/2/users/{id}/liked_tweets"),
+        },
+        "like.write": {("POST", "/2/users/{id}/likes")},
+        "list.read": {
+            ("GET", "/2/communities/{id}"),
+            ("GET", "/2/lists/{id}"),
+            ("GET", "/2/lists/{id}/followers"),
+            ("GET", "/2/lists/{id}/members"),
+            ("GET", "/2/lists/{id}/tweets"),
+            ("GET", "/2/users/{id}/followed_lists"),
+            ("GET", "/2/users/{id}/list_memberships"),
+            ("GET", "/2/users/{id}/owned_lists"),
+            ("GET", "/2/users/{id}/pinned_lists"),
+        },
+        "list.write": {("POST", "/2/lists")},
+        "media.write": {
+            ("POST", "/2/media/upload"),
+            ("POST", "/2/media/upload/initialize"),
+            ("POST", "/2/media/upload/{id}/append"),
+            ("POST", "/2/media/upload/{id}/finalize"),
+        },
+        "mute.read": {("GET", "/2/users/{id}/muting")},
+        "mute.write": {("POST", "/2/users/{id}/muting")},
+        "space.read": {
+            ("GET", "/2/spaces"),
+            ("GET", "/2/spaces/by/creator_ids"),
+            ("GET", "/2/spaces/search"),
+            ("GET", "/2/spaces/{id}"),
+            ("GET", "/2/spaces/{id}/buyers"),
+            ("GET", "/2/spaces/{id}/tweets"),
+        },
+        "timeline.read": {("GET", "/2/users/reposts_of_me")},
+        "tweet.moderate.write": {("PUT", "/2/tweets/{tweet_id}/hidden")},
+        "tweet.read": {
+            ("GET", "/2/tweets"),
+            ("GET", "/2/tweets/search/recent"),
+            ("GET", "/2/tweets/{id}"),
+            ("GET", "/2/tweets/{id}/quote_tweets"),
+            ("GET", "/2/tweets/{id}/retweets"),
+        },
+        "tweet.write": {
+            ("POST", "/2/notes"),
+            ("POST", "/2/tweets"),
+        },
+        "users.read": {
+            ("GET", "/2/news/search"),
+            ("GET", "/2/news/{id}"),
+            ("GET", "/2/users"),
+            ("GET", "/2/users/by"),
+            ("GET", "/2/users/by/username/{username}"),
+            ("GET", "/2/users/me"),
+            ("GET", "/2/users/personalized_trends"),
+            ("GET", "/2/users/search"),
+            ("GET", "/2/users/{id}"),
+            ("GET", "/2/users/{id}/affiliates"),
+        },
+    }
+
+    def test_every_firewall_path_has_an_explicit_decision(self):
+        """Every firewall rule under a classified scope must either be
+        in ``_PATH_OVERRIDES`` (explicitly routed to a non-default bucket)
+        or in ``_ACKNOWLEDGED_DEFAULT_PATHS`` (explicitly confirmed to
+        take the scope default).  This catches the case where X adds a
+        new endpoint under an existing scope whose correct bucket is
+        NOT the scope default — without this check, the new endpoint
+        would silently bill at the wrong rate (e.g. 10-40× off) until
+        someone noticed."""
+        firewall = self._load_firewall_rules()
+        override_paths: dict[str, set[tuple[str, str]]] = {}
+        for scope, method, pattern, _bucket in _PATH_OVERRIDES:
+            override_paths.setdefault(scope, set()).add((method, pattern))
+
+        unreviewed: list[tuple[str, str, str]] = []
+        obsolete: list[tuple[str, str, str]] = []
+        for scope, rules in firewall.items():
+            if scope in self._INTENTIONALLY_UNMAPPED:
+                continue
+            expected_defaults = self._ACKNOWLEDGED_DEFAULT_PATHS.get(scope, set())
+            actual_defaults = rules - override_paths.get(scope, set())
+            for method, pattern in sorted(actual_defaults - expected_defaults):
+                unreviewed.append((scope, method, pattern))
+            for method, pattern in sorted(expected_defaults - actual_defaults):
+                obsolete.append((scope, method, pattern))
+
+        drift_msg = (
+            "Firewall path coverage drifted.\n\n"
+            "Unreviewed (new firewall paths, confirm scope default or add override): "
+            f"{unreviewed}\n\n"
+            "Obsolete (in acknowledged list but no longer in firewall): "
+            f"{obsolete}\n\n"
+            "For each unreviewed path: inspect X's bucket pricing and EITHER add "
+            "an override in `_PATH_OVERRIDES` (if the scope default is wrong) OR "
+            "add the path to `_ACKNOWLEDGED_DEFAULT_PATHS` under the scope (if "
+            "the default is correct).  Do not silently let new endpoints take "
+            "the default — that is how billing drifts undetected."
+        )
+        assert not unreviewed, drift_msg
+        assert not obsolete, drift_msg
 
 
 class TestSeedConsistency:

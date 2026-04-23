@@ -299,7 +299,7 @@ def _compute_billable_counts(
     resp_meta: dict,
     endpoint_bucket: str,
     log_warn: Callable[[str, dict], None] = lambda *_: None,
-) -> dict:
+) -> dict[str, int]:
     """Derive per-bucket billable resource counts for an X request.
 
     Returns a dict mapping X billing bucket name → resource count.  The
@@ -349,7 +349,7 @@ def _compute_billable_counts(
         max_r = req_meta.get("max_results") or 0
         primary = max(ids, max_r, 1) if any((ids, max_r)) else 0
 
-    counts: dict = {}
+    counts: dict[str, int] = {}
     if primary > 0:
         counts[endpoint_bucket] = primary
 
@@ -447,12 +447,14 @@ def report_usage(flow: http.HTTPFlow, run_id: str) -> None:
     # Loud-but-zero billing path: GET with an unparseable response body
     # AND no URL-side count hints.  We deliberately emit nothing rather
     # than blind-guess a quantity — the error log carries enough context
-    # for ops to audit and, if needed, back-charge manually.
+    # for ops to audit and, if needed, back-charge manually.  Use
+    # ``is None`` so a legitimate ``?max_results=0`` (no-op query) is
+    # distinguished from the absent-field case.
     if (
         flow.request.method == "GET"
         and not resp_meta.get("body_parsed")
-        and not req_meta.get("request_ids_count")
-        and not req_meta.get("max_results")
+        and req_meta.get("request_ids_count") is None
+        and req_meta.get("max_results") is None
     ):
         log_proxy_entry(
             proxy_log_path,
