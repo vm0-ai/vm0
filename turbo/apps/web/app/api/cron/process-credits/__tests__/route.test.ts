@@ -217,10 +217,11 @@ describe("GET /api/cron/process-credits", () => {
       expect(credits).toBe(100_000);
     });
 
-    it("marks records with no matching pricing as processed with zero charge", async () => {
+    it("marks records with no matching pricing as processed with zero charge (user-key path)", async () => {
       const usageId = await insertTestCreditUsage(user.orgId, {
         userId: user.userId,
         model: "unknown-model",
+        modelProvider: "anthropic-api-key",
       });
 
       const response = await GET(cronRequest("test-cron-secret"));
@@ -230,6 +231,25 @@ describe("GET /api/cron/process-credits", () => {
       expect(record!.status).toBe("processed");
       expect(record!.creditsCharged).toBe(0);
       expect(record!.processedAt).toBeInstanceOf(Date);
+    });
+
+    it("leaves vm0 records with no matching pricing pending (misconfiguration, not free charge)", async () => {
+      const usageId = await insertTestCreditUsage(user.orgId, {
+        userId: user.userId,
+        model: "unseeded-vm0-model",
+        modelProvider: "vm0",
+      });
+
+      const response = await GET(cronRequest("test-cron-secret"));
+      expect(response.status).toBe(200);
+
+      const record = await findTestCreditUsage(usageId);
+      expect(record!.status).toBe("pending");
+      expect(record!.creditsCharged).toBeNull();
+      expect(record!.processedAt).toBeNull();
+
+      const credits = await getOrgCredits(user.orgId);
+      expect(credits).toBe(100_000);
     });
 
     it("includes cache tokens in credit calculation", async () => {

@@ -62,8 +62,23 @@ export async function processOrgCredits(orgId: string): Promise<void> {
         `${record.model}|${record.modelProvider}`,
       );
       if (!pricing) {
-        // No matching pricing for this model+provider combo — no charge
-        // (user's own provider or unconfigured provider)
+        // For vm0-managed runs, missing pricing is a misconfiguration — we
+        // must not silently give away credits. Leave the record pending so
+        // the cron retries next tick once pricing is seeded.
+        if (record.modelProvider === "vm0") {
+          log.error(
+            "vm0 model has no credit_pricing row — skipping charge, record remains pending",
+            {
+              recordId: record.id,
+              model: record.model,
+              modelProvider: record.modelProvider,
+            },
+          );
+          continue;
+        }
+
+        // User-provided key (or untracked legacy path) — zero charge is
+        // correct because vm0 is not the billing party for this token spend.
         await tx
           .update(creditUsage)
           .set({
@@ -75,7 +90,7 @@ export async function processOrgCredits(orgId: string): Promise<void> {
 
         processedCount++;
 
-        log.debug("No matching pricing — zero charge", {
+        log.debug("No matching pricing — zero charge (user-key path)", {
           recordId: record.id,
           model: record.model,
           modelProvider: record.modelProvider,
