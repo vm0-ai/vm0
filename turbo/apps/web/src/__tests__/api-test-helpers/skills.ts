@@ -9,7 +9,6 @@
 export {
   seedTestSkill,
   reseedSkills,
-  setAllTestSkillsCommitSha,
   bindCustomSkillToAgent,
   createTestZeroSkill,
 } from "../db-test-seeders/skills";

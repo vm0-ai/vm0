@@ -4,15 +4,16 @@ import { testContext } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 import { postRequest, seedCandidateAgent, setupCandidateOrg } from "./_helpers";
 
-vi.mock("@vm0/core", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@vm0/core")>();
+vi.mock("@vm0/core/feature-switch", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@vm0/core/feature-switch")>();
   return {
     ...actual,
     isFeatureEnabled: vi.fn().mockReturnValue(true),
   };
 });
 
-const { isFeatureEnabled } = await import("@vm0/core");
+const { isFeatureEnabled } = await import("@vm0/core/feature-switch");
 const mockIsFeatureEnabled = isFeatureEnabled as ReturnType<typeof vi.fn>;
 
 const { POST } = await import("../route");

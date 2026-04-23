@@ -1,5 +1,4 @@
 import { initClient } from "@ts-rest/core";
-import { type ModelProviderType } from "@vm0/core/contracts/model-providers";
 import {
   zeroModelProvidersByTypeContract,
   zeroModelProvidersDefaultContract,
@@ -9,6 +8,7 @@ import {
 import type {
   ModelProviderListResponse,
   ModelProviderResponse,
+  ModelProviderType,
   UpsertModelProviderResponse,
 } from "@vm0/core/contracts/model-providers";
 import { getClientConfig, handleError } from "../core/client-factory";

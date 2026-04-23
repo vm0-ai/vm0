@@ -16,15 +16,16 @@ import {
 import { countSlackOrgConnections } from "../../../../../../src/__tests__/db-test-assertions/slack";
 import { reloadEnv } from "../../../../../../src/env";
 
-vi.mock("@vm0/core", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@vm0/core")>();
+vi.mock("@vm0/core/feature-switch", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@vm0/core/feature-switch")>();
   return {
     ...actual,
     isFeatureEnabled: vi.fn().mockReturnValue(true),
   };
 });
 
-const { isFeatureEnabled } = await import("@vm0/core");
+const { isFeatureEnabled } = await import("@vm0/core/feature-switch");
 const mockIsFeatureEnabled = isFeatureEnabled as ReturnType<typeof vi.fn>;
 
 const { POST } = await import("../route");
