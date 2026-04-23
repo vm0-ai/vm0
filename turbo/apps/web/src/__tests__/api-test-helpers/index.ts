@@ -25,6 +25,7 @@ export {
   insertOrgMembersEntry,
   insertOrgDefaultModelProvider,
   setOrgCredits,
+  lockOrgAndSetCredits,
   getOrgDefaultAgent,
   getOrgCacheEntry,
   getOrgMembersEntry,
