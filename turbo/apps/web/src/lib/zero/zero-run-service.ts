@@ -588,7 +588,7 @@ async function createZeroRunRecord(
           additionalVolumes: runParams.additionalVolumes,
           resumedFromCheckpointId: runParams.resumedFromCheckpointId,
           sessionId: runParams.sessionId,
-          artifactName: runParams.artifactName,
+          artifacts: runParams.artifacts,
         });
       });
       emit(CHAT_REQUEST_OPS.create_run_insert_run_record, insertT.ms);
@@ -696,7 +696,6 @@ async function dispatchZeroRun(
     };
     const contextResult = await buildZeroExecutionContext({
       ...paramsWithToken,
-      memoryName: "memory",
       sandboxToken,
       runId: record.run.id,
       agentCompose: record.composeContent,

@@ -103,7 +103,7 @@ const router = tsr.router(sessionsByIdContract, {
         id: session.id,
         agentComposeId: session.agentComposeId,
         conversationId: session.conversationId,
-        artifactName: session.artifactName,
+        artifactNames: session.artifactNames,
         secretNames,
         createdAt: session.createdAt.toISOString(),
         updatedAt: session.updatedAt.toISOString(),

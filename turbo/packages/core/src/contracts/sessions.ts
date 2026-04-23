@@ -12,7 +12,7 @@ const sessionResponseSchema = z.object({
   id: z.string(),
   agentComposeId: z.string(),
   conversationId: z.string().nullable(),
-  artifactName: z.string().nullable(),
+  artifactNames: z.array(z.string()),
   secretNames: z.array(z.string()).nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
