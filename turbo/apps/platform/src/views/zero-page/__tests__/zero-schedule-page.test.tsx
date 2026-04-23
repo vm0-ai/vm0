@@ -20,7 +20,7 @@ import {
   zeroSchedulesByNameContract,
   zeroSchedulesEnableContract,
   type ScheduleResponse,
-} from "@vm0/core";
+} from "@vm0/core/contracts/zero-schedules";
 
 const context = testContext();
 const mockApi = createMockApi(context);

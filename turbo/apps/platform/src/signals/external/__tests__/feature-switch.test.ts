@@ -7,7 +7,8 @@ import {
   setFeatureSwitch$,
   resetFeatureSwitches$,
 } from "../feature-switch";
-import { FeatureSwitchKey, zeroFeatureSwitchesContract } from "@vm0/core";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { zeroFeatureSwitchesContract } from "@vm0/core/contracts/zero-feature-switches";
 import {
   getMockFeatureSwitches,
   setMockFeatureSwitches,

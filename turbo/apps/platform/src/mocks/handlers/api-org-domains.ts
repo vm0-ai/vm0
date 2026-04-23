@@ -4,7 +4,8 @@
  * Mock handlers for /api/zero/org/domains endpoint.
  */
 
-import { zeroOrgDomainsContract, type OrgDomain } from "@vm0/core";
+import { zeroOrgDomainsContract } from "@vm0/core/contracts/zero-org-domains";
+import type { OrgDomain } from "@vm0/core/contracts/org-members";
 import { mockApi } from "../msw-contract.ts";
 
 let mockOrgDomains: OrgDomain[] = [];

@@ -1,20 +1,8 @@
-/**
- * Telegram Integration API Handlers
- *
- * Mock handlers for /api/integrations/telegram and /api/telegram/register endpoints.
- *
- * Path note: these endpoints use /api/integrations/ and /api/telegram/ (not /api/zero/)
- * because they are served by the platform app directly, not the Zero sub-application.
- * This is intentional and matches the real server routing.
- *
- * Default behavior: user has a linked Telegram bot with an agent configured.
- */
-
 import {
   zeroIntegrationsTelegramContract,
   type TelegramLinkStatusResponse,
   type TelegramStatusResponse,
-} from "@vm0/core";
+} from "@vm0/core/contracts/zero-integrations-telegram";
 import { mockApi } from "../msw-contract.ts";
 
 const defaultTelegramData: TelegramStatusResponse = {

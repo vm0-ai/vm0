@@ -15,11 +15,8 @@ import {
   formatDuration,
 } from "../../activity-page/activity-signals.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
-import {
-  logsListContract,
-  logsByIdContract,
-  zeroRunAgentEventsContract,
-} from "@vm0/core";
+import { logsListContract, logsByIdContract } from "@vm0/core/contracts/logs";
+import { zeroRunAgentEventsContract } from "@vm0/core/contracts/zero-runs";
 
 const context = testContext();
 const mockApi = createMockApi(context);

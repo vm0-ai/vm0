@@ -6,7 +6,7 @@ import {
   TableHeader,
   TableRow,
 } from "@vm0/ui";
-import type { RunContextResponse } from "@vm0/core";
+import type { RunContextResponse } from "@vm0/core/contracts/zero-runs";
 
 function SectionHeader({ title }: { title: string }) {
   return (

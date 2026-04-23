@@ -1,4 +1,7 @@
-import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
+import {
+  CONNECTOR_TYPES,
+  type ConnectorType,
+} from "@vm0/core/contracts/connectors";
 import { useGet, useSet } from "ccstate-react";
 import { CONNECTOR_ICONS } from "./zero-page/components/settings/connector-icons.tsx";
 import {

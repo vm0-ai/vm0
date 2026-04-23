@@ -7,10 +7,10 @@
  */
 import { command, computed, type Computed, state } from "ccstate";
 import {
-  type ZeroAgentResponse,
   zeroAgentsByIdContract,
-  zeroTeamContract,
-} from "@vm0/core";
+  type ZeroAgentResponse,
+} from "@vm0/core/contracts/zero-agents";
+import { zeroTeamContract } from "@vm0/core/contracts/zero-team";
 import { pathParams$ } from "./route.ts";
 import { activeRoute$ } from "./active-route.ts";
 import { zeroOnboardingStatus$ } from "./zero-page/zero-onboarding.ts";

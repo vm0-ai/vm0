@@ -11,7 +11,7 @@ import {
   chatThreadsContract,
   chatThreadByIdContract,
   chatThreadMessagesContract,
-} from "@vm0/core";
+} from "@vm0/core/contracts/chat-threads";
 
 const context = testContext();
 const mockApi = createMockApi(context);

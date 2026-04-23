@@ -1,5 +1,5 @@
 // API response types (matching app API contracts)
-import type { LogStatus, TriggerSource } from "@vm0/core";
+import type { LogStatus, TriggerSource } from "@vm0/core/contracts/logs";
 
 // Re-export from core contract to stay in sync with the API schema
 export type { LogStatus, TriggerSource };

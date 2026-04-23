@@ -10,7 +10,7 @@ import {
   resetMockBilling,
 } from "../../../mocks/handlers/api-billing.ts";
 import { setMockOrg, resetMockOrg } from "../../../mocks/handlers/api-org.ts";
-import { zeroBillingInvoicesContract } from "@vm0/core";
+import { zeroBillingInvoicesContract } from "@vm0/core/contracts/zero-billing";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();

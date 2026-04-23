@@ -1,5 +1,5 @@
 import type { AdditionalArtifact, AdditionalVolume } from "../storage/types";
-import type { Firewalls, NetworkPolicies } from "@vm0/core";
+import type { Firewalls, NetworkPolicies } from "@vm0/core/contracts/firewalls";
 
 /**
  * Single-artifact reference used by resume flows.

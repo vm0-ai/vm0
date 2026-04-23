@@ -1,12 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import { server } from "../../../mocks/server.ts";
-import {
-  FeatureSwitchKey,
-  logsListContract,
-  logsByIdContract,
-  zeroRunAgentEventsContract,
-} from "@vm0/core";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { logsListContract, logsByIdContract } from "@vm0/core/contracts/logs";
+import { zeroRunAgentEventsContract } from "@vm0/core/contracts/zero-runs";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import type {

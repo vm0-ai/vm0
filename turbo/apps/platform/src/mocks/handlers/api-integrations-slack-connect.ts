@@ -5,7 +5,7 @@
  * Default behavior: user is not yet connected.
  */
 
-import { zeroSlackConnectContract } from "@vm0/core";
+import { zeroSlackConnectContract } from "@vm0/core/contracts/zero-slack-connect";
 import { mockApi } from "../msw-contract.ts";
 
 interface MockSlackConnectData {

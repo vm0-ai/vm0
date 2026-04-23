@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { getConnectorDerivedNames } from "@vm0/core";
+import { getConnectorDerivedNames } from "@vm0/core/contracts/connector-utils";
 import { listZeroSecrets } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
 

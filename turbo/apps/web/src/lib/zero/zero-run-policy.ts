@@ -16,7 +16,7 @@ import { getUnsettledExpiredAmount } from "./credit/credit-expires-service";
 import { ORG_SENTINEL_USER_ID } from "./org/org-sentinel";
 import { MODEL_PROVIDER_ENV_VARS } from "./context/resolve-model-provider";
 import type { Database } from "../../types/global";
-import type { OrgTier } from "@vm0/core";
+import type { OrgTier } from "@vm0/core/contracts/orgs";
 import type { AgentComposeYaml } from "../infra/agent-compose/types";
 
 const log = logger("zero:run-policy");

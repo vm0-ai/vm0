@@ -13,7 +13,7 @@ import {
   type UserContext,
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
-import { getInstructionsStorageName } from "@vm0/core";
+import { getInstructionsStorageName } from "@vm0/core/storage-names";
 
 const context = testContext();
 

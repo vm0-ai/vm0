@@ -1,9 +1,7 @@
 import { createHandler, tsr } from "../../../../../../src/lib/ts-rest-handler";
-import {
-  zeroConnectorScopeDiffContract,
-  createErrorResponse,
-  getScopeDiff,
-} from "@vm0/core";
+import { zeroConnectorScopeDiffContract } from "@vm0/core/contracts/zero-connectors";
+import { getScopeDiff } from "@vm0/core/contracts/connector-utils";
+import { createErrorResponse } from "@vm0/core/contracts/errors";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../../../src/lib/zero/org/resolve-org";

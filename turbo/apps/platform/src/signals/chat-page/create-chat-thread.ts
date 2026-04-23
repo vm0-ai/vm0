@@ -25,11 +25,11 @@ import {
   chatThreadByIdContract,
   chatThreadMarkReadContract,
   chatThreadMessagesContract,
-  zeroRunsCancelContract,
   type ModelSelectionRequest,
   type PersistedAttachment,
   type PagedChatMessage,
-} from "@vm0/core";
+} from "@vm0/core/contracts/chat-threads";
+import { zeroRunsCancelContract } from "@vm0/core/contracts/zero-runs";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";

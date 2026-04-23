@@ -17,9 +17,11 @@ import { screen, waitFor } from "@testing-library/react";
 import {
   CONNECTOR_TYPES,
   type ConnectorType,
+} from "@vm0/core/contracts/connectors";
+import {
   type ScheduleResponse,
   zeroSchedulesMainContract,
-} from "@vm0/core";
+} from "@vm0/core/contracts/zero-schedules";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {

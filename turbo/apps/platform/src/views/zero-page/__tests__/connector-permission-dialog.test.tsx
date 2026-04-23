@@ -15,7 +15,8 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { setPermissionDialogType$ } from "../../../signals/zero-page/settings/connectors.ts";
 import { permissionDialogSelected$ } from "../../../signals/zero-page/settings/permission-dialog.ts";
-import { type ConnectorType, zeroUserConnectorsContract } from "@vm0/core";
+import type { ConnectorType } from "@vm0/core/contracts/connectors";
+import { zeroUserConnectorsContract } from "@vm0/core/contracts/user-connectors";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 

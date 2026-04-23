@@ -1,20 +1,221 @@
 // Barrel re-export for api-test-helpers sub-modules.
 // All existing imports from api-test-helpers continue to work unchanged.
-export * from "./core";
-export * from "./auth";
-export * from "./org";
-export * from "./agents";
-export * from "./runs";
-export * from "./schedules";
-export * from "./storage";
-export * from "./secrets";
-export * from "./connectors";
-export * from "./callbacks";
-export * from "./github";
-export * from "./telegram";
-export * from "./credits";
-export * from "./connector-billing";
-export * from "./users";
-export * from "./skills";
-export * from "./runner";
-export * from "./export";
+export {
+  createTestRequest,
+  createDefaultComposeConfig,
+  createTestSandboxToken,
+  createTestTarFile,
+  getTestAuthContext,
+  type ComposeConfigOptions,
+} from "./core";
+export {
+  createTestCliToken,
+  deleteTestCliToken,
+  createTestDeviceCode,
+  findTestDeviceCode,
+  findTestCliToken,
+} from "./auth";
+export {
+  createTestOrg,
+  deleteOrgRow,
+  updateOrgTier,
+  updateOrgDefaultAgent,
+  setDefaultAgentByComposeId,
+  deleteOrgCacheEntry,
+  insertOrgMembersEntry,
+  insertOrgDefaultModelProvider,
+  setOrgCredits,
+  lockOrgAndSetCredits,
+  getOrgDefaultAgent,
+  getOrgCacheEntry,
+  getOrgMembersEntry,
+  countOrgRows,
+  getOrgCredits,
+  insertOrgCacheEntry,
+  ensureOrgRow,
+  insertOrgMembersCacheEntry,
+  findOrgMembersCacheEntry,
+  clearOrgMembersCacheEntry,
+  ORG_SENTINEL_USER_ID,
+} from "./org";
+export {
+  createTestComposeVersion,
+  ensureZeroAgentRow,
+  createTestAgentSession,
+  createTestSessionWithConversation,
+  insertTestChatThread,
+  insertTestChatMessage,
+  getTestChatMessagesByThread,
+  addTestRunToThread,
+  insertTestAssistantEventMessages,
+  setTestChatMessageAttachFiles,
+  setTestChatMessageContent,
+  setTestChatThreadLastReadAt,
+  getTestAgentSessionWithConversation,
+  getTestAgentComposeName,
+  getTestChatThreadLastReadAt,
+  createTestCompose,
+  createTestOrgModelProvider,
+  createTestOrgMultiAuthModelProvider,
+  updateTestChatThreadTitle,
+} from "./agents";
+export {
+  markRunningRunsAsCompleted,
+  setTestRunStatus,
+  setTestRunResult,
+  setTestRunModelProvider,
+  setTestRunSelectedModel,
+  insertTestZeroRun,
+  expireQueueEntry,
+  insertTestQueueEntry,
+  createTestCallback,
+  linkRunToSchedule,
+  insertTestConversation,
+  insertTestSandboxTelemetry,
+  insertTestUsageDaily,
+  enqueueTestRun,
+  findTestRunsByUserAndPrompt,
+  findTestRunsByUserAndPromptContaining,
+  findTestRunRecord,
+  findTestCheckpoint,
+  findTestZeroRun,
+  findTestRunCallbacks,
+  findTestQueueEntry,
+  findTestCallbacksByRunId,
+  findMostRecentRunForUser,
+  findTestSandboxTelemetry,
+  createTestRun,
+  getTestRun,
+  createTestCheckpoint,
+  completeTestRun,
+  failTestRun,
+} from "./runs";
+export {
+  seedTestSchedule,
+  createTestSchedule,
+  getTestSchedule,
+  enableTestSchedule,
+  disableTestSchedule,
+  deleteTestSchedule,
+  getTestScheduleRuns,
+} from "./schedules";
+export {
+  createTestVolumeForOrg,
+  insertStorageVersion,
+  insertTestArtifactStorage,
+  insertTestStorage,
+  insertTestStorageVersion,
+  findTestStorageByName,
+  findTestStorage,
+  findTestSystemStorageByName,
+  getStorageVersionLineage,
+  createTestArtifact,
+  createTestVolume,
+} from "./storage";
+export { createTestSecret, createTestVariable } from "./secrets";
+export {
+  createTestUserConnector,
+  insertTestConnectorSecret,
+  insertTestPlatformConnector,
+  createTestConnectorSession,
+  findTestConnectorSecret,
+  findTestConnectorTokenExpiresAt,
+  countPlatformConnectorRows,
+  createTestConnector,
+} from "./connectors";
+export { createSignedCallbackRequest } from "./callbacks";
+export {
+  insertTestGitHubInstallation,
+  insertTestPendingGitHubInstallation,
+  insertTestGitHubInstallationWithAdmin,
+  insertTestGitHubUserLink,
+  insertTestGitHubIssueSession,
+  insertTestGithubInstallation,
+  insertTestGithubUserLink,
+  findTestGitHubInstallations,
+  findTestGitHubInstallationById,
+  findTestGitHubInstallationsByTargetId,
+  findTestGitHubIssueSession,
+  countGithubUserLinkRows,
+  findTestGitHubUserLinksByVm0UserId,
+} from "./github";
+export {
+  PENDING_TELEGRAM_USER_ID,
+  createTestTelegramInstallation,
+  insertTestTelegramMessages,
+  createTelegramInstallationForCompose,
+  insertTestTelegramInstallation,
+  insertTestTelegramUserLink,
+  createTelegramInstallation,
+  insertTelegramMessage,
+  createTelegramPendingLinkInstallation,
+  createTelegramCallbackInstallation,
+  createTelegramThreadSession,
+  signTestConnectParams,
+  countTestTelegramMessages,
+  countTelegramUserLinkRows,
+  findTestTelegramUserLinksByVm0UserId,
+  telegramUserLinkExists,
+  telegramThreadSessionExists,
+} from "./telegram";
+export {
+  updateOrgStripeFields,
+  updateOrgAutoRecharge,
+  updateOrgStripeSubscription,
+  insertTestCreditPricing,
+  insertCreditExpiresRecord,
+  insertOrgPromoRedemption,
+  insertTestCreditUsage,
+  insertTestClientCreditUsage,
+  insertTestCreditUsageForRun,
+  setTestCreditUsageCreatedAt,
+  seedCreditUsageRecord,
+  seedInsightsDaily,
+  createCompletedRun,
+  grantCreditsToOrg,
+  testDeductFromExpiresRecords,
+  testExpireCredits,
+  getOrgBillingFields,
+  getOrgAutoRechargeFields,
+  findCreditExpiresRecords,
+  findCreditExpiresRecordByStripeInvoiceId,
+  findOrgPromoRedemption,
+  findTestCreditUsage,
+  findTestCreditUsagesByRunId,
+  findTestClientCreditUsagesByRunId,
+  findUsageDaily,
+  findInsightsDaily,
+} from "./credits";
+export { findTestConnectorBillingByRunId } from "./connector-billing";
+export {
+  insertTestUser,
+  seedUserCacheEntry,
+  insertUserCacheEntry,
+  insertVm0ApiKeys,
+  insertTestVoiceChatCandidateSession,
+  countUserRows,
+  getPushSubscriptionsByEndpoint,
+  getTestVoiceChatCandidateSession,
+  countTestVoiceChatCandidateSessionsByReasoningStatus,
+  getTestVm0ApiKey,
+  createTestPushSubscription,
+  consumeTestCaptureNetworkBodies,
+  getTestUserPreferencesAll,
+  updateTestUserPreferencesAll,
+} from "./users";
+export {
+  seedTestSkill,
+  reseedSkills,
+  setAllTestSkillsCommitSha,
+  bindCustomSkillToAgent,
+  createTestZeroSkill,
+  findTestSkillByUrl,
+  getAgentCustomSkills,
+} from "./skills";
+export {
+  createTestRunnerJob,
+  insertTestRunnerState,
+  deleteAllTestRunnerState,
+  findTestRunnerJobEntry,
+} from "./runner";
+export { insertTestExportJob, findTestExportJobById } from "./export";

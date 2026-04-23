@@ -10,7 +10,7 @@ import {
   chatThreadsContract,
   chatThreadMessagesContract,
   chatThreadByIdContract,
-} from "@vm0/core";
+} from "@vm0/core/contracts/chat-threads";
 
 const context = testContext();
 const mockApi = createMockApi(context);

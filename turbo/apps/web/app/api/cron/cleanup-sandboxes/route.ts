@@ -1,5 +1,6 @@
 import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
-import { cronCleanupSandboxesContract, createErrorResponse } from "@vm0/core";
+import { cronCleanupSandboxesContract } from "@vm0/core/contracts/cron";
+import { createErrorResponse } from "@vm0/core/contracts/errors";
 import { initServices } from "../../../../src/lib/init-services";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
 import {

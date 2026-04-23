@@ -1,13 +1,11 @@
 import { gunzipSync } from "node:zlib";
 import { createHandler, tsr } from "../../../../../../src/lib/ts-rest-handler";
-import {
-  zeroAgentInstructionsContract,
-  getInstructionsStorageName,
-  getInstructionsFilename,
-  agentComposeApiContentSchema,
-  stripMetadataFrontmatter,
-  toFirewallPolicies,
-} from "@vm0/core";
+import { zeroAgentInstructionsContract } from "@vm0/core/contracts/zero-agents";
+import { agentComposeApiContentSchema } from "@vm0/core/contracts/composes";
+import { toFirewallPolicies } from "@vm0/core/contracts/firewalls";
+import { getInstructionsStorageName } from "@vm0/core/storage-names";
+import { getInstructionsFilename } from "@vm0/core/frameworks";
+import { stripMetadataFrontmatter } from "@vm0/core/instructions-frontmatter";
 import { initServices } from "../../../../../../src/lib/init-services";
 import {
   requireAuth,

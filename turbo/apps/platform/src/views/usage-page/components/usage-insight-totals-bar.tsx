@@ -1,9 +1,11 @@
 import {
   SOURCE_BUCKET_COLORS,
   type SourceBucket,
-  type UsageInsightBucket,
-  type UsageInsightResponse,
-} from "@vm0/core";
+} from "@vm0/core/usage-source-bucket";
+import type {
+  UsageInsightBucket,
+  UsageInsightResponse,
+} from "@vm0/core/contracts/zero-usage-insight";
 import type {
   InsightGroupBy,
   InsightMetric,

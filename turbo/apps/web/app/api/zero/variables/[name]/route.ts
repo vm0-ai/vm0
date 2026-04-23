@@ -1,5 +1,6 @@
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
-import { zeroVariablesByNameContract, createErrorResponse } from "@vm0/core";
+import { zeroVariablesByNameContract } from "@vm0/core/contracts/zero-secrets";
+import { createErrorResponse } from "@vm0/core/contracts/errors";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
   requireAuth,

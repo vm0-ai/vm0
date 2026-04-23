@@ -4,7 +4,7 @@
  * Mock handlers for /api/zero/feature-switches endpoint.
  */
 
-import { zeroFeatureSwitchesContract } from "@vm0/core";
+import { zeroFeatureSwitchesContract } from "@vm0/core/contracts/zero-feature-switches";
 
 import { mockApi } from "../msw-contract.ts";
 

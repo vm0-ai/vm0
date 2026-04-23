@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { FeatureSwitchKey } from "@vm0/core";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { testContext } from "../../../../__tests__/test-helpers";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route
 import {

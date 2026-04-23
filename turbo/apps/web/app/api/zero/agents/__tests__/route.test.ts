@@ -35,7 +35,7 @@ import {
   insertTestSlackOrgThreadSession,
 } from "../../../../../src/__tests__/db-test-seeders/slack";
 import { getTestComposeVersionContent } from "../../../../../src/__tests__/db-test-assertions/agents";
-import { getInstructionsStorageName } from "@vm0/core";
+import { getInstructionsStorageName } from "@vm0/core/storage-names";
 import {
   testContext,
   type UserContext,

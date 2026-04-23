@@ -4,7 +4,10 @@ import { testContext } from "../../__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { cancelQueueRun$ } from "../queue-signals.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
-import { zeroRunsQueueContract, zeroRunsCancelContract } from "@vm0/core";
+import {
+  zeroRunsQueueContract,
+  zeroRunsCancelContract,
+} from "@vm0/core/contracts/zero-runs";
 
 const context = testContext();
 const mockApi = createMockApi(context);

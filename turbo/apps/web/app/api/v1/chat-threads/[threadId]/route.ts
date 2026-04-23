@@ -1,5 +1,5 @@
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
-import { chatThreadV1GetContract } from "@vm0/core";
+import { chatThreadV1GetContract } from "@vm0/core/contracts/chat-threads-v1";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
   requireApiKeyAuth,

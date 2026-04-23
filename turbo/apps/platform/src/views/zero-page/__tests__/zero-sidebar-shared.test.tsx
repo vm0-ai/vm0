@@ -20,7 +20,7 @@ import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
-import { zeroTeamContract } from "@vm0/core";
+import { zeroTeamContract } from "@vm0/core/contracts/zero-team";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 
 const context = testContext();

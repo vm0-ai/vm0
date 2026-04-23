@@ -16,7 +16,7 @@ import {
   zeroPhoneStatusContract,
   zeroPhoneLinkContract,
   zeroPhoneSetupContract,
-} from "@vm0/core";
+} from "@vm0/core/contracts/zero-phone";
 
 const context = testContext();
 const mockApi = createMockApi(context);

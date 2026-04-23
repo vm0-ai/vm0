@@ -12,7 +12,7 @@ import {
 import { allOrgScheduleEntries$ } from "./zero-schedule.ts";
 import { zeroActivityDetail$ } from "../../signals/activity-page/activity-signals.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
-import { FeatureSwitchKey } from "@vm0/core";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 interface MobileBreadcrumb {
   section: string;

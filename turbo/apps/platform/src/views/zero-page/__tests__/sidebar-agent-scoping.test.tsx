@@ -6,7 +6,8 @@ import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { navigate$ } from "../../../signals/route.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
-import { chatThreadsContract, zeroAgentsByIdContract } from "@vm0/core";
+import { chatThreadsContract } from "@vm0/core/contracts/chat-threads";
+import { zeroAgentsByIdContract } from "@vm0/core/contracts/zero-agents";
 
 const context = testContext();
 const mockApi = createMockApi(context);

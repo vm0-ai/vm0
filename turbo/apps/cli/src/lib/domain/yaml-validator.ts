@@ -1,5 +1,8 @@
 import { z } from "zod";
-import { agentDefinitionSchema, volumeConfigSchema } from "@vm0/core";
+import {
+  agentDefinitionSchema,
+  volumeConfigSchema,
+} from "@vm0/core/contracts/composes";
 
 /**
  * CLI-specific agent name schema that allows 3-character names.

@@ -5,7 +5,7 @@ import { orgMetadata } from "../../db/schema/org-metadata";
 import { notFound } from "../shared/errors";
 import { canAccessCompose } from "../infra/agent/compose-access";
 import { syncAgentPhoneName } from "./phone/sync-agentphone-name";
-import type { ComposeListItem } from "@vm0/core";
+import type { ComposeListItem } from "@vm0/core/contracts/composes";
 
 /**
  * Resolve zero_agents.id by org + compose name.

@@ -3,9 +3,9 @@ import {
   permissionAccessRequestsCreateContract,
   permissionAccessRequestsListContract,
   permissionAccessRequestsResolveContract,
-  isFirewallConnectorType,
-  type RawPermissionPolicies,
-} from "@vm0/core";
+} from "@vm0/core/contracts/zero-agents";
+import type { RawPermissionPolicies } from "@vm0/core/contracts/firewalls";
+import { isFirewallConnectorType } from "@vm0/core/firewalls";
 import { initServices } from "../../../../src/lib/init-services";
 import {
   requireAuth,

@@ -1,15 +1,8 @@
-/**
- * Org-aware Slack Integration API Handlers
- *
- * Mock handlers for /api/zero/integrations/slack endpoint.
- * Default behavior: user has a connected org Slack workspace.
- */
-
 import {
   type SlackOrgStatus,
   zeroIntegrationsSlackContract,
-  zeroSlackChannelsContract,
-} from "@vm0/core";
+} from "@vm0/core/contracts/zero-integrations-slack";
+import { zeroSlackChannelsContract } from "@vm0/core/contracts/zero-slack-channels";
 import { mockApi } from "../msw-contract.ts";
 
 let mockSlackOrgData: SlackOrgStatus = {

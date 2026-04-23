@@ -11,9 +11,11 @@ import { screen, waitFor } from "@testing-library/react";
 import {
   type ModelProviderResponse,
   MODEL_PROVIDER_TYPES,
+} from "@vm0/core/contracts/model-providers";
+import {
   zeroModelProvidersDefaultContract,
   zeroModelProvidersByTypeContract,
-} from "@vm0/core";
+} from "@vm0/core/contracts/zero-model-providers";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";

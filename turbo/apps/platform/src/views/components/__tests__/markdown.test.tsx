@@ -5,7 +5,10 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { setTheme$ } from "../../../signals/theme.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
-import { chatThreadMessagesContract, chatThreadByIdContract } from "@vm0/core";
+import {
+  chatThreadMessagesContract,
+  chatThreadByIdContract,
+} from "@vm0/core/contracts/chat-threads";
 
 const context = testContext();
 const mockApi = createMockApi(context);

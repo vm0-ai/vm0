@@ -1,8 +1,6 @@
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
-import {
-  zeroCustomConnectorByIdContract,
-  createErrorResponse,
-} from "@vm0/core";
+import { zeroCustomConnectorByIdContract } from "@vm0/core/contracts/zero-custom-connectors";
+import { createErrorResponse } from "@vm0/core/contracts/errors";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
   requireAuth,

@@ -3,11 +3,11 @@ import {
   zeroAgentsMainContract,
   zeroAgentsByIdContract,
   zeroAgentInstructionsContract,
-  zeroUserConnectorsContract,
   type ZeroAgentResponse,
   type ZeroAgentRequest,
   type ZeroAgentInstructionsResponse,
-} from "@vm0/core";
+} from "@vm0/core/contracts/zero-agents";
+import { zeroUserConnectorsContract } from "@vm0/core/contracts/user-connectors";
 import { getClientConfig, handleError } from "../core/client-factory";
 
 export async function createZeroAgent(

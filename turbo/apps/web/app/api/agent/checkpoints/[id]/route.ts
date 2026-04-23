@@ -3,7 +3,7 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../../src/lib/ts-rest-handler";
-import { checkpointsByIdContract } from "@vm0/core";
+import { checkpointsByIdContract } from "@vm0/core/contracts/sessions";
 import { eq, and } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
 import { checkpoints } from "../../../../../src/db/schema/checkpoint";

@@ -10,8 +10,9 @@ import {
   setupCandidateOrg,
 } from "../../__tests__/_helpers";
 
-vi.mock("@vm0/core", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@vm0/core")>();
+vi.mock("@vm0/core/feature-switch", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@vm0/core/feature-switch")>();
   return {
     ...actual,
     isFeatureEnabled: vi.fn().mockReturnValue(true),
@@ -22,7 +23,7 @@ vi.hoisted(() => {
   vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
 });
 
-const { isFeatureEnabled } = await import("@vm0/core");
+const { isFeatureEnabled } = await import("@vm0/core/feature-switch");
 const mockIsFeatureEnabled = isFeatureEnabled as ReturnType<typeof vi.fn>;
 
 const { POST } = await import("../route");

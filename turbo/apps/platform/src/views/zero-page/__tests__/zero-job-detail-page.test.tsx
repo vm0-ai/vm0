@@ -7,9 +7,11 @@ import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
   zeroAgentsByIdContract,
   zeroAgentInstructionsContract,
+} from "@vm0/core/contracts/zero-agents";
+import {
   zeroSchedulesByNameContract,
   zeroSchedulesEnableContract,
-} from "@vm0/core";
+} from "@vm0/core/contracts/zero-schedules";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 import {
   setMockSchedules,

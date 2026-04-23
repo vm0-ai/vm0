@@ -1,4 +1,4 @@
-import type { ConnectorType } from "@vm0/core";
+import type { ConnectorType } from "@vm0/core/contracts/connectors";
 
 interface UseCase {
   readonly title: string;

@@ -5,7 +5,7 @@
  * without triggering a compose job.
  */
 import { createHandler, tsr } from "../../../../../../src/lib/ts-rest-handler";
-import { composesMetadataContract } from "@vm0/core";
+import { composesMetadataContract } from "@vm0/core/contracts/composes";
 import { initServices } from "../../../../../../src/lib/init-services";
 import {
   requireAuth,

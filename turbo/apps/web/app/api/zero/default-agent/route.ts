@@ -1,5 +1,5 @@
 import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
-import { orgDefaultAgentContract } from "@vm0/core";
+import { orgDefaultAgentContract } from "@vm0/core/contracts/orgs";
 import { initServices } from "../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../src/lib/zero/org/resolve-org";

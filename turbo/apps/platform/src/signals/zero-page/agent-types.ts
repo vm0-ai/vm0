@@ -1,4 +1,4 @@
-import type { FirewallPolicies } from "@vm0/core";
+import type { FirewallPolicies } from "@vm0/core/contracts/firewalls";
 
 export interface AgentDetail {
   agentId: string;

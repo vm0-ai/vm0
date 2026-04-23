@@ -1,5 +1,6 @@
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
-import { platformRealtimeTokenContract, createErrorResponse } from "@vm0/core";
+import { platformRealtimeTokenContract } from "@vm0/core/contracts/realtime";
+import { createErrorResponse } from "@vm0/core/contracts/errors";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
 import { generatePlatformUserToken } from "../../../../../src/lib/infra/realtime/client";

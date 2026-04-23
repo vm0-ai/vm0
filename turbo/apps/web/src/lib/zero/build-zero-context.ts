@@ -1,16 +1,20 @@
 import { eq } from "drizzle-orm";
 import {
   BILLABLE_CONNECTORS,
-  getModelProviderFirewall,
   getConnectorFirewall,
   isFirewallConnectorType,
-  type ConnectorType,
-  type ExpandedFirewallConfig,
+} from "@vm0/core/firewalls";
+import type { ConnectorType } from "@vm0/core/contracts/connectors";
+import type {
+  ExpandedFirewallConfig,
+  FirewallPolicies,
+  Firewalls,
+  NetworkPolicies,
+} from "@vm0/core/contracts/firewalls";
+import {
+  getModelProviderFirewall,
   type ModelProviderType,
-  type FirewallPolicies,
-  type Firewalls,
-  type NetworkPolicies,
-} from "@vm0/core";
+} from "@vm0/core/contracts/model-providers";
 import { zeroRuns } from "../../db/schema/zero-run";
 import { badRequest, notFound } from "../shared/errors";
 import { logger } from "../shared/logger";

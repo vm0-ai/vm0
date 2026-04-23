@@ -1,5 +1,5 @@
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
-import { composesListContract } from "@vm0/core";
+import { composesListContract } from "@vm0/core/contracts/composes";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
   requireAuth,

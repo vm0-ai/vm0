@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import {
   type ScheduleResponse,
-  zeroAgentsByIdContract,
-  zeroAgentInstructionsContract,
   zeroSchedulesMainContract,
   zeroSchedulesByNameContract,
-} from "@vm0/core";
+} from "@vm0/core/contracts/zero-schedules";
+import {
+  zeroAgentsByIdContract,
+  zeroAgentInstructionsContract,
+} from "@vm0/core/contracts/zero-agents";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {

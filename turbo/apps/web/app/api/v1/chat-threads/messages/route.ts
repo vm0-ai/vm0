@@ -1,6 +1,6 @@
 import { after } from "next/server";
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
-import { chatThreadV1SendContract } from "@vm0/core";
+import { chatThreadV1SendContract } from "@vm0/core/contracts/chat-threads-v1";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
   requireApiKeyAuth,

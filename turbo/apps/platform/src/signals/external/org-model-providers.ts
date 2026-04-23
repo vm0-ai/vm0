@@ -3,9 +3,11 @@ import {
   zeroModelProvidersMainContract,
   zeroModelProvidersByTypeContract,
   zeroModelProvidersDefaultContract,
-  type UpsertModelProviderRequest,
-  type ModelProviderType,
-} from "@vm0/core";
+} from "@vm0/core/contracts/zero-model-providers";
+import type {
+  UpsertModelProviderRequest,
+  ModelProviderType,
+} from "@vm0/core/contracts/model-providers";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 

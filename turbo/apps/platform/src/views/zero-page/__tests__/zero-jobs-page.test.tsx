@@ -7,7 +7,7 @@ import {
   setMockSchedules,
   createMockScheduleResponse,
 } from "../../../mocks/handlers/api-schedules.ts";
-import type { ScheduleResponse } from "@vm0/core";
+import type { ScheduleResponse } from "@vm0/core/contracts/zero-schedules";
 
 const context = testContext();
 

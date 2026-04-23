@@ -1,8 +1,6 @@
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
-import {
-  zeroBillingAutoRechargeContract,
-  createErrorResponse,
-} from "@vm0/core";
+import { zeroBillingAutoRechargeContract } from "@vm0/core/contracts/zero-billing";
+import { createErrorResponse } from "@vm0/core/contracts/errors";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
   requireAuth,

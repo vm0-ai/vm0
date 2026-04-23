@@ -10,10 +10,8 @@ import {
   setMockUsageMembers,
   resetMockUsageMembers,
 } from "../../../mocks/handlers/api-usage.ts";
-import {
-  zeroUsageMembersContract,
-  zeroMemberCreditCapContract,
-} from "@vm0/core";
+import { zeroUsageMembersContract } from "@vm0/core/contracts/zero-usage";
+import { zeroMemberCreditCapContract } from "@vm0/core/contracts/zero-member-credit-cap";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();

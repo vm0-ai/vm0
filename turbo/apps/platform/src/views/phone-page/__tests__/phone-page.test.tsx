@@ -10,7 +10,7 @@ import {
   zeroPhoneSetupContract,
   zeroPhoneLinkContract,
   type PhoneStatusResponse,
-} from "@vm0/core";
+} from "@vm0/core/contracts/zero-phone";
 
 const context = testContext();
 const mockApi = createMockApi(context);

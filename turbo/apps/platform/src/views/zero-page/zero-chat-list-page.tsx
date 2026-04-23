@@ -18,7 +18,8 @@ import {
   DialogTitle,
   Skeleton,
 } from "@vm0/ui";
-import { FeatureSwitchKey, type ChatThreadListItem } from "@vm0/core";
+import type { ChatThreadListItem } from "@vm0/core/contracts/chat-threads";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   chatThreads$,
   deleteChatThread$,

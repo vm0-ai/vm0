@@ -1,5 +1,6 @@
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
-import { zeroUsageRunsContract, createErrorResponse } from "@vm0/core";
+import { zeroUsageRunsContract } from "@vm0/core/contracts/zero-usage-daily";
+import { createErrorResponse } from "@vm0/core/contracts/errors";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
   requireAuth,

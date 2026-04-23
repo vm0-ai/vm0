@@ -18,8 +18,8 @@ import * as tar from "tar";
 import {
   DEFAULT_SKILLS_REPO,
   DEFAULT_SKILLS_BRANCH,
-  getEligibleConnectorTypes,
-} from "@vm0/core";
+} from "@vm0/core/github-url";
+import { getEligibleConnectorTypes } from "@vm0/core/contracts/connector-utils";
 import { SEED_SKILLS } from "../lib/zero/seed-skills";
 
 /** All skill names that buildComposeContent would reference. */

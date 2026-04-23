@@ -2,8 +2,8 @@ import { sql, and, eq, gte, lt, inArray, desc, count } from "drizzle-orm";
 import {
   type MemberUsage,
   type UsageMembersResponse,
-  type UsageRunsResponse,
-} from "@vm0/core";
+} from "@vm0/core/contracts/zero-usage";
+import type { UsageRunsResponse } from "@vm0/core/contracts/zero-usage-daily";
 import { getOrgBillingPeriod } from "../org/org-metadata-service";
 import { creditUsage } from "../../../db/schema/credit-usage";
 import { agentRuns } from "../../../db/schema/agent-run";

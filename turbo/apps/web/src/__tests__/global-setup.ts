@@ -18,11 +18,8 @@ import { schema } from "../db/db";
 import { skills } from "../db/schema/skill";
 import { storages, storageVersions } from "../db/schema/storage";
 import { SEED_SKILLS, buildSeedSkillValues } from "../lib/zero/seed-skills";
-import {
-  getEligibleConnectorTypes,
-  SYSTEM_ORG_ID,
-  VOLUME_ORG_USER_ID,
-} from "@vm0/core";
+import { getEligibleConnectorTypes } from "@vm0/core/contracts/connector-utils";
+import { SYSTEM_ORG_ID, VOLUME_ORG_USER_ID } from "@vm0/core/storage-names";
 
 export async function setup() {
   console.log("[globalSetup] Seeding skill data…");

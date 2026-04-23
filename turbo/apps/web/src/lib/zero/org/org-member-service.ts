@@ -3,7 +3,10 @@ import { clerkClient } from "@clerk/nextjs/server";
 import { z } from "zod";
 import { badRequest, forbidden, notFound } from "../../shared/errors";
 import { logger } from "../../shared/logger";
-import type { OrgRole, OrgEnrollmentMode } from "@vm0/core";
+import type {
+  OrgEnrollmentMode,
+  OrgRole,
+} from "@vm0/core/contracts/org-members";
 import { slackOrgConnections } from "../../../db/schema/slack-org-connection";
 import { slackOrgInstallations } from "../../../db/schema/slack-org-installation";
 import { orgMembersCache } from "../../../db/schema/org-members-cache";

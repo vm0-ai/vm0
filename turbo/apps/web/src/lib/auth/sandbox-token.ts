@@ -1,9 +1,7 @@
 import { createHmac, hkdfSync } from "crypto";
-import {
-  ZERO_CAPABILITIES,
-  FeatureSwitchKey,
-  isFeatureEnabled,
-} from "@vm0/core";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { ZERO_CAPABILITIES } from "@vm0/core/contracts/composes";
 import { env } from "../../env";
 import { logger } from "../shared/logger";
 

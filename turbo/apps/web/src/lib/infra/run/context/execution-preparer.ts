@@ -7,7 +7,8 @@ import {
   ensureStorageExists,
 } from "../../../infra/storage/storage-service";
 import type { StorageManifest } from "../../../infra/storage/types";
-import { DEFAULT_PROFILE, getAllFeatureStates } from "@vm0/core";
+import { getAllFeatureStates } from "@vm0/core/feature-switch";
+import { DEFAULT_PROFILE } from "@vm0/core/contracts/runners";
 import { badRequest } from "../../../shared/errors";
 import { logger } from "../../../shared/logger";
 import { extractWorkingDir } from "../utils/extract-working-dir";

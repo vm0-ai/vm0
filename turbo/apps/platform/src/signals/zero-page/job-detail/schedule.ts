@@ -5,7 +5,7 @@ import {
   zeroSchedulesMainContract,
   zeroSchedulesByNameContract,
   zeroSchedulesEnableContract,
-} from "@vm0/core";
+} from "@vm0/core/contracts/zero-schedules";
 import { zeroClient$ } from "../../api-client.ts";
 import { zeroJobDetail$ } from "./detail.ts";
 import {

@@ -13,7 +13,7 @@ import {
   type ZeroAgentRequest,
   zeroAgentsMainContract,
   zeroAgentInstructionsContract,
-} from "@vm0/core";
+} from "@vm0/core/contracts/zero-agents";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();

@@ -1,10 +1,3 @@
-/**
- * Runs API Handlers
- *
- * Mock handlers for run-related endpoints.
- * Default behavior: no active runs.
- */
-
 import {
   zeroRunsByIdContract,
   zeroRunAgentEventsContract,
@@ -12,9 +5,9 @@ import {
   zeroRunsCancelContract,
   zeroRunContextContract,
   zeroRunNetworkLogsContract,
-  chatMessagesContract,
-  zeroQueuePositionContract,
-} from "@vm0/core";
+} from "@vm0/core/contracts/zero-runs";
+import { chatMessagesContract } from "@vm0/core/contracts/chat-threads";
+import { zeroQueuePositionContract } from "@vm0/core/contracts/zero-queue-position";
 import { mockApi } from "../msw-contract.ts";
 
 export const apiRunsHandlers = [

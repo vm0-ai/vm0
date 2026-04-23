@@ -8,7 +8,7 @@ import type {
   LogsListResponse,
 } from "../../../signals/zero-page/log-types.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
-import { logsListContract } from "@vm0/core";
+import { logsListContract } from "@vm0/core/contracts/logs";
 import { setMockComposesList } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();

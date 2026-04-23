@@ -1328,17 +1328,17 @@ fn spawn_job(
     });
 }
 
-/// Drain the idle pool synchronously: destroy every entry and release each
-/// one's budget. Called from both the Draining arm (soft-drain entry) and
-/// teardown — both need the same sequence, and teardown also wants the
-/// `status.json` `idle_vms` list cleared so the final snapshot is
-/// consistent with the empty pool.
+/// Drain the idle pool: destroy every entry in parallel and wait for all
+/// destroys to complete before returning (budgets released, `status.json`
+/// `idle_vms` cleared). Called from both the Draining arm (soft-drain
+/// entry) and teardown — both need the final state consistent with an
+/// empty pool before proceeding.
 ///
 /// `context` is logged alongside the destroyed count for operator clarity
 /// (e.g. "draining" vs "shutdown").
 async fn drain_idle_pool(
     idle_pool: &SharedIdlePool,
-    budget: &ResourceBudget,
+    budget: &Arc<ResourceBudget>,
     status: &StatusTracker,
     context: &'static str,
 ) {
@@ -1347,11 +1347,18 @@ async fn drain_idle_pool(
         return;
     }
     info!(count = entries.len(), context, "destroying idle VMs");
+    // Destroy in parallel — each `stop_and_destroy` is ~1–3s (FC shutdown +
+    // cgroup/NBD/netns teardown), and teardown-path callers sit between the
+    // last job finishing and the runner process exiting. Serial destroy
+    // blows past the CI `wait_for_exit` budget on multi-VM drains.
+    let mut set = tokio::task::JoinSet::new();
     for entry in entries {
-        let vcpu = entry.vcpu;
-        let memory_mb = entry.memory_mb;
-        entry.stop_and_destroy().await;
-        budget.release(vcpu, memory_mb);
+        set.spawn(destroy_idle_entry(entry, Arc::clone(budget)));
+    }
+    while let Some(result) = set.join_next().await {
+        if let Err(e) = result {
+            warn!(context, error = %e, "idle entry destroy task panicked");
+        }
     }
     status.set_idle_info(Vec::new()).await;
 }

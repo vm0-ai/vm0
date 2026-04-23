@@ -1,8 +1,6 @@
 import { createHandler, tsr } from "../../../../../../src/lib/ts-rest-handler";
-import {
-  integrationsSlackMessageContract,
-  getModelDisplayName,
-} from "@vm0/core";
+import { integrationsSlackMessageContract } from "@vm0/core/contracts/integrations";
+import { getModelDisplayName } from "@vm0/core/model-display-name";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { agentComposeVersions } from "../../../../../../src/db/schema/agent-compose";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";

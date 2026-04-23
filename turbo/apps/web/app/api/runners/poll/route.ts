@@ -3,7 +3,8 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../src/lib/ts-rest-handler";
-import { runnersPollContract, createErrorResponse } from "@vm0/core";
+import { runnersPollContract } from "@vm0/core/contracts/runners";
+import { createErrorResponse } from "@vm0/core/contracts/errors";
 import { initServices } from "../../../../src/lib/init-services";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
 import { runnerJobQueue } from "../../../../src/db/schema/runner-job-queue";

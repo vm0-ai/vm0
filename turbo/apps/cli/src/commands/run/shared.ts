@@ -4,11 +4,11 @@ import { config as dotenvConfig } from "dotenv";
 import { getEvents } from "../../lib/api";
 import { parseEvent } from "../../lib/events/event-parser-factory";
 import { EventRenderer } from "../../lib/events/event-renderer";
+import { extractAndGroupVariables } from "@vm0/core/variable-expander";
 import {
-  extractAndGroupVariables,
   firewallPoliciesSchema,
   type FirewallPolicies,
-} from "@vm0/core";
+} from "@vm0/core/contracts/firewalls";
 /**
  * Collector for --secrets and --vars flags
  * Format: KEY=value

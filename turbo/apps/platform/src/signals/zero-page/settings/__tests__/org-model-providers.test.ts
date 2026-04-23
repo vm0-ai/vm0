@@ -9,7 +9,7 @@ import {
   orgUpdateFormModel$,
 } from "../org-model-providers.ts";
 import { getProviderShape } from "../../../../views/zero-page/components/settings/provider-ui-config.ts";
-import { zeroModelProvidersMainContract } from "@vm0/core";
+import { zeroModelProvidersMainContract } from "@vm0/core/contracts/zero-model-providers";
 import { createMockApi } from "../../../../mocks/msw-contract.ts";
 
 const context = testContext();

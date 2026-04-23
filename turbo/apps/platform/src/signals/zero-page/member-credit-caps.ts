@@ -1,5 +1,5 @@
 import { command, computed, state, type Command, type State } from "ccstate";
-import { zeroMemberCreditCapContract } from "@vm0/core";
+import { zeroMemberCreditCapContract } from "@vm0/core/contracts/zero-member-credit-cap";
 import { zeroClient$ } from "../api-client.ts";
 import { usageMembersAsync$ } from "../usage-page/usage-signals.ts";
 import { accept } from "../../lib/accept.ts";

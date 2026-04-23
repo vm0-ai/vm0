@@ -4,7 +4,7 @@ import { dispatchCallbacks } from "../callback";
 import { logger } from "../../shared/logger";
 import type { RunResult, RunStatus } from "./types";
 import type { Database } from "../../../types/global";
-import type { SandboxReuseResult } from "@vm0/core";
+import type { SandboxReuseResult } from "@vm0/core/contracts/webhooks";
 
 const log = logger("service:run-status");
 

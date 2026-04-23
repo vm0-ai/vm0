@@ -33,7 +33,10 @@ import {
   SelectTrigger,
 } from "@vm0/ui";
 import { toast } from "@vm0/ui/components/ui/sonner";
-import type { OrgDomain, OrgEnrollmentMode } from "@vm0/core";
+import type {
+  OrgDomain,
+  OrgEnrollmentMode,
+} from "@vm0/core/contracts/org-members";
 import { orgDomains$ } from "../../../../signals/external/org-domains.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";

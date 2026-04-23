@@ -1,6 +1,6 @@
 import { eq, and, lt, sql } from "drizzle-orm";
 import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
-import { pushSubscriptionsContract } from "@vm0/core";
+import { pushSubscriptionsContract } from "@vm0/core/contracts/push-subscriptions";
 import { initServices } from "../../../../src/lib/init-services";
 import {
   requireAuth,

@@ -8,11 +8,9 @@ import { slackOrgConnections } from "../../../../../../src/db/schema/slack-org-c
 import { slackOrgThreadSessions } from "../../../../../../src/db/schema/slack-org-thread-session";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
 import { zeroRuns } from "../../../../../../src/db/schema/zero-run";
-import {
-  isFeatureEnabled,
-  FeatureSwitchKey,
-  getModelDisplayName,
-} from "@vm0/core";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { getModelDisplayName } from "@vm0/core/model-display-name";
 import { loadFeatureSwitchOverrides } from "../../../../../../src/lib/zero/user/feature-switches-service";
 import { findNewSessionId } from "../../../../../../src/lib/infra/session/find-new-session";
 import {

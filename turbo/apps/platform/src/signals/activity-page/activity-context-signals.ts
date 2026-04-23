@@ -1,5 +1,5 @@
 import { computed } from "ccstate";
-import { zeroRunContextContract } from "@vm0/core";
+import { zeroRunContextContract } from "@vm0/core/contracts/zero-runs";
 import { zeroClient$ } from "../api-client.ts";
 import { currentRunId$ } from "./activity-signals.ts";
 import { accept } from "../../lib/accept.ts";

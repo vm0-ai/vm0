@@ -2,7 +2,7 @@ import { command, computed, state } from "ccstate";
 import {
   zeroUserPreferencesContract,
   type UpdateUserPreferencesRequest,
-} from "@vm0/core";
+} from "@vm0/core/contracts/zero-user-preferences";
 import { zeroClient$ } from "../../api-client.ts";
 import { clerk$ } from "../../auth.ts";
 import { accept } from "../../../lib/accept.ts";

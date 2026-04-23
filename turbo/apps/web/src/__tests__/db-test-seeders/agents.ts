@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import type { RawPermissionPolicies } from "@vm0/core";
+import type { RawPermissionPolicies } from "@vm0/core/contracts/firewalls";
 import { initServices } from "../../lib/init-services";
 import {
   agentComposes,

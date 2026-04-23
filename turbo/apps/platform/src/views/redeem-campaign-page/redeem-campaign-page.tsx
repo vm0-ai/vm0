@@ -8,7 +8,7 @@ import {
   IconX,
 } from "@tabler/icons-react";
 import { Button } from "@vm0/ui";
-import type { RedeemResponse } from "@vm0/core";
+import type { RedeemResponse } from "@vm0/core/contracts/zero-billing";
 import {
   redeemResponse$,
   redeemStripeSuccess$,

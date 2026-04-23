@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { onboardingCompleteContract, zeroAgentsByIdContract } from "@vm0/core";
+import { onboardingCompleteContract } from "@vm0/core/contracts/onboarding";
+import { zeroAgentsByIdContract } from "@vm0/core/contracts/zero-agents";
 import { server } from "../../mocks/server.ts";
 import { createMockApi } from "../../mocks/msw-contract.ts";
 import { setMockOnboardingStatus } from "../../mocks/handlers/api-onboarding.ts";

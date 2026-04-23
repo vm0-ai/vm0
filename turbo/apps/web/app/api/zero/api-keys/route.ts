@@ -5,7 +5,7 @@ import {
   createSafeErrorHandler,
   tsr,
 } from "../../../../src/lib/ts-rest-handler";
-import { apiKeysContract } from "@vm0/core";
+import { apiKeysContract } from "@vm0/core/contracts/api-keys";
 import { initServices } from "../../../../src/lib/init-services";
 import {
   requireAuth,

@@ -1,5 +1,5 @@
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
-import type { VoiceChatCandidateTaskResultEntry } from "@vm0/core";
+import type { VoiceChatCandidateTaskResultEntry } from "@vm0/core/contracts/zero-voice-chat-candidate";
 import {
   voiceChatItems,
   voiceChatSessions,

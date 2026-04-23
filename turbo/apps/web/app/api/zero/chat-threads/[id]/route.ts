@@ -1,5 +1,6 @@
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
-import { chatThreadByIdContract, modelProviderTypeSchema } from "@vm0/core";
+import { chatThreadByIdContract } from "@vm0/core/contracts/chat-threads";
+import { modelProviderTypeSchema } from "@vm0/core/contracts/model-providers";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getUserId } from "../../../../../src/lib/auth/get-auth-context";
 import {

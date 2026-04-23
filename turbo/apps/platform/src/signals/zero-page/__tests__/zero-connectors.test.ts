@@ -8,11 +8,9 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { allConnectorTypes$ } from "../settings/connectors.ts";
 import { zeroAddedConnectors$ } from "../zero-connectors.ts";
-import {
-  type ConnectorType,
-  zeroAgentsByIdContract,
-  zeroUserConnectorsContract,
-} from "@vm0/core";
+import type { ConnectorType } from "@vm0/core/contracts/connectors";
+import { zeroAgentsByIdContract } from "@vm0/core/contracts/zero-agents";
+import { zeroUserConnectorsContract } from "@vm0/core/contracts/user-connectors";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
 

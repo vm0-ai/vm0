@@ -3,7 +3,10 @@ import chalk from "chalk";
 import { withErrorHandler } from "../../../lib/command";
 import { runLogsSearch, type LogsSearchCliOptions } from "../logs/search";
 import { searchZeroChat } from "../../../lib/api";
-import type { ChatSearchMessage, ChatSearchResponse } from "@vm0/core";
+import type {
+  ChatSearchMessage,
+  ChatSearchResponse,
+} from "@vm0/core/contracts/chat-threads";
 import { parseTime } from "../../../lib/utils/time-parser";
 
 const SUPPORTED_SOURCES = ["logs", "chat", "slack"] as const;

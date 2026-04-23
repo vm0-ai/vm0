@@ -1,16 +1,9 @@
-/**
- * Phone API Handlers
- *
- * Mock handlers for /api/zero/phone endpoints.
- * Default behavior: no phone numbers linked.
- */
-
 import {
   zeroPhoneStatusContract,
   zeroPhoneLinkContract,
   zeroPhoneSetupContract,
   type PhoneStatusResponse,
-} from "@vm0/core";
+} from "@vm0/core/contracts/zero-phone";
 import { mockApi } from "../msw-contract.ts";
 
 const DEFAULT_PHONE_STATUS: PhoneStatusResponse = {

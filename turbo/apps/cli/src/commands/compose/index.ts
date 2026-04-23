@@ -4,7 +4,7 @@ import { readFile, rm } from "fs/promises";
 import { existsSync } from "fs";
 import { dirname, join } from "path";
 import { parse as parseYaml } from "yaml";
-import { extractAndGroupVariables } from "@vm0/core";
+import { extractAndGroupVariables } from "@vm0/core/variable-expander";
 import {
   getComposeByName,
   createOrUpdateCompose,

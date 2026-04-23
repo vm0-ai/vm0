@@ -59,9 +59,11 @@ import { AttachmentChips } from "./zero-attachment-chips.tsx";
 import {
   CONNECTOR_TYPES,
   type ConnectorType,
-  type ModelProviderResponse,
-  type ModelProviderType,
-} from "@vm0/core";
+} from "@vm0/core/contracts/connectors";
+import type {
+  ModelProviderResponse,
+  ModelProviderType,
+} from "@vm0/core/contracts/model-providers";
 import {
   ModelProviderPicker,
   type ModelProviderSelection,

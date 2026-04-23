@@ -6,7 +6,7 @@ import {
   hasConnectorPermissions,
   savePermissionPolicies$,
 } from "../permissions.ts";
-import { zeroAgentPermissionPoliciesContract } from "@vm0/core";
+import { zeroAgentPermissionPoliciesContract } from "@vm0/core/contracts/zero-agents";
 import { createMockApi } from "../../../../mocks/msw-contract.ts";
 
 const context = testContext();

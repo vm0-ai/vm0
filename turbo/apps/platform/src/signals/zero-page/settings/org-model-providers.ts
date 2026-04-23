@@ -10,7 +10,7 @@ import {
   hasModelSelection,
   type ModelProviderType,
   type ModelProviderResponse,
-} from "@vm0/core";
+} from "@vm0/core/contracts/model-providers";
 import {
   createOrgModelProvider$,
   deleteOrgModelProvider$,

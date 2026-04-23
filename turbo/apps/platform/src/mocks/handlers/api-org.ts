@@ -1,16 +1,9 @@
-/**
- * Org API Handlers
- *
- * Mock handlers for /api/zero/org endpoint (org API via zero layer).
- * Default behavior: user always has an org (for tests that need auth to work).
- */
-
 import {
   zeroOrgContract,
   zeroOrgLeaveContract,
   zeroOrgDeleteContract,
-  type OrgResponse,
-} from "@vm0/core";
+} from "@vm0/core/contracts/zero-org";
+import type { OrgResponse } from "@vm0/core/contracts/orgs";
 import { http, HttpResponse } from "msw";
 import { mockApi } from "../msw-contract.ts";
 

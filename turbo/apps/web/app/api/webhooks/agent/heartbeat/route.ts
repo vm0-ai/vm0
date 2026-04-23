@@ -3,7 +3,7 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../../src/lib/ts-rest-handler";
-import { webhookHeartbeatContract } from "@vm0/core";
+import { webhookHeartbeatContract } from "@vm0/core/contracts/webhooks";
 import { initServices } from "../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import { eq, and } from "drizzle-orm";

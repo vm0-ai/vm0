@@ -21,7 +21,7 @@ import {
 } from "../signals/location";
 import { updateSearchParams$ } from "../signals/route";
 import { vi } from "vitest";
-import type { FeatureSwitchKey } from "@vm0/core";
+import type { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { setMockFeatureSwitches } from "../mocks/handlers/api-feature-switches";
 import { setDebugLoggerLocalStorage$ } from "../signals/bootstrap/loggers";
 import { detach, Reason } from "../signals/utils";

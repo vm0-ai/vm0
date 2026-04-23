@@ -10,7 +10,7 @@ import {
 } from "../slack-connect-signals.ts";
 import { updateSearchParams$ } from "../../route.ts";
 import { setMockSlackConnectData } from "../../../mocks/handlers/api-integrations-slack-connect.ts";
-import { zeroSlackConnectContract } from "@vm0/core";
+import { zeroSlackConnectContract } from "@vm0/core/contracts/zero-slack-connect";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();

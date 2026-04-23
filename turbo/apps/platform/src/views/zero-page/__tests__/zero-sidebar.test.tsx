@@ -7,12 +7,10 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { screen, waitFor } from "@testing-library/react";
 import { featureSwitch$ } from "../../../signals/external/feature-switch";
-import {
-  FeatureSwitchKey,
-  chatThreadsContract,
-  zeroAgentsByIdContract,
-  zeroTeamContract,
-} from "@vm0/core";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { chatThreadsContract } from "@vm0/core/contracts/chat-threads";
+import { zeroAgentsByIdContract } from "@vm0/core/contracts/zero-agents";
+import { zeroTeamContract } from "@vm0/core/contracts/zero-team";
 import { server } from "../../../mocks/server.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 

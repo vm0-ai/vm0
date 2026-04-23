@@ -13,14 +13,14 @@ import {
   createMockScheduleResponse,
 } from "../../../mocks/handlers/api-schedules.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
+import { chatThreadsContract } from "@vm0/core/contracts/chat-threads";
+import { logsListContract } from "@vm0/core/contracts/logs";
 import {
-  chatThreadsContract,
-  logsListContract,
   zeroSchedulesMainContract,
   zeroSchedulesEnableContract,
   zeroScheduleRunContract,
   type ScheduleResponse,
-} from "@vm0/core";
+} from "@vm0/core/contracts/zero-schedules";
 
 const context = testContext();
 const mockApi = createMockApi(context);

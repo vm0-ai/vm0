@@ -11,7 +11,10 @@ import {
   DialogFooter,
 } from "@vm0/ui/components/ui/dialog";
 import { Button } from "@vm0/ui/components/ui/button";
-import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
+import {
+  CONNECTOR_TYPES,
+  type ConnectorType,
+} from "@vm0/core/contracts/connectors";
 import { agents$ } from "../../../../signals/agent.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { AvatarFromUrl } from "../../zero-sidebar-shared.tsx";

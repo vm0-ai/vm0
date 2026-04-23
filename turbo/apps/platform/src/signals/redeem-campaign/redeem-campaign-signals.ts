@@ -1,5 +1,5 @@
 import { command, computed, state } from "ccstate";
-import type { RedeemResponse } from "@vm0/core";
+import type { RedeemResponse } from "@vm0/core/contracts/zero-billing";
 
 /**
  * The current response from the redeem API. `null` during the initial fetch

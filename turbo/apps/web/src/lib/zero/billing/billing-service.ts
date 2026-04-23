@@ -1,5 +1,5 @@
 import { eq, sql } from "drizzle-orm";
-import type { OrgTier } from "@vm0/core";
+import type { OrgTier } from "@vm0/core/contracts/orgs";
 import { getStripe } from "../stripe";
 import { env } from "../../../env";
 import { orgMetadata } from "../../../db/schema/org-metadata";

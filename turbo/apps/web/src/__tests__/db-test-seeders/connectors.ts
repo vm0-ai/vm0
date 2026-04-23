@@ -1,4 +1,4 @@
-import type { ConnectorType } from "@vm0/core";
+import type { ConnectorType } from "@vm0/core/contracts/connectors";
 import { initServices } from "../../lib/init-services";
 import { userConnectors } from "../../db/schema/user-connector";
 import { userPlatformConnectors } from "../../db/schema/user-platform-connector";

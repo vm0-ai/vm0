@@ -1,5 +1,8 @@
 import { initClient } from "@ts-rest/core";
-import { chatSearchContract, type ChatSearchResponse } from "@vm0/core";
+import {
+  chatSearchContract,
+  type ChatSearchResponse,
+} from "@vm0/core/contracts/chat-threads";
 import { getClientConfig, handleError } from "../core/client-factory";
 
 export async function searchZeroChat(options: {

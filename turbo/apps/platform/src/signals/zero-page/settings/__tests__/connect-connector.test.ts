@@ -9,10 +9,8 @@ import {
   submitApiToken$,
 } from "../connectors.ts";
 import { triggerAblyEvent, hasSubscription } from "../../../../mocks/ably.ts";
-import {
-  type ConnectorListResponse,
-  zeroConnectorsMainContract,
-} from "@vm0/core";
+import type { ConnectorListResponse } from "@vm0/core/contracts/connector-schemas";
+import { zeroConnectorsMainContract } from "@vm0/core/contracts/zero-connectors";
 import { createMockApi } from "../../../../mocks/msw-contract.ts";
 
 const context = testContext();

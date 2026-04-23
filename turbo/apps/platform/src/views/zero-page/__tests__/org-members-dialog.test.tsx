@@ -12,7 +12,10 @@ import {
   setMockOrgMembers,
   resetMockOrgMembers,
 } from "../../../mocks/handlers/api-org-members.ts";
-import { zeroOrgMembersContract, zeroOrgInviteContract } from "@vm0/core";
+import {
+  zeroOrgMembersContract,
+  zeroOrgInviteContract,
+} from "@vm0/core/contracts/zero-org-members";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();

@@ -1,5 +1,5 @@
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
-import { zeroBillingStatusContract } from "@vm0/core";
+import { zeroBillingStatusContract } from "@vm0/core/contracts/zero-billing";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
   requireAuth,

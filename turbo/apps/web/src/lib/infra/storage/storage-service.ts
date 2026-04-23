@@ -18,7 +18,7 @@ import { eq, and, isNull, sql } from "drizzle-orm";
 import { env } from "../../../env";
 import { resolveVersionByPrefix, isResolutionError } from "./version-resolver";
 import { computeContentHashFromHashes } from "./content-hash";
-import { VOLUME_ORG_USER_ID, SYSTEM_ORG_ID } from "@vm0/core";
+import { VOLUME_ORG_USER_ID, SYSTEM_ORG_ID } from "@vm0/core/storage-names";
 
 const log = logger("storage");
 

@@ -1,5 +1,5 @@
 import { command, computed, state } from "ccstate";
-import { zeroUserPreferencesContract } from "@vm0/core";
+import { zeroUserPreferencesContract } from "@vm0/core/contracts/zero-user-preferences";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { clerk$ } from "../auth.ts";

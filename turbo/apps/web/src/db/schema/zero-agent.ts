@@ -8,7 +8,10 @@ import {
   index,
   jsonb,
 } from "drizzle-orm/pg-core";
-import type { RawPermissionPolicies, FirewallPolicyValue } from "@vm0/core";
+import type {
+  RawPermissionPolicies,
+  FirewallPolicyValue,
+} from "@vm0/core/contracts/firewalls";
 import { agentComposes } from "./agent-compose";
 import { modelProviders } from "./model-provider";
 

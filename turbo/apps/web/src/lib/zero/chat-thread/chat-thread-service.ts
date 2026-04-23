@@ -14,7 +14,7 @@ import {
   type PersistedAttachment,
   type ResolvedAttachFile,
   persistedAttachmentSchema,
-} from "@vm0/core";
+} from "@vm0/core/contracts/chat-threads";
 import { listS3Objects } from "../../infra/s3/s3-client";
 import { env } from "../../../env";
 import { EXT_MIMETYPE_MAP } from "../../shared/mimetype";

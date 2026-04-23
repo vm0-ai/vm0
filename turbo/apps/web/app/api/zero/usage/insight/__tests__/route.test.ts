@@ -16,10 +16,10 @@ import {
   insertTestChatThread,
 } from "../../../../../../src/__tests__/db-test-seeders/agents";
 import {
-  triggerSourceSchema,
   type UsageInsightResponse,
   type UsageInsightBucket,
-} from "@vm0/core";
+} from "@vm0/core/contracts/zero-usage-insight";
+import { triggerSourceSchema } from "@vm0/core/contracts/logs";
 
 import { GET } from "../route";
 

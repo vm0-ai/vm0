@@ -1,10 +1,10 @@
 import { command, computed, state } from "ccstate";
-import {
-  zeroOrgMembersContract,
-  type OrgMember,
-  type OrgPendingInvitation,
-  type OrgMembershipRequest,
-} from "@vm0/core";
+import { zeroOrgMembersContract } from "@vm0/core/contracts/zero-org-members";
+import type {
+  OrgMember,
+  OrgPendingInvitation,
+  OrgMembershipRequest,
+} from "@vm0/core/contracts/org-members";
 import { org$ } from "../org";
 import { zeroClient$ } from "../api-client";
 import { accept } from "../../lib/accept.ts";

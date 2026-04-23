@@ -1,5 +1,5 @@
 import { eq, and } from "drizzle-orm";
-import { CONNECTOR_TYPES } from "@vm0/core";
+import { CONNECTOR_TYPES } from "@vm0/core/contracts/connectors";
 import { slackOrgInstallations } from "../../db/schema/slack-org-installation";
 import { slackOrgConnections } from "../../db/schema/slack-org-connection";
 import { env } from "../../env";

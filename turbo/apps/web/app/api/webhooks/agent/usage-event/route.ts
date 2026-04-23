@@ -3,7 +3,7 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../../src/lib/ts-rest-handler";
-import { webhookUsageEventContract } from "@vm0/core";
+import { webhookUsageEventContract } from "@vm0/core/contracts/webhooks";
 import { initServices } from "../../../../../src/lib/init-services";
 import { usageEvent } from "../../../../../src/db/schema/usage-event";
 import { getSandboxAuthForRun } from "../../../../../src/lib/auth/get-sandbox-auth";

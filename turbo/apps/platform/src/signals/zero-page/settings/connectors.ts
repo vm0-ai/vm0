@@ -3,17 +3,23 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import { accept } from "../../../lib/accept.ts";
 import {
   CONNECTOR_TYPES,
-  FeatureSwitchKey,
-  hasRequiredScopes,
+  type ConnectorType,
+} from "@vm0/core/contracts/connectors";
+import { hasRequiredScopes } from "@vm0/core/contracts/connector-utils";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import {
   zeroConnectorScopeDiffContract,
   zeroConnectorsMainContract,
   zeroPlatformConnectorContract,
+} from "@vm0/core/contracts/zero-connectors";
+import {
   zeroSecretsContract,
   zeroVariablesContract,
-  type ConnectorListResponse,
-  type ConnectorType,
-  type ConnectorResponse,
-} from "@vm0/core";
+} from "@vm0/core/contracts/zero-secrets";
+import type {
+  ConnectorListResponse,
+  ConnectorResponse,
+} from "@vm0/core/contracts/connector-schemas";
 import { featureSwitch$ } from "../../external/feature-switch.ts";
 import {
   connectors$,

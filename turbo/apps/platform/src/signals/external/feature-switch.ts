@@ -1,9 +1,7 @@
 import { command, computed, state } from "ccstate";
-import {
-  FeatureSwitchKey,
-  getAllFeatureStates,
-  zeroFeatureSwitchesContract,
-} from "@vm0/core";
+import { getAllFeatureStates } from "@vm0/core/feature-switch";
+import { zeroFeatureSwitchesContract } from "@vm0/core/contracts/zero-feature-switches";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { clerk$, user$ } from "../auth";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";

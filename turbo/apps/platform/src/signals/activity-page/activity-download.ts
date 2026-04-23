@@ -1,5 +1,8 @@
 import { command } from "ccstate";
-import { zeroRunContextContract, zeroRunNetworkLogsContract } from "@vm0/core";
+import {
+  zeroRunContextContract,
+  zeroRunNetworkLogsContract,
+} from "@vm0/core/contracts/zero-runs";
 import { zeroClient$ } from "../api-client.ts";
 import { logger } from "../log.ts";
 import { accept } from "../../lib/accept.ts";

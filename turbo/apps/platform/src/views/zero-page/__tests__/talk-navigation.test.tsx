@@ -13,12 +13,16 @@ import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
   chatThreadByIdContract,
   chatMessagesContract,
+} from "@vm0/core/contracts/chat-threads";
+import {
   zeroRunAgentEventsContract,
   zeroRunsByIdContract,
-  logsByIdContract,
+} from "@vm0/core/contracts/zero-runs";
+import { logsByIdContract } from "@vm0/core/contracts/logs";
+import {
   onboardingStatusContract,
   onboardingSetupContract,
-} from "@vm0/core";
+} from "@vm0/core/contracts/onboarding";
 
 const context = testContext();
 const mockApi = createMockApi(context);

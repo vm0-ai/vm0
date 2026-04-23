@@ -15,7 +15,7 @@ import {
   setMockOrgLogo,
   resetMockOrgLogo,
 } from "../../../mocks/handlers/api-org.ts";
-import { zeroOrgContract } from "@vm0/core";
+import { zeroOrgContract } from "@vm0/core/contracts/zero-org";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();

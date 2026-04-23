@@ -6,7 +6,7 @@ import { setupOnboardingPage$ } from "../onboarding-page-setup.ts";
 import { zeroSelectedConnectors$ } from "../../zero-page/zero-onboarding.ts";
 import { pathname, search } from "../../location.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
-import { onboardingStatusContract } from "@vm0/core";
+import { onboardingStatusContract } from "@vm0/core/contracts/onboarding";
 
 const context = testContext();
 const mockApi = createMockApi(context);

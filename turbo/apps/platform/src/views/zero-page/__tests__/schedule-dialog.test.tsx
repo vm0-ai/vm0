@@ -14,10 +14,12 @@ import { createDeferredPromise } from "../../../signals/utils.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
   type ScheduleResponse,
+  zeroSchedulesMainContract,
+} from "@vm0/core/contracts/zero-schedules";
+import {
   zeroAgentsByIdContract,
   zeroAgentInstructionsContract,
-  zeroSchedulesMainContract,
-} from "@vm0/core";
+} from "@vm0/core/contracts/zero-agents";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 import {
   setMockSchedules,

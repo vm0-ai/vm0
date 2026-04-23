@@ -1,5 +1,6 @@
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
-import { zeroAgentsByIdContract, toFirewallPolicies } from "@vm0/core";
+import { zeroAgentsByIdContract } from "@vm0/core/contracts/zero-agents";
+import { toFirewallPolicies } from "@vm0/core/contracts/firewalls";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
   requireAuth,

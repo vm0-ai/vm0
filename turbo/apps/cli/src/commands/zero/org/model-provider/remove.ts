@@ -2,7 +2,10 @@ import { Command } from "commander";
 import chalk from "chalk";
 import { deleteZeroOrgModelProvider } from "../../../../lib/api";
 import { withErrorHandler } from "../../../../lib/command";
-import { MODEL_PROVIDER_TYPES, type ModelProviderType } from "@vm0/core";
+import {
+  MODEL_PROVIDER_TYPES,
+  type ModelProviderType,
+} from "@vm0/core/contracts/model-providers";
 
 export const removeCommand = new Command()
   .name("remove")

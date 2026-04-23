@@ -33,7 +33,7 @@ pnpm check-types
 ## Usage
 
 ```typescript
-import { FOO } from "@vm0/core";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
-console.log(FOO); // 'hello'
+console.log(FeatureSwitchKey.PlatformConnectors);
 ```

@@ -3,7 +3,8 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../../../../src/lib/ts-rest-handler";
-import { runNetworkLogsContract, type AxiomNetworkEvent } from "@vm0/core";
+import { runNetworkLogsContract } from "@vm0/core/contracts/runs";
+import type { AxiomNetworkEvent } from "@vm0/core/contracts/runs";
 import { initServices } from "../../../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../../../src/db/schema/agent-run";
 import { eq, and } from "drizzle-orm";

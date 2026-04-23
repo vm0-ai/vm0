@@ -1,5 +1,5 @@
 import { eq, and } from "drizzle-orm";
-import type { VoiceChatCandidateTaskResultEntry } from "@vm0/core";
+import type { VoiceChatCandidateTaskResultEntry } from "@vm0/core/contracts/zero-voice-chat-candidate";
 import { initServices } from "../../lib/init-services";
 import {
   voiceChatItems,

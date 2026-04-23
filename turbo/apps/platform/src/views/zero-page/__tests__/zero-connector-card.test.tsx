@@ -3,12 +3,10 @@ import { screen, waitFor } from "@testing-library/react";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
-import {
-  type ConnectorResponse,
-  type ConnectorType,
-  zeroAgentsByIdContract,
-  zeroUserConnectorsContract,
-} from "@vm0/core";
+import type { ConnectorResponse } from "@vm0/core/contracts/connector-schemas";
+import type { ConnectorType } from "@vm0/core/contracts/connectors";
+import { zeroAgentsByIdContract } from "@vm0/core/contracts/zero-agents";
+import { zeroUserConnectorsContract } from "@vm0/core/contracts/user-connectors";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
 import { setMockOrg } from "../../../mocks/handlers/api-org.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";

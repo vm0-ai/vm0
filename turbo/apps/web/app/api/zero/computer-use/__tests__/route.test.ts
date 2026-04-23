@@ -15,8 +15,9 @@ import {
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 
 // Mock isFeatureEnabled to return true by default (staff user)
-vi.mock("@vm0/core", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@vm0/core")>();
+vi.mock("@vm0/core/feature-switch", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@vm0/core/feature-switch")>();
   return {
     ...actual,
     isFeatureEnabled: vi.fn().mockReturnValue(true),
@@ -24,7 +25,7 @@ vi.mock("@vm0/core", async (importOriginal) => {
 });
 
 // Import after mock setup so we can control the mock
-const { isFeatureEnabled } = await import("@vm0/core");
+const { isFeatureEnabled } = await import("@vm0/core/feature-switch");
 const mockIsFeatureEnabled = isFeatureEnabled as ReturnType<typeof vi.fn>;
 
 const context = testContext();

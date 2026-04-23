@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
+import type { ConnectorType } from "@vm0/core/contracts/connectors";
+import type { FirewallPolicies } from "@vm0/core/contracts/firewalls";
 import {
-  type ConnectorType,
-  type FirewallPolicies,
   zeroAgentsByIdContract,
   zeroAgentInstructionsContract,
   zeroAgentPermissionPoliciesContract,
-  zeroUserConnectorsContract,
-} from "@vm0/core";
+} from "@vm0/core/contracts/zero-agents";
+import { zeroUserConnectorsContract } from "@vm0/core/contracts/user-connectors";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
