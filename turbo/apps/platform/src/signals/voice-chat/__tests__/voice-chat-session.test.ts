@@ -148,24 +148,48 @@ async function setup() {
 // Tests
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Shared WebRTC infrastructure
+// ---------------------------------------------------------------------------
+
+function makeMediaStreamStub(): MediaStream {
+  return {
+    getAudioTracks() {
+      return [{ enabled: true }];
+    },
+    getTracks() {
+      return [{ stop: vi.fn() }];
+    },
+  } as unknown as MediaStream;
+}
+
+function stubMediaDevices(
+  devices: MediaDeviceInfo[] = [],
+  stream: MediaStream = makeMediaStreamStub(),
+) {
+  Object.defineProperty(navigator, "mediaDevices", {
+    value: {
+      getUserMedia: vi.fn().mockResolvedValue(stream),
+      enumerateDevices: vi.fn().mockResolvedValue(devices),
+    },
+    writable: true,
+    configurable: true,
+  });
+}
+
+function clearMediaDevices() {
+  Object.defineProperty(navigator, "mediaDevices", {
+    value: undefined,
+    writable: true,
+    configurable: true,
+  });
+}
+
 describe("voice-chat fast-brain injection", () => {
   const dcRef: { current: FakeDC | null } = { current: null };
 
   function stubWebRTC() {
-    const mediaStreamStub = {
-      getAudioTracks() {
-        return [{ enabled: true }];
-      },
-      getTracks() {
-        return [{ stop: vi.fn() }];
-      },
-    } as unknown as MediaStream;
-
-    Object.defineProperty(navigator, "mediaDevices", {
-      value: { getUserMedia: vi.fn().mockResolvedValue(mediaStreamStub) },
-      writable: true,
-      configurable: true,
-    });
+    stubMediaDevices();
 
     class FakeRTCPeerConnection {
       iceConnectionState = "new";
@@ -233,11 +257,7 @@ describe("voice-chat fast-brain injection", () => {
   }
 
   function clearWebRTC() {
-    Object.defineProperty(navigator, "mediaDevices", {
-      value: undefined,
-      writable: true,
-      configurable: true,
-    });
+    clearMediaDevices();
     dcRef.current = null;
     vi.unstubAllGlobals();
   }
@@ -469,5 +489,191 @@ describe("voice-chat fast-brain injection", () => {
       expect(ctx.afterValues.length).toBeGreaterThan(baseline);
     });
     expect(injectedTexts()).toStrictEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveAudioConfig regression tests
+// ---------------------------------------------------------------------------
+
+describe("resolveAudioConfig", () => {
+  const dcRef2: { current: FakeDC | null } = { current: null };
+
+  function stubRTCAudio() {
+    class FakeRTCPeerConnection {
+      iceConnectionState = "new";
+      addTrack = vi.fn();
+      close = vi.fn();
+      createOffer = vi.fn().mockResolvedValue({ sdp: "offer-sdp" });
+      setLocalDescription = vi.fn().mockResolvedValue(undefined);
+      setRemoteDescription = vi.fn().mockResolvedValue(undefined);
+
+      createDataChannel(): FakeDC {
+        const openListeners: (() => void)[] = [];
+        const closeListeners: (() => void)[] = [];
+
+        const dc: FakeDC = {
+          readyState: "open",
+          send: vi.fn(),
+          close: vi.fn(() => {
+            dc.readyState = "closed";
+            for (const l of closeListeners) {
+              l();
+            }
+          }),
+          addEventListener: (event, cb) => {
+            if (event === "open") {
+              openListeners.push(cb as () => void);
+            }
+            if (event === "close") {
+              closeListeners.push(cb as () => void);
+            }
+          },
+          emitOpen: () => {
+            for (const l of openListeners) {
+              l();
+            }
+          },
+        };
+        dcRef2.current = dc;
+        return dc;
+      }
+
+      addEventListener() {}
+    }
+
+    vi.stubGlobal("RTCPeerConnection", FakeRTCPeerConnection);
+
+    class FakeAudio {
+      autoplay = false;
+      srcObject: unknown = null;
+      pause = vi.fn();
+    }
+    vi.stubGlobal("Audio", FakeAudio);
+
+    server.use(
+      http.post("https://api.openai.com/v1/realtime", () => {
+        return new HttpResponse("answer-sdp", { status: 200 });
+      }),
+    );
+  }
+
+  async function startAndConnect() {
+    mockCreateSession();
+    mockToken();
+    mockActivate();
+    mockHeartbeat();
+    mockListTasks();
+    mockContextEvents();
+
+    detach(
+      context.store.set(startVoiceChat$, context.signal),
+      Reason.DomCallback,
+    );
+
+    await vi.waitFor(() => {
+      expect(dcRef2.current).not.toBeNull();
+    });
+    dcRef2.current?.emitOpen();
+    await vi.waitFor(() => {
+      expect(context.store.get(vcStatus$)).toBe("connected");
+    });
+  }
+
+  function sessionUpdateNoiseReduction(): string | undefined {
+    const msgs = (dcRef2.current?.send.mock.calls ?? []).map((c) => {
+      return JSON.parse(c[0] as string) as {
+        type: string;
+        session?: { input_audio_noise_reduction?: { type: string } };
+      };
+    });
+    return msgs.find((m) => {
+      return m.type === "session.update";
+    })?.session?.input_audio_noise_reduction?.type;
+  }
+
+  function getUserMediaAudioConstraints(): MediaTrackConstraints | undefined {
+    const gum = (
+      navigator.mediaDevices as { getUserMedia: ReturnType<typeof vi.fn> }
+    ).getUserMedia;
+    const call = gum.mock.calls[0] as [{ audio: MediaTrackConstraints }];
+    return call?.[0]?.audio;
+  }
+
+  afterEach(() => {
+    clearMediaDevices();
+    dcRef2.current = null;
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it("desktop: far_field noise reduction and autoGainControl enabled", async () => {
+    // Non-mobile: maxTouchPoints = 0
+    vi.spyOn(navigator, "maxTouchPoints", "get").mockReturnValue(0);
+    stubMediaDevices([]);
+    stubRTCAudio();
+
+    await setup();
+    await startAndConnect();
+
+    expect(sessionUpdateNoiseReduction()).toBe("far_field");
+    expect(getUserMediaAudioConstraints()).toMatchObject({
+      autoGainControl: true,
+    });
+  });
+
+  it("mobile with external audio: far_field noise reduction and autoGainControl enabled", async () => {
+    vi.spyOn(navigator, "maxTouchPoints", "get").mockReturnValue(5);
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (Linux; Android 13) Mobile Safari/537.36",
+    );
+    stubMediaDevices([
+      {
+        kind: "audiooutput",
+        deviceId: "bt-headset-1",
+        label: "Bluetooth Headset",
+        groupId: "g1",
+        toJSON: () => {
+          return {};
+        },
+      },
+    ]);
+    stubRTCAudio();
+
+    await setup();
+    await startAndConnect();
+
+    expect(sessionUpdateNoiseReduction()).toBe("far_field");
+    expect(getUserMediaAudioConstraints()).toMatchObject({
+      autoGainControl: true,
+    });
+  });
+
+  it("mobile without external audio: near_field noise reduction and autoGainControl disabled", async () => {
+    vi.spyOn(navigator, "maxTouchPoints", "get").mockReturnValue(5);
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (Linux; Android 13) Mobile Safari/537.36",
+    );
+    // Only the default output device — no external/BT audio
+    stubMediaDevices([
+      {
+        kind: "audiooutput",
+        deviceId: "default",
+        label: "Default",
+        groupId: "g0",
+        toJSON: () => {
+          return {};
+        },
+      },
+    ]);
+    stubRTCAudio();
+
+    await setup();
+    await startAndConnect();
+
+    expect(sessionUpdateNoiseReduction()).toBe("near_field");
+    expect(getUserMediaAudioConstraints()).toMatchObject({
+      autoGainControl: false,
+    });
   });
 });

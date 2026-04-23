@@ -613,19 +613,14 @@ async function resolveAudioConfig(): Promise<AudioConfig> {
   // Hint to OS that this is a call-like app — Chrome Android 116+ routes
   // audio through the phone call path, enabling hardware AEC for speakerphone.
   if ("audioSession" in navigator) {
-    (
-      navigator as unknown as { audioSession: { type: string } }
-    ).audioSession.type = "play-and-record";
+    (navigator as { audioSession?: { type: string } }).audioSession!.type =
+      "play-and-record";
   }
 
   const isMobile =
     navigator.maxTouchPoints > 0 && /Mobi|Android/i.test(navigator.userAgent);
 
-  const devices = await (
-    navigator.mediaDevices?.enumerateDevices?.() ?? Promise.resolve([])
-  ).catch(() => {
-    return [];
-  });
+  const devices = (await navigator.mediaDevices?.enumerateDevices?.()) ?? [];
   const hasExternalAudio = devices.some((d) => {
     return (
       d.kind === "audiooutput" && d.deviceId !== "default" && d.deviceId !== ""
