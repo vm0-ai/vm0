@@ -23,6 +23,7 @@ import type {
   ExecutionContext,
   ResumeSession,
 } from "../infra/run/types";
+import type { ConversationResolution } from "../infra/run/resolvers";
 import type { AdditionalVolume } from "../infra/storage/types";
 import {
   AUTO_MEMORY_ARTIFACT_NAME,
@@ -64,21 +65,35 @@ export {
 const log = logger("zero:build-context");
 
 /**
- * Append the auto-memory artifact to the unified artifact list.
- *
- * Dedup-by-name in prepareStorageManifest collapses the clash when a checkpoint
- * snapshot also carries "memory". Resume-path gating is handled in a follow-up
- * sub-issue (#10910) — today we always append on every Zero path, which is why
- * this helper is shared by both resolveCliRunContext and
- * buildZeroExecutionContext.
+ * Append the auto-memory artifact when this is a new run. On resume paths
+ * (checkpoint, session, conversation continue) the resolver already emitted
+ * memory at AUTO_MEMORY_MOUNT_PATH in resolution.artifacts — re-injecting here
+ * would risk shadowing a divergent user-declared artifact named "memory".
+ * When the resolution has no memory entry (very old data that predates
+ * memory-as-artifact) we log and skip rather than silently mount over a path
+ * the user may have declared for a different purpose.
  */
-function appendAutoMemoryArtifact(
+function injectAutoMemoryArtifactIfNewRun(
   artifacts: ContextArtifact[],
+  resolution: ConversationResolution | null,
+  logContext: Record<string, string>,
 ): ContextArtifact[] {
-  return [
-    ...artifacts,
-    { name: AUTO_MEMORY_ARTIFACT_NAME, mountPath: AUTO_MEMORY_MOUNT_PATH },
-  ];
+  if (resolution === null) {
+    return [
+      ...artifacts,
+      { name: AUTO_MEMORY_ARTIFACT_NAME, mountPath: AUTO_MEMORY_MOUNT_PATH },
+    ];
+  }
+  const hasMemory = artifacts.some((a) => {
+    return a.name === AUTO_MEMORY_ARTIFACT_NAME;
+  });
+  if (!hasMemory) {
+    log.warn(
+      "Resume resolution has no memory artifact — skipping auto-injection",
+      logContext,
+    );
+  }
+  return artifacts;
 }
 
 /**
@@ -456,8 +471,11 @@ export async function resolveCliRunContext(
     );
   }
 
-  // Memory injection — see appendAutoMemoryArtifact().
-  artifacts = appendAutoMemoryArtifact(artifacts);
+  // Memory injection — see injectAutoMemoryArtifactIfNewRun().
+  artifacts = injectAutoMemoryArtifactIfNewRun(artifacts, resolution, {
+    userId: params.userId,
+    orgId: params.orgId,
+  });
 
   // Load compose content if we have a version ID
   if (!agentCompose && agentComposeVersionId) {
@@ -625,8 +643,10 @@ export async function buildZeroExecutionContext(
       (await loadAgentComposeForNewRun(agentComposeVersionId));
   }
 
-  // Memory injection — see appendAutoMemoryArtifact().
-  artifacts = appendAutoMemoryArtifact(artifacts);
+  // Memory injection — see injectAutoMemoryArtifactIfNewRun().
+  artifacts = injectAutoMemoryArtifactIfNewRun(artifacts, resolution, {
+    runId: params.runId,
+  });
 
   // Validate required fields
   if (!agentComposeVersionId) {

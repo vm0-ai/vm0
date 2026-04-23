@@ -443,10 +443,11 @@ async function resolveArtifactEntry(
 }
 
 /**
- * Dedup by name, last wins. Callers build artifact lists from multiple
- * sources (snapshot, CLI --artifact flag, auto-memory injection) and may
- * introduce duplicate names; collapsing here lets the auto-injected memory
- * entry override a matching checkpoint snapshot without any upstream awareness.
+ * Dedup by name, last wins. Callers compose artifact lists from multiple
+ * sources (resolution snapshot, CLI --artifact flag, new-run auto-memory
+ * injection). On resume the resolution is authoritative — Zero no longer
+ * re-injects memory, so the only overlap this dedup still covers is a
+ * user-declared `memory` entry on a new run colliding with the injected one.
  */
 function dedupArtifactsByName(artifacts: ContextArtifact[]): ContextArtifact[] {
   const byName = new Map<string, ContextArtifact>();

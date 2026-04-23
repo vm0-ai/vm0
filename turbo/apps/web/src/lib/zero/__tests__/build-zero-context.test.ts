@@ -6,13 +6,20 @@ import {
 } from "../../../__tests__/test-helpers";
 import {
   createTestCompose,
+  createTestRun,
   createTestSecret,
   createTestVariable,
   createTestUserConnector,
+  completeTestRun,
   findTestRunnerJobEntry,
   insertTestConnectorSecret,
 } from "../../../__tests__/api-test-helpers";
 import { getTestZeroAgentId } from "../../../__tests__/db-test-assertions/agents";
+import {
+  setTestSessionArtifactNames,
+  setTestSessionFramework,
+} from "../../../__tests__/db-test-seeders/agents";
+import { setTestCheckpointArtifactSnapshots } from "../../../__tests__/db-test-seeders/runs";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route
 import { createZeroRun } from "../zero-run-service";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route
@@ -24,6 +31,10 @@ import { setVariable } from "../variable/variable-service";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
 import { isNoModelProvider } from "../../shared/errors";
 import { reloadEnv } from "../../../env";
+import {
+  AUTO_MEMORY_ARTIFACT_NAME,
+  AUTO_MEMORY_MOUNT_PATH,
+} from "../../infra/storage/types";
 import type { TriggerSource } from "@vm0/core/contracts/logs";
 
 const context = testContext();
@@ -469,6 +480,99 @@ describe("Org-Level Runtime Resolution (Zero Layer)", () => {
       expect(job!.executionContext.environment).toMatchObject({
         MY_CUSTOM_SECRET: "custom-value",
       });
+    });
+  });
+
+  describe("Auto-memory injection gating", () => {
+    it("new run injects memory exactly once at AUTO_MEMORY_MOUNT_PATH", async () => {
+      const result = await createZeroRun(baseParams());
+      await context.mocks.flushAfter();
+
+      const job = await findTestRunnerJobEntry(result.runId);
+      expect(job).toBeDefined();
+      const memoryEntries =
+        job!.executionContext.storageManifest!.artifacts.filter((a) => {
+          return a.vasStorageName === AUTO_MEMORY_ARTIFACT_NAME;
+        });
+      expect(memoryEntries).toHaveLength(1);
+      expect(memoryEntries[0]!.mountPath).toBe(AUTO_MEMORY_MOUNT_PATH);
+    });
+
+    it("checkpoint resume trusts resolution memory entry", async () => {
+      const seed = await createTestRun(agentId, "seed");
+      const { checkpointId } = await completeTestRun(user.userId, seed.runId);
+      await setTestCheckpointArtifactSnapshots(checkpointId, {
+        [AUTO_MEMORY_ARTIFACT_NAME]: "latest",
+      });
+
+      const resumed = await createTestRun(agentId, "resume", { checkpointId });
+      await context.mocks.flushAfter();
+
+      const job = await findTestRunnerJobEntry(resumed.runId);
+      expect(job).toBeDefined();
+      const memoryEntries =
+        job!.executionContext.storageManifest!.artifacts.filter((a) => {
+          return a.vasStorageName === AUTO_MEMORY_ARTIFACT_NAME;
+        });
+      expect(memoryEntries).toHaveLength(1);
+      expect(memoryEntries[0]!.mountPath).toBe(AUTO_MEMORY_MOUNT_PATH);
+    });
+
+    it("session continue trusts resolution memory entry", async () => {
+      const seed = await createZeroRun(baseParams());
+      await context.mocks.flushAfter();
+      await completeTestRun(user.userId, seed.runId);
+      await setTestSessionFramework(seed.sessionId, "claude-code");
+      await setTestSessionArtifactNames(seed.sessionId, [
+        AUTO_MEMORY_ARTIFACT_NAME,
+      ]);
+
+      const resumed = await createZeroRun(
+        baseParams({ sessionId: seed.sessionId }),
+      );
+      await context.mocks.flushAfter();
+
+      const job = await findTestRunnerJobEntry(resumed.runId);
+      expect(job).toBeDefined();
+      const memoryEntries =
+        job!.executionContext.storageManifest!.artifacts.filter((a) => {
+          return a.vasStorageName === AUTO_MEMORY_ARTIFACT_NAME;
+        });
+      expect(memoryEntries).toHaveLength(1);
+      expect(memoryEntries[0]!.mountPath).toBe(AUTO_MEMORY_MOUNT_PATH);
+    });
+
+    it("resume with no memory in resolution skips injection and warns", async () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        const seed = await createTestRun(agentId, "seed empty");
+        const { checkpointId } = await completeTestRun(user.userId, seed.runId);
+        await setTestCheckpointArtifactSnapshots(checkpointId, []);
+
+        const resumed = await createTestRun(agentId, "resume empty", {
+          checkpointId,
+        });
+        await context.mocks.flushAfter();
+
+        const job = await findTestRunnerJobEntry(resumed.runId);
+        expect(job).toBeDefined();
+        const memoryEntries =
+          job!.executionContext.storageManifest!.artifacts.filter((a) => {
+            return a.vasStorageName === AUTO_MEMORY_ARTIFACT_NAME;
+          });
+        expect(memoryEntries).toHaveLength(0);
+
+        const warnCalls = warnSpy.mock.calls.filter((args) => {
+          return args.some((arg) => {
+            return (
+              typeof arg === "string" && arg.includes("no memory artifact")
+            );
+          });
+        });
+        expect(warnCalls.length).toBeGreaterThan(0);
+      } finally {
+        warnSpy.mockRestore();
+      }
     });
   });
 });
