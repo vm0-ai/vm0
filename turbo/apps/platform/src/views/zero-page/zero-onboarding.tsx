@@ -777,9 +777,7 @@ function OnboardingIllustrationPanel() {
   const showChat = stepKey === "workspace";
 
   return (
-    <div
-      className={`hidden lg:flex w-2/5 shrink-0 flex-col items-center p-10 relative overflow-hidden ${showChat ? "pt-[8%]" : "justify-center"}`}
-    >
+    <div className="hidden lg:flex w-2/5 shrink-0 flex-col p-10 relative">
       {/* Decorative circles (non-orbit, non-chat steps) */}
       {!showOrbit && !showChat && (
         <div className="absolute inset-0 pointer-events-none" aria-hidden>
@@ -790,7 +788,9 @@ function OnboardingIllustrationPanel() {
         </div>
       )}
 
-      <div className="relative z-10 flex flex-col items-center">
+      <div
+        className={`relative z-10 flex flex-1 min-h-0 flex-col items-center overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${showChat ? "" : "justify-center"}`}
+      >
         {showChat ? (
           <ChatPreview />
         ) : showOrbit ? (
@@ -824,8 +824,8 @@ function OnboardingIllustrationPanel() {
         )}
       </div>
 
-      {/* Account dropdown — bottom-left of left panel */}
-      <div className="absolute bottom-6 left-4 z-20">
+      {/* Account dropdown — bottom of left panel, in flow */}
+      <div className="shrink-0 self-start -ml-6 mt-4 z-20">
         <OnboardingAccountDropdown />
       </div>
     </div>
@@ -890,13 +890,18 @@ function OnboardingPageLayout({ children }: { children: React.ReactNode }) {
       {/* Right panel — form */}
       <div className="flex flex-1 flex-col min-w-0 bg-background items-center">
         <div className="flex flex-col w-full max-w-[750px] flex-1 min-h-0">
+          {/* Mobile header — account dropdown visible below lg */}
+          <div className="lg:hidden shrink-0 flex items-center justify-end px-5 sm:px-10 pt-4">
+            <OnboardingAccountDropdown />
+          </div>
+
           {/* Progress bar */}
-          <div className="shrink-0 px-5 sm:px-10 pt-8 pb-4">
+          <div className="shrink-0 px-5 sm:px-10 pt-4 lg:pt-8 pb-4">
             <OnboardingProgressBar />
           </div>
 
           {/* Content */}
-          <main className="flex-1 min-h-0 overflow-y-auto px-5 sm:px-10 pt-[12%] pb-6 [scrollbar-width:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden">
+          <main className="flex-1 min-h-0 overflow-y-auto px-5 sm:px-10 pt-[8%] lg:pt-[12%] pb-6 [scrollbar-width:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden">
             {children}
           </main>
 
