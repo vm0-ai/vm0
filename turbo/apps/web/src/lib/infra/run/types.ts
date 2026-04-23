@@ -2,15 +2,6 @@ import type { AdditionalArtifact, AdditionalVolume } from "../storage/types";
 import type { Firewalls, NetworkPolicies } from "@vm0/core/contracts/firewalls";
 
 /**
- * Single-artifact reference used by resume flows.
- * Fields align with CLI parameters --artifact-name and --artifact-version.
- */
-export interface ArtifactSnapshot {
-  artifactName: string;
-  artifactVersion: string;
-}
-
-/**
  * Run status values
  */
 export type RunStatus =
@@ -69,13 +60,14 @@ export interface ExecutionContext {
   secretConnectorMap?: Record<string, string>; // Secret name → connector type for OAuth refresh
   sandboxToken: string;
 
-  // Artifact settings (new runs only)
-  artifactName?: string;
-  artifactVersion?: string;
+  // Primary artifacts: name → version map.
+  // New runs: "latest" sentinels. Resume from session: "latest". Resume from
+  // checkpoint: concrete version IDs from checkpoints.artifactSnapshots.
+  artifacts?: Record<string, string>;
 
   // Additional artifacts passed at run time (beyond the primary artifact
   // derived from compose working_dir). Each entry carries its own mountPath.
-  artifacts?: AdditionalArtifact[];
+  additionalArtifacts?: AdditionalArtifact[];
 
   // Volume version overrides (volume name -> version)
   volumeVersions?: Record<string, string>;
@@ -108,7 +100,6 @@ export interface ExecutionContext {
 
   // Resume-specific (optional)
   resumeSession?: ResumeSession;
-  resumeArtifact?: ArtifactSnapshot;
 
   // Metadata for vm0_start event
   agentName?: string;

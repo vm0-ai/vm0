@@ -2,7 +2,6 @@ import { eq, and } from "drizzle-orm";
 import { checkpoints } from "../../../../db/schema/checkpoint";
 import { conversations } from "../../../../db/schema/conversation";
 import { agentRuns } from "../../../../db/schema/agent-run";
-import { agentSessions } from "../../../../db/schema/agent-session";
 import { agentComposeVersions } from "../../../../db/schema/agent-compose";
 import { notFound, unauthorized, badRequest } from "../../../shared/errors";
 import { logger } from "../../../shared/logger";
@@ -43,13 +42,12 @@ export async function resolveCheckpoint(
     throw notFound("Checkpoint not found");
   }
 
-  // Extract snapshots. The primary artifact name is sourced from
-  // agent_sessions.artifact_name (populated at run creation); the version is
-  // looked up in the artifactSnapshots map.
+  // Extract snapshots. Artifact name/version pairs are stored directly in
+  // checkpoint.artifactSnapshots — no join to agent_sessions required.
   const agentComposeSnapshot =
     checkpoint.agentComposeSnapshot as unknown as AgentComposeSnapshot;
-  const artifactSnapshotsMap =
-    (checkpoint.artifactSnapshots as Record<string, string> | null) ?? null;
+  const artifacts =
+    (checkpoint.artifactSnapshots as Record<string, string> | null) ?? {};
   const checkpointVolumeVersions =
     checkpoint.volumeVersionsSnapshot as VolumeVersionsSnapshot | null;
 
@@ -69,16 +67,10 @@ export async function resolveCheckpoint(
     throw badRequest("Invalid checkpoint: missing agentComposeVersionId");
   }
 
-  // Verify checkpoint belongs to user and fetch the session artifact name
-  // in one query. It lives on agent_sessions (set eagerly at run creation),
-  // not on checkpoint snapshots.
+  // Verify checkpoint belongs to user
   const [originalRun] = await globalThis.services.db
-    .select({
-      runId: agentRuns.id,
-      sessionArtifactName: agentSessions.artifactName,
-    })
+    .select({ runId: agentRuns.id })
     .from(agentRuns)
-    .innerJoin(agentSessions, eq(agentRuns.sessionId, agentSessions.id))
     .where(
       and(eq(agentRuns.id, checkpoint.runId), eq(agentRuns.userId, userId)),
     )
@@ -127,12 +119,6 @@ export async function resolveCheckpoint(
   }
   const agentCompose = version.content as AgentComposeYaml;
 
-  const primaryArtifactName = originalRun.sessionArtifactName ?? undefined;
-  const primaryArtifactVersion =
-    primaryArtifactName && artifactSnapshotsMap
-      ? artifactSnapshotsMap[primaryArtifactName]
-      : undefined;
-
   return {
     conversationId: checkpoint.conversationId,
     agentComposeVersionId,
@@ -142,11 +128,9 @@ export async function resolveCheckpoint(
       cliAgentSessionId: conversation.cliAgentSessionId,
       cliAgentSessionHistory: sessionHistory,
     },
-    artifactName: primaryArtifactName,
-    artifactVersion: primaryArtifactVersion,
+    artifacts,
     vars: agentComposeSnapshot.vars || {},
     volumeVersions: checkpointVolumeVersions?.versions,
     additionalVolumes: checkpointAdditionalVolumes,
-    buildResumeArtifact: !!primaryArtifactName,
   };
 }

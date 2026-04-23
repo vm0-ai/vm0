@@ -15,12 +15,15 @@ export interface ConversationResolution {
     cliAgentSessionId: string;
     cliAgentSessionHistory: string;
   };
-  artifactName?: string;
-  artifactVersion?: string;
+  /**
+   * Primary artifact map: name → version.
+   * Resume-from-session emits "latest" sentinels; resume-from-checkpoint emits
+   * concrete version IDs from checkpoints.artifactSnapshots.
+   */
+  artifacts: Record<string, string>;
   vars?: Record<string, string>;
   volumeVersions?: Record<string, string>;
   additionalVolumes?: AdditionalVolume[];
-  buildResumeArtifact: boolean;
   /** Run ID from the previous conversation (used by zero layer for provider compatibility) */
   previousRunId?: string;
 }

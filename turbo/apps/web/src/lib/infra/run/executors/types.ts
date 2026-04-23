@@ -1,5 +1,5 @@
 import type { StorageManifest } from "../../../infra/storage/types";
-import type { ResumeSession, ArtifactSnapshot } from "../types";
+import type { ResumeSession } from "../types";
 import type { Firewalls, NetworkPolicies } from "@vm0/core/contracts/firewalls";
 
 /**
@@ -33,11 +33,9 @@ export interface PreparedContext {
 
   // Resume support
   resumeSession: ResumeSession | null;
-  resumeArtifact: ArtifactSnapshot | null;
 
-  // Artifact settings
-  artifactName: string | null;
-  artifactVersion: string | null;
+  // Primary artifacts (name → version). Empty record when the run has none.
+  artifacts: Record<string, string>;
 
   // Firewall for proxy-side token replacement (complete config, all permissions)
   firewalls: Firewalls | null;
