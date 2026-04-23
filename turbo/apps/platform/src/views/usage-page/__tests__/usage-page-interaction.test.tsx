@@ -161,12 +161,15 @@ describe("/_/usage page - empty state", () => {
       ).toBeInTheDocument();
     });
 
-    // Totals bar should show 0 credits
+    // Totals bar should show 0 credits with zero grand total
     await waitFor(() => {
       expect(
         screen.getByRole("img", { name: /Total credits breakdown/ }),
       ).toBeInTheDocument();
     });
+
+    expect(screen.getByText("0")).toBeInTheDocument();
+    expect(screen.getByText("credits")).toBeInTheDocument();
   });
 });
 
@@ -192,16 +195,8 @@ describe("/_/usage page - detail tabs", () => {
     });
 
     // Click on Chats tab
-    await waitFor(() => {
-      const chatsTab = screen.getAllByRole("tab").find((el) => {
-        return /Chats/.test(el.textContent ?? "");
-      });
-      expect(chatsTab).toBeInTheDocument();
-    });
-    const chatsTab = screen.getAllByRole("tab").find((el) => {
-      return /Chats/.test(el.textContent ?? "");
-    });
-    click(chatsTab!);
+    const chatsTab = await screen.findByText("Chats");
+    click(chatsTab);
 
     await waitFor(() => {
       expect(screen.getByText("Chat with Agent")).toBeInTheDocument();
