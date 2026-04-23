@@ -34,8 +34,11 @@ export {
   type ComposesMetadataContract,
   type ComposesInstructionsContract,
   AGENT_NAME_REGEX,
+  MOUNT_PATH_TEMPLATE,
   agentNameSchema,
   volumeConfigSchema,
+  artifactConfigSchema,
+  artifactsArraySchema,
   agentDefinitionSchema,
   agentComposeContentSchema,
   agentComposeApiContentSchema,
@@ -50,6 +53,7 @@ export {
   // Inferred types
   type ComposeResponse,
   type ComposeListItem,
+  type ArtifactConfig,
 } from "./composes";
 export {
   runsMainContract,

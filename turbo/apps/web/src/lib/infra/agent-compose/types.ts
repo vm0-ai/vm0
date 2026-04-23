@@ -16,6 +16,20 @@ export interface VolumeConfig {
 }
 
 /**
+ * Artifact entry declared in compose. Mirrors the zod
+ * `artifactConfigSchema` in @vm0/core/contracts/composes.
+ */
+export interface ArtifactConfig {
+  name: string;
+  version?: string;
+  /**
+   * Absolute path in sandbox, or the literal "${{ working_dir }}" template.
+   * Undefined defers to working_dir at resolution time.
+   */
+  mount_path?: string;
+}
+
+/**
  * Agent definition within the agents dictionary
  * The agent name is the key in the dictionary, not a field
  */
@@ -48,4 +62,5 @@ export interface AgentComposeYaml {
   version: string;
   agents: Record<string, AgentDefinition>; // Dictionary of agent definitions (currently only one agent supported)
   volumes?: Record<string, VolumeConfig>; // Volume definitions with name and version
+  artifacts?: ArtifactConfig[]; // Artifact entries with optional per-entry mount_path
 }
