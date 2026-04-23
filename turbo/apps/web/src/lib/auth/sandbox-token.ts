@@ -561,3 +561,14 @@ export function verifyCliToken(token: string): CliAuth | null {
     tokenId: payload.tokenId,
   };
 }
+
+/**
+ * Test-only: sign an arbitrary payload with the sandbox JWT key and
+ * prepend the sandbox prefix. Lets tests construct payload shapes
+ * `generateSandboxToken` can't produce (e.g. a legacy payload missing
+ * `orgId`) so the verifier's fail-closed contract is pinned against
+ * regressions. Do not use in production code.
+ */
+export function signSandboxJwtForTests(payload: object): string {
+  return SANDBOX_TOKEN_PREFIX + createJwt(payload as JwtPayload);
+}
