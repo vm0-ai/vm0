@@ -111,12 +111,11 @@ export const allConnectorTypes$ = computed(async (get) => {
       const flag = CONNECTOR_TYPES[type].featureFlag;
       const flagEnabled = !flag || !!features?.[flag];
       const methods = CONNECTOR_TYPES[type].authMethods;
-      // Connector visible if any auth method should be shown. api-token is
-      // always available regardless of flag; oauth requires the per-connector
-      // flag; platform requires both the per-connector flag and the global
-      // PlatformConnectors flag.
+      // Connector visible if any auth method should be shown. All auth methods
+      // (including api-token) require the per-connector flag to be enabled;
+      // platform additionally requires the global PlatformConnectors flag.
       const showOauth = flagEnabled && "oauth" in methods;
-      const showApiToken = "api-token" in methods;
+      const showApiToken = flagEnabled && "api-token" in methods;
       const showPlatform =
         flagEnabled && platformGloballyEnabled && "platform" in methods;
       return showOauth || showApiToken || showPlatform;
@@ -127,7 +126,7 @@ export const allConnectorTypes$ = computed(async (get) => {
       const flag = CONNECTOR_TYPES[type].featureFlag;
       const flagEnabled = !flag || !!features?.[flag];
       const showOauth = flagEnabled && "oauth" in config.authMethods;
-      const showApiToken = "api-token" in config.authMethods;
+      const showApiToken = flagEnabled && "api-token" in config.authMethods;
       const showPlatform =
         flagEnabled &&
         platformGloballyEnabled &&
