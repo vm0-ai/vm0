@@ -4,7 +4,7 @@ import {
   storagesCommitContract,
   storagesDownloadContract,
   storagesListContract,
-} from "@vm0/core";
+} from "@vm0/core/contracts/storages";
 import { getClientConfig, handleError } from "../core/client-factory";
 
 /**

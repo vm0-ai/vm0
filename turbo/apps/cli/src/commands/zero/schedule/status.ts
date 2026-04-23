@@ -6,7 +6,7 @@ import {
   detectTimezone,
 } from "../../../lib/domain/schedule-utils";
 import { withErrorHandler } from "../../../lib/command";
-import type { ScheduleResponse } from "@vm0/core";
+import type { ScheduleResponse } from "@vm0/core/contracts/zero-schedules";
 
 /**
  * Format date with styled relative time (adds chalk formatting)

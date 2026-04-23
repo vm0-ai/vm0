@@ -12,7 +12,7 @@ import {
   type SlackUploadInitResponse,
   type SlackUploadCompleteBody,
   type SlackUploadCompleteResponse,
-} from "@vm0/core";
+} from "@vm0/core/contracts/integrations";
 import {
   ApiRequestError,
   getBaseUrl,
