@@ -41,7 +41,6 @@ const context = testContext();
 const mockApi = createMockApi(context);
 
 const PROVIDER_ID = "00000000-0000-4000-a000-000000000001";
-const STORED_MODEL = "claude-opus-4-7";
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const THREAD_ID = "thread-readonly-1";
 
@@ -122,13 +121,15 @@ describe("chat thread page — model picker read-only", () => {
 
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
-    const label = await waitFor(() =>
-      screen.getByLabelText("Claude Sonnet 4.6"),
-    );
+    const label = await waitFor(() => {
+      return screen.getByLabelText("Claude Sonnet 4.6");
+    });
     expect(label.tagName).toBe("SPAN");
-    expect(
-      screen.queryByRole("combobox", { name: "Claude Sonnet 4.6" }),
-    ).toBeNull();
+    await waitFor(() => {
+      return expect(
+        screen.queryByRole("combobox", { name: "Claude Sonnet 4.6" }),
+      ).toBeNull();
+    });
   });
 
   // CHAT-LOCK-002: thread with only assistant messages keeps the picker
@@ -153,9 +154,9 @@ describe("chat thread page — model picker read-only", () => {
 
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
-    await waitFor(() =>
-      screen.getByRole("combobox", { name: /Claude Sonnet 4\.6/i }),
-    );
+    await waitFor(() => {
+      return screen.getByRole("combobox", { name: /Claude Sonnet 4\.6/i });
+    });
   });
 
   // CHAT-LOCK-003: empty thread keeps the picker interactive.
@@ -179,8 +180,8 @@ describe("chat thread page — model picker read-only", () => {
 
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
-    await waitFor(() =>
-      screen.getByRole("combobox", { name: /Claude Sonnet 4\.6/i }),
-    );
+    await waitFor(() => {
+      return screen.getByRole("combobox", { name: /Claude Sonnet 4\.6/i });
+    });
   });
 });
