@@ -15,9 +15,10 @@ import {
   agentComposeVersions,
 } from "../../../../src/db/schema/agent-compose";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
-import type {
-  AdditionalArtifact,
-  AdditionalVolume,
+import {
+  AUTO_MEMORY_MOUNT_PATH,
+  type AdditionalArtifact,
+  type AdditionalVolume,
 } from "../../../../src/lib/infra/storage/types";
 import { and, eq, inArray, desc, gte, lte, sql } from "drizzle-orm";
 import {
@@ -50,15 +51,6 @@ import { generateSandboxToken } from "../../../../src/lib/auth/sandbox-token";
 import { buildInfraExecutionContext } from "../../../../src/lib/infra/run/context/build-context";
 import { getCachedUser } from "../../../../src/lib/auth/user-cache-service";
 import { env } from "../../../../src/env";
-import { z } from "zod";
-
-// Legacy compat: accept `memoryName` on the HTTP body even though the shared
-// contract no longer names it. Enabled by `.passthrough()` on the request
-// schema. Older CLIs pinned to pre-unification builds continue to work while
-// the field is dropped from docs and typed clients.
-const legacyRunBodyExtrasSchema = z
-  .object({ memoryName: z.string().optional() })
-  .passthrough();
 
 const log = logger("api:runs");
 
@@ -79,18 +71,14 @@ function resolveRunAdditionalVolumes(params: {
 }
 
 /**
- * Consolidate singleton + multi-mount artifact inputs into one shape.
+ * Consolidate body/resumed artifact inputs into one shape.
  *
- * body.artifacts (multi-mount) takes precedence — when non-empty, the legacy
- * singleton artifactName/Version fields are dropped so the infra layer only
- * speaks the new multi-mount contract.
+ * When body.artifacts is non-empty, the CLI path uses the multi-mount shape
+ * directly. Otherwise the route falls back to the session/checkpoint-resumed
+ * singleton artifactName/Version (Zero-layer resume bookkeeping).
  */
 function consolidateArtifactInputs(
-  body: {
-    artifactName?: string;
-    artifactVersion?: string;
-    artifacts?: AdditionalArtifact[];
-  },
+  body: { artifacts?: AdditionalArtifact[] },
   resolved: { artifactName?: string; artifactVersion?: string },
 ): {
   artifactName: string | undefined;
@@ -107,8 +95,8 @@ function consolidateArtifactInputs(
     };
   }
   return {
-    artifactName: resolved.artifactName ?? body.artifactName,
-    artifactVersion: resolved.artifactVersion ?? body.artifactVersion,
+    artifactName: resolved.artifactName,
+    artifactVersion: resolved.artifactVersion,
     artifacts: undefined,
   };
 }
@@ -325,9 +313,6 @@ const router = tsr.router(runsMainContract, {
     try {
       await enforceCaptureNetworkBodiesGate(userId, body.captureNetworkBodies);
 
-      const { memoryName: legacyMemoryName } =
-        legacyRunBodyExtrasSchema.parse(body);
-
       const resolved = await resolveCliRunContext({
         orgId: org.orgId,
         userId,
@@ -339,9 +324,6 @@ const router = tsr.router(runsMainContract, {
         vars: body.vars,
         secrets: body.secrets,
         permissionPolicies: body.permissionPolicies,
-        artifactName: body.artifactName,
-        artifactVersion: body.artifactVersion,
-        memoryName: legacyMemoryName,
         volumeVersions: body.volumeVersions,
       });
 
@@ -396,6 +378,21 @@ const router = tsr.router(runsMainContract, {
         artifacts: effectiveArtifacts,
       } = consolidateArtifactInputs(body, resolved);
 
+      // 6b. Synthesize memory-as-artifact at the auto-memory mount path for
+      // session/checkpoint-resumed runs. Mirrors buildZeroExecutionContext's
+      // memoryArtifacts synthesis — the CLI path carries memory through the
+      // unified artifacts[] channel, not a dedicated memoryName field.
+      const effectiveArtifactsWithMemory: AdditionalArtifact[] | undefined =
+        resolved.memoryName
+          ? [
+              ...(effectiveArtifacts ?? []),
+              {
+                name: resolved.memoryName,
+                mountPath: AUTO_MEMORY_MOUNT_PATH,
+              },
+            ]
+          : effectiveArtifacts;
+
       // 7. Concurrency check + INSERT (transaction with advisory lock)
       const run = await globalThis.services.db.transaction(async (tx) => {
         await tx.execute(
@@ -415,7 +412,7 @@ const router = tsr.router(runsMainContract, {
           resumedFromCheckpointId: body.checkpointId,
           sessionId: body.sessionId,
           artifactName: effectiveArtifactName,
-          memoryName: resolved.memoryName ?? legacyMemoryName,
+          memoryName: resolved.memoryName,
         });
       });
       const transactionTime = Date.now();
@@ -440,8 +437,7 @@ const router = tsr.router(runsMainContract, {
           secretConnectorMap: resolved.secretConnectorMap,
           artifactName: effectiveArtifactName,
           artifactVersion: effectiveArtifactVersion,
-          artifacts: effectiveArtifacts,
-          memoryName: resolved.memoryName ?? legacyMemoryName,
+          artifacts: effectiveArtifactsWithMemory,
           volumeVersions: resolved.volumeVersions ?? body.volumeVersions,
           additionalVolumes: finalAdditionalVolumes,
           environment: resolved.environment,

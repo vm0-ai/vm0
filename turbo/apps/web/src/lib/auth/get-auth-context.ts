@@ -17,13 +17,26 @@ const log = logger("auth:user");
 export type AuthTokenType = "session" | "pat" | "sandbox" | "zero";
 
 /**
+ * Clerk session JWT claims. Fields declared here are the ones we project into
+ * user info via `userProfileFromClaims`. The index signature preserves Clerk's
+ * built-in claims (`sub`, `org_id`, `org_role`, etc.) and any unknown custom
+ * claims without forcing us to enumerate them.
+ */
+export interface SessionClaims {
+  email?: string;
+  first_name?: string;
+  last_name?: string;
+  [key: string]: unknown;
+}
+
+/**
  * Authentication context returned by getAuthContext.
  */
 export type AuthContext = {
   userId: string;
   orgId?: string;
   orgRole?: OrgRole;
-  sessionClaims?: Record<string, unknown>;
+  sessionClaims?: SessionClaims;
   capabilities?: readonly ZeroCapability[];
   runId?: string;
   tokenType?: AuthTokenType;
@@ -282,9 +295,7 @@ async function getClerkSessionAuth(): Promise<AuthContext | null> {
         ? "admin"
         : "member"
       : undefined,
-    sessionClaims: authResult.sessionClaims as
-      | Record<string, unknown>
-      | undefined,
+    sessionClaims: authResult.sessionClaims as SessionClaims | undefined,
     tokenType: "session",
   };
 }

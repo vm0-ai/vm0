@@ -45,7 +45,6 @@ export async function createTestRun(
     secrets?: Record<string, string>;
     sessionId?: string;
     checkpointId?: string;
-    memoryName?: string;
     appendSystemPrompt?: string;
     additionalVolumes?: Array<{
       name: string;

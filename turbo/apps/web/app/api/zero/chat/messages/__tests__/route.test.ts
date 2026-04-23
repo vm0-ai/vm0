@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { HttpResponse } from "msw";
+import { clerkClient } from "@clerk/nextjs/server";
 import { POST } from "../route";
 import {
   createTestRequest,
@@ -9,6 +10,7 @@ import {
   findTestRunRecord,
   getTestRun,
   getTestChatMessagesByThread,
+  countUserRows,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   getTestChatThreadModelOverride,
@@ -990,6 +992,100 @@ describe("POST /api/zero/chat/messages", () => {
           }),
         );
         expect(response.status).toBe(400);
+      });
+    });
+
+    describe("user info source", () => {
+      it("short-circuits getCachedUser when sessionClaims carry email + name", async () => {
+        const email = `${user.userId}@claims.example.com`;
+        mockClerk({
+          userId: user.userId,
+          email,
+          firstName: "Ada",
+          lastName: "Lovelace",
+          sessionClaims: {
+            email,
+            first_name: "Ada",
+            last_name: "Lovelace",
+          },
+        });
+        const client = await clerkClient();
+        vi.mocked(client.users.getUser).mockClear();
+
+        const response = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ agentId, prompt: "claims fast path" }),
+          }),
+        );
+
+        expect(response.status).toBe(201);
+        const data = await response.json();
+
+        expect(client.users.getUser).not.toHaveBeenCalled();
+        expect(await countUserRows("user_cache", user.userId)).toBe(0);
+
+        const run = await getTestRun(data.runId);
+        expect(run.appendSystemPrompt).toContain("Name: Ada Lovelace");
+        expect(run.appendSystemPrompt).toContain(`Email: ${email}`);
+      });
+
+      it("falls back to getCachedUser when sessionClaims are empty", async () => {
+        const email = `${user.userId}@fallback.example.com`;
+        mockClerk({
+          userId: user.userId,
+          email,
+          firstName: "Ada",
+          lastName: null,
+        });
+        const client = await clerkClient();
+        vi.mocked(client.users.getUser).mockClear();
+
+        const response = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ agentId, prompt: "cache fallback" }),
+          }),
+        );
+
+        expect(response.status).toBe(201);
+        const data = await response.json();
+
+        expect(client.users.getUser).toHaveBeenCalledWith(user.userId);
+
+        const run = await getTestRun(data.runId);
+        expect(run.appendSystemPrompt).toContain("Name: Ada");
+        expect(run.appendSystemPrompt).toContain(`Email: ${email}`);
+      });
+
+      it("falls back to getCachedUser when sessionClaims.email is empty", async () => {
+        const email = `${user.userId}@empty-claim.example.com`;
+        mockClerk({
+          userId: user.userId,
+          email,
+          firstName: "Ada",
+          lastName: "Lovelace",
+          sessionClaims: {
+            email: "",
+            first_name: "Ada",
+            last_name: "Lovelace",
+          },
+        });
+        const client = await clerkClient();
+        vi.mocked(client.users.getUser).mockClear();
+
+        const response = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ agentId, prompt: "defensive fallback" }),
+          }),
+        );
+
+        expect(response.status).toBe(201);
+        expect(client.users.getUser).toHaveBeenCalledWith(user.userId);
       });
     });
   });

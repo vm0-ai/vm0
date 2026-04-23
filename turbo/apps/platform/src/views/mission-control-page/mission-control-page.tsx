@@ -31,7 +31,6 @@ import { ShortcutHelpDialog } from "../components/shortcut-help-dialog.tsx";
 import { TaskList } from "./task-list.tsx";
 import { TaskPanel } from "./task-panel.tsx";
 import { CollapsedTaskListBar } from "./collapsed-task-list-bar.tsx";
-import { VoiceButton, VoiceBanner } from "./voice-banner.tsx";
 
 const MISSION_CONTROL_SHORTCUT_SECTIONS = [
   {
@@ -133,11 +132,9 @@ export function MissionControlPage() {
                       Read all
                     </button>
                   )}
-                  <VoiceButton />
                 </div>
               </div>
             </div>
-            <VoiceBanner />
             <div ref={setListRef} className="flex-1 overflow-auto px-6 pb-6">
               <TaskList />
             </div>

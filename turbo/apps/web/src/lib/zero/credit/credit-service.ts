@@ -62,8 +62,11 @@ export async function processOrgCredits(orgId: string): Promise<void> {
         `${record.model}|${record.modelProvider}`,
       );
       if (!pricing) {
-        // No matching pricing for this model+provider combo — no charge
-        // (user's own provider or unconfigured provider)
+        // Missing pricing for a billable (model, provider) pair — we forgot
+        // to seed credit_pricing. Every credit_usage row is billable by
+        // construction (upstream billable-firewall filter), so this is a
+        // revenue-loss misconfiguration. Charge zero for now to let the
+        // record drain, but log loud so the missing price gets seeded.
         await tx
           .update(creditUsage)
           .set({
@@ -75,10 +78,18 @@ export async function processOrgCredits(orgId: string): Promise<void> {
 
         processedCount++;
 
-        log.debug("No matching pricing — zero charge", {
+        log.error("Missing credit_pricing — billable run charged zero", {
           recordId: record.id,
+          runId: record.runId,
+          orgId: record.orgId,
+          userId: record.userId,
+          messageId: record.messageId,
           model: record.model,
           modelProvider: record.modelProvider,
+          inputTokens: record.inputTokens,
+          outputTokens: record.outputTokens,
+          cacheReadInputTokens: record.cacheReadInputTokens,
+          cacheCreationInputTokens: record.cacheCreationInputTokens,
         });
         continue;
       }
