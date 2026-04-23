@@ -582,8 +582,9 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260419
     needs: [prepare]
-    # Deploy if job-ref is set (PR or main), not a release-please commit, and web, CLI, runner, or platform changed
+    # Deploy if job-ref is set (PR or main), not a release-please commit, not a merge queue run, and web, CLI, runner, or platform changed
     if: |
+      github.event_name != 'merge_group' &&
       (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
       needs.prepare.outputs.job-ref != '' && (
         needs.prepare.outputs.web-changed == 'true' ||
