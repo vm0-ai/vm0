@@ -543,6 +543,7 @@ export function groupPermissionsByCategory<T extends { name: string }>(
 export type NonFirewallConnectorType =
   // Signature-based auth — requires computing signatures, not simple header injection
   | "cloudinary" // SHA signature in form body + api_key param
+  | "lovart" // HMAC-SHA256 signature auth
   | "minio" // AWS Signature V4
   // Other
   | "computer"; // not an API connector
