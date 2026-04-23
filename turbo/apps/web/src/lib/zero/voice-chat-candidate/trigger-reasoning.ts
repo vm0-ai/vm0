@@ -316,7 +316,7 @@ function buildReasonerTranscript(
     transcript.push(item);
   }
 
-  for (const [_, replacement] of interrupted) {
+  for (const [, replacement] of interrupted) {
     if (!replacement.consumed && replacement.heardText.trim()) {
       transcript.push({
         seq: replacement.seq,
@@ -340,6 +340,7 @@ function parseAssistantInterruptedNote(
   try {
     parsed = JSON.parse(content);
   } catch {
+    log.warn(`failed to parse assistant interrupted note: ${content}`);
     return null;
   }
   if (!parsed || typeof parsed !== "object") {
