@@ -9,13 +9,13 @@ import {
   insertTestVoiceChatCandidateSession,
   seedTestVoiceChatCandidateSession,
   simulateConcurrentVoiceChatCandidateSessionWrite,
-} from "../../../../__tests__/db-test-seeders/voice-chat-candidate";
+} from "../../../../__tests__/db-test-seeders/voice-chat";
 import {
   getTestVoiceChatCandidateTask,
   getTestVoiceChatCandidateSessionReasoningState,
   listTestVoiceChatCandidateTasks,
   readTestVoiceChatCandidateItems,
-} from "../../../../__tests__/db-test-assertions/voice-chat-candidate";
+} from "../../../../__tests__/db-test-assertions/voice-chat";
 import { server } from "../../../../mocks/server";
 import { http } from "../../../../__tests__/msw";
 import { mockAblyPublish } from "../../../../__tests__/ably-mock";

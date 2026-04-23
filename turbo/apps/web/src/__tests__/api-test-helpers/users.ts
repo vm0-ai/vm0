@@ -17,7 +17,7 @@ export {
   insertUserCacheEntry,
   insertVm0ApiKeys,
 } from "../db-test-seeders/users";
-export { insertTestVoiceChatCandidateSession } from "../db-test-seeders/voice-chat-candidate";
+export { insertTestVoiceChatCandidateSession } from "../db-test-seeders/voice-chat";
 
 // Re-exports: read-only assertions
 export {
@@ -27,7 +27,7 @@ export {
 export {
   getTestVoiceChatCandidateSession,
   countTestVoiceChatCandidateSessionsByReasoningStatus,
-} from "../db-test-assertions/voice-chat-candidate";
+} from "../db-test-assertions/voice-chat";
 
 /**
  * Get a VM0 API key from the pool for a vendor.

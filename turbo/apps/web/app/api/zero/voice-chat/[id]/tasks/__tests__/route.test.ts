@@ -3,7 +3,7 @@ import { randomUUID } from "crypto";
 import { testContext } from "../../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
 import { findTestZeroRun } from "../../../../../../../src/__tests__/db-test-assertions/runs";
-import { insertTestVoiceChatCandidateTask } from "../../../../../../../src/__tests__/db-test-seeders/voice-chat-candidate";
+import { insertTestVoiceChatCandidateTask } from "../../../../../../../src/__tests__/db-test-seeders/voice-chat";
 import {
   postRequest,
   getRequest,

@@ -12,7 +12,7 @@ import { mockAblyPublish } from "../../../../../../src/__tests__/ably-mock";
 import {
   getTestVoiceChatCandidateTask,
   listTestVoiceChatCandidateItems,
-} from "../../../../../../src/__tests__/db-test-assertions/voice-chat-candidate";
+} from "../../../../../../src/__tests__/db-test-assertions/voice-chat";
 import {
   postRequest,
   paramsFor,
