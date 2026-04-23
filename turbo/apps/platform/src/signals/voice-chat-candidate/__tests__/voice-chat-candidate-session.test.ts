@@ -942,5 +942,104 @@ describe("voice-chat-candidate session", () => {
       };
       expect(sender.replaceTrack).toHaveBeenCalledWith(freshTrack);
     });
+
+    it("does NOT trigger recovery when tracks are still live on screen resume", async () => {
+      await setup();
+      // Default stubWebRTC returns a stream whose tracks are "live".
+      // Capture the getUserMedia call count before firing visibilitychange so
+      // we can assert that no additional calls happen afterward.
+      await startSuccessfully();
+
+      const getUserMedia = navigator.mediaDevices.getUserMedia as ReturnType<
+        typeof vi.fn
+      >;
+      const callsBefore = getUserMedia.mock.calls.length;
+
+      // Simulate screen unlock with healthy tracks still live.
+      Object.defineProperty(document, "visibilityState", {
+        value: "visible",
+        configurable: true,
+      });
+      document.dispatchEvent(new Event("visibilitychange"));
+
+      // Flush microtasks — recovery involves async calls, so a few ticks are
+      // enough to observe any spurious invocation.
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(getUserMedia.mock.calls.length).toBe(callsBefore);
+      expect(context.store.get(vccStatus$)).toBe("connected");
+    });
+
+    it("sets vccError$ when getUserMedia is denied during recovery", async () => {
+      await setup();
+
+      const stoppedTrack = {
+        enabled: true,
+        readyState: "ended" as MediaStreamTrackState,
+        stop: vi.fn(),
+      };
+      const endedStream = {
+        getAudioTracks: () => {
+          return [stoppedTrack];
+        },
+        getTracks: () => {
+          return [stoppedTrack];
+        },
+      } as unknown as MediaStream;
+
+      Object.defineProperty(navigator, "mediaDevices", {
+        value: {
+          getUserMedia: vi
+            .fn()
+            .mockResolvedValueOnce(endedStream)
+            .mockRejectedValueOnce(
+              Object.assign(new Error("NotAllowedError"), {
+                name: "NotAllowedError",
+              }),
+            ),
+          enumerateDevices: vi.fn().mockResolvedValue([
+            { kind: "audiooutput", deviceId: "default" },
+            { kind: "audiooutput", deviceId: "bt-headset-1" },
+          ] as MediaDeviceInfo[]),
+        },
+        writable: true,
+        configurable: true,
+      });
+
+      mockCreateSessionOk();
+      mockTokenOk();
+      mockGetSessionOk();
+      mockListActiveTasksOk();
+      detach(
+        context.store.set(
+          startVoiceChatCandidate$,
+          DEFAULT_AGENT_ID,
+          context.signal,
+        ),
+        Reason.DomCallback,
+      );
+      await vi.waitFor(() => {
+        expect(dcRef.current).not.toBeNull();
+      });
+      dcRef.current?.emitOpen();
+      await vi.waitFor(() => {
+        expect(context.store.get(vccStatus$)).toBe("connected");
+      });
+
+      Object.defineProperty(document, "visibilityState", {
+        value: "visible",
+        configurable: true,
+      });
+      document.dispatchEvent(new Event("visibilitychange"));
+
+      await vi.waitFor(() => {
+        expect(context.store.get(vccStatus$)).toBe("error");
+      });
+      expect(context.store.get(vccError$)).toBe(
+        "Microphone access lost. Please reconnect.",
+      );
+    });
   });
 });

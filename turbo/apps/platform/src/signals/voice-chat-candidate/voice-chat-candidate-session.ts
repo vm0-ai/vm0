@@ -712,9 +712,11 @@ const monitorMicrophoneRecovery$ = command(
         return;
       }
       const tracks = stream.getAudioTracks();
-      const isDead = tracks.every((t) => {
-        return t.readyState === "ended";
-      });
+      const isDead =
+        tracks.length > 0 &&
+        tracks.every((t) => {
+          return t.readyState === "ended";
+        });
       if (!isDead) {
         return;
       }
