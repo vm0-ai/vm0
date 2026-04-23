@@ -67,6 +67,7 @@ import { ATTACH_ONLY_PLACEHOLDER } from "../../signals/chat-page/resolve-draft-a
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
 import { orgModelProviders$ } from "../../signals/external/org-model-providers.ts";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
+import { AgentProfilePopover } from "./agent-profile-popover.tsx";
 import { Link } from "../router/link.tsx";
 import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
 import { setActiveOrgManageTab$ } from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
@@ -106,27 +107,15 @@ function HeaderAgentAvatar({ thread }: { thread: ChatThreadSignals }) {
   }
 
   return (
-    <TooltipProvider delayDuration={200}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Link
-            pathname="/agents/:agentId"
-            options={{ pathParams: { agentId } }}
-            className="h-8 w-8 shrink-0 overflow-hidden rounded-xl transition-colors duration-150 hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-            aria-label="View agent profile"
-          >
-            <AgentAvatarImg
-              name={agentId}
-              alt=""
-              className="h-8 w-8 rounded-full object-cover object-top"
-            />
-          </Link>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">
-          <p className="text-xs">View agent profile</p>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <AgentProfilePopover agentId={agentId}>
+      <div className="h-8 w-8 shrink-0 overflow-hidden rounded-xl">
+        <AgentAvatarImg
+          name={agentId}
+          alt=""
+          className="h-8 w-8 rounded-full object-cover object-top"
+        />
+      </div>
+    </AgentProfilePopover>
   );
 }
 
@@ -747,13 +736,15 @@ function AssistantErrorContent({ error }: { error: string }) {
 function AssistantBubbleAvatar({ thread }: { thread: ChatThreadSignals }) {
   const agentId = useLastResolved(thread.agentId$) ?? "";
   return (
-    <div className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 shrink-0 @[900px]:mt-0.5 overflow-hidden rounded-xl">
-      <AgentAvatarImg
-        name={agentId}
-        alt=""
-        className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 rounded-full object-cover object-top"
-      />
-    </div>
+    <AgentProfilePopover agentId={agentId}>
+      <div className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 shrink-0 @[900px]:mt-0.5 overflow-hidden rounded-xl">
+        <AgentAvatarImg
+          name={agentId}
+          alt=""
+          className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 rounded-full object-cover object-top"
+        />
+      </div>
+    </AgentProfilePopover>
   );
 }
 
