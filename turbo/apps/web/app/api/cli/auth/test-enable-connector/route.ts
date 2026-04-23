@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
-import { connectorTypeSchema } from "@vm0/core";
+import { connectorTypeSchema } from "@vm0/core/contracts/connectors";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
   resolveTestUserId,

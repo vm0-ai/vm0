@@ -1,5 +1,6 @@
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
-import { zeroBillingCheckoutContract, createErrorResponse } from "@vm0/core";
+import { zeroBillingCheckoutContract } from "@vm0/core/contracts/zero-billing";
+import { createErrorResponse } from "@vm0/core/contracts/errors";
 import { initServices } from "../../../../../src/lib/init-services";
 import { env } from "../../../../../src/env";
 import {

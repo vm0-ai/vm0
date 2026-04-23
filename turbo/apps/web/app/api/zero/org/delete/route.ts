@@ -1,5 +1,6 @@
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
-import { zeroOrgDeleteContract, createErrorResponse } from "@vm0/core";
+import { zeroOrgDeleteContract } from "@vm0/core/contracts/zero-org";
+import { createErrorResponse } from "@vm0/core/contracts/errors";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
   requireAuth,
