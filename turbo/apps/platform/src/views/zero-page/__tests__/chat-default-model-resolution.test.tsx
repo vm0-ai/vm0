@@ -174,7 +174,7 @@ function mockOrgProviders(options: {
 function mockThread(options: {
   modelProviderId: string | null;
   selectedModel: string | null;
-  messages?: Array<{ id: string; role: "user" | "assistant"; content: string; createdAt: string }>;
+  messages?: { id: string; role: "user" | "assistant"; content: string; createdAt: string }[];
 }) {
   server.use(
     mockApi(chatThreadByIdContract.get, ({ respond }) => {
@@ -363,6 +363,14 @@ describe("chat composer — default model resolution", () => {
     mockThread({
       modelProviderId: ZAI_PROVIDER_ID,
       selectedModel: "glm-5.1",
+      messages: [
+        {
+          id: "msg-user-1",
+          role: "user" as const,
+          content: "Use GLM",
+          createdAt: "2026-03-10T00:01:00Z",
+        },
+      ],
     });
 
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
@@ -370,10 +378,11 @@ describe("chat composer — default model resolution", () => {
     await expectThreadComposerShowsModel("GLM-5.1");
   });
 
-  // CHAT-DM-007: When the thread has no stored model but already has a user
-  // message, the composer shows the agent default as a locked SPAN — the
-  // thread is already mid-session so the picker cannot be reopened.
-  it("thread without override but with messages shows agent default as locked (CHAT-DM-007)", async () => {
+  // CHAT-DM-007: When the thread has no override, the composer on the
+  // thread page falls back to the agent default (same rule as on the
+  // landing page) — ensuring the override chain is consistent across both
+  // entry points.
+  it("thread without override falls back to the agent default (CHAT-DM-007)", async () => {
     mockOrgProviders({
       defaultProviderId: MOONSHOT_PROVIDER_ID,
       defaultSelectedModel: "kimi-k2.5",
@@ -382,22 +391,11 @@ describe("chat composer — default model resolution", () => {
       modelProviderId: ANTHROPIC_PROVIDER_ID,
       selectedModel: "claude-opus-4-7",
     });
-    mockThread({
-      modelProviderId: null,
-      selectedModel: null,
-      messages: [
-        {
-          id: "msg-user-1",
-          role: "user" as const,
-          content: "Hello",
-          createdAt: "2026-03-10T00:01:00Z",
-        },
-      ],
-    });
+    mockThread({ modelProviderId: null, selectedModel: null });
 
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
-    // Thread has a user message — picker is locked to agent default.
-    await expectThreadComposerShowsModel("Claude Opus 4.7");
+    // Thread has no stored values yet — picker remains interactive.
+    await expectComposerShowsModel("Claude Opus 4.7");
   });
 });
