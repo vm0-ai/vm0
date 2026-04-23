@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.93.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.93.1...runner-rs-v0.93.2) (2026-04-23)
+
+
+### Documentation
+
+* **runner:** fix misleading comments in resolve_ambiguous test ([#10791](https://github.com/vm0-ai/vm0/issues/10791)) ([2da48bb](https://github.com/vm0-ai/vm0/commit/2da48bbbeb2ca824789551e4980656c560b31350))
+
 ## [0.93.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.93.0...runner-rs-v0.93.1) (2026-04-23)
 
 
