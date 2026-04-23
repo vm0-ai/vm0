@@ -3,6 +3,7 @@
 
 use guest_agent::checkpoint;
 use guest_agent::cli;
+use guest_agent::complete;
 use guest_agent::env;
 use guest_agent::error;
 use guest_agent::heartbeat;
@@ -220,6 +221,17 @@ async fn execute(
                     "✓ Checkpoint complete ({}s)",
                     cp_start.elapsed().as_secs()
                 );
+
+                // Checkpoint row is in the DB — the complete route's only
+                // hard dependency is satisfied. Fire /complete now (in
+                // parallel with final_telemetry, which hits a different
+                // endpoint with no ordering constraint) so the host's
+                // `last_event_to_complete` timestamp isn't stretched by the
+                // final_telemetry tail + VM teardown + runner fallback that
+                // used to be the only trigger. Runner still posts /complete
+                // after VM exit; its call is idempotent-short-circuited.
+                log_info!(LOG_TAG, "▷ Cleanup");
+                tokio::join!(complete::report_success(), final_telemetry(masker));
             }
             Err(e) => {
                 let msg = format!("Checkpoint failed: {e}");
@@ -231,11 +243,14 @@ async fn execute(
                 );
                 let _ = std::fs::write(paths::checkpoint_error_file(), &msg);
                 exit_code = 1;
+
+                // Failure path: don't call /complete from guest. The runner's
+                // provider.complete() fallback posts exitCode=1, triggering
+                // the route's "checkpoint not found → failed" branch.
+                log_info!(LOG_TAG, "▷ Cleanup");
+                final_telemetry(masker).await;
             }
         }
-
-        log_info!(LOG_TAG, "▷ Cleanup");
-        final_telemetry(masker).await;
     } else {
         if cli_exit_code == 0 && exit_code == 0 {
             log_info!(LOG_TAG, "claude-code completed successfully");
