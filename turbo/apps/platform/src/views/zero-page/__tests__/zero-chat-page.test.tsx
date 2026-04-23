@@ -27,7 +27,7 @@ function renderChatPage() {
 }
 
 describe("zero chat page - suggested prompts", () => {
-  const allUseCases = getCategories().flatMap((c) => {
+  const allUseCases = getCategories(undefined).flatMap((c) => {
     return c.cases;
   });
   const allTitles = new Set(
