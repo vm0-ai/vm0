@@ -21,7 +21,6 @@ import { zeroSearchCommand } from "./commands/zero/search";
 import { zeroDeveloperSupportCommand } from "./commands/zero/developer-support";
 import { zeroComputerUseCommand } from "./commands/zero/computer-use";
 import { zeroPhoneCommand } from "./commands/zero/phone";
-import { zeroVoiceChatCommand } from "./commands/zero/voice-chat";
 import { zeroWebCommand } from "./commands/zero/web";
 import {
   decodeZeroTokenPayload,
@@ -48,7 +47,6 @@ const COMMAND_CAPABILITY_MAP: Record<string, string | null> = {
   "developer-support": null,
   "computer-use": "computer-use:write",
   phone: "phone:write",
-  "voice-chat": "voice-chat:write",
   web: null,
 };
 
@@ -71,7 +69,6 @@ const DEFAULT_COMMANDS: Command[] = [
   zeroDeveloperSupportCommand,
   zeroComputerUseCommand,
   zeroPhoneCommand,
-  zeroVoiceChatCommand,
   zeroWebCommand,
 ];
 
