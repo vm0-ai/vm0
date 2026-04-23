@@ -176,6 +176,80 @@ async fn error_field_serializes_with_message_and_source_chain() {
 }
 
 #[tokio::test]
+async fn burst_past_channel_cap_drops_without_blocking_or_feeding_back() {
+    let server = MockServer::start_async().await;
+
+    let ingest = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/v1/datasets/vm0-web-logs-test/ingest");
+            then.status(200).body("{}");
+        })
+        .await;
+
+    // Negative: the layer's own "axiom channel full" warning (emitted under
+    // INTERNAL_TARGET every 1000 drops) must NOT reach ingest. `enabled()`
+    // filters INTERNAL_TARGET to prevent the diagnostic from re-entering the
+    // already-full channel and feedback-flooding.
+    let feedback = server
+        .mock_async(|when, then| {
+            when.method(POST).body_includes("axiom channel full");
+            then.status(200).body("{}");
+        })
+        .await;
+
+    let (layer, guard) = axiom_layer::init_with_base_url(&server.base_url(), "t", "test")
+        .expect("init must succeed");
+    let subscriber = tracing_subscriber::registry().with(layer);
+
+    // 3000 > CHANNEL_CAP (1024) + 1000 so we both overflow the channel and
+    // cross the drop counter's multiple-of-1000 branch at least twice
+    // (drops #1 and #1001).
+    const EMIT: usize = 3000;
+    let emit_elapsed;
+    {
+        let _sub = tracing::subscriber::set_default(subscriber);
+        // `#[tokio::test]` defaults to a current-thread runtime. The
+        // synchronous for loop below monopolizes that thread — the
+        // dispatcher task is spawned but cannot run, so the channel fills
+        // deterministically without any mock-server delay trickery. Once
+        // past CHANNEL_CAP every `try_send` returns `Full` and we exercise
+        // the drop-counter path.
+        let start = std::time::Instant::now();
+        for i in 0..EMIT {
+            tracing::warn!(i, "burst");
+        }
+        emit_elapsed = start.elapsed();
+    }
+
+    // `on_event` uses `try_send`, so even with a full channel the whole
+    // burst must complete in low-ms. 500ms is ample slack over the expected
+    // runtime and will hang (not silently pass) if someone ever swaps in a
+    // blocking variant like `blocking_send` or a retry loop.
+    assert!(
+        emit_elapsed < std::time::Duration::from_millis(500),
+        "caller blocked on full channel: {emit_elapsed:?}",
+    );
+
+    guard.shutdown().await;
+
+    // Feedback invariant: INTERNAL_TARGET events never entered the channel.
+    feedback.assert_calls_async(0).await;
+
+    // Dispatcher drained normally after shutdown's `send(Close)` found a
+    // slot — confirms the loop recovers rather than permanently wedging.
+    let hits = ingest.calls_async().await;
+    assert!(hits >= 1, "dispatcher never drained");
+    // Drops actually happened: if buffering were unbounded, the dispatcher
+    // would POST ceil(EMIT/BATCH_SIZE) = 60 batches; with a 1024-slot
+    // channel it POSTs ~21. 40 is a comfortable ceiling under 60.
+    assert!(
+        hits < 40,
+        "too many ingest POSTs ({hits}); drops may not have happened",
+    );
+}
+
+#[tokio::test]
 async fn non_success_ingest_response_does_not_hang_shutdown_or_panic() {
     let server = MockServer::start_async().await;
 

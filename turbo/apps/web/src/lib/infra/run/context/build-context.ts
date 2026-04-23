@@ -1,11 +1,7 @@
 import { expandEnvironmentFromCompose } from "../environment/expand-environment";
 import type { ExecutionContext, ResumeSession } from "../types";
 import type { ArtifactSnapshot } from "../../checkpoint/types";
-import {
-  AUTO_MEMORY_MOUNT_PATH,
-  type AdditionalArtifact,
-  type AdditionalVolume,
-} from "../../storage/types";
+import type { AdditionalArtifact, AdditionalVolume } from "../../storage/types";
 import type { Firewalls, NetworkPolicies } from "@vm0/core";
 
 interface BuildInfraContextParams {
@@ -23,7 +19,6 @@ interface BuildInfraContextParams {
   artifactName?: string;
   artifactVersion?: string;
   artifacts?: AdditionalArtifact[];
-  memoryName?: string;
   volumeVersions?: Record<string, string>;
   additionalVolumes?: AdditionalVolume[];
   environment?: Record<string, string>;
@@ -67,17 +62,6 @@ export function buildInfraExecutionContext(
       params.secrets,
     ).environment;
 
-  // Fold legacy memoryName into artifacts[] so the execution context only
-  // speaks the multi-mount shape. Session-row bookkeeping
-  // (agent_sessions.memory_name) happens separately in the route handler via
-  // insertRunRecord — the field is not propagated through the context.
-  const artifacts: AdditionalArtifact[] | undefined = params.memoryName
-    ? [
-        ...(params.artifacts ?? []),
-        { name: params.memoryName, mountPath: AUTO_MEMORY_MOUNT_PATH },
-      ]
-    : params.artifacts;
-
   const context: ExecutionContext = {
     runId: params.runId,
     userId: params.userId,
@@ -92,7 +76,7 @@ export function buildInfraExecutionContext(
     sandboxToken: params.sandboxToken,
     artifactName: params.artifactName,
     artifactVersion: params.artifactVersion,
-    artifacts,
+    artifacts: params.artifacts,
     volumeVersions: params.volumeVersions,
     additionalVolumes: params.additionalVolumes,
     environment,
