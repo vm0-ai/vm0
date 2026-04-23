@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.290.1](https://github.com/vm0-ai/vm0/compare/web-v12.290.0...web-v12.290.1) (2026-04-23)
+
+
+### Bug Fixes
+
+* **voice-chat-candidate:** adaptive echo cancellation and server-side session config ([#10795](https://github.com/vm0-ai/vm0/issues/10795)) ([2782e42](https://github.com/vm0-ai/vm0/commit/2782e42e8a562a4c20ecebbd5630de0f6ae21cf3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.229.2
+
 ## [12.290.0](https://github.com/vm0-ai/vm0/compare/web-v12.289.0...web-v12.290.0) (2026-04-23)
 
 

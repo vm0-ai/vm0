@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.131.3](https://github.com/vm0-ai/vm0/compare/cli-v9.131.2...cli-v9.131.3) (2026-04-23)
+
+
+### Bug Fixes
+
+* **voice-chat-candidate:** adaptive echo cancellation and server-side session config ([#10795](https://github.com/vm0-ai/vm0/issues/10795)) ([2782e42](https://github.com/vm0-ai/vm0/commit/2782e42e8a562a4c20ecebbd5630de0f6ae21cf3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.229.2
+
 ## [9.131.2](https://github.com/vm0-ai/vm0/compare/cli-v9.131.1...cli-v9.131.2) (2026-04-23)
 
 

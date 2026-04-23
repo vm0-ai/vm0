@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.93.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.93.2...runner-rs-v0.93.3) (2026-04-23)
+
+
+### Bug Fixes
+
+* **voice-chat-candidate:** adaptive echo cancellation and server-side session config ([#10795](https://github.com/vm0-ai/vm0/issues/10795)) ([2782e42](https://github.com/vm0-ai/vm0/commit/2782e42e8a562a4c20ecebbd5630de0f6ae21cf3))
+
+
+### Documentation
+
+* document runner config schema (closes [#10775](https://github.com/vm0-ai/vm0/issues/10775)) ([#10801](https://github.com/vm0-ai/vm0/issues/10801)) ([70808d4](https://github.com/vm0-ai/vm0/commit/70808d4625fc21433b711d580610004ee6c07f0b))
+
 ## [0.93.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.93.1...runner-rs-v0.93.2) (2026-04-23)
 
 

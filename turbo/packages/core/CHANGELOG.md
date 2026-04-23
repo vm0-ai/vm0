@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.229.2](https://github.com/vm0-ai/vm0/compare/core-v8.229.1...core-v8.229.2) (2026-04-23)
+
+
+### Bug Fixes
+
+* **voice-chat-candidate:** adaptive echo cancellation and server-side session config ([#10795](https://github.com/vm0-ai/vm0/issues/10795)) ([2782e42](https://github.com/vm0-ai/vm0/commit/2782e42e8a562a4c20ecebbd5630de0f6ae21cf3))
+
 ## [8.229.1](https://github.com/vm0-ai/vm0/compare/core-v8.229.0...core-v8.229.1) (2026-04-23)
 
 
