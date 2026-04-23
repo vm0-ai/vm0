@@ -1,6 +1,11 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
 import { animationFrame, delay } from "signal-timers";
-import { onRef, resetSignal, setLoop } from "../utils.ts";
+import {
+  createDeferredPromise,
+  onRef,
+  resetSignal,
+  setLoop,
+} from "../utils.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { createScrollSignals } from "../auto-scroll.ts";
 import {

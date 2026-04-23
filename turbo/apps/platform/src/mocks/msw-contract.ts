@@ -65,16 +65,15 @@ function withSignal<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
       reject(getAbortReason(signal));
     };
     signal.addEventListener("abort", onAbort, { once: true });
-    promise.then(
-      (value) => {
+    promise
+      .then((value) => {
         signal.removeEventListener("abort", onAbort);
         resolve(value);
-      },
-      (error) => {
+      })
+      .catch((error: unknown) => {
         signal.removeEventListener("abort", onAbort);
         reject(error);
-      },
-    );
+      });
   });
 }
 

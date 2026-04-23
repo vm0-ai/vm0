@@ -2,7 +2,7 @@
   "compilerOptions": {
     "target": "ES2022",
     "useDefineForClassFields": true,
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": ["ES2022", "ES2024.Promise", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "skipLibCheck": true,
     "types": ["vite/client"],

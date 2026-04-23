@@ -525,7 +525,7 @@ const syncTalkerInstructions$ = command(
     const createClient = get(zeroClient$);
     const client = createClient(zeroVoiceChatCandidateContract);
     const res = await accept(
-      client.getSession({ params: { id: sid } }),
+      client.getSession({ params: { id: sid }, fetchOptions: { signal } }),
       [200, 401, 404],
       { toast: false },
     );

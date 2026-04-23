@@ -23,7 +23,11 @@
  *   })
  */
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import {
+  AST_NODE_TYPES,
+  type TSESLint,
+  type TSESTree,
+} from "@typescript-eslint/utils";
 import { createRule } from "../utils.ts";
 
 const MESSAGE =
@@ -46,9 +50,10 @@ export default createRule({
     },
   },
   create(context) {
-    const handlerStack: Array<
-      TSESTree.ArrowFunctionExpression | TSESTree.FunctionExpression
-    > = [];
+    const handlerStack: (
+      | TSESTree.ArrowFunctionExpression
+      | TSESTree.FunctionExpression
+    )[] = [];
 
     function isMswHandler(
       node: TSESTree.ArrowFunctionExpression | TSESTree.FunctionExpression,
@@ -88,32 +93,28 @@ export default createRule({
       node: TSESTree.Identifier,
       handler: TSESTree.ArrowFunctionExpression | TSESTree.FunctionExpression,
     ): boolean {
-      const scope = context.sourceCode.getScope(node);
-      for (
-        let currentScope = scope;
-        currentScope;
-        currentScope = currentScope.upper
-      ) {
+      let currentScope: TSESLint.Scope.Scope | null =
+        context.sourceCode.getScope(node);
+      while (currentScope) {
         const variable = currentScope.variables.find((entry) => {
           return entry.name === node.name;
         });
         const def = variable?.defs[0];
-        if (!def || def.node.type !== AST_NODE_TYPES.VariableDeclarator) {
-          continue;
+        if (def && def.node.type === AST_NODE_TYPES.VariableDeclarator) {
+          const declaration = def.node;
+          if (
+            declaration.init &&
+            declaration.init.type === AST_NODE_TYPES.NewExpression &&
+            declaration.init.callee.type === AST_NODE_TYPES.Identifier &&
+            declaration.init.callee.name === "Promise"
+          ) {
+            return !(
+              declaration.range[0] >= handler.range[0] &&
+              declaration.range[1] <= handler.range[1]
+            );
+          }
         }
-        const declaration = def.node;
-        if (
-          !declaration.init ||
-          declaration.init.type !== AST_NODE_TYPES.NewExpression ||
-          declaration.init.callee.type !== AST_NODE_TYPES.Identifier ||
-          declaration.init.callee.name !== "Promise"
-        ) {
-          continue;
-        }
-        return !(
-          declaration.range[0] >= handler.range[0] &&
-          declaration.range[1] <= handler.range[1]
-        );
+        currentScope = currentScope.upper;
       }
       return false;
     }

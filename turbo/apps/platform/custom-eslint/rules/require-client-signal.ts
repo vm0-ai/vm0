@@ -157,7 +157,9 @@ export default createRule({
       return null;
     }
 
-    function getSignalIdentifierName(node: TSESTree.Expression): string | null {
+    function getSignalIdentifierName(
+      node: TSESTree.Property["value"],
+    ): string | null {
       if (node.type === AST_NODE_TYPES.Identifier) {
         return node.name;
       }
@@ -186,26 +188,30 @@ export default createRule({
         return false;
       }
       switch (node.type) {
-        case AST_NODE_TYPES.Identifier:
+        case AST_NODE_TYPES.Identifier: {
           return current.signalAliases.has(node.name);
-        case AST_NODE_TYPES.CallExpression:
+        }
+        case AST_NODE_TYPES.CallExpression: {
           return (
             expressionReferencesSignalAlias(node.callee, current) ||
             node.arguments.some((arg) => {
               return expressionReferencesSignalAlias(arg, current);
             })
           );
-        case AST_NODE_TYPES.MemberExpression:
+        }
+        case AST_NODE_TYPES.MemberExpression: {
           return (
             expressionReferencesSignalAlias(node.object, current) ||
             (node.computed &&
               expressionReferencesSignalAlias(node.property, current))
           );
-        case AST_NODE_TYPES.ArrayExpression:
+        }
+        case AST_NODE_TYPES.ArrayExpression: {
           return node.elements.some((element) => {
             return expressionReferencesSignalAlias(element, current);
           });
-        case AST_NODE_TYPES.ObjectExpression:
+        }
+        case AST_NODE_TYPES.ObjectExpression: {
           return node.properties.some((prop) => {
             if (prop.type !== AST_NODE_TYPES.Property) {
               return false;
@@ -216,13 +222,17 @@ export default createRule({
               expressionReferencesSignalAlias(prop.value, current)
             );
           });
-        case AST_NODE_TYPES.ChainExpression:
+        }
+        case AST_NODE_TYPES.ChainExpression: {
           return expressionReferencesSignalAlias(node.expression, current);
+        }
         case AST_NODE_TYPES.TSAsExpression:
-        case AST_NODE_TYPES.TSTypeAssertion:
+        case AST_NODE_TYPES.TSTypeAssertion: {
           return expressionReferencesSignalAlias(node.expression, current);
-        default:
+        }
+        default: {
           return false;
+        }
       }
     }
 

@@ -154,6 +154,14 @@ export default [
       "ccstate/no-direct-local-storage": "off",
     },
   },
+  // Allow new Promise() in view-level event handlers that wrap one-shot
+  // browser DOM events (e.g. <img> load/error) without an ambient signal.
+  {
+    files: ["src/views/zero-page/components/org-manage/org-general-tab.tsx"],
+    rules: {
+      "ccstate/no-new-promise": "off",
+    },
+  },
   // Allow new AbortController in signal infrastructure, test helpers, and
   // views that need a controller outliving the page signal (e.g. post-navigate
   // async work).
