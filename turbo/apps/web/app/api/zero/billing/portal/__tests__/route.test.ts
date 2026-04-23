@@ -114,6 +114,20 @@ describe("POST /api/zero/billing/portal", () => {
     expect(response.status).toBe(400);
   });
 
+  it("returns 400 when returnUrl is not a valid URL", async () => {
+    const request = createTestRequest(
+      "http://localhost:3000/api/zero/billing/portal",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ returnUrl: "not-a-url" }),
+      },
+    );
+    const response = await POST(request);
+
+    expect(response.status).toBe(400);
+  });
+
   it("returns 403 for non-admin member", async () => {
     mockClerk({
       userId: user.userId,
