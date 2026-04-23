@@ -130,6 +130,7 @@ describe("billing-service", () => {
     expect(billing?.credits ?? 0).toBe(0);
 
     const expires = await findCreditExpiresRecords(user.orgId);
-    expect(expires.filter((r) => r.source === "starter_grant")).toHaveLength(0);
+    expect(expires.filter((r) => { return r.source === "starter_grant"; })).toHaveLength(0);
   });
 });
+
