@@ -395,6 +395,40 @@ enum SignalSource {
 
 type MitmRestartHandle = tokio::task::JoinHandle<RunnerResult<tokio::process::Child>>;
 
+/// Mitmproxy crash/restart state. Bundled because the three fields always
+/// travel together through the main loop's `select!` arms and through every
+/// helper that deals with proxy liveness — a single "is the proxy up / did
+/// it crash / are we restarting" unit.
+struct MitmState {
+    proxy: proxy::MitmProxy,
+    crash_rx: tokio::sync::mpsc::Receiver<()>,
+    retry: RetryState<MitmRestartHandle>,
+}
+
+/// Per-job tracking: spawned job tasks, background destroy tasks, and the
+/// cancel-token map shared with the provider and signal handler. Every
+/// main-loop arm that touches one typically touches another, so bundling
+/// keeps helper signatures small.
+struct JobsState {
+    jobs: JoinSet<Option<RunId>>,
+    destroy_tasks: JoinSet<()>,
+    cancel_tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
+}
+
+/// Resources torn down only during `shutdown_runner`: factories and runtime
+/// (both consumed by `shutdown_factories`), kmsg/DNS handles (both consumed
+/// by their `stop`), the optional signal-handler abort, and the paths the
+/// shutdown sequence reads from. Kept as one struct so `shutdown_runner`'s
+/// signature stays small.
+struct ShutdownResources {
+    factories: BTreeMap<String, (SharedFactory, bool)>,
+    runtime: Box<dyn SandboxRuntime>,
+    signal_handler_abort: Option<tokio::task::AbortHandle>,
+    base_dir: std::path::PathBuf,
+    kmsg_handle: kmsg_log::KmsgHandle,
+    dns_handle: dns::DnsProxy,
+}
+
 async fn run(config: RunConfig) -> RunnerResult<()> {
     let RunConfig {
         id: runner_id,
@@ -406,8 +440,8 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         budget,
         idle_pool,
         status,
-        mut mitm,
-        mut mitm_crash_rx,
+        mitm,
+        mitm_crash_rx,
         provider,
         cancel_tokens,
         cancel,
@@ -447,12 +481,6 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         info!(profile = %profile_name, "factory started");
     }
 
-    let mut jobs: JoinSet<Option<RunId>> = JoinSet::new();
-    // Tracked destroy tasks — JoinSet ensures we can await all in-flight
-    // destroys at shutdown, preventing factory Arc leaks that cause
-    // "factory still referenced" warnings from Arc::try_unwrap.
-    let mut destroy_tasks: JoinSet<()> = JoinSet::new();
-
     status.write_initial().await;
     info!(
         name = %name,
@@ -466,7 +494,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     // -----------------------------------------------------------------------
     // Mitmproxy crash-restart state
     // -----------------------------------------------------------------------
-    let mut mitm_retry: RetryState<MitmRestartHandle> = RetryState::new(
+    let mitm_retry: RetryState<MitmRestartHandle> = RetryState::new(
         MITM_BACKOFF_INITIAL,
         MITM_BACKOFF_MAX,
         Some(MITM_MAX_CONSECUTIVE_FAILURES),
@@ -475,6 +503,8 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     // -----------------------------------------------------------------------
     // Signal handling / mode channel
     // -----------------------------------------------------------------------
+    // `SignalController::spawn` clones the cancel_tokens Arc for the signal
+    // handler task; the original is moved into `jobs_state` below.
     let signal = match signal_source {
         SignalSource::Real(signals) => {
             SignalController::spawn(cancel.clone(), Arc::clone(&cancel_tokens), signals)
@@ -484,6 +514,26 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     let mut mode_rx = signal.mode_rx;
     let mode_tx = signal.mode_tx;
     let signal_handler_abort = signal.handler_abort;
+
+    // -----------------------------------------------------------------------
+    // Bundle job tracking + mitm state — reduces helper arg counts below
+    // the clippy `too_many_arguments` threshold. Both structs are accessed
+    // via direct field paths in `tokio::select!` arms so split-borrow rules
+    // apply.
+    // -----------------------------------------------------------------------
+    let mut jobs_state = JobsState {
+        jobs: JoinSet::new(),
+        // Tracked destroy tasks — JoinSet ensures we can await all in-flight
+        // destroys at shutdown, preventing factory Arc leaks that cause
+        // "factory still referenced" warnings from Arc::try_unwrap.
+        destroy_tasks: JoinSet::new(),
+        cancel_tokens,
+    };
+    let mut mitm_state = MitmState {
+        proxy: mitm,
+        crash_rx: mitm_crash_rx,
+        retry: mitm_retry,
+    };
 
     // -----------------------------------------------------------------------
     // Idle pool cleanup interval (every 10 seconds)
@@ -530,6 +580,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         profiles: &profiles,
         budget: &budget,
         provider: &*provider,
+        status: &status,
     };
 
     // Pin the discover future so it survives cancellation by other select!
@@ -563,89 +614,30 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             // to teardown.
             RunnerMode::Stopping => break,
             RunnerMode::Draining => {
-                // Soft drain. Destroy the idle pool on entry (releases
-                // budget — matches pre-split teardown behavior). Heartbeats
-                // and mitm keep running. Exit the arm when any of: jobs
-                // drain naturally / mode flips externally (Running on
-                // SIGUSR2, Stopping on SIGTERM/SIGINT).
-                drain_idle_pool(&idle_pool, &budget, &status, "draining").await;
-
-                'draining: loop {
-                    if jobs.is_empty() {
-                        // Natural drain complete — commit to Stopping so
-                        // teardown is observable to heartbeat and status.json.
-                        // Broadcasting via mode_tx keeps mode_rx consistent
-                        // with current_mode for the next outer-loop iteration.
-                        //
-                        // Guard the transition on `mode == Draining`: an
-                        // unconditional `send(Stopping)` would silently
-                        // overwrite a concurrent SIGUSR2 that flipped us back
-                        // to Running. `send_if_modified` with the Draining
-                        // check lets SIGUSR2 win the race — resume should
-                        // never lose to an auto-transition.
-                        info!("draining: jobs drained, transitioning to Stopping");
-                        let transitioned = mode_tx.send_if_modified(|v| {
-                            if *v == RunnerMode::Draining {
-                                *v = RunnerMode::Stopping;
-                                true
-                            } else {
-                                // SIGUSR2 raced us to Running — keep that.
-                                false
-                            }
-                        });
-                        if transitioned {
-                            // Live observability: fire an immediate "stopping"
-                            // heartbeat so operator dashboards see the
-                            // transition before teardown completes and the
-                            // runner disappears. Otherwise the last live tick
-                            // is the previous "draining" heartbeat (up to 10s
-                            // stale) and the only "stopping" signal would be
-                            // the terminal heartbeat during teardown.
-                            send_heartbeat(&hb_ctx, RunnerMode::Stopping).await;
-                        }
-                        break 'draining;
-                    }
-
-                    maybe_spawn_mitm_restart(&mut mitm, &mut mitm_crash_rx, &mut mitm_retry).await;
-
-                    tokio::select! {
-                        _ = mode_rx.changed() => {
-                            // External transition (SIGUSR2 → Running or
-                            // SIGTERM → Stopping). Re-evaluate at outer loop top.
-                            break 'draining;
-                        }
-                        result = jobs.join_next() => {
-                            handle_job_result(result, &cancel_tokens).await;
-                        }
-                        Some(result) = destroy_tasks.join_next() => {
-                            if let Err(e) = result {
-                                warn!(error = %e, "destroy task panicked");
-                            }
-                        }
-                        _ = mitm_crash_rx.recv() => {
-                            warn!("mitmproxy exited unexpectedly, scheduling restart");
-                            mitm_retry.schedule();
-                        }
-                        result = recv_retry(&mut mitm_retry.handle) => {
-                            handle_mitm_restart_result(result, &mut mitm, &mut mitm_retry);
-                        }
-                        () = sleep_until_retry(&mitm_retry.restart_at) => {}
-                        _ = heartbeat_tick.tick() => {
-                            send_heartbeat(&hb_ctx, current_mode).await;
-                        }
-                    }
-                }
-
+                drive_draining(
+                    &hb_ctx,
+                    &mut mode_rx,
+                    &mode_tx,
+                    &mut jobs_state,
+                    &mut mitm_state,
+                    &mut heartbeat_tick,
+                )
+                .await;
                 // Re-read mode at outer loop top: Running → resume normal
                 // discovery; Stopping → break to teardown; Draining shouldn't
-                // happen (the arm only exits on a mode change or commit).
+                // happen (drive_draining only returns on a mode change or commit).
                 continue;
             }
             RunnerMode::Running => {}
         }
 
         // Spawn background restart task when timer fires
-        maybe_spawn_mitm_restart(&mut mitm, &mut mitm_crash_rx, &mut mitm_retry).await;
+        maybe_spawn_mitm_restart(
+            &mut mitm_state.proxy,
+            &mut mitm_state.crash_rx,
+            &mut mitm_state.retry,
+        )
+        .await;
 
         // If budget is exhausted for all profiles, try evicting an idle VM
         // before waiting for a running job to finish.
@@ -671,34 +663,15 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                 budget.release(vcpu, memory_mb);
                 continue; // retry budget check — budget is now actually freed
             }
-            tokio::select! {
-                _ = mode_rx.changed() => {}
-                result = jobs.join_next() => {
-                    handle_job_result(result, &cancel_tokens).await;
-                }
-                Some(result) = destroy_tasks.join_next() => {
-                    if let Err(e) = result {
-                        warn!(error = %e, "destroy task panicked");
-                    }
-                }
-                _ = mitm_crash_rx.recv() => {
-                    warn!("mitmproxy exited unexpectedly, scheduling restart");
-                    mitm_retry.schedule();
-                }
-                result = recv_retry(&mut mitm_retry.handle) => {
-                    handle_mitm_restart_result(result, &mut mitm, &mut mitm_retry);
-                }
-                () = sleep_until_retry(&mitm_retry.restart_at) => {}
-                // Heartbeat must also run when budget is exhausted, otherwise
-                // the server thinks the runner is dead.
-                _ = heartbeat_tick.tick() => {
-                    send_heartbeat(&hb_ctx, current_mode).await;
-                }
-                _ = park_notify.notified() => {
-                    info!(source = "budget_exhausted", "park triggered immediate heartbeat");
-                    send_heartbeat(&hb_ctx, current_mode).await;
-                }
-            }
+            wait_for_resources_or_event(
+                &hb_ctx,
+                &mut mode_rx,
+                &mut jobs_state,
+                &mut mitm_state,
+                &park_notify,
+                &mut heartbeat_tick,
+            )
+            .await;
             continue;
         }
 
@@ -710,174 +683,32 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                 let Some((run_id, profile_name)) = discovered else { break };
                 // Future completed — create a new one for the next discovery.
                 discover_fut = Box::pin(provider.discover());
-                // Look up profile config for resource requirements.
-                let Some(profile_config) = profiles.get(&profile_name) else {
-                    warn!(run_id = %run_id, profile = %profile_name, "unknown profile, skipping");
-                    continue;
-                };
-                let job_vcpu = profile_config.vcpu;
-                let job_memory = profile_config.memory_mb;
-                // Look up factory for this profile.
-                let Some((factory, restore_guest_state)) = factories.get(&profile_name) else {
-                    warn!(run_id = %run_id, profile = %profile_name, "no factory for profile, skipping");
-                    continue;
-                };
-                // Reserve resources before claiming so we don't waste a job
-                // that another runner could handle.
-                if !budget.try_reserve(job_vcpu, job_memory) {
-                    continue;
-                }
-                // Insert cancel token before claiming so it is available when
-                // discover() next processes a buffered Ably cancel event.
-                // Skip if already present (duplicate discovery via poll +
-                // buffered Ably notification) — overwriting would break
-                // cancel delivery for the running executor.
-                let job_cancel = CancellationToken::new();
-                {
-                    let mut tokens = cancel_tokens.lock().await;
-                    if tokens.contains_key(&run_id) {
-                        budget.release(job_vcpu, job_memory);
-                        continue;
-                    }
-                    tokens.insert(run_id, job_cancel.clone());
-                }
-                // Close a TOCTOU race against hard shutdown: the signal
-                // handler sends Stopping *before* locking cancel_tokens. If
-                // the handler's iteration ran over an empty map between our
-                // discover and insert, we catch it here by re-reading mode.
-                // The watch channel's write/read fence makes this check
-                // happens-after the send(Stopping).
-                if matches!(*mode_rx.borrow(), RunnerMode::Stopping) {
-                    job_cancel.cancel();
-                }
-                // claim() runs in the branch handler — non-interruptible,
-                // so a successful claim is always paired with complete().
-                let Some(context) = provider.claim(run_id).await else {
-                    // None means the job won't run here — either lost the race
-                    // to another runner, or the provider rejected the job
-                    // (e.g. poisoned .job handled inside the provider). Either
-                    // way, release the reservation and move on.
-                    cancel_tokens.lock().await.remove(&run_id);
-                    budget.release(job_vcpu, job_memory);
-                    continue;
-                };
-                info!(run_id = %run_id, profile = %profile_name, "job claimed, spawning executor");
-
-                // Check idle pool for a reusable VM (same session + same profile).
-                // The `reuse_result` tag is paired with `reuse_entry` so every
-                // fresh-create path names the branch it came from — the server
-                // persists it on the agent_runs row for observability.
-                let (reuse_entry, reuse_result): (Option<IdleEntry>, SandboxReuseResult) =
-                    if let Some(session_id) = context.session_id() {
-                        // Take the entry under the pool lock, then drop the
-                        // lock before any awaits — the unpark HTTP call below
-                        // must not block other take/park operations.
-                        let taken = {
-                            let mut pool = idle_pool.lock().await;
-                            pool.take(session_id)
-                        };
-                        match taken {
-                            Some(mut entry) if entry.profile_name == profile_name => {
-                                // Deflate the balloon and respawn the reactive
-                                // controller before handing the sandbox to the
-                                // job. On failure, destroy the idle entry and
-                                // fall through to a fresh create — the run
-                                // budget reservation we made above stays in
-                                // place to cover the new sandbox.
-                                match entry.sandbox.unpark().await {
-                                    Ok(()) => {
-                                        info!(
-                                            run_id = %run_id,
-                                            session_id,
-                                            "reusing idle VM for session"
-                                        );
-                                        // Idle entry already holds budget — release the new reservation.
-                                        budget.release(job_vcpu, job_memory);
-                                        (Some(entry), SandboxReuseResult::Reused)
-                                    }
-                                    Err(e) => {
-                                        warn!(
-                                            run_id = %run_id,
-                                            session_id,
-                                            error = %e,
-                                            "unpark failed, destroying idle VM and falling through to fresh create"
-                                        );
-                                        let b = Arc::clone(&budget);
-                                        destroy_tasks.spawn(destroy_idle_entry(entry, b));
-                                        (None, SandboxReuseResult::UnparkFailed)
-                                    }
-                                }
-                            }
-                            Some(stale) => {
-                                // Profile mismatch — destroy the stale VM.
-                                info!(
-                                    run_id = %run_id,
-                                    session_id,
-                                    old_profile = %stale.profile_name,
-                                    new_profile = %profile_name,
-                                    "idle VM profile mismatch, destroying"
-                                );
-                                let b = Arc::clone(&budget);
-                                destroy_tasks.spawn(destroy_idle_entry(stale, b));
-                                (None, SandboxReuseResult::ProfileMismatch)
-                            }
-                            None => {
-                                info!(
-                                    run_id = %run_id,
-                                    session_id,
-                                    "no idle VM found for session"
-                                );
-                                (None, SandboxReuseResult::PoolMiss)
-                            }
-                        }
-                    } else {
-                        (None, SandboxReuseResult::NoSessionId)
-                    };
-
-                // Determine sandbox_id after the reuse decision. On reuse,
-                // the sandbox keeps its original identity; on a fresh create,
-                // we allocate a new UUID that the executor will use when
-                // constructing the SandboxConfig. This is the join key for
-                // doctor (FC CWD basename) and kill (workspace dir).
-                let sandbox_id = match &reuse_entry {
-                    Some(entry) => entry.sandbox_id,
-                    None => SandboxId::new_v4(),
-                };
-                status.add_run(run_id, sandbox_id).await;
-
-                let job_profile = JobProfile {
-                    profile_name: profile_name.clone(),
-                    vcpu: job_vcpu,
-                    memory_mb: job_memory,
-                    restore_guest_state: *restore_guest_state,
-                    factory: Arc::clone(factory),
-                    cancel: job_cancel,
-                };
-                spawn_job(
-                    context,
-                    sandbox_id,
-                    job_profile,
-                    reuse_entry,
-                    reuse_result,
+                handle_discovered_job(
+                    run_id,
+                    profile_name,
+                    &factories,
+                    &hb_ctx,
+                    &mode_rx,
                     &spawn_ctx,
-                    &mut jobs,
-                );
+                    &mut jobs_state,
+                )
+                .await;
             }
             // Mitmproxy crash detection
-            _ = mitm_crash_rx.recv() => {
+            _ = mitm_state.crash_rx.recv() => {
                 warn!("mitmproxy exited unexpectedly, scheduling restart");
-                mitm_retry.schedule();
+                mitm_state.retry.schedule();
             }
             // Mitmproxy restart result (background task)
-            result = recv_retry(&mut mitm_retry.handle) => {
-                handle_mitm_restart_result(result, &mut mitm, &mut mitm_retry);
+            result = recv_retry(&mut mitm_state.retry.handle) => {
+                handle_mitm_restart_result(result, &mut mitm_state.proxy, &mut mitm_state.retry);
             }
             // Mitmproxy restart timer
-            () = sleep_until_retry(&mitm_retry.restart_at) => {}
+            () = sleep_until_retry(&mitm_state.retry.restart_at) => {}
             // Mode changes (signals)
             _ = mode_rx.changed() => {}
             // Reap completed destroy tasks
-            Some(result) = destroy_tasks.join_next() => {
+            Some(result) = jobs_state.destroy_tasks.join_next() => {
                 if let Err(e) = result {
                     warn!(error = %e, "destroy task panicked");
                 }
@@ -898,7 +729,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                 status.set_idle_info(idle_vms).await;
                 for entry in expired {
                     let b = Arc::clone(&budget);
-                    destroy_tasks.spawn(destroy_idle_entry(entry, b));
+                    jobs_state.destroy_tasks.spawn(destroy_idle_entry(entry, b));
                 }
             }
             // Heartbeat: report runner state to the server
@@ -914,74 +745,406 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         }
     }
 
-    // -----------------------------------------------------------------------
-    // Shutdown — drain idle pool, release discovery resources, then drain running jobs
-    // -----------------------------------------------------------------------
-
     // Drop the pinned discover future so it releases the discovery Mutex.
-    // Without this, provider.shutdown() deadlocks trying to acquire the
-    // same Mutex that the still-alive discover_fut holds.
+    // Without this, provider.shutdown() (inside `shutdown_runner`) deadlocks
+    // trying to acquire the same Mutex that the still-alive discover_fut holds.
     drop(discover_fut);
+
+    let resources = ShutdownResources {
+        factories,
+        runtime,
+        signal_handler_abort,
+        base_dir,
+        kmsg_handle,
+        dns_handle,
+    };
+    shutdown_runner(&hb_ctx, &mut jobs_state, &mut mitm_state, resources).await;
+
+    Ok(())
+}
+
+/// Handle a discovered job: validate the profile, reserve budget, register
+/// the cancel token, claim the job, then either reuse an idle sandbox or
+/// spawn a fresh executor. Caller has already destructured `(run_id,
+/// profile_name)` from the discovery future and re-armed the next
+/// `discover_fut`. Any early-exit (unknown profile, no factory, budget
+/// failure, duplicate token, claim rejection) returns without spawning.
+async fn handle_discovered_job(
+    run_id: RunId,
+    profile_name: String,
+    factories: &BTreeMap<String, (SharedFactory, bool)>,
+    hb: &HeartbeatContext<'_>,
+    mode_rx: &tokio::sync::watch::Receiver<RunnerMode>,
+    spawn_ctx: &SpawnContext,
+    jobs_state: &mut JobsState,
+) {
+    // Look up profile config for resource requirements.
+    let Some(profile_config) = hb.profiles.get(&profile_name) else {
+        warn!(run_id = %run_id, profile = %profile_name, "unknown profile, skipping");
+        return;
+    };
+    let job_vcpu = profile_config.vcpu;
+    let job_memory = profile_config.memory_mb;
+    // Look up factory for this profile.
+    let Some((factory, restore_guest_state)) = factories.get(&profile_name) else {
+        warn!(run_id = %run_id, profile = %profile_name, "no factory for profile, skipping");
+        return;
+    };
+    // Reserve resources before claiming so we don't waste a job that another
+    // runner could handle.
+    if !hb.budget.try_reserve(job_vcpu, job_memory) {
+        return;
+    }
+    // Insert cancel token before claiming so it is available when discover()
+    // next processes a buffered Ably cancel event. Skip if already present
+    // (duplicate discovery via poll + buffered Ably notification) —
+    // overwriting would break cancel delivery for the running executor.
+    let job_cancel = CancellationToken::new();
+    {
+        let mut tokens = jobs_state.cancel_tokens.lock().await;
+        if tokens.contains_key(&run_id) {
+            hb.budget.release(job_vcpu, job_memory);
+            return;
+        }
+        tokens.insert(run_id, job_cancel.clone());
+    }
+    // Close a TOCTOU race against hard shutdown: the signal handler sends
+    // Stopping *before* locking cancel_tokens. If the handler's iteration
+    // ran over an empty map between our discover and insert, we catch it
+    // here by re-reading mode. The watch channel's write/read fence makes
+    // this check happens-after the send(Stopping).
+    if matches!(*mode_rx.borrow(), RunnerMode::Stopping) {
+        job_cancel.cancel();
+    }
+    // claim() runs in the branch handler — non-interruptible, so a successful
+    // claim is always paired with complete().
+    let Some(context) = spawn_ctx.provider.claim(run_id).await else {
+        // None means the job won't run here — either lost the race to another
+        // runner, or the provider rejected the job (e.g. poisoned .job
+        // handled inside the provider). Either way, release the reservation
+        // and move on.
+        jobs_state.cancel_tokens.lock().await.remove(&run_id);
+        hb.budget.release(job_vcpu, job_memory);
+        return;
+    };
+    info!(run_id = %run_id, profile = %profile_name, "job claimed, spawning executor");
+
+    // Check idle pool for a reusable VM (same session + same profile). The
+    // `reuse_result` tag is paired with `reuse_entry` so every fresh-create
+    // path names the branch it came from — the server persists it on the
+    // agent_runs row for observability.
+    let (reuse_entry, reuse_result): (Option<IdleEntry>, SandboxReuseResult) = if let Some(
+        session_id,
+    ) =
+        context.session_id()
+    {
+        // Take the entry under the pool lock, then drop the lock before
+        // any awaits — the unpark HTTP call below must not block other
+        // take/park operations.
+        let taken = {
+            let mut pool = hb.idle_pool.lock().await;
+            pool.take(session_id)
+        };
+        match taken {
+            Some(mut entry) if entry.profile_name == profile_name => {
+                // Deflate the balloon and respawn the reactive controller
+                // before handing the sandbox to the job. On failure,
+                // destroy the idle entry and fall through to a fresh
+                // create — the run budget reservation we made above stays
+                // in place to cover the new sandbox.
+                match entry.sandbox.unpark().await {
+                    Ok(()) => {
+                        info!(
+                            run_id = %run_id,
+                            session_id,
+                            "reusing idle VM for session"
+                        );
+                        // Idle entry already holds budget — release the new reservation.
+                        hb.budget.release(job_vcpu, job_memory);
+                        (Some(entry), SandboxReuseResult::Reused)
+                    }
+                    Err(e) => {
+                        warn!(
+                            run_id = %run_id,
+                            session_id,
+                            error = %e,
+                            "unpark failed, destroying idle VM and falling through to fresh create"
+                        );
+                        let b = Arc::clone(&spawn_ctx.budget);
+                        jobs_state.destroy_tasks.spawn(destroy_idle_entry(entry, b));
+                        (None, SandboxReuseResult::UnparkFailed)
+                    }
+                }
+            }
+            Some(stale) => {
+                // Profile mismatch — destroy the stale VM.
+                info!(
+                    run_id = %run_id,
+                    session_id,
+                    old_profile = %stale.profile_name,
+                    new_profile = %profile_name,
+                    "idle VM profile mismatch, destroying"
+                );
+                let b = Arc::clone(&spawn_ctx.budget);
+                jobs_state.destroy_tasks.spawn(destroy_idle_entry(stale, b));
+                (None, SandboxReuseResult::ProfileMismatch)
+            }
+            None => {
+                info!(
+                    run_id = %run_id,
+                    session_id,
+                    "no idle VM found for session"
+                );
+                (None, SandboxReuseResult::PoolMiss)
+            }
+        }
+    } else {
+        (None, SandboxReuseResult::NoSessionId)
+    };
+
+    // Determine sandbox_id after the reuse decision. On reuse, the sandbox
+    // keeps its original identity; on a fresh create, we allocate a new UUID
+    // that the executor will use when constructing the SandboxConfig. This
+    // is the join key for doctor (FC CWD basename) and kill (workspace dir).
+    let sandbox_id = match &reuse_entry {
+        Some(entry) => entry.sandbox_id,
+        None => SandboxId::new_v4(),
+    };
+    hb.status.add_run(run_id, sandbox_id).await;
+
+    let job_profile = JobProfile {
+        profile_name: profile_name.clone(),
+        vcpu: job_vcpu,
+        memory_mb: job_memory,
+        restore_guest_state: *restore_guest_state,
+        factory: Arc::clone(factory),
+        cancel: job_cancel,
+    };
+    spawn_job(
+        context,
+        sandbox_id,
+        job_profile,
+        reuse_entry,
+        reuse_result,
+        spawn_ctx,
+        &mut jobs_state.jobs,
+    );
+}
+
+/// Drive the soft-drain sub-loop: destroy the idle pool on entry, then wait
+/// for jobs to drain naturally (committing to `Stopping` and firing an
+/// immediate "stopping" heartbeat), or for an external mode change
+/// (SIGUSR2 → Running, SIGTERM/SIGINT → Stopping). Heartbeats and mitm
+/// restart polling keep running while we wait.
+///
+/// Returns once the outer loop should re-evaluate mode.
+async fn drive_draining(
+    hb: &HeartbeatContext<'_>,
+    mode_rx: &mut tokio::sync::watch::Receiver<RunnerMode>,
+    mode_tx: &tokio::sync::watch::Sender<RunnerMode>,
+    jobs_state: &mut JobsState,
+    mitm_state: &mut MitmState,
+    heartbeat_tick: &mut tokio::time::Interval,
+) {
+    drain_idle_pool(hb.idle_pool, hb.budget, hb.status, "draining").await;
+
+    loop {
+        if jobs_state.jobs.is_empty() {
+            // Natural drain complete — commit to Stopping so teardown is
+            // observable to heartbeat and status.json. Broadcasting via
+            // mode_tx keeps mode_rx consistent for the outer loop's next
+            // iteration.
+            //
+            // Guard the transition on `mode == Draining`: an unconditional
+            // `send(Stopping)` would silently overwrite a concurrent SIGUSR2
+            // that flipped us back to Running. `send_if_modified` with the
+            // Draining check lets SIGUSR2 win the race — resume should
+            // never lose to an auto-transition.
+            info!("draining: jobs drained, transitioning to Stopping");
+            let transitioned = mode_tx.send_if_modified(|v| {
+                if *v == RunnerMode::Draining {
+                    *v = RunnerMode::Stopping;
+                    true
+                } else {
+                    // SIGUSR2 raced us to Running — keep that.
+                    false
+                }
+            });
+            if transitioned {
+                // Live observability: fire an immediate "stopping" heartbeat
+                // so operator dashboards see the transition before teardown
+                // completes and the runner disappears. Otherwise the last
+                // live tick is the previous "draining" heartbeat (up to 10s
+                // stale) and the only "stopping" signal would be the
+                // terminal heartbeat during teardown.
+                send_heartbeat(hb, RunnerMode::Stopping).await;
+            }
+            return;
+        }
+
+        maybe_spawn_mitm_restart(
+            &mut mitm_state.proxy,
+            &mut mitm_state.crash_rx,
+            &mut mitm_state.retry,
+        )
+        .await;
+
+        tokio::select! {
+            _ = mode_rx.changed() => {
+                // External transition (SIGUSR2 → Running or SIGTERM →
+                // Stopping). Re-evaluate at outer loop top.
+                return;
+            }
+            result = jobs_state.jobs.join_next() => {
+                handle_job_result(result, &jobs_state.cancel_tokens).await;
+            }
+            Some(result) = jobs_state.destroy_tasks.join_next() => {
+                if let Err(e) = result {
+                    warn!(error = %e, "destroy task panicked");
+                }
+            }
+            _ = mitm_state.crash_rx.recv() => {
+                warn!("mitmproxy exited unexpectedly, scheduling restart");
+                mitm_state.retry.schedule();
+            }
+            result = recv_retry(&mut mitm_state.retry.handle) => {
+                handle_mitm_restart_result(result, &mut mitm_state.proxy, &mut mitm_state.retry);
+            }
+            () = sleep_until_retry(&mitm_state.retry.restart_at) => {}
+            _ = heartbeat_tick.tick() => {
+                send_heartbeat(hb, RunnerMode::Draining).await;
+            }
+        }
+    }
+}
+
+/// Block until either resources are released (a job/destroy completes) or an
+/// event of interest fires (mode change, mitm crash/restart, heartbeat tick,
+/// park notify). Caller has confirmed the budget is exhausted *and* the idle
+/// pool has nothing left to evict, so discovery cannot make progress without
+/// something else changing first. Heartbeats keep firing here so the server
+/// doesn't mark the runner dead while it waits.
+async fn wait_for_resources_or_event(
+    hb: &HeartbeatContext<'_>,
+    mode_rx: &mut tokio::sync::watch::Receiver<RunnerMode>,
+    jobs_state: &mut JobsState,
+    mitm_state: &mut MitmState,
+    park_notify: &Arc<tokio::sync::Notify>,
+    heartbeat_tick: &mut tokio::time::Interval,
+) {
+    tokio::select! {
+        _ = mode_rx.changed() => {}
+        result = jobs_state.jobs.join_next() => {
+            handle_job_result(result, &jobs_state.cancel_tokens).await;
+        }
+        Some(result) = jobs_state.destroy_tasks.join_next() => {
+            if let Err(e) = result {
+                warn!(error = %e, "destroy task panicked");
+            }
+        }
+        _ = mitm_state.crash_rx.recv() => {
+            warn!("mitmproxy exited unexpectedly, scheduling restart");
+            mitm_state.retry.schedule();
+        }
+        result = recv_retry(&mut mitm_state.retry.handle) => {
+            handle_mitm_restart_result(result, &mut mitm_state.proxy, &mut mitm_state.retry);
+        }
+        () = sleep_until_retry(&mitm_state.retry.restart_at) => {}
+        // Heartbeat must also run when budget is exhausted, otherwise the
+        // server thinks the runner is dead.
+        _ = heartbeat_tick.tick() => {
+            send_heartbeat(hb, RunnerMode::Running).await;
+        }
+        _ = park_notify.notified() => {
+            info!(source = "budget_exhausted", "park triggered immediate heartbeat");
+            send_heartbeat(hb, RunnerMode::Running).await;
+        }
+    }
+}
+
+/// Tear down the runner: drain the idle pool, shut down the provider,
+/// send a final `Stopping` heartbeat, drain remaining running jobs, abort
+/// background handles, shut down factories, flush usage reports, and stop
+/// proxy/kmsg/DNS subsystems. Marks status as `Stopped` last.
+async fn shutdown_runner(
+    hb: &HeartbeatContext<'_>,
+    jobs_state: &mut JobsState,
+    mitm_state: &mut MitmState,
+    resources: ShutdownResources,
+) {
+    let ShutdownResources {
+        mut factories,
+        mut runtime,
+        signal_handler_abort,
+        base_dir,
+        kmsg_handle,
+        dns_handle,
+    } = resources;
 
     // Drain idle pool first — these VMs hold budget reservations. This
     // also clears `idle_vms` in status.json so the final snapshot is
     // consistent with the empty pool.
-    drain_idle_pool(&idle_pool, &budget, &status, "shutdown").await;
+    drain_idle_pool(hb.idle_pool, hb.budget, hb.status, "shutdown").await;
 
-    provider.shutdown().await;
+    hb.provider.shutdown().await;
 
     // Send final heartbeat with Stopping so the server stops routing jobs
     // to this runner immediately, without waiting for TTL expiry.
     {
-        let pool = idle_pool.lock().await;
+        let pool = hb.idle_pool.lock().await;
         let state = collect_heartbeat_state(
-            &runner_id,
-            &name,
-            &group,
-            &profiles,
-            &budget,
+            hb.runner_id,
+            hb.name,
+            hb.group,
+            hb.profiles,
+            hb.budget,
             &pool,
             RunnerMode::Stopping,
         );
         drop(pool);
-        provider.heartbeat(&state).await;
+        hb.provider.heartbeat(&state).await;
     }
 
-    let remaining = jobs.len();
+    let remaining = jobs_state.jobs.len();
     if remaining > 0 {
         info!(remaining, "waiting for running jobs to finish");
-        while !jobs.is_empty() {
-            maybe_spawn_mitm_restart(&mut mitm, &mut mitm_crash_rx, &mut mitm_retry).await;
+        while !jobs_state.jobs.is_empty() {
+            maybe_spawn_mitm_restart(
+                &mut mitm_state.proxy,
+                &mut mitm_state.crash_rx,
+                &mut mitm_state.retry,
+            )
+            .await;
 
             tokio::select! {
-                result = jobs.join_next() => {
-                    handle_job_result(result, &cancel_tokens).await;
+                result = jobs_state.jobs.join_next() => {
+                    handle_job_result(result, &jobs_state.cancel_tokens).await;
                 }
-                Some(result) = destroy_tasks.join_next() => {
+                Some(result) = jobs_state.destroy_tasks.join_next() => {
                     if let Err(e) = result {
                         warn!(error = %e, "destroy task panicked");
                     }
                 }
-                _ = mitm_crash_rx.recv() => {
+                _ = mitm_state.crash_rx.recv() => {
                     warn!("mitmproxy exited unexpectedly, scheduling restart");
-                    mitm_retry.schedule();
+                    mitm_state.retry.schedule();
                 }
-                result = recv_retry(&mut mitm_retry.handle) => {
-                    handle_mitm_restart_result(result, &mut mitm, &mut mitm_retry);
+                result = recv_retry(&mut mitm_state.retry.handle) => {
+                    handle_mitm_restart_result(result, &mut mitm_state.proxy, &mut mitm_state.retry);
                 }
-                () = sleep_until_retry(&mitm_retry.restart_at) => {}
+                () = sleep_until_retry(&mitm_state.retry.restart_at) => {}
             }
         }
     }
     // Wait for any in-flight destroy tasks (from cleanup tick, profile
     // mismatch eviction, etc.) so their factory Arcs are dropped before
     // shutdown_factories calls Arc::try_unwrap.
-    while let Some(result) = destroy_tasks.join_next().await {
+    while let Some(result) = jobs_state.destroy_tasks.join_next().await {
         if let Err(e) = result {
             warn!(error = %e, "destroy task panicked during shutdown");
         }
     }
-    if let Some(h) = mitm_retry.handle {
+    if let Some(h) = mitm_state.retry.handle.take() {
         h.abort();
     }
     if let Some(abort) = signal_handler_abort {
@@ -1004,7 +1167,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     }
 
     // Stop proxy after all jobs have drained and factory is shut down.
-    if let Err(e) = mitm.stop().await {
+    if let Err(e) = mitm_state.proxy.stop().await {
         warn!(error = %e, "proxy stop failed");
     }
 
@@ -1013,10 +1176,8 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     kmsg_handle.stop().await;
     dns_handle.stop().await;
 
-    status.set_mode(RunnerMode::Stopped).await;
+    hb.status.set_mode(RunnerMode::Stopped).await;
     info!("runner stopped");
-
-    Ok(())
 }
 
 /// A sandbox factory shared across concurrent job executors.
@@ -1645,6 +1806,10 @@ struct HeartbeatContext<'a> {
     profiles: &'a BTreeMap<String, ProfileConfig>,
     budget: &'a ResourceBudget,
     provider: &'a dyn JobProvider,
+    /// Added so helpers that already take `hb` (drive_draining,
+    /// handle_discovered_job, shutdown_runner) don't also need a separate
+    /// `status` argument — keeps arg counts under the clippy threshold.
+    status: &'a StatusTracker,
 }
 
 /// Collect current runner state, update the provider's held-sessions cache,
