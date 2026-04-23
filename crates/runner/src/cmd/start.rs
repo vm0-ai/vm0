@@ -1326,11 +1326,11 @@ fn spawn_job(
     });
 }
 
-/// Drain the idle pool synchronously: destroy every entry and release each
-/// one's budget. Called from both the Draining arm (soft-drain entry) and
-/// teardown — both need the same sequence, and teardown also wants the
-/// `status.json` `idle_vms` list cleared so the final snapshot is
-/// consistent with the empty pool.
+/// Drain the idle pool: destroy every entry in parallel and wait for all
+/// destroys to complete before returning (budgets released, `status.json`
+/// `idle_vms` cleared). Called from both the Draining arm (soft-drain
+/// entry) and teardown — both need the final state consistent with an
+/// empty pool before proceeding.
 ///
 /// `context` is logged alongside the destroyed count for operator clarity
 /// (e.g. "draining" vs "shutdown").
@@ -1355,7 +1355,7 @@ async fn drain_idle_pool(
     }
     while let Some(result) = set.join_next().await {
         if let Err(e) = result {
-            warn!(error = %e, "idle entry destroy task panicked");
+            warn!(context, error = %e, "idle entry destroy task panicked");
         }
     }
     status.set_idle_info(Vec::new()).await;
