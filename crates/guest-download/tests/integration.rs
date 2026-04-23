@@ -1102,3 +1102,67 @@ fn symlink_missing_link_target_skipped() {
     // Malformed symlink should NOT be created
     assert!(mount.join("bad_symlink").symlink_metadata().is_err());
 }
+
+// ---------------------------------------------------------------------------
+// file:// scheme — host-staged tarballs (epic #10800)
+// ---------------------------------------------------------------------------
+
+// Successful file:// extraction: the local tarball is read, its contents are
+// extracted into the mount path, and the tarball is deleted.
+#[test]
+fn file_scheme_extraction_success() {
+    let tar_gz = create_tar_gz(&[("hello.txt", b"hello from file")]).unwrap();
+
+    let dir = tempfile::tempdir().unwrap();
+    let staged = dir.path().join("staged.tar.gz");
+    std::fs::write(&staged, &tar_gz).unwrap();
+
+    let mount = dir.path().join("mount");
+    let url = format!("file://{}", staged.display());
+    let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
+
+    let result = guest_download::run(manifest.to_str().unwrap());
+
+    assert!(result);
+    assert_eq!(
+        std::fs::read_to_string(mount.join("hello.txt")).unwrap(),
+        "hello from file"
+    );
+    // Staged tarball is cleaned up after successful extraction
+    assert!(!staged.exists());
+}
+
+// Storage with a missing file:// target fails the run. The runner only rewrites
+// archive_url to file:// after vsock-staging succeeds, so a missing file means a
+// broken runner contract — fatal, no retry (status_code is None, retriable false).
+#[test]
+fn file_scheme_missing_storage_fatal() {
+    let dir = tempfile::tempdir().unwrap();
+    let missing = dir.path().join("never-existed.tar.gz");
+    assert!(!missing.exists());
+
+    let mount = dir.path().join("mount");
+    let url = format!("file://{}", missing.display());
+    let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
+
+    let result = guest_download::run(manifest.to_str().unwrap());
+    assert!(!result);
+}
+
+// Artifacts treat HTTP 404 as non-fatal ("may not exist on first run"), but the
+// file:// path has no status_code, so a missing local file is fatal for artifacts
+// too. Same reasoning as storages: the runner only stages + rewrites after the
+// file lands, so a missing file signals a broken contract, not an absent artifact.
+#[test]
+fn file_scheme_missing_artifact_fatal() {
+    let dir = tempfile::tempdir().unwrap();
+    let missing = dir.path().join("never-existed.tar.gz");
+    assert!(!missing.exists());
+
+    let mount = dir.path().join("artifact_mount");
+    let url = format!("file://{}", missing.display());
+    let manifest = write_manifest(&dir, &[], Some((mount.to_str().unwrap(), Some(&url)))).unwrap();
+
+    let result = guest_download::run(manifest.to_str().unwrap());
+    assert!(!result);
+}
