@@ -10,9 +10,12 @@ import {
   appendVoiceChatCandidateItem,
   readVoiceChatCandidateItems,
 } from "./item-service";
-import { listSessionTasks } from "./task-service";
+import { createVoiceChatCandidateTask, listSessionTasks } from "./task-service";
 import { callReasoner } from "./reasoner";
 import { compactVoiceChatCandidateTaskResults } from "./compact-task-results";
+import { buildSlowBrainAppendSystemPrompt } from "./build-slow-brain-prompt";
+import { adaptVoiceChatCandidateTaskTrigger } from "./adapt-task-trigger";
+import { createZeroRun } from "../zero-run-service";
 import { publishUserSignal } from "../../infra/realtime/client";
 import { isBadRequest } from "../../shared/errors";
 import { logger } from "../../shared/logger";
@@ -237,6 +240,55 @@ export async function triggerReasoning(sessionId: string): Promise<void> {
         lastReasoningDurationMs: Date.now() - startedAt.getTime(),
       })
       .where(eq(featureCandidateVoiceChatSessions.id, sessionId));
+  }
+
+  // Step 5c — if the Reasoner detected tasks the Talker promised but never
+  // dispatched, create them now. This runs after the lock is released so
+  // slow spawnRun calls do not block concurrent ticks.
+  if (
+    result !== null &&
+    result.missingTasks.length > 0 &&
+    currentSession.agentId
+  ) {
+    const agentId = currentSession.agentId;
+    const apiStartTime = Date.now();
+    const appendSystemPrompt = buildSlowBrainAppendSystemPrompt({
+      agentSystemPrompt,
+      items: transcript,
+      sessionTasks: tasks,
+    });
+
+    for (let i = 0; i < result.missingTasks.length; i++) {
+      const prompt = result.missingTasks[i];
+      if (!prompt) continue;
+      await createVoiceChatCandidateTask({
+        sessionId,
+        callId: `reasoner-auto-${apiStartTime}-${String(i)}`,
+        prompt,
+        spawnRun: (taskId) => {
+          const runParams = adaptVoiceChatCandidateTaskTrigger({
+            userId: currentSession.userId,
+            agentId,
+            taskId,
+            prompt,
+            appendSystemPrompt,
+            apiStartTime,
+          });
+          return createZeroRun(runParams);
+        },
+      });
+      await appendVoiceChatCandidateItem({
+        sessionId,
+        role: "system_note",
+        content: `Reasoner auto-created task: ${prompt}`,
+        realtimeItemId: null,
+      });
+    }
+
+    await publishUserSignal(
+      [currentSession.userId],
+      `voice-chat-candidate:${sessionId}`,
+    );
   }
 
   // Step 6 — compact old finished-task results along the exponential

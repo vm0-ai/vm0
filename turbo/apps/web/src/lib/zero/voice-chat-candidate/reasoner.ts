@@ -3,6 +3,7 @@ import { env } from "../../../env";
 import { logger } from "../../shared/logger";
 import {
   CONVERSATION_SECTION,
+  MISSING_TASKS_SECTION,
   REASONER_SYSTEM_PROMPT,
   buildReasonerUserPrompt,
 } from "./reasoner-prompts";
@@ -50,6 +51,7 @@ interface CallReasonerParams {
 
 interface ReasonerResult {
   conversationSummary: string;
+  missingTasks: string[];
 }
 
 export async function callReasoner(
@@ -121,8 +123,19 @@ export async function callReasoner(
 }
 
 function parseReasonerSections(raw: string): ReasonerResult {
+  const missingTasksRaw = extractSection(raw, MISSING_TASKS_SECTION);
+  const missingTasks = missingTasksRaw
+    .split("\n")
+    .map((line) => {
+      return line.trim();
+    })
+    .filter((line) => {
+      return line.length > 0;
+    });
+
   return {
     conversationSummary: extractSection(raw, CONVERSATION_SECTION),
+    missingTasks,
   };
 }
 
@@ -131,7 +144,7 @@ function extractSection(raw: string, name: string): string {
   const idx = raw.indexOf(marker);
   if (idx === -1) return "";
   const after = raw.slice(idx + marker.length);
-  const nextIdx = after.search(/---[A-Z]+---/u);
+  const nextIdx = after.search(/---[A-Z_]+---/u);
   const slice = nextIdx === -1 ? after : after.slice(0, nextIdx);
   return slice.trim();
 }
