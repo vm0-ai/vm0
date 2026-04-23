@@ -40,7 +40,6 @@ export enum FeatureSwitchKey {
   VoiceChat = "voiceChat",
   AudioInput = "audioInput",
   AudioOutput = "audioOutput",
-  MissionControlSidebar = "missionControlSidebar",
   AutoSkill = "autoSkill",
   SandboxReuse = "sandboxReuse",
   ScheduleRunHistory = "scheduleRunHistory",

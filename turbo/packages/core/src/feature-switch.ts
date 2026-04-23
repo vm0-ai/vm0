@@ -217,11 +217,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable audio output in chat (TTS read-aloud + auto-read) — gates the volume/read buttons and the /api/zero/voice-io/tts route",
     enabled: false,
   },
-  [FeatureSwitchKey.MissionControlSidebar]: {
-    maintainer: "ethan@vm0.ai",
-    description: "Show the Mission Control page entry in the sidebar",
-    enabled: false,
-  },
   [FeatureSwitchKey.AutoSkill]: {
     maintainer: "lancy@vm0.ai",
     description: "Enable automatic skill creation in agent prompts",

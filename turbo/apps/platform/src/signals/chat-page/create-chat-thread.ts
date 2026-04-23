@@ -1058,7 +1058,7 @@ function createPhraseLoop(
 // Factory: createChatThreadSignals
 // ---------------------------------------------------------------------------
 
-export function createChatThreadSignals(
+function createChatThreadSignals(
   threadId: string,
   draft: DraftSignals,
 ): ChatThreadSignals {

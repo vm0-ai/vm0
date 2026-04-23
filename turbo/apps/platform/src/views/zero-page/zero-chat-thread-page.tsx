@@ -249,7 +249,7 @@ export function ZeroChatThreadPage() {
   );
 }
 
-export function ZeroChatThreadPageInner({
+function ZeroChatThreadPageInner({
   thread,
   autoFocus = true,
 }: {

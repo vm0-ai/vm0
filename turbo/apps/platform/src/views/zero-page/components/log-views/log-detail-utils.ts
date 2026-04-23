@@ -77,7 +77,7 @@ interface ToolResultMeta {
   durationMs?: number | null;
 }
 
-export interface GroupingEventData {
+interface GroupingEventData {
   subtype?: string;
   parent_tool_use_id?: string;
   message?: {

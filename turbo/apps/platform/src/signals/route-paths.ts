@@ -30,7 +30,6 @@ export const ROUTES = {
   usage: "/_/usage",
   internalConnectorLogos: "/__internal-connector-logos",
   reportError: "/runs/:runId/report-error",
-  missionControl: "/_/mission-control",
   redeemCampaign: "/redeem/:campaign",
   skeleton: "/_/skeleton",
   error: "/_/error",

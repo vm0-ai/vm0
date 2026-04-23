@@ -71,7 +71,6 @@ export type SidebarNavId =
   | "settings"
   | "queues"
   | "phone"
-  | "missionControl"
   | "lab"
   | "usage";
 
@@ -98,7 +97,6 @@ export const handleZeroNavSelect$ = command(({ set }, id: SidebarNavId) => {
       works: ROUTES.works,
       settings: ROUTES.settings,
       phone: ROUTES.phone,
-      missionControl: ROUTES.missionControl,
       lab: ROUTES.lab,
       usage: ROUTES.usage,
     } satisfies Record<

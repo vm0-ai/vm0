@@ -935,18 +935,6 @@ export {
   type CreateVoiceChatTaskBody,
 } from "./zero-voice-chat-tasks";
 export {
-  tasksContract,
-  taskItemSchema,
-  taskTypeSchema,
-  taskAgentSchema,
-  type TasksContract,
-  type TaskItem,
-  type TaskType,
-  type TaskAgent,
-  type ArchiveTaskBody,
-  type UnarchiveTaskBody,
-} from "./tasks";
-export {
   zeroPhoneStatusContract,
   zeroPhoneLinkContract,
   zeroPhoneSetupContract,

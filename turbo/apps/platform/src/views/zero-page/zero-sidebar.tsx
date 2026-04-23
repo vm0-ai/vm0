@@ -23,7 +23,6 @@ import {
   IconFlask,
   IconPhone,
   IconSparkles,
-  IconLayoutDashboard,
   IconMenu2,
 } from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/core";
@@ -148,15 +147,6 @@ const FOOTER_NAV = [
     icon: IconPhone as NavIcon,
     iconImg: undefined,
     featureGate: FeatureSwitchKey.PhoneIntegration,
-  },
-  {
-    id: "missionControl",
-    activeKeys: ["missionControl"],
-    pathname: "/_/mission-control",
-    label: "Mission Control",
-    icon: IconLayoutDashboard as NavIcon,
-    iconImg: undefined,
-    featureGate: FeatureSwitchKey.MissionControlSidebar,
   },
   {
     id: "lab",

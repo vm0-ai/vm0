@@ -48,7 +48,6 @@ import { setupUsagePage$ } from "./usage-page/usage-page-setup.ts";
 import { initSlackOrg$ as handleSlackRedirect$ } from "./zero-page/zero-slack.ts";
 import { setupSkeletonPage$, setupErrorPage$ } from "./skeleton-page-setup.ts";
 import { startSkeletonCycling$ } from "./app-skeleton.ts";
-import { setupMissionControlPage$ } from "./mission-control-page/mission-control-page.ts";
 import { setupRedeemCampaignPage$ } from "./redeem-campaign/redeem-campaign-page-setup.ts";
 import { setupRealtime$ } from "./realtime.ts";
 import { setupPwaEdgeSwipe$ } from "./zero-page/pwa-edge-swipe.ts";
@@ -211,10 +210,6 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.internalConnectorLogos,
     setup: setupInternalConnectorLogos$,
-  },
-  {
-    path: ROUTES.missionControl,
-    setup: setupAuthPageWrapper(setupMissionControlPage$),
   },
   {
     path: ROUTES.redeemCampaign,
