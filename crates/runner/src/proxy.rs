@@ -199,23 +199,39 @@ impl MitmProxy {
         self.registry_handle().unregister_vm(source_ip).await
     }
 
-    /// Prepare for restart: reset `stopping`, kill any lingering child, and
-    /// return the parameters needed for [`spawn_mitmdump`].
+    /// Prepare for restart: kill any lingering child, permanently silence
+    /// its stdout monitor, and return fresh parameters for
+    /// [`spawn_mitmdump`].
+    ///
+    /// `stopping` is scoped to a single child. The old flag is set to
+    /// `true` (so the old monitor task, which may observe the stdout
+    /// pipe close at some arbitrary point after this call returns,
+    /// reads "graceful shutdown" and never emits a spurious crash
+    /// notification) and the field is replaced with a fresh `Arc` for
+    /// the incoming process. The new child's monitor starts from a
+    /// clean slate and will detect real crashes.
     ///
     /// The caller should spawn the mitmdump process (potentially in a
     /// background task) and then call [`complete_restart`] with the result.
     pub async fn begin_restart(&mut self) -> MitmRestartParams {
-        self.stopping.store(false, Ordering::Release);
-        // Kill old child if somehow still running.
+        // Silence the old monitor permanently: after this call, no one
+        // else holds a handle that could reset its `Arc<AtomicBool>`
+        // back to `false`, so the monitor is guaranteed to read `true`
+        // regardless of scheduling order between `kill().await` and
+        // the stdout-pipe drain.
+        self.stopping.store(true, Ordering::Release);
         if let Some(ref mut child) = self.child {
             let _ = child.kill().await;
             self.child = None;
         }
+        // Fresh flag for the incoming process's monitor.
+        let new_stopping = Arc::new(AtomicBool::new(false));
+        self.stopping = Arc::clone(&new_stopping);
         MitmRestartParams {
             config: self.config.clone(),
             port: self.port,
             crash_tx: self.crash_tx.clone(),
-            stopping: Arc::clone(&self.stopping),
+            stopping: new_stopping,
         }
     }
 
@@ -1271,5 +1287,33 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("usage-pending"), "0").unwrap();
         assert!(wait_usage_flush(dir.path(), Duration::from_secs(1)).await);
+    }
+
+    /// Regression for #10624: `begin_restart` must lock the old
+    /// monitor's `stopping` at `true` and hand the caller a fresh
+    /// `Arc<AtomicBool>` for the next child. If the old flag were
+    /// shared across the restart boundary, the old stdout monitor
+    /// could race in after `kill().await` returned, read `stopping ==
+    /// false`, and emit a spurious crash notification.
+    #[tokio::test]
+    async fn begin_restart_isolates_stopping_flag_per_child() {
+        let (mut proxy, _crash_rx) = MitmProxy::noop();
+        let old_stopping = Arc::clone(&proxy.stopping);
+
+        let params = proxy.begin_restart().await;
+
+        // Old flag is now permanently `true`; any task still holding
+        // `old_stopping` (the old monitor) will observe graceful
+        // shutdown semantics regardless of when it wakes up.
+        assert!(old_stopping.load(Ordering::Acquire));
+
+        // The next child's monitor starts from a clean slate.
+        assert!(!params.stopping.load(Ordering::Acquire));
+
+        // And the proxy holds that same fresh `Arc` — so subsequent
+        // `stop()` / `Drop` calls operate on the new child, not the
+        // already-silenced old one.
+        assert!(Arc::ptr_eq(&proxy.stopping, &params.stopping));
+        assert!(!Arc::ptr_eq(&old_stopping, &params.stopping));
     }
 }
