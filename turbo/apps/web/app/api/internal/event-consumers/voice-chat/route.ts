@@ -46,7 +46,7 @@ function eventText(event: AgentEvent): string | null {
 }
 
 /**
- * POST /api/internal/event-consumers/voice-chat-candidate
+ * POST /api/internal/event-consumers/voice-chat
  *
  * Assistant-event consumer for voice-chat-candidate task runs.
  *  - First event seen for a queued task flips status → running (sets startedAt).

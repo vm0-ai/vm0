@@ -31,7 +31,7 @@ export function adaptVoiceChatCandidateTaskTrigger(
     apiStartTime: ctx.apiStartTime,
     callbacks: [
       {
-        url: `${getApiUrl()}/api/internal/callbacks/voice-chat-candidate`,
+        url: `${getApiUrl()}/api/internal/callbacks/voice-chat`,
         secret: generateCallbackSecret(),
         payload: callbackPayload,
       },

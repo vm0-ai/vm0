@@ -11,7 +11,7 @@ import {
 } from "../../../../../src/__tests__/db-test-seeders/agents";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 
-const BASE_URL = "http://localhost:3000/api/zero/voice-chat-candidate";
+const BASE_URL = "http://localhost:3000/api/zero/voice-chat";
 
 export async function setupCandidateOrg(userId: string): Promise<{
   orgId: string;

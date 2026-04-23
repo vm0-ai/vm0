@@ -45,7 +45,7 @@ async function readRunAgentId(runId: string): Promise<string> {
 }
 
 /**
- * POST /api/internal/callbacks/voice-chat-candidate
+ * POST /api/internal/callbacks/voice-chat
  *
  * Task-run callback for the voice-chat-candidate surface (Epic #10297, Wave 5).
  * On terminal status, completes the task, then post-response kicks the

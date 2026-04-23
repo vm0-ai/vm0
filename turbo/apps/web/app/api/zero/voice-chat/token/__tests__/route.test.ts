@@ -31,19 +31,16 @@ const { POST } = await import("../route");
 const context = testContext();
 
 function tokenRequest(body?: Record<string, unknown>): Request {
-  return new Request(
-    "http://localhost:3000/api/zero/voice-chat-candidate/token",
-    {
-      method: "POST",
-      ...(body && {
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
-      }),
-    },
-  );
+  return new Request("http://localhost:3000/api/zero/voice-chat/token", {
+    method: "POST",
+    ...(body && {
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  });
 }
 
-describe("POST /api/zero/voice-chat-candidate/token", () => {
+describe("POST /api/zero/voice-chat/token", () => {
   let userId: string;
   let orgId: string;
   let sessionId: string;

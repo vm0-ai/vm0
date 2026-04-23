@@ -20,7 +20,7 @@ const { POST } = await import("../route");
 
 const context = testContext();
 
-describe("POST /api/zero/voice-chat-candidate (createSession)", () => {
+describe("POST /api/zero/voice-chat (createSession)", () => {
   let orgId: string;
   let userId: string;
 

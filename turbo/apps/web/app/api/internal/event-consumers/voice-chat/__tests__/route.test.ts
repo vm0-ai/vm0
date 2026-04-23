@@ -21,7 +21,7 @@ const SECRETS_ENCRYPTION_KEY =
   "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
 const CONSUMER_URL =
-  "http://localhost:3000/api/internal/event-consumers/voice-chat-candidate";
+  "http://localhost:3000/api/internal/event-consumers/voice-chat";
 
 function buildAssistantEvent(
   sequenceNumber: number,
@@ -85,7 +85,7 @@ async function seedSessionWithQueuedTask() {
 
 const context = testContext();
 
-describe("POST /api/internal/event-consumers/voice-chat-candidate", () => {
+describe("POST /api/internal/event-consumers/voice-chat", () => {
   beforeEach(() => {
     mockAblyPublish.mockClear();
     context.setupMocks();

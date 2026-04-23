@@ -37,7 +37,7 @@ function taskBody(overrides: Partial<{ prompt: string; callId: string }> = {}) {
   };
 }
 
-describe("POST /api/zero/voice-chat-candidate/:id/tasks (createTask)", () => {
+describe("POST /api/zero/voice-chat/:id/tasks (createTask)", () => {
   let orgId: string;
   let userId: string;
 
@@ -139,7 +139,7 @@ describe("POST /api/zero/voice-chat-candidate/:id/tasks (createTask)", () => {
   });
 });
 
-describe("GET /api/zero/voice-chat-candidate/:id/tasks (listTasksForCard)", () => {
+describe("GET /api/zero/voice-chat/:id/tasks (listTasksForCard)", () => {
   let orgId: string;
   let userId: string;
 

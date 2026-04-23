@@ -41,7 +41,7 @@ function itemBody(
   };
 }
 
-describe("POST /api/zero/voice-chat-candidate/:id/items (appendItem)", () => {
+describe("POST /api/zero/voice-chat/:id/items (appendItem)", () => {
   let orgId: string;
   let userId: string;
 

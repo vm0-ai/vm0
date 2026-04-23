@@ -19,7 +19,7 @@ import {
   setupCandidateOrg,
   seedCandidateAgent,
   seedCandidateSession,
-} from "../../../../zero/voice-chat-candidate/__tests__/_helpers";
+} from "../../../../zero/voice-chat/__tests__/_helpers";
 import { POST } from "../route";
 
 vi.mock("@vm0/core/feature-switch", async (importOriginal) => {
@@ -35,11 +35,10 @@ const { isFeatureEnabled } = await import("@vm0/core/feature-switch");
 const mockIsFeatureEnabled = isFeatureEnabled as ReturnType<typeof vi.fn>;
 
 const { POST: createTaskPOST } =
-  await import("../../../../zero/voice-chat-candidate/[id]/tasks/route");
+  await import("../../../../zero/voice-chat/[id]/tasks/route");
 
 const context = testContext();
-const CALLBACK_URL =
-  "http://localhost/api/internal/callbacks/voice-chat-candidate";
+const CALLBACK_URL = "http://localhost/api/internal/callbacks/voice-chat";
 
 async function setupTaskWithCallback(options: { agentIdOnRun?: string }) {
   const { userId, orgId } = await context.setupUser();
@@ -80,7 +79,7 @@ async function setupTaskWithCallback(options: { agentIdOnRun?: string }) {
   return { userId, orgId, agentId, session, runId, taskId, secret };
 }
 
-describe("POST /api/internal/callbacks/voice-chat-candidate", () => {
+describe("POST /api/internal/callbacks/voice-chat", () => {
   beforeEach(() => {
     mockAblyPublish.mockClear();
     context.setupMocks();

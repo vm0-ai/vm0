@@ -26,7 +26,7 @@ const { GET } = await import("../route");
 
 const context = testContext();
 
-describe("GET /api/zero/voice-chat-candidate/:id (getSession)", () => {
+describe("GET /api/zero/voice-chat/:id (getSession)", () => {
   let orgId: string;
   let userId: string;
 
