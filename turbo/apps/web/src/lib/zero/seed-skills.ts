@@ -1,4 +1,4 @@
-import { resolveSkillRef } from "@vm0/core";
+import { resolveSkillRef } from "@vm0/core/github-url";
 import type { skills } from "../../db/schema/skill";
 
 /**
