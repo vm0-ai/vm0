@@ -356,6 +356,7 @@ function ChatThreadComposer({
 }) {
   const groups = useLastResolved(thread.groupedChatMessages$) ?? [];
   const hasMessages = groups.length > 0;
+  const hasUserMessages = groups.some((g) => g.role === "user");
   const displayName = useLastResolved(thread.agentDisplayName$) ?? "Zero";
   const allFinishedLoadable = useLastLoadable(thread.allFinished$);
   const allFinished =
@@ -445,10 +446,10 @@ function ChatThreadComposer({
                   onChange: setModelSelection,
                   sessionProviderType:
                     threadData?.latestSessionProviderType ?? null,
-                  // Lock as soon as the thread has any messages — provider
+                  // Lock as soon as the thread has a user message — provider
                   // must stay consistent within a session to maintain
                   // continuity.
-                  disabled: hasMessages,
+                  disabled: hasUserMessages,
                   agentDefault: agentModelDefault,
                 }
               : undefined
