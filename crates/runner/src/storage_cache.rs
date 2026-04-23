@@ -16,9 +16,11 @@
 //! `guest-download` understands after #10805. The PR adding this module
 //! must not merge before #10805 is on `main`.
 
+use std::io;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
+use bytes::Bytes;
 use futures_util::stream::{self, StreamExt};
 use reqwest::Client;
 use sandbox::{ExecRequest, Sandbox};
@@ -62,9 +64,18 @@ enum TargetKind {
 
 enum TargetOutcome {
     Hit,
-    Miss { download_duration: Duration },
+    Miss {
+        download_duration: Duration,
+    },
     SkippedOverSize,
-    SkippedHeadFailed,
+    /// HEAD probe could not determine archive size, so the entry falls back
+    /// to the original R2 URL. `reason` carries either the upstream error
+    /// string or a short tag describing the missing-header case so ops can
+    /// separate transient network failures from permanent 4xx / missing
+    /// `Content-Length` headers in the telemetry feed.
+    SkippedHeadFailed {
+        reason: String,
+    },
 }
 
 /// Populate the runner-side cache for eligible entries in `manifest`.
@@ -209,7 +220,9 @@ async fn process_one(
 
     // 2. Miss path: probe size via HEAD. A HEAD failure is treated as
     //    passthrough — the entry keeps its original R2 URL and the guest
-    //    downloads it as today.
+    //    downloads it as today. The failure reason is threaded into the
+    //    outcome so telemetry can distinguish transient 5xx from missing
+    //    `Content-Length` headers.
     let size = match probe_size(http, &target.archive_url).await {
         Ok(Some(n)) => n,
         Ok(None) => {
@@ -218,16 +231,19 @@ async fn process_one(
                 version = %target.version,
                 "storage_cache: HEAD returned no Content-Length, passthrough"
             );
-            return Ok(TargetOutcome::SkippedHeadFailed);
+            return Ok(TargetOutcome::SkippedHeadFailed {
+                reason: "missing-content-length".to_string(),
+            });
         }
         Err(e) => {
+            let reason = e.to_string();
             warn!(
                 name = %target.name,
                 version = %target.version,
-                error = %e,
+                error = %reason,
                 "storage_cache: HEAD probe failed, passthrough"
             );
-            return Ok(TargetOutcome::SkippedHeadFailed);
+            return Ok(TargetOutcome::SkippedHeadFailed { reason });
         }
     };
     if size > CACHE_MAX_SIZE {
@@ -241,6 +257,9 @@ async fn process_one(
     }
 
     // 3. Download, stage, fsync, atomic rename, then push to guest.
+    //    `Bytes` is Arc-backed, so passing `&bytes[..]` to both the disk
+    //    writer and the sandbox `write_file` costs zero extra allocation
+    //    over the single response body.
     let t = Instant::now();
     let bytes = download_tarball(http, &target.archive_url).await?;
     write_to_cache(&cache_dir, &bytes).await?;
@@ -268,7 +287,7 @@ async fn probe_size(http: &Client, url: &str) -> RunnerResult<Option<u64>> {
         .and_then(|s| s.parse::<u64>().ok()))
 }
 
-async fn download_tarball(http: &Client, url: &str) -> RunnerResult<Vec<u8>> {
+async fn download_tarball(http: &Client, url: &str) -> RunnerResult<Bytes> {
     let resp = http
         .get(url)
         .timeout(DOWNLOAD_TIMEOUT)
@@ -277,11 +296,9 @@ async fn download_tarball(http: &Client, url: &str) -> RunnerResult<Vec<u8>> {
         .map_err(|e| RunnerError::Internal(format!("GET {url}: {e}")))?
         .error_for_status()
         .map_err(|e| RunnerError::Internal(format!("GET status {url}: {e}")))?;
-    let bytes = resp
-        .bytes()
+    resp.bytes()
         .await
-        .map_err(|e| RunnerError::Internal(format!("read body {url}: {e}")))?;
-    Ok(bytes.to_vec())
+        .map_err(|e| RunnerError::Internal(format!("read body {url}: {e}")))
 }
 
 async fn write_to_cache(cache_dir: &Path, bytes: &[u8]) -> RunnerResult<()> {
@@ -317,8 +334,13 @@ async fn write_to_cache(cache_dir: &Path, bytes: &[u8]) -> RunnerResult<()> {
 
     if let Err(e) = fs::rename(&staging, cache_dir).await {
         // A sibling runner may have populated the final dir while we were
-        // staging. If the final archive exists now, prefer it.
-        if fs::metadata(cache_dir.join("archive.tar.gz")).await.is_ok() {
+        // staging. Only swallow the error if (a) it looks like a "target
+        // already exists" kind (EEXIST / ENOTEMPTY on Linux — the kernel
+        // returns ENOTEMPTY for a non-empty target and EEXIST for some
+        // filesystems) and (b) the expected final artifact is actually
+        // there. Any other kernel error (EXDEV, ENOSPC, EACCES, ...) must
+        // propagate so callers can surface the real failure.
+        if is_rename_collision(&e) && fs::metadata(cache_dir.join("archive.tar.gz")).await.is_ok() {
             let _ = fs::remove_dir_all(&staging).await;
             return Ok(());
         }
@@ -329,6 +351,15 @@ async fn write_to_cache(cache_dir: &Path, bytes: &[u8]) -> RunnerResult<()> {
         )));
     }
     Ok(())
+}
+
+/// Whether a `fs::rename` error plausibly means "target already exists or is
+/// non-empty" — the race branch where a sibling runner beat us to it.
+fn is_rename_collision(e: &io::Error) -> bool {
+    matches!(
+        e.kind(),
+        io::ErrorKind::AlreadyExists | io::ErrorKind::DirectoryNotEmpty
+    )
 }
 
 /// `<dir>` -> `<dir>.tmp` sibling with the same parent (so rename is atomic).
@@ -365,12 +396,12 @@ fn apply_outcome(
                 None,
             );
         }
-        TargetOutcome::SkippedHeadFailed => {
+        TargetOutcome::SkippedHeadFailed { reason } => {
             telemetry.record(
                 "storage_cache_skipped_head_failed",
                 Duration::ZERO,
                 true,
-                None,
+                Some(reason.as_str()),
             );
         }
     }
@@ -380,9 +411,12 @@ fn apply_outcome(
 ///
 /// Verifies the entry at `target.index` still has the expected
 /// `(name, version)` before mutating — content-addressed safety against
-/// any future parallel mutation at this pipeline stage.
+/// any future parallel mutation at this pipeline stage. A mismatch is not
+/// a hard error (the caller made the right conservative choice) but is
+/// logged so a regression that breaks the invariant is visible.
 fn rewrite_url(manifest: &mut StorageManifest, target: &CacheTarget) {
     let new_url = format!("file://{GUEST_STAGE_DIR}/{}.tar.gz", target.version);
+    let mut applied = false;
     match target.kind {
         TargetKind::Storage => {
             if let Some(entry) = manifest.storages.get_mut(target.index)
@@ -390,6 +424,7 @@ fn rewrite_url(manifest: &mut StorageManifest, target: &CacheTarget) {
                 && entry.vas_version_id.as_deref() == Some(target.version.as_str())
             {
                 entry.archive_url = Some(new_url);
+                applied = true;
             }
         }
         TargetKind::Artifact => {
@@ -398,8 +433,17 @@ fn rewrite_url(manifest: &mut StorageManifest, target: &CacheTarget) {
                 && entry.vas_version_id == target.version
             {
                 entry.archive_url = Some(new_url);
+                applied = true;
             }
         }
+    }
+    if !applied {
+        warn!(
+            name = %target.name,
+            version = %target.version,
+            index = target.index,
+            "storage_cache: manifest identity mismatch at rewrite, skipping url swap"
+        );
     }
 }
 

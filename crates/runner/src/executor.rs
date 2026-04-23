@@ -428,17 +428,17 @@ async fn run_in_sandbox(
             // Populate the runner-side cache first, rewriting eligible entries'
             // `archive_url` to `file:///tmp/vm0-storage-cache/...` so the guest
             // reads from its tmpfs instead of hitting R2 per turn.
-            match crate::storage_cache::populate_cache(
-                &mut effective,
-                sandbox,
-                &config.home,
-                telemetry,
-            )
-            .await
-            {
-                Ok(()) => download_storages(sandbox, context, &effective, &log_file).await,
-                Err(e) => Err(e),
+            async {
+                crate::storage_cache::populate_cache(
+                    &mut effective,
+                    sandbox,
+                    &config.home,
+                    telemetry,
+                )
+                .await?;
+                download_storages(sandbox, context, &effective, &log_file).await
             }
+            .await
         } else {
             Ok(())
         };

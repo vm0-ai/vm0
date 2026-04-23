@@ -5,6 +5,25 @@ use sha2::{Digest, Sha256};
 use crate::error::RunnerResult;
 use crate::ids::RunId;
 
+/// Short hex digests (16 chars = 8 bytes) of a `(name, version)` pair, used
+/// when building filesystem paths from untrusted manifest fields.
+///
+/// Prefix-length of 16 is ample collision resistance for a runner-local
+/// cache (~10^10 pairs before birthday collision) while keeping directory
+/// names compact.
+fn storage_key_hashes(name: &str, version: &str) -> (String, String) {
+    (short_digest(name), short_digest(version))
+}
+
+/// Hex-encode the first 8 bytes of `SHA-256(s)` — 16 characters, collision
+/// resistant enough for runner-local bookkeeping and always a valid path
+/// segment.
+fn short_digest(s: &str) -> String {
+    let digest = Sha256::digest(s.as_bytes());
+    let prefix = digest.get(..8).unwrap_or(&digest);
+    hex::encode(prefix)
+}
+
 /// Update a directory's mtime to now, so `runner gc` treats it as recently used.
 pub fn touch_mtime(dir: &Path) {
     let Ok(f) = std::fs::File::open(dir) else {
@@ -53,6 +72,7 @@ impl RunnerPaths {
 }
 
 /// Paths rooted at /var/lib/vm0-runner/.
+#[derive(Clone)]
 pub struct HomePaths {
     root: PathBuf,
 }
@@ -147,10 +167,26 @@ impl HomePaths {
         self.root.join("storages")
     }
 
-    /// Per-version flock path guarding `<storages_dir>/<name>/<version>/`.
+    /// Cache directory for a specific storage (name, version) pair.
+    ///
+    /// `name` and `version` come from untrusted manifest fields
+    /// (`vas_storage_name` / `vas_version_id`) so they are hashed before use.
+    /// Hashing also makes the key pair injective — two distinct `(name,
+    /// version)` pairs cannot collide on a single directory regardless of
+    /// hyphen placement in either component.
+    pub fn storage_cache_dir(&self, name: &str, version: &str) -> PathBuf {
+        let (name_hash, version_hash) = storage_key_hashes(name, version);
+        self.storages_dir().join(name_hash).join(version_hash)
+    }
+
+    /// Per-version flock path guarding `storage_cache_dir(name, version)`.
+    ///
+    /// Same hashing rationale as `storage_cache_dir`: the lock filename must
+    /// be injective in `(name, version)` and safe to embed in a path segment.
     pub fn storage_lock(&self, name: &str, version: &str) -> PathBuf {
+        let (name_hash, version_hash) = storage_key_hashes(name, version);
         self.locks_dir()
-            .join(format!("storage-{name}-{version}.lock"))
+            .join(format!("storage-{name_hash}-{version_hash}.lock"))
     }
 }
 
@@ -397,10 +433,15 @@ mod tests {
     fn storages_paths_layout() {
         let home = HomePaths::with_root(PathBuf::from("/test"));
         assert_eq!(home.storages_dir(), PathBuf::from("/test/storages"));
-        assert_eq!(
-            home.storage_lock("system-bash", "v3"),
-            PathBuf::from("/test/locks/storage-system-bash-v3.lock"),
-        );
+        // `storage_lock` hashes its inputs: lockfile name is derived from
+        // `(short_digest(name), short_digest(version))` so the only stable
+        // invariants we can assert are the prefix, parent directory, and the
+        // `.lock` suffix.
+        let lock = home.storage_lock("system-bash", "v3");
+        assert_eq!(lock.parent(), Some(home.locks_dir().as_path()));
+        let file_name = lock.file_name().unwrap().to_str().unwrap();
+        assert!(file_name.starts_with("storage-"));
+        assert!(file_name.ends_with(".lock"));
     }
 
     #[test]
@@ -443,5 +484,61 @@ mod tests {
     #[test]
     fn touch_mtime_nonexistent_dir_does_not_panic() {
         touch_mtime(Path::new("/nonexistent/dir"));
+    }
+
+    #[test]
+    fn storage_cache_dir_stays_inside_root_for_traversal_names() {
+        // Regression guard: untrusted `vas_storage_name` / `vas_version_id`
+        // must be hashed before being embedded in the path, so that inputs
+        // like `../etc` or `foo/bar` cannot escape the cache root.
+        let home = HomePaths::with_root(PathBuf::from("/test"));
+        let storages = home.storages_dir();
+
+        for (name, version) in [
+            ("../etc", "v1"),
+            ("foo/bar", "v1"),
+            ("foo", "../../etc"),
+            ("foo", "v1/../../"),
+            ("normal", "v1"),
+        ] {
+            let dir = home.storage_cache_dir(name, version);
+            assert!(
+                dir.starts_with(&storages),
+                "cache dir {dir:?} escaped storages root for name={name:?} version={version:?}"
+            );
+            // Exactly two path components under `storages_dir()`:
+            // `<hashed-name>/<hashed-version>`.
+            let tail: Vec<_> = dir.strip_prefix(&storages).unwrap().components().collect();
+            assert_eq!(tail.len(), 2, "expected two hashed components in {dir:?}");
+        }
+    }
+
+    #[test]
+    fn storage_lock_is_injective_and_inside_locks_dir() {
+        // Distinct (name, version) pairs that would collide under naive
+        // `format!("storage-{name}-{version}.lock")` templating must produce
+        // distinct lock paths after hashing.
+        let home = HomePaths::with_root(PathBuf::from("/test"));
+        let locks = home.locks_dir();
+
+        let a = home.storage_lock("foo", "bar-v1");
+        let b = home.storage_lock("foo-bar", "v1");
+        assert_ne!(a, b, "hashed lock paths must not collide: {a:?} vs {b:?}");
+        assert!(a.starts_with(&locks));
+        assert!(b.starts_with(&locks));
+        assert!(a.to_string_lossy().ends_with(".lock"));
+    }
+
+    #[test]
+    fn storage_cache_dir_is_deterministic() {
+        let home = HomePaths::with_root(PathBuf::from("/test"));
+        assert_eq!(
+            home.storage_cache_dir("foo", "v1"),
+            home.storage_cache_dir("foo", "v1")
+        );
+        assert_ne!(
+            home.storage_cache_dir("foo", "v1"),
+            home.storage_cache_dir("foo", "v2")
+        );
     }
 }
