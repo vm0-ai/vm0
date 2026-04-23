@@ -44,9 +44,26 @@ const router = tsr.router(webhookCheckpointsContract, {
     // tracked in #10763), PG raises SQLSTATE 23503; we surface it as
     // 404 instead of 500 to keep the same "run not found" contract
     // the caller already handles.
-    let result;
     try {
-      result = await createCheckpoint(body, userId);
+      const result = await createCheckpoint(body, userId);
+
+      log.debug(
+        `Checkpoint created: ${result.checkpointId}, session: ${result.agentSessionId}, conversation: ${result.conversationId}`,
+      );
+
+      // Note: vm0_result event is now sent by the complete API
+      // This endpoint only handles checkpoint data persistence
+
+      return {
+        status: 200 as const,
+        body: {
+          checkpointId: result.checkpointId,
+          agentSessionId: result.agentSessionId,
+          conversationId: result.conversationId,
+          artifacts: result.artifacts,
+          volumes: result.volumes,
+        },
+      };
     } catch (err) {
       if (isForeignKeyViolation(err)) {
         log.info("Run deleted concurrent with checkpoint, dropping", {
@@ -61,24 +78,6 @@ const router = tsr.router(webhookCheckpointsContract, {
       }
       throw err;
     }
-
-    log.debug(
-      `Checkpoint created: ${result.checkpointId}, session: ${result.agentSessionId}, conversation: ${result.conversationId}`,
-    );
-
-    // Note: vm0_result event is now sent by the complete API
-    // This endpoint only handles checkpoint data persistence
-
-    return {
-      status: 200 as const,
-      body: {
-        checkpointId: result.checkpointId,
-        agentSessionId: result.agentSessionId,
-        conversationId: result.conversationId,
-        artifacts: result.artifacts,
-        volumes: result.volumes,
-      },
-    };
   },
 });
 

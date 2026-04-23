@@ -14,9 +14,9 @@ export function isForeignKeyViolation(err: unknown): boolean {
   if (!(err instanceof Error)) {
     return false;
   }
-  const cause = (err as Error & { cause?: unknown }).cause;
-  if (cause && typeof cause === "object" && "code" in cause) {
-    return (cause as { code: unknown }).code === PG_FOREIGN_KEY_VIOLATION;
+  const { cause } = err;
+  if (typeof cause !== "object" || cause === null || !("code" in cause)) {
+    return false;
   }
-  return false;
+  return cause.code === PG_FOREIGN_KEY_VIOLATION;
 }
