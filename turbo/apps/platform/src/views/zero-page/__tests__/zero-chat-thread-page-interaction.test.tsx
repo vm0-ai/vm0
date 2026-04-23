@@ -132,6 +132,64 @@ describe("zero chat thread page - image attachment opens lightbox", () => {
       expect(lightboxImg).toBeInTheDocument();
     });
   });
+
+  it("downloads a CDN image from the lightbox", async () => {
+    const imageUrl = "https://cdn.example.com/photo.png";
+    const originalFetch = window.fetch.bind(window);
+    const fetchSpy = vi
+      .spyOn(window, "fetch")
+      .mockImplementation((input, init) => {
+        const requestUrl =
+          typeof input === "string"
+            ? input
+            : input instanceof URL
+              ? input.toString()
+              : input.url;
+        if (requestUrl === imageUrl) {
+          return Promise.resolve(
+            new Response(new Blob(["img"], { type: "image/png" }), {
+              status: 200,
+            }),
+          );
+        }
+        return originalFetch(input as RequestInfo | URL, init);
+      });
+    const createObjectURLSpy = vi
+      .spyOn(URL, "createObjectURL")
+      .mockReturnValue("blob:test");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    const anchorClickSpy = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(() => {});
+
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "user",
+          content: `[Attached file: photo.png](${imageUrl})\nDownload with: curl ${imageUrl}\n`,
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    const imageButton = await waitFor(() => {
+      return screen.getByRole("img", { name: "photo.png" }).closest("button")!;
+    });
+    click(imageButton);
+
+    const downloadButton = await waitFor(() => {
+      return screen.getByLabelText("Download");
+    });
+    click(downloadButton);
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(imageUrl, { mode: "cors" });
+      expect(createObjectURLSpy).toHaveBeenCalledOnce();
+      expect(anchorClickSpy).toHaveBeenCalled();
+    });
+  });
 });
 
 // CHAT-I-052: Copy message button writes message content to clipboard
