@@ -16,7 +16,6 @@ export {
   seedUserCacheEntry,
   insertUserCacheEntry,
   insertVm0ApiKeys,
-  insertTestVoiceChatSession,
 } from "../db-test-seeders/users";
 export { insertTestVoiceChatCandidateSession } from "../db-test-seeders/voice-chat-candidate";
 
