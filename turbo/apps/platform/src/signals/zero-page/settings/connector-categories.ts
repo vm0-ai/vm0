@@ -29,209 +29,233 @@ const CONNECTOR_CATEGORY_ORDER: readonly ConnectorDisplayCategory[] = [
   "data-automation-infrastructure",
 ];
 
-const CONNECTOR_CATEGORY_LABELS: Record<ConnectorDisplayCategory, string> = {
-  "ai-general-models": "AI: General Models and Reasoning",
-  "ai-image-video": "AI: Image / Video Generation",
-  "ai-voice-audio": "AI: Voice / Audio",
-  "ai-agent-apps": "AI: Agent Platforms and AI Apps",
-  "ai-memory-tracing-eval": "AI: Memory / Tracing / Evaluation",
-  "communication-collaboration": "Communication and Collaboration",
-  "meetings-scheduling": "Meetings and Scheduling",
-  "docs-files-knowledge": "Docs, Files, and Knowledge",
-  "engineering-team-execution": "Engineering and Team Execution",
-  "sales-crm-business-operations": "Sales, CRM, and Business Operations",
-  "marketing-content-growth": "Marketing, Content, and Growth",
-  "data-automation-infrastructure": "Data, Automation, and Infrastructure",
-};
-
-const CONNECTOR_CATEGORY_BY_TYPE = {
-  agentmail: "communication-collaboration",
-  agentphone: "communication-collaboration",
-  ahrefs: "marketing-content-growth",
-  airtable: "docs-files-knowledge",
-  amplitude: "data-automation-infrastructure",
-  "anthropic-managed-agents": "ai-agent-apps",
-  apify: "data-automation-infrastructure",
-  apollo: "sales-crm-business-operations",
-  asana: "engineering-team-execution",
-  atlassian: "engineering-team-execution",
-  attio: "sales-crm-business-operations",
-  axiom: "data-automation-infrastructure",
-  bitrix: "sales-crm-business-operations",
-  "brave-search": "data-automation-infrastructure",
-  brevo: "communication-collaboration",
-  "bright-data": "data-automation-infrastructure",
-  browserbase: "data-automation-infrastructure",
-  browserless: "data-automation-infrastructure",
-  buffer: "marketing-content-growth",
-  "cal-com": "meetings-scheduling",
-  calendly: "meetings-scheduling",
-  canva: "docs-files-knowledge",
-  chatwoot: "communication-collaboration",
-  clickup: "engineering-team-execution",
-  close: "sales-crm-business-operations",
-  cloudflare: "engineering-team-execution",
-  cloudinary: "marketing-content-growth",
-  coda: "docs-files-knowledge",
-  computer: "engineering-team-execution",
-  cronlytic: "data-automation-infrastructure",
-  "customer-io": "communication-collaboration",
-  db9: "data-automation-infrastructure",
-  deel: "sales-crm-business-operations",
-  deepseek: "ai-general-models",
-  devto: "marketing-content-growth",
-  dify: "ai-agent-apps",
-  discord: "communication-collaboration",
-  "discord-webhook": "communication-collaboration",
-  docusign: "data-automation-infrastructure",
-  doppler: "engineering-team-execution",
-  drive9: "docs-files-knowledge",
-  dropbox: "docs-files-knowledge",
-  "dropbox-sign": "data-automation-infrastructure",
-  duffel: "data-automation-infrastructure",
-  e2b: "data-automation-infrastructure",
-  elevenlabs: "ai-voice-audio",
-  etsy: "data-automation-infrastructure",
-  exa: "data-automation-infrastructure",
-  explorium: "sales-crm-business-operations",
-  fal: "ai-image-video",
-  figma: "docs-files-knowledge",
-  firecrawl: "data-automation-infrastructure",
-  fireflies: "meetings-scheduling",
-  freshdesk: "communication-collaboration",
-  gamma: "marketing-content-growth",
-  "garmin-connect": "data-automation-infrastructure",
-  github: "engineering-team-execution",
-  gitlab: "engineering-team-execution",
-  gmail: "communication-collaboration",
-  "google-calendar": "meetings-scheduling",
-  "google-docs": "docs-files-knowledge",
-  "google-drive": "docs-files-knowledge",
-  "google-meet": "meetings-scheduling",
-  "google-sheets": "docs-files-knowledge",
-  granola: "meetings-scheduling",
-  greenhouse: "sales-crm-business-operations",
-  groq: "ai-general-models",
-  helicone: "ai-memory-tracing-eval",
-  heygen: "marketing-content-growth",
-  htmlcsstoimage: "marketing-content-growth",
-  hubspot: "sales-crm-business-operations",
-  "hugging-face": "ai-general-models",
-  hume: "ai-voice-audio",
-  imgur: "marketing-content-growth",
-  infisical: "engineering-team-execution",
-  instagram: "marketing-content-growth",
-  instantly: "communication-collaboration",
-  intercom: "communication-collaboration",
-  "intervals-icu": "meetings-scheduling",
-  jam: "engineering-team-execution",
-  jira: "engineering-team-execution",
-  jotform: "data-automation-infrastructure",
-  klaviyo: "marketing-content-growth",
-  kommo: "sales-crm-business-operations",
-  langfuse: "ai-memory-tracing-eval",
-  langsmith: "ai-memory-tracing-eval",
-  lark: "communication-collaboration",
-  line: "communication-collaboration",
-  linear: "engineering-team-execution",
-  loops: "communication-collaboration",
-  luma: "ai-image-video",
-  mailchimp: "communication-collaboration",
-  mailsac: "communication-collaboration",
-  make: "data-automation-infrastructure",
-  manus: "ai-agent-apps",
-  mem0: "ai-memory-tracing-eval",
-  mercury: "sales-crm-business-operations",
-  "meta-ads": "marketing-content-growth",
-  metabase: "data-automation-infrastructure",
-  minimax: "ai-general-models",
-  minio: "docs-files-knowledge",
-  miro: "docs-files-knowledge",
-  mixpanel: "data-automation-infrastructure",
-  monday: "engineering-team-execution",
-  msg9: "communication-collaboration",
-  n8n: "data-automation-infrastructure",
-  neon: "data-automation-infrastructure",
-  notion: "docs-files-knowledge",
-  onyx: "docs-files-knowledge",
-  openai: "ai-general-models",
-  "outlook-calendar": "meetings-scheduling",
-  "outlook-mail": "communication-collaboration",
-  pandadoc: "data-automation-infrastructure",
-  pdf4me: "data-automation-infrastructure",
-  pdfco: "data-automation-infrastructure",
-  pdforge: "data-automation-infrastructure",
-  perplexity: "data-automation-infrastructure",
-  pika: "ai-image-video",
-  pinecone: "data-automation-infrastructure",
-  pipedrive: "sales-crm-business-operations",
-  plain: "communication-collaboration",
-  plausible: "data-automation-infrastructure",
-  podchaser: "data-automation-infrastructure",
-  posthog: "data-automation-infrastructure",
-  "prisma-postgres": "data-automation-infrastructure",
-  productlane: "sales-crm-business-operations",
-  pushinator: "communication-collaboration",
-  qdrant: "data-automation-infrastructure",
-  qiita: "marketing-content-growth",
-  reddit: "data-automation-infrastructure",
-  replicate: "ai-image-video",
-  reportei: "marketing-content-growth",
-  resend: "communication-collaboration",
-  revenuecat: "data-automation-infrastructure",
-  runway: "ai-image-video",
-  salesforce: "sales-crm-business-operations",
-  scrapeninja: "data-automation-infrastructure",
-  sentry: "engineering-team-execution",
-  serpapi: "data-automation-infrastructure",
-  shopify: "data-automation-infrastructure",
-  shortio: "marketing-content-growth",
-  similarweb: "marketing-content-growth",
-  slack: "communication-collaboration",
-  "slack-webhook": "communication-collaboration",
-  spotify: "data-automation-infrastructure",
-  "stability-ai": "ai-image-video",
-  strapi: "docs-files-knowledge",
-  strava: "data-automation-infrastructure",
-  streak: "sales-crm-business-operations",
-  stripe: "data-automation-infrastructure",
-  supabase: "data-automation-infrastructure",
-  supadata: "data-automation-infrastructure",
-  tavily: "data-automation-infrastructure",
-  "test-oauth": "data-automation-infrastructure",
-  tldv: "meetings-scheduling",
-  todoist: "engineering-team-execution",
-  together: "ai-general-models",
-  twenty: "sales-crm-business-operations",
-  typeform: "data-automation-infrastructure",
-  v0: "ai-agent-apps",
-  vercel: "engineering-team-execution",
-  wandb: "ai-memory-tracing-eval",
-  webflow: "marketing-content-growth",
-  wix: "marketing-content-growth",
-  workos: "engineering-team-execution",
-  wrike: "engineering-team-execution",
-  x: "marketing-content-growth",
-  xero: "data-automation-infrastructure",
-  youtube: "marketing-content-growth",
-  zapier: "data-automation-infrastructure",
-  zapsign: "data-automation-infrastructure",
-  zendesk: "communication-collaboration",
-  zep: "ai-memory-tracing-eval",
-  zeptomail: "communication-collaboration",
-  zoom: "meetings-scheduling",
-} as const satisfies Record<ConnectorType, ConnectorDisplayCategory>;
-
 interface ConnectorCategorySection<T> {
   category: ConnectorDisplayCategory;
   label: string;
   connectors: T[];
 }
 
+function getConnectorCategoryLabel(category: ConnectorDisplayCategory): string {
+  switch (category) {
+    case "ai-general-models":
+      return "AI: General Models and Reasoning";
+    case "ai-image-video":
+      return "AI: Image / Video Generation";
+    case "ai-voice-audio":
+      return "AI: Voice / Audio";
+    case "ai-agent-apps":
+      return "AI: Agent Platforms and AI Apps";
+    case "ai-memory-tracing-eval":
+      return "AI: Memory / Tracing / Evaluation";
+    case "communication-collaboration":
+      return "Communication and Collaboration";
+    case "meetings-scheduling":
+      return "Meetings and Scheduling";
+    case "docs-files-knowledge":
+      return "Docs, Files, and Knowledge";
+    case "engineering-team-execution":
+      return "Engineering and Team Execution";
+    case "sales-crm-business-operations":
+      return "Sales, CRM, and Business Operations";
+    case "marketing-content-growth":
+      return "Marketing, Content, and Growth";
+    case "data-automation-infrastructure":
+      return "Data, Automation, and Infrastructure";
+  }
+}
+
 export function getConnectorDisplayCategory(
   type: ConnectorType,
 ): ConnectorDisplayCategory {
-  return CONNECTOR_CATEGORY_BY_TYPE[type];
+  switch (type) {
+    case "agentmail":
+    case "agentphone":
+    case "brevo":
+    case "chatwoot":
+    case "customer-io":
+    case "discord":
+    case "discord-webhook":
+    case "freshdesk":
+    case "gmail":
+    case "instantly":
+    case "intercom":
+    case "lark":
+    case "line":
+    case "loops":
+    case "mailchimp":
+    case "mailsac":
+    case "msg9":
+    case "outlook-mail":
+    case "plain":
+    case "pushinator":
+    case "resend":
+    case "slack":
+    case "slack-webhook":
+    case "zendesk":
+    case "zeptomail":
+      return "communication-collaboration";
+    case "cal-com":
+    case "calendly":
+    case "fireflies":
+    case "google-calendar":
+    case "google-meet":
+    case "granola":
+    case "intervals-icu":
+    case "outlook-calendar":
+    case "tldv":
+    case "zoom":
+      return "meetings-scheduling";
+    case "airtable":
+    case "canva":
+    case "coda":
+    case "drive9":
+    case "dropbox":
+    case "figma":
+    case "google-docs":
+    case "google-drive":
+    case "google-sheets":
+    case "minio":
+    case "miro":
+    case "notion":
+    case "onyx":
+    case "strapi":
+      return "docs-files-knowledge";
+    case "asana":
+    case "atlassian":
+    case "clickup":
+    case "cloudflare":
+    case "computer":
+    case "doppler":
+    case "github":
+    case "gitlab":
+    case "infisical":
+    case "jam":
+    case "jira":
+    case "linear":
+    case "monday":
+    case "sentry":
+    case "todoist":
+    case "vercel":
+    case "workos":
+    case "wrike":
+      return "engineering-team-execution";
+    case "apollo":
+    case "attio":
+    case "bitrix":
+    case "close":
+    case "deel":
+    case "explorium":
+    case "greenhouse":
+    case "hubspot":
+    case "kommo":
+    case "mercury":
+    case "pipedrive":
+    case "productlane":
+    case "salesforce":
+    case "streak":
+    case "twenty":
+      return "sales-crm-business-operations";
+    case "ahrefs":
+    case "buffer":
+    case "cloudinary":
+    case "devto":
+    case "gamma":
+    case "heygen":
+    case "htmlcsstoimage":
+    case "imgur":
+    case "instagram":
+    case "klaviyo":
+    case "meta-ads":
+    case "qiita":
+    case "reportei":
+    case "shortio":
+    case "similarweb":
+    case "webflow":
+    case "wix":
+    case "x":
+    case "youtube":
+      return "marketing-content-growth";
+    case "openai":
+    case "deepseek":
+    case "groq":
+    case "hugging-face":
+    case "minimax":
+    case "together":
+      return "ai-general-models";
+    case "fal":
+    case "luma":
+    case "pika":
+    case "replicate":
+    case "runway":
+    case "stability-ai":
+      return "ai-image-video";
+    case "elevenlabs":
+    case "hume":
+      return "ai-voice-audio";
+    case "anthropic-managed-agents":
+    case "dify":
+    case "manus":
+    case "v0":
+      return "ai-agent-apps";
+    case "helicone":
+    case "langfuse":
+    case "langsmith":
+    case "mem0":
+    case "wandb":
+    case "zep":
+      return "ai-memory-tracing-eval";
+    case "amplitude":
+    case "apify":
+    case "axiom":
+    case "brave-search":
+    case "bright-data":
+    case "browserbase":
+    case "browserless":
+    case "cronlytic":
+    case "db9":
+    case "docusign":
+    case "dropbox-sign":
+    case "duffel":
+    case "e2b":
+    case "etsy":
+    case "exa":
+    case "firecrawl":
+    case "garmin-connect":
+    case "jotform":
+    case "make":
+    case "metabase":
+    case "mixpanel":
+    case "n8n":
+    case "neon":
+    case "pandadoc":
+    case "pdf4me":
+    case "pdfco":
+    case "pdforge":
+    case "perplexity":
+    case "pinecone":
+    case "plausible":
+    case "podchaser":
+    case "posthog":
+    case "prisma-postgres":
+    case "qdrant":
+    case "reddit":
+    case "revenuecat":
+    case "scrapeninja":
+    case "serpapi":
+    case "shopify":
+    case "spotify":
+    case "strava":
+    case "stripe":
+    case "supabase":
+    case "supadata":
+    case "tavily":
+    case "test-oauth":
+    case "typeform":
+    case "xero":
+    case "zapier":
+    case "zapsign":
+      return "data-automation-infrastructure";
+  }
 }
 
 export function groupConnectorsByCategory<
@@ -266,7 +290,7 @@ export function groupConnectorsByCategory<
     return [
       {
         category,
-        label: CONNECTOR_CATEGORY_LABELS[category],
+        label: getConnectorCategoryLabel(category),
         connectors: sorted,
       },
     ];
