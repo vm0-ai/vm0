@@ -246,37 +246,32 @@ async fn run_in_sandbox(
     env_pairs: &[(String, String)],
     sandbox: &mut dyn sandbox::Sandbox,
 ) -> (RunnerResult<ExecResult>, Timing) {
+    let mut timing = Timing {
+        boot_ms: 0,
+        clock_ms: 0,
+        exec_ms: 0,
+    };
+
     let t = Instant::now();
-    if let Err(e) = sandbox.start().await {
-        let timing = Timing {
-            boot_ms: t.elapsed().as_millis(),
-            clock_ms: 0,
-            exec_ms: 0,
-        };
+    let start_result = sandbox.start().await;
+    timing.boot_ms = t.elapsed().as_millis();
+    if let Err(e) = start_result {
         return (Err(e.into()), timing);
     }
-    let boot_ms = t.elapsed().as_millis();
-    info!(boot_ms, "sandbox started");
+    info!(boot_ms = timing.boot_ms, "sandbox started");
 
     // Images always contain a snapshot — fix guest clock drift and reseed entropy.
     let t = Instant::now();
-    if let Err(e) = executor::fix_guest_clock(sandbox).await {
-        let timing = Timing {
-            boot_ms,
-            clock_ms: t.elapsed().as_millis(),
-            exec_ms: 0,
-        };
+    let clock_result: RunnerResult<()> = async {
+        executor::fix_guest_clock(sandbox).await?;
+        executor::reseed_guest_entropy(sandbox).await?;
+        Ok(())
+    }
+    .await;
+    timing.clock_ms = t.elapsed().as_millis();
+    if let Err(e) = clock_result {
         return (Err(e), timing);
     }
-    if let Err(e) = executor::reseed_guest_entropy(sandbox).await {
-        let timing = Timing {
-            boot_ms,
-            clock_ms: t.elapsed().as_millis(),
-            exec_ms: 0,
-        };
-        return (Err(e), timing);
-    }
-    let clock_ms = t.elapsed().as_millis();
 
     let env_refs: Vec<(&str, &str)> = env_pairs
         .iter()
@@ -293,13 +288,8 @@ async fn run_in_sandbox(
         })
         .await
         .map_err(Into::into);
-    let exec_ms = t.elapsed().as_millis();
+    timing.exec_ms = t.elapsed().as_millis();
 
-    let timing = Timing {
-        boot_ms,
-        clock_ms,
-        exec_ms,
-    };
     (result, timing)
 }
 
