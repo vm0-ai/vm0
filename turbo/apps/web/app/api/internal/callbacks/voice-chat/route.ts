@@ -11,7 +11,7 @@ import { isNotFound } from "../../../../../src/lib/shared/errors";
 import type { VoiceChatCallbackPayload } from "../../../../../src/lib/infra/callback/callback-payloads";
 import { logger } from "../../../../../src/lib/shared/logger";
 
-const log = logger("callback:voice-chat-candidate");
+const log = logger("callback:voice-chat");
 
 export const maxDuration = 60;
 
@@ -110,7 +110,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // — without waiting for the reasoner LLM. The after() reasoner tick still
   // runs and will publish again once it has new conversation summary /
   // compacted results.
-  await publishUserSignal([userId], `voice-chat-candidate:${sessionId}`);
+  await publishUserSignal([userId], `voice-chat:${sessionId}`);
   after(() => {
     return triggerReasoning(sessionId);
   });

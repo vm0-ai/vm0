@@ -17,7 +17,7 @@ import {
   voiceChatTokenBodySchema,
 } from "../_support";
 
-const log = logger("api:zero:voice-chat-candidate:token");
+const log = logger("api:zero:voice-chat:token");
 
 export async function POST(request: Request): Promise<Response> {
   initServices();

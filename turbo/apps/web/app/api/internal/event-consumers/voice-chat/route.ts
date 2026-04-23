@@ -11,7 +11,7 @@ import {
 import { publishUserSignal } from "../../../../../src/lib/infra/realtime/client";
 import { logger } from "../../../../../src/lib/shared/logger";
 
-const log = logger("event-consumer:voice-chat-candidate");
+const log = logger("event-consumer:voice-chat");
 
 /**
  * Concatenate all text blocks in a single assistant event into one string.
@@ -83,10 +83,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const touch = running ?? appended;
   if (touch) {
-    await publishUserSignal(
-      [touch.userId],
-      `voice-chat-candidate:${touch.sessionId}`,
-    );
+    await publishUserSignal([touch.userId], `voice-chat:${touch.sessionId}`);
   }
 
   log.debug("VCC assistant consumer processed", {
