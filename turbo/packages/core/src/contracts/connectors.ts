@@ -445,4 +445,3 @@ export const CONNECTOR_TYPES: Record<ConnectorType, ConnectorConfig> =
 export const connectorTypeSchema = z.enum(
   Object.keys(CONNECTOR_TYPES_DEF) as [ConnectorType, ...ConnectorType[]],
 );
-
