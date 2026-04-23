@@ -7,7 +7,7 @@ import type { AgentEvent } from "../../../../../src/lib/infra/event-consumer/typ
 import {
   appendTaskAssistantResult,
   markTaskRunningIfQueued,
-} from "../../../../../src/lib/zero/voice-chat-candidate/task-service";
+} from "../../../../../src/lib/zero/voice-chat/task-service";
 import { publishUserSignal } from "../../../../../src/lib/infra/realtime/client";
 import { logger } from "../../../../../src/lib/shared/logger";
 

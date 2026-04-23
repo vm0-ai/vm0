@@ -1,19 +1,19 @@
 import { NextResponse, after } from "next/server";
 import { getAuthContext } from "../../../../../../src/lib/auth/get-auth-context";
 import { initServices } from "../../../../../../src/lib/init-services";
-import { getVoiceChatCandidateSession } from "../../../../../../src/lib/zero/voice-chat-candidate/session-service";
-import { readVoiceChatCandidateItems } from "../../../../../../src/lib/zero/voice-chat-candidate/item-service";
+import { getVoiceChatCandidateSession } from "../../../../../../src/lib/zero/voice-chat/session-service";
+import { readVoiceChatCandidateItems } from "../../../../../../src/lib/zero/voice-chat/item-service";
 import {
   createVoiceChatCandidateTask,
   listSessionTasks,
   listSessionTasksForCard,
-} from "../../../../../../src/lib/zero/voice-chat-candidate/task-service";
-import { buildSlowBrainAppendSystemPrompt } from "../../../../../../src/lib/zero/voice-chat-candidate/build-slow-brain-prompt";
+} from "../../../../../../src/lib/zero/voice-chat/task-service";
+import { buildSlowBrainAppendSystemPrompt } from "../../../../../../src/lib/zero/voice-chat/build-slow-brain-prompt";
 import {
   resolveAgentSystemPrompt,
   triggerReasoning,
-} from "../../../../../../src/lib/zero/voice-chat-candidate/trigger-reasoning";
-import { adaptVoiceChatCandidateTaskTrigger } from "../../../../../../src/lib/zero/voice-chat-candidate/adapt-task-trigger";
+} from "../../../../../../src/lib/zero/voice-chat/trigger-reasoning";
+import { adaptVoiceChatCandidateTaskTrigger } from "../../../../../../src/lib/zero/voice-chat/adapt-task-trigger";
 import { publishUserSignal } from "../../../../../../src/lib/infra/realtime/client";
 import { createZeroRun } from "../../../../../../src/lib/zero/zero-run-service";
 import {

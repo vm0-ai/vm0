@@ -4,8 +4,8 @@ import { initServices } from "../../../../src/lib/init-services";
 import {
   createVoiceChatCandidateSession,
   listVoiceChatCandidateSessions,
-} from "../../../../src/lib/zero/voice-chat-candidate/session-service";
-import { buildTalkerPayload } from "../../../../src/lib/zero/voice-chat-candidate/talker-instructions";
+} from "../../../../src/lib/zero/voice-chat/session-service";
+import { buildTalkerPayload } from "../../../../src/lib/zero/voice-chat/talker-instructions";
 import {
   badRequestResponse,
   createVoiceChatSessionBodySchema,

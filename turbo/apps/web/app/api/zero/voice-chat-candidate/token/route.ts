@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
 import { initServices } from "../../../../../src/lib/init-services";
-import { getVoiceChatCandidateSession } from "../../../../../src/lib/zero/voice-chat-candidate/session-service";
-import { buildTalkerPayload } from "../../../../../src/lib/zero/voice-chat-candidate/talker-instructions";
+import { getVoiceChatCandidateSession } from "../../../../../src/lib/zero/voice-chat/session-service";
+import { buildTalkerPayload } from "../../../../../src/lib/zero/voice-chat/talker-instructions";
 import {
   createEphemeralToken,
   isOpenAiTokenError,
-} from "../../../../../src/lib/zero/voice-chat-candidate/openai-token";
+} from "../../../../../src/lib/zero/voice-chat/openai-token";
 import { logger } from "../../../../../src/lib/shared/logger";
 import {
   badRequestResponse,

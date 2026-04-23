@@ -2,9 +2,9 @@ import { NextResponse, after } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { getAuthContext } from "../../../../../../src/lib/auth/get-auth-context";
 import { initServices } from "../../../../../../src/lib/init-services";
-import { getVoiceChatCandidateSession } from "../../../../../../src/lib/zero/voice-chat-candidate/session-service";
-import { appendVoiceChatCandidateItem } from "../../../../../../src/lib/zero/voice-chat-candidate/item-service";
-import { triggerReasoning } from "../../../../../../src/lib/zero/voice-chat-candidate/trigger-reasoning";
+import { getVoiceChatCandidateSession } from "../../../../../../src/lib/zero/voice-chat/session-service";
+import { appendVoiceChatCandidateItem } from "../../../../../../src/lib/zero/voice-chat/item-service";
+import { triggerReasoning } from "../../../../../../src/lib/zero/voice-chat/trigger-reasoning";
 import { voiceChatItems } from "../../../../../../src/db/schema/voice-chat";
 import { isBadRequest } from "../../../../../../src/lib/shared/errors";
 import {

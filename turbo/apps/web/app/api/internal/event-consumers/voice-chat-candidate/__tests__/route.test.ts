@@ -11,9 +11,9 @@ import { createSignedCallbackRequest } from "../../../../../../src/__tests__/api
 import { mockAblyPublish } from "../../../../../../src/__tests__/ably-mock";
 import { initServices } from "../../../../../../src/lib/init-services";
 // eslint-disable-next-line web/no-direct-db-in-tests -- verify DB side-effects directly
-import { createVoiceChatCandidateSession } from "../../../../../../src/lib/zero/voice-chat-candidate/session-service";
+import { createVoiceChatCandidateSession } from "../../../../../../src/lib/zero/voice-chat/session-service";
 // eslint-disable-next-line web/no-direct-db-in-tests -- verify DB side-effects directly
-import { createVoiceChatCandidateTask } from "../../../../../../src/lib/zero/voice-chat-candidate/task-service";
+import { createVoiceChatCandidateTask } from "../../../../../../src/lib/zero/voice-chat/task-service";
 // eslint-disable-next-line web/no-direct-db-in-tests -- verify DB side-effects directly
 import { voiceChatTasks } from "../../../../../../src/db/schema/voice-chat";
 
