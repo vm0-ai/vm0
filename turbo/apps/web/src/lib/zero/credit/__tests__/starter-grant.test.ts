@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { testContext, uniqueId } from "../../../../__tests__/test-helpers";
+import { testContext, uniqueId, ensureOrgRow } from "../../../../__tests__/test-helpers";
 import {
   findCreditExpiresRecords,
   getOrgCredits,
@@ -83,5 +83,20 @@ describe("ensureStarterCreditGrant", () => {
       })
       .sort();
     expect(sources).toEqual(["starter_grant", "subscription_renewal"]);
+  });
+
+  it("does not grant if org_metadata already exists (org previously initialised)", async () => {
+    const { orgId } = await context.setupUser();
+
+    // Simulate an org that was initialised but spent all starter credits —
+    // the credit_expires_record.starter_grant row may be absent (orgs at
+    // credits=0 when migration 0284 backfill ran fall into this category).
+    await ensureOrgRow(orgId);
+
+    await callEnsureStarterCreditGrant(orgId);
+
+    expect(await getOrgCredits(orgId)).toBe(0);
+    const rows = await findCreditExpiresRecords(orgId);
+    expect(rows).toHaveLength(0);
   });
 });
