@@ -58,8 +58,7 @@ describe("Additional Volumes", () => {
       user.orgId,
       user.orgId,
       user.userId,
-      {},
-      undefined,
+      [],
       undefined,
       additional,
     );
@@ -90,8 +89,7 @@ describe("Additional Volumes", () => {
       user.orgId,
       user.orgId,
       user.userId,
-      {},
-      undefined,
+      [],
       undefined,
       additional,
     );
@@ -113,8 +111,7 @@ describe("Additional Volumes", () => {
       user.orgId,
       user.orgId,
       user.userId,
-      {},
-      undefined,
+      [],
       undefined,
       additional,
     );
@@ -136,8 +133,7 @@ describe("Additional Volumes", () => {
       user.orgId,
       user.orgId,
       user.userId,
-      {},
-      undefined,
+      [],
       undefined,
       additional,
     );
@@ -160,8 +156,7 @@ describe("Additional Volumes", () => {
       user.orgId,
       user.orgId,
       user.userId,
-      {},
-      undefined,
+      [],
       undefined,
       additional,
     );
@@ -188,8 +183,7 @@ describe("Additional Volumes", () => {
       user.orgId,
       user.orgId,
       user.userId,
-      {},
-      undefined,
+      [],
       undefined,
       additional,
     );
@@ -221,8 +215,7 @@ describe("Additional Volumes", () => {
       fakeAgentOrgId,
       user.orgId,
       user.userId,
-      {},
-      undefined,
+      [],
       undefined,
       additional,
     );
@@ -250,8 +243,7 @@ describe("Additional Volumes", () => {
       user.orgId,
       user.orgId,
       user.userId,
-      {},
-      undefined,
+      [],
       undefined,
       additional,
     );
@@ -282,8 +274,7 @@ describe("Additional Volumes", () => {
         user.orgId,
         user.orgId,
         user.userId,
-        {},
-        undefined,
+        [],
         undefined,
         additional,
       );
@@ -307,8 +298,7 @@ describe("Additional Volumes", () => {
         user.orgId,
         user.orgId,
         user.userId,
-        {},
-        undefined,
+        [],
         undefined,
         additional,
       );
@@ -337,8 +327,7 @@ describe("Additional Volumes", () => {
         user.orgId,
         user.orgId,
         user.userId,
-        {},
-        undefined,
+        [],
         undefined,
         additional,
       );
@@ -363,8 +352,7 @@ describe("Additional Volumes", () => {
         user.orgId,
         user.orgId,
         user.userId,
-        {},
-        undefined,
+        [],
         undefined,
         additional,
       );
@@ -386,8 +374,7 @@ describe("Additional Volumes", () => {
         user.orgId,
         user.orgId,
         user.userId,
-        {},
-        undefined,
+        [],
         undefined,
         additional,
       );

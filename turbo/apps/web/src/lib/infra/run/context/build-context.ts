@@ -1,6 +1,10 @@
 import { expandEnvironmentFromCompose } from "../environment/expand-environment";
-import type { ExecutionContext, ResumeSession } from "../types";
-import type { AdditionalArtifact, AdditionalVolume } from "../../storage/types";
+import type {
+  ContextArtifact,
+  ExecutionContext,
+  ResumeSession,
+} from "../types";
+import type { AdditionalVolume } from "../../storage/types";
 import type { Firewalls, NetworkPolicies } from "@vm0/core/contracts/firewalls";
 
 interface BuildInfraContextParams {
@@ -15,8 +19,7 @@ interface BuildInfraContextParams {
   vars?: Record<string, string>;
   secrets?: Record<string, string>;
   secretConnectorMap?: Record<string, string>;
-  artifacts?: Record<string, string>;
-  additionalArtifacts?: AdditionalArtifact[];
+  artifacts?: ContextArtifact[];
   volumeVersions?: Record<string, string>;
   additionalVolumes?: AdditionalVolume[];
   environment?: Record<string, string>;
@@ -72,7 +75,6 @@ export function buildInfraExecutionContext(
     secretConnectorMap: params.secretConnectorMap,
     sandboxToken: params.sandboxToken,
     artifacts: params.artifacts,
-    additionalArtifacts: params.additionalArtifacts,
     volumeVersions: params.volumeVersions,
     additionalVolumes: params.additionalVolumes,
     environment,

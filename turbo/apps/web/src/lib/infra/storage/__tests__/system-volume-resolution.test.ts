@@ -59,7 +59,7 @@ describe("System Volume Resolution (VolumeConfig.system)", () => {
       user.orgId,
       user.orgId,
       user.userId,
-      {},
+      [],
     );
 
     expect(manifest.storages).toHaveLength(1);
@@ -78,7 +78,7 @@ describe("System Volume Resolution (VolumeConfig.system)", () => {
       user.orgId,
       user.orgId,
       user.userId,
-      {},
+      [],
     );
 
     expect(manifest.storages).toHaveLength(1);
@@ -101,7 +101,7 @@ describe("System Volume Resolution (VolumeConfig.system)", () => {
       user.orgId,
       user.orgId,
       user.userId,
-      {},
+      [],
     );
 
     expect(manifest.storages).toHaveLength(1);
@@ -121,7 +121,7 @@ describe("System Volume Resolution (VolumeConfig.system)", () => {
       user.orgId,
       user.orgId,
       user.userId,
-      {},
+      [],
     );
 
     expect(manifest.storages).toHaveLength(0);
@@ -138,7 +138,7 @@ describe("System Volume Resolution (VolumeConfig.system)", () => {
       user.orgId,
       user.orgId,
       user.userId,
-      {},
+      [],
     );
 
     expect(manifest.storages).toHaveLength(1);

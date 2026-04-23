@@ -9,6 +9,7 @@ import {
 } from "../../db/schema/agent-compose";
 import { agentRunCallbacks } from "../../db/schema/agent-run-callback";
 import { agentRunQueue } from "../../db/schema/agent-run-queue";
+import { checkpoints } from "../../db/schema/checkpoint";
 import { conversations } from "../../db/schema/conversation";
 import { sandboxTelemetry } from "../../db/schema/sandbox-telemetry";
 import { usageDaily } from "../../db/schema/usage-daily";
@@ -697,4 +698,22 @@ export async function insertTestUsageDaily(params: {
     date: params.date,
     runCount: 5,
   });
+}
+
+/**
+ * Overwrite `checkpoints.artifact_snapshots` JSONB for a checkpoint.
+ *
+ * @why-db-direct `checkpoints.artifact_snapshots` is written by the
+ * checkpoint webhook during run completion. Resolver tests need to seed
+ * arbitrary legacy and new-shape payloads to exercise shape tolerance.
+ */
+export async function setTestCheckpointArtifactSnapshots(
+  checkpointId: string,
+  snapshots: unknown,
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .update(checkpoints)
+    .set({ artifactSnapshots: snapshots })
+    .where(eq(checkpoints.id, checkpointId));
 }

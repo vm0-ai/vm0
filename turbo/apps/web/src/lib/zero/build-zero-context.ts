@@ -18,11 +18,12 @@ import {
 import { zeroRuns } from "../../db/schema/zero-run";
 import { badRequest, notFound } from "../shared/errors";
 import { logger } from "../shared/logger";
-import type { ExecutionContext, ResumeSession } from "../infra/run/types";
 import type {
-  AdditionalArtifact,
-  AdditionalVolume,
-} from "../infra/storage/types";
+  ContextArtifact,
+  ExecutionContext,
+  ResumeSession,
+} from "../infra/run/types";
+import type { AdditionalVolume } from "../infra/storage/types";
 import {
   AUTO_MEMORY_ARTIFACT_NAME,
   AUTO_MEMORY_MOUNT_PATH,
@@ -74,7 +75,7 @@ interface BuildZeroContextParams {
   // Base parameters
   agentComposeVersionId?: string;
   conversationId?: string;
-  artifacts?: Record<string, string>;
+  artifacts?: ContextArtifact[];
   vars?: Record<string, string>;
   secrets?: Record<string, string>;
   volumeVersions?: Record<string, string>;
@@ -350,7 +351,7 @@ interface ResolvedCliContext {
   // Session/checkpoint resolution
   agentComposeVersionId?: string;
   agentCompose?: unknown;
-  artifacts: Record<string, string>;
+  artifacts: ContextArtifact[];
   vars?: Record<string, string>;
   volumeVersions?: Record<string, string>;
   additionalVolumes?: AdditionalVolume[];
@@ -406,7 +407,7 @@ export async function resolveCliRunContext(
   // Initialize context variables
   let agentComposeVersionId: string | undefined = params.agentComposeVersionId;
   let agentCompose: unknown;
-  let artifacts: Record<string, string> = {};
+  let artifacts: ContextArtifact[] = [];
   let vars: Record<string, string> | undefined = params.vars;
   let volumeVersions: Record<string, string> | undefined =
     params.volumeVersions;
@@ -436,6 +437,15 @@ export async function resolveCliRunContext(
       params.orgId,
     );
   }
+
+  // Memory injection: append to the unified artifact list. Dedup-by-name in
+  // prepareStorageManifest collapses the clash when a checkpoint snapshot
+  // also carries "memory". Resume-path gating is handled in a follow-up
+  // sub-issue (#10910) — today we always append on every Zero path.
+  artifacts = [
+    ...artifacts,
+    { name: AUTO_MEMORY_ARTIFACT_NAME, mountPath: AUTO_MEMORY_MOUNT_PATH },
+  ];
 
   // Load compose content if we have a version ID
   if (!agentCompose && agentComposeVersionId) {
@@ -569,7 +579,7 @@ export async function buildZeroExecutionContext(
   // Initialize context variables
   let agentComposeVersionId: string | undefined = params.agentComposeVersionId;
   let agentCompose: unknown;
-  let artifacts: Record<string, string> = params.artifacts ?? {};
+  let artifacts: ContextArtifact[] = params.artifacts ?? [];
   let vars: Record<string, string> | undefined = params.vars;
   let volumeVersions: Record<string, string> | undefined =
     params.volumeVersions;
@@ -602,6 +612,15 @@ export async function buildZeroExecutionContext(
       params.agentCompose ??
       (await loadAgentComposeForNewRun(agentComposeVersionId));
   }
+
+  // Memory injection: append to the unified artifact list. Dedup-by-name in
+  // prepareStorageManifest collapses the clash when a checkpoint snapshot
+  // also carries "memory". Resume-path gating is handled in a follow-up
+  // sub-issue (#10910) — today we always append on every path.
+  artifacts = [
+    ...artifacts,
+    { name: AUTO_MEMORY_ARTIFACT_NAME, mountPath: AUTO_MEMORY_MOUNT_PATH },
+  ];
 
   // Validate required fields
   if (!agentComposeVersionId) {
@@ -689,14 +708,6 @@ export async function buildZeroExecutionContext(
     mergedVars,
   );
 
-  // Synthesize memory as an additional artifact mounted directly at Claude
-  // Code's auto-memory path. This replaces the guest-agent symlink bootstrap:
-  // the runner mounts memory at AUTO_MEMORY_MOUNT_PATH so Claude Code finds
-  // it without any in-sandbox symlink work.
-  const memoryArtifacts: AdditionalArtifact[] = [
-    { name: AUTO_MEMORY_ARTIFACT_NAME, mountPath: AUTO_MEMORY_MOUNT_PATH },
-  ];
-
   // Build final execution context
   return {
     context: {
@@ -712,7 +723,6 @@ export async function buildZeroExecutionContext(
       secretConnectorMap,
       sandboxToken: params.sandboxToken,
       artifacts,
-      additionalArtifacts: memoryArtifacts,
       volumeVersions,
       additionalVolumes,
       environment,

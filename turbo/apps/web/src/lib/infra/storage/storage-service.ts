@@ -3,15 +3,16 @@ import { resolveVolumes } from "./storage-resolver";
 import { generatePresignedUrl, putS3Object } from "../s3/s3-client";
 import { logger } from "../../shared/logger";
 import {
-  type AdditionalArtifact,
   type AdditionalVolume,
   type AgentVolumeConfig,
   type ResolvedArtifact,
   type ResolvedVolume,
+  type StorageDriver,
   type StorageManifest,
   type ManifestStorage,
   type ManifestArtifact,
 } from "./types";
+import type { ContextArtifact } from "../run/types";
 import { storages, storageVersions } from "../../../db/schema/storage";
 import { eq, and, isNull, sql } from "drizzle-orm";
 import { env } from "../../../env";
@@ -381,11 +382,11 @@ async function resolveAdditionalVolume(
 }
 
 /**
- * Resolve a single primary artifact to a ManifestArtifact.
+ * Resolve a single artifact entry to a ManifestArtifact.
  * Uses the batched latest lookup when possible and falls back to an
  * individual resolveVersion call for pinned versions.
  */
-async function resolvePrimaryArtifact(
+async function resolveArtifactEntry(
   artifactSource: ResolvedArtifact,
   allResults: Map<string, { versionId: string; s3Key: string }>,
   runtimeClerkOrgId: string,
@@ -442,38 +443,25 @@ async function resolvePrimaryArtifact(
 }
 
 /**
- * Resolve a single additional artifact by name/version against the runtime
- * org, returning a ManifestArtifact with presigned URLs. Missing storages
- * bubble up — additional artifacts are treated as required (unlike additional
- * volumes) because the caller explicitly opted them in by name.
+ * Dedup by name, last wins. Callers build artifact lists from multiple
+ * sources (snapshot, CLI --artifact flag, auto-memory injection) and may
+ * introduce duplicate names; collapsing here lets the auto-injected memory
+ * entry override a matching checkpoint snapshot without any upstream awareness.
  */
-async function resolveAdditionalArtifact(
-  entry: AdditionalArtifact,
-  runtimeClerkOrgId: string,
-  userId: string,
-  bucketName: string,
-): Promise<ManifestArtifact> {
-  const version = entry.version || "latest";
-  const resolved = await resolveVersion(
-    runtimeClerkOrgId,
-    entry.name,
-    "artifact",
-    version,
-    userId,
-  );
-  const { versionId, s3Key } = resolved;
-  const archiveKey = `${s3Key}/archive.tar.gz`;
-  const manifestKey = `${s3Key}/manifest.json`;
-  const [archiveUrl, manifestUrl] = await Promise.all([
-    generatePresignedUrl(bucketName, archiveKey),
-    generatePresignedUrl(bucketName, manifestKey),
-  ]);
+function dedupArtifactsByName(artifacts: ContextArtifact[]): ContextArtifact[] {
+  const byName = new Map<string, ContextArtifact>();
+  for (const entry of artifacts) {
+    byName.set(entry.name, entry);
+  }
+  return Array.from(byName.values());
+}
+
+function toResolvedArtifact(entry: ContextArtifact): ResolvedArtifact {
   return {
+    driver: "vas" as StorageDriver,
     mountPath: entry.mountPath,
     vasStorageName: entry.name,
-    vasVersionId: versionId,
-    archiveUrl,
-    manifestUrl,
+    vasVersion: entry.version || "latest",
   };
 }
 
@@ -486,11 +474,10 @@ async function resolveAdditionalArtifact(
  * @param agentClerkOrgId - Agent Clerk org ID for volume resolution (where the agent is defined)
  * @param runtimeClerkOrgId - Runtime Clerk org ID for artifact resolution (where the agent is executed)
  * @param userId - User ID within the runtime org (for artifact ownership)
- * @param artifacts - Primary artifacts map (name → version). All mount at compose working_dir.
- * @param workingDir - Working directory for primary artifact mount path
+ * @param artifacts - Unified artifact list; each entry carries its own mountPath.
+ *   Dedup-by-name (last wins) lets callers append auto-memory to checkpoint snapshots.
  * @param volumeVersionOverrides - Optional volume version overrides
  * @param additionalVolumes - Additional volumes with explicit mount paths
- * @param additionalArtifacts - Additional artifacts with explicit mount paths
  * @returns Storage manifest with presigned URLs
  */
 export async function prepareStorageManifest(
@@ -499,37 +486,32 @@ export async function prepareStorageManifest(
   agentClerkOrgId: string,
   runtimeClerkOrgId: string,
   userId: string,
-  artifacts: Record<string, string>,
-  workingDir?: string,
+  artifacts: ContextArtifact[],
   volumeVersionOverrides?: Record<string, string>,
   additionalVolumes?: AdditionalVolume[],
-  additionalArtifacts?: AdditionalArtifact[],
 ): Promise<StorageManifest> {
   log.debug("Preparing storage manifest with presigned URLs...");
 
   const bucketName = env().R2_USER_STORAGES_BUCKET_NAME;
 
+  const dedupedArtifacts = dedupArtifactsByName(artifacts);
+  const resolvedArtifacts: ResolvedArtifact[] =
+    dedupedArtifacts.map(toResolvedArtifact);
+
   // Shortcut: nothing to resolve at all.
   if (
     !agentConfig &&
-    Object.keys(artifacts).length === 0 &&
-    (!additionalVolumes || additionalVolumes.length === 0) &&
-    (!additionalArtifacts || additionalArtifacts.length === 0)
+    resolvedArtifacts.length === 0 &&
+    (!additionalVolumes || additionalVolumes.length === 0)
   ) {
     return { storages: [], artifacts: [] };
   }
 
-  // Resolve volumes + primary artifacts from agent config. Primary artifacts
-  // all mount at workingDir.
+  // Resolve volumes from agent config. Artifacts are resolved separately from
+  // the unified caller-provided list (mounts come from ContextArtifact.mountPath).
   const volumeResult = agentConfig
-    ? resolveVolumes(
-        agentConfig,
-        vars,
-        artifacts,
-        volumeVersionOverrides,
-        workingDir,
-      )
-    : { volumes: [], artifacts: [], errors: [] };
+    ? resolveVolumes(agentConfig, vars, volumeVersionOverrides)
+    : { volumes: [], errors: [] };
 
   if (volumeResult.errors.length > 0) {
     const messages = volumeResult.errors
@@ -539,8 +521,6 @@ export async function prepareStorageManifest(
       .join("; ");
     throw new Error(`Volume resolution failed: ${messages}`);
   }
-
-  const primaryArtifacts = volumeResult.artifacts;
 
   // Partition volumes into batch-eligible and individual-resolve groups
   const partitioned = partitionVolumes(
@@ -555,7 +535,7 @@ export async function prepareStorageManifest(
     agentClerkOrgId,
     runtimeClerkOrgId,
     userId,
-    primaryArtifacts,
+    resolvedArtifacts,
   );
 
   // Resolve non-latest volumes individually (rare: explicit version overrides)
@@ -571,50 +551,17 @@ export async function prepareStorageManifest(
     }),
   );
 
-  // Resolve additional artifacts in parallel. These are always resolved
-  // individually (no batching) because the list is typically small and each
-  // entry carries an explicit mountPath, so there's no shared agent/system
-  // fallback path to optimize.
-  const resolvedAdditionalArtifacts = await Promise.all(
-    (additionalArtifacts ?? []).map((entry) => {
-      return resolveAdditionalArtifact(
-        entry,
-        runtimeClerkOrgId,
-        userId,
-        bucketName,
-      );
-    }),
-  );
-
-  // Map batch results to manifest entries
-  const manifest = await buildManifestFromResults(
+  return buildManifestFromResults(
     allResults,
     partitioned,
     agentClerkOrgId,
     runtimeClerkOrgId,
     userId,
     bucketName,
-    primaryArtifacts,
+    resolvedArtifacts,
     nonLatestResolved,
     nonLatestAdditionalResolved,
   );
-
-  if (resolvedAdditionalArtifacts.length === 0) return manifest;
-
-  // Merge additional artifacts, deduplicating by mount path. Additional
-  // artifacts override any primary artifact mounted at the same path.
-  const additionalMountPaths = new Set(
-    resolvedAdditionalArtifacts.map((a) => {
-      return a.mountPath;
-    }),
-  );
-  const filteredArtifacts = manifest.artifacts.filter((a) => {
-    return !additionalMountPaths.has(a.mountPath);
-  });
-  return {
-    ...manifest,
-    artifacts: [...filteredArtifacts, ...resolvedAdditionalArtifacts],
-  };
 }
 
 /** Partitioned volumes for batch vs individual resolution */
@@ -707,7 +654,7 @@ async function executeBatchResolution(
   agentClerkOrgId: string,
   runtimeClerkOrgId: string,
   userId: string,
-  primaryArtifacts: ResolvedArtifact[],
+  resolvedArtifacts: ResolvedArtifact[],
 ): Promise<Map<string, { versionId: string; s3Key: string }>> {
   // Phase 1: System org batch (system compose volumes + system additional volumes)
   const systemLookups: StorageLookup[] = [
@@ -758,7 +705,7 @@ async function executeBatchResolution(
     }),
   ];
 
-  for (const artifact of primaryArtifacts) {
+  for (const artifact of resolvedArtifacts) {
     if (artifact.vasVersion !== "latest") continue;
     remainingLookups.push({
       orgId: runtimeClerkOrgId,
@@ -881,7 +828,7 @@ async function buildManifestFromResults(
   runtimeClerkOrgId: string,
   userId: string,
   bucketName: string,
-  primaryArtifacts: ResolvedArtifact[],
+  resolvedArtifacts: ResolvedArtifact[],
   nonLatestResolved: (ManifestStorage | null)[],
   nonLatestAdditionalResolved: (ManifestStorage | null)[],
 ): Promise<StorageManifest> {
@@ -1024,9 +971,9 @@ async function buildManifestFromResults(
     }),
   ];
 
-  const resolvedPrimaryArtifacts = await Promise.all(
-    primaryArtifacts.map((artifact) => {
-      return resolvePrimaryArtifact(
+  const resolvedArtifactManifests = await Promise.all(
+    resolvedArtifacts.map((artifact) => {
+      return resolveArtifactEntry(
         artifact,
         allResults,
         runtimeClerkOrgId,
@@ -1050,11 +997,11 @@ async function buildManifestFromResults(
   const filteredStorages = [...filteredCompose, ...resolvedAdditional];
 
   log.debug(
-    `Storage manifest prepared: ${filteredStorages.length} storages (${filteredCompose.length} compose + ${resolvedAdditional.length} additional), ${resolvedPrimaryArtifacts.length} artifacts`,
+    `Storage manifest prepared: ${filteredStorages.length} storages (${filteredCompose.length} compose + ${resolvedAdditional.length} additional), ${resolvedArtifactManifests.length} artifacts`,
   );
 
   return {
     storages: filteredStorages,
-    artifacts: resolvedPrimaryArtifacts,
+    artifacts: resolvedArtifactManifests,
   };
 }

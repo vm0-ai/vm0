@@ -23,7 +23,7 @@ export const AUTO_MEMORY_MOUNT_PATH =
 
 /**
  * Storage name used for the auto-synthesized memory artifact. Zero-layer runs
- * always include an AdditionalArtifact with this name mounted at
+ * always include a ContextArtifact entry with this name mounted at
  * AUTO_MEMORY_MOUNT_PATH so Claude Code finds persistent memory without any
  * in-sandbox symlink bootstrap.
  */
@@ -49,7 +49,7 @@ export interface ResolvedVolume {
  */
 export interface ResolvedArtifact {
   driver: StorageDriver;
-  mountPath: string; // Resolved from framework config
+  mountPath: string; // Explicit mount path from ContextArtifact
   vasStorageName: string;
   vasVersion: string; // Version hash or "latest"
 }
@@ -59,7 +59,6 @@ export interface ResolvedArtifact {
  */
 export interface VolumeResolutionResult {
   volumes: ResolvedVolume[];
-  artifacts: ResolvedArtifact[];
   errors: VolumeError[];
 }
 
@@ -69,11 +68,7 @@ export interface VolumeResolutionResult {
 export interface VolumeError {
   volumeName: string;
   message: string;
-  type:
-    | "missing_definition"
-    | "missing_variable"
-    | "invalid_config"
-    | "missing_artifact_name";
+  type: "missing_definition" | "missing_variable" | "invalid_config";
 }
 
 /**
@@ -101,17 +96,6 @@ export interface AdditionalVolume {
   version?: string; // Version hash or "latest" (defaults to "latest")
   mountPath: string; // Absolute path in sandbox
   system?: boolean; // When true, resolve against SYSTEM_ORG first, fallback to runtime org
-}
-
-/**
- * Additional artifact passed directly at run time, each with an explicit
- * mountPath. Extras beyond the primary artifact (whose mount path is derived
- * from compose's working_dir). Resolved against the runtime org.
- */
-export interface AdditionalArtifact {
-  name: string; // Artifact storage name
-  version?: string; // Version hash or "latest" (defaults to "latest")
-  mountPath: string; // Absolute path in sandbox
 }
 
 /**

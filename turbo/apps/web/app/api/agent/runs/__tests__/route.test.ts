@@ -1675,7 +1675,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
   describe("Multi-Mount Artifacts (body.artifacts)", () => {
     it("should pipe body.artifacts through storage manifest", async () => {
-      // Pre-seed two artifacts so resolveAdditionalArtifact finds real storages.
+      // Pre-seed two artifacts so the unified resolver finds real storages.
       const artifactA = uniqueId("multi-art-a");
       const artifactB = uniqueId("multi-art-b");
       await createTestArtifact(artifactA);
@@ -1704,14 +1704,19 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
       const job = await findTestRunnerJobEntry(data.runId);
       expect(job).toBeDefined();
+      // Zero also auto-injects "memory" at its well-known mount, so the
+      // manifest carries three entries: the two body artifacts plus memory.
       const artifacts = job!.executionContext.storageManifest!.artifacts;
-      expect(artifacts).toHaveLength(2);
-      const mountPaths = artifacts.map((a) => {
+      const userArtifacts = artifacts.filter((a) => {
+        return a.vasStorageName !== "memory";
+      });
+      expect(userArtifacts).toHaveLength(2);
+      const mountPaths = userArtifacts.map((a) => {
         return a.mountPath;
       });
       expect(mountPaths).toContain("/mnt/a");
       expect(mountPaths).toContain("/mnt/b");
-      const names = artifacts.map((a) => {
+      const names = userArtifacts.map((a) => {
         return a.vasStorageName;
       });
       expect(names).toContain(artifactA);

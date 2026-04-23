@@ -585,7 +585,6 @@ async function createZeroRunRecord(
           additionalVolumes: runParams.additionalVolumes,
           resumedFromCheckpointId: runParams.resumedFromCheckpointId,
           sessionId: runParams.sessionId,
-          artifacts: runParams.artifacts,
         });
       });
       emit(CHAT_REQUEST_OPS.create_run_insert_run_record, insertT.ms);

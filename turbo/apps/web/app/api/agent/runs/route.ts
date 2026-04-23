@@ -15,7 +15,10 @@ import {
   agentComposeVersions,
 } from "../../../../src/db/schema/agent-compose";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
-import { type AdditionalVolume } from "../../../../src/lib/infra/storage/types";
+import {
+  type AdditionalVolume,
+  AUTO_MEMORY_ARTIFACT_NAME,
+} from "../../../../src/lib/infra/storage/types";
 import { and, eq, inArray, desc, gte, lte, sql } from "drizzle-orm";
 import {
   loadCompose,
@@ -24,6 +27,7 @@ import {
   markRunFailed,
   type RunDispatchError,
 } from "../../../../src/lib/infra/run";
+import type { ContextArtifact } from "../../../../src/lib/infra/run/types";
 import {
   requireAuth,
   isAuthError,
@@ -335,7 +339,15 @@ const router = tsr.router(runsMainContract, {
         resolvedAdditionalVolumes: resolved.additionalVolumes,
       });
 
-      // 7. Concurrency check + INSERT (transaction with advisory lock)
+      // 7. Merge artifacts: resolved (checkpoint/session snapshot) first,
+      //    body.artifacts (CLI --artifact flag) second so per-run overrides
+      //    win dedup-by-name in prepareStorageManifest.
+      const mergedArtifacts: ContextArtifact[] = [
+        ...resolved.artifacts,
+        ...(body.artifacts ?? []),
+      ];
+
+      // 8. Concurrency check + INSERT (transaction with advisory lock)
       const run = await globalThis.services.db.transaction(async (tx) => {
         await tx.execute(
           sql`SELECT pg_advisory_xact_lock(hashtext(${org.orgId}))`,
@@ -353,17 +365,18 @@ const router = tsr.router(runsMainContract, {
           additionalVolumes: finalAdditionalVolumes,
           resumedFromCheckpointId: body.checkpointId,
           sessionId: body.sessionId,
-          // For new runs, populate agent_sessions.artifact_names from body.artifacts
-          // (CLI --artifact flag) so future continues can resolve the mount set.
+          // For new runs, seed agent_sessions.artifact_names from the merged
+          // list so future continues can resolve the mount set. Skip the
+          // auto-injected memory entry: it is re-appended on every run by the
+          // zero layer and should not be recorded as a user-declared artifact.
           // For resumes, this is unused since the existing session row is reused.
-          artifacts:
-            body.artifacts && body.artifacts.length > 0
-              ? Object.fromEntries(
-                  body.artifacts.map((a) => {
-                    return [a.name, a.version ?? "latest"];
-                  }),
-                )
-              : resolved.artifacts,
+          artifactNames: mergedArtifacts
+            .filter((a) => {
+              return a.name !== AUTO_MEMORY_ARTIFACT_NAME;
+            })
+            .map((a) => {
+              return a.name;
+            }),
         });
       });
       const transactionTime = Date.now();
@@ -390,8 +403,7 @@ const router = tsr.router(runsMainContract, {
           vars: resolved.vars ?? body.vars,
           secrets: resolved.secrets ?? body.secrets,
           secretConnectorMap: resolved.secretConnectorMap,
-          artifacts: resolved.artifacts,
-          additionalArtifacts: body.artifacts,
+          artifacts: mergedArtifacts,
           volumeVersions: resolved.volumeVersions ?? body.volumeVersions,
           additionalVolumes: finalAdditionalVolumes,
           environment: resolved.environment,

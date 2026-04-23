@@ -10,20 +10,16 @@ import {
   uniqueId,
   type UserContext,
 } from "../../../../__tests__/test-helpers";
-import type {
-  AdditionalArtifact,
-  AdditionalVolume,
-  AgentVolumeConfig,
-} from "../types";
+import type { AdditionalVolume, AgentVolumeConfig } from "../types";
+import type { ContextArtifact } from "../../run/types";
 
 const context = testContext();
 
 const WORKING_DIR = "/home/user/workspace";
 
 /**
- * Minimal agent config with no volumes — primary artifacts flow through
- * resolveVolumes via the `artifacts` map regardless of compose volume decls,
- * but an agentConfig object is required to trigger resolution at all.
+ * Minimal agent config with no volumes. Required to trigger volume resolution
+ * even when only artifacts are being resolved.
  */
 function emptyAgentConfig(): AgentVolumeConfig {
   return {
@@ -53,7 +49,7 @@ function composeVolumeConfig(
   };
 }
 
-describe("Primary Artifacts (artifacts record map)", () => {
+describe("Unified artifact list (ContextArtifact[])", () => {
   let user: UserContext;
 
   beforeEach(async () => {
@@ -61,9 +57,13 @@ describe("Primary Artifacts (artifacts record map)", () => {
     user = await context.setupUser();
   });
 
-  it("resolves a single primary artifact at compose working_dir", async () => {
+  it("resolves a single artifact at its explicit mount path", async () => {
     const artifactName = uniqueId("primary-one");
     const { versionId } = await createTestArtifact(artifactName);
+
+    const artifacts: ContextArtifact[] = [
+      { name: artifactName, mountPath: WORKING_DIR },
+    ];
 
     const manifest = await prepareStorageManifest(
       emptyAgentConfig(),
@@ -71,8 +71,7 @@ describe("Primary Artifacts (artifacts record map)", () => {
       user.orgId,
       user.orgId,
       user.userId,
-      { [artifactName]: "latest" },
-      WORKING_DIR,
+      artifacts,
     );
 
     expect(manifest.artifacts).toHaveLength(1);
@@ -83,11 +82,16 @@ describe("Primary Artifacts (artifacts record map)", () => {
     expect(manifest.storages).toHaveLength(0);
   });
 
-  it("resolves multiple primary artifacts at the same working_dir mount", async () => {
+  it("resolves multiple artifacts with independent mount paths", async () => {
     const nameA = uniqueId("primary-a");
     const nameB = uniqueId("primary-b");
     const { versionId: vA } = await createTestArtifact(nameA);
     const { versionId: vB } = await createTestArtifact(nameB);
+
+    const artifacts: ContextArtifact[] = [
+      { name: nameA, mountPath: WORKING_DIR },
+      { name: nameB, mountPath: "/mnt/other" },
+    ];
 
     const manifest = await prepareStorageManifest(
       emptyAgentConfig(),
@@ -95,8 +99,7 @@ describe("Primary Artifacts (artifacts record map)", () => {
       user.orgId,
       user.orgId,
       user.userId,
-      { [nameA]: "latest", [nameB]: "latest" },
-      WORKING_DIR,
+      artifacts,
     );
 
     expect(manifest.artifacts).toHaveLength(2);
@@ -106,14 +109,18 @@ describe("Primary Artifacts (artifacts record map)", () => {
       }),
     );
     expect(byName[nameA]!.vasVersionId).toBe(vA);
-    expect(byName[nameB]!.vasVersionId).toBe(vB);
     expect(byName[nameA]!.mountPath).toBe(WORKING_DIR);
-    expect(byName[nameB]!.mountPath).toBe(WORKING_DIR);
+    expect(byName[nameB]!.vasVersionId).toBe(vB);
+    expect(byName[nameB]!.mountPath).toBe("/mnt/other");
   });
 
-  it("resolves primary artifact with an explicit version (not latest)", async () => {
+  it("resolves artifact with an explicit pinned version", async () => {
     const artifactName = uniqueId("primary-pinned");
     const { versionId } = await createTestArtifact(artifactName);
+
+    const artifacts: ContextArtifact[] = [
+      { name: artifactName, version: versionId, mountPath: WORKING_DIR },
+    ];
 
     const manifest = await prepareStorageManifest(
       emptyAgentConfig(),
@@ -121,8 +128,7 @@ describe("Primary Artifacts (artifacts record map)", () => {
       user.orgId,
       user.orgId,
       user.userId,
-      { [artifactName]: versionId },
-      WORKING_DIR,
+      artifacts,
     );
 
     expect(manifest.artifacts).toHaveLength(1);
@@ -130,25 +136,20 @@ describe("Primary Artifacts (artifacts record map)", () => {
     expect(manifest.artifacts[0]!.mountPath).toBe(WORKING_DIR);
   });
 
-  it("mixes primary artifact, compose volume, and additional artifact", async () => {
-    const artifactName = uniqueId("primary-mix");
-    const additionalArtifactName = uniqueId("additional-mix");
+  it("mixes artifact, compose volume, and per-entry mount path", async () => {
+    const artifactA = uniqueId("primary-mix");
+    const artifactB = uniqueId("additional-mix");
     const volumeStorageName = uniqueId("vol-mix");
     const volumeKey = uniqueId("vol");
 
-    const { versionId: primaryVersion } =
-      await createTestArtifact(artifactName);
-    const { versionId: additionalVersion } = await createTestArtifact(
-      additionalArtifactName,
-    );
+    const { versionId: versionA } = await createTestArtifact(artifactA);
+    const { versionId: versionB } = await createTestArtifact(artifactB);
     const { versionId: volumeVersion } =
       await createTestVolume(volumeStorageName);
 
-    const additionalArtifacts: AdditionalArtifact[] = [
-      {
-        name: additionalArtifactName,
-        mountPath: "/mnt/extra-artifact",
-      },
+    const artifacts: ContextArtifact[] = [
+      { name: artifactA, mountPath: WORKING_DIR },
+      { name: artifactB, mountPath: "/mnt/extra-artifact" },
     ];
 
     const manifest = await prepareStorageManifest(
@@ -157,60 +158,50 @@ describe("Primary Artifacts (artifacts record map)", () => {
       user.orgId,
       user.orgId,
       user.userId,
-      { [artifactName]: "latest" },
-      WORKING_DIR,
-      undefined,
-      undefined,
-      additionalArtifacts,
+      artifacts,
     );
 
-    // Primary artifact at working_dir + additional artifact at its explicit path
     expect(manifest.artifacts).toHaveLength(2);
     const artifactByName = Object.fromEntries(
       manifest.artifacts.map((a) => {
         return [a.vasStorageName, a];
       }),
     );
-    expect(artifactByName[artifactName]!.vasVersionId).toBe(primaryVersion);
-    expect(artifactByName[artifactName]!.mountPath).toBe(WORKING_DIR);
-    expect(artifactByName[additionalArtifactName]!.vasVersionId).toBe(
-      additionalVersion,
-    );
-    expect(artifactByName[additionalArtifactName]!.mountPath).toBe(
-      "/mnt/extra-artifact",
-    );
+    expect(artifactByName[artifactA]!.vasVersionId).toBe(versionA);
+    expect(artifactByName[artifactA]!.mountPath).toBe(WORKING_DIR);
+    expect(artifactByName[artifactB]!.vasVersionId).toBe(versionB);
+    expect(artifactByName[artifactB]!.mountPath).toBe("/mnt/extra-artifact");
 
-    // Compose volume resolved alongside
     expect(manifest.storages).toHaveLength(1);
     expect(manifest.storages[0]!.vasStorageName).toBe(volumeStorageName);
     expect(manifest.storages[0]!.vasVersionId).toBe(volumeVersion);
     expect(manifest.storages[0]!.mountPath).toBe("/data");
   });
 
-  it("returns empty artifacts array when artifacts map is empty", async () => {
+  it("returns empty artifacts array when list is empty", async () => {
     const manifest = await prepareStorageManifest(
       emptyAgentConfig(),
       {},
       user.orgId,
       user.orgId,
       user.userId,
-      {},
-      WORKING_DIR,
+      [],
     );
 
     expect(manifest.artifacts).toHaveLength(0);
     expect(manifest.storages).toHaveLength(0);
   });
 
-  it("additional artifact overrides primary artifact at same mount path", async () => {
-    const primaryName = uniqueId("primary-override");
-    const overrideName = uniqueId("override-at-workingdir");
-    const { versionId: primaryVersion } = await createTestArtifact(primaryName);
-    const { versionId: overrideVersion } =
-      await createTestArtifact(overrideName);
+  it("later entry overrides earlier entry with the same name (dedup by name, last wins)", async () => {
+    // Same-name collision is the basis for memory injection: a checkpoint
+    // snapshot may already carry a "memory" entry, and Zero appends a fresh
+    // one. The later append must win.
+    const name = uniqueId("dedup-name");
+    const { versionId: firstVersion } = await createTestArtifact(name);
 
-    const additionalArtifacts: AdditionalArtifact[] = [
-      { name: overrideName, mountPath: WORKING_DIR },
+    const artifacts: ContextArtifact[] = [
+      { name, version: firstVersion, mountPath: "/old-path" },
+      { name, mountPath: "/new-path" },
     ];
 
     const manifest = await prepareStorageManifest(
@@ -219,23 +210,16 @@ describe("Primary Artifacts (artifacts record map)", () => {
       user.orgId,
       user.orgId,
       user.userId,
-      { [primaryName]: "latest" },
-      WORKING_DIR,
-      undefined,
-      undefined,
-      additionalArtifacts,
+      artifacts,
     );
 
-    // Primary artifact at WORKING_DIR is filtered out; override remains.
     expect(manifest.artifacts).toHaveLength(1);
-    expect(manifest.artifacts[0]!.vasStorageName).toBe(overrideName);
-    expect(manifest.artifacts[0]!.vasVersionId).toBe(overrideVersion);
-    expect(manifest.artifacts[0]!.mountPath).toBe(WORKING_DIR);
-    // Primary is gone — its version is not in the output.
-    expect(manifest.artifacts[0]!.vasVersionId).not.toBe(primaryVersion);
+    expect(manifest.artifacts[0]!.vasStorageName).toBe(name);
+    // Last entry had no version → "latest" → resolves to the HEAD version
+    expect(manifest.artifacts[0]!.mountPath).toBe("/new-path");
   });
 
-  it("primary artifacts coexist with additional volumes at different paths", async () => {
+  it("artifacts coexist with additional volumes at different mount paths", async () => {
     const artifactName = uniqueId("primary-with-vol");
     const volumeName = uniqueId("addvol-with-artifact");
     const { versionId: artifactVersion } =
@@ -246,14 +230,17 @@ describe("Primary Artifacts (artifacts record map)", () => {
       { name: volumeName, mountPath: "/mnt/data" },
     ];
 
+    const artifacts: ContextArtifact[] = [
+      { name: artifactName, mountPath: WORKING_DIR },
+    ];
+
     const manifest = await prepareStorageManifest(
       emptyAgentConfig(),
       {},
       user.orgId,
       user.orgId,
       user.userId,
-      { [artifactName]: "latest" },
-      WORKING_DIR,
+      artifacts,
       undefined,
       additionalVolumes,
     );

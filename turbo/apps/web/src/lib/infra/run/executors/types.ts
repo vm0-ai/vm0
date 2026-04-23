@@ -34,9 +34,6 @@ export interface PreparedContext {
   // Resume support
   resumeSession: ResumeSession | null;
 
-  // Primary artifacts (name → version). Empty record when the run has none.
-  artifacts: Record<string, string>;
-
   // Firewall for proxy-side token replacement (complete config, all permissions)
   firewalls: Firewalls | null;
 

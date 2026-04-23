@@ -2,7 +2,6 @@ import type {
   AgentVolumeConfig,
   VolumeConfig,
   ResolvedVolume,
-  ResolvedArtifact,
   VolumeResolutionResult,
   VolumeError,
   StorageDriver,
@@ -124,28 +123,6 @@ function resolveVasVolume(
 }
 
 /**
- * Resolve primary artifacts from a name→version map.
- * All entries mount at the compose's working_dir (the "primary" mount); the
- * caller is responsible for any per-entry mount paths via additionalArtifacts.
- */
-function resolveArtifacts(
-  workingDir: string,
-  artifacts: Record<string, string>,
-): { artifacts: ResolvedArtifact[]; errors: VolumeError[] } {
-  const resolved: ResolvedArtifact[] = Object.entries(artifacts).map(
-    ([name, version]) => {
-      return {
-        driver: "vas" as StorageDriver,
-        mountPath: workingDir,
-        vasStorageName: name,
-        vasVersion: version || "latest",
-      };
-    },
-  );
-  return { artifacts: resolved, errors: [] };
-}
-
-/**
  * Process volume declarations from agent config into resolved volumes.
  */
 function processVolumeDeclarations(
@@ -246,24 +223,20 @@ function resolveInstructions(
 }
 
 /**
- * Resolve volumes from agent configuration
+ * Resolve volumes from agent configuration.
+ *
  * @param config - Agent configuration with volume definitions
  * @param vars - Template variables for placeholder replacement
- * @param artifacts - Primary artifacts map (name → version). Empty map = no artifacts.
  * @param volumeVersionOverrides - Optional volume version overrides (volume name -> version)
- * @param workingDir - Working directory for primary artifact mount path
- * @returns Resolution result with resolved volumes, artifacts, and errors
+ * @returns Resolution result with resolved volumes and errors
  */
 export function resolveVolumes(
   config: AgentVolumeConfig,
   vars: Record<string, string> = {},
-  artifacts: Record<string, string> = {},
   volumeVersionOverrides?: Record<string, string>,
-  workingDir?: string,
 ): VolumeResolutionResult {
   const volumes: ResolvedVolume[] = [];
   const errors: VolumeError[] = [];
-  let resolvedArtifacts: ResolvedArtifact[] = [];
 
   // Get first agent (currently only support one agent)
   const agentValues = config.agents ? Object.values(config.agents) : [];
@@ -287,16 +260,5 @@ export function resolveVolumes(
     volumes.push(...resolveInstructions(config, agent));
   }
 
-  // Process primary artifacts. Empty map = no artifacts (e.g. compose has no
-  // working_dir artifact declared or caller explicitly passes {}).
-  if (workingDir && Object.keys(artifacts).length > 0) {
-    const { artifacts: resolved, errors: artifactErrors } = resolveArtifacts(
-      workingDir,
-      artifacts,
-    );
-    resolvedArtifacts = resolved;
-    errors.push(...artifactErrors);
-  }
-
-  return { volumes, artifacts: resolvedArtifacts, errors };
+  return { volumes, errors };
 }

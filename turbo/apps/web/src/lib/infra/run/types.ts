@@ -1,5 +1,17 @@
-import type { AdditionalArtifact, AdditionalVolume } from "../storage/types";
+import type { AdditionalVolume } from "../storage/types";
 import type { Firewalls, NetworkPolicies } from "@vm0/core/contracts/firewalls";
+
+/**
+ * Artifact entry on an ExecutionContext: a name, optional version ("latest"
+ * when undefined), and an explicit mount path. Replaces the old split between
+ * "primary" (name→version map, mount forced to working_dir) and "additional"
+ * (list with explicit mount paths). Every entry now carries its own mount.
+ */
+export interface ContextArtifact {
+  name: string;
+  version?: string;
+  mountPath: string;
+}
 
 /**
  * Run status values
@@ -60,14 +72,10 @@ export interface ExecutionContext {
   secretConnectorMap?: Record<string, string>; // Secret name → connector type for OAuth refresh
   sandboxToken: string;
 
-  // Primary artifacts: name → version map.
-  // New runs: "latest" sentinels. Resume from session: "latest". Resume from
-  // checkpoint: concrete version IDs from checkpoints.artifactSnapshots.
-  artifacts?: Record<string, string>;
-
-  // Additional artifacts passed at run time (beyond the primary artifact
-  // derived from compose working_dir). Each entry carries its own mountPath.
-  additionalArtifacts?: AdditionalArtifact[];
+  // Artifacts: unified list where every entry carries its own mountPath.
+  // Version is optional — undefined means "latest". New runs use undefined or
+  // "latest"; resume paths inject concrete version IDs from snapshots.
+  artifacts?: ContextArtifact[];
 
   // Volume version overrides (volume name -> version)
   volumeVersions?: Record<string, string>;

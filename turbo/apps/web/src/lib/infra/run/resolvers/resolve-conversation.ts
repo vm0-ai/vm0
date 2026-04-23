@@ -78,6 +78,6 @@ export async function resolveDirectConversation(
       cliAgentSessionHistory: sessionHistory,
     },
     // No defaults for artifact/vars/secrets/volumeVersions - use params directly
-    artifacts: {},
+    artifacts: [],
   };
 }

@@ -115,22 +115,16 @@ export async function prepareForExecution(
 
   const agentOrgId = agentComposeInfo.orgId;
 
-  // Auto-create artifact storages if they don't exist yet. Primary artifacts
-  // come from context.artifacts (name → version map); additional artifacts
-  // (with explicit mount paths) come from context.additionalArtifacts. Memory
-  // rides in additionalArtifacts (zero synthesizes it). Infra no longer
-  // creates type='memory' rows — #10601 flipped existing rows to
-  // type='artifact'.
-  const primaryArtifacts = context.artifacts ?? {};
+  // Auto-create artifact storages if they don't exist yet. Every entry in the
+  // unified artifact list already carries its own mountPath (zero synthesizes
+  // the memory entry); infra creates one storage row per entry.
+  const artifacts = context.artifacts ?? [];
   const ensureStart = Date.now();
-  await Promise.all([
-    ...Object.keys(primaryArtifacts).map((name) => {
-      return ensureStorageExists(orgId, userId, name, "artifact");
-    }),
-    ...(context.additionalArtifacts ?? []).map((entry) => {
+  await Promise.all(
+    artifacts.map((entry) => {
       return ensureStorageExists(orgId, userId, entry.name, "artifact");
     }),
-  ]);
+  );
   const ensureEnd = Date.now();
 
   // Prepare storage manifest with dual orgs (see docs/resource-model.md)
@@ -143,11 +137,9 @@ export async function prepareForExecution(
     agentOrgId,
     orgId,
     userId,
-    primaryArtifacts,
-    workingDir,
+    artifacts,
     context.volumeVersions,
     context.additionalVolumes,
-    context.additionalArtifacts,
   );
   const storageEnd = Date.now();
 
@@ -231,9 +223,6 @@ function buildPreparedContext(
     secretConnectorMap: context.secretConnectorMap || null,
     // Resume support
     resumeSession: context.resumeSession || null,
-
-    // Primary artifacts (name → version)
-    artifacts: context.artifacts ?? {},
 
     // Firewall for proxy-side token replacement
     firewalls: toNullable(context.firewalls),

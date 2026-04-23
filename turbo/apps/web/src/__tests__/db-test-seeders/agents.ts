@@ -501,6 +501,53 @@ export async function setTestChatMessageAttachFiles(
 }
 
 /**
+ * Overwrite `agent_sessions.artifact_names` for a session.
+ *
+ * @why-db-direct `agent_sessions.artifact_names` is written by the run
+ * pipeline from the resolved artifact list. Resolver tests need to seed
+ * arbitrary name lists (including the auto-memory name) to exercise the
+ * mountPath heuristic expansion.
+ */
+export async function setTestSessionArtifactNames(
+  sessionId: string,
+  artifactNames: string[],
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .update(agentSessions)
+    .set({ artifactNames })
+    .where(eq(agentSessions.id, sessionId));
+}
+
+/**
+ * Update the cliAgentType on the conversation linked to a session.
+ *
+ * @why-db-direct Test checkpoint helpers seed conversations with
+ * cliAgentType "test-agent" while composes default to framework
+ * "claude-code". Resolver compatibility checks compare these, so
+ * resolveSession tests need to align the conversation framework before
+ * invoking the resolver.
+ */
+export async function setTestSessionFramework(
+  sessionId: string,
+  framework: string,
+): Promise<void> {
+  initServices();
+  const [session] = await globalThis.services.db
+    .select({ conversationId: agentSessions.conversationId })
+    .from(agentSessions)
+    .where(eq(agentSessions.id, sessionId))
+    .limit(1);
+  if (!session?.conversationId) {
+    throw new Error(`Session ${sessionId} has no conversation`);
+  }
+  await globalThis.services.db
+    .update(conversations)
+    .set({ cliAgentType: framework })
+    .where(eq(conversations.id, session.conversationId));
+}
+
+/**
  * Overwrite `chat_messages.content` for every row belonging to a run.
  *
  * @why-db-direct Simulates an overlong user body without exercising the
