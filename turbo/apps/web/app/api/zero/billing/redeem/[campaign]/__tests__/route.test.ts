@@ -306,6 +306,52 @@ describe("POST /api/zero/billing/redeem/:campaign", () => {
     expect(row).toBeUndefined();
   });
 
+  it("still drops the cached session row when expiring it in Stripe fails", async () => {
+    await updateOrgStripeFields(user.orgId, {
+      stripeCustomerId: uniqueId("cus"),
+    });
+    await insertOrgPromoRedemption({
+      orgId: user.orgId,
+      campaignKey: CAMPAIGN,
+      stripeSessionId: "cs_open_expire_fails",
+    });
+    stripeMocks.checkoutSessionsRetrieve.mockResolvedValue({
+      id: "cs_open_expire_fails",
+      status: "open",
+      url: "https://stripe.test/checkout/cs_open_expire_fails",
+    });
+    stripeMocks.couponsRetrieve.mockRejectedValue(
+      new Stripe.errors.StripeInvalidRequestError({
+        type: "invalid_request_error",
+        message: `No such coupon: '${COUPON_ID}'`,
+        code: "resource_missing",
+      }),
+    );
+    stripeMocks.checkoutSessionsExpire.mockRejectedValue(
+      new Stripe.errors.StripeInvalidRequestError({
+        type: "invalid_request_error",
+        message: "Session can no longer be expired",
+        code: "session_expired",
+      }),
+    );
+
+    const response = await POST(makeRequest());
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data).toEqual({
+      status: "error",
+      reason: "campaign_misconfigured",
+    });
+    expect(stripeMocks.checkoutSessionsExpire).toHaveBeenCalledWith(
+      "cs_open_expire_fails",
+    );
+    const row = await findOrgPromoRedemption({
+      orgId: user.orgId,
+      campaignKey: CAMPAIGN,
+    });
+    expect(row).toBeUndefined();
+  });
+
   it("drops the cached session and returns campaign_misconfigured when the coupon is no longer valid", async () => {
     await updateOrgStripeFields(user.orgId, {
       stripeCustomerId: uniqueId("cus"),
