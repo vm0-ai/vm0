@@ -1,6 +1,9 @@
 import { expandEnvironmentFromCompose } from "../environment/expand-environment";
-import type { ExecutionContext, ResumeSession } from "../types";
-import type { ArtifactSnapshot } from "../../checkpoint/types";
+import type {
+  ExecutionContext,
+  ResumeSession,
+  ArtifactSnapshot,
+} from "../types";
 import type { AdditionalArtifact, AdditionalVolume } from "../../storage/types";
 import type { Firewalls, NetworkPolicies } from "@vm0/core";
 

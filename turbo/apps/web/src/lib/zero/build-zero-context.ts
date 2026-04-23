@@ -14,8 +14,11 @@ import {
 import { zeroRuns } from "../../db/schema/zero-run";
 import { badRequest, notFound } from "../shared/errors";
 import { logger } from "../shared/logger";
-import type { ExecutionContext, ResumeSession } from "../infra/run/types";
-import type { ArtifactSnapshot } from "../infra/checkpoint/types";
+import type {
+  ExecutionContext,
+  ResumeSession,
+  ArtifactSnapshot,
+} from "../infra/run/types";
 import type {
   AdditionalArtifact,
   AdditionalVolume,

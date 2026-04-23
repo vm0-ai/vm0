@@ -17,8 +17,7 @@ import {
   providerIncompatible,
 } from "../../shared/errors";
 import { logger } from "../../shared/logger";
-import type { ResumeSession } from "../../infra/run/types";
-import type { ArtifactSnapshot } from "../../infra/checkpoint/types";
+import type { ResumeSession, ArtifactSnapshot } from "../../infra/run/types";
 import type { AdditionalVolume } from "../../infra/storage/types";
 import {
   resolveCheckpoint,
