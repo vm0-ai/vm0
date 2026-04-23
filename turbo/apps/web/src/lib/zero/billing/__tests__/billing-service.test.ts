@@ -113,7 +113,9 @@ describe("billing-service", () => {
     });
     vi.stubEnv(
       "ZERO_ONE_TIME_CAMPAIGN",
-      JSON.stringify({ ZERO100: { priceId: "price_zero100", couponId: "ZERO100" } }),
+      JSON.stringify({
+        ZERO100: { priceId: "price_zero100", couponId: "ZERO100" },
+      }),
     );
     reloadEnv();
 
@@ -131,4 +133,3 @@ describe("billing-service", () => {
     expect(expires.filter((r) => r.source === "starter_grant")).toHaveLength(0);
   });
 });
-
