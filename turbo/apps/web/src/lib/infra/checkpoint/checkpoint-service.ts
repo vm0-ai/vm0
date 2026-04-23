@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { agentRuns } from "../../../db/schema/agent-run";
 import { agentComposeVersions } from "../../../db/schema/agent-compose";
 import { conversations } from "../../../db/schema/conversation";
@@ -17,14 +17,23 @@ import type {
 const log = logger("checkpoint");
 
 /**
- * Create a checkpoint for an agent run
+ * Create a checkpoint for an agent run.
+ *
+ * `userId` is checked against `agent_runs.user_id` as a defence-in-depth
+ * tripwire: sandbox tokens are HMAC-signed and bind `userId`/`runId`
+ * together at mint time, so a mismatch here shouldn't be reachable in
+ * production. The check is retained so a leaked signing key or a
+ * handler refactor regression would 404 rather than write to a foreign
+ * user's run.
  *
  * @param request Checkpoint request data from webhook
+ * @param userId  Authenticated userId from the sandbox token
  * @returns Checkpoint ID and artifact status
- * @throws NotFoundError if run doesn't exist
+ * @throws NotFoundError if run doesn't exist or doesn't belong to userId
  */
 export async function createCheckpoint(
   request: CheckpointRequest,
+  userId: string,
 ): Promise<CheckpointResponse> {
   log.debug(`Creating checkpoint for run ${request.runId}`);
 
@@ -32,7 +41,7 @@ export async function createCheckpoint(
   const [run] = await globalThis.services.db
     .select()
     .from(agentRuns)
-    .where(eq(agentRuns.id, request.runId))
+    .where(and(eq(agentRuns.id, request.runId), eq(agentRuns.userId, userId)))
     .limit(1);
 
   if (!run) {
