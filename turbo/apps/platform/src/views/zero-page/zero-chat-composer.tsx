@@ -970,8 +970,8 @@ export function ZeroChatComposer({
                         onChange={modelPicker.onChange}
                         placeholder="Default"
                         triggerClassName={cn(
-                          "h-8 w-auto max-w-[12rem] gap-1 border-transparent bg-transparent px-2 text-xs text-muted-foreground transition-colors",
-                          "hover:bg-accent hover:text-foreground focus:bg-accent focus:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground",
+                          "h-9 w-auto max-w-[12rem] gap-1 border-transparent bg-transparent px-2 text-sm text-muted-foreground transition-colors",
+                          "hover:bg-accent hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground",
                         )}
                         sessionProviderType={modelPicker.sessionProviderType}
                         compactTrigger
