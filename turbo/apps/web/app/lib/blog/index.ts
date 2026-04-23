@@ -6,3 +6,4 @@ export {
   getPostAvailableLocales,
 } from "./data-source";
 export { getBlogBaseUrl } from "./config";
+export type { BlogPost } from "./types";
