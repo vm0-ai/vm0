@@ -11,9 +11,10 @@ import {
 import { triggerAblyEvent, hasSubscription } from "../../../../mocks/ably.ts";
 import type { ConnectorListResponse } from "@vm0/core/contracts/connector-schemas";
 import { zeroConnectorsMainContract } from "@vm0/core/contracts/zero-connectors";
-import { mockApi } from "../../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../../mocks/msw-contract.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 function makeEmptyConnectorResponse(): ConnectorListResponse {
   return {

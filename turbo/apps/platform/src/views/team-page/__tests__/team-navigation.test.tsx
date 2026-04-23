@@ -3,7 +3,7 @@ import { screen, waitFor, act } from "@testing-library/react";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { chatThreadsContract } from "@vm0/core/contracts/chat-threads";
 import { zeroComposesMainContract } from "@vm0/core/contracts/zero-composes";
 import {
@@ -13,6 +13,7 @@ import {
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 function createMockTeamWithSubagents() {
   return [

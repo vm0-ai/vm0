@@ -10,6 +10,8 @@
  */
 
 import { http, HttpResponse, type HttpHandler } from "msw";
+import { createDeferredPromise } from "../signals/utils.ts";
+import { createMockHttp, type SignalContextLike } from "./msw-contract.ts";
 
 interface MockUploadResult {
   id: string;
@@ -49,16 +51,20 @@ export function mockUploadSuccess(result: MockUploadResult): HttpHandler[] {
  * Like mockUploadSuccess, but the PUT step never resolves — useful for tests
  * that need to observe the "uploading" UI state.
  */
-export function mockUploadPending(result: MockUploadResult): HttpHandler[] {
+export function mockUploadPending(
+  context: SignalContextLike,
+  result: MockUploadResult,
+): HttpHandler[] {
   const uploadUrl = uploadUrlFor(result.id);
+  const mockHttp = createMockHttp(context);
   return [
     // mockApi cannot be used here: /api/zero/uploads/prepare is an internal
     // helper endpoint with no ts-rest contract.
     http.post("*/api/zero/uploads/prepare", () => {
       return HttpResponse.json({ ...result, uploadUrl });
     }),
-    http.put(uploadUrl, () => {
-      return new Promise<never>(() => {});
+    mockHttp.put(uploadUrl, ({ signal }) => {
+      return createDeferredPromise<never>(signal).promise;
     }),
   ];
 }

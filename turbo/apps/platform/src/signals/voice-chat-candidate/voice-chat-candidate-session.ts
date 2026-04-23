@@ -147,6 +147,7 @@ const appendItem$ = command(
       client.appendItem({
         params: { id: sid },
         body: { role, content, realtimeItemId },
+        fetchOptions: { signal },
       }),
       [200, 400, 401, 404],
       { toast: false },
@@ -207,6 +208,7 @@ const handleTalkerToolCall$ = command(
       client.createTask({
         params: { id: sid },
         body: { prompt, callId },
+        fetchOptions: { signal },
       }),
       [200, 400, 401, 404],
       { toast: false },
@@ -533,7 +535,7 @@ const syncTalkerInstructions$ = command(
     const createClient = get(zeroClient$);
     const client = createClient(zeroVoiceChatCandidateContract);
     const res = await accept(
-      client.getSession({ params: { id: sid } }),
+      client.getSession({ params: { id: sid }, fetchOptions: { signal } }),
       [200, 401, 404],
       { toast: false },
     );
@@ -557,7 +559,8 @@ const syncTalkerInstructions$ = command(
 const startAblyLoop$ = command(
   async ({ set }, sessionId: string, signal: AbortSignal) => {
     const pollBody$ = command(async ({ get, set }, loopSignal: AbortSignal) => {
-      if (!get(internalSessionId$)) {
+      const sid = get(internalSessionId$);
+      if (!sid) {
         return true;
       }
       // One signal drives two things: bump the counter so async computeds
@@ -653,6 +656,93 @@ const releaseWakeLock$ = command(({ get, set }) => {
 });
 
 // ---------------------------------------------------------------------------
+// Microphone recovery (re-acquire tracks after OS suspension on screen lock)
+// ---------------------------------------------------------------------------
+
+const recoverMicrophone$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    const pc = get(internalPc$);
+    if (!pc || pc.connectionState === "closed") {
+      return;
+    }
+    let newStream: MediaStream;
+    try {
+      const audioConfig = await resolveAudioConfig();
+      signal.throwIfAborted();
+      newStream = await navigator.mediaDevices.getUserMedia({
+        audio: audioConfig.constraints,
+      });
+    } catch (error) {
+      throwIfAbort(error);
+      set(internalError$, "Microphone access lost. Please reconnect.");
+      set(internalStatus$, "error");
+      return;
+    }
+    signal.throwIfAborted();
+    const newTrack = newStream.getAudioTracks()[0];
+    if (!newTrack) {
+      for (const t of newStream.getTracks()) {
+        t.stop();
+      }
+      return;
+    }
+    const sender = pc.getSenders().find((s) => {
+      return s.track?.kind === "audio";
+    });
+    if (sender) {
+      try {
+        await sender.replaceTrack(newTrack);
+      } catch (error) {
+        throwIfAbort(error);
+        for (const t of newStream.getTracks()) {
+          t.stop();
+        }
+        set(internalError$, "Microphone access lost. Please reconnect.");
+        set(internalStatus$, "error");
+        return;
+      }
+    }
+    signal.throwIfAborted();
+    const oldStream = get(internalStream$);
+    if (oldStream) {
+      for (const t of oldStream.getTracks()) {
+        t.stop();
+      }
+    }
+    set(internalStream$, newStream);
+    L.info("microphone recovered after screen resume");
+  },
+);
+
+const monitorMicrophoneRecovery$ = command(
+  ({ get, set }, signal: AbortSignal): void => {
+    const onVisibilityChange = onDomEventFn(() => {
+      if (document.visibilityState !== "visible" || signal.aborted) {
+        return;
+      }
+      const stream = get(internalStream$);
+      if (!stream) {
+        return;
+      }
+      const tracks = stream.getAudioTracks();
+      const isDead =
+        tracks.length > 0 &&
+        tracks.every((t) => {
+          return t.readyState === "ended";
+        });
+      if (!isDead) {
+        return;
+      }
+      return set(recoverMicrophone$, signal);
+    });
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    signal.addEventListener("abort", () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    });
+  },
+);
+
+// ---------------------------------------------------------------------------
 // Public commands
 // ---------------------------------------------------------------------------
 
@@ -683,7 +773,10 @@ export const startVoiceChatCandidate$ = command(
     // createSession is get-or-create on the server side: same (userId,
     // agentId) returns the existing session row, so this doubles as resume.
     const res = await accept(
-      client.createSession({ body: { agentId } }),
+      client.createSession({
+        body: { agentId },
+        fetchOptions: { signal },
+      }),
       [200, 400, 401, 403],
       { toast: false },
     );
@@ -709,6 +802,7 @@ export const startVoiceChatCandidate$ = command(
 
     const tokenRes = await accept(
       client.token({
+        fetchOptions: { signal },
         body: {
           sessionId: session.id,
           noiseReduction: audioConfig.noiseReduction,
@@ -757,6 +851,8 @@ export const startVoiceChatCandidate$ = command(
 
     await set(acquireWakeLock$, sessionSignal);
     signal.throwIfAborted();
+
+    set(monitorMicrophoneRecovery$, sessionSignal);
 
     await set(startAblyLoop$, session.id, sessionSignal);
   },

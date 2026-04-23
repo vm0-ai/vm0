@@ -63,7 +63,10 @@ export const confirmPermissionDialog$ = command(
       [...selected].map(async (agentId) => {
         signal.throwIfAborted();
         const existing = await accept(
-          client.get({ params: { id: agentId } }),
+          client.get({
+            params: { id: agentId },
+            fetchOptions: { signal },
+          }),
           [200],
         );
         signal.throwIfAborted();
@@ -75,6 +78,7 @@ export const confirmPermissionDialog$ = command(
           client.update({
             params: { id: agentId },
             body: { enabledTypes: [...current, connectorType] },
+            fetchOptions: { signal },
           }),
           [200],
         );

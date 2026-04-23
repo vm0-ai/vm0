@@ -291,6 +291,7 @@ export const enablePlatformConnector$ = command(
       client.create({
         params: { type },
         body: {},
+        fetchOptions: { signal },
       }),
       [200],
     );
@@ -331,11 +332,20 @@ export const submitApiToken$ = command(
       const isVariable = apiTokenConfig?.secrets[name]?.type === "variable";
       if (isVariable) {
         await accept(
-          variablesClient.set({ body: { name, value } }),
+          variablesClient.set({
+            body: { name, value },
+            fetchOptions: { signal },
+          }),
           [200, 201],
         );
       } else {
-        await accept(secretsClient.set({ body: { name, value } }), [200, 201]);
+        await accept(
+          secretsClient.set({
+            body: { name, value },
+            fetchOptions: { signal },
+          }),
+          [200, 201],
+        );
       }
       signal.throwIfAborted();
     }

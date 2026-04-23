@@ -7,9 +7,10 @@ import {
   zeroIntegrationsSlackContract,
   type SlackOrgStatus,
 } from "@vm0/core/contracts/zero-integrations-slack";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 function mockSlackAPI(overrides: Partial<SlackOrgStatus> = {}) {
   const defaults: SlackOrgStatus = {

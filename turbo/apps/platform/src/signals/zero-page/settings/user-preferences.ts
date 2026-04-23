@@ -37,7 +37,13 @@ export const updateUserPreference$ = command(
   ) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroUserPreferencesContract);
-    await accept(client.update({ body: update }), [200]);
+    await accept(
+      client.update({
+        body: update,
+        fetchOptions: { signal: _signal },
+      }),
+      [200],
+    );
 
     // Force JWT refresh so updated membership metadata is available immediately
     const clerk = await get(clerk$);

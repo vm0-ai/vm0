@@ -12,9 +12,10 @@ import { chatThreadsContract } from "@vm0/core/contracts/chat-threads";
 import { zeroAgentsByIdContract } from "@vm0/core/contracts/zero-agents";
 import { zeroTeamContract } from "@vm0/core/contracts/zero-team";
 import { server } from "../../../mocks/server.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 function mockAPIs({
   threads = [

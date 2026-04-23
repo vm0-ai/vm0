@@ -11,9 +11,10 @@ import {
   setMockOrgDomains,
   resetMockOrgDomains,
 } from "../../../mocks/handlers/api-org-domains.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 const verifiedDomain = {
   id: "dom_1",
@@ -75,10 +76,9 @@ describe("org domains tab - display loading", () => {
     // ORG-D-076
     setMockOrg({ role: "admin" });
     server.use(
-      mockApi(zeroOrgDomainsContract.list, ({ respond: _ }) => {
-        return new Promise(() => {
-          // intentionally never resolves to keep loading state
-        });
+      mockApi(zeroOrgDomainsContract.list, ({ never }) => {
+        // Intentionally hangs until test teardown aborts the current signal.
+        return never();
       }),
     );
 

@@ -12,7 +12,7 @@ import {
   click,
 } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
   type ZeroAgentMetadataRequest,
   zeroAgentsByIdContract,
@@ -21,6 +21,7 @@ import {
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 function subAgent() {
   return {

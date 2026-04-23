@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.93.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.93.4...runner-rs-v0.93.5) (2026-04-23)
+
+
+### Bug Fixes
+
+* **runner:** probe storage archive size via get range instead of head ([#10850](https://github.com/vm0-ai/vm0/issues/10850)) ([5456d37](https://github.com/vm0-ai/vm0/commit/5456d376d3adf9a471f649fdd9c853c238df413c))
+
+
+### Refactoring
+
+* **runner:** move statustracker port setters into constructor (closes [#10651](https://github.com/vm0-ai/vm0/issues/10651)) ([#10836](https://github.com/vm0-ai/vm0/issues/10836)) ([898710c](https://github.com/vm0-ai/vm0/commit/898710ccf51047685b4312eaae3ef7500f67b572))
+
 ## [0.93.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.93.3...runner-rs-v0.93.4) (2026-04-23)
 
 

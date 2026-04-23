@@ -20,7 +20,7 @@ import {
   zeroOrgLeaveContract,
   zeroOrgDeleteContract,
 } from "@vm0/core/contracts/zero-org";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 
 vi.mock("@vm0/ui/components/ui/sonner", async (importOriginal) => {
   const actual =
@@ -32,6 +32,7 @@ vi.mock("@vm0/ui/components/ui/sonner", async (importOriginal) => {
 });
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 beforeEach(() => {
   resetMockOrg();

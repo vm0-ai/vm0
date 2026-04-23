@@ -9,6 +9,7 @@ import { fetch$ } from "../fetch.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { setBillingDialogOpen$ } from "../zero-page/billing.ts";
 import { logger } from "../log.ts";
+import { createDeferredPromise } from "../utils.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { stopTts$ } from "./voice-io-tts.ts";
 import { accept } from "../../lib/accept.ts";
@@ -165,16 +166,16 @@ export const stopAndTranscribe$ = command(
 
     // Stop recording and wait for final data
     if (recorder && recorder.state !== "inactive") {
-      await new Promise<void>((resolve) => {
-        recorder.addEventListener(
-          "stop",
-          () => {
-            resolve();
-          },
-          { once: true },
-        );
-        recorder.stop();
-      });
+      const stopDeferred = createDeferredPromise<void>(signal);
+      recorder.addEventListener(
+        "stop",
+        () => {
+          stopDeferred.resolve();
+        },
+        { once: true, signal },
+      );
+      recorder.stop();
+      await stopDeferred.promise;
     }
 
     set(internalRecording$, false);

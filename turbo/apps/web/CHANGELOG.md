@@ -1,5 +1,17 @@
 # Changelog
 
+## [12.292.0](https://github.com/vm0-ai/vm0/compare/web-v12.291.1...web-v12.292.0) (2026-04-23)
+
+
+### Features
+
+* **pricing:** add voice input across website and in-app Compare plans ([#10813](https://github.com/vm0-ai/vm0/issues/10813)) ([c38e057](https://github.com/vm0-ai/vm0/commit/c38e057579af77832f56d3975ef8fb181f2e8e85))
+
+
+### Bug Fixes
+
+* harden speakerphone barge-in in voice chat candidate ([#10845](https://github.com/vm0-ai/vm0/issues/10845)) ([fca73af](https://github.com/vm0-ai/vm0/commit/fca73af116b1f57a2487edd2c7aff47e408c0b33))
+
 ## [12.291.1](https://github.com/vm0-ai/vm0/compare/web-v12.291.0...web-v12.291.1) (2026-04-23)
 
 

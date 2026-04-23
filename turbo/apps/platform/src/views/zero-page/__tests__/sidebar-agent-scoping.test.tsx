@@ -5,11 +5,12 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { navigate$ } from "../../../signals/route.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { chatThreadsContract } from "@vm0/core/contracts/chat-threads";
 import { zeroAgentsByIdContract } from "@vm0/core/contracts/zero-agents";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 /**
  * Agent-aware mock: returns threads filtered by the `agentId` query param,

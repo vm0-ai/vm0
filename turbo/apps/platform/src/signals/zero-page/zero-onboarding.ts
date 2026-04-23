@@ -178,6 +178,7 @@ export const completeZeroOnboarding$ = command(
             selectedConnectors.length > 0 ? selectedConnectors : undefined,
           timezone: new Intl.DateTimeFormat().resolvedOptions().timeZone,
         },
+        fetchOptions: { signal },
       }),
       [200, 409],
     );
