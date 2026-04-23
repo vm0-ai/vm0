@@ -953,7 +953,7 @@ describe("voice-chat-candidate session", () => {
       const getUserMedia = navigator.mediaDevices.getUserMedia as ReturnType<
         typeof vi.fn
       >;
-      const callsBefore = getUserMedia.mock.calls.length;
+      getUserMedia.mockClear();
 
       // Simulate screen unlock with healthy tracks still live.
       Object.defineProperty(document, "visibilityState", {
@@ -968,7 +968,7 @@ describe("voice-chat-candidate session", () => {
       await Promise.resolve();
       await Promise.resolve();
 
-      expect(getUserMedia.mock.calls.length).toBe(callsBefore);
+      expect(getUserMedia.mock.calls).toHaveLength(0);
       expect(context.store.get(vccStatus$)).toBe("connected");
     });
 
