@@ -137,23 +137,18 @@ async function resolveRespondedByLabel(
 }
 
 /**
- * Return the model display name when the run used a non-default model, else
- * undefined. Comparison is against the org's default `claude-code` provider's
- * `selectedModel` — Slack agents are claude-code today, so a single framework
- * lookup covers all current callers. If the org has no default model
- * configured, any `selectedModel` counts as non-default.
+ * Return the model display name for the footer. Always resolves to a label
+ * so the footer always shows which model responded. Falls back to the org's
+ * default `claude-code` model when the run has no explicit `selectedModel`.
  */
-async function resolveModelIfNonDefault(
+async function resolveModel(
   orgId: string,
   selectedModel: string | undefined,
 ): Promise<string | undefined> {
-  if (!selectedModel) return undefined;
-  const defaultProvider = await getOrgDefaultModelProvider(
-    orgId,
-    "claude-code",
-  );
-  if (defaultProvider?.selectedModel === selectedModel) return undefined;
-  return getModelDisplayName(selectedModel);
+  const model =
+    selectedModel ??
+    (await getOrgDefaultModelProvider(orgId, "claude-code"))?.selectedModel;
+  return model ? getModelDisplayName(model) : undefined;
 }
 
 /**
@@ -173,12 +168,12 @@ async function resolveFooterText(
       payload.channelId,
       payload.threadTs,
     ),
-    resolveModelIfNonDefault(orgId, selectedModel),
+    resolveModel(orgId, selectedModel),
   ]);
 
   const parts: string[] = [];
   if (respondedBy) parts.push(respondedBy);
-  if (mentionerCount > 2) {
+  if (mentionerCount > 1) {
     const replyTo = await resolveReplyToMention(payload.connectionId);
     if (replyTo) parts.push(`Reply to ${replyTo}`);
   }

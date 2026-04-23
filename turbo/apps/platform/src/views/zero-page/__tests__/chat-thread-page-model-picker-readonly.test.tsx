@@ -1,20 +1,15 @@
 /**
- * Thread-page model picker is read-only.
+ * Thread-page model picker read-only behaviour.
  *
- * Rule: once a chat thread has been sent (modelProviderId + selectedModel
- * persisted on the row), the composer's model picker becomes read-only. The
- * user cannot change the thread's model — the backend also enforces this,
- * see route.test.ts.
+ * Rule: once a chat thread has at least one user message the composer's model
+ * picker becomes read-only. The provider must remain consistent within a
+ * session. Threads with only assistant messages (e.g. system-generated
+ * preambles) or no messages at all keep the picker interactive.
  *
  * Entry point: /chats/:threadId thread page.
  * Mock (external): Web API via MSW (feature switch + org providers + thread
- *   row with stored overrides).
+ *   messages via paginated endpoint).
  * Real (internal): routing, chat-thread-page signals, composer, picker.
- *
- * The parallel "picker is enabled on /agents/:id/chat" case is covered by
- * chat-default-model-resolution.test.tsx and chat-composer-model-selection-send.test.tsx
- * (both mount the landing page and interact with the picker), so we only
- * need to prove the lock is applied on the thread page here.
  */
 
 import { beforeEach, describe, expect, it } from "vitest";
@@ -24,6 +19,7 @@ import {
   chatMessagesContract,
   chatThreadByIdContract,
   chatThreadMessagesContract,
+  type PagedChatMessage,
 } from "@vm0/core/contracts/chat-threads";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -46,11 +42,65 @@ const context = testContext();
 const mockApi = createMockApi(context);
 
 const PROVIDER_ID = "00000000-0000-4000-a000-000000000001";
-const STORED_MODEL = "claude-opus-4-7";
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const THREAD_ID = "thread-readonly-1";
 
-describe("chat thread page — model picker is read-only on existing threads", () => {
+function makeThreadDetail() {
+  return {
+    id: THREAD_ID,
+    title: "My thread",
+    agentId: AGENT_ID,
+    chatMessages: [],
+    latestSessionId: null,
+    latestSessionProviderType: null,
+    activeRunIds: [],
+    createdAt: "2026-03-10T00:00:00Z",
+    updatedAt: "2026-03-10T00:00:00Z",
+    draftContent: null,
+    draftAttachments: null,
+    modelProviderId: null,
+    selectedModel: null,
+  };
+}
+
+function makeUserMessage(): PagedChatMessage {
+  return {
+    id: "msg-user-1",
+    role: "user",
+    content: "Hello",
+    createdAt: "2026-03-10T00:01:00Z",
+  };
+}
+
+function makeAssistantMessage(): PagedChatMessage {
+  return {
+    id: "msg-assistant-1",
+    role: "assistant",
+    content: "Hi there",
+    createdAt: "2026-03-10T00:02:00Z",
+  };
+}
+
+function setupMocks(messages: PagedChatMessage[]) {
+  server.use(
+    mockApi(chatThreadByIdContract.get, ({ respond }) => {
+      return respond(200, makeThreadDetail());
+    }),
+    mockApi(chatThreadMessagesContract.list, ({ respond }) => {
+      return respond(200, { messages });
+    }),
+    mockApi(chatMessagesContract.send, ({ respond }) => {
+      return respond(201, {
+        runId: "run-test-1",
+        threadId: THREAD_ID,
+        status: "pending",
+        createdAt: "2026-03-10T00:00:00Z",
+      });
+    }),
+  );
+}
+
+describe("chat thread page — model picker read-only", () => {
   beforeEach(() => {
     resetMockOrgModelProviders();
     resetMockFeatureSwitches();
@@ -75,49 +125,42 @@ describe("chat thread page — model picker is read-only on existing threads", (
     ]);
   });
 
-  // CHAT-LOCK-001: picker on an existing thread renders as plain text — no
-  // combobox/button — so the user cannot switch models mid-thread.
-  it("renders the picker as plain text on /chats/:threadId when the thread has stored values (CHAT-LOCK-001)", async () => {
-    server.use(
-      mockApi(chatThreadByIdContract.get, ({ respond }) => {
-        return respond(200, {
-          id: THREAD_ID,
-          title: "My thread",
-          agentId: AGENT_ID,
-          chatMessages: [],
-          latestSessionId: null,
-          latestSessionProviderType: null,
-          activeRunIds: [],
-          createdAt: "2026-03-10T00:00:00Z",
-          updatedAt: "2026-03-10T00:00:00Z",
-          draftContent: null,
-          draftAttachments: null,
-          modelProviderId: PROVIDER_ID,
-          selectedModel: STORED_MODEL,
-        });
-      }),
-      mockApi(chatThreadMessagesContract.list, ({ respond }) => {
-        return respond(200, { messages: [] });
-      }),
-      mockApi(chatMessagesContract.send, ({ respond }) => {
-        return respond(201, {
-          runId: "run-test-1",
-          threadId: THREAD_ID,
-          status: "pending",
-          createdAt: "2026-03-10T00:00:00Z",
-        });
-      }),
-    );
+  // CHAT-LOCK-001: picker on a thread with a user message renders as plain
+  // text — no combobox/button — so the provider cannot be switched mid-session.
+  it("renders picker as plain text when thread has a user message (CHAT-LOCK-001)", async () => {
+    setupMocks([makeUserMessage()]);
 
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
     const label = await waitFor(() => {
-      return screen.getByLabelText("Claude Opus 4.7");
+      return screen.getByLabelText("Claude Sonnet 4.6");
     });
-    // Plain-text span, not a combobox/button — no dropdown affordance.
     expect(label.tagName).toBe("SPAN");
     expect(
-      screen.queryByRole("combobox", { name: "Claude Opus 4.7" }),
+      screen.queryByRole("combobox", { name: "Claude Sonnet 4.6" }),
     ).toBeNull();
+  });
+
+  // CHAT-LOCK-002: thread with only assistant messages keeps the picker
+  // interactive — no user turn has started a session yet.
+  it("keeps picker interactive when thread has only assistant messages (CHAT-LOCK-002)", async () => {
+    setupMocks([makeAssistantMessage()]);
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    await waitFor(() => {
+      return screen.getByRole("combobox", { name: /Claude Sonnet 4\.6/i });
+    });
+  });
+
+  // CHAT-LOCK-003: empty thread keeps the picker interactive.
+  it("keeps picker interactive on empty thread (CHAT-LOCK-003)", async () => {
+    setupMocks([]);
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    await waitFor(() => {
+      return screen.getByRole("combobox", { name: /Claude Sonnet 4\.6/i });
+    });
   });
 });

@@ -1107,8 +1107,10 @@ fn symlink_missing_link_target_skipped() {
 // file:// scheme — host-staged tarballs (epic #10800)
 // ---------------------------------------------------------------------------
 
-// Successful file:// extraction: the local tarball is read, its contents are
-// extracted into the mount path, and the tarball is deleted.
+// Successful file:// extraction: the local tarball is read and its contents are
+// extracted into the mount path. The staged tarball is intentionally left in
+// place — /tmp is wiped on VM teardown, and deleting it early breaks runs where
+// two manifest entries share the same staged path.
 #[test]
 fn file_scheme_extraction_success() {
     let tar_gz = create_tar_gz(&[("hello.txt", b"hello from file")]).unwrap();
@@ -1128,8 +1130,8 @@ fn file_scheme_extraction_success() {
         std::fs::read_to_string(mount.join("hello.txt")).unwrap(),
         "hello from file"
     );
-    // Staged tarball is cleaned up after successful extraction
-    assert!(!staged.exists());
+    // Staged tarball is preserved — runner cleans /tmp on VM teardown.
+    assert!(staged.exists());
 }
 
 // Storage with a missing file:// target fails the run. The runner only rewrites

@@ -174,6 +174,12 @@ function mockOrgProviders(options: {
 function mockThread(options: {
   modelProviderId: string | null;
   selectedModel: string | null;
+  messages?: {
+    id: string;
+    role: "user" | "assistant";
+    content: string;
+    createdAt: string;
+  }[];
 }) {
   server.use(
     mockApi(chatThreadByIdContract.get, ({ respond }) => {
@@ -194,7 +200,7 @@ function mockThread(options: {
       });
     }),
     mockApi(chatThreadMessagesContract.list, ({ respond }) => {
-      return respond(200, { messages: [] });
+      return respond(200, { messages: options.messages ?? [] });
     }),
     mockApi(chatMessagesContract.send, ({ respond }) => {
       return respond(201, {
@@ -362,6 +368,14 @@ describe("chat composer — default model resolution", () => {
     mockThread({
       modelProviderId: ZAI_PROVIDER_ID,
       selectedModel: "glm-5.1",
+      messages: [
+        {
+          id: "msg-user-1",
+          role: "user" as const,
+          content: "Use GLM",
+          createdAt: "2026-03-10T00:01:00Z",
+        },
+      ],
     });
 
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
