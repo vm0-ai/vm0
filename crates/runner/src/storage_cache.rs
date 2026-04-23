@@ -85,11 +85,12 @@ enum TargetOutcome {
         download_duration: Duration,
     },
     SkippedOverSize,
-    /// HEAD probe could not determine archive size, so the entry falls back
-    /// to the original R2 URL. `reason` carries either the upstream error
-    /// string or a short tag describing the missing-header case so ops can
-    /// separate transient network failures from permanent 4xx / missing
-    /// `Content-Length` headers in the telemetry feed.
+    /// Size probe (`GET` + `Range: bytes=0-0`) could not determine the
+    /// archive size, so the entry falls back to the original R2 URL.
+    /// `reason` carries either the upstream error string or a short tag
+    /// describing the missing-header case so ops can separate transient
+    /// network failures from permanent 4xx / missing size-header responses
+    /// in the telemetry feed.
     SkippedHeadFailed {
         reason: String,
     },
@@ -247,21 +248,21 @@ async fn process_one(
         return Ok(TargetOutcome::Hit);
     }
 
-    // 2. Miss path: probe size via HEAD. A HEAD failure is treated as
-    //    passthrough — the entry keeps its original R2 URL and the guest
-    //    downloads it as today. The failure reason is threaded into the
-    //    outcome so telemetry can distinguish transient 5xx from missing
-    //    `Content-Length` headers.
+    // 2. Miss path: probe size via `GET` + `Range: bytes=0-0`. A probe
+    //    failure is treated as passthrough — the entry keeps its original
+    //    R2 URL and the guest downloads it as today. The failure reason is
+    //    threaded into the outcome so telemetry can distinguish transient
+    //    5xx from missing / malformed size headers.
     let size = match probe_size(http, &target.archive_url).await {
         Ok(Some(n)) => n,
         Ok(None) => {
             warn!(
                 name = %target.name,
                 version = %target.version,
-                "storage_cache: HEAD returned no Content-Length, passthrough"
+                "storage_cache: probe returned no size header, passthrough"
             );
             return Ok(TargetOutcome::SkippedHeadFailed {
-                reason: "missing-content-length".to_string(),
+                reason: "missing-size-header".to_string(),
             });
         }
         Err(e) => {
@@ -270,7 +271,7 @@ async fn process_one(
                 name = %target.name,
                 version = %target.version,
                 error = %reason,
-                "storage_cache: HEAD probe failed, passthrough"
+                "storage_cache: probe failed, passthrough"
             );
             return Ok(TargetOutcome::SkippedHeadFailed { reason });
         }
@@ -301,19 +302,55 @@ async fn process_one(
 }
 
 async fn probe_size(http: &Client, url: &str) -> RunnerResult<Option<u64>> {
+    use reqwest::{StatusCode, header};
     let resp = http
-        .head(url)
+        .get(url)
+        .header(header::RANGE, "bytes=0-0")
         .timeout(HEAD_TIMEOUT)
         .send()
         .await
-        .map_err(|e| RunnerError::Internal(format!("HEAD {url}: {e}")))?
+        .map_err(|e| RunnerError::Internal(format!("probe GET {url}: {e}")))?;
+
+    let status = resp.status();
+    if status == StatusCode::PARTIAL_CONTENT {
+        // 206: parse total from `Content-Range: bytes 0-0/<total>`.
+        let total = resp
+            .headers()
+            .get(header::CONTENT_RANGE)
+            .and_then(|v| v.to_str().ok())
+            .and_then(parse_content_range_total);
+        // Consume the 1-byte body so the connection returns to the pool.
+        let _ = resp.bytes().await;
+        return Ok(total);
+    }
+    if status.is_success() {
+        // 200: server ignored Range. Fall back to Content-Length.
+        let total = resp
+            .headers()
+            .get(header::CONTENT_LENGTH)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|s| s.parse::<u64>().ok());
+        let _ = resp.bytes().await;
+        return Ok(total);
+    }
+    // 4xx / 5xx / 416 / anything else — treat as probe failure.
+    let err = resp
         .error_for_status()
-        .map_err(|e| RunnerError::Internal(format!("HEAD status {url}: {e}")))?;
-    Ok(resp
-        .headers()
-        .get(reqwest::header::CONTENT_LENGTH)
-        .and_then(|v| v.to_str().ok())
-        .and_then(|s| s.parse::<u64>().ok()))
+        .err()
+        .map(|e| e.to_string())
+        .unwrap_or_else(|| format!("unexpected status {status}"));
+    Err(RunnerError::Internal(format!("probe GET {url}: {err}")))
+}
+
+/// Parse the total size out of a `Content-Range` header value such as
+/// `bytes 0-0/12345`. Returns `None` for `bytes 0-0/*` (server declines to
+/// disclose the total) or any malformed value.
+fn parse_content_range_total(value: &str) -> Option<u64> {
+    let (_, total) = value.rsplit_once('/')?;
+    if total == "*" {
+        return None;
+    }
+    total.trim().parse::<u64>().ok()
 }
 
 async fn download_tarball(http: &Client, url: &str) -> RunnerResult<Bytes> {
@@ -568,16 +605,21 @@ mod tests {
         let server = MockServer::start_async().await;
         let body = tarball_bytes();
 
-        let head = server
+        let probe = server
             .mock_async(|when, then| {
-                when.method(HEAD).path("/archive.tar.gz");
-                then.status(200)
-                    .header("content-length", body.len().to_string());
+                when.method(GET)
+                    .path("/archive.tar.gz")
+                    .header("range", "bytes=0-0");
+                then.status(206)
+                    .header("content-range", format!("bytes 0-0/{}", body.len()))
+                    .body(b"x");
             })
             .await;
         let get = server
             .mock_async(|when, then| {
-                when.method(GET).path("/archive.tar.gz");
+                when.method(GET)
+                    .path("/archive.tar.gz")
+                    .header_missing("range");
                 then.status(200).body(body.clone());
             })
             .await;
@@ -591,7 +633,7 @@ mod tests {
             .await
             .unwrap();
 
-        head.assert_async().await;
+        probe.assert_async().await;
         get.assert_async().await;
 
         let final_path = home.storage_cache_dir(name, version).join("archive.tar.gz");
@@ -617,14 +659,17 @@ mod tests {
         let server = MockServer::start_async().await;
 
         let too_big = CACHE_MAX_SIZE + 1;
-        let head = server
+        let probe = server
             .mock_async(|when, then| {
-                when.method(HEAD).path("/big.tar.gz");
-                then.status(200)
-                    .header("content-length", too_big.to_string());
+                when.method(GET)
+                    .path("/big.tar.gz")
+                    .header("range", "bytes=0-0");
+                then.status(206)
+                    .header("content-range", format!("bytes 0-0/{too_big}"))
+                    .body(b"x");
             })
             .await;
-        // GET must NOT be called for passthrough — no mock registered.
+        // Full GET must NOT be called for passthrough — no mock registered.
 
         let original = server.url("/big.tar.gz");
         let name = "user-volume";
@@ -635,7 +680,7 @@ mod tests {
             .await
             .unwrap();
 
-        head.assert_async().await;
+        probe.assert_async().await;
 
         // archive_url untouched.
         assert_eq!(
@@ -788,16 +833,18 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn head_failure_is_passthrough() {
+    async fn probe_failure_is_passthrough() {
         let temp = tempfile::tempdir().unwrap();
         let home = home_at(&temp);
         let sandbox = MockSandbox::new("test");
         let mut telemetry = new_telemetry();
         let server = MockServer::start_async().await;
 
-        let head = server
+        let probe = server
             .mock_async(|when, then| {
-                when.method(HEAD).path("/broken.tar.gz");
+                when.method(GET)
+                    .path("/broken.tar.gz")
+                    .header("range", "bytes=0-0");
                 then.status(500);
             })
             .await;
@@ -809,7 +856,7 @@ mod tests {
             .await
             .unwrap();
 
-        head.assert_async().await;
+        probe.assert_async().await;
 
         // archive_url untouched — guest-download will retry via the original URL.
         assert_eq!(
@@ -950,16 +997,21 @@ mod tests {
 
         // `hits(1..)` expectations are checked after the race — the second
         // caller must find the cache warm.
-        let head = server
+        let probe = server
             .mock_async(|when, then| {
-                when.method(HEAD).path("/concurrent.tar.gz");
-                then.status(200)
-                    .header("content-length", body.len().to_string());
+                when.method(GET)
+                    .path("/concurrent.tar.gz")
+                    .header("range", "bytes=0-0");
+                then.status(206)
+                    .header("content-range", format!("bytes 0-0/{}", body.len()))
+                    .body(b"x");
             })
             .await;
         let get = server
             .mock_async(|when, then| {
-                when.method(GET).path("/concurrent.tar.gz");
+                when.method(GET)
+                    .path("/concurrent.tar.gz")
+                    .header_missing("range");
                 then.status(200).body(body.clone());
             })
             .await;
@@ -988,11 +1040,12 @@ mod tests {
             Some(expected.as_str())
         );
 
-        // Exactly one download — the second caller saw the flock-serialized
-        // cache and took the hit path. HEAD may be issued 1-2 times depending
-        // on which task acquired the lock first; GET must be exactly once.
+        // Exactly one full download — the second caller saw the
+        // flock-serialized cache and took the hit path. The probe may
+        // be issued 1-2 times depending on which task acquired the lock
+        // first; the full GET must be exactly once.
         get.assert_calls_async(1).await;
-        assert!(head.calls_async().await >= 1);
+        assert!(probe.calls_async().await >= 1);
 
         // One miss telemetry across both tasks; the other records a hit.
         let ops_a = telemetry_a.pending_ops_snapshot();
@@ -1018,5 +1071,145 @@ mod tests {
             "exactly one miss across concurrent populates"
         );
         assert_eq!(total_hit, 1, "second populate must see the warmed cache");
+    }
+
+    #[tokio::test]
+    async fn r2_style_head_rejected_probe_via_get_range_succeeds() {
+        // Regression for #10842. R2 GET-presigned URLs 403 on HEAD (SigV4
+        // binds the signature to the HTTP method). The probe must use
+        // GET + Range: bytes=0-0 and parse Content-Range — never HEAD.
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+        let server = MockServer::start_async().await;
+        let body = tarball_bytes();
+
+        let head_forbidden = server
+            .mock_async(|when, then| {
+                when.method(HEAD).path("/r2.tar.gz");
+                then.status(403);
+            })
+            .await;
+        let probe = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/r2.tar.gz")
+                    .header("range", "bytes=0-0");
+                then.status(206)
+                    .header("content-range", format!("bytes 0-0/{}", body.len()))
+                    .body(b"x");
+            })
+            .await;
+        let full = server
+            .mock_async(|when, then| {
+                when.method(GET).path("/r2.tar.gz").header_missing("range");
+                then.status(200).body(body.clone());
+            })
+            .await;
+
+        let url = server.url("/r2.tar.gz");
+        let name = "r2-skill";
+        let version = "v1";
+        let mut manifest = manifest_single_storage(url, name, version);
+
+        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap();
+
+        head_forbidden.assert_calls_async(0).await;
+        probe.assert_async().await;
+        full.assert_async().await;
+
+        assert_eq!(
+            manifest.storages[0].archive_url.as_deref(),
+            Some(format!("file://{}", guest_archive_path(name, version)).as_str())
+        );
+        let ops = telemetry.pending_ops_snapshot();
+        assert!(
+            ops.iter().any(|(k, _, _)| k == "storage_cache_miss"),
+            "expected storage_cache_miss in {ops:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn probe_206_without_content_range_is_passthrough() {
+        // Server returns 206 but omits Content-Range entirely. Probe can't
+        // extract a total → Ok(None) → passthrough (SkippedHeadFailed).
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+        let server = MockServer::start_async().await;
+
+        let probe = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/nosize.tar.gz")
+                    .header("range", "bytes=0-0");
+                then.status(206).body(b"x");
+            })
+            .await;
+
+        let original = server.url("/nosize.tar.gz");
+        let mut manifest = manifest_single_storage(original.clone(), "nosize", "v1");
+
+        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap();
+
+        probe.assert_async().await;
+        assert_eq!(
+            manifest.storages[0].archive_url.as_deref(),
+            Some(original.as_str())
+        );
+        let ops = telemetry.pending_ops_snapshot();
+        assert!(
+            ops.iter()
+                .any(|(k, _, _)| k == "storage_cache_skipped_head_failed"),
+            "expected storage_cache_skipped_head_failed in {ops:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn probe_malformed_content_range_is_passthrough() {
+        // 206 with a Content-Range value that can't be parsed into a total
+        // must fall back to passthrough, not silently treat the archive as
+        // zero-sized.
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+        let server = MockServer::start_async().await;
+
+        let probe = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/garbage.tar.gz")
+                    .header("range", "bytes=0-0");
+                then.status(206)
+                    .header("content-range", "bogus-no-slash")
+                    .body(b"x");
+            })
+            .await;
+
+        let original = server.url("/garbage.tar.gz");
+        let mut manifest = manifest_single_storage(original.clone(), "garbage", "v1");
+
+        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap();
+
+        probe.assert_async().await;
+        assert_eq!(
+            manifest.storages[0].archive_url.as_deref(),
+            Some(original.as_str())
+        );
+        let ops = telemetry.pending_ops_snapshot();
+        assert!(
+            ops.iter()
+                .any(|(k, _, _)| k == "storage_cache_skipped_head_failed"),
+            "expected storage_cache_skipped_head_failed in {ops:?}"
+        );
     }
 }

@@ -110,26 +110,6 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(data.status).toBe("pending");
     });
 
-    it("should reject legacy memoryName body field with 400", async () => {
-      const request = createTestRequest(
-        "http://localhost:3000/api/agent/runs",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            agentComposeId: testComposeId,
-            prompt: "Legacy memoryName should be rejected",
-            memoryName: "legacy-field",
-          }),
-        },
-      );
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(400);
-      expect(data.error.code).toBe("BAD_REQUEST");
-    });
-
     it("should reject legacy artifactName body field with 400", async () => {
       const request = createTestRequest(
         "http://localhost:3000/api/agent/runs",

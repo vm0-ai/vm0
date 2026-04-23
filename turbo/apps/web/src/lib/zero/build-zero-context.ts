@@ -355,7 +355,6 @@ interface ResolvedCliContext {
   agentCompose?: unknown;
   artifactName?: string;
   artifactVersion?: string;
-  memoryName?: string;
   vars?: Record<string, string>;
   volumeVersions?: Record<string, string>;
   additionalVolumes?: AdditionalVolume[];
@@ -415,7 +414,6 @@ export async function resolveCliRunContext(
   let artifactName: string | undefined;
   let artifactVersion: string | undefined;
   let vars: Record<string, string> | undefined = params.vars;
-  let memoryName: string | undefined;
   let volumeVersions: Record<string, string> | undefined =
     params.volumeVersions;
   let additionalVolumes: AdditionalVolume[] | undefined;
@@ -434,7 +432,6 @@ export async function resolveCliRunContext(
     agentCompose = defaults.agentCompose;
     artifactName = defaults.artifactName;
     artifactVersion = defaults.artifactVersion;
-    memoryName = defaults.memoryName;
     vars = defaults.vars;
     volumeVersions = defaults.volumeVersions;
     additionalVolumes = defaults.additionalVolumes;
@@ -539,7 +536,6 @@ export async function resolveCliRunContext(
     agentCompose,
     artifactName,
     artifactVersion,
-    memoryName,
     vars: mergedVars ?? vars,
     volumeVersions,
     additionalVolumes,
@@ -586,7 +582,7 @@ export async function buildZeroExecutionContext(
   let artifactName: string | undefined = params.artifactName;
   let artifactVersion: string | undefined = params.artifactVersion;
   let vars: Record<string, string> | undefined = params.vars;
-  let memoryName: string | undefined = params.memoryName;
+  const memoryName: string | undefined = params.memoryName;
   let volumeVersions: Record<string, string> | undefined =
     params.volumeVersions;
   let additionalVolumes: AdditionalVolume[] | undefined =
@@ -607,7 +603,6 @@ export async function buildZeroExecutionContext(
     agentCompose = defaults.agentCompose;
     artifactName = defaults.artifactName;
     artifactVersion = defaults.artifactVersion;
-    memoryName = defaults.memoryName;
     vars = defaults.vars;
     volumeVersions = defaults.volumeVersions;
     additionalVolumes = params.additionalVolumes || defaults.additionalVolumes;

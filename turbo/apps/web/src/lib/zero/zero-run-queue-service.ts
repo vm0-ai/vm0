@@ -121,7 +121,6 @@ export async function enqueueRun(
           orgId,
           agentComposeId,
           artifactName: params.artifactName,
-          memoryName: params.memoryName,
           conversationId: null,
         })
         .returning({ id: agentSessions.id });
@@ -554,6 +553,7 @@ export async function dispatchQueuedZeroRun(
   const tokenTime = Date.now();
   const contextResult = await buildZeroExecutionContext({
     ...params,
+    memoryName: "memory",
     secrets: { ...params.secrets, ZERO_TOKEN: zeroToken },
     sandboxToken,
     agentCompose: composeContent,

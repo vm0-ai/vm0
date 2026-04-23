@@ -16,7 +16,6 @@ import {
 } from "../../../../src/db/schema/agent-compose";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
 import {
-  AUTO_MEMORY_MOUNT_PATH,
   type AdditionalArtifact,
   type AdditionalVolume,
 } from "../../../../src/lib/infra/storage/types";
@@ -378,21 +377,6 @@ const router = tsr.router(runsMainContract, {
         artifacts: effectiveArtifacts,
       } = consolidateArtifactInputs(body, resolved);
 
-      // 6b. Synthesize memory-as-artifact at the auto-memory mount path for
-      // session/checkpoint-resumed runs. Mirrors buildZeroExecutionContext's
-      // memoryArtifacts synthesis — the CLI path carries memory through the
-      // unified artifacts[] channel, not a dedicated memoryName field.
-      const effectiveArtifactsWithMemory: AdditionalArtifact[] | undefined =
-        resolved.memoryName
-          ? [
-              ...(effectiveArtifacts ?? []),
-              {
-                name: resolved.memoryName,
-                mountPath: AUTO_MEMORY_MOUNT_PATH,
-              },
-            ]
-          : effectiveArtifacts;
-
       // 7. Concurrency check + INSERT (transaction with advisory lock)
       const run = await globalThis.services.db.transaction(async (tx) => {
         await tx.execute(
@@ -412,7 +396,6 @@ const router = tsr.router(runsMainContract, {
           resumedFromCheckpointId: body.checkpointId,
           sessionId: body.sessionId,
           artifactName: effectiveArtifactName,
-          memoryName: resolved.memoryName,
         });
       });
       const transactionTime = Date.now();
@@ -441,7 +424,7 @@ const router = tsr.router(runsMainContract, {
           secretConnectorMap: resolved.secretConnectorMap,
           artifactName: effectiveArtifactName,
           artifactVersion: effectiveArtifactVersion,
-          artifacts: effectiveArtifactsWithMemory,
+          artifacts: effectiveArtifacts,
           volumeVersions: resolved.volumeVersions ?? body.volumeVersions,
           additionalVolumes: finalAdditionalVolumes,
           environment: resolved.environment,

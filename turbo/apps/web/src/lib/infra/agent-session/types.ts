@@ -14,7 +14,6 @@ export interface AgentSessionData {
   agentComposeId: string;
   conversationId: string | null;
   artifactName: string | null;
-  memoryName: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

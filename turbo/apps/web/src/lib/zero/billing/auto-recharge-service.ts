@@ -35,22 +35,11 @@ interface OrgRechargeState {
   autoRechargePendingAt: Date | null;
 }
 
-function isEligibleForRecharge(
-  org: OrgRechargeState,
-): org is OrgRechargeState & {
+type ClaimedRechargeState = OrgRechargeState & {
   stripeCustomerId: string;
   autoRechargeThreshold: number;
   autoRechargeAmount: number;
-} {
-  return (
-    org.autoRechargeEnabled &&
-    org.tier !== "free" &&
-    org.stripeCustomerId !== null &&
-    org.autoRechargeThreshold !== null &&
-    org.autoRechargeAmount !== null &&
-    org.credits <= org.autoRechargeThreshold
-  );
-}
+};
 
 async function clearPendingFlag(orgId: string): Promise<void> {
   const db = globalThis.services.db;
@@ -110,9 +99,25 @@ async function resolvePaymentMethod(
 export async function triggerAutoRecharge(orgId: string): Promise<void> {
   const db = globalThis.services.db;
 
-  // Read org state
-  const [org] = await db
-    .select({
+  // Atomically claim the recharge slot against fresh org state. This prevents
+  // using an outdated balance/config snapshot after a manual top-up, renewal,
+  // or settings change that lands between "should recharge?" and invoice
+  // creation.
+  const claimed = await db
+    .update(orgMetadata)
+    .set({ autoRechargePendingAt: new Date(), updatedAt: new Date() })
+    .where(
+      sql`${orgMetadata.orgId} = ${orgId}
+          AND ${orgMetadata.autoRechargeEnabled} = true
+          AND ${orgMetadata.tier} != 'free'
+          AND ${orgMetadata.stripeCustomerId} IS NOT NULL
+          AND ${orgMetadata.autoRechargeThreshold} IS NOT NULL
+          AND ${orgMetadata.autoRechargeAmount} IS NOT NULL
+          AND ${orgMetadata.credits} <= ${orgMetadata.autoRechargeThreshold}
+          AND (${orgMetadata.autoRechargePendingAt} IS NULL
+               OR ${orgMetadata.autoRechargePendingAt} < now() - interval '${sql.raw(String(STALE_THRESHOLD_MINUTES))} minutes')`,
+    )
+    .returning({
       credits: orgMetadata.credits,
       tier: orgMetadata.tier,
       stripeCustomerId: orgMetadata.stripeCustomerId,
@@ -121,27 +126,10 @@ export async function triggerAutoRecharge(orgId: string): Promise<void> {
       autoRechargeThreshold: orgMetadata.autoRechargeThreshold,
       autoRechargeAmount: orgMetadata.autoRechargeAmount,
       autoRechargePendingAt: orgMetadata.autoRechargePendingAt,
-    })
-    .from(orgMetadata)
-    .where(eq(orgMetadata.orgId, orgId))
-    .limit(1);
+    });
 
-  if (!org || !isEligibleForRecharge(org)) return;
-
-  // Atomically claim the recharge slot — only one writer wins.
-  // Allows retry if the previous pending is stale (> 10 min).
-  const claimed = await db
-    .update(orgMetadata)
-    .set({ autoRechargePendingAt: new Date(), updatedAt: new Date() })
-    .where(
-      sql`${orgMetadata.orgId} = ${orgId}
-          AND ${orgMetadata.autoRechargeEnabled} = true
-          AND (${orgMetadata.autoRechargePendingAt} IS NULL
-               OR ${orgMetadata.autoRechargePendingAt} < now() - interval '${sql.raw(String(STALE_THRESHOLD_MINUTES))} minutes')`,
-    )
-    .returning({ orgId: orgMetadata.orgId });
-
-  if (claimed.length === 0) {
+  const org = claimed[0] as ClaimedRechargeState | undefined;
+  if (!org) {
     log.debug("Auto-recharge already pending, skipping", { orgId });
     return;
   }

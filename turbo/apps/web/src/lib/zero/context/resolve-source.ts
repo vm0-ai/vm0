@@ -185,7 +185,6 @@ interface ApplyResolutionDefaultsParams {
   agentComposeVersionId?: string;
   artifactName?: string;
   artifactVersion?: string;
-  memoryName?: string;
   vars?: Record<string, string>;
   volumeVersions?: Record<string, string>;
   additionalVolumes?: AdditionalVolume[];
@@ -203,7 +202,6 @@ export function applyResolutionDefaults(
   agentCompose: unknown;
   artifactName: string | undefined;
   artifactVersion: string | undefined;
-  memoryName: string | undefined;
   vars: Record<string, string> | undefined;
   volumeVersions: Record<string, string> | undefined;
   additionalVolumes: AdditionalVolume[] | undefined;
@@ -228,7 +226,6 @@ export function applyResolutionDefaults(
     agentCompose: resolution.agentCompose,
     artifactName,
     artifactVersion,
-    memoryName: params.memoryName || resolution.memoryName,
     vars: params.vars || resolution.vars,
     volumeVersions: params.volumeVersions || resolution.volumeVersions,
     additionalVolumes: params.additionalVolumes || resolution.additionalVolumes,

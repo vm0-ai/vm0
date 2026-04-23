@@ -182,8 +182,7 @@ export async function createCheckpoint(
   // Bind the pre-created agent session (always populated since #10323 made
   // agent_runs.session_id NOT NULL) to this conversation and record per-run
   // snapshot fields that were not known when the session was created eagerly
-  // at run insertion. memoryName on agent_sessions is populated at run
-  // creation (see insertRunRecord); the complete webhook no longer updates it.
+  // at run insertion.
   const volumeSnapshot = request.volumeVersionsSnapshot as
     | VolumeVersionsSnapshot
     | undefined;
