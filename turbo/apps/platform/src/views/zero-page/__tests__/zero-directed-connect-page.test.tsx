@@ -100,6 +100,20 @@ describe("directed connect page", () => {
     expect(screen.queryByText("Connect")).not.toBeInTheDocument();
   });
 
+  it("shows Reconnect button alongside Connected pill when already connected", async () => {
+    mockConnectors([{ type: "github" }]);
+
+    detachedSetupPage({ context, path: "/connectors/github/connect" });
+
+    await waitFor(() => {
+      expect(screen.getByText("GitHub connected")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Connected")).toBeInTheDocument();
+    const reconnectBtn = screen.getAllByRole("button").find((el) => {
+      return el.textContent?.trim() === "Reconnect";
+    });
+    expect(reconnectBtn).toBeDefined();
+  });
   it("reconnect button reopens OAuth flow for an already-connected OAuth connector", async () => {
     const openSpy = vi
       .spyOn(window, "open")
