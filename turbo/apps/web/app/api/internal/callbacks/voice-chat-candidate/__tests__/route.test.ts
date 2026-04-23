@@ -7,7 +7,12 @@ import {
   createTestCallback,
   createSignedCallbackRequest,
 } from "../../../../../../src/__tests__/api-test-helpers";
-import { setTestRunVars } from "../../../../../../src/__tests__/db-test-seeders/runs";
+import {
+  setTestRunRunnerGroup,
+  setTestRunStatus,
+  setTestRunVars,
+} from "../../../../../../src/__tests__/db-test-seeders/runs";
+import { findTestRunRecord } from "../../../../../../src/__tests__/db-test-assertions/runs";
 import { mockAblyPublish } from "../../../../../../src/__tests__/ably-mock";
 import {
   getTestVoiceChatCandidateTask,
@@ -253,6 +258,75 @@ describe("POST /api/internal/callbacks/voice-chat-candidate", () => {
       return i.role === "system_note";
     });
     expect(note).toBeDefined();
+  });
+
+  it("dispatches cancel side effects for in-flight runs on agent mismatch (#10762)", async () => {
+    // Triggering callback carries a mismatched agentId — takes the mismatch
+    // branch inside completeVoiceChatCandidateTask and triggers
+    // cancelSessionPendingRuns for the session.
+    const {
+      runId: triggerRunId,
+      taskId: triggerTaskId,
+      session,
+      secret,
+    } = await setupTaskWithCallback({
+      agentIdOnRun: "00000000-0000-0000-0000-000000000000",
+    });
+
+    // Seed a second in-flight voice-chat-candidate task for the same session.
+    // The voice-chat task stays in its default (pending/queued) state, but
+    // we flip the underlying agent_run to `running` so cancelRun observes
+    // previousStatus === 'running' and dispatchCancelSideEffects is expected
+    // to publish an Ably cancel notification to the runner group.
+    const taskResponse = await createTaskPOST(
+      postRequest(`/${session.id}/tasks`, {
+        prompt: "secondary in-flight",
+        callId: uniqueId("call"),
+      }),
+      paramsFor(session.id),
+    );
+    const { task: secondary } = (await taskResponse.json()) as {
+      task: { id: string; runId: string };
+    };
+
+    await setTestRunStatus(secondary.runId, "running");
+    await setTestRunRunnerGroup(secondary.runId, "test-group");
+
+    context.mocks.axiom.queryAxiom.mockResolvedValueOnce([]);
+    mockAblyPublish.mockClear();
+
+    const response = await POST(
+      createSignedCallbackRequest(
+        CALLBACK_URL,
+        {
+          runId: triggerRunId,
+          status: "completed",
+          payload: { taskId: triggerTaskId },
+        },
+        secret,
+      ),
+    );
+
+    expect(response.status).toBe(200);
+
+    // Flush the callback route's after() so dispatchCancelSideEffects runs.
+    await context.mocks.flushAfter();
+
+    // Secondary agent_run must have been moved to `cancelled` — this is the
+    // DB-level outcome of cancelRun running inside cancelSessionPendingRuns.
+    const secondaryRow = await findTestRunRecord(secondary.runId);
+    expect(secondaryRow!.status).toBe("cancelled");
+
+    // Runner-group Ably cancel must have been published (the specific
+    // side effect that was previously missing). Channel name is opaque
+    // through the shared mock, so match on event + payload.
+    const cancelPublish = mockAblyPublish.mock.calls.find((call) => {
+      return (
+        call[0] === "cancel" &&
+        (call[1] as { runId?: string } | null)?.runId === secondary.runId
+      );
+    });
+    expect(cancelPublish).toBeDefined();
   });
 
   it("returns 200 for unknown taskId (defensive per epic risk table)", async () => {

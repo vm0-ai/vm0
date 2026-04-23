@@ -6,7 +6,7 @@ import {
   voiceChatTasks,
 } from "../../../db/schema/voice-chat";
 import { type CreateZeroRunResult } from "../zero-run-service";
-import { cancelRun } from "../zero-run-cancel";
+import { cancelRun, type CancelRunResult } from "../zero-run-cancel";
 import { isRunNotCancellable, notFound } from "../../shared/errors";
 import { logger } from "../../shared/logger";
 
@@ -63,6 +63,7 @@ export async function completeVoiceChatCandidateTask(params: {
   item: ItemRow;
   task: TaskRow;
   session: { id: string; userId: string };
+  cancelledRuns: CancelRunResult[];
 }> {
   const db = globalThis.services.db;
 
@@ -192,14 +193,15 @@ export async function completeVoiceChatCandidateTask(params: {
     };
   });
 
-  if (outcome.mismatch) {
-    await cancelSessionPendingRuns(outcome.session);
-  }
+  const cancelledRuns = outcome.mismatch
+    ? await cancelSessionPendingRuns(outcome.session)
+    : [];
 
   return {
     task: outcome.task,
     item: outcome.item,
     session: { id: outcome.session.id, userId: outcome.session.userId },
+    cancelledRuns,
   };
 }
 
@@ -337,16 +339,23 @@ export async function appendTaskAssistantResult(params: {
   return { sessionId: row.sessionId, userId: session.userId };
 }
 
+// Returns the `CancelRunResult` for each run this call actually transitioned
+// to `cancelled`. `alreadyCancelled` replays are filtered out — the original
+// caller owned their side effects. The caller is responsible for invoking
+// `dispatchCancelSideEffects` / `processOrgCredits`; this module stays free of
+// Next.js request-context coupling so non-HTTP callers remain safe.
 async function cancelSessionPendingRuns(session: {
   id: string;
   orgId: string;
   userId: string;
-}): Promise<void> {
+}): Promise<CancelRunResult[]> {
   const pending = await listPendingVoiceChatCandidateTasks(session.id);
+  const cancelled: CancelRunResult[] = [];
   for (const task of pending) {
     if (!task.runId) continue;
     try {
-      await cancelRun(task.runId, session.userId, session.orgId);
+      const result = await cancelRun(task.runId, session.userId, session.orgId);
+      if (!result.alreadyCancelled) cancelled.push(result);
     } catch (err) {
       // Only swallow the expected "already terminal" signal from the run
       // state machine. Any other error (DB failure, permission mismatch,
@@ -359,6 +368,7 @@ async function cancelSessionPendingRuns(session: {
       );
     }
   }
+  return cancelled;
 }
 
 function formatTaskResult(params: {

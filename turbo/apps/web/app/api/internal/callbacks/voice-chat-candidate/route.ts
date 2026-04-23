@@ -7,6 +7,13 @@ import { getRunOutputText } from "../../../../../src/lib/infra/run/extract-run-o
 import { completeVoiceChatCandidateTask } from "../../../../../src/lib/zero/voice-chat-candidate/task-service";
 import { triggerReasoning } from "../../../../../src/lib/zero/voice-chat-candidate/trigger-reasoning";
 import { publishUserSignal } from "../../../../../src/lib/infra/realtime/client";
+import { dispatchCancelSideEffects } from "../../../../../src/lib/infra/run/run-service";
+import type { CancelRunResult } from "../../../../../src/lib/zero/zero-run-cancel";
+import {
+  dispatchQueuedZeroRun,
+  drainOrgQueue,
+} from "../../../../../src/lib/zero/zero-run-queue-service";
+import { processOrgCredits } from "../../../../../src/lib/zero/credit/credit-service";
 import { isNotFound } from "../../../../../src/lib/shared/errors";
 import type { VoiceChatCallbackPayload } from "../../../../../src/lib/infra/callback/callback-payloads";
 import { logger } from "../../../../../src/lib/shared/logger";
@@ -84,6 +91,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   let sessionId: string;
   let userId: string;
+  let cancelledRuns: CancelRunResult[];
   try {
     const outcome = await completeVoiceChatCandidateTask({
       taskId: payload.taskId,
@@ -93,6 +101,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     });
     sessionId = outcome.session.id;
     userId = outcome.session.userId;
+    cancelledRuns = outcome.cancelledRuns;
   } catch (err) {
     if (isNotFound(err)) {
       log.warn("voice-chat-candidate task not found — ignoring callback", {
@@ -114,6 +123,24 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   after(() => {
     return triggerReasoning(sessionId);
   });
+
+  // Mismatch path cancelled one or more pending/queued runs. Dispatch the
+  // side effects (Ably cancel, registered callbacks, queue drain) once per
+  // run, then process org credits once for the batch — all cancelled runs
+  // share the session's org.
+  if (cancelledRuns.length > 0) {
+    const orgId = cancelledRuns[0]!.orgId;
+    after(async () => {
+      let anyActive = false;
+      for (const result of cancelledRuns) {
+        const active = await dispatchCancelSideEffects(result, (oid) => {
+          return drainOrgQueue(oid, dispatchQueuedZeroRun);
+        });
+        if (active) anyActive = true;
+      }
+      if (anyActive) await processOrgCredits(orgId);
+    });
+  }
 
   return NextResponse.json({ success: true });
 }
