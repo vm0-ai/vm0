@@ -102,7 +102,7 @@
         "concurrentRun": "1同時実行",
         "unlimitedAgents": "エージェント数無制限",
         "bringOwnLLM": "自分のLLMキーを使用",
-        "voiceInput": "音声入力",
+        "voiceInput": "音声入力（10回/月）",
         "communitySupport": "コミュニティサポート"
       },
       "buttonText": "始める"
@@ -189,7 +189,8 @@
       "120k": "120,000",
       "unlimited": "無制限",
       "oneMonth": "1ヶ月",
-      "allConnectors": "すべてのコネクター"
+      "allConnectors": "すべてのコネクター",
+      "tenPerMonth": "10回/月"
     },
     "faq": {
       "title": "よくある質問",

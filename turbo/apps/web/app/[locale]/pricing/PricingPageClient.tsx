@@ -460,7 +460,7 @@ export function PricingPageClient() {
                   <TableRow
                     feature={t("tableFeatures.voiceInput")}
                     description={t("tableFeatures.voiceInputDesc")}
-                    free={true}
+                    free={t("tableValues.tenPerMonth")}
                     pro={true}
                     team={true}
                   />

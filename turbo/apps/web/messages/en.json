@@ -102,7 +102,7 @@
         "concurrentRun": "1 concurrent run",
         "unlimitedAgents": "Unlimited total agents",
         "bringOwnLLM": "Bring your own LLM keys",
-        "voiceInput": "Voice input",
+        "voiceInput": "Voice input (10/month)",
         "communitySupport": "Community support"
       },
       "buttonText": "Get started"
@@ -189,7 +189,8 @@
       "120k": "120,000",
       "unlimited": "Unlimited",
       "oneMonth": "1 month",
-      "allConnectors": "All connectors"
+      "allConnectors": "All connectors",
+      "tenPerMonth": "10/month"
     },
     "faq": {
       "title": "Frequently asked questions",

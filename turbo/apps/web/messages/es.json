@@ -102,7 +102,7 @@
         "concurrentRun": "1 ejecución simultánea",
         "unlimitedAgents": "Agentes totales ilimitados",
         "bringOwnLLM": "Usa tus propias claves de LLM",
-        "voiceInput": "Entrada por voz",
+        "voiceInput": "Entrada por voz (10/mes)",
         "communitySupport": "Soporte de la comunidad"
       },
       "buttonText": "Comenzar"
@@ -189,7 +189,8 @@
       "120k": "120.000",
       "unlimited": "Ilimitado",
       "oneMonth": "1 mes",
-      "allConnectors": "Todos los conectores"
+      "allConnectors": "Todos los conectores",
+      "tenPerMonth": "10/mes"
     },
     "faq": {
       "title": "Preguntas frecuentes",

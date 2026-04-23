@@ -62,7 +62,7 @@ const PLANS = [
       "1 concurrent run",
       "Unlimited total agents",
       "Bring your own LLM keys",
-      "Voice input",
+      "Voice input (10/month)",
       "Community support",
     ],
   },
