@@ -5,8 +5,7 @@ import {
   AUDIO_INPUT_FREE_QUOTA,
   AUDIO_INPUT_BEHAVIOR_KEY,
 } from "../audio-input-policy";
-// eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route
-import { recordBehavior } from "../../behavior/user-behavior-count-service";
+import { seedBehaviorCount } from "../../../../__tests__/db-test-seeders/behavior";
 
 const context = testContext();
 
@@ -27,9 +26,7 @@ describe("checkAudioInputQuota", () => {
       context.setupMocks();
       const { userId, orgId } = await context.setupUser();
 
-      for (let i = 0; i < 9; i++) {
-        await recordBehavior(orgId, userId, AUDIO_INPUT_BEHAVIOR_KEY);
-      }
+      await seedBehaviorCount(orgId, userId, AUDIO_INPUT_BEHAVIOR_KEY, 9);
 
       const result = await checkAudioInputQuota(orgId, userId, "free");
 
@@ -42,9 +39,7 @@ describe("checkAudioInputQuota", () => {
       context.setupMocks();
       const { userId, orgId } = await context.setupUser();
 
-      for (let i = 0; i < 10; i++) {
-        await recordBehavior(orgId, userId, AUDIO_INPUT_BEHAVIOR_KEY);
-      }
+      await seedBehaviorCount(orgId, userId, AUDIO_INPUT_BEHAVIOR_KEY, 10);
 
       const result = await checkAudioInputQuota(orgId, userId, "free");
 
@@ -57,9 +52,7 @@ describe("checkAudioInputQuota", () => {
       context.setupMocks();
       const { userId, orgId } = await context.setupUser();
 
-      for (let i = 0; i < 11; i++) {
-        await recordBehavior(orgId, userId, AUDIO_INPUT_BEHAVIOR_KEY);
-      }
+      await seedBehaviorCount(orgId, userId, AUDIO_INPUT_BEHAVIOR_KEY, 11);
 
       const result = await checkAudioInputQuota(orgId, userId, "free");
 
@@ -74,9 +67,7 @@ describe("checkAudioInputQuota", () => {
       context.setupMocks();
       const { userId, orgId } = await context.setupUser();
 
-      for (let i = 0; i < 20; i++) {
-        await recordBehavior(orgId, userId, AUDIO_INPUT_BEHAVIOR_KEY);
-      }
+      await seedBehaviorCount(orgId, userId, AUDIO_INPUT_BEHAVIOR_KEY, 20);
 
       const result = await checkAudioInputQuota(orgId, userId, "pro");
 
@@ -88,9 +79,7 @@ describe("checkAudioInputQuota", () => {
       context.setupMocks();
       const { userId, orgId } = await context.setupUser();
 
-      for (let i = 0; i < 20; i++) {
-        await recordBehavior(orgId, userId, AUDIO_INPUT_BEHAVIOR_KEY);
-      }
+      await seedBehaviorCount(orgId, userId, AUDIO_INPUT_BEHAVIOR_KEY, 20);
 
       const result = await checkAudioInputQuota(orgId, userId, "team");
 
