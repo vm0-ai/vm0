@@ -965,7 +965,6 @@ const reconnectVoiceSession$ = command(
       const audioConfig = await resolveAudioConfig();
       signal.throwIfAborted();
 
-
       // Check if existing mic stream is still active
       let stream = get(internalStream$);
       if (
@@ -978,7 +977,6 @@ const reconnectVoiceSession$ = command(
         try {
           stream = await navigator.mediaDevices.getUserMedia({
             audio: audioConfig.constraints,
-
           });
           set(internalStream$, stream);
         } catch (error) {
@@ -1140,13 +1138,11 @@ const connectVoiceSession$ = command(
     const audioConfig = await resolveAudioConfig();
     sessionSignal.throwIfAborted();
 
-
     let stream: MediaStream;
     // eslint-disable-next-line no-restricted-syntax -- getUserMedia can fail due to permission denial or missing hardware
     try {
       stream = await navigator.mediaDevices.getUserMedia({
         audio: audioConfig.constraints,
-
       });
     } catch (error) {
       throwIfAbort(error);
