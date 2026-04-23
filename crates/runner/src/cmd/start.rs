@@ -40,6 +40,10 @@ const MITM_BACKOFF_INITIAL: Duration = Duration::from_secs(1);
 const MITM_BACKOFF_MAX: Duration = Duration::from_secs(30);
 /// Stop retrying mitmproxy after this many consecutive failures.
 const MITM_MAX_CONSECUTIVE_FAILURES: u32 = 20;
+/// Period between routine heartbeat ticks sent to the server. First
+/// tick is deferred by one period via `interval_at` — see the comment
+/// at the interval construction in `run()`.
+const HEARTBEAT_PERIOD: Duration = Duration::from_secs(10);
 
 #[derive(Args)]
 pub struct StartArgs {
@@ -506,11 +510,11 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     idle_cleanup.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
     // -----------------------------------------------------------------------
-    // Heartbeat interval (every 10 seconds) — same first-tick delay as above.
+    // Heartbeat interval — same first-tick delay as above.
     // -----------------------------------------------------------------------
     let mut heartbeat_tick = tokio::time::interval_at(
-        tokio::time::Instant::now() + Duration::from_secs(10),
-        Duration::from_secs(10),
+        tokio::time::Instant::now() + HEARTBEAT_PERIOD,
+        HEARTBEAT_PERIOD,
     );
     heartbeat_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
@@ -2649,9 +2653,11 @@ mod tests {
         push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
         let _token = wait_cancel_token(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
 
-        // Enter Draining before any heartbeat tick (first tick is at t=10s).
-        // The sleep lets the runner observe `mode_rx.changed()`, exit the
-        // main `select!`, and reach the Draining arm's `select!`.
+        // Enter Draining before the first heartbeat tick fires. The sleep
+        // lets the runner observe `mode_rx.changed()`, exit the main
+        // `select!`, and reach the Draining arm's `select!`. There is no
+        // production-side notifier for "Draining arm entered", so this
+        // synchronization has to be time-based.
         env.drain();
         tokio::time::sleep(Duration::from_millis(100)).await;
         assert_eq!(*env.mode_tx.borrow(), RunnerMode::Draining);
@@ -2659,14 +2665,14 @@ mod tests {
 
         // Advance past the first tick while the Draining arm is active.
         // A broken Draining arm that dropped its `heartbeat_tick.tick()`
-        // branch would leave `after == before`.
-        tokio::time::advance(Duration::from_secs(15)).await;
-        tokio::time::sleep(Duration::from_millis(100)).await;
-
-        let after = env.handle.heartbeat_count();
+        // branch would leave the count unchanged; `wait_heartbeat_past`
+        // returns false on timeout.
+        tokio::time::advance(HEARTBEAT_PERIOD + Duration::from_secs(5)).await;
         assert!(
-            after > before,
-            "Draining arm must handle heartbeat_tick (before={before}, after={after})",
+            env.handle
+                .wait_heartbeat_past(before, Duration::from_secs(5))
+                .await,
+            "Draining arm must handle heartbeat_tick (baseline={before})",
         );
 
         // Tear down hard — the gate would block natural completion.
@@ -2697,25 +2703,33 @@ mod tests {
         push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
         // Wait for the reservation — after this, the next loop iteration
         // enters the budget-exhausted `select!` at the can_afford check.
+        // The sleep yields to the runner so it reaches that `select!`
+        // before the time advance below.
         wait_budget_count(&budget, 1, Duration::from_secs(5)).await;
         tokio::time::sleep(Duration::from_millis(100)).await;
         let before = env.handle.heartbeat_count();
 
         // Advance past the first tick while the runner is budget-exhausted.
-        tokio::time::advance(Duration::from_secs(15)).await;
-        tokio::time::sleep(Duration::from_millis(100)).await;
-
-        let after = env.handle.heartbeat_count();
+        // Removing the `heartbeat_tick.tick()` branch from that `select!`
+        // leaves the count unchanged; `wait_heartbeat_past` returns false
+        // on timeout.
+        tokio::time::advance(HEARTBEAT_PERIOD + Duration::from_secs(5)).await;
         assert!(
-            after > before,
-            "budget-exhausted arm must handle heartbeat_tick (before={before}, after={after})",
+            env.handle
+                .wait_heartbeat_past(before, Duration::from_secs(5))
+                .await,
+            "budget-exhausted arm must handle heartbeat_tick (baseline={before})",
         );
 
-        // Release the gate and tear down hard (mode is Running; the gate
-        // would block Draining's natural completion path).
+        // Release the gate so the job completes, budget frees, and the
+        // standard `shutdown()` helper (Draining → auto-Stop) terminates
+        // the runner cleanly — same pattern as `budget_full_skips_then_resumes`.
         gate.notify_one();
-        env.trigger_stopping().await;
-        let _ = tokio::time::timeout(Duration::from_secs(5), run_handle).await;
+        let _ = env
+            .handle
+            .wait_completion(run_id, Duration::from_secs(5))
+            .await;
+        shutdown(&env, run_handle).await;
     }
 
     /// With no active jobs, SIGUSR1 transitions straight through Draining

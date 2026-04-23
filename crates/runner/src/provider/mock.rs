@@ -69,6 +69,10 @@ pub struct MockJobProvider {
     /// Event-driven waiting eliminates the polling loop whose wall-clock
     /// deadline was racing coverage-CI slowdown (see #10146).
     completion_notify: Arc<Notify>,
+    /// Fired by `heartbeat()` after a state is appended to `heartbeats`.
+    /// `wait_heartbeat_past` uses the same subscribe-then-check pattern as
+    /// `wait_completion` so a heartbeat that lands mid-check is still observed.
+    heartbeat_notify: Arc<Notify>,
 }
 
 /// Test-side handle for driving the mock provider.
@@ -80,6 +84,8 @@ pub struct MockProviderHandle {
     pub discover_entered: Arc<Notify>,
     /// See [`MockJobProvider::completion_notify`].
     completion_notify: Arc<Notify>,
+    /// See [`MockJobProvider::heartbeat_notify`].
+    heartbeat_notify: Arc<Notify>,
 }
 
 impl MockJobProvider {
@@ -106,6 +112,7 @@ impl MockJobProvider {
         let heartbeats = Arc::new(StdMutex::new(Vec::new()));
         let discover_entered = Arc::new(Notify::new());
         let completion_notify = Arc::new(Notify::new());
+        let heartbeat_notify = Arc::new(Notify::new());
         let provider = Arc::new(Self {
             discovery: Mutex::new(rx),
             poll_delay,
@@ -115,6 +122,7 @@ impl MockJobProvider {
             cancel,
             discover_entered: Arc::clone(&discover_entered),
             completion_notify: Arc::clone(&completion_notify),
+            heartbeat_notify: Arc::clone(&heartbeat_notify),
         });
         let handle = MockProviderHandle {
             discover_tx: tx,
@@ -122,6 +130,7 @@ impl MockJobProvider {
             heartbeats,
             discover_entered,
             completion_notify,
+            heartbeat_notify,
         };
         (provider, handle)
     }
@@ -174,6 +183,33 @@ impl MockProviderHandle {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .len()
+    }
+
+    /// Wait until `heartbeat_count()` exceeds `baseline`, or return false on
+    /// timeout. Uses the same subscribe-then-check pattern as
+    /// [`wait_completion`](Self::wait_completion) — a heartbeat that lands
+    /// between registering interest and reading the count still wakes the
+    /// wait. `timeout` is a diagnostic cap; under `tokio::test(start_paused)`
+    /// it's paused-clock time so the test does not wait wall-clock.
+    pub async fn wait_heartbeat_past(&self, baseline: usize, timeout: Duration) -> bool {
+        let deadline = tokio::time::Instant::now() + timeout;
+        loop {
+            let notified = self.heartbeat_notify.notified();
+            tokio::pin!(notified);
+            notified.as_mut().enable();
+
+            if self.heartbeat_count() > baseline {
+                return true;
+            }
+
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            if remaining.is_zero() {
+                return false;
+            }
+            if tokio::time::timeout(remaining, notified).await.is_err() {
+                return false;
+            }
+        }
     }
 }
 
@@ -241,6 +277,7 @@ impl JobProvider for MockJobProvider {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .push(state.clone());
+        self.heartbeat_notify.notify_waiters();
     }
 
     /// Acquire the discovery Mutex — same as `ApiProvider::shutdown()`.
