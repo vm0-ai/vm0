@@ -24,7 +24,6 @@ import type { RunStatus } from "@vm0/core/contracts/runs";
 import {
   insertRunRecord,
   buildAndDispatchRun,
-  loadCompose,
   markRunFailed,
   registerCallbacks,
   type CreateRunParams,
@@ -47,7 +46,7 @@ import { generateZeroToken, generateSandboxToken } from "../auth/sandbox-token";
 import { loadFeatureSwitchOverrides } from "./user/feature-switches-service";
 import { buildZeroExecutionContext } from "./build-zero-context";
 import { getOrgMetadata, type OrgMetadata } from "./org/org-metadata-service";
-import { isConcurrentRunLimit } from "../shared/errors";
+import { isConcurrentRunLimit, notFound } from "../shared/errors";
 import {
   DISALLOWED_TOOLS,
   buildAgentPrompt,
@@ -398,9 +397,6 @@ async function createZeroRunRecord(
   const round2FeatureSw = timed(async () => {
     return loadFeatureSwitchOverrides(resolved.orgId, params.userId);
   });
-  const round2LoadCompose = timed(async () => {
-    return loadCompose(resolved.agentComposeVersionId, resolved.composeId);
-  });
 
   const [
     connectorRowsT,
@@ -408,21 +404,18 @@ async function createZeroRunRecord(
     orgMetaT,
     userPrefsT,
     featureOverridesT,
-    preloadedComposeT,
   ] = await Promise.all([
     round2Connectors,
     round2CustomConnectors,
     round2OrgMeta,
     round2UserPrefs,
     round2FeatureSw,
-    round2LoadCompose,
   ]);
   const connectorRows = connectorRowsT.result;
   const customConnectorRows = customConnectorRowsT.result;
   const orgMeta = orgMetaT.result;
   const userPrefs = userPrefsT.result;
   const featureOverrides = featureOverridesT.result;
-  const preloadedCompose = preloadedComposeT.result;
 
   emit(CHAT_REQUEST_OPS.create_run_round2_connectors, connectorRowsT.ms);
   emit(
@@ -432,7 +425,6 @@ async function createZeroRunRecord(
   emit(CHAT_REQUEST_OPS.create_run_round2_org_meta, orgMetaT.ms);
   emit(CHAT_REQUEST_OPS.create_run_round2_user_prefs, userPrefsT.ms);
   emit(CHAT_REQUEST_OPS.create_run_round2_feature_sw, featureOverridesT.ms);
-  emit(CHAT_REQUEST_OPS.create_run_round2_load_compose, preloadedComposeT.ms);
 
   const orgTier = orgTierSchema.parse(orgMeta.tier);
 
@@ -503,7 +495,7 @@ async function createZeroRunRecord(
     userId: params.userId,
     agentComposeVersionId: resolved.agentComposeVersionId,
     prompt: params.prompt,
-    composeId: preloadedCompose.compose.id,
+    composeId: resolved.composeId,
     sessionId: params.sessionId,
     appendSystemPrompt,
     modelProvider: params.modelProvider,
@@ -524,11 +516,22 @@ async function createZeroRunRecord(
 
   // ── Round 3: Pre-flight checks (need compose content) ───────────────
   const apiStartTime = params.apiStartTime;
-  authorizeCompose(params.userId, resolved.orgId, preloadedCompose.compose);
+  // resolved.composeId is always populated on zero-run-service callers
+  // (resolveByComposeId always sets it; lookupComposeByVersion rejects via
+  // the orgId guard before here). Narrow it for the rest of the function.
+  if (!resolved.composeId) {
+    throw notFound("Agent compose not found");
+  }
+  const composeId = resolved.composeId;
+  authorizeCompose(params.userId, resolved.orgId, {
+    id: composeId,
+    userId: resolved.composeUserId,
+    orgId: resolved.orgId,
+  });
   const authorizeTime = Date.now();
 
   if (!params.sessionId) {
-    await validateComposeRequirements(preloadedCompose.composeContent);
+    await validateComposeRequirements(resolved.composeContent);
   }
 
   const round3Credits = timed(async () => {
@@ -538,7 +541,7 @@ async function createZeroRunRecord(
     return checkModelProviderConfigured(
       resolved.orgId,
       params.modelProvider,
-      preloadedCompose.composeContent,
+      resolved.composeContent,
     );
   });
   const round3Capture = timed(async () => {
@@ -579,7 +582,7 @@ async function createZeroRunRecord(
         return insertRunRecord(tx, {
           userId: runParams.userId,
           orgId: resolved.orgId,
-          agentComposeId: preloadedCompose.compose.id,
+          agentComposeId: composeId,
           agentComposeVersionId: runParams.agentComposeVersionId,
           prompt: runParams.prompt,
           appendSystemPrompt: runParams.appendSystemPrompt,
@@ -636,7 +639,7 @@ async function createZeroRunRecord(
 
   const record: CreateRunRecordResult = {
     run: { id: run.id, createdAt: run.createdAt },
-    composeContent: preloadedCompose.composeContent,
+    composeContent: resolved.composeContent,
     orgId: resolved.orgId,
     apiStartTime,
     authorizeTime,

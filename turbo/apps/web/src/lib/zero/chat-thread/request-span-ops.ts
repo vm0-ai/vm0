@@ -26,6 +26,8 @@ export const CHAT_REQUEST_OPS = {
   create_run_round2_org_meta: "api_chat_send_create_run_round2_org_meta",
   create_run_round2_user_prefs: "api_chat_send_create_run_round2_user_prefs",
   create_run_round2_feature_sw: "api_chat_send_create_run_round2_feature_sw",
+  // Retained for back-compat of Axiom dashboards reading historical series;
+  // no longer emitted — compose content is now fetched in Round 1.
   create_run_round2_load_compose:
     "api_chat_send_create_run_round2_load_compose",
   create_run_round3_credits: "api_chat_send_create_run_round3_credits",

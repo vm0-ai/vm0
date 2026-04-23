@@ -13,7 +13,11 @@ import {
   findTestRunCallbacks,
   createTestSessionWithConversation,
 } from "../../../__tests__/api-test-helpers";
-import { createTestZeroAgent } from "../../../__tests__/db-test-seeders/agents";
+import {
+  clearComposeHeadVersion,
+  createTestZeroAgent,
+  deleteTestCompose,
+} from "../../../__tests__/db-test-seeders/agents";
 import { bindCustomSkillToAgent } from "../../../__tests__/db-test-seeders/skills";
 import { createTestUserConnector } from "../../../__tests__/db-test-seeders/connectors";
 import { getTestZeroAgentId } from "../../../__tests__/db-test-assertions/agents";
@@ -443,6 +447,46 @@ describe("createZeroRun() — service-only parameters", () => {
       // After flushing, dispatch has run and the runner job is visible.
       const jobAfterFlush = await findTestRunnerJobEntry(result.runId);
       expect(jobAfterFlush).toBeDefined();
+    });
+  });
+
+  describe("compose resolution error paths (Round 1 JOIN)", () => {
+    it("throws notFound when composeId does not match any compose", async () => {
+      const missingComposeId = "00000000-0000-0000-0000-000000000000";
+
+      await expect(
+        createZeroRun(baseParams({ agentId: missingComposeId })),
+      ).rejects.toMatchObject({
+        message: expect.stringContaining("Agent compose not found"),
+      });
+    });
+
+    it("throws badRequest when compose has no head version", async () => {
+      const agentName = uniqueId("headless-agent");
+      const compose = await createTestCompose(agentName);
+      const headlessAgentId = await getTestZeroAgentId(user.orgId, agentName);
+      await clearComposeHeadVersion(compose.composeId);
+
+      await expect(
+        createZeroRun(baseParams({ agentId: headlessAgentId })),
+      ).rejects.toMatchObject({
+        message: expect.stringContaining(
+          "Agent compose has no versions. Run 'vm0 build' first.",
+        ),
+      });
+    });
+
+    it("throws notFound after compose row is deleted", async () => {
+      const agentName = uniqueId("deleted-agent");
+      const compose = await createTestCompose(agentName);
+      const deletedAgentId = await getTestZeroAgentId(user.orgId, agentName);
+      await deleteTestCompose(compose.composeId);
+
+      await expect(
+        createZeroRun(baseParams({ agentId: deletedAgentId })),
+      ).rejects.toMatchObject({
+        message: expect.stringContaining("Agent compose not found"),
+      });
     });
   });
 });

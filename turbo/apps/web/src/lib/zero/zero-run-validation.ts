@@ -8,18 +8,24 @@ import {
 import { notFound, unauthorized, badRequest } from "../shared/errors";
 import { logger } from "../shared/logger";
 import type { AgentComposeSnapshot } from "../infra/checkpoint/types";
+import type { AgentComposeYaml } from "../infra/agent-compose/types";
 import { getAgentSessionWithConversation } from "../infra/agent-session";
 
 const log = logger("service:zero-run-validation");
 
 /**
  * Resolved compose metadata from one of the 4 resolution modes.
+ *
+ * Includes version content and compose owner so the chat-send path can
+ * authorize and build the run without a second DB round-trip.
  */
 interface ResolvedStartRunCompose {
   agentComposeVersionId: string;
   composeId?: string;
+  composeUserId: string;
   agentName?: string;
   orgId: string;
+  composeContent: AgentComposeYaml;
 }
 
 /**
@@ -139,17 +145,28 @@ export async function validateAgentSession(
 }
 
 /**
- * Look up compose metadata from a version ID (shared by checkpoint + versionId paths).
+ * Look up compose metadata + version content from a version ID (shared by
+ * checkpoint + versionId paths). Single LEFT JOIN; the caller checks
+ * `orgId` to distinguish "version exists, compose missing" from the
+ * happy path.
  */
 async function lookupComposeByVersion(
   versionId: string,
   fallbackComposeId?: string,
-): Promise<{ composeId?: string; agentName?: string; orgId: string }> {
+): Promise<{
+  composeId?: string;
+  composeUserId: string;
+  agentName?: string;
+  orgId: string;
+  composeContent: AgentComposeYaml;
+}> {
   const [row] = await globalThis.services.db
     .select({
+      versionContent: agentComposeVersions.content,
       composeName: agentComposes.name,
       composeOrgId: agentComposes.orgId,
       composeId: agentComposes.id,
+      composeUserId: agentComposes.userId,
     })
     .from(agentComposeVersions)
     .leftJoin(
@@ -161,40 +178,54 @@ async function lookupComposeByVersion(
 
   return {
     composeId: row?.composeId ?? fallbackComposeId,
+    composeUserId: row?.composeUserId ?? "",
     agentName: row?.composeName ?? undefined,
     orgId: row?.composeOrgId ?? "",
+    composeContent: (row?.versionContent ?? null) as AgentComposeYaml,
   };
 }
 
 /**
- * Resolve compose by composeId → headVersionId.
+ * Resolve compose by composeId → headVersionId + content in a single JOIN.
+ *
+ * LEFT JOIN on head_version_id so we can distinguish "compose missing"
+ * (notFound) from "compose has no head version" (badRequest).
  */
 async function resolveByComposeId(
   composeId: string,
 ): Promise<ResolvedStartRunCompose> {
-  const [compose] = await globalThis.services.db
+  const [row] = await globalThis.services.db
     .select({
-      id: agentComposes.id,
-      name: agentComposes.name,
-      orgId: agentComposes.orgId,
+      composeId: agentComposes.id,
+      composeName: agentComposes.name,
+      composeOrgId: agentComposes.orgId,
+      composeUserId: agentComposes.userId,
       headVersionId: agentComposes.headVersionId,
+      versionId: agentComposeVersions.id,
+      versionContent: agentComposeVersions.content,
     })
     .from(agentComposes)
+    .leftJoin(
+      agentComposeVersions,
+      eq(agentComposeVersions.id, agentComposes.headVersionId),
+    )
     .where(eq(agentComposes.id, composeId))
     .limit(1);
 
-  if (!compose) {
+  if (!row) {
     throw notFound("Agent compose not found");
   }
-  if (!compose.headVersionId) {
+  if (!row.headVersionId || !row.versionId) {
     throw badRequest("Agent compose has no versions. Run 'vm0 build' first.");
   }
 
   return {
-    agentComposeVersionId: compose.headVersionId,
-    composeId: compose.id,
-    agentName: compose.name ?? undefined,
-    orgId: compose.orgId,
+    agentComposeVersionId: row.versionId,
+    composeId: row.composeId,
+    composeUserId: row.composeUserId,
+    agentName: row.composeName || undefined,
+    orgId: row.composeOrgId,
+    composeContent: row.versionContent as AgentComposeYaml,
   };
 }
 
