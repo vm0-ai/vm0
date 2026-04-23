@@ -253,36 +253,28 @@ export async function triggerReasoning(sessionId: string): Promise<void> {
     for (let i = 0; i < result.missingTasks.length; i++) {
       const prompt = result.missingTasks[i];
       if (!prompt) continue;
-      try {
-        await createVoiceChatCandidateTask({
-          sessionId,
-          callId: `reasoner-auto-${apiStartTime}-${String(i)}`,
-          prompt,
-          spawnRun: (taskId) => {
-            const runParams = adaptVoiceChatCandidateTaskTrigger({
-              userId: currentSession.userId,
-              agentId,
-              taskId,
-              prompt,
-              appendSystemPrompt,
-              apiStartTime,
-            });
-            return createZeroRun(runParams);
-          },
-        });
-        await appendVoiceChatCandidateItem({
-          sessionId,
-          role: "system_note",
-          content: `Reasoner auto-created task: ${prompt}`,
-          realtimeItemId: null,
-        });
-      } catch (err) {
-        log.warn("failed to auto-create missing task", {
-          sessionId,
-          prompt,
-          err,
-        });
-      }
+      await createVoiceChatCandidateTask({
+        sessionId,
+        callId: `reasoner-auto-${apiStartTime}-${String(i)}`,
+        prompt,
+        spawnRun: (taskId) => {
+          const runParams = adaptVoiceChatCandidateTaskTrigger({
+            userId: currentSession.userId,
+            agentId,
+            taskId,
+            prompt,
+            appendSystemPrompt,
+            apiStartTime,
+          });
+          return createZeroRun(runParams);
+        },
+      });
+      await appendVoiceChatCandidateItem({
+        sessionId,
+        role: "system_note",
+        content: `Reasoner auto-created task: ${prompt}`,
+        realtimeItemId: null,
+      });
     }
 
     await publishUserSignal(

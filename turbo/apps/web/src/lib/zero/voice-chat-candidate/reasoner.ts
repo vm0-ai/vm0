@@ -144,7 +144,7 @@ function extractSection(raw: string, name: string): string {
   const idx = raw.indexOf(marker);
   if (idx === -1) return "";
   const after = raw.slice(idx + marker.length);
-  const nextIdx = after.search(/---[A-Z]+---/u);
+  const nextIdx = after.search(/---[A-Z_]+---/u);
   const slice = nextIdx === -1 ? after : after.slice(0, nextIdx);
   return slice.trim();
 }
