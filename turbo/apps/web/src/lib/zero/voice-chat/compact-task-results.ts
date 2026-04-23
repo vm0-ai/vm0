@@ -128,7 +128,7 @@ async function callCompactor(params: {
  * to the given user so the Talker instruction can refresh; no-op publish
  * otherwise.
  */
-export async function compactVoiceChatCandidateTaskResults(
+export async function compactVoiceChatTaskResults(
   sessionId: string,
   userId: string,
 ): Promise<void> {

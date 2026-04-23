@@ -2,7 +2,7 @@ import { generateCallbackSecret, getApiUrl } from "../../infra/callback";
 import type { VoiceChatCallbackPayload } from "../../infra/callback/callback-payloads";
 import type { CreateZeroRunParams } from "../zero-run-service";
 
-interface VoiceChatCandidateTaskTriggerContext {
+interface VoiceChatTaskTriggerContext {
   userId: string;
   agentId: string;
   taskId: string;
@@ -16,8 +16,8 @@ interface VoiceChatCandidateTaskTriggerContext {
  * the Wave 5 tasks route (#10310); declared in Wave 5 (#10311) alongside the
  * callback it points at so the two halves of the contract ship together.
  */
-export function adaptVoiceChatCandidateTaskTrigger(
-  ctx: VoiceChatCandidateTaskTriggerContext,
+export function adaptVoiceChatTaskTrigger(
+  ctx: VoiceChatTaskTriggerContext,
 ): CreateZeroRunParams {
   const callbackPayload: VoiceChatCallbackPayload = {
     taskId: ctx.taskId,

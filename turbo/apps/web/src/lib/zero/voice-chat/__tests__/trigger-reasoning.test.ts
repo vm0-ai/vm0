@@ -4,17 +4,17 @@ import { testContext, uniqueId } from "../../../../__tests__/test-helpers";
 import { seedTestCompose } from "../../../../__tests__/db-test-seeders/agents";
 import { createTestCompose } from "../../../../__tests__/api-test-helpers";
 import {
-  appendTestVoiceChatCandidateItem,
-  insertTestVoiceChatCandidateTask,
-  insertTestVoiceChatCandidateSession,
-  seedTestVoiceChatCandidateSession,
-  simulateConcurrentVoiceChatCandidateSessionWrite,
+  appendTestVoiceChatItem,
+  insertTestVoiceChatTask,
+  insertTestVoiceChatSession,
+  seedTestVoiceChatSession,
+  simulateConcurrentVoiceChatSessionWrite,
 } from "../../../../__tests__/db-test-seeders/voice-chat";
 import {
-  getTestVoiceChatCandidateTask,
-  getTestVoiceChatCandidateSessionReasoningState,
-  listTestVoiceChatCandidateTasks,
-  readTestVoiceChatCandidateItems,
+  getTestVoiceChatTask,
+  getTestVoiceChatSessionReasoningState,
+  listTestVoiceChatTasks,
+  readTestVoiceChatItems,
 } from "../../../../__tests__/db-test-assertions/voice-chat";
 import { server } from "../../../../mocks/server";
 import { http } from "../../../../__tests__/msw";
@@ -68,7 +68,7 @@ async function seedActiveSession(): Promise<{
     orgId,
     name: uniqueId("vcc-reasoner"),
   });
-  const sessionId = await seedTestVoiceChatCandidateSession({
+  const sessionId = await seedTestVoiceChatSession({
     userId,
     orgId,
     agentId: composeId,
@@ -83,13 +83,13 @@ describe("triggerReasoning", () => {
     reloadEnv();
 
     const { sessionId } = await seedActiveSession();
-    await appendTestVoiceChatCandidateItem({
+    await appendTestVoiceChatItem({
       sessionId,
       role: "user",
       content: "hello",
       realtimeItemId: uniqueId("rt"),
     });
-    const b = await appendTestVoiceChatCandidateItem({
+    const b = await appendTestVoiceChatItem({
       sessionId,
       role: "assistant",
       content: "hi there",
@@ -111,7 +111,7 @@ describe("triggerReasoning", () => {
 
     await triggerReasoning(sessionId);
 
-    const row = await getTestVoiceChatCandidateSessionReasoningState(sessionId);
+    const row = await getTestVoiceChatSessionReasoningState(sessionId);
     expect(row?.conversationSummary).toBe("Focus: greeting");
     // workingTasksSummary and finishedTasksSummary are no longer written —
     // the Talker's Task board reads live state from the tasks table.
@@ -135,7 +135,7 @@ describe("triggerReasoning", () => {
     // OPENROUTER_API_KEY is intentionally absent — callReasoner short-circuits
     // to null, which is exactly the "reasoner failed" branch we want to cover.
     const { sessionId } = await seedActiveSession();
-    await appendTestVoiceChatCandidateItem({
+    await appendTestVoiceChatItem({
       sessionId,
       role: "user",
       content: "anything",
@@ -144,7 +144,7 @@ describe("triggerReasoning", () => {
 
     await triggerReasoning(sessionId);
 
-    const row = await getTestVoiceChatCandidateSessionReasoningState(sessionId);
+    const row = await getTestVoiceChatSessionReasoningState(sessionId);
     expect(row?.conversationSummary).toBeNull();
     expect(row?.summaryVersion).toBe(0);
     expect(row?.reasoningStatus).toBe("idle");
@@ -152,7 +152,7 @@ describe("triggerReasoning", () => {
     // operators can distinguish "ticks running but failing" from "no tick ran".
     expect(row?.lastSummaryAt).not.toBeNull();
 
-    const items = await readTestVoiceChatCandidateItems(sessionId);
+    const items = await readTestVoiceChatItems(sessionId);
     const systemNotes = items.filter((i) => {
       return i.role === "system_note";
     });
@@ -168,7 +168,7 @@ describe("triggerReasoning", () => {
     reloadEnv();
 
     const { sessionId } = await seedActiveSession();
-    await appendTestVoiceChatCandidateItem({
+    await appendTestVoiceChatItem({
       sessionId,
       role: "user",
       content: "concurrent",
@@ -191,7 +191,7 @@ describe("triggerReasoning", () => {
     // and scheduled an after() re-tick. Flush the queue so the drain fires.
     await mocks.flushAfter();
 
-    const row = await getTestVoiceChatCandidateSessionReasoningState(sessionId);
+    const row = await getTestVoiceChatSessionReasoningState(sessionId);
     expect(row?.reasoningStatus).toBe("idle");
     expect(row?.reasoningPending).toBe(false);
     expect(row?.summaryVersion).toBe(1);
@@ -207,7 +207,7 @@ describe("triggerReasoning", () => {
     reloadEnv();
 
     const { sessionId } = await seedActiveSession();
-    await appendTestVoiceChatCandidateItem({
+    await appendTestVoiceChatItem({
       sessionId,
       role: "user",
       content: "racy",
@@ -217,7 +217,7 @@ describe("triggerReasoning", () => {
     const handler = http.post(OPENROUTER_URL, async () => {
       // Simulate another tick winning the write race between our snapshot
       // and our optimistic UPDATE.
-      await simulateConcurrentVoiceChatCandidateSessionWrite(
+      await simulateConcurrentVoiceChatSessionWrite(
         sessionId,
         99,
         "written by another tick",
@@ -232,7 +232,7 @@ describe("triggerReasoning", () => {
 
     await triggerReasoning(sessionId);
 
-    const row = await getTestVoiceChatCandidateSessionReasoningState(sessionId);
+    const row = await getTestVoiceChatSessionReasoningState(sessionId);
     expect(row?.conversationSummary).toBe("written by another tick");
     expect(row?.summaryVersion).toBe(99);
     expect(row?.reasoningStatus).toBe("idle");
@@ -245,12 +245,12 @@ describe("triggerReasoning", () => {
     reloadEnv();
 
     const { userId, orgId } = await context.setupUser();
-    const sessionId = await insertTestVoiceChatCandidateSession({
+    const sessionId = await insertTestVoiceChatSession({
       userId,
       orgId,
       agentId: null,
     });
-    await appendTestVoiceChatCandidateItem({
+    await appendTestVoiceChatItem({
       sessionId,
       role: "user",
       content: "sans-agent",
@@ -268,7 +268,7 @@ describe("triggerReasoning", () => {
 
     await triggerReasoning(sessionId);
 
-    const row = await getTestVoiceChatCandidateSessionReasoningState(sessionId);
+    const row = await getTestVoiceChatSessionReasoningState(sessionId);
     expect(row?.conversationSummary).toBe("orphan ctx");
     expect(row?.summaryVersion).toBe(1);
 
@@ -289,18 +289,18 @@ describe("triggerReasoning", () => {
     const { composeId } = await createTestCompose(
       uniqueId("vcc-reasoner-tasks"),
     );
-    const sessionId = await seedTestVoiceChatCandidateSession({
+    const sessionId = await seedTestVoiceChatSession({
       userId,
       orgId,
       agentId: composeId,
     });
-    await appendTestVoiceChatCandidateItem({
+    await appendTestVoiceChatItem({
       sessionId,
       role: "user",
       content: "can you look up flight prices to tokyo?",
       realtimeItemId: uniqueId("rt"),
     });
-    await appendTestVoiceChatCandidateItem({
+    await appendTestVoiceChatItem({
       sessionId,
       role: "assistant",
       content: "sure, I will look that up for you right away",
@@ -322,19 +322,19 @@ describe("triggerReasoning", () => {
     await triggerReasoning(sessionId);
 
     // The reasoner summary write should succeed
-    const row = await getTestVoiceChatCandidateSessionReasoningState(sessionId);
+    const row = await getTestVoiceChatSessionReasoningState(sessionId);
     expect(row?.conversationSummary).toBe("Focus: flight research");
     expect(row?.summaryVersion).toBe(1);
     expect(row?.reasoningStatus).toBe("idle");
 
     // A task row must have been created for the missing task
-    const tasks = await listTestVoiceChatCandidateTasks(sessionId);
+    const tasks = await listTestVoiceChatTasks(sessionId);
     expect(tasks).toHaveLength(1);
     expect(tasks[0]!.prompt).toBe("Look up flight prices to Tokyo");
     expect(tasks[0]!.callId).toMatch(/^reasoner-auto-/u);
 
     // A system_note must have been appended for the auto-created task
-    const items = await readTestVoiceChatCandidateItems(sessionId);
+    const items = await readTestVoiceChatItems(sessionId);
     const systemNotes = items.filter((i) => {
       return i.role === "system_note";
     });
@@ -368,7 +368,7 @@ describe("triggerReasoning", () => {
 
     await triggerReasoning(sessionId);
 
-    const row = await getTestVoiceChatCandidateSessionReasoningState(sessionId);
+    const row = await getTestVoiceChatSessionReasoningState(sessionId);
     expect(row?.conversationSummary).toBeNull();
     expect(row?.summaryVersion).toBe(0);
     expect(row?.reasoningStatus).toBe("idle");
@@ -383,19 +383,19 @@ describe("triggerReasoning", () => {
     reloadEnv();
 
     const { sessionId } = await seedActiveSession();
-    await appendTestVoiceChatCandidateItem({
+    await appendTestVoiceChatItem({
       sessionId,
       role: "user",
       content: "tell me the update",
       realtimeItemId: uniqueId("rt"),
     });
-    await appendTestVoiceChatCandidateItem({
+    await appendTestVoiceChatItem({
       sessionId,
       role: "assistant",
       content: "the full answer that should not survive resume",
       realtimeItemId: "rt-asst-interrupted",
     });
-    await appendTestVoiceChatCandidateItem({
+    await appendTestVoiceChatItem({
       sessionId,
       role: "system_note",
       content: JSON.stringify({
@@ -438,7 +438,7 @@ describe("triggerReasoning — task compaction", () => {
     context.setupMocks();
     // No OPENROUTER_API_KEY set — env() returns it as undefined
     const { sessionId } = await seedActiveSession();
-    await insertTestVoiceChatCandidateTask(sessionId);
+    await insertTestVoiceChatTask(sessionId);
 
     const handler = http.post(OPENROUTER_URL, () => {
       return HttpResponse.json(openRouterResponse("compacted"));
@@ -457,7 +457,7 @@ describe("triggerReasoning — task compaction", () => {
     reloadEnv();
 
     const { sessionId } = await seedActiveSession();
-    const taskId = await insertTestVoiceChatCandidateTask(sessionId, {
+    const taskId = await insertTestVoiceChatTask(sessionId, {
       result: "Short result",
     });
 
@@ -469,7 +469,7 @@ describe("triggerReasoning — task compaction", () => {
     await triggerReasoning(sessionId);
 
     // Only the reasoner debounce path runs (no items); compactor skips short result
-    const task = await getTestVoiceChatCandidateTask(taskId);
+    const task = await getTestVoiceChatTask(taskId);
     expect(task?.result).toBe("Short result");
   });
 
@@ -480,7 +480,7 @@ describe("triggerReasoning — task compaction", () => {
 
     const { sessionId } = await seedActiveSession();
     const tenSecondsAgo = new Date(Date.now() - 10_000);
-    const taskId = await insertTestVoiceChatCandidateTask(sessionId, {
+    const taskId = await insertTestVoiceChatTask(sessionId, {
       resultUpdatedAt: tenSecondsAgo,
     });
 
@@ -491,7 +491,7 @@ describe("triggerReasoning — task compaction", () => {
 
     await triggerReasoning(sessionId);
 
-    const task = await getTestVoiceChatCandidateTask(taskId);
+    const task = await getTestVoiceChatTask(taskId);
     expect(task?.result).not.toBe("compacted");
   });
 
@@ -501,11 +501,11 @@ describe("triggerReasoning — task compaction", () => {
     reloadEnv();
 
     const { sessionId } = await seedActiveSession();
-    const taskId = await insertTestVoiceChatCandidateTask(sessionId);
+    const taskId = await insertTestVoiceChatTask(sessionId);
 
     const compactedText = "B".repeat(400) + " key facts retained";
     // triggerReasoning takes the debounce bail-out (no items), then calls
-    // compactVoiceChatCandidateTaskResults which hits OpenRouter for the task.
+    // compactVoiceChatTaskResults which hits OpenRouter for the task.
     const handler = http.post(OPENROUTER_URL, () => {
       return HttpResponse.json(openRouterResponse(compactedText));
     });
@@ -513,7 +513,7 @@ describe("triggerReasoning — task compaction", () => {
 
     await triggerReasoning(sessionId);
 
-    const task = await getTestVoiceChatCandidateTask(taskId);
+    const task = await getTestVoiceChatTask(taskId);
     expect(task?.result).toBe(compactedText);
     expect(task?.resultUpdatedAt).not.toBeNull();
 
@@ -530,7 +530,7 @@ describe("triggerReasoning — task compaction", () => {
 
     const { sessionId } = await seedActiveSession();
     const originalResult = "C".repeat(500) + " original content";
-    const taskId = await insertTestVoiceChatCandidateTask(sessionId, {
+    const taskId = await insertTestVoiceChatTask(sessionId, {
       result: originalResult,
     });
 
@@ -541,7 +541,7 @@ describe("triggerReasoning — task compaction", () => {
 
     await triggerReasoning(sessionId);
 
-    const task = await getTestVoiceChatCandidateTask(taskId);
+    const task = await getTestVoiceChatTask(taskId);
     expect(task?.result).toBe(originalResult);
   });
 
@@ -551,7 +551,7 @@ describe("triggerReasoning — task compaction", () => {
     reloadEnv();
 
     const { sessionId } = await seedActiveSession();
-    const taskId = await insertTestVoiceChatCandidateTask(sessionId, {
+    const taskId = await insertTestVoiceChatTask(sessionId, {
       result: "D".repeat(600) + " partial result",
       status: "running",
     });
@@ -563,7 +563,7 @@ describe("triggerReasoning — task compaction", () => {
 
     await triggerReasoning(sessionId);
 
-    const task = await getTestVoiceChatCandidateTask(taskId);
+    const task = await getTestVoiceChatTask(taskId);
     expect(task?.result).toContain("partial result");
   });
 });

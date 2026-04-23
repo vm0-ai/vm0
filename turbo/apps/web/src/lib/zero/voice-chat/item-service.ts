@@ -20,7 +20,7 @@ async function assertSessionExists(sessionId: string): Promise<void> {
   }
 }
 
-export async function appendVoiceChatCandidateItem(params: {
+export async function appendVoiceChatItem(params: {
   sessionId: string;
   role: ItemRole;
   content: string | null;
@@ -47,7 +47,7 @@ export async function appendVoiceChatCandidateItem(params: {
   return inserted ?? null;
 }
 
-export async function readVoiceChatCandidateItems(
+export async function readVoiceChatItems(
   sessionId: string,
   afterSeq?: number,
 ): Promise<ItemRow[]> {

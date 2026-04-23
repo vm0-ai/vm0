@@ -10,8 +10,8 @@ import {
 import { setTestRunVars } from "../../../../../../src/__tests__/db-test-seeders/runs";
 import { mockAblyPublish } from "../../../../../../src/__tests__/ably-mock";
 import {
-  getTestVoiceChatCandidateTask,
-  listTestVoiceChatCandidateItems,
+  getTestVoiceChatTask,
+  listTestVoiceChatItems,
 } from "../../../../../../src/__tests__/db-test-assertions/voice-chat";
 import {
   postRequest,
@@ -102,7 +102,7 @@ describe("POST /api/internal/callbacks/voice-chat", () => {
     );
 
     expect(response.status).toBe(200);
-    const taskRow = await getTestVoiceChatCandidateTask(taskId);
+    const taskRow = await getTestVoiceChatTask(taskId);
     expect(taskRow!.status).toBe("pending");
   });
 
@@ -128,14 +128,14 @@ describe("POST /api/internal/callbacks/voice-chat", () => {
 
     expect(response.status).toBe(200);
 
-    const taskRow = await getTestVoiceChatCandidateTask(taskId);
+    const taskRow = await getTestVoiceChatTask(taskId);
     expect(taskRow!.status).toBe("done");
     expect(taskRow!.assistantMessages).toEqual([
       { type: "assistant", content: "final answer", at: expect.any(String) },
     ]);
     expect(taskRow!.error).toBeNull();
 
-    const items = await listTestVoiceChatCandidateItems(session.id);
+    const items = await listTestVoiceChatItems(session.id);
     const resultItem = items.find((i) => {
       return i.role === "task_result";
     });
@@ -169,11 +169,11 @@ describe("POST /api/internal/callbacks/voice-chat", () => {
 
     expect(response.status).toBe(200);
 
-    const taskRow = await getTestVoiceChatCandidateTask(taskId);
+    const taskRow = await getTestVoiceChatTask(taskId);
     expect(taskRow!.status).toBe("failed");
     expect(taskRow!.error).toBe("runner crashed");
 
-    const items = await listTestVoiceChatCandidateItems(session.id);
+    const items = await listTestVoiceChatItems(session.id);
     const resultItem = items.find((i) => {
       return i.role === "task_result";
     });
@@ -197,7 +197,7 @@ describe("POST /api/internal/callbacks/voice-chat", () => {
     );
 
     expect(response.status).toBe(401);
-    const taskRow = await getTestVoiceChatCandidateTask(taskId);
+    const taskRow = await getTestVoiceChatTask(taskId);
     expect(taskRow!.status).toBe("pending");
   });
 
@@ -240,14 +240,14 @@ describe("POST /api/internal/callbacks/voice-chat", () => {
 
     expect(response.status).toBe(200);
 
-    const taskRow = await getTestVoiceChatCandidateTask(taskId);
+    const taskRow = await getTestVoiceChatTask(taskId);
     expect(taskRow!.status).toBe("failed");
     expect(taskRow!.error).toMatch(/agent mismatch/i);
 
     // Sessions are stateless — the mismatch branch no longer flips a
     // session-level field, it just emits a system_note and fails the task.
 
-    const items = await listTestVoiceChatCandidateItems(session.id);
+    const items = await listTestVoiceChatItems(session.id);
     const note = items.find((i) => {
       return i.role === "system_note";
     });

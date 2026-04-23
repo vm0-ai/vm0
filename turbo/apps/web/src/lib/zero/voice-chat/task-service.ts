@@ -17,7 +17,7 @@ type SpawnRun = (taskId: string) => Promise<CreateZeroRunResult>;
 type TaskRow = typeof voiceChatTasks.$inferSelect;
 type ItemRow = typeof voiceChatItems.$inferSelect;
 
-export async function createVoiceChatCandidateTask(params: {
+export async function createVoiceChatTask(params: {
   sessionId: string;
   callId: string;
   prompt: string;
@@ -54,7 +54,7 @@ export async function createVoiceChatCandidateTask(params: {
   return updated ?? inserted;
 }
 
-export async function completeVoiceChatCandidateTask(params: {
+export async function completeVoiceChatTask(params: {
   taskId: string;
   result: string | null;
   error: string | null;
@@ -203,7 +203,7 @@ export async function completeVoiceChatCandidateTask(params: {
   };
 }
 
-async function listPendingVoiceChatCandidateTasks(
+async function listPendingVoiceChatTasks(
   sessionId: string,
 ): Promise<TaskRow[]> {
   const db = globalThis.services.db;
@@ -342,7 +342,7 @@ async function cancelSessionPendingRuns(session: {
   orgId: string;
   userId: string;
 }): Promise<void> {
-  const pending = await listPendingVoiceChatCandidateTasks(session.id);
+  const pending = await listPendingVoiceChatTasks(session.id);
   for (const task of pending) {
     if (!task.runId) continue;
     try {

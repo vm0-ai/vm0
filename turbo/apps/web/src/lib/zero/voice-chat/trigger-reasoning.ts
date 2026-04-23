@@ -6,15 +6,12 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "../../../db/schema/agent-compose";
-import {
-  appendVoiceChatCandidateItem,
-  readVoiceChatCandidateItems,
-} from "./item-service";
-import { createVoiceChatCandidateTask, listSessionTasks } from "./task-service";
+import { appendVoiceChatItem, readVoiceChatItems } from "./item-service";
+import { createVoiceChatTask, listSessionTasks } from "./task-service";
 import { callReasoner } from "./reasoner";
-import { compactVoiceChatCandidateTaskResults } from "./compact-task-results";
+import { compactVoiceChatTaskResults } from "./compact-task-results";
 import { buildSlowBrainAppendSystemPrompt } from "./build-slow-brain-prompt";
-import { adaptVoiceChatCandidateTaskTrigger } from "./adapt-task-trigger";
+import { adaptVoiceChatTaskTrigger } from "./adapt-task-trigger";
 import { createZeroRun } from "../zero-run-service";
 import { publishUserSignal } from "../../infra/realtime/client";
 import { isBadRequest } from "../../shared/errors";
@@ -105,7 +102,7 @@ export async function triggerReasoning(sessionId: string): Promise<void> {
   // Step 2 — snapshot full transcript + all tasks. The Reasoner compacts
   // everything itself, so we give it the full state each tick rather than
   // deltas. If nothing has happened since the last tick, skip the LLM call.
-  const transcript = await readVoiceChatCandidateItems(sessionId);
+  const transcript = await readVoiceChatItems(sessionId);
   const effectiveTranscript = buildReasonerTranscript(transcript);
   const tasks = await listSessionTasks(sessionId);
 
@@ -132,10 +129,7 @@ export async function triggerReasoning(sessionId: string): Promise<void> {
     // have drifted past the compaction interval — run the compactor before
     // releasing the lock. The compactor itself fans out an Ably signal when
     // it actually shrinks a row, so we don't publish here.
-    await compactVoiceChatCandidateTaskResults(
-      sessionId,
-      currentSession.userId,
-    );
+    await compactVoiceChatTaskResults(sessionId, currentSession.userId);
     await releaseAndDrain(sessionId, startedAt);
     return;
   }
@@ -220,7 +214,7 @@ export async function triggerReasoning(sessionId: string): Promise<void> {
     // ended between acquire and now, append throws badRequest — swallow
     // only that specific case so the lock still gets released.
     try {
-      await appendVoiceChatCandidateItem({
+      await appendVoiceChatItem({
         sessionId,
         role: "system_note",
         content: "Reasoner tick failed",
@@ -258,12 +252,12 @@ export async function triggerReasoning(sessionId: string): Promise<void> {
     for (let i = 0; i < result.missingTasks.length; i++) {
       const prompt = result.missingTasks[i];
       if (!prompt) continue;
-      await createVoiceChatCandidateTask({
+      await createVoiceChatTask({
         sessionId,
         callId: `reasoner-auto-${apiStartTime}-${String(i)}`,
         prompt,
         spawnRun: (taskId) => {
-          const runParams = adaptVoiceChatCandidateTaskTrigger({
+          const runParams = adaptVoiceChatTaskTrigger({
             userId: currentSession.userId,
             agentId,
             taskId,
@@ -274,7 +268,7 @@ export async function triggerReasoning(sessionId: string): Promise<void> {
           return createZeroRun(runParams);
         },
       });
-      await appendVoiceChatCandidateItem({
+      await appendVoiceChatItem({
         sessionId,
         role: "system_note",
         content: `Reasoner auto-created task: ${prompt}`,
@@ -293,7 +287,7 @@ export async function triggerReasoning(sessionId: string): Promise<void> {
   // out an Ably signal when it actually shrinks a row, so the browser
   // picks up post-compact task results even if the reasoner write above
   // lost to version contention.
-  await compactVoiceChatCandidateTaskResults(sessionId, currentSession.userId);
+  await compactVoiceChatTaskResults(sessionId, currentSession.userId);
 
   // Step 7 — drain pending flag. If another trigger arrived while we were
   // running, the flag was set; clear it and schedule a re-tick so the new
@@ -302,7 +296,7 @@ export async function triggerReasoning(sessionId: string): Promise<void> {
 }
 
 function buildReasonerTranscript(
-  items: Awaited<ReturnType<typeof readVoiceChatCandidateItems>>,
+  items: Awaited<ReturnType<typeof readVoiceChatItems>>,
 ): Array<{
   seq: number;
   role: string;

@@ -1,8 +1,8 @@
 import { eq } from "drizzle-orm";
 import { initServices } from "../../lib/init-services";
 import { voiceChatSessions, voiceChatTasks } from "../../db/schema/voice-chat";
-import { appendVoiceChatCandidateItem } from "../../lib/zero/voice-chat/item-service";
-import { createVoiceChatCandidateSession } from "../../lib/zero/voice-chat/session-service";
+import { appendVoiceChatItem } from "../../lib/zero/voice-chat/item-service";
+import { createVoiceChatSession } from "../../lib/zero/voice-chat/session-service";
 import { uniqueId } from "../test-helpers";
 
 /**
@@ -11,14 +11,14 @@ import { uniqueId } from "../test-helpers";
  * @why-service-layer Encapsulates the service call so tests can seed items
  * without importing *-service modules directly.
  */
-export async function appendTestVoiceChatCandidateItem(params: {
+export async function appendTestVoiceChatItem(params: {
   sessionId: string;
   role: "user" | "assistant" | "task_result" | "system_note";
   content: string | null;
   realtimeItemId?: string | null;
 }): Promise<{ seq: number } | null> {
   initServices();
-  const row = await appendVoiceChatCandidateItem(params);
+  const row = await appendVoiceChatItem(params);
   return row ? { seq: row.seq } : null;
 }
 
@@ -28,7 +28,7 @@ export async function appendTestVoiceChatCandidateItem(params: {
  * resultUpdatedAt timestamps that no public API would produce — these edge-case
  * states are required to exercise the compaction skip/trigger logic.
  */
-export async function insertTestVoiceChatCandidateTask(
+export async function insertTestVoiceChatTask(
   sessionId: string,
   overrides: {
     result?: string;
@@ -61,13 +61,13 @@ export async function insertTestVoiceChatCandidateTask(
  * @why-service-layer Reasoner tests need a fully initialised session with a
  * real agentId so triggerReasoning can read the agent's system prompt.
  */
-export async function seedTestVoiceChatCandidateSession(params: {
+export async function seedTestVoiceChatSession(params: {
   userId: string;
   orgId: string;
   agentId: string;
 }): Promise<string> {
   initServices();
-  const session = await createVoiceChatCandidateSession(params);
+  const session = await createVoiceChatSession(params);
   return session.id;
 }
 
@@ -77,7 +77,7 @@ export async function seedTestVoiceChatCandidateSession(params: {
  * @why-db-direct No public API produces this mid-flight state; the test needs
  * to race the in-flight reasoner write to verify the CAS drop-silently logic.
  */
-export async function simulateConcurrentVoiceChatCandidateSessionWrite(
+export async function simulateConcurrentVoiceChatSessionWrite(
   sessionId: string,
   summaryVersion: number,
   conversationSummary: string,
@@ -94,7 +94,7 @@ export async function simulateConcurrentVoiceChatCandidateSessionWrite(
  * @why-db-direct Cron tests need to construct impossible states (stuck
  * reasoner) that no public API would produce.
  */
-export async function insertTestVoiceChatCandidateSession(overrides: {
+export async function insertTestVoiceChatSession(overrides: {
   orgId: string;
   userId: string;
   agentId?: string | null;

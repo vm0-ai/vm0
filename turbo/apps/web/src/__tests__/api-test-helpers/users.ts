@@ -17,7 +17,7 @@ export {
   insertUserCacheEntry,
   insertVm0ApiKeys,
 } from "../db-test-seeders/users";
-export { insertTestVoiceChatCandidateSession } from "../db-test-seeders/voice-chat";
+export { insertTestVoiceChatSession } from "../db-test-seeders/voice-chat";
 
 // Re-exports: read-only assertions
 export {
@@ -25,8 +25,8 @@ export {
   getPushSubscriptionsByEndpoint,
 } from "../db-test-assertions/users";
 export {
-  getTestVoiceChatCandidateSession,
-  countTestVoiceChatCandidateSessionsByReasoningStatus,
+  getTestVoiceChatSession,
+  countTestVoiceChatSessionsByReasoningStatus,
 } from "../db-test-assertions/voice-chat";
 
 /**

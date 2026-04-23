@@ -3,7 +3,7 @@ import { randomUUID } from "crypto";
 import { testContext } from "../../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
 import { findTestZeroRun } from "../../../../../../../src/__tests__/db-test-assertions/runs";
-import { insertTestVoiceChatCandidateTask } from "../../../../../../../src/__tests__/db-test-seeders/voice-chat";
+import { insertTestVoiceChatTask } from "../../../../../../../src/__tests__/db-test-seeders/voice-chat";
 import {
   postRequest,
   getRequest,
@@ -204,10 +204,10 @@ describe("GET /api/zero/voice-chat/:id/tasks (listTasksForCard)", () => {
   it("returns active tasks before finished tasks", async () => {
     const { agentId } = await seedCandidateAgent(userId, orgId);
     const session = await seedCandidateSession({ orgId, userId, agentId });
-    const doneId = await insertTestVoiceChatCandidateTask(session.id, {
+    const doneId = await insertTestVoiceChatTask(session.id, {
       status: "done",
     });
-    const pendingId = await insertTestVoiceChatCandidateTask(session.id, {
+    const pendingId = await insertTestVoiceChatTask(session.id, {
       status: "pending",
     });
     const response = await GET(
@@ -228,19 +228,19 @@ describe("GET /api/zero/voice-chat/:id/tasks (listTasksForCard)", () => {
     const now = Date.now();
     // Insert 4 finished tasks with distinct finishedAt timestamps; the oldest
     // should be excluded from the card feed (limit=3)
-    const oldestDoneId = await insertTestVoiceChatCandidateTask(session.id, {
+    const oldestDoneId = await insertTestVoiceChatTask(session.id, {
       status: "done",
       finishedAt: new Date(now - 400_000),
     });
-    await insertTestVoiceChatCandidateTask(session.id, {
+    await insertTestVoiceChatTask(session.id, {
       status: "done",
       finishedAt: new Date(now - 300_000),
     });
-    await insertTestVoiceChatCandidateTask(session.id, {
+    await insertTestVoiceChatTask(session.id, {
       status: "done",
       finishedAt: new Date(now - 200_000),
     });
-    await insertTestVoiceChatCandidateTask(session.id, {
+    await insertTestVoiceChatTask(session.id, {
       status: "done",
       finishedAt: new Date(now - 100_000),
     });

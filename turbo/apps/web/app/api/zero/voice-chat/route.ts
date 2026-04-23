@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
 import { initServices } from "../../../../src/lib/init-services";
 import {
-  createVoiceChatCandidateSession,
-  listVoiceChatCandidateSessions,
+  createVoiceChatSession,
+  listVoiceChatSessions,
 } from "../../../../src/lib/zero/voice-chat/session-service";
 import { buildTalkerPayload } from "../../../../src/lib/zero/voice-chat/talker-instructions";
 import {
@@ -37,7 +37,7 @@ export async function POST(request: Request): Promise<Response> {
     return badRequestResponse(issue?.message ?? "Invalid request body");
   }
 
-  const session = await createVoiceChatCandidateSession({
+  const session = await createVoiceChatSession({
     orgId: authCtx.orgId,
     userId: authCtx.userId,
     agentId: parsed.data.agentId,
@@ -63,7 +63,7 @@ export async function GET(request: Request): Promise<Response> {
     return forbiddenResponse();
   }
 
-  const sessions = await listVoiceChatCandidateSessions({
+  const sessions = await listVoiceChatSessions({
     orgId: authCtx.orgId,
     userId: authCtx.userId,
   });

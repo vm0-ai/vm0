@@ -2,8 +2,8 @@ import { NextResponse, after } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { getAuthContext } from "../../../../../../src/lib/auth/get-auth-context";
 import { initServices } from "../../../../../../src/lib/init-services";
-import { getVoiceChatCandidateSession } from "../../../../../../src/lib/zero/voice-chat/session-service";
-import { appendVoiceChatCandidateItem } from "../../../../../../src/lib/zero/voice-chat/item-service";
+import { getVoiceChatSession } from "../../../../../../src/lib/zero/voice-chat/session-service";
+import { appendVoiceChatItem } from "../../../../../../src/lib/zero/voice-chat/item-service";
 import { triggerReasoning } from "../../../../../../src/lib/zero/voice-chat/trigger-reasoning";
 import { voiceChatItems } from "../../../../../../src/db/schema/voice-chat";
 import { isBadRequest } from "../../../../../../src/lib/shared/errors";
@@ -35,7 +35,7 @@ export async function POST(
   }
 
   const { id } = await params;
-  const session = await getVoiceChatCandidateSession(id);
+  const session = await getVoiceChatSession(id);
   if (
     !session ||
     session.orgId !== authCtx.orgId ||
@@ -55,7 +55,7 @@ export async function POST(
   }
 
   try {
-    const inserted = await appendVoiceChatCandidateItem({
+    const inserted = await appendVoiceChatItem({
       sessionId: id,
       role: parsed.data.role,
       content: parsed.data.content,

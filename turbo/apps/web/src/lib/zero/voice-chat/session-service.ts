@@ -9,7 +9,7 @@ type SessionRow = typeof voiceChatSessions.$inferSelect;
  * long-lived containers — there is no "active / ended / timeout" lifecycle,
  * so every re-entry simply resumes whatever was there before.
  */
-export async function createVoiceChatCandidateSession(params: {
+export async function createVoiceChatSession(params: {
   orgId: string;
   userId: string;
   agentId: string;
@@ -44,7 +44,7 @@ export async function createVoiceChatCandidateSession(params: {
   return session;
 }
 
-export async function getVoiceChatCandidateSession(
+export async function getVoiceChatSession(
   id: string,
 ): Promise<SessionRow | null> {
   const db = globalThis.services.db;
@@ -56,7 +56,7 @@ export async function getVoiceChatCandidateSession(
   return session ?? null;
 }
 
-export async function listVoiceChatCandidateSessions(params: {
+export async function listVoiceChatSessions(params: {
   orgId: string;
   userId: string;
   limit?: number;

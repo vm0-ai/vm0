@@ -60,7 +60,7 @@ export const voiceChatSessions = pgTable(
     return [
       index("idx_voice_chat_sessions_user").on(table.userId, table.orgId),
       // Supports the "latest session for (userId, agentId)" lookup performed
-      // by createVoiceChatCandidateSession (get-or-create).
+      // by createVoiceChatSession (get-or-create).
       index("idx_voice_chat_sessions_user_agent_created").on(
         table.userId,
         table.agentId,

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
 import { initServices } from "../../../../../src/lib/init-services";
-import { getVoiceChatCandidateSession } from "../../../../../src/lib/zero/voice-chat/session-service";
+import { getVoiceChatSession } from "../../../../../src/lib/zero/voice-chat/session-service";
 import { buildTalkerPayload } from "../../../../../src/lib/zero/voice-chat/talker-instructions";
 import {
   createEphemeralToken,
@@ -41,7 +41,7 @@ export async function POST(request: Request): Promise<Response> {
     return badRequestResponse(issue?.message ?? "Invalid request body");
   }
 
-  const session = await getVoiceChatCandidateSession(parsed.data.sessionId);
+  const session = await getVoiceChatSession(parsed.data.sessionId);
   if (
     !session ||
     session.orgId !== authCtx.orgId ||

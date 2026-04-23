@@ -11,9 +11,9 @@ import { createSignedCallbackRequest } from "../../../../../../src/__tests__/api
 import { mockAblyPublish } from "../../../../../../src/__tests__/ably-mock";
 import { initServices } from "../../../../../../src/lib/init-services";
 // eslint-disable-next-line web/no-direct-db-in-tests -- verify DB side-effects directly
-import { createVoiceChatCandidateSession } from "../../../../../../src/lib/zero/voice-chat/session-service";
+import { createVoiceChatSession } from "../../../../../../src/lib/zero/voice-chat/session-service";
 // eslint-disable-next-line web/no-direct-db-in-tests -- verify DB side-effects directly
-import { createVoiceChatCandidateTask } from "../../../../../../src/lib/zero/voice-chat/task-service";
+import { createVoiceChatTask } from "../../../../../../src/lib/zero/voice-chat/task-service";
 // eslint-disable-next-line web/no-direct-db-in-tests -- verify DB side-effects directly
 import { voiceChatTasks } from "../../../../../../src/db/schema/voice-chat";
 
@@ -58,7 +58,7 @@ async function seedSessionWithQueuedTask() {
     orgId,
     name: uniqueId("vcc-consumer"),
   });
-  const session = await createVoiceChatCandidateSession({
+  const session = await createVoiceChatSession({
     orgId,
     userId,
     agentId: composeId,
@@ -67,7 +67,7 @@ async function seedSessionWithQueuedTask() {
     status: "queued",
     orgId,
   });
-  const task = await createVoiceChatCandidateTask({
+  const task = await createVoiceChatTask({
     sessionId: session.id,
     callId: "call-1",
     prompt: "p",

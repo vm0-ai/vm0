@@ -1,10 +1,10 @@
 import { NextResponse, after } from "next/server";
 import { getAuthContext } from "../../../../../../src/lib/auth/get-auth-context";
 import { initServices } from "../../../../../../src/lib/init-services";
-import { getVoiceChatCandidateSession } from "../../../../../../src/lib/zero/voice-chat/session-service";
-import { readVoiceChatCandidateItems } from "../../../../../../src/lib/zero/voice-chat/item-service";
+import { getVoiceChatSession } from "../../../../../../src/lib/zero/voice-chat/session-service";
+import { readVoiceChatItems } from "../../../../../../src/lib/zero/voice-chat/item-service";
 import {
-  createVoiceChatCandidateTask,
+  createVoiceChatTask,
   listSessionTasks,
   listSessionTasksForCard,
 } from "../../../../../../src/lib/zero/voice-chat/task-service";
@@ -13,7 +13,7 @@ import {
   resolveAgentSystemPrompt,
   triggerReasoning,
 } from "../../../../../../src/lib/zero/voice-chat/trigger-reasoning";
-import { adaptVoiceChatCandidateTaskTrigger } from "../../../../../../src/lib/zero/voice-chat/adapt-task-trigger";
+import { adaptVoiceChatTaskTrigger } from "../../../../../../src/lib/zero/voice-chat/adapt-task-trigger";
 import { publishUserSignal } from "../../../../../../src/lib/infra/realtime/client";
 import { createZeroRun } from "../../../../../../src/lib/zero/zero-run-service";
 import {
@@ -45,7 +45,7 @@ export async function POST(
   }
 
   const { id } = await params;
-  const session = await getVoiceChatCandidateSession(id);
+  const session = await getVoiceChatSession(id);
   if (
     !session ||
     session.orgId !== authCtx.orgId ||
@@ -71,7 +71,7 @@ export async function POST(
 
   const [agentSystemPrompt, allItems, sessionTasks] = await Promise.all([
     resolveAgentSystemPrompt(session.agentId),
-    readVoiceChatCandidateItems(id),
+    readVoiceChatItems(id),
     listSessionTasks(id),
   ]);
   const appendSystemPrompt = buildSlowBrainAppendSystemPrompt({
@@ -81,12 +81,12 @@ export async function POST(
   });
 
   const agentId = session.agentId;
-  const task = await createVoiceChatCandidateTask({
+  const task = await createVoiceChatTask({
     sessionId: id,
     callId: parsed.data.callId,
     prompt: parsed.data.prompt,
     spawnRun: (taskId) => {
-      const runParams = adaptVoiceChatCandidateTaskTrigger({
+      const runParams = adaptVoiceChatTaskTrigger({
         userId: authCtx.userId,
         agentId,
         taskId,
@@ -129,7 +129,7 @@ export async function GET(
   }
 
   const { id } = await params;
-  const session = await getVoiceChatCandidateSession(id);
+  const session = await getVoiceChatSession(id);
   if (
     !session ||
     session.orgId !== authCtx.orgId ||

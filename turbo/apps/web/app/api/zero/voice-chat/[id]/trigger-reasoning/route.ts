@@ -1,7 +1,7 @@
 import { NextResponse, after } from "next/server";
 import { getAuthContext } from "../../../../../../src/lib/auth/get-auth-context";
 import { initServices } from "../../../../../../src/lib/init-services";
-import { getVoiceChatCandidateSession } from "../../../../../../src/lib/zero/voice-chat/session-service";
+import { getVoiceChatSession } from "../../../../../../src/lib/zero/voice-chat/session-service";
 import { triggerReasoning } from "../../../../../../src/lib/zero/voice-chat/trigger-reasoning";
 import {
   isVoiceChatEnabled,
@@ -34,7 +34,7 @@ export async function POST(
   }
 
   const { id } = await params;
-  const session = await getVoiceChatCandidateSession(id);
+  const session = await getVoiceChatSession(id);
   if (
     !session ||
     session.orgId !== authCtx.orgId ||

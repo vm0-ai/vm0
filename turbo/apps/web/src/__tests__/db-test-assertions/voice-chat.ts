@@ -13,7 +13,7 @@ import {
  * @why-db-direct No public read API exposes individual session summary fields;
  * this encapsulates the DB read so test files stay lint-clean.
  */
-export async function getTestVoiceChatCandidateSessionReasoningState(
+export async function getTestVoiceChatSessionReasoningState(
   id: string,
 ): Promise<
   | {
@@ -50,7 +50,7 @@ export async function getTestVoiceChatCandidateSessionReasoningState(
  * @why-db-direct Cron tests verify the reasoner state transitions the route
  * handler writes; no read API exists for those internals.
  */
-export async function getTestVoiceChatCandidateSession(id: string): Promise<
+export async function getTestVoiceChatSession(id: string): Promise<
   | {
       reasoningStatus: string;
       lastSummaryAt: Date | null;
@@ -73,7 +73,7 @@ export async function getTestVoiceChatCandidateSession(id: string): Promise<
  * to keep large-batch assertions hermetic across a shared dev database.
  * @why-db-direct Aggregations across many seeded rows have no API surface.
  */
-export async function countTestVoiceChatCandidateSessionsByReasoningStatus(
+export async function countTestVoiceChatSessionsByReasoningStatus(
   orgId: string,
   reasoningStatus: "idle" | "running",
 ): Promise<number> {
@@ -96,9 +96,7 @@ export async function countTestVoiceChatCandidateSessionsByReasoningStatus(
  * triggerReasoning (e.g. system_note appended on reasoner failure); no public
  * read API is available for the candidate item table.
  */
-export async function readTestVoiceChatCandidateItems(
-  sessionId: string,
-): Promise<
+export async function readTestVoiceChatItems(sessionId: string): Promise<
   Array<{
     role: string;
     content: string | null;
@@ -121,7 +119,7 @@ export async function readTestVoiceChatCandidateItems(
  * @why-db-direct Compaction side-effects are only observable via the task row;
  * there is no public read API for individual task state in the candidate table.
  */
-export async function getTestVoiceChatCandidateTask(id: string): Promise<
+export async function getTestVoiceChatTask(id: string): Promise<
   | {
       result: string | null;
       resultUpdatedAt: Date | null;
@@ -150,7 +148,7 @@ export async function getTestVoiceChatCandidateTask(id: string): Promise<
  * @why-db-direct The missingTasks Step 5c integration test needs to assert that
  * a task row was created; no public read API exposes individual task rows.
  */
-export async function listTestVoiceChatCandidateTasks(
+export async function listTestVoiceChatTasks(
   sessionId: string,
 ): Promise<{ id: string; prompt: string; status: string; callId: string }[]> {
   initServices();
@@ -171,7 +169,7 @@ export async function listTestVoiceChatCandidateTasks(
  * items written by the callback handler; there is no public list-items API
  * that returns all roles for a session.
  */
-export async function listTestVoiceChatCandidateItems(
+export async function listTestVoiceChatItems(
   sessionId: string,
 ): Promise<{ id: string; role: string; content: string | null }[]> {
   initServices();
