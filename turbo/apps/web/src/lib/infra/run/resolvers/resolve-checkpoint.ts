@@ -9,13 +9,9 @@ import type {
   AgentComposeSnapshot,
   VolumeVersionsSnapshot,
 } from "../../checkpoint/types";
+import { decodeToContextArtifacts } from "../../checkpoint/decode-artifact-snapshots";
 import type { AgentComposeYaml } from "../../agent-compose/types";
 import type { ConversationResolution } from "./types";
-import type { ContextArtifact } from "../types";
-import {
-  AUTO_MEMORY_ARTIFACT_NAME,
-  AUTO_MEMORY_MOUNT_PATH,
-} from "../../storage/types";
 import { extractWorkingDir } from "../utils";
 import { resolveSessionHistory } from "./resolve-session-history";
 
@@ -52,7 +48,7 @@ export async function resolveCheckpoint(
   const agentComposeSnapshot =
     checkpoint.agentComposeSnapshot as unknown as AgentComposeSnapshot;
   // artifactSnapshots is a Drizzle jsonb column (runtime type `unknown`).
-  // decodeCheckpointArtifacts does the runtime shape check; never cast here.
+  // decodeToContextArtifacts does the runtime shape check; never cast here.
   const rawArtifacts: unknown = checkpoint.artifactSnapshots;
   const checkpointVolumeVersions =
     checkpoint.volumeVersionsSnapshot as VolumeVersionsSnapshot | null;
@@ -125,7 +121,7 @@ export async function resolveCheckpoint(
   }
   const agentCompose = version.content as AgentComposeYaml;
   const workingDir = extractWorkingDir(agentCompose);
-  const artifacts = decodeCheckpointArtifacts(rawArtifacts, workingDir);
+  const artifacts = decodeToContextArtifacts(rawArtifacts, workingDir);
 
   return {
     conversationId: checkpoint.conversationId,
@@ -141,70 +137,4 @@ export async function resolveCheckpoint(
     volumeVersions: checkpointVolumeVersions?.versions,
     additionalVolumes: checkpointAdditionalVolumes,
   };
-}
-
-/**
- * Decode checkpoint.artifactSnapshots into the unified ContextArtifact[] form.
- *
- * Input is a Drizzle `jsonb` column (runtime type `unknown`), so every branch
- * must validate the shape at runtime — a malformed historical row should fail
- * fast here with a descriptive error rather than surface much later as an
- * opaque mount failure.
- *
- * Accepts both shapes:
- * - Legacy: `Record<name, version>` — stamped with a mountPath via the name
- *   heuristic ("memory" → AUTO_MEMORY_MOUNT_PATH, anything else → workingDir).
- * - New: `Array<{name, version?, mountPath}>` — validated and passed through.
- */
-function decodeCheckpointArtifacts(
-  raw: unknown,
-  workingDir: string,
-): ContextArtifact[] {
-  if (raw === null || raw === undefined) return [];
-
-  if (Array.isArray(raw)) {
-    return raw.map((entry, i) => {
-      if (!isContextArtifact(entry)) {
-        throw badRequest(
-          `Invalid checkpoint: artifactSnapshots[${i}] is not a valid ContextArtifact`,
-        );
-      }
-      return entry;
-    });
-  }
-
-  if (typeof raw !== "object") {
-    throw badRequest(
-      "Invalid checkpoint: artifactSnapshots must be an array or object",
-    );
-  }
-
-  return Object.entries(raw as Record<string, unknown>).map(
-    ([name, version]) => {
-      if (typeof version !== "string") {
-        throw badRequest(
-          `Invalid checkpoint: artifactSnapshots["${name}"] must be a string version`,
-        );
-      }
-      return {
-        name,
-        version,
-        mountPath:
-          name === AUTO_MEMORY_ARTIFACT_NAME
-            ? AUTO_MEMORY_MOUNT_PATH
-            : workingDir,
-      };
-    },
-  );
-}
-
-function isContextArtifact(value: unknown): value is ContextArtifact {
-  if (typeof value !== "object" || value === null) return false;
-  const entry = value as Record<string, unknown>;
-  if (typeof entry.name !== "string") return false;
-  if (typeof entry.mountPath !== "string") return false;
-  if (entry.version !== undefined && typeof entry.version !== "string") {
-    return false;
-  }
-  return true;
 }

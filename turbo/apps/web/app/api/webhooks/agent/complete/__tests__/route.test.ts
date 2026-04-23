@@ -312,6 +312,71 @@ describe("POST /api/webhooks/agent/complete", () => {
       expect(result.artifact).toEqual(artifactSnapshots);
     });
 
+    it("should project array-shape artifactSnapshots to Record in result.artifact", async () => {
+      // Post-#10911 guest-agents emit Array<{name, version, mountPath}>.
+      // RunResult.artifact is still Record-shaped for downstream consumers,
+      // so the complete-webhook must normalise on the way out.
+      const arrayShape = [
+        {
+          name: "frontend-build",
+          version: "v-frontend-1",
+          mountPath: "/workspace/fe",
+        },
+        {
+          name: "backend-build",
+          version: "v-backend-2",
+          mountPath: "/workspace/be",
+        },
+      ];
+
+      const checkpointRequest = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/checkpoints",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            cliAgentType: "claude-code",
+            cliAgentSessionId: "array-shape-complete",
+            cliAgentSessionHistoryHash:
+              "ec3ac9679505be3bb8233c4ef0b39c8ee206d2c37fc8610edc19f41fbfb9661e",
+            artifactSnapshots: arrayShape,
+          }),
+        },
+      );
+      const checkpointResponse = await checkpointWebhook(checkpointRequest);
+      expect(checkpointResponse.status).toBe(200);
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/complete",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            exitCode: 0,
+          }),
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      const run = await findTestRunRecord(testRunId);
+      expect(run!.status).toBe("completed");
+      const result = run!.result as { artifact?: Record<string, string> };
+      expect(result.artifact).toEqual({
+        "frontend-build": "v-frontend-1",
+        "backend-build": "v-backend-2",
+      });
+    });
+
     it("should store error with report URL on failed completion", async () => {
       // Create run directly in DB in running state to avoid runner_job_queue issues
       const { runId } = await seedTestRun(user.userId, testComposeId, {

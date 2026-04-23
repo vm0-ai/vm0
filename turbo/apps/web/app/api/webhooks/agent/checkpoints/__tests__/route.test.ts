@@ -378,6 +378,52 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       expect(checkpoint).toBeDefined();
       expect(checkpoint!.artifactSnapshots).toEqual(artifactSnapshots);
     });
+
+    it("should persist canonical array-shape artifactSnapshots verbatim", async () => {
+      // Post-#10911 payload: Array<{name, version, mountPath}>. Receiver
+      // persists the array shape to the JSONB column unchanged; the 200
+      // response echoes the stored shape.
+      const artifactSnapshots = [
+        {
+          name: "artifact-a",
+          version: "version-aaa",
+          mountPath: "/workspace/a",
+        },
+        {
+          name: "artifact-b",
+          version: "version-bbb",
+          mountPath: "/workspace/b",
+        },
+      ];
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/checkpoints",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            cliAgentType: "claude-code",
+            cliAgentSessionId: "array-shape-session",
+            cliAgentSessionHistoryHash: sha256("array-shape-history"),
+            artifactSnapshots,
+          }),
+        },
+      );
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.artifacts).toEqual(artifactSnapshots);
+
+      const checkpoint = await findTestCheckpoint(testRunId);
+      expect(checkpoint).toBeDefined();
+      expect(checkpoint!.artifactSnapshots).toEqual(artifactSnapshots);
+    });
   });
 
   describe("Session independence", () => {

@@ -46,6 +46,26 @@ const agentEventSchema = z
   .passthrough();
 
 /**
+ * Artifact snapshots schema.
+ *
+ * Tolerant union accepting both the legacy `Record<name, version>` map
+ * (pre-#10911 guest-agent payloads) and the canonical `Array<{name, version,
+ * mountPath}>` form (post-#10911). Receivers persist the payload verbatim to
+ * the JSONB column and normalise only at read-out boundaries — keeping this
+ * schema itself shape-preserving.
+ */
+const artifactSnapshotsSchema = z.union([
+  z.record(z.string(), z.string()),
+  z.array(
+    z.object({
+      name: z.string(),
+      version: z.string(),
+      mountPath: z.string(),
+    }),
+  ),
+]);
+
+/**
  * Volume versions snapshot schema
  */
 const volumeVersionsSnapshotSchema = z.object({
@@ -146,9 +166,11 @@ export const webhookCheckpointsContract = c.router({
             64,
             "cliAgentSessionHistoryHash must be a 64-character SHA-256 hex string",
           ),
-        // Multi-artifact snapshot map: artifact name → version id.
-        // Authoritative payload persisted to checkpoints.artifact_snapshots.
-        artifactSnapshots: z.record(z.string(), z.string()).optional(),
+        // Multi-artifact snapshot payload. Accepts both the legacy
+        // `Record<name, version>` map and the canonical
+        // `Array<{name, version, mountPath}>` form. Authoritative payload
+        // persisted verbatim to checkpoints.artifact_snapshots.
+        artifactSnapshots: artifactSnapshotsSchema.optional(),
         volumeVersionsSnapshot: volumeVersionsSnapshotSchema.optional(),
       })
       .strict(),
@@ -157,7 +179,7 @@ export const webhookCheckpointsContract = c.router({
         checkpointId: z.string(),
         agentSessionId: z.string(),
         conversationId: z.string(),
-        artifacts: z.record(z.string(), z.string()).optional(),
+        artifacts: artifactSnapshotsSchema.optional(),
         volumes: z.record(z.string(), z.string()).optional(),
       }),
       400: apiErrorSchema,

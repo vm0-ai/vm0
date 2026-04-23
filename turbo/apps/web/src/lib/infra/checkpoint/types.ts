@@ -3,6 +3,20 @@
  */
 
 /**
+ * Artifact snapshot payload shapes the writer may send. Legacy Record is still
+ * accepted (pre-#10911 guest-agents) and the canonical array shape carries
+ * mountPath per entry (post-#10911). Receiver tolerance lives in
+ * `decode-artifact-snapshots.ts`.
+ *
+ * Note: the array-entry's `version` is always a resolved concrete string —
+ * distinct from `ContextArtifact` (execution-context type) where `version` is
+ * optional and defaults to "latest".
+ */
+export type ArtifactSnapshotsPayload =
+  | Record<string, string>
+  | Array<{ name: string; version: string; mountPath: string }>;
+
+/**
  * Agent compose snapshot stored in checkpoint
  * Uses version ID for reproducibility (content-addressed versioning)
  * Note: Environment is re-expanded from vars/secrets on resume, not stored
@@ -37,10 +51,10 @@ export interface CheckpointRequest {
   cliAgentType: string;
   cliAgentSessionId: string;
   cliAgentSessionHistoryHash: string;
-  // Multi-artifact snapshot map: artifactName -> versionId. Emitted
-  // unconditionally by the guest-agent; may be empty or missing when the
-  // guest snapshotted nothing.
-  artifactSnapshots?: Record<string, string>;
+  // Multi-artifact snapshot payload. Accepts both legacy Record (pre-#10911)
+  // and canonical array (post-#10911) shapes; persisted verbatim to the
+  // JSONB column. May be empty or missing when the guest snapshotted nothing.
+  artifactSnapshots?: ArtifactSnapshotsPayload;
   volumeVersionsSnapshot?: VolumeVersionsSnapshot;
 }
 
@@ -51,6 +65,6 @@ export interface CheckpointResponse {
   checkpointId: string;
   agentSessionId: string;
   conversationId: string;
-  artifacts?: Record<string, string>;
+  artifacts?: ArtifactSnapshotsPayload;
   volumes?: Record<string, string>;
 }

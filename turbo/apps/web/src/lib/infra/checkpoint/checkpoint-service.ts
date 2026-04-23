@@ -13,6 +13,7 @@ import type {
   AgentComposeSnapshot,
   VolumeVersionsSnapshot,
 } from "./types";
+import { isEmptyArtifactPayload } from "./decode-artifact-snapshots";
 
 const log = logger("checkpoint");
 
@@ -143,9 +144,14 @@ export async function createCheckpoint(
       }
     : null;
 
-  const rawMap = request.artifactSnapshots ?? null;
-  const hasMap = rawMap !== null && Object.keys(rawMap).length > 0;
-  const artifactSnapshotsMap = hasMap ? rawMap : null;
+  // Persist the artifactSnapshots payload verbatim to the JSONB column —
+  // accepts both the legacy Record<name, version> shape and the canonical
+  // Array<{name, version, mountPath}> shape. Empty payloads (null, {}, [])
+  // collapse to NULL so "no artifacts" has a single on-disk representation.
+  const rawPayload = request.artifactSnapshots ?? null;
+  const artifactSnapshotsForDb = isEmptyArtifactPayload(rawPayload)
+    ? null
+    : rawPayload;
 
   const snapshotFields = {
     conversationId: conversation.id,
@@ -153,7 +159,7 @@ export async function createCheckpoint(
       string,
       unknown
     >,
-    artifactSnapshots: artifactSnapshotsMap,
+    artifactSnapshots: artifactSnapshotsForDb,
     volumeVersionsSnapshot: enrichedVolumeSnapshot as unknown as Record<
       string,
       unknown
@@ -200,7 +206,7 @@ export async function createCheckpoint(
     checkpointId: checkpoint.id,
     agentSessionId: agentSession.id,
     conversationId: conversation.id,
-    artifacts: artifactSnapshotsMap ?? undefined,
+    artifacts: artifactSnapshotsForDb ?? undefined,
     volumes,
   };
 }

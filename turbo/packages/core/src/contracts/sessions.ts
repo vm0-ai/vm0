@@ -35,6 +35,25 @@ const volumeVersionsSnapshotSchema = z.object({
 });
 
 /**
+ * Artifact snapshots schema.
+ *
+ * Tolerant union accepting both the legacy `Record<name, version>` map
+ * (pre-#10911 guest-agent payloads) and the canonical `Array<{name, version,
+ * mountPath}>` form (post-#10911). The GET-by-id handler echoes whatever shape
+ * is stored in the JSONB column; CLI consumers tolerate both via the union.
+ */
+const artifactSnapshotsSchema = z.union([
+  z.record(z.string(), z.string()),
+  z.array(
+    z.object({
+      name: z.string(),
+      version: z.string(),
+      mountPath: z.string(),
+    }),
+  ),
+]);
+
+/**
  * Checkpoint response schema
  * Represents an immutable snapshot of agent run state
  */
@@ -43,9 +62,11 @@ const checkpointResponseSchema = z.object({
   runId: z.string(),
   conversationId: z.string(),
   agentComposeSnapshot: agentComposeSnapshotSchema,
-  // Multi-artifact snapshot map: artifact name → version id. Null when the
-  // checkpoint has no artifacts.
-  artifactSnapshots: z.record(z.string(), z.string()).nullable(),
+  // Multi-artifact snapshot payload. Accepts both the legacy
+  // `Record<name, version>` map and the canonical
+  // `Array<{name, version, mountPath}>` form. Null when the checkpoint has
+  // no artifacts.
+  artifactSnapshots: artifactSnapshotsSchema.nullable(),
   volumeVersionsSnapshot: volumeVersionsSnapshotSchema.nullable(),
   createdAt: z.string(),
 });

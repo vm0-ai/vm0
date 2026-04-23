@@ -10,6 +10,7 @@ import { checkpoints } from "../../../../../src/db/schema/checkpoint";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
+import { decodeToRecord } from "../../../../../src/lib/infra/checkpoint/decode-artifact-snapshots";
 
 interface AgentComposeSnapshot {
   agentComposeVersionId: string;
@@ -77,8 +78,10 @@ const router = tsr.router(checkpointsByIdContract, {
 
     const agentComposeSnapshot =
       checkpoint.agentComposeSnapshot as AgentComposeSnapshot;
-    const artifactSnapshots =
-      (checkpoint.artifactSnapshots as Record<string, string> | null) ?? null;
+    // `checkpoint.artifactSnapshots` is a JSONB column; post-#10911 it may be
+    // either the legacy Record or the canonical Array shape. Normalise to
+    // Record on the outbound wire — CLI consumers still expect that shape.
+    const artifactSnapshots = decodeToRecord(checkpoint.artifactSnapshots);
     const volumeVersionsSnapshot =
       checkpoint.volumeVersionsSnapshot as VolumeVersionsSnapshot | null;
 
