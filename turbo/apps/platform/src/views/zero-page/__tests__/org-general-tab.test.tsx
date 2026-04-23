@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
@@ -21,12 +22,51 @@ import {
 } from "@vm0/core";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 
+vi.mock("@vm0/ui/components/ui/sonner", async (importOriginal) => {
+  const actual =
+    (await importOriginal()) as typeof import("@vm0/ui/components/ui/sonner");
+  return {
+    ...actual,
+    toast: { error: vi.fn(), success: vi.fn(), info: vi.fn() },
+  };
+});
+
 const context = testContext();
 
 beforeEach(() => {
   resetMockOrg();
   resetMockOrgLogo();
+  vi.mocked(toast.error).mockClear();
+  vi.mocked(toast.success).mockClear();
 });
+
+/**
+ * Happy-dom does not decode actual image bytes, so `new Image()` never
+ * fires `load` with real `naturalWidth`/`naturalHeight`. Stub the global
+ * `Image` constructor for the lifetime of a single test so the handler's
+ * dimension check has a deterministic answer.
+ */
+function stubImageDimensions(width: number, height: number): void {
+  class FakeImage {
+    naturalWidth = width;
+    naturalHeight = height;
+    private listeners: Record<string, () => void> = {};
+    addEventListener(event: string, cb: () => void) {
+      this.listeners[event] = cb;
+    }
+    set src(_value: string) {
+      queueMicrotask(() => {
+        this.listeners.load?.();
+      });
+    }
+  }
+  vi.stubGlobal("Image", FakeImage);
+  // Override only the two URL methods we care about — happy-dom's default
+  // revokeObjectURL throws on unknown blob URLs, and the real createObjectURL
+  // requires a live blob. Full URL stubbing would break MSW's URL parser.
+  vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:mock");
+  vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+}
 
 async function openGeneralTab() {
   detachedSetupPage({ context, path: "/?settings=general" });
@@ -203,6 +243,68 @@ describe("org general tab - profile section", () => {
     click(screen.getByText("Discard"));
 
     expect(screen.queryByText("Slug is already taken")).not.toBeInTheDocument();
+  });
+
+  it("should reject a logo that is too small with a toast", async () => {
+    stubImageDimensions(50, 50);
+    setMockOrg({ name: "My Org", slug: "my-org", role: "admin" });
+    await openGeneralTab();
+
+    const fileInput = (await screen.findByLabelText(
+      "Upload logo",
+    )) as HTMLInputElement;
+    const file = new File(["x"], "tiny.png", { type: "image/png" });
+    Object.defineProperty(fileInput, "files", { value: [file] });
+    fileInput.dispatchEvent(new Event("change", { bubbles: true }));
+
+    await waitFor(() => {
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
+        "Logo is too small (50×50px). Minimum size is 100×100px.",
+      );
+    });
+
+    // File must not have been staged — no Save button should appear
+    expect(screen.queryByText("Save changes")).not.toBeInTheDocument();
+  });
+
+  it("should reject a logo that is too large with a toast", async () => {
+    stubImageDimensions(5000, 5000);
+    setMockOrg({ name: "My Org", slug: "my-org", role: "admin" });
+    await openGeneralTab();
+
+    const fileInput = (await screen.findByLabelText(
+      "Upload logo",
+    )) as HTMLInputElement;
+    const file = new File(["x"], "huge.png", { type: "image/png" });
+    Object.defineProperty(fileInput, "files", { value: [file] });
+    fileInput.dispatchEvent(new Event("change", { bubbles: true }));
+
+    await waitFor(() => {
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
+        "Logo is too large (5000×5000px). Maximum size is 4096×4096px.",
+      );
+    });
+
+    expect(screen.queryByText("Save changes")).not.toBeInTheDocument();
+  });
+
+  it("should accept a logo within bounds and stage it for save", async () => {
+    stubImageDimensions(512, 512);
+    setMockOrg({ name: "My Org", slug: "my-org", role: "admin" });
+    await openGeneralTab();
+
+    const fileInput = (await screen.findByLabelText(
+      "Upload logo",
+    )) as HTMLInputElement;
+    const file = new File(["x"], "good.png", { type: "image/png" });
+    Object.defineProperty(fileInput, "files", { value: [file] });
+    fileInput.dispatchEvent(new Event("change", { bubbles: true }));
+
+    // Save button appears because a valid file was staged
+    await waitFor(() => {
+      expect(screen.getByText("Save changes")).toBeInTheDocument();
+    });
+    expect(vi.mocked(toast.error)).not.toHaveBeenCalled();
   });
 
   it("should load and display logo for non-admin members", async () => {
