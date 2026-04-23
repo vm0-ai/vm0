@@ -12,6 +12,8 @@
 
 * add auto-recharge threshold/amount bounds and loop prevention ([#10695](https://github.com/vm0-ai/vm0/issues/10695)) ([9e2e011](https://github.com/vm0-ai/vm0/commit/9e2e011d6404f6641a6cccfa1ca7dd324f5939f4))
 * **auth:** stop password toggle flicker on sign-in page ([#10817](https://github.com/vm0-ai/vm0/issues/10817)) ([91b0566](https://github.com/vm0-ai/vm0/commit/91b0566425fe4f61bda742b93003efbe0b432354)), closes [#10462](https://github.com/vm0-ai/vm0/issues/10462)
+* don't let sessions.expire failure permanently block campaign redemption ([#10694](https://github.com/vm0-ai/vm0/issues/10694)) ([68dc4bf](https://github.com/vm0-ai/vm0/commit/68dc4bf9de08b9b68b50fb4522730304a9772e17))
+* open queue drawer via URL param and remove /queue route ([#10684](https://github.com/vm0-ai/vm0/issues/10684)) ([f547217](https://github.com/vm0-ai/vm0/commit/f547217cf19e0a66463e93d6db57f918968b8a41))
 
 
 ### Dependencies

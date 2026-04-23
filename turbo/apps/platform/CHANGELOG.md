@@ -8,6 +8,11 @@
 * add tooltip to attachment upload button ([#10827](https://github.com/vm0-ai/vm0/issues/10827)) ([7246574](https://github.com/vm0-ai/vm0/commit/72465742ce94f00af185f4aa45ca9e1a55907f57))
 
 
+### Bug Fixes
+
+* open queue drawer via URL param and remove /queue route ([#10684](https://github.com/vm0-ai/vm0/issues/10684)) ([f547217](https://github.com/vm0-ai/vm0/commit/f547217cf19e0a66463e93d6db57f918968b8a41))
+
+
 ### Refactoring
 
 * **platform:** improve model picker trigger consistency in composer ([#10821](https://github.com/vm0-ai/vm0/issues/10821)) ([71e5d1c](https://github.com/vm0-ai/vm0/commit/71e5d1c92538470efa6dc08ccf707d844b919a49))
