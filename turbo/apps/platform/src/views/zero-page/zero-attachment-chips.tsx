@@ -58,16 +58,15 @@ function filenameFromUrl(url: string): string {
 }
 
 function getAttachmentDownloadUrl(url: string): string {
-  try {
-    const parsed = new URL(url, window.location.origin);
-    const isFileRoute = /^\/f\/[^/]+\/[^/]+\/[^/]+$/.test(parsed.pathname);
-    if (isFileRoute) {
-      parsed.searchParams.set("download", "1");
-    }
-    return parsed.toString();
-  } catch {
+  if (!URL.canParse(url, window.location.origin)) {
     return url;
   }
+  const parsed = new URL(url, window.location.origin);
+  const isFileRoute = /^\/f\/[^/]+\/[^/]+\/[^/]+$/.test(parsed.pathname);
+  if (isFileRoute) {
+    parsed.searchParams.set("download", "1");
+  }
+  return parsed.toString();
 }
 
 function triggerDirectDownload(url: string, filename: string): void {

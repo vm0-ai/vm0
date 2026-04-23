@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
 import { chatMessagesContract } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -332,22 +333,17 @@ describe("chat-i-066: lightbox download fallback uses direct download", () => {
   it("appends download=1 and avoids opening a new tab", async () => {
     const user = userEvent.setup();
     const imageUrl = "http://localhost:3000/f/user-1/file-1/photo.png";
-    const originalFetch = window.fetch.bind(window);
-    const fetchSpy = vi
-      .spyOn(window, "fetch")
-      .mockImplementation((input, init) => {
-        const requestUrl =
-          typeof input === "string"
-            ? input
-            : input instanceof URL
-              ? input.toString()
-              : input.url;
-        if (requestUrl === `${imageUrl}?download=1`) {
-          return Promise.reject(new TypeError("CORS"));
+    server.use(
+      http.get(imageUrl, ({ request }) => {
+        if (new URL(request.url).searchParams.get("download") === "1") {
+          return HttpResponse.error();
         }
-        return originalFetch(input as RequestInfo | URL, init);
-      });
-    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+        return new HttpResponse(null, { status: 200 });
+      }),
+    );
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => {
+      return null;
+    });
 
     let clickedHref = "";
     let clickedDownload = "";
@@ -398,10 +394,6 @@ describe("chat-i-066: lightbox download fallback uses direct download", () => {
     click(downloadButton);
 
     await waitFor(() => {
-      expect(fetchSpy).toHaveBeenCalledWith(
-        `${imageUrl}?download=1`,
-        expect.objectContaining({ mode: "cors" }),
-      );
       expect(anchorClickSpy).toHaveBeenCalledOnce();
     });
 

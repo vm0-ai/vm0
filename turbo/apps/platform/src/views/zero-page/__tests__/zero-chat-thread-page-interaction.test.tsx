@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
+import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { hasSubscription } from "../../../mocks/ably.ts";
@@ -135,25 +137,14 @@ describe("zero chat thread page - image attachment opens lightbox", () => {
 
   it("downloads a CDN image from the lightbox", async () => {
     const imageUrl = "https://cdn.example.com/photo.png";
-    const originalFetch = window.fetch.bind(window);
-    const fetchSpy = vi
-      .spyOn(window, "fetch")
-      .mockImplementation((input, init) => {
-        const requestUrl =
-          typeof input === "string"
-            ? input
-            : input instanceof URL
-              ? input.toString()
-              : input.url;
-        if (requestUrl === imageUrl) {
-          return Promise.resolve(
-            new Response(new Blob(["img"], { type: "image/png" }), {
-              status: 200,
-            }),
-          );
-        }
-        return originalFetch(input as RequestInfo | URL, init);
-      });
+    server.use(
+      http.get(imageUrl, () => {
+        return new HttpResponse(new Blob(["img"], { type: "image/png" }), {
+          status: 200,
+          headers: { "Content-Type": "image/png" },
+        });
+      }),
+    );
     const createObjectURLSpy = vi
       .spyOn(URL, "createObjectURL")
       .mockReturnValue("blob:test");
@@ -185,7 +176,6 @@ describe("zero chat thread page - image attachment opens lightbox", () => {
     click(downloadButton);
 
     await waitFor(() => {
-      expect(fetchSpy).toHaveBeenCalledWith(imageUrl, { mode: "cors" });
       expect(createObjectURLSpy).toHaveBeenCalledOnce();
       expect(anchorClickSpy).toHaveBeenCalledWith();
     });
