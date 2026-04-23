@@ -234,7 +234,6 @@ async function setup() {
     context,
     path: "/voice-chat-candidate",
     withoutRender: true,
-    featureSwitches: { voiceChat: true },
   });
 }
 

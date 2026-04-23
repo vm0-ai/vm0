@@ -200,11 +200,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Show the Phone page for voice call integration",
     enabled: false,
   },
-  [FeatureSwitchKey.VoiceChat]: {
-    maintainer: "lancy@vm0.ai",
-    description: "Enable the Voice Chat feature and API endpoints",
-    enabled: false,
-  },
   [FeatureSwitchKey.AudioInput]: {
     maintainer: "lancy@vm0.ai",
     description:

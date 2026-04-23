@@ -30,7 +30,6 @@ describe("lab page", () => {
   it("should show feature switches sorted alphabetically", async () => {
     setMockFeatureSwitches({
       [FeatureSwitchKey.UsageAnalytics]: true,
-      [FeatureSwitchKey.VoiceChat]: false,
     });
 
     detachedSetupPage({ context, path: "/_/lab" });
