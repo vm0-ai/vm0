@@ -8,6 +8,7 @@ import { resetSignal, throwIfAbort, onDomEventFn } from "../utils.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
+import { resolveAudioConfig } from "../../lib/voice-io/audio-config.ts";
 import { logger } from "../log.ts";
 
 const L = logger("VoiceChatCandidate");
@@ -591,8 +592,19 @@ export const startVoiceChatCandidate$ = command(
       return n + 1;
     });
 
+    // Resolve adaptive audio config (echo-cancellation constraints for
+    // getUserMedia + noise-reduction hint for the Realtime session). Done
+    // per connection so plugging in headphones between calls takes effect.
+    const audioConfig = await resolveAudioConfig();
+    signal.throwIfAborted();
+
     const tokenRes = await accept(
-      client.token({ body: { sessionId: session.id } }),
+      client.token({
+        body: {
+          sessionId: session.id,
+          noiseReduction: audioConfig.noiseReduction,
+        },
+      }),
       [200, 400, 401, 403, 404, 500, 503],
       { toast: false },
     );
@@ -609,11 +621,7 @@ export const startVoiceChatCandidate$ = command(
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
+        audio: audioConfig.constraints,
       });
     } catch (error) {
       throwIfAbort(error);

@@ -141,6 +141,31 @@ describe("POST /api/zero/voice-chat-candidate/token", () => {
     expect(toolNames).toContain("feel_confused");
   });
 
+  it("threads near_field noiseReduction through to the upstream body", async () => {
+    interface UpstreamBody {
+      input_audio_noise_reduction?: { type?: string };
+    }
+    let received: UpstreamBody | undefined;
+    server.use(
+      http.post(
+        "https://api.openai.com/v1/realtime/sessions",
+        async ({ request }) => {
+          received = (await request.json()) as UpstreamBody;
+          return HttpResponse.json({
+            client_secret: { value: "ek_test", expires_at: 9999999999 },
+          });
+        },
+      ),
+    );
+    const response = await POST(
+      tokenRequest({ sessionId, noiseReduction: "near_field" }),
+    );
+    expect(response.status).toBe(200);
+    expect(received?.input_audio_noise_reduction).toEqual({
+      type: "near_field",
+    });
+  });
+
   it("returns 500 when OpenAI returns an error", async () => {
     server.use(
       http.post("https://api.openai.com/v1/realtime/sessions", () => {

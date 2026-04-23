@@ -68,8 +68,11 @@ export const INPUT_AUDIO_TRANSCRIPTION_CONFIG = {
   model: "gpt-4o-mini-transcribe",
 } as const;
 
-export const INPUT_AUDIO_NOISE_REDUCTION_CONFIG = {
-  type: "far_field",
-} as const;
+// Noise-reduction mode is resolved per-connection on the client (see
+// platform `resolveAudioConfig`); the server threads the client hint into
+// the ephemeral token. Default mirrors the historical far_field behaviour
+// for clients that don't supply a hint (SDK downgrades, older tests).
+export type NoiseReduction = "near_field" | "far_field";
+export const DEFAULT_NOISE_REDUCTION: NoiseReduction = "far_field";
 
 export const SESSION_MODALITIES = ["text", "audio"] as const;

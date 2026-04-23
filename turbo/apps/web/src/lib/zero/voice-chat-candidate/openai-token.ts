@@ -1,10 +1,11 @@
 import { env } from "../../../env";
 import {
-  INPUT_AUDIO_NOISE_REDUCTION_CONFIG,
+  DEFAULT_NOISE_REDUCTION,
   INPUT_AUDIO_TRANSCRIPTION_CONFIG,
   SESSION_MODALITIES,
   SESSION_TOOLS,
   TURN_DETECTION_CONFIG,
+  type NoiseReduction,
 } from "./session-config";
 
 const OPENAI_REALTIME_URL = "https://api.openai.com/v1/realtime/sessions";
@@ -54,6 +55,7 @@ export function isOpenAiTokenError(value: unknown): value is OpenAiTokenError {
 
 export async function createEphemeralToken(options: {
   instructions: string;
+  noiseReduction?: NoiseReduction;
 }): Promise<EphemeralTokenResponse> {
   const apiKey = env().OPENAI_API_KEY;
 
@@ -69,7 +71,9 @@ export async function createEphemeralToken(options: {
       modalities: SESSION_MODALITIES,
       instructions: options.instructions,
       input_audio_transcription: INPUT_AUDIO_TRANSCRIPTION_CONFIG,
-      input_audio_noise_reduction: INPUT_AUDIO_NOISE_REDUCTION_CONFIG,
+      input_audio_noise_reduction: {
+        type: options.noiseReduction ?? DEFAULT_NOISE_REDUCTION,
+      },
       turn_detection: TURN_DETECTION_CONFIG,
       tools: SESSION_TOOLS,
     }),

@@ -59,6 +59,7 @@ export async function POST(request: Request): Promise<Response> {
   try {
     const result = await createEphemeralToken({
       instructions: talkerInstructions,
+      noiseReduction: parsed.data.noiseReduction,
     });
     return NextResponse.json(result);
   } catch (error) {

@@ -125,7 +125,13 @@ export type CreateVoiceChatCandidateTaskBody = z.infer<
   typeof createTaskBodySchema
 >;
 
-const tokenBodySchema = z.object({ sessionId: z.uuid() });
+const tokenBodySchema = z.object({
+  sessionId: z.uuid(),
+  // Client-resolved hint (see platform `resolveAudioConfig`) for the Realtime
+  // session's input_audio_noise_reduction. Optional — server defaults to
+  // far_field if absent.
+  noiseReduction: z.enum(["near_field", "far_field"]).optional(),
+});
 export type VoiceChatCandidateTokenBody = z.infer<typeof tokenBodySchema>;
 
 const okResponseSchema = z.object({ ok: z.literal(true) });
