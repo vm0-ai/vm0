@@ -16,6 +16,44 @@ use tokio::io::AsyncWriteExt;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
 
+/// State machine driving the post-`type=result` reap of the CLI process
+/// group. A single pinned deadline is resettable across phases; the enum
+/// value tells the lone select! branch what to do when the deadline fires.
+///
+/// | From             | Trigger        | To              | Action          |
+/// |------------------|----------------|-----------------|-----------------|
+/// | `Idle`           | `type=result`  | `SigtermPending`| arm sigterm grace |
+/// | `SigtermPending` | deadline fires | `SigkillPending`| SIGTERM pgid, arm sigkill grace |
+/// | `SigkillPending` | deadline fires | `Done`          | SIGKILL pgid    |
+/// | _any pending_    | `child.wait()` | `Done`          | (no signal)     |
+///
+/// `Done` is sticky: a late second `type=result` on the same run cannot
+/// re-arm the deadline, and any in-flight signalling is one-shot.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ReapState {
+    Idle,
+    SigtermPending,
+    SigkillPending,
+    Done,
+}
+
+impl ReapState {
+    /// True while waiting for an armed SIGTERM or SIGKILL deadline to fire;
+    /// used as the select! branch's eligibility guard.
+    fn is_pending(self) -> bool {
+        matches!(self, ReapState::SigtermPending | ReapState::SigkillPending)
+    }
+
+    /// Whether to arm the reap deadline on an incoming `type=result`
+    /// event. Only the initial Idle → SigtermPending transition should
+    /// fire — later events (or a result that races a CLI exit) must
+    /// not re-arm. Single source of truth consumed by both the
+    /// production guard in `execute_cli` and the FSM unit tests.
+    fn should_arm(self, cli_exited: bool) -> bool {
+        matches!(self, ReapState::Idle) && !cli_exited
+    }
+}
+
 /// Build the CLI command + args.
 pub fn build_cli_command() -> Result<Vec<String>, AgentError> {
     Ok(build_claude_command(env::use_mock_claude()))
@@ -95,7 +133,9 @@ fn build_claude_command(use_mock: bool) -> Vec<String> {
 
     let bin = if use_mock {
         log_info!(LOG_TAG, "Using mock-claude for testing");
-        "/usr/local/bin/guest-mock-claude".to_string()
+        // Tests can override the path so they target a cargo-built
+        // artifact rather than the sandbox's baked-in `/usr/local/bin`.
+        env::mock_claude_path()
     } else {
         "claude".to_string()
     };
@@ -184,6 +224,18 @@ pub async fn execute_cli(
     let drain_deadline = tokio::time::sleep(Duration::MAX);
     tokio::pin!(drain_deadline);
 
+    // Post-result reap: in --print mode the CLI prints its final `result`
+    // event and then waits for its own backgrounded Bash tasks to drain.
+    // A runaway task (e.g. an xargs-per-file pipeline that can't short-
+    // circuit) can hold the CLI — and therefore the whole sandbox —
+    // alive for tens of minutes. On `type=result` we step through
+    // SigtermPending → SigkillPending → Done, each step resetting this
+    // shared deadline with the next phase's grace window.
+    // See: https://github.com/vm0-ai/vm0/issues/10879
+    let reap_deadline = tokio::time::sleep(Duration::MAX);
+    tokio::pin!(reap_deadline);
+    let mut reap_state = ReapState::Idle;
+
     // Stuck-tool watchdog: workaround for Claude Code bug where
     // WebSearch/WebFetch hang indefinitely. Track all in-flight tool calls;
     // if a network tool exceeds STUCK_TOOL_TIMEOUT_SECS without producing
@@ -231,10 +283,22 @@ pub async fn execute_cli(
                                 timing::record_e2e_from_api("api_to_cli_init");
                             }
                             // Print result to stdout if applicable
-                            if event.get("type").and_then(|v| v.as_str()) == Some("result")
-                                && let Some(result) = event.get("result").and_then(|v| v.as_str())
-                            {
-                                println!("{result}");
+                            if event.get("type").and_then(|v| v.as_str()) == Some("result") {
+                                if let Some(result) = event.get("result").and_then(|v| v.as_str())
+                                {
+                                    println!("{result}");
+                                }
+                                // Arm the post-result reap deadline once
+                                // per run — see `ReapState::should_arm`.
+                                if reap_state.should_arm(cli_status.is_some()) {
+                                    reap_state = ReapState::SigtermPending;
+                                    reap_deadline.as_mut().reset(
+                                        tokio::time::Instant::now()
+                                            + Duration::from_secs(
+                                                env::post_result_sigterm_grace_secs(),
+                                            ),
+                                    );
+                                }
                             }
                             // Extract tool info BEFORE masking (masker may replace tool names)
                             for tool_event in events::extract_claude_tool_info(&event) {
@@ -266,12 +330,67 @@ pub async fn execute_cli(
                     Ok(s) => {
                         log_info!(LOG_TAG, "CLI process exited (status: {s}), draining stdout");
                         cli_status = Some(s);
+                        // CLI exited on its own (possibly in response to our
+                        // SIGTERM). Park the reap FSM so it can't re-arm on
+                        // any late `type=result` event.
+                        reap_state = ReapState::Done;
                         drain_deadline.as_mut().reset(
                             tokio::time::Instant::now()
                                 + Duration::from_secs(constants::STDOUT_DRAIN_DEADLINE_SECS),
                         );
                     }
                     Err(e) => break Err(AgentError::Io(e)),
+                }
+            }
+            () = &mut reap_deadline, if reap_state.is_pending() && cli_status.is_none() => {
+                // `libc::kill` return value is intentionally discarded in
+                // both arms: ESRCH (child reaped since the is_pending()
+                // / is_none() check) is racy-but-harmless, and every
+                // other error would be unrecoverable from userspace.
+                // The sigkill_grace deadline is the escalation path if
+                // the signal fails to take effect in time.
+                match reap_state {
+                    ReapState::SigtermPending => {
+                        let grace = env::post_result_sigterm_grace_secs();
+                        if let Some(pid) = pgid {
+                            log_warn!(
+                                LOG_TAG,
+                                "CLI still running {grace}s after type=result, SIGTERM pgid={pid} (likely a leaked backgrounded Bash task)"
+                            );
+                            unsafe { libc::kill(-pid, libc::SIGTERM); }
+                        }
+                        reap_state = ReapState::SigkillPending;
+                        reap_deadline.as_mut().reset(
+                            tokio::time::Instant::now()
+                                + Duration::from_secs(env::post_result_sigkill_grace_secs()),
+                        );
+                    }
+                    ReapState::SigkillPending => {
+                        let grace = env::post_result_sigkill_grace_secs();
+                        if let Some(pid) = pgid {
+                            log_warn!(
+                                LOG_TAG,
+                                "CLI did not exit after SIGTERM+{grace}s, SIGKILL pgid={pid}"
+                            );
+                            unsafe { libc::kill(-pid, libc::SIGKILL); }
+                        }
+                        reap_state = ReapState::Done;
+                    }
+                    // Unreachable by the is_pending() guard. Log in
+                    // every build so any future FSM regression surfaces
+                    // in production runner logs; debug_assert adds a
+                    // fail-fast panic under cfg(debug_assertions) so
+                    // CI / dev tests abort on the same condition.
+                    ReapState::Idle | ReapState::Done => {
+                        log_warn!(
+                            LOG_TAG,
+                            "reap_deadline fired in non-pending state {reap_state:?}"
+                        );
+                        debug_assert!(
+                            false,
+                            "reap_deadline fired in non-pending state {reap_state:?}"
+                        );
+                    }
                 }
             }
             () = &mut drain_deadline, if cli_status.is_some() => {
@@ -448,8 +567,14 @@ mod tests {
 
     #[test]
     fn build_claude_command_uses_mock_binary() {
+        // Unit tests run in the lib-test binary where
+        // `VM0_MOCK_CLAUDE_PATH` is unset, so `env::mock_claude_path()`
+        // falls through to `DEFAULT_MOCK_CLAUDE_PATH`. Asserting
+        // against the const (not the accessor) catches regressions in
+        // the default path itself — the previous form compared the
+        // accessor against itself and was tautological.
         let cmd = build_claude_command(true);
-        assert_eq!(cmd[0], "/usr/local/bin/guest-mock-claude");
+        assert_eq!(cmd[0], env::DEFAULT_MOCK_CLAUDE_PATH);
     }
 
     #[test]
@@ -563,5 +688,40 @@ mod tests {
     fn build_claude_args_prompt_always_last() {
         let args = build_claude_args("", "", "", "", "", "my prompt");
         assert_eq!(args.last().unwrap(), "my prompt");
+    }
+
+    // -----------------------------------------------------------------
+    // ReapState FSM
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn reap_state_is_pending_only_between_arming_and_done() {
+        assert!(!ReapState::Idle.is_pending());
+        assert!(ReapState::SigtermPending.is_pending());
+        assert!(ReapState::SigkillPending.is_pending());
+        assert!(!ReapState::Done.is_pending());
+    }
+
+    /// The arming guard must fire exactly once per run, on the first
+    /// `type=result` event, and only when the CLI is still alive. Any
+    /// later state — or a CLI that already exited — must be ignored
+    /// (Done is sticky; SigtermPending/SigkillPending already armed).
+    ///
+    /// Calls `ReapState::should_arm` directly so the test shares a
+    /// single source of truth with the production `select!` branch.
+    #[test]
+    fn reap_state_should_arm_matches_invariant() {
+        // Fire only from Idle with CLI still alive.
+        assert!(ReapState::Idle.should_arm(false));
+
+        // CLI already exited → no arm, even from Idle.
+        assert!(!ReapState::Idle.should_arm(true));
+
+        // Already armed → no re-arm.
+        assert!(!ReapState::SigtermPending.should_arm(false));
+        assert!(!ReapState::SigkillPending.should_arm(false));
+
+        // Done is sticky.
+        assert!(!ReapState::Done.should_arm(false));
     }
 }
