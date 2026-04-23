@@ -62,6 +62,10 @@ export const SESSION_TOOLS = [
 export const TURN_DETECTION_CONFIG = {
   type: "semantic_vad",
   eagerness: "medium",
+  // Disable the server's automatic barge-in cancellation. The browser handles
+  // truncation itself so mobile speakerphone can apply a stricter policy than
+  // "any VAD start event immediately interrupts the assistant".
+  interrupt_response: false,
 } as const;
 
 export const INPUT_AUDIO_TRANSCRIPTION_CONFIG = {

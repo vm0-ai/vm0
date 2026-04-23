@@ -132,6 +132,7 @@ describe("POST /api/zero/voice-chat-candidate/token", () => {
     expect(received?.turn_detection).toEqual({
       type: "semantic_vad",
       eagerness: "medium",
+      interrupt_response: false,
     });
     const toolNames =
       received?.tools?.map((t) => {
