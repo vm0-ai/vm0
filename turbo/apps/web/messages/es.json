@@ -113,7 +113,7 @@
         "concurrentRuns": "2 ejecuciones simultáneas",
         "unlimitedAgents": "Agentes totales ilimitados",
         "bringOwnLLM": "Usa tus propias claves de LLM",
-        "creditsRollover": "Créditos válidos por 1 mes",
+        "creditsRollover": "Créditos acumulables (1 mes)",
         "emailSupport": "Soporte por correo electrónico"
       },
       "buttonText": "Comenzar con Pro"
@@ -125,7 +125,7 @@
         "concurrentRuns": "5 ejecuciones simultáneas",
         "unlimitedAgents": "Agentes totales ilimitados",
         "bringOwnLLM": "Usa tus propias claves de LLM",
-        "creditsRollover": "Créditos válidos por 1 mes",
+        "creditsRollover": "Créditos acumulables (1 mes)",
         "prioritySupport": "Soporte prioritario"
       },
       "buttonText": "Comenzar con Team"
@@ -151,8 +151,8 @@
       "concurrentRunsDesc": "Número de agentes que pueden ejecutarse simultáneamente",
       "totalAgents": "Agentes totales",
       "totalAgentsDesc": "Número máximo de agentes que puedes crear",
-      "creditsRollover": "Caducidad de créditos",
-      "creditsRolloverDesc": "Los créditos caducan 1 mes después de la fecha de facturación",
+      "creditsRollover": "Acumulación de créditos",
+      "creditsRolloverDesc": "Los créditos no utilizados se transfieren al siguiente período de facturación",
       "creditTopUp": "Recarga de créditos",
       "creditTopUpDesc": "Compra créditos adicionales en cualquier momento a $1 por 1.000 créditos",
       "autoRecharge": "Recarga automática",
@@ -191,13 +191,11 @@
       "whatAreCredits": "¿Qué son los créditos?",
       "whatAreCreditsAnswer": "Los créditos se consumen cuando tus agentes usan modelos de IA. Diferentes modelos consumen créditos a diferentes tasas. Por ejemplo, una tarea simple puede usar pocos créditos, mientras que un flujo de trabajo complejo de varios pasos usa más.",
       "changePlans": "¿Puedo cambiar de plan en cualquier momento?",
-      "changePlansAnswer": "¡Sí! Puedes actualizar o reducir tu plan en cualquier momento. Al actualizar, los créditos sobrantes permanecen en tu cuenta con su fecha de caducidad original y se usan primero. Los cambios surten efecto inmediatamente.",
+      "changePlansAnswer": "¡Sí! Puedes actualizar o reducir tu plan en cualquier momento. Los cambios surten efecto inmediatamente y prorrateamos los cargos en consecuencia.",
       "runOutOfCredits": "¿Qué pasa cuando se me acaban los créditos?",
-      "runOutOfCreditsAnswer": "Cuando tus créditos se agoten, tus agentes dejarán de funcionar. Puedes comprar créditos adicionales mediante recarga automática, actualizar a un plan superior para más créditos mensuales, o comprar créditos de pago por uso que nunca expiran.",
-      "doCreditsRollOver": "¿Caducan los créditos?",
-      "doCreditsRollOverAnswer": "Sí. Cada crédito tiene una fecha de caducidad. Plan Free: 10.000 créditos iniciales caducan 1 mes después del registro y no se renuevan. Planes Pro/Team: los créditos se otorgan cada ciclo de facturación y caducan 1 mes después de la fecha de facturación. Créditos de pago por uso: nunca expiran. Créditos promocionales: créditos de un solo uso con fecha de caducidad establecida.",
-      "upgradeCredits": "¿Qué pasa con mis créditos al actualizar?",
-      "upgradeCreditsAnswer": "Al actualizar (Free a Pro, o Pro a Team), los créditos sobrantes de tu plan actual permanecen en tu cuenta y se usan primero. Conservan su fecha de caducidad original y caducan según lo programado originalmente.",
+      "runOutOfCreditsAnswer": "Cuando tus créditos se agoten, tus agentes dejarán de funcionar. Puedes comprar créditos adicionales mediante recarga automática o actualizar a un plan superior para más créditos mensuales.",
+      "doCreditsRollOver": "¿Se acumulan los créditos no utilizados?",
+      "doCreditsRollOverAnswer": "En el plan Free, los créditos iniciales caducan 1 mes después del registro y no se reponen. En Pro, los créditos no utilizados se acumulan por 1 mes. En Team, los créditos se acumulan por 1 mes.",
       "bringOwnModel": "¿Puedo usar mi propio proveedor de modelos?",
       "bringOwnModelAnswer": "¡Sí! Todos los planes permiten usar tus propias claves API de LLM (Anthropic, etc.). Al usar tus propias claves, no se consumen créditos de VM0 para el uso de modelos.",
       "howSecure": "¿Qué tan seguro es VM0?",
@@ -1470,88 +1468,6 @@
           "Encadena con el caso de uso de standup - ejecuta primero el resumen semanal de elementos lanzados y luego aliméntalo a esta campaña para un pipeline de newsletter sin copiar-pegar."
         ]
       },
-      "managed-agent-workers": {
-        "title": "Ejecuta y consulta a tus workers de Anthropic Managed Agent",
-        "description": "Tienes Managed Agents especializados para revisión de código, tests, deuda técnica y builds. Zero se convierte en el mánager de tu flota - los lanza, consulta su estado y trae sus resultados, todo desde Slack.",
-        "timeSaved": "~20 min ahorrados por tarea",
-        "headings": {
-          "scenario": "Por qué una flota de Worker Agents es difícil de coordinar a solas",
-          "prompt": "Cómo pedirle a Zero que ejecute o supervise tus Managed Agents",
-          "steps": "Cómo Zero orquesta tu flota de Managed Agents",
-          "nextActions": "Lanza agentes concretos, programa ejecuciones o encadena workers",
-          "integrations": "Integraciones necesarias: Anthropic Managed Agents y GitHub",
-          "tips": "Buenas prácticas para operar una flota de Managed Agents"
-        },
-        "scenario": "Has invertido en construir Worker Agents especializados sobre Anthropic Managed Agents: un Tech Debt Cleaner, un PR Reviewer, un Test Runner, un Build Watcher. Cada uno tiene su propio system prompt, sus herramientas y un entorno cloud aislado. Ejecutar cualquiera de ellos hoy implica abrir la consola de Anthropic, crear una sesión, refrescar para ver el estado y copiar el resultado de vuelta a tu flujo de trabajo. Cuando varios están corriendo a la vez, pierdes el rastro de quién está ocupado, quién ya terminó y qué salida ya revisaste. Le pides a Zero que mire la flota: te enumera los agentes, te dice cuáles están activos y lanza los resultados a Slack en cuanto una sesión termina.",
-        "promptVariants": [
-          {
-            "label": "Lanzar un worker",
-            "prompt": "@Zero lanza mi Tech Debt Cleaner sobre vm0-ai/vm0 en main. Publica los hallazgos aquí cuando la sesión termine."
-          },
-          {
-            "label": "Revisar la flota",
-            "prompt": "@Zero ¿cómo van mis Managed Agent workers? Lista cada agente, su estado y en qué está trabajando ahora."
-          },
-          {
-            "label": "Ejecución recurrente",
-            "prompt": "@Zero cada noche a las 22:00, lanza el Test Runner sobre main y publica aquí los resultados completos antes de las 9:00."
-          }
-        ],
-        "slackPreview": [
-          {
-            "name": "Ethan",
-            "text": "@Zero ¿cómo va mi Tech Debt Cleaner?"
-          },
-          {
-            "name": "Zero",
-            "text": "Tech Debt Cleaner está activo - la sesión sesn_011Ca8 lleva 14 min corriendo sobre vm0-ai/vm0 main. Está procesando turbo/apps/web/components. Última salida: 7 imports de código muerto detectados.\n\nOtros workers:\n- PR Reviewer - idle\n- Test Runner - activo (2 min, corriendo voice-chat.test.tsx)\n- Build Watcher - idle\n\nPublico el informe completo del Tech Debt Cleaner aquí en cuanto termine la sesión."
-          }
-        ],
-        "steps": [
-          {
-            "title": "Zero lee tu flota de workers",
-            "description": "Zero llama a la API de Anthropic Managed Agents para listar todos los agentes que tienes configurados, con su descripción, modelo y acceso a herramientas. Esa lista es el directorio de workers que Zero puede operar."
-          },
-          {
-            "title": "Zero revisa el estado de las sesiones",
-            "description": "Para cada agente, Zero consulta sesiones activas y recientes. Te dice cuáles están idle, cuáles están corriendo, cuánto llevan activos y cuál es la última línea de salida. Sin saltar entre pestañas de la consola."
-          },
-          {
-            "title": "Zero lanza y supervisa bajo petición",
-            "description": "Cuando le pides ejecutar un agente, Zero crea una nueva sesión con el objetivo que indiques (repo, PR, rama). Sondea hasta el final, recupera la salida y publica un resumen estructurado en Slack."
-          }
-        ],
-        "nextActions": [
-          {
-            "title": "Lanzar un worker concreto",
-            "description": "Arranca un solo agente sobre un objetivo específico",
-            "examplePrompt": "@Zero lanza mi PR Reviewer sobre el PR #9711. Publica los comentarios de la revisión aquí cuando termine."
-          },
-          {
-            "title": "Programar ejecuciones recurrentes",
-            "description": "Ejecuta un worker con una cadencia fija",
-            "examplePrompt": "@Zero cada noche a las 22:00, lanza el Test Runner sobre main. Publica aquí los resultados completos antes de las 9:00."
-          },
-          {
-            "title": "Encadenar workers en un pipeline",
-            "description": "Haz que la salida de un worker dispare el siguiente",
-            "examplePrompt": "@Zero cuando el Tech Debt Cleaner termine su próxima ejecución, lanza el PR Reviewer sobre la rama que haya abierto."
-          }
-        ],
-        "integrations": [
-          {
-            "description": "Anthropic Managed Agents - Zero lista tus agentes, lanza sesiones, revisa estados y recupera salidas. Conéctalo con una API key de Anthropic desde app.vm0.ai/connectors."
-          },
-          {
-            "description": "GitHub - la mayoría de los workers necesita acceso al repositorio para hacer reviews, correr tests o builds. Zero usa tu conexión de GitHub para apuntar a la rama o PR correcta."
-          }
-        ],
-        "tips": [
-          "Ponle a cada agente un nombre claro y legible en la consola de Anthropic. 'Tech Debt Cleaner' se lee mucho mejor en las respuestas de Zero que un agent_011 cualquiera.",
-          "Mantén cada agente con un único propósito. Un worker que hace review de PRs y también corre tests pierde foco en ambos. System prompts estrechos producen salidas más nítidas y una orquestación más limpia.",
-          "Encadena workers con prompts condicionales: 'cuando termine X, lanza Y sobre su salida'. Una flota de agentes enfocados se convierte en un pipeline sin infraestructura adicional."
-        ]
-      },
       "daily-engineering-brief": {
         "title": "Resumen diario de ingeniería con detección de anomalías",
         "description": "Pide a @Zero que extraiga datos en tiempo real de GitHub, Linear, Sentry y Plausible cada mañana, calcule promedios móviles de 7 días, marque cualquier anomalía y publique automáticamente un resumen de cuatro secciones en tu canal de Slack.",
@@ -1727,98 +1643,6 @@
           "Ejecuta una extracción inicial primero para establecer la instantánea base en Notion. Sin ella, @Zero no tiene nada contra qué comparar y tratará todo como un cambio.",
           "Sé específico sobre qué marcar. 'Vigila cambios en planes de precios, nombres de planes, ofertas de prueba y CTAs' da resultados más precisos que un escaneo general.",
           "Estructura tu registro en Notion con propiedades como Competidor, Tipo de Cambio y Fecha para que puedas filtrar por qué cambió y cuándo a lo largo de todo el historial."
-        ]
-      },
-      "cross-tool-context-query": {
-        "title": "Obtén un resumen de estado unificado sobre cualquier tema sin revisar varias herramientas",
-        "description": "Pregúntale a @Zero sobre un proyecto, funcionalidad o tema. Busca en Slack, Notion, Linear y GitHub simultáneamente, luego devuelve un resumen estructurado: estado actual, responsable, bloqueantes y última actividad - todo desde un solo mensaje.",
-        "timeSaved": "~15 min ahorrados por consulta de estado",
-        "headings": {
-          "scenario": "Por qué las actualizaciones de estado toman más tiempo del que deberían",
-          "prompt": "Cómo pedirle a @Zero un resumen de estado multi-herramienta",
-          "steps": "Cómo @Zero busca, sintetiza y marca señales contradictorias",
-          "nextActions": "Profundiza más, programa resúmenes recurrentes o documenta el estado",
-          "integrations": "Integraciones requeridas: Slack, Linear, Notion y GitHub",
-          "tips": "Mejores prácticas para consultas de contexto multi-herramienta"
-        },
-        "scenario": "Necesitas saber el estado del nuevo flujo de onboarding. Abres Slack para verificar si hubo una decisión reciente. Abres Linear para ver qué está en progreso. Abres Notion para encontrar la especificación. Abres GitHub para revisar el PR. Cuatro pestañas, cuatro contextos, y aún no estás seguro de si la especificación está actualizada o si el ticket de Linear refleja la última decisión. @Zero hace las cuatro búsquedas a la vez, marca cualquier conflicto y te da el panorama completo en una sola respuesta.",
-        "promptVariants": [
-          {
-            "label": "Básico",
-            "prompt": "@Zero what's the current status of [X]?\nSearch Slack (last 14 days), Notion, Linear, and GitHub. Return: current state in one sentence, owner, blockers, and the last meaningful update with source."
-          },
-          {
-            "label": "Análisis profundo",
-            "prompt": "@Zero pull everything on [X] from the last 30 days across Slack, Notion, Linear, and GitHub. Write a full status doc with owner, decision history, and what's next."
-          },
-          {
-            "label": "Programado",
-            "prompt": "@Zero every Monday morning, DM me a status brief on [X] - current state, owner, blockers, last update."
-          },
-          {
-            "label": "Con detección de conflictos",
-            "prompt": "@Zero check Slack and Linear for the latest on [X] and flag if the two sources disagree on status or ownership."
-          }
-        ],
-        "slackPreview": [
-          {
-            "name": "Alex",
-            "text": "@Zero what's the current status of the onboarding redesign? Search Slack, Notion, Linear, and GitHub."
-          },
-          {
-            "name": "Zero",
-            "text": "Status - Onboarding Redesign\n\nCurrent state: In development, mobile flow in review\nOwner: Lancy (Linear)\nBlockers: Figma handoff incomplete (Slack, Apr 11)\nLast activity: PR #9241 opened Apr 12 - \"feat: new onboarding step 3\""
-          }
-        ],
-        "steps": [
-          {
-            "title": "@Zero busca en las cuatro fuentes en paralelo",
-            "description": "@Zero consulta mensajes de Slack, páginas de Notion, issues de Linear y PRs y commits de GitHub simultáneamente, acotado al tema y la ventana de tiempo que especificaste."
-          },
-          {
-            "title": "Los hallazgos se sintetizan en un resumen estructurado",
-            "description": "@Zero extrae estado, responsable, bloqueantes y última actualización de cada fuente. Si dos fuentes no coinciden - por ejemplo, Slack dice bloqueado pero Linear muestra en progreso - @Zero marca el conflicto y cita ambas fuentes."
-          },
-          {
-            "title": "El resumen se devuelve en el mismo hilo",
-            "description": "@Zero responde con un resumen de 4 partes: estado actual en una línea, responsable o DRI, bloqueantes y la última actualización significativa con su fuente y fecha."
-          }
-        ],
-        "nextActions": [
-          {
-            "title": "Profundizar en una fuente",
-            "description": "Obtén el hilo completo del issue de Linear o el PR de GitHub",
-            "examplePrompt": "@Zero show me all comments and activity on the Linear issue for [X] from the last 7 days."
-          },
-          {
-            "title": "Programar resúmenes recurrentes",
-            "description": "Recibe un DM semanal de estado sin tener que preguntar cada vez",
-            "examplePrompt": "@Zero every Monday morning, DM me a status brief on [X] - current state, owner, blockers, last update."
-          },
-          {
-            "title": "Documentar el estado",
-            "description": "Registra el resumen en Notion para el equipo",
-            "examplePrompt": "@Zero search for the latest on [X] across Slack, Linear, and GitHub, then save a status summary to our Decision Log in Notion."
-          }
-        ],
-        "integrations": [
-          {
-            "description": "@Zero lee mensajes en todos los canales para identificar decisiones recientes, bloqueantes y discusiones sobre el tema."
-          },
-          {
-            "description": "@Zero extrae issues abiertos y en progreso para identificar responsables, prioridad y estado actual."
-          },
-          {
-            "description": "@Zero busca en páginas y bases de datos especificaciones, decisiones y documentos de contexto. Opcional pero recomendado."
-          },
-          {
-            "description": "@Zero revisa PRs abiertos, commits recientes y comentarios de issues para la actividad técnica más reciente. Opcional pero recomendado para temas de ingeniería."
-          }
-        ],
-        "tips": [
-          "Sé específico - \"la integración con Stripe\" funciona mejor que \"la funcionalidad de pagos\". @Zero necesita suficiente contexto para filtrar resultados en cuatro fuentes.",
-          "Agrega una ventana de tiempo si el tema es de larga duración. \"Enfócate en los últimos 14 días\" evita que resultados desactualizados oculten los recientes.",
-          "Combínalo con Documentar Decisiones para registrar automáticamente el resumen en Notion después de que @Zero lo devuelva."
         ]
       },
       "customer-360": {
@@ -2505,172 +2329,6 @@
           "Always specify 'production database' or 'prod DB' in your prompt so Zero knows which connection to use if you have multiple environments.",
           "Zero runs only SELECT queries. If you need to modify data, Zero will flag it and ask you to handle it through the appropriate workflow instead.",
           "For sensitive queries, prefix with 'do not log the results' - Zero will deliver the answer in an ephemeral message visible only to you."
-        ]
-      },
-      "marketing-content-automation": {
-        "title": "Run a full content pipeline from research to scoring without a content team",
-        "description": "Set up a multi-agent loop: one agent drafts posts daily from competitor and trend research, Zero saves your best inspirations on command, and a monitor agent scores performance every week. The whole pipeline runs in Slack.",
-        "timeSaved": "~5 hrs saved per week",
-        "headings": {
-          "scenario": "Why content pipelines stall without automation",
-          "prompt": "How to set up the three-agent content loop",
-          "steps": "How the researcher, Zero, and monitor agents work together",
-          "nextActions": "Scale what works, retire what doesn't, and expand to new channels",
-          "integrations": "Required integrations: Slack, X (Twitter), and Notion",
-          "tips": "Best practices for AI-driven content pipelines"
-        },
-        "scenario": "Consistent content output is a compounding advantage. But maintaining it manually - researching trends, drafting posts, tracking what performs, retiring what doesn't - consumes hours that compound in the wrong direction. The vm0 marketing content automation pipeline puts three agents to work: a researcher drafts 8+ posts every morning from X and Reddit, Zero saves template inspirations as you find them in Slack, and a monitor scores every post weekly and tells you what to scale.",
-        "promptVariants": [
-          {
-            "label": "Save a template inspiration",
-            "prompt": "@Zero save template https://x.com/example/post note: strong contrarian hook, good for the Hot Take template."
-          },
-          {
-            "label": "Check this week's drafts",
-            "prompt": "@Zero what drafts did the researcher generate today? Show me the ones marked for approval."
-          },
-          {
-            "label": "Run the monitor now",
-            "prompt": "@Zero run the content performance monitor now and show me this week's Green/Yellow/Red breakdown."
-          }
-        ],
-        "slackPreview": [
-          {
-            "name": "Scarlett",
-            "text": "@Zero save template https://x.com/mlejva/status/12345 note: great founder reflection format, fits Template B."
-          },
-          {
-            "name": "Zero",
-            "text": "Saved to vm0 My Templates in Notion.\n\nTemplate type: B (Founder Reflection)\nNote: great founder reflection format, fits Template B.\nSource: https://x.com/mlejva/status/12345"
-          }
-        ],
-        "steps": [
-          {
-            "title": "Researcher agent drafts content daily",
-            "description": "Every morning, the researcher agent scans competitor X accounts, trending topics, and Reddit communities. It generates 8+ draft posts using your content templates and saves them to a Notion queue for your review."
-          },
-          {
-            "title": "You review and Zero saves inspirations",
-            "description": "You approve or reject drafts in Notion. When you spot a post worth saving as a template inspiration, you tell Zero in Slack - it saves it with your notes and categorization instantly."
-          },
-          {
-            "title": "Monitor scores performance weekly",
-            "description": "Every Monday, the monitor agent pulls engagement metrics for all published posts, applies your scoring formula, and delivers a Green/Yellow/Red breakdown with recommendations: scale the Greens, tweak the Yellows, retire the Reds."
-          }
-        ],
-        "nextActions": [
-          {
-            "title": "Scale a Green template",
-            "description": "Double down on what's working",
-            "examplePrompt": "@Zero tell the researcher to generate 5 variants of Template C (Hot Take) for next week - the last 3 scored Green."
-          },
-          {
-            "title": "Retire a Red template",
-            "description": "Remove underperformers from the pipeline",
-            "examplePrompt": "@Zero retire Template D from the researcher - it hasn't scored above Yellow in 4 sprints."
-          },
-          {
-            "title": "Add a new competitor to monitor",
-            "description": "Expand the researcher's source list",
-            "examplePrompt": "@Zero add @new_competitor to the researcher's monitored accounts for daily content scanning."
-          }
-        ],
-        "integrations": [
-          {
-            "description": "Slack is the command interface - you save inspirations, check drafts, and manage the pipeline through Slack messages."
-          },
-          {
-            "description": "X (Twitter) is the primary research source for the researcher agent and the platform where approved posts are published."
-          },
-          {
-            "description": "Notion stores the content queue, template inspirations, trend intelligence, and weekly performance reports."
-          }
-        ],
-        "tips": [
-          "Review and approve drafts daily - the pipeline only works if you maintain the habit of publishing approved content. The researcher generates, you curate.",
-          "Iterate on templates based on monitor data. Treat content like a product: run 2-week sprints, kill what scores Red after 3+ posts, double down on Greens.",
-          "Save template inspirations as you find them in the wild - the best content ideas come from scrolling, not from scheduled research sessions."
-        ]
-      },
-      "engineering-brief": {
-        "title": "Get an evening engineering brief with PR counts, highlights, and team recognition",
-        "description": "Every evening, Zero pulls GitHub activity, counts PRs merged per engineer, surfaces commit highlights, and picks an MVP of the day - posted to Slack with no manual work.",
-        "timeSaved": "~30 min saved per day",
-        "headings": {
-          "scenario": "Why engineering work goes unrecognized without a system",
-          "prompt": "How to set up the evening engineering brief",
-          "steps": "How Zero gathers activity, computes stats, and writes the brief",
-          "nextActions": "Customize the brief, adjust cadence, or extend to Linear",
-          "integrations": "Required integrations: Slack and GitHub",
-          "tips": "Best practices for team engineering briefs"
-        },
-        "scenario": "PRs get merged. Engineers do good work. But without a ritual to surface it, the work is invisible - especially to team members who weren't in those review threads. Zero runs a brief every evening: how many PRs did we merge today, who shipped what, and who had the standout contribution. It creates a shared sense of progress and recognition without any overhead.",
-        "promptVariants": [
-          {
-            "label": "Set up evening brief",
-            "prompt": "@Zero every weekday at 6pm, pull today's merged PRs from vm0-ai/vm0, count per engineer, surface 3 commit highlights, and pick an MVP. Post to #all-vm0."
-          },
-          {
-            "label": "Run it now",
-            "prompt": "@Zero run today's engineering brief now and post to #dev."
-          },
-          {
-            "label": "Weekly rollup",
-            "prompt": "@Zero pull this week's engineering activity from GitHub - total PRs, most active engineers, top 5 commits - and post a weekly summary to #all-vm0."
-          }
-        ],
-        "slackPreview": [
-          {
-            "name": "Zero",
-            "text": "Evening Brief - April 14, 2026\n\nToday the team merged 53 PRs and closed 70+ issues.\n\n🏆 You Liang - 27 PRs. Today's MVP.\n• CI infrastructure full overhaul\n• Flaky test elimination\n\nLancy - 15 PRs. Connector architecture refactor.\nEthan - 8 PRs. Performance improvements."
-          }
-        ],
-        "steps": [
-          {
-            "title": "Zero pulls GitHub activity for the day",
-            "description": "Zero fetches all PRs merged today in the specified repo, along with commit messages and authors."
-          },
-          {
-            "title": "Zero counts, ranks, and selects highlights",
-            "description": "Zero counts PRs per engineer, identifies the top contributor, and selects the 2-3 most impactful commits based on description scope and team impact."
-          },
-          {
-            "title": "Brief posted to Slack",
-            "description": "Zero posts the evening brief to the specified channel - total PRs, per-engineer counts, commit highlights, and MVP recognition with a short description of why they stood out today."
-          }
-        ],
-        "nextActions": [
-          {
-            "title": "Add Linear to the brief",
-            "description": "Include issues closed alongside PRs merged",
-            "examplePrompt": "@Zero update the evening brief to also include Linear issues closed today per engineer, alongside the GitHub PR counts."
-          },
-          {
-            "title": "Adjust the MVP criteria",
-            "description": "Change how the MVP is selected",
-            "examplePrompt": "@Zero update the MVP selection logic: weight architectural changes more heavily than feature PRs."
-          },
-          {
-            "title": "Add a weekly rollup on Fridays",
-            "description": "Celebrate the full week's output",
-            "examplePrompt": "@Zero on Fridays, post an extended brief: week total, individual PR counts, and the top 3 commits of the week."
-          }
-        ],
-        "integrations": [
-          {
-            "description": "GitHub is required. Zero reads merged PRs and commit data from your repository."
-          },
-          {
-            "description": "Slack is required. Zero posts the brief to your chosen channel at the scheduled time."
-          },
-          {
-            "description": "Linear is optional. Zero can pull issues closed per engineer to complement the GitHub PR data."
-          }
-        ],
-        "tips": [
-          "Post to a channel the whole team sees - #all-vm0 or #engineering - not just a leadership channel. The recognition lands differently when it's public.",
-          "Keep the brief concise: total count, per-engineer, and one standout highlight per MVP. More than 10 lines and people stop reading.",
-          "Run the brief at the same time every day. Predictable cadence builds the habit of checking it."
         ]
       },
       "security-compliance": {
@@ -3421,9 +3079,1284 @@
           "Combínalo con auto-merge-releases para un pipeline de release completo: merge-queue-monitor detecta PRs bloqueados, auto-merge-releases publica el release cuando la cola se despeja."
         ]
       },
+      "voice-driven-agent": {
+        "title": "Arranca tareas de código por voz, sin tocar el teclado",
+        "description": "Pídele a Zero por voz que levante un sandbox, clone tu repo, corra el setup y ejecute una tarea. Zero despacha un agente en segundo plano y reporta el avance en Slack.",
+        "timeSaved": "~20 min ahorrados por tarea sin manos",
+        "headings": {
+          "scenario": "Por qué hoy todas las tareas exigen un teclado",
+          "prompt": "Cómo pedirle a Zero que ejecute una tarea de código por voz",
+          "steps": "Cómo Zero ejecuta tareas activadas por voz",
+          "nextActions": "Escálala, encadénala o vuélvela rutina",
+          "integrations": "Integraciones requeridas: Slack y un runtime de agentes gestionados",
+          "tips": "Buenas prácticas para flujos de agente sin manos"
+        },
+        "scenario": "Las mejores ideas casi nunca llegan cuando estás sentado frente al escritorio. Te pegan caminando, en tránsito, entre reuniones, justo cuando abrir un repo, levantar un sandbox y correr una tarea es poco práctico. Para cuando vuelves al teclado, la idea ya se enfrió. Hablar por voz con Zero cierra esa brecha: describe la tarea en voz alta y un agente gestionado la toma, clona el repo, corre el setup, ejecuta lo que pediste y publica los resultados. Sin cambio de contexto, sin momentum perdido.",
+        "promptVariants": [
+          {
+            "label": "Detallado",
+            "prompt": "@Zero levanta un agente gestionado, clona mi repo, corre pnpm install y pnpm test, y publica los resultados en este hilo."
+          },
+          {
+            "label": "Rápido",
+            "prompt": "@Zero corre la suite de tests en main y mándame DM cuando termine."
+          },
+          {
+            "label": "Programado",
+            "prompt": "@Zero cada mañana a las 8, corre la suite de tests de integración en main y mándame DM con el resumen pass/fail."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Alex",
+            "text": "@Zero clona el repo, corre el setup y ejecuta la suite de tests. Mándame DM cuando termines"
+          },
+          {
+            "name": "Zero",
+            "text": "Agente gestionado `agent-8f21` aprovisionado. Repo clonado, dependencias instaladas (2m14s), suite de tests corriendo. Te mando DM con los resultados."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero convierte tu voz en una tarea estructurada",
+            "description": "Tu solicitud hablada llega al canal de voz de Slack y Zero la parsea en una tarea concreta: qué repo clonar, qué comandos correr, a qué canal reportar. Si algo es ambiguo, Zero pregunta una sola vez antes de despachar."
+          },
+          {
+            "title": "Zero aprovisiona un agente gestionado y corre tus pasos",
+            "description": "Un agente en sandbox se levanta con acceso solo a los conectores que autorizaste. Clona el repo, instala dependencias, ejecuta tus comandos y captura stdout, stderr y códigos de salida."
+          },
+          {
+            "title": "Zero reporta al canal o DM que indicaste",
+            "description": "Los resultados llegan como un resumen compacto con estado pass/fail, métricas clave (duración, errores, archivos modificados) y un enlace a los logs completos. Si la tarea produjo artefactos (un diff, un reporte de tests, un archivo), Zero los adjunta."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Encadénala con un PR",
+            "description": "Cuando la tarea genere un diff, haz que Zero abra un PR en borrador para revisión.",
+            "examplePrompt": "@Zero si la tarea generó cambios, abre un PR en borrador contra main y etiquétame para revisar."
+          },
+          {
+            "title": "Enruta por severidad",
+            "description": "Manda las fallas al canal, los éxitos a DM.",
+            "examplePrompt": "@Zero si la corrida falla, publica los detalles en #eng-oncall; si pasa, solo mándame DM."
+          },
+          {
+            "title": "Vuélvela rutina",
+            "description": "Agenda la tarea activada por voz como trabajo recurrente.",
+            "examplePrompt": "@Zero cada día hábil a las 9, corre la suite de smoke tests en main y mándame DM con el resumen."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Slack: Zero escucha los mensajes de voz y los parsea en tareas estructuradas. Se requiere captura de audio y acceso de canal/DM."
+          },
+          {
+            "description": "Runtime de agentes gestionados: Zero despacha un agente en sandbox con su propio cómputo, sistema de archivos y permisos de conector. Necesario para cualquier ejecución de código."
+          },
+          {
+            "description": "GitHub (opcional). Solo se necesita si la tarea implica clonar repos, correr tests o abrir PRs. Los tokens acotados mantienen al agente gestionado limitado a lo que tú apruebes."
+          }
+        ],
+        "tips": [
+          "Nombra el destino del reporte en tu prompt. 'Mándame DM' vs. 'publícalo en #eng-oncall' marca una gran diferencia cuando estás sin manos.",
+          "Mantén los comandos de voz cortos y específicos. 'Corre los tests en main' funciona; 'y de paso revisa los docs y ve aquello de ayer' no.",
+          "Combínalo con Fleet Monitoring para preguntar '¿cómo van mis agentes?' y recibir estado en vivo sin volver al teclado."
+        ]
+      },
+      "developer-support-triage": {
+        "title": "Responde preguntas de developers sin descarrilar al ingeniero de guardia",
+        "description": "Zero atiende las preguntas de soporte que entran, revisa issues y PRs existentes por duplicados, y responde directo desde los docs o crea un issue bien acotado para el equipo.",
+        "timeSaved": "~30 min ahorrados por pregunta de soporte",
+        "headings": {
+          "scenario": "Por qué las preguntas de soporte se comen el día del ingeniero de guardia",
+          "prompt": "Cómo pedirle a Zero que atienda una pregunta de soporte",
+          "steps": "Cómo Zero clasifica preguntas de developers",
+          "nextActions": "Enruta a un especialista, crea un ticket o cierra duplicados en automático",
+          "integrations": "Integraciones requeridas: GitHub, Slack y Gmail",
+          "tips": "Buenas prácticas para la triaje de soporte a developers"
+        },
+        "scenario": "Toda empresa con productos para developers recibe un goteo constante de preguntas tipo '¿por qué falla esto?' cayendo en Slack, correo y GitHub. La mitad son duplicados de issues existentes, un cuarto están documentados, el resto son bugs reales, pero ordenarlos le cuesta una hora cada mañana a tu ingeniero de guardia. Zero lee cada pregunta entrante, busca en tus issues, PRs y docs, y responde directo con un enlace o crea un ticket limpio y reproducible. El ingeniero de guardia despierta con una cola curada en lugar de un buzón.",
+        "promptVariants": [
+          {
+            "label": "Detallado",
+            "prompt": "@Zero clasifica esta pregunta de soporte: busca duplicados en nuestros issues y PRs, revisa los docs, y responde aquí con un enlace o crea un issue bien acotado y etiqueta a @oncall."
+          },
+          {
+            "label": "Rápido",
+            "prompt": "@Zero clasifica esta pregunta."
+          },
+          {
+            "label": "Programado",
+            "prompt": "@Zero cada hora en horario laboral, revisa #dev-support por preguntas nuevas y clasifícalas: responde si puedes, crea un issue si no."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "External dev",
+            "text": "@Zero recibo 401 en POST /api/v1/agents cada vez, con token válido. ¿Qué pasa?"
+          },
+          {
+            "name": "Zero",
+            "text": "Encontrado duplicado del issue #2104. El scope `agents:write` es obligatorio para ese endpoint y no está en el scope OAuth por defecto. Fix: regenera tu token con `agents:write`. Docs: /api/auth#scopes. Si no se resuelve con eso, escalo."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero busca primero en tu librería de issues conocidos",
+            "description": "Zero consulta tus issues, PRs y docs enlazados de GitHub por coincidencias. Los duplicados y las soluciones documentadas se responden en línea con cita, para que el usuario se desatore de inmediato."
+          },
+          {
+            "title": "Zero crea un issue bien acotado cuando la pregunta es nueva",
+            "description": "Si no hay match, Zero redacta un issue en GitHub con la reproducción del usuario, comportamiento esperado vs. actual, detalles del entorno y cualquier traza de error. Etiqueta al dueño del componente correcto y publica el enlace al issue en el hilo."
+          },
+          {
+            "title": "Zero da seguimiento a la resolución",
+            "description": "Cuando el issue se cierra, Zero le hace ping al usuario original con el enlace al fix. Si el correo del usuario quedó capturado, Zero también cierra el loop por ahí."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Escala a un especialista",
+            "description": "Enruta preguntas de componentes específicos al on-call correcto.",
+            "examplePrompt": "@Zero si una pregunta de soporte menciona `billing`, escálala a #oncall-billing en lugar de la cola por defecto."
+          },
+          {
+            "title": "Cierra duplicados en automático en GitHub",
+            "description": "Haz que Zero cierre los issues de GitHub que identifica como duplicados, con enlace al canónico.",
+            "examplePrompt": "@Zero cuando encuentres un issue duplicado en GitHub, comenta con el enlace al canónico y ciérralo."
+          },
+          {
+            "title": "Vuélvelo rutina",
+            "description": "Corre un barrido cada hora en el canal de soporte.",
+            "examplePrompt": "@Zero cada hora en horario laboral, escanea #dev-support por mensajes sin responder y clasifícalos."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "GitHub: Zero busca en issues, PRs y docs enlazados por duplicados y contexto. Se requiere acceso de escritura a issues para que Zero pueda crear tickets nuevos y cerrar duplicados."
+          },
+          {
+            "description": "Slack: Zero lee el canal de soporte, publica respuestas y etiqueta especialistas. Acceso de lectura y escritura al canal requerido."
+          },
+          {
+            "description": "Gmail (opcional). Solo se necesita si las preguntas de soporte también llegan por correo y quieres que Zero cierre el loop cuando los issues se resuelvan."
+          }
+        ],
+        "tips": [
+          "Ajusta el umbral de coincidencia de duplicados por componente. Una pregunta de billing necesita un match muy cercano antes de cerrarse en automático; una de auth puede matchear más flojo.",
+          "Haz siempre que Zero cite su fuente. 'Del issue #2104' es confiable; 'creo que es porque...' no lo es.",
+          "Enruta por etiqueta, no por canal. Etiqueta las preguntas entrantes con una etiqueta de componente y filtra las escalaciones por etiqueta para tener entregas limpias."
+        ]
+      },
+      "morning-brief": {
+        "title": "Arranca el día con un digesto en vez de cinco pestañas",
+        "description": "Un único resumen pre-standup que junta tu calendario, tracker de issues, chat, feeds y code host en un resumen matutino compacto, así entras al standup ya al día.",
+        "timeSaved": "~20 min ahorrados cada mañana",
+        "headings": {
+          "scenario": "Por qué cada mañana empieza con cinco pestañas abiertas",
+          "prompt": "Cómo pedirle a Zero tu brief matutino",
+          "steps": "Cómo Zero arma tu brief matutino",
+          "nextActions": "Personalízalo, mándalo a un canal de equipo o ajusta la señal",
+          "integrations": "Integraciones requeridas: Calendar, tracker de issues y Slack",
+          "tips": "Buenas prácticas para un brief matutino útil"
+        },
+        "scenario": "Todas las mañanas arrancan igual: calendario para ver qué sigue, Linear para ver qué se movió, Slack para ponerte al día con las conversaciones de la noche, X para noticias del sector, GitHub para ver qué se mergeó. Veinte minutos se van antes de la primera tarea real. Morning Brief lo colapsa en un solo mensaje de Slack: las reuniones que importan, los issues que se movieron, los hilos que piden respuesta, las noticias relevantes y los PRs que se mergearon anoche, todo en un bloque compacto esperándote cuando abres Slack.",
+        "promptVariants": [
+          {
+            "label": "Detallado",
+            "prompt": "@Zero cada día hábil a las 8am, mándame DM con un brief matutino: reuniones de hoy, issues asignados a mí que se movieron anoche, hilos de Slack donde me mencionan, top 3 posts de mi feed de X y PRs que se mergearon en nuestro repo durante la noche."
+          },
+          {
+            "label": "Rápido",
+            "prompt": "@Zero brief matutino."
+          },
+          {
+            "label": "Versión equipo",
+            "prompt": "@Zero cada día hábil a las 8:30am, publica un brief matutino de equipo en #standup: calendario colectivo, issues abiertos de alta prioridad, PRs de la noche."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Zero",
+            "text": "Buenos días. Tu brief de hoy:\n\n📅 3 reuniones (design review a las 10, 1:1 a las 2, sync de ops a las 4)\n📋 2 issues se movieron anoche (ENG-412 reabierto, ENG-438 bloqueado en revisión)\n💬 4 hilos esperan respuesta (3 en #product, 1 en #support)\n📰 Top noticia: un competidor publicó una voice API ayer, vale 5 minutos de lectura\n🚀 Durante la noche: 6 PRs mergeados a main (ver lista completa)"
+          },
+          {
+            "name": "Alex",
+            "text": "perfecto, justo lo que necesitaba antes de las 10"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero junta tu agenda del día y la actividad de la noche",
+            "description": "Zero lee el calendario de hoy, los cambios de anoche en el tracker de issues, los hilos de Slack donde te mencionan y los PRs mergeados ayer. Todo cae en un solo dataset de trabajo."
+          },
+          {
+            "title": "Zero filtra por lo que realmente te importa",
+            "description": "No toda notificación es señal. Zero descarta hilos resueltos, invitaciones de calendario duplicadas y actualizaciones de issues de baja prioridad. Lo que queda es lo que de verdad querrías ver."
+          },
+          {
+            "title": "Zero lo entrega como un solo mensaje compacto",
+            "description": "El brief aterriza como un DM de Slack (o post en canal para versiones de equipo) con secciones con emoji, enlaces clicables y nada más largo de lo que puedes escanear en 60 segundos."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Personaliza la señal",
+            "description": "Sube o baja lo que aparece según lo que te importa.",
+            "examplePrompt": "@Zero deja de incluir eventos de calendario en mi brief matutino. Yo reviso Calendar por mi cuenta."
+          },
+          {
+            "title": "Arma un brief de equipo",
+            "description": "Corre un brief separado para todo el equipo, agregado de forma distinta.",
+            "examplePrompt": "@Zero cada día hábil a las 9am, publica un brief de equipo en #standup con el calendario colectivo, issues P0/P1 abiertos y deploys de la noche."
+          },
+          {
+            "title": "Agrega una fuente de noticias",
+            "description": "Trae un feed personalizado relevante para tu rol.",
+            "examplePrompt": "@Zero agrega los top 3 posts de r/devops a mi brief matutino."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Calendar: Zero lee los eventos de hoy y la primera reunión de mañana. Se requiere acceso de lectura."
+          },
+          {
+            "description": "Tracker de issues (Linear o similar): Zero trae los issues asignados a ti y los cambios de estado de la noche. Acceso de lectura requerido."
+          },
+          {
+            "description": "Slack: Zero lee los hilos donde te mencionan y entrega el brief final. Se requiere acceso de lectura + escritura a DM/canal."
+          },
+          {
+            "description": "X (Twitter), opcional. Zero trae los top posts de las cuentas que sigues para la lectura rápida de noticias."
+          },
+          {
+            "description": "GitHub (opcional). Zero lista los PRs mergeados a main durante la noche para que entres sabiendo qué salió."
+          }
+        ],
+        "tips": [
+          "Ponlo 15 minutos antes de tu primera reunión, no apenas despiertes. Quieres que sea lo que lees con el café, no una alarma a las 6am.",
+          "Mantenlo en menos de 10 líneas. Si crece, corta fuentes: el brief solo es útil si de verdad lo lees completo.",
+          "Combínalo con el Evening Brief para que el equipo tenga cierre de libro (primer de mañana y cierre de tarde) sin que nadie los arme a mano."
+        ]
+      },
+      "gmail-poll-dm": {
+        "title": "Recibe un DM cuando llegue un correo nuevo y nunca pierdas un lead",
+        "description": "Zero consulta tu Gmail con la cadencia que definas y te manda DM cuando llega algo nuevo que coincida con tu filtro. Monitoreo persistente en segundo plano sin salir de Slack.",
+        "timeSaved": "~15 min ahorrados por ciclo de correo",
+        "headings": {
+          "scenario": "Por qué el inbox zero siempre está a una hora de distancia",
+          "prompt": "Cómo pedirle a Zero que consulte tu Gmail",
+          "steps": "Cómo Zero monitorea tu buzón",
+          "nextActions": "Ajusta el filtro, responde en automático o reenvía correo clave",
+          "integrations": "Integraciones requeridas: Gmail y Slack",
+          "tips": "Buenas prácticas para monitoreo de buzón en segundo plano"
+        },
+        "scenario": "Estás concentrado en trabajo real. También estás esperando un correo: un lead, un contrato firmado, la respuesta de un cliente a tu propuesta. No quieres estar cambiando a Gmail cada rato, pero tampoco quieres perderlo seis horas. Gmail Polling DM resuelve exactamente eso: Zero revisa tu buzón cada cierto tiempo y, en cuanto cae algo nuevo que coincide con tu filtro, te manda DM con un resumen de una línea. Tú sigues enfocado; el correo importante igual te llega casi en tiempo real.",
+        "promptVariants": [
+          {
+            "label": "Detallado",
+            "prompt": "@Zero cada 5 minutos, revisa mi Gmail por correo nuevo de fuera de nuestro dominio que no sea marketing y mándame DM con un resumen de una línea con remitente, asunto y primera línea del cuerpo."
+          },
+          {
+            "label": "Rápido",
+            "prompt": "@Zero vigila mi buzón y mándame DM cuando llegue algo importante."
+          },
+          {
+            "label": "Filtrado",
+            "prompt": "@Zero cada 10 minutos, revisa Gmail por correo nuevo que coincida con `subject:contract OR subject:invoice OR from:@customer-domain.com` y mándame DM solo con esos."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Taylor",
+            "text": "@Zero revisa mi gmail cada 5 min y mándame DM con los correos nuevos"
+          },
+          {
+            "name": "Zero",
+            "text": "Vigilando el buzón cada 5 min. Te mando DM con correo nuevo de fuera de tu dominio, saltando lo etiquetado como `marketing` o `newsletters`. Primera revisión en 5 minutos."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero configura una revisión programada de buzón",
+            "description": "Tú defines la cadencia (cada 5 min, 10 min, por hora) y un filtro (dominio del remitente, asunto contiene, etiqueta). Zero agenda la revisión recurrente y la corre persistentemente en segundo plano."
+          },
+          {
+            "title": "Zero revisa Gmail por correo nuevo que coincida con tu filtro",
+            "description": "En cada tick, Zero consulta Gmail por correo recibido desde la última revisión que coincida con tu filtro. Lo que ya se vio se salta, para que no recibas DMs duplicados."
+          },
+          {
+            "title": "Zero te manda DM con los matches nuevos",
+            "description": "Cada correo nuevo llega como un DM de una línea con remitente, asunto y un preview. El enlace clicable va directo al hilo de Gmail, para que respondas sin romper el flujo."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Ajusta el filtro",
+            "description": "Ensancha o acota qué cuenta como importante.",
+            "examplePrompt": "@Zero a partir de ahora, solo mándame DM con correo de direcciones a las que escribí en los últimos 30 días."
+          },
+          {
+            "title": "Respuesta automática a remitentes conocidos",
+            "description": "Haz que Zero mande una confirmación rápida sin que tú intervengas.",
+            "examplePrompt": "@Zero cuando llegue correo de @customer-domain.com, responde en automático con mi plantilla `out of office, back Monday` y mándame DM con el hilo."
+          },
+          {
+            "title": "Reenvía al canal correcto",
+            "description": "Enruta el correo crítico a un canal de equipo.",
+            "examplePrompt": "@Zero cuando llegue un contrato nuevo, publica un resumen en #sales-ops y mándame DM."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Gmail: Zero lee el correo nuevo que coincide con tu filtro. Se requiere acceso de solo lectura al buzón. No se almacena correo; Zero solo ve cada mensaje el tiempo necesario para generar el preview."
+          },
+          {
+            "description": "Slack: Zero entrega las alertas de correo nuevo como DMs. Acceso de escritura a DM requerido."
+          }
+        ],
+        "tips": [
+          "No pongas la cadencia por debajo de 5 minutos: más rápido y solo estás recreando la ansiedad del buzón en Slack.",
+          "Empieza amplio y luego acota. Mira un día de alertas y después ajusta el filtro según lo que resultó ser ruido.",
+          "Pausa durante tiempos de enfoque. `@Zero pausa el watcher de buzón hasta las 3pm` detiene los DMs para que puedas hacer deep work."
+        ]
+      },
+      "release-readiness-check": {
+        "title": "Sabe cuándo tu release está listo para salir, sin revisar a mano",
+        "description": "Zero monitorea tu pipeline de release, valida los gates de CI y los bumps de versión, y te dice en cuanto un PR de release está listo, o exactamente qué lo está bloqueando.",
+        "timeSaved": "~15 min ahorrados por revisión de release",
+        "headings": {
+          "scenario": "Por qué '¿este release está listo?' es una respuesta de 15 minutos",
+          "prompt": "Cómo pedirle a Zero que revise la preparación del release",
+          "steps": "Cómo Zero verifica la preparación del release",
+          "nextActions": "Endurece los gates, notifica al equipo o haz auto-merge cuando esté verde",
+          "integrations": "Integraciones requeridas: GitHub y Slack",
+          "tips": "Buenas prácticas para monitoreo de preparación de releases"
+        },
+        "scenario": "Antes de cada release, alguien tiene que verificar: todos los checks de CI en verde, versión bumpada correctamente, changelog generado, sin etiquetas bloqueantes, sin migraciones que requieran cuidado extra. Diez minutos de clicks entre pestañas, cualquiera de las cuales podría sacar un problema. Release Readiness Check lo convierte en un solo prompt: Zero lee el PR, verifica cada gate, saca lo que falta y te dice claramente: listo, o bloqueado en X. Cuando está listo, el equipo recibe luz verde en Slack; cuando no, saben exactamente qué arreglar.",
+        "promptVariants": [
+          {
+            "label": "Detallado",
+            "prompt": "@Zero revisa el PR de release abierto: verifica que pasaron todos los checks de CI, que la versión se bumpeó según semver, que el changelog se actualizó, que no tiene etiqueta `do-not-merge` y que no se tocaron archivos de migración. Publica el veredicto en #release-notify."
+          },
+          {
+            "label": "Rápido",
+            "prompt": "@Zero ¿el release está listo?"
+          },
+          {
+            "label": "Programado",
+            "prompt": "@Zero cada día hábil a las 2pm, revisa el pipeline de release y publica la preparación en #release-notify."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Morgan",
+            "text": "@Zero ¿el release está listo?"
+          },
+          {
+            "name": "Zero",
+            "text": "PR de release #2847: ❌ todavía no listo.\n\n✅ Los 14 checks de CI en verde\n✅ Versión bumpada 1.8.0 → 1.9.0\n✅ Changelog actualizado (14 entradas)\n❌ Etiqueta `needs-security-review` aún puesta, esperando a @security\n✅ No se tocaron migraciones\n\nCuando se quite la etiqueta de revisión de seguridad, este PR está listo para merge."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero lee el PR de release abierto",
+            "description": "Zero trae la metadata del PR, los diffs de archivos, el estado de CI, las etiquetas y el changelog. Todo se normaliza en una checklist por release."
+          },
+          {
+            "title": "Zero verifica cada gate de preparación que definiste",
+            "description": "Zero recorre tus gates: CI verde, bump de versión con semver correcto, changelog actualizado, sin etiquetas bloqueantes, sin cambios en archivos sensibles, reviewers aprobados. Cada gate pasa o falla con evidencia."
+          },
+          {
+            "title": "Zero reporta un único veredicto",
+            "description": "El resultado es un mensaje de Slack: 'listo' o 'no listo, bloqueado en X'. Sin ambigüedad, sin una lista de 14 enlaces para revisar. Si está listo, el equipo puede mergear con confianza."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Endurece los gates",
+            "description": "Agrega un nuevo criterio de preparación al vuelo.",
+            "examplePrompt": "@Zero a partir de ahora, falla también la revisión de release si la descripción del PR está vacía o la rama objetivo no es `main`."
+          },
+          {
+            "title": "Notifica a la gente correcta",
+            "description": "Enruta los bloqueadores al on-call relevante.",
+            "examplePrompt": "@Zero cuando el release esté bloqueado en revisión de seguridad, etiqueta a @security en el post de preparación, no solo al canal general."
+          },
+          {
+            "title": "Auto-merge cuando todos los gates estén en verde",
+            "description": "Encadénalo con el caso de uso de auto-merge de releases para shipping sin manos.",
+            "examplePrompt": "@Zero cuando todos los gates de preparación estén en verde, activa auto-merge en el PR de release para que salga en cuanto branch protection dé paso."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "GitHub: Zero lee estado del PR, diffs de archivos, checks de CI, etiquetas y changelog. Se requiere acceso de lectura al repo; el acceso de escritura solo es necesario si se encadena con auto-merge."
+          },
+          {
+            "description": "Slack: Zero publica los veredictos de preparación en el canal que indiques. Acceso de escritura al canal requerido."
+          }
+        ],
+        "tips": [
+          "Define 'listo' una sola vez, desde el inicio. Codificar 'CI verde + changelog + sin migraciones' en el prompt es el costo único; cada release futuro se beneficia.",
+          "Córrelo antes del standup, no después. La revisión de preparación es más útil cuando activa al equipo a actuar, no cuando el release ya lleva cuatro horas parado.",
+          "Encadénalo con Auto-Merge Releases para un shipping de verdad sin manos en los releases que pasen todos los gates."
+        ]
+      },
+      "docs-auto-update": {
+        "title": "Convierte las preguntas de soporte recurrentes en updates de docs, en automático",
+        "description": "Cuando la misma pregunta de soporte aparece tres veces, Zero redacta un update de docs y crea un PR contra tu sitio, para que la siguiente persona encuentre la respuesta antes de preguntar.",
+        "timeSaved": "~45 min ahorrados por ciclo de actualización de docs",
+        "headings": {
+          "scenario": "Por qué las mismas cinco preguntas de soporte siempre vuelven",
+          "prompt": "Cómo pedirle a Zero que actualice docs desde señales",
+          "steps": "Cómo Zero convierte preguntas en docs",
+          "nextActions": "Enruta al reviewer correcto, publica o amplía cobertura",
+          "integrations": "Integraciones requeridas: Slack y GitHub",
+          "tips": "Buenas prácticas para updates de docs dirigidos por señales"
+        },
+        "scenario": "Todo canal de soporte tiene cinco o seis preguntas que nunca mueren, no porque el producto sea confuso, sino porque los docs no las mencionan. Trackear esos hilos a mano, redactar updates y empujar PRs es del tipo de trabajo que siempre se queda colgado. Docs Auto-Update vigila tus canales de soporte, cuenta las preguntas recurrentes y, en cuanto una se ha hecho tres veces o más por personas distintas, redacta un update de docs y crea un PR. Un reviewer tarda dos minutos aprobando. La siguiente persona con la misma pregunta encuentra la respuesta en lugar de preguntar.",
+        "promptVariants": [
+          {
+            "label": "Detallado",
+            "prompt": "@Zero cada semana, escanea #support y #community por preguntas hechas por 3+ personas distintas en los últimos 14 días. Para cada una, redacta un update de docs y abre un PR contra el repo del sitio con el cambio."
+          },
+          {
+            "label": "Rápido",
+            "prompt": "@Zero ¿alguna pregunta de soporte recurrente esta semana que deba volverse docs?"
+          },
+          {
+            "label": "Puntual",
+            "prompt": "@Zero redacta un update de docs para la pregunta sobre el scope `agents:write` y abre un PR."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Jamie",
+            "text": "@Zero revisa las preguntas de soporte recurrentes de los últimos 14 días y redacta updates de docs"
+          },
+          {
+            "name": "Zero",
+            "text": "Encontré 3 preguntas recurrentes que vale documentar:\n\n1. Scope OAuth `agents:write` (preguntado 5 veces): redacté update a /api/auth#scopes → PR #2901\n2. Comportamiento de retry en requests con rate-limit (preguntado 4 veces): redacté update a /api/rate-limits → PR #2902\n3. Cómo scopear agentes gestionados por usuario (preguntado 3 veces): redacté nueva sección /guides/multi-tenant → PR #2903\n\nTodos los PRs etiquetados a @docs-team para revisión."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero vigila tus canales de soporte por preguntas recurrentes",
+            "description": "Zero lee los hilos de soporte entrantes, clusteriza semánticamente preguntas similares y cuenta askers únicos. Las preguntas de 3+ usuarios distintos en una ventana rodante se marcan como huecos de documentación."
+          },
+          {
+            "title": "Zero redacta un update de docs basado en las respuestas resueltas",
+            "description": "Para cada pregunta marcada, Zero lee la resolución del hilo, identifica la ubicación correcta en los docs (sección existente o guía nueva) y redacta el update en el formato markdown de tu sitio con ejemplos concretos."
+          },
+          {
+            "title": "Zero abre un PR para revisión",
+            "description": "Cada borrador aterriza como un PR en el repo de tu sitio, con los hilos de la pregunta que lo disparó enlazados en la descripción. Un reviewer del equipo de docs aprueba; tú no escribes desde cero."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Enruta al reviewer correcto",
+            "description": "Asigna los PRs al dueño del componente en lugar de a un reviewer genérico.",
+            "examplePrompt": "@Zero cuando redactes docs para una pregunta de billing, etiqueta a @billing-team en el PR en vez de a @docs-team."
+          },
+          {
+            "title": "Auto-publica updates de bajo riesgo",
+            "description": "Deja que los arreglos de typos y aclaraciones pequeñas salgan sin revisión humana.",
+            "examplePrompt": "@Zero para PRs de docs de menos de 50 líneas que solo toquen secciones existentes, activa auto-merge cuando CI pase."
+          },
+          {
+            "title": "Amplía la cobertura",
+            "description": "Agrega nuevos canales fuente para señal.",
+            "examplePrompt": "@Zero escanea también el buzón de Gmail de soporte por preguntas recurrentes, no solo Slack."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Slack: Zero lee tus canales de soporte para detectar preguntas recurrentes. Se requiere acceso de lectura a los canales que indiques."
+          },
+          {
+            "description": "GitHub: Zero redacta los updates de docs como PRs contra el repo de tu sitio. Se requiere acceso de escritura al repo para que Zero pueda crear ramas y abrir PRs."
+          },
+          {
+            "description": "Notion (opcional). Útil si tus docs internos viven en Notion y quieres que Zero también los actualice."
+          }
+        ],
+        "tips": [
+          "Pon el umbral de 'recurrente' en 3 askers únicos en 14 días, no en 1. Con 1 solo estás reescribiendo docs a diario; con 3 estás atrapando huecos reales.",
+          "Siempre incluye los hilos fuente en la descripción del PR. Los reviewers pueden ver las preguntas originales y juzgar si el borrador realmente las responde.",
+          "Combínalo con KB Capture para que los hilos resueltos fluyan a tu base de conocimiento interna en paralelo."
+        ]
+      },
+      "control-verification": {
+        "title": "Verifica tus controles de seguridad de forma programada, sin incendios",
+        "description": "Zero revisa tu configuración de seguridad en la cadencia que definas, verifica que cada control esté en su lugar y reporta desviaciones al equipo de compliance antes de la semana de auditoría.",
+        "timeSaved": "~2 horas ahorradas por ciclo de verificación",
+        "headings": {
+          "scenario": "Por qué cada auditoría se vuelve un incendio de dos semanas",
+          "prompt": "Cómo pedirle a Zero que verifique controles",
+          "steps": "Cómo Zero verifica tus controles de seguridad",
+          "nextActions": "Remedia una desviación, escala cobertura o fija la agenda",
+          "integrations": "Integraciones requeridas: GitHub, Notion y Slack",
+          "tips": "Buenas prácticas para verificación continua de controles"
+        },
+        "scenario": "Las auditorías solían ser un incendio trimestral para todos: capturas de pantalla de cada regla de firewall, cada política de IAM, cada revisión de acceso, armadas a mano en la semana previa a la llegada del auditor. Los controles habían derivado sin que nadie se diera cuenta; la remediación pasaba en modo crisis. La Verificación Continua de Controles corre los checks a ritmo sostenido y las derivas se atrapan la semana que ocurren, no la semana antes de la auditoría. El equipo de compliance recibe un registro fechado y firmado de cada revisión; ingeniería recibe una alerta cuando algo se desvía; los auditores reciben evidencia ya organizada.",
+        "promptVariants": [
+          {
+            "label": "Detallado",
+            "prompt": "@Zero cada lunes a las 7am, verifica nuestros controles de seguridad: las reglas de firewall coinciden con la baseline en Notion, la branch protection requerida de GitHub está activa en `main`, ningún repo tiene 2FA deshabilitado. Registra los resultados en la base de datos de Controles y alerta a #compliance en cualquier deriva."
+          },
+          {
+            "label": "Rápido",
+            "prompt": "@Zero corre una verificación de controles ahora y publica los resultados."
+          },
+          {
+            "label": "Acotado",
+            "prompt": "@Zero verifica solo los controles de SOC 2 esta mañana. Salta los checks de GDPR e HIPAA."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Zero",
+            "text": "Verificación semanal de controles: 3 derivas encontradas:\n\n❌ Repo `internal-tools`: branch protection en `main` deshabilitada el 17 de abr (baseline: habilitada)\n❌ Regla de firewall `allow-admin-ip` expandida a rango /16 el 18 de abr (baseline: único /32)\n❌ Usuario `contractor-x` sigue con acceso a base de datos de prod tras fin de contrato (15 de abr)\n\n✅ Otros 47 controles verificados y pasando.\n\nRegistro completo en Notion →. Avisando a @compliance por las 3 derivas."
+          },
+          {
+            "name": "Riley",
+            "text": "voy, remedio la regla de firewall hoy"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero trae tu configuración de seguridad actual",
+            "description": "Zero lee tus controles fuente de verdad (branch protection, IAM, reglas de firewall, revisiones de acceso) desde los sistemas donde viven. Sin muestreo: cada control en el scope se revisa en cada corrida."
+          },
+          {
+            "title": "Zero compara contra la baseline que definiste",
+            "description": "Tu configuración esperada vive en una base de datos de Notion. Zero compara estado actual contra baseline, marca cualquier deriva y registra pass/fail por control con timestamp y enlace a la evidencia."
+          },
+          {
+            "title": "Zero registra resultados y alerta sobre derivas",
+            "description": "Cada corrida escribe un registro fechado en la base de datos de Controles. Cualquier deriva dispara una alerta en Slack etiquetando al canal de compliance y al ingeniero dueño del control. Los auditores reciben un historial inmutable."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Remedia una deriva",
+            "description": "Haz que Zero abra un ticket o PR para arreglar la deriva en automático.",
+            "examplePrompt": "@Zero para cualquier deriva en branch protection, abre un PR que restaure las reglas de protección y etiqueta al dueño del repo."
+          },
+          {
+            "title": "Amplía la cobertura de controles",
+            "description": "Agrega una nueva familia de controles al barrido.",
+            "examplePrompt": "@Zero agrega controles de GDPR a la verificación semanal: compliance de DPA, tiempo de respuesta a solicitudes de eliminación, logs de transferencia transfronteriza."
+          },
+          {
+            "title": "Fija la agenda",
+            "description": "Pasa de semanal a diaria para controles de alto riesgo.",
+            "examplePrompt": "@Zero corre la verificación de acceso a la base de datos de prod a diario, no semanal. Deja el resto en cadencia semanal."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "GitHub: Zero lee branch protection, permisos de repo y estado de 2FA para todos los repos en el scope. Se requiere acceso de lectura a settings de la org."
+          },
+          {
+            "description": "Notion: Zero guarda la configuración baseline y escribe los resultados de verificación. Se requiere acceso de lectura + escritura a dos bases de datos (baseline y resultados)."
+          },
+          {
+            "description": "Slack: Zero alerta al canal de compliance sobre derivas y publica un resumen semanal. Acceso de escritura al canal requerido."
+          }
+        ],
+        "tips": [
+          "Mantén la baseline en un solo lugar: Notion, Drata o tu propio CMDB. Las baselines dispersas derivan en silencio y Zero no puede revisar lo que no está documentado.",
+          "Separa 'deriva' de 'excepción'. Una deriva es un control que cambió sin aprobación; una excepción es una desviación que el equipo aprobó. Zero debe tratarlas distinto.",
+          "Corre el resumen hacia la temporada de auditoría: los auditores aman los logs continuos, y 'llevamos dos años haciendo esto semanalmente' es una historia mucho más fuerte que 'corrimos los checks la semana pasada'."
+        ]
+      },
+      "brief-to-draft-content": {
+        "title": "Convierte un brief rough en un borrador listo para publicar con URL de preview",
+        "description": "Conversa una idea rough en Slack. Zero te entrevista, redacta el post en tu CMS y devuelve una URL de preview, para que el ciclo de revisión arranque con algo real, no con una página en blanco.",
+        "timeSaved": "~2 horas ahorradas por post",
+        "headings": {
+          "scenario": "Por qué el primer borrador siempre toma más de lo que debería",
+          "prompt": "Cómo pedirle a Zero que redacte contenido",
+          "steps": "Cómo Zero convierte briefs en borradores",
+          "nextActions": "Itera, traduce o agenda una publicación",
+          "integrations": "Integraciones requeridas: Slack y tu CMS",
+          "tips": "Buenas prácticas para flujos de brief a borrador"
+        },
+        "scenario": "Toda pieza de contenido arranca con una idea suelta: 'deberíamos escribir algo sobre cómo pensamos los flujos por voz'. Entre esa idea y un borrador listo para publicar hay tres horas mirando una hoja en blanco, empezando dos veces y preguntándote si la estructura es la correcta. Brief-to-Draft lo comprime: platica con Zero cinco minutos ya que estás en Slack, Zero saca los argumentos clave, redacta el post completo en tu CMS con la estructura correcta y te manda una URL de preview. Revisas algo real, no un cursor que parpadea.",
+        "promptVariants": [
+          {
+            "label": "Detallado",
+            "prompt": "@Zero quiero escribir un post de blog sobre flujos de desarrollo por voz. Entrevístame para sacar los argumentos clave (hazme 5 preguntas filosas) y luego redacta el post completo en nuestro CMS como borrador y mándame la URL de preview."
+          },
+          {
+            "label": "Rápido",
+            "prompt": "@Zero redacta un post de blog a partir de este hilo: estructúralo, llena los huecos y dame una URL de preview."
+          },
+          {
+            "label": "Use-case page",
+            "prompt": "@Zero redacta una página de use case para [descripción del flujo]: sigue la estructura estándar, propón metadata (slug, color, avatar) y crea un PR."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Riley",
+            "text": "@Zero quiero escribir sobre flujos de desarrollo por voz. Entrevístame."
+          },
+          {
+            "name": "Zero",
+            "text": "Ok, 5 preguntas para sacar la pieza:\n1. ¿Quién es el lector? (dev solo, tech lead, CTO?)\n2. ¿Cuál es la afirmación más filosa con la que quieres que se queden?\n3. ¿Cuál es la historia o ejemplo más fuerte que tienes?\n4. ¿Cuál es el contraargumento, qué diría un escéptico?\n5. Call to action: ¿qué quieres que hagan después de leerlo?\n\nContesta cada una y en ~5 min tengo un borrador en el CMS."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero te entrevista para sacar la pieza de tu cabeza",
+            "description": "En lugar de pedirte que armes un outline, Zero te hace 5 preguntas filosas. Tus respuestas se vuelven la columna vertebral: la audiencia, la afirmación, la historia, el contraargumento, el CTA. Cinco minutos en Slack, no dos horas en un doc."
+          },
+          {
+            "title": "Zero redacta el post en tu CMS",
+            "description": "Zero escribe el post completo como borrador en tu CMS: headline, intro, secciones principales, ejemplos, CTA. La estructura sigue tu plantilla de contenido; la voz empata con tu guía de estilo."
+          },
+          {
+            "title": "Zero devuelve una URL de preview para revisar",
+            "description": "Cuando el borrador está listo, Zero te manda la URL de preview. Revisas una página real con formato real, no un Google Doc. Las ediciones van al CMS; Zero no necesita volver a tocarlo a menos que se lo pidas."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Itera",
+            "description": "Haz que Zero reescriba una sección específica sin empezar de cero.",
+            "examplePrompt": "@Zero reescribe la intro para que arranque con una historia de cliente en vez de una estadística, deja el resto igual."
+          },
+          {
+            "title": "Traduce a otras locales",
+            "description": "Consigue traducciones naturales a los idiomas que soportas.",
+            "examplePrompt": "@Zero traduce este borrador a alemán, japonés y español (natural, no literal) y guarda cada uno como borrador en el CMS."
+          },
+          {
+            "title": "Agenda la publicación",
+            "description": "Encadena el borrador a una publicación automática cuando se apruebe.",
+            "examplePrompt": "@Zero cuando apruebe este borrador, agéndalo para publicar el jueves a las 10am y haz cross-post del enlace en #announcements."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Slack: Zero corre la entrevista y entrega la URL de preview en un hilo. Acceso de lectura + escritura en el canal donde trabajas."
+          },
+          {
+            "description": "CMS (Strapi o similar): Zero crea el borrador, aplica la plantilla correcta y devuelve una URL de preview. Se requiere acceso de escritura a la API para borradores."
+          },
+          {
+            "description": "Notion (opcional). Zero también puede mantener un doc de trabajo para borradores más largos o colaboración antes de empujar al CMS."
+          }
+        ],
+        "tips": [
+          "Contesta las 5 preguntas rápido, un minuto cada una. No necesitas prosa pulida; Zero va a reestructurar. La meta es sacar tu pensamiento, no escribir tú el post.",
+          "Revisa en la URL de preview, no en el admin del CMS. Los problemas de formato y ritmo solo aparecen cuando la página se renderiza.",
+          "Mantén un doc tipo guía de estilo 'cómo escribimos' en Notion: Zero puede referenciarlo y tú obtienes voz consistente sin reescribir cada borrador."
+        ]
+      },
+      "cover-art-generation": {
+        "title": "Genera arte de portada on-brand para cada post, en segundos",
+        "description": "Zero genera arte de portada que empata con tu sistema visual (mismo estilo, misma tipografía, misma paleta) y lo deja listo en tu flujo de contenido.",
+        "timeSaved": "~45 min ahorrados por post",
+        "headings": {
+          "scenario": "Por qué cada post termina con un 'todavía nos falta la imagen de portada'",
+          "prompt": "Cómo pedirle a Zero que genere arte de portada",
+          "steps": "Cómo Zero genera arte on-brand",
+          "nextActions": "Ajusta el estilo, genera en lote o exporta a Figma",
+          "integrations": "Integraciones requeridas: Slack y tu sistema de diseño",
+          "tips": "Buenas prácticas para arte de portada consistente"
+        },
+        "scenario": "El borrador está listo, el copy está afilado y entonces te acuerdas: imagen de portada. O pasas una hora en Figma, o te conformas con una foto de stock que se ve como todas las fotos de stock, o le pides al diseñador que ya está saturado. Cover Art Generation se mete en medio: Zero genera arte que empata con tu sistema visual (misma paleta, mismo estilo de ilustración, misma tipografía) en segundos. El output no es stock genérico; es tuyo, consistentemente.",
+        "promptVariants": [
+          {
+            "label": "Detallado",
+            "prompt": "@Zero genera arte de portada para el post de flujos por voz: usa nuestro estilo de ilustración de la casa, paleta de marca e incluye una ilustración hecha a mano de un micrófono. Déjala en el borrador del CMS."
+          },
+          {
+            "label": "Rápido",
+            "prompt": "@Zero genera una imagen de portada para este post que empate con nuestro estilo de marca."
+          },
+          {
+            "label": "Set de variantes",
+            "prompt": "@Zero genera 4 variantes de arte de portada para este post (mismo estilo, distintas composiciones) y publícalas aquí para que escoja una."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Sam",
+            "text": "@Zero genera una imagen de portada para este post que empate con nuestro estilo de marca"
+          },
+          {
+            "name": "Zero",
+            "text": "Generé 4 variantes con el mismo estilo de ilustración y la misma paleta (bg off-white, acento naranja de marca, tipografía gris apagada). Previews adjuntos. ¿Cuál dejo en el borrador del CMS?\n\n[variant-1.png] [variant-2.png] [variant-3.png] [variant-4.png]"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero lee tu guía de estilo y arte de referencia",
+            "description": "Antes de generar, Zero carga tu sistema visual: paleta, tipografía, estilo de ilustración, reglas de composición. Vienen de un doc de guía de estilo que mantienes una sola vez; el arte subsecuente se queda on-brand sin recordatorios."
+          },
+          {
+            "title": "Zero genera variantes basadas en el contenido del post",
+            "description": "Zero lee el headline del post y los temas clave, luego genera 2–4 variantes de arte de portada que reflejan el contenido visualmente mientras se quedan dentro de tu sistema. Cada variante usa el mismo estilo: distinta composición, no distinta marca."
+          },
+          {
+            "title": "Zero deja la variante elegida en tu flujo",
+            "description": "Cuando eliges, Zero escribe la imagen en el borrador de tu CMS, actualiza la URL de preview y opcionalmente exporta un frame de Figma para que el diseñador lo refine después. Sin paso manual de upload."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Ajusta el estilo",
+            "description": "Ajusta las reglas de generación cuando el sistema visual evolucione.",
+            "examplePrompt": "@Zero a partir de ahora, usa un estilo de ilustración más apretado (menos hand-drawn, más geométrico) para el arte de portada."
+          },
+          {
+            "title": "Genera en lote para un backlog",
+            "description": "Corre el arte de portada para todos los borradores de una vez.",
+            "examplePrompt": "@Zero genera arte de portada para todos los borradores en el CMS que no tengan uno todavía."
+          },
+          {
+            "title": "Exporta a Figma para refinar",
+            "description": "Manda la variante elegida a Figma cuando el diseñador quiera pulirla.",
+            "examplePrompt": "@Zero exporta la variante 2 como frame editable en nuestro archivo de Figma de Cover Art."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Slack: Zero publica las variantes en línea para revisión y responde a tu elección. Acceso de escritura al canal requerido."
+          },
+          {
+            "description": "Figma (opcional). Útil si tu equipo de diseño quiere refinar el output de Zero en la librería de marca existente en vez de aceptar la imagen generada tal cual."
+          },
+          {
+            "description": "Notion (opcional). Útil para guardar la guía de estilo de referencia que Zero carga al momento de generar."
+          }
+        ],
+        "tips": [
+          "Clava la guía de estilo una vez. El output de Zero es solo tan on-brand como el material de referencia que le des; una tarde documentando el sistema visual te ahorra decenas de borradores fuera de marca.",
+          "Genera variantes, no singles. Escoger entre 4 casi siempre es más rápido que regenerar uno varias veces.",
+          "Deja al diseñador en Figma. Zero atiende el 80% de los posts del día a día; el diseñador refina los assets hero que sí requieren su mano."
+        ]
+      },
+      "content-experiment-engine": {
+        "title": "Corre un loop completo de investigación → borrador → score, en piloto automático",
+        "description": "Zero investiga tópicos en tendencia, redacta variantes de posts, trackea su desempeño tras publicar y entrega un reporte verde/amarillo/rojo para saber qué escalar, iterar o matar.",
+        "timeSaved": "~6 horas ahorradas por ciclo de contenido",
+        "headings": {
+          "scenario": "Por qué la estrategia de contenido muere en el hueco entre ideas y números",
+          "prompt": "Cómo pedirle a Zero que corra el loop de contenido",
+          "steps": "Cómo Zero corre investigación → borrador → score",
+          "nextActions": "Escala los ganadores, itera los amarillos o mata los rojos",
+          "integrations": "Integraciones requeridas: X, Notion y Slack",
+          "tips": "Buenas prácticas para experimentación de contenido en loop cerrado"
+        },
+        "scenario": "La estrategia de contenido se rompe en medio: las ideas se generan, los posts se publican y luego nadie revisa qué funcionó de verdad. Dos meses después, se reciclan los mismos formatos perdedores porque nadie trackeó cuáles ganaron. Content Experiment Engine cierra el loop. Zero investiga temas en tendencia en tus fuentes, redacta ~8 variantes por ciclo, trackea el desempeño tras publicar y entrega un reporte scoreado: verde (escala esto), amarillo (itera), rojo (mata). El loop corre en cadencia fija para que siga andando aunque tu semana se destruya.",
+        "promptVariants": [
+          {
+            "label": "Detallado",
+            "prompt": "@Zero cada mañana a las 7am: escanea los posts de X de @competitor_a, @competitor_b y @founder_voice más los top posts de Reddit de r/ai_builders. Genera 8 variantes de borrador en Notion usando nuestra librería de plantillas. Cada lunes, scorea los posts publicados de la semana pasada (likes + RTs + replies + follows) y publica reporte verde/amarillo/rojo en #marketing."
+          },
+          {
+            "label": "Rápido",
+            "prompt": "@Zero ¿cuál es el score de contenido de la semana?"
+          },
+          {
+            "label": "Solo investigación",
+            "prompt": "@Zero hoy solo investigación: dame los top 10 temas en tendencia de nuestras fuentes con ángulos de borrador para cada uno."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Zero",
+            "text": "Score semanal de contenido: 8 posts publicados la semana pasada:\n\n🟢 Escalar (2 posts):\n• 'Cómo pensamos los flujos por voz': score 142 (47 likes, 18 RTs, 12 replies, 3 follows)\n• 'Agentes vs. automatizaciones': score 98\n\n🟡 Iterar (4 posts): score promedio 32. Hilo común: demasiada jerga en la primera línea. Sugerir hooks más apretados.\n\n🔴 Matar (2 posts): score <15. Feature drops sin historia. Formato retirado.\n\nPróximo sprint: 5 variantes sobre el tema de voice-workflows. Propuestas de borrador en Notion →"
+          },
+          {
+            "name": "Morgan",
+            "text": "perfecto, le metemos más a voice"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero investiga temas en tendencia en tus fuentes",
+            "description": "En tu cadencia, Zero escanea las cuentas sociales y foros de comunidad que trackeas, clusteriza posts por tema y saca con qué está interactuando tu audiencia ahora mismo. Los datos crudos aterrizan en Notion para archivo."
+          },
+          {
+            "title": "Zero redacta variantes de post usando tu librería de plantillas",
+            "description": "Zero genera múltiples variantes por ciclo en distintos formatos (feature drop, hot take, reflexión de founder, use case, contrarian), todas aterrizadas en la investigación de la semana. Los borradores van a Notion para tu revisión y aprobación."
+          },
+          {
+            "title": "Zero scorea los posts publicados y entrega veredictos",
+            "description": "Tras publicar, Zero trae las métricas de engagement y scorea cada post contra la fórmula que definiste. Los resultados caen en verde/amarillo/rojo con dirección clara para el próximo sprint: qué temas escalar, cuáles iterar, cuáles retirar."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Escala a los ganadores",
+            "description": "Genera más variantes de un post verde el próximo sprint.",
+            "examplePrompt": "@Zero el próximo sprint, genera 5 variantes sobre el tema voice-workflows con distintos ángulos y la misma tesis de fondo."
+          },
+          {
+            "title": "Itera los amarillos",
+            "description": "Ajusta los posts que rindieron menos pero mostraron promesa.",
+            "examplePrompt": "@Zero para los posts amarillos, reescribe la primera línea para que sea más apretada y con menos jerga, deja el resto igual."
+          },
+          {
+            "title": "Retira los rojos",
+            "description": "Tira los formatos que han fallado 3+ veces.",
+            "examplePrompt": "@Zero retira la plantilla de 'feature drop'. Lleva 4 semanas seguidas en rojo. Quítala de la librería de plantillas."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "X (Twitter): Zero trae posts en tendencia de las cuentas que trackeas y métricas de engagement de tus posts publicados. Se requiere acceso de lectura."
+          },
+          {
+            "description": "Notion: Zero guarda datos de tendencias, maneja la cola de contenido y la librería de plantillas, y archiva el historial de desempeño. Se requiere acceso de escritura a 3 bases de datos (tendencias, cola de contenido, desempeño)."
+          },
+          {
+            "description": "Slack: Zero manda el brief semanal, los reportes de score y los nudges para revisión. Acceso de escritura al canal requerido."
+          }
+        ],
+        "tips": [
+          "Codifica tu fórmula de score en el prompt una vez y no la toques en un trimestre. Cambiar la fórmula a media cancha hace que los buckets verde/amarillo/rojo no sean comparables semana a semana.",
+          "Aprueba los borradores en lotes, no uno por uno. Una hora de revisión cada lunes le gana a 15 minutos diarios: el loop necesita ritmo.",
+          "Archiva todo en Notion. Seis meses después, el activo más valioso es el historial: qué temas compuestos, cuáles murieron y por qué."
+        ]
+      },
+      "agent-video-production": {
+        "title": "Produce un video corto desde un guión, de punta a punta",
+        "description": "Zero orquesta el pipeline completo de producción de video (guión, storyboard, slides, avatar, voiceover, edición, subtítulos) y devuelve un video listo para publicar desde un solo prompt.",
+        "timeSaved": "~8 horas ahorradas por video",
+        "headings": {
+          "scenario": "Por qué los videos cortos toman un día completo por minuto de output",
+          "prompt": "Cómo pedirle a Zero que produzca un video",
+          "steps": "Cómo Zero corre el pipeline de video",
+          "nextActions": "Ajusta el guión, itera frames o agenda una serie",
+          "integrations": "Integraciones requeridas: Slack y un runtime de agentes gestionados",
+          "tips": "Buenas prácticas para producción de video orquestada por agentes"
+        },
+        "scenario": "Un video de producto de 60 segundos toma un día completo a mano: guión, storyboard, slides, grabar voiceover, ensamblar, agregar subtítulos, corregir color, renderizar, exportar. La mayoría de los equipos no shippean videos porque el costo por unidad es demasiado alto. Agent-Orchestrated Video Production lo colapsa: un solo prompt arranca un agente gestionado que maneja cada herramienta (guión en una, slides en otra, voiceover con avatar en una tercera, edición final en una cuarta) y devuelve un MP4 listo para publicar. Revisas un video, no cien micro-decisiones.",
+        "promptVariants": [
+          {
+            "label": "Detallado",
+            "prompt": "@Zero produce un video de producto de 60 segundos desde este guión. Genera slides que empaten con nuestro deck de marca, agrega voiceover con avatar, subtitula en inglés y entrégalo como MP4 con nuestro intro/outro."
+          },
+          {
+            "label": "Rápido",
+            "prompt": "@Zero convierte este borrador en un video de 60 segundos."
+          },
+          {
+            "label": "Serie",
+            "prompt": "@Zero produce 4 videos cortos, uno por cada use case de la serie de product-metrics (mismo estilo, distinto contenido) y publica previews aquí."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Alex",
+            "text": "@Zero produce un video de 60 segundos desde este guión"
+          },
+          {
+            "name": "Zero",
+            "text": "Arrancando producción de video: guión finalizado, 18 slides con storyboard, voiceover con avatar generándose, subtítulos se auto-generan tras la voz. ETA ~12 minutos. Publico el preview en MP4 aquí al terminar."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero convierte tu guión en un storyboard",
+            "description": "Zero parsea el guión en escenas, genera composiciones de slides que empatan con tu deck de marca y arma un storyboard. Puedes revisar el storyboard antes de que arranque el voiceover, o dejar que Zero avance en automático."
+          },
+          {
+            "title": "Zero genera voiceover, slides y subtítulos",
+            "description": "Zero despacha sub-agentes a cada herramienta especializada: síntesis de voz para la narración, generador de slides para los visuales, generador de subtítulos tras terminar el voiceover. Cada paso corre en paralelo donde se puede, para recortar el tiempo total."
+          },
+          {
+            "title": "Zero ensambla el video final y entrega el MP4",
+            "description": "Zero arma el corte final: voiceover sobre las slides, subtítulos quemados, tu intro/outro en los extremos, color y loudness normalizados. El MP4 terminado aterriza en tu canal de Slack como preview."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Ajusta el guión",
+            "description": "Pide que reescriba una línea específica sin rehacer todo lo demás.",
+            "examplePrompt": "@Zero reescribe los primeros 10 segundos del guión para que sean más contundentes y re-renderiza solo esa sección."
+          },
+          {
+            "title": "Itera frames",
+            "description": "Regenera una slide o escena sin rehacer el video completo.",
+            "examplePrompt": "@Zero reemplaza la slide 7 con una composición distinta que muestre el dashboard en contexto, no sola."
+          },
+          {
+            "title": "Agenda una serie",
+            "description": "Produce una serie de videos en cadencia fija.",
+            "examplePrompt": "@Zero cada lunes, produce un video de 60 segundos basado en el post de blog con mejor score de la semana anterior."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Slack: Zero recibe el prompt en Slack, entrega el preview y maneja el feedback de revisión. Acceso de escritura al canal requerido."
+          },
+          {
+            "description": "Runtime de agentes gestionados: Zero despacha sub-agentes para cada paso de producción (guión, slides, voiceover, subtítulos, edición). Se requiere acceso al runtime para la orquestación."
+          },
+          {
+            "description": "Notion (opcional). Útil para archivar guiones, storyboards y videos finales con metadata para la vista de seguimiento de series."
+          }
+        ],
+        "tips": [
+          "Clava la guía de estilo antes de batchear. Intro/outro consistente, tipografía consistente, voz consistente: el costo por video baja dramáticamente cuando la plantilla es estable.",
+          "Revisa el storyboard antes del voiceover, no después. Los cambios de storyboard son baratos; la regeneración de voiceover no.",
+          "Shippea rough e itera en público. Un video de 60 segundos publicado que recibió feedback le gana a uno perfecto atorado en revisión una semana."
+        ]
+      },
+      "investor-board-updates": {
+        "title": "Redacta tu reporte mensual para el consejo a partir de métricas en vivo y actividad de entregas",
+        "description": "Zero reúne las métricas de producto, el historial de entregas y las victorias con clientes del mes, y luego redacta un reporte listo para el consejo con tu voz. Editas los matices y lo envías, en lugar de empezar desde cero a las 11 de la noche.",
+        "timeSaved": "~4 horas ahorradas por cada reporte mensual",
+        "headings": {
+          "scenario": "Por qué cada reporte para el consejo se vuelve un proyecto de fin de semana",
+          "prompt": "Cómo pedir a Zero que redacte un reporte para el consejo",
+          "steps": "Cómo Zero arma tu reporte para el consejo",
+          "nextActions": "Ajusta el formato, suma inversores al envío, programa la cadencia",
+          "integrations": "Integraciones requeridas: gestor de issues, GitHub y analítica",
+          "tips": "Buenas prácticas para reportes automatizados a inversores"
+        },
+        "scenario": "Los reportes al consejo siempre se ven fáciles en el calendario y difíciles la noche anterior. Alguien tiene que reunir la actividad de entregas del mes, reconciliarla con lo que realmente se había comprometido, desenterrar las cifras de tráfico y uso, y escribir una narrativa que no parezca un changelog. Cuatro horas perdidas, normalmente de madrugada, cada mes. Zero toma los datos en crudo (issues cerrados, PRs fusionados, tráfico, ingresos, victorias con clientes marcadas en Slack) y redacta el reporte completo con tu voz. Tú editas los matices y lo envías.",
+        "promptVariants": [
+          {
+            "label": "Detallado",
+            "prompt": "@Zero redacta nuestro reporte de consejo de abril. Reúne los issues cerrados de Linear, los PRs fusionados de GitHub, el tráfico de Plausible y las victorias con clientes que marqué en #wins. Estructúralo como Destacados, Métricas, Riesgos y Próximo mes."
+          },
+          {
+            "label": "Rápido",
+            "prompt": "@Zero redacta el reporte de consejo de este mes."
+          },
+          {
+            "label": "Programado",
+            "prompt": "@Zero el primer día de cada mes, redacta el reporte de consejo y envíamelo por DM para revisión."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Casey",
+            "text": "@Zero redacta el reporte de consejo de este mes"
+          },
+          {
+            "name": "Zero",
+            "text": "Redacté el reporte de consejo de abril. Destacados: lanzamos el onboarding por voz y firmamos dos clientes enterprise. Métricas: MRR +18%, DAU +23%, churn 2.1%. Riesgos: brecha en el pipeline a finales de mayo. Borrador completo en Notion, listo para tus ediciones."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero reúne los datos en crudo del mes",
+            "description": "Zero consulta tu gestor de issues para ver el trabajo cerrado, GitHub para los PRs fusionados y despliegues, tu herramienta de analítica para tendencias de tráfico y engagement, y cualquier canal de Slack que hayas marcado como fuente de señal. Todo queda en un solo conjunto de datos de trabajo."
+          },
+          {
+            "title": "Zero estructura el borrador en tu formato",
+            "description": "Tu orden preferido de secciones (Destacados, Métricas, Riesgos, Peticiones, Próximo mes) se mantiene consistente mes a mes. Zero completa cada sección con los datos en crudo y con los reportes previos de los que pueda aprender."
+          },
+          {
+            "title": "Zero entrega un borrador listo para editar",
+            "description": "El borrador completo aterriza en Notion con un enlace de vista previa en Slack. Tú reescribes las partes con matices, apruebas y envías. Los primeros borradores toman cuatro horas; las ediciones, veinte minutos."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Ajusta el formato",
+            "description": "Cambia el orden de las secciones o agrega una nueva sección recurrente.",
+            "examplePrompt": "@Zero a partir de ahora, incluye una sección 'Actualizaciones del equipo' entre Métricas y Riesgos."
+          },
+          {
+            "title": "Suma inversores al envío",
+            "description": "Envía el borrador aprobado a tu lista de inversores automáticamente.",
+            "examplePrompt": "@Zero en cuanto apruebe el borrador, envíalo a mi lista de inversores con el asunto 'vm0 Actualización de abril'."
+          },
+          {
+            "title": "Programa la cadencia",
+            "description": "Pasa de mensual a quincenal, o suma una inmersión trimestral.",
+            "examplePrompt": "@Zero también redacta un reporte quincenal ligero cada dos viernes con solo entregas y métricas, sin narrativa."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Linear (o tu gestor de issues). Zero lee los issues cerrados, las etiquetas y el progreso de los épicos para resumir las entregas. Se requiere acceso de lectura."
+          },
+          {
+            "description": "GitHub. Zero obtiene los PRs fusionados, despliegues y tags de release para anclar la narrativa de entregas. Se requiere acceso de lectura."
+          },
+          {
+            "description": "Plausible (o tu herramienta de analítica). Zero compara el tráfico y el engagement de este mes contra el mes anterior para la sección de métricas. Se requiere acceso de lectura."
+          },
+          {
+            "description": "Gmail. Opcional. Solo hace falta si quieres que Zero envíe el reporte aprobado directamente a tu lista de inversores."
+          },
+          {
+            "description": "Notion. Zero escribe el borrador en tu carpeta de reportes mensuales para que puedas editarlo, versionarlo y archivarlo. Se requiere acceso de escritura."
+          }
+        ],
+        "tips": [
+          "Marca las victorias con clientes en un canal de Slack dedicado durante el mes. Zero las recoge en automático, en vez de que intentes recordar 30 días de momentos.",
+          "Mantén estable el orden de las secciones mes a mes. Los inversores leen en diagonal, así que la consistencia pesa más que la novedad.",
+          "Redacta tres días antes del envío, no la noche misma. Zero redacta en minutos; el verdadero valor es el tiempo de edición que recuperas."
+        ]
+      },
+      "lead-followups": {
+        "title": "Puntúa cada lead y redacta el seguimiento antes de abrir tu inbox",
+        "description": "Zero lee los leads entrantes, los puntúa contra tu perfil de cliente ideal y redacta un seguimiento a medida usando las señales del propio prospecto. Tú decides a quién enviarle.",
+        "timeSaved": "~15 min ahorrados por lead",
+        "headings": {
+          "scenario": "Por qué el seguimiento de leads siempre se atrasa 48 horas",
+          "prompt": "Cómo pedir a Zero que puntúe y redacte seguimientos",
+          "steps": "Cómo Zero gestiona los leads entrantes",
+          "nextActions": "Afina la puntuación, envía los mejores en automático, registra en el CRM",
+          "integrations": "Integraciones requeridas: Gmail y Notion",
+          "tips": "Buenas prácticas para automatizar el seguimiento de leads"
+        },
+        "scenario": "Un buen lead se enfría en 48 horas. Eso es lo que suele tardar en notarse en Gmail, hacer la búsqueda rápida en LinkedIn y en la web de la empresa, y escribir un seguimiento que no sea genérico. Para cuando tu respuesta llega, el prospecto ya habló con dos competidores. Lead Follow-ups cierra esa brecha. Zero lee cada lead entrante, lo puntúa contra tu ICP, extrae lo que puede de las señales del prospecto (empresa, rol, etapa) y redacta el seguimiento. Tú revisas y envías. El lead recibe una respuesta personal en menos de una hora, no en dos días.",
+        "promptVariants": [
+          {
+            "label": "Detallado",
+            "prompt": "@Zero cada hora en horario laboral, revisa Gmail en busca de nuevos leads entrantes. Puntúa cada uno contra nuestro ICP (fundadores, Series A a B, B2B SaaS). Para puntuaciones superiores a 7, redacta un seguimiento personalizado usando el contexto de su empresa y rol. Publica los borradores en #sales-leads para revisión."
+          },
+          {
+            "label": "Rápido",
+            "prompt": "@Zero ¿hay leads nuevos hoy? Redacta seguimientos para los que valga la pena contestar."
+          },
+          {
+            "label": "Único",
+            "prompt": "@Zero lee este lead entrante, puntúalo y redacta un seguimiento."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Morgan",
+            "text": "@Zero ¿leads nuevos hoy?"
+          },
+          {
+            "name": "Zero",
+            "text": "3 nuevos leads entrantes esta mañana:\n\n🟢 Puntuación 9/10: Sarah Chen (VP Eng en Retool, B2B SaaS, Series C). Borrador listo en #sales-leads.\n🟡 Puntuación 6/10: John Park (fundador, etapa seed). Borrador listo, prioridad baja.\n🔴 Puntuación 3/10: Lead de un vertical fuera del ICP. No redacto borrador."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero lee los leads entrantes y los enriquece",
+            "description": "Para cada lead nuevo en Gmail, Zero extrae lo básico (nombre, email, empresa) y completa el resto con las señales del prospecto: datos públicos de la empresa, rol y cualquier enlace que haya incluido. Todo queda estructurado en un registro de lead."
+          },
+          {
+            "title": "Zero puntúa cada lead contra tu ICP",
+            "description": "Tu rúbrica de puntuación (etapa de la empresa, vertical, rol, tamaño) se mantiene consistente. Zero la aplica y devuelve una puntuación de 1 a 10 con una justificación de una línea. Los leads por debajo de tu umbral quedan registrados pero sin borrador."
+          },
+          {
+            "title": "Zero redacta seguimientos a medida para los leads con alta puntuación",
+            "description": "Para los leads por encima de tu umbral, Zero redacta un correo de seguimiento que referencia su contexto específico. Los borradores aterrizan en tu canal de revisión de ventas con la puntuación, la justificación y el resumen del prospecto. Tú revisas y envías con un clic."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Afina la puntuación",
+            "description": "Actualiza el ICP o los pesos según vayas aprendiendo qué convierte.",
+            "examplePrompt": "@Zero a partir de ahora, pondera B2B SaaS por 3x en lugar de 2x, y penaliza a las empresas pre-seed."
+          },
+          {
+            "title": "Envía los mejores en automático",
+            "description": "Para los leads que superan un alto umbral de confianza, envía el borrador de forma automática.",
+            "examplePrompt": "@Zero para los leads con puntuación 9 o 10 y un match de ICP evidente, envía el seguimiento en automático y avísame."
+          },
+          {
+            "title": "Registra cada lead en el CRM",
+            "description": "Empuja los leads puntuados y sus resultados al CRM para seguir el pipeline.",
+            "examplePrompt": "@Zero registra cada lead puntuado en nuestro CRM con la puntuación y si respondimos o no."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Gmail. Zero lee los leads entrantes, redacta los seguimientos y (si lo apruebas) envía las respuestas. Se requiere acceso de lectura y envío."
+          },
+          {
+            "description": "Notion (o tu CRM). Zero registra cada lead con su puntuación, justificación y resultado para la revisión del pipeline. Se requiere acceso de escritura a una base de datos."
+          }
+        ],
+        "tips": [
+          "Ajusta la rúbrica del ICP cada dos semanas. Las señales que predijeron conversión el trimestre pasado pueden no aplicar este trimestre.",
+          "Mantén a un humano en el loop durante el primer mes. Revisa al azar la puntuación de Zero en 20 leads antes de confiarle cualquier envío automático.",
+          "Separa la lógica de puntuación de la plantilla del borrador. Itera cada una por separado para saber qué cambio movió la aguja."
+        ]
+      },
+      "release-notes-generator": {
+        "title": "Escribe notas de versión que tus clientes sí van a leer",
+        "description": "Zero lee los commits y PRs fusionados de tu release, agrupa los cambios por impacto en el cliente y redacta notas de versión claras, específicas y listas para publicar.",
+        "timeSaved": "~1 hora ahorrada por release",
+        "headings": {
+          "scenario": "Por qué las notas de versión se escriben a las carreras o se omiten",
+          "prompt": "Cómo pedir a Zero que redacte notas de versión",
+          "steps": "Cómo Zero convierte los commits en notas para el cliente",
+          "nextActions": "Refina la voz, encadena con publicación, traduce",
+          "integrations": "Integraciones requeridas: GitHub y Slack",
+          "tips": "Buenas prácticas para notas de versión automatizadas"
+        },
+        "scenario": "Las notas de versión siempre son lo último que se escribe y lo primero que se recorta cuando el release va tarde. El problema es el material fuente: mensajes de commit escritos para ingenieros, títulos de PR que asumen conocimiento tribal, y 30 PRs fusionados que, individualmente, a tus usuarios no les interesan. Release Notes Generator da vuelta el flujo. Zero lee los commits y las descripciones de PR, filtra los cambios visibles para el cliente, los agrupa por tema (nuevas funciones, mejoras, correcciones) y redacta las notas con la voz que tus clientes realmente leen. Tú revisas, y el próximo release sale con notas en lugar de silencio.",
+        "promptVariants": [
+          {
+            "label": "Detallado",
+            "prompt": "@Zero para el release que publicamos hoy, lee todos los PRs fusionados desde el último tag de release. Agrupa por impacto en el cliente: nuevas funciones, mejoras, correcciones de bugs. Omite refactorizaciones internas y cambios en tests. Redacta notas orientadas al cliente con la voz de nuestro producto."
+          },
+          {
+            "label": "Rápido",
+            "prompt": "@Zero redacta las notas de versión del release de hoy."
+          },
+          {
+            "label": "Programado",
+            "prompt": "@Zero cada viernes a las 10am, redacta las notas de versión de la semana y publícalas en #release-notes para revisión."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Alex",
+            "text": "@Zero redacta las notas de versión del release de hoy"
+          },
+          {
+            "name": "Zero",
+            "text": "Redacté las notas para v2.8. Cubren 14 cambios visibles para el cliente (5 funciones, 6 mejoras, 3 correcciones). Omití 12 refactorizaciones internas y 4 PRs solo de tests. Vista previa en Notion, lista para tu edición."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero lee cada PR fusionado dentro de la ventana del release",
+            "description": "Zero obtiene los PRs fusionados desde el último tag de release, incluidos títulos, descripciones y etiquetas. Los cambios solo internos (refactors, tests, ajustes de CI) se filtran según tu convención de etiquetas."
+          },
+          {
+            "title": "Zero agrupa los cambios por impacto en el cliente",
+            "description": "Zero agrupa los PRs restantes en temas: nuevas funciones, mejoras y correcciones. Cada cambio se reescribe desde la descripción del PR a una línea orientada al cliente: lo bastante específica para ser útil y libre de jerga interna."
+          },
+          {
+            "title": "Zero redacta las notas con la voz de tu producto",
+            "description": "El borrador final aterriza en tu herramienta de docs o en Slack con secciones que siguen tu plantilla de notas de versión. Tú editas la voz y los matices, y publicas."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Refina la voz",
+            "description": "Actualiza las pautas que Zero usa para el tono y el formato.",
+            "examplePrompt": "@Zero a partir de ahora, omite los encabezados de Markdown en las notas de versión. Solo prosa simple."
+          },
+          {
+            "title": "Encadena con la publicación",
+            "description": "Empuja las notas aprobadas directamente a tus docs o blog.",
+            "examplePrompt": "@Zero en cuanto apruebe las notas, publícalas en la sección Releases de nuestras docs y publica el enlace en #announcements."
+          },
+          {
+            "title": "Traduce",
+            "description": "Genera notas en cada idioma que soportes.",
+            "examplePrompt": "@Zero traduce las notas de versión aprobadas al alemán, japonés y español. Mantén la estructura de secciones."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "GitHub. Zero lee los PRs fusionados, los mensajes de commit, las etiquetas y los tags de release. Se requiere acceso de lectura al repositorio."
+          },
+          {
+            "description": "Slack. Zero entrega los borradores al canal de revisión y publica las notas finales una vez aprobadas. Se requiere acceso de escritura al canal."
+          }
+        ],
+        "tips": [
+          "Etiqueta los PRs solo internos con una etiqueta consistente (como `internal` o `no-release-notes`). Zero solo puede omitir lo que marcas.",
+          "Mantén una guía de estilo corta para notas de versión en tus docs. Voz de cliente, verbos en activo, sin jerga interna. Zero la incorpora y la aplica en cada release.",
+          "Redacta las notas antes de que salga el release, no después. Revisar un borrador con el trabajo fresco es más rápido que reconstruir el contexto una semana más tarde."
+        ]
+      },
+      "meeting-action-items": {
+        "title": "Convierte cada reunión en una lista clara de tareas con responsables",
+        "description": "Zero lee las transcripciones de tus reuniones, extrae las tareas con responsables y fechas, y las publica en los canales de Slack correctos o en tu gestor de tareas.",
+        "timeSaved": "~20 min ahorrados por reunión",
+        "headings": {
+          "scenario": "Por qué las tareas de reunión se pierden en el camino",
+          "prompt": "Cómo pedir a Zero que extraiga las tareas de una reunión",
+          "steps": "Cómo Zero convierte las reuniones en trabajo rastreado",
+          "nextActions": "Envía a tareas, escala los ítems sin responsable, resume la semana",
+          "integrations": "Integraciones requeridas: Calendario, Slack y Notion",
+          "tips": "Buenas prácticas para dar seguimiento a reuniones"
+        },
+        "scenario": "Cada reunión produce tareas. Casi ninguna queda registrada. La reunión termina, la gente vuelve a su escritorio, y las tres cosas que Casey se comprometió a manejar esta semana viven solo en la memoria. Una semana después nadie recuerda quién era responsable de qué, y la siguiente reunión empieza con 'en qué nos quedamos?'. Meeting Action Items arregla esto sin agregar un paso más. Zero lee la transcripción de la reunión, extrae las tareas con su responsable y fecha, y las publica en el canal de Slack correcto o en tu gestor de tareas. Todos salen con la misma lista.",
+        "promptVariants": [
+          {
+            "label": "Detallado",
+            "prompt": "@Zero después de cada reunión grabada en mi calendario, extrae las tareas. Incluye el responsable, la fecha si se menciona y la cita original. Publica la lista en el canal de Slack del proyecto correspondiente."
+          },
+          {
+            "label": "Rápido",
+            "prompt": "@Zero saca las tareas de la revisión de diseño de esta mañana."
+          },
+          {
+            "label": "Por reunión",
+            "prompt": "@Zero para los standups de los lunes, registra también cada tarea en nuestro proyecto de Linear como un todo asignado al responsable."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Riley",
+            "text": "@Zero saca las tareas de la revisión de diseño de esta mañana"
+          },
+          {
+            "name": "Zero",
+            "text": "3 tareas de la revisión de diseño:\n\n• Alex: publicar los mockups actualizados en Figma antes del viernes.\n• Jordan: probar el nuevo flujo de onboarding con 3 usuarios beta esta semana.\n• Casey: decidir la paleta de colores final para el próximo lunes.\n\nRegistradas en la página de Notion del proyecto. ¿Creo también tareas en Linear?"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero lee la transcripción de la reunión",
+            "description": "Zero obtiene la transcripción desde tu herramienta de reuniones o lee las notas que dejaste en Slack. Si no hay transcripción, Zero puede trabajar a partir de las notas o de un enlace a la grabación."
+          },
+          {
+            "title": "Zero extrae las tareas con responsable y fecha",
+            "description": "Para cada tarea, Zero captura quién es responsable, a qué se comprometió y cuándo vence. Los ítems sin responsable quedan marcados para que alguien los reclame."
+          },
+          {
+            "title": "Zero publica la lista estructurada donde corresponde",
+            "description": "Los ítems extraídos aterrizan en el lugar correcto: el canal de Slack del proyecto, tus notas de reunión en Notion o tu gestor de tareas. Los responsables ven sus propios ítems; todo el equipo ve la lista completa."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Envía a tareas",
+            "description": "Crea tareas en tu gestor de forma automática para cada ítem.",
+            "examplePrompt": "@Zero a partir de ahora, crea una tarea de Linear por cada ítem, asignada al responsable con la fecha como plazo."
+          },
+          {
+            "title": "Escala los ítems sin responsable",
+            "description": "Resalta las tareas sin responsable al final de la reunión.",
+            "examplePrompt": "@Zero al final de cada resumen de reunión, marca cualquier tarea sin responsable y menciona con @ al líder del proyecto para que asigne uno."
+          },
+          {
+            "title": "Resume la semana",
+            "description": "Agrupa todas las tareas capturadas en reuniones a lo largo de la semana.",
+            "examplePrompt": "@Zero cada viernes a las 4pm, publica un resumen de todas las tareas capturadas en reuniones esta semana, agrupadas por responsable."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Google Calendar. Zero encuentra tus reuniones y obtiene las notas o transcripciones relacionadas. Se requiere acceso de lectura."
+          },
+          {
+            "description": "Slack. Zero publica las listas de tareas en los canales correspondientes y envía por DM a cada responsable su lista personal. Se requiere acceso de escritura al canal y a DMs."
+          },
+          {
+            "description": "Notion. Zero registra las tareas en tus notas de reunión para que el historial sea buscable. Se requiere acceso de escritura."
+          }
+        ],
+        "tips": [
+          "Escribe las tareas como oraciones completas durante la reunión. 'Casey decidirá X antes del viernes' es más claro que 'Casey: decidir X'. Zero maneja ambas, pero entrada limpia es salida limpia.",
+          "Separa las decisiones de las tareas. Las decisiones van a Document Decisions; las tareas van a los responsables. Mezclarlas diluye las dos.",
+          "Revisa la lista extraída antes de que termine la reunión. Treinta segundos de revisión atrapan atribuciones equivocadas que de otro modo vivirían una semana."
+        ]
+      },
       "seo-blog-writing": {
         "title": "Escribe artículos de blog optimizados para SEO con investigación de palabras clave e imágenes IA",
-        "description": "Zero extrae datos de palabras clave de Ahrefs, redacta un artículo orientado a términos de alta oportunidad, genera una imagen destacada con Fal.ai y publica todo en Strapi como borrador — un solo prompt, de principio a fin.",
+        "description": "Zero extrae datos de palabras clave de Ahrefs, redacta un artículo orientado a términos de alta oportunidad, genera una imagen destacada con Fal.ai y publica todo en Strapi como borrador. Un solo prompt, de principio a fin.",
         "timeSaved": "~90 min ahorrados",
         "headings": {
           "scenario": "Por qué escribir un artículo de blog requiere tres herramientas y media mañana",
@@ -3433,7 +4366,7 @@
           "integrations": "Integraciones requeridas: Ahrefs, Strapi y Fal.ai",
           "tips": "Mejores prácticas para redacción de blogs SEO asistida por IA"
         },
-        "scenario": "Necesitas un artículo de blog que realmente posicione. Eso significa abrir Ahrefs, filtrar palabras clave con buen volumen y baja dificultad, elegir una que encaje con tu estrategia de contenido, escribir 1.500 palabras, conseguir o crear una imagen destacada, formatear todo para el CMS y publicar. Para cuando terminas, la mañana se fue — y aún te quedan dos artículos más esta semana. Le dices a Zero el área temática y tu dominio. Extrae los datos de palabras clave, escribe el artículo, genera la imagen de portada y envía un borrador pulido a Strapi. Tú revisas y publicas.",
+        "scenario": "Necesitas un artículo de blog que realmente posicione. Eso significa abrir Ahrefs, filtrar palabras clave con buen volumen y baja dificultad, elegir una que encaje con tu estrategia de contenido, escribir 1.500 palabras, conseguir o crear una imagen destacada, formatear todo para el CMS y publicar. Para cuando terminas, la mañana se fue, y aún te quedan dos artículos más esta semana. Le dices a Zero el área temática y tu dominio. Extrae los datos de palabras clave, escribe el artículo, genera la imagen de portada y envía un borrador pulido a Strapi. Tú revisas y publicas.",
         "promptVariants": [
           {
             "label": "Detallado",
@@ -3455,21 +4388,21 @@
           },
           {
             "name": "Zero",
-            "text": "Listo. Esto es lo que encontré y creé:\n\n**Palabra clave seleccionada:** \"ai agent platform security\" — 1.400 búsquedas/mes, KD 23\n**Artículo:** \"Por qué la seguridad de plataformas de agentes es el nuevo estándar\" (1.620 palabras)\n**Imagen de portada:** Generada con Fal.ai — visual abstracto de malla de seguridad\n**Publicado:** Borrador en Strapi #67\n\nVista previa: www.vm0.ai/es/blog/posts/ai-agent-platform-security?status=draft"
+            "text": "Listo. Esto es lo que encontré y creé:\n\n**Palabra clave seleccionada:** \"ai agent platform security\" (1.400 búsquedas/mes, KD 23)\n**Artículo:** \"Por qué la seguridad de plataformas de agentes es el nuevo estándar\" (1.620 palabras)\n**Imagen de portada:** Generada con Fal.ai, visual abstracto de malla de seguridad\n**Publicado:** Borrador en Strapi #67\n\nVista previa: www.vm0.ai/es/blog/posts/ai-agent-platform-security?status=draft"
           }
         ],
         "steps": [
           {
             "title": "Zero busca la palabra clave adecuada en Ahrefs",
-            "description": "Zero consulta la API de Ahrefs con tu tema semilla y dominio. Obtiene sugerencias de palabras clave clasificadas por volumen de búsqueda, dificultad y potencial de tráfico — luego selecciona la mejor oportunidad que equilibra posicionabilidad con intención de búsqueda."
+            "description": "Zero consulta la API de Ahrefs con tu tema semilla y dominio. Obtiene sugerencias de palabras clave clasificadas por volumen de búsqueda, dificultad y potencial de tráfico, luego selecciona la mejor oportunidad que equilibra posicionabilidad con intención de búsqueda."
           },
           {
             "title": "Zero escribe y estructura el artículo de blog",
-            "description": "Con la palabra clave elegida y sus términos relacionados, Zero redacta un artículo completo con título optimizado para SEO, meta descripción, estructura de encabezados y cuerpo del texto. Incorpora palabras clave semánticas de forma natural y sigue las mejores prácticas de SEO on-page — sin relleno de palabras clave."
+            "description": "Con la palabra clave elegida y sus términos relacionados, Zero redacta un artículo completo con título optimizado para SEO, meta descripción, estructura de encabezados y cuerpo del texto. Incorpora palabras clave semánticas de forma natural y sigue las mejores prácticas de SEO on-page, sin relleno de palabras clave."
           },
           {
             "title": "Zero genera una imagen de portada y publica en Strapi",
-            "description": "Zero solicita a Fal.ai que cree una imagen destacada acorde con la temática del artículo. Luego envía el paquete completo — texto del artículo, metadatos e imagen de portada — a tu CMS Strapi como borrador, listo para revisión."
+            "description": "Zero solicita a Fal.ai que cree una imagen destacada acorde con la temática del artículo. Luego envía el paquete completo (texto del artículo, metadatos e imagen de portada) a tu CMS Strapi como borrador, listo para revisión."
           }
         ],
         "nextActions": [
@@ -3491,19 +4424,19 @@
         ],
         "integrations": [
           {
-            "description": "Ahrefs — Zero usa la API de Ahrefs para investigar palabras clave, obtener métricas de volumen y dificultad, e identificar brechas de contenido. Requerido para el paso de investigación de palabras clave."
+            "description": "Ahrefs: Zero usa la API de Ahrefs para investigar palabras clave, obtener métricas de volumen y dificultad, e identificar brechas de contenido. Requerido para el paso de investigación de palabras clave."
           },
           {
-            "description": "Strapi — Zero publica el artículo terminado (título, cuerpo, meta, imagen de portada) en tu CMS Strapi como borrador. Se requiere acceso a la API de content-manager."
+            "description": "Strapi: Zero publica el artículo terminado (título, cuerpo, meta, imagen de portada) en tu CMS Strapi como borrador. Se requiere acceso a la API de content-manager."
           },
           {
-            "description": "Fal.ai — Zero genera una imagen destacada a través de la API de generación de imágenes de Fal.ai. Opcional — si no está conectado, Zero publica el artículo sin imagen de portada."
+            "description": "Fal.ai: Zero genera una imagen destacada a través de la API de generación de imágenes de Fal.ai. Opcional. Si no está conectado, Zero publica el artículo sin imagen de portada."
           }
         ],
         "tips": [
           "Dale a Zero un rango objetivo de dificultad de palabra clave (ej. KD menor a 30) y un umbral mínimo de volumen. Esto evita que persiga palabras clave vanidosas para las que no puedes posicionar de forma realista.",
           "Incluye tus directrices de voz de marca o un artículo de ejemplo en el prompt. Zero escribe mejor cuando tiene un ancla estilística.",
-          "Combínalo con el caso de uso content-performance-report. Deja que Zero escriba los artículos y luego monitorea cuáles ganan tracción — alimenta los ganadores en tu próximo ciclo de investigación de palabras clave."
+          "Combínalo con el caso de uso content-performance-report. Deja que Zero escriba los artículos y luego monitorea cuáles ganan tracción. Alimenta los ganadores en tu próximo ciclo de investigación de palabras clave."
         ]
       }
     },
@@ -3512,7 +4445,10 @@
       "everyone": "Multifuncional",
       "engineering": "Engineering",
       "product": "Producto",
-      "ops": "Operaciones"
+      "ops": "Operaciones",
+      "marketing": "Marketing",
+      "support": "Soporte",
+      "compliance": "Cumplimiento"
     }
   },
   "landing": {

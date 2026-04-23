@@ -72,6 +72,25 @@ describe("GET /api/zero/voice-io/quota", () => {
     });
   });
 
+  it("should return allowed=true when a free org is one below the quota boundary", async () => {
+    const userId = uniqueId("quota-free-boundary-below");
+    const { orgId } = await setupOrg(userId);
+    await seedBehaviorCount(
+      orgId,
+      userId,
+      AUDIO_INPUT_BEHAVIOR_KEY,
+      AUDIO_INPUT_FREE_QUOTA - 1,
+    );
+    const response = await GET(createQuotaRequest());
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body).toEqual({
+      allowed: true,
+      count: AUDIO_INPUT_FREE_QUOTA - 1,
+      limit: AUDIO_INPUT_FREE_QUOTA,
+    });
+  });
+
   it("should return allowed=false when a free org has reached the quota", async () => {
     const userId = uniqueId("quota-free-full");
     const { orgId } = await setupOrg(userId);
@@ -87,6 +106,25 @@ describe("GET /api/zero/voice-io/quota", () => {
     expect(body).toEqual({
       allowed: false,
       count: AUDIO_INPUT_FREE_QUOTA,
+      limit: AUDIO_INPUT_FREE_QUOTA,
+    });
+  });
+
+  it("should return allowed=false when a free org has exceeded the quota", async () => {
+    const userId = uniqueId("quota-free-exceeded");
+    const { orgId } = await setupOrg(userId);
+    await seedBehaviorCount(
+      orgId,
+      userId,
+      AUDIO_INPUT_BEHAVIOR_KEY,
+      AUDIO_INPUT_FREE_QUOTA + 1,
+    );
+    const response = await GET(createQuotaRequest());
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body).toEqual({
+      allowed: false,
+      count: AUDIO_INPUT_FREE_QUOTA + 1,
       limit: AUDIO_INPUT_FREE_QUOTA,
     });
   });

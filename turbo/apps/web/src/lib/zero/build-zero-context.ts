@@ -14,8 +14,11 @@ import {
 import { zeroRuns } from "../../db/schema/zero-run";
 import { badRequest, notFound } from "../shared/errors";
 import { logger } from "../shared/logger";
-import type { ExecutionContext, ResumeSession } from "../infra/run/types";
-import type { ArtifactSnapshot } from "../infra/checkpoint/types";
+import type {
+  ExecutionContext,
+  ResumeSession,
+  ArtifactSnapshot,
+} from "../infra/run/types";
 import type {
   AdditionalArtifact,
   AdditionalVolume,
@@ -332,10 +335,6 @@ interface ResolveCliRunContextParams {
   permissionPolicies?: FirewallPolicies;
   allowedConnectorTypes?: ConnectorType[];
   allowedCustomConnectorIds?: string[];
-  // Artifact/memory
-  artifactName?: string;
-  artifactVersion?: string;
-  memoryName?: string;
   volumeVersions?: Record<string, string>;
   // Model provider selection
   modelProviderId?: string;
@@ -409,10 +408,10 @@ export async function resolveCliRunContext(
   // Initialize context variables
   let agentComposeVersionId: string | undefined = params.agentComposeVersionId;
   let agentCompose: unknown;
-  let artifactName: string | undefined = params.artifactName;
-  let artifactVersion: string | undefined = params.artifactVersion;
+  let artifactName: string | undefined;
+  let artifactVersion: string | undefined;
   let vars: Record<string, string> | undefined = params.vars;
-  let memoryName: string | undefined = params.memoryName;
+  let memoryName: string | undefined;
   let volumeVersions: Record<string, string> | undefined =
     params.volumeVersions;
   let additionalVolumes: AdditionalVolume[] | undefined;

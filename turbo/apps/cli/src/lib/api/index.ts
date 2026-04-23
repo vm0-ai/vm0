@@ -187,18 +187,5 @@ export {
   type TranscriptEntry,
 } from "./domains/phone-calls";
 
-// Domain modules - Zero Voice Chat Context
-export {
-  getVoiceChatContextEvents,
-  appendVoiceChatContextEvent,
-} from "./domains/zero-voice-chat-context";
-
-// Domain modules - Zero Voice Chat Tasks
-export {
-  createVoiceChatTask,
-  getVoiceChatTask,
-  listVoiceChatTasks,
-} from "./domains/zero-voice-chat-tasks";
-
 // Domain modules - Web
 export { downloadWebFile, uploadWebFile } from "./domains/web";

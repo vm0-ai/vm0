@@ -200,11 +200,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Show the Phone page for voice call integration",
     enabled: false,
   },
-  [FeatureSwitchKey.VoiceChat]: {
-    maintainer: "lancy@vm0.ai",
-    description: "Enable the Voice Chat feature and API endpoints",
-    enabled: false,
-  },
   [FeatureSwitchKey.AudioInput]: {
     maintainer: "lancy@vm0.ai",
     description:
@@ -215,11 +210,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "lancy@vm0.ai",
     description:
       "Enable audio output in chat (TTS read-aloud + auto-read) — gates the volume/read buttons and the /api/zero/voice-io/tts route",
-    enabled: false,
-  },
-  [FeatureSwitchKey.MissionControlSidebar]: {
-    maintainer: "ethan@vm0.ai",
-    description: "Show the Mission Control page entry in the sidebar",
     enabled: false,
   },
   [FeatureSwitchKey.AutoSkill]: {

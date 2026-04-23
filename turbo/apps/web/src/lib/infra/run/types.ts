@@ -1,6 +1,14 @@
-import type { ArtifactSnapshot } from "../checkpoint/types";
 import type { AdditionalArtifact, AdditionalVolume } from "../storage/types";
 import type { Firewalls, NetworkPolicies } from "@vm0/core";
+
+/**
+ * Single-artifact reference used by resume flows.
+ * Fields align with CLI parameters --artifact-name and --artifact-version.
+ */
+export interface ArtifactSnapshot {
+  artifactName: string;
+  artifactVersion: string;
+}
 
 /**
  * Run status values

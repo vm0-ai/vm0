@@ -15,7 +15,15 @@ const PAGE_PADDING = 24;
 
 type RoleFilter = Role | "all";
 
-const ROLE_FILTERS: RoleFilter[] = ["all", "engineering", "product", "ops"];
+const ROLE_FILTERS: RoleFilter[] = [
+  "all",
+  "engineering",
+  "product",
+  "marketing",
+  "support",
+  "compliance",
+  "ops",
+];
 
 const AVATAR_BASE = "/assets/avatar";
 

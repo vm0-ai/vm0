@@ -45,7 +45,7 @@ describe("POST /api/zero/integrations/slack/message", () => {
     const { composeId } = await createTestCompose(uniqueId("agent"));
     const { runId } = await seedTestRun(user.userId, composeId);
     mockClerk({ userId: null });
-    const token = await generateSandboxToken(user.userId, runId);
+    const token = await generateSandboxToken(user.userId, runId, "org-test");
     return { token, runId };
   }
 

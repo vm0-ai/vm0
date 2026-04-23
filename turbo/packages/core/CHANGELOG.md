@@ -1,5 +1,13 @@
 # Changelog
 
+## [8.229.1](https://github.com/vm0-ai/vm0/compare/core-v8.229.0...core-v8.229.1) (2026-04-23)
+
+
+### Refactoring
+
+* remove ArtifactSnapshot singleton type and checkpoint legacy branch ([#10747](https://github.com/vm0-ai/vm0/issues/10747)) ([ed4d601](https://github.com/vm0-ai/vm0/commit/ed4d601348a1f92e6f6bd7bf75623a5301f788ad))
+* remove http legacy run body shim and deprecated contract fields ([#10751](https://github.com/vm0-ai/vm0/issues/10751)) ([4c23933](https://github.com/vm0-ai/vm0/commit/4c23933d1e51caae00eadf0cb98ba6d55888e222))
+
 ## [8.229.0](https://github.com/vm0-ai/vm0/compare/core-v8.228.0...core-v8.229.0) (2026-04-22)
 
 

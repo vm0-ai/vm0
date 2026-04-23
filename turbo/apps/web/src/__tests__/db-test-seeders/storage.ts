@@ -157,7 +157,7 @@ export async function insertTestStorage(params: {
   userId: string;
   orgId: string;
   name: string;
-  type?: string;
+  type?: "volume" | "artifact";
 }): Promise<{ id: string }> {
   initServices();
   const [row] = await globalThis.services.db

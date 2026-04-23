@@ -45,7 +45,6 @@ export async function createTestRun(
     secrets?: Record<string, string>;
     sessionId?: string;
     checkpointId?: string;
-    memoryName?: string;
     appendSystemPrompt?: string;
     additionalVolumes?: Array<{
       name: string;
@@ -118,7 +117,7 @@ export async function createTestCheckpoint(
   agentSessionId: string;
   conversationId: string;
 }> {
-  const sandboxToken = await generateSandboxToken(userId, runId);
+  const sandboxToken = await generateSandboxToken(userId, runId, "org-test");
   const request = createTestRequest(
     "http://localhost:3000/api/webhooks/agent/checkpoints",
     {
@@ -175,7 +174,7 @@ export async function completeTestRun(
   );
 
   // Then complete the run
-  const sandboxToken = await generateSandboxToken(userId, runId);
+  const sandboxToken = await generateSandboxToken(userId, runId, "org-test");
   const request = createTestRequest(
     "http://localhost:3000/api/webhooks/agent/complete",
     {
@@ -211,7 +210,7 @@ export async function failTestRun(
   runId: string,
   error?: string,
 ): Promise<void> {
-  const sandboxToken = await generateSandboxToken(userId, runId);
+  const sandboxToken = await generateSandboxToken(userId, runId, "org-test");
   const request = createTestRequest(
     "http://localhost:3000/api/webhooks/agent/complete",
     {

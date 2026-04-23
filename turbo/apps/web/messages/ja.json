@@ -113,7 +113,7 @@
         "concurrentRuns": "2同時実行",
         "unlimitedAgents": "エージェント数無制限",
         "bringOwnLLM": "自分のLLMキーを使用",
-        "creditsRollover": "クレジット有効期限1ヶ月",
+        "creditsRollover": "クレジット繰り越し（1ヶ月）",
         "emailSupport": "メールサポート"
       },
       "buttonText": "Proで始める"
@@ -125,7 +125,7 @@
         "concurrentRuns": "5同時実行",
         "unlimitedAgents": "エージェント数無制限",
         "bringOwnLLM": "自分のLLMキーを使用",
-        "creditsRollover": "クレジット有効期限1ヶ月",
+        "creditsRollover": "クレジット繰り越し（1ヶ月）",
         "prioritySupport": "優先サポート"
       },
       "buttonText": "Teamで始める"
@@ -151,8 +151,8 @@
       "concurrentRunsDesc": "同時に実行できるエージェントの数",
       "totalAgents": "エージェント総数",
       "totalAgentsDesc": "作成可能なエージェントの最大数",
-      "creditsRollover": "クレジットの有効期限",
-      "creditsRolloverDesc": "クレジットは請求日から1ヶ月で期限切れになります",
+      "creditsRollover": "クレジット繰り越し",
+      "creditsRolloverDesc": "未使用のクレジットは次の請求期間に繰り越されます",
       "creditTopUp": "クレジットチャージ",
       "creditTopUpDesc": "1,000クレジットあたり$1でいつでも追加クレジットを購入",
       "autoRecharge": "自動チャージ",
@@ -191,13 +191,11 @@
       "whatAreCredits": "クレジットとは何ですか？",
       "whatAreCreditsAnswer": "クレジットはエージェントがAIモデルを使用する際に消費されます。モデルによってクレジットの消費率は異なります。例えば、シンプルなタスクは少量のクレジットを使い、複雑なマルチステップワークフローはより多く使います。",
       "changePlans": "いつでもプランを変更できますか？",
-      "changePlansAnswer": "はい！いつでもプランのアップグレードまたはダウングレードが可能です。アップグレード時、残りのクレジットは元の有効期限を保持したままアカウントに残り、優先的に使用されます。変更は即座に反映されます。",
+      "changePlansAnswer": "はい！いつでもプランのアップグレードまたはダウングレードが可能です。変更は即座に反映され、日割り計算で請求されます。",
       "runOutOfCredits": "クレジットがなくなったらどうなりますか？",
-      "runOutOfCreditsAnswer": "クレジットが枯渇すると、エージェントは実行を停止します。自動チャージで追加クレジットを購入するか、より上位のプランにアップグレードして月間クレジットを増やすことができます。また、永続的に有効な従量課金制のクレジットも購入できます。",
-      "doCreditsRollOver": "クレジットに有効期限はありますか？",
-      "doCreditsRollOverAnswer": "はい。すべてのクレジットには有効期限があります。Freeプラン：スタータークレジット10,000は登録から1ヶ月で期限切れとなり、更新されません。Pro/Teamプラン：クレジットは各請求サイクルで付与され、請求日から1ヶ月で期限切れになります。従量課金制クレジット：期限切れになりません。プロモーションクレジット：有効期限が設定された一回限りのクレジットです。",
-      "upgradeCredits": "アップグレード時のクレジットはどうなりますか？",
-      "upgradeCreditsAnswer": "アップグレード時（FreeからPro、またはProからTeam）、現在のプランの残りクレジットはアカウントに残り、優先的に使用されます。元の有効期限を保持し、元のスケジュール通りに期限切れとなります。",
+      "runOutOfCreditsAnswer": "クレジットが枯渇すると、エージェントは実行を停止します。自動チャージで追加クレジットを購入するか、より上位のプランにアップグレードして月間クレジットを増やすことができます。",
+      "doCreditsRollOver": "未使用のクレジットは繰り越されますか？",
+      "doCreditsRollOverAnswer": "Freeプランでは、スタータークレジットは登録から1ヶ月で期限切れになり、補充されません。Proでは未使用クレジットが1ヶ月繰り越されます。Teamでもクレジットは1ヶ月繰り越されます。",
       "bringOwnModel": "自分のモデルプロバイダーを使えますか？",
       "bringOwnModelAnswer": "はい！すべてのプランで独自のLLM APIキー（Anthropicなど）の使用をサポートしています。独自のキーを使用する場合、モデル使用にVM0クレジットは消費されません。",
       "howSecure": "VM0はどれくらい安全ですか？",
@@ -1470,88 +1468,6 @@
           "Standupユースケースとチェーン - 週次のリリース済みアイテムサマリーを先に走らせ、このキャンペーンに投入すれば、コピペ不要のニュースレターパイプラインに。"
         ]
       },
-      "managed-agent-workers": {
-        "title": "Anthropic Managed Agent のワーカーを起動・確認する",
-        "description": "コードレビュー、テスト、技術的負債、ビルド用に専用の Managed Agent を作り込んであるはず。Zero がそのフリートの管理役になり、起動・ステータス確認・結果の取得まで、すべて Slack から実行できます。",
-        "timeSaved": "ワーカー作業あたり約 20 分の削減",
-        "headings": {
-          "scenario": "ワーカーエージェントのフリートを 1 人で回すのはなぜ大変か",
-          "prompt": "Managed Agent の起動・監視を Zero に頼む方法",
-          "steps": "Zero が Managed Agent のフリートをどう動かすか",
-          "nextActions": "特定のエージェントの起動、定期実行、ワーカーの連携",
-          "integrations": "必要な連携: Anthropic Managed Agents と GitHub",
-          "tips": "Managed Agent ワーカーフリート運用のベストプラクティス"
-        },
-        "scenario": "Anthropic Managed Agents 上に専用ワーカーを育ててきたはず - Tech Debt Cleaner、PR Reviewer、Test Runner、Build Watcher のように。それぞれが独自のシステムプロンプト、ツール、そして隔離されたクラウド環境を持っています。今のところ、どれか 1 体を動かすには Anthropic のコンソールを開いてセッションを作成し、ステータスを何度もリロードして、結果をワークフローに貼り戻す必要があります。複数が同時に動き出すと、誰が忙しくて誰が終わったのか、どの結果にもう目を通したのか、あっという間に分からなくなります。そこで Zero にフリートの様子を聞くだけで、エージェントの一覧、アクティブなもの、最新の出力が返ってきて、セッションが完了すれば Slack に結果が流れてきます。",
-        "promptVariants": [
-          {
-            "label": "ワーカーを起動",
-            "prompt": "@Zero vm0-ai/vm0 の main に対して Tech Debt Cleaner を起動して。セッションが終わったら結果をここに流して。"
-          },
-          {
-            "label": "フリートを確認",
-            "prompt": "@Zero いまの Managed Agent ワーカーの状況を教えて。エージェントごとのステータスと、いま何をやっているかを一覧で。"
-          },
-          {
-            "label": "定期実行",
-            "prompt": "@Zero 毎晩 22:00 に main で Test Runner を起動して、翌朝 9:00 までに結果一式をここに投稿して。"
-          }
-        ],
-        "slackPreview": [
-          {
-            "name": "Ethan",
-            "text": "@Zero Tech Debt Cleaner はどんな状況?"
-          },
-          {
-            "name": "Zero",
-            "text": "Tech Debt Cleaner はアクティブです - セッション sesn_011Ca8 が vm0-ai/vm0 の main に対して 14 分稼働中。現在 turbo/apps/web/components を処理中で、直近のログは「デッドコードの import を 7 件検出」。\n\n他のワーカー:\n- PR Reviewer - idle\n- Test Runner - アクティブ(2 分経過、voice-chat.test.tsx を実行中)\n- Build Watcher - idle\n\nTech Debt Cleaner のフルレポートは、セッション完了時にこちらへ投稿します。"
-          }
-        ],
-        "steps": [
-          {
-            "title": "Zero がワーカーフリートを読み取る",
-            "description": "Zero が Anthropic Managed Agents の API を叩いて、設定済みのすべてのエージェントをリストアップします。説明文、モデル、利用可能なツールまで含めて、Zero が扱えるワーカーのディレクトリとして扱われます。"
-          },
-          {
-            "title": "Zero がフリート全体のセッション状態を確認",
-            "description": "各エージェントについて、アクティブなセッションと直近のセッションを問い合わせます。idle のワーカー、稼働中のワーカー、それぞれの経過時間、最新の出力行までを返してくれるので、コンソールを行き来する必要はありません。"
-          },
-          {
-            "title": "Zero が依頼に応じて起動・監視",
-            "description": "エージェントの実行を頼むと、Zero が指定のターゲット(リポジトリ、PR、ブランチ)で新しいセッションを作成し、完了までポーリングします。最終出力を取得したあと、構造化されたサマリーを Slack に投稿します。"
-          }
-        ],
-        "nextActions": [
-          {
-            "title": "特定のワーカーを起動",
-            "description": "単一のエージェントを特定のターゲットで走らせる",
-            "examplePrompt": "@Zero PR #9711 に対して PR Reviewer を起動して。終わったらレビューコメントをここに流して。"
-          },
-          {
-            "title": "ワーカーの定期実行",
-            "description": "一定のサイクルで自動的に走らせる",
-            "examplePrompt": "@Zero 毎晩 22:00 に main で Test Runner を起動して、翌朝 9:00 までに結果一式をここに投稿して。"
-          },
-          {
-            "title": "ワーカーをパイプラインで連携",
-            "description": "あるワーカーの出力を次のワーカーにつなげる",
-            "examplePrompt": "@Zero Tech Debt Cleaner の次の実行が終わったら、そのとき作られたブランチに対して PR Reviewer を起動して。"
-          }
-        ],
-        "integrations": [
-          {
-            "description": "Anthropic Managed Agents - Zero がエージェントを一覧表示し、セッションを起動し、ステータスや出力を取得します。app.vm0.ai/connectors から Anthropic の API キーで接続してください。"
-          },
-          {
-            "description": "GitHub - 多くのワーカーはレビュー、テスト、ビルドのためにリポジトリへのアクセスが必要です。Zero は GitHub 連携を使って、対象のブランチや PR を正しく指定します。"
-          }
-        ],
-        "tips": [
-          "Anthropic のコンソールでは、各エージェントに人間が読みやすい明確な名前を付けておきましょう。「Tech Debt Cleaner」は、Zero の返答のなかで agent_011 系の ID よりもずっと読みやすくなります。",
-          "各エージェントは 1 つの目的に絞りましょう。PR レビューとテスト実行を兼ねたワーカーは、どちらも精度が落ちます。システムプロンプトを絞るほど、出力はシャープになり、オーケストレーションも楽になります。",
-          "条件付きプロンプトでワーカーをつなげましょう - 「X が終わったら、その出力で Y を起動して」。専門化したエージェントのフリートが、追加のインフラなしにそのままパイプラインになります。"
-        ]
-      },
       "multilingual-cms-publishing": {
         "title": "Zero のひと言でStrapi多言語コンテンツを一括公開",
         "description": "書きたい内容をZeroに伝えるだけ。英語・中国語・日本語で各市場向けに適応（単純翻訳ではなく）したコンテンツを生成し、3言語すべてをStrapiにドラフトとして一括投稿します。",
@@ -1809,98 +1725,6 @@
           "まず初回スクレイピングを実行してNotionにベースラインスナップショットを設定しましょう。これがないと@Zeroは差分比較対象がなく、すべてを変更として扱います。",
           "何をフラグ付けするか具体的に指定しましょう。「料金プラン、プラン名、トライアルオファー、CTAの変更を監視」は、一般的なスキャンよりも精度の高い結果を得られます。",
           "Notionログに競合名、変更タイプ、日付などのプロパティを設定して、履歴全体で何がいつ変わったかをフィルタリングできるようにしましょう。"
-        ]
-      },
-      "cross-tool-context-query": {
-        "title": "5つのツールを確認せずに、あらゆるテーマの統合ステータスブリーフを取得",
-        "description": "プロジェクト、機能、またはトピックについて@Zeroに質問します。Slack、Notion、Linear、GitHubを同時に検索し、構造化されたブリーフを返します：現在の状態、担当者、ブロッカー、最終アクティビティ - すべてが1つのメッセージで完結します。",
-        "timeSaved": "ステータス確認ごとに約15分の時間削減",
-        "headings": {
-          "scenario": "ステータス更新に必要以上に時間がかかる理由",
-          "prompt": "@Zeroにクロスツールのステータスブリーフを依頼する方法",
-          "steps": "@Zeroが検索、統合し、矛盾する情報をフラグ付けする仕組み",
-          "nextActions": "さらに深掘り、定期ブリーフのスケジュール、またはステータスの文書化",
-          "integrations": "必須連携: Slack、Linear、Notion、GitHub",
-          "tips": "クロスツールコンテキストクエリのベストプラクティス"
-        },
-        "scenario": "新しいオンボーディングフローの状態を知る必要があります。Slackを開いて最近の決定がないか確認します。Linearを開いて進行中のものを確認します。Notionを開いて仕様を探します。GitHubを開いてPRを確認します。4つのタブ、4つのコンテキスト、それでも仕様が最新かどうか、Linearのチケットが最新の決定を反映しているかどうか確信が持てません。@Zeroは4つの検索を同時に行い、矛盾をフラグ付けし、1つのレスポンスで全体像を提供します。",
-        "promptVariants": [
-          {
-            "label": "基本",
-            "prompt": "@Zero what's the current status of [X]?\nSearch Slack (last 14 days), Notion, Linear, and GitHub. Return: current state in one sentence, owner, blockers, and the last meaningful update with source."
-          },
-          {
-            "label": "詳細分析",
-            "prompt": "@Zero pull everything on [X] from the last 30 days across Slack, Notion, Linear, and GitHub. Write a full status doc with owner, decision history, and what's next."
-          },
-          {
-            "label": "スケジュール",
-            "prompt": "@Zero every Monday morning, DM me a status brief on [X] - current state, owner, blockers, last update."
-          },
-          {
-            "label": "矛盾検知",
-            "prompt": "@Zero check Slack and Linear for the latest on [X] and flag if the two sources disagree on status or ownership."
-          }
-        ],
-        "slackPreview": [
-          {
-            "name": "Alex",
-            "text": "@Zero what's the current status of the onboarding redesign? Search Slack, Notion, Linear, and GitHub."
-          },
-          {
-            "name": "Zero",
-            "text": "Status - Onboarding Redesign\n\nCurrent state: In development, mobile flow in review\nOwner: Lancy (Linear)\nBlockers: Figma handoff incomplete (Slack, Apr 11)\nLast activity: PR #9241 opened Apr 12 - \"feat: new onboarding step 3\""
-          }
-        ],
-        "steps": [
-          {
-            "title": "@Zeroが4つすべてのソースを並行検索",
-            "description": "@Zeroは指定したトピックと時間枠にスコープして、Slackメッセージ、Notionページ、Linearのissue、GitHubのPRとコミットを同時に検索します。"
-          },
-          {
-            "title": "検索結果を構造化されたブリーフに統合",
-            "description": "@Zeroは各ソースから状態、担当者、ブロッカー、最終更新を抽出します。2つのソースが矛盾する場合 - 例えばSlackではブロック中だがLinearでは進行中と表示される場合 - @Zeroは矛盾をフラグ付けし、両方のソースを引用します。"
-          },
-          {
-            "title": "ブリーフを同じスレッドで返信",
-            "description": "@Zeroは4つのパートで構成されたブリーフを返信します：1行での現在の状態、担当者またはDRI、ブロッカー、ソースと日付を含む最後の重要な更新。"
-          }
-        ],
-        "nextActions": [
-          {
-            "title": "1つのソースを深掘りする",
-            "description": "Linearのissueまたは GitHubのPRスレッド全体を確認",
-            "examplePrompt": "@Zero show me all comments and activity on the Linear issue for [X] from the last 7 days."
-          },
-          {
-            "title": "定期ブリーフをスケジュールする",
-            "description": "毎回質問せずに週次のステータスDMを受け取る",
-            "examplePrompt": "@Zero every Monday morning, DM me a status brief on [X] - current state, owner, blockers, last update."
-          },
-          {
-            "title": "ステータスを文書化する",
-            "description": "チーム向けにブリーフをNotionに記録",
-            "examplePrompt": "@Zero search for the latest on [X] across Slack, Linear, and GitHub, then save a status summary to our Decision Log in Notion."
-          }
-        ],
-        "integrations": [
-          {
-            "description": "@Zeroはチャンネル全体のメッセージを読み取り、トピックに関する最近の決定、ブロッカー、議論を表面化します。"
-          },
-          {
-            "description": "@Zeroはオープンおよび進行中のissueを取得して、担当者、優先度、現在の状態を表面化します。"
-          },
-          {
-            "description": "@Zeroはページとデータベースで仕様、決定事項、コンテキスト文書を検索します。オプションですが推奨です。"
-          },
-          {
-            "description": "@Zeroはオープンなpr、最近のコミット、issueコメントから最新の技術的アクティビティを確認します。オプションですが、エンジニアリングトピックには推奨です。"
-          }
-        ],
-        "tips": [
-          "具体的に指定しましょう。「Stripe連携」は「決済機能」よりも効果的です。@Zeroが4つのソースで結果をフィルタリングするには十分なコンテキストが必要です。",
-          "長期にわたるトピックの場合は時間枠を追加しましょう。「直近14日間に絞る」ことで、古い結果が最新のものを埋もれさせることを防げます。",
-          "意思決定の文書化と組み合わせて、@Zeroが返したブリーフをNotionに自動記録しましょう。"
         ]
       },
       "customer-360": {
@@ -2589,172 +2413,6 @@
           "For sensitive queries, prefix with 'do not log the results' - Zero will deliver the answer in an ephemeral message visible only to you."
         ]
       },
-      "marketing-content-automation": {
-        "title": "Run a full content pipeline from research to scoring without a content team",
-        "description": "Set up a multi-agent loop: one agent drafts posts daily from competitor and trend research, Zero saves your best inspirations on command, and a monitor agent scores performance every week. The whole pipeline runs in Slack.",
-        "timeSaved": "~5 hrs saved per week",
-        "headings": {
-          "scenario": "Why content pipelines stall without automation",
-          "prompt": "How to set up the three-agent content loop",
-          "steps": "How the researcher, Zero, and monitor agents work together",
-          "nextActions": "Scale what works, retire what doesn't, and expand to new channels",
-          "integrations": "Required integrations: Slack, X (Twitter), and Notion",
-          "tips": "Best practices for AI-driven content pipelines"
-        },
-        "scenario": "Consistent content output is a compounding advantage. But maintaining it manually - researching trends, drafting posts, tracking what performs, retiring what doesn't - consumes hours that compound in the wrong direction. The vm0 marketing content automation pipeline puts three agents to work: a researcher drafts 8+ posts every morning from X and Reddit, Zero saves template inspirations as you find them in Slack, and a monitor scores every post weekly and tells you what to scale.",
-        "promptVariants": [
-          {
-            "label": "Save a template inspiration",
-            "prompt": "@Zero save template https://x.com/example/post note: strong contrarian hook, good for the Hot Take template."
-          },
-          {
-            "label": "Check this week's drafts",
-            "prompt": "@Zero what drafts did the researcher generate today? Show me the ones marked for approval."
-          },
-          {
-            "label": "Run the monitor now",
-            "prompt": "@Zero run the content performance monitor now and show me this week's Green/Yellow/Red breakdown."
-          }
-        ],
-        "slackPreview": [
-          {
-            "name": "Scarlett",
-            "text": "@Zero save template https://x.com/mlejva/status/12345 note: great founder reflection format, fits Template B."
-          },
-          {
-            "name": "Zero",
-            "text": "Saved to vm0 My Templates in Notion.\n\nTemplate type: B (Founder Reflection)\nNote: great founder reflection format, fits Template B.\nSource: https://x.com/mlejva/status/12345"
-          }
-        ],
-        "steps": [
-          {
-            "title": "Researcher agent drafts content daily",
-            "description": "Every morning, the researcher agent scans competitor X accounts, trending topics, and Reddit communities. It generates 8+ draft posts using your content templates and saves them to a Notion queue for your review."
-          },
-          {
-            "title": "You review and Zero saves inspirations",
-            "description": "You approve or reject drafts in Notion. When you spot a post worth saving as a template inspiration, you tell Zero in Slack - it saves it with your notes and categorization instantly."
-          },
-          {
-            "title": "Monitor scores performance weekly",
-            "description": "Every Monday, the monitor agent pulls engagement metrics for all published posts, applies your scoring formula, and delivers a Green/Yellow/Red breakdown with recommendations: scale the Greens, tweak the Yellows, retire the Reds."
-          }
-        ],
-        "nextActions": [
-          {
-            "title": "Scale a Green template",
-            "description": "Double down on what's working",
-            "examplePrompt": "@Zero tell the researcher to generate 5 variants of Template C (Hot Take) for next week - the last 3 scored Green."
-          },
-          {
-            "title": "Retire a Red template",
-            "description": "Remove underperformers from the pipeline",
-            "examplePrompt": "@Zero retire Template D from the researcher - it hasn't scored above Yellow in 4 sprints."
-          },
-          {
-            "title": "Add a new competitor to monitor",
-            "description": "Expand the researcher's source list",
-            "examplePrompt": "@Zero add @new_competitor to the researcher's monitored accounts for daily content scanning."
-          }
-        ],
-        "integrations": [
-          {
-            "description": "Slack is the command interface - you save inspirations, check drafts, and manage the pipeline through Slack messages."
-          },
-          {
-            "description": "X (Twitter) is the primary research source for the researcher agent and the platform where approved posts are published."
-          },
-          {
-            "description": "Notion stores the content queue, template inspirations, trend intelligence, and weekly performance reports."
-          }
-        ],
-        "tips": [
-          "Review and approve drafts daily - the pipeline only works if you maintain the habit of publishing approved content. The researcher generates, you curate.",
-          "Iterate on templates based on monitor data. Treat content like a product: run 2-week sprints, kill what scores Red after 3+ posts, double down on Greens.",
-          "Save template inspirations as you find them in the wild - the best content ideas come from scrolling, not from scheduled research sessions."
-        ]
-      },
-      "engineering-brief": {
-        "title": "Get an evening engineering brief with PR counts, highlights, and team recognition",
-        "description": "Every evening, Zero pulls GitHub activity, counts PRs merged per engineer, surfaces commit highlights, and picks an MVP of the day - posted to Slack with no manual work.",
-        "timeSaved": "~30 min saved per day",
-        "headings": {
-          "scenario": "Why engineering work goes unrecognized without a system",
-          "prompt": "How to set up the evening engineering brief",
-          "steps": "How Zero gathers activity, computes stats, and writes the brief",
-          "nextActions": "Customize the brief, adjust cadence, or extend to Linear",
-          "integrations": "Required integrations: Slack and GitHub",
-          "tips": "Best practices for team engineering briefs"
-        },
-        "scenario": "PRs get merged. Engineers do good work. But without a ritual to surface it, the work is invisible - especially to team members who weren't in those review threads. Zero runs a brief every evening: how many PRs did we merge today, who shipped what, and who had the standout contribution. It creates a shared sense of progress and recognition without any overhead.",
-        "promptVariants": [
-          {
-            "label": "Set up evening brief",
-            "prompt": "@Zero every weekday at 6pm, pull today's merged PRs from vm0-ai/vm0, count per engineer, surface 3 commit highlights, and pick an MVP. Post to #all-vm0."
-          },
-          {
-            "label": "Run it now",
-            "prompt": "@Zero run today's engineering brief now and post to #dev."
-          },
-          {
-            "label": "Weekly rollup",
-            "prompt": "@Zero pull this week's engineering activity from GitHub - total PRs, most active engineers, top 5 commits - and post a weekly summary to #all-vm0."
-          }
-        ],
-        "slackPreview": [
-          {
-            "name": "Zero",
-            "text": "Evening Brief - April 14, 2026\n\nToday the team merged 53 PRs and closed 70+ issues.\n\n🏆 You Liang - 27 PRs. Today's MVP.\n• CI infrastructure full overhaul\n• Flaky test elimination\n\nLancy - 15 PRs. Connector architecture refactor.\nEthan - 8 PRs. Performance improvements."
-          }
-        ],
-        "steps": [
-          {
-            "title": "Zero pulls GitHub activity for the day",
-            "description": "Zero fetches all PRs merged today in the specified repo, along with commit messages and authors."
-          },
-          {
-            "title": "Zero counts, ranks, and selects highlights",
-            "description": "Zero counts PRs per engineer, identifies the top contributor, and selects the 2-3 most impactful commits based on description scope and team impact."
-          },
-          {
-            "title": "Brief posted to Slack",
-            "description": "Zero posts the evening brief to the specified channel - total PRs, per-engineer counts, commit highlights, and MVP recognition with a short description of why they stood out today."
-          }
-        ],
-        "nextActions": [
-          {
-            "title": "Add Linear to the brief",
-            "description": "Include issues closed alongside PRs merged",
-            "examplePrompt": "@Zero update the evening brief to also include Linear issues closed today per engineer, alongside the GitHub PR counts."
-          },
-          {
-            "title": "Adjust the MVP criteria",
-            "description": "Change how the MVP is selected",
-            "examplePrompt": "@Zero update the MVP selection logic: weight architectural changes more heavily than feature PRs."
-          },
-          {
-            "title": "Add a weekly rollup on Fridays",
-            "description": "Celebrate the full week's output",
-            "examplePrompt": "@Zero on Fridays, post an extended brief: week total, individual PR counts, and the top 3 commits of the week."
-          }
-        ],
-        "integrations": [
-          {
-            "description": "GitHub is required. Zero reads merged PRs and commit data from your repository."
-          },
-          {
-            "description": "Slack is required. Zero posts the brief to your chosen channel at the scheduled time."
-          },
-          {
-            "description": "Linear is optional. Zero can pull issues closed per engineer to complement the GitHub PR data."
-          }
-        ],
-        "tips": [
-          "Post to a channel the whole team sees - #all-vm0 or #engineering - not just a leadership channel. The recognition lands differently when it's public.",
-          "Keep the brief concise: total count, per-engineer, and one standout highlight per MVP. More than 10 lines and people stop reading.",
-          "Run the brief at the same time every day. Predictable cadence builds the habit of checking it."
-        ]
-      },
       "security-compliance": {
         "title": "Research your infrastructure for compliance requirements in one Slack thread",
         "description": "Ask Zero to audit your infrastructure setup against a compliance requirement. Zero checks your config across GitHub, cloud providers, and documentation - and posts a structured findings brief.",
@@ -3421,9 +3079,1284 @@
           "auto-merge-releasesと組み合わせて完全なリリースパイプラインに：merge-queue-monitorが詰まったPRを検出し、auto-merge-releasesがキューが空いたらリリースを出荷します。"
         ]
       },
+      "voice-driven-agent": {
+        "title": "音声でコーディングタスクを起動。キーボードは不要",
+        "description": "Zeroに音声で指示するだけで、サンドボックスを立ち上げ、リポジトリをクローンし、セットアップを実行し、タスクを処理します。Zeroがバックグラウンドエージェントを起動し、進捗をSlackに報告します。",
+        "timeSaved": "ハンズフリータスクあたり約20分短縮",
+        "headings": {
+          "scenario": "今日のあらゆるタスクがキーボードを要求する理由",
+          "prompt": "Zeroに音声でコーディングタスクを依頼する方法",
+          "steps": "Zeroが音声起動タスクを実行する流れ",
+          "nextActions": "スケールアップ、連結、またはルーティン化",
+          "integrations": "必要なインテグレーション：Slack とマネージドエージェントランタイム",
+          "tips": "ハンズフリーなエージェントワークフローのベストプラクティス"
+        },
+        "scenario": "最高のアイデアは、机の前ではめったに生まれません。歩いている最中、移動中、会議と会議の合間、まさに座ってリポジトリを開き、サンドボックスを立ち上げ、タスクを実行するのが現実的でないタイミングに、ひらめきます。キーボードの前に戻る頃には、アイデアは冷めています。Zeroとの音声チャットはこのギャップを埋めます。タスクを声に出して伝えれば、マネージドエージェントがそれを受け取り、リポジトリをクローンし、セットアップを実行し、指示された内容を処理し、結果を投稿します。コンテキストスイッチなし、勢いを失うこともなし。",
+        "promptVariants": [
+          {
+            "label": "詳細版",
+            "prompt": "@Zero マネージドエージェントを立ち上げて、リポジトリをクローンし、pnpm install と pnpm test を実行して、結果をこのスレッドに投稿して。"
+          },
+          {
+            "label": "クイック",
+            "prompt": "@Zero main でテストスイートを実行して、終わったらDMして。"
+          },
+          {
+            "label": "スケジュール",
+            "prompt": "@Zero 毎朝8時に、main で統合テストスイートを実行して、pass/fail のサマリーをDMして。"
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Alex",
+            "text": "@Zero リポジトリをクローンして、セットアップして、テストスイートを実行して。終わったらDMして"
+          },
+          {
+            "name": "Zero",
+            "text": "マネージドエージェント `agent-8f21` をプロビジョニングしました。リポジトリをクローン、依存関係をインストール（2分14秒）、テストスイートを実行中。結果が出たらDMします。"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero が音声入力を構造化タスクに変換",
+            "description": "話した内容がSlackの音声チャンネルに届き、Zero がそれを具体的なタスクに解析します（クローンするリポジトリ、実行するコマンド、報告先のチャンネル）。曖昧な点があれば、Zero は起動前に一度だけ確認します。"
+          },
+          {
+            "title": "Zero がマネージドエージェントをプロビジョニングし、手順を実行",
+            "description": "サンドボックス化されたエージェントが、あなたが許可したコネクターだけにアクセスできる状態で立ち上がります。リポジトリをクローンし、依存関係をインストールし、コマンドを実行し、stdout、stderr、終了コードを記録します。"
+          },
+          {
+            "title": "Zero が指定のチャンネルやDMに結果を報告",
+            "description": "結果は pass/fail ステータス、主要メトリクス（所要時間、エラー、変更ファイル数）、フルログへのリンクを含む簡潔なサマリーとして届きます。タスクがアーティファクト（diff、テストレポート、ファイル）を生成した場合は、Zero がそれも添付します。"
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "PRに連結する",
+            "description": "タスクが差分を生成した場合、Zero にドラフトPRを開かせる。",
+            "examplePrompt": "@Zero タスクが変更を生成したら、main に対してドラフトPRを開いて、レビューのために私をタグ付けして。"
+          },
+          {
+            "title": "重要度でルーティング",
+            "description": "失敗はチャンネルへ、成功はDMへ。",
+            "examplePrompt": "@Zero 実行が失敗したら #eng-oncall に詳細を投稿、通ったらDMだけでいい。"
+          },
+          {
+            "title": "ルーティンにする",
+            "description": "音声起動タスクを定期ジョブとしてスケジュール。",
+            "examplePrompt": "@Zero 平日の朝9時に、main でスモークテストスイートを実行してサマリーをDMして。"
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Slack：Zero は音声メッセージを受け取り、構造化タスクに解析します。音声入力の取得とチャンネル/DMアクセスが必要です。"
+          },
+          {
+            "description": "マネージドエージェントランタイム：Zero は独自のコンピュート、ファイルシステム、コネクター権限を持つサンドボックス化されたバックグラウンドエージェントを起動します。コード実行には必須です。"
+          },
+          {
+            "description": "GitHub：オプション。タスクがリポジトリのクローン、テスト実行、PR作成を伴う場合のみ必要。スコープ付きトークンで、マネージドエージェントが承認された範囲だけを扱うように制限できます。"
+          }
+        ],
+        "tips": [
+          "プロンプトに報告先を明示しましょう。ハンズフリー中は「DMして」と「#eng-oncall に投稿して」では大きく違います。",
+          "音声コマンドは短く具体的に。「main でテスト実行」は通りますが、「ついでにドキュメントも見て、昨日のあの件も調べて」は通りません。",
+          "フリートモニタリングと組み合わせれば、「エージェント達はどう？」と聞くだけで、キーボードに戻らずにライブステータスが返ってきます。"
+        ]
+      },
+      "developer-support-triage": {
+        "title": "オンコールエンジニアを巻き込まずに、開発者からの質問に回答",
+        "description": "Zero が開発者サポートの質問を受け取り、既存のIssueとPRで重複をチェックし、ドキュメントから直接答えるか、チーム向けに適切にスコープされたIssueを作成します。",
+        "timeSaved": "サポート質問あたり約30分短縮",
+        "headings": {
+          "scenario": "開発者サポートの質問が、オンコールエンジニアの1日を食い尽くす理由",
+          "prompt": "Zero にサポート質問の対応を依頼する方法",
+          "steps": "Zero が開発者の質問をトリアージする流れ",
+          "nextActions": "専門家にルーティング、チケット起票、または重複を自動クローズ",
+          "integrations": "必要なインテグレーション：GitHub、Slack、Gmail",
+          "tips": "開発者サポートトリアージのベストプラクティス"
+        },
+        "scenario": "開発者向けのどの会社にも、「なんでこれ失敗するの？」という質問が Slack、メール、GitHub に絶え間なく届きます。半分は既存Issueの重複、4分の1はドキュメントに書かれている、残りは本物のバグ。でも、仕分けるだけでオンコールエンジニアの朝は1時間潰れます。Zero は受信した質問を読み、Issue、PR、ドキュメントを検索し、リンクを添えて直接答えるか、きれいで再現可能なチケットを起票します。オンコールエンジニアは受信箱ではなく、整理されたキューに向かって目覚めます。",
+        "promptVariants": [
+          {
+            "label": "詳細版",
+            "prompt": "@Zero このサポート質問をトリアージして。IssueとPRで重複を検索、ドキュメントを確認、可能ならここにリンク付きで回答、無理なら適切にスコープされたIssueを起票して @oncall をタグ付けして。"
+          },
+          {
+            "label": "クイック",
+            "prompt": "@Zero この質問をトリアージして。"
+          },
+          {
+            "label": "スケジュール",
+            "prompt": "@Zero 営業時間中1時間ごとに #dev-support で新しい質問をチェックしてトリアージして。回答できれば回答、できなければIssueを起票。"
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "External dev",
+            "text": "@Zero POST /api/v1/agents で毎回401が返ってくる。トークンは有効。どうして？"
+          },
+          {
+            "name": "Zero",
+            "text": "Issue #2104 の重複を発見。そのエンドポイントには `agents:write` スコープが必要で、デフォルトのOAuthスコープには含まれていません。対応：`agents:write` 付きでトークンを再生成してください。ドキュメント：/api/auth#scopes。これで解決しない場合は、エスカレーションします。"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero はまず既知の問題ライブラリを検索",
+            "description": "Zero は GitHub のIssue、PR、リンクされたドキュメントを一致するもので照会します。重複やドキュメント化された解決策は引用付きで即座に回答され、ユーザーはすぐに先に進めます。"
+          },
+          {
+            "title": "新しい質問の場合、Zero が適切にスコープされたIssueを起票",
+            "description": "一致がない場合、Zero はユーザーの再現手順、期待される挙動と実際の挙動、環境の詳細、エラートレースを含むGitHub Issueを作成します。適切なコンポーネントオーナーをタグ付けし、Issueリンクをスレッドに返します。"
+          },
+          {
+            "title": "Zero が解決後にフォローアップ",
+            "description": "Issueがクローズされると、Zero は元の質問者に修正リンクを通知します。ユーザーのメールが取得されていれば、Zero はメール側でもループを閉じられます。"
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "専門家にエスカレーション",
+            "description": "特定のコンポーネントに関する質問を、適切なオンコールにルーティング。",
+            "examplePrompt": "@Zero サポート質問に `billing` が含まれていたら、デフォルトキューではなく #oncall-billing にエスカレーションして。"
+          },
+          {
+            "title": "GitHubで重複を自動クローズ",
+            "description": "Zero が重複と特定したGitHub Issueを、正典へのリンク付きでクローズ。",
+            "examplePrompt": "@Zero 重複のGitHub Issueを見つけたら、正典へのリンクをコメントしてクローズして。"
+          },
+          {
+            "title": "ルーティンにする",
+            "description": "サポートチャンネルを1時間ごとにスイープ。",
+            "examplePrompt": "@Zero 営業時間中1時間ごとに #dev-support の未回答メッセージをスキャンしてトリアージして。"
+          }
+        ],
+        "integrations": [
+          {
+            "description": "GitHub：Zero は重複とコンテキストを検索するため、Issue、PR、リンクされたドキュメントを参照します。新しいチケットの起票と重複クローズのため、Issueへの書き込みアクセスが必要です。"
+          },
+          {
+            "description": "Slack：Zero はサポートチャンネルを読み、回答を投稿し、専門家をタグ付けします。チャンネルへの読み取り・書き込みアクセスが必要です。"
+          },
+          {
+            "description": "Gmail：オプション。サポート質問がメールでも届き、Issue解決時にループを閉じたい場合のみ必要。"
+          }
+        ],
+        "tips": [
+          "重複マッチングのしきい値はコンポーネントごとに調整しましょう。課金の質問は自動クローズ前にかなり近い一致が必要ですが、認証の質問はもっと緩くてよい。",
+          "必ず Zero に情報源を引用させましょう。「Issue #2104 より」は信頼できますが、「たぶんこれが原因かな」は違います。",
+          "チャンネルではなくラベルでルーティング。受信した質問にコンポーネントラベルを付け、ラベルでエスカレーションをフィルタすれば、きれいに引き継げます。"
+        ]
+      },
+      "morning-brief": {
+        "title": "5つのタブではなく、1つのダイジェストで毎日を始める",
+        "description": "カレンダー、Issueトラッカー、チャット、フィード、コードホストを1つの朝のサマリーにまとめた、朝会前のブリーフ。朝会に入る頃には、すでにキャッチアップ済みです。",
+        "timeSaved": "毎朝約20分短縮",
+        "headings": {
+          "scenario": "毎朝5つのタブを開いて始める理由",
+          "prompt": "Zero に朝のブリーフを依頼する方法",
+          "steps": "Zero が朝のブリーフを組み立てる流れ",
+          "nextActions": "パーソナライズ、チームチャンネルに送信、またはシグナル調整",
+          "integrations": "必要なインテグレーション：カレンダー、Issueトラッカー、Slack",
+          "tips": "役に立つ朝のブリーフのベストプラクティス"
+        },
+        "scenario": "毎朝は同じ流れで始まります。次の予定を確認するカレンダー、動きを見るための Linear、夜間の議論に追いつくための Slack、業界ニュースの X、何がマージされたか見る GitHub。最初の実タスクに入る前に20分が消えます。朝のブリーフはそれを1つの Slack メッセージに凝縮します。重要な会議、動いたIssue、返信が必要なスレッド、関連するニュース、昨夜マージされたPR。すべてが Slack を開いたときに待っている、コンパクトな1ブロックに。",
+        "promptVariants": [
+          {
+            "label": "詳細版",
+            "prompt": "@Zero 平日の朝8時に、朝のブリーフをDMして。今日の会議、夜間に動いた自分のIssue、タグ付けされた Slack スレッド、X フィードの上位3投稿、夜間にリポジトリにマージされたPR。"
+          },
+          {
+            "label": "クイック",
+            "prompt": "@Zero 朝のブリーフ。"
+          },
+          {
+            "label": "チーム版",
+            "prompt": "@Zero 平日の午前8時30分に、#standup にチーム版の朝のブリーフを投稿。全体カレンダー、高優先度のオープンIssue、夜間PR。"
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Zero",
+            "text": "おはようございます。今日のブリーフです：\n\n📅 会議3件（10時デザインレビュー、14時1on1、16時運用同期）\n📋 夜間に動いたIssue2件（ENG-412 再オープン、ENG-438 レビュー待ちでブロック）\n💬 返信が必要なスレッド4件（#product 3件、#support 1件）\n📰 トップニュース：競合が昨日音声APIをローンチ。5分で目を通す価値あり\n🚀 夜間：main に6件のPRがマージ（全リスト参照）"
+          },
+          {
+            "name": "Alex",
+            "text": "完璧、10時会議の前に欲しかった情報そのもの"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero が今日の予定と夜間のアクティビティを取得",
+            "description": "Zero は今日のカレンダー、昨晩のIssueトラッカーの変更、タグ付けされた Slack スレッド、昨日マージされたPRを読み込みます。すべてが1つの作業データセットにまとめられます。"
+          },
+          {
+            "title": "Zero が本当にあなたにとって重要なものに絞り込む",
+            "description": "すべての通知がシグナルとは限りません。Zero は解決済みのスレッド、重複するカレンダー招待、低優先度のIssue更新をドロップします。残るのは、あなたが実際に見たいものだけです。"
+          },
+          {
+            "title": "Zero が1つのコンパクトなメッセージとして配信",
+            "description": "ブリーフは1つの Slack DM（チーム版ならチャンネル投稿）として届きます。絵文字セクション、クリック可能なリンク、60秒で読み飛ばせる分量を超えません。"
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "シグナルをパーソナライズ",
+            "description": "気になる内容に応じて、表示する項目を増減。",
+            "examplePrompt": "@Zero 朝のブリーフからカレンダーイベントを外して。自分でカレンダーを見るから。"
+          },
+          {
+            "title": "チーム版ブリーフを立ち上げる",
+            "description": "チーム全体向けに、集計軸を変えた別ブリーフを運用。",
+            "examplePrompt": "@Zero 平日の朝9時に、#standup に全体カレンダー、オープンP0/P1 Issue、夜間デプロイを含むチームブリーフを投稿して。"
+          },
+          {
+            "title": "ニュースソースを追加",
+            "description": "自分の役割に関連するカスタムフィードを取り込む。",
+            "examplePrompt": "@Zero 朝のブリーフに r/devops の上位3投稿を追加して。"
+          }
+        ],
+        "integrations": [
+          {
+            "description": "カレンダー：Zero は今日のイベントと明日の最初の会議を読み込みます。読み取りアクセスが必要です。"
+          },
+          {
+            "description": "Issueトラッカー（Linear など）：Zero はあなたに割り当てられたIssueと夜間のステータス変更を取得します。読み取りアクセスが必要です。"
+          },
+          {
+            "description": "Slack：Zero はタグ付けされたスレッドを読み、最終的なブリーフを配信します。読み取り + DM/チャンネル書き込みアクセスが必要です。"
+          },
+          {
+            "description": "X（Twitter）：オプション。Zero がフォロー中アカウントの上位投稿をニュース概観として取得します。"
+          },
+          {
+            "description": "GitHub：オプション。Zero は夜間にmainにマージされたPRを一覧化するので、何が出荷されたか知った状態で1日を始められます。"
+          }
+        ],
+        "tips": [
+          "起床直後ではなく、最初の会議の15分前に届くようにしましょう。コーヒーを飲みながら読むものにしたいのであって、朝6時のアラームにはしたくない。",
+          "10行以内に抑える。長くなるならソースを削る。ブリーフは全部読んでこそ価値があります。",
+          "夕方のブリーフと組み合わせれば、誰も手動で組み立てなくても、チームには朝のプライマーと夕方のまとめという「ブックエンド」が揃います。"
+        ]
+      },
+      "gmail-poll-dm": {
+        "title": "新着メールが届いたらDMで通知。リードを逃さない",
+        "description": "Zero が指定したペースで Gmail をポーリングし、フィルターに一致する新着があればDMで知らせます。Slack を離れずに、バックグラウンドで永続監視。",
+        "timeSaved": "メールサイクルあたり約15分短縮",
+        "headings": {
+          "scenario": "「受信箱ゼロ」がいつも1時間先にある理由",
+          "prompt": "Zero に Gmail ポーリングを依頼する方法",
+          "steps": "Zero が受信箱を監視する流れ",
+          "nextActions": "フィルター調整、自動返信、または重要メールを転送",
+          "integrations": "必要なインテグレーション：Gmail と Slack",
+          "tips": "バックグラウンド受信箱監視のベストプラクティス"
+        },
+        "scenario": "本業に集中しているところ。でも、メールも待っている。リード、署名済み契約書、プロポーザルへの顧客の返事。Gmail にタブを切り替え続けたくはないが、6時間も見逃したくはない。Gmail ポーリングDMはまさにそれを解決します。Zero が数分ごとに受信箱を確認し、フィルターに一致する新着が届いた瞬間、1行サマリーをDMします。集中を保ったまま、重要なメールはほぼリアルタイムで届く。",
+        "promptVariants": [
+          {
+            "label": "詳細版",
+            "prompt": "@Zero 5分ごとに Gmail をチェックして、自社ドメイン外から届いたマーケティング以外のメールがあれば、送信者、件名、本文の先頭1行を含む1行サマリーをDMして。"
+          },
+          {
+            "label": "クイック",
+            "prompt": "@Zero 受信箱を監視して、重要なメールが届いたらDMして。"
+          },
+          {
+            "label": "フィルター付き",
+            "prompt": "@Zero 10分ごとに Gmail で `subject:contract OR subject:invoice OR from:@customer-domain.com` に一致するメールをチェックして、該当分だけDMして。"
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Taylor",
+            "text": "@Zero 5分ごとに gmail をチェックして、新着メールをDMして"
+          },
+          {
+            "name": "Zero",
+            "text": "5分ごとに受信箱を監視中。自社ドメイン外からの新着メールをDMします。`marketing` や `newsletters` のタグが付いたものはスキップ。最初のチェックは5分後。"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero がスケジュール化されたポーリングをセットアップ",
+            "description": "ペース（5分、10分、1時間ごと）とフィルター（送信者ドメイン、件名に含む文字列、ラベル）を指定すると、Zero は定期チェックをスケジュールし、バックグラウンドで継続的に実行します。"
+          },
+          {
+            "title": "Zero が Gmail でフィルター一致の新着メールをチェック",
+            "description": "各ティックで、Zero は前回チェック以降に受信した、フィルターに一致するメールを Gmail に問い合わせます。すでに見たものはスキップされるので、重複DMは来ません。"
+          },
+          {
+            "title": "Zero が新着の一致をDM",
+            "description": "各新着メールは、送信者、件名、プレビューを含む1行DMとして届きます。クリック可能なリンクは Gmail のスレッドに直接飛ぶので、フローを崩さず返信できます。"
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "フィルターを調整",
+            "description": "重要の定義を絞り込むか広げる。",
+            "examplePrompt": "@Zero 今後は、過去30日以内に自分からメールした宛先からのメールだけDMして。"
+          },
+          {
+            "title": "既知の送信者に自動返信",
+            "description": "Zero に介入なしで簡単な受領確認を送らせる。",
+            "examplePrompt": "@Zero @customer-domain.com からメールが届いたら、`out of office, back Monday` テンプレートで自動返信して、スレッドをDMして。"
+          },
+          {
+            "title": "適切なチャンネルに転送",
+            "description": "クリティカルなメールをチームチャンネルにルーティング。",
+            "examplePrompt": "@Zero 新しい契約書が届いたら、#sales-ops にサマリーを投稿して、私にDMして。"
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Gmail：Zero はフィルターに一致する新着メールを読み込みます。受信箱への読み取り専用アクセスが必要です。メールは保存されず、Zero はプレビュー生成に必要な時間だけ各メッセージを参照します。"
+          },
+          {
+            "description": "Slack：Zero は新着メールアラートをDMで配信します。DMへの書き込みアクセスが必要です。"
+          }
+        ],
+        "tips": [
+          "ペースを5分より短くしないこと。それより速いと、受信箱の不安を Slack に再現しているだけです。",
+          "広めから始めて、徐々に絞る。1日分のアラートを見て、ノイズだと分かったものに基づいてフィルターを締める。",
+          "集中時間中はポーズを。`@Zero 受信箱監視を午後3時まで止めて` でDMが止まり、深い作業ができます。"
+        ]
+      },
+      "release-readiness-check": {
+        "title": "手動確認なしで、リリースが出荷可能か把握",
+        "description": "Zero がリリースパイプラインを監視し、CIゲートとバージョンバンプを確認し、リリースPRが準備完了した瞬間を、あるいはブロッカーを、正確に伝えます。",
+        "timeSaved": "リリースチェックあたり約15分短縮",
+        "headings": {
+          "scenario": "「このリリース出せる？」の答えが15分かかる理由",
+          "prompt": "Zero にリリース準備状況を依頼する方法",
+          "steps": "Zero がリリース準備状況を検証する流れ",
+          "nextActions": "ゲートを強化、チームに通知、または緑信号で自動マージ",
+          "integrations": "必要なインテグレーション：GitHub と Slack",
+          "tips": "リリース準備状況監視のベストプラクティス"
+        },
+        "scenario": "リリース前には毎回、誰かが確認する必要があります：CIチェックすべて緑、バージョンが正しくバンプ、changelog 生成済み、ブロッカーラベルなし、特別なケアが必要なマイグレーションなし。タブをまたいでクリックすること10分、どこで問題が浮上してもおかしくない。リリース準備状況チェックはそれを1つのプロンプトに変えます。Zero がPRを読み、すべてのゲートを検証し、欠けているものを浮き彫りにし、はっきりと伝えます：準備OK、または X でブロック。OKならチームは Slack で青信号を受け取り、NGなら何を直すべきか正確に分かります。",
+        "promptVariants": [
+          {
+            "label": "詳細版",
+            "prompt": "@Zero オープンなリリースPRをチェックして。すべてのCIチェックが通ったか、バージョンがセマバー通りにバンプされたか、changelog が更新されたか、`do-not-merge` ラベルが付いてないか、マイグレーションファイルに触れてないか検証して。判定を #release-notify に投稿して。"
+          },
+          {
+            "label": "クイック",
+            "prompt": "@Zero リリース準備できてる？"
+          },
+          {
+            "label": "スケジュール",
+            "prompt": "@Zero 平日の午後2時に、リリースパイプラインをチェックして準備状況を #release-notify に投稿して。"
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Morgan",
+            "text": "@Zero リリース準備できてる？"
+          },
+          {
+            "name": "Zero",
+            "text": "リリースPR #2847：❌ まだ準備未完了。\n\n✅ CIチェック14件すべて緑\n✅ バージョン 1.8.0 → 1.9.0 にバンプ済み\n✅ changelog 更新済み（14エントリ）\n❌ `needs-security-review` ラベルがまだ付いている（@security 待ち）\n✅ マイグレーションファイルに変更なし\n\nセキュリティレビューラベルが外れれば、このPRはマージOK。"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero がオープンなリリースPRを読み込む",
+            "description": "Zero はPRのメタデータ、ファイル差分、CIステータス、ラベル、changelog を取得します。すべてが1つのリリースあたりのチェックリストに正規化されます。"
+          },
+          {
+            "title": "Zero が定義された各準備ゲートを検証",
+            "description": "Zero は指定されたゲートを順番にチェックします：CI緑、セマバー準拠のバージョンバンプ、changelog 更新、ブロッカーラベルなし、センシティブなファイル変更なし、レビュー承認済み。各ゲートは証拠付きで合否判定されます。"
+          },
+          {
+            "title": "Zero が単一の判定を報告",
+            "description": "結果は1つの Slack メッセージ：「準備OK」または「未準備、X でブロック」。曖昧でなく、14個のリンクを順にクリックする必要もない。OKなら、チームは自信を持ってマージできます。"
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "ゲートを強化",
+            "description": "その場で新しい準備基準を追加。",
+            "examplePrompt": "@Zero 今後は、PR説明が空、またはターゲットブランチが `main` でない場合もリリースチェックを失敗にして。"
+          },
+          {
+            "title": "適切な人に通知",
+            "description": "ブロッカーを関連オンコールにルーティング。",
+            "examplePrompt": "@Zero リリースがセキュリティレビューでブロックされているときは、一般チャンネルではなく準備状況投稿で @security をタグ付けして。"
+          },
+          {
+            "title": "すべてのゲートが緑なら自動マージ",
+            "description": "オートマージリリースのユースケースと連結して、ハンズオフ出荷。",
+            "examplePrompt": "@Zero すべての準備ゲートが緑になったら、リリースPRで auto-merge を有効にして、branch protection が外れた瞬間に出荷されるように。"
+          }
+        ],
+        "integrations": [
+          {
+            "description": "GitHub：Zero はPRステータス、ファイル差分、CIチェック、ラベル、changelog を読み込みます。リポジトリへの読み取りアクセスが必要、書き込みはオートマージと連結する場合のみ必要です。"
+          },
+          {
+            "description": "Slack：Zero は指定チャンネルに準備状況の判定を投稿します。チャンネルへの書き込みアクセスが必要です。"
+          }
+        ],
+        "tips": [
+          "「準備OK」を一度、事前に定義しておきましょう。プロンプトに「CI緑 + changelog + マイグレーションなし」をエンコードするのは一度の投資で、以降のすべてのリリースで恩恵が得られます。",
+          "朝会の後ではなく前に実行。準備状況チェックが最も役立つのは、チームに行動を促す時であって、リリースがすでに4時間放置された後ではありません。",
+          "すべてのゲートを通したリリースを真にハンズオフ出荷するため、オートマージリリースと連結しましょう。"
+        ]
+      },
+      "docs-auto-update": {
+        "title": "繰り返し来るサポート質問を、自動でドキュメント更新に",
+        "description": "同じサポート質問が3回出たら、Zero がドキュメント更新をドラフトし、サイトにPRを出します。次の人が聞く前に答えが見つかるように。",
+        "timeSaved": "ドキュメント更新サイクルあたり約45分短縮",
+        "headings": {
+          "scenario": "同じ5つのサポート質問が何度も戻ってくる理由",
+          "prompt": "Zero にシグナルからドキュメントを更新させる方法",
+          "steps": "Zero が質問をドキュメントに変える流れ",
+          "nextActions": "適切なレビュアーにルーティング、公開、またはカバレッジ拡大",
+          "integrations": "必要なインテグレーション：Slack と GitHub",
+          "tips": "シグナル駆動のドキュメント更新のベストプラクティス"
+        },
+        "scenario": "どのサポートチャンネルにも、死なない5〜6個の質問があります。製品がわかりにくいからではなく、ドキュメントに書かれていないから。それらのスレッドを手動で追い、更新をドラフトし、PRを出す作業は、いつも後回しになる類のもの。ドキュメント自動更新はサポートチャンネルを監視し、繰り返し来る質問をカウントし、異なる3人以上から同じ質問が来た瞬間、ドキュメント更新をドラフトしてPRを出します。レビュアーは2分で承認。同じ質問を持つ次の人は、聞かずに答えを見つけます。",
+        "promptVariants": [
+          {
+            "label": "詳細版",
+            "prompt": "@Zero 毎週、#support と #community で過去14日間に3人以上から聞かれた質問をスキャン。それぞれについてドキュメント更新をドラフトして、ウェブサイトリポジトリに変更を加えるPRを開いて。"
+          },
+          {
+            "label": "クイック",
+            "prompt": "@Zero 今週、ドキュメント化すべき繰り返しのサポート質問ある？"
+          },
+          {
+            "label": "単発",
+            "prompt": "@Zero `agents:write` スコープに関する質問のドキュメント更新をドラフトして、PRを開いて。"
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Jamie",
+            "text": "@Zero 過去14日間の繰り返しのサポート質問をチェックして、ドキュメント更新をドラフトして"
+          },
+          {
+            "name": "Zero",
+            "text": "ドキュメント化する価値のある繰り返し質問を3件発見：\n\n1. `agents:write` OAuth スコープ（5回聞かれた）、/api/auth#scopes の更新をドラフト → PR #2901\n2. レート制限されたリクエストのリトライ挙動（4回聞かれた）、/api/rate-limits の更新をドラフト → PR #2902\n3. マネージドエージェントをユーザー単位でスコープする方法（3回聞かれた）、新セクション /guides/multi-tenant をドラフト → PR #2903\n\nすべてのPRに @docs-team をレビューのためタグ付け済み。"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero がサポートチャンネルで繰り返し質問を監視",
+            "description": "Zero は入ってくるサポートスレッドを読み、類似質問を意味的にクラスタリングし、ユニークな質問者をカウントします。ローリングウィンドウ内で3人以上から出た質問は、ドキュメントギャップとしてフラグ付けされます。"
+          },
+          {
+            "title": "Zero が解決済みの回答に基づいてドキュメント更新をドラフト",
+            "description": "各フラグ付き質問について、Zero はスレッドの解決内容を読み、適切なドキュメント配置先（既存セクションまたは新ガイド）を特定し、具体例とともにサイトのマークダウン形式で更新をドラフトします。"
+          },
+          {
+            "title": "Zero がレビューのためPRを起票",
+            "description": "各ドラフトはウェブサイトリポジトリにPRとして届き、トリガーとなった質問スレッドが説明にリンクされます。ドキュメントチームのレビュアーが承認するだけ、ゼロから書く必要はありません。"
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "適切なレビュアーにルーティング",
+            "description": "PRを汎用レビュアーではなくコンポーネントオーナーに割り当て。",
+            "examplePrompt": "@Zero 課金質問のドキュメントをドラフトするときは、@docs-team ではなく @billing-team をタグ付けして。"
+          },
+          {
+            "title": "低リスクな更新を自動公開",
+            "description": "タイポ修正や小さな明確化は人のレビューなしで出荷。",
+            "examplePrompt": "@Zero 50行未満で既存セクションのみを触るドキュメントPRは、CI通過後に auto-merge を有効にして。"
+          },
+          {
+            "title": "カバレッジを拡大",
+            "description": "シグナル用に新しいソースチャンネルを追加。",
+            "examplePrompt": "@Zero Slack だけでなく、サポートの Gmail 受信箱でも繰り返し質問をスキャンして。"
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Slack：Zero は繰り返し質問を検出するためにサポートチャンネルを読み込みます。指定チャンネルへの読み取りアクセスが必要です。"
+          },
+          {
+            "description": "GitHub：Zero はウェブサイトリポジトリに対してドキュメント更新をPRとしてドラフトします。Zero がブランチを作成しPRを開けるよう、リポジトリへの書き込みアクセスが必要です。"
+          },
+          {
+            "description": "Notion：オプション。社内ドキュメントが Notion にあり、Zero にそれも更新させたい場合に便利。"
+          }
+        ],
+        "tips": [
+          "「繰り返し」のしきい値は1ではなく、14日で3人に設定。1だと毎日ドキュメントを書き直すことになり、3なら本物のギャップを捕捉できます。",
+          "ソーススレッドをPR説明に必ず含めること。レビュアーは元の質問を見て、ドラフトが本当に答えているか判断できます。",
+          "KBキャプチャと組み合わせて、解決済みスレッドが並行して社内ナレッジベースに流れるように。"
+        ]
+      },
+      "control-verification": {
+        "title": "監査前の「火消し」なしで、セキュリティコントロールを定期検証",
+        "description": "Zero が指定したペースでセキュリティ設定をチェックし、各コントロールが正しく設定されていることを検証し、監査週の前にコンプライアンスチームへ差分を報告します。",
+        "timeSaved": "検証サイクルあたり約2時間短縮",
+        "headings": {
+          "scenario": "すべての監査が2週間の火消しになる理由",
+          "prompt": "Zero にコントロール検証を依頼する方法",
+          "steps": "Zero がセキュリティコントロールを検証する流れ",
+          "nextActions": "差分を是正、カバレッジ拡大、またはスケジュール固定",
+          "integrations": "必要なインテグレーション：GitHub、Notion、Slack",
+          "tips": "継続的コントロール検証のベストプラクティス"
+        },
+        "scenario": "監査はかつて四半期ごとの全社火消しでした。すべてのファイアウォールルール、IAMポリシー、アクセスレビューのスクリーンショットを、監査人が来る直前の1週間で手作業で集める。コントロールは誰にも気づかれずにドリフトし、是正は危機モードで行われました。継続的コントロール検証は、安定したペースでチェックを回し、ドリフトは監査の前週ではなく発生した週に捕捉されます。コンプライアンスチームには日付入り・署名入りの検査記録、エンジニアリングにはドリフト時のアラート、監査人にはすでに整理された証拠が届きます。",
+        "promptVariants": [
+          {
+            "label": "詳細版",
+            "prompt": "@Zero 毎週月曜の朝7時に、セキュリティコントロールを検証して。ファイアウォールルールが Notion のベースラインに一致、必要な GitHub branch protection が `main` で有効、どのリポジトリでも2FAが無効になっていないこと。結果をコントロールデータベースにログし、ドリフトがあれば #compliance にアラートして。"
+          },
+          {
+            "label": "クイック",
+            "prompt": "@Zero 今すぐコントロール検証を実行して、結果を投稿して。"
+          },
+          {
+            "label": "スコープ指定",
+            "prompt": "@Zero 今朝は SOC 2 コントロールだけ検証して。GDPR と HIPAA チェックはスキップ。"
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Zero",
+            "text": "週次コントロール検証：ドリフト3件発見：\n\n❌ リポジトリ `internal-tools`：4月17日に `main` の branch protection が無効化（ベースライン：有効）\n❌ ファイアウォールルール `allow-admin-ip` が4月18日に /16 レンジに拡大（ベースライン：単一 /32）\n❌ ユーザー `contractor-x` が契約終了日（4月15日）以降も prod DB アクセスを保持\n\n✅ 他47件のコントロールは検証・通過。\n\nフルログは Notion →。3件のドリフトについて @compliance を呼び出し中。"
+          },
+          {
+            "name": "Riley",
+            "text": "対応します。ファイアウォールルールは今日中に是正"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero が現在のセキュリティ設定を取得",
+            "description": "Zero は信頼できる情報源となるコントロール（branch protection、IAM、ファイアウォールルール、アクセスレビュー）を、それらが存在するシステムから読み込みます。サンプリングなし。対象範囲のすべてのコントロールが毎回チェックされます。"
+          },
+          {
+            "title": "Zero が定義されたベースラインと比較",
+            "description": "期待される設定は Notion データベースに存在します。Zero は現在の状態をベースラインと比較し、ドリフトをフラグ付けし、タイムスタンプと証拠リンクとともにコントロールごとの合否を記録します。"
+          },
+          {
+            "title": "Zero が結果をログし、ドリフトをアラート",
+            "description": "各実行はコントロールデータベースに日付入りレコードを書き込みます。ドリフトがあれば、コンプライアンスチャンネルとコントロールを保有するエンジニアをタグ付けした Slack アラートがトリガーされます。監査人には改ざん不能な履歴が残ります。"
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "ドリフトを是正",
+            "description": "Zero にドリフトを自動修正するチケットやPRを開かせる。",
+            "examplePrompt": "@Zero branch protection のドリフトがあれば、protection ルールを復元するPRを開いてリポジトリオーナーをタグ付けして。"
+          },
+          {
+            "title": "コントロールカバレッジを拡大",
+            "description": "検証スイープに新しいコントロールファミリーを追加。",
+            "examplePrompt": "@Zero 週次検証に GDPR コントロールを追加して。DPA遵守、削除リクエスト対応時間、クロスボーダー転送ログ。"
+          },
+          {
+            "title": "スケジュールを強化",
+            "description": "高リスクコントロールを週次から日次に。",
+            "examplePrompt": "@Zero prod DB アクセス検証は週次ではなく日次で実行して。他は週次のままで。"
+          }
+        ],
+        "integrations": [
+          {
+            "description": "GitHub：Zero は対象のすべてのリポジトリについて branch protection、リポジトリ権限、2FAステータスを読み込みます。組織設定への読み取りアクセスが必要です。"
+          },
+          {
+            "description": "Notion：Zero はベースライン設定を保存し、検証結果を書き込みます。2つのデータベース（ベースラインと結果）への読み書きアクセスが必要です。"
+          },
+          {
+            "description": "Slack：Zero はドリフト時にコンプライアンスチャンネルへアラートし、週次サマリーを投稿します。チャンネルへの書き込みアクセスが必要です。"
+          }
+        ],
+        "tips": [
+          "ベースラインは1箇所にまとめる（Notion、Drata、または自社の CMDB）。分散したベースラインは静かにドリフトし、Zero はドキュメント化されていないものをチェックできません。",
+          "「ドリフト」と「例外」を分けること。ドリフトは承認なしで変わったコントロール、例外はチームが承認した逸脱です。Zero は両者を別々に扱うべきです。",
+          "監査シーズンにサマリーを流し込みましょう。監査人は継続的ログが大好きで、「2年間毎週これをやってきた」は「先週チェックした」よりはるかに強いストーリーです。"
+        ]
+      },
+      "brief-to-draft-content": {
+        "title": "ラフなブリーフを、プレビューURL付きの公開可能なドラフトに",
+        "description": "Slack でラフなアイデアを話すだけ。Zero があなたにインタビューし、CMS にドラフトを作成し、プレビューURLを返します。レビューの起点が白紙ではなく、形のあるものに。",
+        "timeSaved": "投稿あたり約2時間短縮",
+        "headings": {
+          "scenario": "最初のドラフトがいつも時間がかかりすぎる理由",
+          "prompt": "Zero にコンテンツのドラフトを依頼する方法",
+          "steps": "Zero がブリーフをドラフトに変える流れ",
+          "nextActions": "反復、翻訳、または公開スケジュール",
+          "integrations": "必要なインテグレーション：Slack とCMS",
+          "tips": "ブリーフからドラフトへのワークフローのベストプラクティス"
+        },
+        "scenario": "どのコンテンツもゆるいアイデアから始まります：「音声駆動ワークフローに対する我々の考えについて何か書くべきだ」。そのアイデアから公開可能なドラフトまでの間に、白紙を3時間見つめ、2回やり直し、構成が合っているか悩む時間があります。ブリーフからドラフトへはそれを圧縮します。Slack にいる状態で5分 Zero と話すと、Zero が主要な論点を引き出し、CMS に正しい構成のフル投稿をドラフトし、プレビューURLを送ります。点滅するカーソルではなく、実際のものをレビューすることになります。",
+        "promptVariants": [
+          {
+            "label": "詳細版",
+            "prompt": "@Zero 音声駆動開発ワークフローについてのブログ投稿を書きたい。主要な論点を引き出すために5つの鋭い質問をして。それから CMS にドラフトとしてフル投稿を作成してプレビューURLを送って。"
+          },
+          {
+            "label": "クイック",
+            "prompt": "@Zero このスレッドからブログ投稿をドラフトして。構成を組み、隙間を埋めて、プレビューURLをください。"
+          },
+          {
+            "label": "ユースケースページ",
+            "prompt": "@Zero [ワークフロー内容] のユースケースページをドラフト。標準構成に従い、メタデータ（slug、color、avatar）を提案、PRを起票して。"
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Riley",
+            "text": "@Zero 音声駆動開発ワークフローについて書きたい。インタビューして。"
+          },
+          {
+            "name": "Zero",
+            "text": "OK。記事を引き出す5つの質問：\n1. 読者は誰？（ソロ開発者？チームリード？CTO？）\n2. 最も鋭い主張、何を残したい？\n3. 一番強い事例やストーリーは？\n4. 反対意見：懐疑的な人なら何と言う？\n5. 読後のコール・トゥ・アクション：読者に何をしてほしい？\n\n各質問に答えてくれれば、約5分で CMS にドラフトを用意します。"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero があなたの頭から記事を引き出すためにインタビュー",
+            "description": "アウトラインを書かせるのではなく、Zero は5つの鋭い質問をします。あなたの答えが骨格になります：オーディエンス、主張、ストーリー、反対意見、CTA。ドキュメント内での2時間ではなく、Slack での5分です。"
+          },
+          {
+            "title": "Zero が CMS に投稿をドラフト",
+            "description": "Zero は投稿全体をドラフトとして CMS に書きます：見出し、導入、本体セクション、例、CTA。構造はコンテンツテンプレートに従い、声はスタイルガイドに合わせます。"
+          },
+          {
+            "title": "Zero がレビュー用のプレビューURLを返す",
+            "description": "ドラフトの準備ができたら、Zero はプレビューURLを送ります。Google ドキュメントではなく、実際のフォーマットが適用された実ページをレビューします。編集は CMS 内で行い、Zero は依頼されない限り再度触りません。"
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "反復",
+            "description": "全体をやり直さずに、特定セクションだけ書き直させる。",
+            "examplePrompt": "@Zero 導入を統計ではなく顧客事例から始まるように書き直して、他はそのまま。"
+          },
+          {
+            "title": "他ロケールへ翻訳",
+            "description": "サポート言語への自然な翻訳を取得。",
+            "examplePrompt": "@Zero このドラフトをドイツ語、日本語、スペイン語に翻訳して（直訳ではなく自然に）、各言語を CMS にドラフトとして保存して。"
+          },
+          {
+            "title": "公開をスケジュール",
+            "description": "承認時の自動公開にドラフトを連結。",
+            "examplePrompt": "@Zero このドラフトを承認したら、木曜の午前10時に公開スケジュールを組んで、リンクを #announcements にクロスポストして。"
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Slack：Zero はインタビューを実行し、スレッドにプレビューURLを配信します。作業中のチャンネルへの読み書きアクセスが必要です。"
+          },
+          {
+            "description": "CMS（Strapi など）：Zero はドラフトを作成し、適切なテンプレートを適用し、プレビューURLを返します。ドラフトコンテンツへの API 書き込みアクセスが必要です。"
+          },
+          {
+            "description": "Notion：オプション。CMS にプッシュする前に、長文ドラフトや共同作業のためのワーキングドキュメントを保持するのにも使えます。"
+          }
+        ],
+        "tips": [
+          "5つの質問には早く答えましょう（各1分で）。洗練された文章は不要、Zero が再構成します。目的は思考を取り出すことで、自分で書くことではありません。",
+          "CMS 管理画面ではなくプレビューURLでレビュー。フォーマットの問題やテンポの問題はページがレンダリングされて初めて見えます。",
+          "Notion に「書き方」のスタイルガイドを保持しましょう。Zero が参照でき、毎回書き直さずに一貫した声が得られます。"
+        ]
+      },
+      "cover-art-generation": {
+        "title": "オンブランドのカバーアートを、すべての投稿に秒速で生成",
+        "description": "Zero があなたのビジュアルシステムに合ったカバーアートを生成します（一貫したスタイル、一貫したタイポグラフィ、一貫したパレット）。コンテンツワークフローに直接組み込みます。",
+        "timeSaved": "投稿あたり約45分短縮",
+        "headings": {
+          "scenario": "すべての投稿が「あとはカバー画像だけ」で終わる理由",
+          "prompt": "Zero にカバーアート生成を依頼する方法",
+          "steps": "Zero がオンブランドのアートを生成する流れ",
+          "nextActions": "スタイル調整、バッチ生成、または Figma にエクスポート",
+          "integrations": "必要なインテグレーション：Slack とデザインシステム",
+          "tips": "一貫したカバーアートのベストプラクティス"
+        },
+        "scenario": "ドラフトが完成、コピーは鋭い、そして思い出します：カバー画像。Figma で1時間を溶かすか、他の投稿と同じようなストック写真で妥協するか、すでに多忙なデザイナーに頼むか。カバーアート生成はその中間に立ちます：Zero がビジュアルシステム（同じパレット、同じイラストスタイル、同じタイポグラフィ）に合ったアートを数秒で生成します。出力は汎用的なストックではなく、一貫してあなたのものです。",
+        "promptVariants": [
+          {
+            "label": "詳細版",
+            "prompt": "@Zero 音声駆動ワークフロー投稿のカバーアートを生成して。ハウスイラストスタイル、ブランドパレットを使用、マイクの手描きスポットイラストを含めて。CMS ドラフトに投入して。"
+          },
+          {
+            "label": "クイック",
+            "prompt": "@Zero この投稿のカバー画像をブランドスタイルで生成して。"
+          },
+          {
+            "label": "バリアントセット",
+            "prompt": "@Zero この投稿用にカバーアートを4バリアント生成して（同じスタイル、違う構図）。選べるようにここに投稿して。"
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Sam",
+            "text": "@Zero この投稿のカバー画像をブランドスタイルに合わせて生成して"
+          },
+          {
+            "name": "Zero",
+            "text": "4バリアントを生成しました。同じイラストスタイル、同じパレット（オフホワイト背景、ブランドオレンジのアクセント、落ち着いたグレーのタイポ）。プレビューを添付。CMS ドラフトに投入するのはどれ？\n\n[variant-1.png] [variant-2.png] [variant-3.png] [variant-4.png]"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero がスタイルガイドとリファレンスアートを読み込む",
+            "description": "生成前に、Zero はビジュアルシステムを読み込みます：パレット、タイポグラフィ、イラストスタイル、構図ルール。これらは一度メンテナンスするスタイルガイドドキュメントから来ます。以降のアートはリマインドなしでオンブランドに保たれます。"
+          },
+          {
+            "title": "Zero が投稿内容に基づいてバリアントを生成",
+            "description": "Zero は投稿の見出しと主要テーマを読み、内容をビジュアルに反映したカバーアートバリアントを2〜4点生成します。各バリアントは同じスタイルを使用し、構図は違っても、ブランドは同じ。"
+          },
+          {
+            "title": "Zero が選ばれたバリアントをワークフローに投入",
+            "description": "選択後、Zero は画像を CMS ドラフトに書き込み、プレビューURLを更新し、オプションでデザイナーが後で洗練するための Figma フレームをエクスポートします。手動アップロードのステップはありません。"
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "スタイルを調整",
+            "description": "ビジュアルシステムが進化したら生成ルールを調整。",
+            "examplePrompt": "@Zero 今後はカバーアートでよりタイトなイラストスタイルを使って。手描き風を減らし、幾何学的に。"
+          },
+          {
+            "title": "バックログ向けにバッチ生成",
+            "description": "CMS のすべてのドラフト投稿に対してカバーアートを一括生成。",
+            "examplePrompt": "@Zero CMS でまだカバーアートがないすべてのドラフト投稿にカバーアートを生成して。"
+          },
+          {
+            "title": "Figma にエクスポートして洗練",
+            "description": "デザイナーが磨きたい場合、選ばれたバリアントを Figma に送る。",
+            "examplePrompt": "@Zero バリアント2を Cover Art Figma ファイルに編集可能なフレームとしてエクスポートして。"
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Slack：Zero はレビュー用にバリアントをインラインで投稿し、選択に反応します。チャンネルへの書き込みアクセスが必要です。"
+          },
+          {
+            "description": "Figma：オプション。デザインチームが Zero の出力を既存のブランドライブラリで洗練したい場合に便利。"
+          },
+          {
+            "description": "Notion：オプション。Zero が生成時に読み込むスタイルガイドリファレンスを保存するのに便利。"
+          }
+        ],
+        "tips": [
+          "スタイルガイドを一度きっちり決めましょう。Zero の出力はフィードされるリファレンス素材次第でオンブランドになります。ビジュアルシステムをドキュメント化するのに午後1回を使えば、オフブランドなドラフトが何十枚も節約できます。",
+          "単発ではなくバリアントを生成。4つから選ぶほうが、1つを何度も生成し直すよりほぼ常に速いです。",
+          "デザイナーは Figma に集中してもらう。Zero は日常投稿の80%ケースを処理し、デザイナーは本当に手が必要なヒーローアセットを洗練します。"
+        ]
+      },
+      "content-experiment-engine": {
+        "title": "リサーチ → ドラフト → スコアリングのコンテンツループをフル自動化",
+        "description": "Zero がトレンドトピックをリサーチし、投稿バリアントをドラフトし、公開後のパフォーマンスを追跡し、green/yellow/red レポートを届けます。何をスケール、反復、停止すべきか分かるように。",
+        "timeSaved": "コンテンツサイクルあたり約6時間短縮",
+        "headings": {
+          "scenario": "コンテンツ戦略がアイデアと数字のギャップで死ぬ理由",
+          "prompt": "Zero にコンテンツループの実行を依頼する方法",
+          "steps": "Zero がリサーチ → ドラフト → スコアリングを回す流れ",
+          "nextActions": "勝者をスケール、yellow を反復、red を停止",
+          "integrations": "必要なインテグレーション：X、Notion、Slack",
+          "tips": "クローズドループコンテンツ実験のベストプラクティス"
+        },
+        "scenario": "コンテンツ戦略は中間で破綻します：アイデアは生まれ、投稿は公開され、そして何が実際に効いたか誰も見ない。2ヶ月後、負けた投稿フォーマットがリサイクルされる。誰が勝ったか追跡されていなかったから。コンテンツ実験エンジンはループを閉じます。Zero がソース間でトレンドテーマをリサーチし、毎サイクル約8バリアントをドラフトし、公開後のパフォーマンスを追跡し、スコア付きレポート（green はスケールすべき、yellow は反復、red は停止）を届けます。ループは固定ペースで回るので、週が潰れても続きます。",
+        "promptVariants": [
+          {
+            "label": "詳細版",
+            "prompt": "@Zero 毎朝7時：@competitor_a、@competitor_b、@founder_voice の X 投稿と r/ai_builders のトップ Reddit 投稿をスキャン。テンプレートライブラリを使って Notion に8つのドラフトバリアントを生成。毎週月曜、先週公開された投稿をスコアリング（いいね + RT + 返信 + フォロー）して green/yellow/red レポートを #marketing に投稿。"
+          },
+          {
+            "label": "クイック",
+            "prompt": "@Zero 今週のコンテンツスコアは？"
+          },
+          {
+            "label": "リサーチのみ",
+            "prompt": "@Zero 今日はリサーチだけ。ソースからトップ10のトレンドテーマと各ドラフト切り口を教えて。"
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Zero",
+            "text": "週次コンテンツスコア、先週公開された8投稿：\n\n🟢 スケール（2投稿）：\n・「音声駆動ワークフローに対する我々の考え」：スコア142（いいね47、RT 18、返信12、フォロー3）\n・「エージェント vs. 自動化」：スコア98\n\n🟡 反復（4投稿）：平均スコア32。共通点：最初の行のジャーゴンが多すぎ。フックをタイトに。\n\n🔴 停止（2投稿）：スコア15未満。ストーリーなしの機能ドロップ。フォーマット退役。\n\n次スプリント：音声ワークフローテーマで5バリアント。Notion にドラフト案 →"
+          },
+          {
+            "name": "Morgan",
+            "text": "完璧、音声に重点を置こう"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero がソース間でトレンドテーマをリサーチ",
+            "description": "指定ペースで、Zero は追跡中のソーシャルアカウントとコミュニティボードをスキャンし、投稿をテーマ別にクラスタリングし、オーディエンスが今エンゲージしているものを浮き彫りにします。生データはアーカイブのため Notion に入ります。"
+          },
+          {
+            "title": "Zero がテンプレートライブラリを使って投稿バリアントをドラフト",
+            "description": "Zero はサイクルごとに複数バリアントを生成します。異なるフォーマット（機能ドロップ、ホットテイク、創業者リフレクション、ユースケース、コントラリアン）で、すべて週のリサーチに基づきます。ドラフトはあなたのレビュー・承認のため Notion に行きます。"
+          },
+          {
+            "title": "Zero が公開済み投稿をスコアリングし、判定を届ける",
+            "description": "投稿が出荷された後、Zero はエンゲージメントメトリクスを取得し、定義されたフォーミュラに対して各投稿をスコアリングします。結果は green/yellow/red にバケット化され、次スプリントの方向性が明確に示されます：どのテーマをスケール、どれを反復、どれを退役させるか。"
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "勝者をスケール",
+            "description": "次スプリントで green 投稿のバリアントをもっと生成。",
+            "examplePrompt": "@Zero 次スプリント、音声ワークフローテーマで5バリアント生成して。違う切り口、同じ底にあるテーゼ。"
+          },
+          {
+            "title": "yellow を反復",
+            "description": "期待外れでも可能性を見せた投稿をチューニング。",
+            "examplePrompt": "@Zero yellow の投稿について、最初の行をタイトでジャーゴン少なめに書き直して、他はそのまま。"
+          },
+          {
+            "title": "red を退役",
+            "description": "3回以上失敗したフォーマットを落とす。",
+            "examplePrompt": "@Zero 「機能ドロップ」テンプレートを退役。4週連続で red。テンプレートライブラリから削除して。"
+          }
+        ],
+        "integrations": [
+          {
+            "description": "X（Twitter）：Zero は追跡中アカウントのトレンド投稿と、公開済み投稿のエンゲージメントメトリクスを取得します。読み取りアクセスが必要です。"
+          },
+          {
+            "description": "Notion：Zero はトレンドデータを保存し、コンテンツキューとテンプレートライブラリを管理し、パフォーマンス履歴をアーカイブします。3つのデータベース（トレンド、コンテンツキュー、パフォーマンス）への書き込みアクセスが必要です。"
+          },
+          {
+            "description": "Slack：Zero は週次ブリーフ、スコアリングレポート、レビュー促しを送ります。チャンネルへの書き込みアクセスが必要です。"
+          }
+        ],
+        "tips": [
+          "スコアリングフォーミュラはプロンプトに一度エンコードして、四半期中は触らないこと。四半期中にフォーミュラを変えると、green/yellow/red バケットが週次比較できなくなります。",
+          "ドラフト承認は1件ずつではなくバッチで。毎週月曜1時間レビューするほうが、毎日15分より勝ります。ループはリズムが必要。",
+          "Notion にすべてをアーカイブ。半年後、最も価値のある資産は履歴です。どのテーマが複利で効き、どれが死に、なぜか。"
+        ]
+      },
+      "agent-video-production": {
+        "title": "スクリプトから短編動画を制作。エンドツーエンドで",
+        "description": "Zero が動画制作パイプライン全体をオーケストレーション（スクリプト、絵コンテ、スライド、アバター、ナレーション、編集、字幕）。単一プロンプトから公開可能な動画を返します。",
+        "timeSaved": "動画あたり約8時間短縮",
+        "headings": {
+          "scenario": "短編動画が1分あたり丸1日かかる理由",
+          "prompt": "Zero に動画制作を依頼する方法",
+          "steps": "Zero が動画パイプラインを回す流れ",
+          "nextActions": "スクリプト調整、フレーム反復、またはシリーズをスケジュール",
+          "integrations": "必要なインテグレーション：Slack とマネージドエージェントランタイム",
+          "tips": "エージェントオーケストレーション動画制作のベストプラクティス"
+        },
+        "scenario": "60秒の製品動画は手作業で丸1日かかります。スクリプト、絵コンテ、スライド、ナレーション収録、つなぎ合わせ、字幕追加、カラーコレクション、レンダリング、エクスポート。動画を出荷しないチームが多いのは、1本あたりのコストが高すぎるから。エージェントオーケストレーション動画制作はそれを圧縮します：1つのプロンプトがマネージドエージェントを起動し、各ツールを駆動します（あるものでスクリプト、別のものでスライド、3つ目でアバターナレーション、4つ目で最終編集）。そして公開可能な MP4 を返します。100のマイクロ判断ではなく、1つの動画をレビューします。",
+        "promptVariants": [
+          {
+            "label": "詳細版",
+            "prompt": "@Zero このスクリプトから60秒の製品動画を制作して。ブランドデックに合ったスライドを生成、アバターナレーションを追加、英語字幕、イントロ/アウトロ付きで MP4 として納品して。"
+          },
+          {
+            "label": "クイック",
+            "prompt": "@Zero このドラフトを60秒の動画に変えて。"
+          },
+          {
+            "label": "シリーズ",
+            "prompt": "@Zero プロダクトメトリクスシリーズの各ユースケースごとに短編動画を4本制作（同じスタイル、違う内容）。プレビューをここに投稿して。"
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Alex",
+            "text": "@Zero このスクリプトから60秒動画を制作して"
+          },
+          {
+            "name": "Zero",
+            "text": "動画制作をキックオフ。スクリプト確定、18枚のスライドの絵コンテ作成、アバターナレーション生成中、字幕はナレーション完了後に自動生成。ETA 約12分。完成したら MP4 プレビューをここに投稿します。"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero がスクリプトを絵コンテに変換",
+            "description": "Zero はスクリプトをシーンに解析し、ブランドデックに合ったスライド構成を生成し、絵コンテを組み立てます。ナレーション開始前に絵コンテをレビューするか、Zero に自動で進めさせるか選べます。"
+          },
+          {
+            "title": "Zero がナレーション、スライド、字幕を生成",
+            "description": "Zero は各専門ツールにサブエージェントを派遣します：ナレーション用の音声合成、ビジュアル用のスライドジェネレーター、ナレーション完了後の字幕ジェネレーター。可能な箇所は並列実行で総時間を短縮します。"
+          },
+          {
+            "title": "Zero が最終動画をつなぎ、MP4 を納品",
+            "description": "Zero は最終カットを組み立てます：スライドの上にナレーション、焼き込み字幕、両端にイントロ/アウトロ、色とラウドネスを正規化。完成した MP4 はプレビューとして Slack チャンネルに届きます。"
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "スクリプトを調整",
+            "description": "全体をやり直さずに特定の行の書き直しを依頼。",
+            "examplePrompt": "@Zero スクリプト最初の10秒をもっとパンチの効いたものに書き直して、その部分だけ再レンダリングして。"
+          },
+          {
+            "title": "フレームを反復",
+            "description": "動画全体をやり直さずに1スライドやシーンを再生成。",
+            "examplePrompt": "@Zero スライド7を違う構図に差し替えて。スタンドアロンではなく、ダッシュボードを文脈の中で見せて。"
+          },
+          {
+            "title": "シリーズをスケジュール",
+            "description": "固定ペースで動画シリーズを制作。",
+            "examplePrompt": "@Zero 毎週月曜、前週トップスコアのブログ投稿に基づく60秒動画を制作して。"
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Slack：Zero は Slack でプロンプトを受け、プレビューを納品し、レビューフィードバックを処理します。チャンネルへの書き込みアクセスが必要です。"
+          },
+          {
+            "description": "マネージドエージェントランタイム：Zero は各制作ステップ（スクリプト、スライド、ナレーション、字幕、編集）のためにサブエージェントを派遣します。オーケストレーションにはランタイムアクセスが必要です。"
+          },
+          {
+            "description": "Notion：オプション。シリーズ追跡ビュー用にスクリプト、絵コンテ、最終動画をメタデータ付きでアーカイブするのに便利。"
+          }
+        ],
+        "tips": [
+          "バッチ化の前にスタイルガイドを固める。一貫したイントロ/アウトロ、一貫したタイポグラフィ、一貫した声。テンプレートが安定すると、1本あたりのコストは劇的に下がります。",
+          "ナレーションの後ではなく前に絵コンテをレビュー。絵コンテの変更は安い、ナレーションの再生成はそうではない。",
+          "ラフに出荷して公に反復。フィードバックを得た60秒動画のほうが、1週間レビューで止まった完璧な1本より勝ります。"
+        ]
+      },
+      "investor-board-updates": {
+        "title": "ライブ指標と出荷状況から月次の取締役会向けアップデートを自動ドラフト",
+        "description": "Zeroが月間のプロダクト指標、出荷履歴、カスタマーウィンを取得し、あなたのボイスで取締役会向けのアップデートをドラフトします。深夜11時にゼロから書くのではなく、ニュアンスを整えて送るだけで済みます。",
+        "timeSaved": "月次アップデートあたり約4時間短縮",
+        "headings": {
+          "scenario": "取締役会向けアップデートが毎回週末プロジェクトになる理由",
+          "prompt": "Zeroに取締役会向けアップデートのドラフトを依頼する方法",
+          "steps": "Zeroが取締役会向けアップデートを組み立てる流れ",
+          "nextActions": "フォーマットの調整、投資家への配信追加、配信頻度のスケジュール化",
+          "integrations": "必要な連携：Issueトラッカー、GitHub、アナリティクス",
+          "tips": "投資家向け自動アップデートのベストプラクティス"
+        },
+        "scenario": "取締役会向けアップデートは、カレンダー上では簡単そうに見えて、前夜になると難題になります。誰かが月間の出荷状況をまとめ、実際にコミットした内容と突き合わせ、トラフィックと利用状況の数字を掘り起こし、変更ログのようにならないストーリーを書かなければなりません。たいてい毎月、深夜に4時間が消えていきます。Zeroは生データ（クローズされたIssue、マージされたPR、トラフィック、売上、Slackでタグ付けされたカスタマーウィン）を取り込み、あなたのボイスで全文ドラフトを書き上げます。あとはニュアンスを整えて送るだけです。",
+        "promptVariants": [
+          {
+            "label": "詳細版",
+            "prompt": "@Zero 4月の取締役会向けアップデートをドラフトして。LinearからクローズされたIssue、GitHubからマージされたPR、Plausibleからトラフィック、#wins でタグ付けしたカスタマーウィンを取得して。構成はHighlights、Metrics、Risks、Next Monthで。"
+          },
+          {
+            "label": "クイック",
+            "prompt": "@Zero 今月の取締役会向けアップデートをドラフトして。"
+          },
+          {
+            "label": "スケジュール",
+            "prompt": "@Zero 毎月1日に取締役会向けアップデートをドラフトして、レビュー用にDMで送って。"
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Casey",
+            "text": "@Zero 今月の取締役会向けアップデートをドラフトして"
+          },
+          {
+            "name": "Zero",
+            "text": "4月の取締役会向けアップデートをドラフトしました。Highlights：音声オンボーディングをリリース、エンタープライズ顧客を2社契約。Metrics：MRR +18%、DAU +23%、チャーン 2.1%。Risks：5月後半のパイプラインにギャップ。フルドラフトはNotionに保存済みで、編集可能な状態です。"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zeroが月間の生データを取得",
+            "description": "ZeroがIssueトラッカーからクローズされたタスクを、GitHubからマージされたPRとデプロイを、アナリティクスツールからトラフィックとエンゲージメントのトレンドを、シグナルとしてタグ付けしたSlackチャンネルの内容を照会します。すべてが1つのワーキングデータセットに集約されます。"
+          },
+          {
+            "title": "Zeroがあなたのフォーマットでドラフトを構成",
+            "description": "優先するセクション順（Highlights、Metrics、Risks、Asks、Next Month）を毎月一貫して保ちます。Zeroが生データと過去のアップデートから学習できる内容を元に、各セクションを埋めていきます。"
+          },
+          {
+            "title": "Zeroが編集可能なドラフトを配信",
+            "description": "フルドラフトはNotionに届き、Slackにプレビューリンクが投稿されます。ニュアンスのある部分を書き直し、承認して送信するだけ。初稿は4時間かかるところが、編集なら20分で済みます。"
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "フォーマットを調整",
+            "description": "セクション順を変えたり、新しい定期セクションを追加します。",
+            "examplePrompt": "@Zero 今後は、MetricsとRisksの間に「Team updates」セクションを入れて。"
+          },
+          {
+            "title": "投資家への配信を追加",
+            "description": "承認済みドラフトを投資家リストへ自動で配信します。",
+            "examplePrompt": "@Zero ドラフトを承認したら、件名「vm0 April Update」で投資家リストに送って。"
+          },
+          {
+            "title": "配信頻度をスケジュール化",
+            "description": "月次から隔週、あるいは四半期ディープダイブの追加へ。",
+            "examplePrompt": "@Zero 隔週金曜に、出荷と指標だけのライトな隔週アップデートもドラフトして。ナレーションは不要。"
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Linear（またはお使いのIssueトラッカー）。Zeroがクローズされたissue、ラベル、エピックの進捗を読み取り、出荷をサマリーします。読み取り権限が必要です。"
+          },
+          {
+            "description": "GitHub。ZeroがマージされたPR、デプロイ、リリースタグを取得し、出荷ストーリーの骨格にします。読み取り権限が必要です。"
+          },
+          {
+            "description": "Plausible（またはお使いのアナリティクス）。Zeroが今月と前月のトラフィック・エンゲージメントを比較し、Metricsセクションを構成します。読み取り権限が必要です。"
+          },
+          {
+            "description": "Gmail。オプション。承認済みアップデートをZeroから投資家リストへ直接送信したい場合のみ必要です。"
+          },
+          {
+            "description": "Notion。Zeroが月次アップデートフォルダにドラフトを書き込むため、編集、バージョン管理、アーカイブが可能です。書き込み権限が必要です。"
+          }
+        ],
+        "tips": [
+          "カスタマーウィンは月中に専用Slackチャンネルでタグ付けしておきましょう。Zeroが自動で拾うので、30日分の出来事を思い出そうとする必要がなくなります。",
+          "セクション順は毎月安定させましょう。投資家は流し読みするので、新奇さより一貫性が効きます。",
+          "送信日の当日ではなく、3日前にドラフトしましょう。Zeroのドラフトは数分。本当の価値は、取り戻せる編集時間にあります。"
+        ]
+      },
+      "lead-followups": {
+        "title": "受信トレイを開く前に、すべてのリードをスコアリングしてフォローアップをドラフト",
+        "description": "Zeroが新規インバウンドリードを読み、理想顧客プロファイル（ICP）に照らしてスコアリングし、見込み客自身のシグナルを使ってカスタマイズしたフォローアップをドラフトします。誰に送るかはあなたが決めます。",
+        "timeSaved": "リードあたり約15分短縮",
+        "headings": {
+          "scenario": "リードフォローアップが毎回48時間遅れる理由",
+          "prompt": "Zeroにリードのスコアリングとフォローアップのドラフトを依頼する方法",
+          "steps": "Zeroがインバウンドリードを処理する流れ",
+          "nextActions": "スコアリングの精緻化、高スコアの自動送信、CRMへのログ",
+          "integrations": "必要な連携：GmailとNotion",
+          "tips": "リードフォローアップ自動化のベストプラクティス"
+        },
+        "scenario": "良いリードは48時間で冷めます。Gmailで気づき、LinkedInと会社サイトをさっと調べ、当たり障りのない返信ではないフォローアップを書くまでに、だいたいそれくらいかかるからです。あなたの返信が届く頃には、見込み客はすでに競合2社と話しています。Lead Follow-upsはそのギャップを埋めます。Zeroが新規インバウンドリードをすべて読み、ICPに照らしてスコアリングし、見込み客のシグナル（会社、役職、ステージ）から取れるものを引き出し、フォローアップをドラフトします。あなたがレビューして送信。リードは2日ではなく1時間以内にパーソナルな返信を受け取ります。",
+        "promptVariants": [
+          {
+            "label": "詳細版",
+            "prompt": "@Zero 稼働時間中は1時間ごとにGmailで新規インバウンドリードを確認して。各リードを我々のICP（創業者、シリーズAからB、B2B SaaS）に照らしてスコアリングして。スコア7超のリードには、会社と役職のコンテキストを使ったパーソナライズされたフォローアップをドラフトして。ドラフトは #sales-leads に投稿してレビューできるようにして。"
+          },
+          {
+            "label": "クイック",
+            "prompt": "@Zero 今日の新規リードは？返信する価値のあるものはフォローアップをドラフトして。"
+          },
+          {
+            "label": "単発",
+            "prompt": "@Zero このインバウンドリードを読んで、スコアリングして、フォローアップをドラフトして。"
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Morgan",
+            "text": "@Zero 今日の新規リードは？"
+          },
+          {
+            "name": "Zero",
+            "text": "今朝の新規インバウンドリード 3件：\n\n🟢 スコア 9/10：Sarah Chen（RetoolのVP Eng、B2B SaaS、シリーズC）。ドラフトは #sales-leads に準備済み。\n🟡 スコア 6/10：John Park（創業者、シードステージ）。ドラフト準備済み、優先度低め。\n🔴 スコア 3/10：ICP外のバーティカルからのリード。ドラフトは作成しません。"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zeroが新規インバウンドリードを読んでエンリッチ",
+            "description": "Gmailの新規リードごとに、Zeroが基本情報（名前、メール、会社）を抽出し、見込み客のシグナル（公開されている会社データ、役職、添付リンク）から残りを補完します。すべてが構造化されたリードレコードにまとめられます。"
+          },
+          {
+            "title": "ZeroがICPに対してリードをスコアリング",
+            "description": "スコアリング基準（会社ステージ、バーティカル、役職、会社規模）は一貫して保たれます。Zeroがそれを適用し、1点から10点のスコアと1行の根拠を返します。しきい値未満のリードはログに残りますが、ドラフトは作成しません。"
+          },
+          {
+            "title": "Zeroが高スコアのリード向けにカスタマイズしたフォローアップをドラフト",
+            "description": "しきい値を超えたリードには、Zeroが相手の具体的なコンテキストを参照したフォローアップメールをドラフトします。ドラフトは、スコア、根拠、見込み客サマリーと一緒にセールスレビュー用チャンネルに届きます。ワンクリックでレビューして送信できます。"
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "スコアリングを精緻化",
+            "description": "コンバージョンを生む要因が分かってきたら、ICPやスコア重み付けを更新します。",
+            "examplePrompt": "@Zero 今後はB2B SaaSを2倍ではなく3倍で重み付けして、プレシード企業は減点して。"
+          },
+          {
+            "title": "高スコアを自動送信",
+            "description": "高い確信度ラインを超えたリードには、ドラフトを自動送信します。",
+            "examplePrompt": "@Zero スコア9か10でICPマッチが明確なリードは、フォローアップを自動送信して通知して。"
+          },
+          {
+            "title": "すべてのリードをCRMにログ",
+            "description": "スコアリングしたリードと結果をCRMにプッシュしてパイプライン追跡に回します。",
+            "examplePrompt": "@Zero スコアリングしたすべてのリードを、スコアと返信有無と一緒にCRMにログして。"
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Gmail。Zeroがインバウンドリードを読み、フォローアップをドラフトし、（承認されれば）返信を送信します。読み取りと送信の権限が必要です。"
+          },
+          {
+            "description": "Notion（またはお使いのCRM）。Zeroが各リードをスコア、根拠、結果と一緒にログし、パイプラインレビューに使えるようにします。1つのデータベースへの書き込み権限が必要です。"
+          }
+        ],
+        "tips": [
+          "ICPルーブリックは2週間ごとに見直しましょう。先四半期にコンバージョンを予測したシグナルが、今四半期も効くとは限りません。",
+          "最初の1か月は必ず人間をループに入れましょう。何かを自動送信する前に、20件のリードでZeroのスコアリングをスポットチェックしてください。",
+          "スコアリングロジックとドラフトテンプレートは分けて管理しましょう。独立して改善すれば、どの変更が数字を動かしたか分かります。"
+        ]
+      },
+      "release-notes-generator": {
+        "title": "顧客が実際に読むリリースノートを作成",
+        "description": "Zeroがリリースに含まれるコミットとマージされたPRを読み、顧客インパクトごとにクラスタリングし、明確で具体的な、出荷可能な顧客向けリリースノートをドラフトします。",
+        "timeSaved": "リリースあたり約1時間短縮",
+        "headings": {
+          "scenario": "リリースノートが駆け足で書かれるか、完全にスキップされる理由",
+          "prompt": "Zeroにリリースノートのドラフトを依頼する方法",
+          "steps": "Zeroがコミットを顧客向けノートに変換する流れ",
+          "nextActions": "ボイスの洗練、公開と連結、翻訳",
+          "integrations": "必要な連携：GitHubとSlack",
+          "tips": "リリースノート自動化のベストプラクティス"
+        },
+        "scenario": "リリースノートは常に、最後に書かれ、リリースが押した時に真っ先にカットされるものです。原因は素材にあります：エンジニア向けに書かれたコミットメッセージ、暗黙知を前提にしたPRタイトル、個別ではユーザーがほぼ気にしない30件のマージ済みPR。Release Notes Generatorはワークフローを反転させます。ZeroがコミットとPR説明を読み、顧客に見える変更だけを残し、テーマ（新機能、改善、修正）でまとめ、顧客が実際に読むボイスでノートを書きます。あなたがレビューすれば、次のリリースは沈黙ではなくノート付きで出荷されます。",
+        "promptVariants": [
+          {
+            "label": "詳細版",
+            "prompt": "@Zero 今日出荷するリリースについて、前回のリリースタグ以降にマージされたPRをすべて読んで。顧客インパクトごとにグループ化して：新機能、改善、バグ修正。内部のリファクタリングとテスト変更はスキップして。我々のプロダクトボイスで顧客向けノートをドラフトして。"
+          },
+          {
+            "label": "クイック",
+            "prompt": "@Zero 今日のリリースのリリースノートをドラフトして。"
+          },
+          {
+            "label": "スケジュール",
+            "prompt": "@Zero 毎週金曜の10時に、その週のリリースノートをドラフトして、レビュー用に #release-notes に投稿して。"
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Alex",
+            "text": "@Zero 今日のリリースのリリースノートをドラフトして"
+          },
+          {
+            "name": "Zero",
+            "text": "v2.8のノートをドラフトしました。顧客に見える変更14件（機能5件、改善6件、修正3件）をカバー。内部リファクタリング12件とテストのみのPR 4件はスキップ。プレビューはNotionにあり、編集可能な状態です。"
+          }
+        ],
+        "steps": [
+          {
+            "title": "ZeroがリリースウィンドウのマージPRをすべて読む",
+            "description": "Zeroが前回のリリースタグ以降にマージされたPRを、タイトル、説明、ラベルごと取得します。内部のみの変更（リファクタリング、テスト、CIの調整）はラベル規約に基づいてフィルタリングで除外されます。"
+          },
+          {
+            "title": "Zeroが顧客インパクトごとに変更をグループ化",
+            "description": "Zeroが残りのPRを新機能、改善、修正のテーマに分類します。各変更はPR説明から、顧客向けの1行に書き直されます。有用と言えるくらい具体的で、内部のジャーゴンは排除されます。"
+          },
+          {
+            "title": "Zeroがあなたのプロダクトボイスでノートをドラフト",
+            "description": "最終ドラフトは、あなたのリリースノートテンプレートに沿ったセクション構成で、ドキュメンテーションツールかSlackに届きます。ボイスとニュアンスを編集して公開するだけです。"
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "ボイスを洗練",
+            "description": "Zeroが使うトーンとフォーマットのガイダンスを更新します。",
+            "examplePrompt": "@Zero 今後はリリースノートでMarkdownの見出しはスキップして。プレーンな文章のみで。"
+          },
+          {
+            "title": "公開と連結",
+            "description": "承認されたノートを、ドキュメントやブログへ直接プッシュします。",
+            "examplePrompt": "@Zero ノートを承認したら、ドキュメントのReleasesセクションに公開して、#announcements にリンクを投稿して。"
+          },
+          {
+            "title": "翻訳",
+            "description": "対応するすべてのロケール向けにノートを生成します。",
+            "examplePrompt": "@Zero 承認したリリースノートをドイツ語、日本語、スペイン語に翻訳して。セクション構造は維持して。"
+          }
+        ],
+        "integrations": [
+          {
+            "description": "GitHub。ZeroがマージされたPR、コミットメッセージ、ラベル、リリースタグを読みます。リポジトリへの読み取り権限が必要です。"
+          },
+          {
+            "description": "Slack。Zeroがレビューチャンネルにドラフトを届け、承認後に最終ノートを投稿します。チャンネルへの書き込み権限が必要です。"
+          }
+        ],
+        "tips": [
+          "内部のみのPRには一貫したラベル（`internal` や `no-release-notes` など）を付けましょう。Zeroが除外できるのは、マークされたものだけです。",
+          "リリースノートの短いスタイルガイドをドキュメントに保管しましょう。顧客向けのボイス、能動態の動詞、内部ジャーゴンなし。Zeroがそれを読み取り、毎回のリリースに適用します。",
+          "リリース出荷後ではなく、出荷前にノートをドラフトしましょう。作業の記憶が新しいうちにレビューする方が、1週間後にコンテキストを再構築するより速く済みます。"
+        ]
+      },
+      "meeting-action-items": {
+        "title": "すべての会議を、担当者付きのクリーンなアクションアイテムリストに変換",
+        "description": "Zeroが会議の文字起こしを読み、担当者と期限付きのアクションアイテムを抽出し、適切なSlackチャンネルやタスクトラッカーに投稿します。",
+        "timeSaved": "会議あたり約20分短縮",
+        "headings": {
+          "scenario": "アクションアイテムが抜け落ちてしまう理由",
+          "prompt": "Zeroに会議のアクションアイテム抽出を依頼する方法",
+          "steps": "Zeroが会議をトラッキング可能な仕事に変える流れ",
+          "nextActions": "タスクへのルーティング、担当者なしのエスカレーション、週次ロールアップ",
+          "integrations": "必要な連携：カレンダー、Slack、Notion",
+          "tips": "会議フォロースルーのベストプラクティス"
+        },
+        "scenario": "どの会議もアクションアイテムを生みますが、そのほとんどは追跡されません。会議が終わると、みんな自分のデスクに戻り、Caseyが今週引き受けた3つのことは記憶の中だけに残ります。1週間後には誰が何を担当していたか誰も覚えておらず、次の会議は「どこまで話したっけ？」から始まります。Meeting Action Itemsは、ステップを増やさずにこれを解決します。Zeroが会議の文字起こしを読み、担当者と期限付きでアクションアイテムを抽出し、適切なSlackチャンネルかタスクトラッカーに投稿します。全員が同じリストを持って部屋を出ます。",
+        "promptVariants": [
+          {
+            "label": "詳細版",
+            "prompt": "@Zero カレンダー上の録画付き会議ごとに、アクションアイテムを抽出して。担当者、言及された場合は期限、元の発言引用を含めて。該当するプロジェクトのSlackチャンネルにリストを投稿して。"
+          },
+          {
+            "label": "クイック",
+            "prompt": "@Zero 今朝のデザインレビューからアクションアイテムを抽出して。"
+          },
+          {
+            "label": "会議別",
+            "prompt": "@Zero 月曜のスタンドアップについては、各アクションアイテムを担当者にアサインしたtodoとして、Linearプロジェクトにもログして。"
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Riley",
+            "text": "@Zero 今朝のデザインレビューからアクションアイテムを抽出して"
+          },
+          {
+            "name": "Zero",
+            "text": "デザインレビューのアクションアイテム3件：\n\n• Alex：金曜までに更新済みモックアップをFigmaで公開。\n• Jordan：今週中に新しいオンボーディングフローをベータユーザー3名で試す。\n• Casey：来週月曜までに最終カラーパレットを決定。\n\nプロジェクトのNotionページにログ済み。Linearタスクも作成しましょうか？"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zeroが会議の文字起こしを読む",
+            "description": "Zeroが会議ツールから文字起こしを取得するか、Slackに投稿されたメモを読みます。文字起こしが利用できない場合は、メモや録画リンクからも作業できます。"
+          },
+          {
+            "title": "Zeroが担当者と期限付きでアクションアイテムを抽出",
+            "description": "各アクションアイテムについて、Zeroが担当者、コミット内容、期限を記録します。担当者がいないアイテムはフラグが立ち、誰かが引き取れるようになります。"
+          },
+          {
+            "title": "Zeroが構造化されたリストを然るべき場所に投稿",
+            "description": "抽出されたアイテムは、プロジェクトのSlackチャンネル、Notionの会議メモ、タスクトラッカーなど、然るべき場所に届きます。各担当者は自分のアイテムを確認でき、チーム全体もリスト全体を把握できます。"
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "タスクにルーティング",
+            "description": "アクションアイテムごとに、自動でトラッカーにタスクを作成します。",
+            "examplePrompt": "@Zero 今後はアクションアイテムごとにLinearタスクを作成して、担当者にアサインして期限をデッドラインに設定して。"
+          },
+          {
+            "title": "担当者なしをエスカレーション",
+            "description": "会議終了時に、担当者未設定のアクションアイテムを表面化します。",
+            "examplePrompt": "@Zero 各会議のサマリー末尾で、担当者のないアクションアイテムにフラグを立てて、プロジェクトリードに@メンションしてアサインしてもらって。"
+          },
+          {
+            "title": "週次ロールアップ",
+            "description": "週内の全会議で抽出された全アクションアイテムをサマリーします。",
+            "examplePrompt": "@Zero 毎週金曜16時に、今週の会議で抽出した全アクションアイテムのサマリーを担当者別に投稿して。"
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Google Calendar。Zeroが会議を探し、関連するメモや文字起こしを取得します。読み取り権限が必要です。"
+          },
+          {
+            "description": "Slack。Zeroがアクションアイテムリストを該当チャンネルに投稿し、担当者には各自の個別リストをDMします。チャンネルとDMへの書き込み権限が必要です。"
+          },
+          {
+            "description": "Notion。Zeroが会議メモにアクションアイテムをログするので、履歴を検索できます。書き込み権限が必要です。"
+          }
+        ],
+        "tips": [
+          "アクションアイテムは会議中にフル文で書きましょう。「Caseyが金曜までにXを決定する」のほうが、「Casey：Xを決定」より明確です。Zeroはどちらでも処理できますが、入力がクリーンなら出力もクリーンになります。",
+          "意思決定とアクションアイテムは分けましょう。意思決定はDocument Decisionsへ、アクションアイテムは担当者へ。混ぜると両方が薄まります。",
+          "会議が終わる前に抽出リストをレビューしましょう。30秒のレビューで、1週間生き残ってしまう誤アサインを拾えます。"
+        ]
+      },
       "seo-blog-writing": {
         "title": "キーワードリサーチとAI画像でSEO最適化ブログ記事を作成",
-        "description": "ZeroがAhrefsからキーワードデータを取得し、高チャンスの検索語をターゲットにブログ記事を執筆、Fal.aiでアイキャッチ画像を生成し、すべてをStrapiにドラフトとして公開します — ワンプロンプトでエンドツーエンド。",
+        "description": "ZeroがAhrefsからキーワードデータを取得し、高チャンスの検索語をターゲットにブログ記事を執筆、Fal.aiでアイキャッチ画像を生成し、すべてをStrapiにドラフトとして公開します。ワンプロンプトでエンドツーエンド。",
         "timeSaved": "約90分の節約",
         "headings": {
           "scenario": "なぜブログ1本の執筆に3つのツールと午前中の半分が必要なのか",
@@ -3433,7 +4366,7 @@
           "integrations": "必要な連携: Ahrefs、Strapi、Fal.ai",
           "tips": "AIを活用したSEOブログ執筆のベストプラクティス"
         },
-        "scenario": "実際に検索上位を取れるブログ記事が必要です。つまり、Ahrefsを開いてボリュームがあり難易度の低いキーワードをフィルタリングし、コンテンツ戦略に合うものを選び、1,500語の記事を書き、アイキャッチ画像を用意し、CMSに合わせてフォーマットし、公開する。終わる頃には午前中が消えています — しかも今週はあと2本予定があります。Zeroにトピック領域とドメインを伝えるだけ。キーワードデータの取得、記事の執筆、カバー画像の生成、Strapiへのドラフト公開まですべて完了。あとはレビューして公開ボタンを押すだけです。",
+        "scenario": "実際に検索上位を取れるブログ記事が必要です。つまり、Ahrefsを開いてボリュームがあり難易度の低いキーワードをフィルタリングし、コンテンツ戦略に合うものを選び、1,500語の記事を書き、アイキャッチ画像を用意し、CMSに合わせてフォーマットし、公開する。終わる頃には午前中が消えています。しかも今週はあと2本予定があります。Zeroにトピック領域とドメインを伝えるだけ。キーワードデータの取得、記事の執筆、カバー画像の生成、Strapiへのドラフト公開まですべて完了。あとはレビューして公開ボタンを押すだけです。",
         "promptVariants": [
           {
             "label": "詳細",
@@ -3455,7 +4388,7 @@
           },
           {
             "name": "Zero",
-            "text": "完了しました。リサーチと作成結果です：\n\n**選定キーワード:** 「ai agent platform security」— 月間1,400件、KD 23\n**記事:** 「AIエージェントプラットフォームのセキュリティが新たな基本要件になる理由」（1,620語）\n**カバー画像:** Fal.aiで生成 — セキュリティメッシュの抽象ビジュアル\n**公開先:** Strapiドラフト #67\n\nプレビュー: www.vm0.ai/ja/blog/posts/ai-agent-platform-security?status=draft"
+            "text": "完了しました。リサーチと作成結果です：\n\n**選定キーワード:** 「ai agent platform security」（月間1,400件、KD 23）\n**記事:** 「AIエージェントプラットフォームのセキュリティが新たな基本要件になる理由」（1,620語）\n**カバー画像:** Fal.aiで生成。セキュリティメッシュの抽象ビジュアル\n**公開先:** Strapiドラフト #67\n\nプレビュー: www.vm0.ai/ja/blog/posts/ai-agent-platform-security?status=draft"
           }
         ],
         "steps": [
@@ -3465,7 +4398,7 @@
           },
           {
             "title": "Zeroがブログ記事を執筆・構成",
-            "description": "選定したキーワードと関連語を使い、SEO最適化されたタイトル、メタディスクリプション、見出し構造、本文を含む完全なブログ記事をドラフトします。セマンティックキーワードを自然に織り込み、オンページSEOのベストプラクティスに従います — キーワードの詰め込みはしません。"
+            "description": "選定したキーワードと関連語を使い、SEO最適化されたタイトル、メタディスクリプション、見出し構造、本文を含む完全なブログ記事をドラフトします。セマンティックキーワードを自然に織り込み、オンページSEOのベストプラクティスに従います。キーワードの詰め込みはしません。"
           },
           {
             "title": "Zeroがカバー画像を生成しStrapiに公開",
@@ -3491,13 +4424,13 @@
         ],
         "integrations": [
           {
-            "description": "Ahrefs — ZeroがAhrefs APIを使用してキーワードリサーチ、検索ボリューム・難易度指標の取得、コンテンツギャップの特定を行います。キーワードリサーチステップに必須。"
+            "description": "Ahrefs：ZeroがAhrefs APIを使用してキーワードリサーチ、検索ボリューム・難易度指標の取得、コンテンツギャップの特定を行います。キーワードリサーチステップに必須。"
           },
           {
-            "description": "Strapi — Zeroが完成した記事（タイトル、本文、メタ情報、カバー画像）をStrapi CMSにドラフトとして公開します。Content Manager APIアクセスが必要です。"
+            "description": "Strapi：Zeroが完成した記事（タイトル、本文、メタ情報、カバー画像）をStrapi CMSにドラフトとして公開します。Content Manager APIアクセスが必要です。"
           },
           {
-            "description": "Fal.ai — ZeroがFal.aiの画像生成APIでアイキャッチ画像を生成します。オプション — 未接続の場合、Zeroはカバー画像なしで記事を公開します。"
+            "description": "Fal.ai：ZeroがFal.aiの画像生成APIでアイキャッチ画像を生成します。オプション。未接続の場合、Zeroはカバー画像なしで記事を公開します。"
           }
         ],
         "tips": [
@@ -3512,7 +4445,10 @@
       "everyone": "横断的",
       "engineering": "Engineering",
       "product": "プロダクト",
-      "ops": "オペレーション"
+      "ops": "オペレーション",
+      "marketing": "マーケティング",
+      "support": "サポート",
+      "compliance": "コンプライアンス"
     }
   },
   "landing": {

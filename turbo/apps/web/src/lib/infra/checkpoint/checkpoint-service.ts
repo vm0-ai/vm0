@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { agentRuns } from "../../../db/schema/agent-run";
 import { agentComposeVersions } from "../../../db/schema/agent-compose";
 import { conversations } from "../../../db/schema/conversation";
@@ -17,40 +17,23 @@ import type {
 const log = logger("checkpoint");
 
 /**
- * Resolve the artifact snapshot map from a checkpoint request. During the
- * deployment window the guest-agent may still send the legacy singleton
- * `artifactSnapshot`; fold it into the map when the map is missing/empty so
- * no data is lost in mixed old-guest/new-server states.
- */
-function resolveArtifactSnapshots(request: CheckpointRequest): {
-  map: Record<string, string> | null;
-  primaryArtifactName: string | undefined;
-} {
-  const rawMap = request.artifactSnapshots ?? null;
-  const hasMap = rawMap !== null && Object.keys(rawMap).length > 0;
-  if (hasMap) {
-    const primaryArtifactName = Object.keys(rawMap)[0];
-    return { map: rawMap, primaryArtifactName };
-  }
-  const legacy = request.artifactSnapshot;
-  if (legacy) {
-    return {
-      map: { [legacy.artifactName]: legacy.artifactVersion },
-      primaryArtifactName: legacy.artifactName,
-    };
-  }
-  return { map: null, primaryArtifactName: undefined };
-}
-
-/**
- * Create a checkpoint for an agent run
+ * Create a checkpoint for an agent run.
+ *
+ * `userId` is checked against `agent_runs.user_id` as a defence-in-depth
+ * tripwire: sandbox tokens are HMAC-signed and bind `userId`/`runId`
+ * together at mint time, so a mismatch here shouldn't be reachable in
+ * production. The check is retained so a leaked signing key or a
+ * handler refactor regression would 404 rather than write to a foreign
+ * user's run.
  *
  * @param request Checkpoint request data from webhook
+ * @param userId  Authenticated userId from the sandbox token
  * @returns Checkpoint ID and artifact status
- * @throws NotFoundError if run doesn't exist
+ * @throws NotFoundError if run doesn't exist or doesn't belong to userId
  */
 export async function createCheckpoint(
   request: CheckpointRequest,
+  userId: string,
 ): Promise<CheckpointResponse> {
   log.debug(`Creating checkpoint for run ${request.runId}`);
 
@@ -58,7 +41,7 @@ export async function createCheckpoint(
   const [run] = await globalThis.services.db
     .select()
     .from(agentRuns)
-    .where(eq(agentRuns.id, request.runId))
+    .where(and(eq(agentRuns.id, request.runId), eq(agentRuns.userId, userId)))
     .limit(1);
 
   if (!run) {
@@ -160,11 +143,10 @@ export async function createCheckpoint(
       }
     : null;
 
-  // Consolidate artifact snapshots. The guest-agent's authoritative payload
-  // is artifactSnapshots (name -> version map); during rollout a legacy
-  // singleton artifactSnapshot is folded into the map if present.
-  const { map: artifactSnapshotsMap, primaryArtifactName } =
-    resolveArtifactSnapshots(request);
+  const rawMap = request.artifactSnapshots ?? null;
+  const hasMap = rawMap !== null && Object.keys(rawMap).length > 0;
+  const artifactSnapshotsMap = hasMap ? rawMap : null;
+  const primaryArtifactName = hasMap ? Object.keys(rawMap)[0] : undefined;
 
   const snapshotFields = {
     conversationId: conversation.id,

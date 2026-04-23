@@ -31,7 +31,7 @@ describe("deleteUserS3Data", () => {
     const name2 = uniqueId("storage");
 
     await insertTestStorage({ userId, orgId, name: name1, type: "artifact" });
-    await insertTestStorage({ userId, orgId, name: name2, type: "memory" });
+    await insertTestStorage({ userId, orgId, name: name2, type: "artifact" });
 
     const prefix1 = `storages/${orgId}/${name1}/`;
     const prefix2 = `storages/${orgId}/${name2}/`;
@@ -155,7 +155,7 @@ describe("deleteUserS3Data", () => {
     const exportKey = `exports/${userId}/${uniqueId("job")}.zip`;
 
     await insertTestStorage({ userId, orgId, name: name1, type: "artifact" });
-    await insertTestStorage({ userId, orgId, name: name2, type: "memory" });
+    await insertTestStorage({ userId, orgId, name: name2, type: "artifact" });
     await insertTestExportJob(orgId, {
       userId,
       status: "completed",

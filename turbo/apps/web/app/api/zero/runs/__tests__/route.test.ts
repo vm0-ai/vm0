@@ -63,7 +63,7 @@ describe("POST /api/zero/runs", () => {
 
   it("should return 403 for sandbox token without agent-run:write capability", async () => {
     mockClerk({ userId: null });
-    const token = await generateSandboxToken("user-1", "run-1");
+    const token = await generateSandboxToken("user-1", "run-1", "org-test");
 
     const response = await POST(
       createTestRequest(URL, {
@@ -73,7 +73,6 @@ describe("POST /api/zero/runs", () => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          agentComposeId: "some-compose-id",
           prompt: "test prompt",
         }),
       }),

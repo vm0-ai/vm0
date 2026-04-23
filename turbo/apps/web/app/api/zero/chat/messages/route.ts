@@ -7,6 +7,7 @@ import {
   requireAuth,
   isAuthError,
 } from "../../../../../src/lib/auth/require-auth";
+import { userProfileFromClaims } from "../../../../../src/lib/auth/user-profile-from-claims";
 import {
   createZeroRun,
   fetchZeroAgentForRun,
@@ -31,6 +32,7 @@ import {
   getLatestSessionIdForThread,
   getLatestMessagesByThreadId,
   getIncompleteRoundsSinceLastSuccess,
+  hasAnyRunsForThread,
   publishThreadListChanged,
   PREVIOUS_CONTEXT_MESSAGES,
 } from "../../../../../src/lib/zero/chat-thread/chat-message-service";
@@ -98,9 +100,9 @@ function buildFullPrompt(
 interface ResolvedThread {
   threadId: string;
   sessionId: string | undefined;
-  previousContext: { role: "user" | "assistant"; content: string }[];
   continueFromSchedulePrompt: string | undefined;
   incompleteContext: string;
+  isNewThread: boolean;
 }
 
 /**
@@ -190,7 +192,7 @@ async function rejectIfThreadModelLocked(
  * Returns thread metadata needed for run creation and title generation.
  *
  * When `dims` is provided, each sub-stage (create-thread, get-thread,
- * session-id lookup, messages, incomplete-rounds, continue-from resolution)
+ * session-id lookup, has-any-run, incomplete-rounds, continue-from resolution)
  * emits a span to the `sandbox-op-log` Axiom dataset with
  * `source: "web-chat"`. Each parallel arm is wrapped in `timed()` so the
  * per-query duration is still captured alongside the parallel execution.
@@ -214,23 +216,24 @@ async function resolveThread(
     if (dims) {
       dims.thread_id = thread.id;
       dims.thread_is_new = true;
-      dims.thread_length = 0;
     }
     return {
       threadId: thread.id,
       sessionId: undefined,
-      previousContext: [],
       continueFromSchedulePrompt: undefined,
       incompleteContext: "",
+      isNewThread: true,
     };
   }
 
-  // All four reads key off `(existingThreadId, userId)` and have no data
-  // dependency on each other. Running them in parallel drops the happy-path
-  // wall time to the slowest of the four, not their sum. Each arm is wrapped
-  // in `timed()` so we still emit per-query spans alongside the parallel
-  // execution.
-  const [threadT, sessionIdT, messagesT, incompleteT] = await Promise.all([
+  // Four independent reads keyed off `(existingThreadId, userId)`. Running
+  // them in parallel caps wall time at the slowest arm. The prior 4th arm
+  // (`getLatestMessagesByThreadId`) was a ~275ms P50 read used only by the
+  // fire-and-forget title generator — now lifted off this critical path. It
+  // is replaced by the cheap `hasAnyRunsForThread` EXISTS probe so the
+  // continue-from-schedule gate keeps its first-run semantics without a
+  // 10-row scan on every send.
+  const [threadT, sessionIdT, hasAnyRunT, incompleteT] = await Promise.all([
     timed(async () => {
       return getChatThread(existingThreadId, userId);
     }),
@@ -238,10 +241,7 @@ async function resolveThread(
       return getLatestSessionIdForThread(existingThreadId);
     }),
     timed(async () => {
-      return getLatestMessagesByThreadId(
-        existingThreadId,
-        PREVIOUS_CONTEXT_MESSAGES,
-      );
+      return hasAnyRunsForThread(existingThreadId);
     }),
     timed(async () => {
       return getIncompleteRoundsSinceLastSuccess(existingThreadId);
@@ -249,25 +249,16 @@ async function resolveThread(
   ]);
   emit(CHAT_REQUEST_OPS.resolve_thread_get_thread, threadT.ms);
   emit(CHAT_REQUEST_OPS.resolve_thread_session_id, sessionIdT.ms);
-  emit(CHAT_REQUEST_OPS.resolve_thread_get_messages, messagesT.ms);
+  emit(CHAT_REQUEST_OPS.resolve_thread_has_any_run, hasAnyRunT.ms);
   emit(CHAT_REQUEST_OPS.resolve_thread_incomplete, incompleteT.ms);
 
   const thread = threadT.result;
   const sessionId = sessionIdT.result;
-  const messages = messagesT.result;
 
   if (dims) {
     dims.thread_id = thread.id;
     dims.thread_is_new = false;
-    dims.thread_length = messages.length;
   }
-
-  // `messages` already satisfies `content IS NOT NULL` and role IN
-  // ('user','assistant') in SQL; the service narrows the row shape so no
-  // per-caller casts are needed.
-  const previousContext = messages.map((m) => {
-    return { role: m.role, content: m.content };
-  });
 
   const incompleteContext = buildWebChatIncompleteContext(
     groupIncompleteRoundsByRunId(incompleteT.result),
@@ -275,7 +266,7 @@ async function resolveThread(
 
   let continueFromSchedulePrompt: string | undefined;
   const sourceScheduleRunId = thread.sourceScheduleRunId;
-  if (sourceScheduleRunId && messages.length === 0) {
+  if (sourceScheduleRunId && !hasAnyRunT.result) {
     const continueFromT = await timed(async () => {
       return globalThis.services.db
         .select({ name: zeroAgentSchedules.name })
@@ -298,9 +289,9 @@ async function resolveThread(
   return {
     threadId: thread.id,
     sessionId,
-    previousContext,
     continueFromSchedulePrompt,
     incompleteContext,
+    isNewThread: false,
   };
 }
 
@@ -442,9 +433,9 @@ const router = tsr.router(chatMessagesContract, {
       const {
         threadId,
         sessionId,
-        previousContext,
         continueFromSchedulePrompt,
         incompleteContext,
+        isNewThread,
       } = await resolveThread(
         authCtx.userId,
         body.agentId,
@@ -469,19 +460,43 @@ const router = tsr.router(chatMessagesContract, {
       // assistant reply is not yet available at send time — the chat
       // callback regenerates the title with the full current exchange
       // once the run completes.
+      //
+      // Title context fetch lives in this fire-and-forget IIFE so the
+      // ~275ms `chat_messages` read is not on the POST response path. For
+      // brand-new threads the fetch is skipped (no prior rounds exist), so
+      // we only pay the round trip on follow-up sends.
       if (body.hasTextContent !== false) {
-        void generateChatTitle({
-          currentUserMessage: body.prompt,
-          priorRounds: previousContext.length > 0 ? previousContext : undefined,
-        })
-          .then((title) => {
-            if (title) {
-              return updateChatThreadTitle(threadId, authCtx.userId, title);
-            }
-          })
-          .catch((err: unknown) => {
-            log.warn("Chat title generation failed", { threadId, err });
+        void (async () => {
+          let priorRounds:
+            | { role: "user" | "assistant"; content: string }[]
+            | undefined;
+          if (!isNewThread) {
+            const fetchT = await timed(async () => {
+              return getLatestMessagesByThreadId(
+                threadId,
+                PREVIOUS_CONTEXT_MESSAGES,
+              );
+            });
+            recordChatSpan(
+              CHAT_REQUEST_OPS.title_context_fetch,
+              fetchT.ms,
+              dims,
+            );
+            const mapped = fetchT.result.map((m) => {
+              return { role: m.role, content: m.content };
+            });
+            priorRounds = mapped.length > 0 ? mapped : undefined;
+          }
+          const title = await generateChatTitle({
+            currentUserMessage: body.prompt,
+            priorRounds,
           });
+          if (title) {
+            await updateChatThreadTitle(threadId, authCtx.userId, title);
+          }
+        })().catch((err: unknown) => {
+          log.warn("Chat title generation failed", { threadId, err });
+        });
       }
 
       // Build callback for session persistence
@@ -524,6 +539,7 @@ const router = tsr.router(chatMessagesContract, {
         preloadedAgent: agent,
         preloadedOrgTier,
         spanDims: dims,
+        userProfile: userProfileFromClaims(authCtx),
       });
 
       // Persist user message to chat_messages.

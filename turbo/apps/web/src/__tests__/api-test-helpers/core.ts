@@ -88,7 +88,7 @@ export async function createTestSandboxToken(
   userId: string,
   runId: string,
 ): Promise<string> {
-  return generateSandboxToken(userId, runId);
+  return generateSandboxToken(userId, runId, "org-test");
 }
 
 /**

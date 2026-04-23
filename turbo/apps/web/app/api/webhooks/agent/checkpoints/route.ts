@@ -5,10 +5,9 @@ import {
 } from "../../../../../src/lib/ts-rest-handler";
 import { webhookCheckpointsContract } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
-import { agentRuns } from "../../../../../src/db/schema/agent-run";
-import { eq, and } from "drizzle-orm";
 import { getSandboxAuthForRun } from "../../../../../src/lib/auth/get-sandbox-auth";
 import { createCheckpoint } from "../../../../../src/lib/infra/checkpoint";
+import { isForeignKeyViolation } from "../../../../../src/lib/shared/pg-errors";
 import { logger } from "../../../../../src/lib/shared/logger";
 
 const log = logger("webhook:checkpoints");
@@ -37,46 +36,48 @@ const router = tsr.router(webhookCheckpointsContract, {
       `Received checkpoint request for run ${body.runId} from user ${userId}`,
     );
 
-    // Verify run exists and belongs to the authenticated user
-    const [run] = await globalThis.services.db
-      .select()
-      .from(agentRuns)
-      .where(and(eq(agentRuns.id, body.runId), eq(agentRuns.userId, userId)))
-      .limit(1);
+    // `createCheckpoint` fetches `agent_runs` internally and throws
+    // `notFound` if the row is missing — no up-front SELECT here. If
+    // the run vanishes concurrent with a downstream INSERT
+    // (conversations / checkpoints, both FK-constrained on
+    // `agent_runs.id` — see #10725 and the aggregate-deletion paths
+    // tracked in #10763), PG raises SQLSTATE 23503; we surface it as
+    // 404 instead of 500 to keep the same "run not found" contract
+    // the caller already handles.
+    try {
+      const result = await createCheckpoint(body, userId);
 
-    if (!run) {
+      log.debug(
+        `Checkpoint created: ${result.checkpointId}, session: ${result.agentSessionId}, conversation: ${result.conversationId}`,
+      );
+
+      // Note: vm0_result event is now sent by the complete API
+      // This endpoint only handles checkpoint data persistence
+
       return {
-        status: 404 as const,
+        status: 200 as const,
         body: {
-          error: { message: "Agent run not found", code: "NOT_FOUND" },
+          checkpointId: result.checkpointId,
+          agentSessionId: result.agentSessionId,
+          conversationId: result.conversationId,
+          artifacts: result.artifacts,
+          volumes: result.volumes,
         },
       };
+    } catch (err) {
+      if (isForeignKeyViolation(err)) {
+        log.info("Run deleted concurrent with checkpoint, dropping", {
+          runId: body.runId,
+        });
+        return {
+          status: 404 as const,
+          body: {
+            error: { message: "Agent run not found", code: "NOT_FOUND" },
+          },
+        };
+      }
+      throw err;
     }
-
-    // Note: We don't check run status here because the checkpoint is called from within
-    // the sandbox before the complete webhook updates the run status to "completed"
-
-    // Create checkpoint
-    const result = await createCheckpoint(body);
-
-    log.debug(
-      `Checkpoint created: ${result.checkpointId}, session: ${result.agentSessionId}, conversation: ${result.conversationId}`,
-    );
-
-    // Note: vm0_result event is now sent by the complete API
-    // This endpoint only handles checkpoint data persistence
-
-    return {
-      status: 200 as const,
-      body: {
-        checkpointId: result.checkpointId,
-        agentSessionId: result.agentSessionId,
-        conversationId: result.conversationId,
-        artifact: result.artifact,
-        artifacts: result.artifacts,
-        volumes: result.volumes,
-      },
-    };
   },
 });
 

@@ -230,7 +230,7 @@ async function driveSession(
     context,
     path: `/agents/${AGENT_ID}/chat`,
     withoutRender: true,
-    featureSwitches: { voiceChat: true, trinity: true },
+    featureSwitches: { trinity: true },
   });
   mockCandidateEndpoints({ tasks });
   const dcRef: { current: FakeDC | null } = { current: null };

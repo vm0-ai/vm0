@@ -1,21 +1,14 @@
 import { NextResponse, after } from "next/server";
-import { inArray, and, or, lt, eq } from "drizzle-orm";
+import { inArray, and, lt, eq } from "drizzle-orm";
 import { initServices } from "../../../../src/lib/init-services";
 import { logger } from "../../../../src/lib/shared/logger";
 import { env } from "../../../../src/env";
-import {
-  voiceChatSessions,
-  voiceChatEvents,
-} from "../../../../src/db/schema/voice-chat";
 import { featureCandidateVoiceChatSessions } from "../../../../src/db/schema/voice-chat-candidate";
 import { triggerReasoning } from "../../../../src/lib/zero/voice-chat-candidate/trigger-reasoning";
 
 export const maxDuration = 60;
 
 const log = logger("cron:voice-chat-cleanup");
-
-const STALE_HEARTBEAT_MS = 2 * 60 * 1000; // 2 minutes
-const MAX_SESSION_DURATION_MS = 60 * 60 * 1000; // 60 minutes
 
 // Candidate sessions are stateless (no active/ended/timeout), so there is
 // nothing to "time out" here. The reasoner CAS lock still needs a stuck-
@@ -36,35 +29,6 @@ export async function GET(request: Request): Promise<Response> {
   }
 
   const now = new Date();
-  const staleThreshold = new Date(now.getTime() - STALE_HEARTBEAT_MS);
-  const timeoutThreshold = new Date(now.getTime() - MAX_SESSION_DURATION_MS);
-
-  const result = await globalThis.services.db
-    .update(voiceChatSessions)
-    .set({ status: "timeout", endedAt: now })
-    .where(
-      and(
-        inArray(voiceChatSessions.status, ["active", "preparing"]),
-        or(
-          lt(voiceChatSessions.lastHeartbeatAt, staleThreshold),
-          lt(voiceChatSessions.createdAt, timeoutThreshold),
-        ),
-      ),
-    )
-    .returning({ id: voiceChatSessions.id });
-
-  if (result.length > 0) {
-    await globalThis.services.db.insert(voiceChatEvents).values(
-      result.map((r) => {
-        return {
-          sessionId: r.id,
-          source: "system" as const,
-          type: "session-end" as const,
-        };
-      }),
-    );
-    log.info("Voice chat cleanup completed", { cleaned: result.length });
-  }
 
   // === voice-chat-candidate reasoner stuck recovery ===
   // LIMIT 50 per tick caps worst-case runtime under catastrophic backlog.
@@ -113,7 +77,6 @@ export async function GET(request: Request): Promise<Response> {
 
   return NextResponse.json({
     success: true,
-    cleaned: result.length,
     reasonerReset: recoveredReasoners.length,
   });
 }

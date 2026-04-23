@@ -52,11 +52,6 @@ import {
   autoReadEnabled$,
   toggleAutoRead$,
 } from "../../signals/voice-io/voice-io-settings.ts";
-import {
-  vcStatus$,
-  vcReconnectAttempt$,
-} from "../../signals/voice-chat/voice-chat-session.ts";
-import { StatusBadge } from "../voice-chat/voice-chat-page.tsx";
 import { OrgManageDialog } from "./components/org-manage/org-manage-dialog.tsx";
 import {
   InstallBanner,
@@ -77,17 +72,6 @@ function AgentAvatarInTopBar() {
       className="h-6 w-6 shrink-0 rounded-full object-cover object-top"
       data-testid="agent-avatar"
     />
-  );
-}
-
-function VoiceChatStatusLeaf() {
-  const vcStatus = useGet(vcStatus$);
-  const vcReconnectAttempt = useGet(vcReconnectAttempt$);
-  if (vcStatus === "idle") {
-    return null;
-  }
-  return (
-    <StatusBadge status={vcStatus} reconnectAttempt={vcReconnectAttempt} />
   );
 }
 
@@ -231,7 +215,6 @@ function MobileTopBar() {
                 </>
               )}
             </div>
-            {activeId === "voiceChat" && <VoiceChatStatusLeaf />}
           </div>
         </div>
       )}

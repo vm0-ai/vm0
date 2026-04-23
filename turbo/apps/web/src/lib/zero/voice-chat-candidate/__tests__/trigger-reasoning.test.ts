@@ -291,6 +291,61 @@ describe("triggerReasoning", () => {
     expect(handler.mocked).not.toHaveBeenCalled();
     expect(mockAblyPublish).not.toHaveBeenCalled();
   });
+
+  it("H7 — uses only the heard portion of an interrupted assistant turn", async () => {
+    context.setupMocks();
+    vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+    reloadEnv();
+
+    const { sessionId } = await seedActiveSession();
+    await appendTestVoiceChatCandidateItem({
+      sessionId,
+      role: "user",
+      content: "tell me the update",
+      realtimeItemId: uniqueId("rt"),
+    });
+    await appendTestVoiceChatCandidateItem({
+      sessionId,
+      role: "assistant",
+      content: "the full answer that should not survive resume",
+      realtimeItemId: "rt-asst-interrupted",
+    });
+    await appendTestVoiceChatCandidateItem({
+      sessionId,
+      role: "system_note",
+      content: JSON.stringify({
+        type: "assistant_interrupted",
+        assistantRealtimeItemId: "rt-asst-interrupted",
+        heardText: "the partial answer the user actually heard",
+        audioEndMs: 1200,
+      }),
+      realtimeItemId: uniqueId("truncate"),
+    });
+
+    let capturedBody: unknown;
+    const handler = http.post(OPENROUTER_URL, async ({ request }) => {
+      capturedBody = await request.json();
+      return HttpResponse.json(
+        openRouterResponse(
+          threeSectionPayload({ conversation: "Focus: partial answer" }),
+        ),
+      );
+    });
+    server.use(handler.handler);
+
+    await triggerReasoning(sessionId);
+
+    const body = capturedBody as {
+      messages: Array<{ role: string; content: string }>;
+    };
+    expect(body.messages[1]!.content).toContain(
+      "assistant: the partial answer the user actually heard",
+    );
+    expect(body.messages[1]!.content).not.toContain(
+      "the full answer that should not survive resume",
+    );
+    expect(body.messages[1]!.content).not.toContain("assistant_interrupted");
+  });
 });
 
 describe("triggerReasoning — task compaction", () => {

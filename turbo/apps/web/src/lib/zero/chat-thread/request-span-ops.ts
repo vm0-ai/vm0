@@ -13,6 +13,7 @@ export const CHAT_REQUEST_OPS = {
   resolve_thread_get_thread: "api_chat_send_resolve_thread_get_thread",
   resolve_thread_session_id: "api_chat_send_resolve_thread_session_id",
   resolve_thread_get_messages: "api_chat_send_resolve_thread_get_messages",
+  resolve_thread_has_any_run: "api_chat_send_resolve_thread_has_any_run",
   resolve_thread_incomplete: "api_chat_send_resolve_thread_incomplete",
   resolve_thread_continue_from: "api_chat_send_resolve_thread_continue_from",
   resolve_model_override: "api_chat_send_resolve_model_override",
@@ -40,6 +41,7 @@ export const CHAT_REQUEST_OPS = {
     "api_chat_send_insert_chat_message_publish_signal",
   insert_chat_message_publish_list:
     "api_chat_send_insert_chat_message_publish_list",
+  title_context_fetch: "api_chat_send_title_context_fetch",
 } as const;
 
 /**

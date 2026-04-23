@@ -377,7 +377,6 @@ mod tests {
             "debugNoMockClaude": true,
             "apiStartTime": 1700000000000.0,
             "userTimezone": "America/New_York",
-            "memoryName": "project-mem",
             "firewalls": [{
                 "name": "github",
                 "apis": [{"base": "https://api.github.com", "auth": {"headers": {}}}]

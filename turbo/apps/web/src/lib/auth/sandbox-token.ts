@@ -15,10 +15,7 @@ type ZeroCapability = (typeof ZERO_CAPABILITIES)[number];
  * Capabilities not listed here are always included.
  */
 const CONDITIONAL_CAPABILITIES: ReadonlyMap<ZeroCapability, FeatureSwitchKey> =
-  new Map([
-    ["computer-use:write", FeatureSwitchKey.ComputerUse],
-    ["voice-chat:write", FeatureSwitchKey.VoiceChat],
-  ]);
+  new Map([["computer-use:write", FeatureSwitchKey.ComputerUse]]);
 
 /**
  * Capabilities that are never included in agent run (zero) tokens.
@@ -52,6 +49,7 @@ export const PAT_TOKEN_PREFIX = "vm0_pat_";
 interface SandboxTokenPayload {
   userId: string;
   runId: string;
+  orgId: string;
   scope: "sandbox";
   iat: number;
   exp: number;
@@ -99,6 +97,7 @@ interface CliTokenPayload {
 export interface SandboxAuth {
   userId: string;
   runId: string;
+  orgId: string;
 }
 
 /**
@@ -258,6 +257,7 @@ function verifyJwtPayload(rawJwt: string): JwtPayload | null {
 export async function generateSandboxToken(
   userId: string,
   runId: string,
+  orgId: string,
 ): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   const expiresIn = 2 * 60 * 60; // 2 hours in seconds
@@ -265,6 +265,7 @@ export async function generateSandboxToken(
   const payload: SandboxTokenPayload = {
     userId,
     runId,
+    orgId,
     scope: "sandbox",
     iat: now,
     exp: now + expiresIn,
@@ -292,17 +293,26 @@ export function verifySandboxToken(token: string): SandboxAuth | null {
     return null;
   }
 
-  // Validate scope and required fields
+  // Validate scope and required fields. Tokens minted before orgId was added
+  // to the payload (2-hour expiry) fail this check and force a re-auth instead
+  // of leaking a partial claim.
   if (payload.scope !== "sandbox") {
     return null;
   }
-  if (!("runId" in payload) || !payload.userId || !payload.runId) {
+  if (
+    !("runId" in payload) ||
+    !("orgId" in payload) ||
+    !payload.userId ||
+    !payload.runId ||
+    !payload.orgId
+  ) {
     return null;
   }
 
   return {
     userId: payload.userId,
     runId: payload.runId,
+    orgId: payload.orgId,
   };
 }
 
@@ -550,4 +560,15 @@ export function verifyCliToken(token: string): CliAuth | null {
     orgId: payload.orgId,
     tokenId: payload.tokenId,
   };
+}
+
+/**
+ * Test-only: sign an arbitrary payload with the sandbox JWT key and
+ * prepend the sandbox prefix. Lets tests construct payload shapes
+ * `generateSandboxToken` can't produce (e.g. a legacy payload missing
+ * `orgId`) so the verifier's fail-closed contract is pinned against
+ * regressions. Do not use in production code.
+ */
+export function signSandboxJwtForTests(payload: object): string {
+  return SANDBOX_TOKEN_PREFIX + createJwt(payload as JwtPayload);
 }

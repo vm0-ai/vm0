@@ -42,7 +42,7 @@ describe("GET /api/zero/chat/search", () => {
 
   it("returns 403 when token lacks chat-message:read capability", async () => {
     const user = await context.setupUser();
-    const token = await generateSandboxToken(user.userId, "run-1");
+    const token = await generateSandboxToken(user.userId, "run-1", "org-test");
     mockClerk({ userId: null });
 
     const response = await GET(

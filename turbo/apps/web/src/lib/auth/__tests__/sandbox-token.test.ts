@@ -12,6 +12,7 @@ import {
   verifyCliToken,
   SANDBOX_TOKEN_PREFIX,
   PAT_TOKEN_PREFIX,
+  signSandboxJwtForTests,
 } from "../sandbox-token";
 
 // SECRETS_ENCRYPTION_KEY is set in setup.ts
@@ -31,7 +32,11 @@ vi.mock("@vm0/core", async (importOriginal) => {
 describe("sandbox-token", () => {
   describe("generateSandboxToken", () => {
     it("should generate a prefixed token", async () => {
-      const token = await generateSandboxToken("user-123", "run-456");
+      const token = await generateSandboxToken(
+        "user-123",
+        "run-456",
+        "org-test",
+      );
 
       expect(token).toBeDefined();
       expect(typeof token).toBe("string");
@@ -42,15 +47,31 @@ describe("sandbox-token", () => {
     });
 
     it("should generate different tokens for different runs", async () => {
-      const token1 = await generateSandboxToken("user-123", "run-456");
-      const token2 = await generateSandboxToken("user-123", "run-789");
+      const token1 = await generateSandboxToken(
+        "user-123",
+        "run-456",
+        "org-test",
+      );
+      const token2 = await generateSandboxToken(
+        "user-123",
+        "run-789",
+        "org-test",
+      );
 
       expect(token1).not.toBe(token2);
     });
 
     it("should generate different tokens for different users", async () => {
-      const token1 = await generateSandboxToken("user-123", "run-456");
-      const token2 = await generateSandboxToken("user-789", "run-456");
+      const token1 = await generateSandboxToken(
+        "user-123",
+        "run-456",
+        "org-test",
+      );
+      const token2 = await generateSandboxToken(
+        "user-789",
+        "run-456",
+        "org-test",
+      );
 
       expect(token1).not.toBe(token2);
     });
@@ -58,12 +79,17 @@ describe("sandbox-token", () => {
 
   describe("verifySandboxToken", () => {
     it("should verify a valid token and return auth info", async () => {
-      const token = await generateSandboxToken("user-123", "run-456");
+      const token = await generateSandboxToken(
+        "user-123",
+        "run-456",
+        "org-test",
+      );
       const auth = verifySandboxToken(token);
 
       expect(auth).not.toBeNull();
       expect(auth?.userId).toBe("user-123");
       expect(auth?.runId).toBe("run-456");
+      expect(auth?.orgId).toBe("org-test");
     });
 
     it("should return null for token without prefix", () => {
@@ -80,7 +106,11 @@ describe("sandbox-token", () => {
     });
 
     it("should return null for tampered token", async () => {
-      const token = await generateSandboxToken("user-123", "run-456");
+      const token = await generateSandboxToken(
+        "user-123",
+        "run-456",
+        "org-test",
+      );
       // Tamper with the JWT portion after the prefix
       const jwt = token.slice(SANDBOX_TOKEN_PREFIX.length);
       const parts = jwt.split(".");
@@ -93,7 +123,11 @@ describe("sandbox-token", () => {
     });
 
     it("should return null for token with invalid signature", async () => {
-      const token = await generateSandboxToken("user-123", "run-456");
+      const token = await generateSandboxToken(
+        "user-123",
+        "run-456",
+        "org-test",
+      );
       const jwt = token.slice(SANDBOX_TOKEN_PREFIX.length);
       const parts = jwt.split(".");
       parts[2] = "invalid-signature";
@@ -104,8 +138,44 @@ describe("sandbox-token", () => {
       expect(auth).toBeNull();
     });
 
+    it("should return null for legacy token without orgId", () => {
+      // Sign a sandbox payload shaped like the pre-orgId format.
+      // `generateSandboxToken` now requires `orgId`, so this scenario is
+      // otherwise unreachable — we sign the JWT directly to pin the
+      // verifier's fail-closed contract for tokens minted before this
+      // deploy.
+      const now = Math.floor(Date.now() / 1000);
+      const legacyToken = signSandboxJwtForTests({
+        userId: "user-123",
+        runId: "run-456",
+        scope: "sandbox",
+        iat: now,
+        exp: now + 3600,
+      });
+
+      expect(verifySandboxToken(legacyToken)).toBeNull();
+    });
+
+    it("should return null for token with empty orgId", () => {
+      const now = Math.floor(Date.now() / 1000);
+      const tokenWithEmptyOrg = signSandboxJwtForTests({
+        userId: "user-123",
+        runId: "run-456",
+        orgId: "",
+        scope: "sandbox",
+        iat: now,
+        exp: now + 3600,
+      });
+
+      expect(verifySandboxToken(tokenWithEmptyOrg)).toBeNull();
+    });
+
     it("should return null for expired token", async () => {
-      const token = await generateSandboxToken("user-123", "run-456");
+      const token = await generateSandboxToken(
+        "user-123",
+        "run-456",
+        "org-test",
+      );
 
       // Mock time to be 3 hours in the future (beyond 2 hour expiration)
       const realDateNow = Date.now;
@@ -122,7 +192,11 @@ describe("sandbox-token", () => {
     });
 
     it("should verify token that is still within expiration", async () => {
-      const token = await generateSandboxToken("user-123", "run-456");
+      const token = await generateSandboxToken(
+        "user-123",
+        "run-456",
+        "org-test",
+      );
 
       // Mock time to be 1 hour in the future (within 2 hour expiration)
       const realDateNow = Date.now;
@@ -158,23 +232,29 @@ describe("sandbox-token", () => {
   });
 
   describe("roundtrip", () => {
-    it("should correctly roundtrip userId and runId", async () => {
+    it("should correctly roundtrip userId, runId and orgId", async () => {
       const testCases = [
-        { userId: "user_123", runId: "run_456" },
-        { userId: "user-with-dashes", runId: "run-with-dashes" },
+        { userId: "user_123", runId: "run_456", orgId: "org_abc" },
+        {
+          userId: "user-with-dashes",
+          runId: "run-with-dashes",
+          orgId: "org-with-dashes",
+        },
         {
           userId: "very-long-user-id-that-is-quite-lengthy",
           runId: "very-long-run-id-that-is-quite-lengthy",
+          orgId: "very-long-org-id-that-is-quite-lengthy",
         },
       ];
 
-      for (const { userId, runId } of testCases) {
-        const token = await generateSandboxToken(userId, runId);
+      for (const { userId, runId, orgId } of testCases) {
+        const token = await generateSandboxToken(userId, runId, orgId);
         const auth = verifySandboxToken(token);
 
         expect(auth).not.toBeNull();
         expect(auth?.userId).toBe(userId);
         expect(auth?.runId).toBe(runId);
+        expect(auth?.orgId).toBe(orgId);
       }
     });
   });
@@ -275,7 +355,6 @@ describe("sandbox-token", () => {
       ]);
       expect(auth?.capabilities).not.toContain("agent-run:write");
       expect(auth?.capabilities).not.toContain("computer-use:write");
-      expect(auth?.capabilities).not.toContain("voice-chat:write");
     });
 
     it("should include conditional capabilities when feature flags are enabled", async () => {
@@ -285,7 +364,6 @@ describe("sandbox-token", () => {
       const auth = verifyZeroToken(token);
 
       expect(auth?.capabilities).toContain("computer-use:write");
-      expect(auth?.capabilities).toContain("voice-chat:write");
       expect(auth?.capabilities).toEqual([
         "agent:read",
         "agent:write",
@@ -297,7 +375,6 @@ describe("sandbox-token", () => {
         "chat-message:read",
         "connector:read",
         "computer-use:write",
-        "voice-chat:write",
         "file:read",
         "file:write",
       ]);
@@ -376,7 +453,11 @@ describe("sandbox-token", () => {
 
   describe("cross-scope rejection", () => {
     it("should reject sandbox token with verifyComposeJobToken", async () => {
-      const token = await generateSandboxToken("user-123", "run-456");
+      const token = await generateSandboxToken(
+        "user-123",
+        "run-456",
+        "org-test",
+      );
       const auth = verifyComposeJobToken(token);
 
       expect(auth).toBeNull();
@@ -397,7 +478,11 @@ describe("sandbox-token", () => {
     });
 
     it("should reject sandbox token with verifyZeroToken", async () => {
-      const token = await generateSandboxToken("user-123", "run-456");
+      const token = await generateSandboxToken(
+        "user-123",
+        "run-456",
+        "org-test",
+      );
       const auth = verifyZeroToken(token);
 
       expect(auth).toBeNull();
@@ -411,7 +496,11 @@ describe("sandbox-token", () => {
     });
 
     it("should identify sandbox/compose/zero token types with isSandboxToken", async () => {
-      const sandboxToken = await generateSandboxToken("user-123", "run-456");
+      const sandboxToken = await generateSandboxToken(
+        "user-123",
+        "run-456",
+        "org-test",
+      );
       const composeToken = await generateComposeJobToken("user-123", "job-456");
       const zeroToken = await generateZeroToken(
         "user-123",
@@ -437,7 +526,11 @@ describe("sandbox-token", () => {
         "org-789",
         "token-id-1",
       );
-      const sandboxToken = await generateSandboxToken("user-123", "run-456");
+      const sandboxToken = await generateSandboxToken(
+        "user-123",
+        "run-456",
+        "org-test",
+      );
 
       expect(isPatToken(cliToken)).toBe(true);
       expect(isPatToken(sandboxToken)).toBe(false);
@@ -459,7 +552,11 @@ describe("sandbox-token", () => {
     });
 
     it("should reject sandbox token with verifyCliToken", async () => {
-      const token = await generateSandboxToken("user-123", "run-456");
+      const token = await generateSandboxToken(
+        "user-123",
+        "run-456",
+        "org-test",
+      );
       expect(verifyCliToken(token)).toBeNull();
     });
 

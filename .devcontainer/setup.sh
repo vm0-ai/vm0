@@ -30,8 +30,21 @@ else
 fi
 
 # Setup directories - fix ownership for all mounted volumes
-sudo mkdir -p /home/vscode/.local/bin /home/vscode/.pki
-sudo chown -R vscode:vscode /home/vscode/.config /home/vscode/.cache /home/vscode/.local /home/vscode/.pki /home/vscode/.cloudflared
+sudo mkdir -p \
+  /home/vscode/.local/bin \
+  /home/vscode/.local/lib \
+  /home/vscode/.pki \
+  /home/vscode/.codex \
+  /home/vscode/.npm
+sudo chown -R vscode:vscode \
+  /home/vscode/.config \
+  /home/vscode/.cache \
+  /home/vscode/.local \
+  /home/vscode/.pki \
+  /home/vscode/.cloudflared \
+  /home/vscode/.codex \
+  /home/vscode/.npm
+echo "✓ User-local npm/Codex directories ready"
 
 # Create ~/.claude symlink to ~/.config/claude for Claude Code IDE integration
 # The VS Code extension uses ~/.claude/ide/ while CLI respects CLAUDE_CONFIG_DIR

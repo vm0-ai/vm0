@@ -44,7 +44,11 @@ describe("GET /api/auth/me", () => {
   describe("sandbox token support", () => {
     it("sandbox token with any capability returns user info", async () => {
       mockClerk({ userId: null });
-      const token = await generateSandboxToken(user.userId, "run-123");
+      const token = await generateSandboxToken(
+        user.userId,
+        "run-123",
+        "org-test",
+      );
 
       const response = await GET(
         createTestRequest("http://localhost:3000/api/auth/me", {
@@ -59,7 +63,11 @@ describe("GET /api/auth/me", () => {
 
     it("sandbox token with storage:write returns user info", async () => {
       mockClerk({ userId: null });
-      const token = await generateSandboxToken(user.userId, "run-456");
+      const token = await generateSandboxToken(
+        user.userId,
+        "run-456",
+        "org-test",
+      );
 
       const response = await GET(
         createTestRequest("http://localhost:3000/api/auth/me", {
@@ -74,7 +82,11 @@ describe("GET /api/auth/me", () => {
 
     it("sandbox token with no capabilities is accepted (acceptAnySandboxCapability)", async () => {
       mockClerk({ userId: null });
-      const token = await generateSandboxToken(user.userId, "run-789");
+      const token = await generateSandboxToken(
+        user.userId,
+        "run-789",
+        "org-test",
+      );
 
       const response = await GET(
         createTestRequest("http://localhost:3000/api/auth/me", {

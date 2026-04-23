@@ -138,7 +138,11 @@ const router = tsr.router(runnersJobClaimContract, {
     }
 
     // Generate sandbox token for the run
-    const sandboxToken = await generateSandboxToken(run.userId, run.id);
+    const sandboxToken = await generateSandboxToken(
+      run.userId,
+      run.id,
+      run.orgId,
+    );
 
     // Record api_to_claim metric
     if (storedContext.apiStartTime) {

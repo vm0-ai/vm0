@@ -1,7 +1,6 @@
 import { eq, sql } from "drizzle-orm";
 import { initServices } from "../../lib/init-services";
 import { pushSubscriptions } from "../../db/schema/push-subscription";
-import { voiceChatSessions, voiceChatEvents } from "../../db/schema/voice-chat";
 
 /**
  * Count rows in a table where user_id matches.
@@ -50,49 +49,4 @@ export async function getPushSubscriptionsByEndpoint(
     .select({ id: pushSubscriptions.id, endpoint: pushSubscriptions.endpoint })
     .from(pushSubscriptions)
     .where(eq(pushSubscriptions.endpoint, endpoint));
-}
-
-/**
- * Read a voice-chat session's status field.
- */
-export async function getTestVoiceChatSessionStatus(
-  id: string,
-): Promise<string | undefined> {
-  initServices();
-  const [row] = await globalThis.services.db
-    .select({ status: voiceChatSessions.status })
-    .from(voiceChatSessions)
-    .where(eq(voiceChatSessions.id, id));
-  return row?.status;
-}
-
-/**
- * Read a voice-chat session's lastHeartbeatAt timestamp.
- */
-export async function getTestVoiceChatSessionHeartbeat(
-  id: string,
-): Promise<Date | undefined> {
-  initServices();
-  const [row] = await globalThis.services.db
-    .select({ lastHeartbeatAt: voiceChatSessions.lastHeartbeatAt })
-    .from(voiceChatSessions)
-    .where(eq(voiceChatSessions.id, id));
-  return row?.lastHeartbeatAt;
-}
-
-/**
- * Read voice-chat events for a session.
- */
-export async function getTestVoiceChatEvents(
-  sessionId: string,
-): Promise<Array<{ type: string; source: string; content: string | null }>> {
-  initServices();
-  return globalThis.services.db
-    .select({
-      type: voiceChatEvents.type,
-      source: voiceChatEvents.source,
-      content: voiceChatEvents.content,
-    })
-    .from(voiceChatEvents)
-    .where(eq(voiceChatEvents.sessionId, sessionId));
 }

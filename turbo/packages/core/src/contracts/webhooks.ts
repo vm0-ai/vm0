@@ -41,14 +41,6 @@ const agentEventSchema = z
   .passthrough();
 
 /**
- * Artifact snapshot schema
- */
-const artifactSnapshotSchema = z.object({
-  artifactName: z.string(),
-  artifactVersion: z.string(),
-});
-
-/**
  * Volume versions snapshot schema
  */
 const volumeVersionsSnapshotSchema = z.object({
@@ -138,25 +130,23 @@ export const webhookCheckpointsContract = c.router({
     method: "POST",
     path: "/api/webhooks/agent/checkpoints",
     headers: authHeadersSchema,
-    body: z.object({
-      runId: z.string().min(1, "runId is required"),
-      cliAgentType: z.string().min(1, "cliAgentType is required"),
-      cliAgentSessionId: z.string().min(1, "cliAgentSessionId is required"),
-      cliAgentSessionHistoryHash: z
-        .string()
-        .length(
-          64,
-          "cliAgentSessionHistoryHash must be a 64-character SHA-256 hex string",
-        ),
-      // Legacy singleton artifact snapshot. The guest-agent may still emit
-      // this when exactly one artifact is snapshotted during rollout; the
-      // server folds it into artifactSnapshots before persisting.
-      artifactSnapshot: artifactSnapshotSchema.optional(),
-      // Multi-artifact snapshot map: artifact name → version id. Authoritative
-      // payload persisted to checkpoints.artifact_snapshots.
-      artifactSnapshots: z.record(z.string(), z.string()).optional(),
-      volumeVersionsSnapshot: volumeVersionsSnapshotSchema.optional(),
-    }),
+    body: z
+      .object({
+        runId: z.string().min(1, "runId is required"),
+        cliAgentType: z.string().min(1, "cliAgentType is required"),
+        cliAgentSessionId: z.string().min(1, "cliAgentSessionId is required"),
+        cliAgentSessionHistoryHash: z
+          .string()
+          .length(
+            64,
+            "cliAgentSessionHistoryHash must be a 64-character SHA-256 hex string",
+          ),
+        // Multi-artifact snapshot map: artifact name → version id.
+        // Authoritative payload persisted to checkpoints.artifact_snapshots.
+        artifactSnapshots: z.record(z.string(), z.string()).optional(),
+        volumeVersionsSnapshot: volumeVersionsSnapshotSchema.optional(),
+      })
+      .strict(),
     responses: {
       200: z.object({
         checkpointId: z.string(),

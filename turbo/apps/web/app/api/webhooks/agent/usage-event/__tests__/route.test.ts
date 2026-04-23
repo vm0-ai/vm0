@@ -72,7 +72,12 @@ describe("POST /api/webhooks/agent/usage-event", () => {
       expect(response.status).toBe(401);
     });
 
-    it("returns 404 for run that does not exist", async () => {
+    it("returns 404 for run that does not exist (covers #10725 FK race)", async () => {
+      // At the DB level this is indistinguishable from the #10725
+      // aggregate-deletion race: the token is valid but the run row
+      // referenced by `usage_event.runId` is not present, so the FK
+      // raises SQLSTATE 23503 on INSERT. The handler surfaces it as
+      // 404 rather than 500.
       const missingRunId = randomUUID();
       const token = await createTestSandboxToken(user.userId, missingRunId);
       const response = await POST(

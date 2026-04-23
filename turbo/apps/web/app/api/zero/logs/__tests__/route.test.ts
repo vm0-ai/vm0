@@ -866,7 +866,7 @@ describe("GET /api/zero/logs", () => {
         `zero-auth-${randomUUID().slice(0, 8)}`,
       );
       const { runId } = await createTestRun(composeId, "test");
-      const token = await generateSandboxToken(user.userId, runId);
+      const token = await generateSandboxToken(user.userId, runId, "org-test");
       mockClerk({ userId: null });
 
       const request = createTestRequest("http://localhost:3000/api/zero/logs", {

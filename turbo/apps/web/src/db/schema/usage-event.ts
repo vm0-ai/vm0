@@ -29,6 +29,12 @@ import { agentRuns } from "./agent-run";
  * `(kind, provider, category)` triple in a pricing table and writes
  * `creditsCharged`.
  *
+ * `billingError` is a short code naming a billing-time problem on the
+ * row — e.g. `missing_pricing` when the processor couldn't find a
+ * matching price and fell back to `creditsCharged = 0`. NULL on healthy
+ * rows. Ops queries `WHERE billing_error IS NOT NULL` to find revenue
+ * leaks.
+ *
  * `idempotencyKey` is a caller-provided UUID for exactly-once semantics.
  * Writers must keep the same UUID across retries of the same logical
  * event; the UNIQUE index blocks duplicate insertions.
@@ -52,6 +58,7 @@ export const usageEvent = pgTable(
     quantity: bigint("quantity", { mode: "number" }).notNull(),
     creditsCharged: bigint("credits_charged", { mode: "number" }),
     status: varchar("status", { length: 20 }).notNull().default("pending"),
+    billingError: varchar("billing_error", { length: 50 }),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     processedAt: timestamp("processed_at"),
   },

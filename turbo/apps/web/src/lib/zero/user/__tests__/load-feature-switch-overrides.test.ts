@@ -42,14 +42,12 @@ describe("loadFeatureSwitchOverrides", () => {
     const { userId, orgId } = await context.setupUser();
 
     await updateUserFeatureSwitches(orgId, userId, {
-      [FeatureSwitchKey.VoiceChat]: false,
       [FeatureSwitchKey.ComputerUse]: true,
     });
 
     const result = await loadFeatureSwitchOverrides(orgId, userId);
 
     expect(result).toEqual({
-      [FeatureSwitchKey.VoiceChat]: false,
       [FeatureSwitchKey.ComputerUse]: true,
     });
   });

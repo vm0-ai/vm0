@@ -1,7 +1,7 @@
 import type { OrgTier } from "@vm0/core";
 import { getCount } from "../behavior/user-behavior-count-service";
 
-export const AUDIO_INPUT_FREE_QUOTA = 3;
+export const AUDIO_INPUT_FREE_QUOTA = 10;
 export const AUDIO_INPUT_BEHAVIOR_KEY = "audio_input";
 
 interface AudioInputQuotaStatus {

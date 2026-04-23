@@ -223,9 +223,8 @@ describe("POST /api/webhooks/agent/complete", () => {
             cliAgentSessionId: "test-session",
             cliAgentSessionHistoryHash:
               "ec3ac9679505be3bb8233c4ef0b39c8ee206d2c37fc8610edc19f41fbfb9661e",
-            artifactSnapshot: {
-              artifactName: "test-artifact",
-              artifactVersion: "v1",
+            artifactSnapshots: {
+              "test-artifact": "v1",
             },
           }),
         },
@@ -1014,9 +1013,8 @@ describe("POST /api/webhooks/agent/complete", () => {
               cliAgentSessionId: "recovery-session",
               cliAgentSessionHistoryHash:
                 "ec3ac9679505be3bb8233c4ef0b39c8ee206d2c37fc8610edc19f41fbfb9661e",
-              artifactSnapshot: {
-                artifactName: "recovery-artifact",
-                artifactVersion: "v1",
+              artifactSnapshots: {
+                "recovery-artifact": "v1",
               },
             }),
           },

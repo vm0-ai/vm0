@@ -64,14 +64,14 @@ describe("getAuthContext with requiredCapability", () => {
   });
 
   it("should reject sandbox token without requiredCapability (backward compat)", async () => {
-    const token = await generateSandboxToken("user-123", "run-456");
+    const token = await generateSandboxToken("user-123", "run-456", "org-test");
     const result = await getAuthContext(`Bearer ${token}`);
 
     expect(result).toBeNull();
   });
 
   it("should reject sandbox token with requiredCapability (sandbox tokens have no capabilities)", async () => {
-    const token = await generateSandboxToken("user-123", "run-456");
+    const token = await generateSandboxToken("user-123", "run-456", "org-test");
     const result = await getAuthContext(`Bearer ${token}`, {
       requiredCapability: "agent:read",
     });
@@ -80,7 +80,7 @@ describe("getAuthContext with requiredCapability", () => {
   });
 
   it("should reject sandbox token without matching capability", async () => {
-    const token = await generateSandboxToken("user-123", "run-456");
+    const token = await generateSandboxToken("user-123", "run-456", "org-test");
     const result = await getAuthContext(`Bearer ${token}`, {
       requiredCapability: "agent:write",
     });
@@ -89,7 +89,7 @@ describe("getAuthContext with requiredCapability", () => {
   });
 
   it("should reject sandbox token with no capabilities", async () => {
-    const token = await generateSandboxToken("user-123", "run-456");
+    const token = await generateSandboxToken("user-123", "run-456", "org-test");
     const result = await getAuthContext(`Bearer ${token}`, {
       requiredCapability: "agent:read",
     });
@@ -122,7 +122,7 @@ describe("getAuthContext with acceptAnySandboxCapability", () => {
   });
 
   it("should accept sandbox token with acceptAnySandboxCapability", async () => {
-    const token = await generateSandboxToken("user-123", "run-456");
+    const token = await generateSandboxToken("user-123", "run-456", "org-test");
     const result = await getAuthContext(`Bearer ${token}`, {
       acceptAnySandboxCapability: true,
     });
@@ -133,7 +133,7 @@ describe("getAuthContext with acceptAnySandboxCapability", () => {
   });
 
   it("should accept sandbox token without capabilities via acceptAnySandboxCapability", async () => {
-    const token = await generateSandboxToken("user-123", "run-456");
+    const token = await generateSandboxToken("user-123", "run-456", "org-test");
     const result = await getAuthContext(`Bearer ${token}`, {
       acceptAnySandboxCapability: true,
     });
@@ -143,7 +143,7 @@ describe("getAuthContext with acceptAnySandboxCapability", () => {
   });
 
   it("should accept sandbox token with no capabilities when acceptAnySandboxCapability is true", async () => {
-    const token = await generateSandboxToken("user-123", "run-456");
+    const token = await generateSandboxToken("user-123", "run-456", "org-test");
     const result = await getAuthContext(`Bearer ${token}`, {
       acceptAnySandboxCapability: true,
     });
@@ -218,7 +218,7 @@ describe("getAuthContext org fields from Clerk session", () => {
   });
 
   it("should not populate org fields for sandbox tokens", async () => {
-    const token = await generateSandboxToken("user-123", "run-456");
+    const token = await generateSandboxToken("user-123", "run-456", "org-test");
     const result = await getAuthContext(`Bearer ${token}`, {
       acceptAnySandboxCapability: true,
     });
@@ -241,7 +241,7 @@ describe("getAuthContext auth() call optimization", () => {
   });
 
   it("should not call auth() when sandbox token is provided", async () => {
-    const token = await generateSandboxToken("user-1", "run-1");
+    const token = await generateSandboxToken("user-1", "run-1", "org-test");
     await getAuthContext(`Bearer ${token}`, {
       requiredCapability: "agent:read",
     });
@@ -249,7 +249,7 @@ describe("getAuthContext auth() call optimization", () => {
   });
 
   it("should not call auth() when sandbox token is rejected", async () => {
-    const token = await generateSandboxToken("user-1", "run-1");
+    const token = await generateSandboxToken("user-1", "run-1", "org-test");
     await getAuthContext(`Bearer ${token}`);
     expect(mockAuth).not.toHaveBeenCalled();
   });
