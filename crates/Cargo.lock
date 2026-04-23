@@ -2513,6 +2513,7 @@ dependencies = [
  "chrono",
  "clap",
  "flate2",
+ "futures-util",
  "guest-agent",
  "guest-download",
  "guest-init",
