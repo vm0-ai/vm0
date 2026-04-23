@@ -110,7 +110,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // — without waiting for the reasoner LLM. The after() reasoner tick still
   // runs and will publish again once it has new conversation summary /
   // compacted results.
-  await publishUserSignal([userId], `voice-chat:${sessionId}`);
+  await publishUserSignal([userId], `voice-chat-candidate:${sessionId}`);
   after(() => {
     return triggerReasoning(sessionId);
   });

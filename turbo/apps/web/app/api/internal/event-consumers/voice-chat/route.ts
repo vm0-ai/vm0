@@ -83,7 +83,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const touch = running ?? appended;
   if (touch) {
-    await publishUserSignal([touch.userId], `voice-chat:${touch.sessionId}`);
+    await publishUserSignal(
+      [touch.userId],
+      `voice-chat-candidate:${touch.sessionId}`,
+    );
   }
 
   log.debug("VCC assistant consumer processed", {
