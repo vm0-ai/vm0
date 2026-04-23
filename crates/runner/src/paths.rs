@@ -138,6 +138,20 @@ impl HomePaths {
     pub fn snapshot_lock(&self, hash: &str) -> PathBuf {
         self.locks_dir().join(format!("snapshot-{hash}.lock"))
     }
+
+    /// Root directory for the runner-side storage archive cache.
+    ///
+    /// Layout: `<storages_dir>/<vasStorageName>/<vasVersionId>/archive.tar.gz`.
+    /// Populated by the cache writer (#10808) and reaped by `gc_storage_cache`.
+    pub fn storages_dir(&self) -> PathBuf {
+        self.root.join("storages")
+    }
+
+    /// Per-version flock path guarding `<storages_dir>/<name>/<version>/`.
+    pub fn storage_lock(&self, name: &str, version: &str) -> PathBuf {
+        self.locks_dir()
+            .join(format!("storage-{name}-{version}.lock"))
+    }
 }
 
 /// Paths for a rootfs build output, keyed by rootfs hash.
@@ -377,6 +391,16 @@ mod tests {
         let home = HomePaths::with_root(PathBuf::from("/test"));
         let lock = home.snapshot_lock("bbb");
         assert_eq!(lock, PathBuf::from("/test/locks/snapshot-bbb.lock"));
+    }
+
+    #[test]
+    fn storages_paths_layout() {
+        let home = HomePaths::with_root(PathBuf::from("/test"));
+        assert_eq!(home.storages_dir(), PathBuf::from("/test/storages"));
+        assert_eq!(
+            home.storage_lock("system-bash", "v3"),
+            PathBuf::from("/test/locks/storage-system-bash-v3.lock"),
+        );
     }
 
     #[test]
