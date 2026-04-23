@@ -94,6 +94,7 @@ import { langfuseHandler } from "./providers/langfuse-handler";
 import { langsmithHandler } from "./providers/langsmith-handler";
 import { lineHandler } from "./providers/line-handler";
 import { linearHandler } from "./providers/linear-handler";
+import { lovartHandler } from "./providers/lovart-handler";
 import { loopsHandler } from "./providers/loops-handler";
 import { lumaHandler } from "./providers/luma-handler";
 import { mailsacHandler } from "./providers/mailsac-handler";
