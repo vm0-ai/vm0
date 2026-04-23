@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.19.1](https://github.com/vm0-ai/vm0/compare/guest-download-v0.19.0...guest-download-v0.19.1) (2026-04-22)
+
+
+### Refactoring
+
+* drop residual memory plumbing, legacy snapshot columns, and vm0 memory cli ([#10707](https://github.com/vm0-ai/vm0/issues/10707)) ([08f3ce8](https://github.com/vm0-ai/vm0/commit/08f3ce81273faf8ea7e2e4df67b69e774bcb963e))
+* emit memory as artifacts[] entry and delete guest-agent symlink bootstrap ([#10700](https://github.com/vm0-ai/vm0/issues/10700)) ([e3f0120](https://github.com/vm0-ai/vm0/commit/e3f0120fbd90d9b9fb750e13440a9f21ea809d3a))
+
 ## [0.19.0](https://github.com/vm0-ai/vm0/compare/guest-download-v0.18.3...guest-download-v0.19.0) (2026-04-22)
 
 
