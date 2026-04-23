@@ -1,5 +1,23 @@
 # Changelog
 
+## [12.290.0](https://github.com/vm0-ai/vm0/compare/web-v12.289.0...web-v12.290.0) (2026-04-23)
+
+
+### Features
+
+* **db:** add billing_error column to usage_event ([#10786](https://github.com/vm0-ai/vm0/issues/10786)) ([1d9b465](https://github.com/vm0-ai/vm0/commit/1d9b465d698822054647200ca930d1349194a423))
+* let reasoner auto-create tasks the talker promised but never dispatched ([#10719](https://github.com/vm0-ai/vm0/issues/10719)) ([63504b2](https://github.com/vm0-ai/vm0/commit/63504b2a16e4f4393e150296c79eca10cfab3e76))
+
+
+### Bug Fixes
+
+* **webhooks:** 404 instead of 500 when run deleted mid-webhook ([#10785](https://github.com/vm0-ai/vm0/issues/10785)) ([258a07e](https://github.com/vm0-ai/vm0/commit/258a07eb43a867e33ed12f7683a47f78ac8ebd51))
+
+
+### Refactoring
+
+* **webhooks:** tighten fk-race error helper and test its contract ([#10790](https://github.com/vm0-ai/vm0/issues/10790)) ([0b2fe2b](https://github.com/vm0-ai/vm0/commit/0b2fe2b978645ca013cbc7e4cdbed773835f9107))
+
 ## [12.289.0](https://github.com/vm0-ai/vm0/compare/web-v12.288.0...web-v12.289.0) (2026-04-23)
 
 

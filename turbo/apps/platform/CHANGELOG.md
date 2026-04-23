@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.286.3](https://github.com/vm0-ai/vm0/compare/app-v0.286.2...app-v0.286.3) (2026-04-23)
+
+
+### Bug Fixes
+
+* **platform:** add viewport-fit=cover to enable iOS safe-area insets ([#10718](https://github.com/vm0-ai/vm0/issues/10718)) ([a534ae1](https://github.com/vm0-ai/vm0/commit/a534ae1dbcef8ceebb802c8714e7d389747d7b36))
+
 ## [0.286.2](https://github.com/vm0-ai/vm0/compare/app-v0.286.1...app-v0.286.2) (2026-04-23)
 
 
