@@ -1008,7 +1008,7 @@ jobs:
           echo "Updated rollback dashboard issue #${ISSUE_NUMBER}"
 
   publish-npm:
-    needs: [release-please, builds-complete, migrate-production]
+    needs: [release-please, builds-complete]
     if: >-
       !failure() && !cancelled() &&
       needs.release-please.outputs.cli_release_created == 'true'
