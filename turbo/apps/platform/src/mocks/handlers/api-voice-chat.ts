@@ -1,7 +1,7 @@
 /**
  * Voice Chat API Handlers
  *
- * Mock handlers for /api/zero/voice-chat-candidate endpoints.
+ * Mock handlers for /api/zero/voice-chat endpoints.
  * Stateful: sessions, items, and tasks persist for the lifetime of a test
  * run; call resetMockVoiceChat() between cases for isolation.
  */
