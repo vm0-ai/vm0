@@ -187,6 +187,15 @@ export interface CreateZeroRunParams {
    * slack, telegram, email, github, phone) omit it for zero behavior change.
    */
   spanDims?: ChatSpanDimensions;
+  /**
+   * Pre-projected { email, name } derived from Clerk session claims by the
+   * caller. When present, Round 1 skips `getCachedUser` for this request and
+   * feeds `buildUserInfo` directly. When absent (PAT/sandbox/zero/empty-claims
+   * session), Round 1 falls back to `getCachedUser` as before. Only the chat
+   * route passes this today; non-chat triggers (schedule, slack, telegram,
+   * email, github, voice-chat) have no session claims to project.
+   */
+  userProfile?: { email: string; name: string | null };
 }
 
 /**
@@ -289,7 +298,7 @@ async function createZeroRunRecord(
     });
   });
   const round1CachedUser = timed(async () => {
-    return getCachedUser(params.userId);
+    return params.userProfile ?? getCachedUser(params.userId);
   });
 
   const [agentTimed, composeTimed, cachedUserTimed] = await Promise.all([
@@ -300,6 +309,11 @@ async function createZeroRunRecord(
   const row = agentTimed.result;
   const resolved = composeTimed.result;
   const cachedUser = cachedUserTimed.result;
+
+  // user_info_source is determined purely by the caller's input — stamp it
+  // before emitting Round 1 spans so the `cached_user` span itself carries
+  // the dim and can be split by source in Axiom.
+  stamp({ user_info_source: params.userProfile ? "claims" : "cache" });
 
   emit(CHAT_REQUEST_OPS.create_run_round1_agent, agentTimed.ms);
   emit(CHAT_REQUEST_OPS.create_run_round1_compose, composeTimed.ms);

@@ -7,6 +7,7 @@ import {
   requireAuth,
   isAuthError,
 } from "../../../../../src/lib/auth/require-auth";
+import { userProfileFromClaims } from "../../../../../src/lib/auth/user-profile-from-claims";
 import {
   createZeroRun,
   fetchZeroAgentForRun,
@@ -524,6 +525,7 @@ const router = tsr.router(chatMessagesContract, {
         preloadedAgent: agent,
         preloadedOrgTier,
         spanDims: dims,
+        userProfile: userProfileFromClaims(authCtx),
       });
 
       // Persist user message to chat_messages.

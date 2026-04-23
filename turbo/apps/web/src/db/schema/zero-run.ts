@@ -61,6 +61,9 @@ export const zeroRuns = pgTable(
       index("idx_zero_runs_schedule")
         .on(table.scheduleId)
         .where(sql`schedule_id IS NOT NULL`),
+      index("idx_zero_runs_chat_thread_id")
+        .on(table.chatThreadId)
+        .where(sql`chat_thread_id IS NOT NULL`),
     ];
   },
 );

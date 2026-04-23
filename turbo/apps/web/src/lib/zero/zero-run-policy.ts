@@ -194,6 +194,9 @@ export async function checkOrgCredits(
     .limit(1);
 
   if (!orgRow) {
+    if (isVm0) {
+      throw insufficientCredits();
+    }
     return;
   }
 

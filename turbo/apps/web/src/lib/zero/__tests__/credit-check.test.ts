@@ -13,6 +13,7 @@ import {
   insertOrgDefaultModelProvider,
   insertOrgMembersEntry,
   insertTestZeroRun,
+  deleteOrgRow,
 } from "../../../__tests__/api-test-helpers";
 import { getTestZeroAgentId } from "../../../__tests__/db-test-assertions/agents";
 import { reloadEnv } from "../../../env";
@@ -185,6 +186,60 @@ describe("credit check (infra queue path)", () => {
       const run = await findTestRunRecord(queued.runId);
       expect(run!.status).toBe("failed");
       expect(run!.error).toContain("Insufficient credits");
+    });
+
+    it("should fail queued VM0 run when org_metadata row is missing at drain time", async () => {
+      vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
+      reloadEnv();
+
+      // Create a running run + a queued VM0 run
+      await seedTestRun(user.userId, composeId, { prompt: "Running" });
+      const queued = await enqueueRun(
+        queueBaseParams({ prompt: "Queued VM0 no row", modelProvider: "vm0" }),
+      );
+      await insertTestZeroRun(queued.runId, { modelProvider: "vm0" });
+
+      // Remove org_metadata row entirely (simulates org that skipped onboarding)
+      await deleteOrgRow(user.orgId);
+
+      // Mark running run as completed to free slot
+      await markRunningRunsAsCompleted(user.userId);
+
+      // Drain queue
+      await drainOrgQueue(user.orgId, dispatchQueuedZeroRun);
+
+      // VM0 run must fail — no row should not silently pass through the credit gate
+      const run = await findTestRunRecord(queued.runId);
+      expect(run!.status).toBe("failed");
+      expect(run!.error).toContain("Insufficient credits");
+    });
+
+    it("should dequeue non-VM0 run when org_metadata row is missing at drain time", async () => {
+      vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
+      reloadEnv();
+
+      // Create a running run + a queued non-VM0 run
+      await seedTestRun(user.userId, composeId, { prompt: "Running" });
+      const queued = await enqueueRun(
+        queueBaseParams({
+          prompt: "Queued Anthropic no row",
+          modelProvider: "anthropic",
+        }),
+      );
+      await insertTestZeroRun(queued.runId, { modelProvider: "anthropic" });
+
+      // Remove org_metadata row entirely
+      await deleteOrgRow(user.orgId);
+
+      // Mark running run as completed
+      await markRunningRunsAsCompleted(user.userId);
+
+      // Drain queue
+      await drainOrgQueue(user.orgId, dispatchQueuedZeroRun);
+
+      // BYOK run should be unaffected by missing row
+      const run = await findTestRunRecord(queued.runId);
+      expect(run!.status).toBe("pending");
     });
 
     it("should dequeue non-VM0 run when member creditEnabled is false", async () => {

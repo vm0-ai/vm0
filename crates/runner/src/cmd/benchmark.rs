@@ -20,6 +20,22 @@ struct Timing {
     exec_ms: u128,
 }
 
+/// Reject entries missing `=` so typos like `--env FOO` fail loud instead of
+/// being silently dropped.
+fn parse_env_args(env: &[String]) -> RunnerResult<Vec<(String, String)>> {
+    env.iter()
+        .map(|s| {
+            s.split_once('=')
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .ok_or_else(|| {
+                    RunnerError::Config(format!(
+                        "invalid --env value '{s}': expected KEY=VALUE format"
+                    ))
+                })
+        })
+        .collect()
+}
+
 #[derive(Args)]
 pub struct BenchmarkArgs {
     /// The bash command to execute in the VM
@@ -46,6 +62,9 @@ pub async fn run_benchmark(
     runtime_provider: &dyn RuntimeProvider,
 ) -> RunnerResult<ExitCode> {
     let total = Instant::now();
+
+    // Validate --env up front so typos fail before proxy/sandbox startup.
+    let env_pairs = parse_env_args(&args.env)?;
 
     // 1. Load config, force concurrency=1
     let mut runner_config = config::load(&args.config).await?;
@@ -108,7 +127,7 @@ pub async fn run_benchmark(
             memory_mb: default_profile.memory_mb,
         },
     };
-    let (result, timing) = run_sandbox(&args, &*factory, &mitm, sandbox_config).await;
+    let (result, timing) = run_sandbox(&args, &env_pairs, &*factory, &mitm, sandbox_config).await;
     let total_ms = total.elapsed().as_millis();
     // Shutdown factory first (releases COW pool, base loop handle), then runtime.
     factory.shutdown().await;
@@ -172,6 +191,7 @@ pub async fn run_benchmark(
 /// Caller is responsible for `factory.shutdown()`.
 async fn run_sandbox(
     args: &BenchmarkArgs,
+    env_pairs: &[(String, String)],
     factory: &dyn SandboxFactory,
     mitm: &proxy::MitmProxy,
     sandbox_config: SandboxConfig,
@@ -207,7 +227,7 @@ async fn run_sandbox(
         warn!(error = %e, "failed to register VM in proxy");
     }
 
-    let (result, timing) = run_in_sandbox(args, sandbox.as_mut()).await;
+    let (result, timing) = run_in_sandbox(args, env_pairs, sandbox.as_mut()).await;
 
     if let Err(e) = mitm.unregister_vm(&source_ip).await {
         warn!(error = %e, "failed to unregister VM from proxy");
@@ -223,6 +243,7 @@ async fn run_sandbox(
 /// Start sandbox, fix clock, exec command. Returns result + timing.
 async fn run_in_sandbox(
     args: &BenchmarkArgs,
+    env_pairs: &[(String, String)],
     sandbox: &mut dyn sandbox::Sandbox,
 ) -> (RunnerResult<ExecResult>, Timing) {
     let t = Instant::now();
@@ -257,15 +278,6 @@ async fn run_in_sandbox(
     }
     let clock_ms = t.elapsed().as_millis();
 
-    // Parse KEY=VALUE env pairs
-    let env_pairs: Vec<(String, String)> = args
-        .env
-        .iter()
-        .filter_map(|s| {
-            s.split_once('=')
-                .map(|(k, v)| (k.to_string(), v.to_string()))
-        })
-        .collect();
     let env_refs: Vec<(&str, &str)> = env_pairs
         .iter()
         .map(|(k, v)| (k.as_str(), v.as_str()))
@@ -289,4 +301,46 @@ async fn run_in_sandbox(
         exec_ms,
     };
     (result, timing)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_env_args_accepts_key_value_pairs() {
+        let input = vec!["FOO=bar".to_string(), "EMPTY=".to_string()];
+        let parsed = parse_env_args(&input).unwrap();
+        assert_eq!(
+            parsed,
+            vec![
+                ("FOO".to_string(), "bar".to_string()),
+                ("EMPTY".to_string(), String::new()),
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_env_args_preserves_value_with_equals() {
+        let input = vec!["URL=https://a?x=1&y=2".to_string()];
+        let parsed = parse_env_args(&input).unwrap();
+        assert_eq!(
+            parsed,
+            vec![("URL".to_string(), "https://a?x=1&y=2".to_string())]
+        );
+    }
+
+    #[test]
+    fn parse_env_args_rejects_missing_equals() {
+        let input = vec!["FOO".to_string()];
+        let err = parse_env_args(&input).unwrap_err();
+        assert!(err.to_string().contains("expected KEY=VALUE"), "got: {err}");
+    }
+
+    #[test]
+    fn parse_env_args_rejects_when_any_entry_is_invalid() {
+        let input = vec!["GOOD=ok".to_string(), "BAD".to_string()];
+        let err = parse_env_args(&input).unwrap_err();
+        assert!(err.to_string().contains("'BAD'"), "got: {err}");
+    }
 }
