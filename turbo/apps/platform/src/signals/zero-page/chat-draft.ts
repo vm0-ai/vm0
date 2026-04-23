@@ -4,7 +4,8 @@ import { resetSignal, createDeferredPromise } from "../utils.ts";
 import { currentChatThreadId$ } from "../agent-chat.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
-import { zeroUploadsContract, type PersistedAttachment } from "@vm0/core";
+import type { PersistedAttachment } from "@vm0/core/contracts/chat-threads";
+import { zeroUploadsContract } from "@vm0/core/contracts/zero-uploads";
 
 // ---------------------------------------------------------------------------
 // Attachment types (moved from zero-chat.ts)

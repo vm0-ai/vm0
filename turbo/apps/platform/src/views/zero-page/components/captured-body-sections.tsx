@@ -1,6 +1,6 @@
 import { IconChevronRight } from "@tabler/icons-react";
 import { CopyButton } from "@vm0/ui";
-import type { NetworkLogEntry } from "@vm0/core";
+import type { NetworkLogEntry } from "@vm0/core/contracts/runs";
 import { formatSize, InlineBadge } from "./network-badge.tsx";
 
 // ---------------------------------------------------------------------------

@@ -1,5 +1,5 @@
 import { command, computed, state } from "ccstate";
-import { zeroAgentCustomConnectorsContract } from "@vm0/core";
+import { zeroAgentCustomConnectorsContract } from "@vm0/core/contracts/zero-agent-custom-connectors";
 import { zeroClient$ } from "../../api-client.ts";
 import { accept } from "../../../lib/accept.ts";
 import { zeroJobDetail$ } from "./detail.ts";

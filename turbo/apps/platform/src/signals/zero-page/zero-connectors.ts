@@ -1,5 +1,6 @@
 import { command, computed, state } from "ccstate";
-import { zeroAgentsByIdContract, zeroUserConnectorsContract } from "@vm0/core";
+import { zeroAgentsByIdContract } from "@vm0/core/contracts/zero-agents";
+import { zeroUserConnectorsContract } from "@vm0/core/contracts/user-connectors";
 import { reloadOnboardingStatus$ } from "./zero-onboarding.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { currentAgentId$, defaultAgentId$ } from "../agent.ts";

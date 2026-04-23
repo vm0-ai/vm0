@@ -1,4 +1,7 @@
-import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
+import {
+  CONNECTOR_TYPES,
+  type ConnectorType,
+} from "@vm0/core/contracts/connectors";
 import { cn } from "@vm0/ui";
 
 const CONNECTOR_ICON_ALIASES = {
