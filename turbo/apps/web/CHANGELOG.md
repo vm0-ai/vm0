@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.287.1](https://github.com/vm0-ai/vm0/compare/web-v12.287.0...web-v12.287.1) (2026-04-23)
+
+
+### Bug Fixes
+
+* flaky tests caused by midnight edge case and missing abort signal ([#10721](https://github.com/vm0-ai/vm0/issues/10721)) ([17ea31e](https://github.com/vm0-ai/vm0/commit/17ea31e7a8fc793f9ce5c6466bcedc81fac0102a))
+
 ## [12.287.0](https://github.com/vm0-ai/vm0/compare/web-v12.286.0...web-v12.287.0) (2026-04-22)
 
 
