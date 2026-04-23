@@ -1,6 +1,6 @@
 import "server-only";
 import { encode } from "gpt-tokenizer/encoding/o200k_base";
-import type { featureCandidateVoiceChatSessions } from "../../../db/schema/voice-chat-candidate";
+import type { voiceChatSessions } from "../../../db/schema/voice-chat";
 import {
   buildFinishedTasksCompactedText,
   buildFinishedTasksFullText,
@@ -81,7 +81,7 @@ Same pattern when the user says "you didn't do it" or "you only promised" — th
 - Be warm and conversational.
 `.trim();
 
-type SessionRow = typeof featureCandidateVoiceChatSessions.$inferSelect;
+type SessionRow = typeof voiceChatSessions.$inferSelect;
 
 interface TalkerContext {
   conversationSummary: string | null;

@@ -3,10 +3,10 @@ import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { z } from "zod";
 import {
-  featureCandidateVoiceChatItems,
-  featureCandidateVoiceChatSessions,
-  featureCandidateVoiceChatTasks,
-} from "../../../../src/db/schema/voice-chat-candidate";
+  voiceChatItems,
+  voiceChatSessions,
+  voiceChatTasks,
+} from "../../../../src/db/schema/voice-chat";
 import type { AuthContext } from "../../../../src/lib/auth/get-auth-context";
 import { loadFeatureSwitchOverrides } from "../../../../src/lib/zero/user/feature-switches-service";
 
@@ -30,9 +30,9 @@ export const voiceChatCandidateTokenBodySchema = z.object({
   noiseReduction: z.enum(["near_field", "far_field"]).optional(),
 });
 
-type SessionRow = typeof featureCandidateVoiceChatSessions.$inferSelect;
-type ItemRow = typeof featureCandidateVoiceChatItems.$inferSelect;
-type TaskRow = typeof featureCandidateVoiceChatTasks.$inferSelect;
+type SessionRow = typeof voiceChatSessions.$inferSelect;
+type ItemRow = typeof voiceChatItems.$inferSelect;
+type TaskRow = typeof voiceChatTasks.$inferSelect;
 
 export function serializeVoiceChatCandidateSession(session: SessionRow) {
   return {

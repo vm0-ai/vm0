@@ -1,6 +1,6 @@
 import "server-only";
 import { and, desc, eq, gte } from "drizzle-orm";
-import { featureCandidateVoiceChatTasks } from "../../../db/schema/voice-chat-candidate";
+import { voiceChatTasks } from "../../../db/schema/voice-chat";
 
 const WINDOW_MS = 3 * 60 * 1000;
 const MAX_EVENTS_PER_TASK = 10;
@@ -11,7 +11,7 @@ type TaskEvent = {
   label: string;
 };
 
-type TaskRow = typeof featureCandidateVoiceChatTasks.$inferSelect;
+type TaskRow = typeof voiceChatTasks.$inferSelect;
 
 export async function buildRecentTaskLogs(
   sessionId: string,
@@ -22,14 +22,14 @@ export async function buildRecentTaskLogs(
 
   const rows = await db
     .select()
-    .from(featureCandidateVoiceChatTasks)
+    .from(voiceChatTasks)
     .where(
       and(
-        eq(featureCandidateVoiceChatTasks.sessionId, sessionId),
-        gte(featureCandidateVoiceChatTasks.createdAt, cutoff),
+        eq(voiceChatTasks.sessionId, sessionId),
+        gte(voiceChatTasks.createdAt, cutoff),
       ),
     )
-    .orderBy(desc(featureCandidateVoiceChatTasks.createdAt));
+    .orderBy(desc(voiceChatTasks.createdAt));
 
   const recent = rows.filter((row) => {
     return taskLastActivityAt(row).getTime() >= cutoff.getTime();

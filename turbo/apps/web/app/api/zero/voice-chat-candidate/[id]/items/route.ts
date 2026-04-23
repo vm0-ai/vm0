@@ -5,7 +5,7 @@ import { initServices } from "../../../../../../src/lib/init-services";
 import { getVoiceChatCandidateSession } from "../../../../../../src/lib/zero/voice-chat-candidate/session-service";
 import { appendVoiceChatCandidateItem } from "../../../../../../src/lib/zero/voice-chat-candidate/item-service";
 import { triggerReasoning } from "../../../../../../src/lib/zero/voice-chat-candidate/trigger-reasoning";
-import { featureCandidateVoiceChatItems } from "../../../../../../src/db/schema/voice-chat-candidate";
+import { voiceChatItems } from "../../../../../../src/db/schema/voice-chat";
 import { isBadRequest } from "../../../../../../src/lib/shared/errors";
 import {
   appendVoiceChatCandidateItemBodySchema,
@@ -82,14 +82,11 @@ export async function POST(
     const db = globalThis.services.db;
     const [existing] = await db
       .select()
-      .from(featureCandidateVoiceChatItems)
+      .from(voiceChatItems)
       .where(
         and(
-          eq(featureCandidateVoiceChatItems.sessionId, id),
-          eq(
-            featureCandidateVoiceChatItems.realtimeItemId,
-            parsed.data.realtimeItemId,
-          ),
+          eq(voiceChatItems.sessionId, id),
+          eq(voiceChatItems.realtimeItemId, parsed.data.realtimeItemId),
         ),
       )
       .limit(1);

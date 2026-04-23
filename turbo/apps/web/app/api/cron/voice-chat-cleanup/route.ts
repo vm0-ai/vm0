@@ -3,7 +3,7 @@ import { inArray, and, lt, eq } from "drizzle-orm";
 import { initServices } from "../../../../src/lib/init-services";
 import { logger } from "../../../../src/lib/shared/logger";
 import { env } from "../../../../src/env";
-import { featureCandidateVoiceChatSessions } from "../../../../src/db/schema/voice-chat-candidate";
+import { voiceChatSessions } from "../../../../src/db/schema/voice-chat";
 import { triggerReasoning } from "../../../../src/lib/zero/voice-chat-candidate/trigger-reasoning";
 
 export const maxDuration = 60;
@@ -37,15 +37,12 @@ export async function GET(request: Request): Promise<Response> {
   );
 
   const stuckReasonerIds = globalThis.services.db
-    .select({ id: featureCandidateVoiceChatSessions.id })
-    .from(featureCandidateVoiceChatSessions)
+    .select({ id: voiceChatSessions.id })
+    .from(voiceChatSessions)
     .where(
       and(
-        eq(featureCandidateVoiceChatSessions.reasoningStatus, "running"),
-        lt(
-          featureCandidateVoiceChatSessions.lastSummaryAt,
-          reasonerStuckThreshold,
-        ),
+        eq(voiceChatSessions.reasoningStatus, "running"),
+        lt(voiceChatSessions.lastSummaryAt, reasonerStuckThreshold),
       ),
     )
     .limit(CANDIDATE_BATCH_LIMIT);
@@ -54,19 +51,16 @@ export async function GET(request: Request): Promise<Response> {
   // Reasoner flipping idle→running between subselect eval and row lock under
   // READ COMMITTED cannot get its status reset out from under it.
   const recoveredReasoners = await globalThis.services.db
-    .update(featureCandidateVoiceChatSessions)
+    .update(voiceChatSessions)
     .set({ reasoningStatus: "idle" })
     .where(
       and(
-        eq(featureCandidateVoiceChatSessions.reasoningStatus, "running"),
-        lt(
-          featureCandidateVoiceChatSessions.lastSummaryAt,
-          reasonerStuckThreshold,
-        ),
-        inArray(featureCandidateVoiceChatSessions.id, stuckReasonerIds),
+        eq(voiceChatSessions.reasoningStatus, "running"),
+        lt(voiceChatSessions.lastSummaryAt, reasonerStuckThreshold),
+        inArray(voiceChatSessions.id, stuckReasonerIds),
       ),
     )
-    .returning({ id: featureCandidateVoiceChatSessions.id });
+    .returning({ id: voiceChatSessions.id });
 
   for (const row of recoveredReasoners) {
     log.warn("Candidate reasoner stuck-reset", { sessionId: row.id });

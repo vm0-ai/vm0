@@ -1,19 +1,19 @@
 import { and, asc, eq, gt } from "drizzle-orm";
 import {
-  featureCandidateVoiceChatItems,
-  featureCandidateVoiceChatSessions,
-} from "../../../db/schema/voice-chat-candidate";
+  voiceChatItems,
+  voiceChatSessions,
+} from "../../../db/schema/voice-chat";
 import { notFound } from "../../shared/errors";
 
-type ItemRow = typeof featureCandidateVoiceChatItems.$inferSelect;
+type ItemRow = typeof voiceChatItems.$inferSelect;
 type ItemRole = "user" | "assistant" | "task_result" | "system_note";
 
 async function assertSessionExists(sessionId: string): Promise<void> {
   const db = globalThis.services.db;
   const [session] = await db
-    .select({ id: featureCandidateVoiceChatSessions.id })
-    .from(featureCandidateVoiceChatSessions)
-    .where(eq(featureCandidateVoiceChatSessions.id, sessionId))
+    .select({ id: voiceChatSessions.id })
+    .from(voiceChatSessions)
+    .where(eq(voiceChatSessions.id, sessionId))
     .limit(1);
   if (!session) {
     throw notFound("Voice-chat-candidate session not found");
@@ -31,7 +31,7 @@ export async function appendVoiceChatCandidateItem(params: {
   await assertSessionExists(params.sessionId);
 
   const [inserted] = await db
-    .insert(featureCandidateVoiceChatItems)
+    .insert(voiceChatItems)
     .values({
       sessionId: params.sessionId,
       role: params.role,
@@ -40,10 +40,7 @@ export async function appendVoiceChatCandidateItem(params: {
       realtimeItemId: params.realtimeItemId ?? null,
     })
     .onConflictDoNothing({
-      target: [
-        featureCandidateVoiceChatItems.sessionId,
-        featureCandidateVoiceChatItems.realtimeItemId,
-      ],
+      target: [voiceChatItems.sessionId, voiceChatItems.realtimeItemId],
     })
     .returning();
 
@@ -55,14 +52,14 @@ export async function readVoiceChatCandidateItems(
   afterSeq?: number,
 ): Promise<ItemRow[]> {
   const db = globalThis.services.db;
-  const baseCondition = eq(featureCandidateVoiceChatItems.sessionId, sessionId);
+  const baseCondition = eq(voiceChatItems.sessionId, sessionId);
   const condition =
     afterSeq !== undefined
-      ? and(baseCondition, gt(featureCandidateVoiceChatItems.seq, afterSeq))
+      ? and(baseCondition, gt(voiceChatItems.seq, afterSeq))
       : baseCondition;
   return db
     .select()
-    .from(featureCandidateVoiceChatItems)
+    .from(voiceChatItems)
     .where(condition)
-    .orderBy(asc(featureCandidateVoiceChatItems.seq));
+    .orderBy(asc(voiceChatItems.seq));
 }

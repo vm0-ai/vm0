@@ -118,7 +118,9 @@ teardown() {
     echo "# Step 6: Testing --system option..."
     # System log should contain sandbox log entries with INFO level
     # Format: [TIMESTAMP] [INFO] [sandbox:run-agent] message
-    wait_for_log "$RUN_ID" --system -- "[INFO]" "[sandbox:"
+    # "Complete webhook acknowledged" proves the guest-agent posted /complete
+    # itself (new fast path) rather than falling back to the runner's call.
+    wait_for_log "$RUN_ID" --system -- "[INFO]" "[sandbox:" "Complete webhook acknowledged"
     echo "# System log contains expected log format"
 
     # Step 7: Verify --metrics option shows resource metrics

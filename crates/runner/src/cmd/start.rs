@@ -1145,10 +1145,12 @@ fn spawn_job(
                 executor::execute_job(
                     &**factory,
                     context,
-                    sandbox_id,
+                    executor::NewSandboxDispatch {
+                        id: sandbox_id,
+                        reuse_result,
+                    },
                     &exec_config,
                     &params,
-                    reuse_result,
                     cancel,
                 )
                 .await

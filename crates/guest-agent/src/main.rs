@@ -3,6 +3,7 @@
 
 use guest_agent::checkpoint;
 use guest_agent::cli;
+use guest_agent::complete;
 use guest_agent::env;
 use guest_agent::error;
 use guest_agent::heartbeat;
@@ -220,6 +221,24 @@ async fn execute(
                     "✓ Checkpoint complete ({}s)",
                     cp_start.elapsed().as_secs()
                 );
+
+                // Checkpoint row is in the DB — the complete route's only
+                // hard dependency is satisfied. Fire /complete now so the
+                // host's `last_event_to_complete` timestamp isn't stretched
+                // by VM teardown + runner fallback (which used to be the
+                // only trigger). Runner still posts /complete after VM
+                // exit; its call is idempotency-short-circuited.
+                //
+                // Serialize /complete before final_telemetry so the ack log
+                // line lands in the file before the telemetry uploader
+                // snapshots its EOF — parallelizing the two hides the ack
+                // from `vm0 logs --system`. The ~hundreds-of-ms we pay for
+                // serialization is invisible to users because the host's
+                // status transition already happened the moment /complete
+                // returned.
+                log_info!(LOG_TAG, "▷ Cleanup");
+                complete::report_success(env::sandbox_id(), env::sandbox_reuse_result()).await;
+                final_telemetry(masker).await;
             }
             Err(e) => {
                 let msg = format!("Checkpoint failed: {e}");
@@ -231,11 +250,14 @@ async fn execute(
                 );
                 let _ = std::fs::write(paths::checkpoint_error_file(), &msg);
                 exit_code = 1;
+
+                // Failure path: don't call /complete from guest. The runner's
+                // provider.complete() fallback posts exitCode=1, triggering
+                // the route's "checkpoint not found → failed" branch.
+                log_info!(LOG_TAG, "▷ Cleanup");
+                final_telemetry(masker).await;
             }
         }
-
-        log_info!(LOG_TAG, "▷ Cleanup");
-        final_telemetry(masker).await;
     } else {
         if cli_exit_code == 0 && exit_code == 0 {
             log_info!(LOG_TAG, "claude-code completed successfully");

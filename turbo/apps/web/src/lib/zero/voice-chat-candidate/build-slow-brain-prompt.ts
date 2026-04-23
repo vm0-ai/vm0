@@ -1,11 +1,11 @@
 import "server-only";
 import type {
-  featureCandidateVoiceChatItems,
-  featureCandidateVoiceChatTasks,
-} from "../../../db/schema/voice-chat-candidate";
+  voiceChatItems,
+  voiceChatTasks,
+} from "../../../db/schema/voice-chat";
 
-type ItemRow = typeof featureCandidateVoiceChatItems.$inferSelect;
-type TaskRow = typeof featureCandidateVoiceChatTasks.$inferSelect;
+type ItemRow = typeof voiceChatItems.$inferSelect;
+type TaskRow = typeof voiceChatTasks.$inferSelect;
 
 const RECENT_ITEMS_LIMIT = 20;
 

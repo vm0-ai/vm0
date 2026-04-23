@@ -15,6 +15,9 @@ fn env_or_empty(name: &str) -> String {
 static RUN_ID: LazyLock<String> = LazyLock::new(|| env_or_empty("VM0_RUN_ID"));
 static API_URL: LazyLock<String> = LazyLock::new(|| env_or_empty("VM0_API_URL"));
 static API_TOKEN: LazyLock<String> = LazyLock::new(|| env_or_empty("VM0_API_TOKEN"));
+static SANDBOX_ID: LazyLock<String> = LazyLock::new(|| env_or_empty("VM0_SANDBOX_ID"));
+static SANDBOX_REUSE_RESULT: LazyLock<String> =
+    LazyLock::new(|| env_or_empty("VM0_SANDBOX_REUSE_RESULT"));
 static PROMPT: LazyLock<String> = LazyLock::new(|| env_or_empty("VM0_PROMPT"));
 static APPEND_SYSTEM_PROMPT: LazyLock<String> =
     LazyLock::new(|| env_or_empty("VM0_APPEND_SYSTEM_PROMPT"));
@@ -97,6 +100,12 @@ pub fn api_url() -> &'static str {
 }
 pub fn api_token() -> &'static str {
     &API_TOKEN
+}
+pub fn sandbox_id() -> &'static str {
+    &SANDBOX_ID
+}
+pub fn sandbox_reuse_result() -> &'static str {
+    &SANDBOX_REUSE_RESULT
 }
 pub fn prompt() -> &'static str {
     &PROMPT

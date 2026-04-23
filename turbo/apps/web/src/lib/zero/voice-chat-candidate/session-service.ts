@@ -1,7 +1,7 @@
 import { and, desc, eq } from "drizzle-orm";
-import { featureCandidateVoiceChatSessions } from "../../../db/schema/voice-chat-candidate";
+import { voiceChatSessions } from "../../../db/schema/voice-chat";
 
-type SessionRow = typeof featureCandidateVoiceChatSessions.$inferSelect;
+type SessionRow = typeof voiceChatSessions.$inferSelect;
 
 /**
  * Get-or-create: return the most recent session for this (userId, agentId),
@@ -17,21 +17,21 @@ export async function createVoiceChatCandidateSession(params: {
   const db = globalThis.services.db;
   const [existing] = await db
     .select()
-    .from(featureCandidateVoiceChatSessions)
+    .from(voiceChatSessions)
     .where(
       and(
-        eq(featureCandidateVoiceChatSessions.userId, params.userId),
-        eq(featureCandidateVoiceChatSessions.agentId, params.agentId),
+        eq(voiceChatSessions.userId, params.userId),
+        eq(voiceChatSessions.agentId, params.agentId),
       ),
     )
-    .orderBy(desc(featureCandidateVoiceChatSessions.createdAt))
+    .orderBy(desc(voiceChatSessions.createdAt))
     .limit(1);
   if (existing) {
     return existing;
   }
 
   const [session] = await db
-    .insert(featureCandidateVoiceChatSessions)
+    .insert(voiceChatSessions)
     .values({
       orgId: params.orgId,
       userId: params.userId,
@@ -50,8 +50,8 @@ export async function getVoiceChatCandidateSession(
   const db = globalThis.services.db;
   const [session] = await db
     .select()
-    .from(featureCandidateVoiceChatSessions)
-    .where(eq(featureCandidateVoiceChatSessions.id, id))
+    .from(voiceChatSessions)
+    .where(eq(voiceChatSessions.id, id))
     .limit(1);
   return session ?? null;
 }
@@ -64,13 +64,13 @@ export async function listVoiceChatCandidateSessions(params: {
   const db = globalThis.services.db;
   return db
     .select()
-    .from(featureCandidateVoiceChatSessions)
+    .from(voiceChatSessions)
     .where(
       and(
-        eq(featureCandidateVoiceChatSessions.orgId, params.orgId),
-        eq(featureCandidateVoiceChatSessions.userId, params.userId),
+        eq(voiceChatSessions.orgId, params.orgId),
+        eq(voiceChatSessions.userId, params.userId),
       ),
     )
-    .orderBy(desc(featureCandidateVoiceChatSessions.createdAt))
+    .orderBy(desc(voiceChatSessions.createdAt))
     .limit(params.limit ?? 50);
 }
