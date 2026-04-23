@@ -15,10 +15,7 @@ type ZeroCapability = (typeof ZERO_CAPABILITIES)[number];
  * Capabilities not listed here are always included.
  */
 const CONDITIONAL_CAPABILITIES: ReadonlyMap<ZeroCapability, FeatureSwitchKey> =
-  new Map([
-    ["computer-use:write", FeatureSwitchKey.ComputerUse],
-    ["voice-chat:write", FeatureSwitchKey.VoiceChat],
-  ]);
+  new Map([["computer-use:write", FeatureSwitchKey.ComputerUse]]);
 
 /**
  * Capabilities that are never included in agent run (zero) tokens.

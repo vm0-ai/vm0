@@ -275,7 +275,6 @@ describe("sandbox-token", () => {
       ]);
       expect(auth?.capabilities).not.toContain("agent-run:write");
       expect(auth?.capabilities).not.toContain("computer-use:write");
-      expect(auth?.capabilities).not.toContain("voice-chat:write");
     });
 
     it("should include conditional capabilities when feature flags are enabled", async () => {
@@ -285,7 +284,6 @@ describe("sandbox-token", () => {
       const auth = verifyZeroToken(token);
 
       expect(auth?.capabilities).toContain("computer-use:write");
-      expect(auth?.capabilities).toContain("voice-chat:write");
       expect(auth?.capabilities).toEqual([
         "agent:read",
         "agent:write",
@@ -297,7 +295,6 @@ describe("sandbox-token", () => {
         "chat-message:read",
         "connector:read",
         "computer-use:write",
-        "voice-chat:write",
         "file:read",
         "file:write",
       ]);
