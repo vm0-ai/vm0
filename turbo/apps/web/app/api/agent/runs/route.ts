@@ -353,7 +353,17 @@ const router = tsr.router(runsMainContract, {
           additionalVolumes: finalAdditionalVolumes,
           resumedFromCheckpointId: body.checkpointId,
           sessionId: body.sessionId,
-          artifacts: resolved.artifacts,
+          // For new runs, populate agent_sessions.artifact_names from body.artifacts
+          // (CLI --artifact flag) so future continues can resolve the mount set.
+          // For resumes, this is unused since the existing session row is reused.
+          artifacts:
+            body.artifacts && body.artifacts.length > 0
+              ? Object.fromEntries(
+                  body.artifacts.map((a) => {
+                    return [a.name, a.version ?? "latest"];
+                  }),
+                )
+              : resolved.artifacts,
         });
       });
       const transactionTime = Date.now();
