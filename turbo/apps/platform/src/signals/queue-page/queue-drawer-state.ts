@@ -10,13 +10,26 @@ const L = logger("QueueDrawer");
 const internalQueueDrawerOpen$ = state(false);
 const resetQueuePollingSignal$ = resetSignal();
 
+function tryGetPageSignal(
+  get: (signal$: typeof pageSignal$) => AbortSignal,
+): AbortSignal | undefined {
+  try {
+    return get(pageSignal$);
+  } catch (error) {
+    if (error instanceof Error && error.message === "page signal not set") {
+      return undefined;
+    }
+    throw error;
+  }
+}
+
 export const queueDrawerOpen$ = computed((get) => {
   return get(internalQueueDrawerOpen$);
 });
 
 export const setQueueDrawerOpen$ = command(({ get, set }, open: boolean) => {
   set(internalQueueDrawerOpen$, open);
-  const pageSignal = get(pageSignal$);
+  const pageSignal = tryGetPageSignal(get);
 
   const params = get(searchParams$);
   const next = new URLSearchParams(params);
@@ -26,7 +39,9 @@ export const setQueueDrawerOpen$ = command(({ get, set }, open: boolean) => {
       next.set("queue", "1");
       set(replaceSearchParams$, next);
     }
-    const signal = set(resetQueuePollingSignal$, pageSignal);
+    const signal = pageSignal
+      ? set(resetQueuePollingSignal$, pageSignal)
+      : set(resetQueuePollingSignal$);
     set(startQueuePolling$, signal).catch((error: unknown) => {
       if (error instanceof Error && error.name === "AbortError") {
         return;
