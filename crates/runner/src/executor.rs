@@ -1389,7 +1389,6 @@ mod tests {
         let sid = SandboxId::new_v4().to_string();
         for (variant, expected) in [
             (SandboxReuseResult::Reused, "reused"),
-            (SandboxReuseResult::FeatureDisabled, "featureDisabled"),
             (SandboxReuseResult::NoSessionId, "noSessionId"),
             (SandboxReuseResult::PoolMiss, "poolMiss"),
             (SandboxReuseResult::ProfileMismatch, "profileMismatch"),
