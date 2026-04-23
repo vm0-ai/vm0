@@ -115,4 +115,52 @@ describe("callReasoner", () => {
 
     expect(result).toBeNull();
   });
+
+  it("parses MISSING_TASKS section into missingTasks array", async () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+    reloadEnv();
+
+    const payload = [
+      "---CONVERSATION---",
+      "Focus: greeting",
+      "---MISSING_TASKS---",
+      "Check the user's calendar for tomorrow",
+      "Look up PR #10716 status",
+    ].join("\n");
+
+    const handler = http.post(OPENROUTER_URL, () => {
+      return HttpResponse.json(openRouterResponse(payload));
+    });
+    server.use(handler.handler);
+
+    const { callReasoner } = await import("../reasoner");
+
+    const result = await callReasoner(emptyParams());
+
+    expect(result).not.toBeNull();
+    expect(result?.conversationSummary).toContain("Focus: greeting");
+    expect(result?.missingTasks).toEqual([
+      "Check the user's calendar for tomorrow",
+      "Look up PR #10716 status",
+    ]);
+  });
+
+  it("returns empty missingTasks when MISSING_TASKS section is absent", async () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+    reloadEnv();
+
+    const payload = ["---CONVERSATION---", "Focus: greeting"].join("\n");
+
+    const handler = http.post(OPENROUTER_URL, () => {
+      return HttpResponse.json(openRouterResponse(payload));
+    });
+    server.use(handler.handler);
+
+    const { callReasoner } = await import("../reasoner");
+
+    const result = await callReasoner(emptyParams());
+
+    expect(result).not.toBeNull();
+    expect(result?.missingTasks).toEqual([]);
+  });
 });
