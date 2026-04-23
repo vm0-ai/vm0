@@ -1,5 +1,17 @@
 # Changelog
 
+## [8.229.3](https://github.com/vm0-ai/vm0/compare/core-v8.229.2...core-v8.229.3) (2026-04-23)
+
+
+### Bug Fixes
+
+* add auto-recharge threshold/amount bounds and loop prevention ([#10695](https://github.com/vm0-ai/vm0/issues/10695)) ([9e2e011](https://github.com/vm0-ai/vm0/commit/9e2e011d6404f6641a6cccfa1ca7dd324f5939f4))
+
+
+### Refactoring
+
+* remove sandbox-reuse feature flag and enable full rollout ([#10822](https://github.com/vm0-ai/vm0/issues/10822)) ([fc6df59](https://github.com/vm0-ai/vm0/commit/fc6df59ddecd7ede3457ad63d8f71813c6dd6fb9))
+
 ## [8.229.2](https://github.com/vm0-ai/vm0/compare/core-v8.229.1...core-v8.229.2) (2026-04-23)
 
 

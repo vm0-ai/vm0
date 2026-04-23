@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.287.0](https://github.com/vm0-ai/vm0/compare/app-v0.286.4...app-v0.287.0) (2026-04-23)
+
+
+### Features
+
+* add tooltip to attachment upload button ([#10827](https://github.com/vm0-ai/vm0/issues/10827)) ([7246574](https://github.com/vm0-ai/vm0/commit/72465742ce94f00af185f4aa45ca9e1a55907f57))
+
+
+### Refactoring
+
+* **platform:** improve model picker trigger consistency in composer ([#10821](https://github.com/vm0-ai/vm0/issues/10821)) ([71e5d1c](https://github.com/vm0-ai/vm0/commit/71e5d1c92538470efa6dc08ccf707d844b919a49))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.229.3
+
 ## [0.286.4](https://github.com/vm0-ai/vm0/compare/app-v0.286.3...app-v0.286.4) (2026-04-23)
 
 

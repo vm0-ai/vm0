@@ -1,5 +1,25 @@
 # Changelog
 
+## [12.291.0](https://github.com/vm0-ai/vm0/compare/web-v12.290.1...web-v12.291.0) (2026-04-23)
+
+
+### Features
+
+* add cold outreach pipeline use case (Apollo + Instantly) ([#10689](https://github.com/vm0-ai/vm0/issues/10689)) ([3e781e8](https://github.com/vm0-ai/vm0/commit/3e781e85eb3a591a46b8e110e2e8bd4b395fd63c))
+
+
+### Bug Fixes
+
+* add auto-recharge threshold/amount bounds and loop prevention ([#10695](https://github.com/vm0-ai/vm0/issues/10695)) ([9e2e011](https://github.com/vm0-ai/vm0/commit/9e2e011d6404f6641a6cccfa1ca7dd324f5939f4))
+* **auth:** stop password toggle flicker on sign-in page ([#10817](https://github.com/vm0-ai/vm0/issues/10817)) ([91b0566](https://github.com/vm0-ai/vm0/commit/91b0566425fe4f61bda742b93003efbe0b432354)), closes [#10462](https://github.com/vm0-ai/vm0/issues/10462)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.229.3
+
 ## [12.290.1](https://github.com/vm0-ai/vm0/compare/web-v12.290.0...web-v12.290.1) (2026-04-23)
 
 
