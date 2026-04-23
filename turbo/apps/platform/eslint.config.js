@@ -213,7 +213,10 @@ export default [
   // denied or no hardware). Each try block has recovery logic that cannot use accept()
   // or useLoadableSet.
   {
-    files: ["src/signals/voice-chat/voice-chat-session.ts"],
+    files: [
+      "src/signals/voice-chat/voice-chat-session.ts",
+      "src/signals/voice-chat-candidate/voice-chat-candidate-session.ts",
+    ],
     rules: {
       "no-restricted-syntax": "off",
     },
