@@ -232,6 +232,8 @@ export interface ConnectorConfig {
   readonly label: string;
   readonly helpText: string;
   readonly featureFlag?: FeatureSwitchKey;
+  /** When true, the featureFlag gates this connector even when it has api-token auth (overrides the default api-token exception). */
+  readonly strictFeatureFlag?: boolean;
   readonly authMethods: Partial<
     Record<ConnectorAuthMethodType, ConnectorAuthMethodConfig>
   >;
@@ -440,3 +442,4 @@ export const CONNECTOR_TYPES: Record<ConnectorType, ConnectorConfig> =
 export const connectorTypeSchema = z.enum(
   Object.keys(CONNECTOR_TYPES_DEF) as [ConnectorType, ...ConnectorType[]],
 );
+
