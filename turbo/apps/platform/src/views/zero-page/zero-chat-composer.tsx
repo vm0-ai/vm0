@@ -935,14 +935,23 @@ export function ZeroChatComposer({
             />
             <div className="flex items-center justify-between gap-2 px-4 pb-3 pt-1">
               <div className="flex items-center gap-1 text-muted-foreground">
-                <button
-                  type="button"
-                  className="p-[9px] rounded-lg hover:bg-accent hover:text-foreground transition-colors duration-200"
-                  aria-label="Attach"
-                  onClick={handleFileSelect}
-                >
-                  <IconPaperclip size={18} stroke={1.5} />
-                </button>
+                <TooltipProvider delayDuration={300}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        className="p-[9px] rounded-lg hover:bg-accent hover:text-foreground transition-colors duration-200"
+                        aria-label="Attach"
+                        onClick={handleFileSelect}
+                      >
+                        <IconPaperclip size={18} stroke={1.5} />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" className="text-xs">
+                      Attach
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
                 <ConnectorsPopoverButton
                   agentConnectors={agentConnectors}
                   connectorsLoading={connectorsLoading}
