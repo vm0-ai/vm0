@@ -1,5 +1,6 @@
 import { createHandler, tsr } from "../../../../../../src/lib/ts-rest-handler";
-import { zeroRunRunnerContract, sandboxReuseResultSchema } from "@vm0/core";
+import { zeroRunRunnerContract } from "@vm0/core/contracts/zero-runs";
+import { sandboxReuseResultSchema } from "@vm0/core/contracts/webhooks";
 import { initServices } from "../../../../../../src/lib/init-services";
 import {
   requireAuth,
