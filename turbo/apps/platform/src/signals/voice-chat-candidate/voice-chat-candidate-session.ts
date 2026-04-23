@@ -717,7 +717,9 @@ const monitorMicrophoneRecovery$ = command(
     let recovering = false;
 
     // Forward-declare so triggerRecovery can reference it before the assignment.
-    let watchCurrentTracks: () => void = () => undefined;
+    let watchCurrentTracks: () => void = () => {
+      return undefined;
+    };
 
     const triggerRecovery = async (): Promise<void> => {
       if (signal.aborted || recovering) {
