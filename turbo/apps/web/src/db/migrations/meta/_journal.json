@@ -2150,6 +2150,13 @@
       "when": 1776939873298,
       "tag": "0306_lame_vargas",
       "breakpoints": true
+    },
+    {
+      "idx": 307,
+      "version": "7",
+      "when": 1776939874298,
+      "tag": "0307_flatten_artifact_scalars",
+      "breakpoints": true
     }
   ]
 }
