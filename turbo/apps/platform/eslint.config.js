@@ -154,10 +154,14 @@ export default [
       "ccstate/no-direct-local-storage": "off",
     },
   },
-  // Allow new Promise() in view-level event handlers that wrap one-shot
-  // browser DOM events (e.g. <img> load/error) without an ambient signal.
+  // Allow new Promise() in the dedicated helper that wraps a one-shot
+  // browser DOM event pair (<img> load/error). No ambient signal exists at
+  // the DOM layer; isolating the pattern to a single-purpose file keeps the
+  // rule active for the rest of org-general-tab.tsx.
   {
-    files: ["src/views/zero-page/components/org-manage/org-general-tab.tsx"],
+    files: [
+      "src/views/zero-page/components/org-manage/read-image-dimensions.ts",
+    ],
     rules: {
       "ccstate/no-new-promise": "off",
     },
