@@ -113,9 +113,7 @@ describe("billing-service", () => {
     });
     vi.stubEnv(
       "ZERO_ONE_TIME_CAMPAIGN",
-      JSON.stringify({
-        ZERO100: { priceId: "price_zero100", couponId: "ZERO100" },
-      }),
+      JSON.stringify({ ZERO100: { priceId: "price_zero100", couponId: "ZERO100" } }),
     );
     reloadEnv();
 
@@ -130,9 +128,7 @@ describe("billing-service", () => {
     expect(billing?.credits ?? 0).toBe(0);
 
     const expires = await findCreditExpiresRecords(user.orgId);
-    expect(
-      expires.filter((r) => r.source === "starter_grant"),
-    ).toHaveLength(0);
+    expect(expires.filter((r) => r.source === "starter_grant")).toHaveLength(0);
   });
 });
 
