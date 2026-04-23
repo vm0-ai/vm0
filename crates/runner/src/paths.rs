@@ -18,7 +18,12 @@ fn storage_key_hashes(name: &str, version: &str) -> (String, String) {
 /// Hex-encode the first 8 bytes of `SHA-256(s)` — 16 characters, collision
 /// resistant enough for runner-local bookkeeping and always a valid path
 /// segment.
-fn short_digest(s: &str) -> String {
+///
+/// Exposed `pub(crate)` so the host-side cache dir (built here) and the
+/// guest-side `file://` URL (built in `storage_cache`) share one source of
+/// truth. A drift between two copies would silently route host writes and
+/// guest reads to different logical blobs.
+pub(crate) fn short_digest(s: &str) -> String {
     let digest = Sha256::digest(s.as_bytes());
     let prefix = digest.get(..8).unwrap_or(&digest);
     hex::encode(prefix)

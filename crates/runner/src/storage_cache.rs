@@ -28,13 +28,12 @@ use bytes::Bytes;
 use futures_util::stream::{self, StreamExt};
 use reqwest::Client;
 use sandbox::{ExecRequest, Sandbox};
-use sha2::{Digest, Sha256};
 use tokio::fs;
 use tracing::{debug, warn};
 
 use crate::error::{RunnerError, RunnerResult};
 use crate::lock;
-use crate::paths::{HomePaths, touch_mtime};
+use crate::paths::{HomePaths, short_digest, touch_mtime};
 use crate::telemetry::JobTelemetry;
 use crate::types::StorageManifest;
 
@@ -56,18 +55,12 @@ const MKDIR_TIMEOUT: Duration = Duration::from_secs(5);
 /// Must be injective in `(name, version)`: two manifest entries that differ
 /// only in `vas_storage_name` but share `vas_version_id` end up at distinct
 /// `file://` URLs so the second `sandbox.write_file` does not clobber the
-/// first. The 16-hex-char prefix of SHA-256 matches the host-side
-/// `HomePaths::storage_cache_dir` hashing.
+/// first. Uses the same `short_digest` helper that `HomePaths` uses for
+/// the host cache dir, so the two keys always map 1:1.
 fn guest_archive_path(name: &str, version: &str) -> String {
-    let name_hash = short_hex(name);
-    let version_hash = short_hex(version);
+    let name_hash = short_digest(name);
+    let version_hash = short_digest(version);
     format!("{GUEST_STAGE_DIR}/{name_hash}-{version_hash}.tar.gz")
-}
-
-fn short_hex(s: &str) -> String {
-    let digest = Sha256::digest(s.as_bytes());
-    let prefix = digest.get(..8).unwrap_or(&digest);
-    hex::encode(prefix)
 }
 
 /// One manifest entry that passed the eligibility filter.
@@ -936,5 +929,94 @@ mod tests {
             Some(original.as_str())
         );
         assert!(telemetry.pending_ops_snapshot().is_empty());
+    }
+
+    #[tokio::test]
+    async fn concurrent_populate_for_same_key_downloads_once() {
+        // Two `populate_cache` invocations race for the same (name, version).
+        // The per-version flock must serialize them, so exactly one issues a
+        // GET to upstream and the second hits the just-warmed disk cache.
+        // `buffer_unordered(CONCURRENCY)` inside `populate_cache` means both
+        // tasks touch the flock acquire from separate spawn_blocking threads,
+        // so the test exercises real cross-thread flock semantics.
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox_a = MockSandbox::new("test-a");
+        let sandbox_b = MockSandbox::new("test-b");
+        let mut telemetry_a = new_telemetry();
+        let mut telemetry_b = new_telemetry();
+        let server = MockServer::start_async().await;
+        let body = tarball_bytes();
+
+        // `hits(1..)` expectations are checked after the race — the second
+        // caller must find the cache warm.
+        let head = server
+            .mock_async(|when, then| {
+                when.method(HEAD).path("/concurrent.tar.gz");
+                then.status(200)
+                    .header("content-length", body.len().to_string());
+            })
+            .await;
+        let get = server
+            .mock_async(|when, then| {
+                when.method(GET).path("/concurrent.tar.gz");
+                then.status(200).body(body.clone());
+            })
+            .await;
+
+        let url = server.url("/concurrent.tar.gz");
+        let name = "race-skill";
+        let version = "v1";
+        let mut manifest_a = manifest_single_storage(url.clone(), name, version);
+        let mut manifest_b = manifest_single_storage(url.clone(), name, version);
+
+        let (res_a, res_b) = tokio::join!(
+            populate_cache(&mut manifest_a, &sandbox_a, &home, &mut telemetry_a),
+            populate_cache(&mut manifest_b, &sandbox_b, &home, &mut telemetry_b),
+        );
+        res_a.unwrap();
+        res_b.unwrap();
+
+        // Both manifests rewritten.
+        let expected = format!("file://{}", guest_archive_path(name, version));
+        assert_eq!(
+            manifest_a.storages[0].archive_url.as_deref(),
+            Some(expected.as_str())
+        );
+        assert_eq!(
+            manifest_b.storages[0].archive_url.as_deref(),
+            Some(expected.as_str())
+        );
+
+        // Exactly one download — the second caller saw the flock-serialized
+        // cache and took the hit path. HEAD may be issued 1-2 times depending
+        // on which task acquired the lock first; GET must be exactly once.
+        get.assert_calls_async(1).await;
+        assert!(head.calls_async().await >= 1);
+
+        // One miss telemetry across both tasks; the other records a hit.
+        let ops_a = telemetry_a.pending_ops_snapshot();
+        let ops_b = telemetry_b.pending_ops_snapshot();
+        let total_miss = ops_a
+            .iter()
+            .filter(|(k, _, _)| k == "storage_cache_miss")
+            .count()
+            + ops_b
+                .iter()
+                .filter(|(k, _, _)| k == "storage_cache_miss")
+                .count();
+        let total_hit = ops_a
+            .iter()
+            .filter(|(k, _, _)| k == "storage_cache_hit")
+            .count()
+            + ops_b
+                .iter()
+                .filter(|(k, _, _)| k == "storage_cache_hit")
+                .count();
+        assert_eq!(
+            total_miss, 1,
+            "exactly one miss across concurrent populates"
+        );
+        assert_eq!(total_hit, 1, "second populate must see the warmed cache");
     }
 }
