@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.93.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.93.3...runner-rs-v0.93.4) (2026-04-23)
+
+
+### Documentation
+
+* document public statustracker methods (closes [#10635](https://github.com/vm0-ai/vm0/issues/10635)) ([#10811](https://github.com/vm0-ai/vm0/issues/10811)) ([559b65b](https://github.com/vm0-ai/vm0/commit/559b65b8f78d2754888315108b40498d42f15f13))
+
 ## [0.93.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.93.2...runner-rs-v0.93.3) (2026-04-23)
 
 
