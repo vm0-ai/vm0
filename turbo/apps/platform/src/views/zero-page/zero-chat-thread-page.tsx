@@ -356,7 +356,9 @@ function ChatThreadComposer({
 }) {
   const groups = useLastResolved(thread.groupedChatMessages$) ?? [];
   const hasMessages = groups.length > 0;
-  const hasUserMessages = groups.some((g) => g.role === "user");
+  const hasUserMessages = groups.some((g) => {
+    return g.role === "user";
+  });
   const displayName = useLastResolved(thread.agentDisplayName$) ?? "Zero";
   const allFinishedLoadable = useLastLoadable(thread.allFinished$);
   const allFinished =

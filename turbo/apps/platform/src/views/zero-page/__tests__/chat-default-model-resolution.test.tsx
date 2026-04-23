@@ -174,7 +174,12 @@ function mockOrgProviders(options: {
 function mockThread(options: {
   modelProviderId: string | null;
   selectedModel: string | null;
-  messages?: { id: string; role: "user" | "assistant"; content: string; createdAt: string }[];
+  messages?: {
+    id: string;
+    role: "user" | "assistant";
+    content: string;
+    createdAt: string;
+  }[];
 }) {
   server.use(
     mockApi(chatThreadByIdContract.get, ({ respond }) => {

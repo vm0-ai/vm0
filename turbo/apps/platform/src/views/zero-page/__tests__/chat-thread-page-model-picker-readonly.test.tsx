@@ -20,6 +20,7 @@ import {
   chatThreadByIdContract,
   chatThreadMessagesContract,
 } from "@vm0/core/contracts/chat-threads";
+import type { PagedChatMessage } from "@vm0/core/contracts/chat-threads";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -44,35 +45,60 @@ const PROVIDER_ID = "00000000-0000-4000-a000-000000000001";
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const THREAD_ID = "thread-readonly-1";
 
-const BASE_THREAD = {
-  id: THREAD_ID,
-  title: "My thread",
-  agentId: AGENT_ID,
-  chatMessages: [],
-  latestSessionId: null,
-  latestSessionProviderType: null,
-  activeRunIds: [],
-  createdAt: "2026-03-10T00:00:00Z",
-  updatedAt: "2026-03-10T00:00:00Z",
-  draftContent: null,
-  draftAttachments: null,
-  modelProviderId: null,
-  selectedModel: null,
-};
+function makeThreadDetail() {
+  return {
+    id: THREAD_ID,
+    title: "My thread",
+    agentId: AGENT_ID,
+    chatMessages: [],
+    latestSessionId: null,
+    latestSessionProviderType: null,
+    activeRunIds: [],
+    createdAt: "2026-03-10T00:00:00Z",
+    updatedAt: "2026-03-10T00:00:00Z",
+    draftContent: null,
+    draftAttachments: null,
+    modelProviderId: null,
+    selectedModel: null,
+  };
+}
 
-const USER_MESSAGE = {
-  id: "msg-user-1",
-  role: "user" as const,
-  content: "Hello",
-  createdAt: "2026-03-10T00:01:00Z",
-};
+function makeUserMessage(): PagedChatMessage {
+  return {
+    id: "msg-user-1",
+    role: "user",
+    content: "Hello",
+    createdAt: "2026-03-10T00:01:00Z",
+  };
+}
 
-const ASSISTANT_MESSAGE = {
-  id: "msg-assistant-1",
-  role: "assistant" as const,
-  content: "Hi there",
-  createdAt: "2026-03-10T00:02:00Z",
-};
+function makeAssistantMessage(): PagedChatMessage {
+  return {
+    id: "msg-assistant-1",
+    role: "assistant",
+    content: "Hi there",
+    createdAt: "2026-03-10T00:02:00Z",
+  };
+}
+
+function setupMocks(messages: PagedChatMessage[]) {
+  server.use(
+    mockApi(chatThreadByIdContract.get, ({ respond }) => {
+      return respond(200, makeThreadDetail());
+    }),
+    mockApi(chatThreadMessagesContract.list, ({ respond }) => {
+      return respond(200, { messages });
+    }),
+    mockApi(chatMessagesContract.send, ({ respond }) => {
+      return respond(201, {
+        runId: "run-test-1",
+        threadId: THREAD_ID,
+        status: "pending",
+        createdAt: "2026-03-10T00:00:00Z",
+      });
+    }),
+  );
+}
 
 describe("chat thread page — model picker read-only", () => {
   beforeEach(() => {
@@ -102,28 +128,13 @@ describe("chat thread page — model picker read-only", () => {
   // CHAT-LOCK-001: picker on a thread with a user message renders as plain
   // text — no combobox/button — so the provider cannot be switched mid-session.
   it("renders picker as plain text when thread has a user message (CHAT-LOCK-001)", async () => {
-    server.use(
-      mockApi(chatThreadByIdContract.get, ({ respond }) =>
-        respond(200, { ...BASE_THREAD }),
-      ),
-      mockApi(chatThreadMessagesContract.list, ({ respond }) =>
-        respond(200, { messages: [USER_MESSAGE] }),
-      ),
-      mockApi(chatMessagesContract.send, ({ respond }) =>
-        respond(201, {
-          runId: "run-test-1",
-          threadId: THREAD_ID,
-          status: "pending",
-          createdAt: "2026-03-10T00:00:00Z",
-        }),
-      ),
-    );
+    setupMocks([makeUserMessage()]);
 
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
-    const label = await waitFor(() =>
-      screen.getByLabelText("Claude Sonnet 4.6"),
-    );
+    const label = await waitFor(() => {
+      return screen.getByLabelText("Claude Sonnet 4.6");
+    });
     expect(label.tagName).toBe("SPAN");
     expect(
       screen.queryByRole("combobox", { name: "Claude Sonnet 4.6" }),
@@ -133,53 +144,23 @@ describe("chat thread page — model picker read-only", () => {
   // CHAT-LOCK-002: thread with only assistant messages keeps the picker
   // interactive — no user turn has started a session yet.
   it("keeps picker interactive when thread has only assistant messages (CHAT-LOCK-002)", async () => {
-    server.use(
-      mockApi(chatThreadByIdContract.get, ({ respond }) =>
-        respond(200, { ...BASE_THREAD }),
-      ),
-      mockApi(chatThreadMessagesContract.list, ({ respond }) =>
-        respond(200, { messages: [ASSISTANT_MESSAGE] }),
-      ),
-      mockApi(chatMessagesContract.send, ({ respond }) =>
-        respond(201, {
-          runId: "run-test-2",
-          threadId: THREAD_ID,
-          status: "pending",
-          createdAt: "2026-03-10T00:00:00Z",
-        }),
-      ),
-    );
+    setupMocks([makeAssistantMessage()]);
 
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
-    await waitFor(() =>
-      screen.getByRole("combobox", { name: /Claude Sonnet 4\.6/i }),
-    );
+    await waitFor(() => {
+      return screen.getByRole("combobox", { name: /Claude Sonnet 4\.6/i });
+    });
   });
 
   // CHAT-LOCK-003: empty thread keeps the picker interactive.
   it("keeps picker interactive on empty thread (CHAT-LOCK-003)", async () => {
-    server.use(
-      mockApi(chatThreadByIdContract.get, ({ respond }) =>
-        respond(200, { ...BASE_THREAD }),
-      ),
-      mockApi(chatThreadMessagesContract.list, ({ respond }) =>
-        respond(200, { messages: [] }),
-      ),
-      mockApi(chatMessagesContract.send, ({ respond }) =>
-        respond(201, {
-          runId: "run-test-3",
-          threadId: THREAD_ID,
-          status: "pending",
-          createdAt: "2026-03-10T00:00:00Z",
-        }),
-      ),
-    );
+    setupMocks([]);
 
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
-    await waitFor(() =>
-      screen.getByRole("combobox", { name: /Claude Sonnet 4\.6/i }),
-    );
+    await waitFor(() => {
+      return screen.getByRole("combobox", { name: /Claude Sonnet 4\.6/i });
+    });
   });
 });
