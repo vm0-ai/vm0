@@ -14,6 +14,7 @@ import {
   insertOrgMembersEntry,
   insertTestZeroRun,
   deleteOrgRow,
+  insertCreditExpiresRecord,
 } from "../../../__tests__/api-test-helpers";
 import { getTestZeroAgentId } from "../../../__tests__/db-test-assertions/agents";
 import { reloadEnv } from "../../../env";
@@ -24,6 +25,8 @@ import {
   enqueueRun,
   dispatchQueuedZeroRun,
 } from "../zero-run-queue-service";
+import { checkOrgCredits } from "../zero-run-policy";
+import { isInsufficientCredits } from "../../shared/errors";
 import { seedTestRun } from "../../../__tests__/db-test-seeders/runs";
 
 const context = testContext();
@@ -327,5 +330,85 @@ describe("model provider check (queue dispatch path)", () => {
     const run = await findTestRunRecord(queued.runId);
     expect(run!.status).toBe("failed");
     expect(run!.error).toContain("No model provider configured");
+  });
+});
+
+describe("checkOrgCredits (fused CTE branches)", () => {
+  let user: UserContext;
+
+  beforeEach(async () => {
+    context.setupMocks();
+    user = await context.setupUser();
+  });
+
+  async function expectInsufficientCredits(fn: () => Promise<void>) {
+    try {
+      await fn();
+    } catch (err) {
+      expect(isInsufficientCredits(err)).toBe(true);
+      return;
+    }
+    throw new Error("expected checkOrgCredits to throw insufficientCredits");
+  }
+
+  it("returns OK when modelProvider is non-vm0 (fast exit, no DB call)", async () => {
+    await setOrgCredits(user.orgId, 0);
+    await expect(
+      checkOrgCredits(user.orgId, user.userId, "anthropic"),
+    ).resolves.toBeUndefined();
+  });
+
+  it("returns OK when default provider is vm0 and credits are available", async () => {
+    await insertOrgDefaultModelProvider(user.orgId, "vm0");
+    await setOrgCredits(user.orgId, 10000);
+    await expect(
+      checkOrgCredits(user.orgId, user.userId, undefined),
+    ).resolves.toBeUndefined();
+  });
+
+  it("throws when default provider is vm0 and member creditEnabled is false", async () => {
+    await insertOrgDefaultModelProvider(user.orgId, "vm0");
+    await setOrgCredits(user.orgId, 10000);
+    await insertOrgMembersEntry({
+      orgId: user.orgId,
+      userId: user.userId,
+      creditEnabled: false,
+    });
+
+    await expectInsufficientCredits(() => {
+      return checkOrgCredits(user.orgId, user.userId, undefined);
+    });
+  });
+
+  it("throws when default provider is vm0 and spendable balance (credits − unsettledExpired) is zero", async () => {
+    await insertOrgDefaultModelProvider(user.orgId, "vm0");
+    await setOrgCredits(user.orgId, 5000);
+    // Seed an already-expired record with remaining=5000 so spendable = 0.
+    await insertCreditExpiresRecord({
+      orgId: user.orgId,
+      source: "subscription_renewal",
+      amount: 5000,
+      remaining: 5000,
+      expiresAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
+    });
+
+    await expectInsufficientCredits(() => {
+      return checkOrgCredits(user.orgId, user.userId, undefined);
+    });
+  });
+
+  it("returns OK when default provider is non-vm0 even when credits are depleted", async () => {
+    await insertOrgDefaultModelProvider(user.orgId, "anthropic");
+    await setOrgCredits(user.orgId, 0);
+    await expect(
+      checkOrgCredits(user.orgId, user.userId, undefined),
+    ).resolves.toBeUndefined();
+  });
+
+  it("throws when explicit modelProvider is vm0 and org_metadata row is missing", async () => {
+    await deleteOrgRow(user.orgId);
+    await expectInsufficientCredits(() => {
+      return checkOrgCredits(user.orgId, user.userId, "vm0");
+    });
   });
 });

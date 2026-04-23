@@ -1,4 +1,4 @@
-import { eq, and, count, gt, or } from "drizzle-orm";
+import { eq, and, count, gt, or, sql } from "drizzle-orm";
 import { env } from "../../env";
 import { agentRuns } from "../../db/schema/agent-run";
 import {
@@ -10,9 +10,6 @@ import {
 import { canAccessCompose } from "../infra/agent/compose-access";
 import { logger } from "../shared/logger";
 import { modelProviders } from "../../db/schema/model-provider";
-import { orgMetadata } from "../../db/schema/org-metadata";
-import { orgMembersMetadata } from "../../db/schema/org-members-metadata";
-import { getUnsettledExpiredAmount } from "./credit/credit-expires-service";
 import { ORG_SENTINEL_USER_ID } from "./org/org-sentinel";
 import { MODEL_PROVIDER_ENV_VARS } from "./context/resolve-model-provider";
 import type { Database } from "../../types/global";
@@ -153,55 +150,65 @@ export async function checkOrgCredits(
     return;
   }
 
-  let isVm0 = modelProvider === "vm0";
+  // One round-trip to collapse: default provider, member cap, org credits,
+  // unsettled-expired sum. Each subquery hits an index and each scalar
+  // subselect returns NULL when the underlying row is missing.
+  const { rows } = await db.execute<{
+    default_type: string | null;
+    credit_enabled: boolean | null;
+    credits: string | null;
+    unsettled_expired: string | null;
+  }>(sql`
+    WITH default_provider AS (
+      SELECT type FROM model_providers
+      WHERE org_id = ${orgId}
+        AND user_id = ${ORG_SENTINEL_USER_ID}
+        AND is_default = true
+      LIMIT 1
+    ),
+    member AS (
+      SELECT credit_enabled FROM org_members_metadata
+      WHERE org_id = ${orgId} AND user_id = ${userId}
+      LIMIT 1
+    ),
+    org AS (
+      SELECT credits FROM org_metadata
+      WHERE org_id = ${orgId}
+      LIMIT 1
+    ),
+    expired AS (
+      SELECT COALESCE(SUM(remaining), 0)::bigint AS total
+      FROM credit_expires_record
+      WHERE org_id = ${orgId}
+        AND expires_at <= now()
+        AND remaining > 0
+    )
+    SELECT
+      (SELECT type FROM default_provider) AS default_type,
+      (SELECT credit_enabled FROM member) AS credit_enabled,
+      (SELECT credits FROM org) AS credits,
+      (SELECT total FROM expired) AS unsettled_expired
+  `);
 
-  if (!isVm0 && !modelProvider) {
-    const [defaultProvider] = await db
-      .select({ type: modelProviders.type })
-      .from(modelProviders)
-      .where(
-        and(
-          eq(modelProviders.orgId, orgId),
-          eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
-          eq(modelProviders.isDefault, true),
-        ),
-      )
-      .limit(1);
-    isVm0 = defaultProvider?.type === "vm0";
+  const row = rows[0];
+  if (!row) return;
+
+  const isVm0 = modelProvider === "vm0" || row.default_type === "vm0";
+
+  if (isVm0 && row.credit_enabled === false) {
+    throw insufficientCredits();
   }
 
-  if (isVm0) {
-    const [memberRow] = await db
-      .select({ creditEnabled: orgMembersMetadata.creditEnabled })
-      .from(orgMembersMetadata)
-      .where(
-        and(
-          eq(orgMembersMetadata.orgId, orgId),
-          eq(orgMembersMetadata.userId, userId),
-        ),
-      )
-      .limit(1);
-
-    if (memberRow?.creditEnabled === false) {
-      throw insufficientCredits();
-    }
-  }
-
-  const [orgRow] = await db
-    .select({ credits: orgMetadata.credits })
-    .from(orgMetadata)
-    .where(eq(orgMetadata.orgId, orgId))
-    .limit(1);
-
-  if (!orgRow) {
+  if (row.credits == null) {
     if (isVm0) {
       throw insufficientCredits();
     }
     return;
   }
 
-  const unsettledExpired = await getUnsettledExpiredAmount(orgId, db);
-  if (orgRow.credits - unsettledExpired > 0) {
+  const credits = Number(row.credits);
+  const unsettledExpired = Number(row.unsettled_expired ?? 0);
+  if (credits - unsettledExpired > 0) {
     return;
   }
 
