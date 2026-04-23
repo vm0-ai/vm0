@@ -48,7 +48,7 @@
       ]
     },
     "overrides": {
-      "fast-xml-parser": ">=5.5.7",
+      "fast-xml-parser": ">=5.7.0",
       "glob": ">=10.5.0",
       "tar": ">=7.5.7",
       "@isaacs/brace-expansion": ">=5.0.1",
@@ -67,6 +67,7 @@
       "yaml": ">=2.8.3",
       "smol-toml": ">=1.6.1",
       "@opentelemetry/instrumentation": ">=0.213.0",
+      "uuid": ">=14.0.0",
       "zod": "4.3.6"
     }
   },
