@@ -1165,8 +1165,12 @@ describe("voice-chat-candidate session", () => {
         removeEventListener: vi.fn(),
       };
       const recoveredStream = {
-        getAudioTracks: () => [freshTrack],
-        getTracks: () => [freshTrack],
+        getAudioTracks: () => {
+          return [freshTrack];
+        },
+        getTracks: () => {
+          return [freshTrack];
+        },
       } as unknown as MediaStream;
 
       const getUserMedia = navigator.mediaDevices.getUserMedia as ReturnType<

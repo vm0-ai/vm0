@@ -719,20 +719,14 @@ const monitorMicrophoneRecovery$ = command(
     // Forward-declare so triggerRecovery can reference it before the assignment.
     let watchCurrentTracks: () => void = () => undefined;
 
-    const triggerRecovery = (): void => {
+    const triggerRecovery = async (): Promise<void> => {
       if (signal.aborted || recovering) {
         return;
       }
       recovering = true;
-      void Promise.resolve(set(recoverMicrophone$, signal)).then(
-        () => {
-          recovering = false;
-          watchCurrentTracks();
-        },
-        () => {
-          recovering = false;
-        },
-      );
+      await set(recoverMicrophone$, signal);
+      recovering = false;
+      watchCurrentTracks();
     };
 
     // Attach "ended" listeners to the current stream's audio tracks so any OS
@@ -747,7 +741,9 @@ const monitorMicrophoneRecovery$ = command(
         if (track.readyState === "ended") {
           continue;
         }
-        track.addEventListener("ended", triggerRecovery, { once: true });
+        track.addEventListener("ended", onDomEventFn(triggerRecovery), {
+          once: true,
+        });
       }
     };
 
@@ -774,7 +770,7 @@ const monitorMicrophoneRecovery$ = command(
         watchCurrentTracks();
         return;
       }
-      triggerRecovery();
+      return triggerRecovery();
     });
     document.addEventListener("visibilitychange", onVisibilityChange);
     signal.addEventListener("abort", () => {
