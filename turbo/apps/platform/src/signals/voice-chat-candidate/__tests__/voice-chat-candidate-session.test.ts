@@ -285,14 +285,12 @@ describe("voice-chat-candidate session", () => {
       createOffer = vi.fn().mockResolvedValue({ sdp: "offer-sdp" });
       setLocalDescription = vi.fn().mockResolvedValue(undefined);
       setRemoteDescription = vi.fn().mockResolvedValue(undefined);
-      getSenders = vi
-        .fn()
-        .mockReturnValue([
-          {
-            track: { kind: "audio" },
-            replaceTrack: vi.fn().mockResolvedValue(undefined),
-          },
-        ]);
+      getSenders = vi.fn().mockReturnValue([
+        {
+          track: { kind: "audio" },
+          replaceTrack: vi.fn().mockResolvedValue(undefined),
+        },
+      ]);
 
       createDataChannel(): FakeDC {
         pcRef.current = this;
