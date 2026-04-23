@@ -105,18 +105,8 @@ function taskPayload(overrides: {
 }
 
 function mockCandidateEndpoints(options: {
-  items: ReturnType<typeof itemPayload>[];
   tasks: ReturnType<typeof taskPayload>[];
 }) {
-  const itemsForRole = (role: "user" | "assistant" | "task_result") => {
-    return options.items
-      .filter((i) => {
-        return i.role === role;
-      })
-      .sort((a, b) => {
-        return a.seq - b.seq;
-      });
-  };
   server.use(
     mockApi(zeroVoiceChatCandidateContract.createSession, ({ respond }) => {
       return respond(200, {
@@ -130,20 +120,6 @@ function mockCandidateEndpoints(options: {
     mockApi(zeroVoiceChatCandidateContract.token, ({ respond }) => {
       return respond(200, {
         client_secret: { value: "ek_test", expires_at: 9_999_999_999 },
-      });
-    }),
-    mockApi(zeroVoiceChatCandidateContract.readItems, ({ query, respond }) => {
-      const all = itemsForRole("task_result");
-      if (query.sinceSeq === undefined) {
-        return respond(200, {
-          items: all.length > 0 ? [all[all.length - 1]!] : [],
-        });
-      }
-      const since = query.sinceSeq;
-      return respond(200, {
-        items: all.filter((i) => {
-          return i.seq > since;
-        }),
       });
     }),
     mockApi(zeroVoiceChatCandidateContract.getSession, ({ respond }) => {
@@ -247,7 +223,7 @@ interface FakeDC {
 }
 
 async function driveSession(
-  items: ReturnType<typeof itemPayload>[],
+  _items: ReturnType<typeof itemPayload>[],
   tasks: ReturnType<typeof taskPayload>[],
 ): Promise<void> {
   await setupPage({
@@ -256,7 +232,7 @@ async function driveSession(
     withoutRender: true,
     featureSwitches: { voiceChat: true, trinity: true },
   });
-  mockCandidateEndpoints({ items, tasks });
+  mockCandidateEndpoints({ tasks });
   const dcRef: { current: FakeDC | null } = { current: null };
   stubWebRTC(dcRef);
   detach(
@@ -411,7 +387,7 @@ describe("agent-chat-voice-mode", () => {
         ],
       );
 
-      const tasks = context.store.get(agentChatPendingTasks$);
+      const tasks = await context.store.get(agentChatPendingTasks$);
       expect(
         tasks.map((t) => {
           return t.callId;

@@ -70,13 +70,15 @@ function VoiceModeSubtitle() {
 }
 
 function VoiceModeTaskList() {
-  const tasks = useGet(agentChatPendingTasks$);
+  // Async computed — `useLastResolved` keeps the previous list visible while
+  // the next Ably-triggered fetch is in flight, avoiding a flash to empty.
+  const tasks = useLastResolved(agentChatPendingTasks$) ?? [];
   if (tasks.length === 0) {
     return null;
   }
   return (
     <ul className="w-full space-y-2 text-sm" data-testid="voice-task-list">
-      {tasks.map((task) => {
+      {tasks.map((task: VoiceChatCandidateTask) => {
         return <TaskRow key={task.id} task={task} />;
       })}
     </ul>

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt } from "drizzle-orm";
+import { and, asc, eq, gt } from "drizzle-orm";
 import {
   featureCandidateVoiceChatItems,
   featureCandidateVoiceChatSessions,
@@ -64,42 +64,5 @@ export async function readVoiceChatCandidateItems(
     .select()
     .from(featureCandidateVoiceChatItems)
     .where(condition)
-    .orderBy(asc(featureCandidateVoiceChatItems.seq));
-}
-
-/**
- * Role-scoped transcript read with seq cursor.
- *
- * - `sinceSeq` absent → baseline mode: returns at most the single latest row
- *   of that role in the session. Caller uses it purely to seed its cursor;
- *   the item is not meant to be displayed. This is what makes re-entry
- *   suppress prior utterances in the UI.
- * - `sinceSeq` provided → increment mode: returns every row of that role
- *   with seq > sinceSeq, ordered ASC.
- */
-export async function listTranscriptByRole(
-  sessionId: string,
-  role: ItemRole,
-  sinceSeq: number | undefined,
-): Promise<ItemRow[]> {
-  const db = globalThis.services.db;
-  const baseCondition = and(
-    eq(featureCandidateVoiceChatItems.sessionId, sessionId),
-    eq(featureCandidateVoiceChatItems.role, role),
-  );
-
-  if (sinceSeq === undefined) {
-    return db
-      .select()
-      .from(featureCandidateVoiceChatItems)
-      .where(baseCondition)
-      .orderBy(desc(featureCandidateVoiceChatItems.seq))
-      .limit(1);
-  }
-
-  return db
-    .select()
-    .from(featureCandidateVoiceChatItems)
-    .where(and(baseCondition, gt(featureCandidateVoiceChatItems.seq, sinceSeq)))
     .orderBy(asc(featureCandidateVoiceChatItems.seq));
 }

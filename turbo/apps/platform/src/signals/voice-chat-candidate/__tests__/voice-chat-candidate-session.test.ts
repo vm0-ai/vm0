@@ -15,7 +15,7 @@ import {
   vccSessionId$,
   vccLastAssistantMessage$,
   vccLastUserMessage$,
-  vccActiveTasks$,
+  vccTaskFeed$,
 } from "../voice-chat-candidate-session.ts";
 
 const context = testContext();
@@ -171,14 +171,6 @@ function mockAppendItemOk() {
     }),
   );
   return calls;
-}
-
-function mockTranscriptEmpty() {
-  server.use(
-    mockApi(zeroVoiceChatCandidateContract.readItems, ({ respond }) => {
-      return respond(200, { items: [] });
-    }),
-  );
 }
 
 function mockGetSessionOk() {
@@ -357,7 +349,6 @@ describe("voice-chat-candidate session", () => {
   async function startSuccessfully() {
     mockCreateSessionOk();
     mockTokenOk();
-    mockTranscriptEmpty();
     mockGetSessionOk();
     mockListActiveTasksOk();
     detach(
@@ -393,27 +384,17 @@ describe("voice-chat-candidate session", () => {
       expect(context.store.get(vccSessionId$)).toBe(SESSION_ID);
       expect(context.store.get(vccStatus$)).toBe("connected");
 
-      // First DC send is the session.update with instructions + tools. All
-      // six emotion tools are registered so the Talker can pick whichever
-      // matches its impulse — they all dispatch to the same task endpoint.
+      // Session config (tools / VAD / modalities) is preset server-side when
+      // minting the ephemeral token; dc.open no longer emits session.update.
+      // The only DC write on happy-path connect comes from the Ably loop's
+      // baseline tick, which pushes the current server-side instructions via
+      // syncTalkerInstructions$ — a no-op idempotent sync with the preset.
+      await vi.waitFor(() => {
+        expect(dcRef.current?.send.mock.calls.length ?? 0).toBeGreaterThan(0);
+      });
       const sent = dcRef.current?.send.mock.calls[0]?.[0] as string;
-      const parsed = JSON.parse(sent) as {
-        type: string;
-        session: { tools: { name: string }[] };
-      };
+      const parsed = JSON.parse(sent) as { type: string };
       expect(parsed.type).toBe("session.update");
-      expect(
-        parsed.session.tools.map((t) => {
-          return t.name;
-        }),
-      ).toStrictEqual([
-        "inform_slow_brain",
-        "feel_confused",
-        "feel_unable",
-        "want_to_ask_user",
-        "want_to_reject",
-        "want_to_apologize",
-      ]);
     });
 
     it("surfaces create-session error in vccError$", async () => {
@@ -514,7 +495,8 @@ describe("voice-chat-candidate session", () => {
       const taskCalls = mockCreateTaskOk();
       await startSuccessfully();
 
-      // Clear session.update from first DC open
+      // Reset any DC writes queued during setup so assertions below measure
+      // only the tool-call response.
       dcRef.current?.send.mockClear();
 
       dcRef.current?.emitMessage({
@@ -685,12 +667,11 @@ describe("voice-chat-candidate session", () => {
   });
 
   describe("ably poke refreshes task state", () => {
-    it("re-runs listActiveTasks on ably event and updates vccActiveTasks$", async () => {
+    it("re-runs listTasks on ably event and updates vccTaskFeed$", async () => {
       await setup();
       mockCreateSessionOk();
       mockTokenOk();
       mockGetSessionOk();
-      mockTranscriptEmpty();
       let activeTasks: ReturnType<typeof taskPayload>[] = [];
       server.use(
         mockApi(zeroVoiceChatCandidateContract.listTasks, ({ respond }) => {
@@ -713,7 +694,7 @@ describe("voice-chat-candidate session", () => {
       await vi.waitFor(() => {
         expect(context.store.get(vccStatus$)).toBe("connected");
       });
-      expect(context.store.get(vccActiveTasks$)).toHaveLength(0);
+      expect(await context.store.get(vccTaskFeed$)).toHaveLength(0);
 
       activeTasks = [
         taskPayload({
@@ -724,8 +705,8 @@ describe("voice-chat-candidate session", () => {
       ];
       triggerAblyEvent(`voice-chat-candidate:${SESSION_ID}`);
 
-      await vi.waitFor(() => {
-        expect(context.store.get(vccActiveTasks$)).toHaveLength(1);
+      await vi.waitFor(async () => {
+        expect(await context.store.get(vccTaskFeed$)).toHaveLength(1);
       });
     });
   });

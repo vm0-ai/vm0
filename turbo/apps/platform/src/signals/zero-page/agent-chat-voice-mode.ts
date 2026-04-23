@@ -1,10 +1,11 @@
 import { command, computed, state } from "ccstate";
+import type { VoiceChatCandidateTask } from "@vm0/core";
 import {
   startVoiceChatCandidate$,
   endVoiceChatCandidate$,
   vccLastUserMessage$,
   vccLastAssistantMessage$,
-  vccActiveTasks$,
+  vccTaskFeed$,
 } from "../voice-chat-candidate/voice-chat-candidate-session.ts";
 
 type VoiceMode = "off" | "on";
@@ -49,8 +50,11 @@ export const lastAgentMessage$ = vccLastAssistantMessage$;
  * active plus recently-finished tasks so the Talker has context, but the UI
  * drops `done` and `failed` so the list reads as a live working queue.
  */
-export const agentChatPendingTasks$ = computed((get) => {
-  return get(vccActiveTasks$).filter((t) => {
-    return t.status !== "done" && t.status !== "failed";
-  });
-});
+export const agentChatPendingTasks$ = computed(
+  async (get): Promise<VoiceChatCandidateTask[]> => {
+    const tasks = await get(vccTaskFeed$);
+    return tasks.filter((t) => {
+      return t.status !== "done" && t.status !== "failed";
+    });
+  },
+);
