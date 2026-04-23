@@ -29,6 +29,217 @@ const CONNECTOR_CATEGORY_ORDER: readonly ConnectorDisplayCategory[] = [
   "data-automation-infrastructure",
 ];
 
+const COMMUNICATION_COLLABORATION_TYPES = [
+  "agentmail",
+  "agentphone",
+  "brevo",
+  "chatwoot",
+  "customer-io",
+  "discord",
+  "discord-webhook",
+  "freshdesk",
+  "gmail",
+  "instantly",
+  "intercom",
+  "lark",
+  "line",
+  "loops",
+  "mailchimp",
+  "mailsac",
+  "msg9",
+  "outlook-mail",
+  "plain",
+  "pushinator",
+  "resend",
+  "slack",
+  "slack-webhook",
+  "zendesk",
+  "zeptomail",
+] as const satisfies readonly ConnectorType[];
+
+const MEETINGS_SCHEDULING_TYPES = [
+  "cal-com",
+  "calendly",
+  "fireflies",
+  "google-calendar",
+  "google-meet",
+  "granola",
+  "intervals-icu",
+  "outlook-calendar",
+  "tldv",
+  "zoom",
+] as const satisfies readonly ConnectorType[];
+
+const DOCS_FILES_KNOWLEDGE_TYPES = [
+  "airtable",
+  "canva",
+  "coda",
+  "drive9",
+  "dropbox",
+  "figma",
+  "google-docs",
+  "google-drive",
+  "google-sheets",
+  "minio",
+  "miro",
+  "notion",
+  "onyx",
+  "strapi",
+] as const satisfies readonly ConnectorType[];
+
+const ENGINEERING_TEAM_EXECUTION_TYPES = [
+  "asana",
+  "atlassian",
+  "clickup",
+  "cloudflare",
+  "computer",
+  "doppler",
+  "github",
+  "gitlab",
+  "infisical",
+  "jam",
+  "jira",
+  "linear",
+  "monday",
+  "sentry",
+  "todoist",
+  "vercel",
+  "workos",
+  "wrike",
+] as const satisfies readonly ConnectorType[];
+
+const SALES_CRM_BUSINESS_OPERATIONS_TYPES = [
+  "apollo",
+  "attio",
+  "bitrix",
+  "close",
+  "deel",
+  "explorium",
+  "greenhouse",
+  "hubspot",
+  "kommo",
+  "mercury",
+  "pipedrive",
+  "productlane",
+  "salesforce",
+  "streak",
+  "twenty",
+] as const satisfies readonly ConnectorType[];
+
+const MARKETING_CONTENT_GROWTH_TYPES = [
+  "ahrefs",
+  "buffer",
+  "cloudinary",
+  "devto",
+  "gamma",
+  "heygen",
+  "htmlcsstoimage",
+  "imgur",
+  "instagram",
+  "klaviyo",
+  "meta-ads",
+  "qiita",
+  "reportei",
+  "shortio",
+  "similarweb",
+  "webflow",
+  "wix",
+  "x",
+  "youtube",
+] as const satisfies readonly ConnectorType[];
+
+const AI_GENERAL_MODEL_TYPES = [
+  "openai",
+  "deepseek",
+  "groq",
+  "hugging-face",
+  "minimax",
+  "together",
+] as const satisfies readonly ConnectorType[];
+
+const AI_IMAGE_VIDEO_TYPES = [
+  "fal",
+  "luma",
+  "pika",
+  "replicate",
+  "runway",
+  "stability-ai",
+] as const satisfies readonly ConnectorType[];
+
+const AI_VOICE_AUDIO_TYPES = [
+  "elevenlabs",
+  "hume",
+] as const satisfies readonly ConnectorType[];
+
+const AI_AGENT_APPS_TYPES = [
+  "anthropic-managed-agents",
+  "dify",
+  "manus",
+  "v0",
+] as const satisfies readonly ConnectorType[];
+
+const AI_MEMORY_TRACING_EVAL_TYPES = [
+  "helicone",
+  "langfuse",
+  "langsmith",
+  "mem0",
+  "wandb",
+  "zep",
+] as const satisfies readonly ConnectorType[];
+
+const DATA_AUTOMATION_INFRASTRUCTURE_TYPES = [
+  "amplitude",
+  "apify",
+  "axiom",
+  "brave-search",
+  "bright-data",
+  "browserbase",
+  "browserless",
+  "cronlytic",
+  "db9",
+  "docusign",
+  "dropbox-sign",
+  "duffel",
+  "e2b",
+  "etsy",
+  "exa",
+  "firecrawl",
+  "garmin-connect",
+  "jotform",
+  "make",
+  "metabase",
+  "mixpanel",
+  "n8n",
+  "neon",
+  "pandadoc",
+  "pdf4me",
+  "pdfco",
+  "pdforge",
+  "perplexity",
+  "pinecone",
+  "plausible",
+  "podchaser",
+  "posthog",
+  "prisma-postgres",
+  "qdrant",
+  "reddit",
+  "revenuecat",
+  "scrapeninja",
+  "serpapi",
+  "shopify",
+  "spotify",
+  "strava",
+  "stripe",
+  "supabase",
+  "supadata",
+  "tavily",
+  "test-oauth",
+  "typeform",
+  "xero",
+  "zapier",
+  "zapsign",
+] as const satisfies readonly ConnectorType[];
+
 interface ConnectorCategorySection<T> {
   category: ConnectorDisplayCategory;
   label: string;
@@ -37,225 +248,92 @@ interface ConnectorCategorySection<T> {
 
 function getConnectorCategoryLabel(category: ConnectorDisplayCategory): string {
   switch (category) {
-    case "ai-general-models":
+    case "ai-general-models": {
       return "AI: General Models and Reasoning";
-    case "ai-image-video":
+    }
+    case "ai-image-video": {
       return "AI: Image / Video Generation";
-    case "ai-voice-audio":
+    }
+    case "ai-voice-audio": {
       return "AI: Voice / Audio";
-    case "ai-agent-apps":
+    }
+    case "ai-agent-apps": {
       return "AI: Agent Platforms and AI Apps";
-    case "ai-memory-tracing-eval":
+    }
+    case "ai-memory-tracing-eval": {
       return "AI: Memory / Tracing / Evaluation";
-    case "communication-collaboration":
+    }
+    case "communication-collaboration": {
       return "Communication and Collaboration";
-    case "meetings-scheduling":
+    }
+    case "meetings-scheduling": {
       return "Meetings and Scheduling";
-    case "docs-files-knowledge":
+    }
+    case "docs-files-knowledge": {
       return "Docs, Files, and Knowledge";
-    case "engineering-team-execution":
+    }
+    case "engineering-team-execution": {
       return "Engineering and Team Execution";
-    case "sales-crm-business-operations":
+    }
+    case "sales-crm-business-operations": {
       return "Sales, CRM, and Business Operations";
-    case "marketing-content-growth":
+    }
+    case "marketing-content-growth": {
       return "Marketing, Content, and Growth";
-    case "data-automation-infrastructure":
+    }
+    case "data-automation-infrastructure": {
       return "Data, Automation, and Infrastructure";
+    }
   }
+}
+
+function includesConnectorType(
+  types: readonly ConnectorType[],
+  type: ConnectorType,
+): boolean {
+  return types.includes(type);
 }
 
 export function getConnectorDisplayCategory(
   type: ConnectorType,
 ): ConnectorDisplayCategory {
-  switch (type) {
-    case "agentmail":
-    case "agentphone":
-    case "brevo":
-    case "chatwoot":
-    case "customer-io":
-    case "discord":
-    case "discord-webhook":
-    case "freshdesk":
-    case "gmail":
-    case "instantly":
-    case "intercom":
-    case "lark":
-    case "line":
-    case "loops":
-    case "mailchimp":
-    case "mailsac":
-    case "msg9":
-    case "outlook-mail":
-    case "plain":
-    case "pushinator":
-    case "resend":
-    case "slack":
-    case "slack-webhook":
-    case "zendesk":
-    case "zeptomail":
-      return "communication-collaboration";
-    case "cal-com":
-    case "calendly":
-    case "fireflies":
-    case "google-calendar":
-    case "google-meet":
-    case "granola":
-    case "intervals-icu":
-    case "outlook-calendar":
-    case "tldv":
-    case "zoom":
-      return "meetings-scheduling";
-    case "airtable":
-    case "canva":
-    case "coda":
-    case "drive9":
-    case "dropbox":
-    case "figma":
-    case "google-docs":
-    case "google-drive":
-    case "google-sheets":
-    case "minio":
-    case "miro":
-    case "notion":
-    case "onyx":
-    case "strapi":
-      return "docs-files-knowledge";
-    case "asana":
-    case "atlassian":
-    case "clickup":
-    case "cloudflare":
-    case "computer":
-    case "doppler":
-    case "github":
-    case "gitlab":
-    case "infisical":
-    case "jam":
-    case "jira":
-    case "linear":
-    case "monday":
-    case "sentry":
-    case "todoist":
-    case "vercel":
-    case "workos":
-    case "wrike":
-      return "engineering-team-execution";
-    case "apollo":
-    case "attio":
-    case "bitrix":
-    case "close":
-    case "deel":
-    case "explorium":
-    case "greenhouse":
-    case "hubspot":
-    case "kommo":
-    case "mercury":
-    case "pipedrive":
-    case "productlane":
-    case "salesforce":
-    case "streak":
-    case "twenty":
-      return "sales-crm-business-operations";
-    case "ahrefs":
-    case "buffer":
-    case "cloudinary":
-    case "devto":
-    case "gamma":
-    case "heygen":
-    case "htmlcsstoimage":
-    case "imgur":
-    case "instagram":
-    case "klaviyo":
-    case "meta-ads":
-    case "qiita":
-    case "reportei":
-    case "shortio":
-    case "similarweb":
-    case "webflow":
-    case "wix":
-    case "x":
-    case "youtube":
-      return "marketing-content-growth";
-    case "openai":
-    case "deepseek":
-    case "groq":
-    case "hugging-face":
-    case "minimax":
-    case "together":
-      return "ai-general-models";
-    case "fal":
-    case "luma":
-    case "pika":
-    case "replicate":
-    case "runway":
-    case "stability-ai":
-      return "ai-image-video";
-    case "elevenlabs":
-    case "hume":
-      return "ai-voice-audio";
-    case "anthropic-managed-agents":
-    case "dify":
-    case "manus":
-    case "v0":
-      return "ai-agent-apps";
-    case "helicone":
-    case "langfuse":
-    case "langsmith":
-    case "mem0":
-    case "wandb":
-    case "zep":
-      return "ai-memory-tracing-eval";
-    case "amplitude":
-    case "apify":
-    case "axiom":
-    case "brave-search":
-    case "bright-data":
-    case "browserbase":
-    case "browserless":
-    case "cronlytic":
-    case "db9":
-    case "docusign":
-    case "dropbox-sign":
-    case "duffel":
-    case "e2b":
-    case "etsy":
-    case "exa":
-    case "firecrawl":
-    case "garmin-connect":
-    case "jotform":
-    case "make":
-    case "metabase":
-    case "mixpanel":
-    case "n8n":
-    case "neon":
-    case "pandadoc":
-    case "pdf4me":
-    case "pdfco":
-    case "pdforge":
-    case "perplexity":
-    case "pinecone":
-    case "plausible":
-    case "podchaser":
-    case "posthog":
-    case "prisma-postgres":
-    case "qdrant":
-    case "reddit":
-    case "revenuecat":
-    case "scrapeninja":
-    case "serpapi":
-    case "shopify":
-    case "spotify":
-    case "strava":
-    case "stripe":
-    case "supabase":
-    case "supadata":
-    case "tavily":
-    case "test-oauth":
-    case "typeform":
-    case "xero":
-    case "zapier":
-    case "zapsign":
-      return "data-automation-infrastructure";
+  if (includesConnectorType(COMMUNICATION_COLLABORATION_TYPES, type)) {
+    return "communication-collaboration";
   }
+  if (includesConnectorType(MEETINGS_SCHEDULING_TYPES, type)) {
+    return "meetings-scheduling";
+  }
+  if (includesConnectorType(DOCS_FILES_KNOWLEDGE_TYPES, type)) {
+    return "docs-files-knowledge";
+  }
+  if (includesConnectorType(ENGINEERING_TEAM_EXECUTION_TYPES, type)) {
+    return "engineering-team-execution";
+  }
+  if (includesConnectorType(SALES_CRM_BUSINESS_OPERATIONS_TYPES, type)) {
+    return "sales-crm-business-operations";
+  }
+  if (includesConnectorType(MARKETING_CONTENT_GROWTH_TYPES, type)) {
+    return "marketing-content-growth";
+  }
+  if (includesConnectorType(AI_GENERAL_MODEL_TYPES, type)) {
+    return "ai-general-models";
+  }
+  if (includesConnectorType(AI_IMAGE_VIDEO_TYPES, type)) {
+    return "ai-image-video";
+  }
+  if (includesConnectorType(AI_VOICE_AUDIO_TYPES, type)) {
+    return "ai-voice-audio";
+  }
+  if (includesConnectorType(AI_AGENT_APPS_TYPES, type)) {
+    return "ai-agent-apps";
+  }
+  if (includesConnectorType(AI_MEMORY_TRACING_EVAL_TYPES, type)) {
+    return "ai-memory-tracing-eval";
+  }
+  if (includesConnectorType(DATA_AUTOMATION_INFRASTRUCTURE_TYPES, type)) {
+    return "data-automation-infrastructure";
+  }
+  return "data-automation-infrastructure";
 }
 
 export function groupConnectorsByCategory<
