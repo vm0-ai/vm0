@@ -1,3 +1,8 @@
-export * from "./types";
-export * from "./data-source";
-export * from "./config";
+export {
+  getPosts,
+  getPost,
+  getFeatured,
+  getCategories,
+  getPostAvailableLocales,
+} from "./data-source";
+export { getBlogBaseUrl } from "./config";
