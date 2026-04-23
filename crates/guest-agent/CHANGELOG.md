@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.22.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.22.0...guest-agent-v0.22.1) (2026-04-22)
+
+
+### Refactoring
+
+* drop residual memory plumbing, legacy snapshot columns, and vm0 memory cli ([#10707](https://github.com/vm0-ai/vm0/issues/10707)) ([08f3ce8](https://github.com/vm0-ai/vm0/commit/08f3ce81273faf8ea7e2e4df67b69e774bcb963e))
+* emit memory as artifacts[] entry and delete guest-agent symlink bootstrap ([#10700](https://github.com/vm0-ai/vm0/issues/10700)) ([e3f0120](https://github.com/vm0-ai/vm0/commit/e3f0120fbd90d9b9fb750e13440a9f21ea809d3a))
+* **guest-agent:** simplify checkpoint session-read error handling ([#10710](https://github.com/vm0-ai/vm0/issues/10710)) ([ad9ee70](https://github.com/vm0-ai/vm0/commit/ad9ee701531c25c4ad3e7285e5a5a0d07d9d1431))
+
 ## [0.22.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.21.7...guest-agent-v0.22.0) (2026-04-22)
 
 
