@@ -33,6 +33,7 @@ import { jsonParseOr, raceUnderSignal } from "../../utils.ts";
 import { awaitRealtimeReady$, setAblyLoop$ } from "../../realtime.ts";
 import { localStorageSignals } from "../../external/local-storage.ts";
 import { resetPermissionDialog$ } from "./permission-dialog.ts";
+import { getConnectorDisplayCategory } from "./connector-categories.ts";
 
 const HIDDEN_CONNECTIONS_STORAGE_KEY = "vm0.connections.hiddenTypes";
 const { get$: hiddenConnectorTypesRaw$, set$: setHiddenConnectorTypes$ } =
@@ -50,6 +51,7 @@ export interface ConnectorTypeWithStatus {
   type: ConnectorType;
   label: string;
   helpText: string;
+  category: ReturnType<typeof getConnectorDisplayCategory>;
   /** Lowercase aliases/keywords used by connector search (from CONNECTOR_TYPES). */
   tags: readonly string[];
   connected: boolean;
@@ -157,6 +159,7 @@ export const allConnectorTypes$ = computed(async (get) => {
         type,
         label: isExperimental ? `[Experimental] ${config.label}` : config.label,
         helpText: config.helpText,
+        category: getConnectorDisplayCategory(type),
         tags: config.tags ?? [],
         connected: connector !== null,
         connector,

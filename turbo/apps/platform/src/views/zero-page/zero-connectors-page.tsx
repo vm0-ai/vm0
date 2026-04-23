@@ -46,6 +46,7 @@ import {
   matchesConnectorSearch,
   type ConnectorTypeWithStatus,
 } from "../../signals/zero-page/settings/connectors.ts";
+import { groupConnectorsByCategory } from "../../signals/zero-page/settings/connector-categories.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import { ScopeReviewModal } from "./components/settings/scope-review-modal.tsx";
@@ -309,19 +310,6 @@ export function ZeroConnectorsPage() {
     return matchesConnectorSearch(search, c);
   });
 
-  const connected = filtered.filter((c) => {
-    if (optimisticConnected.has(c.type)) {
-      return true;
-    }
-    return c.connected;
-  });
-  const notConnected = filtered.filter((c) => {
-    if (optimisticConnected.has(c.type)) {
-      return false;
-    }
-    return !c.connected;
-  });
-
   const connectHandler = (type: ConnectorType) => {
     const ct = allConnectors.find((c) => {
       return c.type === type;
@@ -367,10 +355,23 @@ export function ZeroConnectorsPage() {
   };
 
   const renderCard = (c: ConnectorTypeWithStatus) => {
+    const effectiveConnector = getEffective(c);
+    if (!effectiveConnector.connected) {
+      return (
+        <AvailableConnectorCard
+          key={c.type}
+          connector={effectiveConnector}
+          isPolling={pollingType === c.type}
+          onConnect={() => {
+            return connectHandler(c.type);
+          }}
+        />
+      );
+    }
     return (
       <GlobalConnectorCard
         key={c.type}
-        connector={getEffective(c)}
+        connector={effectiveConnector}
         isPolling={pollingType === c.type}
         onConnect={() => {
           return connectHandler(c.type);
@@ -384,6 +385,8 @@ export function ZeroConnectorsPage() {
       />
     );
   };
+
+  const grouped = groupConnectorsByCategory(filtered.map(getEffective));
 
   return (
     <div className="flex flex-1 flex-col min-h-0 overflow-auto [scrollbar-gutter:stable]">
@@ -447,38 +450,22 @@ export function ZeroConnectorsPage() {
 
           {activeTab === "builtin" && (
             <>
-              {connected.length > 0 && (
-                <section className="flex flex-col gap-3">
-                  <h2 className="text-sm font-medium text-muted-foreground">
-                    Connected ({connected.length})
-                  </h2>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {connected.map(renderCard)}
-                  </div>
-                </section>
-              )}
-
-              {notConnected.length > 0 && (
-                <section className="flex flex-col gap-3">
-                  <h2 className="text-sm font-medium text-muted-foreground">
-                    Available ({notConnected.length})
-                  </h2>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {notConnected.map((c) => {
-                      return (
-                        <AvailableConnectorCard
-                          key={c.type}
-                          connector={c}
-                          isPolling={pollingType === c.type}
-                          onConnect={() => {
-                            return connectHandler(c.type);
-                          }}
-                        />
-                      );
-                    })}
-                  </div>
-                </section>
-              )}
+              {grouped.map((section) => {
+                return (
+                  <section
+                    key={section.category}
+                    className="flex flex-col gap-3"
+                    data-testid={`connector-category-${section.category}`}
+                  >
+                    <h2 className="text-sm font-medium text-muted-foreground">
+                      {section.label}
+                    </h2>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {section.connectors.map(renderCard)}
+                    </div>
+                  </section>
+                );
+              })}
 
               {allTypesLoadable.state !== "hasData" && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">

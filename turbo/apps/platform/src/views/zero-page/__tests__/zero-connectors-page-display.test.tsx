@@ -21,29 +21,82 @@ const context = testContext();
 const mockApi = createMockApi(context);
 
 describe("connectors page - count display", () => {
-  it("connected connectors count is displayed (CONN-D-001)", async () => {
-    mockConnectors([{ type: "github" }, { type: "linear" }]);
+  it("ai categories render before non-ai categories (CONN-D-001)", async () => {
+    mockConnectors([
+      { type: "github" },
+      { type: "openai", authMethod: "platform" },
+    ]);
 
     detachedSetupPage({ context, path: "/connectors" });
 
     await waitFor(() => {
-      expect(screen.getByText("Connected (2)")).toBeInTheDocument();
+      expect(
+        screen.getByText("AI: General Models and Reasoning"),
+      ).toBeInTheDocument();
     });
+    const headings = screen.getAllByRole("heading", { level: 2 });
+    const labels = headings.map((heading) => {
+      return heading.textContent;
+    });
+    expect(labels.indexOf("AI: General Models and Reasoning")).toBeLessThan(
+      labels.indexOf("Engineering and Team Execution"),
+    );
   });
 
-  it("available connectors count is displayed (CONN-D-002)", async () => {
+  it("only matching categories are shown for search-filtered results (CONN-D-002)", async () => {
     mockConnectors([{ type: "github" }]);
 
     detachedSetupPage({ context, path: "/connectors" });
 
     await waitFor(() => {
-      const availableHeading = screen.getByText(/^Available \(\d+\)$/);
-      expect(availableHeading).toBeInTheDocument();
-      const count = Number.parseInt(
-        availableHeading.textContent?.match(/\d+/)?.[0] ?? "0",
-      );
-      expect(count).toBeGreaterThan(0);
+      expect(
+        screen.getByText("AI: General Models and Reasoning"),
+      ).toBeInTheDocument();
     });
+
+    await userEvent.type(
+      screen.getByPlaceholderText("Find connectors"),
+      "github",
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Engineering and Team Execution"),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByText("AI: General Models and Reasoning"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Communication and Collaboration"),
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe("connectors page - grouped display", () => {
+  it("connected connectors are shown before available ones within a category", async () => {
+    mockConnectors([{ type: "github", externalUsername: "octocat" }]);
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Engineering and Team Execution"),
+      ).toBeInTheDocument();
+    });
+
+    const engineeringSection = screen.getByTestId(
+      "connector-category-engineering-team-execution",
+    );
+    const labels = Array.from(
+      engineeringSection.querySelectorAll(
+        "span.text-sm.font-medium.text-foreground.truncate",
+      ),
+    ).map((element) => {
+      return element.textContent;
+    });
+    expect(labels[0]).toBe("GitHub");
+    expect(labels).toContain("Asana");
   });
 });
 
