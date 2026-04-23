@@ -292,20 +292,35 @@ async fn debug_field_over_limit_is_truncated_with_marker() {
             then.status(200).body("{}");
         })
         .await;
+    // Negative: content past the 4 KiB cap MUST be dropped. If the
+    // `s.truncate(cut)` line is ever removed while the marker append stays,
+    // the marker assertion alone still passes — this mock catches that
+    // mutation by asserting the far-past-cap sentinel never reaches ingest.
+    let sentinel_mock = server
+        .mock_async(|when, then| {
+            when.method(POST).body_includes("SENTINEL_PAST_CAP");
+            then.status(200).body("{}");
+        })
+        .await;
 
     let (layer, guard) = axiom_layer::init_with_base_url(&server.base_url(), "t", "test")
         .expect("init must succeed");
     let subscriber = tracing_subscriber::registry().with(layer);
     {
         let _sub = tracing::subscriber::set_default(subscriber);
-        // 8 KiB of 'A' yields an 8002-byte Debug form (two surrounding
-        // quotes), well past the 4 KiB cap → truncation must fire.
-        let big = "A".repeat(8 * 1024);
+        // 5000 A's → sentinel → 3000 A's. Debug form: `"` + 5000 + sentinel
+        // (17 bytes) + 3000 + `"` = 8019 bytes. The sentinel starts at
+        // Debug-form byte 5001, well past the 4 KiB cap, so correct
+        // truncation must drop it.
+        let mut big = "A".repeat(5000);
+        big.push_str("SENTINEL_PAST_CAP");
+        big.push_str(&"A".repeat(3000));
         tracing::warn!(big = ?big, "truncate-me");
     }
     guard.shutdown().await;
 
     mock.assert_calls_async(1).await;
+    sentinel_mock.assert_calls_async(0).await;
 }
 
 #[tokio::test]
@@ -342,12 +357,17 @@ async fn debug_field_truncation_walks_to_utf8_char_boundary() {
 async fn debug_field_at_exact_limit_passes_through_unmodified() {
     let server = MockServer::start_async().await;
 
-    // Positive: the event arrives with its message intact.
+    // Positive: event arrives with its message AND the full payload —
+    // `SENTINEL_AT_END` is the last 15 bytes of the 4094-byte payload, so
+    // it survives only if the value is passed through untouched. This
+    // catches mutations that erroneously empty the value at exact-limit
+    // without appending the marker.
     let clean_mock = server
         .mock_async(|when, then| {
             when.method(POST)
                 .path("/v1/datasets/vm0-web-logs-test/ingest")
-                .body_includes(r#""message":"at-limit""#);
+                .body_includes(r#""message":"at-limit""#)
+                .body_includes("SENTINEL_AT_END");
             then.status(200).body("{}");
         })
         .await;
@@ -367,8 +387,11 @@ async fn debug_field_at_exact_limit_passes_through_unmodified() {
         // Debug form of a &str is `"<contents>"` — surrounding quotes cost
         // 2 bytes, so 4094 content bytes yields exactly DEBUG_FIELD_MAX_BYTES.
         // The truncation check is `s.len() > MAX`, which is FALSE at equality
-        // → value must pass through unmodified.
-        let payload = "A".repeat(4094);
+        // → value must pass through unmodified. Ending with a sentinel lets
+        // the positive mock verify the full body arrived, not just the
+        // message field.
+        let mut payload = "A".repeat(4094 - "SENTINEL_AT_END".len());
+        payload.push_str("SENTINEL_AT_END");
         tracing::warn!(val = ?payload, "at-limit");
     }
     guard.shutdown().await;
