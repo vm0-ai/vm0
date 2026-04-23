@@ -33,6 +33,10 @@
 //! - [`NetnsPool::acquire`] returns a namespace from pool, or creates on-demand as fallback
 //! - [`NetnsPool::release`] returns the namespace to the pool
 //! - Pool index (0–63) is auto-allocated via flock on `/var/lock`
+//! - Orphans from abnormally-exited prior runners (SIGKILL, panic, OOM,
+//!   power loss, aborted in-flight creation tasks) are reconciled at
+//!   startup via flock-based liveness probe — see
+//!   [`reconcile_orphan_namespaces`]
 
 use std::collections::VecDeque;
 use std::fs::File;
@@ -712,7 +716,10 @@ impl NetnsPool {
             _lock: lock,
         };
 
-        // Pre-warm the buffer.
+        // Pre-warm the buffer. Warm-up starts at ns_index 0, so
+        // `reconcile_orphan_namespaces` above MUST have finished
+        // synchronously — otherwise `vm0-ns-{own}-00` may still exist from
+        // a previous runner and `ip netns add` will fail with EEXIST.
         if BUFFER_SIZE > 0 {
             let mut plain_set = tokio::task::JoinSet::new();
             let mut proxy_set = tokio::task::JoinSet::new();
@@ -1230,8 +1237,19 @@ pub async fn cleanup_namespaces_by_index(index: u32) {
 /// pool-index flock, which is the permission required to do kernel-side
 /// cleanup on `own_index` without first re-flocking it.
 async fn reconcile_orphan_namespaces(locks: &LockPaths, own_index: u32, _own_lock: &Flock<File>) {
+    // Own index: critical-path cleanup. Warm-up immediately afterwards
+    // starts at ns_index 0 and will collide with any surviving orphan.
+    // `cleanup_namespaces_by_index` currently swallows failures — if it
+    // fails here, the caller will hit EEXIST during warm-up. Tracked in
+    // #10826 (return `Result` and fail-fast from `create()`).
     cleanup_namespaces_by_index(own_index).await;
 
+    // Other indexes: advisory cleanup for arbitrary prior runners. Failures
+    // are not our problem — the next runner that claims the index will
+    // retry. The `if index == own_index` check is defensive; the flock
+    // would also deny us (Linux flock is per-OFD but same-process locks
+    // on the same file still conflict), so dropping the check would only
+    // waste two syscalls per call.
     for index in 0..MAX_POOLS {
         if index == own_index {
             continue;
