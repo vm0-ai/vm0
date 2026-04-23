@@ -7,7 +7,6 @@ import {
   insertTestChatThread,
   getTestAgentComposeName,
   createTestSchedule,
-  insertTestVoiceChatSession,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { updateTestScheduleState } from "../../../../../src/__tests__/db-test-seeders/schedules";
 import { createTestZeroAgent } from "../../../../../src/__tests__/db-test-seeders/agents";
@@ -135,56 +134,6 @@ describe("GET /api/zero/tasks", () => {
       return t.type === "schedule";
     });
     expect(scheduleTasks).toHaveLength(0);
-  });
-
-  it("should return voice chat tasks that have a runId", async () => {
-    const { composeId } = await createTestCompose(uniqueId("voice-chat-task"));
-
-    // Create a run so the voice chat session is actionable
-    const { runId } = await seedTestRun(user.userId, composeId, {
-      status: "completed",
-    });
-
-    await insertTestVoiceChatSession({
-      orgId: user.orgId,
-      userId: user.userId,
-      agentId: composeId,
-      runId,
-    });
-
-    const request = createTestRequest("http://localhost:3000/api/zero/tasks");
-    const response = await GET(request);
-    const data = await response.json();
-
-    expect(response.status).toBe(200);
-    const voiceTasks = data.tasks.filter((t: Record<string, unknown>) => {
-      return t.type === "voice_chat";
-    });
-    expect(voiceTasks).toHaveLength(1);
-    expect(voiceTasks[0].latestRunId).toBe(runId);
-  });
-
-  it("should not return voice chat tasks without a runId", async () => {
-    const { composeId } = await createTestCompose(
-      uniqueId("voice-chat-no-run"),
-    );
-
-    // Create a voice chat session without linking any run (runId remains null)
-    await insertTestVoiceChatSession({
-      orgId: user.orgId,
-      userId: user.userId,
-      agentId: composeId,
-    });
-
-    const request = createTestRequest("http://localhost:3000/api/zero/tasks");
-    const response = await GET(request);
-    const data = await response.json();
-
-    expect(response.status).toBe(200);
-    const voiceTasks = data.tasks.filter((t: Record<string, unknown>) => {
-      return t.type === "voice_chat";
-    });
-    expect(voiceTasks).toHaveLength(0);
   });
 
   it("should filter by agentId", async () => {

@@ -5,7 +5,6 @@ import { zeroAgentSchedules } from "../../../db/schema/zero-agent-schedule";
 import { agentRuns } from "../../../db/schema/agent-run";
 import { agentComposeVersions } from "../../../db/schema/agent-compose";
 import { zeroRuns } from "../../../db/schema/zero-run";
-import { voiceChatSessions } from "../../../db/schema/voice-chat";
 import { zeroAgents } from "../../../db/schema/zero-agent";
 import { archivedTaskRuns } from "../../../db/schema/archived-task-runs";
 
@@ -41,7 +40,7 @@ interface RawTask {
 }
 
 /**
- * List unified tasks across chat threads, schedules, voice chats, and agent runs.
+ * List unified tasks across chat threads, schedules, and agent runs.
  * Returns up to 25 tasks sorted by latest run time DESC.
  */
 export async function listTasks(
@@ -51,26 +50,22 @@ export async function listTasks(
 ): Promise<TaskItem[]> {
   const db = globalThis.services.db;
 
-  const [chatTasks, scheduleTasks, voiceChatTasks, agentTasks, archivedSets] =
+  const [chatTasks, scheduleTasks, agentTasks, archivedSets] =
     await Promise.all([
       listChatTasks(db, userId, orgId, agentId),
       listScheduleTasks(db, userId, orgId, agentId),
-      listVoiceChatTasks(db, userId, orgId, agentId),
       listAgentTasks(db, userId, orgId, agentId),
       getArchivedSets(db, userId, orgId),
     ]);
 
-  const allTasks = [
-    ...chatTasks,
-    ...scheduleTasks,
-    ...voiceChatTasks,
-    ...agentTasks,
-  ].filter((t) => {
-    if (t.latestRunId === null) {
-      return !archivedSets.nullRunTaskIds.has(t.id);
-    }
-    return !archivedSets.runIds.has(t.latestRunId);
-  });
+  const allTasks = [...chatTasks, ...scheduleTasks, ...agentTasks].filter(
+    (t) => {
+      if (t.latestRunId === null) {
+        return !archivedSets.nullRunTaskIds.has(t.id);
+      }
+      return !archivedSets.runIds.has(t.latestRunId);
+    },
+  );
 
   // Batch-fetch run info for all tasks with a latestRunId
   const runIds = allTasks
@@ -134,9 +129,6 @@ export async function listTasks(
         break;
       case "schedule":
         task.scheduleId = raw.id;
-        break;
-      case "voice_chat":
-        task.voiceChatSessionId = raw.id;
         break;
       case "agent":
         task.agentRunId = raw.id;
@@ -402,58 +394,4 @@ async function listAgentTasks(
       sourceUpdatedAt: r.createdAt,
     };
   });
-}
-
-/**
- * Return the most recent voice-chat session for this user/org as a single task.
- * At most one voice-chat task is shown regardless of how many sessions exist.
- */
-async function listVoiceChatTasks(
-  db: DB,
-  userId: string,
-  orgId: string,
-  agentId?: string,
-): Promise<RawTask[]> {
-  const conditions = [
-    eq(voiceChatSessions.userId, userId),
-    eq(voiceChatSessions.orgId, orgId),
-    isNotNull(voiceChatSessions.runId),
-  ];
-  if (agentId) conditions.push(eq(voiceChatSessions.agentId, agentId));
-
-  const rows = await db
-    .select({
-      id: voiceChatSessions.id,
-      agentId: voiceChatSessions.agentId,
-      agentName: zeroAgents.name,
-      agentDisplayName: zeroAgents.displayName,
-      agentAvatarUrl: zeroAgents.avatarUrl,
-      runId: voiceChatSessions.runId,
-      createdAt: voiceChatSessions.createdAt,
-    })
-    .from(voiceChatSessions)
-    .innerJoin(zeroAgents, eq(voiceChatSessions.agentId, zeroAgents.id))
-    .where(and(...conditions))
-    .orderBy(desc(voiceChatSessions.createdAt))
-    .limit(1);
-
-  return rows
-    .filter((r): r is typeof r & { agentId: string } => {
-      return r.agentId !== null;
-    })
-    .map((r) => {
-      return {
-        id: r.id,
-        type: "voice_chat" as const,
-        title: null,
-        agent: {
-          id: r.agentId,
-          name: r.agentName,
-          displayName: r.agentDisplayName,
-          avatarUrl: r.agentAvatarUrl,
-        },
-        latestRunId: r.runId,
-        sourceUpdatedAt: r.createdAt,
-      };
-    });
 }
