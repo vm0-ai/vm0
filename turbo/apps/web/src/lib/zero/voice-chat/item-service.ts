@@ -16,7 +16,7 @@ async function assertSessionExists(sessionId: string): Promise<void> {
     .where(eq(voiceChatSessions.id, sessionId))
     .limit(1);
   if (!session) {
-    throw notFound("Voice-chat-candidate session not found");
+    throw notFound("Voice-chat session not found");
   }
 }
 

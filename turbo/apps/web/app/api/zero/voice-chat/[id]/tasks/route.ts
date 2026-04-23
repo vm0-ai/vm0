@@ -41,7 +41,7 @@ export async function POST(
 
   // See [id]/route.ts for why this is 404 (not 403) on flag-off.
   if (!(await isVoiceChatEnabled(authCtx))) {
-    return notFoundResponse("Voice-chat-candidate session not found");
+    return notFoundResponse("Voice-chat session not found");
   }
 
   const { id } = await params;
@@ -51,7 +51,7 @@ export async function POST(
     session.orgId !== authCtx.orgId ||
     session.userId !== authCtx.userId
   ) {
-    return notFoundResponse("Voice-chat-candidate session not found");
+    return notFoundResponse("Voice-chat session not found");
   }
   if (!session.agentId) {
     // Null-agent sessions exist in schema (agentId is nullable) but cannot
@@ -125,7 +125,7 @@ export async function GET(
   if (!authCtx?.orgId) return unauthorizedResponse();
 
   if (!(await isVoiceChatEnabled(authCtx))) {
-    return notFoundResponse("Voice-chat-candidate session not found");
+    return notFoundResponse("Voice-chat session not found");
   }
 
   const { id } = await params;
@@ -135,7 +135,7 @@ export async function GET(
     session.orgId !== authCtx.orgId ||
     session.userId !== authCtx.userId
   ) {
-    return notFoundResponse("Voice-chat-candidate session not found");
+    return notFoundResponse("Voice-chat session not found");
   }
 
   const tasks = await listSessionTasksForCard(id);

@@ -16,9 +16,9 @@ import {
 import {
   postRequest,
   paramsFor,
-  setupCandidateOrg,
-  seedCandidateAgent,
-  seedCandidateSession,
+  setupVoiceChatOrg,
+  seedVoiceChatAgent,
+  seedVoiceChatSession,
 } from "../../../../zero/voice-chat/__tests__/_helpers";
 import { POST } from "../route";
 
@@ -42,11 +42,11 @@ const CALLBACK_URL = "http://localhost/api/internal/callbacks/voice-chat";
 
 async function setupTaskWithCallback(options: { agentIdOnRun?: string }) {
   const { userId, orgId } = await context.setupUser();
-  const { orgId: candidateOrgId } = await setupCandidateOrg(userId);
-  const { agentId } = await seedCandidateAgent(userId, candidateOrgId);
+  const { orgId: voiceChatOrgId } = await setupVoiceChatOrg(userId);
+  const { agentId } = await seedVoiceChatAgent(userId, voiceChatOrgId);
 
-  const session = await seedCandidateSession({
-    orgId: candidateOrgId,
+  const session = await seedVoiceChatSession({
+    orgId: voiceChatOrgId,
     userId,
     agentId,
   });

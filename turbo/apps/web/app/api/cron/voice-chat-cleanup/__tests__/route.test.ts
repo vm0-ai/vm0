@@ -41,7 +41,7 @@ describe("GET /api/cron/voice-chat-cleanup", () => {
     expect(response.status).toBe(401);
   });
 
-  describe("voice-chat-candidate passes", () => {
+  describe("voice-chat passes", () => {
     it("T5 — resets stuck reasoner and queues a triggerReasoning re-tick", async () => {
       const staleReasoningAt = new Date(Date.now() - 6 * 60 * 1000);
       const sessionId = await insertTestVoiceChatSession({

@@ -88,7 +88,7 @@ export function serializeVoiceChatTask(task: TaskRow) {
 
 // Gate on Trinity — the voice-chat surface's dedicated flag introduced in
 // #10618. Trinity is the only UI entry point into these endpoints (the
-// standalone /voice-chat-candidate page was removed in #10627), so the
+// standalone /voice-chat page was removed in #10627), so the
 // backend follows the same switch.
 export async function isVoiceChatEnabled(
   authCtx: AuthContext,

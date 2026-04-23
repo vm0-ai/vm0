@@ -47,7 +47,7 @@ export async function POST(request: Request): Promise<Response> {
     session.orgId !== authCtx.orgId ||
     session.userId !== authCtx.userId
   ) {
-    return notFoundResponse("Voice-chat-candidate session not found");
+    return notFoundResponse("Voice-chat session not found");
   }
 
   const { talkerInstructions } = await buildTalkerPayload(session);

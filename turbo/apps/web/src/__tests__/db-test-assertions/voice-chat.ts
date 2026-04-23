@@ -8,7 +8,7 @@ import {
 } from "../../db/schema/voice-chat";
 
 /**
- * Read the full reasoning-related mutable state of a voice-chat-candidate
+ * Read the full reasoning-related mutable state of a voice-chat
  * session for reasoner integration test assertions.
  * @why-db-direct No public read API exposes individual session summary fields;
  * this encapsulates the DB read so test files stay lint-clean.
@@ -46,7 +46,7 @@ export async function getTestVoiceChatSessionReasoningState(
 }
 
 /**
- * Read a candidate voice-chat session's mutable state.
+ * Read a voice-chat session's mutable state.
  * @why-db-direct Cron tests verify the reasoner state transitions the route
  * handler writes; no read API exists for those internals.
  */
@@ -69,7 +69,7 @@ export async function getTestVoiceChatSession(id: string): Promise<
 }
 
 /**
- * Count candidate sessions by `reasoningStatus`, scoped to a single org
+ * Count voice-chat sessions by `reasoningStatus`, scoped to a single org
  * to keep large-batch assertions hermetic across a shared dev database.
  * @why-db-direct Aggregations across many seeded rows have no API surface.
  */
@@ -91,10 +91,10 @@ export async function countTestVoiceChatSessionsByReasoningStatus(
 }
 
 /**
- * Read all conversation items for a voice-chat-candidate session.
+ * Read all conversation items for a voice-chat session.
  * @why-db-direct The item list is used to verify side-effects written by
  * triggerReasoning (e.g. system_note appended on reasoner failure); no public
- * read API is available for the candidate item table.
+ * read API is available for the voice-chat item table.
  */
 export async function readTestVoiceChatItems(sessionId: string): Promise<
   Array<{
@@ -117,7 +117,7 @@ export async function readTestVoiceChatItems(sessionId: string): Promise<
 /**
  * Read a task's result and resultUpdatedAt for compaction assertions.
  * @why-db-direct Compaction side-effects are only observable via the task row;
- * there is no public read API for individual task state in the candidate table.
+ * there is no public read API for individual task state in the voice-chat table.
  */
 export async function getTestVoiceChatTask(id: string): Promise<
   | {

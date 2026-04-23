@@ -48,7 +48,7 @@ function eventText(event: AgentEvent): string | null {
 /**
  * POST /api/internal/event-consumers/voice-chat
  *
- * Assistant-event consumer for voice-chat-candidate task runs.
+ * Assistant-event consumer for voice-chat task runs.
  *  - First event seen for a queued task flips status → running (sets startedAt).
  *  - Assistant text blocks are appended to `tasks.result` (jsonb array).
  * Runs not tied to a VCC task are silently skipped.
@@ -83,10 +83,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const touch = running ?? appended;
   if (touch) {
-    await publishUserSignal(
-      [touch.userId],
-      `voice-chat-candidate:${touch.sessionId}`,
-    );
+    await publishUserSignal([touch.userId], `voice-chat:${touch.sessionId}`);
   }
 
   log.debug("VCC assistant consumer processed", {

@@ -5,9 +5,9 @@ import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import {
   getRequest,
   paramsFor,
-  seedCandidateAgent,
-  seedCandidateSession,
-  setupCandidateOrg,
+  seedVoiceChatAgent,
+  seedVoiceChatSession,
+  setupVoiceChatOrg,
 } from "../../__tests__/_helpers";
 
 vi.mock("@vm0/core/feature-switch", async (importOriginal) => {
@@ -34,7 +34,7 @@ describe("GET /api/zero/voice-chat/:id (getSession)", () => {
     context.setupMocks();
     const user = await context.setupUser();
     userId = user.userId;
-    const org = await setupCandidateOrg(userId);
+    const org = await setupVoiceChatOrg(userId);
     orgId = org.orgId;
     mockIsFeatureEnabled.mockReturnValue(true);
   });
@@ -51,8 +51,8 @@ describe("GET /api/zero/voice-chat/:id (getSession)", () => {
   });
 
   it("returns 404 when the feature flag is disabled (avoids leaking existence)", async () => {
-    const { agentId } = await seedCandidateAgent(userId, orgId);
-    const session = await seedCandidateSession({ orgId, userId, agentId });
+    const { agentId } = await seedVoiceChatAgent(userId, orgId);
+    const session = await seedVoiceChatSession({ orgId, userId, agentId });
     mockIsFeatureEnabled.mockReturnValue(false);
     const response = await GET(
       getRequest(`/${session.id}`),
@@ -75,9 +75,9 @@ describe("GET /api/zero/voice-chat/:id (getSession)", () => {
 
   it("returns 404 when the session belongs to a different user", async () => {
     const other = await context.setupUser({ prefix: "other-user" });
-    const otherOrg = await setupCandidateOrg(other.userId);
-    const { agentId } = await seedCandidateAgent(other.userId, otherOrg.orgId);
-    const otherSession = await seedCandidateSession({
+    const otherOrg = await setupVoiceChatOrg(other.userId);
+    const { agentId } = await seedVoiceChatAgent(other.userId, otherOrg.orgId);
+    const otherSession = await seedVoiceChatSession({
       orgId: otherOrg.orgId,
       userId: other.userId,
       agentId,
@@ -94,8 +94,8 @@ describe("GET /api/zero/voice-chat/:id (getSession)", () => {
   });
 
   it("returns the session when it belongs to the caller", async () => {
-    const { agentId } = await seedCandidateAgent(userId, orgId);
-    const session = await seedCandidateSession({ orgId, userId, agentId });
+    const { agentId } = await seedVoiceChatAgent(userId, orgId);
+    const session = await seedVoiceChatSession({ orgId, userId, agentId });
     const response = await GET(
       getRequest(`/${session.id}`),
       paramsFor(session.id),

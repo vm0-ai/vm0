@@ -13,7 +13,7 @@ import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 
 const BASE_URL = "http://localhost:3000/api/zero/voice-chat";
 
-export async function setupCandidateOrg(userId: string): Promise<{
+export async function setupVoiceChatOrg(userId: string): Promise<{
   orgId: string;
   slug: string;
 }> {
@@ -31,7 +31,7 @@ export async function setupCandidateOrg(userId: string): Promise<{
   return { orgId, slug };
 }
 
-export async function seedCandidateAgent(
+export async function seedVoiceChatAgent(
   userId: string,
   orgId: string,
 ): Promise<{ agentId: string }> {
@@ -46,7 +46,7 @@ export async function seedCandidateAgent(
   return { agentId: composeId };
 }
 
-export async function seedCandidateSession(opts: {
+export async function seedVoiceChatSession(opts: {
   orgId: string;
   userId: string;
   agentId: string;

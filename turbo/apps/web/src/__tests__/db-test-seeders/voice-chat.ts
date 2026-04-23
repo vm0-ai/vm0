@@ -6,7 +6,7 @@ import { createVoiceChatSession } from "../../lib/zero/voice-chat/session-servic
 import { uniqueId } from "../test-helpers";
 
 /**
- * Append a conversation item to a voice-chat-candidate session via the service
+ * Append a conversation item to a voice-chat session via the service
  * layer so test files stay free of direct service imports.
  * @why-service-layer Encapsulates the service call so tests can seed items
  * without importing *-service modules directly.
@@ -23,7 +23,7 @@ export async function appendTestVoiceChatItem(params: {
 }
 
 /**
- * Insert a "done" task row for a voice-chat-candidate session directly.
+ * Insert a "done" task row for a voice-chat session directly.
  * @why-db-direct Compaction tests need to construct specific result lengths and
  * resultUpdatedAt timestamps that no public API would produce — these edge-case
  * states are required to exercise the compaction skip/trigger logic.
@@ -57,7 +57,7 @@ export async function insertTestVoiceChatTask(
 }
 
 /**
- * Create an active voice-chat-candidate session via the service layer.
+ * Create an active voice-chat session via the service layer.
  * @why-service-layer Reasoner tests need a fully initialised session with a
  * real agentId so triggerReasoning can read the agent's system prompt.
  */
@@ -90,7 +90,7 @@ export async function simulateConcurrentVoiceChatSessionWrite(
 }
 
 /**
- * Insert a voice-chat-candidate session directly.
+ * Insert a voice-chat session directly.
  * @why-db-direct Cron tests need to construct impossible states (stuck
  * reasoner) that no public API would produce.
  */

@@ -39,7 +39,7 @@ export async function createVoiceChatTask(params: {
     .returning();
 
   if (!inserted) {
-    throw new Error("Failed to insert voice-chat-candidate task");
+    throw new Error("Failed to insert voice-chat task");
   }
 
   const result = await params.spawnRun(inserted.id);
@@ -75,7 +75,7 @@ export async function completeVoiceChatTask(params: {
       .limit(1);
 
     if (!taskRow) {
-      throw notFound(`Voice-chat-candidate task not found: ${params.taskId}`);
+      throw notFound(`Voice-chat task not found: ${params.taskId}`);
     }
 
     const [sessionRow] = await tx
@@ -85,9 +85,7 @@ export async function completeVoiceChatTask(params: {
       .limit(1);
 
     if (!sessionRow) {
-      throw notFound(
-        `Voice-chat-candidate session not found: ${taskRow.sessionId}`,
-      );
+      throw notFound(`Voice-chat session not found: ${taskRow.sessionId}`);
     }
 
     const now = new Date();
@@ -95,7 +93,7 @@ export async function completeVoiceChatTask(params: {
     if (sessionRow.agentId !== params.agentId) {
       // Defensive: task run callback arrived with the wrong agentId. Fail
       // the task and emit a system note; the session itself stays put —
-      // sessions are stateless containers in the candidate model.
+      // sessions are stateless containers.
       const [failedTask] = await tx
         .update(voiceChatTasks)
         .set({

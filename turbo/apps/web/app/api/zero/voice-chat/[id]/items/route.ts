@@ -31,7 +31,7 @@ export async function POST(
 
   // See [id]/route.ts for why this is 404 (not 403) on flag-off.
   if (!(await isVoiceChatEnabled(authCtx))) {
-    return notFoundResponse("Voice-chat-candidate session not found");
+    return notFoundResponse("Voice-chat session not found");
   }
 
   const { id } = await params;
@@ -41,7 +41,7 @@ export async function POST(
     session.orgId !== authCtx.orgId ||
     session.userId !== authCtx.userId
   ) {
-    return notFoundResponse("Voice-chat-candidate session not found");
+    return notFoundResponse("Voice-chat session not found");
   }
 
   const parsed = appendVoiceChatItemBodySchema.safeParse(

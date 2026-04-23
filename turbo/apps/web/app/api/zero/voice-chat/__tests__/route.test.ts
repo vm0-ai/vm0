@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { randomUUID } from "crypto";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
-import { postRequest, seedCandidateAgent, setupCandidateOrg } from "./_helpers";
+import { postRequest, seedVoiceChatAgent, setupVoiceChatOrg } from "./_helpers";
 
 vi.mock("@vm0/core/feature-switch", async (importOriginal) => {
   const actual =
@@ -28,7 +28,7 @@ describe("POST /api/zero/voice-chat (createSession)", () => {
     context.setupMocks();
     const user = await context.setupUser();
     userId = user.userId;
-    const org = await setupCandidateOrg(userId);
+    const org = await setupVoiceChatOrg(userId);
     orgId = org.orgId;
     mockIsFeatureEnabled.mockReturnValue(true);
   });
@@ -64,7 +64,7 @@ describe("POST /api/zero/voice-chat (createSession)", () => {
   });
 
   it("creates a new session tagged with the caller's org/user and the posted agent", async () => {
-    const { agentId } = await seedCandidateAgent(userId, orgId);
+    const { agentId } = await seedVoiceChatAgent(userId, orgId);
     const response = await POST(postRequest("", { agentId }));
     const body = await response.json();
 

@@ -28,7 +28,7 @@ export async function GET(
   // A future reader: do NOT "fix" this to 403 — keep it 404 to preserve
   // contract compliance and non-disclosure.
   if (!(await isVoiceChatEnabled(authCtx))) {
-    return notFoundResponse("Voice-chat-candidate session not found");
+    return notFoundResponse("Voice-chat session not found");
   }
 
   const { id } = await params;
@@ -38,7 +38,7 @@ export async function GET(
     session.orgId !== authCtx.orgId ||
     session.userId !== authCtx.userId
   ) {
-    return notFoundResponse("Voice-chat-candidate session not found");
+    return notFoundResponse("Voice-chat session not found");
   }
 
   const talker = await buildTalkerPayload(session);

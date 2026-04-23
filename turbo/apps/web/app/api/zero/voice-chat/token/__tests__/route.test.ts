@@ -5,9 +5,9 @@ import { testContext } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { reloadEnv } from "../../../../../../src/env";
 import {
-  seedCandidateAgent,
-  seedCandidateSession,
-  setupCandidateOrg,
+  seedVoiceChatAgent,
+  seedVoiceChatSession,
+  setupVoiceChatOrg,
 } from "../../__tests__/_helpers";
 
 vi.mock("@vm0/core/feature-switch", async (importOriginal) => {
@@ -49,14 +49,14 @@ describe("POST /api/zero/voice-chat/token", () => {
     context.setupMocks();
     const user = await context.setupUser();
     userId = user.userId;
-    const seeded = await setupCandidateOrg(userId);
+    const seeded = await setupVoiceChatOrg(userId);
     orgId = seeded.orgId;
     mockIsFeatureEnabled.mockReturnValue(true);
     vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
     reloadEnv();
 
-    const { agentId } = await seedCandidateAgent(userId, orgId);
-    const session = await seedCandidateSession({ userId, orgId, agentId });
+    const { agentId } = await seedVoiceChatAgent(userId, orgId);
+    const session = await seedVoiceChatSession({ userId, orgId, agentId });
     sessionId = session.id;
   });
 

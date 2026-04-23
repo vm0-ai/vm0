@@ -5,7 +5,7 @@ type SessionRow = typeof voiceChatSessions.$inferSelect;
 
 /**
  * Get-or-create: return the most recent session for this (userId, agentId),
- * or create a new one. Voice-chat-candidate sessions are stateless
+ * or create a new one. Voice-chat sessions are stateless
  * long-lived containers — there is no "active / ended / timeout" lifecycle,
  * so every re-entry simply resumes whatever was there before.
  */
@@ -39,7 +39,7 @@ export async function createVoiceChatSession(params: {
     })
     .returning();
   if (!session) {
-    throw new Error("Failed to insert voice-chat-candidate session");
+    throw new Error("Failed to insert voice-chat session");
   }
   return session;
 }

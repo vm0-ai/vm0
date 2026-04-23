@@ -415,7 +415,7 @@ export async function setTestRunStatus(
  *
  * @why-db-direct `agent_runs.vars` is written by the runner during execution;
  * no API surface sets it directly. Tests that need to control ZERO_AGENT_ID
- * for agent-mismatch scenarios (e.g. voice-chat-candidate callback tests)
+ * for agent-mismatch scenarios (e.g. voice-chat callback tests)
  * must seed it directly.
  */
 export async function setTestRunVars(

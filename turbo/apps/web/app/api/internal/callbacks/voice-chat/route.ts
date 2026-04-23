@@ -47,7 +47,7 @@ async function readRunAgentId(runId: string): Promise<string> {
 /**
  * POST /api/internal/callbacks/voice-chat
  *
- * Task-run callback for the voice-chat-candidate surface (Epic #10297, Wave 5).
+ * Task-run callback for the voice-chat surface (Epic #10297, Wave 5).
  * On terminal status, completes the task, then post-response kicks the
  * Reasoner and pokes the user's Ably channel so the browser picks up the
  * terminal transition even if the Reasoner is a no-op.
@@ -95,7 +95,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     userId = outcome.session.userId;
   } catch (err) {
     if (isNotFound(err)) {
-      log.warn("voice-chat-candidate task not found — ignoring callback", {
+      log.warn("voice-chat task not found — ignoring callback", {
         taskId: payload.taskId,
         runId,
       });
@@ -110,7 +110,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // — without waiting for the reasoner LLM. The after() reasoner tick still
   // runs and will publish again once it has new conversation summary /
   // compacted results.
-  await publishUserSignal([userId], `voice-chat-candidate:${sessionId}`);
+  await publishUserSignal([userId], `voice-chat:${sessionId}`);
   after(() => {
     return triggerReasoning(sessionId);
   });

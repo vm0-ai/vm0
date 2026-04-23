@@ -12,7 +12,7 @@ interface VoiceChatTaskTriggerContext {
 }
 
 /**
- * Build CreateZeroRunParams for a voice-chat-candidate task-run. Consumed by
+ * Build CreateZeroRunParams for a voice-chat task-run. Consumed by
  * the Wave 5 tasks route (#10310); declared in Wave 5 (#10311) alongside the
  * callback it points at so the two halves of the contract ship together.
  */
