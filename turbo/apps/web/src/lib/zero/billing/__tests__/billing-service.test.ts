@@ -33,8 +33,6 @@ vi.mock("stripe", () => {
   };
 });
 
-import { createCheckoutSession } from "../billing-service";
-
 const context = testContext();
 
 describe("billing-service", () => {
@@ -58,6 +56,7 @@ describe("billing-service", () => {
   });
 
   it("serializes Stripe customer creation across concurrent checkout requests", async () => {
+    const { createCheckoutSession } = await import("../billing-service");
     const firstCustomerId = uniqueId("cus");
 
     stripeMocks.customersCreate.mockImplementationOnce(async () => {

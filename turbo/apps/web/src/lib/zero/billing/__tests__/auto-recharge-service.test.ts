@@ -5,6 +5,7 @@ import {
   uniqueId,
   type UserContext,
 } from "../../../../__tests__/test-helpers";
+import { orgMetadata } from "../../../../db/schema/org-metadata";
 import {
   getOrgCredits,
   updateOrgTier,
@@ -50,8 +51,6 @@ vi.mock("stripe", () => {
 });
 
 import { reloadEnv } from "../../../../env";
-// eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: deterministic row-lock race coverage
-import { orgMetadata } from "../../../../db/schema/org-metadata";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route
 import {
   triggerAutoRecharge,
@@ -283,21 +282,25 @@ describe("auto-recharge-service", () => {
         releaseLock = resolve;
       });
       const blockerReady = new Promise<void>((resolve) => {
-        void globalThis.services.db.transaction(async (tx) => {
-          await tx
-            .select({ orgId: orgMetadata.orgId })
-            .from(orgMetadata)
-            .where(eq(orgMetadata.orgId, user.orgId))
-            .for("update");
+        globalThis.services.db
+          .transaction(async (tx) => {
+            await tx
+              .select({ orgId: orgMetadata.orgId })
+              .from(orgMetadata)
+              .where(eq(orgMetadata.orgId, user.orgId))
+              .for("update");
 
-          await tx
-            .update(orgMetadata)
-            .set({ credits: 250_000, updatedAt: new Date() })
-            .where(eq(orgMetadata.orgId, user.orgId));
+            await tx
+              .update(orgMetadata)
+              .set({ credits: 250_000, updatedAt: new Date() })
+              .where(eq(orgMetadata.orgId, user.orgId));
 
-          resolve();
-          await rowUpdated;
-        });
+            resolve();
+            await rowUpdated;
+          })
+          .catch((error: unknown) => {
+            throw error;
+          });
       });
 
       await blockerReady;
