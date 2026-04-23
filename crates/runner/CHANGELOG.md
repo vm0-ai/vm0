@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.93.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.93.0...runner-rs-v0.93.1) (2026-04-23)
+
+
+### Bug Fixes
+
+* **runner:** reject benchmark --env values without '=' ([#10712](https://github.com/vm0-ai/vm0/issues/10712)) ([cf57891](https://github.com/vm0-ai/vm0/commit/cf57891b34f276e4f2a6a7027bbc5f392bd8d201))
+
 ## [0.93.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.92.0...runner-rs-v0.93.0) (2026-04-22)
 
 

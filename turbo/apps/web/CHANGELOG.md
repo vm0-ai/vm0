@@ -1,5 +1,37 @@
 # Changelog
 
+## [12.289.0](https://github.com/vm0-ai/vm0/compare/web-v12.288.0...web-v12.289.0) (2026-04-23)
+
+
+### Features
+
+* **auth:** carry org id in sandbox jwt ([#10770](https://github.com/vm0-ai/vm0/issues/10770)) ([b10bee0](https://github.com/vm0-ai/vm0/commit/b10bee0b4c4490b97ae8cc899b3c75eae74ae7c9)), closes [#10767](https://github.com/vm0-ai/vm0/issues/10767)
+
+
+### Bug Fixes
+
+* block vm0 run when org_metadata row is missing ([#10683](https://github.com/vm0-ai/vm0/issues/10683)) ([e2a5c56](https://github.com/vm0-ai/vm0/commit/e2a5c56bd480f4204c83426b8d65280c1b7e4c2c))
+
+
+### Refactoring
+
+* remove ArtifactSnapshot singleton type and checkpoint legacy branch ([#10747](https://github.com/vm0-ai/vm0/issues/10747)) ([ed4d601](https://github.com/vm0-ai/vm0/commit/ed4d601348a1f92e6f6bd7bf75623a5301f788ad))
+* remove http legacy run body shim and deprecated contract fields ([#10751](https://github.com/vm0-ai/vm0/issues/10751)) ([4c23933](https://github.com/vm0-ai/vm0/commit/4c23933d1e51caae00eadf0cb98ba6d55888e222))
+
+
+### Performance Improvements
+
+* **chat:** add partial index on zero_runs.chat_thread_id ([#10765](https://github.com/vm0-ai/vm0/issues/10765)) ([40515e7](https://github.com/vm0-ai/vm0/commit/40515e7a459dc20d2701720a563d2cbea9f0180b)), closes [#10757](https://github.com/vm0-ai/vm0/issues/10757)
+* **chat:** move thread-history fetch off the chat-send critical path ([#10766](https://github.com/vm0-ai/vm0/issues/10766)) ([5c82e10](https://github.com/vm0-ai/vm0/commit/5c82e101512f69b4b2357f09a5a79e72e10c501b))
+* **chat:** skip user cache lookup when session claims carry identity ([#10758](https://github.com/vm0-ai/vm0/issues/10758)) ([262d976](https://github.com/vm0-ai/vm0/commit/262d97683ac7f90c5e5591b99b95c4995358d55e)), closes [#10746](https://github.com/vm0-ai/vm0/issues/10746)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.229.1
+
 ## [12.288.0](https://github.com/vm0-ai/vm0/compare/web-v12.287.1...web-v12.288.0) (2026-04-23)
 
 
