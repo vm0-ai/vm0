@@ -205,6 +205,7 @@ export {
 export {
   seedTestSkill,
   reseedSkills,
+  setAllTestSkillsCommitSha,
   bindCustomSkillToAgent,
   createTestZeroSkill,
   findTestSkillByUrl,
