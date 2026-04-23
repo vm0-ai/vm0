@@ -18,10 +18,13 @@ const log = logger("service:zero-run-validation");
  *
  * Includes version content and compose owner so the chat-send path can
  * authorize and build the run without a second DB round-trip.
+ *
+ * `composeId` is always populated — every resolution path either finds an
+ * existing compose (and throws `notFound` otherwise).
  */
 interface ResolvedStartRunCompose {
   agentComposeVersionId: string;
-  composeId?: string;
+  composeId: string;
   composeUserId: string;
   agentName?: string;
   orgId: string;
@@ -146,15 +149,11 @@ export async function validateAgentSession(
 
 /**
  * Look up compose metadata + version content from a version ID (shared by
- * checkpoint + versionId paths). Single LEFT JOIN; the caller checks
- * `orgId` to distinguish "version exists, compose missing" from the
- * happy path.
+ * checkpoint + versionId paths). Single LEFT JOIN. Throws `notFound` if
+ * the version row is missing or its parent compose row has been deleted.
  */
-async function lookupComposeByVersion(
-  versionId: string,
-  fallbackComposeId?: string,
-): Promise<{
-  composeId?: string;
+async function lookupComposeByVersion(versionId: string): Promise<{
+  composeId: string;
   composeUserId: string;
   agentName?: string;
   orgId: string;
@@ -176,12 +175,16 @@ async function lookupComposeByVersion(
     .where(eq(agentComposeVersions.id, versionId))
     .limit(1);
 
+  if (!row || !row.composeId || !row.composeOrgId) {
+    throw notFound("Agent compose version not found");
+  }
+
   return {
-    composeId: row?.composeId ?? fallbackComposeId,
-    composeUserId: row?.composeUserId ?? "",
-    agentName: row?.composeName ?? undefined,
-    orgId: row?.composeOrgId ?? "",
-    composeContent: (row?.versionContent ?? null) as AgentComposeYaml,
+    composeId: row.composeId,
+    composeUserId: row.composeUserId ?? "",
+    agentName: row.composeName ?? undefined,
+    orgId: row.composeOrgId,
+    composeContent: row.versionContent as AgentComposeYaml,
   };
 }
 
@@ -261,9 +264,6 @@ export async function resolveStartRunCompose(params: {
     const meta = await lookupComposeByVersion(
       checkpointData.agentComposeVersionId,
     );
-    if (!meta.orgId) {
-      throw notFound("Agent compose version not found");
-    }
     return {
       agentComposeVersionId: checkpointData.agentComposeVersionId,
       ...meta,
@@ -279,13 +279,7 @@ export async function resolveStartRunCompose(params: {
   }
 
   if (params.agentComposeVersionId) {
-    const meta = await lookupComposeByVersion(
-      params.agentComposeVersionId,
-      params.composeId,
-    );
-    if (!meta.orgId) {
-      throw notFound("Agent compose version not found");
-    }
+    const meta = await lookupComposeByVersion(params.agentComposeVersionId);
     return { agentComposeVersionId: params.agentComposeVersionId, ...meta };
   }
 

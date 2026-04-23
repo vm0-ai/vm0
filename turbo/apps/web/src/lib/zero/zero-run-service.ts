@@ -46,7 +46,7 @@ import { generateZeroToken, generateSandboxToken } from "../auth/sandbox-token";
 import { loadFeatureSwitchOverrides } from "./user/feature-switches-service";
 import { buildZeroExecutionContext } from "./build-zero-context";
 import { getOrgMetadata, type OrgMetadata } from "./org/org-metadata-service";
-import { isConcurrentRunLimit, notFound } from "../shared/errors";
+import { isConcurrentRunLimit } from "../shared/errors";
 import {
   DISALLOWED_TOOLS,
   buildAgentPrompt,
@@ -516,12 +516,6 @@ async function createZeroRunRecord(
 
   // ── Round 3: Pre-flight checks (need compose content) ───────────────
   const apiStartTime = params.apiStartTime;
-  // resolved.composeId is always populated on zero-run-service callers
-  // (resolveByComposeId always sets it; lookupComposeByVersion rejects via
-  // the orgId guard before here). Narrow it for the rest of the function.
-  if (!resolved.composeId) {
-    throw notFound("Agent compose not found");
-  }
   const composeId = resolved.composeId;
   authorizeCompose(params.userId, resolved.orgId, {
     id: composeId,
