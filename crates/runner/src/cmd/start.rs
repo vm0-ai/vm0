@@ -246,8 +246,6 @@ pub async fn run_start(
     );
 
     // Idle sandbox pool for VM reuse across conversation turns.
-    // Whether individual jobs use the pool is controlled by the per-job
-    // `sandboxReuse` feature flag; the pool itself is always available.
     let idle_pool = Arc::new(tokio::sync::Mutex::new(IdlePool::new(IdlePoolConfig {
         default_timeout: Duration::from_secs(idle_timeout_secs),
         max_idle,
@@ -762,15 +760,11 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                 info!(run_id = %run_id, profile = %profile_name, "job claimed, spawning executor");
 
                 // Check idle pool for a reusable VM (same session + same profile).
-                // Only attempt reuse when the per-job sandboxReuse flag is on.
                 // The `reuse_result` tag is paired with `reuse_entry` so every
                 // fresh-create path names the branch it came from — the server
                 // persists it on the agent_runs row for observability.
-                let reuse_enabled = context.feature_enabled(crate::types::feature_flags::SANDBOX_REUSE);
                 let (reuse_entry, reuse_result): (Option<IdleEntry>, SandboxReuseResult) =
-                    if !reuse_enabled {
-                        (None, SandboxReuseResult::FeatureDisabled)
-                    } else if let Some(session_id) = context.session_id() {
+                    if let Some(session_id) = context.session_id() {
                         // Take the entry under the pool lock, then drop the
                         // lock before any awaits — the unpark HTTP call below
                         // must not block other take/park operations.
@@ -1088,9 +1082,8 @@ struct SpawnContext {
 /// If `reuse_entry` is `Some`, the job reuses an existing idle sandbox.
 /// Otherwise it creates a new one via the factory.
 ///
-/// After execution, if the per-job `sandboxReuse` feature flag is enabled
-/// and the job succeeded, the sandbox is parked in the idle pool instead
-/// of being destroyed.
+/// After a successful execution with a session ID available, the sandbox
+/// is parked in the idle pool instead of being destroyed.
 fn spawn_job(
     context: ExecutionContext,
     sandbox_id: SandboxId,
@@ -1102,7 +1095,6 @@ fn spawn_job(
 ) {
     let run_id = context.run_id;
     let session_id = context.session_id().map(String::from);
-    let reuse_enabled = context.feature_enabled(crate::types::feature_flags::SANDBOX_REUSE);
     let vcpu = job_profile.vcpu;
     let memory_mb = job_profile.memory_mb;
     let profile_name = job_profile.profile_name;
@@ -1198,17 +1190,14 @@ fn spawn_job(
 
         // Decide: park sandbox for reuse, or stop + destroy.
         let parked = if let Some(mut sandbox) = sandbox {
-            let parkable_session = if reuse_enabled
-                && exit_code == 0
-                && !job_cancel.is_cancelled()
-                && mode == RunnerMode::Running
-            {
-                // Prefer context session_id (from resume_session), fall back to
-                // guest-reported session ID (first run — CLI generated it).
-                session_id.as_deref().or(guest_session_id.as_deref())
-            } else {
-                None
-            };
+            let parkable_session =
+                if exit_code == 0 && !job_cancel.is_cancelled() && mode == RunnerMode::Running {
+                    // Prefer context session_id (from resume_session), fall back to
+                    // guest-reported session ID (first run — CLI generated it).
+                    session_id.as_deref().or(guest_session_id.as_deref())
+                } else {
+                    None
+                };
 
             if let Some(session_id) = parkable_session {
                 // Inflate the guest balloon BEFORE acquiring the pool lock —
@@ -3273,24 +3262,17 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // Test 9: sandboxReuse feature flag gates idle pool park/take
+    // Test 9: idle pool park/take is gated on session ID availability
     //
-    // With the flag ON and a session ID, the VM is parked after execution.
-    // With the flag OFF (default), the VM is destroyed.
+    // With a session ID, the VM is parked after execution; without one,
+    // the VM is destroyed (no key to re-find it under).
     // -----------------------------------------------------------------------
 
-    fn context_with_reuse(
+    fn context_with_session_opt(
         run_id: RunId,
-        reuse: bool,
         session_id: Option<&str>,
     ) -> crate::types::ExecutionContext {
         let mut ctx = minimal_context(run_id);
-        if reuse {
-            ctx.feature_flags = Some(HashMap::from([(
-                crate::types::feature_flags::SANDBOX_REUSE.to_string(),
-                true,
-            )]));
-        }
         if let Some(sid) = session_id {
             ctx.resume_session = Some(crate::types::ResumeSession {
                 session_id: sid.to_string(),
@@ -3301,12 +3283,12 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn sandbox_reuse_flag_on_parks_vm() {
+    async fn job_with_session_parks_vm() {
         let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
         let run_handle = tokio::spawn(run(config));
 
         let run_id = RunId::new_v4();
-        let ctx = context_with_reuse(run_id, true, Some("sess-1"));
+        let ctx = context_with_session_opt(run_id, Some("sess-1"));
         push_job(&env, run_id, "vm0/default", Some(ctx));
 
         let c = env
@@ -3317,7 +3299,7 @@ mod tests {
         assert_eq!(c.unwrap().exit_code, 0);
 
         let pool = env.idle_pool.lock().await;
-        assert_eq!(pool.len(), 1, "VM should be parked when sandboxReuse is on");
+        assert_eq!(pool.len(), 1, "VM should be parked when session is present");
         assert!(pool.held_sessions().contains(&"sess-1".to_string()));
         drop(pool);
 
@@ -3325,41 +3307,13 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn sandbox_reuse_flag_off_destroys_vm() {
+    async fn job_without_session_does_not_park() {
         let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
         let run_handle = tokio::spawn(run(config));
 
         let run_id = RunId::new_v4();
-        // Flag OFF (default) — even with a session ID, VM should not be parked.
-        let ctx = context_with_reuse(run_id, false, Some("sess-1"));
-        push_job(&env, run_id, "vm0/default", Some(ctx));
-
-        let c = env
-            .handle
-            .wait_completion(run_id, Duration::from_secs(5))
-            .await;
-        assert!(c.is_some(), "job should complete");
-        assert_eq!(c.unwrap().exit_code, 0);
-
-        let pool = env.idle_pool.lock().await;
-        assert_eq!(
-            pool.len(),
-            0,
-            "VM should NOT be parked when sandboxReuse is off"
-        );
-        drop(pool);
-
-        shutdown(&env, run_handle).await;
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn sandbox_reuse_flag_on_without_session_does_not_park() {
-        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
-        let run_handle = tokio::spawn(run(config));
-
-        let run_id = RunId::new_v4();
-        // Flag ON but no session — parking requires a session ID.
-        let ctx = context_with_reuse(run_id, true, None);
+        // No session — parking requires a session ID.
+        let ctx = context_with_session_opt(run_id, None);
         push_job(&env, run_id, "vm0/default", Some(ctx));
 
         let c = env
@@ -3436,13 +3390,9 @@ mod tests {
     // (eviction), shutdown drain, and edge cases (pool-full, reuse cycle).
     // =======================================================================
 
-    /// ExecutionContext with a resume_session and sandboxReuse flag for idle pool testing.
+    /// ExecutionContext with a resume_session for idle pool testing.
     fn context_with_session(run_id: RunId, session_id: &str) -> crate::types::ExecutionContext {
         let mut ctx = minimal_context(run_id);
-        ctx.feature_flags = Some(HashMap::from([(
-            crate::types::feature_flags::SANDBOX_REUSE.to_string(),
-            true,
-        )]));
         ctx.resume_session = Some(crate::types::ResumeSession {
             session_id: session_id.into(),
             session_history: String::new(),
@@ -3749,23 +3699,18 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // Test 13b: Reuse-enabled job with no session reports NoSessionId
+    // Test 13b: Job with no session reports NoSessionId
     // -----------------------------------------------------------------------
 
     #[tokio::test(start_paused = true)]
-    async fn reuse_enabled_without_session_reports_no_session_id() {
+    async fn job_without_session_reports_no_session_id() {
         let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
 
         let run_handle = tokio::spawn(run(config));
 
-        // Feature on but no resume_session → NoSessionId branch.
+        // No resume_session → NoSessionId branch.
         let run_id = RunId::new_v4();
-        let mut ctx = minimal_context(run_id);
-        ctx.feature_flags = Some(HashMap::from([(
-            crate::types::feature_flags::SANDBOX_REUSE.to_string(),
-            true,
-        )]));
-        push_job(&env, run_id, "vm0/default", Some(ctx));
+        push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
 
         let completion = env
             .handle
@@ -3781,33 +3726,6 @@ mod tests {
         assert!(
             completion.sandbox_id.is_some(),
             "fresh create still allocates a sandbox id",
-        );
-
-        shutdown(&env, run_handle).await;
-    }
-
-    // -----------------------------------------------------------------------
-    // Test 13c: Feature-disabled job reports FeatureDisabled
-    // -----------------------------------------------------------------------
-
-    #[tokio::test(start_paused = true)]
-    async fn reuse_disabled_job_reports_feature_disabled() {
-        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
-
-        let run_handle = tokio::spawn(run(config));
-
-        // minimal_context has feature_flags = None → SANDBOX_REUSE evaluates false.
-        let run_id = RunId::new_v4();
-        push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
-
-        let completion = env
-            .handle
-            .wait_completion(run_id, Duration::from_secs(5))
-            .await;
-        let completion = completion.expect("job should complete");
-        assert_eq!(
-            completion.reuse_result,
-            Some(SandboxReuseResult::FeatureDisabled),
         );
 
         shutdown(&env, run_handle).await;
@@ -4103,37 +4021,6 @@ mod tests {
             post_len, 0,
             "status.json idle_vms must be cleared after shutdown: {post}",
         );
-    }
-
-    // -----------------------------------------------------------------------
-    // Test 18: sandboxReuse flag OFF → VM destroyed, budget released
-    //
-    // When the feature flag is off, park is skipped even with a session.
-    // The sandbox must be destroyed and the budget released (not leaked).
-    // -----------------------------------------------------------------------
-
-    #[tokio::test(start_paused = true)]
-    async fn reuse_flag_off_destroys_and_releases_budget() {
-        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
-        let budget = Arc::clone(&config.budget);
-        let run_handle = tokio::spawn(run(config));
-
-        let run_id = RunId::new_v4();
-        // Job has a session but flag is OFF — parking is skipped.
-        let ctx = context_with_reuse(run_id, false, Some("sess-rejected"));
-        push_job(&env, run_id, "vm0/default", Some(ctx));
-
-        let completion = env
-            .handle
-            .wait_completion(run_id, Duration::from_secs(5))
-            .await;
-        assert!(completion.is_some(), "job should complete");
-        assert_eq!(completion.unwrap().exit_code, 0);
-
-        // Flag OFF: sandbox destroyed, budget must be released.
-        wait_budget_count(&budget, 0, Duration::from_secs(5)).await;
-
-        shutdown(&env, run_handle).await;
     }
 
     // -----------------------------------------------------------------------

@@ -217,12 +217,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable automatic skill creation in agent prompts",
     enabled: false,
   },
-  [FeatureSwitchKey.SandboxReuse]: {
-    maintainer: "liangyou@vm0.ai",
-    description: "Enable sandbox reuse (keep-alive) across conversation turns",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.ScheduleRunHistory]: {
     maintainer: "linghan@vm0.ai",
     description:

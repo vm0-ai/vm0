@@ -15,6 +15,11 @@ const c = initContract();
  * Sandbox reuse outcome. One enum value per code branch in the runner's
  * reuse-decision block. `reused` means the sandbox was unparked from the idle
  * pool; the remaining variants describe why reuse did not happen.
+ *
+ * `featureDisabled` is legacy: written by older runners while reuse was gated
+ * by the `sandboxReuse` feature flag (removed when reuse went to full rollout
+ * in #10744). Retained here so historical `agent_runs.sandbox_reuse_result`
+ * rows still parse on read. The runner no longer emits it.
  */
 export const sandboxReuseResultSchema = z.enum([
   "reused",

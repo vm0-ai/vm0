@@ -162,8 +162,7 @@ pub async fn execute_job_reuse(
 fn record_reuse_result(telemetry: &mut JobTelemetry, result: SandboxReuseResult) {
     let action_type = match result {
         SandboxReuseResult::Reused => "sandbox_reuse_hit",
-        SandboxReuseResult::FeatureDisabled
-        | SandboxReuseResult::NoSessionId
+        SandboxReuseResult::NoSessionId
         | SandboxReuseResult::PoolMiss
         | SandboxReuseResult::ProfileMismatch
         | SandboxReuseResult::UnparkFailed => "sandbox_reuse_miss",
@@ -3274,7 +3273,6 @@ mod tests {
     #[test]
     fn record_reuse_result_emits_miss_for_every_miss_variant() {
         let variants = [
-            SandboxReuseResult::FeatureDisabled,
             SandboxReuseResult::NoSessionId,
             SandboxReuseResult::PoolMiss,
             SandboxReuseResult::ProfileMismatch,
