@@ -3,7 +3,7 @@ import * as path from "node:path";
 import * as os from "node:os";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { parseGitHubUrl as parseGitHubUrlCore } from "@vm0/core";
+import { parseGitHubUrl as parseGitHubUrlCore } from "@vm0/core/github-url";
 
 const execFileAsync = promisify(execFile);
 

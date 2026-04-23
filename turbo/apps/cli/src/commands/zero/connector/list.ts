@@ -2,9 +2,9 @@ import { Command } from "commander";
 import chalk from "chalk";
 import {
   CONNECTOR_TYPES,
-  isFeatureEnabled,
   type ConnectorType,
-} from "@vm0/core";
+} from "@vm0/core/contracts/connectors";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { listZeroConnectors } from "../../../lib/api";
 import { getActiveOrg } from "../../../lib/api/config";
 import { withErrorHandler } from "../../../lib/command";

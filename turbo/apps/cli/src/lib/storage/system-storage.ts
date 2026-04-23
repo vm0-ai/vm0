@@ -3,7 +3,7 @@ import * as path from "node:path";
 import * as os from "node:os";
 import { getInstructionsStorageName } from "../domain/github-skills";
 import { directUpload } from "./direct-upload";
-import { getInstructionsFilename } from "@vm0/core";
+import { getInstructionsFilename } from "@vm0/core/frameworks";
 
 interface StorageUploadResult {
   name: string;

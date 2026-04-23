@@ -13,7 +13,7 @@ import {
   hasAuthMethods,
   getSelectableProviderTypes,
   type ModelProviderType,
-} from "@vm0/core";
+} from "@vm0/core/contracts/model-providers";
 import { isInteractive } from "../../../../lib/utils/prompt-utils";
 import { withErrorHandler } from "../../../../lib/command";
 import {

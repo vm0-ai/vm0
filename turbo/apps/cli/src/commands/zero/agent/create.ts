@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import { readFileSync } from "node:fs";
 import chalk from "chalk";
-import { zeroAgentCustomSkillNameSchema } from "@vm0/core";
+import { zeroAgentCustomSkillNameSchema } from "@vm0/core/contracts/zero-agents";
 import { createZeroAgent, updateZeroAgentInstructions } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
 import { resolveAvatarUrl } from "./avatar";
