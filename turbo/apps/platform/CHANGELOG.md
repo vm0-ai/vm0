@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.286.1](https://github.com/vm0-ai/vm0/compare/app-v0.286.0...app-v0.286.1) (2026-04-23)
+
+
+### Bug Fixes
+
+* flaky tests caused by midnight edge case and missing abort signal ([#10721](https://github.com/vm0-ai/vm0/issues/10721)) ([17ea31e](https://github.com/vm0-ai/vm0/commit/17ea31e7a8fc793f9ce5c6466bcedc81fac0102a))
+
 ## [0.286.0](https://github.com/vm0-ai/vm0/compare/app-v0.285.0...app-v0.286.0) (2026-04-22)
 
 

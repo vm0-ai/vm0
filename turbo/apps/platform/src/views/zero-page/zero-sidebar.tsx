@@ -22,7 +22,6 @@ import {
   IconPlug,
   IconFlask,
   IconPhone,
-  IconMicrophone,
   IconSparkles,
   IconLayoutDashboard,
   IconMenu2,
@@ -149,15 +148,6 @@ const FOOTER_NAV = [
     icon: IconPhone as NavIcon,
     iconImg: undefined,
     featureGate: FeatureSwitchKey.PhoneIntegration,
-  },
-  {
-    id: "voiceChat",
-    activeKeys: ["voiceChat"],
-    pathname: "/voice-chat",
-    label: "Voice Chat",
-    icon: IconMicrophone as NavIcon,
-    iconImg: undefined,
-    featureGate: FeatureSwitchKey.VoiceChat,
   },
   {
     id: "missionControl",

@@ -73,7 +73,6 @@ describe("POST /api/zero/runs", () => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          agentComposeId: "some-compose-id",
           prompt: "test prompt",
         }),
       }),
