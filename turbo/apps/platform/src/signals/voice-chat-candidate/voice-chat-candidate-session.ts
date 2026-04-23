@@ -643,6 +643,95 @@ const releaseWakeLock$ = command(({ get, set }) => {
 });
 
 // ---------------------------------------------------------------------------
+// Microphone recovery (re-acquire tracks after OS suspension on screen lock)
+// ---------------------------------------------------------------------------
+
+const recoverMicrophone$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    const pc = get(internalPc$);
+    if (!pc || pc.connectionState === "closed") {
+      return;
+    }
+    let newStream: MediaStream;
+    try {
+      const audioConfig = await resolveAudioConfig();
+      signal.throwIfAborted();
+      newStream = await navigator.mediaDevices.getUserMedia({
+        audio: audioConfig.constraints,
+      });
+    } catch (error) {
+      throwIfAbort(error);
+      set(internalError$, "Microphone access lost. Please reconnect.");
+      set(internalStatus$, "error");
+      return;
+    }
+    signal.throwIfAborted();
+    const newTrack = newStream.getAudioTracks()[0];
+    if (!newTrack) {
+      newStream.getTracks().forEach((t) => {
+        t.stop();
+      });
+      return;
+    }
+    const sender = pc.getSenders().find((s) => {
+      return s.track?.kind === "audio";
+    });
+    if (sender) {
+      try {
+        await sender.replaceTrack(newTrack);
+      } catch (error) {
+        throwIfAbort(error);
+        newStream.getTracks().forEach((t) => {
+          t.stop();
+        });
+        set(internalError$, "Microphone access lost. Please reconnect.");
+        set(internalStatus$, "error");
+        return;
+      }
+    }
+    signal.throwIfAborted();
+    const oldStream = get(internalStream$);
+    if (oldStream) {
+      oldStream.getTracks().forEach((t) => {
+        t.stop();
+      });
+    }
+    set(internalStream$, newStream);
+    L.info("microphone recovered after screen resume");
+  },
+);
+
+const monitorMicrophoneRecovery$ = command(
+  ({ get, set }, signal: AbortSignal): void => {
+    const onVisibilityChange = (): void => {
+      if (document.visibilityState !== "visible" || signal.aborted) {
+        return;
+      }
+      const stream = get(internalStream$);
+      if (!stream) {
+        return;
+      }
+      const tracks = stream.getAudioTracks();
+      const isDead =
+        tracks.length === 0 ||
+        tracks.every((t) => {
+          return t.readyState === "ended";
+        });
+      if (!isDead) {
+        return;
+      }
+      set(recoverMicrophone$, signal).catch(() => {
+        return undefined;
+      });
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    signal.addEventListener("abort", () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    });
+  },
+);
+
+// ---------------------------------------------------------------------------
 // Public commands
 // ---------------------------------------------------------------------------
 
@@ -745,6 +834,8 @@ export const startVoiceChatCandidate$ = command(
 
     await set(acquireWakeLock$, sessionSignal);
     signal.throwIfAborted();
+
+    set(monitorMicrophoneRecovery$, sessionSignal);
 
     await set(startAblyLoop$, session.id, sessionSignal);
   },
