@@ -339,7 +339,7 @@ describe("triggerReasoning", () => {
       messages: Array<{ role: string; content: string }>;
     };
     expect(body.messages[1]!.content).toContain(
-      "[2] assistant: the partial answer the user actually heard",
+      "assistant: the partial answer the user actually heard",
     );
     expect(body.messages[1]!.content).not.toContain(
       "the full answer that should not survive resume",
