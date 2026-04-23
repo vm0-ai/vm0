@@ -633,7 +633,9 @@ function isEnabled(
   useCase: UseCase,
   features?: Partial<Record<FeatureSwitchKey, boolean>>,
 ): boolean {
-  if (!useCase.featureFlag) return true;
+  if (!useCase.featureFlag) {
+    return true;
+  }
   return !!features?.[useCase.featureFlag];
 }
 
