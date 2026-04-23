@@ -439,7 +439,7 @@ export function AgentChatPage() {
         )
       : "";
 
-  const suggestedPrompts = useGet(suggestedPrompts$);
+  const suggestedPrompts = useLastResolved(suggestedPrompts$) ?? [];
   const navigate = useSet(detachedNavigateTo$);
   const pageSignal = useGet(pageSignal$);
 

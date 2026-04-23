@@ -1,10 +1,12 @@
 import type { ConnectorType } from "@vm0/core/contracts/connectors";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 interface UseCase {
   readonly title: string;
   readonly description: string;
   readonly prompt: string;
   readonly connectors?: readonly ConnectorType[];
+  readonly featureFlag?: FeatureSwitchKey;
 }
 
 interface Category {
@@ -586,6 +588,7 @@ const categories: readonly Category[] = [
         prompt:
           "Help me migrate my Zapier workflows to VM0. I have zaps for: new Slack message → Notion, Gmail → Google Sheets, and GitHub PR → Slack",
         connectors: ["zapier", "slack", "notion"],
+        featureFlag: FeatureSwitchKey.ZapierConnector,
       },
       {
         title: "Make scenario builder",
@@ -626,14 +629,31 @@ const categories: readonly Category[] = [
   },
 ];
 
-export function getCategories(): readonly Category[] {
-  return categories;
+function isEnabled(
+  useCase: UseCase,
+  features?: Partial<Record<FeatureSwitchKey, boolean>>,
+): boolean {
+  if (!useCase.featureFlag) return true;
+  return !!features?.[useCase.featureFlag];
 }
 
-export function getRandomPrompts(count: number): UseCase[] {
+export function getCategories(
+  features?: Partial<Record<FeatureSwitchKey, boolean>>,
+): readonly Category[] {
+  return categories
+    .map((c) => {
+      return { ...c, cases: c.cases.filter((u) => isEnabled(u, features)) };
+    })
+    .filter((c) => c.cases.length > 0);
+}
+
+export function getRandomPrompts(
+  count: number,
+  features?: Partial<Record<FeatureSwitchKey, boolean>>,
+): UseCase[] {
   const all = categories.flatMap((c) => {
     return c.cases.filter((u) => {
-      return u.connectors && u.connectors.length > 0;
+      return u.connectors && u.connectors.length > 0 && isEnabled(u, features);
     });
   });
   const shuffled = [...all].sort(() => {
