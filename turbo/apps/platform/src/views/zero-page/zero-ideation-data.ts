@@ -644,9 +644,9 @@ export function getCategories(
 ): readonly Category[] {
   return categories
     .map((c) => {
-      return { ...c, cases: c.cases.filter((u) => isEnabled(u, features)) };
+      return { ...c, cases: c.cases.filter((u) => { return isEnabled(u, features); }) };
     })
-    .filter((c) => c.cases.length > 0);
+    .filter((c) => { return c.cases.length > 0; });
 }
 
 export function getRandomPrompts(
