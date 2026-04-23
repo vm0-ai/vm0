@@ -69,6 +69,9 @@
       "smol-toml": ">=1.6.1",
       "@opentelemetry/instrumentation": ">=0.213.0",
       "zod": "4.3.6"
+    },
+    "patchedDependencies": {
+      "@aws-sdk/xml-builder@3.972.18": "patches/@aws-sdk__xml-builder@3.972.18.patch"
     }
   },
   "packageManager": "pnpm@10.15.0",

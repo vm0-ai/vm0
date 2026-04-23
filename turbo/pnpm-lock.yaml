@@ -27,6 +27,11 @@ overrides:
   '@opentelemetry/instrumentation': '>=0.213.0'
   zod: 4.3.6
 
+patchedDependencies:
+  '@aws-sdk/xml-builder@3.972.18':
+    hash: 273499ccbf268caa52ebd2d8790281a14c417dc772ddcf7bd85d721ec8d80386
+    path: patches/@aws-sdk__xml-builder@3.972.18.patch
+
 importers:
 
   .:
@@ -8455,7 +8460,7 @@ snapshots:
   '@aws-sdk/core@3.974.1':
     dependencies:
       '@aws-sdk/types': 3.973.8
-      '@aws-sdk/xml-builder': 3.972.18
+      '@aws-sdk/xml-builder': 3.972.18(patch_hash=273499ccbf268caa52ebd2d8790281a14c417dc772ddcf7bd85d721ec8d80386)
       '@smithy/core': 3.23.15
       '@smithy/node-config-provider': 4.3.14
       '@smithy/property-provider': 4.2.14
@@ -8799,7 +8804,7 @@ snapshots:
       '@smithy/util-config-provider': 4.2.2
       tslib: 2.8.1
 
-  '@aws-sdk/xml-builder@3.972.18':
+  '@aws-sdk/xml-builder@3.972.18(patch_hash=273499ccbf268caa52ebd2d8790281a14c417dc772ddcf7bd85d721ec8d80386)':
     dependencies:
       '@smithy/types': 4.14.1
       fast-xml-parser: 5.7.1

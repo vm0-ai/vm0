@@ -1,0 +1,26 @@
+diff --git a/dist-cjs/xml-parser.js b/dist-cjs/xml-parser.js
+index 31499ae6d0d8319b58891fa870744493503c805b..d21356d4b862b461c6d82c9e154161974c23d56c 100644
+--- a/dist-cjs/xml-parser.js
++++ b/dist-cjs/xml-parser.js
+@@ -16,8 +16,6 @@ const parser = new fast_xml_parser_1.XMLParser({
+     tagValueProcessor: (_, val) => (val.trim() === "" && val.includes("\n") ? "" : undefined),
+     maxNestedTags: Infinity,
+ });
+-parser.addEntity("#xD", "\r");
+-parser.addEntity("#10", "\n");
+ function parseXML(xmlString) {
+     return parser.parse(xmlString, true);
+ }
+diff --git a/dist-es/xml-parser.js b/dist-es/xml-parser.js
+index 9bd0f4ba572f221544c4c692092bd128bb57f9f0..9bb8d52f29bc921a05174561e861044218bf8ec1 100644
+--- a/dist-es/xml-parser.js
++++ b/dist-es/xml-parser.js
+@@ -13,8 +13,6 @@ const parser = new XMLParser({
+     tagValueProcessor: (_, val) => (val.trim() === "" && val.includes("\n") ? "" : undefined),
+     maxNestedTags: Infinity,
+ });
+-parser.addEntity("#xD", "\r");
+-parser.addEntity("#10", "\n");
+ export function parseXML(xmlString) {
+     return parser.parse(xmlString, true);
+ }
