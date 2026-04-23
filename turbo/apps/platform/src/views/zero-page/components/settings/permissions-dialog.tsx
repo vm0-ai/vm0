@@ -12,16 +12,20 @@ import {
   Button,
 } from "@vm0/ui";
 import {
+  CONNECTOR_TYPES,
+  type ConnectorType,
+} from "@vm0/core/contracts/connectors";
+import {
   getConnectorFirewall,
   groupPermissionsByCategory,
   isFirewallConnectorType,
   resolveFirewallPolicies,
-  CONNECTOR_TYPES,
-  type ConnectorType,
-  type FirewallConfig,
-  type FirewallPolicies,
-  type FirewallPolicyValue,
-} from "@vm0/core";
+} from "@vm0/core/firewalls";
+import type {
+  FirewallConfig,
+  FirewallPolicies,
+  FirewallPolicyValue,
+} from "@vm0/core/contracts/firewalls";
 import { ConnectorIcon } from "./connector-icons.tsx";
 import type { PermissionPolicy } from "../../../../signals/zero-page/settings/permissions.ts";
 import {

@@ -8,7 +8,7 @@ import {
   TableHeader,
   TableRow,
 } from "@vm0/ui";
-import type { NetworkLogEntry } from "@vm0/core";
+import type { NetworkLogEntry } from "@vm0/core/contracts/runs";
 import { type BadgeColor, formatSize, InlineBadge } from "./network-badge.tsx";
 import { CapturedBodySections } from "./captured-body-sections.tsx";
 import {

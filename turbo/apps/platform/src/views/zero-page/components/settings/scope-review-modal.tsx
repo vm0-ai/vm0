@@ -5,7 +5,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@vm0/ui/components/ui/dialog";
-import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
+import {
+  CONNECTOR_TYPES,
+  type ConnectorType,
+} from "@vm0/core/contracts/connectors";
 import { ConnectorIcon } from "./connector-icons.tsx";
 import { scopeDiff$ } from "../../../../signals/zero-page/settings/connectors.ts";
 

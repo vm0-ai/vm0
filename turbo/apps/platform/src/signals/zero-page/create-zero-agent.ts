@@ -2,7 +2,7 @@ import {
   zeroAgentsMainContract,
   zeroAgentInstructionsContract,
   type ZeroAgentResponse,
-} from "@vm0/core";
+} from "@vm0/core/contracts/zero-agents";
 import type { ZeroClientFactory } from "../api-client.ts";
 import { SEED_INSTRUCTIONS } from "../../data/the-seed.ts";
 import { randomPresetAvatar } from "../../views/zero-page/avatar-utils.ts";

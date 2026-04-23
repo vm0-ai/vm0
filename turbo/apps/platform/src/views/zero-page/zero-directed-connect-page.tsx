@@ -2,8 +2,8 @@ import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import {
   CONNECTOR_TYPES,
   type ConnectorType,
-  isGoogleOAuthConnector,
-} from "@vm0/core";
+} from "@vm0/core/contracts/connectors";
+import { isGoogleOAuthConnector } from "@vm0/core/contracts/connector-utils";
 import { Input } from "@vm0/ui/components/ui/input";
 import {
   Dialog,

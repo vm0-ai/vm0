@@ -12,8 +12,8 @@ import {
 import {
   CONNECTOR_TYPES,
   type ConnectorType,
-  isGoogleOAuthConnector,
-} from "@vm0/core";
+} from "@vm0/core/contracts/connectors";
+import { isGoogleOAuthConnector } from "@vm0/core/contracts/connector-utils";
 import {
   allConnectorTypes$,
   pollingConnectorType$,
