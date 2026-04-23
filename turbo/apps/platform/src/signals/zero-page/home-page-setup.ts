@@ -20,8 +20,12 @@ export const setupHomePage$ = command(
       const forwardParams = new URLSearchParams();
       const prompt = params.get("prompt");
       const queue = params.get("queue");
-      if (prompt) forwardParams.set("prompt", prompt);
-      if (queue) forwardParams.set("queue", queue);
+      if (prompt) {
+        forwardParams.set("prompt", prompt);
+      }
+      if (queue) {
+        forwardParams.set("queue", queue);
+      }
       set(detachedNavigateTo$, "/agents/:agentId/chat", {
         pathParams: { agentId: defaultAgentId },
         searchParams: forwardParams.size > 0 ? forwardParams : undefined,

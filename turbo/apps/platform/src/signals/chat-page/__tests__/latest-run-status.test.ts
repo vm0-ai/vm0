@@ -62,7 +62,9 @@ describe("latestRunStatus$", () => {
     const thread = context.store.get(currentChatThreadSignals$)!;
 
     await vi.waitFor(async () => {
-      expect(await context.store.get(thread.latestRunStatus$)).toBe("queued");
+      await expect(context.store.get(thread.latestRunStatus$)).resolves.toBe(
+        "queued",
+      );
     });
   });
 
@@ -105,7 +107,9 @@ describe("latestRunStatus$", () => {
     const thread = context.store.get(currentChatThreadSignals$)!;
 
     await vi.waitFor(async () => {
-      expect(await context.store.get(thread.latestRunStatus$)).toBeNull();
+      await expect(
+        context.store.get(thread.latestRunStatus$),
+      ).resolves.toBeNull();
     });
   });
 
@@ -149,6 +153,8 @@ describe("latestRunStatus$", () => {
     });
     const thread = context.store.get(currentChatThreadSignals$)!;
 
-    expect(await context.store.get(thread.latestRunStatus$)).toBeNull();
+    await expect(
+      context.store.get(thread.latestRunStatus$),
+    ).resolves.toBeNull();
   });
 });
