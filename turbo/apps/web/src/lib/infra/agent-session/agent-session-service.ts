@@ -51,7 +51,7 @@ export async function getAgentSessionWithConversation(
  * Update an existing agent session's conversation reference. Optional
  * artifactName lets the checkpoint webhook record the per-run artifact name
  * on sessions that were created eagerly at run insertion (when the name
- * was not yet known). memoryName is set at run creation, not here.
+ * was not yet known).
  */
 export async function updateAgentSession(
   id: string,
@@ -87,7 +87,6 @@ function mapToAgentSessionData(
     agentComposeId: session.agentComposeId,
     conversationId: session.conversationId,
     artifactName: session.artifactName,
-    memoryName: session.memoryName,
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
   };

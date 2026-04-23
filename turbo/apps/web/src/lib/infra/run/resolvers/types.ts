@@ -17,7 +17,6 @@ export interface ConversationResolution {
   };
   artifactName?: string;
   artifactVersion?: string;
-  memoryName?: string;
   vars?: Record<string, string>;
   volumeVersions?: Record<string, string>;
   additionalVolumes?: AdditionalVolume[];

@@ -103,7 +103,6 @@ export interface CreateRunParams {
   secrets?: Record<string, string>;
   artifactName?: string;
   artifactVersion?: string;
-  memoryName?: string;
   volumeVersions?: Record<string, string>;
   callbacks?: Array<{ url: string; secret: string; payload: unknown }>;
   resumedFromCheckpointId?: string;
@@ -433,7 +432,6 @@ interface InsertRunParams {
   resumedFromCheckpointId?: string;
   sessionId?: string;
   artifactName?: string;
-  memoryName?: string;
 }
 
 /**
@@ -458,7 +456,6 @@ export async function insertRunRecord(
         orgId: params.orgId,
         agentComposeId: params.agentComposeId,
         artifactName: params.artifactName,
-        memoryName: params.memoryName,
         conversationId: null,
       })
       .returning({ id: agentSessions.id });
