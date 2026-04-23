@@ -10,9 +10,9 @@
  *
  * External mocks: feature-switch backend (via setMockFeatureSwitches) is not
  * needed here — these tests exercise only the page signals. The derived
- * conversation / task signals read from internal state in the voice-chat-
- * candidate module, which we drive through the real `startVoiceChatCandidate$`
- * happy path with MSW-stubbed endpoints + a stubbed WebRTC peer.
+ * conversation / task signals read from internal state in the voice-chat
+ * module, which we drive through the real `startVoiceChat$` happy path with
+ * MSW-stubbed endpoints + a stubbed WebRTC peer.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -24,9 +24,9 @@ import { testContext } from "../../__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import { detach, Reason } from "../../utils.ts";
 import {
-  startVoiceChatCandidate$,
-  vccStatus$,
-} from "../../voice-chat-candidate/voice-chat-candidate-session.ts";
+  startVoiceChat$,
+  voiceChatStatus$,
+} from "../../voice-chat/voice-chat-session.ts";
 import { trinityEnabled$ } from "../../external/feature-switch.ts";
 import {
   agentChatVoiceMode$,
@@ -105,7 +105,7 @@ function taskPayload(overrides: {
   };
 }
 
-function mockCandidateEndpoints(options: {
+function mockVoiceChatEndpoints(options: {
   tasks: ReturnType<typeof taskPayload>[];
 }) {
   server.use(
@@ -233,11 +233,11 @@ async function driveSession(
     withoutRender: true,
     featureSwitches: { trinity: true },
   });
-  mockCandidateEndpoints({ tasks });
+  mockVoiceChatEndpoints({ tasks });
   const dcRef: { current: FakeDC | null } = { current: null };
   stubWebRTC(dcRef);
   detach(
-    context.store.set(startVoiceChatCandidate$, AGENT_ID, context.signal),
+    context.store.set(startVoiceChat$, AGENT_ID, context.signal),
     Reason.DomCallback,
   );
   await vi.waitFor(() => {
@@ -245,7 +245,7 @@ async function driveSession(
   });
   dcRef.current?.emitOpen();
   await vi.waitFor(() => {
-    expect(context.store.get(vccStatus$)).toBe("connected");
+    expect(context.store.get(voiceChatStatus$)).toBe("connected");
   });
 }
 

@@ -7,9 +7,9 @@ import {
 } from "../../signals/agent-chat.ts";
 import { Markdown } from "../components/markdown.tsx";
 import {
-  vccStatus$,
-  vccError$,
-} from "../../signals/voice-chat-candidate/voice-chat-candidate-session.ts";
+  voiceChatStatus$,
+  voiceChatError$,
+} from "../../signals/voice-chat/voice-chat-session.ts";
 import {
   lastUserMessage$,
   lastAgentMessage$,
@@ -105,13 +105,13 @@ export function AgentTalkPage() {
     currentChatAgentDisplayName$,
   );
   const pageSignal = useGet(pageSignal$);
-  const vccStatus = useGet(vccStatus$);
-  const vccError = useGet(vccError$);
+  const voiceChatStatus = useGet(voiceChatStatus$);
+  const voiceChatError = useGet(voiceChatError$);
 
   const statusText = voiceStatusText(
-    vccStatus,
+    voiceChatStatus,
     currentChatAgentDisplayName ?? "Agent",
-    vccError !== null,
+    voiceChatError !== null,
   );
 
   return (

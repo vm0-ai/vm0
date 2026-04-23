@@ -11,7 +11,7 @@ import { accept } from "../../lib/accept.ts";
 import { resolveAudioConfig } from "../../lib/voice-io/audio-config.ts";
 import { logger } from "../log.ts";
 
-const L = logger("VoiceChatCandidate");
+const L = logger("VoiceChat");
 
 type ConnectionStatus =
   | "idle"
@@ -58,7 +58,7 @@ const internalLastAssistantMessage$ = state<string>("");
 
 // Bumped on every Ably tick (and manual refresh). Async computeds that need
 // to refetch server-side state depend on this counter.
-const vccReload$ = state<number>(0);
+const voiceChatReload$ = state<number>(0);
 
 const internalMuted$ = state<boolean>(false);
 const internalBargeInMode$ = state<BargeInMode>("speech_started");
@@ -80,46 +80,48 @@ const resetSessionSignal$ = resetSignal();
 // Exported computed getters
 // ---------------------------------------------------------------------------
 
-export const vccStatus$ = computed((get) => {
+export const voiceChatStatus$ = computed((get) => {
   return get(internalStatus$);
 });
 
-export const vccError$ = computed((get) => {
+export const voiceChatError$ = computed((get) => {
   return get(internalError$);
 });
 
-export const vccSessionId$ = computed((get) => {
+export const voiceChatSessionId$ = computed((get) => {
   return get(internalSessionId$);
 });
 
 /**
  * Active + recently-finished task feed for the Trinity sidebar. Refetches on
- * every Ably tick (via vccReload$). Returns [] until a session is live.
+ * every Ably tick (via voiceChatReload$). Returns [] until a session is live.
  */
-export const vccTaskFeed$ = computed(async (get): Promise<VoiceChatTask[]> => {
-  get(vccReload$);
-  const sid = get(internalSessionId$);
-  if (!sid) {
-    return [];
-  }
-  const createClient = get(zeroClient$);
-  const client = createClient(zeroVoiceChatContract);
-  const res = await accept(
-    client.listTasks({ params: { id: sid } }),
-    [200, 401, 404],
-    { toast: false },
-  );
-  if (res.status !== 200) {
-    return [];
-  }
-  return res.body.tasks;
-});
+export const voiceChatTaskFeed$ = computed(
+  async (get): Promise<VoiceChatTask[]> => {
+    get(voiceChatReload$);
+    const sid = get(internalSessionId$);
+    if (!sid) {
+      return [];
+    }
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroVoiceChatContract);
+    const res = await accept(
+      client.listTasks({ params: { id: sid } }),
+      [200, 401, 404],
+      { toast: false },
+    );
+    if (res.status !== 200) {
+      return [];
+    }
+    return res.body.tasks;
+  },
+);
 
-export const vccLastUserMessage$ = computed((get) => {
+export const voiceChatLastUserMessage$ = computed((get) => {
   return get(internalLastUserMessage$);
 });
 
-export const vccLastAssistantMessage$ = computed((get) => {
+export const voiceChatLastAssistantMessage$ = computed((get) => {
   return get(internalLastAssistantMessage$);
 });
 
@@ -562,9 +564,9 @@ const startAblyLoop$ = command(
         return true;
       }
       // One signal drives two things: bump the counter so async computeds
-      // (vccTaskFeed$) refetch, and push fresh instructions to the live DC
+      // (voiceChatTaskFeed$) refetch, and push fresh instructions to the live DC
       // session. Data is the server's truth — the browser caches nothing.
-      set(vccReload$, (n) => {
+      set(voiceChatReload$, (n) => {
         return n + 1;
       });
       await set(syncTalkerInstructions$, loopSignal);
@@ -576,7 +578,7 @@ const startAblyLoop$ = command(
 );
 
 // ---------------------------------------------------------------------------
-// Wake lock (parity with non-candidate voice-chat UX)
+// Wake lock
 // ---------------------------------------------------------------------------
 
 const MAX_WAKE_LOCK_REACQUIRE_ATTEMPTS = 3;
@@ -744,7 +746,7 @@ const monitorMicrophoneRecovery$ = command(
 // Public commands
 // ---------------------------------------------------------------------------
 
-export const startVoiceChatCandidate$ = command(
+export const startVoiceChat$ = command(
   async ({ get, set }, agentId: string, signal: AbortSignal) => {
     const status = get(internalStatus$);
     if (status === "connecting" || status === "connected") {
@@ -759,7 +761,7 @@ export const startVoiceChatCandidate$ = command(
     set(internalBargeInMode$, "speech_started");
     set(internalCurrentAssistantAudioItem$, null);
     set(internalSessionId$, null);
-    set(vccReload$, (n) => {
+    set(voiceChatReload$, (n) => {
       return n + 1;
     });
 
@@ -786,8 +788,8 @@ export const startVoiceChatCandidate$ = command(
     }
     const session = res.body.session;
     set(internalSessionId$, session.id);
-    // Bump so vccTaskFeed$ refetches with the new sessionId.
-    set(vccReload$, (n) => {
+    // Bump so voiceChatTaskFeed$ refetches with the new sessionId.
+    set(voiceChatReload$, (n) => {
       return n + 1;
     });
 
@@ -858,11 +860,11 @@ export const startVoiceChatCandidate$ = command(
 
 /**
  * Exit voice-chat mode: tear down the WebRTC / microphone / wake-lock /
- * Ably loop. The session row itself is left alone — voice-chat-candidate
- * sessions are stateless, so next time startVoiceChatCandidate$ runs with
- * the same (user, agent) it will resume this one via get-or-create.
+ * Ably loop. The session row itself is left alone — voice-chat sessions
+ * are stateless, so next time startVoiceChat$ runs with the same
+ * (user, agent) it will resume this one via get-or-create.
  */
-export const endVoiceChatCandidate$ = command(({ get, set }) => {
+export const endVoiceChat$ = command(({ get, set }) => {
   set(resetSessionSignal$);
   set(releaseWakeLock$);
 
@@ -899,8 +901,8 @@ export const endVoiceChatCandidate$ = command(({ get, set }) => {
   set(internalBargeInMode$, "speech_started");
   set(internalCurrentAssistantAudioItem$, null);
   set(internalStatus$, "idle");
-  // Bump so vccTaskFeed$ re-resolves to [] after sessionId is cleared.
-  set(vccReload$, (n) => {
+  // Bump so voiceChatTaskFeed$ re-resolves to [] after sessionId is cleared.
+  set(voiceChatReload$, (n) => {
     return n + 1;
   });
 });
