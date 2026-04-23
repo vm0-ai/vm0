@@ -28,14 +28,14 @@ describe("zeroVoiceChatContract", () => {
     }
   });
 
-  it("namespaces all routes under /api/zero/voice-chat-candidate", () => {
+  it("namespaces all routes under /api/zero/voice-chat", () => {
     const contract = zeroVoiceChatContract as unknown as Record<
       string,
       { path: string }
     >;
     for (const routeName of Object.keys(contract)) {
       expect(contract[routeName]?.path).toMatch(
-        /^\/api\/zero\/voice-chat-candidate(\/|$)/,
+        /^\/api\/zero\/voice-chat(\/|$)/,
       );
     }
   });
