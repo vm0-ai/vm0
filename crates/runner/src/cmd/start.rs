@@ -319,6 +319,7 @@ pub async fn run_start(
         http,
         log_paths,
         ip_log_map,
+        home: home.clone(),
     });
 
     let config = RunConfig {
@@ -2247,7 +2248,7 @@ mod tests {
             group: "test-group".into(),
             profiles,
             runtime,
-            home,
+            home: home.clone(),
             budget: Arc::new(ResourceBudget::new(
                 budget_vcpu,
                 budget_memory_mb,
@@ -2270,6 +2271,7 @@ mod tests {
                 http: crate::http::HttpClient::new(api_url.to_string()).unwrap(),
                 log_paths: crate::paths::LogPaths::new(log_dir),
                 ip_log_map: kmsg_log::new_ip_log_map(),
+                home,
             }),
             firecracker: config::FirecrackerConfig {
                 binary: PathBuf::new(),

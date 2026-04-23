@@ -20,7 +20,7 @@ use crate::error::{RunnerError, RunnerResult};
 use crate::http::HttpClient;
 use crate::idle_pool::IdleEntry;
 use crate::kmsg_log;
-use crate::paths::{LogPaths, guest};
+use crate::paths::{HomePaths, LogPaths, guest};
 use crate::proxy::{self, ProxyRegistryHandle};
 use crate::telemetry::JobTelemetry;
 use crate::types::{
@@ -35,6 +35,7 @@ pub struct ExecutorConfig {
     pub http: HttpClient,
     pub log_paths: LogPaths,
     pub ip_log_map: kmsg_log::IpLogMap,
+    pub home: HomePaths,
 }
 
 /// Per-job VM parameters resolved from the profile config.
@@ -410,13 +411,9 @@ async fn run_in_sandbox(
 
     // 3. Download storages (skipping entries unchanged since the previous turn)
     if let Some(manifest) = &context.storage_manifest {
-        let filtered;
-        let effective = match prev_storage {
-            Some(prev) => {
-                filtered = filter_unchanged_storages(manifest, prev);
-                &filtered
-            }
-            None => manifest,
+        let mut effective: StorageManifest = match prev_storage {
+            Some(prev) => filter_unchanged_storages(manifest, prev),
+            None => manifest.clone(),
         };
         // Short-circuit: skip the vsock exec if every entry was filtered out
         // and there are no paths to clean up.
@@ -428,7 +425,20 @@ async fn run_in_sandbox(
         }
         let t = Instant::now();
         let result = if has_work {
-            download_storages(sandbox, context, effective, &log_file).await
+            // Populate the runner-side cache first, rewriting eligible entries'
+            // `archive_url` to `file:///tmp/vm0-storage-cache/...` so the guest
+            // reads from its tmpfs instead of hitting R2 per turn.
+            match crate::storage_cache::populate_cache(
+                &mut effective,
+                sandbox,
+                &config.home,
+                telemetry,
+            )
+            .await
+            {
+                Ok(()) => download_storages(sandbox, context, &effective, &log_file).await,
+                Err(e) => Err(e),
+            }
         } else {
             Ok(())
         };
@@ -2331,6 +2341,7 @@ mod tests {
             http: crate::http::HttpClient::new("http://localhost:9999".into()).unwrap(),
             log_paths: LogPaths::new(log_dir),
             ip_log_map: kmsg_log::new_ip_log_map(),
+            home: HomePaths::with_root(dir.to_path_buf()),
         }
     }
 
