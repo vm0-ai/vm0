@@ -178,7 +178,7 @@ async function resolveFooterText(
 
   const parts: string[] = [];
   if (respondedBy) parts.push(respondedBy);
-  if (mentionerCount > 2) {
+  if (mentionerCount > 1) {
     const replyTo = await resolveReplyToMention(payload.connectionId);
     if (replyTo) parts.push(`Reply to ${replyTo}`);
   }
