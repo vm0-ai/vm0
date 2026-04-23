@@ -162,7 +162,11 @@ export const fetchZeroSchedules$ = command(
     }
 
     const client = get(zeroClient$)(zeroSchedulesMainContract);
-    const result = await accept(client.list(), [200], { toast: false });
+    const result = await accept(
+      client.list({ fetchOptions: { signal } }),
+      [200],
+      { toast: false },
+    );
     signal.throwIfAborted();
 
     // Filter schedules for this agent's composeId
@@ -417,13 +421,16 @@ export const allOrgScheduleEntries$ = computed((get) => {
 });
 
 export const fetchAllOrgSchedules$ = command(
-  async ({ get, set }, _signal: AbortSignal) => {
+  async ({ get, set }, signal: AbortSignal) => {
     const client = get(zeroClient$)(zeroSchedulesMainContract);
-    const result = await accept(client.list(), [200], { toast: false }).finally(
-      () => {
-        set(internalAllSchedulesLoaded$, true);
-      },
-    );
+    const result = await accept(
+      client.list({ fetchOptions: { signal } }),
+      [200],
+      { toast: false },
+    ).finally(() => {
+      set(internalAllSchedulesLoaded$, true);
+    });
+    signal.throwIfAborted();
     set(internalAllSchedules$, result.body.schedules);
   },
 );

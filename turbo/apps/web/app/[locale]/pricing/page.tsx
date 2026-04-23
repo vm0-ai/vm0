@@ -78,17 +78,22 @@ const faqItems = [
   {
     question: "Can I change plans at any time?",
     answer:
-      "Yes! You can upgrade or downgrade your plan at any time. Changes take effect immediately, and we'll prorate charges accordingly.",
+      "Yes! You can upgrade or downgrade your plan at any time. When you upgrade, leftover credits remain in your account with their original expiration date and are used first. Changes take effect immediately.",
   },
   {
     question: "What happens when I run out of credits?",
     answer:
-      "When your credits are depleted, your agents will stop running. You can purchase additional credits via auto-recharge, or upgrade to a higher plan for more monthly credits.",
+      "When your credits are depleted, your agents will stop running. You can purchase additional credits via auto-recharge, upgrade to a higher plan for more monthly credits, or buy pay-as-you-go credits that never expire.",
   },
   {
-    question: "Do unused credits roll over?",
+    question: "Do credits expire?",
     answer:
-      "On the Free plan, starter credits don't expire but don't replenish. On Pro, unused credits roll over for 1 month. On Team, credits roll over for 1 month.",
+      "Yes. Every credit has an expiration date. Free plan: 10,000 starter credits expire 1 month after signup and do not refresh. Pro/Team plans: credits are granted each billing cycle and expire 1 month after the billing date. Pay-as-you-go credits: never expire. Promotion credits: one-time credits with a set expiration date.",
+  },
+  {
+    question: "What happens to my credits when I upgrade?",
+    answer:
+      "When you upgrade (Free to Pro, or Pro to Team), leftover credits from your current plan remain in your account and are used first. They keep their original expiration date and expire as originally scheduled.",
   },
   {
     question: "Can I bring my own model provider?",
@@ -130,7 +135,7 @@ const pricingJsonLd = {
       priceCurrency: "USD",
       billingIncrement: "month",
       description:
-        "20,000 credits/month, 5 concurrent agents, priority support, credits rollover",
+        "20,000 credits/month, 2 concurrent agents, priority support, credits expire after 1 month",
     },
     {
       "@type": "Offer",
@@ -139,7 +144,7 @@ const pricingJsonLd = {
       priceCurrency: "USD",
       billingIncrement: "month",
       description:
-        "120,000 credits/month, 20 concurrent agents, dedicated support, team management",
+        "120,000 credits/month, 5 concurrent agents, dedicated support, team management",
     },
   ],
 };
