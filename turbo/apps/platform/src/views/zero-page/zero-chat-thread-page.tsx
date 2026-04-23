@@ -445,11 +445,10 @@ function ChatThreadComposer({
                   onChange: setModelSelection,
                   sessionProviderType:
                     threadData?.latestSessionProviderType ?? null,
-                  // Lock once the thread has stored values — mirrors the
-                  // backend guard in rejectIfThreadModelLocked.
-                  disabled: Boolean(
-                    threadData?.modelProviderId && threadData?.selectedModel,
-                  ),
+                  // Lock as soon as the thread has any messages — provider
+                  // must stay consistent within a session to maintain
+                  // continuity.
+                  disabled: hasMessages,
                   agentDefault: agentModelDefault,
                 }
               : undefined
