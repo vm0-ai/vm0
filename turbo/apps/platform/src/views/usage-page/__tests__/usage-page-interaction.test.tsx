@@ -11,41 +11,44 @@ import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { setMockUsageInsight } from "../../../mocks/handlers/api-usage-insight.ts";
 import { resetAllMockHandlers } from "../../../mocks/handlers/index.ts";
 import { server } from "../../../mocks/server.ts";
-import { http, HttpResponse } from "msw";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import { zeroUsageInsightContract } from "@vm0/core";
 
 const context = testContext();
 
-const BASE_MOCK = {
-  buckets: [
-    {
-      ts: "2026-04-13 00:00:00",
-      series: { chat: 500, slack: 200 },
-      tokens: { chat: 1000, slack: 400 },
-    },
-  ],
-  schedules: [
-    {
-      scheduleId: "s1",
-      scheduleName: "My Schedule",
-      credits: 300,
-      tokens: 600,
-    },
-  ],
-  chats: [
-    {
-      threadId: "t1",
-      threadTitle: "Chat with Agent",
-      credits: 200,
-      tokens: 400,
-    },
-  ],
-  emailCredits: 100,
-  emailTokens: 200,
-  slackCredits: 200,
-  slackTokens: 400,
-  grandTotalCredits: 1300,
-  grandTotalTokens: 2600,
-};
+function baseMock() {
+  return {
+    buckets: [
+      {
+        ts: "2026-04-13 00:00:00",
+        series: { chat: 500, slack: 200 },
+        tokens: { chat: 1000, slack: 400 },
+      },
+    ],
+    schedules: [
+      {
+        scheduleId: "s1",
+        scheduleName: "My Schedule",
+        credits: 300,
+        tokens: 600,
+      },
+    ],
+    chats: [
+      {
+        threadId: "t1",
+        threadTitle: "Chat with Agent",
+        credits: 200,
+        tokens: 400,
+      },
+    ],
+    emailCredits: 100,
+    emailTokens: 200,
+    slackCredits: 200,
+    slackTokens: 400,
+    grandTotalCredits: 1300,
+    grandTotalTokens: 2600,
+  };
+}
 
 beforeEach(() => {
   resetAllMockHandlers();
@@ -53,7 +56,7 @@ beforeEach(() => {
 
 describe("/_/usage page - selector interactions", () => {
   it("renders with default selectors visible", async () => {
-    setMockUsageInsight(BASE_MOCK);
+    setMockUsageInsight(baseMock());
     detachedSetupPage({ context, path: "/_/usage" });
 
     await waitFor(() => {
@@ -69,7 +72,7 @@ describe("/_/usage page - selector interactions", () => {
 
   it("opens range selector and shows options", async () => {
     const user = userEvent.setup();
-    setMockUsageInsight(BASE_MOCK);
+    setMockUsageInsight(baseMock());
     detachedSetupPage({ context, path: "/_/usage" });
 
     await waitFor(() => {
@@ -83,7 +86,9 @@ describe("/_/usage page - selector interactions", () => {
     const sectionContainer = section.closest("div");
 
     // Find all selects within the section
-    const selects = sectionContainer ? within(sectionContainer).getAllByRole("combobox") : [];
+    const selects = sectionContainer
+      ? within(sectionContainer).getAllByRole("combobox")
+      : [];
     expect(selects.length).toBeGreaterThanOrEqual(1);
 
     // Click the first select (range) to open it
@@ -92,15 +97,21 @@ describe("/_/usage page - selector interactions", () => {
     // Options should appear
     await waitFor(() => {
       expect(screen.getByRole("option", { name: "Today" })).toBeInTheDocument();
-      expect(screen.getByRole("option", { name: "Yesterday" })).toBeInTheDocument();
-      expect(screen.getByRole("option", { name: "Last 7 days" })).toBeInTheDocument();
-      expect(screen.getByRole("option", { name: "Last 28 days" })).toBeInTheDocument();
+      expect(
+        screen.getByRole("option", { name: "Yesterday" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("option", { name: "Last 7 days" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("option", { name: "Last 28 days" }),
+      ).toBeInTheDocument();
     });
   });
 
   it("changes range from Today to Last 7 days", async () => {
     const user = userEvent.setup();
-    setMockUsageInsight(BASE_MOCK);
+    setMockUsageInsight(baseMock());
     detachedSetupPage({ context, path: "/_/usage" });
 
     await waitFor(() => {
@@ -112,7 +123,9 @@ describe("/_/usage page - selector interactions", () => {
     // Find the Usage Insights section and its selects
     const section = await screen.findByText("Usage Insights");
     const sectionContainer = section.closest("div");
-    const selects = sectionContainer ? within(sectionContainer).getAllByRole("combobox") : [];
+    const selects = sectionContainer
+      ? within(sectionContainer).getAllByRole("combobox")
+      : [];
 
     // Click first select (range) to open
     await user.click(selects[0]!);
@@ -122,14 +135,18 @@ describe("/_/usage page - selector interactions", () => {
 
     // The select trigger should now show "Last 7 days"
     await waitFor(() => {
-      const updatedSelects = sectionContainer ? within(sectionContainer).getAllByRole("combobox") : [];
-      expect(within(updatedSelects[0]!).getByText("Last 7 days")).toBeInTheDocument();
+      const updatedSelects = sectionContainer
+        ? within(sectionContainer).getAllByRole("combobox")
+        : [];
+      expect(
+        within(updatedSelects[0]!).getByText("Last 7 days"),
+      ).toBeInTheDocument();
     });
   });
 
   it("opens groupBy selector and shows options", async () => {
     const user = userEvent.setup();
-    setMockUsageInsight(BASE_MOCK);
+    setMockUsageInsight(baseMock());
     detachedSetupPage({ context, path: "/_/usage" });
 
     await waitFor(() => {
@@ -141,7 +158,9 @@ describe("/_/usage page - selector interactions", () => {
     // Find the Usage Insights section and its selects
     const section = await screen.findByText("Usage Insights");
     const sectionContainer = section.closest("div");
-    const selects = sectionContainer ? within(sectionContainer).getAllByRole("combobox") : [];
+    const selects = sectionContainer
+      ? within(sectionContainer).getAllByRole("combobox")
+      : [];
     expect(selects.length).toBeGreaterThanOrEqual(2);
 
     // Click second select (groupBy) to open it
@@ -149,14 +168,18 @@ describe("/_/usage page - selector interactions", () => {
 
     // Options should appear
     await waitFor(() => {
-      expect(screen.getByRole("option", { name: "By Source" })).toBeInTheDocument();
-      expect(screen.getByRole("option", { name: "By Agent" })).toBeInTheDocument();
+      expect(
+        screen.getByRole("option", { name: "By Source" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("option", { name: "By Agent" }),
+      ).toBeInTheDocument();
     });
   });
 
   it("changes groupBy from By Source to By Agent", async () => {
     const user = userEvent.setup();
-    setMockUsageInsight(BASE_MOCK);
+    setMockUsageInsight(baseMock());
     detachedSetupPage({ context, path: "/_/usage" });
 
     await waitFor(() => {
@@ -168,7 +191,9 @@ describe("/_/usage page - selector interactions", () => {
     // Find the Usage Insights section and its selects
     const section = await screen.findByText("Usage Insights");
     const sectionContainer = section.closest("div");
-    const selects = sectionContainer ? within(sectionContainer).getAllByRole("combobox") : [];
+    const selects = sectionContainer
+      ? within(sectionContainer).getAllByRole("combobox")
+      : [];
 
     // Click second select (groupBy) to open
     await user.click(selects[1]!);
@@ -178,14 +203,18 @@ describe("/_/usage page - selector interactions", () => {
 
     // The select trigger should now show "By Agent"
     await waitFor(() => {
-      const updatedSelects = sectionContainer ? within(sectionContainer).getAllByRole("combobox") : [];
-      expect(within(updatedSelects[1]!).getByText("By Agent")).toBeInTheDocument();
+      const updatedSelects = sectionContainer
+        ? within(sectionContainer).getAllByRole("combobox")
+        : [];
+      expect(
+        within(updatedSelects[1]!).getByText("By Agent"),
+      ).toBeInTheDocument();
     });
   });
 
   it("opens metric selector and shows options", async () => {
     const user = userEvent.setup();
-    setMockUsageInsight(BASE_MOCK);
+    setMockUsageInsight(baseMock());
     detachedSetupPage({ context, path: "/_/usage" });
 
     await waitFor(() => {
@@ -197,7 +226,9 @@ describe("/_/usage page - selector interactions", () => {
     // Find the Usage Insights section and its selects
     const section = await screen.findByText("Usage Insights");
     const sectionContainer = section.closest("div");
-    const selects = sectionContainer ? within(sectionContainer).getAllByRole("combobox") : [];
+    const selects = sectionContainer
+      ? within(sectionContainer).getAllByRole("combobox")
+      : [];
     expect(selects.length).toBeGreaterThanOrEqual(3);
 
     // Click third select (metric) to open it
@@ -205,14 +236,18 @@ describe("/_/usage page - selector interactions", () => {
 
     // Options should appear
     await waitFor(() => {
-      expect(screen.getByRole("option", { name: "Credits" })).toBeInTheDocument();
-      expect(screen.getByRole("option", { name: "Tokens" })).toBeInTheDocument();
+      expect(
+        screen.getByRole("option", { name: "Credits" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("option", { name: "Tokens" }),
+      ).toBeInTheDocument();
     });
   });
 
   it("changes metric from Credits to Tokens", async () => {
     const user = userEvent.setup();
-    setMockUsageInsight(BASE_MOCK);
+    setMockUsageInsight(baseMock());
     detachedSetupPage({ context, path: "/_/usage" });
 
     await waitFor(() => {
@@ -224,7 +259,9 @@ describe("/_/usage page - selector interactions", () => {
     // Find the Usage Insights section and its selects
     const section = await screen.findByText("Usage Insights");
     const sectionContainer = section.closest("div");
-    const selects = sectionContainer ? within(sectionContainer).getAllByRole("combobox") : [];
+    const selects = sectionContainer
+      ? within(sectionContainer).getAllByRole("combobox")
+      : [];
 
     // Click third select (metric) to open
     await user.click(selects[2]!);
@@ -234,8 +271,12 @@ describe("/_/usage page - selector interactions", () => {
 
     // The select trigger should now show "Tokens"
     await waitFor(() => {
-      const updatedSelects = sectionContainer ? within(sectionContainer).getAllByRole("combobox") : [];
-      expect(within(updatedSelects[2]!).getByText("Tokens")).toBeInTheDocument();
+      const updatedSelects = sectionContainer
+        ? within(sectionContainer).getAllByRole("combobox")
+        : [];
+      expect(
+        within(updatedSelects[2]!).getByText("Tokens"),
+      ).toBeInTheDocument();
     });
   });
 });
@@ -243,8 +284,10 @@ describe("/_/usage page - selector interactions", () => {
 describe("/_/usage page - error state", () => {
   it("shows error message when API fails", async () => {
     server.use(
-      http.get("*/api/zero/usage/insight", () => {
-        return HttpResponse.json({ error: "Internal server error" }, { status: 500 });
+      mockApi(zeroUsageInsightContract.get, ({ respond }) => {
+        return respond(500, {
+          error: { message: "Internal server error", code: "INTERNAL" },
+        });
       }),
     );
 
@@ -257,13 +300,13 @@ describe("/_/usage page - error state", () => {
     });
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("alert"),
-      ).toBeInTheDocument();
+      expect(screen.getByRole("alert")).toBeInTheDocument();
     });
 
     expect(
-      screen.getByText("Failed to load usage insights. Please try again later."),
+      screen.getByText(
+        "Failed to load usage insights. Please try again later.",
+      ),
     ).toBeInTheDocument();
   });
 });
@@ -301,7 +344,7 @@ describe("/_/usage page - empty state", () => {
 
 describe("/_/usage page - detail tabs", () => {
   it("switches from schedules to chats tab", async () => {
-    setMockUsageInsight(BASE_MOCK);
+    setMockUsageInsight(baseMock());
     detachedSetupPage({ context, path: "/_/usage" });
 
     await waitFor(() => {
@@ -316,8 +359,10 @@ describe("/_/usage page - detail tabs", () => {
     });
 
     // Click on Chats tab
-    const chatsTab = await screen.findByRole("tab", { name: "Chats" });
-    click(chatsTab);
+    const chatsTab = screen.getAllByRole("tab").find((el) => {
+      return /Chats/.test(el.textContent ?? "");
+    });
+    click(chatsTab!);
 
     await waitFor(() => {
       expect(screen.getByText("Chat with Agent")).toBeInTheDocument();
