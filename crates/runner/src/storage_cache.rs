@@ -5,8 +5,12 @@
 //! cache keyed by `(vasStorageName, vasVersionId)`. On hit, reads the cached
 //! tarball from disk and pushes it into the guest via vsock; on miss,
 //! downloads the archive from R2 into the cache first. Either way, the
-//! entry's `archive_url` is rewritten to `file:///tmp/vm0-storage-cache/<version>.tar.gz`
+//! entry's `archive_url` is rewritten to
+//! `file:///tmp/vm0-storage-cache/<hash(name)>-<hash(version)>.tar.gz`
 //! so `guest-download` reads from the local stage instead of re-fetching.
+//! Keying on both name and version keeps the guest file injective in the
+//! `(vasStorageName, vasVersionId)` pair — two entries that only differ in
+//! storage name cannot clobber each other on the guest tmpfs.
 //!
 //! Entries above [`CACHE_MAX_SIZE`], entries without a content key, and
 //! entries already marked `cached = true` (reuse-in-place from
@@ -24,6 +28,7 @@ use bytes::Bytes;
 use futures_util::stream::{self, StreamExt};
 use reqwest::Client;
 use sandbox::{ExecRequest, Sandbox};
+use sha2::{Digest, Sha256};
 use tokio::fs;
 use tracing::{debug, warn};
 
@@ -45,6 +50,25 @@ const GUEST_STAGE_DIR: &str = "/tmp/vm0-storage-cache";
 const HEAD_TIMEOUT: Duration = Duration::from_secs(10);
 const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(120);
 const MKDIR_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Guest-side filename for a cached archive.
+///
+/// Must be injective in `(name, version)`: two manifest entries that differ
+/// only in `vas_storage_name` but share `vas_version_id` end up at distinct
+/// `file://` URLs so the second `sandbox.write_file` does not clobber the
+/// first. The 16-hex-char prefix of SHA-256 matches the host-side
+/// `HomePaths::storage_cache_dir` hashing.
+fn guest_archive_path(name: &str, version: &str) -> String {
+    let name_hash = short_hex(name);
+    let version_hash = short_hex(version);
+    format!("{GUEST_STAGE_DIR}/{name_hash}-{version_hash}.tar.gz")
+}
+
+fn short_hex(s: &str) -> String {
+    let digest = Sha256::digest(s.as_bytes());
+    let prefix = digest.get(..8).unwrap_or(&digest);
+    hex::encode(prefix)
+}
 
 /// One manifest entry that passed the eligibility filter.
 #[derive(Clone)]
@@ -147,6 +171,12 @@ fn collect_targets(manifest: &StorageManifest) -> Vec<CacheTarget> {
         let Some(version) = s.vas_version_id.as_deref() else {
             continue;
         };
+        // Empty components would hash to the same fixed digest as every
+        // other empty component, collapsing distinct manifest entries into
+        // a shared cache slot. Treat them like missing keys: passthrough.
+        if name.is_empty() || version.is_empty() {
+            continue;
+        }
         out.push(CacheTarget {
             kind: TargetKind::Storage,
             index: i,
@@ -162,6 +192,12 @@ fn collect_targets(manifest: &StorageManifest) -> Vec<CacheTarget> {
         let Some(url) = a.archive_url.as_deref() else {
             continue;
         };
+        // `ArtifactEntry` keys are non-optional `String`, so an empty value
+        // is representable and must be skipped for the same reason as the
+        // storage branch above.
+        if a.vas_storage_name.is_empty() || a.vas_version_id.is_empty() {
+            continue;
+        }
         out.push(CacheTarget {
             kind: TargetKind::Artifact,
             index: i,
@@ -213,7 +249,7 @@ async fn process_one(
             RunnerError::Internal(format!("read cached {}: {e}", archive_path.display()))
         })?;
         touch_mtime(&cache_dir);
-        let guest_path = format!("{GUEST_STAGE_DIR}/{}.tar.gz", target.version);
+        let guest_path = guest_archive_path(&target.name, &target.version);
         sandbox.write_file(&guest_path, &bytes).await?;
         return Ok(TargetOutcome::Hit);
     }
@@ -263,7 +299,7 @@ async fn process_one(
     let t = Instant::now();
     let bytes = download_tarball(http, &target.archive_url).await?;
     write_to_cache(&cache_dir, &bytes).await?;
-    let guest_path = format!("{GUEST_STAGE_DIR}/{}.tar.gz", target.version);
+    let guest_path = guest_archive_path(&target.name, &target.version);
     sandbox.write_file(&guest_path, &bytes).await?;
 
     Ok(TargetOutcome::Miss {
@@ -344,6 +380,10 @@ async fn write_to_cache(cache_dir: &Path, bytes: &[u8]) -> RunnerResult<()> {
             let _ = fs::remove_dir_all(&staging).await;
             return Ok(());
         }
+        // Non-race error: clean up the staging dir ourselves so EXDEV /
+        // ENOSPC / EACCES leftovers don't accumulate between retries. The
+        // cleanup is best-effort — we still surface the original error.
+        let _ = fs::remove_dir_all(&staging).await;
         return Err(RunnerError::Internal(format!(
             "rename {} -> {}: {e}",
             staging.display(),
@@ -415,7 +455,10 @@ fn apply_outcome(
 /// a hard error (the caller made the right conservative choice) but is
 /// logged so a regression that breaks the invariant is visible.
 fn rewrite_url(manifest: &mut StorageManifest, target: &CacheTarget) {
-    let new_url = format!("file://{GUEST_STAGE_DIR}/{}.tar.gz", target.version);
+    let new_url = format!(
+        "file://{}",
+        guest_archive_path(&target.name, &target.version)
+    );
     let mut applied = false;
     match target.kind {
         TargetKind::Storage => {
@@ -514,7 +557,7 @@ mod tests {
 
         assert_eq!(
             manifest.storages[0].archive_url.as_deref(),
-            Some(format!("file://{GUEST_STAGE_DIR}/{version}.tar.gz").as_str())
+            Some(format!("file://{}", guest_archive_path(name, version)).as_str())
         );
         let ops = telemetry.pending_ops_snapshot();
         assert!(
@@ -564,7 +607,7 @@ mod tests {
 
         assert_eq!(
             manifest.storages[0].archive_url.as_deref(),
-            Some(format!("file://{GUEST_STAGE_DIR}/{version}.tar.gz").as_str())
+            Some(format!("file://{}", guest_archive_path(name, version)).as_str())
         );
 
         let ops = telemetry.pending_ops_snapshot();
@@ -709,7 +752,7 @@ mod tests {
 
         assert_eq!(
             manifest.storages[0].archive_url.as_deref(),
-            Some(format!("file://{GUEST_STAGE_DIR}/v2.tar.gz").as_str())
+            Some(format!("file://{}", guest_archive_path(name, "v2")).as_str())
         );
         // v2 cache retained; v1 cache untouched (only a GC branch would evict it).
         assert!(v2_dir.join("archive.tar.gz").exists());
@@ -747,7 +790,7 @@ mod tests {
 
         assert_eq!(
             manifest.artifacts[0].archive_url.as_deref(),
-            Some(format!("file://{GUEST_STAGE_DIR}/{version}.tar.gz").as_str())
+            Some(format!("file://{}", guest_archive_path(name, version)).as_str())
         );
     }
 
@@ -794,5 +837,104 @@ mod tests {
         assert_eq!(s, PathBuf::from("/var/lib/vm0-runner/storages/foo/v1.tmp"));
         // Same parent → atomic rename.
         assert_eq!(s.parent(), d.parent());
+    }
+
+    #[tokio::test]
+    async fn shared_version_distinct_names_get_distinct_guest_paths() {
+        // Regression guard: two manifest entries that share `vasVersionId`
+        // but differ in `vasStorageName` must resolve to distinct guest
+        // `file://` URLs. Before the host/guest key symmetrization, both
+        // entries collided on `{GUEST_STAGE_DIR}/{version}.tar.gz` and the
+        // second `sandbox.write_file` clobbered the first.
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+
+        let version = "v1";
+        let name_a = "storage-a";
+        let name_b = "storage-b";
+        for name in [name_a, name_b] {
+            let cache_dir = home.storage_cache_dir(name, version);
+            std::fs::create_dir_all(&cache_dir).unwrap();
+            std::fs::write(cache_dir.join("archive.tar.gz"), tarball_bytes()).unwrap();
+        }
+
+        let mut manifest = StorageManifest {
+            storages: vec![
+                StorageEntry {
+                    mount_path: format!("/mnt/{name_a}"),
+                    archive_url: Some("https://r2.example.com/ignored.tar.gz".into()),
+                    cached: false,
+                    vas_storage_name: Some(name_a.to_string()),
+                    vas_version_id: Some(version.to_string()),
+                },
+                StorageEntry {
+                    mount_path: format!("/mnt/{name_b}"),
+                    archive_url: Some("https://r2.example.com/ignored.tar.gz".into()),
+                    cached: false,
+                    vas_storage_name: Some(name_b.to_string()),
+                    vas_version_id: Some(version.to_string()),
+                },
+            ],
+            artifacts: Vec::new(),
+            cleanup_paths: Vec::new(),
+        };
+
+        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap();
+
+        let url_a = manifest.storages[0].archive_url.clone().unwrap();
+        let url_b = manifest.storages[1].archive_url.clone().unwrap();
+        assert_ne!(
+            url_a, url_b,
+            "same-version entries must get distinct guest URLs"
+        );
+        assert_eq!(
+            url_a,
+            format!("file://{}", guest_archive_path(name_a, version))
+        );
+        assert_eq!(
+            url_b,
+            format!("file://{}", guest_archive_path(name_b, version))
+        );
+    }
+
+    #[tokio::test]
+    async fn empty_key_components_are_passthrough() {
+        // Defensive guard: an artifact carries non-optional `String` keys,
+        // so an empty value is serde-representable. Hashing an empty string
+        // yields a fixed digest that every other empty-key entry would
+        // collide on, so we skip these rather than letting them share a
+        // cache slot.
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+
+        let original = "https://r2.example.com/nameless.tar.gz".to_string();
+        let mut manifest = StorageManifest {
+            storages: Vec::new(),
+            artifacts: vec![ArtifactEntry {
+                mount_path: "/mnt/nameless".into(),
+                archive_url: Some(original.clone()),
+                cached: false,
+                vas_storage_name: String::new(),
+                vas_version_id: String::new(),
+            }],
+            cleanup_paths: Vec::new(),
+        };
+
+        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap();
+
+        // archive_url untouched — the entry was skipped entirely.
+        assert_eq!(
+            manifest.artifacts[0].archive_url.as_deref(),
+            Some(original.as_str())
+        );
+        assert!(telemetry.pending_ops_snapshot().is_empty());
     }
 }
