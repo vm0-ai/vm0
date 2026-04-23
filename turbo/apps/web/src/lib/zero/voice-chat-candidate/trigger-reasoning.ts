@@ -10,10 +10,7 @@ import {
   appendVoiceChatCandidateItem,
   readVoiceChatCandidateItems,
 } from "./item-service";
-import {
-  createVoiceChatCandidateTask,
-  listSessionTasks,
-} from "./task-service";
+import { createVoiceChatCandidateTask, listSessionTasks } from "./task-service";
 import { callReasoner } from "./reasoner";
 import { compactVoiceChatCandidateTaskResults } from "./compact-task-results";
 import { buildSlowBrainAppendSystemPrompt } from "./build-slow-brain-prompt";
