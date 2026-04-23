@@ -244,6 +244,9 @@ async function setup() {
 
 describe("voice-chat-candidate session", () => {
   const dcRef: { current: FakeDC | null } = { current: null };
+  const audioRef: {
+    current: { pause: ReturnType<typeof vi.fn>; currentTime: number } | null;
+  } = { current: null };
 
   function stubWebRTC() {
     const mediaStreamStub = {
@@ -333,7 +336,12 @@ describe("voice-chat-candidate session", () => {
     class FakeAudio {
       autoplay = false;
       srcObject: unknown = null;
+      currentTime = 0;
       pause = vi.fn();
+
+      constructor() {
+        audioRef.current = this;
+      }
     }
     vi.stubGlobal("Audio", FakeAudio);
 
@@ -351,6 +359,7 @@ describe("voice-chat-candidate session", () => {
       configurable: true,
     });
     dcRef.current = null;
+    audioRef.current = null;
     vi.unstubAllGlobals();
   }
 
@@ -505,6 +514,42 @@ describe("voice-chat-candidate session", () => {
         expect(appendCalls).toHaveLength(1);
       });
       expect(appendCalls[0]?.realtimeItemId).toBe("resp-2:8");
+    });
+
+    it("truncates the current assistant audio when user speech starts", async () => {
+      await setup();
+      await startSuccessfully();
+
+      dcRef.current?.send.mockClear();
+      if (!audioRef.current) {
+        throw new Error("audio not initialized");
+      }
+      audioRef.current.currentTime = 12.345;
+
+      dcRef.current?.emitMessage({
+        type: "conversation.item.created",
+        item: {
+          id: "rt-asst-live",
+          type: "message",
+          role: "assistant",
+        },
+      });
+
+      audioRef.current.currentTime = 13.579;
+      dcRef.current?.emitMessage({
+        type: "input_audio_buffer.speech_started",
+      });
+
+      expect(audioRef.current.pause).toHaveBeenCalledTimes(1);
+      expect(dcRef.current?.send).toHaveBeenCalledTimes(1);
+      expect(
+        JSON.parse(dcRef.current?.send.mock.calls[0]?.[0] as string),
+      ).toStrictEqual({
+        type: "conversation.item.truncate",
+        item_id: "rt-asst-live",
+        content_index: 0,
+        audio_end_ms: 1234,
+      });
     });
   });
 
