@@ -35,6 +35,7 @@ import { jotform } from "./connectors/jotform";
 import { klaviyo } from "./connectors/klaviyo";
 import { kommo } from "./connectors/kommo";
 import { line } from "./connectors/line";
+import { lovart } from "./connectors/lovart";
 import { loops } from "./connectors/loops";
 import { make } from "./connectors/make";
 import { mem0 } from "./connectors/mem0";
@@ -296,6 +297,7 @@ const CONNECTOR_TYPES_DEF = {
   ...klaviyo,
   ...kommo,
   ...line,
+  ...lovart,
   ...loops,
   ...make,
   ...mem0,
