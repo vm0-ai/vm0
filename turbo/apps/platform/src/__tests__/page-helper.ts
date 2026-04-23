@@ -37,7 +37,13 @@ export async function setupPage(options: {
   } | null;
   session?: { token: string } | null;
   org?: {
-    activeOrg?: { id: string; name: string } | null;
+    activeOrg?: {
+      id: string;
+      name: string;
+      slug?: string;
+      imageUrl?: string;
+      hasImage?: boolean;
+    } | null;
     memberships?: MockedMembership[];
     pendingInvitations?: MockedInvitation[];
   };

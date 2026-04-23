@@ -120,6 +120,23 @@ describe("org general tab - display", () => {
   // ORG-D-013
   it("logo upload preview is shown after selecting a file", async () => {
     const user = userEvent.setup();
+    // Happy-dom does not decode image bytes, so `new Image()` never fires
+    // `load` with real dimensions. Stub Image so readImageDimensions resolves
+    // with an in-range size (100–4096 px) that the upload handler accepts.
+    class FakeImage {
+      naturalWidth = 512;
+      naturalHeight = 512;
+      private listeners: Record<string, () => void> = {};
+      addEventListener(event: string, cb: () => void) {
+        this.listeners[event] = cb;
+      }
+      set src(_value: string) {
+        queueMicrotask(() => {
+          this.listeners.load?.();
+        });
+      }
+    }
+    vi.stubGlobal("Image", FakeImage);
     vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:mock-preview");
     vi.spyOn(URL, "revokeObjectURL").mockReturnValue(undefined);
     setMockOrg({ slug: "test-org", name: "Test Org" });
