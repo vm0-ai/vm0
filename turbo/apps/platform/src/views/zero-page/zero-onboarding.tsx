@@ -777,7 +777,9 @@ function OnboardingIllustrationPanel() {
   const showChat = stepKey === "workspace";
 
   return (
-    <div className="hidden lg:flex w-2/5 shrink-0 flex-col p-10 relative">
+    <div
+      className={`hidden lg:flex w-2/5 shrink-0 flex-col items-center p-10 relative overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${showChat ? "" : "justify-center"}`}
+    >
       {/* Decorative circles (non-orbit, non-chat steps) */}
       {!showOrbit && !showChat && (
         <div className="absolute inset-0 pointer-events-none" aria-hidden>
@@ -788,9 +790,7 @@ function OnboardingIllustrationPanel() {
         </div>
       )}
 
-      <div
-        className={`relative z-10 flex flex-1 min-h-0 flex-col items-center overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${showChat ? "" : "justify-center"}`}
-      >
+      <div className="relative z-10 flex flex-col items-center">
         {showChat ? (
           <ChatPreview />
         ) : showOrbit ? (
@@ -824,8 +824,7 @@ function OnboardingIllustrationPanel() {
         )}
       </div>
 
-      {/* Account dropdown — bottom of left panel, in flow */}
-      <div className="shrink-0 self-start -ml-6 mt-4 z-20">
+      <div className="shrink-0 self-start mt-4 z-20">
         <OnboardingAccountDropdown />
       </div>
     </div>
