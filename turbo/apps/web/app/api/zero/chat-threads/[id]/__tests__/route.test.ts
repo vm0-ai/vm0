@@ -331,6 +331,85 @@ describe("GET /api/zero/chat-threads/:id - Get Thread Detail", () => {
       expect(row.content).not.toContain("Run timed out");
     }
   });
+
+  it("returns activeRuns with live status for non-terminal runs", async () => {
+    // Setup: a thread with one queued run and one running run.
+    // A completed run on the same thread is expected to be excluded.
+    const createRes = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testComposeId, title: "Active runs" }),
+      }),
+    );
+    const { id: threadId } = await createRes.json();
+
+    const { runId: queuedRunId } = await seedTestRun(
+      testUserId,
+      testComposeId,
+      { status: "queued", prompt: "queued prompt" },
+    );
+    const { runId: runningRunId } = await seedTestRun(
+      testUserId,
+      testComposeId,
+      { status: "running", prompt: "running prompt" },
+    );
+    const { runId: doneRunId } = await seedTestRun(testUserId, testComposeId, {
+      status: "completed",
+      prompt: "done prompt",
+    });
+    await addTestRunToThread(threadId, queuedRunId, testUserId);
+    await addTestRunToThread(threadId, runningRunId, testUserId);
+    await addTestRunToThread(threadId, doneRunId, testUserId);
+
+    const response = await GET(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads/${threadId}`,
+      ),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    const byStatus = new Map<string, string>();
+    for (const r of data.activeRuns as { id: string; status: string }[]) {
+      byStatus.set(r.status, r.id);
+    }
+    expect(byStatus.get("queued")).toBe(queuedRunId);
+    expect(byStatus.get("running")).toBe(runningRunId);
+    expect(data.activeRuns).toHaveLength(2);
+    // Back-compat: activeRunIds still present and matches the same set
+    expect(new Set(data.activeRunIds)).toEqual(
+      new Set([queuedRunId, runningRunId]),
+    );
+  });
+
+  it("returns empty activeRuns when all runs are terminal", async () => {
+    const createRes = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testComposeId, title: "All done" }),
+      }),
+    );
+    const { id: threadId } = await createRes.json();
+
+    const { runId } = await seedTestRun(testUserId, testComposeId, {
+      status: "completed",
+      prompt: "done",
+    });
+    await addTestRunToThread(threadId, runId, testUserId);
+
+    const response = await GET(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads/${threadId}`,
+      ),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.activeRuns).toEqual([]);
+    expect(data.activeRunIds).toEqual([]);
+  });
 });
 
 describe("DELETE /api/zero/chat-threads/:id - Delete Thread", () => {

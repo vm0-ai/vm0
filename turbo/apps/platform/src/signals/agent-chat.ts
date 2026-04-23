@@ -67,6 +67,11 @@ export interface ChatThread {
    */
   latestSessionProviderType: ModelProviderType | null;
   activeRunIds: string[];
+  /**
+   * Active (non-terminal) runs with live status. Source of truth for the
+   * queued/running distinction — `activeRunIds` is derived from these ids.
+   */
+  activeRuns: { id: string; status: string }[];
   isLegacySession: boolean;
   draftContent: string | null;
   draftAttachments: PersistedAttachment[] | null;
@@ -101,6 +106,7 @@ export const currentChatThread$ = computed(
       latestSessionId: body.latestSessionId ?? null,
       latestSessionProviderType: body.latestSessionProviderType ?? null,
       activeRunIds: body.activeRunIds,
+      activeRuns: body.activeRuns ?? [],
       isLegacySession: false,
       draftContent: body.draftContent ?? null,
       draftAttachments: body.draftAttachments ?? null,

@@ -123,6 +123,14 @@ const chatThreadDetailSchema = z.object({
    */
   latestSessionProviderType: modelProviderTypeSchema.nullable().optional(),
   activeRunIds: z.array(z.string()),
+  /**
+   * Active (non-terminal) runs attached to this thread, with live status.
+   * Lets the UI distinguish queued runs from running runs without an extra
+   * API call. Optional for back-compat with fixtures that predate the field.
+   */
+  activeRuns: z
+    .array(z.object({ id: z.string(), status: z.string() }))
+    .optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
   draftContent: z.string().nullable().optional(),

@@ -169,6 +169,7 @@ export interface ChatThreadSignals {
   // ── Paged messages (sole rendering path) ─────────────────────────────────
   latestChatMessageId$: Computed<Promise<string | undefined>>;
   groupedChatMessages$: Computed<Promise<GroupedChatMessageGroup[]>>;
+  latestRunStatus$: Computed<Promise<string | null>>;
   allFinished$: Computed<Promise<boolean>>;
   fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>;
   loadPagedMessages$: Command<Promise<void>, [AbortSignal]>;
@@ -201,6 +202,7 @@ function createThreadData(threadId: string) {
       latestSessionId: body.latestSessionId ?? null,
       latestSessionProviderType: body.latestSessionProviderType ?? null,
       activeRunIds: body.activeRunIds,
+      activeRuns: body.activeRuns ?? [],
       isLegacySession: false,
       draftContent: body.draftContent ?? null,
       draftAttachments: body.draftAttachments ?? null,
@@ -1109,6 +1111,15 @@ function createChatThreadSignals(
   const { blockColors$, rotatingPhrase$, donePhrase$, runPhraseLoop$ } =
     createPhraseLoop(groupedChatMessages$, allFinished$);
 
+  // Status of the currently-active run, sourced from threadData$.activeRuns.
+  // `chatThreadRunUpdated` Ably events trigger reloadThread$, so this signal
+  // flips from "queued" → "running" as soon as the run is dispatched. Null
+  // once the run enters a terminal state and drops out of activeRuns.
+  const latestRunStatus$ = computed(async (get): Promise<string | null> => {
+    const thread = await get(threadData$);
+    return thread?.activeRuns[0]?.status ?? null;
+  });
+
   return {
     threadData$,
     modelSelection$,
@@ -1137,6 +1148,7 @@ function createChatThreadSignals(
     scheduleDraftSync$,
     latestChatMessageId$,
     groupedChatMessages$,
+    latestRunStatus$,
     allFinished$,
     fetchNextPage$,
     loadPagedMessages$,

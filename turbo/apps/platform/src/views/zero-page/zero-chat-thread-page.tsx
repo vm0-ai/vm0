@@ -52,6 +52,7 @@ import {
   chatShortcutHelpOpen$,
   setChatShortcutHelpOpen$,
 } from "../../signals/chat-page/chat-shortcut-help.ts";
+import { openQueueDrawer$ } from "../../signals/queue-page/queue-drawer-state.ts";
 import { ShortcutHelpDialog } from "../components/shortcut-help-dialog.tsx";
 
 import type {
@@ -514,8 +515,26 @@ function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
   const lastIsAssistant = lastGroup?.role === "assistant";
   const waitingForAssistant = !!lastGroup && !lastIsAssistant;
   const running = runActive || waitingForAssistant;
-  const label = useGet(thread.rotatingPhrase$);
+  const rotatingLabel = useGet(thread.rotatingPhrase$);
   const donePhrase = useGet(thread.donePhrase$);
+  const latestRunStatus = useLastResolved(thread.latestRunStatus$);
+  const isQueued = latestRunStatus === "queued";
+  const openQueueDrawer = useSet(openQueueDrawer$);
+
+  const thinkingLabel = isQueued ? (
+    <p className="zero-shimmer-text text-xs truncate">
+      Waiting in{" "}
+      <button
+        type="button"
+        onClick={openQueueDrawer}
+        className="cursor-pointer underline underline-offset-2"
+      >
+        queue...
+      </button>
+    </p>
+  ) : (
+    <p className="zero-shimmer-text text-xs truncate">{rotatingLabel}</p>
+  );
 
   if (!lastGroup) {
     return null;
@@ -537,7 +556,7 @@ function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
                 <span />
                 <span />
               </span>
-              <p className="zero-shimmer-text text-xs truncate">{label}</p>
+              {thinkingLabel}
             </div>
           ) : (
             <div className="flex flex-col gap-1.5 h-5 justify-center">
@@ -570,7 +589,7 @@ function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
               <span />
               <span />
             </span>
-            <p className="zero-shimmer-text text-xs truncate">{label}</p>
+            {thinkingLabel}
           </div>
         </div>
       </div>
