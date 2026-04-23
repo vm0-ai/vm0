@@ -125,7 +125,7 @@ describe("triggerReasoning", () => {
     expect(handler.mocked).toHaveBeenCalledTimes(1);
 
     expect(mockAblyPublish).toHaveBeenCalledWith(
-      `voice-chat-candidate:${sessionId}`,
+      `voice-chat:${sessionId}`,
       null,
     );
   });
@@ -345,7 +345,7 @@ describe("triggerReasoning", () => {
 
     // Ably signal published (for both the summary write and the missing-tasks step)
     expect(mockAblyPublish).toHaveBeenCalledWith(
-      `voice-chat-candidate:${sessionId}`,
+      `voice-chat:${sessionId}`,
       null,
     );
   });
@@ -518,7 +518,7 @@ describe("triggerReasoning — task compaction", () => {
     expect(task?.resultUpdatedAt).not.toBeNull();
 
     expect(mockAblyPublish).toHaveBeenCalledWith(
-      `voice-chat-candidate:${sessionId}`,
+      `voice-chat:${sessionId}`,
       null,
     );
   });

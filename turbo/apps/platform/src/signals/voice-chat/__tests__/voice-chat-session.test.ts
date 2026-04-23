@@ -893,7 +893,7 @@ describe("voice-chat session", () => {
           status: "running",
         }),
       ];
-      triggerAblyEvent(`voice-chat-candidate:${SESSION_ID}`);
+      triggerAblyEvent(`voice-chat:${SESSION_ID}`);
 
       await vi.waitFor(async () => {
         await expect(

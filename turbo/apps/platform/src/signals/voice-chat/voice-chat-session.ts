@@ -46,7 +46,7 @@ function shortPrompt(prompt: string, max = 60): string {
 }
 
 function ablyTopic(sessionId: string): string {
-  return `voice-chat-candidate:${sessionId}`;
+  return `voice-chat:${sessionId}`;
 }
 
 const internalStatus$ = state<ConnectionStatus>("idle");
