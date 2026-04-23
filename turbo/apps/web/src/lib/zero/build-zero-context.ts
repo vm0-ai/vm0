@@ -23,7 +23,10 @@ import type {
   AdditionalArtifact,
   AdditionalVolume,
 } from "../infra/storage/types";
-import { AUTO_MEMORY_MOUNT_PATH } from "../infra/storage/types";
+import {
+  AUTO_MEMORY_ARTIFACT_NAME,
+  AUTO_MEMORY_MOUNT_PATH,
+} from "../infra/storage/types";
 import { expandEnvironmentFromCompose } from "../infra/run/environment";
 import { getUserPreferences } from "./user/user-preferences-service";
 import { getApiTokenConnectorTypes } from "./connector/connector-service";
@@ -691,7 +694,7 @@ export async function buildZeroExecutionContext(
   // the runner mounts memory at AUTO_MEMORY_MOUNT_PATH so Claude Code finds
   // it without any in-sandbox symlink work.
   const memoryArtifacts: AdditionalArtifact[] = [
-    { name: "memory", mountPath: AUTO_MEMORY_MOUNT_PATH },
+    { name: AUTO_MEMORY_ARTIFACT_NAME, mountPath: AUTO_MEMORY_MOUNT_PATH },
   ];
 
   // Build final execution context

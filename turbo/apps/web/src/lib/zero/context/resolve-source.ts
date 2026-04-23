@@ -208,6 +208,10 @@ export function applyResolutionDefaults(
     agentComposeVersionId:
       params.agentComposeVersionId || resolution.agentComposeVersionId,
     agentCompose: resolution.agentCompose,
+    // Artifacts are resolution-only on purpose — when resuming a session the
+    // artifact name→version map is dictated by the checkpoint/session snapshot
+    // and must not be overridden by incoming run params, which don't carry
+    // artifacts at this entry point.
     artifacts: resolution.artifacts,
     vars: params.vars || resolution.vars,
     volumeVersions: params.volumeVersions || resolution.volumeVersions,
