@@ -41,6 +41,10 @@ import { Markdown } from "../components/markdown.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
 import { FileAttachmentChip, ImageLightbox } from "./zero-attachment-chips.tsx";
 import {
+  AttachmentPreview,
+  classifyChatAttachment,
+} from "./zero-attachment-preview.tsx";
+import {
   lightboxUrl$ as attachmentLightboxUrl$,
   setLightboxUrl$ as setAttachmentLightboxUrl$,
 } from "../../signals/zero-page/zero-attachment-chips.ts";
@@ -800,11 +804,18 @@ function resolveAttachments(
       ? message.attachFiles
       : parsed;
   return source.map((f) => {
+    const kind = classifyChatAttachment({
+      filename: f.filename,
+      url: f.url,
+      contentType: "contentType" in f ? f.contentType : undefined,
+    });
     return {
       filename: f.filename,
       url: f.url,
-      isImage: isImageFilename(f.filename),
-      isVideo: isVideoFilename(f.filename),
+      contentType: "contentType" in f ? f.contentType : undefined,
+      isImage: kind === "image" || isImageFilename(f.filename),
+      isVideo: kind === "video" || isVideoFilename(f.filename),
+      kind,
     };
   });
 }
@@ -902,6 +913,24 @@ function PagedUserMessage({
                         src={a.url}
                         controls
                         className="max-h-48 max-w-full rounded-lg border border-foreground/10"
+                      />
+                    );
+                  }
+                  if (
+                    a.kind === "markdown" ||
+                    a.kind === "text" ||
+                    a.kind === "json" ||
+                    a.kind === "pdf" ||
+                    a.kind === "html"
+                  ) {
+                    return (
+                      <AttachmentPreview
+                        key={a.url}
+                        attachment={{
+                          filename: a.filename,
+                          url: a.url,
+                          contentType: a.contentType,
+                        }}
                       />
                     );
                   }

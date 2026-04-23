@@ -17,6 +17,8 @@ export const EXT_MIMETYPE_MAP: Readonly<Record<string, string>> = {
   txt: "text/plain",
   csv: "text/csv",
   md: "text/markdown",
+  html: "text/html",
+  htm: "text/html",
   json: "application/json",
 };
 
