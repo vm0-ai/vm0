@@ -25,10 +25,6 @@ const defaultResponse: UsageInsightResponse = {
 
 let mockUsageInsightResponse: UsageInsightResponse = { ...defaultResponse };
 
-export function setMockUsageInsight(data: Partial<UsageInsightResponse>): void {
-  mockUsageInsightResponse = { ...defaultResponse, ...data };
-}
-
 export function resetMockUsageInsight(): void {
   mockUsageInsightResponse = { ...defaultResponse };
 }
