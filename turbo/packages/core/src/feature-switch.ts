@@ -328,6 +328,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Embed the candidate voice-chat mic toggle + voice-mode layout into the agent chat page. Gates the mic launcher, composer swap, and status/subtitle/task-card UI.",
     enabled: false,
   },
+  [FeatureSwitchKey.ZapierConnector]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Enable the Zapier connector. When disabled, Zapier is hidden from the connectors list and cannot be connected.",
+    enabled: false,
+  },
 };
 
 interface ResolvedHashes {
