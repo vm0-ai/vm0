@@ -24,8 +24,6 @@ import { sandboxReuseResultSchema } from "./webhooks";
 const zeroRunRequestSchema = unifiedRunRequestSchema
   .omit({
     triggerSource: true,
-    artifactName: true,
-    artifactVersion: true,
     artifacts: true,
     disallowedTools: true,
     volumeVersions: true,

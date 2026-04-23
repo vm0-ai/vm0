@@ -30,6 +30,7 @@ import { POST as checkpointWebhook } from "../../../webhooks/agent/checkpoints/r
 import { POST as completeWebhook } from "../../../webhooks/agent/complete/route";
 import { POST as pollRoute } from "../../../runners/poll/route";
 import type { AgentComposeYaml } from "../../../../../src/lib/infra/agent-compose/types";
+import { AUTO_MEMORY_MOUNT_PATH } from "../../../../../src/lib/infra/storage/types";
 import { createTestZeroAgent } from "../../../../../src/__tests__/db-test-seeders/agents";
 import { bindCustomSkillToAgent } from "../../../../../src/__tests__/db-test-seeders/skills";
 import {
@@ -85,13 +86,68 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(run.completedAt).toBeNull();
     });
 
-    it("should accept memoryName parameter", async () => {
-      const data = await createTestRun(testComposeId, "Test with memory", {
-        memoryName: "my-memory",
-      });
+    it("should accept memory as an artifact at the auto-memory mount path", async () => {
+      const memoryArtifact = uniqueId("my-memory");
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/runs",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentComposeId: testComposeId,
+            prompt: "Test with memory",
+            artifacts: [
+              { name: memoryArtifact, mountPath: AUTO_MEMORY_MOUNT_PATH },
+            ],
+          }),
+        },
+      );
+      const response = await POST(request);
+      const data = await response.json();
 
+      expect(response.status).toBe(201);
       expect(data.runId).toBeDefined();
       expect(data.status).toBe("pending");
+    });
+
+    it("should reject legacy memoryName body field with 400", async () => {
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/runs",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentComposeId: testComposeId,
+            prompt: "Legacy memoryName should be rejected",
+            memoryName: "legacy-field",
+          }),
+        },
+      );
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.error.code).toBe("BAD_REQUEST");
+    });
+
+    it("should reject legacy artifactName body field with 400", async () => {
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/runs",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentComposeId: testComposeId,
+            prompt: "Legacy artifactName should be rejected",
+            artifactName: "legacy-artifact",
+          }),
+        },
+      );
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.error.code).toBe("BAD_REQUEST");
     });
 
     it("should not inject agent identity (CLI path)", async () => {
@@ -1535,37 +1591,46 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
   });
 
   describe("Memory", () => {
-    it("should succeed when memory already exists (idempotent)", async () => {
+    it("should succeed when memory-as-artifact already exists (idempotent)", async () => {
       // Allow concurrent runs for this test
       vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "0");
       reloadEnv();
 
-      const memoryName = uniqueId("existing-mem");
-      // First run creates the memory
-      await createTestRun(testComposeId, "First run", { memoryName });
+      const memoryArtifact = uniqueId("existing-mem");
+      const memoryBody = {
+        agentComposeId: testComposeId,
+        artifacts: [
+          { name: memoryArtifact, mountPath: AUTO_MEMORY_MOUNT_PATH },
+        ],
+      };
+
+      // First run creates the memory artifact
+      const firstRequest = createTestRequest(
+        "http://localhost:3000/api/agent/runs",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...memoryBody, prompt: "First run" }),
+        },
+      );
+      const firstResponse = await POST(firstRequest);
+      expect(firstResponse.status).toBe(201);
 
       // Second run should also succeed (idempotent)
-      const data = await createTestRun(testComposeId, "Second run", {
-        memoryName,
-      });
+      const secondRequest = createTestRequest(
+        "http://localhost:3000/api/agent/runs",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...memoryBody, prompt: "Second run" }),
+        },
+      );
+      const secondResponse = await POST(secondRequest);
+      const data = await secondResponse.json();
+
+      expect(secondResponse.status).toBe(201);
       expect(data.runId).toBeDefined();
       expect(data.status).toBe("pending");
-    });
-
-    it("should persist memoryName on session row for continue flow resolution", async () => {
-      // Post-#10603: memoryName is stored on agent_sessions.memory_name by
-      // insertRunRecord, so a later continue-flow resolver can pull it back
-      // even when the continue request omits memoryName.
-      const initial = await createTestRun(testComposeId, "Initial run", {
-        memoryName: "restored-memory",
-      });
-      expect(initial.sessionId).toBeDefined();
-
-      const session = await getTestAgentSessionWithConversation(
-        initial.sessionId!,
-      );
-      expect(session).toBeDefined();
-      expect(session!.memoryName).toBe("restored-memory");
     });
   });
 
@@ -1580,7 +1645,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
           body: JSON.stringify({
             agentComposeId: testComposeId,
             prompt: "Test artifact auto-create",
-            artifactName,
+            artifacts: [{ name: artifactName, mountPath: "/mnt/work" }],
           }),
         },
       );
@@ -1603,7 +1668,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
           body: JSON.stringify({
             agentComposeId: testComposeId,
             prompt: "Test existing artifact",
-            artifactName,
+            artifacts: [{ name: artifactName, mountPath: "/mnt/work" }],
           }),
         },
       );
@@ -1658,43 +1723,6 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       });
       expect(names).toContain(artifactA);
       expect(names).toContain(artifactB);
-    });
-
-    it("should prefer body.artifacts over legacy artifactName when both are set", async () => {
-      const legacyName = uniqueId("legacy-art");
-      const newArtifact = uniqueId("new-art");
-      await createTestArtifact(legacyName);
-      await createTestArtifact(newArtifact);
-
-      const request = createTestRequest(
-        "http://localhost:3000/api/agent/runs",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            agentComposeId: testComposeId,
-            prompt: "Precedence test",
-            artifactName: legacyName,
-            artifacts: [{ name: newArtifact, mountPath: "/mnt/new" }],
-          }),
-        },
-      );
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(201);
-      expect(data.status).toBe("pending");
-
-      const job = await findTestRunnerJobEntry(data.runId);
-      expect(job).toBeDefined();
-      const artifacts = job!.executionContext.storageManifest!.artifacts;
-      // Only the multi-mount entry should be present; the legacy singleton
-      // is dropped when body.artifacts is non-empty.
-      const names = artifacts.map((a) => {
-        return a.vasStorageName;
-      });
-      expect(names).toContain(newArtifact);
-      expect(names).not.toContain(legacyName);
     });
   });
 
@@ -2004,8 +2032,10 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
           body: JSON.stringify({
             agentComposeId: testComposeId,
             prompt: "Storage org test",
-            artifactName: "artifact",
-            memoryName: "memory",
+            artifacts: [
+              { name: "artifact", mountPath: "/mnt/work" },
+              { name: "memory", mountPath: AUTO_MEMORY_MOUNT_PATH },
+            ],
           }),
         },
       );
@@ -2019,7 +2049,8 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       const run = await findTestRunRecord(data.runId);
       expect(run).toBeDefined();
 
-      // Verify artifact storage was created in the compose's org (user's default org)
+      // Both artifact entries (including the one mounted at the auto-memory
+      // path) auto-create storage in the compose's org (user's default org).
       const artifact = await findTestStorage(
         user.orgId,
         "artifact",
@@ -2028,10 +2059,6 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(artifact).toBeDefined();
       expect(artifact!.userId).toBe(user.userId);
 
-      // Verify memory storage was created in the compose's org. Post-#10602,
-      // memory flows through artifacts[] and is auto-created as type='artifact'
-      // (the legacy type='memory' branch was removed when infra folded memory
-      // into the artifacts pipeline).
       const memory = await findTestStorage(user.orgId, "memory", "artifact");
       expect(memory).toBeDefined();
       expect(memory!.userId).toBe(user.userId);

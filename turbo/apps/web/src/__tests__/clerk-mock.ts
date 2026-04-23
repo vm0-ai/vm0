@@ -65,6 +65,7 @@ export function mockClerk(options: {
   orgSlug?: string | null;
   orgRole?: string | null;
   clerkOrgs?: Array<{ id: string; slug: string; name: string; role?: string }>;
+  sessionClaims?: Record<string, unknown>;
 }) {
   const email = options.email ?? "test@example.com";
 
@@ -113,7 +114,7 @@ export function mockClerk(options: {
     orgId: effectiveOrgId,
     orgSlug: options.orgSlug,
     orgRole: options.orgRole ?? (effectiveOrgId ? "org:admin" : undefined),
-    sessionClaims: {},
+    sessionClaims: options.sessionClaims ?? {},
   } as Awaited<ReturnType<typeof auth>>);
 
   // Also set up clerkClient mock to return user data with email
@@ -122,6 +123,8 @@ export function mockClerk(options: {
       getUser: vi.fn().mockResolvedValue({
         emailAddresses: [{ id: "email_1", emailAddress: email }],
         primaryEmailAddressId: "email_1",
+        firstName: options.firstName ?? null,
+        lastName: options.lastName ?? null,
       }),
       getUserList: vi
         .fn()
