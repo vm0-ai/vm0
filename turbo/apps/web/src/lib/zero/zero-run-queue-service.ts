@@ -54,7 +54,9 @@ import { isConcurrentRunLimit, isInsufficientCredits } from "../shared/errors";
 import { logger } from "../shared/logger";
 import { publishOrgSignal } from "./realtime";
 import { publishChatThreadRunUpdated } from "./chat-thread/chat-message-service";
-import type { OrgTier, QueueResponse, TriggerSource } from "@vm0/core";
+import type { TriggerSource } from "@vm0/core/contracts/logs";
+import type { OrgTier } from "@vm0/core/contracts/orgs";
+import type { QueueResponse } from "@vm0/core/contracts/runs";
 
 const log = logger("zero:run-queue-service");
 

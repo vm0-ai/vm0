@@ -3,7 +3,7 @@ import {
   areProvidersCompatible,
   MODEL_PROVIDER_TYPES,
   type ModelProviderType,
-} from "@vm0/core";
+} from "@vm0/core/contracts/model-providers";
 import {
   agentComposeVersions,
   agentComposes,

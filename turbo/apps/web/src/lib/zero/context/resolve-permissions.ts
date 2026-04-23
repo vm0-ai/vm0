@@ -4,7 +4,7 @@ import {
   type ExpandedFirewallConfig,
   type FirewallPolicies,
   type NetworkPolicies,
-} from "@vm0/core";
+} from "@vm0/core/contracts/firewalls";
 
 /**
  * Filter secretConnectorMap by removing keys that are overridden by

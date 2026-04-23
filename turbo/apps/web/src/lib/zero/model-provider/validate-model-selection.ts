@@ -4,7 +4,7 @@ import {
   allowsCustomModel,
   getModels,
   type ModelProviderType,
-} from "@vm0/core";
+} from "@vm0/core/contracts/model-providers";
 import { modelProviders } from "../../../db/schema/model-provider";
 import { badRequest } from "../../shared/errors";
 

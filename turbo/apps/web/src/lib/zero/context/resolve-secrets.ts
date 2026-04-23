@@ -1,8 +1,6 @@
-import {
-  extractAndGroupVariables,
-  getConnectorProvidedSecretNames,
-  type ConnectorType,
-} from "@vm0/core";
+import { getConnectorProvidedSecretNames } from "@vm0/core/contracts/connector-utils";
+import type { ConnectorType } from "@vm0/core/contracts/connectors";
+import { extractAndGroupVariables } from "@vm0/core/variable-expander";
 import { logger } from "../../shared/logger";
 import { getSecretValues } from "../secret/secret-service";
 import { getVariableValues } from "../variable/variable-service";

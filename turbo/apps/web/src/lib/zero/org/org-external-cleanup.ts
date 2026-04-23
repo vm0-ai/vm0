@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { connectorTypeSchema } from "@vm0/core";
+import { connectorTypeSchema } from "@vm0/core/contracts/connectors";
 import { logger } from "../../shared/logger";
 import { getStripe } from "../stripe";
 import { deleteWebhook } from "../telegram/client";

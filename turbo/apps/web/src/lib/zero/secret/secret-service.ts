@@ -1,5 +1,5 @@
 import { eq, and } from "drizzle-orm";
-import { type SecretType } from "@vm0/core";
+import { type SecretType } from "@vm0/core/contracts/secrets";
 import { secrets } from "../../../db/schema/secret";
 import { encryptSecretValue, decryptSecretValue } from "../../shared/crypto";
 import { badRequest, notFound } from "../../shared/errors";

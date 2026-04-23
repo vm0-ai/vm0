@@ -2,7 +2,7 @@ import { eq, and } from "drizzle-orm";
 import {
   getAllBuiltinConnectorHosts,
   getBuiltinConnectorDisplayName,
-} from "@vm0/core";
+} from "@vm0/core/firewalls";
 import { orgCustomConnectors } from "../../../db/schema/org-custom-connector";
 import { orgCustomConnectorSecrets } from "../../../db/schema/org-custom-connector-secret";
 import { encryptSecretValue } from "../../shared/crypto";

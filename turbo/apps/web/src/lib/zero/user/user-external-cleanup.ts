@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { connectorTypeSchema } from "@vm0/core";
+import { connectorTypeSchema } from "@vm0/core/contracts/connectors";
 import { logger } from "../../shared/logger";
 import { revokeConnectorToken } from "../connector/connector-service";
 import { connectors } from "../../../db/schema/connector";
