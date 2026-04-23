@@ -19,6 +19,11 @@ import {
   enqueueTestRun,
   addTestRunToThread,
   insertTestChatThread,
+  insertTestUsagePricing,
+  insertTestUsageEvent,
+  findTestUsageEvent,
+  setOrgCredits,
+  getOrgCredits,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import { createTestEmailThreadSession } from "../../../../../../src/__tests__/db-test-seeders/email";
 import { generateReplyToken } from "../../../../../../src/lib/zero/email/handlers/shared";
@@ -1041,6 +1046,64 @@ describe("POST /api/webhooks/agent/complete", () => {
 
       const run = await findTestRunRecord(runId);
       expect(run!.status).toBe("completed");
+    });
+  });
+
+  // Terminal completion kicks processOrgUsageEvents() inside the after()
+  // block so connector-kind charges drain immediately instead of waiting
+  // up to a minute for the usage-event cron. The cron itself is tested
+  // in app/api/cron/process-usage-events/__tests__; this test verifies
+  // the inline wiring from the complete webhook.
+  describe("Usage event settlement", () => {
+    it("settles pending usage_event rows inline in the after() block", async () => {
+      await insertTestUsagePricing({
+        kind: "connector",
+        provider: "x",
+        category: "tweet.read",
+        unitPrice: 10,
+        unitSize: 1,
+      });
+      await setOrgCredits(user.orgId, 1000);
+
+      const eventId = await insertTestUsageEvent(user.orgId, {
+        userId: user.userId,
+        kind: "connector",
+        provider: "x",
+        category: "tweet.read",
+        quantity: 3,
+      });
+
+      const response = await POST(
+        createTestRequest("http://localhost:3000/api/webhooks/agent/complete", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            exitCode: 1,
+          }),
+        }),
+      );
+      expect(response.status).toBe(200);
+
+      // Before flushing after(): usage_event must still be pending,
+      // which proves the settlement runs in the after() block, not
+      // inside the request handler.
+      const beforeFlush = await findTestUsageEvent(eventId);
+      expect(beforeFlush!.status).toBe("pending");
+
+      await context.mocks.flushAfter();
+
+      const afterFlush = await findTestUsageEvent(eventId);
+      expect(afterFlush!.status).toBe("processed");
+      expect(afterFlush!.creditsCharged).toBe(30);
+      expect(afterFlush!.billingError).toBeNull();
+      expect(afterFlush!.processedAt).toBeInstanceOf(Date);
+
+      const credits = await getOrgCredits(user.orgId);
+      expect(credits).toBe(970);
     });
   });
 });
