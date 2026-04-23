@@ -2,10 +2,10 @@ import { eq, and } from "drizzle-orm";
 import type { VoiceChatCandidateTaskResultEntry } from "@vm0/core";
 import { initServices } from "../../lib/init-services";
 import {
-  featureCandidateVoiceChatItems,
-  featureCandidateVoiceChatSessions,
-  featureCandidateVoiceChatTasks,
-} from "../../db/schema/voice-chat-candidate";
+  voiceChatItems,
+  voiceChatSessions,
+  voiceChatTasks,
+} from "../../db/schema/voice-chat";
 
 /**
  * Read the full reasoning-related mutable state of a voice-chat-candidate
@@ -31,20 +31,17 @@ export async function getTestVoiceChatCandidateSessionReasoningState(
   initServices();
   const [row] = await globalThis.services.db
     .select({
-      conversationSummary:
-        featureCandidateVoiceChatSessions.conversationSummary,
-      workingTasksSummary:
-        featureCandidateVoiceChatSessions.workingTasksSummary,
-      finishedTasksSummary:
-        featureCandidateVoiceChatSessions.finishedTasksSummary,
-      summarySeq: featureCandidateVoiceChatSessions.summarySeq,
-      summaryVersion: featureCandidateVoiceChatSessions.summaryVersion,
-      reasoningStatus: featureCandidateVoiceChatSessions.reasoningStatus,
-      reasoningPending: featureCandidateVoiceChatSessions.reasoningPending,
-      lastSummaryAt: featureCandidateVoiceChatSessions.lastSummaryAt,
+      conversationSummary: voiceChatSessions.conversationSummary,
+      workingTasksSummary: voiceChatSessions.workingTasksSummary,
+      finishedTasksSummary: voiceChatSessions.finishedTasksSummary,
+      summarySeq: voiceChatSessions.summarySeq,
+      summaryVersion: voiceChatSessions.summaryVersion,
+      reasoningStatus: voiceChatSessions.reasoningStatus,
+      reasoningPending: voiceChatSessions.reasoningPending,
+      lastSummaryAt: voiceChatSessions.lastSummaryAt,
     })
-    .from(featureCandidateVoiceChatSessions)
-    .where(eq(featureCandidateVoiceChatSessions.id, id));
+    .from(voiceChatSessions)
+    .where(eq(voiceChatSessions.id, id));
   return row;
 }
 
@@ -63,11 +60,11 @@ export async function getTestVoiceChatCandidateSession(id: string): Promise<
   initServices();
   const [row] = await globalThis.services.db
     .select({
-      reasoningStatus: featureCandidateVoiceChatSessions.reasoningStatus,
-      lastSummaryAt: featureCandidateVoiceChatSessions.lastSummaryAt,
+      reasoningStatus: voiceChatSessions.reasoningStatus,
+      lastSummaryAt: voiceChatSessions.lastSummaryAt,
     })
-    .from(featureCandidateVoiceChatSessions)
-    .where(eq(featureCandidateVoiceChatSessions.id, id));
+    .from(voiceChatSessions)
+    .where(eq(voiceChatSessions.id, id));
   return row;
 }
 
@@ -82,12 +79,12 @@ export async function countTestVoiceChatCandidateSessionsByReasoningStatus(
 ): Promise<number> {
   initServices();
   const rows = await globalThis.services.db
-    .select({ id: featureCandidateVoiceChatSessions.id })
-    .from(featureCandidateVoiceChatSessions)
+    .select({ id: voiceChatSessions.id })
+    .from(voiceChatSessions)
     .where(
       and(
-        eq(featureCandidateVoiceChatSessions.orgId, orgId),
-        eq(featureCandidateVoiceChatSessions.reasoningStatus, reasoningStatus),
+        eq(voiceChatSessions.orgId, orgId),
+        eq(voiceChatSessions.reasoningStatus, reasoningStatus),
       ),
     );
   return rows.length;
@@ -111,12 +108,12 @@ export async function readTestVoiceChatCandidateItems(
   initServices();
   return globalThis.services.db
     .select({
-      role: featureCandidateVoiceChatItems.role,
-      content: featureCandidateVoiceChatItems.content,
-      seq: featureCandidateVoiceChatItems.seq,
+      role: voiceChatItems.role,
+      content: voiceChatItems.content,
+      seq: voiceChatItems.seq,
     })
-    .from(featureCandidateVoiceChatItems)
-    .where(eq(featureCandidateVoiceChatItems.sessionId, sessionId));
+    .from(voiceChatItems)
+    .where(eq(voiceChatItems.sessionId, sessionId));
 }
 
 /**
@@ -137,14 +134,14 @@ export async function getTestVoiceChatCandidateTask(id: string): Promise<
   initServices();
   const [row] = await globalThis.services.db
     .select({
-      result: featureCandidateVoiceChatTasks.result,
-      resultUpdatedAt: featureCandidateVoiceChatTasks.resultUpdatedAt,
-      status: featureCandidateVoiceChatTasks.status,
-      assistantMessages: featureCandidateVoiceChatTasks.assistantMessages,
-      error: featureCandidateVoiceChatTasks.error,
+      result: voiceChatTasks.result,
+      resultUpdatedAt: voiceChatTasks.resultUpdatedAt,
+      status: voiceChatTasks.status,
+      assistantMessages: voiceChatTasks.assistantMessages,
+      error: voiceChatTasks.error,
     })
-    .from(featureCandidateVoiceChatTasks)
-    .where(eq(featureCandidateVoiceChatTasks.id, id));
+    .from(voiceChatTasks)
+    .where(eq(voiceChatTasks.id, id));
   return row;
 }
 
@@ -159,13 +156,13 @@ export async function listTestVoiceChatCandidateTasks(
   initServices();
   return globalThis.services.db
     .select({
-      id: featureCandidateVoiceChatTasks.id,
-      prompt: featureCandidateVoiceChatTasks.prompt,
-      status: featureCandidateVoiceChatTasks.status,
-      callId: featureCandidateVoiceChatTasks.callId,
+      id: voiceChatTasks.id,
+      prompt: voiceChatTasks.prompt,
+      status: voiceChatTasks.status,
+      callId: voiceChatTasks.callId,
     })
-    .from(featureCandidateVoiceChatTasks)
-    .where(eq(featureCandidateVoiceChatTasks.sessionId, sessionId));
+    .from(voiceChatTasks)
+    .where(eq(voiceChatTasks.sessionId, sessionId));
 }
 
 /**
@@ -180,10 +177,10 @@ export async function listTestVoiceChatCandidateItems(
   initServices();
   return globalThis.services.db
     .select({
-      id: featureCandidateVoiceChatItems.id,
-      role: featureCandidateVoiceChatItems.role,
-      content: featureCandidateVoiceChatItems.content,
+      id: voiceChatItems.id,
+      role: voiceChatItems.role,
+      content: voiceChatItems.content,
     })
-    .from(featureCandidateVoiceChatItems)
-    .where(eq(featureCandidateVoiceChatItems.sessionId, sessionId));
+    .from(voiceChatItems)
+    .where(eq(voiceChatItems.sessionId, sessionId));
 }

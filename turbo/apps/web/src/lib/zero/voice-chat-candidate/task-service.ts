@@ -1,10 +1,10 @@
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import type { VoiceChatCandidateTaskResultEntry } from "@vm0/core";
 import {
-  featureCandidateVoiceChatItems,
-  featureCandidateVoiceChatSessions,
-  featureCandidateVoiceChatTasks,
-} from "../../../db/schema/voice-chat-candidate";
+  voiceChatItems,
+  voiceChatSessions,
+  voiceChatTasks,
+} from "../../../db/schema/voice-chat";
 import { type CreateZeroRunResult } from "../zero-run-service";
 import { cancelRun } from "../zero-run-cancel";
 import { isRunNotCancellable, notFound } from "../../shared/errors";
@@ -14,8 +14,8 @@ const log = logger("zero:voice-chat-candidate:task");
 
 type SpawnRun = (taskId: string) => Promise<CreateZeroRunResult>;
 
-type TaskRow = typeof featureCandidateVoiceChatTasks.$inferSelect;
-type ItemRow = typeof featureCandidateVoiceChatItems.$inferSelect;
+type TaskRow = typeof voiceChatTasks.$inferSelect;
+type ItemRow = typeof voiceChatItems.$inferSelect;
 
 export async function createVoiceChatCandidateTask(params: {
   sessionId: string;
@@ -29,7 +29,7 @@ export async function createVoiceChatCandidateTask(params: {
   // always locate a task by runId even if the callback beats the post-spawn
   // UPDATE.
   const [inserted] = await db
-    .insert(featureCandidateVoiceChatTasks)
+    .insert(voiceChatTasks)
     .values({
       sessionId: params.sessionId,
       callId: params.callId,
@@ -46,9 +46,9 @@ export async function createVoiceChatCandidateTask(params: {
 
   const nextStatus = result.status === "queued" ? "queued" : "pending";
   const [updated] = await db
-    .update(featureCandidateVoiceChatTasks)
+    .update(voiceChatTasks)
     .set({ runId: result.runId, status: nextStatus })
-    .where(eq(featureCandidateVoiceChatTasks.id, inserted.id))
+    .where(eq(voiceChatTasks.id, inserted.id))
     .returning();
 
   return updated ?? inserted;
@@ -69,8 +69,8 @@ export async function completeVoiceChatCandidateTask(params: {
   const outcome = await db.transaction(async (tx) => {
     const [taskRow] = await tx
       .select()
-      .from(featureCandidateVoiceChatTasks)
-      .where(eq(featureCandidateVoiceChatTasks.id, params.taskId))
+      .from(voiceChatTasks)
+      .where(eq(voiceChatTasks.id, params.taskId))
       .for("update")
       .limit(1);
 
@@ -80,8 +80,8 @@ export async function completeVoiceChatCandidateTask(params: {
 
     const [sessionRow] = await tx
       .select()
-      .from(featureCandidateVoiceChatSessions)
-      .where(eq(featureCandidateVoiceChatSessions.id, taskRow.sessionId))
+      .from(voiceChatSessions)
+      .where(eq(voiceChatSessions.id, taskRow.sessionId))
       .limit(1);
 
     if (!sessionRow) {
@@ -97,17 +97,17 @@ export async function completeVoiceChatCandidateTask(params: {
       // the task and emit a system note; the session itself stays put —
       // sessions are stateless containers in the candidate model.
       const [failedTask] = await tx
-        .update(featureCandidateVoiceChatTasks)
+        .update(voiceChatTasks)
         .set({
           status: "failed",
           error: "agent mismatch",
           finishedAt: now,
         })
-        .where(eq(featureCandidateVoiceChatTasks.id, taskRow.id))
+        .where(eq(voiceChatTasks.id, taskRow.id))
         .returning();
 
       const [noteItem] = await tx
-        .insert(featureCandidateVoiceChatItems)
+        .insert(voiceChatItems)
         .values({
           sessionId: taskRow.sessionId,
           role: "system_note",
@@ -154,20 +154,20 @@ export async function completeVoiceChatCandidateTask(params: {
       })
       .join("\n");
     const [completedTask] = await tx
-      .update(featureCandidateVoiceChatTasks)
+      .update(voiceChatTasks)
       .set({
         status: finalStatus,
-        assistantMessages: sql`${featureCandidateVoiceChatTasks.assistantMessages} || ${JSON.stringify(finalEntries)}::jsonb`,
+        assistantMessages: sql`${voiceChatTasks.assistantMessages} || ${JSON.stringify(finalEntries)}::jsonb`,
         result: consolidatedResult.length > 0 ? consolidatedResult : null,
         resultUpdatedAt: consolidatedResult.length > 0 ? now : null,
         error: params.error,
         finishedAt: now,
       })
-      .where(eq(featureCandidateVoiceChatTasks.id, taskRow.id))
+      .where(eq(voiceChatTasks.id, taskRow.id))
       .returning();
 
     const [resultItem] = await tx
-      .insert(featureCandidateVoiceChatItems)
+      .insert(voiceChatItems)
       .values({
         sessionId: taskRow.sessionId,
         role: "task_result",
@@ -209,11 +209,11 @@ async function listPendingVoiceChatCandidateTasks(
   const db = globalThis.services.db;
   return db
     .select()
-    .from(featureCandidateVoiceChatTasks)
+    .from(voiceChatTasks)
     .where(
       and(
-        eq(featureCandidateVoiceChatTasks.sessionId, sessionId),
-        inArray(featureCandidateVoiceChatTasks.status, ["pending", "queued"]),
+        eq(voiceChatTasks.sessionId, sessionId),
+        inArray(voiceChatTasks.status, ["pending", "queued"]),
       ),
     );
 }
@@ -222,9 +222,9 @@ export async function listSessionTasks(sessionId: string): Promise<TaskRow[]> {
   const db = globalThis.services.db;
   return db
     .select()
-    .from(featureCandidateVoiceChatTasks)
-    .where(eq(featureCandidateVoiceChatTasks.sessionId, sessionId))
-    .orderBy(desc(featureCandidateVoiceChatTasks.createdAt));
+    .from(voiceChatTasks)
+    .where(eq(voiceChatTasks.sessionId, sessionId))
+    .orderBy(desc(voiceChatTasks.createdAt));
 }
 
 /**
@@ -240,18 +240,14 @@ export async function listSessionTasksForCard(
   const db = globalThis.services.db;
   const active = await db
     .select()
-    .from(featureCandidateVoiceChatTasks)
+    .from(voiceChatTasks)
     .where(
       and(
-        eq(featureCandidateVoiceChatTasks.sessionId, sessionId),
-        inArray(featureCandidateVoiceChatTasks.status, [
-          "pending",
-          "queued",
-          "running",
-        ]),
+        eq(voiceChatTasks.sessionId, sessionId),
+        inArray(voiceChatTasks.status, ["pending", "queued", "running"]),
       ),
     )
-    .orderBy(featureCandidateVoiceChatTasks.createdAt);
+    .orderBy(voiceChatTasks.createdAt);
 
   if (recentFinishedLimit <= 0) {
     return active;
@@ -259,14 +255,14 @@ export async function listSessionTasksForCard(
 
   const finished = await db
     .select()
-    .from(featureCandidateVoiceChatTasks)
+    .from(voiceChatTasks)
     .where(
       and(
-        eq(featureCandidateVoiceChatTasks.sessionId, sessionId),
-        inArray(featureCandidateVoiceChatTasks.status, ["done", "failed"]),
+        eq(voiceChatTasks.sessionId, sessionId),
+        inArray(voiceChatTasks.status, ["done", "failed"]),
       ),
     )
-    .orderBy(desc(featureCandidateVoiceChatTasks.finishedAt))
+    .orderBy(desc(voiceChatTasks.finishedAt))
     .limit(recentFinishedLimit);
 
   return [...active, ...finished];
@@ -283,22 +279,22 @@ export async function markTaskRunningIfQueued(
 ): Promise<{ sessionId: string; userId: string } | null> {
   const db = globalThis.services.db;
   const [row] = await db
-    .update(featureCandidateVoiceChatTasks)
+    .update(voiceChatTasks)
     .set({ status: "running", startedAt: new Date() })
     .where(
       and(
-        eq(featureCandidateVoiceChatTasks.runId, runId),
-        inArray(featureCandidateVoiceChatTasks.status, ["pending", "queued"]),
+        eq(voiceChatTasks.runId, runId),
+        inArray(voiceChatTasks.status, ["pending", "queued"]),
       ),
     )
-    .returning({ sessionId: featureCandidateVoiceChatTasks.sessionId });
+    .returning({ sessionId: voiceChatTasks.sessionId });
 
   if (!row) return null;
 
   const [session] = await db
-    .select({ userId: featureCandidateVoiceChatSessions.userId })
-    .from(featureCandidateVoiceChatSessions)
-    .where(eq(featureCandidateVoiceChatSessions.id, row.sessionId))
+    .select({ userId: voiceChatSessions.userId })
+    .from(voiceChatSessions)
+    .where(eq(voiceChatSessions.id, row.sessionId))
     .limit(1);
 
   if (!session) return null;
@@ -317,28 +313,24 @@ export async function appendTaskAssistantResult(params: {
   if (params.entries.length === 0) return null;
   const db = globalThis.services.db;
   const [row] = await db
-    .update(featureCandidateVoiceChatTasks)
+    .update(voiceChatTasks)
     .set({
-      assistantMessages: sql`${featureCandidateVoiceChatTasks.assistantMessages} || ${JSON.stringify(params.entries)}::jsonb`,
+      assistantMessages: sql`${voiceChatTasks.assistantMessages} || ${JSON.stringify(params.entries)}::jsonb`,
     })
     .where(
       and(
-        eq(featureCandidateVoiceChatTasks.runId, params.runId),
-        inArray(featureCandidateVoiceChatTasks.status, [
-          "pending",
-          "queued",
-          "running",
-        ]),
+        eq(voiceChatTasks.runId, params.runId),
+        inArray(voiceChatTasks.status, ["pending", "queued", "running"]),
       ),
     )
-    .returning({ sessionId: featureCandidateVoiceChatTasks.sessionId });
+    .returning({ sessionId: voiceChatTasks.sessionId });
 
   if (!row) return null;
 
   const [session] = await db
-    .select({ userId: featureCandidateVoiceChatSessions.userId })
-    .from(featureCandidateVoiceChatSessions)
-    .where(eq(featureCandidateVoiceChatSessions.id, row.sessionId))
+    .select({ userId: voiceChatSessions.userId })
+    .from(voiceChatSessions)
+    .where(eq(voiceChatSessions.id, row.sessionId))
     .limit(1);
 
   if (!session) return null;

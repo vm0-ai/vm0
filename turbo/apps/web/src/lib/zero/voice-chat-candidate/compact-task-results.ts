@@ -1,6 +1,6 @@
 import "server-only";
 import { and, eq, inArray } from "drizzle-orm";
-import { featureCandidateVoiceChatTasks } from "../../../db/schema/voice-chat-candidate";
+import { voiceChatTasks } from "../../../db/schema/voice-chat";
 import { env } from "../../../env";
 import { publishUserSignal } from "../../infra/realtime/client";
 import { logger } from "../../shared/logger";
@@ -138,11 +138,11 @@ export async function compactVoiceChatCandidateTaskResults(
   const db = globalThis.services.db;
   const rows = await db
     .select()
-    .from(featureCandidateVoiceChatTasks)
+    .from(voiceChatTasks)
     .where(
       and(
-        eq(featureCandidateVoiceChatTasks.sessionId, sessionId),
-        inArray(featureCandidateVoiceChatTasks.status, ["done", "failed"]),
+        eq(voiceChatTasks.sessionId, sessionId),
+        inArray(voiceChatTasks.status, ["done", "failed"]),
       ),
     );
 
@@ -183,9 +183,9 @@ export async function compactVoiceChatCandidateTaskResults(
     if (compacted === null) continue;
 
     await db
-      .update(featureCandidateVoiceChatTasks)
+      .update(voiceChatTasks)
       .set({ result: compacted, resultUpdatedAt: new Date() })
-      .where(eq(featureCandidateVoiceChatTasks.id, row.id));
+      .where(eq(voiceChatTasks.id, row.id));
     compactedCount++;
   }
 

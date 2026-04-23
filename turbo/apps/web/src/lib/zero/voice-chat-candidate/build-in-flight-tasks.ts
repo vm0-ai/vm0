@@ -1,6 +1,6 @@
 import "server-only";
 import { and, asc, eq, inArray } from "drizzle-orm";
-import { featureCandidateVoiceChatTasks } from "../../../db/schema/voice-chat-candidate";
+import { voiceChatTasks } from "../../../db/schema/voice-chat";
 
 const ACTIVE_STATUSES = ["pending", "queued", "running"] as const;
 
@@ -16,14 +16,14 @@ export async function buildInFlightTasksText(
   const db = globalThis.services.db;
   const rows = await db
     .select()
-    .from(featureCandidateVoiceChatTasks)
+    .from(voiceChatTasks)
     .where(
       and(
-        eq(featureCandidateVoiceChatTasks.sessionId, sessionId),
-        inArray(featureCandidateVoiceChatTasks.status, [...ACTIVE_STATUSES]),
+        eq(voiceChatTasks.sessionId, sessionId),
+        inArray(voiceChatTasks.status, [...ACTIVE_STATUSES]),
       ),
     )
-    .orderBy(asc(featureCandidateVoiceChatTasks.createdAt));
+    .orderBy(asc(voiceChatTasks.createdAt));
 
   if (rows.length === 0) return "";
 

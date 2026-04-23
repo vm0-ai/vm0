@@ -2143,6 +2143,13 @@
       "when": 1776923396136,
       "tag": "0305_billing_error",
       "breakpoints": true
+    },
+    {
+      "idx": 306,
+      "version": "7",
+      "when": 1776939873298,
+      "tag": "0306_lame_vargas",
+      "breakpoints": true
     }
   ]
 }

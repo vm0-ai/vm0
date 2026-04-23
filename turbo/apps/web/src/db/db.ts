@@ -57,7 +57,7 @@ import * as insightsDailySchema from "./schema/insights-daily";
 import * as phoneUserLinkSchema from "./schema/phone-user-link";
 import * as phoneThreadSessionSchema from "./schema/phone-thread-session";
 import * as pendingOutboundCallSchema from "./schema/pending-outbound-call";
-import * as voiceChatCandidateSchema from "./schema/voice-chat-candidate";
+import * as voiceChatSchema from "./schema/voice-chat";
 import * as userFeatureSwitchesSchema from "./schema/user-feature-switches";
 import * as userBehaviorCountSchema from "./schema/user-behavior-count";
 import * as chatMessageSchema from "./schema/chat-message";
@@ -124,7 +124,7 @@ export const schema = {
   ...phoneUserLinkSchema,
   ...phoneThreadSessionSchema,
   ...pendingOutboundCallSchema,
-  ...voiceChatCandidateSchema,
+  ...voiceChatSchema,
   ...userFeatureSwitchesSchema,
   ...userBehaviorCountSchema,
   ...chatMessageSchema,

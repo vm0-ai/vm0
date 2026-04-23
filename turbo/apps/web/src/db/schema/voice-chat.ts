@@ -16,17 +16,16 @@ import { agentComposes } from "./agent-compose";
 import { agentRuns } from "./agent-run";
 
 /**
- * Candidate voice-chat sessions — lab-only, isolated from the stable
- * `voice_chat_sessions` table. Part of the Reasoner-based three-component
- * architecture (Talker / Reasoner / Task Run). See epic #10297.
+ * Voice-chat sessions backing the Reasoner-based three-component
+ * architecture (Talker / Reasoner / Task Run).
  *
  * Modes: chat (only supported value in v1 — meeting mode is out of scope).
  * Statuses: active → ended | timeout.
  * Reasoning statuses: idle | running — used with `reasoning_pending` for
  * the single-owner CAS lock that guards Reasoner tick concurrency.
  */
-export const featureCandidateVoiceChatSessions = pgTable(
-  "feature_candidate_voice_chat_sessions",
+export const voiceChatSessions = pgTable(
+  "voice_chat_sessions",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     orgId: text("org_id").notNull(),
@@ -59,10 +58,10 @@ export const featureCandidateVoiceChatSessions = pgTable(
   },
   (table) => {
     return [
-      index("idx_fc_voice_chat_sessions_user").on(table.userId, table.orgId),
+      index("idx_voice_chat_sessions_user").on(table.userId, table.orgId),
       // Supports the "latest session for (userId, agentId)" lookup performed
       // by createVoiceChatCandidateSession (get-or-create).
-      index("idx_fc_voice_chat_sessions_user_agent_created").on(
+      index("idx_voice_chat_sessions_user_agent_created").on(
         table.userId,
         table.agentId,
         table.createdAt,
@@ -72,7 +71,7 @@ export const featureCandidateVoiceChatSessions = pgTable(
 );
 
 /**
- * Append-only conversation log for candidate voice-chat sessions.
+ * Append-only conversation log for voice-chat sessions.
  *
  * Roles: user | assistant — browser-originated transcript turns.
  *        task_result — appended by the Task Run callback.
@@ -83,14 +82,14 @@ export const featureCandidateVoiceChatSessions = pgTable(
  * unique index is NULL-tolerant by Postgres default, so multiple server
  * rows with NULL id coexist while browser duplicates are rejected.
  */
-export const featureCandidateVoiceChatItems = pgTable(
-  "feature_candidate_voice_chat_items",
+export const voiceChatItems = pgTable(
+  "voice_chat_items",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     sessionId: uuid("session_id")
       .references(
         () => {
-          return featureCandidateVoiceChatSessions.id;
+          return voiceChatSessions.id;
         },
         { onDelete: "cascade" },
       )
@@ -105,11 +104,8 @@ export const featureCandidateVoiceChatItems = pgTable(
   },
   (table) => {
     return [
-      index("idx_fc_voice_chat_items_session_seq").on(
-        table.sessionId,
-        table.seq,
-      ),
-      uniqueIndex("uq_fc_voice_chat_items_session_realtime").on(
+      index("idx_voice_chat_items_session_seq").on(table.sessionId, table.seq),
+      uniqueIndex("uq_voice_chat_items_session_realtime").on(
         table.sessionId,
         table.realtimeItemId,
       ),
@@ -123,14 +119,14 @@ export const featureCandidateVoiceChatItems = pgTable(
  * `createZeroRun`. The row is inserted synchronously before the run is
  * created, so the callback can always locate the task by `call_id`.
  */
-export const featureCandidateVoiceChatTasks = pgTable(
-  "feature_candidate_voice_chat_tasks",
+export const voiceChatTasks = pgTable(
+  "voice_chat_tasks",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     sessionId: uuid("session_id")
       .references(
         () => {
-          return featureCandidateVoiceChatSessions.id;
+          return voiceChatSessions.id;
         },
         { onDelete: "cascade" },
       )
@@ -162,7 +158,7 @@ export const featureCandidateVoiceChatTasks = pgTable(
   },
   (table) => {
     return [
-      index("idx_fc_voice_chat_tasks_session_status_created").on(
+      index("idx_voice_chat_tasks_session_status_created").on(
         table.sessionId,
         table.status,
         table.createdAt,

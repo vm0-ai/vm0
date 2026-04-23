@@ -1,21 +1,21 @@
 import "server-only";
 import { and, desc, eq, inArray } from "drizzle-orm";
-import { featureCandidateVoiceChatTasks } from "../../../db/schema/voice-chat-candidate";
+import { voiceChatTasks } from "../../../db/schema/voice-chat";
 
-type TaskRow = typeof featureCandidateVoiceChatTasks.$inferSelect;
+type TaskRow = typeof voiceChatTasks.$inferSelect;
 
 async function loadFinishedTaskRows(sessionId: string): Promise<TaskRow[]> {
   const db = globalThis.services.db;
   return db
     .select()
-    .from(featureCandidateVoiceChatTasks)
+    .from(voiceChatTasks)
     .where(
       and(
-        eq(featureCandidateVoiceChatTasks.sessionId, sessionId),
-        inArray(featureCandidateVoiceChatTasks.status, ["done", "failed"]),
+        eq(voiceChatTasks.sessionId, sessionId),
+        inArray(voiceChatTasks.status, ["done", "failed"]),
       ),
     )
-    .orderBy(desc(featureCandidateVoiceChatTasks.finishedAt));
+    .orderBy(desc(voiceChatTasks.finishedAt));
 }
 
 function flattenAssistantEntries(row: TaskRow): string {
