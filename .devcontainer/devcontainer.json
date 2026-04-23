@@ -27,6 +27,7 @@
     "CRUSH_GLOBAL_CONFIG": "/home/vscode/.config/crush",
     "HISTFILE": "/home/vscode/.cache/.zsh_history",
     "DATABASE_URL": "postgresql://postgres:postgres@localhost:5432/postgres",
+    "NPM_CONFIG_PREFIX": "/home/vscode/.local",
 
     "CARGO_HOME": "/home/vscode/.cache/cargo",
     "PATH": "/home/vscode/.cache/cargo/bin:/home/vscode/.local/bin:${containerWorkspaceFolder}/bin:${containerEnv:PATH}",
