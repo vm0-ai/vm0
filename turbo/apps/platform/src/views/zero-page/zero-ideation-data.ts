@@ -643,11 +643,17 @@ export function getCategories(
   features?: Partial<Record<FeatureSwitchKey, boolean>>,
 ): readonly Category[] {
   return categories
-    .map((c) => ({
-      ...c,
-      cases: c.cases.filter((u) => isEnabled(u, features)),
-    }))
-    .filter((c) => c.cases.length > 0);
+    .map((c) => {
+      return {
+        ...c,
+        cases: c.cases.filter((u) => {
+          return isEnabled(u, features);
+        }),
+      };
+    })
+    .filter((c) => {
+      return c.cases.length > 0;
+    });
 }
 
 export function getRandomPrompts(
