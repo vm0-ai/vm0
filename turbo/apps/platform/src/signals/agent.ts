@@ -6,8 +6,10 @@
  * instead of reaching into individual signal files.
  */
 import { command, computed, type Computed, state } from "ccstate";
-import { zeroAgentsByIdContract } from "@vm0/core/contracts/zero-agents";
-import type { ZeroAgentResponse } from "@vm0/core/contracts/zero-agents";
+import {
+  zeroAgentsByIdContract,
+  type ZeroAgentResponse,
+} from "@vm0/core/contracts/zero-agents";
 import { zeroTeamContract } from "@vm0/core/contracts/zero-team";
 import { pathParams$ } from "./route.ts";
 import { activeRoute$ } from "./active-route.ts";

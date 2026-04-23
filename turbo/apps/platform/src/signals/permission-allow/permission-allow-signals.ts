@@ -5,9 +5,9 @@ import {
   permissionAccessRequestsResolveContract,
   zeroAgentPermissionPoliciesContract,
 } from "@vm0/core/contracts/zero-agents";
-import {
-  type FirewallPolicies,
-  type FirewallPolicyValue,
+import type {
+  FirewallPolicies,
+  FirewallPolicyValue,
 } from "@vm0/core/contracts/firewalls";
 import {
   getConnectorFirewall,
