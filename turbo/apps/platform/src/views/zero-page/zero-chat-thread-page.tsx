@@ -42,7 +42,6 @@ import { detach, Reason } from "../../signals/utils.ts";
 import {
   AttachmentLightbox,
   FileAttachmentChip,
-  PreviewableFileAttachmentChip,
 } from "./zero-attachment-chips.tsx";
 import {
   AttachmentPreview,
@@ -966,6 +965,81 @@ function resolveAttachments(
   });
 }
 
+function UserMessageAttachments({
+  attachments,
+  onImageClick,
+}: {
+  attachments: ReturnType<typeof resolveAttachments>;
+  onImageClick: (url: string) => void;
+}) {
+  if (attachments.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="border-t border-foreground/10 px-3 py-2.5 flex flex-wrap gap-2">
+      {attachments.map((a) => {
+        if (a.isImage) {
+          return (
+            <button
+              key={a.url}
+              type="button"
+              onClick={() => {
+                onImageClick(a.url);
+              }}
+              className="group relative rounded-lg overflow-hidden border border-foreground/10 hover:border-foreground/25 transition-colors"
+            >
+              <img
+                src={a.url}
+                alt={a.filename}
+                className="h-9 max-w-[72px] object-cover"
+              />
+              <span className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-colors">
+                <IconPhoto
+                  size={18}
+                  className="text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow"
+                />
+              </span>
+            </button>
+          );
+        }
+        if (a.isVideo) {
+          return (
+            <video
+              key={a.url}
+              src={a.url}
+              controls
+              className="max-h-48 max-w-full rounded-lg border border-foreground/10"
+            />
+          );
+        }
+        if (
+          a.kind === "markdown" ||
+          a.kind === "text" ||
+          a.kind === "json" ||
+          a.kind === "csv" ||
+          a.kind === "pdf" ||
+          a.kind === "html"
+        ) {
+          return (
+            <AttachmentPreview
+              key={a.url}
+              attachment={{
+                filename: a.filename,
+                url: a.url,
+                contentType: a.contentType,
+              }}
+            />
+          );
+        }
+        return (
+          <FileAttachmentChip key={a.url} filename={a.filename} url={a.url} />
+        );
+      })}
+    </div>
+  );
+}
+
 function PagedUserMessage({
   message,
   thread,
@@ -1025,70 +1099,10 @@ function PagedUserMessage({
                 />
               </div>
             )}
-            {allAttachments.length > 0 && (
-              <div className="border-t border-foreground/10 px-3 py-2.5 flex flex-wrap gap-2">
-                {allAttachments.map((a) => {
-                  if (a.isImage) {
-                    return (
-                      <button
-                        key={a.url}
-                        type="button"
-                        onClick={() => {
-                          return openImageLightbox(a.url);
-                        }}
-                        className="group relative rounded-lg overflow-hidden border border-foreground/10 hover:border-foreground/25 transition-colors"
-                      >
-                        <img
-                          src={a.url}
-                          alt={a.filename}
-                          className="h-9 max-w-[72px] object-cover"
-                        />
-                        <span className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-colors">
-                          <IconPhoto
-                            size={18}
-                            className="text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow"
-                          />
-                        </span>
-                      </button>
-                    );
-                  }
-                  if (a.isVideo) {
-                    return (
-                      <video
-                        key={a.url}
-                        src={a.url}
-                        controls
-                        className="max-h-48 max-w-full rounded-lg border border-foreground/10"
-                      />
-                    );
-                  }
-                  if (
-                    a.kind === "markdown" ||
-                    a.kind === "text" ||
-                    a.kind === "json" ||
-                    a.kind === "csv" ||
-                    a.kind === "pdf" ||
-                    a.kind === "html"
-                  ) {
-                    return (
-                      <PreviewableFileAttachmentChip
-                        key={a.url}
-                        filename={a.filename}
-                        url={a.url}
-                        kind={a.kind}
-                      />
-                    );
-                  }
-                  return (
-                    <FileAttachmentChip
-                      key={a.url}
-                      filename={a.filename}
-                      url={a.url}
-                    />
-                  );
-                })}
-              </div>
-            )}
+            <UserMessageAttachments
+              attachments={allAttachments}
+              onImageClick={openLightbox}
+            />
           </div>
           {cleanBodyContent && (
             <div className="flex justify-end mt-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">

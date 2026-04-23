@@ -149,11 +149,11 @@ function useTextAttachment(url: string) {
     setState({ status: "loading", text: "" });
 
     fetch(toRawUrl(url))
-      .then(async (res) => {
-        if (!res.ok) {
-          throw new Error(`HTTP ${String(res.status)}`);
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error(`HTTP ${String(response.status)}`);
         }
-        return await res.text();
+        return await response.text();
       })
       .then((text) => {
         if (active) {
@@ -174,10 +174,7 @@ function useTextAttachment(url: string) {
   return state;
 }
 
-function formatPreviewText(
-  kind: "text" | "json" | "csv",
-  text: string,
-): string {
+function formatPreviewText(kind: "text" | "json", text: string): string {
   if (kind === "json") {
     try {
       return JSON.stringify(JSON.parse(text), null, 2);
@@ -195,7 +192,7 @@ function TextPreview({
 }: {
   filename: string;
   url: string;
-  kind: "text" | "json" | "csv";
+  kind: "text" | "json";
 }) {
   const { status, text } = useTextAttachment(url);
   const [collapsed, setCollapsed] = useState(false);
@@ -279,22 +276,18 @@ function DocumentThumbnailPreview({
 }: {
   filename: string;
   url: string;
-  kind: "markdown" | "text" | "json" | "csv" | "pdf" | "html";
+  kind: "markdown" | "csv" | "pdf" | "html";
 }) {
   const openDocumentLightbox = useSet(openDocumentLightbox$);
   const iconSrc = getPreviewIconSrc(kind);
   const accentClass =
     kind === "markdown"
       ? "from-emerald-500/15 via-lime-500/10 to-background"
-      : kind === "text"
-        ? "from-slate-500/15 via-zinc-500/10 to-background"
-        : kind === "json"
-          ? "from-amber-500/15 via-yellow-500/10 to-background"
-          : kind === "csv"
-            ? "from-teal-500/15 via-emerald-500/10 to-background"
-            : kind === "html"
-              ? "from-sky-500/15 via-cyan-500/10 to-background"
-              : "from-rose-500/15 via-orange-500/10 to-background";
+      : kind === "csv"
+        ? "from-teal-500/15 via-emerald-500/10 to-background"
+        : kind === "html"
+          ? "from-sky-500/15 via-cyan-500/10 to-background"
+          : "from-rose-500/15 via-orange-500/10 to-background";
 
   return (
     <button
@@ -334,18 +327,6 @@ function DocumentThumbnailPreview({
   );
 }
 
-function IframePreview({
-  filename,
-  url,
-  kind,
-}: {
-  filename: string;
-  url: string;
-  kind: "pdf" | "html" | "csv";
-}) {
-  return <DocumentThumbnailPreview filename={filename} url={url} kind={kind} />;
-}
-
 export function AttachmentPreview({
   attachment,
 }: {
@@ -354,7 +335,7 @@ export function AttachmentPreview({
   const kind = classifyChatAttachment(attachment);
 
   switch (kind) {
-    case "markdown":
+    case "markdown": {
       return (
         <DocumentThumbnailPreview
           filename={attachment.filename}
@@ -362,7 +343,8 @@ export function AttachmentPreview({
           kind="markdown"
         />
       );
-    case "text":
+    }
+    case "text": {
       return (
         <TextPreview
           filename={attachment.filename}
@@ -370,7 +352,8 @@ export function AttachmentPreview({
           kind="text"
         />
       );
-    case "json":
+    }
+    case "json": {
       return (
         <TextPreview
           filename={attachment.filename}
@@ -378,31 +361,36 @@ export function AttachmentPreview({
           kind="json"
         />
       );
-    case "csv":
+    }
+    case "csv": {
       return (
-        <IframePreview
+        <DocumentThumbnailPreview
           filename={attachment.filename}
           url={attachment.url}
           kind="csv"
         />
       );
-    case "pdf":
+    }
+    case "pdf": {
       return (
-        <IframePreview
+        <DocumentThumbnailPreview
           filename={attachment.filename}
           url={attachment.url}
           kind="pdf"
         />
       );
-    case "html":
+    }
+    case "html": {
       return (
-        <IframePreview
+        <DocumentThumbnailPreview
           filename={attachment.filename}
           url={attachment.url}
           kind="html"
         />
       );
-    default:
+    }
+    default: {
       return null;
+    }
   }
 }

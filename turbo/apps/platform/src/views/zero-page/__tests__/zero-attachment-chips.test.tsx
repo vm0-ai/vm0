@@ -29,7 +29,7 @@ function mockChatAPI() {
 // ---------------------------------------------------------------------------
 
 describe("chat-d-056: file type icon renders based on getFileTypeIcon", () => {
-  it("renders img icon for pdf attachment in chat message", async () => {
+  it("renders a pdf preview card for pdf attachment in chat message", async () => {
     mockChatLifecycle({
       chatMessages: [
         {
@@ -47,13 +47,11 @@ describe("chat-d-056: file type icon renders based on getFileTypeIcon", () => {
     });
 
     await waitFor(() => {
+      expect(screen.getByTestId("attachment-preview-pdf")).toBeInTheDocument();
       expect(
-        document.querySelector('a[download="document.pdf"]'),
-      ).toBeInTheDocument();
-      expect(
-        document.querySelector(
-          'a[download="document.pdf"] img[aria-hidden="true"]',
-        ),
+        screen.getByRole("button", {
+          name: "Open pdf preview for document.pdf",
+        }),
       ).toBeInTheDocument();
     });
   });
@@ -479,7 +477,7 @@ describe("chat-d-063: download link renders for file attachment", () => {
         `a[download="${filename}"]`,
       );
       expect(link).toBeInTheDocument();
-      expect(link?.getAttribute("href")).toBe(fileUrl);
+      expect(link?.getAttribute("href")).toBe(`${fileUrl}?download=1`);
     });
   });
 
