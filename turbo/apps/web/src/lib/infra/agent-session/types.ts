@@ -13,7 +13,7 @@ export interface AgentSessionData {
   orgId: string;
   agentComposeId: string;
   conversationId: string | null;
-  artifactName: string | null;
+  artifactNames: string[];
   createdAt: Date;
   updatedAt: Date;
 }

@@ -2,9 +2,9 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { GET } from "../route";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
 import {
-  insertTestVoiceChatCandidateSession,
-  getTestVoiceChatCandidateSession,
-  countTestVoiceChatCandidateSessionsByReasoningStatus,
+  insertTestVoiceChatSession,
+  getTestVoiceChatSession,
+  countTestVoiceChatSessionsByReasoningStatus,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { reloadEnv } from "../../../../../src/env";
 
@@ -41,10 +41,10 @@ describe("GET /api/cron/voice-chat-cleanup", () => {
     expect(response.status).toBe(401);
   });
 
-  describe("voice-chat-candidate passes", () => {
+  describe("voice-chat passes", () => {
     it("T5 — resets stuck reasoner and queues a triggerReasoning re-tick", async () => {
       const staleReasoningAt = new Date(Date.now() - 6 * 60 * 1000);
-      const sessionId = await insertTestVoiceChatCandidateSession({
+      const sessionId = await insertTestVoiceChatSession({
         orgId: "org_test",
         userId: "user_test",
         reasoningStatus: "running",
@@ -58,7 +58,7 @@ describe("GET /api/cron/voice-chat-cleanup", () => {
       const body = await response.json();
 
       expect(body.reasonerReset).toBe(1);
-      const row = await getTestVoiceChatCandidateSession(sessionId);
+      const row = await getTestVoiceChatSession(sessionId);
       expect(row?.reasoningStatus).toBe("idle");
 
       // Exactly one after() callback was queued: the re-tick for this session.
@@ -67,7 +67,7 @@ describe("GET /api/cron/voice-chat-cleanup", () => {
 
     it("T6 — does not touch a non-stuck reasoner (lastSummaryAt within 5 min)", async () => {
       const freshReasoningAt = new Date(Date.now() - 2 * 60 * 1000);
-      const sessionId = await insertTestVoiceChatCandidateSession({
+      const sessionId = await insertTestVoiceChatSession({
         orgId: "org_test",
         userId: "user_test",
         reasoningStatus: "running",
@@ -78,7 +78,7 @@ describe("GET /api/cron/voice-chat-cleanup", () => {
       const body = await response.json();
 
       expect(body.reasonerReset).toBe(0);
-      const row = await getTestVoiceChatCandidateSession(sessionId);
+      const row = await getTestVoiceChatSession(sessionId);
       expect(row?.reasoningStatus).toBe("running");
       expect(row?.lastSummaryAt?.getTime()).toBe(freshReasoningAt.getTime());
     });
@@ -87,7 +87,7 @@ describe("GET /api/cron/voice-chat-cleanup", () => {
       const orgId = `org_t9_${Date.now()}`;
       const staleReasoningAt = new Date(Date.now() - 6 * 60 * 1000);
       for (let i = 0; i < 60; i++) {
-        await insertTestVoiceChatCandidateSession({
+        await insertTestVoiceChatSession({
           orgId,
           userId: `user_t9_${i}`,
           reasoningStatus: "running",
@@ -98,31 +98,19 @@ describe("GET /api/cron/voice-chat-cleanup", () => {
       const first = await GET(cronRequest("test-cron-secret"));
       expect((await first.json()).reasonerReset).toBe(50);
       expect(
-        await countTestVoiceChatCandidateSessionsByReasoningStatus(
-          orgId,
-          "running",
-        ),
+        await countTestVoiceChatSessionsByReasoningStatus(orgId, "running"),
       ).toBe(10);
       expect(
-        await countTestVoiceChatCandidateSessionsByReasoningStatus(
-          orgId,
-          "idle",
-        ),
+        await countTestVoiceChatSessionsByReasoningStatus(orgId, "idle"),
       ).toBe(50);
 
       const second = await GET(cronRequest("test-cron-secret"));
       expect((await second.json()).reasonerReset).toBe(10);
       expect(
-        await countTestVoiceChatCandidateSessionsByReasoningStatus(
-          orgId,
-          "running",
-        ),
+        await countTestVoiceChatSessionsByReasoningStatus(orgId, "running"),
       ).toBe(0);
       expect(
-        await countTestVoiceChatCandidateSessionsByReasoningStatus(
-          orgId,
-          "idle",
-        ),
+        await countTestVoiceChatSessionsByReasoningStatus(orgId, "idle"),
       ).toBe(60);
     });
   });

@@ -22,6 +22,14 @@ export const AUTO_MEMORY_MOUNT_PATH =
   "/home/user/.claude/projects/-home-user-workspace/memory";
 
 /**
+ * Storage name used for the auto-synthesized memory artifact. Zero-layer runs
+ * always include an AdditionalArtifact with this name mounted at
+ * AUTO_MEMORY_MOUNT_PATH so Claude Code finds persistent memory without any
+ * in-sandbox symlink bootstrap.
+ */
+export const AUTO_MEMORY_ARTIFACT_NAME = "memory";
+
+/**
  * Resolved volume with all template variables replaced
  */
 export interface ResolvedVolume {
@@ -51,7 +59,7 @@ export interface ResolvedArtifact {
  */
 export interface VolumeResolutionResult {
   volumes: ResolvedVolume[];
-  artifact: ResolvedArtifact | null;
+  artifacts: ResolvedArtifact[];
   errors: VolumeError[];
 }
 

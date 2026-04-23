@@ -4,17 +4,17 @@ import { initServices } from "../../../../src/lib/init-services";
 import { logger } from "../../../../src/lib/shared/logger";
 import { env } from "../../../../src/env";
 import { voiceChatSessions } from "../../../../src/db/schema/voice-chat";
-import { triggerReasoning } from "../../../../src/lib/zero/voice-chat-candidate/trigger-reasoning";
+import { triggerReasoning } from "../../../../src/lib/zero/voice-chat/trigger-reasoning";
 
 export const maxDuration = 60;
 
 const log = logger("cron:voice-chat-cleanup");
 
-// Candidate sessions are stateless (no active/ended/timeout), so there is
+// Voice-chat sessions are stateless (no active/ended/timeout), so there is
 // nothing to "time out" here. The reasoner CAS lock still needs a stuck-
-// recovery tick, though — that's the only candidate branch left.
-const CANDIDATE_REASONER_STUCK_MS = 5 * 60 * 1000; // 5 minutes
-const CANDIDATE_BATCH_LIMIT = 50;
+// recovery tick, though — that's the only branch left.
+const REASONER_STUCK_MS = 5 * 60 * 1000; // 5 minutes
+const BATCH_LIMIT = 50;
 
 export async function GET(request: Request): Promise<Response> {
   initServices();
@@ -30,11 +30,9 @@ export async function GET(request: Request): Promise<Response> {
 
   const now = new Date();
 
-  // === voice-chat-candidate reasoner stuck recovery ===
+  // === voice-chat reasoner stuck recovery ===
   // LIMIT 50 per tick caps worst-case runtime under catastrophic backlog.
-  const reasonerStuckThreshold = new Date(
-    now.getTime() - CANDIDATE_REASONER_STUCK_MS,
-  );
+  const reasonerStuckThreshold = new Date(now.getTime() - REASONER_STUCK_MS);
 
   const stuckReasonerIds = globalThis.services.db
     .select({ id: voiceChatSessions.id })
@@ -45,7 +43,7 @@ export async function GET(request: Request): Promise<Response> {
         lt(voiceChatSessions.lastSummaryAt, reasonerStuckThreshold),
       ),
     )
-    .limit(CANDIDATE_BATCH_LIMIT);
+    .limit(BATCH_LIMIT);
 
   // Belt-and-braces: predicates repeated on the UPDATE itself so a concurrent
   // Reasoner flipping idle→running between subselect eval and row lock under
@@ -63,7 +61,7 @@ export async function GET(request: Request): Promise<Response> {
     .returning({ id: voiceChatSessions.id });
 
   for (const row of recoveredReasoners) {
-    log.warn("Candidate reasoner stuck-reset", { sessionId: row.id });
+    log.warn("Voice-chat reasoner stuck-reset", { sessionId: row.id });
     after(() => {
       return triggerReasoning(row.id);
     });

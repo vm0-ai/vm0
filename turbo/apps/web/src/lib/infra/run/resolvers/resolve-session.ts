@@ -130,11 +130,13 @@ export async function resolveSession(
       cliAgentSessionId: conversation.cliAgentSessionId,
       cliAgentSessionHistory: sessionHistory,
     },
-    artifactName: session.artifactName ?? undefined,
-    artifactVersion: session.artifactName ? "latest" : undefined,
+    artifacts: Object.fromEntries(
+      session.artifactNames.map((name) => {
+        return [name, "latest"];
+      }),
+    ),
     vars: lastRunVars,
     volumeVersions: undefined,
-    buildResumeArtifact: !!session.artifactName,
     previousRunId: conversation.runId,
   };
 }

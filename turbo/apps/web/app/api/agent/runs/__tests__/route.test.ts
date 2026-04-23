@@ -27,6 +27,7 @@ import {
   getTestAgentSessionWithConversation,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { POST as checkpointWebhook } from "../../../webhooks/agent/checkpoints/route";
+import { GET as getSessionById } from "../../sessions/[id]/route";
 import { POST as completeWebhook } from "../../../webhooks/agent/complete/route";
 import { POST as pollRoute } from "../../../runners/poll/route";
 import type { AgentComposeYaml } from "../../../../../src/lib/infra/agent-compose/types";
@@ -1715,6 +1716,42 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       });
       expect(names).toContain(artifactA);
       expect(names).toContain(artifactB);
+    });
+
+    it("should persist body.artifacts names into agent_sessions.artifact_names for new runs", async () => {
+      // Regression for issue #10861: on the new-run path the session row must
+      // be seeded with the artifact names from body.artifacts so that a later
+      // `continue` can resolve the mount set. Previously insertRunRecord was
+      // fed an empty resolved.artifacts map and wrote [] into the session.
+      const primary = uniqueId("session-art");
+      await createTestArtifact(primary);
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/runs",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentComposeId: testComposeId,
+            prompt: "Session artifact_names seeding",
+            artifacts: [{ name: primary, mountPath: "/home/user/workspace" }],
+          }),
+        },
+      );
+      const response = await POST(request);
+      const data = await response.json();
+      expect(response.status).toBe(201);
+
+      const run = await findTestRunRecord(data.runId);
+      expect(run?.sessionId).toBeTruthy();
+
+      const sessionRequest = createTestRequest(
+        `http://localhost:3000/api/agent/sessions/${run!.sessionId!}`,
+      );
+      const sessionResponse = await getSessionById(sessionRequest);
+      const sessionBody = await sessionResponse.json();
+      expect(sessionResponse.status).toBe(200);
+      expect(sessionBody.artifactNames).toEqual([primary]);
     });
   });
 

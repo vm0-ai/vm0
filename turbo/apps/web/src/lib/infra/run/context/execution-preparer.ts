@@ -115,16 +115,19 @@ export async function prepareForExecution(
 
   const agentOrgId = agentComposeInfo.orgId;
 
-  // Auto-create artifact storages if they don't exist yet. Memory now rides
-  // in context.artifacts (zero synthesizes it), so the memory branch is
-  // covered by the artifacts[] loop below. Infra no longer creates type=
-  // 'memory' rows — #10601 flipped existing rows to type='artifact'.
+  // Auto-create artifact storages if they don't exist yet. Primary artifacts
+  // come from context.artifacts (name → version map); additional artifacts
+  // (with explicit mount paths) come from context.additionalArtifacts. Memory
+  // rides in additionalArtifacts (zero synthesizes it). Infra no longer
+  // creates type='memory' rows — #10601 flipped existing rows to
+  // type='artifact'.
+  const primaryArtifacts = context.artifacts ?? {};
   const ensureStart = Date.now();
   await Promise.all([
-    context.artifactName
-      ? ensureStorageExists(orgId, userId, context.artifactName, "artifact")
-      : null,
-    ...(context.artifacts ?? []).map((entry) => {
+    ...Object.keys(primaryArtifacts).map((name) => {
+      return ensureStorageExists(orgId, userId, name, "artifact");
+    }),
+    ...(context.additionalArtifacts ?? []).map((entry) => {
       return ensureStorageExists(orgId, userId, entry.name, "artifact");
     }),
   ]);
@@ -140,13 +143,11 @@ export async function prepareForExecution(
     agentOrgId,
     orgId,
     userId,
-    context.artifactName,
-    context.artifactVersion,
-    context.volumeVersions,
-    context.resumeArtifact,
+    primaryArtifacts,
     workingDir,
+    context.volumeVersions,
     context.additionalVolumes,
-    context.artifacts,
+    context.additionalArtifacts,
   );
   const storageEnd = Date.now();
 
@@ -230,11 +231,9 @@ function buildPreparedContext(
     secretConnectorMap: context.secretConnectorMap || null,
     // Resume support
     resumeSession: context.resumeSession || null,
-    resumeArtifact: context.resumeArtifact || null,
 
-    // Artifact settings
-    artifactName: context.artifactName || null,
-    artifactVersion: context.artifactVersion || null,
+    // Primary artifacts (name → version)
+    artifacts: context.artifacts ?? {},
 
     // Firewall for proxy-side token replacement
     firewalls: toNullable(context.firewalls),

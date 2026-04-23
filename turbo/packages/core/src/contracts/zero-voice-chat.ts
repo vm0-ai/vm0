@@ -120,7 +120,7 @@ const okResponseSchema = z.object({ ok: z.literal(true) });
 export const zeroVoiceChatContract = c.router({
   createSession: {
     method: "POST",
-    path: "/api/zero/voice-chat-candidate",
+    path: "/api/zero/voice-chat",
     headers: authHeadersSchema,
     body: createSessionBodySchema,
     responses: {
@@ -140,7 +140,7 @@ export const zeroVoiceChatContract = c.router({
 
   getSession: {
     method: "GET",
-    path: "/api/zero/voice-chat-candidate/:id",
+    path: "/api/zero/voice-chat/:id",
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.uuid() }),
     responses: {
@@ -159,7 +159,7 @@ export const zeroVoiceChatContract = c.router({
 
   listSessions: {
     method: "GET",
-    path: "/api/zero/voice-chat-candidate",
+    path: "/api/zero/voice-chat",
     headers: authHeadersSchema,
     responses: {
       200: z.object({
@@ -173,7 +173,7 @@ export const zeroVoiceChatContract = c.router({
 
   triggerReasoning: {
     method: "POST",
-    path: "/api/zero/voice-chat-candidate/:id/trigger-reasoning",
+    path: "/api/zero/voice-chat/:id/trigger-reasoning",
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.uuid() }),
     body: z.object({}),
@@ -188,7 +188,7 @@ export const zeroVoiceChatContract = c.router({
 
   appendItem: {
     method: "POST",
-    path: "/api/zero/voice-chat-candidate/:id/items",
+    path: "/api/zero/voice-chat/:id/items",
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.uuid() }),
     body: appendItemBodySchema,
@@ -203,7 +203,7 @@ export const zeroVoiceChatContract = c.router({
 
   createTask: {
     method: "POST",
-    path: "/api/zero/voice-chat-candidate/:id/tasks",
+    path: "/api/zero/voice-chat/:id/tasks",
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.uuid() }),
     body: createTaskBodySchema,
@@ -225,7 +225,7 @@ export const zeroVoiceChatContract = c.router({
    */
   listTasks: {
     method: "GET",
-    path: "/api/zero/voice-chat-candidate/:id/tasks",
+    path: "/api/zero/voice-chat/:id/tasks",
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.uuid() }),
     responses: {
@@ -238,7 +238,7 @@ export const zeroVoiceChatContract = c.router({
 
   token: {
     method: "POST",
-    path: "/api/zero/voice-chat-candidate/token",
+    path: "/api/zero/voice-chat/token",
     headers: authHeadersSchema,
     body: tokenBodySchema,
     responses: {

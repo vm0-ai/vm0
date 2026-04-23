@@ -207,13 +207,13 @@ export default [
       "no-restricted-syntax": "off",
     },
   },
-  // voice-chat-candidate-session.ts wraps three browser APIs that are specified
+  // voice-chat-session.ts wraps three browser APIs that are specified
   // to throw: JSON.parse on untrusted Realtime DC event data, navigator.wakeLock.request
   // (OS deny or hidden document), and navigator.mediaDevices.getUserMedia (permission
   // denied or no hardware). Each try block has recovery logic that cannot use accept()
   // or useLoadableSet.
   {
-    files: ["src/signals/voice-chat-candidate/voice-chat-candidate-session.ts"],
+    files: ["src/signals/voice-chat/voice-chat-session.ts"],
     rules: {
       "no-restricted-syntax": "off",
     },
