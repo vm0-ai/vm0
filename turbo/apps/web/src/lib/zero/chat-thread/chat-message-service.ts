@@ -407,6 +407,27 @@ export async function getLatestSessionIdForThread(
 }
 
 /**
+ * Cheap existence probe used by `resolveThread()` to decide whether the
+ * continue-from-schedule system prompt should still be seeded on this send.
+ * Replaces the prior `messages.length === 0` signal now that the
+ * `getLatestMessagesByThreadId` read has moved off the POST critical path.
+ *
+ * Backed by `idx_zero_runs_chat_thread_id` (issue #10757): `LIMIT 1` turns
+ * this into an EXISTS probe, so the query returns in single-digit
+ * milliseconds even on long threads.
+ */
+export async function hasAnyRunsForThread(
+  chatThreadId: string,
+): Promise<boolean> {
+  const [row] = await globalThis.services.db
+    .select({ id: zeroRuns.id })
+    .from(zeroRuns)
+    .where(eq(zeroRuns.chatThreadId, chatThreadId))
+    .limit(1);
+  return row !== undefined;
+}
+
+/**
  * Provider type of the most recent run in a thread, or null when the thread
  * has no runs yet. The composer uses this to disable picker options whose
  * base URL differs from the current session — `areProvidersCompatible`
