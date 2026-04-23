@@ -201,3 +201,4 @@ tmp/
 junit.xml
 e2e/results/
 .codex/
+.agents/
