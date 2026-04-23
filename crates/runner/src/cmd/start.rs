@@ -2624,6 +2624,100 @@ mod tests {
         assert!(result.is_ok());
     }
 
+    /// Invariant: heartbeat ticks must fire while the runner is parked in
+    /// the Draining arm's `select!`. The Draining arm runs a separate
+    /// `select!` block from the main loop; silently dropping its
+    /// `heartbeat_tick` branch would leave a draining runner looking dead
+    /// to the server until it exits.
+    ///
+    /// Drain before the first tick (t ≥ 10s) so the runner transitions to
+    /// the Draining arm first; the tick observed after the time advance
+    /// therefore had to be handled by the Draining arm's heartbeat branch.
+    #[tokio::test(start_paused = true)]
+    async fn heartbeat_fires_while_draining() {
+        let gate = Arc::new(tokio::sync::Notify::new());
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_exit_gate(
+            Arc::clone(&gate),
+        ));
+        let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 32768, 4, overrides);
+        let run_handle = tokio::spawn(run(config));
+
+        // Claim a gated job so the Draining arm has an active job to wait
+        // on — otherwise `jobs.is_empty()` auto-transitions straight to
+        // Stopping and we never enter the Draining `select!`.
+        let run_id = RunId::new_v4();
+        push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
+        let _token = wait_cancel_token(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
+
+        // Enter Draining before any heartbeat tick (first tick is at t=10s).
+        // The sleep lets the runner observe `mode_rx.changed()`, exit the
+        // main `select!`, and reach the Draining arm's `select!`.
+        env.drain();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert_eq!(*env.mode_tx.borrow(), RunnerMode::Draining);
+        let before = env.handle.heartbeat_count();
+
+        // Advance past the first tick while the Draining arm is active.
+        // A broken Draining arm that dropped its `heartbeat_tick.tick()`
+        // branch would leave `after == before`.
+        tokio::time::advance(Duration::from_secs(15)).await;
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let after = env.handle.heartbeat_count();
+        assert!(
+            after > before,
+            "Draining arm must handle heartbeat_tick (before={before}, after={after})",
+        );
+
+        // Tear down hard — the gate would block natural completion.
+        env.trigger_stopping().await;
+        let _ = tokio::time::timeout(Duration::from_secs(5), run_handle).await;
+    }
+
+    /// Invariant: heartbeat ticks must fire while the runner is parked in
+    /// the budget-exhausted `select!`. Like the Draining arm, this is a
+    /// separate `select!` from the main loop; dropping its `heartbeat_tick`
+    /// branch would make a runner that's at resource capacity look dead to
+    /// the server until budget frees.
+    ///
+    /// A 1-slot budget + a gated job pins the runner in the budget-exhausted
+    /// branch for the duration of the time advance.
+    #[tokio::test(start_paused = true)]
+    async fn heartbeat_fires_while_budget_exhausted() {
+        let gate = Arc::new(tokio::sync::Notify::new());
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_exit_gate(
+            Arc::clone(&gate),
+        ));
+        // Budget sized for exactly one `test_profiles()` slot (vcpu=2, mem=4096).
+        let (config, env) = mock_run_config_with_overrides(test_profiles(), 2, 4096, 1, overrides);
+        let budget = Arc::clone(&config.budget);
+        let run_handle = tokio::spawn(run(config));
+
+        let run_id = RunId::new_v4();
+        push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
+        // Wait for the reservation — after this, the next loop iteration
+        // enters the budget-exhausted `select!` at the can_afford check.
+        wait_budget_count(&budget, 1, Duration::from_secs(5)).await;
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        let before = env.handle.heartbeat_count();
+
+        // Advance past the first tick while the runner is budget-exhausted.
+        tokio::time::advance(Duration::from_secs(15)).await;
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let after = env.handle.heartbeat_count();
+        assert!(
+            after > before,
+            "budget-exhausted arm must handle heartbeat_tick (before={before}, after={after})",
+        );
+
+        // Release the gate and tear down hard (mode is Running; the gate
+        // would block Draining's natural completion path).
+        gate.notify_one();
+        env.trigger_stopping().await;
+        let _ = tokio::time::timeout(Duration::from_secs(5), run_handle).await;
+    }
+
     /// With no active jobs, SIGUSR1 transitions straight through Draining
     /// and exits within a few hundred ms.
     #[tokio::test]
