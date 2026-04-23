@@ -423,13 +423,6 @@ export function PricingPageClient() {
                     team={t("tableValues.unlimited")}
                   />
                   <TableRow
-                    feature={t("tableFeatures.creditsRollover")}
-                    description={t("tableFeatures.creditsRolloverDesc")}
-                    free={false}
-                    pro={t("tableValues.oneMonth")}
-                    team={t("tableValues.oneMonth")}
-                  />
-                  <TableRow
                     feature={t("tableFeatures.creditTopUp")}
                     description={t("tableFeatures.creditTopUpDesc")}
                     free={false}
@@ -570,6 +563,10 @@ export function PricingPageClient() {
               <FAQItem
                 question={t("faq.doCreditsRollOver")}
                 answer={t("faq.doCreditsRollOverAnswer")}
+              />
+              <FAQItem
+                question={t("faq.upgradeCredits")}
+                answer={t("faq.upgradeCreditsAnswer")}
               />
               <FAQItem
                 question={t("faq.bringOwnModel")}
