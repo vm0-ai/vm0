@@ -30,6 +30,7 @@ export {
   setTestChatMessageAttachFiles,
   setTestChatMessageContent,
   setTestChatThreadLastReadAt,
+  setTestAgentSessionArtifactName,
 } from "../db-test-seeders/agents";
 
 export {

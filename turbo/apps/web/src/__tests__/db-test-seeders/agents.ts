@@ -364,6 +364,24 @@ export async function createTestSessionWithConversation(
 }
 
 /**
+ * Set artifact_name on an agent session directly in the database.
+ *
+ * @why-db-direct The run-creation API resolves artifactName via storage
+ * lookup; tests that need a known artifactName on a pre-seeded session
+ * (e.g. to verify webhook invariants) must set it directly.
+ */
+export async function setTestAgentSessionArtifactName(
+  sessionId: string,
+  artifactName: string,
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .update(agentSessions)
+    .set({ artifactName })
+    .where(eq(agentSessions.id, sessionId));
+}
+
+/**
  * Set last_read_at on a chat thread directly in the database.
  *
  * @why-db-direct The mark-read API sets last_read_at via a forward-only

@@ -8,6 +8,7 @@ import {
   findTestCheckpoint,
   findTestRunRecord,
   getTestAgentSessionWithConversation,
+  setTestAgentSessionArtifactName,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
 import {
@@ -740,6 +741,44 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       // run.sessionId unchanged
       const runAfter = await findTestRunRecord(testRunId);
       expect(runAfter?.sessionId).toBe(preCreatedSessionId);
+    });
+
+    it("should not mutate agent_sessions.artifact_name when checkpoint webhook fires", async () => {
+      // The API-based createTestRun helper does not exercise the artifact-name
+      // path, so pre-populate the field directly to simulate a session whose
+      // artifactName was set at run creation.
+      const runBefore = await findTestRunRecord(testRunId);
+      const sessionId = runBefore!.sessionId!;
+      const originalArtifactName = "user-specified-artifact";
+      await setTestAgentSessionArtifactName(sessionId, originalArtifactName);
+
+      // Fire a checkpoint webhook whose artifactSnapshots map first key
+      // differs from the session's artifactName.
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/checkpoints",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            cliAgentType: "claude-code",
+            cliAgentSessionId: "artifact-name-preserve",
+            cliAgentSessionHistoryHash: sha256("artifact-name-preserve"),
+            artifactSnapshots: {
+              "different-artifact-name": "v1",
+              "another-name": "v2",
+            },
+          }),
+        },
+      );
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      const sessionAfter = await getTestAgentSessionWithConversation(sessionId);
+      expect(sessionAfter?.artifactName).toBe(originalArtifactName);
     });
   });
 });

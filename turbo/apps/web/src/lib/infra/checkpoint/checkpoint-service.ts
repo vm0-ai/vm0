@@ -143,10 +143,11 @@ export async function createCheckpoint(
       }
     : null;
 
-  const rawMap = request.artifactSnapshots ?? null;
-  const hasMap = rawMap !== null && Object.keys(rawMap).length > 0;
-  const artifactSnapshotsMap = hasMap ? rawMap : null;
-  const primaryArtifactName = hasMap ? Object.keys(rawMap)[0] : undefined;
+  const artifactSnapshotsMap =
+    request.artifactSnapshots &&
+    Object.keys(request.artifactSnapshots).length > 0
+      ? request.artifactSnapshots
+      : null;
 
   const snapshotFields = {
     conversationId: conversation.id,
@@ -191,13 +192,7 @@ export async function createCheckpoint(
   if (!run.sessionId) {
     throw notFound("Agent run has no session_id");
   }
-  const agentSession = await updateAgentSession(
-    run.sessionId,
-    conversation.id,
-    {
-      artifactName: primaryArtifactName,
-    },
-  );
+  const agentSession = await updateAgentSession(run.sessionId, conversation.id);
 
   log.debug(`Agent session updated/created: ${agentSession.id}`);
 

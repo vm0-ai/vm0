@@ -114,6 +114,7 @@ export async function getTestAgentSessionWithConversation(
       agentComposeId: string;
       conversationId: string | null;
       memoryName: string | null;
+      artifactName: string | null;
     }
   | undefined
 > {
@@ -133,6 +134,7 @@ export async function getTestAgentSessionWithConversation(
     agentComposeId: session.agentComposeId,
     conversationId: session.conversationId ?? null,
     memoryName: session.memoryName ?? null,
+    artifactName: session.artifactName ?? null,
   };
 }
 
