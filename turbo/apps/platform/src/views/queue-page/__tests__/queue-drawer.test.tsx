@@ -16,7 +16,7 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { openQueueDrawer$ } from "../../../signals/queue-page/queue-drawer-state.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
-import { zeroRunsQueueContract } from "@vm0/core";
+import { zeroRunsQueueContract } from "@vm0/core/contracts/zero-runs";
 
 const context = testContext();
 

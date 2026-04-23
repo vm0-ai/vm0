@@ -15,7 +15,7 @@ import {
   zeroBillingCheckoutContract,
   zeroBillingPortalContract,
   zeroBillingDowngradeContract,
-} from "@vm0/core";
+} from "@vm0/core/contracts/zero-billing";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();

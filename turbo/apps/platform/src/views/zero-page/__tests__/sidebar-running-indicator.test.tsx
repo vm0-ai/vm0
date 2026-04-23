@@ -18,7 +18,7 @@ import {
   chatThreadsContract,
   chatThreadByIdContract,
   chatThreadMessagesContract,
-} from "@vm0/core";
+} from "@vm0/core/contracts/chat-threads";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";

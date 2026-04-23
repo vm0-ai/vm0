@@ -1,17 +1,10 @@
-/**
- * Schedules API Handlers
- *
- * Mock handlers for /api/zero/schedules endpoints.
- * Default behavior: no schedules exist.
- */
-
 import {
   zeroSchedulesMainContract,
   zeroSchedulesByNameContract,
   zeroSchedulesEnableContract,
   zeroScheduleRunContract,
   type ScheduleResponse,
-} from "@vm0/core";
+} from "@vm0/core/contracts/zero-schedules";
 import { mockApi } from "../msw-contract.ts";
 
 let mockSchedules: ScheduleResponse[] = [];

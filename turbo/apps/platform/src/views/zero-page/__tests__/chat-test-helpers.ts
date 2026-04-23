@@ -12,15 +12,17 @@ import {
   chatThreadByIdContract,
   chatThreadMessagesContract,
   chatMessagesContract,
-  logsByIdContract,
+} from "@vm0/core/contracts/chat-threads";
+import { logsByIdContract } from "@vm0/core/contracts/logs";
+import {
   zeroRunAgentEventsContract,
   zeroRunsCancelContract,
   zeroRunsByIdContract,
-  zeroQueuePositionContract,
-  zeroTeamContract,
-  zeroAgentsByIdContract,
-  type RunStatus,
-} from "@vm0/core";
+} from "@vm0/core/contracts/zero-runs";
+import { zeroQueuePositionContract } from "@vm0/core/contracts/zero-queue-position";
+import { zeroTeamContract } from "@vm0/core/contracts/zero-team";
+import { zeroAgentsByIdContract } from "@vm0/core/contracts/zero-agents";
+import type { RunStatus } from "@vm0/core/contracts/runs";
 
 import { fill } from "../../../__tests__/page-helper.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";

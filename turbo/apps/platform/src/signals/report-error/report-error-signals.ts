@@ -1,5 +1,6 @@
 import { command, computed, state } from "ccstate";
-import { zeroReportErrorContract, zeroRunsByIdContract } from "@vm0/core";
+import { zeroReportErrorContract } from "@vm0/core/contracts/zero-report-error";
+import { zeroRunsByIdContract } from "@vm0/core/contracts/zero-runs";
 import { zeroClient$ } from "../api-client.ts";
 import { pathParams$ } from "../route.ts";
 import { accept } from "../../lib/accept.ts";

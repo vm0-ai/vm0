@@ -1,15 +1,8 @@
-/**
- * Usage API Handlers
- *
- * Mock handlers for /api/zero/usage/members and
- * /api/zero/org/members/credit-cap endpoints.
- */
-
 import {
   zeroUsageMembersContract,
-  zeroMemberCreditCapContract,
   type UsageMembersResponse,
-} from "@vm0/core";
+} from "@vm0/core/contracts/zero-usage";
+import { zeroMemberCreditCapContract } from "@vm0/core/contracts/zero-member-credit-cap";
 import { mockApi } from "../msw-contract.ts";
 
 let mockUsageMembersResponse: UsageMembersResponse = {

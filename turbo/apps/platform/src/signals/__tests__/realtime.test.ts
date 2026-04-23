@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { command, createStore } from "ccstate";
-import { platformRealtimeTokenContract } from "@vm0/core";
+import { platformRealtimeTokenContract } from "@vm0/core/contracts/realtime";
 import { setAblyLoop$, setupRealtime$ } from "../realtime.ts";
 import { clearAllDetached } from "../utils.ts";
 import {

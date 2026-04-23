@@ -1,5 +1,8 @@
 import { command } from "ccstate";
-import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
+import {
+  CONNECTOR_TYPES,
+  type ConnectorType,
+} from "@vm0/core/contracts/connectors";
 import { createElement } from "react";
 import { OnboardingPage } from "../../views/onboarding-page/onboarding-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";

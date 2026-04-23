@@ -17,7 +17,7 @@ import {
   click,
 } from "../../../__tests__/page-helper.ts";
 import { mockConnectors } from "./zero-connectors-page-test-helpers.ts";
-import { zeroConnectorsByTypeContract } from "@vm0/core";
+import { zeroConnectorsByTypeContract } from "@vm0/core/contracts/zero-connectors";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();

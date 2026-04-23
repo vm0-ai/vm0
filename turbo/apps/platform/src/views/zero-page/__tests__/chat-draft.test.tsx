@@ -9,7 +9,7 @@ import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { detachedNavigateTo$ } from "../../../signals/route.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
-import { chatThreadByIdContract } from "@vm0/core";
+import { chatThreadByIdContract } from "@vm0/core/contracts/chat-threads";
 
 vi.mock("@vm0/ui/components/ui/sonner", async (importOriginal) => {
   const actual =

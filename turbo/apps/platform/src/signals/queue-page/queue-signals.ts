@@ -1,5 +1,8 @@
 import { command, state, computed } from "ccstate";
-import { zeroRunsQueueContract, zeroRunsCancelContract } from "@vm0/core";
+import {
+  zeroRunsQueueContract,
+  zeroRunsCancelContract,
+} from "@vm0/core/contracts/zero-runs";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 import { awaitRealtimeReady$, setAblyLoop$ } from "../realtime.ts";

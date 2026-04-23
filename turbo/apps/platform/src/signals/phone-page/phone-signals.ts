@@ -4,7 +4,7 @@ import {
   zeroPhoneLinkContract,
   zeroPhoneSetupContract,
   type PhoneStatusResponse,
-} from "@vm0/core";
+} from "@vm0/core/contracts/zero-phone";
 import { zeroClient$ } from "../api-client.ts";
 
 // Internal state

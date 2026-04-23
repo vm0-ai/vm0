@@ -1,13 +1,7 @@
-/**
- * User Preferences API Handlers
- *
- * Mock handlers for /api/zero/user-preferences endpoint.
- */
-
 import {
   type UserPreferencesResponse,
   zeroUserPreferencesContract,
-} from "@vm0/core";
+} from "@vm0/core/contracts/zero-user-preferences";
 import { mockApi } from "../msw-contract.ts";
 
 let mockPreferences: UserPreferencesResponse = {

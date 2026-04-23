@@ -6,7 +6,10 @@
  * needs to provide a URL builder for the data fetch.
  */
 import { state, computed, command, type Computed, type State } from "ccstate";
-import { logsListContract, type LogsListResponse } from "@vm0/core";
+import {
+  logsListContract,
+  type LogsListResponse,
+} from "@vm0/core/contracts/logs";
 import { zeroClient$ } from "./api-client.ts";
 import { searchParams$, updateSearchParams$ } from "./route.ts";
 import { accept } from "../lib/accept.ts";

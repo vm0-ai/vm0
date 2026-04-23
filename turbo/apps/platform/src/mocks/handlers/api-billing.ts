@@ -1,9 +1,3 @@
-/**
- * Billing API Handlers
- *
- * Mock handlers for /api/zero/billing endpoints.
- */
-
 import {
   zeroBillingStatusContract,
   zeroBillingCheckoutContract,
@@ -15,7 +9,7 @@ import {
   type BillingStatusResponse,
   type BillingInvoice,
   type RedeemResponse,
-} from "@vm0/core";
+} from "@vm0/core/contracts/zero-billing";
 import { mockApi } from "../msw-contract.ts";
 
 let mockBillingInvoices: BillingInvoice[] = [];

@@ -15,7 +15,7 @@ import {
   chatThreadByIdContract,
   type ModelSelectionRequest,
   type PagedChatMessage,
-} from "@vm0/core";
+} from "@vm0/core/contracts/chat-threads";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
 import { talkDraft$ } from "../zero-page/chat-draft.ts";
@@ -41,7 +41,7 @@ export {
 // Re-export paged message types from @vm0/core
 // ---------------------------------------------------------------------------
 
-export type { PagedChatMessage } from "@vm0/core";
+export type { PagedChatMessage } from "@vm0/core/contracts/chat-threads";
 
 /** A group of consecutive messages with the same role. */
 export interface GroupedChatMessageGroup {

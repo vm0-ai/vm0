@@ -1,17 +1,9 @@
-/**
- * Voice Chat Candidate API Handlers
- *
- * Mock handlers for /api/zero/voice-chat-candidate endpoints.
- * Stateful: sessions, items, and tasks persist for the lifetime of a test
- * run; call resetMockVoiceChatCandidate() between cases for isolation.
- */
-
 import {
   zeroVoiceChatCandidateContract,
   type VoiceChatCandidateSession,
   type VoiceChatCandidateItem,
   type VoiceChatCandidateTask,
-} from "@vm0/core";
+} from "@vm0/core/contracts/zero-voice-chat-candidate";
 import { mockApi } from "../msw-contract.ts";
 
 const MOCK_ORG_ID = "mock-org";

@@ -37,7 +37,10 @@ import { userPreferences$ } from "../../signals/zero-page/settings/user-preferen
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { user$ } from "../../signals/auth.ts";
 import { formatCredits } from "../../lib/format-credits.ts";
-import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
+import {
+  CONNECTOR_TYPES,
+  type ConnectorType,
+} from "@vm0/core/contracts/connectors";
 
 // ---------------------------------------------------------------------------
 // Date range filter

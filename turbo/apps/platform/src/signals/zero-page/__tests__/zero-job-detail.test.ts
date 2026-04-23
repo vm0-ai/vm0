@@ -11,11 +11,13 @@ import {
   zeroSchedulesMainContract,
   zeroSchedulesByNameContract,
   zeroSchedulesEnableContract,
+  type ScheduleResponse,
+} from "@vm0/core/contracts/zero-schedules";
+import {
   zeroAgentsByIdContract,
   zeroAgentInstructionsContract,
-  zeroUserConnectorsContract,
-  type ScheduleResponse,
-} from "@vm0/core";
+} from "@vm0/core/contracts/zero-agents";
+import { zeroUserConnectorsContract } from "@vm0/core/contracts/user-connectors";
 import { detachedSetupPage } from "../../../__tests__/page-helper";
 import {
   zeroJobDetail$,

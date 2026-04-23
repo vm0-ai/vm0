@@ -2,9 +2,9 @@ import { command, computed, state } from "ccstate";
 import {
   zeroConnectorsMainContract,
   zeroConnectorsByTypeContract,
-  type ConnectorListResponse,
-  type ConnectorType,
-} from "@vm0/core";
+} from "@vm0/core/contracts/zero-connectors";
+import type { ConnectorType } from "@vm0/core/contracts/connectors";
+import type { ConnectorListResponse } from "@vm0/core/contracts/connector-schemas";
 import { zeroClient$ } from "../api-client";
 import { accept } from "../../lib/accept.ts";
 

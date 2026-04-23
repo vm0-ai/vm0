@@ -18,10 +18,8 @@ import {
   orgOpenEditDialog$,
   setOrgAddProviderDialogOpen$,
 } from "../../../signals/zero-page/settings/org-model-providers.ts";
-import {
-  type ModelProviderResponse,
-  zeroModelProvidersMainContract,
-} from "@vm0/core";
+import type { ModelProviderResponse } from "@vm0/core/contracts/model-providers";
+import { zeroModelProvidersMainContract } from "@vm0/core/contracts/zero-model-providers";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();

@@ -10,11 +10,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import {
-  type ConnectorType,
-  zeroConnectorsMainContract,
-  zeroSecretsContract,
-} from "@vm0/core";
+import type { ConnectorType } from "@vm0/core/contracts/connectors";
+import { zeroConnectorsMainContract } from "@vm0/core/contracts/zero-connectors";
+import { zeroSecretsContract } from "@vm0/core/contracts/zero-secrets";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";

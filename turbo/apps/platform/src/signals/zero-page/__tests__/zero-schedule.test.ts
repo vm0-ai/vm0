@@ -17,7 +17,7 @@ import {
   zeroSchedulesEnableContract,
   zeroScheduleRunContract,
   type ScheduleResponse,
-} from "@vm0/core";
+} from "@vm0/core/contracts/zero-schedules";
 import {
   fetchZeroSchedules$,
   zeroScheduleEntries$,

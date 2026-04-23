@@ -21,7 +21,7 @@ import {
   setAllScheduleRunStatusFilter$,
 } from "../all-schedule-run-history.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
-import { logsListContract } from "@vm0/core";
+import { logsListContract } from "@vm0/core/contracts/logs";
 
 const context = testContext();
 

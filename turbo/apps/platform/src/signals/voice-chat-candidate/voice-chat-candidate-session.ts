@@ -3,7 +3,7 @@ import {
   zeroVoiceChatCandidateContract,
   type VoiceChatCandidateItemRole,
   type VoiceChatCandidateTask,
-} from "@vm0/core";
+} from "@vm0/core/contracts/zero-voice-chat-candidate";
 import { resetSignal, throwIfAbort, onDomEventFn } from "../utils.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { zeroClient$ } from "../api-client.ts";

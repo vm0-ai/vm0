@@ -1,15 +1,9 @@
-/**
- * Org Model Providers API Handlers
- *
- * Mock handlers for /api/zero/model-providers endpoint.
- */
-
+import type { ModelProviderResponse } from "@vm0/core/contracts/model-providers";
 import {
-  type ModelProviderResponse,
   zeroModelProvidersDefaultContract,
   zeroModelProvidersMainContract,
   zeroModelProvidersByTypeContract,
-} from "@vm0/core";
+} from "@vm0/core/contracts/zero-model-providers";
 import { mockApi } from "../msw-contract.ts";
 
 // Mock org model providers data — empty by default

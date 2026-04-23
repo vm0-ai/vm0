@@ -4,7 +4,11 @@
  * Mock handlers for /api/zero/logs endpoints
  */
 
-import { logsListContract, logsByIdContract, type LogDetail } from "@vm0/core";
+import {
+  logsListContract,
+  logsByIdContract,
+  type LogDetail,
+} from "@vm0/core/contracts/logs";
 import { mockApi } from "../msw-contract.ts";
 
 // Mock data for log details

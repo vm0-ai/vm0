@@ -2,11 +2,11 @@ import { command, computed, state } from "ccstate";
 import {
   chatThreadByIdContract,
   chatThreadsContract,
-  FeatureSwitchKey,
   type ChatThreadListItem,
-  type ModelProviderType,
   type PersistedAttachment,
-} from "@vm0/core";
+} from "@vm0/core/contracts/chat-threads";
+import type { ModelProviderType } from "@vm0/core/contracts/model-providers";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { agentById, defaultAgentId$ } from "./agent.ts";
 import { zeroClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";

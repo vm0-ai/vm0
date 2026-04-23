@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../mocks/server.ts";
 import { zeroClient$ } from "../api-client.ts";
-import { zeroOrgContract } from "@vm0/core";
+import { zeroOrgContract } from "@vm0/core/contracts/zero-org";
 import { testContext } from "./test-helpers.ts";
 import { detachedSetupPage } from "../../__tests__/page-helper.ts";
 import { mockedClerk } from "../../__tests__/mock-auth.ts";

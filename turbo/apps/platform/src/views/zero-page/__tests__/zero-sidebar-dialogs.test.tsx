@@ -8,11 +8,11 @@ import { pathname } from "../../../signals/location.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
+import { zeroUserPreferencesContract } from "@vm0/core/contracts/zero-user-preferences";
 import {
-  zeroUserPreferencesContract,
   chatThreadsContract,
   chatThreadByIdContract,
-} from "@vm0/core";
+} from "@vm0/core/contracts/chat-threads";
 import {
   setManagePinnedDialogOpen$,
   setDraftPinnedIds$,
