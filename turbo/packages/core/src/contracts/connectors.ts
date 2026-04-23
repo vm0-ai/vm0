@@ -105,6 +105,7 @@ import { brevo } from "./connectors/brevo";
 import { braveSearch } from "./connectors/brave-search";
 import { brightData } from "./connectors/bright-data";
 import { browserbase } from "./connectors/browserbase";
+import { browserUse } from "./connectors/browser-use";
 import { browserless } from "./connectors/browserless";
 import { fireflies } from "./connectors/fireflies";
 import { firecrawl } from "./connectors/firecrawl";
@@ -366,6 +367,7 @@ const CONNECTOR_TYPES_DEF = {
   ...braveSearch,
   ...brightData,
   ...browserbase,
+  ...browserUse,
   ...browserless,
   ...fireflies,
   ...firecrawl,

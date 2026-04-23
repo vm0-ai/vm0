@@ -52,6 +52,7 @@ import { braveSearchFirewall } from "./brave-search.generated";
 import { brevoFirewall } from "./brevo.generated";
 import { brightDataFirewall } from "./bright-data.generated";
 import { browserbaseFirewall } from "./browserbase.generated";
+import { browserUseFirewall } from "./browser-use.generated";
 import { browserlessFirewall } from "./browserless.generated";
 import { bufferFirewall } from "./buffer.generated";
 import { calComFirewall } from "./cal-com.generated";
@@ -235,6 +236,7 @@ const CONNECTOR_FIREWALLS = {
   brevo: brevoFirewall,
   "bright-data": brightDataFirewall,
   browserbase: browserbaseFirewall,
+  "browser-use": browserUseFirewall,
   browserless: browserlessFirewall,
   buffer: bufferFirewall,
   "cal-com": calComFirewall,

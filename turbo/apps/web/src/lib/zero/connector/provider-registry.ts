@@ -24,6 +24,7 @@ import { braveSearchHandler } from "./providers/brave-search-handler";
 import { brevoHandler } from "./providers/brevo-handler";
 import { brightDataHandler } from "./providers/bright-data-handler";
 import { browserbaseHandler } from "./providers/browserbase-handler";
+import { browserUseHandler } from "./providers/browser-use-handler";
 import { browserlessHandler } from "./providers/browserless-handler";
 import { bufferHandler } from "./providers/buffer-handler";
 import { calComHandler } from "./providers/cal-com-handler";
@@ -205,6 +206,7 @@ export const PROVIDER_HANDLERS: Record<
   brevo: brevoHandler,
   "bright-data": brightDataHandler,
   browserbase: browserbaseHandler,
+  "browser-use": browserUseHandler,
   browserless: browserlessHandler,
   buffer: bufferHandler,
   "cal-com": calComHandler,
