@@ -152,7 +152,7 @@ function PreviewShell({
 }
 
 class TextPreview extends Component<TextPreviewProps, TextPreviewState> {
-  state = {
+  state: TextPreviewState = {
     status: "loading" as const,
     text: "",
   };
@@ -239,7 +239,7 @@ class IframePreview extends Component<
   IframePreviewProps,
   { showPreview: boolean }
 > {
-  state = { showPreview: false };
+  state: { showPreview: boolean } = { showPreview: false };
 
   render() {
     const { filename, url, kind } = this.props;
