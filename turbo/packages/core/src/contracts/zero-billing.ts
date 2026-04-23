@@ -80,11 +80,14 @@ const autoRechargeUpdateRequestSchema = z
     amount: z.number().int().min(1000).max(10_000_000).optional(),
   })
   .refine(
-    (data) =>
-      !data.enabled ||
-      data.threshold === undefined ||
-      data.amount === undefined ||
-      data.threshold < data.amount,
+    (data) => {
+      return (
+        !data.enabled ||
+        data.threshold === undefined ||
+        data.amount === undefined ||
+        data.threshold < data.amount
+      );
+    },
     { message: "threshold must be less than amount to avoid recharge loops" },
   );
 
