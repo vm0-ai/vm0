@@ -131,6 +131,7 @@ const CONNECTOR_ICON_COLORFUL = {
   langsmith: true,
   line: true,
   linear: true,
+  lovart: true,
   loops: true,
   mailchimp: true,
   mailsac: true,
