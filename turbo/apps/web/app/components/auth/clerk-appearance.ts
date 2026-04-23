@@ -47,7 +47,12 @@ export function getClerkAppearance(theme: "light" | "dark"): ClerkAppearance {
       footerActionLink: "text-primary hover:text-primary/90",
       identityPreviewText: "text-foreground",
       identityPreviewEditButton: "text-muted-foreground",
-      formFieldInputShowPasswordButton: "text-muted-foreground",
+      formFieldInputShowPasswordButton: {
+        color: "hsl(var(--muted-foreground))",
+        border: "none",
+        boxShadow: "none",
+        background: "transparent",
+      },
       otpCodeFieldInput:
         "h-9 w-9 bg-input border border-border rounded-lg text-center text-base font-medium uppercase text-foreground focus:border-primary focus:ring-[3px] focus:ring-primary/10",
       formResendCodeLink: "text-primary",
