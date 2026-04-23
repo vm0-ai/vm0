@@ -2,7 +2,7 @@
 // Shared cron / one-time schedule utilities
 // ---------------------------------------------------------------------------
 
-import { getGmtOffset } from "@vm0/core";
+import { getGmtOffset } from "@vm0/core/timezone";
 
 type ScheduleTimeOption =
   | "every-weekday"

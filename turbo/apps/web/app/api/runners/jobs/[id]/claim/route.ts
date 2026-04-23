@@ -5,9 +5,9 @@ import {
 } from "../../../../../../src/lib/ts-rest-handler";
 import {
   runnersJobClaimContract,
-  createErrorResponse,
   type StoredExecutionContext,
-} from "@vm0/core";
+} from "@vm0/core/contracts/runners";
+import { createErrorResponse } from "@vm0/core/contracts/errors";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
 import { runnerJobQueue } from "../../../../../../src/db/schema/runner-job-queue";

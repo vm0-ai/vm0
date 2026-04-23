@@ -54,7 +54,7 @@ import {
 } from "../../signals/zero-page/settings/settings-tab.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { orgModelProviders$ } from "../../signals/external/org-model-providers.ts";
-import { FeatureSwitchKey } from "@vm0/core";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   ModelProviderPicker,
   type ModelProviderSelection,

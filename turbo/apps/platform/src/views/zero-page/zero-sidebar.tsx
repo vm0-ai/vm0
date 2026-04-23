@@ -25,7 +25,7 @@ import {
   IconSparkles,
   IconMenu2,
 } from "@tabler/icons-react";
-import { FeatureSwitchKey } from "@vm0/core";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   Tooltip,
   TooltipContent,

@@ -20,6 +20,10 @@
       "import": "./src/contracts/*.ts",
       "types": "./src/contracts/*.ts"
     },
+    "./contracts/connectors/*": {
+      "import": "./src/contracts/connectors/*.ts",
+      "types": "./src/contracts/connectors/*.ts"
+    },
     "./firewalls": {
       "import": "./src/firewalls/index.ts",
       "types": "./src/firewalls/index.ts"

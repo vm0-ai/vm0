@@ -10,7 +10,7 @@ import {
   DEFAULT_SKILLS_OWNER,
   DEFAULT_SKILLS_REPO,
   DEFAULT_SKILLS_BRANCH,
-} from "@vm0/core";
+} from "@vm0/core/github-url";
 
 const REPO_REFS_URL = `https://github.com/${DEFAULT_SKILLS_OWNER}/${DEFAULT_SKILLS_REPO}.git/info/refs?service=git-upload-pack`;
 

@@ -1,7 +1,7 @@
 import { command } from "ccstate";
 import { getLoggers, Level, logger } from "../log";
 import type { DebugLoggers } from "../../types/global-method";
-import { FeatureSwitchKey } from "@vm0/core";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   detachedSetFeatureSwitch$,
   featureSwitch$,

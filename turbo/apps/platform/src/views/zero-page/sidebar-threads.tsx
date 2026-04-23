@@ -12,7 +12,8 @@ import {
   IconChevronRight,
   IconTrash,
 } from "@tabler/icons-react";
-import { FeatureSwitchKey, type ChatThreadListItem } from "@vm0/core";
+import type { ChatThreadListItem } from "@vm0/core/contracts/chat-threads";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   AgentAvatarImg,
   useChatThreadsTitleLabels,

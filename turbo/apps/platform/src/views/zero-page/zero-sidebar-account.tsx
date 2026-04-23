@@ -11,7 +11,7 @@ import {
   IconDatabaseExport,
   IconKey,
 } from "@tabler/icons-react";
-import { FeatureSwitchKey } from "@vm0/core";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   DropdownMenu,
   DropdownMenuTrigger,

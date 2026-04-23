@@ -1,4 +1,4 @@
-import type { FeatureSwitchKey } from "@vm0/core";
+import type { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 export type DebugLoggers = Record<
   string,
