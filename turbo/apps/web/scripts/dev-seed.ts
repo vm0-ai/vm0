@@ -143,8 +143,10 @@ const X_CONNECTOR_PRICING: Array<{
   { category: "mute.delete", unitPrice: usd(0.005) },
   { category: "counts.recent", unitPrice: usd(0.005) },
   { category: "counts.all", unitPrice: usd(0.01) },
-  // fallback
-  { category: "__fallback__", unitPrice: usd(0.01) },
+  // fallback — priced at the minimum bucket rate across the table
+  // above, so an unknown includes key can never be billed at more
+  // than X charges for the cheapest known bucket.
+  { category: "__fallback__", unitPrice: usd(0.005) },
 ];
 
 /**
