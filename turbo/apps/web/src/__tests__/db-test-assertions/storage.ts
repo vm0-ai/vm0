@@ -40,7 +40,7 @@ export async function findTestStorageByName(
 export async function findTestStorage(
   orgId: string,
   name: string,
-  type: "volume" | "artifact" | "memory",
+  type: "volume" | "artifact",
 ): Promise<
   { id: string; name: string; userId: string; s3Prefix: string } | undefined
 > {
