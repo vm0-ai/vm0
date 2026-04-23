@@ -785,15 +785,19 @@ function resolveAttachments(
       ? message.attachFiles
       : parsed;
   return source.map((f) => {
+    const contentType =
+      "contentType" in f && typeof f.contentType === "string"
+        ? f.contentType
+        : undefined;
     const kind = classifyChatAttachment({
       filename: f.filename,
       url: f.url,
-      contentType: "contentType" in f ? f.contentType : undefined,
+      contentType,
     });
     return {
       filename: f.filename,
       url: f.url,
-      contentType: "contentType" in f ? f.contentType : undefined,
+      contentType,
       isImage: kind === "image" || isImageFilename(f.filename),
       isVideo: kind === "video" || isVideoFilename(f.filename),
       kind,
