@@ -654,7 +654,7 @@ const releaseWakeLock$ = command(({ get, set }) => {
 });
 
 // ---------------------------------------------------------------------------
-// Microphone recovery (re-acquire tracks after OS suspension on screen lock)
+// Microphone recovery (re-acquire tracks after any OS audio interruption)
 // ---------------------------------------------------------------------------
 
 const recoverMicrophone$ = command(
@@ -708,12 +708,53 @@ const recoverMicrophone$ = command(
       }
     }
     set(internalStream$, newStream);
-    L.info("microphone recovered after screen resume");
+    L.info("microphone recovered after audio interruption");
   },
 );
 
 const monitorMicrophoneRecovery$ = command(
   ({ get, set }, signal: AbortSignal): void => {
+    let recovering = false;
+
+    // Forward-declare so triggerRecovery can reference it before the assignment.
+    let watchCurrentTracks: () => void = () => undefined;
+
+    const triggerRecovery = (): void => {
+      if (signal.aborted || recovering) {
+        return;
+      }
+      recovering = true;
+      void Promise.resolve(set(recoverMicrophone$, signal)).then(
+        () => {
+          recovering = false;
+          watchCurrentTracks();
+        },
+        () => {
+          recovering = false;
+        },
+      );
+    };
+
+    // Attach "ended" listeners to the current stream's audio tracks so any OS
+    // audio interruption (notification center pull-down, screen auto-dim) fires
+    // recovery immediately without waiting for a visibility change.
+    watchCurrentTracks = (): void => {
+      const stream = get(internalStream$);
+      if (!stream) {
+        return;
+      }
+      for (const track of stream.getAudioTracks()) {
+        if (track.readyState === "ended") {
+          continue;
+        }
+        track.addEventListener("ended", triggerRecovery, { once: true });
+      }
+    };
+
+    watchCurrentTracks();
+
+    // Visibility-change fallback: handles screen-lock resume and any gap
+    // where the track ended before the listener was attached.
     const onVisibilityChange = onDomEventFn(() => {
       if (document.visibilityState !== "visible" || signal.aborted) {
         return;
@@ -729,9 +770,11 @@ const monitorMicrophoneRecovery$ = command(
           return t.readyState === "ended";
         });
       if (!isDead) {
+        // Re-attach listeners to current tracks (covers fresh tracks post-recovery).
+        watchCurrentTracks();
         return;
       }
-      return set(recoverMicrophone$, signal);
+      triggerRecovery();
     });
     document.addEventListener("visibilitychange", onVisibilityChange);
     signal.addEventListener("abort", () => {

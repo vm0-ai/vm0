@@ -248,18 +248,52 @@ describe("voice-chat-candidate session", () => {
     current: null,
   };
 
+  // Ref to the initial mic track so tests can fire the "ended" event.
+  const micTrackRef: {
+    current: {
+      enabled: boolean;
+      readyState: MediaStreamTrackState;
+      stop: ReturnType<typeof vi.fn>;
+      emitEnded: () => void;
+    } | null;
+  } = { current: null };
+
   function stubWebRTC(
     devices: Partial<MediaDeviceInfo>[] = [
       { kind: "audiooutput", deviceId: "default" },
       { kind: "audiooutput", deviceId: "bt-headset-1" },
     ],
   ) {
+    const endedListeners: (() => void)[] = [];
+    const mockTrack = {
+      enabled: true,
+      readyState: "live" as MediaStreamTrackState,
+      stop: vi.fn(),
+      addEventListener: (
+        event: string,
+        cb: () => void,
+        _opts?: unknown,
+      ): void => {
+        if (event === "ended") {
+          endedListeners.push(cb);
+        }
+      },
+      removeEventListener: vi.fn(),
+      emitEnded: (): void => {
+        mockTrack.readyState = "ended";
+        for (const l of endedListeners) {
+          l();
+        }
+      },
+    };
+    micTrackRef.current = mockTrack;
+
     const mediaStreamStub = {
       getAudioTracks() {
-        return [{ enabled: true, readyState: "live" as MediaStreamTrackState }];
+        return [mockTrack];
       },
       getTracks() {
-        return [{ stop: vi.fn() }];
+        return [mockTrack];
       },
     } as unknown as MediaStream;
 
@@ -378,6 +412,7 @@ describe("voice-chat-candidate session", () => {
     dcRef.current = null;
     audioRef.current = null;
     pcRef.current = null;
+    micTrackRef.current = null;
     vi.unstubAllGlobals();
   }
 
@@ -1115,6 +1150,43 @@ describe("voice-chat-candidate session", () => {
       expect(context.store.get(vccError$)).toBe(
         "Microphone access lost. Please reconnect.",
       );
+    });
+
+    it("triggers recovery immediately when audio track fires 'ended' without a visibility change (iOS notification center scenario)", async () => {
+      await setup();
+      await startSuccessfully();
+
+      const freshTrack = {
+        kind: "audio",
+        enabled: true,
+        readyState: "live" as MediaStreamTrackState,
+        stop: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      };
+      const recoveredStream = {
+        getAudioTracks: () => [freshTrack],
+        getTracks: () => [freshTrack],
+      } as unknown as MediaStream;
+
+      const getUserMedia = navigator.mediaDevices.getUserMedia as ReturnType<
+        typeof vi.fn
+      >;
+      getUserMedia.mockClear();
+      getUserMedia.mockResolvedValueOnce(recoveredStream);
+
+      // Simulate iOS notification center pull-down: the track ends but the
+      // page visibilityState stays "visible" throughout.
+      micTrackRef.current?.emitEnded();
+
+      await vi.waitFor(() => {
+        expect(getUserMedia).toHaveBeenCalledTimes(1);
+      });
+      const sender = pcRef.current?.getSenders.mock.results[0]?.value[0] as {
+        replaceTrack: ReturnType<typeof vi.fn>;
+      };
+      expect(sender.replaceTrack).toHaveBeenCalledWith(freshTrack);
+      expect(context.store.get(vccStatus$)).toBe("connected");
     });
   });
 });
