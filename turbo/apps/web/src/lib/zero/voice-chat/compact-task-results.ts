@@ -35,7 +35,7 @@ const MODEL = "anthropic/claude-sonnet-4.5";
 const TIMEOUT_MS = 30_000;
 const TEMPERATURE = 0.2;
 
-const log = logger("zero:voice-chat-candidate:compact");
+const log = logger("zero:voice-chat:compact");
 
 interface OpenRouterResponse {
   choices: Array<{ message: { content: string } }>;
@@ -190,7 +190,7 @@ export async function compactVoiceChatTaskResults(
   }
 
   if (compactedCount > 0) {
-    await publishUserSignal([userId], `voice-chat-candidate:${sessionId}`);
+    await publishUserSignal([userId], `voice-chat:${sessionId}`);
     log.info(
       `compacted ${String(compactedCount)} task result(s) for session ${sessionId}`,
     );

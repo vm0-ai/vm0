@@ -71,7 +71,7 @@ import {
   startNewZeroSession$,
 } from "../../signals/chat-page/chat-message.ts";
 import { navigateToChat$ } from "../../signals/zero-page/zero-nav.ts";
-import { vccStatus$ } from "../../signals/voice-chat-candidate/voice-chat-candidate-session.ts";
+import { voiceChatStatus$ } from "../../signals/voice-chat/voice-chat-session.ts";
 
 function getTagline(
   agentName: string,
@@ -276,7 +276,7 @@ function PinPill() {
 
 export function VoiceChatLauncher() {
   const trinityEnabled = useLastResolved(trinityEnabled$) ?? false;
-  const vccStatus = useGet(vccStatus$);
+  const voiceChatStatus = useGet(voiceChatStatus$);
   const activeRoute = useGet(activeRoute$);
   const currentChatAgentId = useLastResolved(currentChatAgentId$);
   const navigate = useSet(detachedNavigateTo$);
@@ -296,8 +296,8 @@ export function VoiceChatLauncher() {
     });
   };
 
-  const isConnecting = onTalk && vccStatus === "connecting";
-  const isConnected = onTalk && vccStatus === "connected";
+  const isConnecting = onTalk && voiceChatStatus === "connecting";
+  const isConnected = onTalk && voiceChatStatus === "connected";
   const colorClass = isConnected
     ? "text-green-600 hover:text-green-700"
     : isConnecting

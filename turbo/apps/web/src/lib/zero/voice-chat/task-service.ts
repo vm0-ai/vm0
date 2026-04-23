@@ -10,7 +10,7 @@ import { cancelRun } from "../zero-run-cancel";
 import { isRunNotCancellable, notFound } from "../../shared/errors";
 import { logger } from "../../shared/logger";
 
-const log = logger("zero:voice-chat-candidate:task");
+const log = logger("zero:voice-chat:task");
 
 type SpawnRun = (taskId: string) => Promise<CreateZeroRunResult>;
 

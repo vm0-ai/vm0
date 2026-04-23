@@ -1,4 +1,6 @@
+import { eq } from "drizzle-orm";
 import { creditExpiresRecord } from "../../../db/schema/credit-expires-record";
+import { orgMetadata } from "../../../db/schema/org-metadata";
 import { grantOrgCredits } from "../org/org-service";
 
 export const STARTER_GRANT_AMOUNT = 10_000;
@@ -30,11 +32,20 @@ type StarterGrantTx = Parameters<
  * The helper performs two writes (credit_expires_record insert and
  * grantOrgCredits) that must be atomic — see `StarterGrantTx` for details.
  *
- * Idempotency is enforced by the partial unique index
- *   uq_credit_expires_starter_grant ON (org_id) WHERE source = 'starter_grant'
- * combined with INSERT ... ON CONFLICT DO NOTHING RETURNING id. Only the
- * winning insert triggers the matching credit add, so concurrent callers
- * never double-grant.
+ * Idempotency is enforced by two complementary guards:
+ *
+ * 1. **org_metadata existence check** (first guard): if an `org_metadata`
+ *    row already exists for the org, the org has already been initialised
+ *    via onboarding or another path — return early without granting. This
+ *    closes the gap for orgs that fully spent their starter balance and
+ *    therefore have no `starter_grant` expires row (e.g. orgs at credits=0
+ *    when migration 0284 backfill ran).
+ *
+ * 2. **Partial unique index** (second guard): the index
+ *      uq_credit_expires_starter_grant ON (org_id) WHERE source = 'starter_grant'
+ *    combined with INSERT ... ON CONFLICT DO NOTHING RETURNING id ensures
+ *    that only the winning insert triggers the matching credit add, so
+ *    concurrent callers on a genuinely new org never double-grant.
  *
  * This is the single public entry point for the starter grant. The column
  * default for org_metadata.credits is 0 — skipping this helper means the
@@ -44,6 +55,19 @@ export async function ensureStarterCreditGrant(
   tx: StarterGrantTx,
   orgId: string,
 ): Promise<void> {
+  // Guard: skip if org_metadata already exists — the org has been through
+  // onboarding or another initialisation path. The credit_expires_record
+  // unique index covers concurrent fresh calls; this guard closes the gap
+  // for orgs that fully spent their starter balance and therefore have no
+  // starter_grant expires row (e.g. orgs at credits=0 when migration 0284
+  // backfill ran).
+  const [existing] = await tx
+    .select({ orgId: orgMetadata.orgId })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, orgId))
+    .limit(1);
+  if (existing) return;
+
   const expiresAt = new Date();
   expiresAt.setMonth(expiresAt.getMonth() + 1);
 

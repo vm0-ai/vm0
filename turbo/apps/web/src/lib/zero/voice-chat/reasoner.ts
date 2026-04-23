@@ -14,7 +14,7 @@ const TIMEOUT_MS = 30_000;
 const MAX_TOKENS = 800;
 const TEMPERATURE = 0.2;
 
-const log = logger("zero:voice-chat-candidate:reasoner");
+const log = logger("zero:voice-chat:reasoner");
 
 interface OpenRouterResponse {
   choices: Array<{

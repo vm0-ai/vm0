@@ -17,7 +17,7 @@ import { publishUserSignal } from "../../infra/realtime/client";
 import { isBadRequest } from "../../shared/errors";
 import { logger } from "../../shared/logger";
 
-const log = logger("zero:voice-chat-candidate:trigger-reasoning");
+const log = logger("zero:voice-chat:trigger-reasoning");
 
 interface AssistantInterruptedNote {
   type: "assistant_interrupted";
@@ -195,7 +195,7 @@ export async function triggerReasoning(sessionId: string): Promise<void> {
     if (updated.length > 0) {
       await publishUserSignal(
         [currentSession.userId],
-        `voice-chat-candidate:${sessionId}`,
+        `voice-chat:${sessionId}`,
       );
     } else {
       log.info(`reasoner version contention for ${sessionId}, dropping tick`);
@@ -276,10 +276,7 @@ export async function triggerReasoning(sessionId: string): Promise<void> {
       });
     }
 
-    await publishUserSignal(
-      [currentSession.userId],
-      `voice-chat-candidate:${sessionId}`,
-    );
+    await publishUserSignal([currentSession.userId], `voice-chat:${sessionId}`);
   }
 
   // Step 6 — compact old finished-task results along the exponential

@@ -144,7 +144,7 @@ describe("POST /api/internal/callbacks/voice-chat", () => {
 
     await context.mocks.flushAfter();
     expect(mockAblyPublish).toHaveBeenCalledWith(
-      `voice-chat-candidate:${session.id}`,
+      `voice-chat:${session.id}`,
       null,
     );
     // userId is used via publishUserSignal — assert channel lookup indirectly

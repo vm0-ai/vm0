@@ -4,7 +4,11 @@ import {
   uniqueId,
   type UserContext,
 } from "../../../../__tests__/test-helpers";
-import { getOrgBillingFields } from "../../../../__tests__/api-test-helpers";
+import {
+  findCreditExpiresRecords,
+  getOrgBillingFields,
+} from "../../../../__tests__/api-test-helpers";
+import { reloadEnv } from "../../../../env";
 
 const stripeMocks = vi.hoisted(() => {
   return {
@@ -96,5 +100,39 @@ describe("billing-service", () => {
 
     const billing = await getOrgBillingFields(user.orgId);
     expect(billing?.stripeCustomerId).toBe(firstCustomerId);
+  });
+
+  it("campaign checkout does not grant starter credits to a new org", async () => {
+    const { createOneTimeCheckoutSession } = await import("../billing-service");
+
+    const customerId = uniqueId("cus");
+    stripeMocks.customersCreate.mockResolvedValue({ id: customerId });
+    stripeMocks.checkoutSessionsCreate.mockResolvedValue({
+      id: uniqueId("cs"),
+      url: `https://checkout.stripe.test/${customerId}`,
+    });
+    vi.stubEnv(
+      "ZERO_ONE_TIME_CAMPAIGN",
+      JSON.stringify({
+        ZERO100: { priceId: "price_zero100", couponId: "ZERO100" },
+      }),
+    );
+    reloadEnv();
+
+    await createOneTimeCheckoutSession({
+      orgId: user.orgId,
+      campaignKey: "ZERO100",
+      successUrl: "https://app.vm0.test/success",
+      cancelUrl: "https://app.vm0.test/cancel",
+    });
+
+    const billing = await getOrgBillingFields(user.orgId);
+    expect(billing?.credits ?? 0).toBe(0);
+
+    const expires = await findCreditExpiresRecords(user.orgId);
+    const starterGrants = expires.filter((r) => {
+      return r.source === "starter_grant";
+    });
+    expect(starterGrants).toHaveLength(0);
   });
 });

@@ -135,7 +135,7 @@ export const zeroVoiceChatContract = c.router({
       401: apiErrorSchema,
       403: apiErrorSchema,
     },
-    summary: "Create a new voice-chat-candidate session",
+    summary: "Create a new voice-chat session",
   },
 
   getSession: {
@@ -154,7 +154,7 @@ export const zeroVoiceChatContract = c.router({
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Get a voice-chat-candidate session with recent task logs",
+    summary: "Get a voice-chat session with recent task logs",
   },
 
   listSessions: {
@@ -168,7 +168,7 @@ export const zeroVoiceChatContract = c.router({
       401: apiErrorSchema,
       403: apiErrorSchema,
     },
-    summary: "List voice-chat-candidate sessions for the current user",
+    summary: "List voice-chat sessions for the current user",
   },
 
   triggerReasoning: {
@@ -183,7 +183,7 @@ export const zeroVoiceChatContract = c.router({
       404: apiErrorSchema,
     },
     summary:
-      "Queue a reasoner tick for a voice-chat-candidate session (respects CAS lock and debounce)",
+      "Queue a reasoner tick for a voice-chat session (respects CAS lock and debounce)",
   },
 
   appendItem: {
@@ -198,7 +198,7 @@ export const zeroVoiceChatContract = c.router({
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Append a conversation item to a voice-chat-candidate session",
+    summary: "Append a conversation item to a voice-chat session",
   },
 
   createTask: {
@@ -250,7 +250,7 @@ export const zeroVoiceChatContract = c.router({
       500: apiErrorSchema,
       503: apiErrorSchema,
     },
-    summary: "Mint an ephemeral OpenAI realtime token for voice-chat-candidate",
+    summary: "Mint an ephemeral OpenAI realtime token for voice-chat",
   },
 });
 

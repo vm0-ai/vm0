@@ -103,7 +103,7 @@ export async function POST(
   // waiting for the reasoner LLM. The reasoner tick runs in after() and will
   // publish again when it completes (for the conversation summary + compact
   // side-effects).
-  await publishUserSignal([session.userId], `voice-chat-candidate:${id}`);
+  await publishUserSignal([session.userId], `voice-chat:${id}`);
   after(() => {
     return triggerReasoning(id);
   });

@@ -60,7 +60,6 @@ const internalLastAssistantMessage$ = state<string>("");
 // to refetch server-side state depend on this counter.
 const vccReload$ = state<number>(0);
 
-const internalMuted$ = state<boolean>(false);
 const internalBargeInMode$ = state<BargeInMode>("speech_started");
 
 const internalPc$ = state<RTCPeerConnection | null>(null);
@@ -344,7 +343,6 @@ const truncateCurrentAssistantAudio$ = command(
       currentAudioPositionMs(audioEl) - current.startedAtMs,
     );
 
-    audioEl.pause();
     dc.send(
       JSON.stringify({
         type: "conversation.item.truncate",
@@ -654,7 +652,7 @@ const releaseWakeLock$ = command(({ get, set }) => {
 });
 
 // ---------------------------------------------------------------------------
-// Microphone recovery (re-acquire tracks after OS suspension on screen lock)
+// Microphone recovery (re-acquire tracks after any OS audio interruption)
 // ---------------------------------------------------------------------------
 
 const recoverMicrophone$ = command(
@@ -708,12 +706,54 @@ const recoverMicrophone$ = command(
       }
     }
     set(internalStream$, newStream);
-    L.info("microphone recovered after screen resume");
+    L.info("microphone recovered after audio interruption");
   },
 );
 
 const monitorMicrophoneRecovery$ = command(
   ({ get, set }, signal: AbortSignal): void => {
+    let recovering = false;
+
+    // Forward-declare so triggerRecovery can reference it before the assignment.
+    let watchCurrentTracks: () => void = () => {
+      return undefined;
+    };
+
+    const triggerRecovery = async (): Promise<void> => {
+      if (signal.aborted || recovering) {
+        return;
+      }
+      recovering = true;
+      try {
+        await set(recoverMicrophone$, signal);
+      } finally {
+        recovering = false;
+      }
+      watchCurrentTracks();
+    };
+
+    // Attach "ended" listeners to the current stream's audio tracks so any OS
+    // audio interruption (notification center pull-down, screen auto-dim) fires
+    // recovery immediately without waiting for a visibility change.
+    watchCurrentTracks = (): void => {
+      const stream = get(internalStream$);
+      if (!stream) {
+        return;
+      }
+      for (const track of stream.getAudioTracks()) {
+        if (track.readyState === "ended") {
+          continue;
+        }
+        track.addEventListener("ended", onDomEventFn(triggerRecovery), {
+          once: true,
+        });
+      }
+    };
+
+    watchCurrentTracks();
+
+    // Visibility-change fallback: handles screen-lock resume and any gap
+    // where the track ended before the listener was attached.
     const onVisibilityChange = onDomEventFn(() => {
       if (document.visibilityState !== "visible" || signal.aborted) {
         return;
@@ -729,9 +769,11 @@ const monitorMicrophoneRecovery$ = command(
           return t.readyState === "ended";
         });
       if (!isDead) {
+        // Re-attach listeners to current tracks (covers fresh tracks post-recovery).
+        watchCurrentTracks();
         return;
       }
-      return set(recoverMicrophone$, signal);
+      return triggerRecovery();
     });
     document.addEventListener("visibilitychange", onVisibilityChange);
     signal.addEventListener("abort", () => {
@@ -755,7 +797,6 @@ export const startVoiceChatCandidate$ = command(
     set(internalError$, null);
     set(internalLastUserMessage$, "");
     set(internalLastAssistantMessage$, "");
-    set(internalMuted$, false);
     set(internalBargeInMode$, "speech_started");
     set(internalCurrentAssistantAudioItem$, null);
     set(internalSessionId$, null);
