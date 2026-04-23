@@ -4,6 +4,7 @@ import { orgMetadata } from "../../db/schema/org-metadata";
 import { creditExpiresRecord } from "../../db/schema/credit-expires-record";
 import { creditUsage } from "../../db/schema/credit-usage";
 import { clientCreditUsage } from "../../db/schema/client-credit-usage";
+import { usageEvent } from "../../db/schema/usage-event";
 import { usageDaily } from "../../db/schema/usage-daily";
 import { insightsDaily } from "../../db/schema/insights-daily";
 import { orgPromoRedemption } from "../../db/schema/org-promo-redemption";
@@ -272,4 +273,32 @@ export async function findInsightsDaily(
     .from(insightsDaily)
     .where(and(...conditions));
   return row as { data: Record<string, unknown> } | undefined;
+}
+
+/**
+ * Read a usage_event record by ID.
+ */
+export async function findTestUsageEvent(id: string): Promise<
+  | {
+      id: string;
+      status: string;
+      creditsCharged: number | null;
+      processedAt: Date | null;
+      billingError: string | null;
+    }
+  | undefined
+> {
+  initServices();
+  const [record] = await globalThis.services.db
+    .select({
+      id: usageEvent.id,
+      status: usageEvent.status,
+      creditsCharged: usageEvent.creditsCharged,
+      processedAt: usageEvent.processedAt,
+      billingError: usageEvent.billingError,
+    })
+    .from(usageEvent)
+    .where(eq(usageEvent.id, id))
+    .limit(1);
+  return record;
 }

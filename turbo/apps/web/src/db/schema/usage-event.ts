@@ -30,10 +30,14 @@ import { agentRuns } from "./agent-run";
  * `creditsCharged`.
  *
  * `billingError` is a short code naming a billing-time problem on the
- * row — e.g. `missing_pricing` when the processor couldn't find a
- * matching price and fell back to `creditsCharged = 0`. NULL on healthy
- * rows. Ops queries `WHERE billing_error IS NOT NULL` to find revenue
- * leaks.
+ * row. NULL on healthy rows. Ops queries `WHERE billing_error IS NOT
+ * NULL` to find revenue leaks and classification gaps. Known codes:
+ *   - `missing_pricing`  — no row in `usage_pricing` matched either
+ *     the exact `(kind, provider, category)` triple or the provider's
+ *     `__fallback__` row; billed as `creditsCharged = 0` (revenue leak).
+ *   - `fallback_pricing` — the exact `(kind, provider, category)` was
+ *     unseeded, but the provider's `(kind, provider, "__fallback__")`
+ *     row matched; billed at that fallback rate (classification gap).
  *
  * `idempotencyKey` is a caller-provided UUID for exactly-once semantics.
  * Writers must keep the same UUID across retries of the same logical
