@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import {
   buildIntegrationPrompt,
   buildSchedulePrompt,
-  buildVoiceChatQuickPrepPrompt,
   buildSlackPrompt,
   buildPhonePrompt,
   buildTelegramPrompt,
@@ -78,43 +77,6 @@ describe("buildSchedulePrompt", () => {
 
     expect(result).toContain("You are currently running inside: Schedule");
     expect(result).toContain("Trigger type: cron");
-  });
-});
-
-describe("buildVoiceChatQuickPrepPrompt", () => {
-  it("should combine integration header with quick preparation prompt", () => {
-    const result = buildVoiceChatQuickPrepPrompt("session-123");
-
-    expect(result).toContain("You are currently running inside: Voice-Chat");
-    expect(result).toContain("# Zero — Slow-Brain Quick Preparation Mode");
-  });
-
-  it("should replace session ID placeholder", () => {
-    const result = buildVoiceChatQuickPrepPrompt("session-456");
-
-    expect(result).toContain("context get session-456");
-    expect(result).toContain("context append session-456");
-    expect(result).not.toContain("<SESSION_ID>");
-  });
-
-  it("should contain preparation-ready instruction", () => {
-    const result = buildVoiceChatQuickPrepPrompt("session-123");
-
-    expect(result).toContain("preparation-ready");
-  });
-
-  it("should contain thinking and directive event instructions", () => {
-    const result = buildVoiceChatQuickPrepPrompt("session-123");
-
-    expect(result).toContain("thinking");
-    expect(result).toContain("directive");
-  });
-
-  it("should contain observation mode instructions for after preparation", () => {
-    const result = buildVoiceChatQuickPrepPrompt("session-123");
-
-    expect(result).toContain("Phase 2: Live Observation");
-    expect(result).toContain("session-end");
   });
 });
 
