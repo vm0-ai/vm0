@@ -64,6 +64,24 @@ export {
 const log = logger("zero:build-context");
 
 /**
+ * Append the auto-memory artifact to the unified artifact list.
+ *
+ * Dedup-by-name in prepareStorageManifest collapses the clash when a checkpoint
+ * snapshot also carries "memory". Resume-path gating is handled in a follow-up
+ * sub-issue (#10910) — today we always append on every Zero path, which is why
+ * this helper is shared by both resolveCliRunContext and
+ * buildZeroExecutionContext.
+ */
+function appendAutoMemoryArtifact(
+  artifacts: ContextArtifact[],
+): ContextArtifact[] {
+  return [
+    ...artifacts,
+    { name: AUTO_MEMORY_ARTIFACT_NAME, mountPath: AUTO_MEMORY_MOUNT_PATH },
+  ];
+}
+
+/**
  * Parameters for building Zero execution context.
  * Contains all fields needed to resolve secrets, model providers, connectors,
  * and build the final ExecutionContext for sandbox dispatch.
@@ -438,14 +456,8 @@ export async function resolveCliRunContext(
     );
   }
 
-  // Memory injection: append to the unified artifact list. Dedup-by-name in
-  // prepareStorageManifest collapses the clash when a checkpoint snapshot
-  // also carries "memory". Resume-path gating is handled in a follow-up
-  // sub-issue (#10910) — today we always append on every Zero path.
-  artifacts = [
-    ...artifacts,
-    { name: AUTO_MEMORY_ARTIFACT_NAME, mountPath: AUTO_MEMORY_MOUNT_PATH },
-  ];
+  // Memory injection — see appendAutoMemoryArtifact().
+  artifacts = appendAutoMemoryArtifact(artifacts);
 
   // Load compose content if we have a version ID
   if (!agentCompose && agentComposeVersionId) {
@@ -613,14 +625,8 @@ export async function buildZeroExecutionContext(
       (await loadAgentComposeForNewRun(agentComposeVersionId));
   }
 
-  // Memory injection: append to the unified artifact list. Dedup-by-name in
-  // prepareStorageManifest collapses the clash when a checkpoint snapshot
-  // also carries "memory". Resume-path gating is handled in a follow-up
-  // sub-issue (#10910) — today we always append on every path.
-  artifacts = [
-    ...artifacts,
-    { name: AUTO_MEMORY_ARTIFACT_NAME, mountPath: AUTO_MEMORY_MOUNT_PATH },
-  ];
+  // Memory injection — see appendAutoMemoryArtifact().
+  artifacts = appendAutoMemoryArtifact(artifacts);
 
   // Validate required fields
   if (!agentComposeVersionId) {

@@ -51,10 +51,9 @@ export async function resolveCheckpoint(
   // checkpoint.artifactSnapshots — no join to agent_sessions required.
   const agentComposeSnapshot =
     checkpoint.agentComposeSnapshot as unknown as AgentComposeSnapshot;
-  const rawArtifacts = checkpoint.artifactSnapshots as
-    | Record<string, string>
-    | ContextArtifact[]
-    | null;
+  // artifactSnapshots is a Drizzle jsonb column (runtime type `unknown`).
+  // decodeCheckpointArtifacts does the runtime shape check; never cast here.
+  const rawArtifacts: unknown = checkpoint.artifactSnapshots;
   const checkpointVolumeVersions =
     checkpoint.volumeVersionsSnapshot as VolumeVersionsSnapshot | null;
 
@@ -147,25 +146,65 @@ export async function resolveCheckpoint(
 /**
  * Decode checkpoint.artifactSnapshots into the unified ContextArtifact[] form.
  *
+ * Input is a Drizzle `jsonb` column (runtime type `unknown`), so every branch
+ * must validate the shape at runtime — a malformed historical row should fail
+ * fast here with a descriptive error rather than surface much later as an
+ * opaque mount failure.
+ *
  * Accepts both shapes:
  * - Legacy: `Record<name, version>` — stamped with a mountPath via the name
  *   heuristic ("memory" → AUTO_MEMORY_MOUNT_PATH, anything else → workingDir).
- * - New: `Array<{name, version, mountPath}>` — passed through unchanged.
+ * - New: `Array<{name, version?, mountPath}>` — validated and passed through.
  */
 function decodeCheckpointArtifacts(
-  raw: Record<string, string> | ContextArtifact[] | null,
+  raw: unknown,
   workingDir: string,
 ): ContextArtifact[] {
-  if (!raw) return [];
-  if (Array.isArray(raw)) return raw;
-  return Object.entries(raw).map(([name, version]) => {
-    return {
-      name,
-      version,
-      mountPath:
-        name === AUTO_MEMORY_ARTIFACT_NAME
-          ? AUTO_MEMORY_MOUNT_PATH
-          : workingDir,
-    };
-  });
+  if (raw === null || raw === undefined) return [];
+
+  if (Array.isArray(raw)) {
+    return raw.map((entry, i) => {
+      if (!isContextArtifact(entry)) {
+        throw badRequest(
+          `Invalid checkpoint: artifactSnapshots[${i}] is not a valid ContextArtifact`,
+        );
+      }
+      return entry;
+    });
+  }
+
+  if (typeof raw !== "object") {
+    throw badRequest(
+      "Invalid checkpoint: artifactSnapshots must be an array or object",
+    );
+  }
+
+  return Object.entries(raw as Record<string, unknown>).map(
+    ([name, version]) => {
+      if (typeof version !== "string") {
+        throw badRequest(
+          `Invalid checkpoint: artifactSnapshots["${name}"] must be a string version`,
+        );
+      }
+      return {
+        name,
+        version,
+        mountPath:
+          name === AUTO_MEMORY_ARTIFACT_NAME
+            ? AUTO_MEMORY_MOUNT_PATH
+            : workingDir,
+      };
+    },
+  );
+}
+
+function isContextArtifact(value: unknown): value is ContextArtifact {
+  if (typeof value !== "object" || value === null) return false;
+  const entry = value as Record<string, unknown>;
+  if (typeof entry.name !== "string") return false;
+  if (typeof entry.mountPath !== "string") return false;
+  if (entry.version !== undefined && typeof entry.version !== "string") {
+    return false;
+  }
+  return true;
 }

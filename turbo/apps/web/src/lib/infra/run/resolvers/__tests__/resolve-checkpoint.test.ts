@@ -87,4 +87,33 @@ describe("resolveCheckpoint — artifactSnapshots shape tolerance", () => {
 
     expect(resolution.artifacts).toEqual([]);
   });
+
+  it("rejects malformed array entries with a descriptive error", async () => {
+    const { runId } = await createTestRun(composeId, "malformed array run");
+    const { checkpointId } = await createTestCheckpoint(user.userId, runId);
+
+    // Array-shape snapshot with a malformed entry (missing mountPath).
+    // Bypass the ContextArtifact type so we can stuff a bad payload into jsonb.
+    await setTestCheckpointArtifactSnapshots(checkpointId, [
+      { name: "bad" },
+    ] as unknown as ContextArtifact[]);
+
+    await expect(resolveCheckpoint(checkpointId, user.userId)).rejects.toThrow(
+      /artifactSnapshots\[0\]/,
+    );
+  });
+
+  it("rejects legacy Record entries with non-string versions", async () => {
+    const { runId } = await createTestRun(composeId, "malformed record run");
+    const { checkpointId } = await createTestCheckpoint(user.userId, runId);
+
+    // Legacy Record shape where a version is not a string.
+    await setTestCheckpointArtifactSnapshots(checkpointId, {
+      bad: 42,
+    } as unknown as Record<string, string>);
+
+    await expect(resolveCheckpoint(checkpointId, user.userId)).rejects.toThrow(
+      /"bad"/,
+    );
+  });
 });
