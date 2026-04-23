@@ -57,6 +57,13 @@ function filenameFromUrl(url: string): string {
   return last && last.length > 0 ? last : "image";
 }
 
+function toDownloadUrl(url: string): string {
+  if (url.includes("download=1")) {
+    return url;
+  }
+  return `${url}${url.includes("?") ? "&" : "?"}download=1`;
+}
+
 function triggerBlobDownload(blob: Blob, filename: string): void {
   const blobUrl = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -164,7 +171,7 @@ export function FileAttachmentChip({
   const iconSrc = getFileTypeIcon(filename);
   return (
     <a
-      href={url}
+      href={toDownloadUrl(url)}
       download={filename}
       title={filename}
       className="inline-flex items-center justify-center rounded-lg hover:bg-foreground/10 transition-colors p-0.5"

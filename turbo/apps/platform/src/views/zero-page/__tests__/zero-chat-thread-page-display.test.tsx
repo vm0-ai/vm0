@@ -1,5 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
+import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
@@ -10,6 +12,16 @@ import {
 } from "./chat-test-helpers.ts";
 
 const context = testContext();
+
+beforeEach(() => {
+  server.use(
+    http.get("https://example.com/avatar.png", () => {
+      return new HttpResponse("avatar", {
+        headers: { "Content-Type": "image/png" },
+      });
+    }),
+  );
+});
 
 // CHAT-D-033: Pin pill renders conditionally in ChatThreadHeader
 describe("zero chat thread page display - pin pill conditional rendering", () => {
@@ -62,15 +74,21 @@ describe("zero chat thread page display - attachment image preview", () => {
   });
 });
 
-// CHAT-D-037: Attachment file previews render in ChatMessageRow
-describe("zero chat thread page display - attachment file preview", () => {
-  it("renders file attachment chip with a download link for non-image files", async () => {
+// CHAT-D-037: Attachment document previews render in ChatMessageRow
+describe("zero chat thread page display - attachment document preview", () => {
+  it("renders markdown attachment content inline instead of only a file chip", async () => {
+    const docUrl = "https://example.com/notes.md";
+    server.use(
+      http.get(docUrl, () => {
+        return HttpResponse.text("# PRD\n\nPreview body");
+      }),
+    );
+
     mockChatLifecycle({
       chatMessages: [
         {
           role: "user",
-          content:
-            "[Attached file: document.pdf](https://example.com/document.pdf)\nDownload with: curl https://example.com/document.pdf\n",
+          content: `[Attached file: notes.md](${docUrl})\nDownload with: curl ${docUrl}\n`,
           createdAt: "2026-03-10T00:00:00Z",
         },
       ],
@@ -79,7 +97,11 @@ describe("zero chat thread page display - attachment file preview", () => {
     detachedSetupPage({ context, path: "/chats/thread-test-1" });
 
     await waitFor(() => {
-      expect(screen.getByTitle("document.pdf")).toBeInTheDocument();
+      expect(
+        screen.getByTestId("attachment-preview-markdown"),
+      ).toBeInTheDocument();
+      expect(screen.getByText("PRD")).toBeInTheDocument();
+      expect(screen.getByText("Preview body")).toBeInTheDocument();
     });
   });
 });
@@ -117,6 +139,78 @@ describe("zero chat thread page display - attachment video preview", () => {
     expect(
       document.querySelector('a[download="clip.mp4"]'),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe("zero chat thread page display - attachment html preview", () => {
+  it("renders html attachment through a dedicated controlled preview card", async () => {
+    const htmlUrl = "https://example.com/report.html";
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "user",
+          content: `[Attached file: report.html](${htmlUrl})\nDownload with: curl ${htmlUrl}\n`,
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: "/chats/thread-test-1" });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-preview-html")).toBeInTheDocument();
+      expect(screen.getByText("Load preview")).toBeInTheDocument();
+    });
+  });
+});
+
+describe("zero chat thread page display - attachment json preview", () => {
+  it("renders json attachment in a structured preview block", async () => {
+    const jsonUrl = "https://example.com/data.json";
+    server.use(
+      http.get(jsonUrl, () => {
+        return HttpResponse.text('{"status":"ok","count":2}');
+      }),
+    );
+
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "user",
+          content: `[Attached file: data.json](${jsonUrl})\nDownload with: curl ${jsonUrl}\n`,
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: "/chats/thread-test-1" });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-preview-json")).toBeInTheDocument();
+      expect(screen.getByText('{"status":"ok","count":2}')).toBeInTheDocument();
+    });
+  });
+});
+
+describe("zero chat thread page display - attachment pdf preview", () => {
+  it("renders pdf attachment as a previewable document card", async () => {
+    const pdfUrl = "https://example.com/document.pdf";
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "user",
+          content: `[Attached file: document.pdf](${pdfUrl})\nDownload with: curl ${pdfUrl}\n`,
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: "/chats/thread-test-1" });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-preview-pdf")).toBeInTheDocument();
+      expect(screen.getByText("Load preview")).toBeInTheDocument();
+    });
   });
 });
 
