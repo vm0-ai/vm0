@@ -9,6 +9,7 @@ import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 import {
+  setRedeemCampaignCode$,
   setRedeemResponse$,
   setRedeemStripeSuccess$,
 } from "./redeem-campaign-signals.ts";
@@ -25,7 +26,7 @@ import {
  */
 export const setupRedeemCampaignPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    set(updatePage$, createElement(RedeemCampaignPage));
+    set(updatePage$, createElement(RedeemCampaignPage), "minimal");
     set(updateDocumentTitle$, "Claim your credits");
 
     const params = get(pathParams$);
@@ -34,6 +35,7 @@ export const setupRedeemCampaignPage$ = command(
     const searchParams = get(searchParams$);
     const stripeSuccess = searchParams.get("stripe") === "success";
 
+    set(setRedeemCampaignCode$, campaign);
     set(setRedeemStripeSuccess$, stripeSuccess);
 
     if (stripeSuccess) {

@@ -15,12 +15,21 @@ const internalRedeemResponse$ = state<RedeemResponse | null>(null);
  */
 const internalRedeemStripeSuccess$ = state(false);
 
+/**
+ * The campaign code extracted from the URL path (e.g. "ZERO100").
+ */
+const internalRedeemCampaignCode$ = state("");
+
 export const redeemResponse$ = computed((get) => {
   return get(internalRedeemResponse$);
 });
 
 export const redeemStripeSuccess$ = computed((get) => {
   return get(internalRedeemStripeSuccess$);
+});
+
+export const redeemCampaignCode$ = computed((get) => {
+  return get(internalRedeemCampaignCode$);
 });
 
 export const setRedeemResponse$ = command(
@@ -31,4 +40,8 @@ export const setRedeemResponse$ = command(
 
 export const setRedeemStripeSuccess$ = command(({ set }, value: boolean) => {
   set(internalRedeemStripeSuccess$, value);
+});
+
+export const setRedeemCampaignCode$ = command(({ set }, code: string) => {
+  set(internalRedeemCampaignCode$, code);
 });
