@@ -277,3 +277,102 @@ async fn non_success_ingest_response_does_not_hang_shutdown_or_panic() {
     guard.shutdown().await;
     mock.assert_calls_async(1).await;
 }
+
+// -- Debug field truncation (DEBUG_FIELD_MAX_BYTES = 4 KiB) ------------------
+
+#[tokio::test]
+async fn debug_field_over_limit_is_truncated_with_marker() {
+    let server = MockServer::start_async().await;
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/v1/datasets/vm0-web-logs-test/ingest")
+                .body_includes(r#""message":"truncate-me""#)
+                .body_includes("…[truncated]");
+            then.status(200).body("{}");
+        })
+        .await;
+
+    let (layer, guard) = axiom_layer::init_with_base_url(&server.base_url(), "t", "test")
+        .expect("init must succeed");
+    let subscriber = tracing_subscriber::registry().with(layer);
+    {
+        let _sub = tracing::subscriber::set_default(subscriber);
+        // 8 KiB of 'A' yields an 8002-byte Debug form (two surrounding
+        // quotes), well past the 4 KiB cap → truncation must fire.
+        let big = "A".repeat(8 * 1024);
+        tracing::warn!(big = ?big, "truncate-me");
+    }
+    guard.shutdown().await;
+
+    mock.assert_calls_async(1).await;
+}
+
+#[tokio::test]
+async fn debug_field_truncation_walks_to_utf8_char_boundary() {
+    let server = MockServer::start_async().await;
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/v1/datasets/vm0-web-logs-test/ingest")
+                .body_includes(r#""message":"utf8-boundary""#)
+                .body_includes("…[truncated]");
+            then.status(200).body("{}");
+        })
+        .await;
+
+    let (layer, guard) = axiom_layer::init_with_base_url(&server.base_url(), "t", "test")
+        .expect("init must succeed");
+    let subscriber = tracing_subscriber::registry().with(layer);
+    {
+        let _sub = tracing::subscriber::set_default(subscriber);
+        // 2500 × 2-byte `ñ` = 5000 bytes; Debug adds surrounding quotes →
+        // 5002 bytes. Byte 4096 of the Debug form falls mid-`ñ`, so the
+        // truncation code MUST walk backward to a char boundary — without
+        // that walk, `s.truncate(4096)` panics and this test fails.
+        let big: String = "ñ".repeat(2500);
+        tracing::warn!(big = ?big, "utf8-boundary");
+    }
+    guard.shutdown().await;
+
+    mock.assert_calls_async(1).await;
+}
+
+#[tokio::test]
+async fn debug_field_at_exact_limit_passes_through_unmodified() {
+    let server = MockServer::start_async().await;
+
+    // Positive: the event arrives with its message intact.
+    let clean_mock = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/v1/datasets/vm0-web-logs-test/ingest")
+                .body_includes(r#""message":"at-limit""#);
+            then.status(200).body("{}");
+        })
+        .await;
+    // Negative: no truncation marker should appear in any ingested body.
+    let truncation_mock = server
+        .mock_async(|when, then| {
+            when.method(POST).body_includes("…[truncated]");
+            then.status(200).body("{}");
+        })
+        .await;
+
+    let (layer, guard) = axiom_layer::init_with_base_url(&server.base_url(), "t", "test")
+        .expect("init must succeed");
+    let subscriber = tracing_subscriber::registry().with(layer);
+    {
+        let _sub = tracing::subscriber::set_default(subscriber);
+        // Debug form of a &str is `"<contents>"` — surrounding quotes cost
+        // 2 bytes, so 4094 content bytes yields exactly DEBUG_FIELD_MAX_BYTES.
+        // The truncation check is `s.len() > MAX`, which is FALSE at equality
+        // → value must pass through unmodified.
+        let payload = "A".repeat(4094);
+        tracing::warn!(val = ?payload, "at-limit");
+    }
+    guard.shutdown().await;
+
+    clean_mock.assert_calls_async(1).await;
+    truncation_mock.assert_calls_async(0).await;
+}
