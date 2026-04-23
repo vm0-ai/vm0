@@ -10,14 +10,24 @@ import {
   appendVoiceChatCandidateItem,
   readVoiceChatCandidateItems,
 } from "./item-service";
-import { listSessionTasks } from "./task-service";
+import { createVoiceChatCandidateTask, listSessionTasks } from "./task-service";
 import { callReasoner } from "./reasoner";
 import { compactVoiceChatCandidateTaskResults } from "./compact-task-results";
+import { buildSlowBrainAppendSystemPrompt } from "./build-slow-brain-prompt";
+import { adaptVoiceChatCandidateTaskTrigger } from "./adapt-task-trigger";
+import { createZeroRun } from "../zero-run-service";
 import { publishUserSignal } from "../../infra/realtime/client";
 import { isBadRequest } from "../../shared/errors";
 import { logger } from "../../shared/logger";
 
 const log = logger("zero:voice-chat-candidate:trigger-reasoning");
+
+interface AssistantInterruptedNote {
+  type: "assistant_interrupted";
+  assistantRealtimeItemId: string;
+  heardText: string;
+  audioEndMs?: number;
+}
 
 export async function triggerReasoning(sessionId: string): Promise<void> {
   const db = globalThis.services.db;
@@ -96,6 +106,7 @@ export async function triggerReasoning(sessionId: string): Promise<void> {
   // everything itself, so we give it the full state each tick rather than
   // deltas. If nothing has happened since the last tick, skip the LLM call.
   const transcript = await readVoiceChatCandidateItems(sessionId);
+  const effectiveTranscript = buildReasonerTranscript(transcript);
   const tasks = await listSessionTasks(sessionId);
 
   const maxSeq =
@@ -140,7 +151,7 @@ export async function triggerReasoning(sessionId: string): Promise<void> {
   const result = await callReasoner({
     agentSystemPrompt,
     priorConversationSummary: currentSession.conversationSummary,
-    transcript: transcript.map((i) => {
+    transcript: effectiveTranscript.map((i) => {
       return {
         seq: i.seq,
         role: i.role,
@@ -231,6 +242,55 @@ export async function triggerReasoning(sessionId: string): Promise<void> {
       .where(eq(featureCandidateVoiceChatSessions.id, sessionId));
   }
 
+  // Step 5c — if the Reasoner detected tasks the Talker promised but never
+  // dispatched, create them now. This runs after the lock is released so
+  // slow spawnRun calls do not block concurrent ticks.
+  if (
+    result !== null &&
+    result.missingTasks.length > 0 &&
+    currentSession.agentId
+  ) {
+    const agentId = currentSession.agentId;
+    const apiStartTime = Date.now();
+    const appendSystemPrompt = buildSlowBrainAppendSystemPrompt({
+      agentSystemPrompt,
+      items: transcript,
+      sessionTasks: tasks,
+    });
+
+    for (let i = 0; i < result.missingTasks.length; i++) {
+      const prompt = result.missingTasks[i];
+      if (!prompt) continue;
+      await createVoiceChatCandidateTask({
+        sessionId,
+        callId: `reasoner-auto-${apiStartTime}-${String(i)}`,
+        prompt,
+        spawnRun: (taskId) => {
+          const runParams = adaptVoiceChatCandidateTaskTrigger({
+            userId: currentSession.userId,
+            agentId,
+            taskId,
+            prompt,
+            appendSystemPrompt,
+            apiStartTime,
+          });
+          return createZeroRun(runParams);
+        },
+      });
+      await appendVoiceChatCandidateItem({
+        sessionId,
+        role: "system_note",
+        content: `Reasoner auto-created task: ${prompt}`,
+        realtimeItemId: null,
+      });
+    }
+
+    await publishUserSignal(
+      [currentSession.userId],
+      `voice-chat-candidate:${sessionId}`,
+    );
+  }
+
   // Step 6 — compact old finished-task results along the exponential
   // schedule. Cheap no-op when nothing is due. The compactor itself fans
   // out an Ably signal when it actually shrinks a row, so the browser
@@ -242,6 +302,116 @@ export async function triggerReasoning(sessionId: string): Promise<void> {
   // running, the flag was set; clear it and schedule a re-tick so the new
   // items are picked up.
   await drainPending(sessionId);
+}
+
+function buildReasonerTranscript(
+  items: Awaited<ReturnType<typeof readVoiceChatCandidateItems>>,
+): Array<{
+  seq: number;
+  role: string;
+  content: string | null;
+  createdAt: Date;
+}> {
+  const interrupted = new Map<
+    string,
+    { heardText: string; seq: number; createdAt: Date; consumed: boolean }
+  >();
+
+  for (const item of items) {
+    if (item.role !== "system_note" || !item.content) {
+      continue;
+    }
+    const note = parseAssistantInterruptedNote(item.content);
+    if (!note) {
+      continue;
+    }
+    interrupted.set(note.assistantRealtimeItemId, {
+      heardText: note.heardText,
+      seq: item.seq,
+      createdAt: item.createdAt,
+      consumed: false,
+    });
+  }
+
+  const transcript: Array<{
+    seq: number;
+    role: string;
+    content: string | null;
+    createdAt: Date;
+  }> = [];
+
+  for (const item of items) {
+    if (item.role === "system_note") {
+      if (item.content && parseAssistantInterruptedNote(item.content)) {
+        continue;
+      }
+      transcript.push(item);
+      continue;
+    }
+
+    if (
+      item.role === "assistant" &&
+      item.realtimeItemId &&
+      interrupted.has(item.realtimeItemId)
+    ) {
+      const replacement = interrupted.get(item.realtimeItemId)!;
+      replacement.consumed = true;
+      if (replacement.heardText.trim()) {
+        transcript.push({
+          ...item,
+          content: replacement.heardText,
+        });
+      }
+      continue;
+    }
+
+    transcript.push(item);
+  }
+
+  for (const [, replacement] of interrupted) {
+    if (!replacement.consumed && replacement.heardText.trim()) {
+      transcript.push({
+        seq: replacement.seq,
+        role: "assistant",
+        content: replacement.heardText,
+        createdAt: replacement.createdAt,
+      });
+    }
+  }
+
+  transcript.sort((a, b) => {
+    return a.seq - b.seq;
+  });
+  return transcript;
+}
+
+function parseAssistantInterruptedNote(
+  content: string,
+): AssistantInterruptedNote | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    log.warn(`failed to parse assistant interrupted note: ${content}`);
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object") {
+    return null;
+  }
+  const note = parsed as Partial<AssistantInterruptedNote>;
+  if (
+    note.type !== "assistant_interrupted" ||
+    typeof note.assistantRealtimeItemId !== "string" ||
+    typeof note.heardText !== "string"
+  ) {
+    return null;
+  }
+  return {
+    type: "assistant_interrupted",
+    assistantRealtimeItemId: note.assistantRealtimeItemId,
+    heardText: note.heardText,
+    audioEndMs: note.audioEndMs,
+  };
 }
 
 function flattenTaskResult(

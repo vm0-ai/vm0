@@ -199,7 +199,6 @@ export const mobileBreadcrumb$ = computed(
     > = {
       works: { label: "Works", path: ROUTES.works },
       settings: { label: "Settings", path: ROUTES.settings },
-      queues: { label: "Queue", path: ROUTES.queues },
       connectors: { label: "Connectors", path: ROUTES.connectors },
     };
     if (route) {

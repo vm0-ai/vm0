@@ -16,7 +16,6 @@ import { ROUTES, type RoutePath } from "./route-paths.ts";
 import { setupGlobalMethod$ } from "./bootstrap/global-method.ts";
 import { setupLoggers$ } from "./bootstrap/loggers.ts";
 import { setupSlackConnectPage$ } from "./zero-page/slack-connect-page.ts";
-import { setupQueuePage$ } from "./queue-page/queue-page-setup.ts";
 import { setupActivityPage$ } from "./activity-page/activity-page-setup.ts";
 import { setupActivityDetailPage$ } from "./activity-page/activity-detail-page-setup.ts";
 import { setupActivityInspectPage$ } from "./activity-page/activity-inspect-page-setup.ts";
@@ -152,10 +151,6 @@ const ROUTE_CONFIG = [
     setup: setupAuthPageWrapper(setupSlackConnectPage$),
   },
   {
-    path: ROUTES.queues,
-    setup: setupAuthPageWrapper(setupQueuePage$),
-  },
-  {
     path: ROUTES.activityInspect,
     setup: setupAuthPageWrapper(setupActivityInspectPage$),
   },
@@ -259,7 +254,6 @@ const ROUTE_CONFIG = [
     path: "/schedule/:id",
     setup: redirectWithId(ROUTES.scheduleDetail, "scheduleId"),
   },
-  { path: "/queue", setup: redirectTo(ROUTES.queues) },
   { path: "/preferences", setup: redirectTo(ROUTES.settings) },
 
   {

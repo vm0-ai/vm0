@@ -44,17 +44,30 @@ impl Command {
 /// NBD request header (28 bytes, client -> server).
 #[derive(Debug, Clone)]
 pub struct NbdRequest {
+    /// Per-command flags bitmask (e.g. `NBD_CMD_FLAG_FUA = 0x0001`).
     pub flags: u16,
+    /// Decoded command type. The wire encoding is `u16`; see [`Command`].
     pub command: Command,
+    /// Opaque request identifier echoed back in [`NbdReply::handle`]. The
+    /// dispatcher uses this to correlate replies with in-flight requests;
+    /// the server does not interpret the value.
     pub handle: u64,
+    /// Byte offset into the device where the operation applies (Read /
+    /// Write / Trim). Ignored for Flush and Disconnect.
     pub offset: u64,
+    /// Payload length in bytes. Requests exceeding the server's
+    /// `MAX_REQUEST_LENGTH` (see `server.rs`) are rejected with `EIO`.
     pub length: u32,
 }
 
 /// NBD reply header (16 bytes, server -> client).
 #[derive(Debug, Clone)]
 pub struct NbdReply {
+    /// NBD error code: `0` means success; a non-zero value is an errno
+    /// the kernel maps back to the originating I/O (e.g. `libc::EIO`).
     pub error: u32,
+    /// Echoes [`NbdRequest::handle`] from the originating request so the
+    /// client can match this reply to the pending operation.
     pub handle: u64,
 }
 

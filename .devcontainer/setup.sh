@@ -10,6 +10,27 @@ echo "🚀 Setting up dev container..."
 WORKSPACE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 echo "📁 Workspace directory: $WORKSPACE_DIR"
 
+# Clear repo-local build caches when recreating the dev container so stale
+# Turbo/Next artifacts do not leak across environments.
+echo "🧹 Cleaning Turbo/Next caches..."
+TURBO_WORKSPACE_DIR="$WORKSPACE_DIR/turbo"
+if [ -d "$TURBO_WORKSPACE_DIR" ]; then
+  mapfile -t CACHE_DIRS < <(
+    find "$TURBO_WORKSPACE_DIR" \
+      \( -path '*/node_modules/*' -o -path "$TURBO_WORKSPACE_DIR/node_modules" \) -prune -o \
+      \( -name .next -o -name .turbo \) -type d -print
+  )
+
+  if [ ${#CACHE_DIRS[@]} -eq 0 ]; then
+    echo "✓ No repo-local Turbo/Next caches found"
+  else
+    rm -rf "${CACHE_DIRS[@]}"
+    echo "✓ Removed ${#CACHE_DIRS[@]} repo-local Turbo/Next cache directories"
+  fi
+else
+  echo "✓ Turbo workspace not found, skipping cache cleanup"
+fi
+
 # Setup PostgreSQL (handled by postgresql feature)
 sudo chown -R postgres:postgres /var/lib/postgresql 2>/dev/null || true
 sudo service postgresql start 2>/dev/null || true

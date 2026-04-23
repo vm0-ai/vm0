@@ -194,7 +194,7 @@ export async function handleOrgMention(
   });
 
   if (status === "queued") {
-    const queueUrl = `${getAppUrl()}/queue`;
+    const queueUrl = `${getAppUrl()}/?queue=1`;
     await client.chat.postEphemeral({
       channel: context.channelId,
       user: context.userId,

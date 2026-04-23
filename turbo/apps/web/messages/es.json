@@ -4438,6 +4438,91 @@
           "Incluye tus directrices de voz de marca o un artículo de ejemplo en el prompt. Zero escribe mejor cuando tiene un ancla estilística.",
           "Combínalo con el caso de uso content-performance-report. Deja que Zero escriba los artículos y luego monitorea cuáles ganan tracción. Alimenta los ganadores en tu próximo ciclo de investigación de palabras clave."
         ]
+      },
+      "cold-outreach-pipeline": {
+        "title": "Ejecuta campañas de cold email desde el ICP hasta la bandeja de entrada",
+        "description": "Describe tu perfil de cliente ideal y pásale a Zero un ID de campaña de Instantly. Busca leads en Apollo, verifica emails, analiza el sitio web de cada empresa para obtener contexto, genera líneas de apertura personalizadas con IA y sube todo a Instantly — listo para enviar.",
+        "timeSaved": "~45 min ahorrados",
+        "headings": {
+          "scenario": "Por qué la prospección manual consume tus mejores horas de venta",
+          "prompt": "Cómo lanzar un pipeline de cold outreach con un solo mensaje",
+          "steps": "Cómo Zero encuentra, enriquece, personaliza e inscribe leads",
+          "nextActions": "Refinar segmentación, expandir segmentos o programar ejecuciones recurrentes",
+          "integrations": "Integraciones requeridas: Apollo e Instantly",
+          "tips": "Mejores prácticas para cold outreach potenciado por IA"
+        },
+        "scenario": "Es lunes por la mañana. Necesitas 30 leads cualificados para la campaña de esta semana. Eso implica una hora en Apollo ajustando filtros, exportando CSVs, revisando sitios web de empresas para escribir líneas de apertura que no suenen a plantilla, y luego subir todo a Instantly. Para cuando se envía el primer email, ya perdiste media mañana. Con Zero, describes tu ICP en lenguaje natural y obtienes una lista de leads completamente personalizada y lista para campaña en minutos.",
+        "promptVariants": [
+          {
+            "label": "Detallado",
+            "prompt": "@Zero encuentra 25 leads que coincidan con este ICP: asistentes ejecutivos en bufetes de abogados de 1–10 personas en EE.UU. Verifica emails vía Apollo, analiza el sitio web de cada empresa para contexto, genera una línea de apertura personalizada por lead y súbelos a la campaña de Instantly abc-123-def. Remitente: Ethan, Founder @ vm0."
+          },
+          {
+            "label": "Rápido",
+            "prompt": "@Zero encuentra 20 CTOs de startups en EE.UU., personaliza y sube a la campaña de Instantly abc-123-def."
+          },
+          {
+            "label": "Programado",
+            "prompt": "@Zero cada lunes a las 9am, encuentra 25 nuevos leads que coincidan con nuestro ICP (ingenieros DevOps en startups Serie A), personaliza y sube a la campaña de Instantly abc-123-def."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Ethan",
+            "text": "@Zero encuentra 25 asistentes ejecutivos en pequeños bufetes de abogados en EE.UU. Enriquece vía Apollo, personaliza con contexto de empresa, sube a la campaña de Instantly abc-123-def."
+          },
+          {
+            "name": "Zero",
+            "text": "Listo. Pipeline completado para ejecución 20260422-091530:\n\n• Búsqueda Apollo: 38 candidatos encontrados\n• Enriquecimiento de email: 27 emails verificados\n• Personalización web: 25/27 analizados\n• Subida a Instantly: 25 leads inscritos, 2 omitidos (duplicados)\n\nLínea de apertura de ejemplo:\n\"Gestionar calendarios y documentos para un bufete de litigio boutique parece exigir serias habilidades de coordinación.\"\n\nCacheado en Google Drive — reutilizar con ID de ejecución 20260422-091530."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero busca prospectos en Apollo según el ICP",
+            "description": "Zero traduce tu ICP en lenguaje natural a filtros de búsqueda de Apollo — títulos de puesto, tamaño de empresa, ubicación y solo emails verificados — y pagina los resultados para recopilar suficientes candidatos. Los emails se enriquecen vía la API de Bulk Match de Apollo en lotes pequeños para maximizar la tasa de coincidencia."
+          },
+          {
+            "title": "Sitios web de empresas analizados para contexto de personalización",
+            "description": "Para cada dominio de empresa único, Zero analiza el sitio web para entender qué hace la empresa, su posicionamiento y actividad reciente. Este contexto alimenta el motor de personalización para que cada línea de apertura haga referencia a algo real sobre la empresa del prospecto."
+          },
+          {
+            "title": "Leads personalizados con IA subidos a Instantly",
+            "description": "Claude genera una oración de apertura única y natural para cada lead — sin plantillas, sin mencionar el producto en la apertura. La lista completa de leads (nombre, email, empresa, línea de personalización) se sube a tu campaña de Instantly, lista para enviar."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Revisar calidad de personalización",
+            "description": "Verificar líneas de apertura antes de lanzar la campaña",
+            "examplePrompt": "@Zero muéstrame las líneas de personalización de la ejecución 20260422-091530. Marca las que suenen genéricas o mencionen nuestro producto."
+          },
+          {
+            "title": "Expandir a un nuevo segmento",
+            "description": "Apuntar a un ICP diferente sin reconstruir el pipeline",
+            "examplePrompt": "@Zero mismo pipeline, pero apunta a gerentes de RRHH en empresas SaaS de 50–200 personas en UK. Sube a la campaña de Instantly xyz-456-ghi."
+          },
+          {
+            "title": "Programar generación semanal de leads",
+            "description": "Automatizar la prospección recurrente en una cadencia fija",
+            "examplePrompt": "@Zero cada lunes a las 9am, encuentra 25 nuevos leads que coincidan con nuestro ICP y sube a la campaña de Instantly abc-123-def."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Apollo proporciona búsqueda de prospectos y enriquecimiento de emails verificados. Zero usa las APIs de People Search y Bulk Match para encontrar leads que coincidan con tus criterios de ICP."
+          },
+          {
+            "description": "Instantly recibe la lista de leads enriquecida y personalizada. Zero sube directamente a tu campaña especificada para que los leads estén listos para secuencias de email automatizadas."
+          },
+          {
+            "description": "Opcional — solicita ejecuciones del pipeline y recibe resúmenes de finalización directamente en Slack."
+          }
+        ],
+        "tips": [
+          "Sé específico con tu ICP. Incluye títulos de puesto, rango de tamaño de empresa y geografía objetivo — descripciones vagas producen resultados ruidosos.",
+          "Empieza con un lote de 20 leads para validar la calidad de personalización antes de escalar a 50 por ejecución.",
+          "Guarda tu ID de ejecución. Zero cachea los datos de Apollo y enriquecimiento en Google Drive, para que puedas re-personalizar o re-subir sin gastar créditos de API."
+        ]
       }
     },
     "filter": {

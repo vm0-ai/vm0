@@ -25,7 +25,7 @@ import {
  */
 export const setupRedeemCampaignPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    set(updatePage$, createElement(RedeemCampaignPage));
+    set(updatePage$, createElement(RedeemCampaignPage), "minimal");
     set(updateDocumentTitle$, "Claim your credits");
 
     const params = get(pathParams$);

@@ -5,7 +5,7 @@ import { getUserId } from "../../../../../src/lib/auth/get-auth-context";
 import {
   getChatThread,
   getChatThreadMessages,
-  getActiveRunIdsForThread,
+  getActiveRunsForThread,
   updateChatThreadDraft,
   deleteChatThread,
 } from "../../../../../src/lib/zero/chat-thread";
@@ -33,13 +33,16 @@ const router = tsr.router(chatThreadByIdContract, {
       const thread = await getChatThread(params.id, userId);
       const [
         { chatMessages, latestSessionId },
-        activeRunIds,
+        activeRuns,
         latestRunProviderTypeRaw,
       ] = await Promise.all([
         getChatThreadMessages(params.id, userId),
-        getActiveRunIdsForThread(params.id),
+        getActiveRunsForThread(params.id),
         getLatestRunProviderTypeForThread(params.id),
       ]);
+      const activeRunIds = activeRuns.map((r) => {
+        return r.id;
+      });
       // Narrow to the canonical type enum; a stale/unknown value is treated
       // as "no prior session" so the composer picker stays unconstrained.
       const latestSessionProviderType =
@@ -58,6 +61,7 @@ const router = tsr.router(chatThreadByIdContract, {
           latestSessionId,
           latestSessionProviderType,
           activeRunIds,
+          activeRuns,
           createdAt: thread.createdAt.toISOString(),
           updatedAt: thread.updatedAt.toISOString(),
           draftContent: thread.draftContent,

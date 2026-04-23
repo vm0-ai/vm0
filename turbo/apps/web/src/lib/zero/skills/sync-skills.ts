@@ -13,16 +13,20 @@ import { tmpdir } from "node:os";
 import * as tar from "tar";
 import { eq, inArray, like } from "drizzle-orm";
 import {
-  SYSTEM_ORG_ID,
-  VOLUME_ORG_USER_ID,
-  getSkillStorageName,
   DEFAULT_SKILLS_OWNER,
   DEFAULT_SKILLS_REPO,
   DEFAULT_SKILLS_BRANCH,
-  parseSkillFrontmatter,
   resolveSkillRef,
+} from "@vm0/core/github-url";
+import {
+  SYSTEM_ORG_ID,
+  VOLUME_ORG_USER_ID,
+  getSkillStorageName,
+} from "@vm0/core/storage-names";
+import {
+  parseSkillFrontmatter,
   type SkillFrontmatter,
-} from "@vm0/core";
+} from "@vm0/core/skill-frontmatter";
 import { fetchHeadCommitSha } from "./git-refs";
 import { downloadAndExtractSkills, type ExtractedSkill } from "./tarball";
 import { computeSystemSkillHash } from "./content-hash";

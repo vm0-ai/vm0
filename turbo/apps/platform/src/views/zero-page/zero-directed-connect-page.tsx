@@ -225,6 +225,47 @@ function ApiTokenDialog({
   );
 }
 
+function ConnectActions({
+  isConnected,
+  isConnecting,
+  onConnect,
+}: {
+  isConnected: boolean;
+  isConnecting: boolean;
+  onConnect: () => void;
+}) {
+  if (isConnected) {
+    return (
+      <>
+        <div className="inline-flex h-9 w-[100px] items-center justify-center gap-1.5 text-sm font-medium text-emerald-600">
+          <IconCheck size={16} />
+          Connected
+        </div>
+        <button
+          type="button"
+          disabled={isConnecting}
+          onClick={onConnect}
+          className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline disabled:opacity-60 inline-flex items-center gap-1.5"
+        >
+          {isConnecting && <IconLoader2 size={12} className="animate-spin" />}
+          {isConnecting ? "Reconnecting..." : "Reconnect"}
+        </button>
+      </>
+    );
+  }
+  return (
+    <button
+      type="button"
+      disabled={isConnecting}
+      onClick={onConnect}
+      className="inline-flex h-9 w-[100px] items-center justify-center gap-2 rounded-[10px] bg-[#ed4e01] text-sm font-medium text-white transition-colors hover:bg-[#d35400] disabled:opacity-60"
+    >
+      {isConnecting && <IconLoader2 size={14} className="animate-spin" />}
+      {isConnecting ? "Connecting..." : "Connect"}
+    </button>
+  );
+}
+
 function DirectedConnectCard() {
   const type = useGet(directedConnectType$);
   const agentId = useGet(directedConnectAgentId$);
@@ -307,25 +348,12 @@ function DirectedConnectCard() {
               )}
             </div>
             {!isLoading && (
-              <div className="flex items-center justify-center">
-                {isConnected ? (
-                  <div className="inline-flex h-9 w-[100px] items-center justify-center gap-1.5 text-sm font-medium text-emerald-600">
-                    <IconCheck size={16} />
-                    Connected
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    disabled={isConnecting}
-                    onClick={handleConnect}
-                    className="inline-flex h-9 w-[100px] items-center justify-center gap-2 rounded-[10px] bg-[#ed4e01] text-sm font-medium text-white transition-colors hover:bg-[#d35400] disabled:opacity-60"
-                  >
-                    {isConnecting && (
-                      <IconLoader2 size={14} className="animate-spin" />
-                    )}
-                    {isConnecting ? "Connecting..." : "Connect"}
-                  </button>
-                )}
+              <div className="flex flex-col items-center justify-center gap-2">
+                <ConnectActions
+                  isConnected={isConnected}
+                  isConnecting={isConnecting}
+                  onConnect={handleConnect}
+                />
               </div>
             )}
           </div>

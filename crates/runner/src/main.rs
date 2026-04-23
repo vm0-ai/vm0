@@ -26,6 +26,7 @@ mod resource_budget;
 mod retry;
 mod runner_dirname;
 mod status;
+mod storage_cache;
 mod telemetry;
 mod types;
 

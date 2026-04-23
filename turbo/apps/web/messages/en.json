@@ -4438,6 +4438,91 @@
           "Include your brand voice guidelines or a sample post in the prompt. Zero writes better copy when it has a stylistic anchor to match.",
           "Pair this with the content-performance-report use case. Let Zero write the posts and then monitor which ones gain traction. Feed the winners back into your next keyword research cycle."
         ]
+      },
+      "cold-outreach-pipeline": {
+        "title": "Run cold email campaigns from ICP to inbox",
+        "description": "Describe your ideal customer profile and hand Zero an Instantly campaign ID. It searches Apollo for matching leads, enriches emails, scrapes each company's website for context, generates AI-personalized opening lines, and uploads everything to Instantly — ready to send.",
+        "timeSaved": "~45 min saved",
+        "headings": {
+          "scenario": "Why manual prospecting burns your best selling hours",
+          "prompt": "How to launch a cold outreach pipeline with one message",
+          "steps": "How Zero finds, enriches, personalizes, and enrolls leads",
+          "nextActions": "Refine targeting, expand segments, or schedule recurring runs",
+          "integrations": "Required integrations: Apollo and Instantly",
+          "tips": "Best practices for AI-powered cold outreach"
+        },
+        "scenario": "It's Monday morning. You need 30 qualified leads for this week's campaign. That means an hour in Apollo tweaking filters, exporting CSVs, cross-referencing company websites to write opening lines that don't sound like a template, then uploading everything to Instantly. By the time the first email sends, half your morning is gone. With Zero, you describe your ICP in plain English and get a fully personalized, campaign-ready lead list in minutes.",
+        "promptVariants": [
+          {
+            "label": "Detailed",
+            "prompt": "@Zero find 25 leads matching this ICP: executive assistants at 1–10 person law firms in the US. Enrich emails via Apollo, scrape each company website for context, generate a personalized opening line per lead, and upload them to Instantly campaign abc-123-def. My sender name is Ethan, Founder @ vm0."
+          },
+          {
+            "label": "Quick",
+            "prompt": "@Zero find 20 US-based startup CTOs, personalize, and upload to Instantly campaign abc-123-def."
+          },
+          {
+            "label": "Scheduled",
+            "prompt": "@Zero every Monday at 9am, find 25 new leads matching our ICP (DevOps engineers at Series A startups), personalize, and upload to Instantly campaign abc-123-def."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Ethan",
+            "text": "@Zero find 25 executive assistants at small US law firms. Enrich via Apollo, personalize with company context, upload to Instantly campaign abc-123-def."
+          },
+          {
+            "name": "Zero",
+            "text": "Done. Pipeline complete for run 20260422-091530:\n\n• Apollo search: 38 candidates found\n• Email enrichment: 27 verified emails\n• Website personalization: 25/27 scraped\n• Instantly upload: 25 leads enrolled, 2 skipped (duplicates)\n\nSample opening line:\n\"Managing calendars and filings for a boutique litigation practice sounds like it demands serious coordination skills.\"\n\nCached to Google Drive — reuse with run ID 20260422-091530."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero searches Apollo for ICP-matching prospects",
+            "description": "Zero translates your natural-language ICP into Apollo search filters — job titles, company size, location, and verified-email-only — then paginates through results to collect enough candidates. Emails are enriched via Apollo's bulk match API in small batches to maximize hit rate."
+          },
+          {
+            "title": "Company websites scraped for personalization context",
+            "description": "For each unique company domain, Zero scrapes the website to understand what the company does, its positioning, and recent activity. This context feeds into the personalization engine so every opening line references something real about the prospect's company."
+          },
+          {
+            "title": "AI-personalized leads uploaded to Instantly",
+            "description": "Claude generates a unique, natural-sounding opening sentence for each lead — no templates, no product pitches in the opener. The full lead list (name, email, company, personalization line) is uploaded to your Instantly campaign, ready to send."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Review personalization quality",
+            "description": "Spot-check opening lines before launching the campaign",
+            "examplePrompt": "@Zero show me the personalization lines for run 20260422-091530. Flag any that sound generic or mention our product."
+          },
+          {
+            "title": "Expand to a new segment",
+            "description": "Target a different ICP without rebuilding the pipeline",
+            "examplePrompt": "@Zero same pipeline, but target HR managers at 50–200 person SaaS companies in the UK. Upload to Instantly campaign xyz-456-ghi."
+          },
+          {
+            "title": "Schedule weekly lead generation",
+            "description": "Automate recurring prospecting on a fixed cadence",
+            "examplePrompt": "@Zero every Monday at 9am, find 25 new leads matching our ICP and upload to Instantly campaign abc-123-def."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Apollo provides prospect search and verified email enrichment. Zero uses the People Search and Bulk Match APIs to find leads matching your ICP criteria."
+          },
+          {
+            "description": "Instantly receives the enriched, personalized lead list. Zero uploads directly to your specified campaign so leads are ready for automated email sequences."
+          },
+          {
+            "description": "Optional — request pipeline runs and receive completion summaries directly in Slack."
+          }
+        ],
+        "tips": [
+          "Be specific with your ICP. Include job titles, company size range, and target geography — vague descriptions produce noisy results.",
+          "Start with a batch of 20 leads to validate personalization quality before scaling up to 50 per run.",
+          "Save your run ID. Zero caches Apollo and enrichment data to Google Drive, so you can re-personalize or re-upload without burning API credits."
+        ]
       }
     },
     "filter": {

@@ -78,9 +78,12 @@ const CLERK_CSS = `
    The glob uses :not(:has(...)) to target only leaf-level wrappers — it excludes
    any parent container that itself contains a nested formFieldInput element (e.g. a
    section wrapper that groups multiple fields). plain input[type] selectors cover
-   fields that Clerk renders without a wrapper div. */
+   fields that Clerk renders without a wrapper div. The :not([class*="ShowPassword"])
+   excludes the eye-toggle button/icon, whose class name also contains
+   "formFieldInput" (cl-formFieldInputShowPasswordButton) — applying input height,
+   border, and transition to it causes the icon to flicker/jump on click. */
 .cl-formFieldInput,
-.cl-card [class*="formFieldInput"]:not(:has([class*="formFieldInput"])),
+.cl-card [class*="formFieldInput"]:not([class*="ShowPassword"]):not(:has([class*="formFieldInput"])),
 .cl-card input[type="text"],
 .cl-card input[type="email"],
 .cl-card input[type="password"] {
@@ -99,7 +102,7 @@ const CLERK_CSS = `
    identical to the card background (gray-100 = #252527) — borders are invisible.
    Use --gray-400 (#434550, labelled "stronger border" in the design system). */
 [data-theme="dark"] .cl-formFieldInput,
-[data-theme="dark"] .cl-card [class*="formFieldInput"]:not(:has([class*="formFieldInput"])),
+[data-theme="dark"] .cl-card [class*="formFieldInput"]:not([class*="ShowPassword"]):not(:has([class*="formFieldInput"])),
 [data-theme="dark"] .cl-card input[type="text"],
 [data-theme="dark"] .cl-card input[type="email"],
 [data-theme="dark"] .cl-card input[type="password"] {
@@ -116,12 +119,14 @@ const CLERK_CSS = `
   border-radius: 0 !important;
 }
 
-/* Input focus state */
+/* Input focus state. Exclude ShowPassword button — its class matches
+   [class*="formFieldInput"] but focusing it on click would draw a primary-color
+   border that transitions in/out, producing the flicker reported in #10462. */
 .cl-formFieldInput:focus,
 .cl-formFieldInput input:not([data-input-otp]):focus,
 .cl-card input:not([data-input-otp]):focus,
-.cl-card [class*="formFieldInput"]:focus,
-.cl-card [class*="formFieldInput"] input:not([data-input-otp]):focus {
+.cl-card [class*="formFieldInput"]:not([class*="ShowPassword"]):focus,
+.cl-card [class*="formFieldInput"]:not([class*="ShowPassword"]) input:not([data-input-otp]):focus {
   border: 1px solid hsl(var(--primary)) !important;
   box-shadow: 0 0 0 3px hsl(var(--primary) / 0.1) !important;
   outline: none !important;

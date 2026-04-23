@@ -41,6 +41,9 @@ let internalMockedSession: { token: string } | null = null;
 let internalMockedOrganization: {
   id: string;
   name: string;
+  slug?: string;
+  imageUrl?: string;
+  hasImage?: boolean;
   reload: () => Promise<void>;
 } | null = null;
 let internalMockedInvitations: MockedInvitation[] = [];
@@ -87,7 +90,13 @@ export function mockUser(
  * Configure organization-related mock state for testing org selection.
  */
 export function mockOrganization(options: {
-  activeOrg?: { id: string; name: string } | null;
+  activeOrg?: {
+    id: string;
+    name: string;
+    slug?: string;
+    imageUrl?: string;
+    hasImage?: boolean;
+  } | null;
   memberships?: MockedMembership[];
   pendingInvitations?: MockedInvitation[];
 }) {

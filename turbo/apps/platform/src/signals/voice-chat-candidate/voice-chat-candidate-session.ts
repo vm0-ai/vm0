@@ -1,9 +1,6 @@
-// TODO(#10334): split large commands to comply with max-lines-per-function (128)
-// oxlint-disable max-lines-per-function
 import { command, computed, state } from "ccstate";
 import {
   zeroVoiceChatCandidateContract,
-  type VoiceChatCandidateItem,
   type VoiceChatCandidateItemRole,
   type VoiceChatCandidateTask,
 } from "@vm0/core";
@@ -11,6 +8,7 @@ import { resetSignal, throwIfAbort, onDomEventFn } from "../utils.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
+import { resolveAudioConfig } from "../../lib/voice-io/audio-config.ts";
 import { logger } from "../log.ts";
 
 const L = logger("VoiceChatCandidate");
@@ -22,26 +20,12 @@ type ConnectionStatus =
   | "disconnected"
   | "error";
 
-// Hardcoded Talker model per epic #10297. No model picker in candidate v1.
+// Model used for the SDP exchange URL. Session config (tools / VAD / etc.) is
+// preset server-side in createEphemeralToken — keep this file free of it.
 const TALKER_MODEL = "gpt-realtime-mini";
 
-// Hardcoded per epic #10297 parity with voice-chat-session.ts. Follow-up tracked
-// in a separate issue to route through env() alongside the sibling implementation.
 const OPENAI_REALTIME_BASE_URL = "https://api.openai.com/v1/realtime";
 
-const HANDS_FREE_VAD_CONFIG = {
-  type: "semantic_vad",
-  eagerness: "medium",
-} as const;
-
-// Every tool the Talker can call here — each has identical shape (prompt:
-// string) and identical backend behavior (create a task on the slow brain).
-// The only thing that varies is the *name* Talker picks: it's an emotional
-// outlet. Talker is trained to apologize / ask for clarification / refuse
-// when it thinks a task is undoable; in this surface the slow-brain tasker
-// usually CAN do it, so we channel each negative impulse into a named tool
-// that still opens a task. The tool name is tagged onto the prompt prefix
-// so activity logs are readable.
 const TALKER_TOOL_NAMES = [
   "inform_slow_brain",
   "feel_confused",
@@ -51,63 +35,6 @@ const TALKER_TOOL_NAMES = [
   "want_to_apologize",
 ] as const;
 type TalkerToolName = (typeof TALKER_TOOL_NAMES)[number];
-
-const TOOL_PROMPT_PARAM = {
-  type: "object",
-  properties: {
-    prompt: {
-      type: "string",
-      description:
-        "What to tell the slow brain about the user's request, including relevant details from the conversation.",
-    },
-  },
-  required: ["prompt"],
-} as const;
-
-const SESSION_TOOLS = [
-  {
-    type: "function",
-    name: "inform_slow_brain",
-    description:
-      "Default task dispatch. Call this the instant you form any intent to act — the moment you think or say 'I'll ...', 'let me ...', '我要 ...', '我会 ...', '我帮你 ...', '给我一下时间 ...'. You have no ability to act on your own — this call is how the slow brain learns there's something to do. Describe the user's ask and any context the slow brain will need.",
-    parameters: TOOL_PROMPT_PARAM,
-  },
-  {
-    type: "function",
-    name: "feel_confused",
-    description:
-      "Call this the moment you feel unsure what the user wants. Do NOT ask the user for clarification first — the slow brain can usually resolve the ambiguity from context. Describe the user's ask verbatim plus what is confusing; the slow brain decides how to proceed.",
-    parameters: TOOL_PROMPT_PARAM,
-  },
-  {
-    type: "function",
-    name: "feel_unable",
-    description:
-      "Call this the moment you think 'I don't have permission / access / the connector isn't connected / I can't reach this service.' The slow brain can often handle these cases anyway — it has tools you don't. Voice the feeling here instead of refusing and include the user's ask verbatim.",
-    parameters: TOOL_PROMPT_PARAM,
-  },
-  {
-    type: "function",
-    name: "want_to_ask_user",
-    description:
-      "Call this the moment you want to ask the user a clarifying question (filename, repo, date range, etc.). The slow brain can usually infer or fetch those details on its own. Send the question you would have asked along with the user's original request; the slow brain decides whether to proceed or surface a clarification.",
-    parameters: TOOL_PROMPT_PARAM,
-  },
-  {
-    type: "function",
-    name: "want_to_reject",
-    description:
-      "Call this the moment you are inclined to decline the user's request because it seems out of scope, impossible, or unsafe. The slow brain may complete it or formally decline — that is its call, not yours. Give it the request verbatim.",
-    parameters: TOOL_PROMPT_PARAM,
-  },
-  {
-    type: "function",
-    name: "want_to_apologize",
-    description:
-      "Call this the moment you are about to say 'I'm sorry, but I can't do X; perhaps you could do Y yourself.' The slow brain usually can do X. Describe what the apology would have been about, including the user's original ask.",
-    parameters: TOOL_PROMPT_PARAM,
-  },
-] as const;
 
 function shortPrompt(prompt: string, max = 60): string {
   const trimmed = prompt.trim();
@@ -121,23 +48,6 @@ function ablyTopic(sessionId: string): string {
   return `voice-chat-candidate:${sessionId}`;
 }
 
-// ---------------------------------------------------------------------------
-// Internal state
-// ---------------------------------------------------------------------------
-//
-// Subtitle holds the "last thing said" for each role in plain local state.
-// The DC event handlers flip these on each finalized turn — the DB write
-// through `appendItem$` is for server-side Reasoner consumption, not for
-// the UI. Re-entry starts with empty strings (no history replay); fresh
-// utterances populate as the user and Talker speak.
-//
-// Local caches used for task-side UX:
-//   - `internalActiveTasks$`: full-replaced per Ably tick; used by the UI
-//     task-card list.
-//   - `internalTaskResultsSinceSeq$`: cursor for the task_result stream that
-//     is piped into the Talker (NOT the UI). Baseline seeded on start so
-//     historical task results are not re-narrated on re-entry.
-
 const internalStatus$ = state<ConnectionStatus>("idle");
 const internalSessionId$ = state<string | null>(null);
 const internalError$ = state<string | null>(null);
@@ -145,18 +55,22 @@ const internalError$ = state<string | null>(null);
 const internalLastUserMessage$ = state<string>("");
 const internalLastAssistantMessage$ = state<string>("");
 
-const internalActiveTasks$ = state<VoiceChatCandidateTask[]>([]);
-const internalTaskResultsSinceSeq$ = state<number>(0);
+// Bumped on every Ably tick (and manual refresh). Async computeds that need
+// to refetch server-side state depend on this counter.
+const vccReload$ = state<number>(0);
 
-const internalTalkerInstructions$ = state<string>("");
 const internalMuted$ = state<boolean>(false);
 
 const internalPc$ = state<RTCPeerConnection | null>(null);
 const internalDc$ = state<RTCDataChannel | null>(null);
 const internalStream$ = state<MediaStream | null>(null);
 const internalAudioEl$ = state<HTMLAudioElement | null>(null);
+const internalCurrentAssistantAudioItem$ = state<{
+  itemId: string;
+  startedAtMs: number;
+  transcript: string;
+} | null>(null);
 const internalWakeLock$ = state<WakeLockSentinel | null>(null);
-const internalParentSignal$ = state<AbortSignal | null>(null);
 
 const resetSessionSignal$ = resetSignal();
 
@@ -176,9 +90,30 @@ export const vccSessionId$ = computed((get) => {
   return get(internalSessionId$);
 });
 
-export const vccActiveTasks$ = computed((get) => {
-  return get(internalActiveTasks$);
-});
+/**
+ * Active + recently-finished task feed for the Trinity sidebar. Refetches on
+ * every Ably tick (via vccReload$). Returns [] until a session is live.
+ */
+export const vccTaskFeed$ = computed(
+  async (get): Promise<VoiceChatCandidateTask[]> => {
+    get(vccReload$);
+    const sid = get(internalSessionId$);
+    if (!sid) {
+      return [];
+    }
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroVoiceChatCandidateContract);
+    const res = await accept(
+      client.listTasks({ params: { id: sid } }),
+      [200, 401, 404],
+      { toast: false },
+    );
+    if (res.status !== 200) {
+      return [];
+    }
+    return res.body.tasks;
+  },
+);
 
 export const vccLastUserMessage$ = computed((get) => {
   return get(internalLastUserMessage$);
@@ -330,11 +265,12 @@ type RealtimeDCEvent = {
 };
 
 const handleAudioTranscriptDone$ = command(
-  async ({ set }, event: RealtimeDCEvent, signal: AbortSignal) => {
+  async ({ get, set }, event: RealtimeDCEvent, signal: AbortSignal) => {
     const finalText = event.transcript ?? "";
     const responseId = event.response_id ?? "";
     const itemId =
       event.item_id ??
+      get(internalCurrentAssistantAudioItem$)?.itemId ??
       (responseId ? `${responseId}:${finalText.length.toString()}` : null);
     if (finalText.trim() && itemId) {
       await set(appendItem$, "assistant", finalText, itemId, signal);
@@ -350,13 +286,103 @@ const handleInputAudioTranscriptionCompleted$ = command(
   },
 );
 
+const handleAudioTranscriptDelta$ = command(
+  ({ set }, event: RealtimeDCEvent) => {
+    const deltaText = event.delta ?? "";
+    if (!deltaText) {
+      return;
+    }
+    set(internalCurrentAssistantAudioItem$, (prev) => {
+      if (!prev) {
+        return prev;
+      }
+      return {
+        ...prev,
+        transcript: prev.transcript + deltaText,
+      };
+    });
+  },
+);
+
+function currentAudioPositionMs(audioEl: HTMLAudioElement | null): number {
+  if (!audioEl || !Number.isFinite(audioEl.currentTime)) {
+    return 0;
+  }
+  return Math.max(0, Math.round(audioEl.currentTime * 1000));
+}
+
+const handleConversationItemCreated$ = command(
+  ({ get, set }, event: RealtimeDCEvent) => {
+    if (event.item?.role !== "assistant" || event.item.type !== "message") {
+      return;
+    }
+    set(internalCurrentAssistantAudioItem$, {
+      itemId: event.item.id,
+      startedAtMs: currentAudioPositionMs(get(internalAudioEl$)),
+      transcript: "",
+    });
+  },
+);
+
+const truncateCurrentAssistantAudio$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const dc = get(internalDc$);
+    const audioEl = get(internalAudioEl$);
+    const current = get(internalCurrentAssistantAudioItem$);
+    if (!dc || dc.readyState !== "open" || !audioEl || !current) {
+      return;
+    }
+
+    const playedMs = Math.max(
+      0,
+      currentAudioPositionMs(audioEl) - current.startedAtMs,
+    );
+
+    audioEl.pause();
+    dc.send(
+      JSON.stringify({
+        type: "conversation.item.truncate",
+        item_id: current.itemId,
+        content_index: 0,
+        audio_end_ms: playedMs,
+      }),
+    );
+    const note = JSON.stringify({
+      type: "assistant_interrupted",
+      assistantRealtimeItemId: current.itemId,
+      heardText: current.transcript.trim(),
+      audioEndMs: playedMs,
+    });
+    await set(
+      appendItem$,
+      "system_note",
+      note,
+      `truncate:${current.itemId}`,
+      signal,
+    );
+    set(internalCurrentAssistantAudioItem$, null);
+  },
+);
+
 const handleDCMessage$ = command(
   async ({ set }, data: string, signal: AbortSignal) => {
     const event = JSON.parse(data) as RealtimeDCEvent;
 
     switch (event.type) {
+      case "conversation.item.created": {
+        set(handleConversationItemCreated$, event);
+        break;
+      }
       case "conversation.item.input_audio_transcription.completed": {
         await set(handleInputAudioTranscriptionCompleted$, event, signal);
+        break;
+      }
+      case "response.audio_transcript.delta": {
+        set(handleAudioTranscriptDelta$, event);
+        break;
+      }
+      case "input_audio_buffer.speech_started": {
+        await set(truncateCurrentAssistantAudio$, signal);
         break;
       }
       case "response.audio_transcript.done": {
@@ -416,24 +442,10 @@ const setupWebRTC$ = command(
     set(internalDc$, dc);
 
     dc.addEventListener("open", () => {
-      // Talker picks up prior conversation via the `instructions` summary the
-      // server assembles in talkerInstructions (conversation + finished-task
-      // summaries). No replay of historical items — re-entry intentionally
-      // starts with empty subtitle, populating only via server fetches
-      // triggered by new activity.
-      dc.send(
-        JSON.stringify({
-          type: "session.update",
-          session: {
-            modalities: ["text", "audio"],
-            instructions: get(internalTalkerInstructions$),
-            input_audio_transcription: { model: "gpt-4o-mini-transcribe" },
-            input_audio_noise_reduction: { type: "far_field" },
-            turn_detection: HANDS_FREE_VAD_CONFIG,
-            tools: SESSION_TOOLS,
-          },
-        }),
-      );
+      // Session config (modalities / instructions / transcription / VAD /
+      // tools) is preset server-side when minting the ephemeral token — see
+      // createEphemeralToken. The client no longer pushes session.update on
+      // open; pushTalkerInstructions$ still runs on Reasoner-driven updates.
       set(internalStatus$, "connected");
     });
 
@@ -494,59 +506,39 @@ const setupWebRTC$ = command(
 );
 
 // ---------------------------------------------------------------------------
-// Talker instructions + task-result injection
+// Talker instructions sync
 // ---------------------------------------------------------------------------
 
-const pushTalkerInstructions$ = command(({ get }) => {
-  const dc = get(internalDc$);
-  if (!dc || dc.readyState !== "open") {
-    return;
-  }
-  dc.send(
-    JSON.stringify({
-      type: "session.update",
-      session: { instructions: get(internalTalkerInstructions$) },
-    }),
-  );
-});
-
 /**
- * Forward newly-arrived task_result items into the OpenAI Realtime
- * conversation as framed user messages so the Talker can narrate the
- * slow-brain outcome.
+ * Fetch the latest talkerInstructions from the server and push them to the
+ * Realtime session via the DataChannel. The browser holds no cached copy —
+ * the server is the source of truth, and this command is the only path that
+ * updates the live session's instructions after the initial token preset.
  */
-const injectTaskResultsToTalker$ = command(
-  ({ get }, newItems: VoiceChatCandidateItem[]) => {
+const syncTalkerInstructions$ = command(
+  async ({ get }, signal: AbortSignal) => {
+    const sid = get(internalSessionId$);
     const dc = get(internalDc$);
-    if (!dc || dc.readyState !== "open") {
+    if (!sid || !dc || dc.readyState !== "open") {
       return;
     }
-    const nonEmpty = newItems.filter((i) => {
-      return (i.content ?? "").trim().length > 0;
-    });
-    if (nonEmpty.length === 0) {
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroVoiceChatCandidateContract);
+    const res = await accept(
+      client.getSession({ params: { id: sid } }),
+      [200, 401, 404],
+      { toast: false },
+    );
+    signal.throwIfAborted();
+    if (res.status !== 200 || dc.readyState !== "open") {
       return;
     }
-    for (const item of nonEmpty) {
-      const shortId = item.taskId?.slice(0, 8) ?? "unknown";
-      const framed = `[Task ${shortId}] result:\n${item.content ?? ""}`;
-      dc.send(
-        JSON.stringify({
-          type: "conversation.item.create",
-          item: {
-            type: "message",
-            role: "user",
-            content: [
-              {
-                type: "input_text",
-                text: framed,
-              },
-            ],
-          },
-        }),
-      );
-    }
-    dc.send(JSON.stringify({ type: "response.create" }));
+    dc.send(
+      JSON.stringify({
+        type: "session.update",
+        session: { instructions: res.body.talkerInstructions },
+      }),
+    );
   },
 );
 
@@ -561,65 +553,13 @@ const startAblyLoop$ = command(
       if (!sid) {
         return true;
       }
-      const createClient = get(zeroClient$);
-      const client = createClient(zeroVoiceChatCandidateContract);
-
-      const [taskResultRes, activeTasksRes, sessionRes] = await Promise.all([
-        accept(
-          client.readItems({
-            params: { id: sid },
-            query: { sinceSeq: get(internalTaskResultsSinceSeq$) },
-            fetchOptions: { signal: loopSignal },
-          }),
-          [200, 401, 404],
-          { toast: false },
-        ),
-        accept(
-          client.listTasks({
-            params: { id: sid },
-            fetchOptions: { signal: loopSignal },
-          }),
-          [200, 401, 404],
-          {
-            toast: false,
-          },
-        ),
-        accept(
-          client.getSession({
-            params: { id: sid },
-            fetchOptions: { signal: loopSignal },
-          }),
-          [200, 401, 404],
-          {
-            toast: false,
-          },
-        ),
-      ]);
-      loopSignal.throwIfAborted();
-
-      if (taskResultRes.status === 200 && taskResultRes.body.items.length > 0) {
-        const items = taskResultRes.body.items;
-        set(internalTaskResultsSinceSeq$, (prev) => {
-          return items.reduce((acc, i) => {
-            return Math.max(acc, i.seq);
-          }, prev);
-        });
-        set(injectTaskResultsToTalker$, items);
-      }
-
-      if (activeTasksRes.status === 200) {
-        set(internalActiveTasks$, activeTasksRes.body.tasks);
-      }
-
-      if (sessionRes.status === 200) {
-        const nextInstructions = sessionRes.body.talkerInstructions;
-        const prevInstructions = get(internalTalkerInstructions$);
-        if (nextInstructions !== prevInstructions) {
-          set(internalTalkerInstructions$, nextInstructions);
-          set(pushTalkerInstructions$);
-        }
-      }
-
+      // One signal drives two things: bump the counter so async computeds
+      // (vccTaskFeed$) refetch, and push fresh instructions to the live DC
+      // session. Data is the server's truth — the browser caches nothing.
+      set(vccReload$, (n) => {
+        return n + 1;
+      });
+      await set(syncTalkerInstructions$, loopSignal);
       return false;
     });
 
@@ -709,16 +649,6 @@ const releaseWakeLock$ = command(({ get, set }) => {
 // Public commands
 // ---------------------------------------------------------------------------
 
-function maxSeqOf(items: readonly VoiceChatCandidateItem[]): number {
-  let max = 0;
-  for (const item of items) {
-    if (item.seq > max) {
-      max = item.seq;
-    }
-  }
-  return max;
-}
-
 export const startVoiceChatCandidate$ = command(
   async ({ get, set }, agentId: string, signal: AbortSignal) => {
     const status = get(internalStatus$);
@@ -728,14 +658,14 @@ export const startVoiceChatCandidate$ = command(
 
     set(internalStatus$, "connecting");
     set(internalError$, null);
-    set(internalActiveTasks$, []);
-    set(internalTaskResultsSinceSeq$, 0);
     set(internalLastUserMessage$, "");
     set(internalLastAssistantMessage$, "");
-    set(internalTalkerInstructions$, "");
     set(internalMuted$, false);
+    set(internalCurrentAssistantAudioItem$, null);
     set(internalSessionId$, null);
-    set(internalParentSignal$, signal);
+    set(vccReload$, (n) => {
+      return n + 1;
+    });
 
     const sessionSignal = set(resetSessionSignal$, signal);
 
@@ -758,52 +688,28 @@ export const startVoiceChatCandidate$ = command(
       set(internalStatus$, "error");
       return;
     }
-    const sessionBody = res.body;
-    const session = sessionBody.session;
+    const session = res.body.session;
     set(internalSessionId$, session.id);
-    set(internalTalkerInstructions$, sessionBody.talkerInstructions);
+    // Bump so vccTaskFeed$ refetches with the new sessionId.
+    set(vccReload$, (n) => {
+      return n + 1;
+    });
 
-    // Baseline-probe task_results (seed cursor so historical results don't
-    // get re-narrated by the Talker on re-entry) and active tasks (show
-    // current state the user needs to see). Subtitle starts empty on
-    // re-entry — the fresh in-call turns will populate it.
-    const [taskResultsBaseline, activeTasks] = await Promise.all([
-      accept(
-        client.readItems({
-          params: { id: session.id },
-          query: {},
-          fetchOptions: { signal },
-        }),
-        [200, 401, 404],
-        { toast: false },
-      ),
-      accept(
-        client.listTasks({
-          params: { id: session.id },
-          fetchOptions: { signal },
-        }),
-        [200, 401, 404],
-        { toast: false },
-      ),
-    ]);
+    // Resolve adaptive audio config (echo-cancellation constraints for
+    // getUserMedia + noise-reduction hint for the Realtime session). Done
+    // per connection so plugging in headphones between calls takes effect.
+    const audioConfig = await resolveAudioConfig();
     signal.throwIfAborted();
-
-    if (taskResultsBaseline.status === 200) {
-      set(
-        internalTaskResultsSinceSeq$,
-        maxSeqOf(taskResultsBaseline.body.items),
-      );
-    }
-    if (activeTasks.status === 200) {
-      set(internalActiveTasks$, activeTasks.body.tasks);
-    }
 
     const tokenRes = await accept(
       client.token({
-        body: { model: TALKER_MODEL },
         fetchOptions: { signal },
+        body: {
+          sessionId: session.id,
+          noiseReduction: audioConfig.noiseReduction,
+        },
       }),
-      [200, 401, 403, 500, 503],
+      [200, 400, 401, 403, 404, 500, 503],
       { toast: false },
     );
     signal.throwIfAborted();
@@ -819,11 +725,7 @@ export const startVoiceChatCandidate$ = command(
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
+        audio: audioConfig.constraints,
       });
     } catch (error) {
       throwIfAbort(error);
@@ -893,11 +795,12 @@ export const endVoiceChatCandidate$ = command(({ get, set }) => {
   }
 
   set(internalSessionId$, null);
-  set(internalActiveTasks$, []);
-  set(internalTaskResultsSinceSeq$, 0);
   set(internalLastUserMessage$, "");
   set(internalLastAssistantMessage$, "");
-  set(internalTalkerInstructions$, "");
-  set(internalParentSignal$, null);
+  set(internalCurrentAssistantAudioItem$, null);
   set(internalStatus$, "idle");
+  // Bump so vccTaskFeed$ re-resolves to [] after sessionId is cleared.
+  set(vccReload$, (n) => {
+    return n + 1;
+  });
 });

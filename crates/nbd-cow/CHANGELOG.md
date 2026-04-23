@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.7](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.6...nbd-cow-v0.4.7) (2026-04-23)
+
+
+### Documentation
+
+* document nbd request and reply fields (closes [#10645](https://github.com/vm0-ai/vm0/issues/10645)) ([#10810](https://github.com/vm0-ai/vm0/issues/10810)) ([c0f87a5](https://github.com/vm0-ai/vm0/commit/c0f87a543fef33ef6d96a12a6cf12b67636623c3))
+
 ## [0.4.6](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.5...nbd-cow-v0.4.6) (2026-04-22)
 
 

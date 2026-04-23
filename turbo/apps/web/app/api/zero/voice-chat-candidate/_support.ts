@@ -24,9 +24,10 @@ export const createVoiceChatCandidateTaskBodySchema = z.object({
   callId: z.string().min(1),
 });
 
-export const voiceChatCandidateTokenBodySchema = z
-  .object({ model: z.string().optional() })
-  .optional();
+export const voiceChatCandidateTokenBodySchema = z.object({
+  sessionId: z.uuid(),
+  noiseReduction: z.enum(["near_field", "far_field"]).optional(),
+});
 
 type SessionRow = typeof featureCandidateVoiceChatSessions.$inferSelect;
 type ItemRow = typeof featureCandidateVoiceChatItems.$inferSelect;

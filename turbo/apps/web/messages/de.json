@@ -4438,6 +4438,91 @@
           "Fügen Sie Ihre Markensprache-Richtlinien oder einen Beispielbeitrag in den Prompt ein. Zero schreibt bessere Texte, wenn es einen stilistischen Ankerpunkt hat.",
           "Kombinieren Sie dies mit dem Content-Performance-Report-Use-Case. Lassen Sie Zero die Beiträge schreiben und dann überwachen, welche Traktion gewinnen, und speisen Sie die Gewinner in den nächsten Keyword-Recherche-Zyklus ein."
         ]
+      },
+      "cold-outreach-pipeline": {
+        "title": "Cold-E-Mail-Kampagnen vom ICP bis zum Posteingang steuern",
+        "description": "Beschreiben Sie Ihr ideales Kundenprofil und geben Sie Zero eine Instantly-Kampagnen-ID. Zero durchsucht Apollo nach passenden Leads, verifiziert E-Mails, analysiert Unternehmenswebsites, generiert KI-personalisierte Eröffnungszeilen und lädt alles in Instantly hoch — versandfertig.",
+        "timeSaved": "~45 Min. gespart",
+        "headings": {
+          "scenario": "Warum manuelle Leadsuche Ihre besten Verkaufsstunden verbrennt",
+          "prompt": "So starten Sie eine Cold-Outreach-Pipeline mit einer Nachricht",
+          "steps": "Wie Zero Leads findet, anreichert, personalisiert und einschreibt",
+          "nextActions": "Targeting verfeinern, Segmente erweitern oder wiederkehrende Läufe planen",
+          "integrations": "Erforderliche Integrationen: Apollo und Instantly",
+          "tips": "Best Practices für KI-gestützte Cold-Outreach"
+        },
+        "scenario": "Es ist Montagmorgen. Sie brauchen 30 qualifizierte Leads für die Kampagne dieser Woche. Das bedeutet eine Stunde in Apollo mit Filteranpassungen, CSV-Exporten, Firmenwebsites abgleichen, um Eröffnungszeilen zu schreiben, die nicht nach Vorlage klingen, und dann alles in Instantly hochladen. Bis die erste E-Mail rausgeht, ist der halbe Vormittag weg. Mit Zero beschreiben Sie Ihr ICP in normalem Deutsch und erhalten in Minuten eine vollständig personalisierte, kampagnenbereite Leadliste.",
+        "promptVariants": [
+          {
+            "label": "Detailliert",
+            "prompt": "@Zero finde 25 Leads für dieses ICP: Assistenten der Geschäftsleitung in US-Anwaltskanzleien mit 1–10 Mitarbeitern. Verifiziere E-Mails über Apollo, analysiere jede Firmenwebsite für Kontext, generiere eine personalisierte Eröffnungszeile pro Lead und lade sie in Instantly-Kampagne abc-123-def hoch. Absender: Ethan, Founder @ vm0."
+          },
+          {
+            "label": "Schnell",
+            "prompt": "@Zero finde 20 US-basierte Startup-CTOs, personalisiere und lade in Instantly-Kampagne abc-123-def hoch."
+          },
+          {
+            "label": "Geplant",
+            "prompt": "@Zero jeden Montag um 9 Uhr, finde 25 neue Leads passend zu unserem ICP (DevOps-Ingenieure bei Series-A-Startups), personalisiere und lade in Instantly-Kampagne abc-123-def hoch."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Ethan",
+            "text": "@Zero finde 25 Assistenten der Geschäftsleitung in kleinen US-Anwaltskanzleien. Über Apollo anreichern, mit Firmenkontext personalisieren, in Instantly-Kampagne abc-123-def hochladen."
+          },
+          {
+            "name": "Zero",
+            "text": "Erledigt. Pipeline abgeschlossen für Lauf 20260422-091530:\n\n• Apollo-Suche: 38 Kandidaten gefunden\n• E-Mail-Anreicherung: 27 verifizierte E-Mails\n• Website-Personalisierung: 25/27 analysiert\n• Instantly-Upload: 25 Leads eingeschrieben, 2 übersprungen (Duplikate)\n\nBeispiel-Eröffnungszeile:\n„Kalender und Akten für eine Boutique-Litigationskanzlei zu verwalten, klingt nach ernsthafter Koordinationskompetenz.“\n\nIn Google Drive gecacht — mit Lauf-ID 20260422-091530 wiederverwendbar."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero durchsucht Apollo nach ICP-passenden Interessenten",
+            "description": "Zero übersetzt Ihr natürlichsprachliches ICP in Apollo-Suchfilter — Jobtitel, Unternehmensgröße, Standort und nur verifizierte E-Mails — und paginiert durch die Ergebnisse, um genügend Kandidaten zu sammeln. E-Mails werden über Apollos Bulk-Match-API in kleinen Batches angereichert."
+          },
+          {
+            "title": "Firmenwebsites für Personalisierungskontext analysiert",
+            "description": "Für jede einzigartige Firmendomain analysiert Zero die Website, um zu verstehen, was das Unternehmen macht, wie es sich positioniert und was es aktuell beschäftigt. Dieser Kontext fließt in die Personalisierungs-Engine ein, sodass jede Eröffnungszeile etwas Reales über das Unternehmen des Interessenten referenziert."
+          },
+          {
+            "title": "KI-personalisierte Leads in Instantly hochgeladen",
+            "description": "Claude generiert einen einzigartigen, natürlich klingenden Eröffnungssatz für jeden Lead — keine Vorlagen, kein Produktpitch im Opener. Die vollständige Leadliste (Name, E-Mail, Unternehmen, Personalisierungszeile) wird in Ihre Instantly-Kampagne hochgeladen, versandfertig."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Personalisierungsqualität prüfen",
+            "description": "Eröffnungszeilen stichprobenartig vor Kampagnenstart überprüfen",
+            "examplePrompt": "@Zero zeige mir die Personalisierungszeilen für Lauf 20260422-091530. Markiere alle, die generisch klingen oder unser Produkt erwähnen."
+          },
+          {
+            "title": "Neues Segment erschließen",
+            "description": "Ein anderes ICP ansprechen, ohne die Pipeline neu aufzubauen",
+            "examplePrompt": "@Zero gleiche Pipeline, aber ziele auf HR-Manager bei SaaS-Unternehmen mit 50–200 Mitarbeitern in UK. In Instantly-Kampagne xyz-456-ghi hochladen."
+          },
+          {
+            "title": "Wöchentliche Leadgenerierung planen",
+            "description": "Wiederkehrende Leadsuche in festem Rhythmus automatisieren",
+            "examplePrompt": "@Zero jeden Montag um 9 Uhr, finde 25 neue Leads passend zu unserem ICP und lade in Instantly-Kampagne abc-123-def hoch."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Apollo bietet Interessentensuche und verifizierte E-Mail-Anreicherung. Zero nutzt die People-Search- und Bulk-Match-APIs, um Leads passend zu Ihren ICP-Kriterien zu finden."
+          },
+          {
+            "description": "Instantly empfängt die angereicherte, personalisierte Leadliste. Zero lädt direkt in Ihre angegebene Kampagne hoch, sodass Leads für automatisierte E-Mail-Sequenzen bereit sind."
+          },
+          {
+            "description": "Optional — Pipeline-Läufe anfordern und Abschlussberichte direkt in Slack erhalten."
+          }
+        ],
+        "tips": [
+          "Seien Sie spezifisch mit Ihrem ICP. Geben Sie Jobtitel, Unternehmensgrößenbereich und Zielgeografie an — vage Beschreibungen erzeugen unscharfe Ergebnisse.",
+          "Starten Sie mit 20 Leads, um die Personalisierungsqualität zu validieren, bevor Sie auf 50 pro Lauf skalieren.",
+          "Speichern Sie Ihre Lauf-ID. Zero cached Apollo- und Anreicherungsdaten in Google Drive, sodass Sie ohne erneute API-Kosten re-personalisieren oder erneut hochladen können."
+        ]
       }
     },
     "filter": {

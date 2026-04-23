@@ -773,6 +773,12 @@ export async function updateAutoRechargeConfig(
         error: "threshold and amount are required when enabling auto-recharge",
       };
     }
+    if (threshold >= amount) {
+      return {
+        ok: false,
+        error: "threshold must be less than amount to avoid recharge loops",
+      };
+    }
   }
 
   const db = globalThis.services.db;

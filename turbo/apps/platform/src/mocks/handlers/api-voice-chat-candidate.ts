@@ -28,40 +28,6 @@ export function resetMockVoiceChatCandidate(): void {
   mockTasks = new Map();
 }
 
-function mockTaskResultsHandler() {
-  return mockApi(
-    zeroVoiceChatCandidateContract.readItems,
-    ({ params, query, respond }) => {
-      const sessionId = params.id;
-      const session = mockSessions.get(sessionId);
-      if (!session) {
-        return respond(404, {
-          error: { code: "NOT_FOUND", message: "Session not found" },
-        });
-      }
-      const all = (mockItems.get(sessionId) ?? []).filter((i) => {
-        return i.role === "task_result";
-      });
-      if (query.sinceSeq === undefined) {
-        // Baseline probe: return at most the single latest task_result row.
-        const sortedDesc = [...all].sort((a, b) => {
-          return b.seq - a.seq;
-        });
-        return respond(200, { items: sortedDesc.slice(0, 1) });
-      }
-      const since = query.sinceSeq;
-      const items = all
-        .filter((i) => {
-          return i.seq > since;
-        })
-        .sort((a, b) => {
-          return a.seq - b.seq;
-        });
-      return respond(200, { items });
-    },
-  );
-}
-
 export const apiVoiceChatCandidateHandlers = [
   mockApi(zeroVoiceChatCandidateContract.createSession, ({ body, respond }) => {
     // Get-or-create by (userId, agentId): if an existing mock session
@@ -169,8 +135,6 @@ export const apiVoiceChatCandidateHandlers = [
       return respond(200, { item });
     },
   ),
-
-  mockTaskResultsHandler(),
 
   mockApi(
     zeroVoiceChatCandidateContract.createTask,

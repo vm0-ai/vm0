@@ -133,14 +133,12 @@ mod tests {
     #[test]
     fn resolve_ambiguous() {
         let dir = tempfile::tempdir().unwrap();
-        // Create two claim files with the same prefix (first char).
         let id1 = RunId::new_v4();
         let id2 = RunId::new_v4();
         std::fs::write(dir.path().join(format!("{id1}.claim")), b"").unwrap();
         std::fs::write(dir.path().join(format!("{id2}.claim")), b"").unwrap();
 
-        // Single-char prefix — likely matches both.
-        // Use empty prefix to guarantee ambiguity.
+        // Empty prefix matches every `.claim` file, so two files guarantee ambiguity.
         let err = resolve_run_id(dir.path(), "").unwrap_err();
         assert!(err.to_string().contains("ambiguous"), "got: {err}");
     }

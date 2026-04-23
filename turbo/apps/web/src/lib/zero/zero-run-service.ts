@@ -193,7 +193,7 @@ export interface CreateZeroRunParams {
    * feeds `buildUserInfo` directly. When absent (PAT/sandbox/zero/empty-claims
    * session), Round 1 falls back to `getCachedUser` as before. Only the chat
    * route passes this today; non-chat triggers (schedule, slack, telegram,
-   * email, github, voice-chat) have no session claims to project.
+   * email, github) have no session claims to project.
    */
   userProfile?: { email: string; name: string | null };
 }

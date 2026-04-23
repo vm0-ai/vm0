@@ -14,7 +14,6 @@ describe("zeroVoiceChatCandidateContract", () => {
       listSessions: "GET",
       triggerReasoning: "POST",
       appendItem: "POST",
-      readItems: "GET",
       createTask: "POST",
       listTasks: "GET",
       token: "POST",

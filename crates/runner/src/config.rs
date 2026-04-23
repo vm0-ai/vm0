@@ -1,3 +1,35 @@
+//! Runner YAML config (`runner.yaml`) — the schema the operator writes.
+//!
+//! The file is loaded once at startup via [`load`], validated, and then
+//! consumed by the rest of the runner. For each VM spawn, a profile is
+//! turned into a [`sandbox::FactoryConfig`] via
+//! [`RunnerConfig::factory_config`].
+//!
+//! # Lifecycle
+//! 1. [`load`] reads the YAML, deserializes into [`RunnerConfig`], and
+//!    resolves any relative paths against the config file's parent directory.
+//! 2. `validate` checks group name, profile names, image hashes, on-disk
+//!    artifacts, resource ceilings, and the concurrency factor.
+//! 3. Callers derive runtime objects (e.g. [`sandbox::FactoryConfig`]) from
+//!    the loaded config.
+//!
+//! # Image identity: two content hashes per profile
+//! Each [`ProfileConfig`] carries two hashes with different scopes:
+//! - `rootfs_hash` — content hash of the guest filesystem image. Shared
+//!   across snapshot variants and cacheable on R2, so multiple runners can
+//!   pull the same rootfs by hash.
+//! - `snapshot_hash` — content hash of the FC/kernel/vcpu/memory/provider
+//!   config used to capture the memory snapshot from that rootfs. Local-only:
+//!   snapshots are produced on each runner by booting the rootfs and
+//!   capturing state, since the captured memory binds to host-specific state.
+//!
+//! Together they identify an exact boot image on this host.
+//!
+//! # Schema changes
+//! Any change to the structs in this module is a change to the on-disk YAML
+//! contract operators write. Add fields behind `#[serde(default)]` with a
+//! sensible default; rename fields only with a migration plan.
+
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -10,45 +42,86 @@ use crate::profile;
 
 /// 0 means auto-detect from host CPU and memory at startup.
 pub(crate) const DEFAULT_MAX_CONCURRENT: usize = 0;
+/// No overcommit — CPU/memory budgets are taken at face value.
 pub(crate) const DEFAULT_CONCURRENCY_FACTOR: f64 = 1.0;
 
 const MAX_VCPU: u32 = 1024;
 const MAX_MEMORY_MB: u32 = 1_048_576; // 1 TB
 const MAX_DISK_MB: u32 = 1_048_576; // 1 TB
 
+/// Top-level runner configuration, deserialized from `runner.yaml`.
+///
+/// Relative paths for `base_dir`, `ca_dir`, and the `firecracker` binaries
+/// are resolved against the YAML file's parent directory during [`load`].
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct RunnerConfig {
+    /// Human-readable identifier for this runner instance, surfaced in logs
+    /// and reported to the control plane alongside `group`.
     pub name: String,
+    /// Runner group in `org/name` format (e.g. `vm0/prod`). Used to scope
+    /// runners on the server and to build on-disk paths; validated by
+    /// [`crate::group::validate_or_err`].
     pub group: String,
+    /// Runtime data root for this runner — holds per-VM workspaces, COW
+    /// devices, sockets, etc. Locked exclusively on startup so two runner
+    /// processes can't share the same directory.
     pub base_dir: PathBuf,
+    /// Directory holding the MITM proxy's CA certificate and key, passed to
+    /// the proxy via `confdir=…` so guests can trust intercepted HTTPS.
     pub ca_dir: PathBuf,
+    /// Firecracker binary and guest kernel paths, shared across all profiles.
     pub firecracker: FirecrackerConfig,
+    /// Sandbox concurrency and idle-pool tuning. Omit the key to accept
+    /// defaults — `#[serde(default)]` fills in the whole sub-section.
     #[serde(default)]
     pub sandbox: SandboxConfig,
+    /// Keyed by profile name (e.g. `vm0/default`). Validation requires at
+    /// least one entry; each profile name is also checked for format.
     pub profiles: BTreeMap<String, ProfileConfig>,
+    /// Control-plane endpoint and auth token. May be omitted in the YAML if
+    /// `--api-url` / `--token` (or the corresponding env vars) are supplied
+    /// at `start` time.
     pub server: Option<ServerConfig>,
 }
 
+/// Paths to the Firecracker binary and guest kernel used by every profile.
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct FirecrackerConfig {
+    /// Firecracker VMM binary. Validated to exist on disk at load time.
     pub binary: PathBuf,
+    /// Guest kernel image (e.g. `vmlinux`). Validated to exist on disk at
+    /// load time.
     pub kernel: PathBuf,
 }
 
+/// A bootable image variant: rootfs + snapshot + resource shape.
+///
+/// See the module-level docs for the two-hash identity scheme
+/// (`rootfs_hash` is R2-cacheable, `snapshot_hash` is local-only).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ProfileConfig {
     /// Content-addressed rootfs hash (R2-cacheable, shared across snapshot variants).
     pub rootfs_hash: String,
     /// Content-addressed snapshot hash (local-only, covers FC/kernel/vcpu/memory/provider config).
     pub snapshot_hash: String,
+    /// Guest vCPU count. Must be non-zero and ≤ 1024.
     pub vcpu: u32,
+    /// Guest RAM in MiB. Must be non-zero and ≤ 1 TiB.
     pub memory_mb: u32,
+    /// Guest disk in MiB, used to size the COW overlay. Must be non-zero
+    /// and ≤ 1 TiB.
     pub disk_mb: u32,
 }
 
+/// Sandbox-level knobs for concurrency and the idle-VM pool.
+///
+/// All fields accept defaults via `#[serde(default)]`, so the whole
+/// `sandbox:` block may be omitted from the YAML.
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SandboxConfig {
+    /// Hard cap on concurrent VMs. `0` auto-detects from host CPU and
+    /// memory at startup (see [`DEFAULT_MAX_CONCURRENT`]).
     pub max_concurrent: usize,
     /// Overcommit factor applied to both CPU and memory budgets (default: 1.0).
     pub concurrency_factor: f64,
@@ -70,9 +143,14 @@ impl Default for SandboxConfig {
     }
 }
 
+/// Control-plane connection settings. Either field may be supplied via
+/// CLI flag or env var at `start` time and override what's in the YAML.
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct ServerConfig {
+    /// Base URL of the vm0 API (e.g. `https://api.example.com`). Overridable
+    /// via `--api-url` / `VM0_API_URL`.
     pub url: String,
+    /// Runner auth token. Overridable via `--token` / `VM0_RUNNER_TOKEN`.
     pub token: String,
 }
 

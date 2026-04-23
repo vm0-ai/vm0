@@ -100,6 +100,61 @@ describe("directed connect page", () => {
     expect(screen.queryByText("Connect")).not.toBeInTheDocument();
   });
 
+  it("reconnect button reopens OAuth flow for an already-connected OAuth connector", async () => {
+    const openSpy = vi
+      .spyOn(window, "open")
+      .mockReturnValue({ closed: true } as Window);
+    mockConnectors([{ type: "github" }]);
+
+    detachedSetupPage({ context, path: "/connectors/github/connect" });
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByRole("button").find((el) => {
+          return el.textContent?.trim() === "Reconnect";
+        }),
+      ).toBeDefined();
+    });
+
+    const reconnectBtn = screen.getAllByRole("button").find((el) => {
+      return el.textContent?.trim() === "Reconnect";
+    });
+    expect(reconnectBtn).toBeDefined();
+    click(reconnectBtn!);
+
+    expect(openSpy).toHaveBeenCalledWith(
+      expect.stringContaining("/api/zero/connectors/github/authorize"),
+      "_blank",
+      expect.any(String),
+    );
+  });
+
+  it("reconnect button opens api-token dialog for an already-connected api-token connector", async () => {
+    mockConnectors([{ type: "axiom" }]);
+
+    detachedSetupPage({ context, path: "/connectors/axiom/connect" });
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByRole("button").find((el) => {
+          return el.textContent?.trim() === "Reconnect";
+        }),
+      ).toBeDefined();
+    });
+
+    const reconnectBtn = screen.getAllByRole("button").find((el) => {
+      return el.textContent?.trim() === "Reconnect";
+    });
+    expect(reconnectBtn).toBeDefined();
+    click(reconnectBtn!);
+
+    // api-token connectors route the reconnect click through the token dialog
+    // rather than an OAuth popup.
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("xaat-...")).toBeInTheDocument();
+    });
+  });
+
   it("normalizes uppercase type in URL to match connector key", async () => {
     detachedSetupPage({ context, path: "/connectors/Gmail/connect" });
 

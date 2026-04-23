@@ -385,13 +385,15 @@ export async function getChatThreadMessages(
 }
 
 /**
- * Return run IDs for this thread that are not yet in a terminal state.
+ * Return non-terminal runs for this thread with live status. The UI uses
+ * `status` to distinguish queued from running so it can show "Waiting in
+ * queue" without a second API round-trip.
  */
-export async function getActiveRunIdsForThread(
+export async function getActiveRunsForThread(
   threadId: string,
-): Promise<string[]> {
-  const rows = await globalThis.services.db
-    .select({ id: zeroRuns.id })
+): Promise<{ id: string; status: string }[]> {
+  return globalThis.services.db
+    .select({ id: zeroRuns.id, status: agentRuns.status })
     .from(zeroRuns)
     .innerJoin(agentRuns, eq(zeroRuns.id, agentRuns.id))
     .where(
@@ -400,7 +402,4 @@ export async function getActiveRunIdsForThread(
         inArray(agentRuns.status, ["queued", "pending", "running"]),
       ),
     );
-  return rows.map((r) => {
-    return r.id;
-  });
 }

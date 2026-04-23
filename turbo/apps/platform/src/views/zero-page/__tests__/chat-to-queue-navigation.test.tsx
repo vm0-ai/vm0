@@ -3,8 +3,8 @@ import { screen, waitFor, act } from "@testing-library/react";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
-import { detachedNavigateTo$ } from "../../../signals/route.ts";
-import { createMockApi } from "../../../mocks/msw-contract.ts";
+import { openQueueDrawer$ } from "../../../signals/queue-page/queue-drawer-state.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
 import {
   chatThreadMessagesContract,
   chatThreadByIdContract,
@@ -12,7 +12,6 @@ import {
 } from "@vm0/core";
 
 const context = testContext();
-const mockApi = createMockApi(context);
 
 function mockChatThread() {
   server.use(
@@ -79,7 +78,7 @@ function mockQueueAPIs() {
 }
 
 describe("chat to queue navigation", () => {
-  it("should open queue drawer when navigating from chat to /queues", async () => {
+  it("should open queue drawer when opening queue from chat", async () => {
     mockChatThread();
     mockQueueAPIs();
 
@@ -90,9 +89,9 @@ describe("chat to queue navigation", () => {
       expect(screen.getByText("Hi there!")).toBeInTheDocument();
     });
 
-    // Navigate to /queues — this opens the drawer and redirects to /
+    // Open queue drawer (simulates clicking the queues nav item)
     act(() => {
-      context.store.set(detachedNavigateTo$, "/queues");
+      context.store.set(openQueueDrawer$);
     });
 
     // The queue drawer should open and show concurrency info

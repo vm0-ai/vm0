@@ -1,5 +1,59 @@
 # Changelog
 
+## [12.291.0](https://github.com/vm0-ai/vm0/compare/web-v12.290.1...web-v12.291.0) (2026-04-23)
+
+
+### Features
+
+* add cold outreach pipeline use case (Apollo + Instantly) ([#10689](https://github.com/vm0-ai/vm0/issues/10689)) ([3e781e8](https://github.com/vm0-ai/vm0/commit/3e781e85eb3a591a46b8e110e2e8bd4b395fd63c))
+
+
+### Bug Fixes
+
+* add auto-recharge threshold/amount bounds and loop prevention ([#10695](https://github.com/vm0-ai/vm0/issues/10695)) ([9e2e011](https://github.com/vm0-ai/vm0/commit/9e2e011d6404f6641a6cccfa1ca7dd324f5939f4))
+* **auth:** stop password toggle flicker on sign-in page ([#10817](https://github.com/vm0-ai/vm0/issues/10817)) ([91b0566](https://github.com/vm0-ai/vm0/commit/91b0566425fe4f61bda742b93003efbe0b432354)), closes [#10462](https://github.com/vm0-ai/vm0/issues/10462)
+* don't let sessions.expire failure permanently block campaign redemption ([#10694](https://github.com/vm0-ai/vm0/issues/10694)) ([68dc4bf](https://github.com/vm0-ai/vm0/commit/68dc4bf9de08b9b68b50fb4522730304a9772e17))
+* open queue drawer via URL param and remove /queue route ([#10684](https://github.com/vm0-ai/vm0/issues/10684)) ([f547217](https://github.com/vm0-ai/vm0/commit/f547217cf19e0a66463e93d6db57f918968b8a41))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.229.3
+
+## [12.290.1](https://github.com/vm0-ai/vm0/compare/web-v12.290.0...web-v12.290.1) (2026-04-23)
+
+
+### Bug Fixes
+
+* **voice-chat-candidate:** adaptive echo cancellation and server-side session config ([#10795](https://github.com/vm0-ai/vm0/issues/10795)) ([2782e42](https://github.com/vm0-ai/vm0/commit/2782e42e8a562a4c20ecebbd5630de0f6ae21cf3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.229.2
+
+## [12.290.0](https://github.com/vm0-ai/vm0/compare/web-v12.289.0...web-v12.290.0) (2026-04-23)
+
+
+### Features
+
+* **db:** add billing_error column to usage_event ([#10786](https://github.com/vm0-ai/vm0/issues/10786)) ([1d9b465](https://github.com/vm0-ai/vm0/commit/1d9b465d698822054647200ca930d1349194a423))
+* let reasoner auto-create tasks the talker promised but never dispatched ([#10719](https://github.com/vm0-ai/vm0/issues/10719)) ([63504b2](https://github.com/vm0-ai/vm0/commit/63504b2a16e4f4393e150296c79eca10cfab3e76))
+
+
+### Bug Fixes
+
+* **webhooks:** 404 instead of 500 when run deleted mid-webhook ([#10785](https://github.com/vm0-ai/vm0/issues/10785)) ([258a07e](https://github.com/vm0-ai/vm0/commit/258a07eb43a867e33ed12f7683a47f78ac8ebd51))
+
+
+### Refactoring
+
+* **webhooks:** tighten fk-race error helper and test its contract ([#10790](https://github.com/vm0-ai/vm0/issues/10790)) ([0b2fe2b](https://github.com/vm0-ai/vm0/commit/0b2fe2b978645ca013cbc7e4cdbed773835f9107))
+
 ## [12.289.0](https://github.com/vm0-ai/vm0/compare/web-v12.288.0...web-v12.289.0) (2026-04-23)
 
 

@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.93.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.93.3...runner-rs-v0.93.4) (2026-04-23)
+
+
+### Documentation
+
+* document public statustracker methods (closes [#10635](https://github.com/vm0-ai/vm0/issues/10635)) ([#10811](https://github.com/vm0-ai/vm0/issues/10811)) ([559b65b](https://github.com/vm0-ai/vm0/commit/559b65b8f78d2754888315108b40498d42f15f13))
+
+## [0.93.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.93.2...runner-rs-v0.93.3) (2026-04-23)
+
+
+### Bug Fixes
+
+* **voice-chat-candidate:** adaptive echo cancellation and server-side session config ([#10795](https://github.com/vm0-ai/vm0/issues/10795)) ([2782e42](https://github.com/vm0-ai/vm0/commit/2782e42e8a562a4c20ecebbd5630de0f6ae21cf3))
+
+
+### Documentation
+
+* document runner config schema (closes [#10775](https://github.com/vm0-ai/vm0/issues/10775)) ([#10801](https://github.com/vm0-ai/vm0/issues/10801)) ([70808d4](https://github.com/vm0-ai/vm0/commit/70808d4625fc21433b711d580610004ee6c07f0b))
+
+## [0.93.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.93.1...runner-rs-v0.93.2) (2026-04-23)
+
+
+### Documentation
+
+* **runner:** fix misleading comments in resolve_ambiguous test ([#10791](https://github.com/vm0-ai/vm0/issues/10791)) ([2da48bb](https://github.com/vm0-ai/vm0/commit/2da48bbbeb2ca824789551e4980656c560b31350))
+
 ## [0.93.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.93.0...runner-rs-v0.93.1) (2026-04-23)
 
 

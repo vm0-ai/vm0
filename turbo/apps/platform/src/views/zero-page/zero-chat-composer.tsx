@@ -935,14 +935,23 @@ export function ZeroChatComposer({
             />
             <div className="flex items-center justify-between gap-2 px-4 pb-3 pt-1">
               <div className="flex items-center gap-1 text-muted-foreground">
-                <button
-                  type="button"
-                  className="p-[9px] rounded-lg hover:bg-accent hover:text-foreground transition-colors duration-200"
-                  aria-label="Attach"
-                  onClick={handleFileSelect}
-                >
-                  <IconPaperclip size={18} stroke={1.5} />
-                </button>
+                <TooltipProvider delayDuration={300}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        className="p-[9px] rounded-lg hover:bg-accent hover:text-foreground transition-colors duration-200"
+                        aria-label="Attach"
+                        onClick={handleFileSelect}
+                      >
+                        <IconPaperclip size={18} stroke={1.5} />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" className="text-xs">
+                      Attach
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
                 <ConnectorsPopoverButton
                   agentConnectors={agentConnectors}
                   connectorsLoading={connectorsLoading}
@@ -970,8 +979,8 @@ export function ZeroChatComposer({
                         onChange={modelPicker.onChange}
                         placeholder="Default"
                         triggerClassName={cn(
-                          "h-8 w-auto max-w-[12rem] gap-1 border-transparent bg-transparent px-2 text-xs text-muted-foreground transition-colors",
-                          "hover:bg-accent hover:text-foreground focus:bg-accent focus:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground",
+                          "h-9 w-auto max-w-[12rem] gap-1 border-transparent bg-transparent px-2 text-sm text-muted-foreground transition-colors",
+                          "hover:bg-accent hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground",
                         )}
                         sessionProviderType={modelPicker.sessionProviderType}
                         compactTrigger

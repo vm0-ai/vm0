@@ -24,7 +24,6 @@ function buildCommands(): Command[] {
     new Command("slack"),
     new Command("variable"),
     new Command("whoami"),
-    new Command("voice-chat"),
     new Command("web"),
   ];
 }
@@ -145,7 +144,6 @@ describe("registerZeroCommands", () => {
       "secret",
       "slack",
       "variable",
-      "voice-chat",
     ]);
   });
 

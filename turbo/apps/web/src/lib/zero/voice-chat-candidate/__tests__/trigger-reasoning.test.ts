@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { HttpResponse } from "msw";
 import { testContext, uniqueId } from "../../../../__tests__/test-helpers";
 import { seedTestCompose } from "../../../../__tests__/db-test-seeders/agents";
+import { createTestCompose } from "../../../../__tests__/api-test-helpers";
 import {
   appendTestVoiceChatCandidateItem,
   insertTestVoiceChatCandidateTask,
@@ -12,6 +13,7 @@ import {
 import {
   getTestVoiceChatCandidateTask,
   getTestVoiceChatCandidateSessionReasoningState,
+  listTestVoiceChatCandidateTasks,
   readTestVoiceChatCandidateItems,
 } from "../../../../__tests__/db-test-assertions/voice-chat-candidate";
 import { server } from "../../../../mocks/server";
@@ -42,6 +44,17 @@ function threeSectionPayload(parts: {
     "---FINISHED---",
     parts.finished ?? "",
   ].join("\n");
+}
+
+function missingTasksPayload(parts: {
+  conversation?: string;
+  missingTasks?: string[];
+}): string {
+  const sections = ["---CONVERSATION---", parts.conversation ?? ""];
+  if (parts.missingTasks && parts.missingTasks.length > 0) {
+    sections.push("---MISSING_TASKS---", parts.missingTasks.join("\n"));
+  }
+  return sections.join("\n");
 }
 
 async function seedActiveSession(): Promise<{
@@ -265,6 +278,78 @@ describe("triggerReasoning", () => {
     expect(body.messages[1]!.content).toContain("Agent system prompt:\n(none)");
   });
 
+  it("H7 — creates task rows and system_notes for each missing task the reasoner detects", async () => {
+    context.setupMocks();
+    vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+    reloadEnv();
+
+    // createZeroRun requires a compose with a published version that has a
+    // model provider key. createTestCompose creates a version with ANTHROPIC_API_KEY.
+    const { userId, orgId } = await context.setupUser();
+    const { composeId } = await createTestCompose(
+      uniqueId("vcc-reasoner-tasks"),
+    );
+    const sessionId = await seedTestVoiceChatCandidateSession({
+      userId,
+      orgId,
+      agentId: composeId,
+    });
+    await appendTestVoiceChatCandidateItem({
+      sessionId,
+      role: "user",
+      content: "can you look up flight prices to tokyo?",
+      realtimeItemId: uniqueId("rt"),
+    });
+    await appendTestVoiceChatCandidateItem({
+      sessionId,
+      role: "assistant",
+      content: "sure, I will look that up for you right away",
+      realtimeItemId: uniqueId("rt"),
+    });
+
+    const handler = http.post(OPENROUTER_URL, () => {
+      return HttpResponse.json(
+        openRouterResponse(
+          missingTasksPayload({
+            conversation: "Focus: flight research",
+            missingTasks: ["Look up flight prices to Tokyo"],
+          }),
+        ),
+      );
+    });
+    server.use(handler.handler);
+
+    await triggerReasoning(sessionId);
+
+    // The reasoner summary write should succeed
+    const row = await getTestVoiceChatCandidateSessionReasoningState(sessionId);
+    expect(row?.conversationSummary).toBe("Focus: flight research");
+    expect(row?.summaryVersion).toBe(1);
+    expect(row?.reasoningStatus).toBe("idle");
+
+    // A task row must have been created for the missing task
+    const tasks = await listTestVoiceChatCandidateTasks(sessionId);
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0]!.prompt).toBe("Look up flight prices to Tokyo");
+    expect(tasks[0]!.callId).toMatch(/^reasoner-auto-/u);
+
+    // A system_note must have been appended for the auto-created task
+    const items = await readTestVoiceChatCandidateItems(sessionId);
+    const systemNotes = items.filter((i) => {
+      return i.role === "system_note";
+    });
+    expect(systemNotes).toHaveLength(1);
+    expect(systemNotes[0]!.content).toBe(
+      "Reasoner auto-created task: Look up flight prices to Tokyo",
+    );
+
+    // Ably signal published (for both the summary write and the missing-tasks step)
+    expect(mockAblyPublish).toHaveBeenCalledWith(
+      `voice-chat-candidate:${sessionId}`,
+      null,
+    );
+  });
+
   it("H6 — skips the reasoner call when there are no items or tasks", async () => {
     context.setupMocks();
     vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key");
@@ -290,6 +375,61 @@ describe("triggerReasoning", () => {
     expect(row?.reasoningPending).toBe(false);
     expect(handler.mocked).not.toHaveBeenCalled();
     expect(mockAblyPublish).not.toHaveBeenCalled();
+  });
+
+  it("H7 — uses only the heard portion of an interrupted assistant turn", async () => {
+    context.setupMocks();
+    vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+    reloadEnv();
+
+    const { sessionId } = await seedActiveSession();
+    await appendTestVoiceChatCandidateItem({
+      sessionId,
+      role: "user",
+      content: "tell me the update",
+      realtimeItemId: uniqueId("rt"),
+    });
+    await appendTestVoiceChatCandidateItem({
+      sessionId,
+      role: "assistant",
+      content: "the full answer that should not survive resume",
+      realtimeItemId: "rt-asst-interrupted",
+    });
+    await appendTestVoiceChatCandidateItem({
+      sessionId,
+      role: "system_note",
+      content: JSON.stringify({
+        type: "assistant_interrupted",
+        assistantRealtimeItemId: "rt-asst-interrupted",
+        heardText: "the partial answer the user actually heard",
+        audioEndMs: 1200,
+      }),
+      realtimeItemId: uniqueId("truncate"),
+    });
+
+    let capturedBody: unknown;
+    const handler = http.post(OPENROUTER_URL, async ({ request }) => {
+      capturedBody = await request.json();
+      return HttpResponse.json(
+        openRouterResponse(
+          threeSectionPayload({ conversation: "Focus: partial answer" }),
+        ),
+      );
+    });
+    server.use(handler.handler);
+
+    await triggerReasoning(sessionId);
+
+    const body = capturedBody as {
+      messages: Array<{ role: string; content: string }>;
+    };
+    expect(body.messages[1]!.content).toContain(
+      "assistant: the partial answer the user actually heard",
+    );
+    expect(body.messages[1]!.content).not.toContain(
+      "the full answer that should not survive resume",
+    );
+    expect(body.messages[1]!.content).not.toContain("assistant_interrupted");
   });
 });
 

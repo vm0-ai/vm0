@@ -1,12 +1,32 @@
 {
   "name": "@vm0/core",
-  "version": "8.229.1",
+  "version": "8.229.3",
   "private": true,
   "type": "module",
   "exports": {
     ".": {
       "import": "./src/index.ts",
       "types": "./src/index.ts"
+    },
+    "./*": {
+      "import": "./src/*.ts",
+      "types": "./src/*.ts"
+    },
+    "./contracts": {
+      "import": "./src/contracts/index.ts",
+      "types": "./src/contracts/index.ts"
+    },
+    "./contracts/*": {
+      "import": "./src/contracts/*.ts",
+      "types": "./src/contracts/*.ts"
+    },
+    "./firewalls": {
+      "import": "./src/firewalls/index.ts",
+      "types": "./src/firewalls/index.ts"
+    },
+    "./firewalls/*": {
+      "import": "./src/firewalls/*.ts",
+      "types": "./src/firewalls/*.ts"
     }
   },
   "scripts": {

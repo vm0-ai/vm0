@@ -57,12 +57,33 @@ const sectionCardStyle = {
   border: "0.7px solid hsl(var(--gray-400))",
 } as const;
 
+const MIN_LOGO_DIMENSION = 100;
+const MAX_LOGO_DIMENSION = 4096;
+
 function extractErrorMessage(
   result: { status: number; body: unknown },
   fallback: string,
 ): string {
   const body = result.body as { error?: { message?: string } } | undefined;
   return body?.error?.message ?? fallback;
+}
+
+function readImageDimensions(
+  file: File,
+): Promise<{ width: number; height: number } | null> {
+  const url = URL.createObjectURL(file);
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.addEventListener("load", () => {
+      URL.revokeObjectURL(url);
+      resolve({ width: img.naturalWidth, height: img.naturalHeight });
+    });
+    img.addEventListener("error", () => {
+      URL.revokeObjectURL(url);
+      resolve(null);
+    });
+    img.src = url;
+  });
 }
 
 async function uploadLogo(
@@ -132,7 +153,25 @@ function ProfileSection({
   const hasSlugChange = slug !== (org.slug ?? "");
   const hasChanges = hasNameChange || hasSlugChange || !!pendingLogoFile;
 
-  const handleFileSelect = (file: File) => {
+  const handleFileSelect = async (file: File) => {
+    const dimensions = await readImageDimensions(file);
+    if (!dimensions) {
+      toast.error("Could not read image file");
+      return;
+    }
+    const { width, height } = dimensions;
+    if (width < MIN_LOGO_DIMENSION || height < MIN_LOGO_DIMENSION) {
+      toast.error(
+        `Logo is too small (${width}×${height}px). Minimum size is ${MIN_LOGO_DIMENSION}×${MIN_LOGO_DIMENSION}px.`,
+      );
+      return;
+    }
+    if (width > MAX_LOGO_DIMENSION || height > MAX_LOGO_DIMENSION) {
+      toast.error(
+        `Logo is too large (${width}×${height}px). Maximum size is ${MAX_LOGO_DIMENSION}×${MAX_LOGO_DIMENSION}px.`,
+      );
+      return;
+    }
     setPendingLogoFile(file);
     setPendingLogoPreview(URL.createObjectURL(file));
   };
@@ -246,7 +285,7 @@ function ProfileSection({
                 onChange={(e) => {
                   const file = e.target.files?.[0];
                   if (file) {
-                    handleFileSelect(file);
+                    detach(handleFileSelect(file), Reason.DomCallback);
                   }
                   e.target.value = "";
                 }}

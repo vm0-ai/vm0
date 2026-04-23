@@ -4,7 +4,11 @@ import { server } from "../../../../../../src/mocks/server";
 import { testContext } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { reloadEnv } from "../../../../../../src/env";
-import { setupCandidateOrg } from "../../__tests__/_helpers";
+import {
+  seedCandidateAgent,
+  seedCandidateSession,
+  setupCandidateOrg,
+} from "../../__tests__/_helpers";
 
 vi.mock("@vm0/core", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@vm0/core")>();
@@ -40,20 +44,27 @@ function tokenRequest(body?: Record<string, unknown>): Request {
 
 describe("POST /api/zero/voice-chat-candidate/token", () => {
   let userId: string;
+  let orgId: string;
+  let sessionId: string;
 
   beforeEach(async () => {
     context.setupMocks();
     const user = await context.setupUser();
     userId = user.userId;
-    await setupCandidateOrg(userId);
+    const seeded = await setupCandidateOrg(userId);
+    orgId = seeded.orgId;
     mockIsFeatureEnabled.mockReturnValue(true);
     vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
     reloadEnv();
+
+    const { agentId } = await seedCandidateAgent(userId, orgId);
+    const session = await seedCandidateSession({ userId, orgId, agentId });
+    sessionId = session.id;
   });
 
   it("returns 401 when not authenticated", async () => {
     mockClerk({ userId: null });
-    const response = await POST(tokenRequest());
+    const response = await POST(tokenRequest({ sessionId }));
     const body = await response.json();
     expect(response.status).toBe(401);
     expect(body.error.code).toBe("UNAUTHORIZED");
@@ -61,54 +72,98 @@ describe("POST /api/zero/voice-chat-candidate/token", () => {
 
   it("returns 403 when the voice-chat feature flag is disabled", async () => {
     mockIsFeatureEnabled.mockReturnValue(false);
-    const response = await POST(tokenRequest());
+    const response = await POST(tokenRequest({ sessionId }));
     const body = await response.json();
     expect(response.status).toBe(403);
     expect(body.error.code).toBe("FORBIDDEN");
   });
 
-  it("mints an ephemeral token with the default model when no body is sent", async () => {
-    let receivedModel: string | undefined;
+  it("returns 400 when sessionId is missing", async () => {
+    const response = await POST(tokenRequest({}));
+    expect(response.status).toBe(400);
+  });
+
+  it("returns 404 when the session does not exist", async () => {
+    const response = await POST(
+      tokenRequest({ sessionId: "00000000-0000-0000-0000-000000000000" }),
+    );
+    const body = await response.json();
+    expect(response.status).toBe(404);
+    expect(body.error.code).toBe("NOT_FOUND");
+  });
+
+  it("mints an ephemeral token and presets session config on the upstream", async () => {
+    interface UpstreamBody {
+      model?: string;
+      modalities?: unknown;
+      instructions?: string;
+      input_audio_transcription?: unknown;
+      input_audio_noise_reduction?: unknown;
+      turn_detection?: unknown;
+      tools?: Array<{ name: string }>;
+    }
+    let received: UpstreamBody | undefined;
     server.use(
       http.post(
         "https://api.openai.com/v1/realtime/sessions",
         async ({ request }) => {
-          const json = (await request.json()) as { model?: string };
-          receivedModel = json.model;
+          received = (await request.json()) as UpstreamBody;
           return HttpResponse.json({
             client_secret: { value: "ek_test_value", expires_at: 9999999999 },
-            model: json.model,
+            model: received?.model,
           });
         },
       ),
     );
-    const response = await POST(tokenRequest());
+    const response = await POST(tokenRequest({ sessionId }));
     const body = await response.json();
     expect(response.status).toBe(200);
     expect(body.client_secret.value).toBe("ek_test_value");
-    expect(receivedModel).toBeTruthy();
+    expect(received?.model).toBe("gpt-realtime-mini");
+    expect(received?.modalities).toEqual(["text", "audio"]);
+    expect(typeof received?.instructions).toBe("string");
+    expect(received?.instructions?.length ?? 0).toBeGreaterThan(0);
+    expect(received?.input_audio_transcription).toEqual({
+      model: "gpt-4o-mini-transcribe",
+    });
+    expect(received?.input_audio_noise_reduction).toEqual({
+      type: "far_field",
+    });
+    expect(received?.turn_detection).toEqual({
+      type: "semantic_vad",
+      eagerness: "medium",
+    });
+    const toolNames =
+      received?.tools?.map((t) => {
+        return t.name;
+      }) ?? [];
+    expect(toolNames).toContain("inform_slow_brain");
+    expect(toolNames).toContain("feel_confused");
   });
 
-  it("mints an ephemeral token with an explicit model override", async () => {
-    let receivedModel: string | undefined;
+  it("threads near_field noiseReduction through to the upstream body", async () => {
+    interface UpstreamBody {
+      input_audio_noise_reduction?: { type?: string };
+    }
+    let received: UpstreamBody | undefined;
     server.use(
       http.post(
         "https://api.openai.com/v1/realtime/sessions",
         async ({ request }) => {
-          const json = (await request.json()) as { model?: string };
-          receivedModel = json.model;
+          received = (await request.json()) as UpstreamBody;
           return HttpResponse.json({
-            client_secret: { value: "ek_override", expires_at: 9999999999 },
-            model: json.model,
+            client_secret: { value: "ek_test", expires_at: 9999999999 },
           });
         },
       ),
     );
-    const response = await POST(tokenRequest({ model: "gpt-realtime-mini" }));
-    const body = await response.json();
+    const response = await POST(
+      tokenRequest({ sessionId, noiseReduction: "near_field" }),
+    );
     expect(response.status).toBe(200);
-    expect(body.client_secret.value).toBe("ek_override");
-    expect(receivedModel).toBe("gpt-realtime-mini");
+    expect(received?.input_audio_noise_reduction).toEqual({
+      type: "near_field",
+    });
   });
 
   it("returns 500 when OpenAI returns an error", async () => {
@@ -120,7 +175,7 @@ describe("POST /api/zero/voice-chat-candidate/token", () => {
         );
       }),
     );
-    const response = await POST(tokenRequest());
+    const response = await POST(tokenRequest({ sessionId }));
     const body = await response.json();
     expect(response.status).toBe(500);
     expect(body.error.code).toBe("INTERNAL_SERVER_ERROR");

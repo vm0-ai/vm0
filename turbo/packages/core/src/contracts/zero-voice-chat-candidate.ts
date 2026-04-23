@@ -125,7 +125,13 @@ export type CreateVoiceChatCandidateTaskBody = z.infer<
   typeof createTaskBodySchema
 >;
 
-const tokenBodySchema = z.object({ model: z.string().optional() });
+const tokenBodySchema = z.object({
+  sessionId: z.uuid(),
+  // Client-resolved hint (see platform `resolveAudioConfig`) for the Realtime
+  // session's input_audio_noise_reduction. Optional — server defaults to
+  // far_field if absent.
+  noiseReduction: z.enum(["near_field", "far_field"]).optional(),
+});
 export type VoiceChatCandidateTokenBody = z.infer<typeof tokenBodySchema>;
 
 const okResponseSchema = z.object({ ok: z.literal(true) });
@@ -214,31 +220,6 @@ export const zeroVoiceChatCandidateContract = c.router({
     summary: "Append a conversation item to a voice-chat-candidate session",
   },
 
-  /**
-   * task_result items are server-written when a tasker run completes. The
-   * client pulls them incrementally via `sinceSeq` (no cursor = baseline
-   * probe returning at most the latest row) and forwards them to the Talker
-   * so it can narrate slow-brain outcomes. User / assistant transcripts are
-   * NOT exposed via HTTP — the client holds the last utterance locally; the
-   * DB copy is server-side only and feeds the Reasoner's summary pipeline.
-   */
-  readItems: {
-    method: "GET",
-    path: "/api/zero/voice-chat-candidate/:id/transcript/task-results",
-    headers: authHeadersSchema,
-    pathParams: z.object({ id: z.uuid() }),
-    query: z.object({
-      sinceSeq: z.coerce.number().int().nonnegative().optional(),
-    }),
-    responses: {
-      200: z.object({ items: z.array(voiceChatCandidateItemSchema) }),
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary:
-      "Read task_result items with seq cursor (for Talker injection only)",
-  },
-
   createTask: {
     method: "POST",
     path: "/api/zero/voice-chat-candidate/:id/tasks",
@@ -281,8 +262,10 @@ export const zeroVoiceChatCandidateContract = c.router({
     body: tokenBodySchema,
     responses: {
       200: tokenResponseSchema,
+      400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
+      404: apiErrorSchema,
       500: apiErrorSchema,
       503: apiErrorSchema,
     },

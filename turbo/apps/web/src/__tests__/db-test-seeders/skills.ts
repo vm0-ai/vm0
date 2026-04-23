@@ -119,6 +119,20 @@ export async function reseedSkills(names: readonly string[]): Promise<void> {
 }
 
 /**
+ * Set the commit SHA for all seeded skill rows.
+ * Used by sync-skills route tests to force the freshness-check fast path.
+ *
+ * @why-db-direct The route's skip path depends on persisted skill metadata.
+ * No API exists to mutate commit SHA for system-seeded skills in tests.
+ */
+export async function setAllTestSkillsCommitSha(
+  commitSha: string,
+): Promise<void> {
+  initServices();
+  await globalThis.services.db.update(skills).set({ commitSha });
+}
+
+/**
  * Bind an existing custom skill to an agent by updating its customSkills array.
  * Used for testing multi-agent skill sharing.
  *

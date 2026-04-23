@@ -1,16 +1,16 @@
 import { env } from "../../../env";
+import {
+  DEFAULT_NOISE_REDUCTION,
+  INPUT_AUDIO_TRANSCRIPTION_CONFIG,
+  SESSION_MODALITIES,
+  SESSION_TOOLS,
+  TURN_DETECTION_CONFIG,
+  type NoiseReduction,
+} from "./session-config";
 
 const OPENAI_REALTIME_URL = "https://api.openai.com/v1/realtime/sessions";
 
-const ALLOWED_MODELS = ["gpt-realtime", "gpt-realtime-mini"] as const;
-type RealtimeModel = (typeof ALLOWED_MODELS)[number];
-
-function resolveModel(input?: string): RealtimeModel {
-  if (input && ALLOWED_MODELS.includes(input as RealtimeModel)) {
-    return input as RealtimeModel;
-  }
-  return "gpt-realtime-mini";
-}
+const TALKER_MODEL = "gpt-realtime-mini";
 
 interface EphemeralTokenResponse {
   client_secret: {
@@ -53,11 +53,11 @@ export function isOpenAiTokenError(value: unknown): value is OpenAiTokenError {
   );
 }
 
-export async function createEphemeralToken(
-  model?: string,
-): Promise<EphemeralTokenResponse> {
+export async function createEphemeralToken(options: {
+  instructions: string;
+  noiseReduction?: NoiseReduction;
+}): Promise<EphemeralTokenResponse> {
   const apiKey = env().OPENAI_API_KEY;
-  const resolvedModel = resolveModel(model);
 
   const response = await fetch(OPENAI_REALTIME_URL, {
     method: "POST",
@@ -66,8 +66,16 @@ export async function createEphemeralToken(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: resolvedModel,
+      model: TALKER_MODEL,
       voice: "verse",
+      modalities: SESSION_MODALITIES,
+      instructions: options.instructions,
+      input_audio_transcription: INPUT_AUDIO_TRANSCRIPTION_CONFIG,
+      input_audio_noise_reduction: {
+        type: options.noiseReduction ?? DEFAULT_NOISE_REDUCTION,
+      },
+      turn_detection: TURN_DETECTION_CONFIG,
+      tools: SESSION_TOOLS,
     }),
   });
 

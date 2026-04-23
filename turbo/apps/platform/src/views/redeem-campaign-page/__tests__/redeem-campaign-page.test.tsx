@@ -17,9 +17,7 @@ describe("redeem campaign page", () => {
       expect(screen.getByText("Claim your credits")).toBeInTheDocument();
     });
     expect(
-      screen.getByText(
-        "Complete checkout to add these credits to your organization's balance.",
-      ),
+      screen.getByText(/Complete checkout to add these credits to Default Org/),
     ).toBeInTheDocument();
 
     const link = screen.getByText("Redeem credits");
@@ -36,7 +34,10 @@ describe("redeem campaign page", () => {
         screen.getByText("You've already redeemed this offer"),
       ).toBeInTheDocument();
     });
-    expect(screen.getByText("Open dashboard")).toBeInTheDocument();
+    expect(
+      screen.getByText(/already in Default Org's account/),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Back to VM0")).toBeInTheDocument();
   });
 
   it("renders processing copy when the webhook is still settling", async () => {
@@ -47,7 +48,10 @@ describe("redeem campaign page", () => {
     await waitFor(() => {
       expect(screen.getByText("Payment received")).toBeInTheDocument();
     });
-    expect(screen.getByText("Open dashboard")).toBeInTheDocument();
+    expect(
+      screen.getByText(/applying your credits to Default Org/),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Back to VM0")).toBeInTheDocument();
   });
 
   it("renders admin_required copy when the caller is not an org admin", async () => {
@@ -58,7 +62,10 @@ describe("redeem campaign page", () => {
     await waitFor(() => {
       expect(screen.getByText("Admin access required")).toBeInTheDocument();
     });
-    expect(screen.getByText("Back to home")).toBeInTheDocument();
+    expect(
+      screen.getByText(/redeem campaign credits for Default Org/),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Back to VM0")).toBeInTheDocument();
   });
 
   it("renders campaign_misconfigured copy for an unknown or broken campaign", async () => {
@@ -104,11 +111,8 @@ describe("redeem campaign page", () => {
     await waitFor(() => {
       expect(screen.getByText("Payment successful")).toBeInTheDocument();
     });
-    // Success copy from the original redeem-status redeemed state.
     expect(
-      screen.getByText(
-        "Your credits are on the way. Open the dashboard to see your new balance.",
-      ),
+      screen.getByText(/Your credits are on the way to Default Org/),
     ).toBeInTheDocument();
   });
 });

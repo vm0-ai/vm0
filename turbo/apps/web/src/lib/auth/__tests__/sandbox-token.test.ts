@@ -12,6 +12,7 @@ import {
   verifyCliToken,
   SANDBOX_TOKEN_PREFIX,
   PAT_TOKEN_PREFIX,
+  signSandboxJwtForTests,
 } from "../sandbox-token";
 
 // SECRETS_ENCRYPTION_KEY is set in setup.ts
@@ -135,6 +136,38 @@ describe("sandbox-token", () => {
       const auth = verifySandboxToken(invalidToken);
 
       expect(auth).toBeNull();
+    });
+
+    it("should return null for legacy token without orgId", () => {
+      // Sign a sandbox payload shaped like the pre-orgId format.
+      // `generateSandboxToken` now requires `orgId`, so this scenario is
+      // otherwise unreachable — we sign the JWT directly to pin the
+      // verifier's fail-closed contract for tokens minted before this
+      // deploy.
+      const now = Math.floor(Date.now() / 1000);
+      const legacyToken = signSandboxJwtForTests({
+        userId: "user-123",
+        runId: "run-456",
+        scope: "sandbox",
+        iat: now,
+        exp: now + 3600,
+      });
+
+      expect(verifySandboxToken(legacyToken)).toBeNull();
+    });
+
+    it("should return null for token with empty orgId", () => {
+      const now = Math.floor(Date.now() / 1000);
+      const tokenWithEmptyOrg = signSandboxJwtForTests({
+        userId: "user-123",
+        runId: "run-456",
+        orgId: "",
+        scope: "sandbox",
+        iat: now,
+        exp: now + 3600,
+      });
+
+      expect(verifySandboxToken(tokenWithEmptyOrg)).toBeNull();
     });
 
     it("should return null for expired token", async () => {

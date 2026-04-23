@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { useGet } from "ccstate-react";
+import { useGet, useLastLoadable } from "ccstate-react";
 import {
   IconCheck,
   IconGift,
@@ -14,6 +14,7 @@ import {
   redeemStripeSuccess$,
 } from "../../signals/redeem-campaign/redeem-campaign-signals.ts";
 import { ROUTES } from "../../signals/route-paths.ts";
+import { clerk$ } from "../../signals/auth.ts";
 import { Link } from "../router/link.tsx";
 import { VM0Logo } from "../components/vm0-logo.tsx";
 
@@ -28,16 +29,16 @@ interface CardInfo {
 function resolveCard(
   response: RedeemResponse | null,
   stripeSuccess: boolean,
+  orgName: string,
 ): CardInfo {
   if (stripeSuccess) {
     return {
       kind: "granted",
       title: "Payment successful",
-      body: "Your credits are on the way. Open the dashboard to see your new balance.",
+      body: `Your credits are on the way to ${orgName}. Open the dashboard to see your new balance.`,
     };
   }
   if (!response) {
-    // Shouldn't render before setup sets the state, but keep a safe fallback.
     return {
       kind: "broken",
       title: "Something went wrong",
@@ -49,21 +50,21 @@ function resolveCard(
       return {
         kind: "ready",
         title: "Claim your credits",
-        body: "Complete checkout to add these credits to your organization's balance.",
+        body: `Complete checkout to add these credits to ${orgName}'s balance.`,
       };
     }
     case "already_granted": {
       return {
         kind: "granted",
         title: "You've already redeemed this offer",
-        body: "Your credits are in your account. Head back to the app to start using them.",
+        body: `Your credits are already in ${orgName}'s account. Head back to the app to start using them.`,
       };
     }
     case "processing": {
       return {
         kind: "processing",
         title: "Payment received",
-        body: "We're applying your credits now. This usually takes a few seconds — refresh in a moment to see the updated balance.",
+        body: `We're applying your credits to ${orgName} now. This usually takes a few seconds — refresh in a moment to see the updated balance.`,
       };
     }
     case "error": {
@@ -79,7 +80,7 @@ function resolveCard(
           return {
             kind: "auth",
             title: "Admin access required",
-            body: "Only organization admins can redeem campaign credits. Ask an admin in your org to open the link instead.",
+            body: `Only organization admins can redeem campaign credits for ${orgName}. Ask an admin in your org to open the link instead.`,
           };
         }
         case "campaign_misconfigured": {
@@ -139,16 +140,9 @@ function PrimaryAction({
 
   // `granted` / `processing` / `stripeSuccess` send the user to the dashboard
   // where the new credit balance is visible. Error cards just send them home.
-  const label =
-    stripeSuccess ||
-    response?.status === "already_granted" ||
-    response?.status === "processing"
-      ? "Open dashboard"
-      : "Back to home";
-
   return (
     <Button className="w-full" asChild>
-      <Link pathname={ROUTES.home}>{label}</Link>
+      <Link pathname={ROUTES.home}>Back to VM0</Link>
     </Button>
   );
 }
@@ -156,10 +150,13 @@ function PrimaryAction({
 export function RedeemCampaignPage() {
   const response = useGet(redeemResponse$);
   const stripeSuccess = useGet(redeemStripeSuccess$);
-  const info = resolveCard(response, stripeSuccess);
+  const clerkLoadable = useLastLoadable(clerk$);
+  const clerk = clerkLoadable.state === "hasData" ? clerkLoadable.data : null;
+  const orgName = clerk?.organization?.name ?? "your organization";
+  const info = resolveCard(response, stripeSuccess, orgName);
 
   return (
-    <div className="flex h-dvh w-full items-center justify-center bg-background px-6">
+    <div className="flex min-h-0 flex-1 items-center justify-center px-6 md:-translate-x-[128px]">
       <div className="flex w-[500px] max-w-full flex-col items-center gap-10 rounded-[20px] border border-border bg-background px-[50px] py-12">
         <VM0Logo />
         <div className="flex flex-col items-center gap-4">

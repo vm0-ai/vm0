@@ -96,6 +96,12 @@ struct MutableState {
 }
 
 impl StatusTracker {
+    /// Build a tracker that will persist status to `path`. The file is
+    /// not touched until [`write_initial`](Self::write_initial) — or any
+    /// mutator — is called.
+    ///
+    /// `max_concurrent` is the cap reported in the status file (not
+    /// enforced here).
     pub fn new(path: PathBuf, max_concurrent: usize) -> Self {
         Self {
             started_at: Utc::now(),
@@ -111,30 +117,46 @@ impl StatusTracker {
         }
     }
 
+    /// Record the MITM proxy's listening port and flush the status file.
+    ///
+    /// Takes `&mut self` because `proxy_port` lives outside the mutex;
+    /// call this before wrapping the tracker in `Arc`, i.e. during
+    /// runner startup while the tracker is still uniquely owned.
     pub async fn set_proxy_port(&mut self, port: u16) {
         self.proxy_port = Some(port);
         let state = self.state.lock().await;
         self.write_status(&state).await;
     }
 
+    /// Record the DNS resolver's listening port and flush the status file.
+    ///
+    /// Takes `&mut self` for the same reason as
+    /// [`set_proxy_port`](Self::set_proxy_port) — must be called before
+    /// the tracker is shared via `Arc`.
     pub async fn set_dns_port(&mut self, port: u16) {
         self.dns_port = Some(port);
         let state = self.state.lock().await;
         self.write_status(&state).await;
     }
 
+    /// Transition the reported lifecycle mode (Running / Draining /
+    /// Stopping / Stopped) and flush the status file.
     pub async fn set_mode(&self, mode: RunnerMode) {
         let mut state = self.state.lock().await;
         state.mode = mode;
         self.write_status(&state).await;
     }
 
+    /// Register an active run and flush the status file. No-op semantics
+    /// on duplicate `run_id`: the previous `sandbox_id` is overwritten.
     pub async fn add_run(&self, run_id: RunId, sandbox_id: SandboxId) {
         let mut state = self.state.lock().await;
         state.active_runs.insert(run_id, sandbox_id);
         self.write_status(&state).await;
     }
 
+    /// Drop an active run from the status file. Silently succeeds if
+    /// `run_id` was not present.
     pub async fn remove_run(&self, run_id: RunId) {
         let mut state = self.state.lock().await;
         state.active_runs.remove(&run_id);

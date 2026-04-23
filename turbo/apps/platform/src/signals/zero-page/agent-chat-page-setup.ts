@@ -15,6 +15,7 @@ import { talkDraft$ } from "./chat-draft.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { reloadTagline$ } from "./zero-chat-page.ts";
 import { setupAgentChatPageKeyboard$ } from "./agent-chat-keyboard.ts";
+import { openQueueDrawer$ } from "../queue-page/queue-drawer-state.ts";
 
 export const setupAgentChatPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -63,11 +64,15 @@ export const setupAgentChatPage$ = command(
 
     const params = get(searchParams$);
     const prompt = params.get("prompt");
+    const queue = params.get("queue");
     if (prompt) {
       set(get(talkDraft$).setInput$, prompt);
       const next = new URLSearchParams(params);
       next.delete("prompt");
       set(updateSearchParams$, next);
+    }
+    if (queue === "1") {
+      set(openQueueDrawer$);
     }
   },
 );

@@ -39,7 +39,7 @@ pub struct SubmitArgs {
     /// Session ID for sandbox reuse across conversation turns
     #[arg(long)]
     session_id: Option<String>,
-    /// Feature flags (repeatable, format: key=value, e.g. --feature-flag sandboxReuse=true)
+    /// Feature flags (repeatable, format: key=value, e.g. --feature-flag myFlag=true)
     #[arg(long = "feature-flag")]
     feature_flags: Vec<String>,
     /// Timeout in seconds waiting for a runner to complete the job
@@ -336,7 +336,7 @@ mod tests {
             cli_agent_type: "claude-code".into(),
             profile: None,
             session_id: None,
-            feature_flags: vec!["sandboxReuse".into()],
+            feature_flags: vec!["myFlag".into()],
             timeout: 1,
         };
         let err = run_submit(args).await.unwrap_err();
@@ -352,7 +352,7 @@ mod tests {
             cli_agent_type: "claude-code".into(),
             profile: None,
             session_id: None,
-            feature_flags: vec!["sandboxReuse=yes".into()],
+            feature_flags: vec!["myFlag=yes".into()],
             timeout: 1,
         };
         let err = run_submit(args).await.unwrap_err();

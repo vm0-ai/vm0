@@ -7,7 +7,7 @@ import {
   mockOrganization,
   mockUser,
 } from "../../__tests__/mock-auth";
-import { setupClerk$, user$, resolveWebOrigin } from "../auth";
+import { setupClerk$, user$, currentOrgInfo$, resolveWebOrigin } from "../auth";
 
 const context = testContext();
 
@@ -78,6 +78,68 @@ describe("setupClerk$ auth reload filtering", () => {
 
     const userAfter = await store.get(user$);
     expect(userAfter).toBeUndefined();
+  });
+});
+
+describe("currentOrgInfo$ re-emits on Clerk listener events", () => {
+  it("picks up in-place mutations to the active org's imageUrl after fireClerkListeners", async () => {
+    const { store, signal } = context;
+
+    detachedSetupPage({
+      context,
+      path: "/",
+      org: {
+        activeOrg: {
+          id: "org_A",
+          name: "Org A",
+          slug: "org-a",
+          imageUrl: "https://example.com/old-logo.png",
+          hasImage: true,
+        },
+        memberships: [{ id: "org_A" }],
+      },
+      withoutRender: true,
+    });
+    await store.set(setupClerk$, signal);
+
+    const before = await store.get(currentOrgInfo$);
+    expect(before?.imageUrl).toBe("https://example.com/old-logo.png");
+
+    // Simulate the Clerk SDK mutating imageUrl in place after a
+    // successful `clerk.organization.reload()` — the production bug
+    // this PR fixes is that subscribers never re-rendered because
+    // ccstate cannot see in-place mutations. Firing the listener is
+    // the production trigger that bumps clerkVersion$ and forces the
+    // computed to re-emit.
+    mockOrganization({
+      activeOrg: {
+        id: "org_A",
+        name: "Org A",
+        slug: "org-a",
+        imageUrl: "https://example.com/new-logo.png",
+        hasImage: true,
+      },
+      memberships: [{ id: "org_A" }],
+    });
+    fireClerkListeners();
+
+    const after = await store.get(currentOrgInfo$);
+    expect(after?.imageUrl).toBe("https://example.com/new-logo.png");
+  });
+
+  it("returns null when there is no active organization", async () => {
+    const { store, signal } = context;
+
+    detachedSetupPage({
+      context,
+      path: "/",
+      org: { activeOrg: null, memberships: [] },
+      withoutRender: true,
+    });
+    await store.set(setupClerk$, signal);
+
+    const info = await store.get(currentOrgInfo$);
+    expect(info).toBeNull();
   });
 });
 

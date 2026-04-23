@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.0](https://github.com/vm0-ai/vm0/compare/guest-download-v0.19.1...guest-download-v0.20.0) (2026-04-23)
+
+
+### Features
+
+* **guest-download:** support file:// urls for host-staged tarballs ([#10812](https://github.com/vm0-ai/vm0/issues/10812)) ([1f5c542](https://github.com/vm0-ai/vm0/commit/1f5c542e62ff5b29e382540cbed5e0c5c11bb410)), closes [#10805](https://github.com/vm0-ai/vm0/issues/10805)
+
 ## [0.19.1](https://github.com/vm0-ai/vm0/compare/guest-download-v0.19.0...guest-download-v0.19.1) (2026-04-22)
 
 
