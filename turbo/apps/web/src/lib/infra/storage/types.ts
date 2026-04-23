@@ -51,7 +51,7 @@ export interface ResolvedArtifact {
  */
 export interface VolumeResolutionResult {
   volumes: ResolvedVolume[];
-  artifact: ResolvedArtifact | null;
+  artifacts: ResolvedArtifact[];
   errors: VolumeError[];
 }
 

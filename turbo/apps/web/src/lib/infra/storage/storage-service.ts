@@ -2,7 +2,6 @@ import { gzipSync } from "node:zlib";
 import { resolveVolumes } from "./storage-resolver";
 import { generatePresignedUrl, putS3Object } from "../s3/s3-client";
 import { logger } from "../../shared/logger";
-import { badRequest } from "../../shared/errors";
 import {
   type AdditionalArtifact,
   type AdditionalVolume,
@@ -382,19 +381,17 @@ async function resolveAdditionalVolume(
 }
 
 /**
- * Resolve the primary (compose-derived) artifact to a ManifestArtifact.
+ * Resolve a single primary artifact to a ManifestArtifact.
  * Uses the batched latest lookup when possible and falls back to an
  * individual resolveVersion call for pinned versions.
  */
 async function resolvePrimaryArtifact(
-  artifactSource: ResolvedArtifact | null,
+  artifactSource: ResolvedArtifact,
   allResults: Map<string, { versionId: string; s3Key: string }>,
   runtimeClerkOrgId: string,
   userId: string,
   bucketName: string,
-): Promise<ManifestArtifact | null> {
-  if (!artifactSource) return null;
-
+): Promise<ManifestArtifact> {
   const isLatest = artifactSource.vasVersion === "latest";
   let versionId: string;
   let s3Key: string;
@@ -481,41 +478,19 @@ async function resolveAdditionalArtifact(
 }
 
 /**
- * Determine the artifact source: use resumeArtifact if provided, otherwise fall back to resolved artifact.
- */
-function resolveArtifactSource(
-  resolvedArtifact: ResolvedArtifact | null,
-  resumeArtifact: { artifactName: string; artifactVersion: string } | undefined,
-  resumeArtifactMountPath: string | undefined,
-): ResolvedArtifact | null {
-  if (!resumeArtifact) return resolvedArtifact;
-  if (!resumeArtifactMountPath) {
-    throw badRequest(
-      "resumeArtifactMountPath is required when resumeArtifact is provided (working_dir must be configured)",
-    );
-  }
-  return {
-    driver: "vas" as const,
-    vasStorageName: resumeArtifact.artifactName,
-    vasVersion: resumeArtifact.artifactVersion,
-    mountPath: resumeArtifactMountPath,
-  };
-}
-
-/**
- * Prepare storage manifest with presigned URLs for direct download to sandbox
- * This method generates presigned URLs instead of downloading files to local temp
+ * Prepare storage manifest with presigned URLs for direct download to sandbox.
+ * Generates presigned URLs instead of downloading files to local temp.
  *
  * @param agentConfig - Agent configuration containing volume definitions
  * @param vars - Template variables for placeholder replacement
  * @param agentClerkOrgId - Agent Clerk org ID for volume resolution (where the agent is defined)
  * @param runtimeClerkOrgId - Runtime Clerk org ID for artifact resolution (where the agent is executed)
  * @param userId - User ID within the runtime org (for artifact ownership)
- * @param artifactName - Artifact storage name
- * @param artifactVersion - Artifact version (defaults to "latest")
+ * @param artifacts - Primary artifacts map (name → version). All mount at compose working_dir.
+ * @param workingDir - Working directory for primary artifact mount path
  * @param volumeVersionOverrides - Optional volume version overrides
- * @param resumeArtifact - Optional artifact snapshot for resume (overrides artifactName/artifactVersion)
- * @param resumeArtifactMountPath - Mount path for resume artifact
+ * @param additionalVolumes - Additional volumes with explicit mount paths
+ * @param additionalArtifacts - Additional artifacts with explicit mount paths
  * @returns Storage manifest with presigned URLs
  */
 export async function prepareStorageManifest(
@@ -524,11 +499,9 @@ export async function prepareStorageManifest(
   agentClerkOrgId: string,
   runtimeClerkOrgId: string,
   userId: string,
-  artifactName?: string,
-  artifactVersion?: string,
+  artifacts: Record<string, string>,
+  workingDir?: string,
   volumeVersionOverrides?: Record<string, string>,
-  resumeArtifact?: { artifactName: string; artifactVersion: string },
-  resumeArtifactMountPath?: string,
   additionalVolumes?: AdditionalVolume[],
   additionalArtifacts?: AdditionalArtifact[],
 ): Promise<StorageManifest> {
@@ -536,39 +509,28 @@ export async function prepareStorageManifest(
 
   const bucketName = env().R2_USER_STORAGES_BUCKET_NAME;
 
-  // For resume scenario, use resumeArtifact; otherwise use artifactName/artifactVersion
-  const effectiveArtifactName = resumeArtifact?.artifactName ?? artifactName;
-  const effectiveArtifactVersion =
-    resumeArtifact?.artifactVersion ?? artifactVersion;
-  // Skip artifact in resolveVolumes if we're using resumeArtifact (we'll handle it separately)
-  const skipArtifact = !!resumeArtifact;
-
-  // If no agent config and no resume artifact and no additional volumes/artifacts, return empty manifest
+  // Shortcut: nothing to resolve at all.
   if (
     !agentConfig &&
-    !resumeArtifact &&
+    Object.keys(artifacts).length === 0 &&
     (!additionalVolumes || additionalVolumes.length === 0) &&
     (!additionalArtifacts || additionalArtifacts.length === 0)
   ) {
     return { storages: [], artifacts: [] };
   }
 
-  // Resolve volumes from agent config.
-  // resumeArtifactMountPath is the working directory from the previous run's artifact,
-  // used as workingDir for artifact mount path resolution during checkpoint resume.
+  // Resolve volumes + primary artifacts from agent config. Primary artifacts
+  // all mount at workingDir.
   const volumeResult = agentConfig
     ? resolveVolumes(
         agentConfig,
         vars,
-        skipArtifact ? undefined : effectiveArtifactName,
-        skipArtifact ? undefined : effectiveArtifactVersion,
-        skipArtifact,
+        artifacts,
         volumeVersionOverrides,
-        resumeArtifactMountPath,
+        workingDir,
       )
-    : { volumes: [], artifact: null, errors: [] };
+    : { volumes: [], artifacts: [], errors: [] };
 
-  // Check for volume resolution errors (missing variables, invalid config, etc.)
   if (volumeResult.errors.length > 0) {
     const messages = volumeResult.errors
       .map((e) => {
@@ -578,12 +540,7 @@ export async function prepareStorageManifest(
     throw new Error(`Volume resolution failed: ${messages}`);
   }
 
-  // Handle artifact: either from resumeArtifact or from volumeResult
-  const artifactSource = resolveArtifactSource(
-    volumeResult.artifact,
-    resumeArtifact,
-    resumeArtifactMountPath,
-  );
+  const primaryArtifacts = volumeResult.artifacts;
 
   // Partition volumes into batch-eligible and individual-resolve groups
   const partitioned = partitionVolumes(
@@ -598,7 +555,7 @@ export async function prepareStorageManifest(
     agentClerkOrgId,
     runtimeClerkOrgId,
     userId,
-    artifactSource,
+    primaryArtifacts,
   );
 
   // Resolve non-latest volumes individually (rare: explicit version overrides)
@@ -637,7 +594,7 @@ export async function prepareStorageManifest(
     runtimeClerkOrgId,
     userId,
     bucketName,
-    artifactSource,
+    primaryArtifacts,
     nonLatestResolved,
     nonLatestAdditionalResolved,
   );
@@ -750,7 +707,7 @@ async function executeBatchResolution(
   agentClerkOrgId: string,
   runtimeClerkOrgId: string,
   userId: string,
-  artifactSource: ResolvedArtifact | null,
+  primaryArtifacts: ResolvedArtifact[],
 ): Promise<Map<string, { versionId: string; s3Key: string }>> {
   // Phase 1: System org batch (system compose volumes + system additional volumes)
   const systemLookups: StorageLookup[] = [
@@ -801,11 +758,12 @@ async function executeBatchResolution(
     }),
   ];
 
-  if (artifactSource && artifactSource.vasVersion === "latest") {
+  for (const artifact of primaryArtifacts) {
+    if (artifact.vasVersion !== "latest") continue;
     remainingLookups.push({
       orgId: runtimeClerkOrgId,
       userId,
-      name: artifactSource.vasStorageName,
+      name: artifact.vasStorageName,
       type: "artifact",
     });
   }
@@ -923,7 +881,7 @@ async function buildManifestFromResults(
   runtimeClerkOrgId: string,
   userId: string,
   bucketName: string,
-  artifactSource: ResolvedArtifact | null,
+  primaryArtifacts: ResolvedArtifact[],
   nonLatestResolved: (ManifestStorage | null)[],
   nonLatestAdditionalResolved: (ManifestStorage | null)[],
 ): Promise<StorageManifest> {
@@ -1066,12 +1024,16 @@ async function buildManifestFromResults(
     }),
   ];
 
-  const artifact = await resolvePrimaryArtifact(
-    artifactSource,
-    allResults,
-    runtimeClerkOrgId,
-    userId,
-    bucketName,
+  const resolvedPrimaryArtifacts = await Promise.all(
+    primaryArtifacts.map((artifact) => {
+      return resolvePrimaryArtifact(
+        artifact,
+        allResults,
+        runtimeClerkOrgId,
+        userId,
+        bucketName,
+      );
+    }),
   );
 
   // Deduplicate mount paths: additional volumes override compose volumes
@@ -1088,11 +1050,11 @@ async function buildManifestFromResults(
   const filteredStorages = [...filteredCompose, ...resolvedAdditional];
 
   log.debug(
-    `Storage manifest prepared: ${filteredStorages.length} storages (${filteredCompose.length} compose + ${resolvedAdditional.length} additional), ${artifact ? "1 artifact" : "no artifact"}`,
+    `Storage manifest prepared: ${filteredStorages.length} storages (${filteredCompose.length} compose + ${resolvedAdditional.length} additional), ${resolvedPrimaryArtifacts.length} artifacts`,
   );
 
   return {
     storages: filteredStorages,
-    artifacts: artifact ? [artifact] : [],
+    artifacts: resolvedPrimaryArtifacts,
   };
 }
