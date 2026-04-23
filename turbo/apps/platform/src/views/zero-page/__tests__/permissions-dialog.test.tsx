@@ -203,17 +203,19 @@ describe("permissions dialog - grouped connector (Slack)", () => {
     detachedSetupPage({ context, path: "/agents/my-agent" });
     await openPermissionsDrawer();
 
-    const readButton = screen.getByText(/Read \(\d+\)/i);
-    const readRow = readButton.closest(
-      ".flex.items-center.justify-between",
-    ) as HTMLElement;
+    await waitFor(() => {
+      const readButton = screen.getByText(/Read \(\d+\)/i);
+      const readRow = readButton.closest(
+        ".flex.items-center.justify-between",
+      ) as HTMLElement;
 
-    const pillButtons = within(readRow).getAllByRole("button");
-    const allowBtn = pillButtons.find((b) => {
-      return b.textContent?.includes("Allow") ?? false;
+      const pillButtons = within(readRow).getAllByRole("button");
+      const allowBtn = pillButtons.find((b) => {
+        return b.textContent?.includes("Allow") ?? false;
+      });
+
+      expect(allowBtn!.className).toContain("bg-emerald");
     });
-
-    expect(allowBtn!.className).toContain("bg-emerald");
   });
 
   it("should set all permissions in a group when group-level Allow/Deny is clicked", async () => {
