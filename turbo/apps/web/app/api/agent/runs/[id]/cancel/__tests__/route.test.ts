@@ -339,7 +339,11 @@ describe("POST /api/agent/runs/:id/cancel - Cancel Run", () => {
     it("should accept sandbox token with agent-run:write", async () => {
       const run = await createTestRun(testComposeId, "Run to cancel");
       mockClerk({ userId: null });
-      const token = await generateSandboxToken(user.userId, run.runId);
+      const token = await generateSandboxToken(
+        user.userId,
+        run.runId,
+        "org-test",
+      );
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${run.runId}/cancel`,
@@ -355,7 +359,11 @@ describe("POST /api/agent/runs/:id/cancel - Cancel Run", () => {
 
     it("should accept sandbox token with any capability", async () => {
       mockClerk({ userId: null });
-      const token = await generateSandboxToken(user.userId, "run-1");
+      const token = await generateSandboxToken(
+        user.userId,
+        "run-1",
+        "org-test",
+      );
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${randomUUID()}/cancel`,

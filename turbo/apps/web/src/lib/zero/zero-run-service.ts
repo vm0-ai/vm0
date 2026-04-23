@@ -684,7 +684,7 @@ async function dispatchZeroRun(
     const overrides = result.featureSwitchOverrides;
     const [zeroToken, sandboxToken] = await Promise.all([
       generateZeroToken(zeroParams.userId, record.run.id, orgId, overrides),
-      generateSandboxToken(zeroParams.userId, record.run.id),
+      generateSandboxToken(zeroParams.userId, record.run.id, orgId),
     ]);
     const tokenTime = Date.now();
 

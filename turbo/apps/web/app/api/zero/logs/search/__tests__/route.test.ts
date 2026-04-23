@@ -84,7 +84,11 @@ describe("GET /api/zero/logs/search", () => {
   });
 
   it("should return 403 for sandbox token without agent-run:read", async () => {
-    const token = await generateSandboxToken(user.userId, testRunId);
+    const token = await generateSandboxToken(
+      user.userId,
+      testRunId,
+      "org-test",
+    );
 
     const request = createTestRequest(
       "http://localhost:3000/api/zero/logs/search?keyword=test",

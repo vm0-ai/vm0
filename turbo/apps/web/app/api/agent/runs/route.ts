@@ -418,7 +418,11 @@ const router = tsr.router(runsMainContract, {
       const transactionTime = Date.now();
 
       // 8. Generate sandbox token
-      const sandboxToken = await generateSandboxToken(userId, run.id);
+      const sandboxToken = await generateSandboxToken(
+        userId,
+        run.id,
+        org.orgId,
+      );
       const tokenTime = Date.now();
 
       try {

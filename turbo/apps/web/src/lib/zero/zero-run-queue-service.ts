@@ -533,7 +533,11 @@ export async function dispatchQueuedZeroRun(
   }
 
   // Generate sandbox token + build zero context
-  const sandboxToken = await generateSandboxToken(params.userId, runId);
+  const sandboxToken = await generateSandboxToken(
+    params.userId,
+    runId,
+    params.orgId,
+  );
   const tokenTime = Date.now();
   const contextResult = await buildZeroExecutionContext({
     ...params,

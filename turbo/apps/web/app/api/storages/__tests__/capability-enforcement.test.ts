@@ -43,7 +43,7 @@ describe("Storage capability enforcement", () => {
   describe("sandbox token access for list", () => {
     it("should accept sandbox token with agent:read for volume list", async () => {
       await createTestVolume("test-vol");
-      const token = await generateSandboxToken(userId, runId);
+      const token = await generateSandboxToken(userId, runId, "org-test");
       mockClerk({ userId: null });
 
       const response = await listRoute(
@@ -61,7 +61,7 @@ describe("Storage capability enforcement", () => {
 
     it("should accept sandbox token with agent:read for artifact list", async () => {
       await createTestArtifact("test-art");
-      const token = await generateSandboxToken(userId, runId);
+      const token = await generateSandboxToken(userId, runId, "org-test");
       mockClerk({ userId: null });
 
       const response = await listRoute(
@@ -79,7 +79,7 @@ describe("Storage capability enforcement", () => {
 
     it("should accept sandbox token regardless of specific capability", async () => {
       await createTestVolume("test-vol");
-      const token = await generateSandboxToken(userId, runId);
+      const token = await generateSandboxToken(userId, runId, "org-test");
       mockClerk({ userId: null });
 
       const response = await listRoute(
@@ -94,7 +94,7 @@ describe("Storage capability enforcement", () => {
 
     it("should accept sandbox token with no capabilities (acceptAnySandboxCapability)", async () => {
       await createTestVolume("test-vol-nocap");
-      const token = await generateSandboxToken(userId, runId);
+      const token = await generateSandboxToken(userId, runId, "org-test");
       mockClerk({ userId: null });
 
       const response = await listRoute(
@@ -110,7 +110,7 @@ describe("Storage capability enforcement", () => {
 
   describe("sandbox token access for prepare", () => {
     it("should accept sandbox token with agent:write for volume prepare", async () => {
-      const token = await generateSandboxToken(userId, runId);
+      const token = await generateSandboxToken(userId, runId, "org-test");
       mockClerk({ userId: null });
 
       const response = await prepareRoute(
@@ -132,7 +132,7 @@ describe("Storage capability enforcement", () => {
     });
 
     it("should accept sandbox token regardless of specific capability for prepare", async () => {
-      const token = await generateSandboxToken(userId, runId);
+      const token = await generateSandboxToken(userId, runId, "org-test");
       mockClerk({ userId: null });
 
       const response = await prepareRoute(
@@ -157,7 +157,7 @@ describe("Storage capability enforcement", () => {
   describe("sandbox token access for download", () => {
     it("should accept agent:read token for volume download", async () => {
       await createTestVolume("test-vol");
-      const token = await generateSandboxToken(userId, runId);
+      const token = await generateSandboxToken(userId, runId, "org-test");
       mockClerk({ userId: null });
 
       const response = await downloadRoute(
@@ -173,7 +173,7 @@ describe("Storage capability enforcement", () => {
 
     it("should accept sandbox token for artifact download regardless of capability", async () => {
       await createTestArtifact("test-art");
-      const token = await generateSandboxToken(userId, runId);
+      const token = await generateSandboxToken(userId, runId, "org-test");
       mockClerk({ userId: null });
 
       const response = await downloadRoute(
@@ -219,7 +219,7 @@ describe("Storage capability enforcement", () => {
       await createTestVolume("org-vol");
 
       // Sandbox token should resolve to the same org via run record
-      const token = await generateSandboxToken(userId, runId);
+      const token = await generateSandboxToken(userId, runId, "org-test");
       mockClerk({ userId: null });
 
       const response = await listRoute(
@@ -237,7 +237,7 @@ describe("Storage capability enforcement", () => {
 
     it("should return 404 when sandbox token run not found", async () => {
       const fakeRunId = randomUUID();
-      const token = await generateSandboxToken(userId, fakeRunId);
+      const token = await generateSandboxToken(userId, fakeRunId, "org-test");
       mockClerk({ userId: null });
 
       const response = await listRoute(

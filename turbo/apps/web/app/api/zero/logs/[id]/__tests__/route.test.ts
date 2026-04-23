@@ -299,7 +299,7 @@ describe("GET /api/zero/logs/[id]", () => {
 
     it("should return 403 for sandbox token without agent-run:read", async () => {
       const { runId } = await createTestRun(testComposeId, "Test prompt");
-      const token = await generateSandboxToken(user.userId, runId);
+      const token = await generateSandboxToken(user.userId, runId, "org-test");
       mockClerk({ userId: null });
 
       const request = createTestRequest(

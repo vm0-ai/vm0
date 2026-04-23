@@ -33,7 +33,7 @@ describe("requireAuth", () => {
   });
 
   it("should return 403 for sandbox token with requiredCapability (sandbox tokens have no capabilities)", async () => {
-    const token = await generateSandboxToken("user-1", "run-1");
+    const token = await generateSandboxToken("user-1", "run-1", "org-test");
 
     const result = await requireAuth(`Bearer ${token}`, {
       requiredCapability: "agent:read",
@@ -47,7 +47,7 @@ describe("requireAuth", () => {
   });
 
   it("should return 403 for sandbox token missing required capability", async () => {
-    const token = await generateSandboxToken("user-1", "run-1");
+    const token = await generateSandboxToken("user-1", "run-1", "org-test");
 
     const result = await requireAuth(`Bearer ${token}`, {
       requiredCapability: "agent:write",
@@ -64,7 +64,7 @@ describe("requireAuth", () => {
   });
 
   it("should return 403 for sandbox token with no capabilities", async () => {
-    const token = await generateSandboxToken("user-1", "run-1");
+    const token = await generateSandboxToken("user-1", "run-1", "org-test");
 
     const result = await requireAuth(`Bearer ${token}`, {
       requiredCapability: "agent:read",
@@ -81,7 +81,7 @@ describe("requireAuth", () => {
   });
 
   it("should return 403 for sandbox token on uncovered endpoint", async () => {
-    const token = await generateSandboxToken("user-1", "run-1");
+    const token = await generateSandboxToken("user-1", "run-1", "org-test");
 
     // No requiredCapability = uncovered endpoint
     const result = await requireAuth(`Bearer ${token}`);
@@ -97,7 +97,7 @@ describe("requireAuth", () => {
   });
 
   it("should return AuthContext for acceptAnySandboxCapability (sandbox tokens always accepted)", async () => {
-    const token = await generateSandboxToken("user-1", "run-1");
+    const token = await generateSandboxToken("user-1", "run-1", "org-test");
 
     const result = await requireAuth(`Bearer ${token}`, {
       acceptAnySandboxCapability: true,

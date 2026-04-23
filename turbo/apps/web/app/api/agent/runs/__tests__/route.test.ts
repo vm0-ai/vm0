@@ -1121,7 +1121,11 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       // Bind a claude-code conversation (matches compose default framework)
       // and mark the run complete so continuation validation passes and the
       // concurrency limit does not block the follow-up run.
-      const sandboxToken = await generateSandboxToken(user.userId, first.runId);
+      const sandboxToken = await generateSandboxToken(
+        user.userId,
+        first.runId,
+        "org-test",
+      );
       const checkpointResponse = await checkpointWebhook(
         createTestRequest(
           "http://localhost:3000/api/webhooks/agent/checkpoints",
@@ -1543,7 +1547,11 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
     it("should accept sandbox token with agent-run:write for create", async () => {
       mockClerk({ userId: null });
-      const token = await generateSandboxToken(user.userId, "run-1");
+      const token = await generateSandboxToken(
+        user.userId,
+        "run-1",
+        "org-test",
+      );
 
       const request = createTestRequest(
         "http://localhost:3000/api/agent/runs",
@@ -1567,7 +1575,11 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
     it("should accept sandbox token with any capability for create", async () => {
       mockClerk({ userId: null });
-      const token = await generateSandboxToken(user.userId, "run-1");
+      const token = await generateSandboxToken(
+        user.userId,
+        "run-1",
+        "org-test",
+      );
 
       const request = createTestRequest(
         "http://localhost:3000/api/agent/runs",

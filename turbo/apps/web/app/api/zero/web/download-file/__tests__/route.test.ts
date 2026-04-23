@@ -43,7 +43,7 @@ describe("GET /api/zero/web/download-file", () => {
 
   it("returns 401 for sandbox token without file:read capability", async () => {
     mockClerk({ userId: null });
-    const token = await generateSandboxToken(user.userId, "run-1");
+    const token = await generateSandboxToken(user.userId, "run-1", "org-test");
 
     const request = createTestRequest(`${URL}?file_id=abc`, {
       method: "GET",

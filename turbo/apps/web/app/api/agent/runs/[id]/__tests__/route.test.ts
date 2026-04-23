@@ -212,7 +212,11 @@ describe("GET /api/agent/runs/:id - Get Run By ID", () => {
 
     it("should accept sandbox token with any capability", async () => {
       mockClerk({ userId: null });
-      const token = await generateSandboxToken(user.userId, "run-1");
+      const token = await generateSandboxToken(
+        user.userId,
+        "run-1",
+        "org-test",
+      );
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${randomUUID()}`,
