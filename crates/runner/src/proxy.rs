@@ -1316,4 +1316,47 @@ mod tests {
         assert!(Arc::ptr_eq(&proxy.stopping, &params.stopping));
         assert!(!Arc::ptr_eq(&old_stopping, &params.stopping));
     }
+
+    /// `spawn_mitmdump` can fail (e.g. port still in use), leaving the
+    /// caller to retry without ever calling `complete_restart`. Each
+    /// `begin_restart` in that retry chain must still hand out a fresh
+    /// `Arc` and lock every previous one — otherwise a stale flag
+    /// could be reset on the next round, resurrecting the race.
+    #[tokio::test]
+    async fn repeated_begin_restart_produces_independent_flags() {
+        let (mut proxy, _crash_rx) = MitmProxy::noop();
+
+        let first = proxy.begin_restart().await;
+        let second = proxy.begin_restart().await;
+        let third = proxy.begin_restart().await;
+
+        // Every handed-out Arc is distinct.
+        assert!(!Arc::ptr_eq(&first.stopping, &second.stopping));
+        assert!(!Arc::ptr_eq(&second.stopping, &third.stopping));
+        assert!(!Arc::ptr_eq(&first.stopping, &third.stopping));
+
+        // Superseded flags are permanently locked; only the most
+        // recent one remains mutable.
+        assert!(first.stopping.load(Ordering::Acquire));
+        assert!(second.stopping.load(Ordering::Acquire));
+        assert!(!third.stopping.load(Ordering::Acquire));
+        assert!(Arc::ptr_eq(&proxy.stopping, &third.stopping));
+    }
+
+    /// `stop()` must set the *current* child's flag, not the one just
+    /// superseded by `begin_restart`. A regression here would make
+    /// `stop()` a silent no-op (the old Arc is already `true`), while
+    /// the new child's monitor — which is what `stop()` exists to
+    /// silence — would keep reading `false`.
+    #[tokio::test]
+    async fn stop_after_begin_restart_targets_current_flag() {
+        let (mut proxy, _crash_rx) = MitmProxy::noop();
+        let params = proxy.begin_restart().await;
+        let current = Arc::clone(&params.stopping);
+        assert!(!current.load(Ordering::Acquire));
+
+        proxy.stop().await.unwrap();
+
+        assert!(current.load(Ordering::Acquire));
+    }
 }
