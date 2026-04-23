@@ -1365,7 +1365,11 @@ jobs:
           # is still active afterward so the EXIT trap dumps journalctl at the
           # right diagnostic boundary (instead of hanging inside systemctl stop).
           wait_for_exit() {
-            local svc=$1 budget=${2:-5}
+            # Budget must exceed the 10s heartbeat tick — drain can only
+            # complete on a tick boundary, so anything <10s has no headroom
+            # for the ~9s real teardown work (idle pool + namespace cleanup
+            # + mitm/dns/kmsg shutdown). 15s = 1.5× tick. See issue #10869.
+            local svc=$1 budget=${2:-15}
             echo "--- Waiting up to ${budget}s for $svc to exit ---"
             for i in $(seq 1 "$budget"); do
               systemctl is-active --quiet "vm0-runner-${svc}" || return 0
