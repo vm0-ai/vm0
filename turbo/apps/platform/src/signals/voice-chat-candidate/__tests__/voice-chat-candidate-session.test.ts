@@ -757,7 +757,7 @@ describe("voice-chat-candidate session", () => {
       await vi.waitFor(() => {
         expect(context.store.get(vccStatus$)).toBe("connected");
       });
-      expect(await context.store.get(vccTaskFeed$)).toHaveLength(0);
+      await expect(context.store.get(vccTaskFeed$)).resolves.toHaveLength(0);
 
       activeTasks = [
         taskPayload({
@@ -769,7 +769,7 @@ describe("voice-chat-candidate session", () => {
       triggerAblyEvent(`voice-chat-candidate:${SESSION_ID}`);
 
       await vi.waitFor(async () => {
-        expect(await context.store.get(vccTaskFeed$)).toHaveLength(1);
+        await expect(context.store.get(vccTaskFeed$)).resolves.toHaveLength(1);
       });
     });
   });

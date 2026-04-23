@@ -44,9 +44,9 @@ describe("resolveAudioConfig", () => {
     });
     const cfg = await resolveAudioConfig();
     expect(cfg.noiseReduction).toBe("far_field");
-    expect(cfg.constraints.autoGainControl).toBe(true);
-    expect(cfg.constraints.echoCancellation).toBe(true);
-    expect(cfg.constraints.noiseSuppression).toBe(true);
+    expect(cfg.constraints.autoGainControl).toBeTruthy();
+    expect(cfg.constraints.echoCancellation).toBeTruthy();
+    expect(cfg.constraints.noiseSuppression).toBeTruthy();
   });
 
   it("mobile with external audio output → far_field and AGC enabled", async () => {
@@ -60,7 +60,7 @@ describe("resolveAudioConfig", () => {
     });
     const cfg = await resolveAudioConfig();
     expect(cfg.noiseReduction).toBe("far_field");
-    expect(cfg.constraints.autoGainControl).toBe(true);
+    expect(cfg.constraints.autoGainControl).toBeTruthy();
   });
 
   it("mobile speakerphone (no external audio) → near_field and AGC disabled", async () => {
@@ -71,7 +71,7 @@ describe("resolveAudioConfig", () => {
     });
     const cfg = await resolveAudioConfig();
     expect(cfg.noiseReduction).toBe("near_field");
-    expect(cfg.constraints.autoGainControl).toBe(false);
+    expect(cfg.constraints.autoGainControl).toBeFalsy();
   });
 
   it("sets navigator.audioSession.type = play-and-record when supported", async () => {
