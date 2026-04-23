@@ -1336,7 +1336,7 @@ fn spawn_job(
 /// (e.g. "draining" vs "shutdown").
 async fn drain_idle_pool(
     idle_pool: &SharedIdlePool,
-    budget: &ResourceBudget,
+    budget: &Arc<ResourceBudget>,
     status: &StatusTracker,
     context: &'static str,
 ) {
@@ -1345,11 +1345,18 @@ async fn drain_idle_pool(
         return;
     }
     info!(count = entries.len(), context, "destroying idle VMs");
+    // Destroy in parallel — each `stop_and_destroy` is ~1–3s (FC shutdown +
+    // cgroup/NBD/netns teardown), and teardown-path callers sit between the
+    // last job finishing and the runner process exiting. Serial destroy
+    // blows past the CI `wait_for_exit` budget on multi-VM drains.
+    let mut set = tokio::task::JoinSet::new();
     for entry in entries {
-        let vcpu = entry.vcpu;
-        let memory_mb = entry.memory_mb;
-        entry.stop_and_destroy().await;
-        budget.release(vcpu, memory_mb);
+        set.spawn(destroy_idle_entry(entry, Arc::clone(budget)));
+    }
+    while let Some(result) = set.join_next().await {
+        if let Err(e) = result {
+            warn!(error = %e, "idle entry destroy task panicked");
+        }
     }
     status.set_idle_info(Vec::new()).await;
 }
