@@ -80,6 +80,21 @@ describe("zero chat composer - textarea interaction", () => {
 });
 
 describe("zero chat composer - file input", () => {
+  // CHAT-I-022
+  it("renders attachment button with correct accessible label", async () => {
+    mockChatLifecycle();
+
+    detachedSetupPage({ context, path: CHAT_PATH });
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
+    });
+
+    // Attachment button renders with aria-label for accessibility
+    const attachButton = screen.getByRole("button", { name: "Attach" });
+    expect(attachButton).toBeInTheDocument();
+  });
+
   // CHAT-I-023
   it("shows attachment chip after a file is selected via the file input", async () => {
     const user = userEvent.setup();

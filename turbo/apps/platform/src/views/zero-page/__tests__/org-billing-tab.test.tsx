@@ -690,6 +690,45 @@ describe("org billing tab - plan card details", () => {
       }),
     ).toBeDefined();
   });
+
+  it("should show Voice input feature in all plan cards on pricing page", async () => {
+    setMockBillingStatus({ tier: "free", credits: 10_000 });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Free plan")).toBeInTheDocument();
+    });
+
+    click(screen.getByText("Compare all plans"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Compare plans")).toBeInTheDocument();
+    });
+
+    // Voice input appears in all three plan feature lists (one per plan: Free, Pro, Team)
+    // Free = "Voice input (10/month)", Pro and Team = "Voice input"
+    expect(screen.getAllByText(/Voice input/)).toHaveLength(3);
+  });
+
+  it("should show Voice input with limit in Free plan features", async () => {
+    setMockBillingStatus({ tier: "free", credits: 10_000 });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Free plan")).toBeInTheDocument();
+    });
+
+    click(screen.getByText("Compare all plans"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Compare plans")).toBeInTheDocument();
+    });
+
+    // Free plan shows "Voice input (10/month)" while Pro/Team show "Voice input"
+    expect(screen.getByText("Voice input (10/month)")).toBeInTheDocument();
+  });
 });
 
 describe("org billing tab - renewal date display", () => {
