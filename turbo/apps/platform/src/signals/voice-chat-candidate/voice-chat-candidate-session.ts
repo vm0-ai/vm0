@@ -668,9 +668,9 @@ const recoverMicrophone$ = command(
     signal.throwIfAborted();
     const newTrack = newStream.getAudioTracks()[0];
     if (!newTrack) {
-      newStream.getTracks().forEach((t) => {
+      for (const t of newStream.getTracks()) {
         t.stop();
-      });
+      }
       return;
     }
     const sender = pc.getSenders().find((s) => {
@@ -681,9 +681,9 @@ const recoverMicrophone$ = command(
         await sender.replaceTrack(newTrack);
       } catch (error) {
         throwIfAbort(error);
-        newStream.getTracks().forEach((t) => {
+        for (const t of newStream.getTracks()) {
           t.stop();
-        });
+        }
         set(internalError$, "Microphone access lost. Please reconnect.");
         set(internalStatus$, "error");
         return;
@@ -692,9 +692,9 @@ const recoverMicrophone$ = command(
     signal.throwIfAborted();
     const oldStream = get(internalStream$);
     if (oldStream) {
-      oldStream.getTracks().forEach((t) => {
+      for (const t of oldStream.getTracks()) {
         t.stop();
-      });
+      }
     }
     set(internalStream$, newStream);
     L.info("microphone recovered after screen resume");
@@ -712,11 +712,9 @@ const monitorMicrophoneRecovery$ = command(
         return;
       }
       const tracks = stream.getAudioTracks();
-      const isDead =
-        tracks.length === 0 ||
-        tracks.every((t) => {
-          return t.readyState === "ended";
-        });
+      const isDead = tracks.every((t) => {
+        return t.readyState === "ended";
+      });
       if (!isDead) {
         return;
       }
