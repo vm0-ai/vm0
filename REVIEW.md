@@ -1,15 +1,14 @@
 # Review Instructions
 
+## Review Verdict
+
+**Reject** the PR if it contains any Important finding. **Approve** only when there are zero Important findings. Nits do not block approval.
+
 ## Severity Definitions
 
-Reserve **Important** for findings that would break behavior, leak data, or block a rollback:
-- Incorrect logic, unscoped database queries, PII in logs
-- Backward-incompatible migrations, security vulnerabilities
-- Violations of zero-tolerance rules (see below)
-
-Use **Nit** for minor issues worth fixing but not merge-blocking.
-
-Use **Pre-existing** for bugs in the codebase not introduced by this PR.
+- **Important** — Must fix before merge. Bugs that break behavior, leak data, block rollback, or violate zero-tolerance rules (see below).
+- **Nit** — Minor issues worth fixing but not merge-blocking.
+- **Pre-existing** — Bugs in the codebase not introduced by this PR. Do not count toward the verdict.
 
 ## Cap the Nits
 
