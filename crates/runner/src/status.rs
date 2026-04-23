@@ -101,13 +101,20 @@ impl StatusTracker {
     /// mutator — is called.
     ///
     /// `max_concurrent` is the cap reported in the status file (not
-    /// enforced here).
-    pub fn new(path: PathBuf, max_concurrent: usize) -> Self {
+    /// enforced here). `proxy_port` / `dns_port` are set-once
+    /// initialization values captured from the MITM proxy and DNS
+    /// resolver before the tracker is shared via `Arc`.
+    pub fn new(
+        path: PathBuf,
+        max_concurrent: usize,
+        proxy_port: Option<u16>,
+        dns_port: Option<u16>,
+    ) -> Self {
         Self {
             started_at: Utc::now(),
             max_concurrent,
-            proxy_port: None,
-            dns_port: None,
+            proxy_port,
+            dns_port,
             path,
             state: Mutex::new(MutableState {
                 mode: RunnerMode::Running,
@@ -115,28 +122,6 @@ impl StatusTracker {
                 idle_vms: Vec::new(),
             }),
         }
-    }
-
-    /// Record the MITM proxy's listening port and flush the status file.
-    ///
-    /// Takes `&mut self` because `proxy_port` lives outside the mutex;
-    /// call this before wrapping the tracker in `Arc`, i.e. during
-    /// runner startup while the tracker is still uniquely owned.
-    pub async fn set_proxy_port(&mut self, port: u16) {
-        self.proxy_port = Some(port);
-        let state = self.state.lock().await;
-        self.write_status(&state).await;
-    }
-
-    /// Record the DNS resolver's listening port and flush the status file.
-    ///
-    /// Takes `&mut self` for the same reason as
-    /// [`set_proxy_port`](Self::set_proxy_port) — must be called before
-    /// the tracker is shared via `Arc`.
-    pub async fn set_dns_port(&mut self, port: u16) {
-        self.dns_port = Some(port);
-        let state = self.state.lock().await;
-        self.write_status(&state).await;
     }
 
     /// Transition the reported lifecycle mode (Running / Draining /
@@ -230,7 +215,7 @@ mod tests {
     async fn write_initial_creates_file() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("status.json");
-        let tracker = StatusTracker::new(path.clone(), 4);
+        let tracker = StatusTracker::new(path.clone(), 4, None, None);
 
         tracker.write_initial().await;
 
@@ -246,7 +231,7 @@ mod tests {
     async fn set_mode_updates_file() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("status.json");
-        let tracker = StatusTracker::new(path.clone(), 4);
+        let tracker = StatusTracker::new(path.clone(), 4, None, None);
 
         tracker.write_initial().await;
         tracker.set_mode(RunnerMode::Draining).await;
@@ -259,7 +244,7 @@ mod tests {
     async fn add_run_records_sandbox_id() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("status.json");
-        let tracker = StatusTracker::new(path.clone(), 4);
+        let tracker = StatusTracker::new(path.clone(), 4, None, None);
 
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
@@ -278,7 +263,7 @@ mod tests {
     async fn add_and_remove_run() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("status.json");
-        let tracker = StatusTracker::new(path.clone(), 4);
+        let tracker = StatusTracker::new(path.clone(), 4, None, None);
 
         let run1 = RunId::new_v4();
         let sb1 = SandboxId::new_v4();
@@ -305,8 +290,8 @@ mod tests {
     async fn proxy_port_in_status() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("status.json");
-        let mut tracker = StatusTracker::new(path.clone(), 4);
-        tracker.set_proxy_port(8080).await;
+        let tracker = StatusTracker::new(path.clone(), 4, Some(8080), None);
+        tracker.write_initial().await;
 
         let status = read_status(&path);
         assert_eq!(status["proxy_port"], 8080);
@@ -316,7 +301,7 @@ mod tests {
     async fn proxy_port_absent_when_not_set() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("status.json");
-        let tracker = StatusTracker::new(path.clone(), 4);
+        let tracker = StatusTracker::new(path.clone(), 4, None, None);
 
         tracker.write_initial().await;
 
@@ -328,7 +313,7 @@ mod tests {
     async fn timestamps_are_iso8601() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("status.json");
-        let tracker = StatusTracker::new(path.clone(), 4);
+        let tracker = StatusTracker::new(path.clone(), 4, None, None);
 
         tracker.write_initial().await;
 
@@ -344,7 +329,7 @@ mod tests {
     async fn set_idle_info_round_trip() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("status.json");
-        let tracker = StatusTracker::new(path.clone(), 4);
+        let tracker = StatusTracker::new(path.clone(), 4, None, None);
 
         tracker.write_initial().await;
 
@@ -379,7 +364,7 @@ mod tests {
     async fn set_idle_info_empty_omitted() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("status.json");
-        let tracker = StatusTracker::new(path.clone(), 4);
+        let tracker = StatusTracker::new(path.clone(), 4, None, None);
 
         tracker.set_idle_info(vec![]).await;
 
