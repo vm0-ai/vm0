@@ -199,6 +199,9 @@ describe("GET /api/zero/usage/insight", () => {
   });
 
   it("today produces hourly bucket strings", async () => {
+    // Fix time so seeded 09:00/12:00 data is always inside the [todayStart, now) window
+    context.mocks.date.setSystemTime(new Date("2026-04-23T15:00:00Z"));
+
     const { userId, orgId } = await context.user;
     const { composeId } = await seedTestCompose({
       userId,
