@@ -1,5 +1,5 @@
 import { useGet, useLastResolved } from "ccstate-react";
-import type { VoiceChatCandidateTask } from "@vm0/core/contracts/zero-voice-chat-candidate";
+import type { VoiceChatTask } from "@vm0/core/contracts/zero-voice-chat";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   currentChatAgentId$,
@@ -21,7 +21,7 @@ import {
   VoiceChatLauncher,
 } from "./agent-chat-page.tsx";
 
-function TaskRow({ task }: { task: VoiceChatCandidateTask }) {
+function TaskRow({ task }: { task: VoiceChatTask }) {
   const latestProgress = task.assistantMessages.at(-1)?.content.trim() ?? "";
   const showProgress = latestProgress.length > 0;
   return (
@@ -78,7 +78,7 @@ function VoiceModeTaskList() {
   }
   return (
     <ul className="w-full space-y-2 text-sm" data-testid="voice-task-list">
-      {tasks.map((task: VoiceChatCandidateTask) => {
+      {tasks.map((task: VoiceChatTask) => {
         return <TaskRow key={task.id} task={task} />;
       })}
     </ul>

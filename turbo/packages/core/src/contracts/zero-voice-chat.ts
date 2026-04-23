@@ -4,36 +4,29 @@ import { apiErrorSchema } from "./errors";
 
 const c = initContract();
 
-export const voiceChatCandidateItemRoleSchema = z.enum([
+export const voiceChatItemRoleSchema = z.enum([
   "user",
   "assistant",
   "task_result",
   "system_note",
 ]);
-export type VoiceChatCandidateItemRole = z.infer<
-  typeof voiceChatCandidateItemRoleSchema
->;
+export type VoiceChatItemRole = z.infer<typeof voiceChatItemRoleSchema>;
 
-export const voiceChatCandidateTaskStatusSchema = z.enum([
+export const voiceChatTaskStatusSchema = z.enum([
   "pending",
   "queued",
   "running",
   "done",
   "failed",
 ]);
-export type VoiceChatCandidateTaskStatus = z.infer<
-  typeof voiceChatCandidateTaskStatusSchema
+export type VoiceChatTaskStatus = z.infer<typeof voiceChatTaskStatusSchema>;
+
+export const voiceChatReasoningStatusSchema = z.enum(["idle", "running"]);
+export type VoiceChatReasoningStatus = z.infer<
+  typeof voiceChatReasoningStatusSchema
 >;
 
-export const voiceChatCandidateReasoningStatusSchema = z.enum([
-  "idle",
-  "running",
-]);
-export type VoiceChatCandidateReasoningStatus = z.infer<
-  typeof voiceChatCandidateReasoningStatusSchema
->;
-
-export const voiceChatCandidateSessionSchema = z.object({
+export const voiceChatSessionSchema = z.object({
   id: z.uuid(),
   orgId: z.string(),
   userId: z.string(),
@@ -47,51 +40,45 @@ export const voiceChatCandidateSessionSchema = z.object({
   lastSummaryAt: z.string().nullable(),
   createdAt: z.string(),
 });
-export type VoiceChatCandidateSession = z.infer<
-  typeof voiceChatCandidateSessionSchema
->;
+export type VoiceChatSession = z.infer<typeof voiceChatSessionSchema>;
 
-export const voiceChatCandidateItemSchema = z.object({
+export const voiceChatItemSchema = z.object({
   id: z.uuid(),
   sessionId: z.uuid(),
   seq: z.number().int(),
-  role: voiceChatCandidateItemRoleSchema,
+  role: voiceChatItemRoleSchema,
   content: z.string().nullable(),
   taskId: z.uuid().nullable(),
   realtimeItemId: z.string().nullable(),
   createdAt: z.string(),
 });
-export type VoiceChatCandidateItem = z.infer<
-  typeof voiceChatCandidateItemSchema
->;
+export type VoiceChatItem = z.infer<typeof voiceChatItemSchema>;
 
-export const voiceChatCandidateTaskResultEntrySchema = z.object({
+export const voiceChatTaskResultEntrySchema = z.object({
   type: z.literal("assistant"),
   content: z.string(),
   at: z.string(),
 });
-export type VoiceChatCandidateTaskResultEntry = z.infer<
-  typeof voiceChatCandidateTaskResultEntrySchema
+export type VoiceChatTaskResultEntry = z.infer<
+  typeof voiceChatTaskResultEntrySchema
 >;
 
-export const voiceChatCandidateTaskSchema = z.object({
+export const voiceChatTaskSchema = z.object({
   id: z.uuid(),
   sessionId: z.uuid(),
   runId: z.uuid().nullable(),
   callId: z.string(),
   prompt: z.string(),
-  status: voiceChatCandidateTaskStatusSchema,
+  status: voiceChatTaskStatusSchema,
   result: z.string().nullable(),
   resultUpdatedAt: z.string().nullable(),
-  assistantMessages: z.array(voiceChatCandidateTaskResultEntrySchema),
+  assistantMessages: z.array(voiceChatTaskResultEntrySchema),
   error: z.string().nullable(),
   createdAt: z.string(),
   startedAt: z.string().nullable(),
   finishedAt: z.string().nullable(),
 });
-export type VoiceChatCandidateTask = z.infer<
-  typeof voiceChatCandidateTaskSchema
->;
+export type VoiceChatTask = z.infer<typeof voiceChatTaskSchema>;
 
 const tokenResponseSchema = z.object({
   client_secret: z.object({
@@ -99,31 +86,25 @@ const tokenResponseSchema = z.object({
     expires_at: z.number(),
   }),
 });
-export type VoiceChatCandidateTokenResponse = z.infer<
-  typeof tokenResponseSchema
->;
+export type VoiceChatTokenResponse = z.infer<typeof tokenResponseSchema>;
 
 const createSessionBodySchema = z.object({ agentId: z.uuid() });
-export type CreateVoiceChatCandidateSessionBody = z.infer<
+export type CreateVoiceChatSessionBody = z.infer<
   typeof createSessionBodySchema
 >;
 
 const appendItemBodySchema = z.object({
-  role: voiceChatCandidateItemRoleSchema,
+  role: voiceChatItemRoleSchema,
   content: z.string(),
   realtimeItemId: z.string().min(1),
 });
-export type AppendVoiceChatCandidateItemBody = z.infer<
-  typeof appendItemBodySchema
->;
+export type AppendVoiceChatItemBody = z.infer<typeof appendItemBodySchema>;
 
 const createTaskBodySchema = z.object({
   prompt: z.string().min(1),
   callId: z.string().min(1),
 });
-export type CreateVoiceChatCandidateTaskBody = z.infer<
-  typeof createTaskBodySchema
->;
+export type CreateVoiceChatTaskBody = z.infer<typeof createTaskBodySchema>;
 
 const tokenBodySchema = z.object({
   sessionId: z.uuid(),
@@ -132,11 +113,11 @@ const tokenBodySchema = z.object({
   // far_field if absent.
   noiseReduction: z.enum(["near_field", "far_field"]).optional(),
 });
-export type VoiceChatCandidateTokenBody = z.infer<typeof tokenBodySchema>;
+export type VoiceChatTokenBody = z.infer<typeof tokenBodySchema>;
 
 const okResponseSchema = z.object({ ok: z.literal(true) });
 
-export const zeroVoiceChatCandidateContract = c.router({
+export const zeroVoiceChatContract = c.router({
   createSession: {
     method: "POST",
     path: "/api/zero/voice-chat-candidate",
@@ -144,7 +125,7 @@ export const zeroVoiceChatCandidateContract = c.router({
     body: createSessionBodySchema,
     responses: {
       200: z.object({
-        session: voiceChatCandidateSessionSchema,
+        session: voiceChatSessionSchema,
         recentTaskLogs: z.string(),
         finishedTasksFullText: z.string(),
         talkerInstructions: z.string(),
@@ -164,7 +145,7 @@ export const zeroVoiceChatCandidateContract = c.router({
     pathParams: z.object({ id: z.uuid() }),
     responses: {
       200: z.object({
-        session: voiceChatCandidateSessionSchema,
+        session: voiceChatSessionSchema,
         recentTaskLogs: z.string(),
         finishedTasksFullText: z.string(),
         talkerInstructions: z.string(),
@@ -182,7 +163,7 @@ export const zeroVoiceChatCandidateContract = c.router({
     headers: authHeadersSchema,
     responses: {
       200: z.object({
-        sessions: z.array(voiceChatCandidateSessionSchema),
+        sessions: z.array(voiceChatSessionSchema),
       }),
       401: apiErrorSchema,
       403: apiErrorSchema,
@@ -212,7 +193,7 @@ export const zeroVoiceChatCandidateContract = c.router({
     pathParams: z.object({ id: z.uuid() }),
     body: appendItemBodySchema,
     responses: {
-      200: z.object({ item: voiceChatCandidateItemSchema }),
+      200: z.object({ item: voiceChatItemSchema }),
       400: apiErrorSchema,
       401: apiErrorSchema,
       404: apiErrorSchema,
@@ -227,7 +208,7 @@ export const zeroVoiceChatCandidateContract = c.router({
     pathParams: z.object({ id: z.uuid() }),
     body: createTaskBodySchema,
     responses: {
-      200: z.object({ task: voiceChatCandidateTaskSchema }),
+      200: z.object({ task: voiceChatTaskSchema }),
       400: apiErrorSchema,
       401: apiErrorSchema,
       404: apiErrorSchema,
@@ -248,7 +229,7 @@ export const zeroVoiceChatCandidateContract = c.router({
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.uuid() }),
     responses: {
-      200: z.object({ tasks: z.array(voiceChatCandidateTaskSchema) }),
+      200: z.object({ tasks: z.array(voiceChatTaskSchema) }),
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
@@ -273,5 +254,4 @@ export const zeroVoiceChatCandidateContract = c.router({
   },
 });
 
-export type ZeroVoiceChatCandidateContract =
-  typeof zeroVoiceChatCandidateContract;
+export type ZeroVoiceChatContract = typeof zeroVoiceChatContract;

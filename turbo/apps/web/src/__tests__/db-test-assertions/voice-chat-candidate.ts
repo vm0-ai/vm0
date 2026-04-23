@@ -1,5 +1,5 @@
 import { eq, and } from "drizzle-orm";
-import type { VoiceChatCandidateTaskResultEntry } from "@vm0/core/contracts/zero-voice-chat-candidate";
+import type { VoiceChatTaskResultEntry } from "@vm0/core/contracts/zero-voice-chat";
 import { initServices } from "../../lib/init-services";
 import {
   voiceChatItems,
@@ -126,7 +126,7 @@ export async function getTestVoiceChatCandidateTask(id: string): Promise<
       result: string | null;
       resultUpdatedAt: Date | null;
       status: string;
-      assistantMessages: VoiceChatCandidateTaskResultEntry[];
+      assistantMessages: VoiceChatTaskResultEntry[];
       error: string | null;
     }
   | undefined

@@ -1,12 +1,12 @@
 import { describe, it, expect } from "vitest";
 import {
-  voiceChatCandidateItemRoleSchema,
-  voiceChatCandidateReasoningStatusSchema,
-  voiceChatCandidateTaskStatusSchema,
-  zeroVoiceChatCandidateContract,
-} from "../zero-voice-chat-candidate";
+  voiceChatItemRoleSchema,
+  voiceChatReasoningStatusSchema,
+  voiceChatTaskStatusSchema,
+  zeroVoiceChatContract,
+} from "../zero-voice-chat";
 
-describe("zeroVoiceChatCandidateContract", () => {
+describe("zeroVoiceChatContract", () => {
   it("exposes the expected routes with correct HTTP methods", () => {
     const expected: Record<string, "GET" | "POST"> = {
       createSession: "POST",
@@ -18,7 +18,7 @@ describe("zeroVoiceChatCandidateContract", () => {
       listTasks: "GET",
       token: "POST",
     };
-    const contract = zeroVoiceChatCandidateContract as unknown as Record<
+    const contract = zeroVoiceChatContract as unknown as Record<
       string,
       { method: string; path: string }
     >;
@@ -29,7 +29,7 @@ describe("zeroVoiceChatCandidateContract", () => {
   });
 
   it("namespaces all routes under /api/zero/voice-chat-candidate", () => {
-    const contract = zeroVoiceChatCandidateContract as unknown as Record<
+    const contract = zeroVoiceChatContract as unknown as Record<
       string,
       { path: string }
     >;
@@ -41,7 +41,7 @@ describe("zeroVoiceChatCandidateContract", () => {
   });
 
   it("no longer exposes session lifecycle routes (end/heartbeat/reenter)", () => {
-    const contract = zeroVoiceChatCandidateContract as unknown as Record<
+    const contract = zeroVoiceChatContract as unknown as Record<
       string,
       unknown
     >;
@@ -51,9 +51,9 @@ describe("zeroVoiceChatCandidateContract", () => {
   });
 });
 
-describe("voice-chat-candidate enum schemas", () => {
+describe("voice-chat enum schemas", () => {
   it("item role covers user | assistant | task_result | system_note", () => {
-    expect(voiceChatCandidateItemRoleSchema.options).toEqual([
+    expect(voiceChatItemRoleSchema.options).toEqual([
       "user",
       "assistant",
       "task_result",
@@ -62,7 +62,7 @@ describe("voice-chat-candidate enum schemas", () => {
   });
 
   it("task status covers all 5 DB states (pending | queued | running | done | failed)", () => {
-    expect(voiceChatCandidateTaskStatusSchema.options).toEqual([
+    expect(voiceChatTaskStatusSchema.options).toEqual([
       "pending",
       "queued",
       "running",
@@ -72,9 +72,6 @@ describe("voice-chat-candidate enum schemas", () => {
   });
 
   it("reasoning status covers idle | running", () => {
-    expect(voiceChatCandidateReasoningStatusSchema.options).toEqual([
-      "idle",
-      "running",
-    ]);
+    expect(voiceChatReasoningStatusSchema.options).toEqual(["idle", "running"]);
   });
 });

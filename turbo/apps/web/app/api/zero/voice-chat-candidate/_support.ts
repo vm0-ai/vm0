@@ -10,22 +10,22 @@ import {
 import type { AuthContext } from "../../../../src/lib/auth/get-auth-context";
 import { loadFeatureSwitchOverrides } from "../../../../src/lib/zero/user/feature-switches-service";
 
-export const createVoiceChatCandidateSessionBodySchema = z.object({
+export const createVoiceChatSessionBodySchema = z.object({
   agentId: z.uuid(),
 });
 
-export const appendVoiceChatCandidateItemBodySchema = z.object({
+export const appendVoiceChatItemBodySchema = z.object({
   role: z.enum(["user", "assistant", "task_result", "system_note"]),
   content: z.string(),
   realtimeItemId: z.string().min(1),
 });
 
-export const createVoiceChatCandidateTaskBodySchema = z.object({
+export const createVoiceChatTaskBodySchema = z.object({
   prompt: z.string().min(1),
   callId: z.string().min(1),
 });
 
-export const voiceChatCandidateTokenBodySchema = z.object({
+export const voiceChatTokenBodySchema = z.object({
   sessionId: z.uuid(),
   noiseReduction: z.enum(["near_field", "far_field"]).optional(),
 });
@@ -34,7 +34,7 @@ type SessionRow = typeof voiceChatSessions.$inferSelect;
 type ItemRow = typeof voiceChatItems.$inferSelect;
 type TaskRow = typeof voiceChatTasks.$inferSelect;
 
-export function serializeVoiceChatCandidateSession(session: SessionRow) {
+export function serializeVoiceChatSession(session: SessionRow) {
   return {
     id: session.id,
     orgId: session.orgId,
@@ -53,7 +53,7 @@ export function serializeVoiceChatCandidateSession(session: SessionRow) {
   };
 }
 
-export function serializeVoiceChatCandidateItem(item: ItemRow) {
+export function serializeVoiceChatItem(item: ItemRow) {
   return {
     id: item.id,
     sessionId: item.sessionId,
@@ -66,7 +66,7 @@ export function serializeVoiceChatCandidateItem(item: ItemRow) {
   };
 }
 
-export function serializeVoiceChatCandidateTask(task: TaskRow) {
+export function serializeVoiceChatTask(task: TaskRow) {
   return {
     id: task.id,
     sessionId: task.sessionId,
@@ -86,11 +86,11 @@ export function serializeVoiceChatCandidateTask(task: TaskRow) {
   };
 }
 
-// Gate on Trinity — the candidate surface's dedicated flag introduced in
+// Gate on Trinity — the voice-chat surface's dedicated flag introduced in
 // #10618. Trinity is the only UI entry point into these endpoints (the
 // standalone /voice-chat-candidate page was removed in #10627), so the
 // backend follows the same switch.
-export async function isVoiceChatCandidateEnabled(
+export async function isVoiceChatEnabled(
   authCtx: AuthContext,
 ): Promise<boolean> {
   const overrides = await loadFeatureSwitchOverrides(

@@ -8,10 +8,10 @@ import {
 import { buildTalkerPayload } from "../../../../src/lib/zero/voice-chat-candidate/talker-instructions";
 import {
   badRequestResponse,
-  createVoiceChatCandidateSessionBodySchema,
+  createVoiceChatSessionBodySchema,
   forbiddenResponse,
-  isVoiceChatCandidateEnabled,
-  serializeVoiceChatCandidateSession,
+  isVoiceChatEnabled,
+  serializeVoiceChatSession,
   unauthorizedResponse,
 } from "./_support";
 
@@ -23,11 +23,11 @@ export async function POST(request: Request): Promise<Response> {
   );
   if (!authCtx?.orgId) return unauthorizedResponse();
 
-  if (!(await isVoiceChatCandidateEnabled(authCtx))) {
+  if (!(await isVoiceChatEnabled(authCtx))) {
     return forbiddenResponse();
   }
 
-  const parsed = createVoiceChatCandidateSessionBodySchema.safeParse(
+  const parsed = createVoiceChatSessionBodySchema.safeParse(
     await request.json().catch(() => {
       return undefined;
     }),
@@ -46,7 +46,7 @@ export async function POST(request: Request): Promise<Response> {
   const talker = await buildTalkerPayload(session);
 
   return NextResponse.json({
-    session: serializeVoiceChatCandidateSession(session),
+    session: serializeVoiceChatSession(session),
     ...talker,
   });
 }
@@ -59,7 +59,7 @@ export async function GET(request: Request): Promise<Response> {
   );
   if (!authCtx?.orgId) return unauthorizedResponse();
 
-  if (!(await isVoiceChatCandidateEnabled(authCtx))) {
+  if (!(await isVoiceChatEnabled(authCtx))) {
     return forbiddenResponse();
   }
 
@@ -70,7 +70,7 @@ export async function GET(request: Request): Promise<Response> {
 
   return NextResponse.json({
     sessions: sessions.map((s) => {
-      return serializeVoiceChatCandidateSession(s);
+      return serializeVoiceChatSession(s);
     }),
   });
 }

@@ -1,9 +1,9 @@
 import { command, computed, state } from "ccstate";
 import {
-  zeroVoiceChatCandidateContract,
-  type VoiceChatCandidateItemRole,
-  type VoiceChatCandidateTask,
-} from "@vm0/core/contracts/zero-voice-chat-candidate";
+  zeroVoiceChatContract,
+  type VoiceChatItemRole,
+  type VoiceChatTask,
+} from "@vm0/core/contracts/zero-voice-chat";
 import { resetSignal, throwIfAbort, onDomEventFn } from "../utils.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { zeroClient$ } from "../api-client.ts";
@@ -96,26 +96,24 @@ export const vccSessionId$ = computed((get) => {
  * Active + recently-finished task feed for the Trinity sidebar. Refetches on
  * every Ably tick (via vccReload$). Returns [] until a session is live.
  */
-export const vccTaskFeed$ = computed(
-  async (get): Promise<VoiceChatCandidateTask[]> => {
-    get(vccReload$);
-    const sid = get(internalSessionId$);
-    if (!sid) {
-      return [];
-    }
-    const createClient = get(zeroClient$);
-    const client = createClient(zeroVoiceChatCandidateContract);
-    const res = await accept(
-      client.listTasks({ params: { id: sid } }),
-      [200, 401, 404],
-      { toast: false },
-    );
-    if (res.status !== 200) {
-      return [];
-    }
-    return res.body.tasks;
-  },
-);
+export const vccTaskFeed$ = computed(async (get): Promise<VoiceChatTask[]> => {
+  get(vccReload$);
+  const sid = get(internalSessionId$);
+  if (!sid) {
+    return [];
+  }
+  const createClient = get(zeroClient$);
+  const client = createClient(zeroVoiceChatContract);
+  const res = await accept(
+    client.listTasks({ params: { id: sid } }),
+    [200, 401, 404],
+    { toast: false },
+  );
+  if (res.status !== 200) {
+    return [];
+  }
+  return res.body.tasks;
+});
 
 export const vccLastUserMessage$ = computed((get) => {
   return get(internalLastUserMessage$);
@@ -132,7 +130,7 @@ export const vccLastAssistantMessage$ = computed((get) => {
 const appendItem$ = command(
   async (
     { get, set },
-    role: VoiceChatCandidateItemRole,
+    role: VoiceChatItemRole,
     content: string,
     realtimeItemId: string,
     signal: AbortSignal,
@@ -142,7 +140,7 @@ const appendItem$ = command(
       return;
     }
     const createClient = get(zeroClient$);
-    const client = createClient(zeroVoiceChatCandidateContract);
+    const client = createClient(zeroVoiceChatContract);
     const res = await accept(
       client.appendItem({
         params: { id: sid },
@@ -203,7 +201,7 @@ const handleTalkerToolCall$ = command(
     }
 
     const createClient = get(zeroClient$);
-    const client = createClient(zeroVoiceChatCandidateContract);
+    const client = createClient(zeroVoiceChatContract);
     const res = await accept(
       client.createTask({
         params: { id: sid },
@@ -533,7 +531,7 @@ const syncTalkerInstructions$ = command(
       return;
     }
     const createClient = get(zeroClient$);
-    const client = createClient(zeroVoiceChatCandidateContract);
+    const client = createClient(zeroVoiceChatContract);
     const res = await accept(
       client.getSession({ params: { id: sid }, fetchOptions: { signal } }),
       [200, 401, 404],
@@ -768,7 +766,7 @@ export const startVoiceChatCandidate$ = command(
     const sessionSignal = set(resetSessionSignal$, signal);
 
     const createClient = get(zeroClient$);
-    const client = createClient(zeroVoiceChatCandidateContract);
+    const client = createClient(zeroVoiceChatContract);
 
     // createSession is get-or-create on the server side: same (userId,
     // agentId) returns the existing session row, so this doubles as resume.

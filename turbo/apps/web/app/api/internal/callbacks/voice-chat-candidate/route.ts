@@ -8,16 +8,14 @@ import { completeVoiceChatCandidateTask } from "../../../../../src/lib/zero/voic
 import { triggerReasoning } from "../../../../../src/lib/zero/voice-chat-candidate/trigger-reasoning";
 import { publishUserSignal } from "../../../../../src/lib/infra/realtime/client";
 import { isNotFound } from "../../../../../src/lib/shared/errors";
-import type { VoiceChatCandidateCallbackPayload } from "../../../../../src/lib/infra/callback/callback-payloads";
+import type { VoiceChatCallbackPayload } from "../../../../../src/lib/infra/callback/callback-payloads";
 import { logger } from "../../../../../src/lib/shared/logger";
 
 const log = logger("callback:voice-chat-candidate");
 
 export const maxDuration = 60;
 
-function parsePayload(
-  payload: unknown,
-): VoiceChatCandidateCallbackPayload | null {
+function parsePayload(payload: unknown): VoiceChatCallbackPayload | null {
   if (!payload || typeof payload !== "object") return null;
   const p = payload as Record<string, unknown>;
   if (typeof p.taskId !== "string") return null;
@@ -57,10 +55,7 @@ async function readRunAgentId(runId: string): Promise<string> {
 export async function POST(request: NextRequest): Promise<NextResponse> {
   initServices();
 
-  const result = await verifyCallback<VoiceChatCandidateCallbackPayload>(
-    request,
-    log,
-  );
+  const result = await verifyCallback<VoiceChatCallbackPayload>(request, log);
   if (!result.ok) return result.response;
 
   const { runId, status, error } = result.data;

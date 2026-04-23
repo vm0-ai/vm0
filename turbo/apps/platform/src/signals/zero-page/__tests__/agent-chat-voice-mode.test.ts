@@ -17,7 +17,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { http, HttpResponse } from "msw";
-import { zeroVoiceChatCandidateContract } from "@vm0/core/contracts/zero-voice-chat-candidate";
+import { zeroVoiceChatContract } from "@vm0/core/contracts/zero-voice-chat";
 import { server } from "../../../mocks/server.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
@@ -109,7 +109,7 @@ function mockCandidateEndpoints(options: {
   tasks: ReturnType<typeof taskPayload>[];
 }) {
   server.use(
-    mockApi(zeroVoiceChatCandidateContract.createSession, ({ respond }) => {
+    mockApi(zeroVoiceChatContract.createSession, ({ respond }) => {
       return respond(200, {
         session: sessionPayload(),
         recentTaskLogs: "",
@@ -118,12 +118,12 @@ function mockCandidateEndpoints(options: {
         talkerInstructionTokens: 0,
       });
     }),
-    mockApi(zeroVoiceChatCandidateContract.token, ({ respond }) => {
+    mockApi(zeroVoiceChatContract.token, ({ respond }) => {
       return respond(200, {
         client_secret: { value: "ek_test", expires_at: 9_999_999_999 },
       });
     }),
-    mockApi(zeroVoiceChatCandidateContract.getSession, ({ respond }) => {
+    mockApi(zeroVoiceChatContract.getSession, ({ respond }) => {
       return respond(200, {
         session: sessionPayload(),
         recentTaskLogs: "",
@@ -132,7 +132,7 @@ function mockCandidateEndpoints(options: {
         talkerInstructionTokens: 0,
       });
     }),
-    mockApi(zeroVoiceChatCandidateContract.listTasks, ({ respond }) => {
+    mockApi(zeroVoiceChatContract.listTasks, ({ respond }) => {
       const active = options.tasks
         .filter((t) => {
           return (

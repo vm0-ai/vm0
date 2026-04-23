@@ -11,10 +11,10 @@ import { logger } from "../../../../../src/lib/shared/logger";
 import {
   badRequestResponse,
   forbiddenResponse,
-  isVoiceChatCandidateEnabled,
+  isVoiceChatEnabled,
   notFoundResponse,
   unauthorizedResponse,
-  voiceChatCandidateTokenBodySchema,
+  voiceChatTokenBodySchema,
 } from "../_support";
 
 const log = logger("api:zero:voice-chat-candidate:token");
@@ -27,11 +27,11 @@ export async function POST(request: Request): Promise<Response> {
   );
   if (!authCtx) return unauthorizedResponse();
 
-  if (!(await isVoiceChatCandidateEnabled(authCtx))) {
+  if (!(await isVoiceChatEnabled(authCtx))) {
     return forbiddenResponse();
   }
 
-  const parsed = voiceChatCandidateTokenBodySchema.safeParse(
+  const parsed = voiceChatTokenBodySchema.safeParse(
     await request.json().catch(() => {
       return undefined;
     }),

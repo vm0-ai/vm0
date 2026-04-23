@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import type { VoiceChatCandidateTaskResultEntry } from "@vm0/core/contracts/zero-voice-chat-candidate";
+import type { VoiceChatTaskResultEntry } from "@vm0/core/contracts/zero-voice-chat";
 import { initServices } from "../../../../../src/lib/init-services";
 import { verifyEventConsumer } from "../../../../../src/lib/infra/event-consumer";
 import type { AgentEvent } from "../../../../../src/lib/infra/event-consumer/types";
@@ -64,7 +64,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const { runId, events } = result.data;
 
   const now = new Date();
-  const entries: VoiceChatCandidateTaskResultEntry[] = [];
+  const entries: VoiceChatTaskResultEntry[] = [];
   for (const event of events) {
     const text = eventText(event);
     if (text === null) continue;

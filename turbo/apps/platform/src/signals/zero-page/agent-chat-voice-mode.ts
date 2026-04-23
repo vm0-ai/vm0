@@ -1,5 +1,5 @@
 import { command, computed, state } from "ccstate";
-import type { VoiceChatCandidateTask } from "@vm0/core";
+import type { VoiceChatTask } from "@vm0/core";
 import {
   startVoiceChatCandidate$,
   endVoiceChatCandidate$,
@@ -51,7 +51,7 @@ export const lastAgentMessage$ = vccLastAssistantMessage$;
  * drops `done` and `failed` so the list reads as a live working queue.
  */
 export const agentChatPendingTasks$ = computed(
-  async (get): Promise<VoiceChatCandidateTask[]> => {
+  async (get): Promise<VoiceChatTask[]> => {
     const tasks = await get(vccTaskFeed$);
     return tasks.filter((t) => {
       return t.status !== "done" && t.status !== "failed";

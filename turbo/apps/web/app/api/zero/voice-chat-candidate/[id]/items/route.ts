@@ -8,11 +8,11 @@ import { triggerReasoning } from "../../../../../../src/lib/zero/voice-chat-cand
 import { voiceChatItems } from "../../../../../../src/db/schema/voice-chat";
 import { isBadRequest } from "../../../../../../src/lib/shared/errors";
 import {
-  appendVoiceChatCandidateItemBodySchema,
+  appendVoiceChatItemBodySchema,
   badRequestResponse,
-  isVoiceChatCandidateEnabled,
+  isVoiceChatEnabled,
   notFoundResponse,
-  serializeVoiceChatCandidateItem,
+  serializeVoiceChatItem,
   unauthorizedResponse,
 } from "../../_support";
 
@@ -30,7 +30,7 @@ export async function POST(
   if (!authCtx?.orgId) return unauthorizedResponse();
 
   // See [id]/route.ts for why this is 404 (not 403) on flag-off.
-  if (!(await isVoiceChatCandidateEnabled(authCtx))) {
+  if (!(await isVoiceChatEnabled(authCtx))) {
     return notFoundResponse("Voice-chat-candidate session not found");
   }
 
@@ -44,7 +44,7 @@ export async function POST(
     return notFoundResponse("Voice-chat-candidate session not found");
   }
 
-  const parsed = appendVoiceChatCandidateItemBodySchema.safeParse(
+  const parsed = appendVoiceChatItemBodySchema.safeParse(
     await request.json().catch(() => {
       return undefined;
     }),
@@ -73,7 +73,7 @@ export async function POST(
         return triggerReasoning(id);
       });
       return NextResponse.json({
-        item: serializeVoiceChatCandidateItem(inserted),
+        item: serializeVoiceChatItem(inserted),
       });
     }
 
@@ -97,7 +97,7 @@ export async function POST(
       return notFoundResponse("Conflicting item not found after dedupe");
     }
     return NextResponse.json({
-      item: serializeVoiceChatCandidateItem(existing),
+      item: serializeVoiceChatItem(existing),
     });
   } catch (err) {
     if (isBadRequest(err)) {

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { http, HttpResponse } from "msw";
-import { zeroVoiceChatCandidateContract } from "@vm0/core/contracts/zero-voice-chat-candidate";
+import { zeroVoiceChatContract } from "@vm0/core/contracts/zero-voice-chat";
 import { server } from "../../../mocks/server.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
@@ -103,19 +103,16 @@ interface FakeDC {
 function mockCreateSessionOk() {
   const calls: unknown[] = [];
   server.use(
-    mockApi(
-      zeroVoiceChatCandidateContract.createSession,
-      ({ body, respond }) => {
-        calls.push(body);
-        return respond(200, {
-          session: sessionPayload(),
-          recentTaskLogs: "",
-          finishedTasksFullText: "",
-          talkerInstructions: "",
-          talkerInstructionTokens: 0,
-        });
-      },
-    ),
+    mockApi(zeroVoiceChatContract.createSession, ({ body, respond }) => {
+      calls.push(body);
+      return respond(200, {
+        session: sessionPayload(),
+        recentTaskLogs: "",
+        finishedTasksFullText: "",
+        talkerInstructions: "",
+        talkerInstructionTokens: 0,
+      });
+    }),
   );
   return calls;
 }
@@ -125,7 +122,7 @@ function mockCreateSessionError(
   message = "nope",
 ) {
   server.use(
-    mockApi(zeroVoiceChatCandidateContract.createSession, ({ respond }) => {
+    mockApi(zeroVoiceChatContract.createSession, ({ respond }) => {
       return respond(status, {
         error: { message, code: "BAD_REQUEST" },
       });
@@ -136,7 +133,7 @@ function mockCreateSessionError(
 function mockTokenOk() {
   const calls: { noiseReduction?: string }[] = [];
   server.use(
-    mockApi(zeroVoiceChatCandidateContract.token, ({ body, respond }) => {
+    mockApi(zeroVoiceChatContract.token, ({ body, respond }) => {
       calls.push({ noiseReduction: body.noiseReduction });
       return respond(200, {
         client_secret: { value: "ek_test", expires_at: 9_999_999_999 },
@@ -148,7 +145,7 @@ function mockTokenOk() {
 
 function mockTokenError() {
   server.use(
-    mockApi(zeroVoiceChatCandidateContract.token, ({ respond }) => {
+    mockApi(zeroVoiceChatContract.token, ({ respond }) => {
       return respond(500, {
         error: { message: "token failed", code: "INTERNAL_SERVER_ERROR" },
       });
@@ -160,7 +157,7 @@ function mockAppendItemOk() {
   const calls: { role: string; content: string; realtimeItemId: string }[] = [];
   let nextSeq = 10;
   server.use(
-    mockApi(zeroVoiceChatCandidateContract.appendItem, ({ body, respond }) => {
+    mockApi(zeroVoiceChatContract.appendItem, ({ body, respond }) => {
       calls.push(body);
       const seq = nextSeq++;
       return respond(200, {
@@ -181,7 +178,7 @@ const TALKER_INSTRUCTIONS = "You are a helpful voice assistant.";
 
 function mockGetSessionOk() {
   server.use(
-    mockApi(zeroVoiceChatCandidateContract.getSession, ({ respond }) => {
+    mockApi(zeroVoiceChatContract.getSession, ({ respond }) => {
       return respond(200, {
         session: sessionPayload(),
         recentTaskLogs: "",
@@ -195,7 +192,7 @@ function mockGetSessionOk() {
 
 function mockListActiveTasksOk() {
   server.use(
-    mockApi(zeroVoiceChatCandidateContract.listTasks, ({ respond }) => {
+    mockApi(zeroVoiceChatContract.listTasks, ({ respond }) => {
       return respond(200, { tasks: [] });
     }),
   );
@@ -204,7 +201,7 @@ function mockListActiveTasksOk() {
 function mockCreateTaskOk() {
   const calls: { prompt: string; callId: string }[] = [];
   server.use(
-    mockApi(zeroVoiceChatCandidateContract.createTask, ({ body, respond }) => {
+    mockApi(zeroVoiceChatContract.createTask, ({ body, respond }) => {
       calls.push(body);
       return respond(200, {
         task: taskPayload({
@@ -219,7 +216,7 @@ function mockCreateTaskOk() {
 
 function mockCreateTaskError() {
   server.use(
-    mockApi(zeroVoiceChatCandidateContract.createTask, ({ respond }) => {
+    mockApi(zeroVoiceChatContract.createTask, ({ respond }) => {
       return respond(400, {
         error: { message: "bad task", code: "BAD_REQUEST" },
       });
@@ -877,7 +874,7 @@ describe("voice-chat-candidate session", () => {
       mockGetSessionOk();
       let activeTasks: ReturnType<typeof taskPayload>[] = [];
       server.use(
-        mockApi(zeroVoiceChatCandidateContract.listTasks, ({ respond }) => {
+        mockApi(zeroVoiceChatContract.listTasks, ({ respond }) => {
           return respond(200, { tasks: activeTasks });
         }),
       );

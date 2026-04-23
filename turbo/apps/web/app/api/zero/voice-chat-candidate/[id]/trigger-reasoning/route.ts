@@ -4,7 +4,7 @@ import { initServices } from "../../../../../../src/lib/init-services";
 import { getVoiceChatCandidateSession } from "../../../../../../src/lib/zero/voice-chat-candidate/session-service";
 import { triggerReasoning } from "../../../../../../src/lib/zero/voice-chat-candidate/trigger-reasoning";
 import {
-  isVoiceChatCandidateEnabled,
+  isVoiceChatEnabled,
   notFoundResponse,
   unauthorizedResponse,
 } from "../../_support";
@@ -29,7 +29,7 @@ export async function POST(
   );
   if (!authCtx?.orgId) return unauthorizedResponse();
 
-  if (!(await isVoiceChatCandidateEnabled(authCtx))) {
+  if (!(await isVoiceChatEnabled(authCtx))) {
     return notFoundResponse("Session not found or not active");
   }
 

@@ -1,5 +1,5 @@
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
-import type { VoiceChatCandidateTaskResultEntry } from "@vm0/core/contracts/zero-voice-chat-candidate";
+import type { VoiceChatTaskResultEntry } from "@vm0/core/contracts/zero-voice-chat";
 import {
   voiceChatItems,
   voiceChatSessions,
@@ -130,7 +130,7 @@ export async function completeVoiceChatCandidateTask(params: {
     }
 
     const finalStatus = params.error ? "failed" : "done";
-    const finalEntries: VoiceChatCandidateTaskResultEntry[] = params.result
+    const finalEntries: VoiceChatTaskResultEntry[] = params.result
       ? [
           {
             type: "assistant",
@@ -308,7 +308,7 @@ export async function markTaskRunningIfQueued(
  */
 export async function appendTaskAssistantResult(params: {
   runId: string;
-  entries: VoiceChatCandidateTaskResultEntry[];
+  entries: VoiceChatTaskResultEntry[];
 }): Promise<{ sessionId: string; userId: string } | null> {
   if (params.entries.length === 0) return null;
   const db = globalThis.services.db;

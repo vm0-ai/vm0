@@ -11,7 +11,7 @@ import {
   index,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import type { VoiceChatCandidateTaskResultEntry } from "@vm0/core/contracts/zero-voice-chat-candidate";
+import type { VoiceChatTaskResultEntry } from "@vm0/core/contracts/zero-voice-chat";
 import { agentComposes } from "./agent-compose";
 import { agentRuns } from "./agent-run";
 
@@ -148,7 +148,7 @@ export const voiceChatTasks = pgTable(
     // pass). NULL while the task is in-flight.
     resultUpdatedAt: timestamp("result_updated_at"),
     assistantMessages: jsonb("assistant_messages")
-      .$type<VoiceChatCandidateTaskResultEntry[]>()
+      .$type<VoiceChatTaskResultEntry[]>()
       .notNull()
       .default([]),
     error: text("error"),
