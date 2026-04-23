@@ -4,7 +4,12 @@ import {
   type VoiceChatItemRole,
   type VoiceChatTask,
 } from "@vm0/core/contracts/zero-voice-chat";
-import { resetSignal, throwIfAbort, onDomEventFn } from "../utils.ts";
+import {
+  jsonParseOr,
+  resetSignal,
+  throwIfAbort,
+  onDomEventFn,
+} from "../utils.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
@@ -36,6 +41,7 @@ const TALKER_TOOL_NAMES = [
   "want_to_apologize",
 ] as const;
 type TalkerToolName = (typeof TALKER_TOOL_NAMES)[number];
+type TalkerToolArgs = { prompt?: unknown };
 
 function shortPrompt(prompt: string, max = 60): string {
   const trimmed = prompt.trim();
@@ -47,6 +53,10 @@ function shortPrompt(prompt: string, max = 60): string {
 
 function ablyTopic(sessionId: string): string {
   return `voice-chat-candidate:${sessionId}`;
+}
+
+function parseTalkerToolArgs(argsJson: string): TalkerToolArgs | null {
+  return jsonParseOr<TalkerToolArgs | null>(argsJson, null);
 }
 
 const internalStatus$ = state<ConnectionStatus>("idle");
@@ -184,11 +194,8 @@ const handleTalkerToolCall$ = command(
       return;
     }
 
-    let parsed: { prompt?: unknown };
-    try {
-      parsed = JSON.parse(argsJson) as { prompt?: unknown };
-    } catch (error) {
-      throwIfAbort(error);
+    const parsed = parseTalkerToolArgs(argsJson);
+    if (!parsed) {
       L.warn("Failed to parse tool args", { toolName, callId, argsJson });
       sendFunctionOutput(dc, callId, "Inform failed: invalid args.");
       return;
@@ -263,6 +270,10 @@ type RealtimeDCEvent = {
   name?: string;
   arguments?: string;
 };
+
+function parseRealtimeDCEvent(data: string): RealtimeDCEvent | null {
+  return jsonParseOr<RealtimeDCEvent | null>(data, null);
+}
 
 const handleAudioTranscriptDone$ = command(
   async ({ get, set }, event: RealtimeDCEvent, signal: AbortSignal) => {
@@ -372,7 +383,11 @@ const truncateCurrentAssistantAudio$ = command(
 
 const handleDCMessage$ = command(
   async ({ get, set }, data: string, signal: AbortSignal) => {
-    const event = JSON.parse(data) as RealtimeDCEvent;
+    const event = parseRealtimeDCEvent(data);
+    if (!event) {
+      L.warn("Failed to parse realtime data channel event", { data });
+      return;
+    }
 
     switch (event.type) {
       case "conversation.item.created": {
