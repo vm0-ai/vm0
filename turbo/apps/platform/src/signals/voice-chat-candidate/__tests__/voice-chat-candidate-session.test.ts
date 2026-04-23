@@ -586,7 +586,7 @@ describe("voice-chat-candidate session", () => {
         type: "input_audio_buffer.speech_started",
       });
 
-      expect(audioRef.current.pause).toHaveBeenCalledTimes(1);
+      expect(audioRef.current.pause).not.toHaveBeenCalled();
       expect(dcRef.current?.send).toHaveBeenCalledTimes(1);
       expect(
         JSON.parse(dcRef.current?.send.mock.calls[0]?.[0] as string),
@@ -658,7 +658,7 @@ describe("voice-chat-candidate session", () => {
         transcript: "hello",
       });
 
-      expect(audioRef.current.pause).toHaveBeenCalledTimes(1);
+      expect(audioRef.current.pause).not.toHaveBeenCalled();
       expect(dcRef.current?.send).toHaveBeenCalledTimes(1);
       expect(
         JSON.parse(dcRef.current?.send.mock.calls[0]?.[0] as string),

@@ -60,7 +60,6 @@ const internalLastAssistantMessage$ = state<string>("");
 // to refetch server-side state depend on this counter.
 const vccReload$ = state<number>(0);
 
-const internalMuted$ = state<boolean>(false);
 const internalBargeInMode$ = state<BargeInMode>("speech_started");
 
 const internalPc$ = state<RTCPeerConnection | null>(null);
@@ -344,7 +343,6 @@ const truncateCurrentAssistantAudio$ = command(
       currentAudioPositionMs(audioEl) - current.startedAtMs,
     );
 
-    audioEl.pause();
     dc.send(
       JSON.stringify({
         type: "conversation.item.truncate",
@@ -755,7 +753,6 @@ export const startVoiceChatCandidate$ = command(
     set(internalError$, null);
     set(internalLastUserMessage$, "");
     set(internalLastAssistantMessage$, "");
-    set(internalMuted$, false);
     set(internalBargeInMode$, "speech_started");
     set(internalCurrentAssistantAudioItem$, null);
     set(internalSessionId$, null);

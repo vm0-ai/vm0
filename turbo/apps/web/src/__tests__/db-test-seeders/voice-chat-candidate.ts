@@ -31,6 +31,7 @@ export async function appendTestVoiceChatCandidateItem(params: {
 export async function insertTestVoiceChatCandidateTask(
   sessionId: string,
   overrides: {
+    prompt?: string;
     result?: string;
     resultUpdatedAt?: Date;
     finishedAt?: Date;
@@ -46,7 +47,7 @@ export async function insertTestVoiceChatCandidateTask(
     .values({
       sessionId,
       callId: uniqueId("call"),
-      prompt: "Summarize the situation",
+      prompt: overrides.prompt ?? "Summarize the situation",
       status,
       result: overrides.result ?? "A".repeat(500) + " important data",
       resultUpdatedAt: overrides.resultUpdatedAt ?? twoMinutesAgo,

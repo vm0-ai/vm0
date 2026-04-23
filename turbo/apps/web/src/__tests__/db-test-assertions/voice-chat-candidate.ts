@@ -146,26 +146,6 @@ export async function getTestVoiceChatCandidateTask(id: string): Promise<
 }
 
 /**
- * List all task rows for a session for integration test assertions.
- * @why-db-direct The missingTasks Step 5c integration test needs to assert that
- * a task row was created; no public read API exposes individual task rows.
- */
-export async function listTestVoiceChatCandidateTasks(
-  sessionId: string,
-): Promise<{ id: string; prompt: string; status: string; callId: string }[]> {
-  initServices();
-  return globalThis.services.db
-    .select({
-      id: voiceChatTasks.id,
-      prompt: voiceChatTasks.prompt,
-      status: voiceChatTasks.status,
-      callId: voiceChatTasks.callId,
-    })
-    .from(voiceChatTasks)
-    .where(eq(voiceChatTasks.sessionId, sessionId));
-}
-
-/**
  * Read all items for a session for callback side-effect assertions.
  * @why-db-direct Callback tests need to assert task_result and system_note
  * items written by the callback handler; there is no public list-items API
