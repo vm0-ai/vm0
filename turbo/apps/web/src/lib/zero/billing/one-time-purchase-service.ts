@@ -273,11 +273,14 @@ async function cleanupStaleRedemption(
   try {
     await stripe.checkout.sessions.expire(stripeSessionId);
   } catch {
-    log.info("one_time_purchase session already expired or un-expirable, continuing cleanup", {
-      orgId: params.orgId,
-      campaignKey: params.campaignKey,
-      stripeSessionId,
-    });
+    log.info(
+      "one_time_purchase session already expired or un-expirable, continuing cleanup",
+      {
+        orgId: params.orgId,
+        campaignKey: params.campaignKey,
+        stripeSessionId,
+      },
+    );
   }
   await db
     .delete(orgPromoRedemption)
