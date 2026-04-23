@@ -33,6 +33,10 @@
 //! - [`NetnsPool::acquire`] returns a namespace from pool, or creates on-demand as fallback
 //! - [`NetnsPool::release`] returns the namespace to the pool
 //! - Pool index (0–63) is auto-allocated via flock on `/var/lock`
+//! - Orphans from abnormally-exited prior runners (SIGKILL, panic, OOM,
+//!   power loss, aborted in-flight creation tasks) are reconciled at
+//!   startup via flock-based liveness probe — see
+//!   [`reconcile_orphan_namespaces`]
 
 use std::collections::VecDeque;
 use std::fs::File;
@@ -675,8 +679,8 @@ impl NetnsPool {
     /// [`release`](Self::release) are recycled back into the queue.
     ///
     /// Automatically acquires a unique pool index (0–63) via flock. Enables
-    /// host IP forwarding and cleans up orphaned resources from the acquired
-    /// index before creating new namespaces.
+    /// host IP forwarding and reconciles orphaned resources from any idle
+    /// pool index before creating new namespaces.
     pub async fn create(config: NetnsPoolConfig) -> Result<Self> {
         let lock_paths = LockPaths::new();
         let (index, lock) = acquire_pool_lock(&lock_paths)?;
@@ -686,8 +690,11 @@ impl NetnsPool {
         // Enable host-level IP forwarding (idempotent, needed once per host).
         exec("sysctl", &["-w", "net.ipv4.ip_forward=1"]).await?;
 
-        // Clean up orphaned namespaces from a previous process that used the same index.
-        cleanup_namespaces_by_index(index).await;
+        // Reconcile orphans from our own index and any idle pool index.
+        // This is the correctness guarantee for kernel-side cleanup —
+        // `NetnsPool::cleanup` is best-effort and cannot survive SIGKILL,
+        // panic, OOM, or aborted in-flight creation tasks (issue #10625).
+        reconcile_orphan_namespaces(&lock_paths, index, &lock).await;
 
         let default_iface = get_default_interface().await?;
 
@@ -709,7 +716,10 @@ impl NetnsPool {
             _lock: lock,
         };
 
-        // Pre-warm the buffer.
+        // Pre-warm the buffer. Warm-up starts at ns_index 0, so
+        // `reconcile_orphan_namespaces` above MUST have finished
+        // synchronously — otherwise `vm0-ns-{own}-00` may still exist from
+        // a previous runner and `ip netns add` will fail with EEXIST.
         if BUFFER_SIZE > 0 {
             let mut plain_set = tokio::task::JoinSet::new();
             let mut proxy_set = tokio::task::JoinSet::new();
@@ -1213,6 +1223,61 @@ pub async fn cleanup_namespaces_by_index(index: u32) {
     while set.join_next().await.is_some() {}
 }
 
+/// Clean orphans from `own_index` and every other pool index that currently
+/// has no active owner.
+///
+/// `NetnsPool::cleanup` is best-effort — SIGKILL, panic, OOM, power loss,
+/// and aborted in-flight creation tasks can all leave kernel resources
+/// alive after a runner exits. This function is the correctness guarantee:
+/// on every startup, the flock is used as a liveness probe to identify
+/// pool indexes with no owner, and any namespaces under those indexes are
+/// treated as orphans and deleted.
+///
+/// `_own_lock` is a borrow witness — taking it proves the caller holds a
+/// pool-index flock, which is the permission required to do kernel-side
+/// cleanup on `own_index` without first re-flocking it.
+async fn reconcile_orphan_namespaces(locks: &LockPaths, own_index: u32, _own_lock: &Flock<File>) {
+    // Own index: critical-path cleanup. Warm-up immediately afterwards
+    // starts at ns_index 0 and will collide with any surviving orphan.
+    // `cleanup_namespaces_by_index` currently swallows failures — if it
+    // fails here, the caller will hit EEXIST during warm-up. Tracked in
+    // #10826 (return `Result` and fail-fast from `create()`).
+    cleanup_namespaces_by_index(own_index).await;
+
+    // Other indexes: advisory cleanup for arbitrary prior runners. Failures
+    // are not our problem — the next runner that claims the index will
+    // retry. The `if index == own_index` check is defensive; the flock
+    // would also deny us (Linux flock is per-OFD but same-process locks
+    // on the same file still conflict), so dropping the check would only
+    // waste two syscalls per call.
+    for index in 0..MAX_POOLS {
+        if index == own_index {
+            continue;
+        }
+        let Some(_guard) = try_claim_idle_pool_lock(locks, index) else {
+            continue;
+        };
+        info!(index, "reconciling orphaned namespaces from idle pool");
+        cleanup_namespaces_by_index(index).await;
+        // `_guard` drops here, releasing the lock before the next iteration
+        // so a concurrently-starting runner can immediately claim the index.
+    }
+}
+
+/// Try to acquire a non-blocking flock on an existing pool lock file.
+///
+/// Returns `None` when the file is missing (index never used, no orphans
+/// possible) or when the lock is held by another runner (active owner,
+/// off-limits). Returns `Some(guard)` otherwise; dropping the guard
+/// releases the lock.
+fn try_claim_idle_pool_lock(locks: &LockPaths, index: u32) -> Option<Flock<File>> {
+    let path = locks.netns_pool(index);
+    // Do NOT create the file — a missing lock file means this index was
+    // never used, so there is nothing to reconcile.
+    let file = File::options().write(true).open(&path).ok()?;
+    Flock::lock(file, FlockArg::LockExclusiveNonblock).ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1442,6 +1507,37 @@ mod tests {
 
         let (reused, _hold) = acquire_pool_lock(&locks).unwrap();
         assert_eq!(reused, 0);
+    }
+
+    #[test]
+    fn try_claim_idle_pool_lock_returns_none_when_file_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let locks = LockPaths::with_dir(dir.path().to_path_buf());
+        // No lock file has ever been created for index 0.
+        assert!(try_claim_idle_pool_lock(&locks, 0).is_none());
+    }
+
+    #[test]
+    fn try_claim_idle_pool_lock_returns_none_when_held() {
+        let dir = tempfile::tempdir().unwrap();
+        let locks = LockPaths::with_dir(dir.path().to_path_buf());
+
+        let (idx, _held) = acquire_pool_lock(&locks).unwrap();
+        assert!(try_claim_idle_pool_lock(&locks, idx).is_none());
+    }
+
+    #[test]
+    fn try_claim_idle_pool_lock_returns_some_when_idle() {
+        let dir = tempfile::tempdir().unwrap();
+        let locks = LockPaths::with_dir(dir.path().to_path_buf());
+
+        // Create the lock file by acquiring then releasing — simulates a
+        // prior runner that exited.
+        let (idx, held) = acquire_pool_lock(&locks).unwrap();
+        drop(held);
+
+        let claimed = try_claim_idle_pool_lock(&locks, idx);
+        assert!(claimed.is_some());
     }
 
     #[test]

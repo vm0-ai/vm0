@@ -57,6 +57,27 @@ function filenameFromUrl(url: string): string {
   return last && last.length > 0 ? last : "image";
 }
 
+function getAttachmentDownloadUrl(url: string): string {
+  if (!URL.canParse(url, window.location.origin)) {
+    return url;
+  }
+  const parsed = new URL(url, window.location.origin);
+  const isFileRoute = /^\/f\/[^/]+\/[^/]+\/[^/]+$/.test(parsed.pathname);
+  if (isFileRoute) {
+    parsed.searchParams.set("download", "1");
+  }
+  return parsed.toString();
+}
+
+function triggerDirectDownload(url: string, filename: string): void {
+  const a = document.createElement("a");
+  a.href = getAttachmentDownloadUrl(url);
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
 function triggerBlobDownload(blob: Blob, filename: string): void {
   const blobUrl = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -72,10 +93,10 @@ function triggerBlobDownload(blob: Blob, filename: string): void {
 // CORS failure. The `.catch` is intentionally scoped to the fetch branch so
 // only network failures fall back — any synchronous DOM / blob failure after
 // a successful fetch is a real bug and propagates to the caller. The
-// fallback logs the underlying error so unexpected failures surface in
-// Sentry instead of being silently mis-classified as "CORS".
+// fallback keeps the user on the same page and lets the app's `/f/...`
+// route force `Content-Disposition: attachment` via `?download=1`.
 function fetchBlobOrOpen(url: string): Promise<Blob | null> {
-  return fetch(url, { mode: "cors" })
+  return fetch(getAttachmentDownloadUrl(url), { mode: "cors" })
     .then((res) => {
       if (!res.ok) {
         throw new Error(`fetch failed: ${String(res.status)}`);
@@ -83,13 +104,16 @@ function fetchBlobOrOpen(url: string): Promise<Blob | null> {
       return res.blob();
     })
     .catch((error: unknown) => {
-      log.warn("downloadUrl: fetch failed, falling back to window.open", error);
-      window.open(url, "_blank", "noopener,noreferrer");
+      log.warn(
+        "downloadUrl: fetch failed, falling back to direct download",
+        error,
+      );
+      triggerDirectDownload(url, filenameFromUrl(url));
       return null;
     });
 }
 
-function downloadUrl(url: string): Promise<void> {
+function downloadAttachmentUrl(url: string): Promise<void> {
   const filename = filenameFromUrl(url);
   return fetchBlobOrOpen(url).then((blob) => {
     if (blob !== null) {
@@ -121,7 +145,7 @@ export function ImageLightbox({ url }: { url: string }) {
         <button
           type="button"
           onClick={() => {
-            downloadUrl(url).catch((error: unknown) => {
+            downloadAttachmentUrl(url).catch((error: unknown) => {
               log.error("downloadUrl: unexpected failure", error);
             });
           }}
@@ -164,7 +188,7 @@ export function FileAttachmentChip({
   const iconSrc = getFileTypeIcon(filename);
   return (
     <a
-      href={url}
+      href={getAttachmentDownloadUrl(url)}
       download={filename}
       title={filename}
       className="inline-flex items-center justify-center rounded-lg hover:bg-foreground/10 transition-colors p-0.5"

@@ -598,6 +598,83 @@ describe("voice-chat-candidate session", () => {
         realtimeItemId: "truncate:rt-asst-live",
       });
     });
+
+    it("waits for a finalized user transcript before truncating on mobile speakerphone", async () => {
+      vi.spyOn(navigator, "maxTouchPoints", "get").mockReturnValue(5);
+      vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+        "Mozilla/5.0 (Linux; Android 13) Mobile Safari/537.36",
+      );
+      stubWebRTC([{ kind: "audiooutput", deviceId: "default" }]);
+
+      await setup();
+      const appendCalls = mockAppendItemOk();
+      await startSuccessfully();
+
+      dcRef.current?.send.mockClear();
+      if (!audioRef.current) {
+        throw new Error("audio not initialized");
+      }
+      audioRef.current.currentTime = 20;
+
+      dcRef.current?.emitMessage({
+        type: "conversation.item.created",
+        item: {
+          id: "rt-asst-speaker",
+          type: "message",
+          role: "assistant",
+        },
+      });
+
+      dcRef.current?.emitMessage({
+        type: "response.audio_transcript.delta",
+        delta: "speaker mode",
+      });
+
+      audioRef.current.currentTime = 20.8;
+      await dcRef.current?.emitMessage({
+        type: "input_audio_buffer.speech_started",
+      });
+
+      expect(audioRef.current.pause).not.toHaveBeenCalled();
+      expect(dcRef.current?.send).not.toHaveBeenCalled();
+      expect(appendCalls).toHaveLength(0);
+
+      audioRef.current.currentTime = 21.4;
+      await dcRef.current?.emitMessage({
+        type: "conversation.item.input_audio_transcription.completed",
+        item_id: "rt-user-speaker",
+        transcript: "hello",
+      });
+
+      expect(audioRef.current.pause).toHaveBeenCalledTimes(1);
+      expect(dcRef.current?.send).toHaveBeenCalledTimes(1);
+      expect(
+        JSON.parse(dcRef.current?.send.mock.calls[0]?.[0] as string),
+      ).toStrictEqual({
+        type: "conversation.item.truncate",
+        item_id: "rt-asst-speaker",
+        content_index: 0,
+        audio_end_ms: 1400,
+      });
+      await vi.waitFor(() => {
+        expect(appendCalls).toHaveLength(2);
+      });
+      expect(appendCalls[0]).toStrictEqual({
+        role: "system_note",
+        content: JSON.stringify({
+          type: "assistant_interrupted",
+          assistantRealtimeItemId: "rt-asst-speaker",
+          heardText: "speaker mode",
+          audioEndMs: 1400,
+        }),
+        realtimeItemId: "truncate:rt-asst-speaker",
+      });
+      expect(appendCalls[1]).toStrictEqual({
+        role: "user",
+        content: "hello",
+        realtimeItemId: "rt-user-speaker",
+      });
+    });
   });
 
   describe("talker tool calls", () => {

@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
+import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { hasSubscription } from "../../../mocks/ably.ts";
@@ -130,6 +132,52 @@ describe("zero chat thread page - image attachment opens lightbox", () => {
         );
       });
       expect(lightboxImg).toBeInTheDocument();
+    });
+  });
+
+  it("downloads a CDN image from the lightbox", async () => {
+    const imageUrl = "https://cdn.example.com/photo.png";
+    server.use(
+      http.get(imageUrl, () => {
+        return new HttpResponse(new Blob(["img"], { type: "image/png" }), {
+          status: 200,
+          headers: { "Content-Type": "image/png" },
+        });
+      }),
+    );
+    const createObjectURLSpy = vi
+      .spyOn(URL, "createObjectURL")
+      .mockReturnValue("blob:test");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    const anchorClickSpy = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(() => {});
+
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "user",
+          content: `[Attached file: photo.png](${imageUrl})\nDownload with: curl ${imageUrl}\n`,
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    const imageButton = await waitFor(() => {
+      return screen.getByRole("img", { name: "photo.png" }).closest("button")!;
+    });
+    click(imageButton);
+
+    const downloadButton = await waitFor(() => {
+      return screen.getByLabelText("Download");
+    });
+    click(downloadButton);
+
+    await waitFor(() => {
+      expect(createObjectURLSpy).toHaveBeenCalledOnce();
+      expect(anchorClickSpy).toHaveBeenCalledWith();
     });
   });
 });

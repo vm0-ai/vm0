@@ -102,6 +102,7 @@
         "concurrentRun": "1 gleichzeitige Ausführung",
         "unlimitedAgents": "Unbegrenzte Agenten insgesamt",
         "bringOwnLLM": "Eigene LLM-Schlüssel verwenden",
+        "voiceInput": "Spracheingabe (10/Monat)",
         "communitySupport": "Community-Support"
       },
       "buttonText": "Jetzt starten"
@@ -113,6 +114,7 @@
         "concurrentRuns": "2 gleichzeitige Ausführungen",
         "unlimitedAgents": "Unbegrenzte Agenten insgesamt",
         "bringOwnLLM": "Eigene LLM-Schlüssel verwenden",
+        "voiceInput": "Spracheingabe",
         "creditsRollover": "Credits-Übertrag (1 Monat)",
         "emailSupport": "E-Mail-Support"
       },
@@ -125,6 +127,7 @@
         "concurrentRuns": "5 gleichzeitige Ausführungen",
         "unlimitedAgents": "Unbegrenzte Agenten insgesamt",
         "bringOwnLLM": "Eigene LLM-Schlüssel verwenden",
+        "voiceInput": "Spracheingabe",
         "creditsRollover": "Credits-Übertrag (1 Monat)",
         "prioritySupport": "Prioritäts-Support"
       },
@@ -161,6 +164,8 @@
       "connectorsDesc": "Verbinden Sie Ihre Tools wie Slack, GitHub, Notion und mehr",
       "bringOwnLLM": "Eigenes LLM mitbringen",
       "bringOwnLLMDesc": "Verwenden Sie Ihre eigenen Modellanbieter-API-Schlüssel",
+      "voiceInput": "Spracheingabe",
+      "voiceInputDesc": "Sprechen Sie freihändig mit Ihren Agenten dank integrierter Sprache-zu-Text-Funktion",
       "sandboxedExecution": "Sandbox-Ausführung",
       "sandboxedExecutionDesc": "Firecracker-microVMs mit Hardware-Level-KVM-Isolation",
       "fullAuditTrail": "Vollständiger Audit-Trail",
@@ -184,7 +189,8 @@
       "120k": "120.000",
       "unlimited": "Unbegrenzt",
       "oneMonth": "1 Monat",
-      "allConnectors": "Alle Konnektoren"
+      "allConnectors": "Alle Konnektoren",
+      "tenPerMonth": "10/Monat"
     },
     "faq": {
       "title": "Häufig gestellte Fragen",

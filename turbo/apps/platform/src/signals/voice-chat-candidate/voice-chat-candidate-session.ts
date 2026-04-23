@@ -19,6 +19,7 @@ type ConnectionStatus =
   | "connected"
   | "disconnected"
   | "error";
+type BargeInMode = "speech_started" | "transcript_confirmed";
 
 // Model used for the SDP exchange URL. Session config (tools / VAD / etc.) is
 // preset server-side in createEphemeralToken — keep this file free of it.
@@ -60,6 +61,7 @@ const internalLastAssistantMessage$ = state<string>("");
 const vccReload$ = state<number>(0);
 
 const internalMuted$ = state<boolean>(false);
+const internalBargeInMode$ = state<BargeInMode>("speech_started");
 
 const internalPc$ = state<RTCPeerConnection | null>(null);
 const internalDc$ = state<RTCDataChannel | null>(null);
@@ -277,8 +279,14 @@ const handleAudioTranscriptDone$ = command(
 );
 
 const handleInputAudioTranscriptionCompleted$ = command(
-  async ({ set }, event: RealtimeDCEvent, signal: AbortSignal) => {
+  async ({ get, set }, event: RealtimeDCEvent, signal: AbortSignal) => {
     if (event.transcript && event.item_id) {
+      if (
+        get(internalBargeInMode$) === "transcript_confirmed" &&
+        event.transcript.trim()
+      ) {
+        await set(truncateCurrentAssistantAudio$, signal);
+      }
       await set(appendItem$, "user", event.transcript, event.item_id, signal);
     }
   },
@@ -363,7 +371,7 @@ const truncateCurrentAssistantAudio$ = command(
 );
 
 const handleDCMessage$ = command(
-  async ({ set }, data: string, signal: AbortSignal) => {
+  async ({ get, set }, data: string, signal: AbortSignal) => {
     const event = JSON.parse(data) as RealtimeDCEvent;
 
     switch (event.type) {
@@ -380,7 +388,9 @@ const handleDCMessage$ = command(
         break;
       }
       case "input_audio_buffer.speech_started": {
-        await set(truncateCurrentAssistantAudio$, signal);
+        if (get(internalBargeInMode$) === "speech_started") {
+          await set(truncateCurrentAssistantAudio$, signal);
+        }
         break;
       }
       case "response.audio_transcript.done": {
@@ -658,6 +668,7 @@ export const startVoiceChatCandidate$ = command(
     set(internalLastUserMessage$, "");
     set(internalLastAssistantMessage$, "");
     set(internalMuted$, false);
+    set(internalBargeInMode$, "speech_started");
     set(internalCurrentAssistantAudioItem$, null);
     set(internalSessionId$, null);
     set(vccReload$, (n) => {
@@ -694,6 +705,7 @@ export const startVoiceChatCandidate$ = command(
     // per connection so plugging in headphones between calls takes effect.
     const audioConfig = await resolveAudioConfig();
     signal.throwIfAborted();
+    set(internalBargeInMode$, audioConfig.bargeInMode);
 
     const tokenRes = await accept(
       client.token({
@@ -790,6 +802,7 @@ export const endVoiceChatCandidate$ = command(({ get, set }) => {
   set(internalSessionId$, null);
   set(internalLastUserMessage$, "");
   set(internalLastAssistantMessage$, "");
+  set(internalBargeInMode$, "speech_started");
   set(internalCurrentAssistantAudioItem$, null);
   set(internalStatus$, "idle");
   // Bump so vccTaskFeed$ re-resolves to [] after sessionId is cleared.

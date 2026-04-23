@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
 import { chatMessagesContract } from "@vm0/core/contracts/chat-threads";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -325,6 +326,84 @@ describe("chat-i-061: backdrop click closes lightbox", () => {
 });
 
 // ---------------------------------------------------------------------------
+// CHAT-I-066: Lightbox download fallback stays in-page and forces attachment
+// ---------------------------------------------------------------------------
+
+describe("chat-i-066: lightbox download fallback uses direct download", () => {
+  it("appends download=1 and avoids opening a new tab", async () => {
+    const user = userEvent.setup();
+    const imageUrl = "http://localhost:3000/f/user-1/file-1/photo.png";
+    server.use(
+      http.get(imageUrl, ({ request }) => {
+        if (new URL(request.url).searchParams.get("download") === "1") {
+          return HttpResponse.error();
+        }
+        return new HttpResponse(null, { status: 200 });
+      }),
+    );
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => {
+      return null;
+    });
+
+    let clickedHref = "";
+    let clickedDownload = "";
+    const anchorClickSpy = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(function (this: HTMLAnchorElement) {
+        clickedHref = this.href;
+        clickedDownload = this.download;
+      });
+
+    server.use(
+      ...mockUploadSuccess({
+        id: "upload-1",
+        filename: "photo.png",
+        contentType: "image/png",
+        size: 2048,
+        url: imageUrl,
+      }),
+    );
+    mockChatAPI();
+
+    detachedSetupPage({ context, path: "/" });
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
+    });
+
+    const fileInput =
+      document.querySelector<HTMLInputElement>('input[type="file"]');
+    await user.upload(
+      fileInput!,
+      new File(["img"], "photo.png", { type: "image/png" }),
+    );
+
+    await waitFor(() => {
+      expect(
+        document.querySelector(`img[src="${imageUrl}"]`),
+      ).toBeInTheDocument();
+    });
+
+    const chipDiv = document.querySelector<HTMLElement>('[title="photo.png"]');
+    const chipButton = chipDiv?.querySelector("button");
+    click(chipButton!);
+
+    const downloadButton = await waitFor(() => {
+      return screen.getByLabelText("Download");
+    });
+    click(downloadButton);
+
+    await waitFor(() => {
+      expect(anchorClickSpy).toHaveBeenCalledOnce();
+    });
+
+    expect(clickedHref).toBe(`${imageUrl}?download=1`);
+    expect(clickedDownload).toBe("photo.png");
+    expect(openSpy).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // CHAT-I-062: Remove button on attachment chips calls onRemove
 // ---------------------------------------------------------------------------
 
@@ -404,7 +483,7 @@ describe("chat-d-063: download link renders for file attachment", () => {
   });
 
   it("renders a download anchor from the structured attachFiles field", async () => {
-    const fileUrl = "https://example.com/spec.pdf";
+    const fileUrl = "http://localhost:3000/f/user-1/file-1/spec.pdf";
     const filename = "spec.pdf";
 
     mockChatLifecycle({
@@ -436,7 +515,7 @@ describe("chat-d-063: download link renders for file attachment", () => {
         `a[download="${filename}"]`,
       );
       expect(link).toBeInTheDocument();
-      expect(link?.getAttribute("href")).toBe(fileUrl);
+      expect(link?.href).toBe(`${fileUrl}?download=1`);
     });
   });
 });

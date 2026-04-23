@@ -1,8 +1,10 @@
 type NoiseReduction = "near_field" | "far_field";
+type BargeInMode = "speech_started" | "transcript_confirmed";
 
 interface AudioConfig {
   constraints: MediaTrackConstraints;
   noiseReduction: NoiseReduction;
+  bargeInMode: BargeInMode;
 }
 
 /**
@@ -18,6 +20,9 @@ interface AudioConfig {
  * - OpenAI's `far_field` noise reduction is tuned for conference-style mic
  *   placements; `near_field` is better for phone-to-mouth speakerphone where
  *   the mic is close and echo dominates background noise.
+ * - In the same speakerphone case, treat `speech_started` as untrusted for
+ *   barge-in. Wait for a finalized transcript before truncating assistant
+ *   audio; otherwise the assistant's own playback can interrupt itself.
  *
  * Also flips `navigator.audioSession.type` to "play-and-record" when
  * supported (Chrome Android 116+, Safari iOS 17+), which routes audio through
@@ -48,5 +53,6 @@ export async function resolveAudioConfig(): Promise<AudioConfig> {
       autoGainControl: !speakerRisk,
     },
     noiseReduction: speakerRisk ? "near_field" : "far_field",
+    bargeInMode: speakerRisk ? "transcript_confirmed" : "speech_started",
   };
 }

@@ -195,6 +195,7 @@ export function PricingPageClient() {
                   t("free.features.concurrentRun"),
                   t("free.features.unlimitedAgents"),
                   t("free.features.bringOwnLLM"),
+                  t("free.features.voiceInput"),
                   t("free.features.communitySupport"),
                 ]}
                 buttonText={t("free.buttonText")}
@@ -213,6 +214,7 @@ export function PricingPageClient() {
                   t("pro.features.concurrentRuns"),
                   t("pro.features.unlimitedAgents"),
                   t("pro.features.bringOwnLLM"),
+                  t("pro.features.voiceInput"),
                   t("pro.features.creditsRollover"),
                   t("pro.features.emailSupport"),
                 ]}
@@ -232,6 +234,7 @@ export function PricingPageClient() {
                   t("team.features.concurrentRuns"),
                   t("team.features.unlimitedAgents"),
                   t("team.features.bringOwnLLM"),
+                  t("team.features.voiceInput"),
                   t("team.features.creditsRollover"),
                   t("team.features.prioritySupport"),
                 ]}
@@ -451,6 +454,13 @@ export function PricingPageClient() {
                     feature={t("tableFeatures.bringOwnLLM")}
                     description={t("tableFeatures.bringOwnLLMDesc")}
                     free={true}
+                    pro={true}
+                    team={true}
+                  />
+                  <TableRow
+                    feature={t("tableFeatures.voiceInput")}
+                    description={t("tableFeatures.voiceInputDesc")}
+                    free={t("tableValues.tenPerMonth")}
                     pro={true}
                     team={true}
                   />

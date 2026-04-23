@@ -102,6 +102,7 @@
         "concurrentRun": "1 ejecución simultánea",
         "unlimitedAgents": "Agentes totales ilimitados",
         "bringOwnLLM": "Usa tus propias claves de LLM",
+        "voiceInput": "Entrada por voz (10/mes)",
         "communitySupport": "Soporte de la comunidad"
       },
       "buttonText": "Comenzar"
@@ -113,6 +114,7 @@
         "concurrentRuns": "2 ejecuciones simultáneas",
         "unlimitedAgents": "Agentes totales ilimitados",
         "bringOwnLLM": "Usa tus propias claves de LLM",
+        "voiceInput": "Entrada por voz",
         "creditsRollover": "Créditos acumulables (1 mes)",
         "emailSupport": "Soporte por correo electrónico"
       },
@@ -125,6 +127,7 @@
         "concurrentRuns": "5 ejecuciones simultáneas",
         "unlimitedAgents": "Agentes totales ilimitados",
         "bringOwnLLM": "Usa tus propias claves de LLM",
+        "voiceInput": "Entrada por voz",
         "creditsRollover": "Créditos acumulables (1 mes)",
         "prioritySupport": "Soporte prioritario"
       },
@@ -161,6 +164,8 @@
       "connectorsDesc": "Conecta tus herramientas como Slack, GitHub, Notion y más",
       "bringOwnLLM": "Usa tu propio LLM",
       "bringOwnLLMDesc": "Usa las claves API de tu propio proveedor de modelos",
+      "voiceInput": "Entrada por voz",
+      "voiceInputDesc": "Habla con tus agentes sin usar las manos gracias a la conversión de voz a texto integrada",
       "sandboxedExecution": "Ejecución aislada",
       "sandboxedExecutionDesc": "Firecracker microVMs con aislamiento KVM a nivel de hardware",
       "fullAuditTrail": "Registro de auditoría completo",
@@ -184,7 +189,8 @@
       "120k": "120.000",
       "unlimited": "Ilimitado",
       "oneMonth": "1 mes",
-      "allConnectors": "Todos los conectores"
+      "allConnectors": "Todos los conectores",
+      "tenPerMonth": "10/mes"
     },
     "faq": {
       "title": "Preguntas frecuentes",

@@ -102,6 +102,7 @@
         "concurrentRun": "1同時実行",
         "unlimitedAgents": "エージェント数無制限",
         "bringOwnLLM": "自分のLLMキーを使用",
+        "voiceInput": "音声入力（10回/月）",
         "communitySupport": "コミュニティサポート"
       },
       "buttonText": "始める"
@@ -113,6 +114,7 @@
         "concurrentRuns": "2同時実行",
         "unlimitedAgents": "エージェント数無制限",
         "bringOwnLLM": "自分のLLMキーを使用",
+        "voiceInput": "音声入力",
         "creditsRollover": "クレジット繰り越し（1ヶ月）",
         "emailSupport": "メールサポート"
       },
@@ -125,6 +127,7 @@
         "concurrentRuns": "5同時実行",
         "unlimitedAgents": "エージェント数無制限",
         "bringOwnLLM": "自分のLLMキーを使用",
+        "voiceInput": "音声入力",
         "creditsRollover": "クレジット繰り越し（1ヶ月）",
         "prioritySupport": "優先サポート"
       },
@@ -161,6 +164,8 @@
       "connectorsDesc": "Slack、GitHub、Notionなどのツールを接続",
       "bringOwnLLM": "自分のLLMを持ち込み",
       "bringOwnLLMDesc": "自分のモデルプロバイダーAPIキーを使用",
+      "voiceInput": "音声入力",
+      "voiceInputDesc": "内蔵の音声テキスト変換でハンズフリーでエージェントと対話",
       "sandboxedExecution": "サンドボックス実行",
       "sandboxedExecutionDesc": "ハードウェアレベルのKVM分離によるFirecracker microVM",
       "fullAuditTrail": "完全な監査証跡",
@@ -184,7 +189,8 @@
       "120k": "120,000",
       "unlimited": "無制限",
       "oneMonth": "1ヶ月",
-      "allConnectors": "すべてのコネクター"
+      "allConnectors": "すべてのコネクター",
+      "tenPerMonth": "10回/月"
     },
     "faq": {
       "title": "よくある質問",

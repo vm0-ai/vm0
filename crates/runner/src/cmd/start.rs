@@ -275,10 +275,13 @@ pub async fn run_start(
         .await
         .map_err(|e| RunnerError::Internal(format!("sandbox runtime: {e}")))?;
 
-    let mut status = StatusTracker::new(paths.status(), estimated_capacity);
-    status.set_proxy_port(mitm.port()).await;
-    status.set_dns_port(dns_handle.port()).await;
-    let status = Arc::new(status);
+    let status = Arc::new(StatusTracker::new(
+        paths.status(),
+        estimated_capacity,
+        Some(mitm.port()),
+        Some(dns_handle.port()),
+    ));
+    status.write_initial().await;
 
     // Create provider — handles discovery + claim + complete
     let cancel = CancellationToken::new();
@@ -2248,6 +2251,8 @@ mod tests {
             status: Arc::new(StatusTracker::new(
                 temp_dir.path().join("status.json"),
                 max_concurrent,
+                None,
+                None,
             )),
             mitm,
             mitm_crash_rx,
