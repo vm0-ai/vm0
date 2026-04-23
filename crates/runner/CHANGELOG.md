@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.93.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.93.6...runner-rs-v0.93.7) (2026-04-23)
+
+
+### Refactoring
+
+* **runner:** dedupe early-return timing blocks in benchmark ([#10901](https://github.com/vm0-ai/vm0/issues/10901)) ([8c81ec7](https://github.com/vm0-ai/vm0/commit/8c81ec7ce58ce01bfd312d4539f7b3779f5524ea))
+
 ## [0.93.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.93.5...runner-rs-v0.93.6) (2026-04-23)
 
 

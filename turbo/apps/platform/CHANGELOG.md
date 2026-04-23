@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.289.0](https://github.com/vm0-ai/vm0/compare/app-v0.288.1...app-v0.289.0) (2026-04-23)
+
+
+### Features
+
+* gate Zapier connector behind ZapierConnector feature switch ([#10871](https://github.com/vm0-ai/vm0/issues/10871)) ([fc602ff](https://github.com/vm0-ai/vm0/commit/fc602ffa85e3a8ec3fb10943e714c8264a80098f))
+* gate Zapier use case behind ZapierConnector feature switch ([#10890](https://github.com/vm0-ai/vm0/issues/10890)) ([367f48a](https://github.com/vm0-ai/vm0/commit/367f48acc02a0da335ef7b9a8d7fbb7d000f156a))
+
+
+### Bug Fixes
+
+* disable reasoner task backfill in voice chat ([#10889](https://github.com/vm0-ai/vm0/issues/10889)) ([174da7b](https://github.com/vm0-ai/vm0/commit/174da7b8cba74e8bedcf95533e278bb443f2342d))
+* lock model provider picker once thread has messages ([#10900](https://github.com/vm0-ai/vm0/issues/10900)) ([1550e48](https://github.com/vm0-ai/vm0/commit/1550e48cf4312360aa0e4d9de5096105fc07c572))
+* **voice-chat:** recover mic on track ended event for iOS notification center and screen auto-dim ([#10888](https://github.com/vm0-ai/vm0/issues/10888)) ([70bcbfc](https://github.com/vm0-ai/vm0/commit/70bcbfce26bce0c50aa396ddceaddf1a0cc7902f))
+
+
+### Refactoring
+
+* drop voice-chat-candidate prefix in platform signals and rename ably topic ([#10885](https://github.com/vm0-ai/vm0/issues/10885)) ([391b756](https://github.com/vm0-ai/vm0/commit/391b7561cd40b50e1d542ef278333724e21e88a7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.230.0
+
 ## [0.288.1](https://github.com/vm0-ai/vm0/compare/app-v0.288.0...app-v0.288.1) (2026-04-23)
 
 

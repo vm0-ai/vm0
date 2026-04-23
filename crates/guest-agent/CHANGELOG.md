@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.22.2...guest-agent-v0.22.3) (2026-04-23)
+
+
+### Bug Fixes
+
+* **guest-agent:** reap cli process group after type=result ([#10879](https://github.com/vm0-ai/vm0/issues/10879)) ([#10897](https://github.com/vm0-ai/vm0/issues/10897)) ([1ac27f9](https://github.com/vm0-ai/vm0/commit/1ac27f9884d00d01ef072bef59c4b5389c053d1a))
+
 ## [0.22.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.22.1...guest-agent-v0.22.2) (2026-04-23)
 
 

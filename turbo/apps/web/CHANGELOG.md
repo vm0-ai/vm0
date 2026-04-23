@@ -1,5 +1,45 @@
 # Changelog
 
+## [12.294.0](https://github.com/vm0-ai/vm0/compare/web-v12.293.0...web-v12.294.0) (2026-04-23)
+
+
+### Features
+
+* **billing:** add usage_event processor cron ([#10713](https://github.com/vm0-ai/vm0/issues/10713)) ([b52552b](https://github.com/vm0-ai/vm0/commit/b52552b448230c9c49075c15647d66144cde5049))
+* **compose:** support mount_path on artifact entries ([#10908](https://github.com/vm0-ai/vm0/issues/10908)) ([#10914](https://github.com/vm0-ai/vm0/issues/10914)) ([c907fd5](https://github.com/vm0-ai/vm0/commit/c907fd5196df2160c999db1a3a39340c0d9342e0))
+
+
+### Bug Fixes
+
+* disable reasoner task backfill in voice chat ([#10889](https://github.com/vm0-ai/vm0/issues/10889)) ([174da7b](https://github.com/vm0-ai/vm0/commit/174da7b8cba74e8bedcf95533e278bb443f2342d))
+* remove starter credit grant from campaign checkout path ([#10896](https://github.com/vm0-ai/vm0/issues/10896)) ([1cc59a2](https://github.com/vm0-ai/vm0/commit/1cc59a2d89586fc39014074f57b8b3a73e3555fc))
+* **slack:** show reply-to footer when &gt;1 user mentions Zero in thread ([#10904](https://github.com/vm0-ai/vm0/issues/10904)) ([f2c73a3](https://github.com/vm0-ai/vm0/commit/f2c73a3d12a05354eb7303a32fb864aa962c1cbe))
+* **voice-chat:** recover mic on track ended event for iOS notification center and screen auto-dim ([#10888](https://github.com/vm0-ai/vm0/issues/10888)) ([70bcbfc](https://github.com/vm0-ai/vm0/commit/70bcbfce26bce0c50aa396ddceaddf1a0cc7902f))
+* **web:** dispatch cancel side effects for voice-chat mismatch path ([#10916](https://github.com/vm0-ai/vm0/issues/10916)) ([1a46ebb](https://github.com/vm0-ai/vm0/commit/1a46ebbfcf18284383095bef57ce424985ebe5f4))
+* **zero:** skip memory injection on checkpoint/session resume paths ([#10910](https://github.com/vm0-ai/vm0/issues/10910)) ([#10920](https://github.com/vm0-ai/vm0/issues/10920)) ([8b20975](https://github.com/vm0-ai/vm0/commit/8b20975e7be4ecc83861d30e988ece6aa56c5a31))
+
+
+### Refactoring
+
+* **checkpoint:** tolerate array-shape artifact snapshots end-to-end ([#10919](https://github.com/vm0-ai/vm0/issues/10919)) ([0a12bc6](https://github.com/vm0-ai/vm0/commit/0a12bc68a8efb87d07f65fb56aac19708addda56))
+* drop voice-chat-candidate prefix in platform signals and rename ably topic ([#10885](https://github.com/vm0-ai/vm0/issues/10885)) ([391b756](https://github.com/vm0-ai/vm0/commit/391b7561cd40b50e1d542ef278333724e21e88a7))
+* **infra:** flatten artifact scalars to record map (closes [#10861](https://github.com/vm0-ai/vm0/issues/10861)) ([#10876](https://github.com/vm0-ai/vm0/issues/10876)) ([fce4760](https://github.com/vm0-ai/vm0/commit/fce4760ddad775fcb33dce2c0a78baf61609c343))
+* **infra:** unify artifact model with tolerant resolvers ([#10915](https://github.com/vm0-ai/vm0/issues/10915)) ([b43e572](https://github.com/vm0-ai/vm0/commit/b43e572c5c7367b35506df4f33ecbea88ed78c7a))
+* **web:** rename backend voice-chat-candidate dirs, service exports, and event-consumer registry ([#10886](https://github.com/vm0-ai/vm0/issues/10886)) ([39315bd](https://github.com/vm0-ai/vm0/commit/39315bd8a7f6d1b0044954992b757259fe6a276f))
+
+
+### Performance Improvements
+
+* **chat-messages:** fold compose content into round 1 to drop round 2 load arm ([#10881](https://github.com/vm0-ai/vm0/issues/10881)) ([b37c664](https://github.com/vm0-ai/vm0/commit/b37c6648e253de2da9fb96d47cee304caf35f012))
+* **chat:** fuse org credit-check queries into a single cte ([#10882](https://github.com/vm0-ai/vm0/issues/10882)) ([4d60d3e](https://github.com/vm0-ai/vm0/commit/4d60d3e7cdf919aa4d721d14f4059a5063ad7661)), closes [#10874](https://github.com/vm0-ai/vm0/issues/10874) [#10796](https://github.com/vm0-ai/vm0/issues/10796)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.230.0
+
 ## [12.293.0](https://github.com/vm0-ai/vm0/compare/web-v12.292.0...web-v12.293.0) (2026-04-23)
 
 

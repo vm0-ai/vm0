@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.132.0](https://github.com/vm0-ai/vm0/compare/cli-v9.131.5...cli-v9.132.0) (2026-04-23)
+
+
+### Features
+
+* gate Zapier connector behind ZapierConnector feature switch ([#10871](https://github.com/vm0-ai/vm0/issues/10871)) ([fc602ff](https://github.com/vm0-ai/vm0/commit/fc602ffa85e3a8ec3fb10943e714c8264a80098f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.230.0
+
 ## [9.131.5](https://github.com/vm0-ai/vm0/compare/cli-v9.131.4...cli-v9.131.5) (2026-04-23)
 
 

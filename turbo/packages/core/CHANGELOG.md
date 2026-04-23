@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.230.0](https://github.com/vm0-ai/vm0/compare/core-v8.229.4...core-v8.230.0) (2026-04-23)
+
+
+### Features
+
+* **compose:** support mount_path on artifact entries ([#10908](https://github.com/vm0-ai/vm0/issues/10908)) ([#10914](https://github.com/vm0-ai/vm0/issues/10914)) ([c907fd5](https://github.com/vm0-ai/vm0/commit/c907fd5196df2160c999db1a3a39340c0d9342e0))
+* gate Zapier connector behind ZapierConnector feature switch ([#10871](https://github.com/vm0-ai/vm0/issues/10871)) ([fc602ff](https://github.com/vm0-ai/vm0/commit/fc602ffa85e3a8ec3fb10943e714c8264a80098f))
+
+
+### Refactoring
+
+* **checkpoint:** tolerate array-shape artifact snapshots end-to-end ([#10919](https://github.com/vm0-ai/vm0/issues/10919)) ([0a12bc6](https://github.com/vm0-ai/vm0/commit/0a12bc68a8efb87d07f65fb56aac19708addda56))
+* **infra:** flatten artifact scalars to record map (closes [#10861](https://github.com/vm0-ai/vm0/issues/10861)) ([#10876](https://github.com/vm0-ai/vm0/issues/10876)) ([fce4760](https://github.com/vm0-ai/vm0/commit/fce4760ddad775fcb33dce2c0a78baf61609c343))
+* **web:** rename backend voice-chat-candidate dirs, service exports, and event-consumer registry ([#10886](https://github.com/vm0-ai/vm0/issues/10886)) ([39315bd](https://github.com/vm0-ai/vm0/commit/39315bd8a7f6d1b0044954992b757259fe6a276f))
+
 ## [8.229.4](https://github.com/vm0-ai/vm0/compare/core-v8.229.3...core-v8.229.4) (2026-04-23)
 
 
