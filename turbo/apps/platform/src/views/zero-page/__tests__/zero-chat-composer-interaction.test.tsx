@@ -12,7 +12,7 @@ import {
   fill,
   click,
 } from "../../../__tests__/page-helper.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { mockUploadSuccess } from "../../../mocks/upload-helpers.ts";
 import {
   mockChatLifecycle,
@@ -22,6 +22,7 @@ import {
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const CHAT_PATH = `/agents/${AGENT_ID}/chat`;

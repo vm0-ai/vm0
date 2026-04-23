@@ -14,9 +14,10 @@ import {
   zeroTeamContract,
 } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 function mockAPIs({
   threads = [

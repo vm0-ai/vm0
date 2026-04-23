@@ -12,11 +12,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { createDeferredPromise } from "../../../signals/utils.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { type SlackOrgStatus, zeroIntegrationsSlackContract } from "@vm0/core";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -221,15 +223,13 @@ describe("works page - more options dropdown", () => {
 
 describe("works page - disconnect loading state", () => {
   it("shows Disconnecting… while disconnect API is pending", async () => {
-    let resolveDisconnect: (() => void) | null = null;
+    const disconnectDeferred = createDeferredPromise<void>(context.signal);
 
     mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
     server.use(
       mockApi(zeroIntegrationsSlackContract.disconnect, ({ respond }) => {
-        return new Promise<ReturnType<typeof respond>>((resolve) => {
-          resolveDisconnect = () => {
-            resolve(respond(200, { ok: true }));
-          };
+        return disconnectDeferred.promise.then(() => {
+          return respond(200, { ok: true });
         });
       }),
     );
@@ -251,7 +251,7 @@ describe("works page - disconnect loading state", () => {
       expect(screen.getByText("Disconnecting…")).toBeInTheDocument();
     });
 
-    resolveDisconnect!();
+    disconnectDeferred.resolve();
 
     await waitFor(() => {
       expect(screen.queryByText("Disconnecting…")).not.toBeInTheDocument();
@@ -261,15 +261,13 @@ describe("works page - disconnect loading state", () => {
 
 describe("works page - uninstall loading state", () => {
   it("shows Uninstalling… and disables buttons while uninstall API is pending", async () => {
-    let resolveUninstall: (() => void) | null = null;
+    const uninstallDeferred = createDeferredPromise<void>(context.signal);
 
     mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
     server.use(
       mockApi(zeroIntegrationsSlackContract.disconnect, ({ respond }) => {
-        return new Promise<ReturnType<typeof respond>>((resolve) => {
-          resolveUninstall = () => {
-            resolve(respond(200, { ok: true }));
-          };
+        return uninstallDeferred.promise.then(() => {
+          return respond(200, { ok: true });
         });
       }),
     );
@@ -297,7 +295,7 @@ describe("works page - uninstall loading state", () => {
     expect(within(dialog).getByText("Cancel")).toBeDisabled();
     expect(within(dialog).getByText("Uninstalling…")).toBeDisabled();
 
-    resolveUninstall!();
+    uninstallDeferred.resolve();
 
     // Dialog closes after completion
     await waitFor(() => {

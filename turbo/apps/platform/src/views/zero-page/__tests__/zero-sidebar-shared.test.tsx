@@ -19,11 +19,12 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { zeroTeamContract } from "@vm0/core";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 const DEFAULT_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const PINNED_AGENT_ID = "c0000000-0000-4000-a000-000000000002";

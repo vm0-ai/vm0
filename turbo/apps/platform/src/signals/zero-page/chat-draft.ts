@@ -43,12 +43,12 @@ function createChatAttachment(file: File): ZeroChatAttachment {
     set(resetSignal$);
   });
 
-  const upload$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const upload$ = command(async ({ get, set }, parentSignal: AbortSignal) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroUploadsContract);
 
-    const uploadSignal = set(resetSignal$, signal);
-    const deferred = createDeferredPromise<FileInfo>(uploadSignal);
+    const signal = set(resetSignal$, parentSignal);
+    const deferred = createDeferredPromise<FileInfo>(signal);
     set(internalPromise$, deferred.promise);
 
     // Step 1: ask the server to sign a PUT URL for R2. The file body never
@@ -64,12 +64,12 @@ function createChatAttachment(file: File): ZeroChatAttachment {
           contentType: file.type,
           size: file.size,
         },
-        fetchOptions: { signal: uploadSignal },
+        fetchOptions: { signal },
       }),
       [200],
       { toast: false },
     );
-    signal.throwIfAborted();
+    parentSignal.throwIfAborted();
 
     // Step 2: PUT the file bytes straight to R2 using the presigned URL.
     // Do NOT forward auth headers or cookies — the URL's signature is the
@@ -78,9 +78,9 @@ function createChatAttachment(file: File): ZeroChatAttachment {
       method: "PUT",
       body: file,
       headers: { "content-type": file.type },
-      signal: uploadSignal,
+      signal,
     });
-    signal.throwIfAborted();
+    parentSignal.throwIfAborted();
 
     if (!putRes.ok) {
       throw new Error(`storage returned ${putRes.status} ${putRes.statusText}`);

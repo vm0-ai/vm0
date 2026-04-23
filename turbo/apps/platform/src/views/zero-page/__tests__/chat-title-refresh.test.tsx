@@ -9,10 +9,11 @@ import {
   sendMessageInUI,
   PLACEHOLDER,
 } from "./chat-test-helpers.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { chatThreadsContract } from "@vm0/core";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 describe("chat title refresh", () => {
   it("should refresh sidebar after sending a message in existing thread", async () => {

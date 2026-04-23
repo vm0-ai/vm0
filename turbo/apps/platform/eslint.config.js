@@ -39,6 +39,7 @@ export default [
       "ccstate/no-side-effect-in-render": "error",
       "ccstate/no-non-zero-api": "error",
       "ccstate/no-new-abort-controller": "error",
+      "ccstate/no-new-promise": "error",
       "ccstate/no-direct-local-storage": "error",
       "ccstate/no-detach-in-signals": "error",
       "ccstate/no-direct-fetch": "error",
@@ -46,6 +47,7 @@ export default [
       "ccstate/no-void-statement": "error",
       "ccstate/no-abort-swallower": "error",
       "ccstate/require-accept": "error",
+      "ccstate/require-client-signal": "error",
       "ccstate/command-async-signal": "error",
       "ccstate/no-getter-setter-params": "error",
       "ccstate/no-store-in-params": [
@@ -77,6 +79,7 @@ export default [
       "ccstate/no-get-by-role-name": "error",
       "ccstate/no-user-clear-tab": "error",
       "ccstate/no-raw-msw-http": "error",
+      "ccstate/no-mockapi-raw-async": "error",
       "no-restricted-syntax": [
         "error",
         {

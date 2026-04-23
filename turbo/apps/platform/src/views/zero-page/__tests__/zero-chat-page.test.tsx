@@ -10,10 +10,11 @@ import {
   click,
 } from "../../../__tests__/page-helper.ts";
 import { getCategories } from "../zero-ideation-data.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 function mockChatAPI() {
   server.use();

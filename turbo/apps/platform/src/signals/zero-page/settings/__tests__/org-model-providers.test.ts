@@ -10,9 +10,10 @@ import {
 } from "../org-model-providers.ts";
 import { getProviderShape } from "../../../../views/zero-page/components/settings/provider-ui-config.ts";
 import { zeroModelProvidersMainContract } from "@vm0/core";
-import { mockApi } from "../../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../../mocks/msw-contract.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 describe("org-model-providers vm0 provider", () => {
   it("should treat vm0 as a no-secret provider shape, not api-key", () => {

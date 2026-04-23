@@ -11,10 +11,11 @@ import {
 } from "@vm0/core";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
 import { setMockOrg } from "../../../mocks/handlers/api-org.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { setMockOnboardingStatus } from "../../../mocks/handlers/api-onboarding.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 function connectorUuid(type: string): string {
   const map: Record<string, string> = {

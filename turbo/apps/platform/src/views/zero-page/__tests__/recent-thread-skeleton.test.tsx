@@ -6,10 +6,11 @@ import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { chatThreadsContract, chatThreadByIdContract } from "@vm0/core";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 const DEFAULT_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const THREAD_ID = "t0000000-0000-4000-a000-000000000001";

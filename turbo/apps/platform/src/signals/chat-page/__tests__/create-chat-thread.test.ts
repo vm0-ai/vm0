@@ -6,7 +6,7 @@ import {
   currentChatThreadSignals$,
   setDraftSyncDebounceMs$,
 } from "../create-chat-thread.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
   chatThreadsContract,
   chatThreadByIdContract,
@@ -14,6 +14,7 @@ import {
 } from "@vm0/core";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 /**
  * Base MSW handlers required for setupChatPage$ to complete:

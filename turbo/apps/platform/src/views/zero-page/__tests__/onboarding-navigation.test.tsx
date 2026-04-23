@@ -8,7 +8,7 @@ import {
   click,
 } from "../../../__tests__/page-helper.ts";
 import { pathname, search } from "../../../signals/location.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
   onboardingStatusContract,
   onboardingSetupContract,
@@ -16,6 +16,7 @@ import {
 } from "@vm0/core";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 const MOCK_AGENT_ID = "d0000000-0000-4000-a000-000000000001";
 

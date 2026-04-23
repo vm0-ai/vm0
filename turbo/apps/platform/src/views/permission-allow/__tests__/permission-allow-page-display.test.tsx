@@ -10,16 +10,18 @@ import { screen, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { createDeferredPromise } from "../../../signals/utils.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import {
   zeroAgentsByIdContract,
   type PermissionAccessRequestResponse,
 } from "@vm0/core";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { setMockPermissionRequests } from "../../../mocks/handlers/api-permission-access-requests.ts";
 import { setMockOrg } from "../../../mocks/handlers/api-org.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 
@@ -147,12 +149,10 @@ describe("fw-d-006: connector label from CONNECTOR_TYPES renders", () => {
 
 describe("fw-d-007: loading state shows while agent loads", () => {
   it("shows a loading spinner while the agent is being fetched", async () => {
-    let unblock!: () => void;
+    const unblock = createDeferredPromise<void>(context.signal);
     server.use(
       mockApi(zeroAgentsByIdContract.get, async ({ respond }) => {
-        await new Promise<void>((resolve) => {
-          unblock = resolve;
-        });
+        await unblock.promise;
         return respond(200, defaultAgent());
       }),
     );
@@ -172,7 +172,7 @@ describe("fw-d-007: loading state shows while agent loads", () => {
     });
 
     // Release the blocked agent fetch and let the page setup complete.
-    unblock();
+    unblock.resolve();
   });
 });
 

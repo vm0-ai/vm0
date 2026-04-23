@@ -43,6 +43,7 @@ import noNonZeroApi from "./rules/no-non-zero-api.ts";
 import commandAsyncSignal from "./rules/command-async-signal.ts";
 import noGetterSetterParams from "./rules/no-getter-setter-params.ts";
 import noNewAbortController from "./rules/no-new-abort-controller.ts";
+import noNewPromise from "./rules/no-new-promise.ts";
 import noDirectLocalStorage from "./rules/no-direct-local-storage.ts";
 import noDetachInSignals from "./rules/no-detach-in-signals.ts";
 import noDirectFetch from "./rules/no-direct-fetch.ts";
@@ -51,10 +52,12 @@ import noVoidStatement from "./rules/no-void-statement.ts";
 import noAbortSwallower from "./rules/no-abort-swallower.ts";
 import noTestDelay from "./rules/no-test-delay.ts";
 import requireAccept from "./rules/require-accept.ts";
+import requireClientSignal from "./rules/require-client-signal.ts";
 import noGetByRoleName from "./rules/no-get-by-role-name.ts";
 import noUserClearTab from "./rules/no-user-clear-tab.ts";
 import noDuplicateRouteParam from "./rules/no-duplicate-route-param.ts";
 import noRawMswHttp from "./rules/no-raw-msw-http.ts";
+import noMockApiRawAsync from "./rules/no-mockapi-raw-async.ts";
 
 const plugin = {
   meta: {
@@ -78,6 +81,7 @@ const plugin = {
     "command-async-signal": commandAsyncSignal,
     "no-getter-setter-params": noGetterSetterParams,
     "no-new-abort-controller": noNewAbortController,
+    "no-new-promise": noNewPromise,
     "no-direct-local-storage": noDirectLocalStorage,
     "no-detach-in-signals": noDetachInSignals,
     "no-direct-fetch": noDirectFetch,
@@ -86,10 +90,12 @@ const plugin = {
     "no-abort-swallower": noAbortSwallower,
     "no-test-delay": noTestDelay,
     "require-accept": requireAccept,
+    "require-client-signal": requireClientSignal,
     "no-get-by-role-name": noGetByRoleName,
     "no-user-clear-tab": noUserClearTab,
     "no-duplicate-route-param": noDuplicateRouteParam,
     "no-raw-msw-http": noRawMswHttp,
+    "no-mockapi-raw-async": noMockApiRawAsync,
   },
 };
 

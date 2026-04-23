@@ -19,7 +19,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { http, HttpResponse } from "msw";
 import { zeroVoiceChatCandidateContract } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import { detach, Reason } from "../../utils.ts";
@@ -38,6 +38,7 @@ import {
 } from "../agent-chat-voice-mode.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const SESSION_ID = "11111111-1111-4111-8111-111111111111";

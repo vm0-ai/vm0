@@ -61,7 +61,13 @@ export const setFeatureSwitch$ = command(
     const createClient = get(zeroClient$);
     const client = createClient(zeroFeatureSwitchesContract);
     signal.throwIfAborted();
-    await accept(client.update({ body: { switches: overrides } }), [200]);
+    await accept(
+      client.update({
+        body: { switches: overrides },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
     signal.throwIfAborted();
     set(internalReload$, (v) => {
       return v + 1;
@@ -74,7 +80,7 @@ export const resetFeatureSwitches$ = command(
     const createClient = get(zeroClient$);
     const client = createClient(zeroFeatureSwitchesContract);
     signal.throwIfAborted();
-    await accept(client.delete(), [200]);
+    await accept(client.delete({ fetchOptions: { signal } }), [200]);
     signal.throwIfAborted();
     set(internalReload$, (v) => {
       return v + 1;

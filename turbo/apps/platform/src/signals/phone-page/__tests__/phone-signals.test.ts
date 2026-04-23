@@ -11,7 +11,7 @@ import {
   removePhoneLink$,
   requestOrgPhoneSetup$,
 } from "../phone-signals.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
   zeroPhoneStatusContract,
   zeroPhoneLinkContract,
@@ -19,6 +19,7 @@ import {
 } from "@vm0/core";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 describe("fetchPhoneStatus$", () => {
   it("should fetch and store phone status", async () => {

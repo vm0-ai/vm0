@@ -13,9 +13,10 @@ import {
   type ConnectorListResponse,
   zeroConnectorsMainContract,
 } from "@vm0/core";
-import { mockApi } from "../../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../../mocks/msw-contract.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 function makeEmptyConnectorResponse(): ConnectorListResponse {
   return {

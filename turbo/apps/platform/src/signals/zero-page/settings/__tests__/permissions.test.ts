@@ -7,9 +7,10 @@ import {
   savePermissionPolicies$,
 } from "../permissions.ts";
 import { zeroAgentPermissionPoliciesContract } from "@vm0/core";
-import { mockApi } from "../../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../../mocks/msw-contract.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 describe("hasConnectorPermissions", () => {
   it("should return true for connectors with permissions", () => {

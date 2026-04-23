@@ -13,7 +13,7 @@ import {
   setMockFeatureSwitches,
 } from "../../../mocks/handlers/api-feature-switches";
 import { server } from "../../../mocks/server";
-import { mockApi } from "../../../mocks/msw-contract";
+import { createMockApi } from "../../../mocks/msw-contract";
 
 vi.mock("@vm0/ui/components/ui/sonner", () => {
   return { toast: { error: vi.fn(), success: vi.fn() } };
@@ -24,6 +24,7 @@ beforeEach(() => {
 });
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 describe("feature switch", () => {
   it("should support dummy switch", async () => {

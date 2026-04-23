@@ -16,9 +16,10 @@ import {
   resetMockOrgLogo,
 } from "../../../mocks/handlers/api-org.ts";
 import { zeroOrgContract } from "@vm0/core";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 beforeEach(() => {
   resetMockOrg();
@@ -69,11 +70,8 @@ describe("org general tab - display", () => {
 
     // Now trigger a refresh with a never-resolving org response
     server.use(
-      mockApi(zeroOrgContract.get, async ({ respond }) => {
-        // Never resolves — keeps loading state visible
-        await new Promise<void>(() => {
-          /* intentionally never resolves */
-        });
+      mockApi(zeroOrgContract.get, async ({ respond, never }) => {
+        await never();
         return respond(200, {
           id: "org_1",
           slug: "test-org",

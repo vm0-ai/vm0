@@ -14,7 +14,7 @@ import {
   setMockSchedules,
   createMockScheduleResponse,
 } from "../../../mocks/handlers/api-schedules.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
   zeroSchedulesMainContract,
   zeroSchedulesByNameContract,
@@ -23,6 +23,7 @@ import {
 } from "@vm0/core";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 function createMockSchedules(): ScheduleResponse[] {
   return [
@@ -564,15 +565,13 @@ describe("zero schedule page - delete confirmation", () => {
   });
 
   it("should show Deleting… and disable buttons while delete API is pending", async () => {
-    let resolveDelete: (() => void) | null = null;
+    const deleteDeferred = createDeferredPromise<void>(context.signal);
 
     setMockSchedules(createMockSchedules());
     server.use(
       mockApi(zeroSchedulesByNameContract.delete, ({ respond }) => {
-        return new Promise<ReturnType<typeof respond>>((resolve) => {
-          resolveDelete = () => {
-            return resolve(respond(204));
-          };
+        return deleteDeferred.promise.then(() => {
+          return respond(204);
         });
       }),
     );
@@ -601,7 +600,7 @@ describe("zero schedule page - delete confirmation", () => {
     expect(screen.getByText("Cancel")).toBeDisabled();
     expect(screen.getByText("Deleting…")).toBeDisabled();
 
-    resolveDelete!();
+    deleteDeferred.resolve();
 
     // Dialog closes after completion
     await waitFor(() => {

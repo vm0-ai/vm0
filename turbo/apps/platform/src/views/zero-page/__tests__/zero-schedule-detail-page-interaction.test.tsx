@@ -12,7 +12,7 @@ import {
   setMockSchedules,
   createMockScheduleResponse,
 } from "../../../mocks/handlers/api-schedules.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
   chatThreadsContract,
   logsListContract,
@@ -23,6 +23,7 @@ import {
 } from "@vm0/core";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 const SCHEDULE_ID = "f0000001-0000-4000-a000-000000000001";
 

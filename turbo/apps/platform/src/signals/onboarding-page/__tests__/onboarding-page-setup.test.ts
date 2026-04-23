@@ -5,10 +5,11 @@ import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { setupOnboardingPage$ } from "../onboarding-page-setup.ts";
 import { zeroSelectedConnectors$ } from "../../zero-page/zero-onboarding.ts";
 import { pathname, search } from "../../location.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { onboardingStatusContract } from "@vm0/core";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 function mockAdminOnboarding() {
   server.use(

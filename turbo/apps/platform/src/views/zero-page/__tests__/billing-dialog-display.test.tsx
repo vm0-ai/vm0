@@ -19,9 +19,10 @@ import {
   zeroBillingAutoRechargeContract,
   zeroBillingCheckoutContract,
 } from "@vm0/core";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 beforeEach(() => {
   resetMockBilling();
@@ -97,19 +98,22 @@ describe("chat-s-070: Loading state disables Save button during save", () => {
   it("disables the Save button while the save is in progress", async () => {
     let resolveSave!: () => void;
     server.use(
-      mockApi(zeroBillingAutoRechargeContract.update, ({ respond }) => {
-        return new Promise((resolve) => {
+      mockApi(
+        zeroBillingAutoRechargeContract.update,
+        ({ respond, deferred }) => {
+          const gate = deferred<void>();
           resolveSave = () => {
-            resolve(
-              respond(200, {
-                enabled: true,
-                threshold: 5000,
-                amount: 10_000,
-              }),
-            );
+            gate.resolve();
           };
-        });
-      }),
+          return gate.promise.then(() => {
+            return respond(200, {
+              enabled: true,
+              threshold: 5000,
+              amount: 10_000,
+            });
+          });
+        },
+      ),
     );
 
     setMockBillingStatus({
@@ -300,15 +304,15 @@ describe("chat-c-077: Action button is disabled during redirect", () => {
   it("disables the Upgrade button while checkout is in progress", async () => {
     let resolveCheckout!: () => void;
     server.use(
-      mockApi(zeroBillingCheckoutContract.create, ({ respond }) => {
-        return new Promise((resolve) => {
-          resolveCheckout = () => {
-            resolve(
-              respond(200, {
-                url: "https://checkout.stripe.com/test?tier=team",
-              }),
-            );
-          };
+      mockApi(zeroBillingCheckoutContract.create, ({ respond, deferred }) => {
+        const gate = deferred<void>();
+        resolveCheckout = () => {
+          gate.resolve();
+        };
+        return gate.promise.then(() => {
+          return respond(200, {
+            url: "https://checkout.stripe.com/test?tier=team",
+          });
         });
       }),
     );

@@ -6,9 +6,10 @@ import { zeroOrgContract } from "@vm0/core";
 import { testContext } from "./test-helpers.ts";
 import { detachedSetupPage } from "../../__tests__/page-helper.ts";
 import { mockedClerk } from "../../__tests__/mock-auth.ts";
-import { mockApi } from "../../mocks/msw-contract.ts";
+import { createMockApi } from "../../mocks/msw-contract.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 describe("zeroClient$ 401 redirect", () => {
   it("should redirect to sign-in when API returns 401", async () => {

@@ -10,7 +10,7 @@ import {
   setMockSchedules,
   createMockScheduleResponse,
 } from "../../../mocks/handlers/api-schedules.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
   zeroSchedulesMainContract,
   zeroSchedulesByNameContract,
@@ -33,6 +33,7 @@ import {
 } from "../zero-schedule.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 afterEach(() => {
   vi.restoreAllMocks();

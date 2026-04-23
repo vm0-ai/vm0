@@ -14,9 +14,10 @@ import type {
   AgentEventsResponse,
   AgentEvent,
 } from "../../../signals/zero-page/log-types.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 const BASE_LOG_ID = "d0000000-0000-4000-8000-000000000001";
 

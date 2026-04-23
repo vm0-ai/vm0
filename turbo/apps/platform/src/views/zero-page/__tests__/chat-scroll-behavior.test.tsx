@@ -5,10 +5,11 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { detachedNavigateTo$ } from "../../../signals/route.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { chatThreadMessagesContract, chatThreadByIdContract } from "@vm0/core";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 type ThreadEntry = { role: "user" | "assistant"; content: string }[];
 
@@ -306,6 +307,7 @@ describe("zero chat thread page - messages remain visible during re-fetch", () =
 
     // Thread B has a deferred messages response so we can observe the
     // intermediate state while groupedChatMessages$ is in loading state.
+    const threadBMessagesDeferred = createDeferredPromise<void>(context.signal);
     let resolveThreadBMessages!: () => void;
 
     // Override with a dispatcher-aware handler for both threads
@@ -334,9 +336,10 @@ describe("zero chat thread page - messages remain visible during re-fetch", () =
             return respond(200, { messages: [] });
           }
           // Initial fetch is deferred — keeps groupedChatMessages$ in loading state.
-          await new Promise<void>((resolve) => {
-            resolveThreadBMessages = resolve;
-          });
+          resolveThreadBMessages = () => {
+            threadBMessagesDeferred.resolve();
+          };
+          await threadBMessagesDeferred.promise;
           return respond(200, {
             messages: [
               {

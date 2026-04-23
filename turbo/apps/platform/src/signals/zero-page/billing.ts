@@ -85,7 +85,7 @@ export const startCheckout$ = command(
     { get },
     tier: "pro" | "team",
     newTab: boolean,
-    _signal: AbortSignal,
+    signal: AbortSignal,
   ) => {
     const currentUrl = window.location.href;
     const successUrl = new URL(currentUrl);
@@ -102,9 +102,11 @@ export const startCheckout$ = command(
           successUrl: successUrl.toString(),
           cancelUrl: cancelUrl.toString(),
         },
+        fetchOptions: { signal },
       }),
       [200],
     );
+    signal.throwIfAborted();
     if (newTab) {
       window.open(result.body.url, "_blank");
     } else {
@@ -114,17 +116,19 @@ export const startCheckout$ = command(
   },
 );
 
-export const startDowngrade$ = command(
-  async ({ get }, _signal: AbortSignal) => {
-    const createClient = get(zeroClient$);
-    const client = createClient(zeroBillingPortalContract);
-    const result = await accept(
-      client.create({ body: { returnUrl: window.location.href } }),
-      [200],
-    );
-    window.location.href = result.body.url;
-  },
-);
+export const startDowngrade$ = command(async ({ get }, signal: AbortSignal) => {
+  const createClient = get(zeroClient$);
+  const client = createClient(zeroBillingPortalContract);
+  const result = await accept(
+    client.create({
+      body: { returnUrl: window.location.href },
+      fetchOptions: { signal },
+    }),
+    [200],
+  );
+  signal.throwIfAborted();
+  window.location.href = result.body.url;
+});
 
 // ---------------------------------------------------------------------------
 // Downgrade dialog commands
@@ -139,10 +143,17 @@ export const closeDowngradeDialog$ = command(({ set }) => {
 });
 
 export const confirmDowngrade$ = command(
-  async ({ get, set }, targetTier: "free" | "pro", _signal: AbortSignal) => {
+  async ({ get, set }, targetTier: "free" | "pro", signal: AbortSignal) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroBillingDowngradeContract);
-    await accept(client.create({ body: { targetTier } }), [200]);
+    await accept(
+      client.create({
+        body: { targetTier },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
     set(internalDowngradeDialogOpen$, false);
     // Reload billing status to reflect the change
     set(billingReload$, (x) => {
@@ -234,11 +245,18 @@ export const saveAutoRecharge$ = command(
   async (
     { get, set },
     config: { enabled: boolean; threshold?: number; amount?: number },
-    _signal: AbortSignal,
+    signal: AbortSignal,
   ) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroBillingAutoRechargeContract);
-    await accept(client.update({ body: config }), [200]);
+    await accept(
+      client.update({
+        body: config,
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
     // Kick off a refetch first so autoRechargeConfig$ has a new in-flight
     // promise carrying the just-saved values.
     set(billingReload$, (x) => {
@@ -254,6 +272,7 @@ export const saveAutoRecharge$ = command(
     // refetch fails, `accept()` inside billingStatusAsync$ already surfaces
     // the error; leaving overrides in place lets the user retry or discard.
     await get(autoRechargeConfig$);
+    signal.throwIfAborted();
     set(internalPendingEnabled$, null);
     set(internalFormThresholdOverride$, null);
     set(internalFormAmountOverride$, null);

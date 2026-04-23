@@ -7,15 +7,17 @@ import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { createDeferredPromise } from "../../../signals/utils.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import {
   type UserPreferencesResponse,
   zeroUserPreferencesContract,
 } from "@vm0/core";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 function mockPreferencesAPI(
   prefs: Omit<UserPreferencesResponse, "captureNetworkBodiesRemaining">,
@@ -31,11 +33,8 @@ function renderPreferencesPage() {
 }
 
 function makeDeferred() {
-  let resolveDeferred!: () => void;
-  const promise = new Promise<void>((resolve) => {
-    resolveDeferred = resolve;
-  });
-  return { promise, resolve: resolveDeferred };
+  const deferred = createDeferredPromise<void>(context.signal);
+  return { promise: deferred.promise, resolve: deferred.resolve };
 }
 
 function findButtonByText(text: string) {

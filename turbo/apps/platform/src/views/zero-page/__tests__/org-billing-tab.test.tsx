@@ -9,6 +9,7 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { setMockBillingStatus } from "../../../mocks/handlers/api-billing.ts";
 import { reloadBillingStatus$ } from "../../../signals/zero-page/billing.ts";
+import { createDeferredPromise } from "../../../signals/utils.ts";
 import {
   zeroBillingStatusContract,
   zeroBillingAutoRechargeContract,
@@ -16,9 +17,10 @@ import {
   zeroBillingPortalContract,
   zeroBillingDowngradeContract,
 } from "@vm0/core";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 async function openBillingTab() {
   detachedSetupPage({ context, path: "/?settings=billing" });
@@ -443,22 +445,16 @@ describe("org billing tab - auto-recharge section", () => {
     // refetch-complete is long enough to observe. Entering the gated branch
     // signals that the PATCH has resolved and the reload has been kicked off
     // — i.e. we are inside the bug's danger window.
-    let releaseRefetch = (): void => {};
-    const refetchStarted = new Promise<void>((resolve) => {
-      releaseRefetch = resolve;
-    });
-    let markRefetchEntered = (): void => {};
-    const refetchEntered = new Promise<void>((resolve) => {
-      markRefetchEntered = resolve;
-    });
+    const refetchStarted = createDeferredPromise<void>(context.signal);
+    const refetchEntered = createDeferredPromise<void>(context.signal);
     let refetchCount = 0;
     server.use(
       mockApi(zeroBillingStatusContract.get, async ({ respond }) => {
         refetchCount++;
         const enabled = refetchCount > 1;
         if (refetchCount > 1) {
-          markRefetchEntered();
-          await refetchStarted;
+          refetchEntered.resolve();
+          await refetchStarted.promise;
         }
         return respond(200, {
           tier: "pro",
@@ -494,7 +490,7 @@ describe("org billing tab - auto-recharge section", () => {
     // PATCH has resolved and billingReload$ has been bumped, so we are inside
     // the exact window where the regression would have cleared the optimistic
     // overrides. Flush microtasks so any regressed state update propagates.
-    await refetchEntered;
+    await refetchEntered.promise;
     await waitFor(() => {
       expect(toggle).toHaveAttribute("aria-checked", "true");
       expect(
@@ -503,7 +499,7 @@ describe("org billing tab - auto-recharge section", () => {
     });
 
     // Release the refetch and let the save finish.
-    releaseRefetch();
+    refetchStarted.resolve();
 
     await waitFor(() => {
       expect(

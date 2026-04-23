@@ -8,13 +8,15 @@ import {
 } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { createDeferredPromise } from "../../../signals/utils.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 function mockAPIs() {
   setMockConnectors([
@@ -284,15 +286,12 @@ describe("zero job detail page - interaction and state", () => {
   });
 
   it("should show loading state when toggling connector (AGENT-D-035)", async () => {
-    let resolvePut: (() => void) | undefined;
-    const putPromise = new Promise<void>((resolve) => {
-      resolvePut = resolve;
-    });
+    const putDeferred = createDeferredPromise<void>(context.signal);
 
     mockAPIs();
     server.use(
       mockApi(zeroUserConnectorsContract.update, async ({ respond }) => {
-        await putPromise;
+        await putDeferred.promise;
         return respond(200, { enabledTypes: [] });
       }),
     );
@@ -317,7 +316,7 @@ describe("zero job detail page - interaction and state", () => {
     });
 
     // Resolve the pending request
-    resolvePut?.();
+    putDeferred.resolve();
   });
 
   it("should keep connector list visible during post-toggle refetch (AGENT-D-036)", async () => {
@@ -328,10 +327,7 @@ describe("zero job detail page - interaction and state", () => {
     mockAPIs();
 
     // Hold the post-save GET so the refetch stays pending until we release it.
-    let resolveGet: (() => void) | undefined;
-    const getPromise = new Promise<void>((resolve) => {
-      resolveGet = resolve;
-    });
+    const getDeferred = createDeferredPromise<void>(context.signal);
     let getCallCount = 0;
     server.use(
       mockApi(zeroUserConnectorsContract.update, ({ respond }) => {
@@ -345,7 +341,7 @@ describe("zero job detail page - interaction and state", () => {
         if (getCallCount === 1) {
           return respond(200, { enabledTypes: ["slack"] });
         }
-        await getPromise;
+        await getDeferred.promise;
         return respond(200, { enabledTypes: [] });
       }),
     );
@@ -371,6 +367,6 @@ describe("zero job detail page - interaction and state", () => {
     expect(screen.getByText("Linear")).toBeInTheDocument();
 
     // Release the held GET so the test cleans up.
-    resolveGet?.();
+    getDeferred.resolve();
   });
 });

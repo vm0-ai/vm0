@@ -3,6 +3,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { createDeferredPromise } from "../../../signals/utils.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import {
   setMockBillingInvoices,
@@ -10,9 +11,10 @@ import {
 } from "../../../mocks/handlers/api-billing.ts";
 import { setMockOrg, resetMockOrg } from "../../../mocks/handlers/api-org.ts";
 import { zeroBillingInvoicesContract } from "@vm0/core";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 interface InvoiceOverrides {
   id?: string;
@@ -129,13 +131,10 @@ it("shows empty state when no invoices exist", async () => {
 
 // ORG-D-063
 it("shows loading state while invoices load", async () => {
-  let resolveInvoices: (() => void) | null = null;
-  const invoicesPromise = new Promise<void>((resolve) => {
-    resolveInvoices = resolve;
-  });
+  const invoicesDeferred = createDeferredPromise<void>(context.signal);
   server.use(
     mockApi(zeroBillingInvoicesContract.get, async ({ respond }) => {
-      await invoicesPromise;
+      await invoicesDeferred.promise;
       return respond(200, { invoices: [] });
     }),
   );
@@ -143,7 +142,7 @@ it("shows loading state while invoices load", async () => {
   await waitFor(() => {
     expect(screen.getByText("Loading invoices...")).toBeInTheDocument();
   });
-  resolveInvoices!();
+  invoicesDeferred.resolve();
   await waitFor(() => {
     expect(screen.getByText("No invoices yet.")).toBeInTheDocument();
   });

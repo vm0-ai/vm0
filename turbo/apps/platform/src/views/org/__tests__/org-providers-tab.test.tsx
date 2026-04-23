@@ -16,15 +16,17 @@ import {
 } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { createDeferredPromise } from "../../../signals/utils.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { setMockOrg, resetMockOrg } from "../../../mocks/handlers/api-org.ts";
 import {
   setMockOrgModelProviders,
   resetMockOrgModelProviders,
 } from "../../../mocks/handlers/api-org-model-providers.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 function makeProvider(
   type: ModelProviderResponse["type"],
@@ -387,17 +389,14 @@ describe("org delete provider dialog - interaction", () => {
 
   // ORG-I-088
   it("shows Deleting... state and calls delete endpoint when delete button is clicked", async () => {
-    let resolveDelete!: () => void;
-    const deletePromise = new Promise<void>((resolve) => {
-      resolveDelete = resolve;
-    });
+    const deleteDeferred = createDeferredPromise<void>(context.signal);
 
     mockAPIs({
       providers: [makeProvider("anthropic-api-key", { isDefault: true })],
     });
     server.use(
       mockApi(zeroModelProvidersByTypeContract.delete, async ({ respond }) => {
-        await deletePromise;
+        await deleteDeferred.promise;
         return respond(204);
       }),
     );
@@ -415,7 +414,7 @@ describe("org delete provider dialog - interaction", () => {
         }),
       ).toBeDefined();
     });
-    resolveDelete();
-    await deletePromise;
+    deleteDeferred.resolve();
+    await deleteDeferred.promise;
   });
 });

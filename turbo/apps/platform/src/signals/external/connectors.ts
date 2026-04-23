@@ -41,7 +41,13 @@ export const deleteConnector$ = command(
   async ({ get, set }, type: ConnectorType, _signal: AbortSignal) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroConnectorsByTypeContract);
-    await accept(client.delete({ params: { type } }), [204]);
+    await accept(
+      client.delete({
+        params: { type },
+        fetchOptions: { signal: _signal },
+      }),
+      [204],
+    );
 
     set(internalReloadConnectors$, (x) => {
       return x + 1;

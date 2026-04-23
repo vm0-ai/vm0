@@ -452,10 +452,17 @@ export const setSelectedTarget$ = command(({ set }, value: "free" | "pro") => {
 // ---------------------------------------------------------------------------
 
 export const inviteMember$ = command(
-  async ({ get, set }, email: string, role: OrgRole, _signal: AbortSignal) => {
+  async ({ get, set }, email: string, role: OrgRole, signal: AbortSignal) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroOrgInviteContract);
-    await accept(client.invite({ body: { email, role } }), [200]);
+    await accept(
+      client.invite({
+        body: { email, role },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
     toast.success(`Invitation sent to ${email}`);
     set(refreshOrgMembers$);
     set(internalInviteDialogOpen$, false);
@@ -465,26 +472,44 @@ export const inviteMember$ = command(
 );
 
 export const changeRole$ = command(
-  async ({ get, set }, email: string, role: OrgRole, _signal: AbortSignal) => {
+  async ({ get, set }, email: string, role: OrgRole, signal: AbortSignal) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroOrgMembersContract);
-    await accept(client.updateRole({ body: { email, role } }), [200]);
+    await accept(
+      client.updateRole({
+        body: { email, role },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
     toast.success(`Updated role for ${email}`);
     const clerk = await get(clerk$);
+    signal.throwIfAborted();
     await clerk.session?.getToken({ skipCache: true });
+    signal.throwIfAborted();
     set(refreshOrgMembers$);
     set(refreshOrg$);
   },
 );
 
 export const selfDemote$ = command(
-  async ({ get, set }, email: string, _signal: AbortSignal) => {
+  async ({ get, set }, email: string, signal: AbortSignal) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroOrgMembersContract);
-    await accept(client.updateRole({ body: { email, role: "member" } }), [200]);
+    await accept(
+      client.updateRole({
+        body: { email, role: "member" },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
     toast.success(`Updated role for ${email}`);
     const clerk = await get(clerk$);
+    signal.throwIfAborted();
     await clerk.session?.getToken({ skipCache: true });
+    signal.throwIfAborted();
     set(refreshOrgMembers$);
     set(refreshOrg$);
     set(internalSelfDemoteDialogOpen$, false);
@@ -492,10 +517,17 @@ export const selfDemote$ = command(
 );
 
 export const removeMember$ = command(
-  async ({ get, set }, email: string, _signal: AbortSignal) => {
+  async ({ get, set }, email: string, signal: AbortSignal) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroOrgMembersContract);
-    await accept(client.removeMember({ body: { email } }), [200]);
+    await accept(
+      client.removeMember({
+        body: { email },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
     toast.success(`Removed ${email}`);
     set(refreshOrgMembers$);
     set(internalRemoveMemberDialogTarget$, null);
@@ -503,10 +535,17 @@ export const removeMember$ = command(
 );
 
 export const revokeInvitation$ = command(
-  async ({ get, set }, invitationId: string, _signal: AbortSignal) => {
+  async ({ get, set }, invitationId: string, signal: AbortSignal) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroOrgInviteContract);
-    await accept(client.revoke({ body: { invitationId } }), [200]);
+    await accept(
+      client.revoke({
+        body: { invitationId },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
     toast.success("Invitation revoked");
     set(refreshOrgMembers$);
     set(internalRevokeInvitationDialogTarget$, null);
@@ -514,20 +553,34 @@ export const revokeInvitation$ = command(
 );
 
 export const acceptRequest$ = command(
-  async ({ get, set }, requestId: string, _signal: AbortSignal) => {
+  async ({ get, set }, requestId: string, signal: AbortSignal) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroOrgMembershipRequestsContract);
-    await accept(client.accept({ body: { requestId } }), [200]);
+    await accept(
+      client.accept({
+        body: { requestId },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
     toast.success("Membership request accepted");
     set(refreshOrgMembers$);
   },
 );
 
 export const rejectRequest$ = command(
-  async ({ get, set }, requestId: string, _signal: AbortSignal) => {
+  async ({ get, set }, requestId: string, signal: AbortSignal) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroOrgMembershipRequestsContract);
-    await accept(client.reject({ body: { requestId } }), [200]);
+    await accept(
+      client.reject({
+        body: { requestId },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
     toast.success("Membership request rejected");
     set(refreshOrgMembers$);
   },
@@ -542,11 +595,18 @@ export const addDomain$ = command(
     { get, set },
     name: string,
     enrollmentMode: OrgEnrollmentMode,
-    _signal: AbortSignal,
+    signal: AbortSignal,
   ) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroOrgDomainsContract);
-    await accept(client.add({ body: { name, enrollmentMode } }), [200]);
+    await accept(
+      client.add({
+        body: { name, enrollmentMode },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
     toast.success(`Domain ${name} added`);
     set(refreshOrgDomains$);
     set(internalAddDomainDialogOpen$, false);
@@ -556,10 +616,17 @@ export const addDomain$ = command(
 );
 
 export const removeDomain$ = command(
-  async ({ get, set }, domainId: string, _signal: AbortSignal) => {
+  async ({ get, set }, domainId: string, signal: AbortSignal) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroOrgDomainsContract);
-    await accept(client.remove({ body: { domainId } }), [200]);
+    await accept(
+      client.remove({
+        body: { domainId },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
     toast.success("Domain removed");
     set(refreshOrgDomains$);
     set(internalRemoveDomainDialogTarget$, null);
@@ -571,11 +638,18 @@ export const setDomainVerified$ = command(
     { get, set },
     domainId: string,
     verified: boolean,
-    _signal: AbortSignal,
+    signal: AbortSignal,
   ) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroOrgDomainsContract);
-    await accept(client.setVerified({ body: { domainId, verified } }), [200]);
+    await accept(
+      client.setVerified({
+        body: { domainId, verified },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
     toast.success(verified ? "Domain verified" : "Domain unverified");
     set(refreshOrgDomains$);
   },

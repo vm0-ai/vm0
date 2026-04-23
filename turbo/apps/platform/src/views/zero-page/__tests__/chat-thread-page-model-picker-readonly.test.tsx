@@ -28,7 +28,7 @@ import {
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
   setMockOrgModelProviders,
   resetMockOrgModelProviders,
@@ -43,6 +43,7 @@ import {
 } from "../../../mocks/handlers/api-onboarding.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 const PROVIDER_ID = "00000000-0000-4000-a000-000000000001";
 const STORED_MODEL = "claude-opus-4-7";

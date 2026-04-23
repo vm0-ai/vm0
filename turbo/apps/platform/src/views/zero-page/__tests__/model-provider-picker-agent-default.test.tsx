@@ -25,7 +25,7 @@ import { FeatureSwitchKey, zeroAgentsByIdContract } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 import {
   setMockOrgModelProviders,
@@ -38,6 +38,7 @@ import {
 } from "../../../mocks/handlers/api-onboarding.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 const AGENT_ID = "e0000000-0000-4000-a000-000000000010";
 const ANTHROPIC_PROVIDER_ID = "00000000-0000-4000-a000-000000000001";

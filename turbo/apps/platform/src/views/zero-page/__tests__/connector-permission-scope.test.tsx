@@ -14,9 +14,10 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { setScopeReviewType$ } from "../../../signals/zero-page/settings/connectors.ts";
 import { type ConnectorType, zeroConnectorScopeDiffContract } from "@vm0/core";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 async function openScopeReviewModal(
   connectorType: ConnectorType,
@@ -130,10 +131,8 @@ describe("scope review modal - display", () => {
 describe("scope review modal - states", () => {
   it("loading state shows dialog without Reconnect button (CONN-S-037)", async () => {
     server.use(
-      mockApi(zeroConnectorScopeDiffContract.getScopeDiff, () => {
-        return new Promise<never>(() => {
-          // Never resolves — keeps component in loading state
-        });
+      mockApi(zeroConnectorScopeDiffContract.getScopeDiff, ({ never }) => {
+        return never();
       }),
     );
 

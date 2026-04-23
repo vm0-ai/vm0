@@ -15,9 +15,10 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { mockConnectors } from "./zero-connectors-page-test-helpers.ts";
 import { zeroConnectorsMainContract } from "@vm0/core";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 describe("connectors page - count display", () => {
   it("connected connectors count is displayed (CONN-D-001)", async () => {
@@ -71,8 +72,8 @@ describe("connectors page - connector status indicators", () => {
     // in flight and "Connecting…" remains visible. The never-resolving promise
     // is cancelled by the abort signal via fetchOptions.signal in setLoop.
     server.use(
-      mockApi(zeroConnectorsMainContract.list, () => {
-        return new Promise<never>(() => {});
+      mockApi(zeroConnectorsMainContract.list, ({ never }) => {
+        return never();
       }),
     );
 
@@ -166,10 +167,8 @@ describe("connectors page - connector status indicators", () => {
 describe("connectors page - loading state", () => {
   it("loading skeleton shown while connectors load (CONN-D-007)", async () => {
     server.use(
-      mockApi(zeroConnectorsMainContract.list, () => {
-        return new Promise<never>(() => {
-          // Never resolves — keeps component in loading state
-        });
+      mockApi(zeroConnectorsMainContract.list, ({ never }) => {
+        return never();
       }),
     );
 

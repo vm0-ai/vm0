@@ -5,7 +5,7 @@ import { chatMessagesContract } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
   mockUploadPending,
   mockUploadSuccess,
@@ -17,6 +17,7 @@ import {
 } from "./chat-test-helpers.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 function mockChatAPI() {
   server.use();
@@ -92,7 +93,7 @@ describe("chat-d-057: upload progress indicator in AttachmentChip", () => {
     const user = userEvent.setup();
 
     server.use(
-      ...mockUploadPending({
+      ...mockUploadPending(context, {
         id: "upload-pending",
         filename: "document.pdf",
         contentType: "application/pdf",

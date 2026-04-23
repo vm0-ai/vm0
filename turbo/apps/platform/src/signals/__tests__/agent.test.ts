@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { onboardingCompleteContract, zeroAgentsByIdContract } from "@vm0/core";
 import { server } from "../../mocks/server.ts";
-import { mockApi } from "../../mocks/msw-contract.ts";
+import { createMockApi } from "../../mocks/msw-contract.ts";
 import { setMockOnboardingStatus } from "../../mocks/handlers/api-onboarding.ts";
 import { detachedSetupPage } from "../../__tests__/page-helper.ts";
 import { testContext } from "./test-helpers.ts";
@@ -20,6 +20,7 @@ import {
 import { completeOnboarding$ } from "../zero-page/zero-onboarding-actions.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 
 interface AgentOverrides {

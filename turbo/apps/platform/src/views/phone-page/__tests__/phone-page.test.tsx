@@ -5,7 +5,7 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { setMockPhoneStatus } from "../../../mocks/handlers/api-phone.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
   zeroPhoneSetupContract,
   zeroPhoneLinkContract,
@@ -13,6 +13,7 @@ import {
 } from "@vm0/core";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 function mockPhoneStatusAPI(overrides: Partial<PhoneStatusResponse> = {}) {
   setMockPhoneStatus(overrides);

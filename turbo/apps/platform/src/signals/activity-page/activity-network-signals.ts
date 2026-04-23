@@ -19,6 +19,7 @@ type NetworkLogsClient = InitClientReturn<
 async function fetchPage(
   client: NetworkLogsClient,
   runId: string,
+  signal?: AbortSignal,
   since?: number,
 ): Promise<{ logs: NetworkLogEntry[]; hasMore: boolean }> {
   const result = await accept(
@@ -29,6 +30,7 @@ async function fetchPage(
         order: "asc",
         ...(since !== undefined && { since }),
       },
+      fetchOptions: signal ? { signal } : undefined,
     }),
     [200],
   );
@@ -41,12 +43,14 @@ async function fetchPage(
 export async function fetchAllNetworkLogs(
   client: NetworkLogsClient,
   runId: string,
+  signal: AbortSignal,
 ): Promise<NetworkLogEntry[]> {
   const all: NetworkLogEntry[] = [];
   let since: number | undefined;
 
   for (let page = 0; page < MAX_PAGES; page++) {
-    const { logs, hasMore } = await fetchPage(client, runId, since);
+    signal.throwIfAborted();
+    const { logs, hasMore } = await fetchPage(client, runId, signal, since);
     all.push(...logs);
 
     if (!hasMore || logs.length === 0) {
@@ -128,7 +132,7 @@ export const zeroActivityNetworkLogs$ = computed(async (get) => {
  * Load the next page. Called by "Load more" button.
  */
 export const loadNetworkLogsNextPage$ = command(
-  async ({ get, set }, _signal: AbortSignal) => {
+  async ({ get, set }, signal: AbortSignal) => {
     const runId = get(currentRunId$);
     if (!runId) {
       return;
@@ -139,6 +143,7 @@ export const loadNetworkLogsNextPage$ = command(
     // Initialise pagination state on first "load more" for this run
     if (pg.runId !== runId) {
       const first = await get(firstPage$);
+      signal.throwIfAborted();
       if (!first || !first.hasMore || first.logs.length === 0) {
         return;
       }
@@ -167,9 +172,13 @@ export const loadNetworkLogsNextPage$ = command(
     };
 
     const client = get(zeroClient$)(zeroRunNetworkLogsContract);
-    const { logs, hasMore } = await fetchPage(client, runId, pg.since).finally(
-      clearLoading,
-    );
+    const { logs, hasMore } = await fetchPage(
+      client,
+      runId,
+      signal,
+      pg.since,
+    ).finally(clearLoading);
+    signal.throwIfAborted();
 
     const lastEntry = logs.length > 0 ? logs[logs.length - 1] : undefined;
     set(pagination$, (current) => {

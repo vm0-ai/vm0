@@ -14,7 +14,7 @@ import {
   formatLogTime,
   formatDuration,
 } from "../../activity-page/activity-signals.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
   logsListContract,
   logsByIdContract,
@@ -22,6 +22,7 @@ import {
 } from "@vm0/core";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 function logDefaults() {
   return {

@@ -4,10 +4,11 @@ import { testContext } from "../../__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { pollSlackConnection$ } from "../zero-slack.ts";
 import { zeroIntegrationsSlackContract } from "@vm0/core";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { triggerAblyEvent, hasSubscription } from "../../../mocks/ably.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 function setup() {
   detachedSetupPage({

@@ -13,9 +13,10 @@ import {
   zeroUserPreferencesContract,
 } from "@vm0/core";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 function mockPreferencesAPI(
   prefs: Omit<UserPreferencesResponse, "captureNetworkBodiesRemaining">,
@@ -61,8 +62,8 @@ describe("timezone-settings - display", () => {
       sendMode: "enter",
     });
     server.use(
-      mockApi(zeroUserPreferencesContract.update, () => {
-        return new Promise<never>(() => {});
+      mockApi(zeroUserPreferencesContract.update, ({ never }) => {
+        return never();
       }),
     );
     await openTimezoneTab();
@@ -80,8 +81,8 @@ describe("timezone-settings - display", () => {
 
   it("hides select before preferences have loaded (PREF-D-013)", async () => {
     server.use(
-      mockApi(zeroUserPreferencesContract.get, () => {
-        return new Promise<never>(() => {});
+      mockApi(zeroUserPreferencesContract.get, ({ never }) => {
+        return never();
       }),
     );
     detachedSetupPage({ context, path: "/settings" });

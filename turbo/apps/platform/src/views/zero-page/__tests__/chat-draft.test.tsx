@@ -1,14 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
+import { HttpResponse } from "msw";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { detachedNavigateTo$ } from "../../../signals/route.ts";
+import { createDeferredPromise } from "../../../signals/utils.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi, createMockHttp } from "../../../mocks/msw-contract.ts";
 import { chatThreadByIdContract } from "@vm0/core";
 
 vi.mock("@vm0/ui/components/ui/sonner", async (importOriginal) => {
@@ -25,6 +26,8 @@ beforeEach(() => {
 });
 
 const context = testContext();
+const mockApi = createMockApi(context);
+const mockHttp = createMockHttp(context);
 
 function mockThreads() {
   server.use(
@@ -116,12 +119,10 @@ describe("chat draft persistence across thread navigation", () => {
   it("should complete upload after switching away and show it on return", async () => {
     const user = userEvent.setup();
     // Deferred upload handler — resolve manually
-    let resolveUpload: (() => void) | null = null;
-    const uploadStarted = new Promise<void>((resolve) => {
-      resolveUpload = resolve;
-    });
-
-    let uploadRequestResolve: ((value: Response) => void) | null = null;
+    const uploadStarted = createDeferredPromise<void>(context.signal);
+    let uploadRequestDeferred: ReturnType<
+      typeof createDeferredPromise<Response>
+    > | null = null;
 
     server.use(
       mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
@@ -142,7 +143,7 @@ describe("chat draft persistence across thread navigation", () => {
       // helper endpoint whose response shape is owned by the route; we want to
       // defer the PUT to R2 so tests that need a deferred upload can resolve
       // it manually.
-      http.post("*/api/zero/uploads/prepare", () => {
+      mockHttp.post("*/api/zero/uploads/prepare", () => {
         return HttpResponse.json({
           id: "upload-1",
           filename: "photo.png",
@@ -152,14 +153,14 @@ describe("chat draft persistence across thread navigation", () => {
           url: "https://example.com/photo.png",
         });
       }),
-      http.put("https://mock-upload.example.com/photo.png", () => {
-        resolveUpload?.();
-        return new Promise<Response>((resolve) => {
-          uploadRequestResolve = (resp) => {
-            return resolve(resp);
-          };
-        });
-      }),
+      mockHttp.put(
+        "https://mock-upload.example.com/photo.png",
+        ({ signal }) => {
+          uploadStarted.resolve();
+          uploadRequestDeferred = createDeferredPromise<Response>(signal);
+          return uploadRequestDeferred.promise;
+        },
+      ),
     );
 
     detachedSetupPage({ context, path: "/chats/thread-1" });
@@ -176,7 +177,7 @@ describe("chat draft persistence across thread navigation", () => {
     await user.upload(fileInput, file);
 
     // Wait for upload request to arrive at MSW
-    await uploadStarted;
+    await uploadStarted.promise;
 
     // Attachment chip should be visible with uploading state
     await waitFor(() => {
@@ -196,7 +197,7 @@ describe("chat draft persistence across thread navigation", () => {
     });
 
     // Now resolve the deferred PUT to R2
-    uploadRequestResolve!(new HttpResponse(null, { status: 200 }));
+    uploadRequestDeferred!.resolve(new HttpResponse(null, { status: 200 }));
 
     // Navigate back to thread-1 — draft restored from per-thread cache,
     // upload should now be complete
@@ -216,7 +217,7 @@ describe("chat draft persistence across thread navigation", () => {
       // mockApi cannot be used here: we want to assert UI behavior when the
       // server returns an error shape directly without going through the
       // typed happy path.
-      http.post("*/api/zero/uploads/prepare", () => {
+      mockHttp.post("*/api/zero/uploads/prepare", () => {
         return HttpResponse.json(
           {
             error: {
@@ -255,7 +256,7 @@ describe("chat draft persistence across thread navigation", () => {
     server.use(
       // mockApi cannot be used here: /api/zero/uploads/prepare is an internal
       // helper endpoint with no ts-rest contract.
-      http.post("*/api/zero/uploads/prepare", () => {
+      mockHttp.post("*/api/zero/uploads/prepare", () => {
         return HttpResponse.json({
           id: "upload-err",
           filename: "fail.png",
@@ -265,7 +266,7 @@ describe("chat draft persistence across thread navigation", () => {
           url: "https://example.com/fail.png",
         });
       }),
-      http.put("https://mock-upload.example.com/fail.png", () => {
+      mockHttp.put("https://mock-upload.example.com/fail.png", () => {
         return new HttpResponse(null, { status: 500 });
       }),
     );

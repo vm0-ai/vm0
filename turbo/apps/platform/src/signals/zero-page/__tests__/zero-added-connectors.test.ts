@@ -6,11 +6,12 @@ import {
   setupPage,
 } from "../../../__tests__/page-helper.ts";
 import { zeroAddedConnectors$, addZeroConnector$ } from "../zero-connectors.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { zeroAgentsByIdContract, zeroUserConnectorsContract } from "@vm0/core";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 function mockAgentApi(connectors: string[]) {
   server.use(

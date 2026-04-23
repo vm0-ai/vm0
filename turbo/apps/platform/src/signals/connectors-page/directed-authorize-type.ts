@@ -66,7 +66,10 @@ export const authorizeConnector$ = command(
 
     // Get current enabled types for this agent
     const current = await accept(
-      client.get({ params: { id: agentId } }),
+      client.get({
+        params: { id: agentId },
+        fetchOptions: { signal },
+      }),
       [200],
     );
     signal.throwIfAborted();
@@ -79,6 +82,7 @@ export const authorizeConnector$ = command(
         client.update({
           params: { id: agentId },
           body: { enabledTypes: [...currentTypes, connectorType] },
+          fetchOptions: { signal },
         }),
         [200],
       );

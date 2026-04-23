@@ -8,10 +8,11 @@ import {
   setZeroWorkspaceName$,
   toggleZeroConnector$,
 } from "../zero-onboarding.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { onboardingSetupContract } from "@vm0/core";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 interface SetupPayload {
   displayName?: string;

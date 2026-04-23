@@ -11,7 +11,7 @@ import {
   click,
 } from "../../../__tests__/page-helper.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
   type ScheduleResponse,
   zeroAgentsByIdContract,
@@ -25,6 +25,7 @@ import {
 } from "../../../mocks/handlers/api-schedules.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 const SCHEDULE_ID = "f0000001-0000-4000-a000-000000000001";
 

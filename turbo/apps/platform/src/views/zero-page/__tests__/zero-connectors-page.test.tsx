@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { createDeferredPromise } from "../../../signals/utils.ts";
 import {
   detachedSetupPage,
   fill,
@@ -18,9 +19,10 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { mockConnectors } from "./zero-connectors-page-test-helpers.ts";
 import { zeroConnectorsByTypeContract } from "@vm0/core";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 describe("connectors page", () => {
   it("renders the page header and search input", async () => {
@@ -134,14 +136,11 @@ describe("connectors page", () => {
   it("shows loading toast then success toast on disconnect", async () => {
     mockConnectors([{ type: "github", externalUsername: "testuser" }]);
 
-    let deleteResolve: () => void;
-    const deletePromise = new Promise<void>((resolve) => {
-      deleteResolve = resolve;
-    });
+    const deleteDeferred = createDeferredPromise<void>(context.signal);
 
     server.use(
       mockApi(zeroConnectorsByTypeContract.delete, async ({ respond }) => {
-        await deletePromise;
+        await deleteDeferred.promise;
         return respond(204);
       }),
     );
@@ -168,7 +167,7 @@ describe("connectors page", () => {
     });
 
     // Resolve the API call
-    deleteResolve!();
+    deleteDeferred.resolve();
 
     // Success toast should replace the loading toast
     await waitFor(() => {

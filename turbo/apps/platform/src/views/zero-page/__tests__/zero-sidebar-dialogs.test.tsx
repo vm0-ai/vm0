@@ -5,9 +5,10 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
+import { createDeferredPromise } from "../../../signals/utils.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
   zeroUserPreferencesContract,
   chatThreadsContract,
@@ -19,6 +20,7 @@ import {
 } from "../../../signals/zero-page/zero-sidebar-state.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 function mockAPIsWithSubagents({
   pinnedAgentIds = ["pinned-agent-id"],
@@ -521,15 +523,12 @@ describe("managePinnedAgentsDialog - reorder handle is present (SIDEBAR-D-041)",
 
 describe("chatListDialog - pin buttons disabled during save (SIDEBAR-D-042)", () => {
   it("disables pin and reorder buttons while save is in progress and re-enables after completion", async () => {
-    let resolvePost: (() => void) | undefined;
-    const postPromise = new Promise<void>((resolve) => {
-      resolvePost = resolve;
-    });
+    const postDeferred = createDeferredPromise<void>(context.signal);
 
     mockAPIsWithSubagents({ pinnedAgentIds: ["pinned-agent-id"] });
     server.use(
       mockApi(zeroUserPreferencesContract.update, async ({ respond }) => {
-        await postPromise;
+        await postDeferred.promise;
         return respond(200, {
           timezone: null,
           pinnedAgentIds: ["pinned-agent-id", "unpinned-agent-id"],
@@ -565,7 +564,7 @@ describe("chatListDialog - pin buttons disabled during save (SIDEBAR-D-042)", ()
     });
 
     // Resolve the pending request
-    resolvePost!();
+    postDeferred.resolve();
 
     // After save completes, buttons should be re-enabled
     await waitFor(() => {

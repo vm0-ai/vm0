@@ -26,12 +26,17 @@ export const fetchDownloadExtra$ = command(
       accept(
         get(zeroClient$)(zeroRunContextContract).getContext({
           params: { id: runId },
+          fetchOptions: { signal: _signal },
         }),
         [200],
       ).then((r) => {
         return r.body;
       }),
-      fetchAllNetworkLogs(get(zeroClient$)(zeroRunNetworkLogsContract), runId),
+      fetchAllNetworkLogs(
+        get(zeroClient$)(zeroRunNetworkLogsContract),
+        runId,
+        _signal,
+      ),
     ]);
 
     if (contextResult.status === "fulfilled" && contextResult.value) {

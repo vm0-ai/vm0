@@ -11,9 +11,10 @@ import {
 import { updateSearchParams$ } from "../../route.ts";
 import { setMockSlackConnectData } from "../../../mocks/handlers/api-integrations-slack-connect.ts";
 import { zeroSlackConnectContract } from "@vm0/core";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 // The signal code sets window.location.href = "slack://open" on success,
 // which changes happy-dom's location and corrupts subsequent tests.

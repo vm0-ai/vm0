@@ -13,10 +13,11 @@ import {
   zeroAgentsByIdContract,
   zeroUserConnectorsContract,
 } from "@vm0/core";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 describe("connectors", () => {
   it("should show gmail connector without any feature switch", async () => {

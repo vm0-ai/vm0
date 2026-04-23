@@ -8,9 +8,10 @@ import {
   zeroUserPreferencesContract,
 } from "@vm0/core";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 function createMockPreferences(
   overrides?: Partial<UserPreferencesResponse>,

@@ -57,11 +57,15 @@ export interface GroupedChatMessageGroup {
 async function createChatThread(
   createClient: ZeroClientFactory,
   agentId: string,
+  signal: AbortSignal,
   title?: string,
 ): Promise<{ id: string; title: string | null }> {
   const client = createClient(chatThreadsContract);
   const result = await accept(
-    client.create({ body: { agentId, ...(title ? { title } : {}) } }),
+    client.create({
+      body: { agentId, ...(title ? { title } : {}) },
+      fetchOptions: { signal },
+    }),
     [201],
   );
   return { id: result.body.id, title: result.body.title };
@@ -95,7 +99,7 @@ export const createNewChatThread$ = command(
   async (
     { get, set },
     agentComposeId: string | null,
-    _signal: AbortSignal,
+    signal: AbortSignal,
   ): Promise<string | null> => {
     const resolvedComposeId =
       agentComposeId ?? (await get(zeroOnboardingStatus$)).defaultAgentId;
@@ -108,7 +112,11 @@ export const createNewChatThread$ = command(
     set(startNewZeroSession$);
 
     const createClient = get(zeroClient$);
-    const thread = await createChatThread(createClient, resolvedComposeId);
+    const thread = await createChatThread(
+      createClient,
+      resolvedComposeId,
+      signal,
+    );
 
     set(reloadChatThreads$);
     return thread.id;

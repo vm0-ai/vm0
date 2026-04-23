@@ -15,9 +15,10 @@ import {
   onboardingSetupContract,
   onboardingCompleteContract,
 } from "@vm0/core";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 const MOCK_AGENT_ID = "d0000000-0000-4000-a000-000000000001";
 const MOCK_MEMBER_AGENT_ID = "c0000000-0000-4000-a000-000000000001";

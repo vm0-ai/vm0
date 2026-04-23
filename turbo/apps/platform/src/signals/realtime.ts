@@ -38,11 +38,13 @@ interface ReadyDeferred {
 const realtimeReadyDeferred$ = state<ReadyDeferred | null>(null);
 
 function createReadyDeferred(): ReadyDeferred {
-  let resolve: () => void = () => {};
-  const promise = new Promise<void>((_resolve) => {
-    resolve = _resolve;
-  });
-  return { promise, resolve };
+  const deferred = Promise.withResolvers<void>();
+  return {
+    promise: deferred.promise,
+    resolve: () => {
+      deferred.resolve();
+    },
+  };
 }
 
 export const awaitRealtimeReady$ = command(
@@ -52,24 +54,21 @@ export const awaitRealtimeReady$ = command(
       deferred = createReadyDeferred();
       set(realtimeReadyDeferred$, deferred);
     }
-    const readyPromise = deferred.promise;
-    await new Promise<void>((resolve, reject) => {
-      const onAbort = () => {
+    const abortDeferred = Promise.withResolvers<void>();
+    const onAbort = () => {
+      abortDeferred.reject(signal.reason);
+    };
+    if (signal.aborted) {
+      onAbort();
+    } else {
+      signal.addEventListener("abort", onAbort, { once: true });
+    }
+    await Promise.race([deferred.promise, abortDeferred.promise]).finally(
+      () => {
         signal.removeEventListener("abort", onAbort);
-        reject(signal.reason);
-      };
-      if (signal.aborted) {
-        onAbort();
-        return;
-      }
-      signal.addEventListener("abort", onAbort);
-      readyPromise
-        .then(() => {
-          signal.removeEventListener("abort", onAbort);
-          resolve();
-        })
-        .catch(reject);
-    });
+      },
+    );
+    signal.throwIfAborted();
   },
 );
 
@@ -84,9 +83,16 @@ export const setupRealtime$ = command(
 
     // Health-check the token endpoint so bootstrap surfaces auth errors
     // before handing the session over to the Ably SDK.
-    await accept(client.create({ body: {} }), [200], {
-      toast: false,
-    });
+    await accept(
+      client.create({
+        body: {},
+        fetchOptions: { signal },
+      }),
+      [200],
+      {
+        toast: false,
+      },
+    );
     signal.throwIfAborted();
 
     const ably = new Realtime({

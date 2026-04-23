@@ -210,6 +210,7 @@ const appendItem$ = command(
       client.appendItem({
         params: { id: sid },
         body: { role, content, realtimeItemId },
+        fetchOptions: { signal },
       }),
       [200, 400, 401, 404],
       { toast: false },
@@ -270,6 +271,7 @@ const handleTalkerToolCall$ = command(
       client.createTask({
         params: { id: sid },
         body: { prompt, callId },
+        fetchOptions: { signal },
       }),
       [200, 400, 401, 404],
       { toast: false },
@@ -567,16 +569,31 @@ const startAblyLoop$ = command(
           client.readItems({
             params: { id: sid },
             query: { sinceSeq: get(internalTaskResultsSinceSeq$) },
+            fetchOptions: { signal: loopSignal },
           }),
           [200, 401, 404],
           { toast: false },
         ),
-        accept(client.listTasks({ params: { id: sid } }), [200, 401, 404], {
-          toast: false,
-        }),
-        accept(client.getSession({ params: { id: sid } }), [200, 401, 404], {
-          toast: false,
-        }),
+        accept(
+          client.listTasks({
+            params: { id: sid },
+            fetchOptions: { signal: loopSignal },
+          }),
+          [200, 401, 404],
+          {
+            toast: false,
+          },
+        ),
+        accept(
+          client.getSession({
+            params: { id: sid },
+            fetchOptions: { signal: loopSignal },
+          }),
+          [200, 401, 404],
+          {
+            toast: false,
+          },
+        ),
       ]);
       loopSignal.throwIfAborted();
 
@@ -728,7 +745,10 @@ export const startVoiceChatCandidate$ = command(
     // createSession is get-or-create on the server side: same (userId,
     // agentId) returns the existing session row, so this doubles as resume.
     const res = await accept(
-      client.createSession({ body: { agentId } }),
+      client.createSession({
+        body: { agentId },
+        fetchOptions: { signal },
+      }),
       [200, 400, 401, 403],
       { toast: false },
     );
@@ -752,12 +772,16 @@ export const startVoiceChatCandidate$ = command(
         client.readItems({
           params: { id: session.id },
           query: {},
+          fetchOptions: { signal },
         }),
         [200, 401, 404],
         { toast: false },
       ),
       accept(
-        client.listTasks({ params: { id: session.id } }),
+        client.listTasks({
+          params: { id: session.id },
+          fetchOptions: { signal },
+        }),
         [200, 401, 404],
         { toast: false },
       ),
@@ -775,7 +799,10 @@ export const startVoiceChatCandidate$ = command(
     }
 
     const tokenRes = await accept(
-      client.token({ body: { model: TALKER_MODEL } }),
+      client.token({
+        body: { model: TALKER_MODEL },
+        fetchOptions: { signal },
+      }),
       [200, 401, 403, 500, 503],
       { toast: false },
     );

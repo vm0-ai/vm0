@@ -7,7 +7,7 @@ import type {
   LogEntry,
   LogsListResponse,
 } from "../../../signals/zero-page/log-types.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
   logsListContract,
   logsByIdContract,
@@ -15,6 +15,7 @@ import {
 } from "@vm0/core";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 function makeLog(overrides: Partial<LogEntry> = {}): LogEntry {
   return {

@@ -59,7 +59,13 @@ export const setMemberCreditCap$ = command(
   ) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroMemberCreditCapContract);
-    await accept(client.set({ body: params }), [200]);
+    await accept(
+      client.set({
+        body: params,
+        fetchOptions: { signal: _signal },
+      }),
+      [200],
+    );
     set(memberCreditCapsReload$, (x) => {
       return x + 1;
     });

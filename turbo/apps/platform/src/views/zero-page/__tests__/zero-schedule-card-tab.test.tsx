@@ -15,11 +15,12 @@ import {
   click,
 } from "../../../__tests__/page-helper.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 import { setMockSchedules } from "../../../mocks/handlers/api-schedules.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 const AGENT_ID = "e0000000-0000-4000-a000-000000000010";
 
 function defaultSchedule(

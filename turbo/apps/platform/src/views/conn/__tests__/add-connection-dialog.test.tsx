@@ -20,9 +20,10 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { setSelectedConnectorType$ } from "../../../signals/zero-page/settings/connectors.ts";
 import { mockConnectors } from "../../zero-page/__tests__/zero-connectors-page-test-helpers.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 async function openConnectModal(connectorType: ConnectorType) {
   detachedSetupPage({ context, path: "/connectors" });
@@ -90,7 +91,7 @@ describe("connect modal - loading states", () => {
     // subsequent polling calls so the polling loop stays in flight.
     let callCount = 0;
     server.use(
-      mockApi(zeroConnectorsMainContract.list, ({ respond }) => {
+      mockApi(zeroConnectorsMainContract.list, ({ respond, never }) => {
         callCount++;
         if (callCount === 1) {
           return respond(200, {
@@ -99,9 +100,7 @@ describe("connect modal - loading states", () => {
             connectorProvidedSecretNames: [],
           });
         }
-        return new Promise<never>(() => {
-          // Never resolves — keeps polling in flight
-        });
+        return never();
       }),
     );
 

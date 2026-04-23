@@ -58,7 +58,13 @@ export const createCustomConnector$ = command(
   ): Promise<CustomConnectorResponse> => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroCustomConnectorsContract);
-    const result = await accept(client.create({ body }), [201]);
+    const result = await accept(
+      client.create({
+        body,
+        fetchOptions: { signal: _signal },
+      }),
+      [201],
+    );
     set(bumpReload$);
     toast.success(`Created "${result.body.displayName}"`);
     return result.body;
@@ -69,7 +75,13 @@ export const deleteCustomConnector$ = command(
   async ({ get, set }, id: string, _signal: AbortSignal): Promise<void> => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroCustomConnectorByIdContract);
-    await accept(client.delete({ params: { id } }), [204]);
+    await accept(
+      client.delete({
+        params: { id },
+        fetchOptions: { signal: _signal },
+      }),
+      [204],
+    );
     set(bumpReload$);
     toast.success("Custom connector deleted");
   },
@@ -87,6 +99,7 @@ export const renameCustomConnector$ = command(
       client.patch({
         params: { id: args.id },
         body: { displayName: args.displayName },
+        fetchOptions: { signal: _signal },
       }),
       [200],
     );
@@ -108,6 +121,7 @@ export const setCustomConnectorSecret$ = command(
       client.set({
         params: { id: args.id },
         body: { value: args.value },
+        fetchOptions: { signal: _signal },
       }),
       [204],
     );
@@ -120,7 +134,13 @@ export const clearCustomConnectorSecret$ = command(
   async ({ get, set }, id: string, _signal: AbortSignal): Promise<void> => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroCustomConnectorSecretContract);
-    await accept(client.delete({ params: { id } }), [204]);
+    await accept(
+      client.delete({
+        params: { id },
+        fetchOptions: { signal: _signal },
+      }),
+      [204],
+    );
     set(bumpReload$);
     toast.success("Disconnected");
   },

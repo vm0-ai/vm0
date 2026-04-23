@@ -6,7 +6,7 @@ import {
   setMockSchedules,
   createMockScheduleResponse,
 } from "../../../mocks/handlers/api-schedules.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
   zeroSchedulesMainContract,
   zeroSchedulesByNameContract,
@@ -42,6 +42,7 @@ import {
 } from "../zero-job-detail";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 function mockAgentResponse() {
   return {

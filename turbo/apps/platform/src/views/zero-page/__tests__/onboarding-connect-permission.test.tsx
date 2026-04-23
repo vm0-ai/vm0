@@ -14,10 +14,11 @@ import {
   onboardingStatusContract,
   onboardingSetupContract,
 } from "@vm0/core";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { triggerAblyEvent, hasSubscription } from "../../../mocks/ably.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 function makeGithubConnectedResponse(): ConnectorListResponse {
   return {

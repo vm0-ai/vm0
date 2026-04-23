@@ -21,10 +21,11 @@ import {
   setScheduleRunStatusFilter$,
   scheduleRunAvailableStatuses$,
 } from "../schedule-run-history.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { logsListContract } from "@vm0/core";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 function emptyLogsResponse(): LogsListResponse {
   return {

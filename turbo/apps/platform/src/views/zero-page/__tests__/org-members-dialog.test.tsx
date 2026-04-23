@@ -13,9 +13,10 @@ import {
   resetMockOrgMembers,
 } from "../../../mocks/handlers/api-org-members.ts";
 import { zeroOrgMembersContract, zeroOrgInviteContract } from "@vm0/core";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 const adminMember = {
   userId: "test-user-123",
@@ -71,11 +72,13 @@ describe("org members - invite dialog loading state", () => {
 
     setupMembersAPI();
     server.use(
-      mockApi(zeroOrgInviteContract.invite, ({ respond }) => {
-        return new Promise((resolve) => {
-          resolveInvite = () => {
-            resolve(respond(200, { message: "ok" }));
-          };
+      mockApi(zeroOrgInviteContract.invite, ({ respond, deferred }) => {
+        const gate = deferred<void>();
+        resolveInvite = () => {
+          gate.resolve();
+        };
+        return gate.promise.then(() => {
+          return respond(200, { message: "ok" });
         });
       }),
     );
@@ -125,11 +128,13 @@ describe("org members - invite dialog loading state", () => {
 
     setupMembersAPI();
     server.use(
-      mockApi(zeroOrgInviteContract.invite, ({ respond }) => {
-        return new Promise((resolve) => {
-          resolveInvite = () => {
-            resolve(respond(200, { message: "ok" }));
-          };
+      mockApi(zeroOrgInviteContract.invite, ({ respond, deferred }) => {
+        const gate = deferred<void>();
+        resolveInvite = () => {
+          gate.resolve();
+        };
+        return gate.promise.then(() => {
+          return respond(200, { message: "ok" });
         });
       }),
     );
@@ -253,11 +258,13 @@ describe("org members - role change loading state", () => {
 
     setupMembersAPI([adminMember, regularMember]);
     server.use(
-      mockApi(zeroOrgMembersContract.updateRole, ({ respond }) => {
-        return new Promise((resolve) => {
-          resolveRoleChange = () => {
-            resolve(respond(200, { message: "Role updated" }));
-          };
+      mockApi(zeroOrgMembersContract.updateRole, ({ respond, deferred }) => {
+        const gate = deferred<void>();
+        resolveRoleChange = () => {
+          gate.resolve();
+        };
+        return gate.promise.then(() => {
+          return respond(200, { message: "Role updated" });
         });
       }),
     );

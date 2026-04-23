@@ -791,17 +791,16 @@ function createRunTracking(
 
       // Mark thread as read on open (focus-gated)
       if (document.visibilityState !== "visible") {
-        await new Promise<void>((resolve) => {
-          const handler = () => {
-            if (document.visibilityState === "visible") {
-              document.removeEventListener("visibilitychange", handler);
-              resolve();
-            }
-          };
-          document.addEventListener("visibilitychange", handler, {
-            signal,
-          });
+        const visibleDeferred = createDeferredPromise<void>(signal);
+        const handler = () => {
+          if (document.visibilityState === "visible") {
+            visibleDeferred.resolve();
+          }
+        };
+        document.addEventListener("visibilitychange", handler, {
+          signal,
         });
+        await visibleDeferred.promise;
         signal.throwIfAborted();
       }
       await set(markThreadRead$, signal);

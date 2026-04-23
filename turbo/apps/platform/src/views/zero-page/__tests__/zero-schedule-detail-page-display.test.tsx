@@ -2,12 +2,13 @@ import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { createDeferredPromise } from "../../../signals/utils.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import {
   setMockSchedules,
   createMockScheduleResponse,
 } from "../../../mocks/handlers/api-schedules.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
   chatThreadsContract,
   logsListContract,
@@ -16,6 +17,7 @@ import {
 } from "@vm0/core";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 const SCHEDULE_ID = "f0000001-0000-4000-a000-000000000001";
 
@@ -75,14 +77,11 @@ describe("zero schedule detail page - enabled/disabled state (SCHED-D-013)", () 
 
 describe("zero schedule detail page - toggle loading state (SCHED-D-014)", () => {
   it("should show loading state on the status switch while toggling", async () => {
-    let resolveToggle!: () => void;
-    const togglePending = new Promise<void>((resolve) => {
-      resolveToggle = resolve;
-    });
+    const toggleDeferred = createDeferredPromise<void>(context.signal);
 
     server.use(
       mockApi(zeroSchedulesEnableContract.disable, async ({ respond }) => {
-        await togglePending;
+        await toggleDeferred.promise;
         return respond(
           200,
           createMockScheduleResponse({ displayName: "Zero" }),
@@ -105,7 +104,7 @@ describe("zero schedule detail page - toggle loading state (SCHED-D-014)", () =>
       expect(screen.getByRole("switch")).toBeDisabled();
     });
 
-    resolveToggle();
+    toggleDeferred.resolve();
 
     await waitFor(() => {
       expect(screen.getByRole("switch")).not.toBeDisabled();

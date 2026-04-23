@@ -15,9 +15,10 @@ import { orgManageTab$, inviteMember$ } from "../org-manage-tabs-state.ts";
 import { searchParams$ } from "../../../route.ts";
 import { setMockOrg } from "../../../../mocks/handlers/api-org.ts";
 import { zeroOrgInviteContract } from "@vm0/core";
-import { mockApi } from "../../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../../mocks/msw-contract.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 function setupAuth(signal: AbortSignal) {
   mockUser(

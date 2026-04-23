@@ -10,7 +10,7 @@ import {
   fill,
   click,
 } from "../../../__tests__/page-helper.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
   mockChatLifecycle,
   sendMessageInUI,
@@ -19,6 +19,7 @@ import {
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 function mockChatAPI() {
   server.use();
