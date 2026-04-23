@@ -4,7 +4,6 @@ import {
   IconCalendar,
   IconBrandSlack,
   IconMail,
-  IconMicrophone,
   IconRobot,
   IconArchive,
 } from "@tabler/icons-react";
@@ -51,13 +50,6 @@ function getTaskTypeConfig(type: TaskType): {
         label: "Email",
         icon: IconMail,
         iconClassName: "text-amber-500",
-      };
-    }
-    case "voice_chat": {
-      return {
-        label: "Voice Chat",
-        icon: IconMicrophone,
-        iconClassName: "text-rose-500",
       };
     }
     case "agent": {

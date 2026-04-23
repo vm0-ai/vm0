@@ -42,6 +42,13 @@ export interface ChatSpanDimensions {
   model_selection_present?: boolean;
   thread_length?: number;
   thread_is_new?: boolean;
+  /**
+   * "claims" when Round 1 used Clerk session claims to build user info,
+   * "cache" when it fell back to `getCachedUser`. Lets Axiom split the
+   * `create_run_round1_cached_user` span by source to measure short-circuit
+   * hit rate after rollout.
+   */
+  user_info_source?: "claims" | "cache";
 }
 
 /**
