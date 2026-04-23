@@ -198,22 +198,24 @@ describe("permissions dialog - grouped connector (Slack)", () => {
   });
 
   it("should highlight Allow at group level when all permissions in group are allow", async () => {
-    // Default policies are all "allow" when not specified
     mockAPIs();
     detachedSetupPage({ context, path: "/agents/my-agent" });
     await openPermissionsDrawer();
 
+    const readButton = screen.getByText(/Read \(\d+\)/i);
+    const readRow = readButton.closest(
+      ".flex.items-center.justify-between",
+    ) as HTMLElement;
+
+    const pillButtons = within(readRow).getAllByRole("button");
+    const allowBtn = pillButtons.find((b) => {
+      return b.textContent?.includes("Allow") ?? false;
+    });
+
+    // Click Allow to ensure the group is explicitly set to "allow"
+    click(allowBtn!);
+
     await waitFor(() => {
-      const readButton = screen.getByText(/Read \(\d+\)/i);
-      const readRow = readButton.closest(
-        ".flex.items-center.justify-between",
-      ) as HTMLElement;
-
-      const pillButtons = within(readRow).getAllByRole("button");
-      const allowBtn = pillButtons.find((b) => {
-        return b.textContent?.includes("Allow") ?? false;
-      });
-
       expect(allowBtn!.className).toContain("bg-emerald");
     });
   });
