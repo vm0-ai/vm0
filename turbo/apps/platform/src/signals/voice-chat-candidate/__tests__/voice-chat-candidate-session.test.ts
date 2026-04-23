@@ -518,6 +518,7 @@ describe("voice-chat-candidate session", () => {
 
     it("truncates the current assistant audio when user speech starts", async () => {
       await setup();
+      const appendCalls = mockAppendItemOk();
       await startSuccessfully();
 
       dcRef.current?.send.mockClear();
@@ -535,8 +536,13 @@ describe("voice-chat-candidate session", () => {
         },
       });
 
-      audioRef.current.currentTime = 13.579;
       dcRef.current?.emitMessage({
+        type: "response.audio_transcript.delta",
+        delta: "hello there",
+      });
+
+      audioRef.current.currentTime = 13.579;
+      await dcRef.current?.emitMessage({
         type: "input_audio_buffer.speech_started",
       });
 
@@ -549,6 +555,19 @@ describe("voice-chat-candidate session", () => {
         item_id: "rt-asst-live",
         content_index: 0,
         audio_end_ms: 1234,
+      });
+      await vi.waitFor(() => {
+        expect(appendCalls).toHaveLength(1);
+      });
+      expect(appendCalls[0]).toStrictEqual({
+        role: "system_note",
+        content: JSON.stringify({
+          type: "assistant_interrupted",
+          assistantRealtimeItemId: "rt-asst-live",
+          heardText: "hello there",
+          audioEndMs: 1234,
+        }),
+        realtimeItemId: "truncate:rt-asst-live",
       });
     });
   });

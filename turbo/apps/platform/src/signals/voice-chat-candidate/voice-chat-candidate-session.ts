@@ -158,6 +158,7 @@ const internalAudioEl$ = state<HTMLAudioElement | null>(null);
 const internalCurrentAssistantAudioItem$ = state<{
   itemId: string;
   startedAtMs: number;
+  transcript: string;
 } | null>(null);
 const internalWakeLock$ = state<WakeLockSentinel | null>(null);
 const internalParentSignal$ = state<AbortSignal | null>(null);
@@ -332,11 +333,12 @@ type RealtimeDCEvent = {
 };
 
 const handleAudioTranscriptDone$ = command(
-  async ({ set }, event: RealtimeDCEvent, signal: AbortSignal) => {
+  async ({ get, set }, event: RealtimeDCEvent, signal: AbortSignal) => {
     const finalText = event.transcript ?? "";
     const responseId = event.response_id ?? "";
     const itemId =
       event.item_id ??
+      get(internalCurrentAssistantAudioItem$)?.itemId ??
       (responseId ? `${responseId}:${finalText.length.toString()}` : null);
     if (finalText.trim() && itemId) {
       await set(appendItem$, "assistant", finalText, itemId, signal);
@@ -349,6 +351,24 @@ const handleInputAudioTranscriptionCompleted$ = command(
     if (event.transcript && event.item_id) {
       await set(appendItem$, "user", event.transcript, event.item_id, signal);
     }
+  },
+);
+
+const handleAudioTranscriptDelta$ = command(
+  ({ set }, event: RealtimeDCEvent) => {
+    const deltaText = event.delta ?? "";
+    if (!deltaText) {
+      return;
+    }
+    set(internalCurrentAssistantAudioItem$, (prev) => {
+      if (!prev) {
+        return prev;
+      }
+      return {
+        ...prev,
+        transcript: prev.transcript + deltaText,
+      };
+    });
   },
 );
 
@@ -367,34 +387,50 @@ const handleConversationItemCreated$ = command(
     set(internalCurrentAssistantAudioItem$, {
       itemId: event.item.id,
       startedAtMs: currentAudioPositionMs(get(internalAudioEl$)),
+      transcript: "",
     });
   },
 );
 
-const truncateCurrentAssistantAudio$ = command(({ get, set }) => {
-  const dc = get(internalDc$);
-  const audioEl = get(internalAudioEl$);
-  const current = get(internalCurrentAssistantAudioItem$);
-  if (!dc || dc.readyState !== "open" || !audioEl || !current) {
-    return;
-  }
+const truncateCurrentAssistantAudio$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const dc = get(internalDc$);
+    const audioEl = get(internalAudioEl$);
+    const current = get(internalCurrentAssistantAudioItem$);
+    if (!dc || dc.readyState !== "open" || !audioEl || !current) {
+      return;
+    }
 
-  const playedMs = Math.max(
-    0,
-    currentAudioPositionMs(audioEl) - current.startedAtMs,
-  );
+    const playedMs = Math.max(
+      0,
+      currentAudioPositionMs(audioEl) - current.startedAtMs,
+    );
 
-  audioEl.pause();
-  dc.send(
-    JSON.stringify({
-      type: "conversation.item.truncate",
-      item_id: current.itemId,
-      content_index: 0,
-      audio_end_ms: playedMs,
-    }),
-  );
-  set(internalCurrentAssistantAudioItem$, null);
-});
+    audioEl.pause();
+    dc.send(
+      JSON.stringify({
+        type: "conversation.item.truncate",
+        item_id: current.itemId,
+        content_index: 0,
+        audio_end_ms: playedMs,
+      }),
+    );
+    const note = JSON.stringify({
+      type: "assistant_interrupted",
+      assistantRealtimeItemId: current.itemId,
+      heardText: current.transcript.trim(),
+      audioEndMs: playedMs,
+    });
+    await set(
+      appendItem$,
+      "system_note",
+      note,
+      `truncate:${current.itemId}`,
+      signal,
+    );
+    set(internalCurrentAssistantAudioItem$, null);
+  },
+);
 
 const handleDCMessage$ = command(
   async ({ set }, data: string, signal: AbortSignal) => {
@@ -409,8 +445,12 @@ const handleDCMessage$ = command(
         await set(handleInputAudioTranscriptionCompleted$, event, signal);
         break;
       }
+      case "response.audio_transcript.delta": {
+        set(handleAudioTranscriptDelta$, event);
+        break;
+      }
       case "input_audio_buffer.speech_started": {
-        set(truncateCurrentAssistantAudio$);
+        await set(truncateCurrentAssistantAudio$, signal);
         break;
       }
       case "response.audio_transcript.done": {
