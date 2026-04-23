@@ -55,4 +55,5 @@ export enum FeatureSwitchKey {
   Vm0DeepseekModel = "vm0DeepseekModel",
   PlatformConnectors = "platformConnectors",
   Trinity = "trinity",
+  ZapierConnector = "zapierConnector",
 }
