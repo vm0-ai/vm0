@@ -1774,8 +1774,8 @@ class TestErrorHandler:
         assert mock_opener.open.called
         payloads = [json.loads(call[0][0].data) for call in mock_opener.open.call_args_list]
         by_cat = {p["category"]: p["quantity"] for p in payloads}
-        assert by_cat["tweet.read"] == 23
-        assert by_cat["users.read"] == 5
+        assert by_cat["posts.read"] == 23
+        assert by_cat["user.read"] == 5
 
     def test_full_pipeline_stream_error_midflight(
         self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor
@@ -1829,8 +1829,8 @@ class TestErrorHandler:
         # 4. Billing must reflect the 2 complete tweets (partial 3rd is dropped)
         payloads = [json.loads(call[0][0].data) for call in mock_opener.open.call_args_list]
         by_cat = {p["category"]: p["quantity"] for p in payloads}
-        assert by_cat["tweet.read"] == 2  # not 3 — partial trailing dropped
-        assert by_cat["users.read"] == 1
+        assert by_cat["posts.read"] == 2  # not 3 — partial trailing dropped
+        assert by_cat["user.read"] == 1
 
 
 class TestReportModelProviderUsage:
@@ -2075,7 +2075,7 @@ class TestReportConnectorUsage:
             real_flow, tmp_path, path="/2/tweets/1", body=body, rule="GET /2/tweets/{id}"
         )
         p = self._call_and_get_single_billing(flow)
-        assert p["category"] == "tweet.read"
+        assert p["category"] == "posts.read"
         assert p["quantity"] == 1
 
     def test_logs_batch_ids(self, tmp_path, real_flow):
@@ -2083,7 +2083,7 @@ class TestReportConnectorUsage:
         body = json.dumps({"data": [{"id": "1"}, {"id": "2"}, {"id": "3"}]}).encode()
         flow = self._make_x_flow(real_flow, tmp_path, query="ids=1,2,3", body=body)
         p = self._call_and_get_single_billing(flow)
-        assert p["category"] == "tweet.read"
+        assert p["category"] == "posts.read"
         assert p["quantity"] == 3
 
     def test_logs_batch_ids_with_deletions(self, tmp_path, real_flow):
@@ -2091,7 +2091,7 @@ class TestReportConnectorUsage:
         body = json.dumps({"data": [{"id": "1"}, {"id": "3"}]}).encode()
         flow = self._make_x_flow(real_flow, tmp_path, query="ids=1,2,3", body=body)
         p = self._call_and_get_single_billing(flow)
-        assert p["category"] == "tweet.read"
+        assert p["category"] == "posts.read"
         assert p["quantity"] == 2
 
     def test_logs_expansions_includes(self, tmp_path, real_flow):
@@ -2113,10 +2113,10 @@ class TestReportConnectorUsage:
         )
         payloads = self._call_and_get_billing(flow)
         by_cat = {p["category"]: p["quantity"] for p in payloads}
-        assert by_cat == {"tweet.read": 1, "users.read": 1, "media.read": 2}
+        assert by_cat == {"posts.read": 1, "user.read": 1, "media.read": 2}
 
-    def test_logs_empty_search_bills_zero(self, tmp_path, real_flow):
-        """Search returning zero results bills 0."""
+    def test_empty_search_emits_no_billing(self, tmp_path, real_flow):
+        """Search returning zero results emits no usage_event row."""
         body = json.dumps({"data": [], "meta": {"result_count": 0}}).encode()
         flow = self._make_x_flow(
             real_flow,
@@ -2126,12 +2126,12 @@ class TestReportConnectorUsage:
             body=body,
             rule="GET /2/tweets/search/recent",
         )
-        p = self._call_and_get_single_billing(flow)
-        assert p["category"] == "tweet.read"
-        assert p["quantity"] == 0
+        payloads = self._call_and_get_billing(flow)
+        assert payloads == []
 
-    def test_soft_error_bills_zero(self, tmp_path, real_flow):
-        """HTTP 200 + errors array + no data field -> bills 0 (issue #9620)."""
+    def test_soft_error_emits_no_billing(self, tmp_path, real_flow):
+        """HTTP 200 + errors array + no data field emits no usage_event
+        row (issue #9620)."""
         body = json.dumps(
             {
                 "errors": [
@@ -2153,12 +2153,12 @@ class TestReportConnectorUsage:
             body=body,
             rule="GET /2/tweets/{id}",
         )
-        p = self._call_and_get_single_billing(flow)
-        assert p["category"] == "tweet.read"
-        assert p["quantity"] == 0
+        payloads = self._call_and_get_billing(flow)
+        assert payloads == []
 
-    def test_zero_result_search_with_max_results_bills_zero(self, tmp_path, real_flow):
-        """Search with max_results=10 returning 0 results -> bills 0 (issue #9620)."""
+    def test_zero_result_search_with_max_results_emits_no_billing(self, tmp_path, real_flow):
+        """Search with max_results=10 returning 0 results emits no
+        usage_event row (issue #9620)."""
         body = json.dumps({"meta": {"result_count": 0, "newest_id": None}}).encode()
         flow = self._make_x_flow(
             real_flow,
@@ -2168,9 +2168,8 @@ class TestReportConnectorUsage:
             body=body,
             rule="GET /2/tweets/search/recent",
         )
-        p = self._call_and_get_single_billing(flow)
-        assert p["category"] == "tweet.read"
-        assert p["quantity"] == 0
+        payloads = self._call_and_get_billing(flow)
+        assert payloads == []
 
     def test_logs_expansions_users_and_referenced_tweets(self, tmp_path, real_flow):
         """includes.users and includes.tweets produce two billing payloads."""
@@ -2192,12 +2191,14 @@ class TestReportConnectorUsage:
         payloads = self._call_and_get_billing(flow)
         by_cat = {p["category"]: p["quantity"] for p in payloads}
         assert by_cat == {
-            "tweet.read": 3,  # 1 primary + 2 referenced tweets
-            "users.read": 2,
+            "posts.read": 3,  # 1 primary + 2 referenced tweets
+            "user.read": 2,
         }
 
     def test_handles_unknown_includes_key(self, tmp_path, real_flow):
-        """Unknown includes.<key> types get a synthetic <key>.read billing key."""
+        """Unknown includes.<key> types emit a synthetic ``includes.<key>``
+        category (the billing processor applies a server-side fallback
+        price) and emit a warn log at the decision point."""
         body = json.dumps(
             {
                 "data": [{"id": "1"}],
@@ -2210,11 +2211,19 @@ class TestReportConnectorUsage:
         flow = self._make_x_flow(real_flow, tmp_path, query="expansions=author_id", body=body)
         payloads = self._call_and_get_billing(flow)
         by_cat = {p["category"]: p["quantity"] for p in payloads}
+        # 1 primary (posts.read) + 1 users include (mapped to user.read)
+        # + 3 unknown-widget includes (emitted as `includes.future_widget`).
         assert by_cat == {
-            "tweet.read": 1,
-            "users.read": 1,
-            "future_widget.read": 3,
+            "posts.read": 1,
+            "user.read": 1,
+            "includes.future_widget": 3,
         }
+        proxy_log = tmp_path / "proxy.jsonl"
+        assert proxy_log.exists()
+        content = proxy_log.read_text()
+        assert "future_widget" in content
+        assert "unrecognised" in content.lower()
+        assert '"level":"warn"' in content or '"level": "warn"' in content
 
     def test_logs_search_meta_result_count(self, tmp_path, real_flow):
         """Search response with meta.result_count -> quantity=20."""
@@ -2234,7 +2243,7 @@ class TestReportConnectorUsage:
             rule="GET /2/tweets/search/recent",
         )
         p = self._call_and_get_single_billing(flow)
-        assert p["category"] == "tweet.read"
+        assert p["category"] == "posts.read"
         assert p["quantity"] == 20
 
     def test_logs_users_by_usernames_batch(self, tmp_path, real_flow):
@@ -2252,7 +2261,7 @@ class TestReportConnectorUsage:
             rule="GET /2/users/by",
         )
         p = self._call_and_get_single_billing(flow)
-        assert p["category"] == "users.read"
+        assert p["category"] == "user.read"
         assert p["quantity"] == 2
 
     def test_logs_tweet_counts_total_tweet_count(self, tmp_path, real_flow):
@@ -2275,7 +2284,7 @@ class TestReportConnectorUsage:
             rule="GET /2/tweets/counts/recent",
         )
         p = self._call_and_get_single_billing(flow)
-        assert p["category"] == "tweet.read"
+        assert p["category"] == "posts.read"
         assert p["quantity"] == 12567
 
     def test_handles_gzip_body(self, tmp_path, real_flow):
@@ -2284,11 +2293,12 @@ class TestReportConnectorUsage:
         body = gzip.compress(raw)
         flow = self._make_x_flow(real_flow, tmp_path, body=body, content_encoding="gzip")
         p = self._call_and_get_single_billing(flow)
-        assert p["category"] == "tweet.read"
+        assert p["category"] == "posts.read"
         assert p["quantity"] == 1
 
     def test_logs_write_operation_charges_one(self, tmp_path, real_flow):
-        """POST /2/tweets -> category=tweet.write, quantity=1."""
+        """POST /2/tweets (no request body parsed) -> stay on the expensive
+        with_url bucket, quantity=1."""
         body = json.dumps({"data": {"id": "99", "text": "new tweet"}}).encode()
         flow = self._make_x_flow(
             real_flow,
@@ -2301,11 +2311,113 @@ class TestReportConnectorUsage:
         )
         flow.request.method = "POST"
         p = self._call_and_get_single_billing(flow)
-        assert p["category"] == "tweet.write"
+        assert p["category"] == "content.create_with_url"
         assert p["quantity"] == 1
 
+    def test_tweet_create_plain_text_downgrades_to_content_create(self, tmp_path, real_flow):
+        """POST /2/tweets with text only (no URL, no quote, no media)
+        downgrades to the cheaper Content: Create bucket."""
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            path="/2/tweets",
+            body=json.dumps({"data": {"id": "1"}}).encode(),
+            status=201,
+            permission="tweet.write",
+            rule="POST /2/tweets",
+        )
+        flow.request.method = "POST"
+        flow.request.content = json.dumps({"text": "hello world"}).encode()
+        p = self._call_and_get_single_billing(flow)
+        assert p["category"] == "content.create"
+        assert p["quantity"] == 1
+
+    def test_tweet_create_with_url_stays_on_with_url_bucket(self, tmp_path, real_flow):
+        """POST /2/tweets whose text contains a URL stays on the
+        Content: Create (with URL) bucket."""
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            path="/2/tweets",
+            body=json.dumps({"data": {"id": "1"}}).encode(),
+            status=201,
+            permission="tweet.write",
+            rule="POST /2/tweets",
+        )
+        flow.request.method = "POST"
+        flow.request.content = json.dumps({"text": "check https://example.com"}).encode()
+        p = self._call_and_get_single_billing(flow)
+        assert p["category"] == "content.create_with_url"
+        assert p["quantity"] == 1
+
+    def test_tweet_create_quote_or_media_stays_on_with_url_bucket(self, tmp_path, real_flow):
+        """Quote tweets and attached media both render as link previews;
+        we stay on the expensive bucket even when the text has no URL."""
+        for req_body in [
+            # quote tweet
+            json.dumps({"text": "nice", "quote_tweet_id": "abc"}).encode(),
+            # attached media
+            json.dumps({"text": "pic", "media": {"media_ids": ["42"]}}).encode(),
+        ]:
+            flow = self._make_x_flow(
+                real_flow,
+                tmp_path,
+                path="/2/tweets",
+                body=json.dumps({"data": {"id": "1"}}).encode(),
+                status=201,
+                permission="tweet.write",
+                rule="POST /2/tweets",
+            )
+            flow.request.method = "POST"
+            flow.request.content = req_body
+            p = self._call_and_get_single_billing(flow)
+            assert p["category"] == "content.create_with_url"
+
+    def test_tweet_create_unparseable_body_stays_conservative(self, tmp_path, real_flow):
+        """A malformed request body keeps billing on the max bucket so
+        we never under-charge on parse failure."""
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            path="/2/tweets",
+            body=json.dumps({"data": {"id": "1"}}).encode(),
+            status=201,
+            permission="tweet.write",
+            rule="POST /2/tweets",
+        )
+        flow.request.method = "POST"
+        flow.request.content = b"not valid json at all"
+        p = self._call_and_get_single_billing(flow)
+        assert p["category"] == "content.create_with_url"
+
+    def test_query_string_does_not_break_literal_suffix_override(self, tmp_path, real_flow):
+        """``flow.request.path`` from mitmproxy includes the query string;
+        literal-suffix overrides (e.g. ``/2/tweets/{id}/retweeted_by``)
+        must still fire.  Regression guard for under-charging on
+        popular paginated read endpoints."""
+        body = json.dumps({"data": [{"id": "u1"}, {"id": "u2"}]}).encode()
+        # The helper sets flow.request.path = path (no query), so we
+        # craft the path-with-query explicitly to mirror what mitmproxy
+        # delivers in real traffic.
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            path="/2/tweets/123/retweeted_by?max_results=10",
+            body=body,
+            permission="tweet.read",
+            rule="GET /2/tweets/{id}/retweeted_by",
+        )
+        # The ?max_results metadata goes into original_url for
+        # req-meta parsing to consume.
+        flow.metadata["original_url"] = "https://api.x.com/2/tweets/123/retweeted_by?max_results=10"
+        p = self._call_and_get_single_billing(flow)
+        assert p["category"] == "user.read"
+        assert p["quantity"] == 2
+
     def test_delete_method_charges_one(self, tmp_path, real_flow):
-        """DELETE /2/tweets/:id -> category=tweet.write, quantity=1."""
+        """DELETE /2/tweets/{id} routes to Content: Manage, not the
+        tweet.write scope default.  Writes always charge quantity=1
+        regardless of response shape."""
         flow = self._make_x_flow(
             real_flow,
             tmp_path,
@@ -2316,7 +2428,7 @@ class TestReportConnectorUsage:
         )
         flow.request.method = "DELETE"
         p = self._call_and_get_single_billing(flow)
-        assert p["category"] == "tweet.write"
+        assert p["category"] == "content.manage"
         assert p["quantity"] == 1
 
     def test_expansion_with_empty_includes_array(self, tmp_path, real_flow):
@@ -2329,12 +2441,12 @@ class TestReportConnectorUsage:
         ).encode()
         flow = self._make_x_flow(real_flow, tmp_path, query="expansions=author_id", body=body)
         p = self._call_and_get_single_billing(flow)
-        assert p["category"] == "tweet.read"
+        assert p["category"] == "posts.read"
         assert p["quantity"] == 1
 
-    def test_empty_search_with_includes_sends_both(self, tmp_path, real_flow):
-        """Search returns 0 data but non-empty includes -> two billing records,
-        primary with quantity=0."""
+    def test_empty_search_with_includes_emits_only_includes(self, tmp_path, real_flow):
+        """Search returns 0 data but non-empty includes -> only the
+        includes row is emitted; the zero-primary row is skipped."""
         body = json.dumps(
             {
                 "data": [],
@@ -2350,10 +2462,9 @@ class TestReportConnectorUsage:
             body=body,
             rule="GET /2/tweets/search/recent",
         )
-        payloads = self._call_and_get_billing(flow)
-        by_cat = {p["category"]: p["quantity"] for p in payloads}
-        assert by_cat["tweet.read"] == 0
-        assert by_cat["users.read"] == 1
+        p = self._call_and_get_single_billing(flow)
+        assert p["category"] == "user.read"
+        assert p["quantity"] == 1
 
     # ---- streaming: x_ndjson_state feeds billing directly (issue #9534) ----
 
@@ -2375,11 +2486,12 @@ class TestReportConnectorUsage:
         payloads = self._call_and_get_billing(flow)
         by_cat = {p["category"]: p["quantity"] for p in payloads}
         # tweet.read primary 50 + 12 from includes.tweets = 62
-        assert by_cat["tweet.read"] == 62
-        assert by_cat["users.read"] == 47
+        assert by_cat["posts.read"] == 62
+        assert by_cat["user.read"] == 47
 
-    def test_logs_x_stream_empty_no_fallback(self, tmp_path, real_flow):
-        """Stream that delivered 0 tweets bills 0, NOT _X_UNPARSEABLE_READ_FALLBACK."""
+    def test_x_stream_empty_emits_no_billing(self, tmp_path, real_flow):
+        """Stream that delivered 0 tweets emits no usage_event row, and
+        in particular does NOT trigger _X_UNPARSEABLE_READ_FALLBACK."""
         flow = self._make_x_flow(
             real_flow,
             tmp_path,
@@ -2393,39 +2505,54 @@ class TestReportConnectorUsage:
             "lines_parsed": 0,
             "lines_failed": 0,
         }
-        p = self._call_and_get_single_billing(flow)
-        assert p["category"] == "tweet.read"
-        assert p["quantity"] == 0
+        payloads = self._call_and_get_billing(flow)
+        assert payloads == []
 
     # ---- fallback / unparseable cases ----
 
-    def test_handles_truncated_buffer(self, tmp_path, real_flow):
-        """Truncated buffer -> unparseable fallback quantity=100."""
+    def test_truncated_buffer_with_no_hints_skips_billing(self, tmp_path, real_flow):
+        """Unparseable body + no URL hints → skip emission and log an
+        error.  The previous blind fallback of 100 units was removed;
+        ops audits via the proxy error log instead."""
         flow = self._make_x_flow(real_flow, tmp_path, body=b"{")
         flow.metadata["stream_buffer_state"] = {"truncated": True}
-        p = self._call_and_get_single_billing(flow)
-        assert p["category"] == "tweet.read"
-        assert p["quantity"] == 100
+        assert self._call_and_get_billing(flow) == []
 
-    def test_handles_invalid_json(self, tmp_path, real_flow):
-        """Malformed body -> unparseable fallback quantity=100."""
+    def test_invalid_json_with_no_hints_skips_billing(self, tmp_path, real_flow):
+        """Malformed body + no URL hints → skip emission (see above)."""
         flow = self._make_x_flow(real_flow, tmp_path, body=b"not json")
-        p = self._call_and_get_single_billing(flow)
-        assert p["category"] == "tweet.read"
-        assert p["quantity"] == 100
+        assert self._call_and_get_billing(flow) == []
+
+    def test_unparseable_no_hints_writes_error_to_proxy_log(self, tmp_path, real_flow):
+        """Operators must be able to audit the lost-visibility case —
+        the proxy log receives a structured error entry."""
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            path="/2/tweets/search/recent",
+            body=b"not json",
+            rule="GET /2/tweets/search/recent",
+        )
+        proxy_log = tmp_path / "proxy.jsonl"
+        assert self._call_and_get_billing(flow) == []
+        assert proxy_log.exists()
+        content = proxy_log.read_text()
+        assert "unparseable" in content.lower()
+        assert '"level":"error"' in content or '"level": "error"' in content
+        assert "tweet.read" in content  # permission is included for auditing
 
     def test_billable_counts_fallback_only_when_no_hints(self, tmp_path, real_flow):
         """body unparseable but ?ids= present -> uses ids_count, no fallback."""
         flow = self._make_x_flow(real_flow, tmp_path, query="ids=1,2,3", body=b"not json")
         p = self._call_and_get_single_billing(flow)
-        assert p["category"] == "tweet.read"
+        assert p["category"] == "posts.read"
         assert p["quantity"] == 3
 
     def test_billable_counts_fallback_only_when_no_max_results(self, tmp_path, real_flow):
         """body unparseable but ?max_results=50 present -> uses max_results."""
         flow = self._make_x_flow(real_flow, tmp_path, query="max_results=50", body=b"not json")
         p = self._call_and_get_single_billing(flow)
-        assert p["category"] == "tweet.read"
+        assert p["category"] == "posts.read"
         assert p["quantity"] == 50
 
     # ---- skip cases ----
@@ -2591,9 +2718,9 @@ class TestReportConnectorUsage:
         payloads = [json.loads(call[0][0].data) for call in mock_opener.open.call_args_list]
         by_cat = {p["category"]: p["quantity"] for p in payloads}
         # 3 tweets primary + 0 from includes.tweets (none here) = 3
-        assert by_cat["tweet.read"] == 3
+        assert by_cat["posts.read"] == 3
         # 3 users from includes
-        assert by_cat["users.read"] == 3
+        assert by_cat["user.read"] == 3
 
 
 class TestUsageWebhookDelivery:

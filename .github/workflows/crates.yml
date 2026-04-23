@@ -244,6 +244,22 @@ jobs:
         with:
           python-version: '3.12'
 
+      # Needed for the classifier↔firewall consistency check in
+      # tests/test_x_billing.py: the check reads
+      # `turbo/packages/core/src/firewalls/x.generated.ts`, which is
+      # gitignored and materialized by the `postinstall` hook in
+      # `turbo/package.json` (runs `@vm0/firewalls-generator generate`).
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: 'pnpm'
+          cache-dependency-path: turbo/pnpm-lock.yaml
+      - name: Install turbo deps (triggers firewalls-generator postinstall)
+        run: cd turbo && pnpm install --frozen-lockfile
+
       - name: Lint and format check
         run: |
           cd crates/runner/mitm-addon

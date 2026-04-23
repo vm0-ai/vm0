@@ -19,6 +19,11 @@ from logging_utils import log_proxy_entry
 
 from ...namespaces import USAGE_EVENT_NAMESPACE_CONNECTOR
 from ...webhook import _enqueue_webhook
+from .x_billing import (
+    classify_bucket,
+    classify_includes_bucket,
+    refine_bucket_with_body,
+)
 
 # HTTP 2xx success range (RFC 9110).  Also defined in ``mitm_addon.py``; kept
 # local to avoid introducing a constants module for two callers.  The upper
@@ -288,42 +293,22 @@ def _parse_response_metadata(flow: http.HTTPFlow) -> dict:
     return result
 
 
-# Conservative upper bound for GET requests whose body we couldn't parse and
-# whose URL carried no count hints.  X v2 read endpoints cap max_results at
-# 100 for most collections (search, timelines, liking_users, ...); using 100
-# as the floor avoids silent undercount if X ever changes response schema
-# or returns unparseable JSON.  Higher-capacity endpoints (search/all=500,
-# followers=1000) are still over-counted relative to reality — acceptable
-# for a rare edge case that should also trigger server-side monitoring.
-_UNPARSEABLE_READ_FALLBACK = 100
+def _compute_billable_counts(
+    method: str,
+    req_meta: dict,
+    resp_meta: dict,
+    endpoint_bucket: str,
+    log_warn: Callable[[str, dict], None] = lambda *_: None,
+) -> dict:
+    """Derive per-bucket billable resource counts for an X request.
 
+    Returns a dict mapping X billing bucket name → resource count.  The
+    caller emits one ``usage_event`` row per key in that dict.  Bucket
+    names correspond to X's published pricing buckets (see
+    :mod:`.x_billing`).
 
-# Mapping from X v2 ``includes.<key>`` resource types to firewall
-# permission names.  Listed explicitly for reviewability; unknown future
-# keys fall back to ``<key>.read`` in :func:`_compute_billable_counts`.
-# The ``tweets`` → ``tweet.read`` entry is the one irregular case
-# (includes key is plural, firewall permission is singular) — without it
-# referenced tweets would land on a separate ``tweets.read`` key.
-_INCLUDES_TO_PERMISSION = {
-    "users": "users.read",
-    "tweets": "tweet.read",
-    "media": "media.read",
-    "polls": "polls.read",
-    "places": "places.read",
-    "topics": "topics.read",
-}
-
-
-def _compute_billable_counts(method: str, req_meta: dict, resp_meta: dict, endpoint: str) -> dict:
-    """Derive per-permission billable resource counts for an X request.
-
-    Returns a dict mapping firewall permission name → resource count.
-    Keys are always existing X firewall permissions so the server's
-    usage pricing table doesn't need separate entries for expansion
-    resources.
-
-    Writes (non-GET) always count as ``{endpoint: 1}`` regardless of
-    response shape — X write endpoints don't support expansions.
+    Writes (non-GET) always count as ``{endpoint_bucket: 1}`` regardless
+    of response shape — X write endpoints don't support expansions.
 
     Reads (GET):
 
@@ -333,22 +318,20 @@ def _compute_billable_counts(method: str, req_meta: dict, resp_meta: dict, endpo
 
     - **Body parsed**: ``max(data_count, result_count)`` — trust the
       actual response.  Soft errors (HTTP 200 + ``errors`` array, no
-      ``data``) and zero-result searches correctly yield 0.
+      ``data``) and zero-result searches yield primary 0, which is
+      skipped from the returned dict so no empty ``usage_event`` row
+      is created.
     - **Body NOT parsed**: fall back to request-side hints
-      ``max(ids_count, max_results, 1)``, or
-      :data:`_UNPARSEABLE_READ_FALLBACK` (100) when no hints exist,
-      to avoid silent undercount.
-    - **Includes**: each ``includes.<key>`` is mapped via
-      :data:`_INCLUDES_TO_PERMISSION` when that type has a dedicated
-      firewall permission (``users`` → ``users.read``, ``tweets`` →
-      ``tweet.read``).  Unknown types fall back to a synthetic
-      ``<key>.read`` permission (e.g. ``future_widget`` →
-      ``future_widget.read``) so the server can price (or ignore) new
-      expansion types without a proxy redeploy.  Counts at the same
-      permission are summed.
+      ``max(ids_count, max_results, 1)``.  When the URL also carries
+      no hints we emit no ``usage_event`` row; :func:`report_usage`
+      detects that state and writes an error log so ops can audit.
+    - **Includes**: each ``includes.<key>`` is mapped to a billing
+      bucket via :func:`classify_includes_bucket`.  Unknown keys emit
+      a synthetic ``includes.<key>`` category for server-side fallback
+      pricing.  Counts at the same bucket are summed.
     """
     if method != "GET":
-        return {endpoint: 1}
+        return {endpoint_bucket: 1}
 
     data = resp_meta.get("response_data_count") or 0
     result = resp_meta.get("response_result_count") or 0
@@ -359,26 +342,33 @@ def _compute_billable_counts(method: str, req_meta: dict, resp_meta: dict, endpo
         primary = max(data, result)
     else:
         # Body couldn't be parsed — fall back to request-side hints.
+        # With no hints at all we leave primary at 0 and let the caller
+        # log this loss of visibility; blind-guessing a quantity risks
+        # over-charging by a large factor on small real responses.
         ids = req_meta.get("request_ids_count") or 0
         max_r = req_meta.get("max_results") or 0
-        primary = max(ids, max_r, 1)
-        # No hints at all → conservative fallback to avoid silent undercount.
-        if not any((ids, data, result, max_r)):
-            primary = max(primary, _UNPARSEABLE_READ_FALLBACK)
+        primary = max(ids, max_r, 1) if any((ids, max_r)) else 0
 
-    counts: dict = {endpoint: primary}
+    counts: dict = {}
+    if primary > 0:
+        counts[endpoint_bucket] = primary
 
-    # Map each includes.<key> to a billing permission and accumulate.
-    # Known types use :data:`_INCLUDES_TO_PERMISSION`; unknown future
-    # types get a synthetic ``<key>.read`` key via the same convention so
-    # the server sees a consistent naming and can price (or ignore) them
-    # without a proxy redeploy.
     includes = resp_meta.get("response_includes") or {}
     for key, n in includes.items():
         if n <= 0:
             continue
-        permission = _INCLUDES_TO_PERMISSION.get(key, f"{key}.read")
-        counts[permission] = counts.get(permission, 0) + n
+        bucket = classify_includes_bucket(key)
+        if bucket is None:
+            # Emit a synthetic per-key category so the billing processor
+            # can apply its server-side fallback price and ops can track
+            # each unknown type independently in ``usage_event``.
+            bucket = f"includes.{key}"
+            log_warn(
+                "X includes key unrecognised — "
+                "emitting synthetic category for server-side fallback",
+                {"includes_key": key, "includes_count": n, "category": bucket},
+            )
+        counts[bucket] = counts.get(bucket, 0) + n
 
     return counts
 
@@ -402,24 +392,79 @@ def report_usage(flow: http.HTTPFlow, run_id: str) -> None:
     - response status is outside 2xx (failures aren't billable)
     - ``firewall_permission`` is empty (unknown-endpoint-allow has no
       stable pricing key)
+    - ``firewall_permission`` is not mapped to an X billing bucket
+      (e.g. the ``"app-only"`` scope for BearerToken-only endpoints)
     """
     firewall_name = flow.metadata.get("firewall_name", "")
     if not flow.response or not (
         _HTTP_STATUS_OK_MIN <= flow.response.status_code < _HTTP_STATUS_REDIRECT_MIN
     ):
         return
-    endpoint = flow.metadata.get("firewall_permission", "")
-    if not endpoint:
+    permission = flow.metadata.get("firewall_permission", "")
+    if not permission:
         return
+    # mitmproxy's ``flow.request.path`` is the raw request-target — it
+    # includes the query string.  Strip it via ``urlsplit`` so
+    # literal-suffix overrides (e.g. ``/2/tweets/{id}/retweeted_by``)
+    # still match requests that carry ``?max_results=10`` or similar.
+    request_path = urllib.parse.urlsplit(flow.request.path).path
+    endpoint_bucket = classify_bucket(permission, flow.request.method, request_path)
+    if endpoint_bucket is None:
+        return
+    endpoint_bucket = refine_bucket_with_body(
+        endpoint_bucket,
+        flow.request.method,
+        request_path,
+        flow.request.content,
+    )
 
     req_meta = _parse_request_metadata(flow)
     resp_meta = _parse_response_metadata(flow)
-    billable_counts = _compute_billable_counts(flow.request.method, req_meta, resp_meta, endpoint)
+    proxy_log_path = flow.metadata.get("vm_proxy_log_path", "")
+
+    # Structured context common to every billing-side proxy log entry
+    # for this flow — threaded into the helper so the log firing at the
+    # fallback site can still identify the request for ops auditing.
+    log_context = {
+        "type": "usage_event",
+        "run_id": run_id,
+        "firewall_name": firewall_name,
+        "permission": permission,
+        "method": flow.request.method,
+        "url": flow.request.url,
+    }
+
+    def _log_warn(message: str, extra: dict) -> None:
+        # Merge so extra keys win over log_context on collision.  Python
+        # would otherwise raise TypeError on duplicate kwargs, turning a
+        # logging path into a request-crashing one.
+        log_proxy_entry(proxy_log_path, "warn", message, **{**log_context, **extra})
+
+    billable_counts = _compute_billable_counts(
+        flow.request.method, req_meta, resp_meta, endpoint_bucket, log_warn=_log_warn
+    )
+
+    # Loud-but-zero billing path: GET with an unparseable response body
+    # AND no URL-side count hints.  We deliberately emit nothing rather
+    # than blind-guess a quantity — the error log carries enough context
+    # for ops to audit and, if needed, back-charge manually.
+    if (
+        flow.request.method == "GET"
+        and not resp_meta.get("body_parsed")
+        and not req_meta.get("request_ids_count")
+        and not req_meta.get("max_results")
+    ):
+        log_proxy_entry(
+            proxy_log_path,
+            "error",
+            "X response unparseable and request carries no count hints — skipping billing",
+            **log_context,
+            body_truncated=bool(resp_meta.get("body_truncated")),
+        )
 
     # Forward usage events to the platform for persistence.
     sandbox_token = flow.metadata.get("vm_sandbox_token", "")
     api_url = get_api_url()
-    proxy_log_path = flow.metadata.get("vm_proxy_log_path", "")
     if not sandbox_token or not api_url:
         log_proxy_entry(
             proxy_log_path,
