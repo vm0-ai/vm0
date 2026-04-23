@@ -621,18 +621,13 @@ async function resolveAudioConfig(): Promise<AudioConfig> {
   const isMobile =
     navigator.maxTouchPoints > 0 && /Mobi|Android/i.test(navigator.userAgent);
 
-  let hasExternalAudio = false;
-  try {
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    hasExternalAudio = devices.some(
-      (d) =>
-        d.kind === "audiooutput" &&
-        d.deviceId !== "default" &&
-        d.deviceId !== "",
-    );
-  } catch {
-    // enumerateDevices can fail in some environments; fall back to safe defaults
-  }
+  const devices = await navigator.mediaDevices
+    .enumerateDevices()
+    .catch(() => []);
+  const hasExternalAudio = devices.some(
+    (d) =>
+      d.kind === "audiooutput" && d.deviceId !== "default" && d.deviceId !== "",
+  );
 
   // Mobile without headphones/BT = speakerphone risk
   const speakerRisk = isMobile && !hasExternalAudio;
@@ -993,7 +988,11 @@ const reconnectVoiceSession$ = command(
       const ok = await set(
         setupWebRTC$,
         stream,
-        { token: clientSecret.value, model, noiseReduction: audioConfig.noiseReduction },
+        {
+          token: clientSecret.value,
+          model,
+          noiseReduction: audioConfig.noiseReduction,
+        },
         parentSignal,
         signal,
       );
@@ -1155,7 +1154,11 @@ const connectVoiceSession$ = command(
     const ok = await set(
       setupWebRTC$,
       stream,
-      { token: clientSecret.value, model, noiseReduction: audioConfig.noiseReduction },
+      {
+        token: clientSecret.value,
+        model,
+        noiseReduction: audioConfig.noiseReduction,
+      },
       parentSignal,
       sessionSignal,
     );
