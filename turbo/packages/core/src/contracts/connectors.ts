@@ -232,7 +232,10 @@ export interface ConnectorConfig {
   readonly label: string;
   readonly helpText: string;
   readonly featureFlag?: FeatureSwitchKey;
-  /** When true, the featureFlag gates this connector even when it has api-token auth (overrides the default api-token exception). */
+  /**
+   * When true, the featureFlag gates this connector even when it has api-token
+   * auth (overrides the default api-token exception).
+   */
   readonly strictFeatureFlag?: boolean;
   readonly authMethods: Partial<
     Record<ConnectorAuthMethodType, ConnectorAuthMethodConfig>

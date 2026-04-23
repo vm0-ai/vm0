@@ -1,5 +1,5 @@
 import type { ConnectorConfig } from "../connectors";
-import { FeatureSwitchKey } from "../feature-switch-key";
+import { FeatureSwitchKey } from "../../feature-switch-key";
 
 export const zapier = {
   zapier: {
