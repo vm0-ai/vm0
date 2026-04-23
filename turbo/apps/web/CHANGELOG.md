@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.291.1](https://github.com/vm0-ai/vm0/compare/web-v12.291.0...web-v12.291.1) (2026-04-23)
+
+
+### Bug Fixes
+
+* validate redirect URLs in checkout and portal billing routes ([#10693](https://github.com/vm0-ai/vm0/issues/10693)) ([5264769](https://github.com/vm0-ai/vm0/commit/52647691ec0e63d91479d139ae9242d38fc5744e))
+
 ## [12.291.0](https://github.com/vm0-ai/vm0/compare/web-v12.290.1...web-v12.291.0) (2026-04-23)
 
 

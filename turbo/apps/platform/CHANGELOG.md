@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.287.1](https://github.com/vm0-ai/vm0/compare/app-v0.287.0...app-v0.287.1) (2026-04-23)
+
+
+### Refactoring
+
+* **platform:** show org name and campaign code on redeem page ([#10788](https://github.com/vm0-ai/vm0/issues/10788)) ([2cb2857](https://github.com/vm0-ai/vm0/commit/2cb2857c3422e7844d5cf70734217d9e3b580905))
+
 ## [0.287.0](https://github.com/vm0-ai/vm0/compare/app-v0.286.4...app-v0.287.0) (2026-04-23)
 
 
