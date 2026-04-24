@@ -833,7 +833,7 @@ jobs:
         with:
           step: start
           token: ${{ github.token }}
-          env: web/preview/${{ github.head_ref || github.ref_name }}
+          env: web/preview/${{ needs.prepare.outputs.job-ref }}
           ref: ${{ github.head_ref && format('refs/heads/{0}', github.head_ref) || github.ref }}
           desc: Deploying preview environment
 
