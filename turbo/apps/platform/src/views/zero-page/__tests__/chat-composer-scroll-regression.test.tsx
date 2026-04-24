@@ -40,7 +40,9 @@ const PROVIDER_ID = "00000000-0000-4000-a000-000000000001";
 function interceptScrollContainer(scrollHeight: number): MutationObserver {
   const obs = new MutationObserver(() => {
     const el = document.querySelector<HTMLElement>("[data-scroll-container]");
-    if (!el) return;
+    if (!el) {
+      return;
+    }
     Object.defineProperty(el, "scrollHeight", {
       get: () => scrollHeight,
       configurable: true,
@@ -61,7 +63,9 @@ function captureFirstResizeObserver(): {
   const original = globalThis.ResizeObserver;
   globalThis.ResizeObserver = class MockResizeObserver {
     constructor(cb: ResizeObserverCallback) {
-      if (captured === null) captured = cb;
+      if (captured === null) {
+        captured = cb;
+      }
     }
     observe() {}
     unobserve() {}
@@ -88,7 +92,9 @@ describe("chat scroll — skeleton hide does not disrupt scroll or auto-scroll (
 
     server.use(
       mockApi(chatThreadMessagesContract.list, async ({ query, respond }) => {
-        if (query.sinceId) return respond(200, { messages: [] });
+        if (query.sinceId) {
+          return respond(200, { messages: [] });
+        }
         await messagesDeferred.promise;
         return respond(200, {
           messages: [
