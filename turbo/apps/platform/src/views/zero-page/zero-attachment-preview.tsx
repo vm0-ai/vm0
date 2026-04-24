@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { Component, type ReactNode } from "react";
 import {
   IconChevronDown,
   IconChevronUp,
@@ -7,6 +7,7 @@ import {
   IconLoader2,
 } from "@tabler/icons-react";
 import { useSet } from "ccstate-react";
+import { jsonParseOr } from "../../signals/utils.ts";
 import { openDocumentLightbox$ } from "../../signals/zero-page/zero-attachment-chips.ts";
 import docPdfIcon from "./assets/doc-pdf.svg";
 import docDocIcon from "./assets/doc-doc.svg";
@@ -111,11 +112,7 @@ export function filenameFromUrl(url: string): string {
   if (!last || last.length === 0) {
     return "file";
   }
-  try {
-    return decodeURIComponent(last);
-  } catch {
-    return last;
-  }
+  return last;
 }
 
 function normalizePlatformFileUrl(url: string): string {
@@ -138,17 +135,54 @@ function toRawUrl(url: string): string {
   return `${normalizedUrl}${normalizedUrl.includes("?") ? "&" : "?"}raw=1`;
 }
 
-function useTextAttachment(url: string) {
-  const [state, setState] = useState<{
-    status: "loading" | "loaded" | "error";
-    text: string;
-  }>({ status: "loading", text: "" });
+function formatPreviewText(kind: "text" | "json", text: string): string {
+  if (kind === "json") {
+    const parsed = jsonParseOr<unknown>(text, null);
+    return parsed === null ? text : JSON.stringify(parsed, null, 2);
+  }
+  return text;
+}
 
-  useEffect(() => {
-    let active = true;
-    setState({ status: "loading", text: "" });
+type TextPreviewProps = {
+  filename: string;
+  url: string;
+  kind: "text" | "json";
+};
 
-    fetch(toRawUrl(url))
+type TextPreviewState = {
+  collapsed: boolean;
+  status: "loading" | "loaded" | "error";
+  text: string;
+};
+
+class TextPreview extends Component<TextPreviewProps, TextPreviewState> {
+  state: TextPreviewState = {
+    collapsed: false,
+    status: "loading",
+    text: "",
+  };
+
+  #active = false;
+
+  componentDidMount() {
+    this.#active = true;
+    this.#loadText();
+  }
+
+  componentDidUpdate(previousProps: Readonly<TextPreviewProps>) {
+    if (previousProps.url !== this.props.url) {
+      this.#loadText();
+    }
+  }
+
+  componentWillUnmount() {
+    this.#active = false;
+  }
+
+  #loadText() {
+    this.setState({ status: "loading", text: "" });
+
+    fetch(toRawUrl(this.props.url))
       .then(async (response) => {
         if (!response.ok) {
           throw new Error(`HTTP ${String(response.status)}`);
@@ -156,117 +190,94 @@ function useTextAttachment(url: string) {
         return await response.text();
       })
       .then((text) => {
-        if (active) {
-          setState({ status: "loaded", text });
+        if (this.#active) {
+          this.setState({ status: "loaded", text });
         }
       })
       .catch(() => {
-        if (active) {
-          setState({ status: "error", text: "" });
+        if (this.#active) {
+          this.setState({ status: "error", text: "" });
         }
       });
+  }
 
-    return () => {
-      active = false;
-    };
-  }, [url]);
+  render() {
+    const { filename, url, kind } = this.props;
+    const { collapsed, status, text } = this.state;
+    const iconSrc = getPreviewIconSrc(kind);
 
-  return state;
-}
+    let content: ReactNode = (
+      <div className="mt-3 flex items-center justify-center rounded-lg bg-muted/30 p-3 text-muted-foreground">
+        <IconLoader2 size={16} className="animate-spin" />
+      </div>
+    );
 
-function formatPreviewText(kind: "text" | "json", text: string): string {
-  if (kind === "json") {
-    try {
-      return JSON.stringify(JSON.parse(text), null, 2);
-    } catch {
-      return text;
+    if (status === "error") {
+      content = (
+        <p className="text-xs text-muted-foreground">Preview unavailable.</p>
+      );
+    } else if (status === "loaded") {
+      const formatted = formatPreviewText(kind, text);
+      const trimmed =
+        formatted.length > 8000
+          ? `${formatted.slice(0, 8000)}\n\n…`
+          : formatted;
+      content = collapsed ? null : (
+        <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-muted/50 p-3 text-xs text-foreground">
+          {trimmed}
+        </pre>
+      );
     }
-  }
-  return text;
-}
 
-function TextPreview({
-  filename,
-  url,
-  kind,
-}: {
-  filename: string;
-  url: string;
-  kind: "text" | "json";
-}) {
-  const { status, text } = useTextAttachment(url);
-  const [collapsed, setCollapsed] = useState(false);
-  const iconSrc = getPreviewIconSrc(kind);
-
-  let content: ReactNode = (
-    <div className="mt-3 flex items-center justify-center rounded-lg bg-muted/30 p-3 text-muted-foreground">
-      <IconLoader2 size={16} className="animate-spin" />
-    </div>
-  );
-
-  if (status === "error") {
-    content = (
-      <p className="text-xs text-muted-foreground">Preview unavailable.</p>
-    );
-  } else if (status === "loaded") {
-    const formatted = formatPreviewText(kind, text);
-    const trimmed =
-      formatted.length > 8000 ? `${formatted.slice(0, 8000)}\n\n…` : formatted;
-    content = collapsed ? null : (
-      <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-muted/50 p-3 text-xs text-foreground">
-        {trimmed}
-      </pre>
-    );
-  }
-
-  return (
-    <div
-      className="relative rounded-xl border border-foreground/10 bg-background/60 p-3"
-      data-testid={`attachment-preview-${kind}`}
-    >
-      <a
-        href={toDownloadUrl(url)}
-        download={filename}
-        title={filename}
-        aria-label={`Download ${filename}`}
-        className="absolute top-3 right-3 inline-flex h-7 w-7 items-center justify-center rounded-full bg-background/90 text-muted-foreground hover:text-foreground"
+    return (
+      <div
+        className="relative rounded-xl border border-foreground/10 bg-background/60 p-3"
+        data-testid={`attachment-preview-${kind}`}
       >
-        <IconDownload size={12} />
-      </a>
-      <button
-        type="button"
-        onClick={() => {
-          setCollapsed((value) => {
-            return !value;
-          });
-        }}
-        className="flex w-full items-center gap-3 text-left"
-        aria-label={`${collapsed ? "Expand" : "Collapse"} ${kind} preview for ${filename}`}
-      >
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted/60">
-          <img
-            alt=""
-            aria-hidden="true"
-            src={iconSrc}
-            className="h-7 w-7 object-contain opacity-90"
-          />
-        </div>
-        <div className="min-w-0 flex-1 pr-16">
-          <div className="truncate text-sm font-medium text-foreground">
-            {filename}
+        <a
+          href={toDownloadUrl(url)}
+          download={filename}
+          title={filename}
+          aria-label={`Download ${filename}`}
+          className="absolute top-3 right-3 inline-flex h-7 w-7 items-center justify-center rounded-full bg-background/90 text-muted-foreground hover:text-foreground"
+        >
+          <IconDownload size={12} />
+        </a>
+        <button
+          type="button"
+          onClick={() => {
+            this.setState((previousState) => {
+              return { collapsed: !previousState.collapsed };
+            });
+          }}
+          className="flex w-full items-center gap-3 text-left"
+          aria-label={`${collapsed ? "Expand" : "Collapse"} ${kind} preview for ${filename}`}
+        >
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted/60">
+            <img
+              alt=""
+              aria-hidden="true"
+              src={iconSrc}
+              className="h-7 w-7 object-contain opacity-90"
+            />
           </div>
-        </div>
-        <div className="shrink-0 text-muted-foreground">
-          {collapsed ? (
-            <IconChevronDown size={16} />
-          ) : (
-            <IconChevronUp size={16} />
-          )}
-        </div>
-      </button>
-      {content}
-    </div>
-  );
+          <div className="min-w-0 flex-1 pr-16">
+            <div className="truncate text-sm font-medium text-foreground">
+              {filename}
+            </div>
+          </div>
+          <div className="shrink-0 text-muted-foreground">
+            {collapsed ? (
+              <IconChevronDown size={16} />
+            ) : (
+              <IconChevronUp size={16} />
+            )}
+          </div>
+        </button>
+        {content}
+      </div>
+    );
+  }
 }
 
 function DocumentThumbnailPreview({

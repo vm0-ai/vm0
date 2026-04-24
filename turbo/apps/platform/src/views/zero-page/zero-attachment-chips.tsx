@@ -1,4 +1,4 @@
-import { useEffect, useState, type MouseEvent } from "react";
+import { Component, type MouseEvent } from "react";
 import { useGet, useSet, useLoadable } from "ccstate-react";
 import { createPortal } from "react-dom";
 import {
@@ -11,6 +11,7 @@ import {
 } from "@tabler/icons-react";
 import type { ZeroChatAttachment } from "../../signals/chat-page/chat-message.ts";
 import { logger } from "../../signals/log.ts";
+import { jsonParseOr } from "../../signals/utils.ts";
 import { Markdown } from "../components/markdown.tsx";
 import {
   lightboxUrl$,
@@ -108,17 +109,42 @@ function toRawUrl(url: string): string {
   return `${url}${url.includes("?") ? "&" : "?"}raw=1`;
 }
 
-function useTextPreview(url: string) {
-  const [state, setState] = useState<{
-    status: "loading" | "loaded" | "error";
-    text: string;
-  }>({ status: "loading", text: "" });
+type TextLoadState = {
+  status: "loading" | "loaded" | "error";
+  text: string;
+};
 
-  useEffect(() => {
-    let active = true;
-    setState({ status: "loading", text: "" });
+class TextPreviewLoader<
+  Props extends {
+    url: string;
+  },
+> extends Component<Props, TextLoadState> {
+  state: TextLoadState = {
+    status: "loading",
+    text: "",
+  };
 
-    fetch(toRawUrl(url))
+  #active = false;
+
+  componentDidMount() {
+    this.#active = true;
+    this.loadText();
+  }
+
+  componentDidUpdate(previousProps: Readonly<Props>) {
+    if (previousProps.url !== this.props.url) {
+      this.loadText();
+    }
+  }
+
+  componentWillUnmount() {
+    this.#active = false;
+  }
+
+  loadText() {
+    this.setState({ status: "loading", text: "" });
+
+    fetch(toRawUrl(this.props.url))
       .then(async (res) => {
         if (!res.ok) {
           throw new Error(`HTTP ${String(res.status)}`);
@@ -126,22 +152,16 @@ function useTextPreview(url: string) {
         return await res.text();
       })
       .then((text) => {
-        if (active) {
-          setState({ status: "loaded", text });
+        if (this.#active) {
+          this.setState({ status: "loaded", text });
         }
       })
       .catch(() => {
-        if (active) {
-          setState({ status: "error", text: "" });
+        if (this.#active) {
+          this.setState({ status: "error", text: "" });
         }
       });
-
-    return () => {
-      active = false;
-    };
-  }, [url]);
-
-  return state;
+  }
 }
 
 function formatPlainPreviewText(
@@ -149,11 +169,8 @@ function formatPlainPreviewText(
   text: string,
 ): string {
   if (kind === "json") {
-    try {
-      return JSON.stringify(JSON.parse(text), null, 2);
-    } catch {
-      return text;
-    }
+    const parsed = jsonParseOr<unknown>(text, null);
+    return parsed === null ? text : JSON.stringify(parsed, null, 2);
   }
   return text;
 }
@@ -274,6 +291,8 @@ function ImageLightbox({ url }: { url: string }) {
 
 export function AttachmentLightbox() {
   const preview = useGet(lightboxUrl$);
+  const dialogRef = useSet(lightboxDialogRef$);
+  const closeLightbox = useSet(closeLightbox$);
 
   if (!preview) {
     return null;
@@ -283,8 +302,6 @@ export function AttachmentLightbox() {
     return <ImageLightbox url={preview.url} />;
   }
 
-  const dialogRef = useSet(lightboxDialogRef$);
-  const closeLightbox = useSet(closeLightbox$);
   const iconSrc = getPreviewIconSrc(preview);
 
   const handleBackdropClick = (e: MouseEvent<HTMLDivElement>) => {
@@ -374,141 +391,142 @@ export function AttachmentLightbox() {
   );
 }
 
-function MarkdownLightboxBody({ url }: { url: string }) {
-  const state = useTextPreview(url);
+class MarkdownLightboxBody extends TextPreviewLoader<{ url: string }> {
+  render() {
+    if (this.state.status === "loading") {
+      return (
+        <div className="flex h-[min(78vh,900px)] items-center justify-center p-6 text-muted-foreground">
+          <IconLoader2 size={20} className="animate-spin" />
+        </div>
+      );
+    }
 
-  if (state.status === "loading") {
+    if (this.state.status === "error") {
+      return (
+        <div className="flex h-[min(78vh,900px)] items-center justify-center p-6 text-sm text-muted-foreground">
+          Markdown preview unavailable.
+        </div>
+      );
+    }
+
     return (
-      <div className="flex h-[min(78vh,900px)] items-center justify-center p-6 text-muted-foreground">
-        <IconLoader2 size={20} className="animate-spin" />
+      <div className="h-[min(78vh,900px)] overflow-auto p-6">
+        <Markdown source={this.state.text} />
       </div>
     );
   }
-
-  if (state.status === "error") {
-    return (
-      <div className="flex h-[min(78vh,900px)] items-center justify-center p-6 text-sm text-muted-foreground">
-        Markdown preview unavailable.
-      </div>
-    );
-  }
-
-  return (
-    <div className="h-[min(78vh,900px)] overflow-auto p-6">
-      <Markdown source={state.text} />
-    </div>
-  );
 }
 
-function PlainTextLightboxBody({
-  url,
-  kind,
-}: {
-  url: string;
+class PlainTextLightboxBody extends TextPreviewLoader<{
   kind: "text" | "json" | "csv";
-}) {
-  const state = useTextPreview(url);
+  url: string;
+}> {
+  render() {
+    const { kind } = this.props;
 
-  if (state.status === "loading") {
+    if (this.state.status === "loading") {
+      return (
+        <div className="flex h-[min(78vh,900px)] items-center justify-center p-6 text-muted-foreground">
+          <IconLoader2 size={20} className="animate-spin" />
+        </div>
+      );
+    }
+
+    if (this.state.status === "error") {
+      return (
+        <div className="flex h-[min(78vh,900px)] items-center justify-center p-6 text-sm text-muted-foreground">
+          {kind === "json" ? "JSON" : kind === "csv" ? "CSV" : "Text"} preview
+          unavailable.
+        </div>
+      );
+    }
+
+    const trimmed = formatPlainPreviewText(kind, this.state.text);
+    const display =
+      trimmed.length > 16_000 ? `${trimmed.slice(0, 16_000)}\n\n…` : trimmed;
+
     return (
-      <div className="flex h-[min(78vh,900px)] items-center justify-center p-6 text-muted-foreground">
-        <IconLoader2 size={20} className="animate-spin" />
+      <div className="h-[min(78vh,900px)] overflow-auto p-6">
+        <pre className="whitespace-pre-wrap break-words rounded-lg bg-muted/50 p-4 text-sm text-foreground">
+          {display}
+        </pre>
       </div>
     );
   }
-
-  if (state.status === "error") {
-    return (
-      <div className="flex h-[min(78vh,900px)] items-center justify-center p-6 text-sm text-muted-foreground">
-        {kind === "json" ? "JSON" : kind === "csv" ? "CSV" : "Text"} preview
-        unavailable.
-      </div>
-    );
-  }
-
-  const trimmed = formatPlainPreviewText(kind, state.text);
-  const display =
-    trimmed.length > 16000 ? `${trimmed.slice(0, 16000)}\n\n…` : trimmed;
-
-  return (
-    <div className="h-[min(78vh,900px)] overflow-auto p-6">
-      <pre className="whitespace-pre-wrap break-words rounded-lg bg-muted/50 p-4 text-sm text-foreground">
-        {display}
-      </pre>
-    </div>
-  );
 }
 
-function CsvLightboxBody({ url }: { url: string }) {
-  const state = useTextPreview(url);
+class CsvLightboxBody extends TextPreviewLoader<{ url: string }> {
+  render() {
+    if (this.state.status === "loading") {
+      return (
+        <div className="flex h-[min(78vh,900px)] items-center justify-center p-6 text-muted-foreground">
+          <IconLoader2 size={20} className="animate-spin" />
+        </div>
+      );
+    }
 
-  if (state.status === "loading") {
+    if (this.state.status === "error") {
+      return (
+        <div className="flex h-[min(78vh,900px)] items-center justify-center p-6 text-sm text-muted-foreground">
+          CSV preview unavailable.
+        </div>
+      );
+    }
+
+    const rows = parseCsvRows(this.state.text);
+    if (rows.length === 0) {
+      return (
+        <div className="flex h-[min(78vh,900px)] items-center justify-center p-6 text-sm text-muted-foreground">
+          CSV preview unavailable.
+        </div>
+      );
+    }
+
+    const [header, ...body] = rows;
+
     return (
-      <div className="flex h-[min(78vh,900px)] items-center justify-center p-6 text-muted-foreground">
-        <IconLoader2 size={20} className="animate-spin" />
-      </div>
-    );
-  }
-
-  if (state.status === "error") {
-    return (
-      <div className="flex h-[min(78vh,900px)] items-center justify-center p-6 text-sm text-muted-foreground">
-        CSV preview unavailable.
-      </div>
-    );
-  }
-
-  const rows = parseCsvRows(state.text);
-  if (rows.length === 0) {
-    return (
-      <div className="flex h-[min(78vh,900px)] items-center justify-center p-6 text-sm text-muted-foreground">
-        CSV preview unavailable.
-      </div>
-    );
-  }
-
-  const [header, ...body] = rows;
-
-  return (
-    <div className="h-[min(78vh,900px)] overflow-auto p-6">
-      <div className="overflow-auto rounded-lg border border-foreground/10">
-        <table className="min-w-full divide-y divide-foreground/10 text-sm">
-          <thead className="bg-muted/40">
-            <tr>
-              {header.map((cell, index) => {
+      <div className="h-[min(78vh,900px)] overflow-auto p-6">
+        <div className="overflow-auto rounded-lg border border-foreground/10">
+          <table className="min-w-full divide-y divide-foreground/10 text-sm">
+            <thead className="bg-muted/40">
+              <tr>
+                {header.map((cell) => {
+                  return (
+                    <th
+                      key={`header-${cell}`}
+                      className="whitespace-nowrap px-3 py-2 text-left font-medium text-foreground"
+                    >
+                      {cell}
+                    </th>
+                  );
+                })}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-foreground/10 bg-background">
+              {body.map((row) => {
+                const rowKey = `row-${row.join("\u0001")}`;
                 return (
-                  <th
-                    key={`${cell}-${index}`}
-                    className="whitespace-nowrap px-3 py-2 text-left font-medium text-foreground"
-                  >
-                    {cell}
-                  </th>
+                  <tr key={rowKey}>
+                    {header.map((column, cellIndex) => {
+                      const value = row[cellIndex] ?? "";
+                      return (
+                        <td
+                          key={`${rowKey}-${column}-${value}`}
+                          className="whitespace-nowrap px-3 py-2 text-foreground"
+                        >
+                          {value}
+                        </td>
+                      );
+                    })}
+                  </tr>
                 );
               })}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-foreground/10 bg-background">
-            {body.map((row, rowIndex) => {
-              return (
-                <tr key={`row-${rowIndex}`}>
-                  {header.map((_, cellIndex) => {
-                    return (
-                      <td
-                        key={`cell-${rowIndex}-${cellIndex}`}
-                        className="whitespace-nowrap px-3 py-2 text-foreground"
-                      >
-                        {row[cellIndex] ?? ""}
-                      </td>
-                    );
-                  })}
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+            </tbody>
+          </table>
+        </div>
       </div>
-    </div>
-  );
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------

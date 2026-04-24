@@ -707,7 +707,7 @@ function parseBodyRenderBlocks(content: string): {
 
   for (const line of lines) {
     const trimmedLine = line.trim();
-    const wrappers: Array<[string, string]> = [
+    const wrappers: [string, string][] = [
       ["**", "**"],
       ["__", "__"],
       ["*", "*"],
@@ -773,11 +773,11 @@ function BodyContentBlocks({
 }) {
   return (
     <div className="flex flex-col gap-3">
-      {blocks.map((block, index) => {
+      {blocks.map((block) => {
         if (block.type === "markdown") {
           return (
             <Markdown
-              key={`markdown-${index}`}
+              key={`markdown-${block.content}`}
               source={block.content.replace(/\n/g, "  \n")}
               mediaPreview
               onImageClick={openLightbox}
@@ -787,7 +787,7 @@ function BodyContentBlocks({
 
         return (
           <AttachmentPreview
-            key={`preview-${block.preview.url}-${index}`}
+            key={`preview-${block.preview.url}`}
             attachment={{
               filename: block.preview.filename,
               url: block.preview.url,

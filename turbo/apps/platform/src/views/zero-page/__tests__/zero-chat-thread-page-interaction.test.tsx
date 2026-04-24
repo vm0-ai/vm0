@@ -1,3 +1,4 @@
+/* eslint-disable ccstate/no-get-by-role-name */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
