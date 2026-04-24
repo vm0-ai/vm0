@@ -76,15 +76,19 @@ describe("pollSlackConnection$", () => {
 
     const pollPromise = context.store.set(pollSlackConnection$, context.signal);
 
-    // Wait until setAblyLoop$ has run the body once and subscribed. Initial
-    // slackOrgData$ read is call #1; setAblyLoop$ body runs immediately as
-    // call #2 (still disconnected).
+    // Initial slackOrgData$ read is call #1. setAblyLoop$ does not prime the
+    // body on subscribe; it waits for Ably events to re-check status.
     await vi.waitFor(() => {
-      expect(counter.count).toBeGreaterThanOrEqual(2);
       expect(hasSubscription("slack:changed")).toBeTruthy();
     });
 
-    // Fire the Ably event — loop body re-runs as call #3 and sees connected.
+    // First event re-runs the body as call #2 and remains disconnected.
+    triggerAblyEvent("slack:changed");
+    await vi.waitFor(() => {
+      expect(counter.count).toBeGreaterThanOrEqual(2);
+    });
+
+    // Second event re-runs as call #3 and sees connected.
     triggerAblyEvent("slack:changed");
 
     await pollPromise;
@@ -111,6 +115,7 @@ describe("pollSlackConnection$", () => {
     abortController.abort();
 
     await expect(pollPromise).rejects.toThrow();
-    expect(counter.count).toBeGreaterThanOrEqual(2);
+    expect(counter.count).toBe(1);
+    expect(hasSubscription("slack:changed")).toBeFalsy();
   });
 });
