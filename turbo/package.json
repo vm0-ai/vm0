@@ -73,7 +73,8 @@
       "yaml": ">=2.8.3",
       "smol-toml": ">=1.6.1",
       "@opentelemetry/instrumentation": ">=0.213.0",
-      "zod": "4.3.6"
+      "zod": "4.3.6",
+      "postcss": ">=8.5.10"
     },
     "auditConfig": {
       "ignoreGhsas": [
