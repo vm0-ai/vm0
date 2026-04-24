@@ -1,9 +1,8 @@
 import { GoogleGenAI } from "@google/genai";
 import { getVercelOidcToken } from "@vercel/oidc";
+import { randomUUID } from "crypto";
 import { ExternalAccountClient } from "google-auth-library";
-import { eq } from "drizzle-orm";
 import { after, NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
 import { usageEvent } from "../../../src/db/schema/usage-event";
 import { env } from "../../../src/env";
 import { getAuthContext } from "../../../src/lib/auth/get-auth-context";
@@ -21,8 +20,6 @@ const MODEL = "gemini-2.5-flash-image";
 const USAGE_KIND = "image";
 const USAGE_PROVIDER = MODEL;
 const USAGE_CATEGORY = "output_image";
-
-const idempotencyKeySchema = z.uuid();
 
 interface GeneratedImage {
   mimeType: string;
@@ -115,22 +112,6 @@ export async function POST(req: NextRequest) {
   }
   const { userId } = authCtx;
 
-  const idempotencyKeyResult = idempotencyKeySchema.safeParse(
-    req.headers.get("Idempotency-Key"),
-  );
-  if (!idempotencyKeyResult.success) {
-    return NextResponse.json(
-      {
-        error: {
-          message: "Idempotency-Key header (UUID) is required",
-          code: "BAD_REQUEST",
-        },
-      },
-      { status: 400 },
-    );
-  }
-  const idempotencyKey = idempotencyKeyResult.data;
-
   const ai = buildClient();
   if (!ai) {
     return NextResponse.json(
@@ -173,37 +154,6 @@ export async function POST(req: NextRequest) {
     throw error;
   }
 
-  // Reserve the idempotency key atomically with quantity=0 before calling
-  // the model. A concurrent/duplicate POST with the same key loses the
-  // unique-index race and returns no row — we respond 409 without touching
-  // Vertex. quantity is backfilled once the response is known.
-  const [reserved] = await db
-    .insert(usageEvent)
-    .values({
-      runId: null,
-      idempotencyKey,
-      orgId: org.orgId,
-      userId,
-      kind: USAGE_KIND,
-      provider: USAGE_PROVIDER,
-      category: USAGE_CATEGORY,
-      quantity: 0,
-    })
-    .onConflictDoNothing({ target: [usageEvent.idempotencyKey] })
-    .returning({ id: usageEvent.id });
-
-  if (!reserved) {
-    return NextResponse.json(
-      {
-        error: {
-          message: "Idempotency-Key already used; retry with a new key",
-          code: "CONFLICT",
-        },
-      },
-      { status: 409 },
-    );
-  }
-
   const result = await ai.models.generateContent({
     model: MODEL,
     contents: [{ role: "user", parts: [{ text: prompt }] }],
@@ -229,13 +179,21 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Finalize the reservation with the real image count; the row now bills
-  // quantity × unit_price / unit_size credits. Settle inline via after()
-  // so the org balance reflects the charge before the next request lands.
-  await db
-    .update(usageEvent)
-    .set({ quantity: images.length })
-    .where(eq(usageEvent.id, reserved.id));
+  // Record the billable event only after Vertex succeeds. `idempotencyKey`
+  // is required by the schema but serves as a per-row uniqueness tag here,
+  // not a client-facing retry key — clients do not send one. Settle inline
+  // via after() so the org balance reflects the charge before the next
+  // request lands.
+  await db.insert(usageEvent).values({
+    runId: null,
+    idempotencyKey: randomUUID(),
+    orgId: org.orgId,
+    userId,
+    kind: USAGE_KIND,
+    provider: USAGE_PROVIDER,
+    category: USAGE_CATEGORY,
+    quantity: images.length,
+  });
 
   after(() => {
     return processOrgUsageEvents(org.orgId);
