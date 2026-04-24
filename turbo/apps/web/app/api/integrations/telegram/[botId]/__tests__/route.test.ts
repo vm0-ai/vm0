@@ -215,6 +215,51 @@ describe("/api/integrations/telegram/[botId]", () => {
       expect(data.agent).toEqual({ id: composeId, name });
       expect(data.id).toBe(botId);
     });
+
+    it("returns 403 when defaultAgentId belongs to another org", async () => {
+      const user = await context.setupUser();
+      const botId = uniqueId("bot");
+      await createTestTelegramInstallation({
+        ownerUserId: user.userId,
+        telegramBotId: botId,
+        orgId: user.orgId,
+      });
+      const otherOrgCompose = await context.createAgentCompose(user.userId, {
+        name: uniqueId("other-agent"),
+      });
+
+      const response = await PATCH(
+        botRequest("PATCH", { defaultAgentId: otherOrgCompose.id }),
+        routeParams(botId),
+      );
+      const data = await response.json();
+
+      expect(response.status).toBe(403);
+      expect(data.error.code).toBe("FORBIDDEN");
+    });
+
+    it("does not retarget a bot when the owner switches active org", async () => {
+      const user = await context.setupUser();
+      const botId = uniqueId("bot");
+      await createTestTelegramInstallation({
+        ownerUserId: user.userId,
+        telegramBotId: botId,
+        orgId: user.orgId,
+      });
+      const otherOrgCompose = await context.createAgentCompose(user.userId, {
+        name: uniqueId("other-agent"),
+      });
+      mockClerk({ userId: user.userId, orgId: otherOrgCompose.orgId });
+
+      const response = await PATCH(
+        botRequest("PATCH", { defaultAgentId: otherOrgCompose.id }),
+        routeParams(botId),
+      );
+      const data = await response.json();
+
+      expect(response.status).toBe(404);
+      expect(data.error.code).toBe("NOT_FOUND");
+    });
   });
 
   describe("DELETE", () => {

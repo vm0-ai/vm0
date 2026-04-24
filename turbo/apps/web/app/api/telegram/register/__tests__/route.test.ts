@@ -192,6 +192,25 @@ describe("POST /api/telegram/register", () => {
     expect(body.agent).toEqual({ id: composeId, name });
   });
 
+  it("rejects an empty defaultAgentId instead of falling back to the org default", async () => {
+    const user = await context.setupUser();
+    const { composeId } = await createTestCompose(uniqueId("agent"));
+    await updateOrgDefaultAgent(user.orgId, composeId);
+
+    const getMeHandler = telegramGetMe(testBotId(), "empty_default_bot");
+    server.use(getMeHandler.handler);
+
+    const response = await POST(
+      registerRequest({ botToken: TEST_BOT_TOKEN, defaultAgentId: "" }),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body.error.code).toBe("BAD_REQUEST");
+    expect(body.error.message).toContain("defaultAgentId");
+    expect(getMeHandler.mocked).not.toHaveBeenCalled();
+  });
+
   it("returns 409 when bot is already registered", async () => {
     await context.setupUser();
 
