@@ -36,14 +36,17 @@ export const setupAgentDetailPage$ = command(
     if (!agent) {
       const defaultAgentId = await get(defaultAgentId$);
       signal.throwIfAborted();
-      if (defaultAgentId && defaultAgentId !== agentId) {
-        set(detachedNavigateTo$, "/agents/:agentId", {
-          pathParams: { agentId: defaultAgentId },
-          searchParams: get(searchParams$),
-          replace: true,
-        });
-        return;
+      if (!defaultAgentId || defaultAgentId === agentId) {
+        throw new Error(
+          "Agent detail page requires an active agent, but none found",
+        );
       }
+      set(detachedNavigateTo$, "/agents/:agentId", {
+        pathParams: { agentId: defaultAgentId },
+        searchParams: get(searchParams$),
+        replace: true,
+      });
+      return;
     }
 
     // Activate the agent to trigger dependent signals (detail, schedule, etc.)
@@ -51,7 +54,7 @@ export const setupAgentDetailPage$ = command(
     set(setChatAgentId$, agentId);
     set(rememberLastUsedAgentId$, agentId);
 
-    const displayName = agent?.displayName ?? "Agent";
+    const displayName = agent.displayName ?? "Agent";
     set(updateDocumentTitle$, displayName);
 
     if (await set(onboardGuard$, signal)) {

@@ -209,6 +209,12 @@ export interface ChatThreadSignals {
 // Sub-factory: thread data fetching
 // ---------------------------------------------------------------------------
 
+// Note: `agent-chat.ts` exposes a route-scoped `currentChatThread$` with the
+// same `[200, 404]` + `{ toast: false }` shape for sidebar title merging.
+// This per-thread `threadData$` is scoped to a single signal factory so it
+// can be reloaded independently via `reloadThread$`. Keep the accept list
+// aligned so missing-thread redirects (see `chat-page-setup.ts`) and title
+// merging (see `chatThreads$`) both treat 404s the same way.
 function createThreadData(threadId: string) {
   const internalReload$ = state(0);
 

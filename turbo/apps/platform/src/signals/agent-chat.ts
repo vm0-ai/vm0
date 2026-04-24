@@ -84,6 +84,14 @@ export interface ChatThread {
   selectedModel: string | null;
 }
 
+// Note: `create-chat-thread.ts` has a near-identical `threadData$` inside
+// `createThreadData`. Both are intentionally kept:
+//  - `currentChatThread$` is a route-scoped computed used for sidebar title
+//    merging in `chatThreads$`.
+//  - `threadData$` lives inside the per-thread signal factory so it can be
+//    invalidated independently (reloadThread$) for the open chat page.
+// The `[200, 404]` accept list and `{ toast: false }` must stay aligned so
+// missing-thread redirects (see `chat-page-setup.ts`) behave consistently.
 export const currentChatThread$ = computed(
   async (get): Promise<ChatThread | null> => {
     const threadId = get(currentChatThreadId$);

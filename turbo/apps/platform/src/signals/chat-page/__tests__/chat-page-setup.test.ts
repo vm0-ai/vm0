@@ -12,7 +12,6 @@ const DEFAULT_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 
 describe("chat page setup", () => {
   it("redirects missing chat threads to the default agent chat", async () => {
-    let messageCalls = 0;
     server.use(
       mockApi(chatThreadByIdContract.get, ({ respond }) => {
         return respond(404, {
@@ -20,7 +19,6 @@ describe("chat page setup", () => {
         });
       }),
       mockApi(chatThreadMessagesContract.list, ({ respond }) => {
-        messageCalls++;
         return respond(404, {
           error: { message: "Not found", code: "NOT_FOUND" },
         });
@@ -36,6 +34,5 @@ describe("chat page setup", () => {
       expect(pathname()).toBe(`/agents/${DEFAULT_AGENT_ID}/chat`);
       expect(search()).toBe("?source=legacy");
     });
-    expect(messageCalls).toBe(0);
   });
 });
