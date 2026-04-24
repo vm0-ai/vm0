@@ -14,6 +14,7 @@ import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
+import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-switches.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -22,6 +23,7 @@ const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 
 beforeEach(() => {
   setMockUserPreferences({ pinnedAgentIds: [] });
+  setMockFeatureSwitches({ unifyChatThreads: true });
 });
 
 describe("zero chat list page - load all button (CHAT-LIST-001)", () => {
