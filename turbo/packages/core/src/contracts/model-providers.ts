@@ -249,10 +249,7 @@ export const MODEL_PROVIDER_TYPES = {
       API_TIMEOUT_MS: "600000",
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
     } as Record<string, string>,
-    models: [
-      "deepseek-v4-pro",
-      "deepseek-v4-flash",
-    ] as string[],
+    models: ["deepseek-v4-pro", "deepseek-v4-flash"] as string[],
     defaultModel: "deepseek-v4-flash",
   },
   "zai-api-key": {
