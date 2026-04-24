@@ -112,7 +112,7 @@ function HeaderAgentAvatar({ thread }: { thread: ChatThreadSignals }) {
   const agentId = useLastResolved(thread.agentId$);
 
   if (!agentId) {
-    return null;
+    return <Skeleton className="h-8 w-8 rounded-xl" />;
   }
 
   return (
@@ -199,7 +199,11 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
           <HeaderAgentAvatar thread={thread} />
           <PinPillButton thread={thread} />
         </div>
-        <span className="font-semibold text-foreground">{displayName}</span>
+        {displayName ? (
+          <span className="font-semibold text-foreground">{displayName}</span>
+        ) : (
+          <Skeleton className="h-5 w-32 rounded" />
+        )}
       </div>
       <div className="hidden sm:flex items-center gap-0.5">
         {audioOutputEnabled && (
