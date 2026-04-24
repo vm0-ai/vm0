@@ -3,32 +3,39 @@ set -euo pipefail
 
 PLAYWRIGHT_BROWSER_INSTALL_VERSION="${PLAYWRIGHT_BROWSER_INSTALL_VERSION:-1.59.1}"
 PLAYWRIGHT_CHROMIUM_LINK="${PLAYWRIGHT_CHROMIUM_LINK:-/usr/local/bin/playwright-chromium}"
-PLAYWRIGHT_CACHE_DIR="${HOME}/.cache/ms-playwright"
+BROWSER_CACHE="${PLAYWRIGHT_BROWSERS_PATH:-${HOME:-/root}/.cache/ms-playwright}"
 
-# Install the same Chrome-for-Testing build path used by the devcontainer and
-# CI browser tests. Explicitly using chrome-for-testing avoids Playwright's
-# headless-shell-only download.
-npx -y "playwright@${PLAYWRIGHT_BROWSER_INSTALL_VERSION}" install-deps chromium
-npx -y "playwright@${PLAYWRIGHT_BROWSER_INSTALL_VERSION}" install chrome-for-testing
+# Keep this aligned with E2E Playwright browser installation while making the
+# resolved executable path explicit for Vitest Browser and agent-browser users.
+npx -y "playwright@${PLAYWRIGHT_BROWSER_INSTALL_VERSION}" install --with-deps chromium
 
 chromium_path="$(
-  find "${PLAYWRIGHT_CACHE_DIR}"/chromium-*/chrome-linux* -type f -name chrome 2>/dev/null | head -1
+  { find "$BROWSER_CACHE" -path "*/chrome-linux*/chrome" -type f -print 2>/dev/null || true; } \
+    | sort -V \
+    | tail -1
 )"
 
 if [ -z "$chromium_path" ]; then
-  echo "ERROR: Chromium not found under ${PLAYWRIGHT_CACHE_DIR}" >&2
-  ls -laR "${PLAYWRIGHT_CACHE_DIR}/" >&2 || true
+  echo "ERROR: Chromium not found under $BROWSER_CACHE" >&2
+  ls -laR "$BROWSER_CACHE" >&2 || true
   exit 1
 fi
 
-ln -sf "$chromium_path" "$PLAYWRIGHT_CHROMIUM_LINK"
+link_dir="$(dirname "$PLAYWRIGHT_CHROMIUM_LINK")"
+if ! { mkdir -p "$link_dir" && ln -sf "$chromium_path" "$PLAYWRIGHT_CHROMIUM_LINK"; } 2>/dev/null; then
+  if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+    sudo mkdir -p "$link_dir"
+    sudo ln -sf "$chromium_path" "$PLAYWRIGHT_CHROMIUM_LINK"
+  else
+    PLAYWRIGHT_CHROMIUM_LINK="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/playwright-chromium"
+    ln -sf "$chromium_path" "$PLAYWRIGHT_CHROMIUM_LINK"
+  fi
+fi
 
 # Allow non-root users, like the devcontainer's vscode user, to launch the
 # browser installed by root during image build.
-if [ "$(id -u)" = "0" ] && [ "${HOME}" = "/root" ]; then
-  chmod o+x /root /root/.cache /root/.cache/ms-playwright
-  chmod -R o+rX /root/.cache/ms-playwright/
-fi
+chmod o+x "${HOME:-/root}" "${HOME:-/root}/.cache" "$BROWSER_CACHE" 2>/dev/null || true
+chmod -R o+rX "$BROWSER_CACHE" 2>/dev/null || true
 
 if [ -n "${GITHUB_ENV:-}" ]; then
   echo "AGENT_BROWSER_EXECUTABLE_PATH=$PLAYWRIGHT_CHROMIUM_LINK" >> "$GITHUB_ENV"
