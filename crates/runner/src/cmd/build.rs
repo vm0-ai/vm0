@@ -242,7 +242,7 @@ pub async fn run_build(args: BuildArgs, provider: &dyn SnapshotProvider) -> Runn
     // already exited (kernel releases flocks on process death), so any
     // staging file on disk is guaranteed to be stale — never a concurrent
     // writer's work-in-progress. This is the recovery arm of the
-    // staging-rename contract; see `RootfsPaths::rootfs_staging` and #11007.
+    // staging-rename contract; see `RootfsPaths::rootfs_staging`.
     clear_rootfs_staging(&rootfs_paths).await;
 
     // Write scripts to a temp directory (needed for both R2 and local paths).
@@ -292,7 +292,7 @@ pub async fn run_build(args: BuildArgs, provider: &dyn SnapshotProvider) -> Runn
                         // during injection would let a mid-script crash
                         // leave a rootfs whose CA file no longer matches
                         // its system bundle, permanently poisoning the
-                        // Fast-path reuse check (#11007).
+                        // Fast-path reuse check.
                         demote_to_staging(&rootfs_paths).await?;
                         rootfs_from_r2 = true;
                     } else {
@@ -581,24 +581,34 @@ async fn clear_rootfs_staging(rootfs: &RootfsPaths) {
 ///
 /// Fails loudly: if the rename cannot happen, proceeding would let
 /// inject-ca mutate the committed path directly, recreating the TOCTOU
-/// bug this contract exists to close (#11007). On rename failure we
-/// also best-effort delete the source — otherwise the committed
-/// `rootfs.ext4` would survive with the build host's CA still baked
-/// into its system bundle, and the next build's Fast path would reuse
-/// it without running inject-ca.
+/// bug this contract exists to close. On rename failure we also
+/// best-effort delete the source — otherwise the committed `rootfs.ext4`
+/// would survive with the build host's CA still baked into its system
+/// bundle, and the next build's Fast path would reuse it without running
+/// inject-ca. Both outcomes of the cleanup (succeeded / also failed)
+/// emit a warning so an operator reading the `Err` return can tell
+/// whether the source file is still on disk.
 async fn demote_to_staging(rootfs: &RootfsPaths) -> RunnerResult<()> {
     let from = rootfs.rootfs();
     let to = rootfs.rootfs_staging();
     match tokio::fs::rename(&from, &to).await {
         Ok(()) => Ok(()),
         Err(e) => {
-            if let Err(rm_err) = tokio::fs::remove_file(&from).await {
-                tracing::warn!(
-                    "rename {} → {} failed, and cleanup remove also failed: {rm_err}. \
-                     Manual intervention may be required.",
+            match tokio::fs::remove_file(&from).await {
+                Ok(()) => tracing::warn!(
+                    "rename {} → {} failed: {e}; source removed to prevent \
+                     Fast-path reuse of an un-CA-injected rootfs",
                     from.display(),
                     to.display()
-                );
+                ),
+                Err(rm_err) => tracing::warn!(
+                    "rename {} → {} failed: {e}; cleanup remove also failed: \
+                     {rm_err}. Manual intervention may be required to remove \
+                     {}.",
+                    from.display(),
+                    to.display(),
+                    from.display()
+                ),
             }
             Err(RunnerError::Internal(format!(
                 "demote to staging {} → {}: {e}",
