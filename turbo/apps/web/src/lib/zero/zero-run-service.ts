@@ -499,6 +499,7 @@ async function createZeroRunRecord(
     orgTier,
     additionalVolumes: skillVolumes.length > 0 ? skillVolumes : undefined,
     debugNoMockClaude: params.debugNoMockClaude,
+    triggerSource: params.triggerSource,
   };
 
   // ── Round 3: Pre-flight checks (need compose content) ───────────────

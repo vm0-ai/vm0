@@ -259,5 +259,7 @@ function buildPreparedContext(
     captureNetworkBodies: context.captureNetworkBodies || false,
 
     billableFirewalls: context.billableFirewalls,
+
+    wasQueued: context.wasQueued ?? false,
   };
 }

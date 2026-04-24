@@ -76,6 +76,10 @@ export interface PreparedContext {
   featureFlags: Record<string, boolean> | null;
 
   billableFirewalls: string[];
+
+  // True when the run was dispatched from the org queue. Used to split
+  // api_to_executor latency in Axiom between queue-dispatch and direct-dispatch.
+  wasQueued: boolean;
 }
 
 /**

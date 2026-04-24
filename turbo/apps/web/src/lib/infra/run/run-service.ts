@@ -28,6 +28,7 @@ import { type RunStatus, type GetRunResponse } from "@vm0/core/contracts/runs";
 import type { OrgTier } from "@vm0/core/contracts/orgs";
 import type { FirewallPolicies } from "@vm0/core/contracts/firewalls";
 import type { ConnectorType } from "@vm0/core/contracts/connectors";
+import type { TriggerSource } from "@vm0/core/contracts/logs";
 import { publishCancelNotification } from "../realtime/client";
 import type { CancelRunResult } from "../../zero/zero-run-cancel";
 
@@ -133,6 +134,10 @@ export interface CreateRunParams {
     composeContent: AgentComposeYaml;
     compose: { id: string; userId: string; orgId: string };
   };
+  // Origin of the run request (e.g. "cli", "web", "schedule", "slack").
+  // Threaded through to queue telemetry so enqueue/dequeue spans can be split
+  // by trigger in Axiom; only populated on the zero path.
+  triggerSource?: TriggerSource;
 }
 
 export interface CreateRunResult {

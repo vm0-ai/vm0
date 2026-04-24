@@ -32,13 +32,18 @@ const log = logger("executor:runner");
 export async function executeRunnerJob(
   context: PreparedContext,
 ): Promise<ExecutorResult> {
-  // Record api_to_dispatch metric
+  // Record api_to_dispatch metric. was_queued distinguishes runs that came
+  // through the org queue (apiStartTime was reset at dequeue) from direct
+  // dispatch, so latency queries can slice by dispatch path.
   recordSandboxOperation({
     sandboxType: "runner",
     actionType: "api_to_executor",
     durationMs: Date.now() - context.apiStartTime,
     success: true,
     runId: context.runId,
+    dimensions: {
+      was_queued: context.wasQueued,
+    },
   });
 
   const runnerGroup = context.runnerGroup;
