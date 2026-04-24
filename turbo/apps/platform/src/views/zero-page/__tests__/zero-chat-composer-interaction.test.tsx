@@ -111,7 +111,9 @@ describe("zero chat composer - file input", () => {
     await user.upload(fileInput, file);
 
     await waitFor(() => {
-      expect(screen.getByLabelText(/test\.png/)).toBeInTheDocument();
+      expect(
+        screen.getByLabelText("Open image preview for test.png"),
+      ).toBeInTheDocument();
     });
   });
 });

@@ -1,8 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import { http, HttpResponse } from "msw";
 import { NextRequest } from "next/server";
 import { GET, OPTIONS } from "../route";
 import { testContext } from "../../../../../../src/__tests__/test-helpers";
 import { reloadEnv } from "../../../../../../src/env";
+import { server } from "../../../../../../src/mocks/server";
 
 const context = testContext();
 type NextRequestInit = ConstructorParameters<typeof NextRequest>[1];
@@ -63,10 +65,12 @@ describe("GET /f/[userId]/[id]/[filename]", () => {
     context.mocks.s3.generatePresignedUrl.mockResolvedValue(
       "https://signed.example.com/notes.md",
     );
-    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response("# Raw markdown", {
-        status: 200,
-        headers: { "Content-Type": "text/markdown; charset=utf-8" },
+    server.use(
+      http.get("https://signed.example.com/notes.md", () => {
+        return new HttpResponse("# Raw markdown", {
+          status: 200,
+          headers: { "Content-Type": "text/markdown; charset=utf-8" },
+        });
       }),
     );
 
@@ -75,10 +79,6 @@ describe("GET /f/[userId]/[id]/[filename]", () => {
     expect(res.status).toBe(200);
     await expect(res.text()).resolves.toBe("# Raw markdown");
     expect(res.headers.get("Content-Type")).toContain("text/markdown");
-    expect(fetchSpy).toHaveBeenCalledWith(
-      "https://signed.example.com/notes.md",
-    );
-    fetchSpy.mockRestore();
   });
 
   it("adds cors headers for allowed origins on raw responses", async () => {
@@ -87,10 +87,12 @@ describe("GET /f/[userId]/[id]/[filename]", () => {
     context.mocks.s3.generatePresignedUrl.mockResolvedValue(
       "https://signed.example.com/notes.md",
     );
-    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response("plain text", {
-        status: 200,
-        headers: { "Content-Type": "text/plain; charset=utf-8" },
+    server.use(
+      http.get("https://signed.example.com/notes.md", () => {
+        return new HttpResponse("plain text", {
+          status: 200,
+          headers: { "Content-Type": "text/plain; charset=utf-8" },
+        });
       }),
     );
 
@@ -102,7 +104,6 @@ describe("GET /f/[userId]/[id]/[filename]", () => {
       "https://app.vm7.ai:8443",
     );
     expect(res.headers.get("Access-Control-Allow-Credentials")).toBe("true");
-    fetchSpy.mockRestore();
   });
 
   it("handles cors preflight for allowed origins", async () => {
