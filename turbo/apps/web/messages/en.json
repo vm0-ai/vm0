@@ -207,7 +207,9 @@
       "howSecure": "How secure is VM0?",
       "howSecureAnswer": "Every agent run executes in an isolated Firecracker microVM with hardware-level KVM isolation. Credentials are injected at the network layer and never exposed to agent code. All agent HTTP/HTTPS traffic is logged with SHA-256 integrity per run.",
       "annualBilling": "Do you offer annual billing or discounts?",
-      "annualBillingAnswer": "Contact us to discuss volume pricing, annual billing discounts, and custom arrangements for your team."
+      "annualBillingAnswer": "Contact us to discuss volume pricing, annual billing discounts, and custom arrangements for your team.",
+      "upgradeCredits": "What happens to my credits if I upgrade?",
+      "upgradeCreditsAnswer": "When you upgrade, your remaining credits carry over and you immediately receive the new plan's monthly credit allocation. You only pay the prorated difference for the rest of the billing cycle."
     },
     "perMonth": "/month"
   },

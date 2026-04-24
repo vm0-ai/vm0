@@ -13,6 +13,7 @@ import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
 import { setMockOrg } from "../../../mocks/handlers/api-org.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
+import { pathname, search } from "../../../signals/location.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -145,24 +146,45 @@ describe("zero job detail page - display", () => {
     });
   });
 
-  it("should show not-found error state for unknown agent (AGENT-D-024)", async () => {
-    setMockTeam([]);
+  it("should redirect unknown agent to the default agent (AGENT-D-024)", async () => {
+    setMockTeam([
+      {
+        id: "c0000000-0000-4000-a000-000000000001",
+        displayName: "Zero",
+        description: null,
+        sound: null,
+        avatarUrl: null,
+        headVersionId: "version_1",
+        updatedAt: "2024-01-01T00:00:00Z",
+      },
+    ]);
     server.use(
-      mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
+      mockApi(zeroAgentsByIdContract.get, ({ params, respond }) => {
+        if (params.id === "c0000000-0000-4000-a000-000000000001") {
+          return respond(200, {
+            agentId: "c0000000-0000-4000-a000-000000000001",
+            ownerId: "test-owner-id",
+            description: null,
+            displayName: "Zero",
+            sound: null,
+            avatarUrl: null,
+            permissionPolicies: null,
+            customSkills: [],
+            modelProviderId: null,
+            selectedModel: null,
+          });
+        }
         return respond(404, {
           error: { message: "Not found", code: "NOT_FOUND" },
         });
       }),
     );
 
-    detachedSetupPage({ context, path: "/agents/nonexistent" });
+    detachedSetupPage({ context, path: "/agents/nonexistent?tab=profile" });
 
-    // Not-found state shows a "Back to team" link instead of the agent heading
     await waitFor(() => {
-      expect(screen.getByText("Back to team")).toBeInTheDocument();
-      expect(
-        screen.queryByRole("heading", { name: "My Agent" }),
-      ).not.toBeInTheDocument();
+      expect(pathname()).toBe("/agents/c0000000-0000-4000-a000-000000000001");
+      expect(search()).toBe("?tab=profile");
     });
   });
 });

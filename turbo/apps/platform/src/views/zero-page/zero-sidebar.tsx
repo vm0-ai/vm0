@@ -20,7 +20,6 @@ import {
   IconLayoutSidebarLeftCollapse,
   IconPlug,
   IconFlask,
-  IconPhone,
   IconSparkles,
   IconMenu2,
 } from "@tabler/icons-react";
@@ -139,15 +138,6 @@ const FOOTER_NAV = [
     featureGate: undefined,
   },
   {
-    id: "phone",
-    activeKeys: ["phone"],
-    pathname: "/phone",
-    label: "Phone",
-    icon: IconPhone as NavIcon,
-    iconImg: undefined,
-    featureGate: FeatureSwitchKey.PhoneIntegration,
-  },
-  {
     id: "lab",
     activeKeys: ["lab"],
     pathname: "/_/lab",
@@ -232,9 +222,7 @@ function SidebarNavContent() {
   const slackScopeMismatch = useLastResolved(slackOrgScopeMismatch$) ?? false;
 
   const manageNav = MANAGE_NAV.filter((item) => {
-    return (
-      item.id !== "activities" || features?.[FeatureSwitchKey.ActivityLogList]
-    );
+    return item.id !== "activities" || features?.[FeatureSwitchKey.ZeroDebug];
   });
   const footerNav = FOOTER_NAV.filter((item) => {
     return !item.featureGate || features?.[item.featureGate];

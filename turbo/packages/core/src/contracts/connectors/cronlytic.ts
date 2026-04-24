@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const cronlytic = {
   cronlytic: {
     label: "Cronlytic",
+    category: "data-automation-infrastructure",
     environmentMapping: {
       CRONLYTIC_API_KEY: "$secrets.CRONLYTIC_API_KEY",
       CRONLYTIC_USER_ID: "$vars.CRONLYTIC_USER_ID",

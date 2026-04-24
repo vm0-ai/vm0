@@ -207,7 +207,9 @@
       "howSecure": "¿Qué tan seguro es VM0?",
       "howSecureAnswer": "Cada ejecución de agente se realiza en una microVM Firecracker aislada con aislamiento KVM a nivel de hardware. Las credenciales se inyectan a nivel de red y nunca se exponen al código del agente. Todo el tráfico HTTP/HTTPS del agente se registra con integridad SHA-256 por ejecución.",
       "annualBilling": "¿Ofrecen facturación anual o descuentos?",
-      "annualBillingAnswer": "Contáctanos para discutir precios por volumen, descuentos de facturación anual y acuerdos personalizados para tu equipo."
+      "annualBillingAnswer": "Contáctanos para discutir precios por volumen, descuentos de facturación anual y acuerdos personalizados para tu equipo.",
+      "upgradeCredits": "¿Qué pasa con mis créditos si actualizo mi plan?",
+      "upgradeCreditsAnswer": "Al actualizar, tus créditos restantes se conservan y recibes inmediatamente la asignación mensual de créditos del nuevo plan. Solo pagas la diferencia prorrateada del ciclo de facturación restante."
     },
     "perMonth": "/mes"
   },

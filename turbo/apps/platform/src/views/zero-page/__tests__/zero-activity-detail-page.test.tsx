@@ -85,13 +85,13 @@ describe("zeroActivityDetailPage", () => {
     expect(screen.getByText("9.0s")).toBeInTheDocument();
   });
 
-  it("should hide Activity breadcrumb when ActivityLogList switch is off", async () => {
+  it("should hide Activity breadcrumb when ZeroDebug switch is off", async () => {
     mockActivityDetailAPI();
 
     detachedSetupPage({
       context,
       path: "/activities/a0000000-0000-4000-a000-000000000001",
-      featureSwitches: { [FeatureSwitchKey.ActivityLogList]: false },
+      featureSwitches: { [FeatureSwitchKey.ZeroDebug]: false },
     });
 
     await waitFor(() => {
@@ -107,13 +107,13 @@ describe("zeroActivityDetailPage", () => {
     expect(activityLinks).toHaveLength(0);
   });
 
-  it("should show Activity breadcrumb when ActivityLogList switch is on", async () => {
+  it("should show Activity breadcrumb when ZeroDebug switch is on", async () => {
     mockActivityDetailAPI();
 
     detachedSetupPage({
       context,
       path: "/activities/a0000000-0000-4000-a000-000000000001",
-      featureSwitches: { [FeatureSwitchKey.ActivityLogList]: true },
+      featureSwitches: { [FeatureSwitchKey.ZeroDebug]: true },
     });
 
     await waitFor(() => {
@@ -300,7 +300,7 @@ describe("zeroActivityDetailPage", () => {
     detachedSetupPage({
       context,
       path: "/activities/a0000000-0000-4000-a000-000000000004",
-      featureSwitches: { [FeatureSwitchKey.ShowSystemPrompt]: true },
+      featureSwitches: { [FeatureSwitchKey.ZeroDebug]: true },
     });
 
     // Wait for System Prompt card to appear

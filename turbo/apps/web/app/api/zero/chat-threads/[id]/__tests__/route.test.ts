@@ -55,6 +55,15 @@ describe("GET /api/zero/chat-threads/:id - Get Thread Detail", () => {
     expect(response.status).toBe(404);
   });
 
+  it("should return 404 for malformed thread id", async () => {
+    const request = createTestRequest(
+      "http://localhost:3000/api/zero/chat-threads/123",
+    );
+    const response = await GET(request);
+
+    expect(response.status).toBe(404);
+  });
+
   it("should return thread detail with empty messages", async () => {
     // Create a thread
     const createRequest = createTestRequest(

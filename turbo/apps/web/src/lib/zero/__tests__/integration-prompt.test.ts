@@ -3,7 +3,6 @@ import {
   buildIntegrationPrompt,
   buildSchedulePrompt,
   buildSlackPrompt,
-  buildPhonePrompt,
   buildTelegramPrompt,
   buildGitHubPrompt,
   buildWebChatPrompt,
@@ -97,23 +96,6 @@ describe("buildSlackPrompt", () => {
 
     expect(result).toContain("You are currently running inside: Slack");
     expect(result).toContain("Your bot user ID: BBOT");
-  });
-});
-
-describe("buildPhonePrompt", () => {
-  it("should include dm channel type and phone context", () => {
-    const result = buildPhonePrompt("Caller info here");
-
-    expect(result).toContain("You are currently running inside: Phone");
-    expect(result).toContain("Channel type: Direct message");
-    expect(result).toContain("Caller info here");
-  });
-
-  it("should handle empty phone context", () => {
-    const result = buildPhonePrompt("");
-
-    expect(result).toContain("You are currently running inside: Phone");
-    expect(result).toContain("Channel type: Direct message");
   });
 });
 

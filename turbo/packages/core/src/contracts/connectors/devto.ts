@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const devto = {
   devto: {
     label: "Dev.to",
+    category: "marketing-content-growth",
     environmentMapping: {
       DEVTO_TOKEN: "$secrets.DEVTO_TOKEN",
     },

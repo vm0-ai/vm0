@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const doppler = {
   doppler: {
     label: "Doppler",
+    category: "engineering-team-execution",
     environmentMapping: {
       DOPPLER_TOKEN: "$secrets.DOPPLER_TOKEN",
     },

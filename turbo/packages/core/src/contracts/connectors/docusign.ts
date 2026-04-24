@@ -4,6 +4,7 @@ import type { ConnectorConfig } from "../connectors";
 export const docusign = {
   docusign: {
     label: "DocuSign",
+    category: "data-automation-infrastructure",
     environmentMapping: {
       DOCUSIGN_TOKEN: "$secrets.DOCUSIGN_ACCESS_TOKEN",
     },

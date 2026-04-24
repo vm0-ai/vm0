@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const shortio = {
   shortio: {
     label: "Short.io",
+    category: "marketing-content-growth",
     environmentMapping: {
       SHORTIO_TOKEN: "$secrets.SHORTIO_TOKEN",
     },

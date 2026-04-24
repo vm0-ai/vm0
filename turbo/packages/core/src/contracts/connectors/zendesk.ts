@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const zendesk = {
   zendesk: {
     label: "Zendesk",
+    category: "communication-collaboration",
     environmentMapping: {
       ZENDESK_API_TOKEN: "$secrets.ZENDESK_API_TOKEN",
       ZENDESK_EMAIL: "$vars.ZENDESK_EMAIL",

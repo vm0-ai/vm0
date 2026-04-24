@@ -8,6 +8,7 @@ in the ``usage_event`` table.
 import json
 import urllib.parse
 import uuid
+import zlib
 from collections.abc import Callable
 from typing import TypedDict
 
@@ -411,11 +412,18 @@ def report_usage(flow: http.HTTPFlow, run_id: str) -> None:
     endpoint_bucket = classify_bucket(permission, flow.request.method, request_path)
     if endpoint_bucket is None:
         return
+    try:
+        request_body = flow.request.content
+    except (zlib.error, ValueError):
+        # Bogus Content-Encoding on the request: stay on the conservative
+        # (more expensive) bucket, matching refine_bucket_with_body's own
+        # "never under-charge" rule for parse failures.
+        request_body = None
     endpoint_bucket = refine_bucket_with_body(
         endpoint_bucket,
         flow.request.method,
         request_path,
-        flow.request.content,
+        request_body,
     )
 
     req_meta = _parse_request_metadata(flow)

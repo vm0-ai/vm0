@@ -451,6 +451,20 @@ describe("validateBaseUrl", () => {
   it("should reject invalid URLs", () => {
     expect(() => {
       return validateBaseUrl("not-a-url", "fw");
+    }).toThrow('URL must include a scheme (e.g. "https://not-a-url")');
+  });
+
+  it("suggests adding https:// when the scheme is missing", () => {
+    expect(() => {
+      return validateBaseUrl("attia-n8n.duckdns.org/api/v1", "n8n");
+    }).toThrow(
+      'URL must include a scheme (e.g. "https://attia-n8n.duckdns.org/api/v1")',
+    );
+  });
+
+  it("falls back to the generic message when scheme is present but URL is malformed", () => {
+    expect(() => {
+      return validateBaseUrl("https://exa mple.com", "fw");
     }).toThrow("not a valid URL");
   });
 

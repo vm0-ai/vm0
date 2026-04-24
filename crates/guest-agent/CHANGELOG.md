@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.23.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.23.0...guest-agent-v0.23.1) (2026-04-24)
+
+
+### Performance Improvements
+
+* **guest-agent:** parallelize session history upload and artifact snapshot ([#10962](https://github.com/vm0-ai/vm0/issues/10962)) ([27718e3](https://github.com/vm0-ai/vm0/commit/27718e39c2ff1870502dae16d72fc711c13a2cf0))
+
+## [0.23.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.22.3...guest-agent-v0.23.0) (2026-04-24)
+
+
+### Features
+
+* **guest-agent:** emit mount path in artifact snapshots ([#10924](https://github.com/vm0-ai/vm0/issues/10924)) ([0db3944](https://github.com/vm0-ai/vm0/commit/0db3944a3291367d1324eba0a9101036ec58927f)), closes [#10911](https://github.com/vm0-ai/vm0/issues/10911) [#10906](https://github.com/vm0-ai/vm0/issues/10906)
+
 ## [0.22.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.22.2...guest-agent-v0.22.3) (2026-04-23)
 
 

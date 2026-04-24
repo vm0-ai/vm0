@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const cloudflare = {
   cloudflare: {
     label: "Cloudflare",
+    category: "engineering-team-execution",
     environmentMapping: {
       CLOUDFLARE_TOKEN: "$secrets.CLOUDFLARE_TOKEN",
     },

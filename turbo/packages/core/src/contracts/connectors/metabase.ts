@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const metabase = {
   metabase: {
     label: "Metabase",
+    category: "data-automation-infrastructure",
     environmentMapping: {
       METABASE_TOKEN: "$secrets.METABASE_TOKEN",
       METABASE_BASE_URL: "$vars.METABASE_BASE_URL",

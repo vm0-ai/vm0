@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const discordWebhook = {
   "discord-webhook": {
     label: "Discord Webhook",
+    category: "communication-collaboration",
     environmentMapping: {
       DISCORD_WEBHOOK_URL: "$secrets.DISCORD_WEBHOOK_URL",
     },

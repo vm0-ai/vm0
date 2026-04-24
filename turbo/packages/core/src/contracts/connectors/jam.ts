@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const jam = {
   jam: {
     label: "Jam",
+    category: "engineering-team-execution",
     environmentMapping: {
       JAM_TOKEN: "$secrets.JAM_TOKEN",
     },

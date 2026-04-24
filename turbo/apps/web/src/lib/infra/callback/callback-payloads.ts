@@ -87,21 +87,3 @@ export interface ChatCallbackPayload {
 export interface VoiceChatCallbackPayload {
   taskId: string;
 }
-
-export interface PhoneCallbackPayload {
-  callId: string;
-  userId: string;
-  orgId: string;
-  agentId: string;
-  existingSessionId: string | null;
-}
-
-export interface IMessageCallbackPayload {
-  messageId: string;
-  fromNumber: string;
-  userId: string;
-  orgId: string;
-  agentId: string;
-  agentphoneAgentId: string;
-  existingSessionId: string | null;
-}

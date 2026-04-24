@@ -158,7 +158,9 @@ function PolicyPill({
             }}
             className={`flex items-center gap-1 px-2.5 py-1.5 transition-colors ${
               policy === opt.value
-                ? "bg-muted text-foreground"
+                ? opt.value === "allow"
+                  ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                  : "bg-rose-500/10 text-rose-700 dark:text-rose-400"
                 : disabled
                   ? "text-muted-foreground/50"
                   : "text-muted-foreground hover:text-foreground hover:bg-muted/50"

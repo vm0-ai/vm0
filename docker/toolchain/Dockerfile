@@ -164,8 +164,8 @@ RUN npm install -g agent-browser@0.22.0
 # Install Chromium via Playwright (supports both amd64 and arm64)
 # Use chrome-for-testing to ensure full browser (not just headless shell)
 # is downloaded, needed for headed mode (AGENT_BROWSER_HEADED=1)
-RUN npx -y playwright@1.58.2 install-deps chromium \
-    && npx -y playwright@1.58.2 install chrome-for-testing
+RUN npx -y playwright@1.59.1 install-deps chromium \
+    && npx -y playwright@1.59.1 install chrome-for-testing
 
 # Symlink Chromium binary to a stable path for agent-browser
 # Grant world read+execute so non-root users (e.g. vscode) can launch Chrome

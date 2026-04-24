@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const deepseek = {
   deepseek: {
     label: "DeepSeek",
+    category: "ai-general-models",
     environmentMapping: {
       DEEPSEEK_TOKEN: "$secrets.DEEPSEEK_TOKEN",
     },

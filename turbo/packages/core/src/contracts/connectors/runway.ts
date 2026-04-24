@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const runway = {
   runway: {
     label: "Runway",
+    category: "ai-image-video",
     environmentMapping: {
       RUNWAY_TOKEN: "$secrets.RUNWAY_TOKEN",
     },

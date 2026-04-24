@@ -6,12 +6,12 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
+import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 import {
   chatThreadsContract,
   chatThreadMessagesContract,
   chatThreadByIdContract,
 } from "@vm0/core/contracts/chat-threads";
-import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -144,9 +144,8 @@ describe("chat page keyboard shortcuts", () => {
     // The thread carries both agentId (legacy) and agent.id (preferred).
     // The escape navigation must use agent.id, not agentId.
     const AGENT_ID_FROM_OBJECT = "a2222222-0000-4000-a000-000000000002";
-
-    // Register both agents in the mock team so the redirect guard in
-    // setupAgentChatPage$ does not fire when navigating to AGENT_ID_FROM_OBJECT.
+    // Include the thread's agent in the team so the chat page setup does not
+    // treat it as missing and redirect to the default agent.
     setMockTeam([
       {
         id: AGENT_ID,
@@ -167,7 +166,6 @@ describe("chat page keyboard shortcuts", () => {
         updatedAt: "2024-01-01T00:00:00Z",
       },
     ]);
-
     server.use(
       mockApi(chatThreadsContract.list, ({ respond }) => {
         return respond(200, {

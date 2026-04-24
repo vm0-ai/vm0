@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const infisical = {
   infisical: {
     label: "Infisical",
+    category: "engineering-team-execution",
     environmentMapping: {
       INFISICAL_CLIENT_ID: "$secrets.INFISICAL_CLIENT_ID",
       INFISICAL_CLIENT_SECRET: "$secrets.INFISICAL_CLIENT_SECRET",

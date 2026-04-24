@@ -340,6 +340,28 @@ class TestAddCaptureFields:
         assert "response_body" not in entry  # response body skipped
         assert entry["response_body_encoding"] == "binary"  # marked as binary
 
+    def test_request_decompression_error_marks_body_binary(self, real_flow, headers):
+        # Content-Encoding: gzip + non-gzip bytes on the REQUEST side makes
+        # flow.request.content raise ValueError.  add_capture_fields must
+        # catch it and mark request_body_encoding as binary, mirroring the
+        # response-side behaviour (#10792).
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            request_content_type="application/json",
+            response_content_type="application/json",
+            include_request_id=True,
+            request_body=b"not gzip at all",
+            request_encoding="gzip",
+            response_body=b"ok",
+        )
+        entry = {}
+        add_capture_fields(flow, entry)
+        assert "request_body" not in entry  # body skipped
+        assert entry["request_body_encoding"] == "binary"  # marked as binary
+        assert "request_headers" in entry  # headers still captured
+        assert "response_body" in entry  # response unaffected
+
     def test_binary_request_body_marks_encoding(self, real_flow, headers):
         flow = real_flow(
             method="POST",

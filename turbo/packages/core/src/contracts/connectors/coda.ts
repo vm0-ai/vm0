@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const coda = {
   coda: {
     label: "Coda",
+    category: "docs-files-knowledge",
     environmentMapping: {
       CODA_TOKEN: "$secrets.CODA_TOKEN",
     },

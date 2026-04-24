@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const qdrant = {
   qdrant: {
     label: "Qdrant",
+    category: "data-automation-infrastructure",
     environmentMapping: {
       QDRANT_TOKEN: "$secrets.QDRANT_TOKEN",
       QDRANT_BASE_URL: "$vars.QDRANT_BASE_URL",

@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const jira = {
   jira: {
     label: "Jira",
+    category: "engineering-team-execution",
     tags: ["issues", "tickets", "project-management"],
     environmentMapping: {
       JIRA_API_TOKEN: "$secrets.JIRA_API_TOKEN",

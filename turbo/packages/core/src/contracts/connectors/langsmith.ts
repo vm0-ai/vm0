@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const langsmith = {
   langsmith: {
     label: "LangSmith",
+    category: "ai-memory-tracing-eval",
     helpText:
       "Connect to LangSmith for LLM tracing, evaluation, and dataset management.",
     environmentMapping: {

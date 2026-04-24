@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const exa = {
   exa: {
     label: "Exa",
+    category: "data-automation-infrastructure",
     environmentMapping: {
       EXA_TOKEN: "$secrets.EXA_TOKEN",
     },

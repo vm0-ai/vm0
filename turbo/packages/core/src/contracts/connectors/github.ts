@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const github = {
   github: {
     label: "GitHub",
+    category: "engineering-team-execution",
     tags: ["gh", "gh_api_key", "git", "vcs", "scm", "repos"],
     environmentMapping: {
       GH_TOKEN: "$secrets.GITHUB_ACCESS_TOKEN",

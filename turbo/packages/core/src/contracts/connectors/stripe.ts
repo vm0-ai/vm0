@@ -4,6 +4,7 @@ import type { ConnectorConfig } from "../connectors";
 export const stripe = {
   stripe: {
     label: "Stripe",
+    category: "data-automation-infrastructure",
     tags: ["payments", "billing", "checkout"],
     environmentMapping: {
       STRIPE_TOKEN: "$secrets.STRIPE_ACCESS_TOKEN",

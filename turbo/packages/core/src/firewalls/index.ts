@@ -33,7 +33,6 @@ import {
 } from "./vercel.generated";
 import { getConnectorEnvironmentMapping } from "../contracts/connector-utils";
 import { agentmailFirewall } from "./agentmail.generated";
-import { agentphoneFirewall } from "./agentphone.generated";
 import { amplitudeFirewall } from "./amplitude.generated";
 import { anthropicManagedAgentsFirewall } from "./anthropic-managed-agents.generated";
 import { ahrefsFirewall } from "./ahrefs.generated";
@@ -219,7 +218,6 @@ export interface PermissionGroup<T extends { name: string }> {
 
 const CONNECTOR_FIREWALLS = {
   agentmail: agentmailFirewall,
-  agentphone: agentphoneFirewall,
   amplitude: amplitudeFirewall,
   "anthropic-managed-agents": anthropicManagedAgentsFirewall,
   ahrefs: ahrefsFirewall,

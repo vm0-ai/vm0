@@ -165,14 +165,6 @@ export const chatThreadsContract = c.router({
     body: z.object({
       agentId: z.string().min(1),
       title: z.string().optional(),
-      /**
-       * Optional ID of a previously scheduled agent run this thread is
-       * continuing. When set, the first run created in the thread is seeded
-       * with a system prompt that tells the agent to fetch the original run's
-       * telemetry via `zero logs <id>`. Later runs inherit the session context
-       * and do not get the prompt again.
-       */
-      sourceScheduleRunId: z.string().uuid().optional(),
     }),
     responses: {
       201: z.object({
@@ -391,7 +383,15 @@ export const chatSearchContract = c.router({
 
 /**
  * Paginated chat messages contract (/api/zero/chat-threads/:threadId/messages)
- * Cursor-based pagination using message UUID as sinceId.
+ * Cursor-based pagination using message UUID as sinceId / beforeId.
+ *
+ * Query params (mutually exclusive):
+ *   sinceId  — forward pagination: messages strictly after this cursor
+ *   beforeId — backward pagination: messages strictly before this cursor
+ *   (neither) — initial load anchored at the last user message
+ *
+ * Response includes `hasMore` for initial load and backward pagination so the
+ * UI knows whether to offer upward scroll loading.
  */
 const pagedChatMessageSchema = z.object({
   id: z.string(),
@@ -412,11 +412,13 @@ export const chatThreadMessagesContract = c.router({
     pathParams: z.object({ threadId: z.string() }),
     query: z.object({
       sinceId: z.string().uuid().optional(),
+      beforeId: z.string().uuid().optional(),
       limit: z.coerce.number().min(1).max(50).default(50),
     }),
     responses: {
       200: z.object({
         messages: z.array(pagedChatMessageSchema),
+        hasMore: z.boolean().optional(),
       }),
       401: apiErrorSchema,
       404: apiErrorSchema,

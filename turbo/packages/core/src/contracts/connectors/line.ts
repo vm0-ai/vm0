@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const line = {
   line: {
     label: "LINE",
+    category: "communication-collaboration",
     environmentMapping: {
       LINE_TOKEN: "$secrets.LINE_TOKEN",
     },

@@ -154,11 +154,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Show the data export option in account menu",
     enabled: false,
   },
-  [FeatureSwitchKey.ShowSystemPrompt]: {
-    maintainer: "ethan@vm0.ai",
-    description: "Show the appended system prompt in activity detail steps",
-    enabled: false,
-  },
   [FeatureSwitchKey.UsageAnalytics]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -170,14 +165,10 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Show the selected model name in activity details",
     enabled: false,
   },
-  [FeatureSwitchKey.ActivityLogList]: {
-    maintainer: "ethan@vm0.ai",
-    description: "Show the Activities list page and breadcrumb navigation",
-    enabled: false,
-  },
   [FeatureSwitchKey.ZeroDebug]: {
     maintainer: "ethan@vm0.ai",
-    description: "Reveal debug tabs in activity pages and Debug preferences",
+    description:
+      "Reveal activity debug surfaces, activity log navigation, appended system prompts, and Debug preferences",
     enabled: false,
   },
   [FeatureSwitchKey.ComputerUse]: {
@@ -195,16 +186,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Show audit log links in Slack messages",
     enabled: false,
   },
-  [FeatureSwitchKey.PhoneIntegration]: {
-    maintainer: "ethan@vm0.ai",
-    description: "Show the Phone page for voice call integration",
-    enabled: false,
-  },
   [FeatureSwitchKey.AudioInput]: {
     maintainer: "lancy@vm0.ai",
     description:
       "Enable voice input (microphone + STT) in chat — gates the mic button and the /api/zero/voice-io/stt route",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.AudioOutput]: {
     maintainer: "lancy@vm0.ai",
@@ -215,12 +201,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.AutoSkill]: {
     maintainer: "lancy@vm0.ai",
     description: "Enable automatic skill creation in agent prompts",
-    enabled: false,
-  },
-  [FeatureSwitchKey.ScheduleRunHistory]: {
-    maintainer: "linghan@vm0.ai",
-    description:
-      "Show Run History tab on schedules page and Chat-from-schedule button on activity detail",
     enabled: false,
   },
   [FeatureSwitchKey.TestOauthConnector]: {
@@ -270,24 +250,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Gate the custom /settings/api-keys UI for issuing personal access tokens used by the /api/v1 public surface. When disabled, the settings page redirects to / and the sidebar menu item is hidden. The backend /api/v1 verification does NOT consult this flag — previously issued PATs continue to work.",
     enabled: false,
   },
-  [FeatureSwitchKey.SlackAgentSwitch]: {
-    maintainer: "yuma@vm0.ai",
-    description:
-      "Per-user agent override in the org-aware Slack app. When enabled for an org, " +
-      "members can choose which agent replies to their Slack mentions / DMs via " +
-      "`/zero switch` (opens an agent picker modal) or the Switch button on the " +
-      "App Home tab. The help text for `/zero help` also lists the switch subcommand. " +
-      "Selecting an alternate agent persists a row in `slack_user_agent_preferences` " +
-      "so the preference follows the user across every Slack workspace joined under " +
-      "the same org, and subsequent mention / DM replies from a non-default agent " +
-      "carry a `Sent via <agent>` footer so it's clear which agent produced the reply. " +
-      "When gated off, the modal, slash subcommand, App Home button, and help line " +
-      "are hidden AND any existing DB preferences are ignored at read time — every " +
-      "user falls back to the org default agent with no footer. Staff-only during the " +
-      "rollout window defined by `enabledOrgIdHashes`.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.ModelProviderSelection]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -306,6 +268,14 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "agent avatar render, and the unscoped request shape. New-chat creation " +
       "still uses the current-agent fallback.",
     enabled: false,
+  },
+  [FeatureSwitchKey.ConnectorCategories]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Show category sections and the hover-reveal outline menu on the Connectors settings page. " +
+      "Staff-only during rollout.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.Vm0DeepseekModel]: {
     maintainer: "ethan@vm0.ai",
@@ -393,7 +363,7 @@ export function getAllFeatureStates(
 
   if (ctx?.overrides) {
     for (const [key, value] of Object.entries(ctx.overrides)) {
-      if (value !== undefined) {
+      if (key in FEATURE_SWITCHES && value !== undefined) {
         result[key as FeatureSwitchKey] = value;
       }
     }

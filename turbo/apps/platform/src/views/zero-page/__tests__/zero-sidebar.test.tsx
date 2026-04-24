@@ -118,12 +118,12 @@ describe("zero sidebar", () => {
     expect(features[FeatureSwitchKey.DataExport]).toBeFalsy();
   });
 
-  it("should hide Activity logs when ActivityLogList switch is off", async () => {
+  it("should hide Activity logs when ZeroDebug switch is off", async () => {
     mockAPIs();
     detachedSetupPage({
       context,
       path: "/",
-      featureSwitches: { [FeatureSwitchKey.ActivityLogList]: false },
+      featureSwitches: { [FeatureSwitchKey.ZeroDebug]: false },
     });
 
     await waitFor(() => {
@@ -132,12 +132,12 @@ describe("zero sidebar", () => {
     expect(screen.queryByText("Activity logs")).not.toBeInTheDocument();
   });
 
-  it("should show Activity logs when ActivityLogList switch is on", async () => {
+  it("should show Activity logs when ZeroDebug switch is on", async () => {
     mockAPIs();
     detachedSetupPage({
       context,
       path: "/",
-      featureSwitches: { [FeatureSwitchKey.ActivityLogList]: true },
+      featureSwitches: { [FeatureSwitchKey.ZeroDebug]: true },
     });
 
     await waitFor(() => {

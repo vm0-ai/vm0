@@ -4,6 +4,7 @@ import type { ConnectorConfig } from "../connectors";
 export const spotify = {
   spotify: {
     label: "Spotify",
+    category: "data-automation-infrastructure",
     environmentMapping: {
       SPOTIFY_TOKEN: "$secrets.SPOTIFY_ACCESS_TOKEN",
     },

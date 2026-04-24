@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const slack = {
   slack: {
     label: "Slack",
+    category: "communication-collaboration",
     tags: ["chat", "messaging", "im"],
     environmentMapping: {
       SLACK_TOKEN: "$secrets.SLACK_ACCESS_TOKEN",

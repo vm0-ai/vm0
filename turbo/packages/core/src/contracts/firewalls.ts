@@ -456,6 +456,11 @@ export function validateBaseUrl(base: string, serviceName: string): void {
   try {
     url = new URL(base);
   } catch {
+    if (!base.includes("://")) {
+      throw new Error(
+        `Invalid base URL "${base}" in firewall "${serviceName}": URL must include a scheme (e.g. "https://${base}")`,
+      );
+    }
     throw new Error(
       `Invalid base URL "${base}" in firewall "${serviceName}": not a valid URL`,
     );

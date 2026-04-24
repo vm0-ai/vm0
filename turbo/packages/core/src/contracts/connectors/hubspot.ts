@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const hubspot = {
   hubspot: {
     label: "HubSpot",
+    category: "sales-crm-business-operations",
     environmentMapping: {
       HUBSPOT_TOKEN: "$secrets.HUBSPOT_ACCESS_TOKEN",
     },

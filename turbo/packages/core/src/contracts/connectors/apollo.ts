@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const apollo = {
   apollo: {
     label: "Apollo",
+    category: "sales-crm-business-operations",
     environmentMapping: {
       APOLLO_TOKEN: "$secrets.APOLLO_TOKEN",
     },

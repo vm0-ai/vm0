@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const perplexity = {
   perplexity: {
     label: "Perplexity",
+    category: "data-automation-infrastructure",
     environmentMapping: {
       PERPLEXITY_TOKEN: "$secrets.PERPLEXITY_TOKEN",
     },

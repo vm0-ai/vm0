@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const brevo = {
   brevo: {
     label: "Brevo",
+    category: "communication-collaboration",
     environmentMapping: {
       BREVO_TOKEN: "$secrets.BREVO_TOKEN",
     },

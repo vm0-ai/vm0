@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const qiita = {
   qiita: {
     label: "Qiita",
+    category: "marketing-content-growth",
     environmentMapping: {
       QIITA_TOKEN: "$secrets.QIITA_TOKEN",
     },

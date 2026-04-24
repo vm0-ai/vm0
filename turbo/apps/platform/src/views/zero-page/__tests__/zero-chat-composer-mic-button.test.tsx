@@ -353,7 +353,7 @@ describe("chat-i-035: mic button gates on audio input quota", () => {
     await waitFor(() => {
       expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
     });
-    expect(screen.queryByText("Choose your plan")).not.toBeInTheDocument();
+    expect(screen.queryByText("Compare plans")).not.toBeInTheDocument();
   });
 
   it("should open billing dialog without recording when quota is exhausted", async () => {
@@ -383,7 +383,7 @@ describe("chat-i-035: mic button gates on audio input quota", () => {
     click(micButton);
 
     await waitFor(() => {
-      expect(screen.getByText("Choose your plan")).toBeInTheDocument();
+      expect(screen.getByText("Compare plans")).toBeInTheDocument();
     });
 
     expect(screen.queryByLabelText("Stop recording")).not.toBeInTheDocument();
@@ -414,7 +414,7 @@ describe("chat-i-035: mic button gates on audio input quota", () => {
     click(stopButton);
 
     await waitFor(() => {
-      expect(screen.getByText("Choose your plan")).toBeInTheDocument();
+      expect(screen.getByText("Compare plans")).toBeInTheDocument();
     });
   });
 });

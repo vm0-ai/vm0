@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const openai = {
   openai: {
     label: "OpenAI",
+    category: "ai-general-models",
     tags: ["llm", "ai", "gpt", "chatgpt"],
     environmentMapping: {
       OPENAI_TOKEN: "$secrets.OPENAI_TOKEN",

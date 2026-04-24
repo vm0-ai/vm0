@@ -65,7 +65,6 @@ import {
 } from "./api-onboarding.ts";
 import { apiBillingHandlers, resetMockBilling } from "./api-billing.ts";
 import { apiSchedulesHandlers, resetMockSchedules } from "./api-schedules.ts";
-import { apiPhoneHandlers, resetMockPhoneStatus } from "./api-phone.ts";
 import { apiInsightsHandlers } from "./api-insights.ts";
 import { apiQueuePositionHandlers } from "./api-queue-position.ts";
 import {
@@ -105,7 +104,6 @@ export const handlers = [
   ...apiPermissionAccessRequestsHandlers,
   ...apiPermissionPoliciesHandlers,
   ...apiSchedulesHandlers,
-  ...apiPhoneHandlers,
   ...apiInsightsHandlers,
   ...apiQueuePositionHandlers,
   ...apiVoiceChatHandlers,
@@ -134,7 +132,6 @@ export function resetAllMockHandlers(): void {
   resetMockMemberCreditCaps();
   resetMockUsageInsight();
   resetMockSchedules();
-  resetMockPhoneStatus();
   resetMockTeam();
   resetMockOnboardingStatus();
   resetMockVoiceChat();

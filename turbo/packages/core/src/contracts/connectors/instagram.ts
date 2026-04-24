@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const instagram = {
   instagram: {
     label: "Instagram",
+    category: "marketing-content-growth",
     environmentMapping: {
       INSTAGRAM_TOKEN: "$secrets.INSTAGRAM_TOKEN",
       INSTAGRAM_BUSINESS_ACCOUNT_ID: "$vars.INSTAGRAM_BUSINESS_ACCOUNT_ID",

@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const revenuecat = {
   revenuecat: {
     label: "RevenueCat",
+    category: "data-automation-infrastructure",
     environmentMapping: {
       REVENUECAT_TOKEN: "$secrets.REVENUECAT_TOKEN",
     },

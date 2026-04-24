@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const mixpanel = {
   mixpanel: {
     label: "Mixpanel",
+    category: "data-automation-infrastructure",
     tags: ["analytics", "product-analytics", "events"],
     environmentMapping: {
       MIXPANEL_SERVICE_ACCOUNT_USERNAME:

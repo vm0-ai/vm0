@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const supadata = {
   supadata: {
     label: "Supadata",
+    category: "data-automation-infrastructure",
     environmentMapping: {
       SUPADATA_TOKEN: "$secrets.SUPADATA_TOKEN",
     },

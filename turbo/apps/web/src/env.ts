@@ -26,9 +26,10 @@ function initEnv() {
         .positive()
         .default(10000),
       // Database driver selection
-      // Defaults to 'neon' (optimized for serverless/Vercel)
-      // Set to 'pg' for local development with standard Postgres
-      DB_DRIVER: z.enum(["pg", "neon"]).default("neon"),
+      // Defaults to 'pg' — node-postgres TCP pool + attachDatabasePool is the
+      // Vercel Fluid + Neon 2026 recommended path. Override to 'neon' only
+      // for environments that specifically need the WebSocket driver.
+      DB_DRIVER: z.enum(["pg", "neon"]).default("pg"),
       CLERK_SECRET_KEY: z.string().min(1),
       E2B_API_KEY: z.string().min(1).optional(),
       VM0_API_URL: z.url().optional(),
@@ -231,10 +232,21 @@ function initEnv() {
       VERCEL: z.string().optional(),
       VERCEL_URL: z.string().optional(),
       VERCEL_AUTOMATION_BYPASS_SECRET: z.string().optional(),
-      // AgentPhone (platform-level phone channel)
-      AGENTPHONE_API_KEY: z.string().min(1).optional(),
       // Plain.com (developer support thread creation) — optional, falls back to email
       PLAIN_API_KEY: z.string().min(1).optional(),
+      // Gemini via Vertex AI (Vercel OIDC → GCP Workload Identity Federation)
+      // All five must be set together for the /api/generate-image route to work.
+      // Only wired into production deploys; preview/dev are intentionally unbound.
+      GCP_PROJECT_ID: z.string().min(1).optional(),
+      GCP_PROJECT_NUMBER: z.string().min(1).optional(),
+      GCP_SERVICE_ACCOUNT_EMAIL: z.string().min(1).optional(),
+      GCP_WORKLOAD_IDENTITY_POOL_ID: z.string().min(1).optional(),
+      GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID: z.string().min(1).optional(),
+      // Gemini Developer API key — local/dev escape hatch for /api/generate-image.
+      // When set, the route uses generativelanguage.googleapis.com instead of
+      // Vertex AI, bypassing OIDC. Production must NOT set this; it should use
+      // the GCP_* vars above so auth stays on the Vercel OIDC path.
+      GEMINI_API_KEY: z.string().min(1).optional(),
     },
     client: {
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: z.string().min(1),
@@ -395,8 +407,14 @@ function initEnv() {
       VERCEL_URL: process.env.VERCEL_URL,
       VERCEL_AUTOMATION_BYPASS_SECRET:
         process.env.VERCEL_AUTOMATION_BYPASS_SECRET,
-      AGENTPHONE_API_KEY: process.env.AGENTPHONE_API_KEY,
       PLAIN_API_KEY: process.env.PLAIN_API_KEY,
+      GCP_PROJECT_ID: process.env.GCP_PROJECT_ID,
+      GCP_PROJECT_NUMBER: process.env.GCP_PROJECT_NUMBER,
+      GCP_SERVICE_ACCOUNT_EMAIL: process.env.GCP_SERVICE_ACCOUNT_EMAIL,
+      GCP_WORKLOAD_IDENTITY_POOL_ID: process.env.GCP_WORKLOAD_IDENTITY_POOL_ID,
+      GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID:
+        process.env.GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID,
+      GEMINI_API_KEY: process.env.GEMINI_API_KEY,
 
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:
         process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,

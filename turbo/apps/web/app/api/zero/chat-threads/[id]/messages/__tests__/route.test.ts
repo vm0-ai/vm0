@@ -188,7 +188,7 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
     expect(data.messages[1].content).toBe("Third");
   });
 
-  it("should return the latest N messages (still ASC) when no cursor is provided and total exceeds the limit", async () => {
+  it("anchors at the last user message when no cursor is provided", async () => {
     const createRes = await POST(
       createTestRequest("http://localhost:3000/api/zero/chat-threads", {
         method: "POST",
@@ -198,7 +198,9 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
     );
     const { id: threadId } = await createRes.json();
 
-    // Insert 3 messages, then request with limit=2
+    // Insert 3 messages: A (user), B (assistant), C (user).
+    // The no-cursor path anchors at the last user message (C), so only C is
+    // returned and hasMore=true because A and B precede the anchor.
     await insertTestChatMessage({
       chatThreadId: threadId,
       userId: testUserId,
@@ -220,15 +222,15 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
 
     const response = await GET(
       createTestRequest(
-        `http://localhost:3000/api/zero/chat-threads/${threadId}/messages?limit=2`,
+        `http://localhost:3000/api/zero/chat-threads/${threadId}/messages`,
       ),
     );
     const data = await response.json();
 
     expect(response.status).toBe(200);
-    expect(data.messages).toHaveLength(2);
-    expect(data.messages[0].content).toBe("B");
-    expect(data.messages[1].content).toBe("C");
+    expect(data.messages).toHaveLength(1);
+    expect(data.messages[0].content).toBe("C");
+    expect(data.hasMore).toBe(true);
   });
 
   it("should return only user message when run has no assistant events", async () => {

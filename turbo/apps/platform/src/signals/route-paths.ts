@@ -23,7 +23,6 @@ export const ROUTES = {
   settingsApiKeys: "/settings/api-keys",
   onboarding: "/onboarding",
   signInToken: "/sign-in-token",
-  phone: "/phone",
   lab: "/_/lab",
   insights: "/insights",
   usage: "/_/usage",
