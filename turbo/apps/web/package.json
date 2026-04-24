@@ -8,6 +8,7 @@
     "build": "next build",
     "start": "next start",
     "test": "vitest run",
+    "test:next-cpu": "NEXT_DEV_CPU_REPRO=1 NEXT_DEV_CPU_PROFILE=1 NEXT_DEV_CPU_COLD=1 NEXT_DEV_CPU_PATH=/en dotenv -e .env.local -- vitest run src/__tests__/next-dev-cpu-repro.test.ts",
     "test:watch": "vitest",
     "lint": "oxlint && oxlint --type-aware -c ../../.oxlintrc.typeaware.json && eslint . --max-warnings 0",
     "check-types": "next typegen && tsc --noEmit",

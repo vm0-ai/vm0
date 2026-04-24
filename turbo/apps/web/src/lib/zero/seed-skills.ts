@@ -1,4 +1,6 @@
+import { createHash } from "node:crypto";
 import { resolveSkillRef } from "@vm0/core/github-url";
+import { getSkillStorageName, SYSTEM_ORG_ID } from "@vm0/core/storage-names";
 import type { skills } from "../../db/schema/skill";
 
 /**
@@ -61,6 +63,42 @@ export function buildSeedSkillValues(
         name,
         description: `${name} skill`,
       },
+    };
+  });
+}
+
+interface SeedSkillStorageEntry {
+  name: string;
+  fullPath: string;
+  storageName: string;
+  versionId: string;
+  s3Prefix: string;
+  s3Key: string;
+}
+
+/**
+ * Build deterministic system storage placeholders for local/dev seed data.
+ * Production skill sync replaces these with real archive-backed versions.
+ */
+export function buildSeedSkillStorageEntries(
+  names: readonly string[],
+): SeedSkillStorageEntry[] {
+  return names.map((name) => {
+    const url = resolveSkillRef(name);
+    const fullPath = url.replace("https://github.com/", "");
+    const storageName = getSkillStorageName(fullPath);
+    const versionId = createHash("sha256")
+      .update(`dev-seed:skill:${url}`)
+      .digest("hex");
+    const s3Prefix = `${SYSTEM_ORG_ID}/volume/${storageName}`;
+
+    return {
+      name,
+      fullPath,
+      storageName,
+      versionId,
+      s3Prefix,
+      s3Key: `${s3Prefix}/${versionId}`,
     };
   });
 }

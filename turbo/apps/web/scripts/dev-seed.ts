@@ -2,18 +2,24 @@
 
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { getEligibleConnectorTypes } from "@vm0/core/contracts/connector-utils";
 import { VM0_MODEL_TO_PROVIDER } from "@vm0/core/contracts/model-providers";
+import { SYSTEM_ORG_ID, VOLUME_ORG_USER_ID } from "@vm0/core/storage-names";
 import { schema } from "../src/db/db";
 import { creditPricing } from "../src/db/schema/credit-pricing";
 import { usagePricing } from "../src/db/schema/usage-pricing";
 import { vm0ApiKeys } from "../src/db/schema/vm0-api-key";
 import { skills } from "../src/db/schema/skill";
-import { SEED_SKILLS, buildSeedSkillValues } from "../src/lib/zero/seed-skills";
+import { storages, storageVersions } from "../src/db/schema/storage";
+import {
+  SEED_SKILLS,
+  buildSeedSkillStorageEntries,
+  buildSeedSkillValues,
+} from "../src/lib/zero/seed-skills";
 
 /**
- * Dev seed: populate credit_pricing, vm0_api_keys, and skills tables.
+ * Dev seed: populate credit_pricing, vm0_api_keys, skills, and skill storage tables.
  *
  * Pricing convention: 1 USD = 1000 credits.
  * Prices are per 1M tokens, stored as integer credits per 1M tokens.
@@ -254,12 +260,13 @@ async function devSeed() {
     }
     console.log(`✅ Seeded ${apiKeys.length} vm0 API key entries`);
 
-    // --- skills (seed skills + common connectors, batch insert) ---
+    // --- skills (seed skills + common connectors, direct DB seed) ---
     console.log("Seeding skills...");
     const eligibleConnectorTypes = getEligibleConnectorTypes();
-    const skillValues = buildSeedSkillValues([
+    const skillNames = [
       ...new Set([...SEED_SKILLS, ...eligibleConnectorTypes]),
-    ]);
+    ];
+    const skillValues = buildSeedSkillValues(skillNames);
     const inserted = await db
       .insert(skills)
       .values(skillValues)
@@ -268,6 +275,88 @@ async function devSeed() {
     const seededCount = inserted.length;
     console.log(
       `✅ Seeded skills: ${seededCount} new, ${skillValues.length - seededCount} already existed`,
+    );
+
+    console.log("Seeding skill storage placeholders...");
+    const storageEntries = buildSeedSkillStorageEntries(skillNames);
+    await db
+      .insert(storages)
+      .values(
+        storageEntries.map((entry) => {
+          return {
+            orgId: SYSTEM_ORG_ID,
+            userId: VOLUME_ORG_USER_ID,
+            name: entry.storageName,
+            type: "volume",
+            s3Prefix: entry.s3Prefix,
+            size: 0,
+            fileCount: 0,
+          };
+        }),
+      )
+      .onConflictDoNothing();
+
+    const storageRows = await db
+      .select({
+        id: storages.id,
+        name: storages.name,
+        headVersionId: storages.headVersionId,
+      })
+      .from(storages)
+      .where(
+        and(
+          eq(storages.orgId, SYSTEM_ORG_ID),
+          eq(storages.userId, VOLUME_ORG_USER_ID),
+          eq(storages.type, "volume"),
+          inArray(
+            storages.name,
+            storageEntries.map((entry) => {
+              return entry.storageName;
+            }),
+          ),
+        ),
+      );
+
+    const storageByName = new Map(
+      storageRows.map((row) => {
+        return [row.name, row];
+      }),
+    );
+    const entriesWithoutHead = storageEntries.filter((entry) => {
+      const row = storageByName.get(entry.storageName);
+      return row && !row.headVersionId;
+    });
+
+    if (entriesWithoutHead.length > 0) {
+      await db
+        .insert(storageVersions)
+        .values(
+          entriesWithoutHead.map((entry) => {
+            const row = storageByName.get(entry.storageName)!;
+            return {
+              id: entry.versionId,
+              storageId: row.id,
+              s3Key: entry.s3Key,
+              size: 0,
+              fileCount: 0,
+              message: "Seeded by dev-seed",
+              createdBy: "dev-seed",
+            };
+          }),
+        )
+        .onConflictDoNothing();
+
+      for (const entry of entriesWithoutHead) {
+        const row = storageByName.get(entry.storageName)!;
+        await db
+          .update(storages)
+          .set({ headVersionId: entry.versionId, updatedAt: new Date() })
+          .where(eq(storages.id, row.id));
+      }
+    }
+
+    console.log(
+      `✅ Seeded skill storage placeholders: ${entriesWithoutHead.length} new, ${storageEntries.length - entriesWithoutHead.length} already had versions`,
     );
   } finally {
     await client.end();
