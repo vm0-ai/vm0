@@ -42,7 +42,9 @@ function createAgentByIdFactory(): (
     const atom$ = computed(async (get) => {
       get(internalAgentByIdReload$);
       const client = get(zeroClient$)(zeroAgentsByIdContract);
-      const result = await accept(client.get({ params: { id } }), [200]);
+      const result = await accept(client.get({ params: { id } }), [200], {
+        toast: false,
+      });
       return result.body;
     });
     cache.set(id, atom$);

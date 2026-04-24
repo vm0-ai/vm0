@@ -194,6 +194,9 @@ pub struct ArtifactEntry {
     #[serde(default)]
     pub cached: bool,
     pub vas_storage_name: String,
+    /// Storage UUID, used guest-side to locally recompute the content hash
+    /// and skip VAS calls when an artifact is unchanged since mount.
+    pub vas_storage_id: String,
     pub vas_version_id: String,
 }
 
@@ -582,6 +585,7 @@ mod tests {
             "artifacts": [{
                 "mountPath": "/artifacts",
                 "vasStorageName": "my-artifact",
+                "vasStorageId": "sid-1",
                 "vasVersionId": "v1"
             }]
         });
@@ -599,11 +603,13 @@ mod tests {
                 {
                     "mountPath": "/workspace",
                     "vasStorageName": "art-a",
+                    "vasStorageId": "sid-a",
                     "vasVersionId": "v1"
                 },
                 {
                     "mountPath": "/data",
                     "vasStorageName": "art-b",
+                    "vasStorageId": "sid-b",
                     "vasVersionId": "v2"
                 }
             ]

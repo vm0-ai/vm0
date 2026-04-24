@@ -28,17 +28,9 @@ function PricingCard({
 
   return (
     <div
+      className="pricing-card"
       style={{
-        background: "var(--card-bg)",
-        border: "1px solid var(--border-light)",
-        borderRadius: "12px",
-        padding: "40px 32px",
-        width: "100%",
-        display: "flex",
-        flexDirection: "column",
-        transition: "all 0.3s ease",
         transform: isHovered ? "translateY(-2px)" : "translateY(0)",
-        position: "relative",
       }}
       onMouseEnter={() => {
         return setIsHovered(true);
@@ -174,16 +166,7 @@ export function PricingPageClient() {
       <section className="section-spacing" style={{ paddingTop: 0 }}>
         <div className="container">
           <div style={{ marginBottom: "60px" }}>
-            <div
-              style={{
-                marginBottom: "40px",
-                display: "grid",
-                gridTemplateColumns: "repeat(3, 1fr)",
-                gap: "20px",
-                maxWidth: "1200px",
-                margin: "0 auto 40px",
-              }}
-            >
+            <div className="pricing-cards-grid">
               {/* Free Plan */}
               <PricingCard
                 title="Free"
@@ -246,19 +229,7 @@ export function PricingPageClient() {
           </div>
 
           {/* Pay as you go */}
-          <div
-            style={{
-              background: "var(--card-bg)",
-              border: "1px solid var(--border-light)",
-              borderRadius: "12px",
-              padding: "40px",
-              marginTop: "20px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: "40px",
-            }}
-          >
+          <div className="pricing-topup">
             <div>
               <h2
                 style={{
@@ -325,27 +296,13 @@ export function PricingPageClient() {
           {/* Feature Comparison Table */}
           <div style={{ marginTop: "60px" }}>
             <h2
-              style={{
-                fontSize: "42px",
-                fontWeight: 400,
-                color: "var(--text-primary)",
-                marginBottom: "60px",
-                textAlign: "center",
-                letterSpacing: "-0.5px",
-              }}
+              className="pricing-section-title"
+              style={{ marginBottom: "60px" }}
             >
               {t("comparePlans")}
             </h2>
             <div style={{ overflowX: "auto" }}>
-              <table
-                style={{
-                  width: "100%",
-                  borderCollapse: "separate",
-                  borderSpacing: 0,
-                  fontSize: "15px",
-                  fontWeight: 300,
-                }}
-              >
+              <table className="pricing-table">
                 <thead>
                   <tr>
                     <th
@@ -539,16 +496,10 @@ export function PricingPageClient() {
           </div>
 
           {/* FAQ Section */}
-          <div style={{ marginTop: "120px", marginBottom: "80px" }}>
+          <div className="pricing-faq-section">
             <h2
-              style={{
-                fontSize: "42px",
-                fontWeight: 400,
-                color: "var(--text-primary)",
-                marginBottom: "60px",
-                textAlign: "center",
-                letterSpacing: "-0.5px",
-              }}
+              className="pricing-section-title"
+              style={{ marginBottom: "60px" }}
             >
               {t("faq.title")}
             </h2>
@@ -717,14 +668,7 @@ function FAQItem({ question, answer }: { question: string; answer: string }) {
 
   return (
     <div
-      style={{
-        background: "var(--card-bg)",
-        border: "1px solid var(--border-light)",
-        borderRadius: "16px",
-        padding: "24px 32px",
-        transition: "border-color 0.2s ease",
-        cursor: "pointer",
-      }}
+      className="pricing-faq-item"
       onClick={() => {
         return setIsExpanded(!isExpanded);
       }}

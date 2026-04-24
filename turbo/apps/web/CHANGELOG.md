@@ -1,5 +1,108 @@
 # Changelog
 
+## [12.300.0](https://github.com/vm0-ai/vm0/compare/web-v12.299.0...web-v12.300.0) (2026-04-24)
+
+
+### Features
+
+* **eslint:** add no-global-assignment rule banning new globals ([#11005](https://github.com/vm0-ai/vm0/issues/11005)) ([2dec8c9](https://github.com/vm0-ai/vm0/commit/2dec8c9ddd2cff2b1985806373dc3059b33e4c05))
+* remove deprecated deepseek-chat/reasoner, add v4 credit multipliers ([#11014](https://github.com/vm0-ai/vm0/issues/11014)) ([7f4eb57](https://github.com/vm0-ai/vm0/commit/7f4eb57fcf8f8d3a4040787ec854fac5fac51ec0))
+* **web:** make use-case try-it button prominent ([#10994](https://github.com/vm0-ai/vm0/issues/10994)) ([e4af2a5](https://github.com/vm0-ai/vm0/commit/e4af2a54e90dffa8a75816d068214caacc13d356))
+
+
+### Bug Fixes
+
+* fall back to agent default model in createZeroRunRecord ([#11016](https://github.com/vm0-ai/vm0/issues/11016)) ([c8e31b3](https://github.com/vm0-ai/vm0/commit/c8e31b3f18f79cf980d368951c2256e8f6d2cdfd))
+* **pricing:** render structured data server-side ([#10991](https://github.com/vm0-ai/vm0/issues/10991)) ([1b57854](https://github.com/vm0-ai/vm0/commit/1b57854488bfe90b6c3d4a708c2c50d2326c8707))
+* **zero:** seed memory artifact into agent_sessions.artifacts on new runs ([#11032](https://github.com/vm0-ai/vm0/issues/11032)) ([d4aa838](https://github.com/vm0-ai/vm0/commit/d4aa8389229ce94f3acefb589afb5489a148ac91))
+
+
+### Refactoring
+
+* remove chat thread list item agentId ([#10998](https://github.com/vm0-ai/vm0/issues/10998)) ([2d62c16](https://github.com/vm0-ai/vm0/commit/2d62c168caa019b7e65e26d6f2bf713b798608a8))
+
+
+### Performance Improvements
+
+* **guest-agent:** skip vas snapshot for unchanged artifacts (part 2 of [#10967](https://github.com/vm0-ai/vm0/issues/10967)) ([#10989](https://github.com/vm0-ai/vm0/issues/10989)) ([4d4b18e](https://github.com/vm0-ai/vm0/commit/4d4b18ede0f7f13c767cb8d50726d9ea1e69c780))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.234.0
+
+## [12.299.0](https://github.com/vm0-ai/vm0/compare/web-v12.298.0...web-v12.299.0) (2026-04-24)
+
+
+### Features
+
+* **telemetry:** add enqueue/dequeue spans to zero-run queue ([#10988](https://github.com/vm0-ai/vm0/issues/10988)) ([6e0a522](https://github.com/vm0-ai/vm0/commit/6e0a5229d59633ad8419e04ba2efca6dd2d79827))
+
+
+### Bug Fixes
+
+* adjust chat run error messaging ([#10983](https://github.com/vm0-ai/vm0/issues/10983)) ([79c9251](https://github.com/vm0-ai/vm0/commit/79c9251a1bf9fd3663e2cf415b3ba4da94ba5549))
+
+
+### Refactoring
+
+* **zero-run-policy:** decouple credit check from model-provider selection ([#10995](https://github.com/vm0-ai/vm0/issues/10995)) ([93bbe71](https://github.com/vm0-ai/vm0/commit/93bbe71197615aa827b8ad1c2c3d5261e33a5557))
+
+## [12.298.0](https://github.com/vm0-ai/vm0/compare/web-v12.297.0...web-v12.298.0) (2026-04-24)
+
+
+### Features
+
+* add deepseek v4 models ([#10956](https://github.com/vm0-ai/vm0/issues/10956)) ([292ed24](https://github.com/vm0-ai/vm0/commit/292ed2401576ed7451962e7c3e391ea61a6b9e3b))
+* add promo-video-from-recordings use case ([#10691](https://github.com/vm0-ai/vm0/issues/10691)) ([303abec](https://github.com/vm0-ai/vm0/commit/303abec703e642dd9f4910ec7dd13af5a119c95b))
+
+
+### Refactoring
+
+* **generate-image:** migrate to usage_event billing + tests + production gate ([#10979](https://github.com/vm0-ai/vm0/issues/10979)) ([72ea577](https://github.com/vm0-ai/vm0/commit/72ea577bce1b150076ea7d5e6cea155ef7e2dddf))
+* **telegram:** pivot installation PK to telegram_bot_id and add owner+org columns ([#10250](https://github.com/vm0-ai/vm0/issues/10250)) ([5fdd5b6](https://github.com/vm0-ai/vm0/commit/5fdd5b6c8d0a6f32a3a916af419d0a378e3a3de1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.233.0
+
+## [12.297.0](https://github.com/vm0-ai/vm0/compare/web-v12.296.0...web-v12.297.0) (2026-04-24)
+
+
+### Features
+
+* thread storage id from web to guest-agent (part 1 of [#10967](https://github.com/vm0-ai/vm0/issues/10967)) ([#10978](https://github.com/vm0-ai/vm0/issues/10978)) ([85f2193](https://github.com/vm0-ai/vm0/commit/85f219383d3cf7b81ca6f41358276d5388acb8c0))
+
+## [12.296.0](https://github.com/vm0-ai/vm0/compare/web-v12.295.0...web-v12.296.0) (2026-04-24)
+
+
+### Features
+
+* **slack:** graduate agent switching ([#10964](https://github.com/vm0-ai/vm0/issues/10964)) ([cf070f8](https://github.com/vm0-ai/vm0/commit/cf070f857f4ded9f16f5a6d932ba091b3d022ec5))
+
+
+### Bug Fixes
+
+* add missing pricing FAQ i18n keys for upgradeCredits ([#10925](https://github.com/vm0-ai/vm0/issues/10925)) ([c256c67](https://github.com/vm0-ai/vm0/commit/c256c67c05d921af193752eac44b1efa55d9202c))
+* redirect missing agent routes to default agent ([#10942](https://github.com/vm0-ai/vm0/issues/10942)) ([9442bf0](https://github.com/vm0-ai/vm0/commit/9442bf08d0ae97a05ab5be4221f3277a7decdfe9))
+
+
+### Performance Improvements
+
+* **db:** switch production db driver from neon websocket to pg tcp pool under fluid ([#10959](https://github.com/vm0-ai/vm0/issues/10959)) ([151c602](https://github.com/vm0-ai/vm0/commit/151c6024deac793212a68f8078cc8015c3a86937)), closes [#10953](https://github.com/vm0-ai/vm0/issues/10953)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.232.0
+
 ## [12.295.0](https://github.com/vm0-ai/vm0/compare/web-v12.294.0...web-v12.295.0) (2026-04-24)
 
 

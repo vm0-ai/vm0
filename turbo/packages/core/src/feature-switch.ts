@@ -154,11 +154,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Show the data export option in account menu",
     enabled: false,
   },
-  [FeatureSwitchKey.ShowSystemPrompt]: {
-    maintainer: "ethan@vm0.ai",
-    description: "Show the appended system prompt in activity detail steps",
-    enabled: false,
-  },
   [FeatureSwitchKey.UsageAnalytics]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -170,14 +165,10 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Show the selected model name in activity details",
     enabled: false,
   },
-  [FeatureSwitchKey.ActivityLogList]: {
-    maintainer: "ethan@vm0.ai",
-    description: "Show the Activities list page and breadcrumb navigation",
-    enabled: false,
-  },
   [FeatureSwitchKey.ZeroDebug]: {
     maintainer: "ethan@vm0.ai",
-    description: "Reveal debug tabs in activity pages and Debug preferences",
+    description:
+      "Reveal activity debug surfaces, activity log navigation, appended system prompts, and Debug preferences",
     enabled: false,
   },
   [FeatureSwitchKey.ComputerUse]: {
@@ -199,23 +190,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "lancy@vm0.ai",
     description:
       "Enable voice input (microphone + STT) in chat — gates the mic button and the /api/zero/voice-io/stt route",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.AudioOutput]: {
     maintainer: "lancy@vm0.ai",
     description:
       "Enable audio output in chat (TTS read-aloud + auto-read) — gates the volume/read buttons and the /api/zero/voice-io/tts route",
-    enabled: false,
-  },
-  [FeatureSwitchKey.AutoSkill]: {
-    maintainer: "lancy@vm0.ai",
-    description: "Enable automatic skill creation in agent prompts",
-    enabled: false,
-  },
-  [FeatureSwitchKey.ScheduleRunHistory]: {
-    maintainer: "linghan@vm0.ai",
-    description:
-      "Show Run History tab on schedules page and Chat-from-schedule button on activity detail",
     enabled: false,
   },
   [FeatureSwitchKey.TestOauthConnector]: {
@@ -234,6 +214,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Show the unread watermark dot and bold title for chat threads with unread messages in the sidebar",
+    enabled: false,
+  },
+  [FeatureSwitchKey.ChatManualHistory]: {
+    maintainer: "linghan@vm0.ai",
+    description:
+      "Enable manual chat history loading from a Load history button at the top of a thread. When off, chat stays in the latest-50/no-history mode.",
     enabled: false,
   },
   [FeatureSwitchKey.InlineThinkingDot]: {
@@ -274,16 +260,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: true,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.UnifyChatThreads]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Replace the per-agent chat list with a unified Chats view that includes " +
-      "threads from every agent in the user's org (sub-agents included). " +
-      "Gates the sidebar + /chats title/placeholder/aria-label swaps, the per-row " +
-      "agent avatar render, and the unscoped request shape. New-chat creation " +
-      "still uses the current-agent fallback.",
-    enabled: false,
-  },
   [FeatureSwitchKey.ConnectorCategories]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -291,11 +267,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Staff-only during rollout.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.Vm0DeepseekModel]: {
-    maintainer: "ethan@vm0.ai",
-    description: "Enable the DeepSeek-V3.2 (deepseek-chat) VM0 managed model",
-    enabled: false,
   },
   [FeatureSwitchKey.PlatformConnectors]: {
     maintainer: "liangyou@vm0.ai",
@@ -378,7 +349,7 @@ export function getAllFeatureStates(
 
   if (ctx?.overrides) {
     for (const [key, value] of Object.entries(ctx.overrides)) {
-      if (value !== undefined) {
+      if (key in FEATURE_SWITCHES && value !== undefined) {
         result[key as FeatureSwitchKey] = value;
       }
     }

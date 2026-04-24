@@ -7,6 +7,7 @@ import {
   countTestVoiceChatSessionsByReasoningStatus,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { reloadEnv } from "../../../../../src/env";
+import { nextAfterCallbacks } from "../../../../../src/__tests__/next-after-hooks";
 
 vi.hoisted(() => {
   vi.stubEnv("CRON_SECRET", "test-cron-secret");
@@ -52,7 +53,7 @@ describe("GET /api/cron/voice-chat-cleanup", () => {
       });
 
       // Pre-cron: after() queue is empty.
-      expect(globalThis.nextAfterCallbacks.length).toBe(0);
+      expect(nextAfterCallbacks.length).toBe(0);
 
       const response = await GET(cronRequest("test-cron-secret"));
       const body = await response.json();
@@ -62,7 +63,7 @@ describe("GET /api/cron/voice-chat-cleanup", () => {
       expect(row?.reasoningStatus).toBe("idle");
 
       // Exactly one after() callback was queued: the re-tick for this session.
-      expect(globalThis.nextAfterCallbacks.length).toBe(1);
+      expect(nextAfterCallbacks.length).toBe(1);
     });
 
     it("T6 — does not touch a non-stuck reasoner (lastSummaryAt within 5 min)", async () => {

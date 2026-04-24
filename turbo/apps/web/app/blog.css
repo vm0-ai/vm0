@@ -1245,3 +1245,131 @@
 [data-theme="light"] .blog-post-content tr:nth-child(even) {
   background: rgba(0, 0, 0, 0.02);
 }
+
+/* Pricing Page */
+.pricing-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+  max-width: 1200px;
+  margin: 0 auto 40px;
+}
+
+.pricing-topup {
+  background: var(--card-bg);
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  padding: 40px;
+  margin-top: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 40px;
+}
+
+.pricing-section-title {
+  font-size: 42px;
+  font-weight: 400;
+  color: var(--text-primary);
+  text-align: center;
+  letter-spacing: -0.5px;
+}
+
+.pricing-faq-section {
+  margin-top: 120px;
+  margin-bottom: 80px;
+}
+
+.pricing-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  padding: 40px 32px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  transition: all 0.3s ease;
+  position: relative;
+}
+
+.pricing-faq-item {
+  background: var(--card-bg);
+  border: 1px solid var(--border-light);
+  border-radius: 16px;
+  padding: 24px 32px;
+  transition: border-color 0.2s ease;
+  cursor: pointer;
+}
+
+.pricing-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 15px;
+  font-weight: 300;
+  min-width: 600px;
+}
+
+@media (max-width: 768px) {
+  .pricing-cards-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .pricing-topup {
+    flex-direction: column;
+    text-align: center;
+    padding: 32px 24px;
+    gap: 24px;
+  }
+
+  .pricing-section-title {
+    font-size: 28px;
+    margin-bottom: 40px !important;
+  }
+
+  .pricing-faq-section {
+    margin-top: 60px;
+    margin-bottom: 40px;
+  }
+
+  .pricing-card {
+    padding: 32px 24px;
+  }
+
+  .pricing-faq-item {
+    padding: 20px 24px;
+  }
+
+  .pricing-faq-item h3 {
+    font-size: 16px;
+  }
+}
+
+@media (max-width: 480px) {
+  .pricing-section-title {
+    font-size: 24px;
+    margin-bottom: 32px !important;
+  }
+
+  .pricing-topup {
+    padding: 24px 16px;
+  }
+
+  .pricing-card {
+    padding: 24px 16px;
+  }
+
+  .pricing-faq-section {
+    margin-top: 40px;
+    margin-bottom: 32px;
+  }
+
+  .pricing-faq-item {
+    padding: 16px;
+  }
+
+  .pricing-faq-item h3 {
+    font-size: 15px;
+  }
+}

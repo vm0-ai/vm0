@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.24.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.24.0...guest-agent-v0.24.1) (2026-04-24)
+
+
+### Bug Fixes
+
+* **guest-agent:** align telemetry reads to newline boundary ([#11026](https://github.com/vm0-ai/vm0/issues/11026)) ([df5532c](https://github.com/vm0-ai/vm0/commit/df5532cadc03d52337bbccbba519f1ea20702e78))
+
+
+### Performance Improvements
+
+* **guest-agent:** skip vas snapshot for unchanged artifacts (part 2 of [#10967](https://github.com/vm0-ai/vm0/issues/10967)) ([#10989](https://github.com/vm0-ai/vm0/issues/10989)) ([4d4b18e](https://github.com/vm0-ai/vm0/commit/4d4b18ede0f7f13c767cb8d50726d9ea1e69c780))
+
+## [0.24.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.23.1...guest-agent-v0.24.0) (2026-04-24)
+
+
+### Features
+
+* thread storage id from web to guest-agent (part 1 of [#10967](https://github.com/vm0-ai/vm0/issues/10967)) ([#10978](https://github.com/vm0-ai/vm0/issues/10978)) ([85f2193](https://github.com/vm0-ai/vm0/commit/85f219383d3cf7b81ca6f41358276d5388acb8c0))
+
+## [0.23.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.23.0...guest-agent-v0.23.1) (2026-04-24)
+
+
+### Performance Improvements
+
+* **guest-agent:** parallelize session history upload and artifact snapshot ([#10962](https://github.com/vm0-ai/vm0/issues/10962)) ([27718e3](https://github.com/vm0-ai/vm0/commit/27718e39c2ff1870502dae16d72fc711c13a2cf0))
+
 ## [0.23.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.22.3...guest-agent-v0.23.0) (2026-04-24)
 
 

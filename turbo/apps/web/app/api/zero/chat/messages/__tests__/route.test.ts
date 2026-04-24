@@ -7,7 +7,6 @@ import {
   createTestCompose,
   insertOrgDefaultModelProvider,
   findTestCallbacksByRunId,
-  findTestRunRecord,
   getTestRun,
   getTestChatMessagesByThread,
   countUserRows,
@@ -17,7 +16,6 @@ import {
   getTestModelProviderIdByType,
 } from "../../../../../../src/__tests__/db-test-assertions/org";
 import { getTestZeroAgentId } from "../../../../../../src/__tests__/db-test-assertions/agents";
-import { POST as createChatThreadPOST } from "../../../chat-threads/route";
 import {
   testContext,
   uniqueId,
@@ -29,7 +27,6 @@ import { reloadEnv } from "../../../../../../src/env";
 import { server } from "../../../../../../src/mocks/server";
 import * as axiomClient from "../../../../../../src/lib/shared/axiom/client";
 import { http } from "../../../../../../src/__tests__/msw";
-import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
 import { mockAblyPublish } from "../../../../../../src/__tests__/ably-mock";
 import { createQueryCounter } from "../../../../../../src/__tests__/db-query-counter";
 import { GET as getChatThreadById } from "../../../chat-threads/[id]/route";
@@ -291,115 +288,6 @@ describe("POST /api/zero/chat/messages", () => {
       expect(openRouterHandler.mocked).not.toHaveBeenCalled();
     });
 
-    it("includes the schedule name in the continue-from-schedule prompt when the source run references a real schedule", async () => {
-      const { createTestSchedule } =
-        await import("../../../../../../src/__tests__/api-test-helpers");
-
-      const schedule = await createTestSchedule(
-        agentId,
-        `sched-${crypto.randomUUID().slice(0, 8)}`,
-        { prompt: "daily run" },
-      );
-      const { runId: sourceRunId } = await seedTestRun(user.userId, agentId, {
-        status: "completed",
-        scheduleId: schedule.id,
-        triggerSource: "schedule",
-      });
-
-      const createThreadResponse = await createChatThreadPOST(
-        createTestRequest("http://localhost:3000/api/zero/chat-threads", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            agentId,
-            sourceScheduleRunId: sourceRunId,
-          }),
-        }),
-      );
-      expect(createThreadResponse.status).toBe(201);
-      const { id: threadId } = await createThreadResponse.json();
-
-      const response = await POST(
-        createTestRequest(URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            agentId,
-            prompt: "continue from schedule",
-            threadId,
-          }),
-        }),
-      );
-      expect(response.status).toBe(201);
-      const { runId } = await response.json();
-
-      const run = await findTestRunRecord(runId);
-      expect(run?.appendSystemPrompt).toContain(sourceRunId);
-      expect(run?.appendSystemPrompt).toContain(
-        `scheduleName: ${schedule.name}`,
-      );
-      expect(run?.appendSystemPrompt).toContain("zero logs");
-      // Web chat UI context is always still present.
-      expect(run?.appendSystemPrompt).toContain(
-        "You are currently running inside: Web",
-      );
-    });
-
-    it("seeds the source-schedule prompt on the first run only", async () => {
-      // A thread created with sourceScheduleRunId should apply a built-in
-      // continue-from-schedule system prompt to the FIRST run in the thread
-      // only. Subsequent runs inherit the session context and do not get the
-      // prompt appended again.
-      const sourceScheduleRunId = crypto.randomUUID();
-      const createThreadResponse = await createChatThreadPOST(
-        createTestRequest("http://localhost:3000/api/zero/chat-threads", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ agentId, sourceScheduleRunId }),
-        }),
-      );
-      expect(createThreadResponse.status).toBe(201);
-      const { id: threadId } = await createThreadResponse.json();
-
-      const first = await POST(
-        createTestRequest(URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            agentId,
-            prompt: "continue please",
-            threadId,
-          }),
-        }),
-      );
-      expect(first.status).toBe(201);
-      const firstData = await first.json();
-      const firstRun = await findTestRunRecord(firstData.runId);
-      expect(firstRun?.appendSystemPrompt).toContain(sourceScheduleRunId);
-      expect(firstRun?.appendSystemPrompt).toContain("zero logs");
-
-      const second = await POST(
-        createTestRequest(URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            agentId,
-            prompt: "follow-up question",
-            threadId,
-          }),
-        }),
-      );
-      expect(second.status).toBe(201);
-      const secondData = await second.json();
-      const secondRun = await findTestRunRecord(secondData.runId);
-      // The composed prompt still carries the default agent tools preamble,
-      // but the source-run reference must not leak into follow-up runs.
-      expect(secondRun?.appendSystemPrompt ?? "").not.toContain(
-        sourceScheduleRunId,
-      );
-      expect(secondRun?.appendSystemPrompt ?? "").not.toContain("zero logs");
-    });
-
     it("should generate title when hasTextContent is true (text message)", async () => {
       vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key");
       reloadEnv();
@@ -519,6 +407,90 @@ describe("POST /api/zero/chat/messages", () => {
           expect(insertRunRecordSpan?.run_id).toBeUndefined();
         } finally {
           // Restore so the spy does not leak across tests in the same suite.
+          spanSpy.mockRestore();
+        }
+      });
+
+      it("emits the 3-way diagnostic split for the callbacks+token phase", async () => {
+        // Spans below are source="web" (recordSandboxOperation), not web-chat.
+        // They are emitted by buildAndDispatchRun inside the after() callback
+        // so the spy must survive until flushAfter() drains the queue.
+        const spanSpy = vi
+          .spyOn(axiomClient, "ingestSandboxOpLog")
+          .mockImplementation(() => {
+            return;
+          });
+
+        try {
+          const response = await POST(
+            createTestRequest(URL, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                agentId,
+                prompt: "hello phase-2 split test",
+              }),
+            }),
+          );
+          expect(response.status).toBe(201);
+
+          // Phase-2 spans are emitted inside the after() callback.
+          await context.mocks.flushAfter();
+
+          const dispatchSpans = spanSpy.mock.calls
+            .map((c) => {
+              return c[0];
+            })
+            .filter((e) => {
+              return e.source === "web";
+            });
+
+          const byOp = new Map(
+            dispatchSpans.map((e) => {
+              return [e.op_type, e];
+            }),
+          );
+
+          // Three-way split — only emitted when the chat route stamped both
+          // responseReady (via markResponseReady) and dispatchStart.
+          expect(byOp.has("api_phase1_post_tx_sync")).toBe(true);
+          expect(byOp.has("api_after_scheduling_gap")).toBe(true);
+          expect(byOp.has("api_phase2_callbacks_token_pure")).toBe(true);
+
+          // Further split of api_after_scheduling_gap — only emitted when the
+          // after() closure in zero-run-service.ts stamped afterEnterAt.
+          expect(byOp.has("api_after_schedule_to_closure")).toBe(true);
+          expect(byOp.has("api_after_closure_to_dispatch")).toBe(true);
+
+          // The signals-path after() callback emits its own closure-entry
+          // offset against the same responseReady anchor.
+          expect(byOp.has("api_after_signals_enter_offset")).toBe(true);
+
+          const phase1 = byOp.get("api_phase1_post_tx_sync")!;
+          const gap = byOp.get("api_after_scheduling_gap")!;
+          const phase2 = byOp.get("api_phase2_callbacks_token_pure")!;
+          const scheduleToClosure = byOp.get("api_after_schedule_to_closure")!;
+          const closureToDispatch = byOp.get("api_after_closure_to_dispatch")!;
+          const signalsOffset = byOp.get("api_after_signals_enter_offset")!;
+
+          for (const span of [
+            phase1,
+            gap,
+            phase2,
+            scheduleToClosure,
+            closureToDispatch,
+            signalsOffset,
+          ]) {
+            expect(typeof span.duration_ms).toBe("number");
+            expect(span.duration_ms).toBeGreaterThanOrEqual(0);
+          }
+
+          // The two closure-entry subspans sum to api_after_scheduling_gap
+          // within same-process jitter.
+          const gapSum =
+            scheduleToClosure.duration_ms + closureToDispatch.duration_ms;
+          expect(Math.abs(gapSum - gap.duration_ms)).toBeLessThanOrEqual(10);
+        } finally {
           spanSpy.mockRestore();
         }
       });
@@ -659,14 +631,12 @@ describe("POST /api/zero/chat/messages", () => {
       );
     });
 
-    // Two `org_metadata` SELECTs remain per POST after this dedup (Round 2
-    // tier via getOrgMetadata + Round 3 credits via checkOrgCredits). Dedup
-    // target is the duplicate `resolveOrg ↔ Round 2` pair in the
-    // modelSelection branch (3→2) plus the `zero_agents` pair on every POST
-    // (2→1). The checkOrgCredits read is a separate credits-admission path
-    // tracked as a follow-up (out of scope for #10594).
+    // One `org_metadata` SELECT per POST: the `resolveOrg` tier+credits read.
+    // The credits-admission path (checkOrgCreditsForRun) only touches
+    // org_metadata on the vm0 branch; BYOK and default-non-vm0 paths
+    // short-circuit before the balance check (#10951).
     describe("deduplicates per-request reads", () => {
-      it("reads zero_agents once and org_metadata twice without modelSelection", async () => {
+      it("reads zero_agents once and org_metadata once without modelSelection", async () => {
         const counter = createQueryCounter();
         try {
           const response = await POST(
@@ -682,13 +652,13 @@ describe("POST /api/zero/chat/messages", () => {
 
           expect(response.status).toBe(201);
           expect(counter.countMatching(/from\s+"?zero_agents"?/i)).toBe(1);
-          expect(counter.countMatching(/from\s+"?org_metadata"?/i)).toBe(2);
+          expect(counter.countMatching(/from\s+"?org_metadata"?/i)).toBe(1);
         } finally {
           counter.restore();
         }
       });
 
-      it("reads zero_agents once and org_metadata twice with modelSelection (duplicate pair eliminated)", async () => {
+      it("reads zero_agents once and org_metadata once with modelSelection (BYOK fast-exit)", async () => {
         const providerId = await getTestModelProviderIdByType(
           user.orgId,
           "anthropic-api-key",
@@ -712,10 +682,10 @@ describe("POST /api/zero/chat/messages", () => {
 
           expect(response.status).toBe(201);
           expect(counter.countMatching(/from\s+"?zero_agents"?/i)).toBe(1);
-          // 3→2: resolveOrg still reads org_metadata for tier+credits, Round 3
-          // checkOrgCredits reads credits; Round 2 now hits the preload path
-          // built from resolveOrg's already-fetched tier (the eliminated dup).
-          expect(counter.countMatching(/from\s+"?org_metadata"?/i)).toBe(2);
+          // modelProvider="anthropic" triggers checkOrgCreditsForRun's BYOK
+          // fast-exit — no org_metadata read from credits admission. Round 2
+          // uses resolveOrg's preloaded tier (the eliminated dup from #10594).
+          expect(counter.countMatching(/from\s+"?org_metadata"?/i)).toBe(1);
         } finally {
           counter.restore();
         }

@@ -8,7 +8,6 @@ import { revokeConnectorToken } from "../connector/connector-service";
 import { cleanupWorkspaceInstallation } from "../slack-org/connect-service";
 import { orgMetadata } from "../../../db/schema/org-metadata";
 import { telegramInstallations } from "../../../db/schema/telegram-installation";
-import { agentComposes } from "../../../db/schema/agent-compose";
 import { connectors } from "../../../db/schema/connector";
 import { slackOrgInstallations } from "../../../db/schema/slack-org-installation";
 
@@ -87,15 +86,11 @@ async function deregisterTelegramWebhooks(orgId: string): Promise<void> {
   const db = globalThis.services.db;
   const installations = await db
     .select({
-      id: telegramInstallations.id,
+      telegramBotId: telegramInstallations.telegramBotId,
       encryptedBotToken: telegramInstallations.encryptedBotToken,
     })
     .from(telegramInstallations)
-    .innerJoin(
-      agentComposes,
-      eq(telegramInstallations.defaultComposeId, agentComposes.id),
-    )
-    .where(eq(agentComposes.orgId, orgId));
+    .where(eq(telegramInstallations.orgId, orgId));
 
   const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
 
@@ -107,11 +102,11 @@ async function deregisterTelegramWebhooks(orgId: string): Promise<void> {
       );
       await deleteWebhook(botToken);
       log.debug("telegram webhook deregistered", {
-        installationId: inst.id,
+        telegramBotId: inst.telegramBotId,
       });
     } catch (error) {
       log.error("failed to deregister telegram webhook (best-effort)", {
-        installationId: inst.id,
+        telegramBotId: inst.telegramBotId,
         error,
       });
     }

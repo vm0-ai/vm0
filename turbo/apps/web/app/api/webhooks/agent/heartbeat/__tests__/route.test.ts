@@ -11,6 +11,7 @@ import {
   type UserContext,
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
+import { nextAfterCallbacks } from "../../../../../../src/__tests__/next-after-hooks";
 import { randomUUID } from "crypto";
 
 // Only mock external services
@@ -226,7 +227,7 @@ describe("POST /api/webhooks/agent/heartbeat", () => {
       expect(response.status).toBe(200);
 
       // The heartbeat handler should have registered an after() callback
-      expect(globalThis.nextAfterCallbacks).toHaveLength(1);
+      expect(nextAfterCallbacks).toHaveLength(1);
 
       // Flush and verify it doesn't throw (no callbacks registered for this run)
       await context.mocks.flushAfter();

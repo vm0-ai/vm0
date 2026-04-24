@@ -6,13 +6,11 @@ import {
   type PersistedAttachment,
 } from "@vm0/core/contracts/chat-threads";
 import type { ModelProviderType } from "@vm0/core/contracts/model-providers";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { agentById, defaultAgentId$ } from "./agent.ts";
 import { zeroClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";
 import { pathParams$ } from "./route.ts";
 import { activeRoute$ } from "./active-route.ts";
-import { featureSwitch$ } from "./external/feature-switch.ts";
 import {
   reloadChatThreads$,
   reloadChatThreadsCounter$,
@@ -84,6 +82,14 @@ export interface ChatThread {
   selectedModel: string | null;
 }
 
+// Note: `create-chat-thread.ts` has a near-identical `threadData$` inside
+// `createThreadData`. Both are intentionally kept:
+//  - `currentChatThread$` is a route-scoped computed used for sidebar title
+//    merging in `chatThreads$`.
+//  - `threadData$` lives inside the per-thread signal factory so it can be
+//    invalidated independently (reloadThread$) for the open chat page.
+// The `[200, 404]` accept list and `{ toast: false }` must stay aligned so
+// missing-thread redirects (see `chat-page-setup.ts`) behave consistently.
 export const currentChatThread$ = computed(
   async (get): Promise<ChatThread | null> => {
     const threadId = get(currentChatThreadId$);
@@ -95,8 +101,12 @@ export const currentChatThread$ = computed(
 
     const threadResult = await accept(
       threadClient.get({ params: { id: threadId } }),
-      [200],
+      [200, 404],
+      { toast: false },
     );
+    if (threadResult.status === 404) {
+      return null;
+    }
 
     const body = threadResult.body;
     return {
@@ -128,26 +138,17 @@ export const patchThreadRead$ = command(({ set }, _threadId: string) => {
 export const chatThreads$ = computed(async (get) => {
   get(reloadChatThreadsCounter$);
 
-  const features = await get(featureSwitch$);
-  const unifyChatThreads = features[FeatureSwitchKey.UnifyChatThreads] ?? false;
+  const agentId = await get(currentChatAgentId$);
+  if (!agentId) {
+    return [];
+  }
 
   const client = get(zeroClient$)(chatThreadsContract);
-
-  let threads: ChatThreadListItem[];
-  if (unifyChatThreads) {
-    const result = await accept(client.list({ query: {} }), [200]);
-    threads = result.body.threads;
-  } else {
-    const agentId = await get(currentChatAgentId$);
-    if (!agentId) {
-      return [];
-    }
-    const result = await accept(
-      client.list({ query: { agentId: agentId } }),
-      [200],
-    );
-    threads = result.body.threads;
-  }
+  const result = await accept(
+    client.list({ query: { agentId: agentId } }),
+    [200],
+  );
+  const threads = result.body.threads;
 
   const currentThread = await get(currentChatThread$);
   return threads.map((t) => {

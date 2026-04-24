@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto";
+import { eq } from "drizzle-orm";
 import { initServices } from "../../lib/init-services";
 import { telegramInstallations } from "../../db/schema/telegram-installation";
 import { telegramMessages } from "../../db/schema/telegram-message";
@@ -14,22 +15,23 @@ import { ensureOrgRow, uniqueId } from "../test-helpers";
 /**
  * Create a Telegram installation with all required parent records.
  * Optionally auto-creates a user link for testing integration endpoints.
- * Returns the installation ID for use as a foreign key.
+ * Returns the telegramBotId (primary key) for use as a foreign key.
  * @why-db-direct Creates full installation chain (org cache + compose + installation + optional user link); register API calls real Telegram API
  */
 export async function createTestTelegramInstallation(options?: {
-  adminUserId?: string;
+  ownerUserId?: string;
   vm0UserId?: string;
   telegramBotId?: string;
+  orgId?: string;
 }): Promise<string> {
   initServices();
   const { SECRETS_ENCRYPTION_KEY } = globalThis.services.env;
 
   const suffix = uniqueId("tg");
-  const adminUserId = options?.adminUserId ?? uniqueId("test-admin");
+  const ownerUserId = options?.ownerUserId ?? uniqueId("test-owner");
 
   const orgSlug = uniqueId("org");
-  const orgId = uniqueId("org");
+  const orgId = options?.orgId ?? uniqueId("org");
 
   // Pre-populate org cache for getOrgNameAndSlug()
   await globalThis.services.db
@@ -50,24 +52,26 @@ export async function createTestTelegramInstallation(options?: {
   const [compose] = await globalThis.services.db
     .insert(agentComposes)
     .values({
-      userId: adminUserId,
+      userId: ownerUserId,
       orgId,
       name: uniqueId("compose"),
     })
     .returning();
 
+  const telegramBotId = options?.telegramBotId ?? suffix;
   const [installation] = await globalThis.services.db
     .insert(telegramInstallations)
     .values({
-      telegramBotId: options?.telegramBotId ?? suffix,
-      botUsername: `bot_${options?.telegramBotId ?? suffix}`,
+      telegramBotId,
+      botUsername: `bot_${telegramBotId}`,
       encryptedBotToken: encryptSecretValue(
         "test-bot-token",
         SECRETS_ENCRYPTION_KEY,
       ),
       webhookSecret: uniqueId("secret"),
       defaultComposeId: compose!.id,
-      adminUserId,
+      ownerUserId,
+      orgId,
     })
     .returning();
 
@@ -77,13 +81,13 @@ export async function createTestTelegramInstallation(options?: {
       .insert(telegramUserLinks)
       .values({
         telegramUserId: suffix,
-        installationId: installation!.id,
+        installationId: installation!.telegramBotId,
         vm0UserId: options.vm0UserId,
       })
       .onConflictDoNothing();
   }
 
-  return installation!.id;
+  return installation!.telegramBotId;
 }
 
 /**
@@ -113,16 +117,24 @@ export async function insertTestTelegramMessages(
 
 /**
  * Create a telegram installation for a specific compose with a known bot token.
- * Returns the installation ID.
+ * Returns the telegramBotId.
  * @why-db-direct Creates installation for specific compose with known bot token; no API route for this
  */
 export async function createTelegramInstallationForCompose(
   composeId: string,
-  adminUserId: string,
+  ownerUserId: string,
   botToken: string,
 ): Promise<string> {
   const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
   const encryptedBotToken = encryptSecretValue(botToken, encryptionKey);
+
+  const [composeRow] = await globalThis.services.db
+    .select({ orgId: agentComposes.orgId })
+    .from(agentComposes)
+    .where(eq(agentComposes.id, composeId))
+    .limit(1);
+
+  if (!composeRow) throw new Error("Compose not found");
 
   const rows = await globalThis.services.db
     .insert(telegramInstallations)
@@ -131,12 +143,13 @@ export async function createTelegramInstallationForCompose(
       encryptedBotToken,
       webhookSecret: `secret-${randomUUID().slice(0, 8)}`,
       defaultComposeId: composeId,
-      adminUserId,
+      ownerUserId,
+      orgId: composeRow.orgId,
     })
     .returning();
 
   if (!rows[0]) throw new Error("Failed to create telegram installation");
-  return rows[0].id;
+  return rows[0].telegramBotId;
 }
 
 /**
@@ -145,10 +158,19 @@ export async function createTelegramInstallationForCompose(
  */
 export async function insertTestTelegramInstallation(params: {
   composeId: string;
-  adminUserId: string;
+  ownerUserId: string;
   botUsername?: string;
-}): Promise<{ id: string }> {
+}): Promise<{ telegramBotId: string }> {
   const botId = `tg-bot-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+
+  const [composeRow] = await globalThis.services.db
+    .select({ orgId: agentComposes.orgId })
+    .from(agentComposes)
+    .where(eq(agentComposes.id, params.composeId))
+    .limit(1);
+
+  if (!composeRow) throw new Error("Compose not found");
+
   const [row] = await globalThis.services.db
     .insert(telegramInstallations)
     .values({
@@ -157,9 +179,10 @@ export async function insertTestTelegramInstallation(params: {
       encryptedBotToken: `encrypted-test-token-${botId}`,
       webhookSecret: `webhook-secret-${botId}`,
       botUsername: params.botUsername ?? `test_bot_${Date.now()}`,
-      adminUserId: params.adminUserId,
+      ownerUserId: params.ownerUserId,
+      orgId: composeRow.orgId,
     })
-    .returning({ id: telegramInstallations.id });
+    .returning({ telegramBotId: telegramInstallations.telegramBotId });
   return row!;
 }
 
@@ -185,7 +208,7 @@ export async function insertTestTelegramUserLink(params: {
 
 /**
  * Create a telegram installation with all required foreign key dependencies.
- * Returns the installation ID for use in tests.
+ * Returns the telegramBotId for use in tests.
  * @why-db-direct Creates minimal installation with compose for telegram handler tests
  */
 export async function createTelegramInstallation(): Promise<string> {
@@ -210,11 +233,12 @@ export async function createTelegramInstallation(): Promise<string> {
       encryptedBotToken: "encrypted-token",
       webhookSecret: "webhook-secret",
       defaultComposeId: compose!.id,
-      adminUserId: uniqueId("admin"),
+      ownerUserId: uniqueId("owner"),
+      orgId,
     })
     .returning();
 
-  return installation!.id;
+  return installation!.telegramBotId;
 }
 
 interface InsertMessageOptions {
@@ -275,6 +299,14 @@ export async function createTelegramPendingLinkInstallation(
     SECRETS_ENCRYPTION_KEY,
   );
 
+  const [composeRow] = await globalThis.services.db
+    .select({ orgId: agentComposes.orgId })
+    .from(agentComposes)
+    .where(eq(agentComposes.id, composeId))
+    .limit(1);
+
+  if (!composeRow) throw new Error("Compose not found");
+
   const [installation] = await globalThis.services.db
     .insert(telegramInstallations)
     .values({
@@ -283,7 +315,8 @@ export async function createTelegramPendingLinkInstallation(
       encryptedBotToken,
       webhookSecret: "webhook-secret",
       defaultComposeId: composeId,
-      adminUserId: vm0UserId,
+      ownerUserId: vm0UserId,
+      orgId: composeRow.orgId,
     })
     .returning();
 
@@ -291,13 +324,13 @@ export async function createTelegramPendingLinkInstallation(
     .insert(telegramUserLinks)
     .values({
       telegramUserId: PTUID,
-      installationId: installation!.id,
+      installationId: installation!.telegramBotId,
       vm0UserId,
     })
     .returning();
 
   return {
-    installationId: installation!.id,
+    installationId: installation!.telegramBotId,
     userLinkId: userLink!.id,
     vm0UserId,
   };
@@ -327,6 +360,14 @@ export async function createTelegramCallbackInstallation(
     SECRETS_ENCRYPTION_KEY,
   );
 
+  const [composeRow] = await globalThis.services.db
+    .select({ orgId: agentComposes.orgId })
+    .from(agentComposes)
+    .where(eq(agentComposes.id, composeId))
+    .limit(1);
+
+  if (!composeRow) throw new Error("Compose not found");
+
   const [installation] = await globalThis.services.db
     .insert(telegramInstallations)
     .values({
@@ -335,7 +376,8 @@ export async function createTelegramCallbackInstallation(
       encryptedBotToken,
       webhookSecret: "webhook-secret",
       defaultComposeId: composeId,
-      adminUserId: userId,
+      ownerUserId: userId,
+      orgId: composeRow.orgId,
     })
     .returning();
 
@@ -343,13 +385,13 @@ export async function createTelegramCallbackInstallation(
     .insert(telegramUserLinks)
     .values({
       telegramUserId: options?.telegramUserId ?? uniqueId("tg"),
-      installationId: installation!.id,
+      installationId: installation!.telegramBotId,
       vm0UserId: userId,
     })
     .returning();
 
   return {
-    installationId: installation!.id,
+    installationId: installation!.telegramBotId,
     userLinkId: userLink!.id,
   };
 }

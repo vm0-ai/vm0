@@ -11,6 +11,7 @@ import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
 import { setMockOrg } from "../../../mocks/handlers/api-org.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { setMockOnboardingStatus } from "../../../mocks/handlers/api-onboarding.ts";
+import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -195,9 +196,20 @@ function renderTeamPageAsMember(
   setMockOnboardingStatus({
     isAdmin: false,
     hasDefaultAgent: true,
-    defaultAgentId: "compose-1",
+    defaultAgentId: "zero",
     defaultAgentMetadata: { displayName: "Zero" },
   });
+  setMockTeam([
+    {
+      id: "zero",
+      displayName: "Zero",
+      description: null,
+      sound: null,
+      avatarUrl: null,
+      headVersionId: "version_1",
+      updatedAt: "2024-01-01T00:00:00Z",
+    },
+  ]);
   setMockOrg({ role: "member" });
   detachedSetupPage({ context, path: "/agents/zero" });
 }

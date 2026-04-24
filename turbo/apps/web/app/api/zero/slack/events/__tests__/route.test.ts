@@ -23,6 +23,7 @@ import {
   clearComposeHeadVersion,
 } from "../../../../../../src/__tests__/db-test-seeders/agents";
 import { reloadEnv } from "../../../../../../src/env";
+import { nextAfterArgForms } from "../../../../../../src/__tests__/next-after-hooks";
 
 vi.mock("@vm0/core/feature-switch", async (importOriginal) => {
   const actual =
@@ -1202,7 +1203,7 @@ describe("POST /api/zero/slack/events", () => {
 
       await POST(request);
 
-      expect(globalThis.nextAfterArgForms).toEqual(["fn"]);
+      expect(nextAfterArgForms).toEqual(["fn"]);
     });
 
     it("registers direct_message handler via callback form", async () => {
@@ -1227,7 +1228,7 @@ describe("POST /api/zero/slack/events", () => {
 
       await POST(request);
 
-      expect(globalThis.nextAfterArgForms).toEqual(["fn"]);
+      expect(nextAfterArgForms).toEqual(["fn"]);
     });
 
     it("registers app_home_opened (home) handler via callback form", async () => {
@@ -1249,7 +1250,7 @@ describe("POST /api/zero/slack/events", () => {
 
       await POST(request);
 
-      expect(globalThis.nextAfterArgForms).toEqual(["fn"]);
+      expect(nextAfterArgForms).toEqual(["fn"]);
     });
 
     it("registers app_home_opened (messages) handler via callback form", async () => {
@@ -1271,7 +1272,7 @@ describe("POST /api/zero/slack/events", () => {
 
       await POST(request);
 
-      expect(globalThis.nextAfterArgForms).toEqual(["fn"]);
+      expect(nextAfterArgForms).toEqual(["fn"]);
     });
 
     it("registers app_uninstalled cleanup via callback form", async () => {
@@ -1288,7 +1289,7 @@ describe("POST /api/zero/slack/events", () => {
 
       await POST(request);
 
-      expect(globalThis.nextAfterArgForms).toEqual(["fn"]);
+      expect(nextAfterArgForms).toEqual(["fn"]);
     });
 
     it("registers tokens_revoked cleanup via callback form", async () => {
@@ -1308,7 +1309,7 @@ describe("POST /api/zero/slack/events", () => {
 
       await POST(request);
 
-      expect(globalThis.nextAfterArgForms).toEqual(["fn"]);
+      expect(nextAfterArgForms).toEqual(["fn"]);
     });
   });
 

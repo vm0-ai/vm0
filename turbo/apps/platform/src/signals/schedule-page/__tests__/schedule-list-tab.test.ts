@@ -20,15 +20,6 @@ describe("schedule-list-tab", () => {
       expect(store.get(scheduleListTab$)).toBe("list");
     });
 
-    it("reads history tab from URL search params", () => {
-      const { store, signal } = context;
-      mockLocation({ pathname: "/schedules", search: "?tab=history" }, signal);
-
-      store.set(initScheduleListTab$);
-
-      expect(store.get(scheduleListTab$)).toBe("history");
-    });
-
     it("reads calendar tab from URL search params", () => {
       const { store, signal } = context;
       mockLocation({ pathname: "/schedules", search: "?tab=calendar" }, signal);
@@ -46,6 +37,15 @@ describe("schedule-list-tab", () => {
 
       expect(store.get(scheduleListTab$)).toBe("list");
     });
+
+    it("falls back to list for removed history tab value", () => {
+      const { store, signal } = context;
+      mockLocation({ pathname: "/schedules", search: "?tab=history" }, signal);
+
+      store.set(initScheduleListTab$);
+
+      expect(store.get(scheduleListTab$)).toBe("list");
+    });
   });
 
   describe("setScheduleListTab$", () => {
@@ -53,52 +53,12 @@ describe("schedule-list-tab", () => {
       const { store, signal } = context;
       mockLocation({ pathname: "/schedules", search: "" }, signal);
 
-      store.set(setScheduleListTab$, "history");
+      store.set(setScheduleListTab$, "calendar");
 
-      expect(store.get(scheduleListTab$)).toBe("history");
+      expect(store.get(scheduleListTab$)).toBe("calendar");
     });
 
     it("writes tab to URL via replaceState when non-default", () => {
-      const { store, signal } = context;
-      mockLocation({ pathname: "/schedules", search: "" }, signal);
-
-      const calls: string[] = [];
-      mockReplaceState(
-        ((_data: unknown, _unused: string, url?: string | URL | null) => {
-          if (typeof url === "string") {
-            calls.push(url);
-          }
-        }) as typeof window.history.replaceState,
-        signal,
-      );
-
-      store.set(setScheduleListTab$, "history");
-
-      expect(calls).toHaveLength(1);
-      expect(calls[0]).toContain("tab=history");
-    });
-
-    it("removes tab param from URL when switching back to default (list)", () => {
-      const { store, signal } = context;
-      mockLocation({ pathname: "/schedules", search: "?tab=history" }, signal);
-
-      const calls: string[] = [];
-      mockReplaceState(
-        ((_data: unknown, _unused: string, url?: string | URL | null) => {
-          if (typeof url === "string") {
-            calls.push(url);
-          }
-        }) as typeof window.history.replaceState,
-        signal,
-      );
-
-      store.set(setScheduleListTab$, "list");
-
-      expect(calls).toHaveLength(1);
-      expect(calls[0]).not.toContain("tab=");
-    });
-
-    it("writes calendar tab to URL", () => {
       const { store, signal } = context;
       mockLocation({ pathname: "/schedules", search: "" }, signal);
 
@@ -116,6 +76,26 @@ describe("schedule-list-tab", () => {
 
       expect(calls).toHaveLength(1);
       expect(calls[0]).toContain("tab=calendar");
+    });
+
+    it("removes tab param from URL when switching back to default (list)", () => {
+      const { store, signal } = context;
+      mockLocation({ pathname: "/schedules", search: "?tab=calendar" }, signal);
+
+      const calls: string[] = [];
+      mockReplaceState(
+        ((_data: unknown, _unused: string, url?: string | URL | null) => {
+          if (typeof url === "string") {
+            calls.push(url);
+          }
+        }) as typeof window.history.replaceState,
+        signal,
+      );
+
+      store.set(setScheduleListTab$, "list");
+
+      expect(calls).toHaveLength(1);
+      expect(calls[0]).not.toContain("tab=");
     });
   });
 });

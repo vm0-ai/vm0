@@ -18,6 +18,7 @@ import {
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 import { POST } from "../route";
 import { reloadEnv } from "../../../../../src/env";
+import { nextAfterArgForms } from "../../../../../src/__tests__/next-after-hooks";
 
 const context = testContext();
 
@@ -703,7 +704,7 @@ describe("POST /api/webhooks/github", () => {
       );
       await POST(request);
 
-      expect(globalThis.nextAfterArgForms).toEqual(["fn"]);
+      expect(nextAfterArgForms).toEqual(["fn"]);
     });
 
     it("registers issue_comment handler via callback form", async () => {
@@ -721,7 +722,7 @@ describe("POST /api/webhooks/github", () => {
       );
       await POST(request);
 
-      expect(globalThis.nextAfterArgForms).toEqual(["fn"]);
+      expect(nextAfterArgForms).toEqual(["fn"]);
     });
 
     it("registers installation handler via callback form", async () => {
@@ -735,7 +736,7 @@ describe("POST /api/webhooks/github", () => {
       });
       await POST(request);
 
-      expect(globalThis.nextAfterArgForms).toEqual(["fn"]);
+      expect(nextAfterArgForms).toEqual(["fn"]);
     });
   });
 });

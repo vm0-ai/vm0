@@ -1,7 +1,6 @@
 import { command, computed, state } from "ccstate";
 import type { AgentEvent } from "../zero-page/log-types.ts";
 import { zeroComposesListContract } from "@vm0/core/contracts/zero-composes";
-import { chatThreadsContract } from "@vm0/core/contracts/chat-threads";
 import type { ComposeListItem } from "@vm0/core/contracts/composes";
 import { pathParams$, searchParams$, updateSearchParams$ } from "../route.ts";
 import { createCursorPagination } from "../cursor-pagination.ts";
@@ -11,8 +10,6 @@ import { createRunLoop } from "../zero-page/polling.ts";
 import { setLoop } from "../utils.ts";
 import { delay } from "signal-timers";
 import { accept } from "../../lib/accept.ts";
-import { navigateToChat$ } from "../zero-page/zero-nav.ts";
-import { reloadChatThreads$ } from "../agent-chat.ts";
 import {
   autoScrollActivityDetail$,
   scrollToBottomActivityDetail$,
@@ -325,35 +322,6 @@ export function formatLogTime(createdAt: string): string {
   const h12 = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
   return `${month}/${day} ${String(h12).padStart(2, "0")}:${String(minutes).padStart(2, "0")} ${ampm}`;
 }
-
-/**
- * Create a new chat thread on the given agent, tagged with the scheduled run
- * it's continuing. The backend seeds a system prompt on the first message so
- * the agent pulls the original run's telemetry; subsequent messages reuse the
- * resulting session.
- */
-export const startChatFromScheduleRun$ = command(
-  async (
-    { get, set },
-    args: { agentId: string; runId: string },
-    signal: AbortSignal,
-  ) => {
-    const client = get(zeroClient$)(chatThreadsContract);
-    const result = await accept(
-      client.create({
-        body: {
-          agentId: args.agentId,
-          sourceScheduleRunId: args.runId,
-        },
-        fetchOptions: { signal },
-      }),
-      [201],
-    );
-    signal.throwIfAborted();
-    set(reloadChatThreads$);
-    set(navigateToChat$, result.body.id);
-  },
-);
 
 export function formatDuration(
   startedAt: string | null,

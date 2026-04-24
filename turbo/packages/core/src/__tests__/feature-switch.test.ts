@@ -105,6 +105,16 @@ describe("getAllFeatureStates", () => {
     // Non-overridden disabled feature stays false
     expect(states[FeatureSwitchKey.AhrefsConnector]).toBe(false);
   });
+
+  it("should ignore override keys that are no longer registered", () => {
+    const states = getAllFeatureStates({
+      overrides: {
+        removedFeature: true,
+      } as Partial<Record<FeatureSwitchKey, boolean>>,
+    });
+
+    expect("removedFeature" in states).toBe(false);
+  });
 });
 
 describe("getFeatureSwitchDescriptions", () => {

@@ -148,7 +148,7 @@ describe("activity detail stale data", () => {
     detachedSetupPage({
       context,
       path: "/activities/a0000000-0000-4000-a000-000000000001",
-      featureSwitches: { [FeatureSwitchKey.ActivityLogList]: true },
+      featureSwitches: { [FeatureSwitchKey.ZeroDebug]: true },
     });
 
     // Wait for first detail to load

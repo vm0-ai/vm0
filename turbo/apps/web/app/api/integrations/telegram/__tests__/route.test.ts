@@ -56,8 +56,9 @@ describe("/api/integrations/telegram", () => {
     it("returns bot info for linked admin user", async () => {
       const user = await context.setupUser();
       await createTestTelegramInstallation({
-        adminUserId: user.userId,
+        ownerUserId: user.userId,
         vm0UserId: user.userId,
+        orgId: user.orgId,
       });
 
       const request = new Request(
@@ -78,7 +79,8 @@ describe("/api/integrations/telegram", () => {
       const user = await context.setupUser();
       // Create installation with admin but no user link (omit vm0UserId)
       await createTestTelegramInstallation({
-        adminUserId: user.userId,
+        ownerUserId: user.userId,
+        orgId: user.orgId,
       });
 
       const request = new Request(
@@ -91,6 +93,23 @@ describe("/api/integrations/telegram", () => {
       expect(data.isAdmin).toBe(true);
       expect(data.isConnected).toBe(false);
       expect(data.bot.username).toBeDefined();
+    });
+
+    it("does not return a linked bot from another org", async () => {
+      const user = await context.setupUser();
+      await createTestTelegramInstallation({
+        ownerUserId: user.userId,
+        vm0UserId: user.userId,
+      });
+
+      const request = new Request(
+        "http://localhost:3000/api/integrations/telegram",
+      );
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(404);
+      expect(data.error.code).toBe("NOT_FOUND");
     });
   });
 
@@ -117,8 +136,9 @@ describe("/api/integrations/telegram", () => {
       const user = await context.setupUser();
       // Create installation where admin is a different user
       await createTestTelegramInstallation({
-        adminUserId: "other-admin",
+        ownerUserId: "other-owner",
         vm0UserId: user.userId,
+        orgId: user.orgId,
       });
 
       const request = new Request(
@@ -139,8 +159,9 @@ describe("/api/integrations/telegram", () => {
     it("updates default agent for admin", async () => {
       const user = await context.setupUser();
       await createTestTelegramInstallation({
-        adminUserId: user.userId,
+        ownerUserId: user.userId,
         vm0UserId: user.userId,
+        orgId: user.orgId,
       });
 
       // Create a new agent to switch to
@@ -181,8 +202,9 @@ describe("/api/integrations/telegram", () => {
     it("returns 404 for non-admin user", async () => {
       const user = await context.setupUser();
       await createTestTelegramInstallation({
-        adminUserId: "other-admin",
+        ownerUserId: "other-owner",
         vm0UserId: user.userId,
+        orgId: user.orgId,
       });
 
       const request = new Request(
@@ -199,8 +221,9 @@ describe("/api/integrations/telegram", () => {
     it("deletes installation and removes webhook for admin", async () => {
       const user = await context.setupUser();
       await createTestTelegramInstallation({
-        adminUserId: user.userId,
+        ownerUserId: user.userId,
         vm0UserId: user.userId,
+        orgId: user.orgId,
       });
 
       const deleteHandler = telegramDeleteWebhook();

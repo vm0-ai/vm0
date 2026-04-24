@@ -571,6 +571,7 @@ describe("GET /api/zero/chat-threads - List Threads", () => {
     expect(response.status).toBe(200);
     expect(data.threads).toHaveLength(1);
     expect(data.threads[0].agent).toBeDefined();
+    expect(data.threads[0]).not.toHaveProperty("agentId");
     expect(data.threads[0].agent.id).toBe(testComposeId);
     expect(data.threads[0].agent).toHaveProperty("avatarUrl");
   });
@@ -697,6 +698,7 @@ describe("GET /api/zero/chat-threads - Unified list (agentId omitted)", () => {
     expect(response.status).toBe(200);
     expect(data.threads).toHaveLength(1);
     expect(data.threads[0].agent).toBeDefined();
+    expect(data.threads[0]).not.toHaveProperty("agentId");
     expect(data.threads[0].agent.id).toBe(composeAId);
     // avatarUrl defaults to null for a freshly seeded zero_agents row.
     expect(data.threads[0].agent).toHaveProperty("avatarUrl");
@@ -828,56 +830,5 @@ describe("POST /api/zero/chat-threads - Title Handling", () => {
 
     expect(response.status).toBe(201);
     expect(data.title).toBeNull();
-  });
-});
-
-describe("POST /api/zero/chat-threads - sourceScheduleRunId", () => {
-  let testComposeId: string;
-
-  beforeEach(async () => {
-    context.setupMocks();
-    await context.setupUser();
-
-    const { composeId } = await createTestCompose(uniqueId("chat-src"));
-    testComposeId = composeId;
-  });
-
-  it("accepts a UUID sourceScheduleRunId and creates the thread", async () => {
-    const sourceScheduleRunId = crypto.randomUUID();
-    const request = createTestRequest(
-      "http://localhost:3000/api/zero/chat-threads",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          agentId: testComposeId,
-          sourceScheduleRunId,
-        }),
-      },
-    );
-
-    const response = await POST(request);
-    const data = await response.json();
-
-    expect(response.status).toBe(201);
-    expect(data.id).toBeDefined();
-  });
-
-  it("rejects a non-UUID sourceScheduleRunId with 400", async () => {
-    const request = createTestRequest(
-      "http://localhost:3000/api/zero/chat-threads",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          agentId: testComposeId,
-          sourceScheduleRunId: "not-a-uuid",
-        }),
-      },
-    );
-
-    const response = await POST(request);
-
-    expect(response.status).toBe(400);
   });
 });

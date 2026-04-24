@@ -12,6 +12,7 @@ import {
   getLatestMessagesByThreadId,
   PREVIOUS_CONTEXT_MESSAGES,
 } from "../../../../../src/lib/zero/chat-thread/chat-message-service";
+import { formatChatRunErrorMessage } from "../../../../../src/lib/zero/chat-thread/chat-run-error-message";
 import {
   generateChatTitle,
   generateChatNotificationSummary,
@@ -236,19 +237,25 @@ async function handleFailed(
   userId: string,
   errorMessage: string,
 ): Promise<void> {
+  const displayErrorMessage = await formatChatRunErrorMessage({
+    chatThreadId: threadId,
+    runId,
+    errorMessage,
+  });
+
   await insertChatMessage({
     chatThreadId: threadId,
     userId,
     role: "assistant",
-    content: errorMessage,
+    content: displayErrorMessage,
     runId,
-    error: errorMessage,
+    error: displayErrorMessage,
   });
 
   // Send push notification (best-effort)
   await sendUserPushNotifications(userId, {
     title: prompt.slice(0, 60),
-    body: `Task failed: ${errorMessage.slice(0, 80)}`,
+    body: `Task failed: ${displayErrorMessage.slice(0, 80)}`,
     url: `/chats/${threadId}`,
   });
 }

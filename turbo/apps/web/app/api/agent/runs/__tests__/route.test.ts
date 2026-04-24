@@ -1728,6 +1728,9 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       // be seeded with the artifact list from body.artifacts so that a later
       // `continue` can resolve the mount set. Previously insertRunRecord was
       // fed an empty resolved.artifacts map and wrote [] into the session.
+      // Memory is also persisted alongside body.artifacts — the auto-memory
+      // entry added by resolveCliRunContext must survive into the session row
+      // so future resumes can rebuild the artifact manifest.
       const primary = uniqueId("session-art");
       await createTestArtifact(primary);
 
@@ -1756,7 +1759,10 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       const sessionResponse = await getSessionById(sessionRequest);
       const sessionBody = await sessionResponse.json();
       expect(sessionResponse.status).toBe(200);
-      expect(sessionBody.artifactNames).toEqual([primary]);
+      expect(sessionBody.artifactNames).toEqual(
+        expect.arrayContaining([primary, "memory"]),
+      );
+      expect(sessionBody.artifactNames).toHaveLength(2);
     });
   });
 

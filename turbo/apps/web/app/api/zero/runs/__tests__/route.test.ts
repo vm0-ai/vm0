@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { POST } from "../route";
 import {
   createTestRequest,
@@ -36,11 +36,7 @@ import { reloadEnv } from "../../../../../src/env";
 import { seedTestRun } from "../../../../../src/__tests__/db-test-seeders/runs";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Test setup: direct service call for data setup in runs route tests
 import { updateUserPreferences } from "../../../../../src/lib/zero/user/user-preferences-service";
-// eslint-disable-next-line web/no-direct-db-in-tests -- Test setup: direct service call for data setup in runs route tests
-import { updateUserFeatureSwitches } from "../../../../../src/lib/zero/user/feature-switches-service";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { getCustomSkillStorageName } from "@vm0/core/storage-names";
-import * as featureSwitchCore from "@vm0/core/feature-switch";
 import { bindCustomSkillToAgent } from "../../../../../src/__tests__/db-test-seeders/skills";
 
 const context = testContext();
@@ -848,74 +844,6 @@ describe("POST /api/zero/runs", () => {
       });
       expect(ghFw).toBeDefined();
       expect(slackFw).toBeDefined();
-    });
-  });
-
-  describe("AutoSkill guidance injection", () => {
-    let user: UserContext;
-    let agentId: string;
-
-    beforeEach(async () => {
-      user = await context.setupUser();
-      const agentName = uniqueId("skill-agent");
-      await createTestCompose(agentName);
-      agentId = await getTestZeroAgentId(user.orgId, agentName);
-      vi.stubEnv("RUNNER_DEFAULT_GROUP", "vm0/production");
-      reloadEnv();
-    });
-
-    afterEach(() => {
-      vi.restoreAllMocks();
-    });
-
-    it("should inject skill guidance when AutoSkill feature switch is enabled", async () => {
-      vi.spyOn(featureSwitchCore, "isFeatureEnabled").mockImplementation(
-        (key: FeatureSwitchKey) => {
-          if (key === FeatureSwitchKey.AutoSkill) return true;
-          return false;
-        },
-      );
-
-      const response = await postRun({ agentId, prompt: "Hello" });
-      expect(response.status).toBe(201);
-      const data = await response.json();
-
-      const run = await findTestRunRecord(data.runId);
-      expect(run).toBeDefined();
-      expect(run!.appendSystemPrompt).toContain("# Skill Management Guidance");
-      expect(run!.appendSystemPrompt).toContain("zero skill create");
-    });
-
-    it("should not inject skill guidance when AutoSkill feature switch is disabled", async () => {
-      const response = await postRun({ agentId, prompt: "Hello" });
-      expect(response.status).toBe(201);
-      const data = await response.json();
-
-      const run = await findTestRunRecord(data.runId);
-      expect(run).toBeDefined();
-      expect(run!.appendSystemPrompt).not.toContain(
-        "# Skill Management Guidance",
-      );
-    });
-
-    it("should pass user overrides to AutoSkill feature check", async () => {
-      const spy = vi.spyOn(featureSwitchCore, "isFeatureEnabled");
-
-      await updateUserFeatureSwitches(user.orgId, user.userId, {
-        [FeatureSwitchKey.AutoSkill]: false,
-      });
-
-      const response = await postRun({ agentId, prompt: "Hello" });
-      expect(response.status).toBe(201);
-
-      expect(spy).toHaveBeenCalledWith(
-        FeatureSwitchKey.AutoSkill,
-        expect.objectContaining({
-          overrides: expect.objectContaining({
-            [FeatureSwitchKey.AutoSkill]: false,
-          }),
-        }),
-      );
     });
   });
 });

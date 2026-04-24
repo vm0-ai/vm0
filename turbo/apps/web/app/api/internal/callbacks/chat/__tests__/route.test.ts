@@ -29,6 +29,7 @@ import {
   setTestRunStatus,
 } from "../../../../../../src/__tests__/db-test-seeders/runs";
 import { mockAblyPublish } from "../../../../../../src/__tests__/ably-mock";
+import { transitionRunStatus } from "../../../../../../src/lib/infra/run/run-status";
 
 vi.mock("web-push", async (importActual) => {
   const actual = await importActual<{ WebPushError: typeof WebPushError }>();
@@ -62,8 +63,9 @@ describe("POST /api/internal/callbacks/chat", () => {
   /** Create a thread via route handler, then a run, session, and callback in DB. */
   async function setupRunAndThread(
     options: {
-      status?: "completed" | "failed";
+      status?: "completed" | "failed" | "running";
       result?: Record<string, unknown>;
+      createdAt?: Date;
     } = {},
   ) {
     const { status = "completed" } = options;
@@ -86,6 +88,7 @@ describe("POST /api/internal/callbacks/chat", () => {
     const { runId } = await seedTestRun(user.userId, agentId, {
       status,
       result: options.result,
+      createdAt: options.createdAt,
     });
 
     // Create an agent session (used for session continuity via run result)
@@ -102,6 +105,47 @@ describe("POST /api/internal/callbacks/chat", () => {
     });
 
     return { threadId, runId, secret, sessionId: session.id };
+  }
+
+  async function setupRunInThread(options: {
+    threadId: string;
+    prompt: string;
+    createdAt: Date;
+  }) {
+    const { runId } = await seedTestRun(user.userId, agentId, {
+      status: "running",
+      prompt: options.prompt,
+      createdAt: options.createdAt,
+    });
+    await addTestRunToThread(
+      options.threadId,
+      runId,
+      user.userId,
+      options.prompt,
+    );
+
+    const { secret } = await createTestCallback({
+      runId,
+      url: "http://localhost/api/internal/callbacks/chat",
+      payload: { threadId: options.threadId, agentId },
+    });
+
+    return { runId, secret };
+  }
+
+  async function markRunFailedForCallback(
+    runId: string,
+    errorMessage: string,
+  ): Promise<void> {
+    await transitionRunStatus(
+      runId,
+      {
+        status: "failed",
+        completedAt: new Date(),
+        error: errorMessage,
+      },
+      ["pending", "running"],
+    );
   }
 
   /** Get thread detail and extract latestSessionId. */
@@ -413,9 +457,13 @@ describe("POST /api/internal/callbacks/chat", () => {
         return m.role === "assistant" && m.error !== null;
       });
       expect(errorMsg).toBeDefined();
-      expect(errorMsg!.content).toBe("Agent crashed");
+      expect(errorMsg!.content).toBe(
+        "Oops, something went wrong. Please try again later.",
+      );
       expect(errorMsg!.runId).toBe(runId);
-      expect(errorMsg!.error).toBe("Agent crashed");
+      expect(errorMsg!.error).toBe(
+        "Oops, something went wrong. Please try again later.",
+      );
 
       // The insert fans out chatThreadMessageCreated so the frontend's paged
       // message view refetches and the cancelled/error row appears without
@@ -424,6 +472,91 @@ describe("POST /api/internal/callbacks/chat", () => {
         `chatThreadMessageCreated:${threadId}`,
         null,
       );
+    });
+
+    it("should show a report link after consecutive generic run errors", async () => {
+      const first = await setupRunAndThread({
+        status: "running",
+        createdAt: new Date("2026-03-10T00:00:00Z"),
+      });
+      await markRunFailedForCallback(first.runId, "First runner failure");
+
+      const firstResponse = await POST(
+        createSignedCallbackRequest(
+          "http://localhost/api/internal/callbacks/chat",
+          {
+            runId: first.runId,
+            status: "failed",
+            error: "First runner failure",
+            payload: { threadId: first.threadId, agentId },
+          },
+          first.secret,
+        ),
+      );
+      expect(firstResponse.status).toBe(200);
+
+      const second = await setupRunInThread({
+        threadId: first.threadId,
+        prompt: "try again",
+        createdAt: new Date("2026-03-10T00:01:00Z"),
+      });
+      await markRunFailedForCallback(second.runId, "Second runner failure");
+
+      const secondResponse = await POST(
+        createSignedCallbackRequest(
+          "http://localhost/api/internal/callbacks/chat",
+          {
+            runId: second.runId,
+            status: "failed",
+            error: "Second runner failure",
+            payload: { threadId: first.threadId, agentId },
+          },
+          second.secret,
+        ),
+      );
+      expect(secondResponse.status).toBe(200);
+
+      const chatMessages = await getTestChatMessagesByThread(first.threadId);
+      const errorMessages = chatMessages.filter((message) => {
+        return message.role === "assistant" && message.error !== null;
+      });
+      expect(errorMessages).toHaveLength(2);
+      expect(errorMessages[0]!.error).toBe(
+        "Oops, something went wrong. Please try again later.",
+      );
+      expect(errorMessages[1]!.error).toBe(
+        `An unexpected error occurred. [Report this issue](/runs/${second.runId}/report-error)`,
+      );
+    });
+
+    it("should preserve actionable failed run errors", async () => {
+      const { threadId, runId, secret } = await setupRunAndThread({
+        status: "failed",
+      });
+      const actionableError =
+        "No model provider configured. Run 'zero org model-provider setup' to configure one, or add environment variables to your vm0.yaml.";
+
+      const response = await POST(
+        createSignedCallbackRequest(
+          "http://localhost/api/internal/callbacks/chat",
+          {
+            runId,
+            status: "failed",
+            error: actionableError,
+            payload: { threadId, agentId },
+          },
+          secret,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+
+      const chatMessages = await getTestChatMessagesByThread(threadId);
+      const errorMsg = chatMessages.find((message) => {
+        return message.role === "assistant" && message.error !== null;
+      });
+      expect(errorMsg?.error).toBe(actionableError);
+      expect(errorMsg?.content).toBe(actionableError);
     });
 
     it("should not derive sessionId on failed run without agentSessionId", async () => {
@@ -980,7 +1113,9 @@ describe("POST /api/internal/callbacks/chat", () => {
         mockSendNotification.mock.calls[0]![1] as string,
       );
       expect(payload.title).toBe("test prompt");
-      expect(payload.body).toContain("Agent crashed");
+      expect(payload.body).toContain(
+        "Oops, something went wrong. Please try again later.",
+      );
       expect(payload.url).toBe(`/chats/${threadId}`);
     });
 

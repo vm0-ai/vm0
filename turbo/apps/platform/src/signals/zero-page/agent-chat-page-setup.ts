@@ -12,9 +12,10 @@ import { onboardGuard$ } from "./onboard-guard.ts";
 import {
   currentAgentId$,
   defaultAgentId$,
+  agents$,
   rememberLastUsedAgentId$,
 } from "../agent.ts";
-import { setChatAgentId$, currentChatAgent$ } from "../agent-chat.ts";
+import { setChatAgentId$ } from "../agent-chat.ts";
 import { talkDraft$ } from "./chat-draft.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { reloadTagline$ } from "./zero-chat-page.ts";
@@ -36,7 +37,6 @@ export const setupAgentChatPage$ = command(
     const agentId = get(currentAgentId$);
     if (agentId) {
       set(setChatAgentId$, agentId);
-      set(rememberLastUsedAgentId$, agentId);
     }
 
     await set(hideAppSkeleton$, signal);
@@ -49,23 +49,28 @@ export const setupAgentChatPage$ = command(
       throw new Error("Chat page requires an active agent, but none found");
     }
 
-    const agent = await get(currentChatAgent$);
+    const agents = await get(agents$);
     signal.throwIfAborted();
+    const agent = agents.find((candidate) => {
+      return candidate.id === agentId;
+    });
     if (!agent) {
       const defaultAgentId = await get(defaultAgentId$);
       signal.throwIfAborted();
-      if (!defaultAgentId) {
+      if (!defaultAgentId || defaultAgentId === agentId) {
         throw new Error("Chat page requires an active agent, but none found");
       }
 
       set(detachedNavigateTo$, "/agents/:agentId/chat", {
         pathParams: { agentId: defaultAgentId },
+        searchParams: get(searchParams$),
         replace: true,
       });
       return;
     }
 
-    set(updateDocumentTitle$, agent.displayName ?? "");
+    set(rememberLastUsedAgentId$, agentId);
+    set(updateDocumentTitle$, agent.displayName ?? "Chat");
 
     const params = get(searchParams$);
     const prompt = params.get("prompt");

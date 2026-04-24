@@ -28,6 +28,7 @@ import { type RunStatus, type GetRunResponse } from "@vm0/core/contracts/runs";
 import type { OrgTier } from "@vm0/core/contracts/orgs";
 import type { FirewallPolicies } from "@vm0/core/contracts/firewalls";
 import type { ConnectorType } from "@vm0/core/contracts/connectors";
+import type { TriggerSource } from "@vm0/core/contracts/logs";
 import { publishCancelNotification } from "../realtime/client";
 import type { CancelRunResult } from "../../zero/zero-run-cancel";
 
@@ -133,6 +134,10 @@ export interface CreateRunParams {
     composeContent: AgentComposeYaml;
     compose: { id: string; userId: string; orgId: string };
   };
+  // Origin of the run request (e.g. "cli", "web", "schedule", "slack").
+  // Threaded through to queue telemetry so enqueue/dequeue spans can be split
+  // by trigger in Axiom; only populated on the zero path.
+  triggerSource?: TriggerSource;
 }
 
 export interface CreateRunResult {
@@ -340,10 +345,45 @@ export async function buildAndDispatchRun(opts: {
         op: "api_step_validate_and_insert",
         ms: timings.transaction - timings.authorize,
       },
-      {
-        op: "api_step_callbacks_and_token",
-        ms: timings.token - timings.transaction,
-      },
+      // Only the chat route stamps both anchors; other callers (telegram,
+      // slack, email, github, schedule, voice-chat) leave them undefined, and
+      // the split is skipped.
+      ...(timings.responseReady !== undefined &&
+      timings.dispatchStart !== undefined
+        ? [
+            {
+              op: "api_phase1_post_tx_sync",
+              ms: timings.responseReady - timings.transaction,
+            },
+            {
+              op: "api_after_scheduling_gap",
+              ms: timings.dispatchStart - timings.responseReady,
+            },
+            {
+              op: "api_phase2_callbacks_token_pure",
+              ms: timings.token - timings.dispatchStart,
+            },
+          ]
+        : []),
+      // Further split of api_after_scheduling_gap: isolate pure Vercel
+      // platform scheduling (response flush + after() fire) from JS-local
+      // closure-to-dispatch overhead. Only stamped on the chat path, which
+      // captures afterEnterAt at the first synchronous line of the after()
+      // closure in zero-run-service.ts.
+      ...(timings.responseReady !== undefined &&
+      timings.afterEnterAt !== undefined &&
+      timings.dispatchStart !== undefined
+        ? [
+            {
+              op: "api_after_schedule_to_closure",
+              ms: timings.afterEnterAt - timings.responseReady,
+            },
+            {
+              op: "api_after_closure_to_dispatch",
+              ms: timings.dispatchStart - timings.afterEnterAt,
+            },
+          ]
+        : []),
       { op: "api_step_build_context", ms: buildContextTime - timings.token },
       { op: "api_step_prepare", ms: prepareTime - buildContextTime },
       { op: "api_step_dispatch", ms: dispatchTime - prepareTime },
@@ -407,6 +447,13 @@ export interface CreateRunRecordResult {
   apiStartTime: number;
   authorizeTime: number;
   transactionTime: number;
+  /**
+   * Stamped by the route handler via CreateZeroRunResult.markResponseReady()
+   * right before returning HTTP 201. Anchors the Phase-1 residual /
+   * after()-scheduling / Phase-2 diagnostic span split. Undefined on non-chat
+   * triggers that don't participate in the marker protocol.
+   */
+  responseReadyAt?: number;
 }
 
 /**

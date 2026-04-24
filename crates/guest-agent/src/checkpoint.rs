@@ -2,6 +2,7 @@
 
 use crate::artifact;
 use crate::constants;
+use crate::content_hash;
 use crate::env;
 use crate::error::AgentError;
 use crate::http;
@@ -136,11 +137,48 @@ async fn snapshot_artifacts() -> Result<Option<serde_json::Value>, AgentError> {
     for entry in entries {
         log_info!(
             LOG_TAG,
-            "Creating VAS snapshot for artifact '{}' at {}",
+            "Processing artifact '{}' at {}",
             entry.name,
             entry.mount_path
         );
         let files = artifact::walk_files(&entry.mount_path).await?;
+
+        // Skip the VAS round-trips when the mount is byte-identical to what
+        // was originally mounted. `version_id` in VAS *is* the content hash
+        // (same SHA-256 the web producer emits), so an equality check on the
+        // locally-recomputed hash is sufficient — no extra metadata needed.
+        // See #10967 for the ~3.9s-per-checkpoint motivation.
+        let skip_check_start = std::time::Instant::now();
+        let local_hash = content_hash::compute_content_hash(
+            &entry.storage_id,
+            files.iter().map(|f| (f.path.as_str(), f.hash.as_str())),
+        );
+        if local_hash == entry.version_id {
+            log_info!(
+                LOG_TAG,
+                "VAS artifact snapshot skipped (unchanged since mount): {}@{}",
+                entry.name,
+                entry.version_id
+            );
+            record_sandbox_op(
+                "artifact_snapshot_skipped",
+                skip_check_start.elapsed(),
+                true,
+                None,
+            );
+            results.push(build_artifact_snapshot_entry(
+                &entry.name,
+                &entry.version_id,
+                &entry.mount_path,
+            ));
+            continue;
+        }
+
+        log_info!(
+            LOG_TAG,
+            "Creating VAS snapshot for artifact '{}'",
+            entry.name
+        );
         let snapshot = artifact::create_snapshot(
             &entry.mount_path,
             files,

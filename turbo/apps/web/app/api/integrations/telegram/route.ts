@@ -47,30 +47,53 @@ export async function GET(request: Request) {
     );
   }
   const { userId } = authCtx;
+  const { org } = await resolveOrg(authCtx);
 
   const db = globalThis.services.db;
 
-  // Find user's most recent Telegram link
+  // Find user's most recent Telegram link in the active org.
   const [userLink] = await db
-    .select()
+    .select({
+      id: telegramUserLinks.id,
+      telegramUserId: telegramUserLinks.telegramUserId,
+      installationId: telegramUserLinks.installationId,
+      vm0UserId: telegramUserLinks.vm0UserId,
+      dmWelcomeSent: telegramUserLinks.dmWelcomeSent,
+      createdAt: telegramUserLinks.createdAt,
+      updatedAt: telegramUserLinks.updatedAt,
+    })
     .from(telegramUserLinks)
-    .where(eq(telegramUserLinks.vm0UserId, userId))
+    .innerJoin(
+      telegramInstallations,
+      eq(telegramUserLinks.installationId, telegramInstallations.telegramBotId),
+    )
+    .where(
+      and(
+        eq(telegramUserLinks.vm0UserId, userId),
+        eq(telegramInstallations.orgId, org.orgId),
+      ),
+    )
     .orderBy(desc(telegramUserLinks.createdAt))
     .limit(1);
 
-  // Find installation via user link or admin ownership
+  // Find installation via user link or owner ownership
   let installation;
   if (userLink) {
     [installation] = await db
       .select()
       .from(telegramInstallations)
-      .where(eq(telegramInstallations.id, userLink.installationId))
+      .where(eq(telegramInstallations.telegramBotId, userLink.installationId))
       .limit(1);
   } else {
     [installation] = await db
       .select()
       .from(telegramInstallations)
-      .where(eq(telegramInstallations.adminUserId, userId))
+      .where(
+        and(
+          eq(telegramInstallations.ownerUserId, userId),
+          eq(telegramInstallations.orgId, org.orgId),
+        ),
+      )
       .limit(1);
   }
 
@@ -115,8 +138,7 @@ export async function GET(request: Request) {
     }
   }
 
-  // Resolve user's default org and get existing secrets, vars, connectors
-  const { org } = await resolveOrg(authCtx);
+  // Get existing secrets, vars, connectors from the active org.
   const [userSecrets, userVars, userConnectors] = await Promise.all([
     listSecrets(org.orgId, userId),
     listVariables(org.orgId, userId),
@@ -147,7 +169,7 @@ export async function GET(request: Request) {
     return !existingVarNames.has(name);
   });
 
-  const isAdmin = installation.adminUserId === userId;
+  const isAdmin = installation.ownerUserId === userId;
   const isConnected = !!userLink;
 
   const { NEXT_PUBLIC_APP_URL } = env();
@@ -157,7 +179,7 @@ export async function GET(request: Request) {
   );
 
   return NextResponse.json({
-    installationId: installation.id,
+    installationId: installation.telegramBotId,
     bot: {
       id: installation.telegramBotId,
       username: installation.botUsername,
@@ -195,6 +217,7 @@ export async function PATCH(request: Request) {
     );
   }
   const { userId } = authCtx;
+  const { org: targetOrg } = await resolveOrg(authCtx);
 
   const parseResult = patchBodySchema.safeParse(await request.json());
   if (!parseResult.success) {
@@ -207,11 +230,28 @@ export async function PATCH(request: Request) {
 
   const db = globalThis.services.db;
 
-  // Find user's Telegram link
+  // Find user's Telegram link in the active org.
   const [userLink] = await db
-    .select()
+    .select({
+      id: telegramUserLinks.id,
+      telegramUserId: telegramUserLinks.telegramUserId,
+      installationId: telegramUserLinks.installationId,
+      vm0UserId: telegramUserLinks.vm0UserId,
+      dmWelcomeSent: telegramUserLinks.dmWelcomeSent,
+      createdAt: telegramUserLinks.createdAt,
+      updatedAt: telegramUserLinks.updatedAt,
+    })
     .from(telegramUserLinks)
-    .where(eq(telegramUserLinks.vm0UserId, userId))
+    .innerJoin(
+      telegramInstallations,
+      eq(telegramUserLinks.installationId, telegramInstallations.telegramBotId),
+    )
+    .where(
+      and(
+        eq(telegramUserLinks.vm0UserId, userId),
+        eq(telegramInstallations.orgId, targetOrg.orgId),
+      ),
+    )
     .orderBy(desc(telegramUserLinks.createdAt))
     .limit(1);
 
@@ -226,7 +266,7 @@ export async function PATCH(request: Request) {
   const [installation] = await db
     .select()
     .from(telegramInstallations)
-    .where(eq(telegramInstallations.id, userLink.installationId))
+    .where(eq(telegramInstallations.telegramBotId, userLink.installationId))
     .limit(1);
 
   if (!installation) {
@@ -236,21 +276,18 @@ export async function PATCH(request: Request) {
     );
   }
 
-  // Admin check
-  if (installation.adminUserId !== userId) {
+  // Owner check
+  if (installation.ownerUserId !== userId) {
     return NextResponse.json(
       {
         error: {
-          message: "Only the bot admin can change the default agent",
+          message: "Only the bot owner can change the default agent",
           code: "FORBIDDEN",
         },
       },
       { status: 403 },
     );
   }
-
-  // Resolve org from authenticated user's context
-  const { org: targetOrg } = await resolveOrg(authCtx);
 
   // Find agent
   const [compose] = await db
@@ -275,7 +312,7 @@ export async function PATCH(request: Request) {
   await db
     .update(telegramInstallations)
     .set({ defaultComposeId: compose.id, updatedAt: new Date() })
-    .where(eq(telegramInstallations.id, installation.id));
+    .where(eq(telegramInstallations.telegramBotId, installation.telegramBotId));
 
   return NextResponse.json({ ok: true });
 }
@@ -299,22 +336,28 @@ export async function DELETE(request: Request) {
     );
   }
   const { userId } = authCtx;
+  const { org } = await resolveOrg(authCtx);
 
   const { SECRETS_ENCRYPTION_KEY } = env();
   const db = globalThis.services.db;
 
-  // Find installation where user is admin
+  // Find installation where user is owner
   const [installation] = await db
     .select()
     .from(telegramInstallations)
-    .where(eq(telegramInstallations.adminUserId, userId))
+    .where(
+      and(
+        eq(telegramInstallations.ownerUserId, userId),
+        eq(telegramInstallations.orgId, org.orgId),
+      ),
+    )
     .limit(1);
 
   if (!installation) {
     return NextResponse.json(
       {
         error: {
-          message: "No Telegram bot found or you are not the bot admin",
+          message: "No Telegram bot found or you are not the bot owner",
           code: "NOT_FOUND",
         },
       },
@@ -334,7 +377,7 @@ export async function DELETE(request: Request) {
   // Delete installation (cascades to user_links, thread_sessions, messages)
   await db
     .delete(telegramInstallations)
-    .where(eq(telegramInstallations.id, installation.id));
+    .where(eq(telegramInstallations.telegramBotId, installation.telegramBotId));
 
   return new NextResponse(null, { status: 204 });
 }

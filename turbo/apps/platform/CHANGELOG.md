@@ -1,5 +1,76 @@
 # Changelog
 
+## [0.293.0](https://github.com/vm0-ai/vm0/compare/app-v0.292.1...app-v0.293.0) (2026-04-24)
+
+
+### Features
+
+* remove deprecated deepseek-chat/reasoner, add v4 credit multipliers ([#11014](https://github.com/vm0-ai/vm0/issues/11014)) ([7f4eb57](https://github.com/vm0-ai/vm0/commit/7f4eb57fcf8f8d3a4040787ec854fac5fac51ec0))
+
+
+### Bug Fixes
+
+* restore mobile spacing between mic and send button in composer ([#11020](https://github.com/vm0-ai/vm0/issues/11020)) ([54e8d10](https://github.com/vm0-ai/vm0/commit/54e8d108e3d05869b9debdcc0ad567b44e3b67fb))
+* show provider logo in compact model picker ([#11024](https://github.com/vm0-ai/vm0/issues/11024)) ([2f4d402](https://github.com/vm0-ai/vm0/commit/2f4d402fe7dc154ef147d679a93d513c92bfd0ec))
+
+
+### Refactoring
+
+* remove chat thread list item agentId ([#10998](https://github.com/vm0-ai/vm0/issues/10998)) ([2d62c16](https://github.com/vm0-ai/vm0/commit/2d62c168caa019b7e65e26d6f2bf713b798608a8))
+* remove unifyChatThreads feature flag ([#11006](https://github.com/vm0-ai/vm0/issues/11006)) ([4c5a8cf](https://github.com/vm0-ai/vm0/commit/4c5a8cfb0ee29f4d8259f01c0a2d3960d44f4e21))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.234.0
+
+## [0.292.1](https://github.com/vm0-ai/vm0/compare/app-v0.292.0...app-v0.292.1) (2026-04-24)
+
+
+### Bug Fixes
+
+* improve mobile composer controls ([#10996](https://github.com/vm0-ai/vm0/issues/10996)) ([65cd9f5](https://github.com/vm0-ai/vm0/commit/65cd9f54b089e0bf5bd33608c536191d76f2b034))
+
+## [0.292.0](https://github.com/vm0-ai/vm0/compare/app-v0.291.0...app-v0.292.0) (2026-04-24)
+
+
+### Features
+
+* add deepseek v4 models ([#10956](https://github.com/vm0-ai/vm0/issues/10956)) ([292ed24](https://github.com/vm0-ai/vm0/commit/292ed2401576ed7451962e7c3e391ea61a6b9e3b))
+
+
+### Bug Fixes
+
+* copy chat attachments with messages ([#10984](https://github.com/vm0-ai/vm0/issues/10984)) ([472280e](https://github.com/vm0-ai/vm0/commit/472280e02b3c8f5324a46f745561abaa799d3cbd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.233.0
+
+## [0.291.0](https://github.com/vm0-ai/vm0/compare/app-v0.290.0...app-v0.291.0) (2026-04-24)
+
+
+### Features
+
+* classify built-in connectors with ai-first grouping ([#10838](https://github.com/vm0-ai/vm0/issues/10838)) ([bd3e2a3](https://github.com/vm0-ai/vm0/commit/bd3e2a3d5d525bbe872723fe122fbd9ddf345a8f))
+
+
+### Bug Fixes
+
+* redirect missing agent routes to default agent ([#10942](https://github.com/vm0-ai/vm0/issues/10942)) ([9442bf0](https://github.com/vm0-ai/vm0/commit/9442bf08d0ae97a05ab5be4221f3277a7decdfe9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.232.0
+
 ## [0.290.0](https://github.com/vm0-ai/vm0/compare/app-v0.289.0...app-v0.290.0) (2026-04-24)
 
 

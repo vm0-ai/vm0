@@ -488,10 +488,10 @@ describe("user.deleted e2e cleanup", () => {
     // Telegram user link (needs a telegram installation first)
     const tgInstall = await insertTestTelegramInstallation({
       composeId,
-      adminUserId: userId,
+      ownerUserId: userId,
     });
     await insertTestTelegramUserLink({
-      installationId: tgInstall.id,
+      installationId: tgInstall.telegramBotId,
       telegramUserId: "654321",
       vm0UserId: userId,
     });

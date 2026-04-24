@@ -30,6 +30,8 @@ import {
   insertTestQueueEntry,
 } from "../../../__tests__/db-test-seeders/runs";
 import { insertTestChatThread } from "../../../__tests__/db-test-seeders/agents";
+import { getTestAgentSessionArtifacts } from "../../../__tests__/db-test-assertions/agents";
+import { AUTO_MEMORY_ARTIFACT_NAME, AUTO_MEMORY_MOUNT_PATH } from "../memory";
 import { mockAblyPublish } from "../../../__tests__/ably-mock";
 
 const context = testContext();
@@ -93,6 +95,21 @@ describe("run-queue-service", () => {
       // Run record should store secretNames but not actual secrets
       const run = await findTestRunRecord(result.runId);
       expect(run!.secretNames).toEqual(["API_KEY"]);
+    });
+
+    it("should seed agent_sessions.artifacts with memory on new session", async () => {
+      const result = await enqueueRun(baseParams({ prompt: "Memory seed" }));
+
+      const run = await findTestRunRecord(result.runId);
+      expect(run).toBeDefined();
+
+      const artifacts = await getTestAgentSessionArtifacts(run!.sessionId);
+      expect(artifacts).toEqual([
+        {
+          name: AUTO_MEMORY_ARTIFACT_NAME,
+          mountPath: AUTO_MEMORY_MOUNT_PATH,
+        },
+      ]);
     });
   });
 

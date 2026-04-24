@@ -13,16 +13,20 @@ import {
 import { GET as linkGET } from "../../../../api/integrations/telegram/link/route";
 import { server } from "../../../../../src/mocks/server";
 import { http } from "../../../../../src/__tests__/msw";
-import { POST } from "../[installationId]/route";
+import { POST } from "../[telegramBotId]/route";
+import {
+  nextAfterArgForms,
+  nextAfterCallbacks,
+} from "../../../../../src/__tests__/next-after-hooks";
 
 // Uses the shared `next/server` mock from src/__tests__/setup.ts, which records
-// both the argument form (globalThis.nextAfterArgForms) and the callback queue
-// (globalThis.nextAfterCallbacks). Tests draining the queue use the helper
-// below; regression tests that only care about the argument form assert on
-// globalThis.nextAfterArgForms directly.
+// both the argument form (nextAfterArgForms) and the callback queue
+// (nextAfterCallbacks) in src/__tests__/next-after-hooks.ts. Tests draining
+// the queue use the helper below; regression tests that only care about the
+// argument form assert on nextAfterArgForms directly.
 async function flushAfterCallbacks() {
-  const callbacks = [...globalThis.nextAfterCallbacks];
-  globalThis.nextAfterCallbacks = [];
+  const callbacks = [...nextAfterCallbacks];
+  nextAfterCallbacks.length = 0;
   await Promise.all(
     callbacks.map((cb) => {
       return cb();
@@ -49,11 +53,11 @@ function createWebhookRequest(
   });
 }
 
-describe("POST /api/telegram/webhook/[installationId]", () => {
-  let installationId: string;
+describe("POST /api/telegram/webhook/[telegramBotId]", () => {
+  let telegramBotId: string;
 
   beforeEach(async () => {
-    installationId = await createTelegramInstallation();
+    telegramBotId = await createTelegramInstallation();
   });
 
   it("should return 404 for unknown installation", async () => {
@@ -67,7 +71,7 @@ describe("POST /api/telegram/webhook/[installationId]", () => {
     });
     const response = await POST(request, {
       params: Promise.resolve({
-        installationId: "00000000-0000-0000-0000-000000000000",
+        telegramBotId: "unknown-bot-id",
       }),
     });
     expect(response.status).toBe(404);
@@ -86,7 +90,7 @@ describe("POST /api/telegram/webhook/[installationId]", () => {
       "wrong-secret",
     );
     const response = await POST(request, {
-      params: Promise.resolve({ installationId }),
+      params: Promise.resolve({ telegramBotId }),
     });
     expect(response.status).toBe(401);
   });
@@ -105,7 +109,7 @@ describe("POST /api/telegram/webhook/[installationId]", () => {
       }),
     });
     const response = await POST(request, {
-      params: Promise.resolve({ installationId }),
+      params: Promise.resolve({ telegramBotId }),
     });
     expect(response.status).toBe(401);
   });
@@ -113,7 +117,7 @@ describe("POST /api/telegram/webhook/[installationId]", () => {
   it("should return 200 for valid request with no message", async () => {
     const request = createWebhookRequest({ update_id: 1 });
     const response = await POST(request, {
-      params: Promise.resolve({ installationId }),
+      params: Promise.resolve({ telegramBotId }),
     });
     expect(response.status).toBe(200);
   });
@@ -128,7 +132,7 @@ describe("POST /api/telegram/webhook/[installationId]", () => {
       },
     });
     const response = await POST(request, {
-      params: Promise.resolve({ installationId }),
+      params: Promise.resolve({ telegramBotId }),
     });
     expect(response.status).toBe(200);
   });
@@ -145,14 +149,14 @@ describe("POST /api/telegram/webhook/[installationId]", () => {
     });
 
     const response = await POST(request, {
-      params: Promise.resolve({ installationId }),
+      params: Promise.resolve({ telegramBotId }),
     });
 
     // Should return 200 immediately (handler runs in after())
     expect(response.status).toBe(200);
 
     // after() was called (handler was dispatched)
-    expect(globalThis.nextAfterCallbacks.length).toBe(1);
+    expect(nextAfterCallbacks.length).toBe(1);
 
     // Handler errors are caught gracefully (no unhandled rejections)
     await flushAfterCallbacks();
@@ -170,11 +174,11 @@ describe("POST /api/telegram/webhook/[installationId]", () => {
     });
 
     const response = await POST(request, {
-      params: Promise.resolve({ installationId }),
+      params: Promise.resolve({ telegramBotId }),
     });
 
     expect(response.status).toBe(200);
-    expect(globalThis.nextAfterCallbacks.length).toBe(1);
+    expect(nextAfterCallbacks.length).toBe(1);
     await flushAfterCallbacks();
   });
 
@@ -188,7 +192,7 @@ describe("POST /api/telegram/webhook/[installationId]", () => {
       body: "not json",
     });
     const response = await POST(request, {
-      params: Promise.resolve({ installationId }),
+      params: Promise.resolve({ telegramBotId }),
     });
     expect(response.status).toBe(400);
   });
@@ -245,7 +249,7 @@ describe("POST /api/telegram/webhook/[installationId]", () => {
 
       const response = await POST(request, {
         params: Promise.resolve({
-          installationId: pending.installationId,
+          telegramBotId: pending.installationId,
         }),
       });
       expect(response.status).toBe(200);
@@ -281,10 +285,10 @@ describe("POST /api/telegram/webhook/[installationId]", () => {
       });
 
       await POST(request, {
-        params: Promise.resolve({ installationId }),
+        params: Promise.resolve({ telegramBotId }),
       });
 
-      expect(globalThis.nextAfterArgForms).toEqual(["fn"]);
+      expect(nextAfterArgForms).toEqual(["fn"]);
     });
 
     it("registers @mention handler via callback form", async () => {
@@ -300,10 +304,10 @@ describe("POST /api/telegram/webhook/[installationId]", () => {
       });
 
       await POST(request, {
-        params: Promise.resolve({ installationId }),
+        params: Promise.resolve({ telegramBotId }),
       });
 
-      expect(globalThis.nextAfterArgForms).toEqual(["fn"]);
+      expect(nextAfterArgForms).toEqual(["fn"]);
     });
 
     it("registers reply-to-bot handler via callback form", async () => {
@@ -323,10 +327,10 @@ describe("POST /api/telegram/webhook/[installationId]", () => {
       });
 
       await POST(request, {
-        params: Promise.resolve({ installationId }),
+        params: Promise.resolve({ telegramBotId }),
       });
 
-      expect(globalThis.nextAfterArgForms).toEqual(["fn"]);
+      expect(nextAfterArgForms).toEqual(["fn"]);
     });
 
     it("registers /start command handler via callback form", async () => {
@@ -341,10 +345,10 @@ describe("POST /api/telegram/webhook/[installationId]", () => {
       });
 
       await POST(request, {
-        params: Promise.resolve({ installationId }),
+        params: Promise.resolve({ telegramBotId }),
       });
 
-      expect(globalThis.nextAfterArgForms).toEqual(["fn"]);
+      expect(nextAfterArgForms).toEqual(["fn"]);
     });
   });
 });

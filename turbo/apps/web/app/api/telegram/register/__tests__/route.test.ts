@@ -217,6 +217,28 @@ describe("POST /api/telegram/register", () => {
     expect(body.error.message).toContain("Agent not found");
   });
 
+  it("returns 403 when defaultAgentId belongs to another org", async () => {
+    const user = await context.setupUser();
+    const otherCompose = await context.createAgentCompose(user.userId, {
+      name: uniqueId("other-agent"),
+    });
+
+    const botId = testBotId();
+    const getMeHandler = telegramGetMe(botId, `cross_org_bot_${botId}`);
+    server.use(getMeHandler.handler);
+
+    const response = await POST(
+      registerRequest({
+        botToken: TEST_BOT_TOKEN,
+        defaultAgentId: otherCompose.id,
+      }),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(body.error.code).toBe("FORBIDDEN");
+  });
+
   it("rolls back installation when webhook registration fails", async () => {
     await context.setupUser();
 

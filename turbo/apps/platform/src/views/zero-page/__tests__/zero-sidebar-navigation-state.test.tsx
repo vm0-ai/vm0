@@ -38,7 +38,7 @@ function makeThread(
 ): {
   id: string;
   title: string;
-  agentId: string;
+  agent: { id: string; avatarUrl: string | null };
   createdAt: string;
   updatedAt: string;
   isRead: boolean;
@@ -48,7 +48,7 @@ function makeThread(
   return {
     id,
     title,
-    agentId: DEFAULT_AGENT_ID,
+    agent: { id: DEFAULT_AGENT_ID, avatarUrl: null },
     createdAt,
     updatedAt: createdAt,
     isRead: false,
@@ -85,7 +85,7 @@ function mockBaseAPIs(options?: {
   threads?: {
     id: string;
     title: string;
-    agentId: string;
+    agent: { id: string; avatarUrl: string | null };
     createdAt: string;
     updatedAt: string;
     isRead: boolean;
@@ -125,15 +125,18 @@ describe("zero sidebar - chat session list collapses and expands (SIDEBAR-D-011)
         makeThread("thread-1", "Deploy to prod", "2026-03-10T00:00:00Z"),
       ],
     });
-    detachedSetupPage({ context, path: "/" });
+    detachedSetupPage({
+      context,
+      path: "/",
+    });
 
     // Wait for thread to appear
     await waitFor(() => {
       expect(screen.getByText("Deploy to prod")).toBeInTheDocument();
     });
 
-    // Collapse: click the "Chats with Zero" header span
-    const chatsHeader = screen.getByText(/Chats with/);
+    // Collapse: click the "Chats" header span
+    const chatsHeader = screen.getByText("Chats");
     click(chatsHeader);
 
     // Thread list should be hidden

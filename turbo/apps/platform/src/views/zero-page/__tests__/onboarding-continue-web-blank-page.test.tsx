@@ -6,6 +6,7 @@ import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
+import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 import {
   onboardingStatusContract,
   onboardingCompleteContract,
@@ -48,6 +49,19 @@ function mockMemberOnboardingDeferred() {
 
 describe("onboarding continue in web → skeleton → chat page (#7902)", () => {
   it("should show skeleton immediately on click, then hide after chat page loads", async () => {
+    // Register the onboarding default agent in the team so the chat page setup
+    // can find it instead of treating it as missing and redirecting.
+    setMockTeam([
+      {
+        id: MOCK_AGENT_ID,
+        displayName: null,
+        description: null,
+        sound: null,
+        avatarUrl: null,
+        headVersionId: "version_1",
+        updatedAt: "2024-01-01T00:00:00Z",
+      },
+    ]);
     const mock = mockMemberOnboardingDeferred();
 
     detachedSetupPage({ context, path: "/onboarding" });

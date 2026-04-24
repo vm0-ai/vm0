@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { zeroConnectorsMainContract } from "@vm0/core/contracts/zero-connectors";
 import { zeroUserConnectorsContract } from "@vm0/core/contracts/user-connectors";
@@ -24,6 +24,32 @@ const mockApi = createMockApi(context);
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const CHAT_PATH = `/agents/${AGENT_ID}/chat`;
+
+interface TestClipboardItemInstance {
+  items: Record<string, Blob>;
+}
+
+class TestClipboardItem implements TestClipboardItemInstance {
+  readonly items: Record<string, Blob>;
+
+  constructor(items: Record<string, Blob>) {
+    this.items = items;
+  }
+}
+
+function setupRichClipboardCapture() {
+  const writeMock = vi.fn<(items: ClipboardItem[]) => Promise<void>>();
+  vi.stubGlobal("ClipboardItem", TestClipboardItem);
+  Object.defineProperty(navigator, "clipboard", {
+    value: {
+      write: writeMock,
+      writeText: vi.fn<(data: string) => Promise<void>>(),
+    },
+    writable: true,
+    configurable: true,
+  });
+  return writeMock;
+}
 
 function mockConnectors() {
   setMockConnectors([
@@ -126,6 +152,108 @@ describe("zero chat composer - file input", () => {
     await waitFor(() => {
       expect(
         screen.getByLabelText("Open image preview for test.png"),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("restores copied chat message attachments when pasted into the composer", async () => {
+    const writeMock = setupRichClipboardCapture();
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "user",
+          content: "Review this",
+          createdAt: "2026-03-10T00:00:00Z",
+          attachFiles: [
+            {
+              id: "file-1",
+              filename: "spec.pdf",
+              contentType: "application/pdf",
+              size: 1234,
+              url: "http://localhost:3000/f/user-1/file-1/spec.pdf",
+            },
+          ],
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: "/chats/thread-test-1" });
+
+    const copyButton = await waitFor(() => {
+      return screen.getByLabelText("Copy message");
+    });
+    click(copyButton);
+
+    await waitFor(() => {
+      expect(writeMock).toHaveBeenCalledWith([expect.any(TestClipboardItem)]);
+    });
+    const item = writeMock.mock.calls[0]?.[0][0] as unknown as
+      | TestClipboardItemInstance
+      | undefined;
+    const html = await item!.items["text/html"]!.text();
+    const text = await item!.items["text/plain"]!.text();
+
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
+    fireEvent.paste(textarea, {
+      clipboardData: {
+        getData: (type: string) => {
+          return type === "text/html"
+            ? html
+            : type === "text/plain"
+              ? text
+              : "";
+        },
+        items: [],
+      },
+    });
+
+    await waitFor(() => {
+      expect(textarea.value).toBe("Review this");
+      expect(screen.getByLabelText("Remove spec.pdf")).toBeInTheDocument();
+    });
+  });
+
+  it("preserves clipboard text when pasting files from a mixed external clipboard", async () => {
+    mockChatLifecycle();
+    server.use(
+      ...mockUploadSuccess({
+        id: "upload-1",
+        filename: "photo.png",
+        contentType: "image/png",
+        size: 3,
+        url: "https://example.com/photo.png",
+      }),
+    );
+
+    detachedSetupPage({ context, path: CHAT_PATH });
+
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
+    const file = new File(["png"], "photo.png", { type: "image/png" });
+
+    fireEvent.paste(textarea, {
+      clipboardData: {
+        getData: (type: string) => {
+          return type === "text/plain" ? "Please use this image" : "";
+        },
+        items: [
+          {
+            kind: "file",
+            getAsFile: () => {
+              return file;
+            },
+          },
+        ],
+      },
+    });
+
+    await waitFor(() => {
+      expect(textarea.value).toBe("Please use this image");
+      expect(
+        screen.getByLabelText("Open image preview for photo.png"),
       ).toBeInTheDocument();
     });
   });

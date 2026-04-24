@@ -47,22 +47,12 @@ const chatThreadListItemSchema = z.object({
   id: z.string(),
   title: z.string().nullable(),
   /**
-   * @deprecated Use `agent.id` instead. Will be removed in #10284 once every
-   * consumer reads `agent.id` and the UnifyChatThreads flag has fully rolled out.
-   * Kept temporarily so existing fixtures still parse during the rollout window.
+   * Owning agent snapshot emitted by the server for every list row.
    */
-  agentId: z.string(),
-  /**
-   * Owning agent snapshot. Always emitted by the server; kept optional on the
-   * schema so older fixtures that predate the unified-list rollout still
-   * validate until they are migrated (tracked in #10284).
-   */
-  agent: z
-    .object({
-      id: z.string(),
-      avatarUrl: z.string().nullable(),
-    })
-    .optional(),
+  agent: z.object({
+    id: z.string(),
+    avatarUrl: z.string().nullable(),
+  }),
   createdAt: z.string(),
   updatedAt: z.string(),
   /**
@@ -165,14 +155,6 @@ export const chatThreadsContract = c.router({
     body: z.object({
       agentId: z.string().min(1),
       title: z.string().optional(),
-      /**
-       * Optional ID of a previously scheduled agent run this thread is
-       * continuing. When set, the first run created in the thread is seeded
-       * with a system prompt that tells the agent to fetch the original run's
-       * telemetry via `zero logs <id>`. Later runs inherit the session context
-       * and do not get the prompt again.
-       */
-      sourceScheduleRunId: z.string().uuid().optional(),
     }),
     responses: {
       201: z.object({
@@ -422,7 +404,7 @@ export const chatThreadMessagesContract = c.router({
     responses: {
       200: z.object({
         messages: z.array(pagedChatMessageSchema),
-        hasMore: z.boolean().optional(),
+        hasHistoryBefore: z.boolean().optional(),
       }),
       401: apiErrorSchema,
       404: apiErrorSchema,

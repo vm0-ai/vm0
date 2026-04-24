@@ -22,9 +22,13 @@ import {
 } from "../../../__tests__/db-test-seeders/agents";
 import { bindCustomSkillToAgent } from "../../../__tests__/db-test-seeders/skills";
 import { createTestUserConnector } from "../../../__tests__/db-test-seeders/connectors";
-import { getTestZeroAgentId } from "../../../__tests__/db-test-assertions/agents";
+import {
+  getTestZeroAgentId,
+  getTestAgentSessionArtifacts,
+} from "../../../__tests__/db-test-assertions/agents";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route
 import { createZeroRun } from "../zero-run-service";
+import { AUTO_MEMORY_ARTIFACT_NAME, AUTO_MEMORY_MOUNT_PATH } from "../memory";
 import { reloadEnv } from "../../../env";
 import type { TriggerSource } from "@vm0/core/contracts/logs";
 
@@ -489,6 +493,74 @@ describe("createZeroRun() — service-only parameters", () => {
       ).rejects.toMatchObject({
         message: expect.stringContaining("Agent compose not found"),
       });
+    });
+  });
+
+  describe("agent model fallback (resolveEffectiveModel)", () => {
+    it("should use agent defaults when callers do not provide model overrides", async () => {
+      const agentName = uniqueId("model-agent");
+      await createTestCompose(agentName);
+      await createTestZeroAgent(user.orgId, agentName, {
+        displayName: "ModelBot",
+        selectedModel: "test-model-from-agent",
+      });
+      const modelAgentId = await getTestZeroAgentId(user.orgId, agentName);
+
+      const result = await createZeroRun(
+        baseParams({
+          agentId: modelAgentId,
+          triggerSource: "slack",
+        }),
+      );
+      expect(result.runId).toBeDefined();
+
+      await context.mocks.flushAfter();
+
+      const zeroRun = await findTestZeroRun(result.runId);
+      expect(zeroRun).toBeDefined();
+      expect(zeroRun!.selectedModel).toBe("test-model-from-agent");
+    });
+
+    it("should let caller overrides take priority over agent defaults", async () => {
+      const agentName = uniqueId("over-model-agent");
+      await createTestCompose(agentName);
+      await createTestZeroAgent(user.orgId, agentName, {
+        displayName: "OverrideModelBot",
+        selectedModel: "agent-default-model",
+      });
+      const overrideAgentId = await getTestZeroAgentId(user.orgId, agentName);
+
+      const result = await createZeroRun(
+        baseParams({
+          agentId: overrideAgentId,
+          selectedModelOverride: "caller-explicit-model",
+          triggerSource: "slack",
+        }),
+      );
+      expect(result.runId).toBeDefined();
+
+      await context.mocks.flushAfter();
+
+      const zeroRun = await findTestZeroRun(result.runId);
+      expect(zeroRun).toBeDefined();
+      expect(zeroRun!.selectedModel).toBe("caller-explicit-model");
+    });
+  });
+
+  describe("auto-memory artifact seeding", () => {
+    it("seeds agent_sessions.artifacts with memory on new session creation", async () => {
+      const result = await createZeroRun(baseParams());
+
+      const run = await findTestRunRecord(result.runId);
+      expect(run).toBeDefined();
+
+      const artifacts = await getTestAgentSessionArtifacts(run!.sessionId);
+      expect(artifacts).toEqual([
+        {
+          name: AUTO_MEMORY_ARTIFACT_NAME,
+          mountPath: AUTO_MEMORY_MOUNT_PATH,
+        },
+      ]);
     });
   });
 

@@ -140,7 +140,7 @@ describe("activity page routing", () => {
     detachedSetupPage({
       context,
       path: "/activities",
-      featureSwitches: { [FeatureSwitchKey.ActivityLogList]: true },
+      featureSwitches: { [FeatureSwitchKey.ZeroDebug]: true },
     });
 
     // Wait for list

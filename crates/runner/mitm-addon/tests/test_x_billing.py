@@ -329,24 +329,29 @@ class TestSeedConsistency:
         )
         if not seed_path.exists():
             pytest.fail(
-                f"dev-seed.ts not found at {seed_path}.  The X_CONNECTOR_PRICING "
-                "block has likely moved — update this test's path computation."
+                f"dev-seed.ts not found at {seed_path}.  The X connector "
+                "pricing block has likely moved — update this test's path "
+                "computation."
             )
         text = seed_path.read_text()
-        # Walk from the X_CONNECTOR_PRICING declaration to its closing
-        # bracket so we don't accidentally scoop up other category-like
-        # strings elsewhere in the file.
+        # Scope the scan to the `usageGroup("connector", "x", [...])` call so
+        # we don't scoop up categories for other connectors / kinds that share
+        # the same `USAGE_PRICING` array.
+        start_marker = 'usageGroup("connector", "x", ['
         try:
-            start = text.index("const X_CONNECTOR_PRICING")
-            end = text.index("];", start)
+            start = text.index(start_marker)
+            end = text.index("])", start)
         except ValueError:
             pytest.fail(
-                "Could not locate the `const X_CONNECTOR_PRICING = [...]` block "
-                f"in {seed_path}.  Either the variable was renamed or the array "
-                "syntax changed — update this test to match."
+                f"Could not locate the `{start_marker}...])` block in "
+                f"{seed_path}.  Either the helper was renamed, the connector "
+                "key changed, or the call shape changed — update this test to "
+                "match."
             )
         block = text[start:end]
-        return set(re.findall(r'category:\s*"([^"]+)"', block))
+        # Entries are tuples: `["<category>", usd(<price>), <quantity>]`. The
+        # category is the first string in each tuple.
+        return set(re.findall(r'\[\s*"([^"]+)"\s*,', block))
 
     def _emitted_buckets(self) -> set[str]:
         emitted = set(_PERMISSION_TO_BUCKET.values())
@@ -381,6 +386,7 @@ class TestSeedConsistency:
         unrecognised includes type."""
         seed = self._load_seed_categories()
         assert "__fallback__" in seed, (
-            "dev-seed.ts lost the `__fallback__` X_CONNECTOR_PRICING row.  "
-            "Unknown includes keys would bill at $0 — restore the row."
+            "dev-seed.ts lost the `__fallback__` row in the X connector "
+            "usageGroup.  Unknown includes keys would bill at $0 — restore "
+            "the row."
         )

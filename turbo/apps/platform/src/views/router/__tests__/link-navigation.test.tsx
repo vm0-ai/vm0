@@ -22,7 +22,20 @@ const mockApi = createMockApi(context);
 
 function mockAPIs() {
   setMockComposesList([]);
-  setMockTeam([]);
+  // Seed the team with the default agent so setupAgentChatPage$ (reached
+  // via the home redirect) does not treat the default agent as missing and
+  // trigger an unhandled detached navigation rejection after the test ends.
+  setMockTeam([
+    {
+      id: "c0000000-0000-4000-a000-000000000001",
+      displayName: null,
+      description: null,
+      sound: null,
+      avatarUrl: null,
+      headVersionId: "version_1",
+      updatedAt: "2024-01-01T00:00:00Z",
+    },
+  ]);
   server.use(
     mockApi(chatThreadsContract.list, ({ respond }) => {
       return respond(200, { threads: [] });
