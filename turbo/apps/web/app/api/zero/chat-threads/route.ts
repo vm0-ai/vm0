@@ -113,7 +113,6 @@ const router = tsr.router(chatThreadsContract, {
           return {
             id: t.id,
             title: t.title,
-            agentId: t.agentId,
             agent: {
               id: t.agentId,
               avatarUrl: t.agentAvatarUrl,

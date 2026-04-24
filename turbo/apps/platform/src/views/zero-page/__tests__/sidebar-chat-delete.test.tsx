@@ -22,7 +22,7 @@ function makeThread(
 ): {
   id: string;
   title: string;
-  agentId: string;
+  agent: { id: string; avatarUrl: string | null };
   createdAt: string;
   updatedAt: string;
   isRead: boolean;
@@ -32,7 +32,7 @@ function makeThread(
   return {
     id,
     title,
-    agentId: AGENT_ID,
+    agent: { id: AGENT_ID, avatarUrl: null },
     createdAt,
     updatedAt: createdAt,
     isRead: false,

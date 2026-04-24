@@ -45,7 +45,7 @@ function makeThread(
 ): {
   id: string;
   title: string;
-  agentId: string;
+  agent: { id: string; avatarUrl: string | null };
   createdAt: string;
   updatedAt: string;
   isRead: boolean;
@@ -55,7 +55,7 @@ function makeThread(
   return {
     id,
     title,
-    agentId: DEFAULT_AGENT_ID,
+    agent: { id: DEFAULT_AGENT_ID, avatarUrl: null },
     createdAt,
     updatedAt: createdAt,
     isRead: false,
@@ -92,7 +92,7 @@ function mockBaseAPIs(options?: {
   threads?: {
     id: string;
     title: string;
-    agentId: string;
+    agent: { id: string; avatarUrl: string | null };
     createdAt: string;
     updatedAt: string;
     isRead: boolean;

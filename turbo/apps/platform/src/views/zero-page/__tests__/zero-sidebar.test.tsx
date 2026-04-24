@@ -22,7 +22,7 @@ function mockAPIs({
     {
       id: "thread-1",
       title: "First chat",
-      agentId: "c0000000-0000-4000-a000-000000000001",
+      agent: { id: "c0000000-0000-4000-a000-000000000001", avatarUrl: null },
       createdAt: "2026-03-10T00:00:00Z",
       updatedAt: "2026-03-10T00:00:00Z",
       isRead: false,
@@ -32,7 +32,7 @@ function mockAPIs({
     {
       id: "thread-2",
       title: "Second chat",
-      agentId: "c0000000-0000-4000-a000-000000000001",
+      agent: { id: "c0000000-0000-4000-a000-000000000001", avatarUrl: null },
       createdAt: "2026-03-09T00:00:00Z",
       updatedAt: "2026-03-09T00:00:00Z",
       isRead: false,
@@ -44,7 +44,7 @@ function mockAPIs({
   threads?: {
     id: string;
     title: string;
-    agentId: string;
+    agent: { id: string; avatarUrl: string | null };
     createdAt: string;
     updatedAt: string;
     isRead: boolean;

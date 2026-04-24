@@ -47,22 +47,12 @@ const chatThreadListItemSchema = z.object({
   id: z.string(),
   title: z.string().nullable(),
   /**
-   * @deprecated Use `agent.id` instead. Will be removed in #10284 once every
-   * consumer reads `agent.id` and the UnifyChatThreads flag has fully rolled out.
-   * Kept temporarily so existing fixtures still parse during the rollout window.
+   * Owning agent snapshot emitted by the server for every list row.
    */
-  agentId: z.string(),
-  /**
-   * Owning agent snapshot. Always emitted by the server; kept optional on the
-   * schema so older fixtures that predate the unified-list rollout still
-   * validate until they are migrated (tracked in #10284).
-   */
-  agent: z
-    .object({
-      id: z.string(),
-      avatarUrl: z.string().nullable(),
-    })
-    .optional(),
+  agent: z.object({
+    id: z.string(),
+    avatarUrl: z.string().nullable(),
+  }),
   createdAt: z.string(),
   updatedAt: z.string(),
   /**

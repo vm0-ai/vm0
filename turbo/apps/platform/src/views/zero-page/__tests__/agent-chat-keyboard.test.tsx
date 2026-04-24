@@ -24,7 +24,7 @@ function mockThreadList(threads: { id: string; title: string }[]) {
           return {
             id: t.id,
             title: t.title,
-            agentId: AGENT_ID,
+            agent: { id: AGENT_ID, avatarUrl: null },
             createdAt: "2026-03-10T00:00:00Z",
             updatedAt: "2026-03-10T00:00:00Z",
             isRead: true,

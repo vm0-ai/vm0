@@ -35,7 +35,7 @@ function mockBaseAPIs(
     threads?: {
       id: string;
       title: string;
-      agentId: string;
+      agent: { id: string; avatarUrl: string | null };
       createdAt: string;
       updatedAt: string;
       isRead: boolean;
@@ -89,7 +89,7 @@ describe("zero sidebar - chat thread list display (SIDEBAR-D-001)", () => {
         {
           id: "thread-1",
           title: "Deploy to production",
-          agentId: DEFAULT_AGENT_ID,
+          agent: { id: DEFAULT_AGENT_ID, avatarUrl: null },
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:00:00Z",
           isRead: false,
@@ -99,7 +99,7 @@ describe("zero sidebar - chat thread list display (SIDEBAR-D-001)", () => {
         {
           id: "thread-2",
           title: "Fix the bug",
-          agentId: DEFAULT_AGENT_ID,
+          agent: { id: DEFAULT_AGENT_ID, avatarUrl: null },
           createdAt: "2026-03-09T00:00:00Z",
           updatedAt: "2026-03-09T00:00:00Z",
           isRead: false,
@@ -152,7 +152,7 @@ describe("zero sidebar - search results filter (SIDEBAR-D-003)", () => {
         {
           id: "thread-1",
           title: "Deploy to production",
-          agentId: DEFAULT_AGENT_ID,
+          agent: { id: DEFAULT_AGENT_ID, avatarUrl: null },
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:00:00Z",
           isRead: false,
@@ -162,7 +162,7 @@ describe("zero sidebar - search results filter (SIDEBAR-D-003)", () => {
         {
           id: "thread-2",
           title: "Fix the bug",
-          agentId: DEFAULT_AGENT_ID,
+          agent: { id: DEFAULT_AGENT_ID, avatarUrl: null },
           createdAt: "2026-03-09T00:00:00Z",
           updatedAt: "2026-03-09T00:00:00Z",
           isRead: false,
@@ -206,7 +206,7 @@ describe("zero sidebar - search term displays in input (SIDEBAR-D-004)", () => {
         {
           id: "thread-1",
           title: "Deploy to production",
-          agentId: DEFAULT_AGENT_ID,
+          agent: { id: DEFAULT_AGENT_ID, avatarUrl: null },
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:00:00Z",
           isRead: false,

@@ -571,6 +571,7 @@ describe("GET /api/zero/chat-threads - List Threads", () => {
     expect(response.status).toBe(200);
     expect(data.threads).toHaveLength(1);
     expect(data.threads[0].agent).toBeDefined();
+    expect(data.threads[0]).not.toHaveProperty("agentId");
     expect(data.threads[0].agent.id).toBe(testComposeId);
     expect(data.threads[0].agent).toHaveProperty("avatarUrl");
   });
@@ -697,6 +698,7 @@ describe("GET /api/zero/chat-threads - Unified list (agentId omitted)", () => {
     expect(response.status).toBe(200);
     expect(data.threads).toHaveLength(1);
     expect(data.threads[0].agent).toBeDefined();
+    expect(data.threads[0]).not.toHaveProperty("agentId");
     expect(data.threads[0].agent.id).toBe(composeAId);
     // avatarUrl defaults to null for a freshly seeded zero_agents row.
     expect(data.threads[0].agent).toHaveProperty("avatarUrl");
