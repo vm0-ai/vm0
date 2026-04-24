@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const youtube = {
   youtube: {
     label: "YouTube",
+    category: "marketing-content-growth",
     environmentMapping: {
       YOUTUBE_TOKEN: "$secrets.YOUTUBE_TOKEN",
     },

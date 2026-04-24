@@ -37,9 +37,6 @@ test("disconnect moves a just-connected connector back to an available card (reg
   detachedSetupPage({ context, path: "/connectors" });
 
   await waitFor(() => {
-    expect(
-      screen.getByText("Marketing, Content, and Growth"),
-    ).toBeInTheDocument();
     expect(screen.getByLabelText("More options")).toBeInTheDocument();
   });
 

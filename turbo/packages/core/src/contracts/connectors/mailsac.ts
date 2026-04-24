@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const mailsac = {
   mailsac: {
     label: "Mailsac",
+    category: "communication-collaboration",
     environmentMapping: {
       MAILSAC_TOKEN: "$secrets.MAILSAC_TOKEN",
     },

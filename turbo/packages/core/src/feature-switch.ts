@@ -284,6 +284,14 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "still uses the current-agent fallback.",
     enabled: false,
   },
+  [FeatureSwitchKey.ConnectorCategories]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Show category sections and the hover-reveal outline menu on the Connectors settings page. " +
+      "Staff-only during rollout.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.Vm0DeepseekModel]: {
     maintainer: "ethan@vm0.ai",
     description: "Enable the DeepSeek-V3.2 (deepseek-chat) VM0 managed model",

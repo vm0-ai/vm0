@@ -7,18 +7,28 @@
  * - Real (internal): All signals, components, rendering
  */
 
-import { describe, expect, it, vi } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { mockConnectors } from "./zero-connectors-page-test-helpers.ts";
 import { zeroConnectorsMainContract } from "@vm0/core/contracts/zero-connectors";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
+const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+    configurable: true,
+    value: originalScrollIntoView,
+  });
+});
 
 describe("connectors page - count display", () => {
   it("ai categories render before non-ai categories (CONN-D-001)", async () => {
@@ -27,18 +37,31 @@ describe("connectors page - count display", () => {
       { type: "openai", authMethod: "platform" },
     ]);
 
-    detachedSetupPage({ context, path: "/connectors" });
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.ConnectorCategories]: true },
+    });
 
     await waitFor(() => {
       expect(
-        screen.getByText("AI: General Models and Reasoning"),
+        screen.getByRole("heading", {
+          level: 2,
+          name: "AI",
+        }),
       ).toBeInTheDocument();
     });
+    expect(
+      screen.getByRole("heading", {
+        level: 3,
+        name: "General Models and Reasoning",
+      }),
+    ).toBeInTheDocument();
     const headings = screen.getAllByRole("heading", { level: 2 });
     const labels = headings.map((heading) => {
       return heading.textContent;
     });
-    expect(labels.indexOf("AI: General Models and Reasoning")).toBeLessThan(
+    expect(labels.indexOf("AI")).toBeLessThan(
       labels.indexOf("Engineering and Team Execution"),
     );
   });
@@ -46,13 +69,26 @@ describe("connectors page - count display", () => {
   it("only matching categories are shown for search-filtered results (CONN-D-002)", async () => {
     mockConnectors([{ type: "github" }]);
 
-    detachedSetupPage({ context, path: "/connectors" });
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.ConnectorCategories]: true },
+    });
 
     await waitFor(() => {
       expect(
-        screen.getByText("AI: General Models and Reasoning"),
+        screen.getByRole("heading", {
+          level: 2,
+          name: "AI",
+        }),
       ).toBeInTheDocument();
     });
+    expect(
+      screen.getByRole("heading", {
+        level: 3,
+        name: "General Models and Reasoning",
+      }),
+    ).toBeInTheDocument();
 
     await userEvent.type(
       screen.getByPlaceholderText("Find connectors"),
@@ -61,27 +97,107 @@ describe("connectors page - count display", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("Engineering and Team Execution"),
+        screen.getByRole("heading", {
+          level: 2,
+          name: "Engineering and Team Execution",
+        }),
       ).toBeInTheDocument();
     });
     expect(
-      screen.queryByText("AI: General Models and Reasoning"),
+      screen.queryByRole("heading", {
+        level: 2,
+        name: "AI",
+      }),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByText("Communication and Collaboration"),
+      screen.queryByRole("heading", {
+        level: 2,
+        name: "Communication and Collaboration",
+      }),
     ).not.toBeInTheDocument();
   });
 });
 
 describe("connectors page - grouped display", () => {
-  it("connected connectors are shown before available ones within a category", async () => {
-    mockConnectors([{ type: "github", externalUsername: "octocat" }]);
+  it("does not render categories or the category menu when the feature switch is off", async () => {
+    mockConnectors([
+      { type: "github" },
+      { type: "openai", authMethod: "platform" },
+    ]);
 
     detachedSetupPage({ context, path: "/connectors" });
 
     await waitFor(() => {
+      expect(screen.getByText("GitHub")).toBeInTheDocument();
+    });
+
+    expect(
+      screen.queryByRole("heading", {
+        level: 2,
+        name: "AI",
+      }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", {
+        level: 2,
+        name: "Engineering and Team Execution",
+      }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("navigation", {
+        name: "Connector categories",
+      }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders a category menu that scrolls to grouped sections", async () => {
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
+    mockConnectors([
+      { type: "github" },
+      { type: "openai", authMethod: "platform" },
+    ]);
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.ConnectorCategories]: true },
+    });
+
+    const menu = await screen.findByRole("navigation", {
+      name: "Connector categories",
+    });
+
+    await userEvent.click(
+      within(menu).getByRole("button", {
+        name: "Engineering and Team Execution",
+      }),
+    );
+
+    expect(scrollIntoView).toHaveBeenCalledWith({
+      block: "start",
+      behavior: "smooth",
+    });
+  });
+
+  it("connected connectors are shown before available ones within a category", async () => {
+    mockConnectors([{ type: "github", externalUsername: "octocat" }]);
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.ConnectorCategories]: true },
+    });
+
+    await waitFor(() => {
       expect(
-        screen.getByText("Engineering and Team Execution"),
+        screen.getByRole("heading", {
+          level: 2,
+          name: "Engineering and Team Execution",
+        }),
       ).toBeInTheDocument();
     });
 

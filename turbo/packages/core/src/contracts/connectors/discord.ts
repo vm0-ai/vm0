@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const discord = {
   discord: {
     label: "Discord",
+    category: "communication-collaboration",
     environmentMapping: {
       DISCORD_BOT_TOKEN: "$secrets.DISCORD_BOT_TOKEN",
     },

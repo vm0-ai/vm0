@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const mem0 = {
   mem0: {
     label: "Mem0",
+    category: "ai-memory-tracing-eval",
     helpText:
       "Connect to Mem0 for persistent AI memory across conversations and sessions.",
     environmentMapping: { MEM0_TOKEN: "$secrets.MEM0_TOKEN" },

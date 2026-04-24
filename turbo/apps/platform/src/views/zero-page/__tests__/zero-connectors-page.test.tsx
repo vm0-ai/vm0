@@ -43,22 +43,32 @@ describe("connectors page", () => {
       expect(screen.getByText("GitHub")).toBeInTheDocument();
     });
     expect(
-      screen.getByText("AI: General Models and Reasoning"),
-    ).toBeInTheDocument();
+      screen.queryByRole("heading", {
+        level: 2,
+        name: "AI",
+      }),
+    ).not.toBeInTheDocument();
     expect(
-      screen.getByText("Engineering and Team Execution"),
-    ).toBeInTheDocument();
+      screen.queryByRole("heading", {
+        level: 3,
+        name: "General Models and Reasoning",
+      }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", {
+        level: 2,
+        name: "Engineering and Team Execution",
+      }),
+    ).not.toBeInTheDocument();
   });
 
-  it("shows connected connectors within their category sections", async () => {
+  it("shows connected connectors", async () => {
     mockConnectors([{ type: "github", externalUsername: "testuser" }]);
 
     detachedSetupPage({ context, path: "/connectors" });
 
     await waitFor(() => {
-      expect(
-        screen.getByText("Engineering and Team Execution"),
-      ).toBeInTheDocument();
+      expect(screen.getByText("GitHub")).toBeInTheDocument();
     });
     expect(screen.getByText("GitHub")).toBeInTheDocument();
     expect(screen.getByLabelText("More options")).toBeInTheDocument();

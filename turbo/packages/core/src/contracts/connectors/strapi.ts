@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const strapi = {
   strapi: {
     label: "Strapi",
+    category: "docs-files-knowledge",
     environmentMapping: {
       STRAPI_TOKEN: "$secrets.STRAPI_TOKEN",
       STRAPI_BASE_URL: "$vars.STRAPI_BASE_URL",

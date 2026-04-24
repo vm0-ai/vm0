@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const typeform = {
   typeform: {
     label: "Typeform",
+    category: "data-automation-infrastructure",
     environmentMapping: {
       TYPEFORM_TOKEN: "$secrets.TYPEFORM_TOKEN",
     },

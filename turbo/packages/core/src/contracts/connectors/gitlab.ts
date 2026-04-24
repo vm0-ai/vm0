@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const gitlab = {
   gitlab: {
     label: "GitLab",
+    category: "engineering-team-execution",
     tags: ["git", "vcs", "scm", "repos"],
     environmentMapping: {
       GITLAB_TOKEN: "$secrets.GITLAB_TOKEN",

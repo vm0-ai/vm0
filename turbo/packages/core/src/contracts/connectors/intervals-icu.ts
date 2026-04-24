@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const intervalsIcu = {
   "intervals-icu": {
     label: "Intervals.icu",
+    category: "meetings-scheduling",
     environmentMapping: {
       INTERVALS_ICU_TOKEN: "$secrets.INTERVALS_ICU_ACCESS_TOKEN",
     },

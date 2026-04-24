@@ -225,12 +225,111 @@ export type ConnectorAuthMethodType =
   | "api"
   | "platform";
 
+export type ConnectorDisplayCategory =
+  | "ai-general-models"
+  | "ai-image-video"
+  | "ai-voice-audio"
+  | "ai-agent-apps"
+  | "ai-memory-tracing-eval"
+  | "communication-collaboration"
+  | "meetings-scheduling"
+  | "docs-files-knowledge"
+  | "engineering-team-execution"
+  | "sales-crm-business-operations"
+  | "marketing-content-growth"
+  | "data-automation-infrastructure";
+
+export type ConnectorDisplayCategoryGroup = "ai";
+
+export const CONNECTOR_DISPLAY_CATEGORY_GROUPS: Record<
+  ConnectorDisplayCategoryGroup,
+  { label: string; menuLabel: string }
+> = {
+  ai: { label: "AI", menuLabel: "AI" },
+};
+
+export const CONNECTOR_DISPLAY_CATEGORY_META: Record<
+  ConnectorDisplayCategory,
+  { label: string; menuLabel: string; group?: ConnectorDisplayCategoryGroup }
+> = {
+  "ai-general-models": {
+    label: "General Models and Reasoning",
+    menuLabel: "General Models",
+    group: "ai",
+  },
+  "ai-image-video": {
+    label: "Image / Video Generation",
+    menuLabel: "Image and Video",
+    group: "ai",
+  },
+  "ai-voice-audio": {
+    label: "Voice / Audio",
+    menuLabel: "Voice and Audio",
+    group: "ai",
+  },
+  "ai-agent-apps": {
+    label: "Agent Platforms and AI Apps",
+    menuLabel: "Agent Platforms",
+    group: "ai",
+  },
+  "ai-memory-tracing-eval": {
+    label: "Memory / Tracing / Evaluation",
+    menuLabel: "Memory and Evaluation",
+    group: "ai",
+  },
+  "communication-collaboration": {
+    label: "Communication and Collaboration",
+    menuLabel: "Communication",
+  },
+  "meetings-scheduling": {
+    label: "Meetings and Scheduling",
+    menuLabel: "Meetings",
+  },
+  "docs-files-knowledge": {
+    label: "Docs, Files, and Knowledge",
+    menuLabel: "Documents",
+  },
+  "engineering-team-execution": {
+    label: "Engineering and Team Execution",
+    menuLabel: "Engineering",
+  },
+  "sales-crm-business-operations": {
+    label: "Sales, CRM, and Business Operations",
+    menuLabel: "Sales and Business",
+  },
+  "marketing-content-growth": {
+    label: "Marketing, Content, and Growth",
+    menuLabel: "Marketing",
+  },
+  "data-automation-infrastructure": {
+    label: "Data, Automation, and Infrastructure",
+    menuLabel: "Data and Automation",
+  },
+};
+
+export const CONNECTOR_DISPLAY_CATEGORY_ORDER: readonly ConnectorDisplayCategory[] =
+  [
+    "ai-general-models",
+    "ai-image-video",
+    "ai-voice-audio",
+    "ai-agent-apps",
+    "ai-memory-tracing-eval",
+    "communication-collaboration",
+    "meetings-scheduling",
+    "docs-files-knowledge",
+    "engineering-team-execution",
+    "sales-crm-business-operations",
+    "marketing-content-growth",
+    "data-automation-infrastructure",
+  ];
+
 /**
  * Base configuration shape for all connector types.
  */
 export interface ConnectorConfig {
   readonly label: string;
   readonly helpText: string;
+  readonly category: ConnectorDisplayCategory;
   readonly featureFlag?: FeatureSwitchKey;
   /**
    * When true, the featureFlag gates this connector even when it has api-token

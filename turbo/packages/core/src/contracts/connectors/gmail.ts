@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const gmail = {
   gmail: {
     label: "Gmail",
+    category: "communication-collaboration",
     tags: ["email", "mail"],
     environmentMapping: {
       GMAIL_TOKEN: "$secrets.GMAIL_ACCESS_TOKEN",

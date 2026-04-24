@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const axiom = {
   axiom: {
     label: "Axiom",
+    category: "data-automation-infrastructure",
     environmentMapping: {
       AXIOM_TOKEN: "$secrets.AXIOM_TOKEN",
     },

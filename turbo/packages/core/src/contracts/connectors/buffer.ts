@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const buffer = {
   buffer: {
     label: "Buffer",
+    category: "marketing-content-growth",
     environmentMapping: {
       BUFFER_TOKEN: "$secrets.BUFFER_TOKEN",
     },

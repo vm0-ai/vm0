@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const notion = {
   notion: {
     label: "Notion",
+    category: "docs-files-knowledge",
     tags: ["docs", "wiki", "workspace"],
     environmentMapping: {
       NOTION_TOKEN: "$secrets.NOTION_ACCESS_TOKEN",

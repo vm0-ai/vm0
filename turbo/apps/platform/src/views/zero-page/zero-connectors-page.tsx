@@ -1,5 +1,6 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   useGet,
   useSet,
@@ -15,6 +16,7 @@ import {
 } from "@tabler/icons-react";
 import {
   CONNECTOR_TYPES,
+  FeatureSwitchKey,
   type ConnectorType,
 } from "@vm0/core/contracts/connectors";
 import { isGoogleOAuthConnector } from "@vm0/core/contracts/connector-utils";
@@ -46,8 +48,12 @@ import {
   matchesConnectorSearch,
   type ConnectorTypeWithStatus,
 } from "../../signals/zero-page/settings/connectors.ts";
-import { groupConnectorsByCategory } from "../../signals/zero-page/settings/connector-categories.ts";
+import {
+  groupConnectorsByCategory,
+  type ConnectorCategoryGroup,
+} from "../../signals/zero-page/settings/connector-categories.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import { ScopeReviewModal } from "./components/settings/scope-review-modal.tsx";
 import { ConnectorPermissionDialog } from "./components/settings/connector-permission-dialog.tsx";
@@ -64,6 +70,248 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@vm0/ui";
+
+function getConnectorCategorySectionId(category: string): string {
+  return `connector-category-${category}`;
+}
+
+function scrollToConnectorCategory(category: string): void {
+  document
+    .getElementById(getConnectorCategorySectionId(category))
+    ?.scrollIntoView({ block: "start", behavior: "smooth" });
+}
+
+function getConnectorCategoryTargetIds(
+  groups: readonly ConnectorCategoryGroup<ConnectorTypeWithStatus>[],
+): string[] {
+  return groups.flatMap((group) => {
+    if (group.kind === "group") {
+      return [
+        group.id,
+        ...group.sections.map((section) => {
+          return section.category;
+        }),
+      ];
+    }
+    return [group.sections[0].category];
+  });
+}
+
+function getActiveConnectorCategoryId(
+  categoryIds: readonly string[],
+  scrollContainer: HTMLElement,
+): string | null {
+  let activeId = categoryIds[0] ?? null;
+  const anchorY = scrollContainer.getBoundingClientRect().top + 120;
+
+  for (const categoryId of categoryIds) {
+    const element = document.getElementById(
+      getConnectorCategorySectionId(categoryId),
+    );
+    if (!element) {
+      continue;
+    }
+    if (element.getBoundingClientRect().top <= anchorY) {
+      activeId = categoryId;
+      continue;
+    }
+    break;
+  }
+
+  return activeId;
+}
+
+function ConnectorCategoryMenu({
+  activeCategoryId,
+  groups,
+}: {
+  activeCategoryId: string | null;
+  groups: readonly ConnectorCategoryGroup<ConnectorTypeWithStatus>[];
+}) {
+  if (groups.length <= 1) {
+    return null;
+  }
+
+  return (
+    <aside className="pointer-events-none absolute bottom-0 left-full top-[60px] ml-16 hidden w-44 xl:block">
+      <nav
+        aria-label="Connector categories"
+        className="group pointer-events-auto sticky top-[28vh] flex flex-col gap-3 pb-3 pl-5"
+      >
+        {groups.map((group) => {
+          if (group.kind === "group") {
+            const isActiveChild = group.sections.some((section) => {
+              return activeCategoryId === section.category;
+            });
+            return (
+              <Fragment key={group.id}>
+                <ConnectorCategoryMenuItem
+                  activeState={
+                    activeCategoryId === group.id
+                      ? "current"
+                      : isActiveChild
+                        ? "ancestor"
+                        : null
+                  }
+                  depth="parent"
+                  label={group.label}
+                  menuLabel={group.menuLabel}
+                  onClick={() => {
+                    scrollToConnectorCategory(group.id);
+                  }}
+                />
+                {group.sections.map((section) => {
+                  return (
+                    <ConnectorCategoryMenuItem
+                      key={section.category}
+                      activeState={
+                        activeCategoryId === section.category ? "current" : null
+                      }
+                      depth="child"
+                      label={section.label}
+                      menuLabel={section.menuLabel}
+                      onClick={() => {
+                        scrollToConnectorCategory(section.category);
+                      }}
+                    />
+                  );
+                })}
+              </Fragment>
+            );
+          }
+
+          const section = group.sections[0];
+          return (
+            <ConnectorCategoryMenuItem
+              key={section.category}
+              activeState={
+                activeCategoryId === section.category ? "current" : null
+              }
+              depth="parent"
+              label={section.label}
+              menuLabel={section.menuLabel}
+              onClick={() => {
+                scrollToConnectorCategory(section.category);
+              }}
+            />
+          );
+        })}
+      </nav>
+    </aside>
+  );
+}
+
+function ConnectorCategoryMenuItem({
+  activeState,
+  depth,
+  label,
+  menuLabel,
+  onClick,
+}: {
+  activeState: "current" | "ancestor" | null;
+  depth: "parent" | "child";
+  label: string;
+  menuLabel: string;
+  onClick: () => void;
+}) {
+  const isChild = depth === "child";
+  const lineClass =
+    activeState === "current"
+      ? isChild
+        ? "ml-1 w-3 bg-foreground/70 group-hover/item:bg-foreground/80"
+        : "w-4 bg-foreground/70 group-hover/item:bg-foreground/80"
+      : activeState === "ancestor"
+        ? "w-4 bg-muted-foreground/55 group-hover/item:bg-foreground/60"
+        : isChild
+          ? "ml-1 w-3 bg-muted-foreground/20 group-hover:bg-muted-foreground/35 group-hover/item:bg-foreground/50"
+          : "w-4 bg-muted-foreground/20 group-hover:bg-muted-foreground/35 group-hover/item:bg-foreground/50";
+
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      aria-current={activeState === "current" ? "true" : undefined}
+      title={label}
+      className={`group/item relative flex h-3 w-full items-center text-left leading-snug transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 ${
+        activeState === "current"
+          ? isChild
+            ? "text-[11px] text-foreground hover:text-foreground"
+            : "text-xs font-medium text-foreground hover:text-foreground"
+          : isChild
+            ? "text-[11px] text-muted-foreground/70 hover:text-foreground"
+            : "text-xs font-medium text-muted-foreground hover:text-foreground"
+      }`}
+      onClick={onClick}
+    >
+      <span
+        aria-hidden="true"
+        className={`block h-0.5 rounded-sm transition-colors ${lineClass}`}
+      />
+      <span className="absolute left-7 top-1/2 block -translate-y-1/2 translate-x-1 whitespace-nowrap opacity-0 transition duration-150 group-hover:translate-x-0 group-hover:opacity-100 group-focus-within:translate-x-0 group-focus-within:opacity-100">
+        {menuLabel}
+      </span>
+    </button>
+  );
+}
+
+function ConnectorCategoryGroupSection({
+  group,
+  renderCard,
+}: {
+  group: ConnectorCategoryGroup<ConnectorTypeWithStatus>;
+  renderCard: (connector: ConnectorTypeWithStatus) => ReactNode;
+}) {
+  if (group.kind === "group") {
+    return (
+      <section
+        key={group.id}
+        id={getConnectorCategorySectionId(group.id)}
+        className="scroll-mt-6 flex flex-col gap-4"
+        data-testid={`connector-category-${group.id}`}
+      >
+        <h2 className="text-sm font-medium text-muted-foreground">
+          {group.label}
+        </h2>
+        <div className="flex flex-col gap-5">
+          {group.sections.map((section) => {
+            return (
+              <div
+                key={section.category}
+                id={getConnectorCategorySectionId(section.category)}
+                className="scroll-mt-6 flex flex-col gap-3"
+                data-testid={`connector-category-${section.category}`}
+              >
+                <h3 className="text-xs font-medium text-muted-foreground/80">
+                  {section.label}
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {section.connectors.map(renderCard)}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+    );
+  }
+
+  const section = group.sections[0];
+  return (
+    <section
+      key={section.category}
+      id={getConnectorCategorySectionId(section.category)}
+      className="scroll-mt-6 flex flex-col gap-3"
+      data-testid={`connector-category-${section.category}`}
+    >
+      <h2 className="text-sm font-medium text-muted-foreground">
+        {section.label}
+      </h2>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        {section.connectors.map(renderCard)}
+      </div>
+    </section>
+  );
+}
 
 function GlobalConnectorCard({
   connector,
@@ -283,6 +531,7 @@ function AvailableConnectorCard({
 }
 
 export function ZeroConnectorsPage() {
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const allTypesLoadable = useLastLoadable(allConnectorTypes$);
   const pollingType = useGet(pollingConnectorType$);
   const connect = useSet(connectConnector$);
@@ -299,6 +548,10 @@ export function ZeroConnectorsPage() {
   const setActiveTab = useSet(setConnectorsPageTab$);
   const isAdmin = useLastResolved(isOrgAdmin$) ?? false;
   const openCreateCustom = useSet(openCustomConnectorCreateDialog$);
+  const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
+  const features = useLastResolved(featureSwitch$);
+  const showConnectorCategories =
+    features?.[FeatureSwitchKey.ConnectorCategories] ?? false;
 
   const search = useGet(connectorsSearch$);
   const setSearch = useSet(setConnectorsSearch$);
@@ -386,12 +639,57 @@ export function ZeroConnectorsPage() {
     );
   };
 
-  const grouped = groupConnectorsByCategory(filtered.map(getEffective));
+  const grouped = showConnectorCategories
+    ? groupConnectorsByCategory(filtered.map(getEffective))
+    : [];
+
+  useEffect(() => {
+    if (
+      activeTab !== "builtin" ||
+      allTypesLoadable.state !== "hasData" ||
+      !showConnectorCategories
+    ) {
+      setActiveCategoryId(null);
+      return;
+    }
+
+    const scrollContainer = scrollContainerRef.current;
+    if (!scrollContainer) {
+      return;
+    }
+
+    const categoryIds = getConnectorCategoryTargetIds(grouped);
+    const updateActiveCategory = () => {
+      const nextActiveId = getActiveConnectorCategoryId(
+        categoryIds,
+        scrollContainer,
+      );
+      setActiveCategoryId((previousActiveId) => {
+        return previousActiveId === nextActiveId
+          ? previousActiveId
+          : nextActiveId;
+      });
+    };
+
+    updateActiveCategory();
+    scrollContainer.addEventListener("scroll", updateActiveCategory, {
+      passive: true,
+    });
+    window.addEventListener("resize", updateActiveCategory);
+
+    return () => {
+      scrollContainer.removeEventListener("scroll", updateActiveCategory);
+      window.removeEventListener("resize", updateActiveCategory);
+    };
+  }, [activeTab, allTypesLoadable.state, grouped, showConnectorCategories]);
 
   return (
-    <div className="flex flex-1 flex-col min-h-0 overflow-auto [scrollbar-gutter:stable]">
+    <div
+      ref={scrollContainerRef}
+      className="flex flex-1 flex-col min-h-0 overflow-auto [scrollbar-gutter:stable]"
+    >
       <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-3 md:pt-10 pb-0 md:pb-3">
-        <div className="mx-auto max-w-[900px]">
+        <div className="mx-auto max-w-[960px]">
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div className="min-w-0 hidden md:block">
               <h1 className="text-lg font-semibold tracking-tight text-foreground">
@@ -422,84 +720,95 @@ export function ZeroConnectorsPage() {
       </header>
 
       <main className="flex-1 px-4 sm:px-6 pt-3 pb-16">
-        <div className="mx-auto max-w-[900px] flex flex-col gap-6">
-          <div className="flex items-center justify-between">
-            <Tabs
-              value={activeTab}
-              onValueChange={(v) => {
-                return setActiveTab(v === "custom" ? "custom" : "builtin");
-              }}
-            >
-              <TabsList>
-                <TabsTrigger value="builtin">Built-in</TabsTrigger>
-                <TabsTrigger value="custom">Custom</TabsTrigger>
-              </TabsList>
-            </Tabs>
-            {activeTab === "custom" && isAdmin && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="zero-btn-morandi h-9 gap-2 shrink-0 rounded-lg border"
-                onClick={openCreateCustom}
-              >
-                <IconPlus size={14} stroke={2} />
-                New connector
-              </Button>
+        <div className="relative mx-auto w-full max-w-[960px]">
+          {activeTab === "builtin" &&
+            allTypesLoadable.state === "hasData" &&
+            showConnectorCategories && (
+              <ConnectorCategoryMenu
+                activeCategoryId={activeCategoryId}
+                groups={grouped}
+              />
             )}
-          </div>
 
-          {activeTab === "builtin" && (
-            <>
-              {grouped.map((section) => {
-                return (
-                  <section
-                    key={section.category}
-                    className="flex flex-col gap-3"
-                    data-testid={`connector-category-${section.category}`}
-                  >
-                    <h2 className="text-sm font-medium text-muted-foreground">
-                      {section.label}
-                    </h2>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                      {section.connectors.map(renderCard)}
-                    </div>
-                  </section>
-                );
-              })}
-
-              {allTypesLoadable.state !== "hasData" && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {Array.from({ length: 6 }, (_, i) => {
-                    return (
-                      <div
-                        key={i}
-                        data-testid="connector-skeleton"
-                        className="zero-card flex flex-col animate-pulse"
-                      >
-                        <div className="flex h-14 items-center gap-2.5 px-5">
-                          <span className="h-5 w-5 shrink-0 rounded-lg bg-muted/50" />
-                          <span className="h-4 w-24 rounded bg-muted/50" />
-                        </div>
-                        <div className="flex h-11 items-center border-t border-border/30 px-5">
-                          <span className="h-3 w-16 rounded bg-muted/30" />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+          <div className="min-w-0 flex flex-col gap-6">
+            <div className="flex items-center justify-between">
+              <Tabs
+                value={activeTab}
+                onValueChange={(v) => {
+                  return setActiveTab(v === "custom" ? "custom" : "builtin");
+                }}
+              >
+                <TabsList>
+                  <TabsTrigger value="builtin">Built-in</TabsTrigger>
+                  <TabsTrigger value="custom">Custom</TabsTrigger>
+                </TabsList>
+              </Tabs>
+              {activeTab === "custom" && isAdmin && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="zero-btn-morandi h-9 gap-2 shrink-0 rounded-lg border"
+                  onClick={openCreateCustom}
+                >
+                  <IconPlus size={14} stroke={2} />
+                  New connector
+                </Button>
               )}
+            </div>
 
-              {allTypesLoadable.state === "hasData" &&
-                filtered.length === 0 &&
-                search && (
-                  <p className="py-12 text-center text-sm text-muted-foreground">
-                    No connectors matching &ldquo;{search}&rdquo;
-                  </p>
+            {activeTab === "builtin" && (
+              <>
+                {allTypesLoadable.state === "hasData" &&
+                  (showConnectorCategories ? (
+                    grouped.map((group) => {
+                      return (
+                        <ConnectorCategoryGroupSection
+                          key={group.id}
+                          group={group}
+                          renderCard={renderCard}
+                        />
+                      );
+                    })
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {filtered.map(renderCard)}
+                    </div>
+                  ))}
+
+                {allTypesLoadable.state !== "hasData" && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {Array.from({ length: 6 }, (_, i) => {
+                      return (
+                        <div
+                          key={i}
+                          data-testid="connector-skeleton"
+                          className="zero-card flex flex-col animate-pulse"
+                        >
+                          <div className="flex h-14 items-center gap-2.5 px-5">
+                            <span className="h-5 w-5 shrink-0 rounded-lg bg-muted/50" />
+                            <span className="h-4 w-24 rounded bg-muted/50" />
+                          </div>
+                          <div className="flex h-11 items-center border-t border-border/30 px-5">
+                            <span className="h-3 w-16 rounded bg-muted/30" />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 )}
-            </>
-          )}
 
-          {activeTab === "custom" && <CustomConnectorsPanel />}
+                {allTypesLoadable.state === "hasData" &&
+                  filtered.length === 0 &&
+                  search && (
+                    <p className="py-12 text-center text-sm text-muted-foreground">
+                      No connectors matching &ldquo;{search}&rdquo;
+                    </p>
+                  )}
+              </>
+            )}
+
+            {activeTab === "custom" && <CustomConnectorsPanel />}
+          </div>
         </div>
       </main>
 

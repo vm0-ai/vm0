@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const hume = {
   hume: {
     label: "Hume",
+    category: "ai-voice-audio",
     environmentMapping: {
       HUME_TOKEN: "$secrets.HUME_TOKEN",
     },

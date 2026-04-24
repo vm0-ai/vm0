@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const onyx = {
   onyx: {
     label: "Onyx",
+    category: "docs-files-knowledge",
     helpText:
       "Connect your Onyx account to search internal knowledge bases, chat with AI agents, and index documents",
     environmentMapping: {

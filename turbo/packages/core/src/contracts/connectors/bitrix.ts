@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const bitrix = {
   bitrix: {
     label: "Bitrix24",
+    category: "sales-crm-business-operations",
     environmentMapping: {
       BITRIX_WEBHOOK_URL: "$secrets.BITRIX_WEBHOOK_URL",
     },

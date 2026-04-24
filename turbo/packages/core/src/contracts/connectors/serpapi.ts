@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const serpapi = {
   serpapi: {
     label: "SerpApi",
+    category: "data-automation-infrastructure",
     environmentMapping: {
       SERPAPI_TOKEN: "$secrets.SERPAPI_TOKEN",
     },

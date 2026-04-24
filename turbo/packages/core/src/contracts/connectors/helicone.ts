@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const helicone = {
   helicone: {
     label: "Helicone",
+    category: "ai-memory-tracing-eval",
     helpText:
       "Connect to Helicone for LLM cost tracking, request logging, and performance analytics.",
     environmentMapping: {

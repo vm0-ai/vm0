@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const pdf4me = {
   pdf4me: {
     label: "PDF4me",
+    category: "data-automation-infrastructure",
     environmentMapping: {
       PDF4ME_TOKEN: "$secrets.PDF4ME_TOKEN",
     },

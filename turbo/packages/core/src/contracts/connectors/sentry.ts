@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const sentry = {
   sentry: {
     label: "Sentry",
+    category: "engineering-team-execution",
     environmentMapping: {
       SENTRY_TOKEN: "$secrets.SENTRY_ACCESS_TOKEN",
     },

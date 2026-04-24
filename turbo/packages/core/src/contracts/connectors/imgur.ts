@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const imgur = {
   imgur: {
     label: "Imgur",
+    category: "marketing-content-growth",
     environmentMapping: {
       IMGUR_CLIENT_ID: "$secrets.IMGUR_CLIENT_ID",
     },

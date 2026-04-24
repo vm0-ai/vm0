@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const googleDocs = {
   "google-docs": {
     label: "Google Docs",
+    category: "docs-files-knowledge",
     environmentMapping: {
       GOOGLE_DOCS_TOKEN: "$secrets.GOOGLE_DOCS_ACCESS_TOKEN",
     },

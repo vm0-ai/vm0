@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const slackWebhook = {
   "slack-webhook": {
     label: "Slack Webhook",
+    category: "communication-collaboration",
     environmentMapping: {
       SLACK_WEBHOOK_URL: "$secrets.SLACK_WEBHOOK_URL",
     },

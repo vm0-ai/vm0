@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const x = {
   x: {
     label: "X",
+    category: "marketing-content-growth",
     environmentMapping: {
       X_TOKEN: "$secrets.X_ACCESS_TOKEN",
     },

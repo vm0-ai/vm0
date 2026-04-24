@@ -4,6 +4,7 @@ import type { ConnectorConfig } from "../connectors";
 export const webflow = {
   webflow: {
     label: "Webflow",
+    category: "marketing-content-growth",
     environmentMapping: {
       WEBFLOW_TOKEN: "$secrets.WEBFLOW_ACCESS_TOKEN",
     },

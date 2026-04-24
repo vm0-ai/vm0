@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const prismaPostgres = {
   "prisma-postgres": {
     label: "Prisma Postgres",
+    category: "data-automation-infrastructure",
     environmentMapping: {
       PRISMA_POSTGRES_TOKEN: "$secrets.PRISMA_POSTGRES_TOKEN",
     },

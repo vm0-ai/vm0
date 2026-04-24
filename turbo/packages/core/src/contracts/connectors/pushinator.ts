@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const pushinator = {
   pushinator: {
     label: "Pushinator",
+    category: "communication-collaboration",
     environmentMapping: {
       PUSHINATOR_TOKEN: "$secrets.PUSHINATOR_TOKEN",
     },

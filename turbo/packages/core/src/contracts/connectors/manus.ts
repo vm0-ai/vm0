@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const manus = {
   manus: {
     label: "Manus",
+    category: "ai-agent-apps",
     environmentMapping: {
       MANUS_TOKEN: "$secrets.MANUS_TOKEN",
     },

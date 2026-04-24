@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const fireflies = {
   fireflies: {
     label: "Fireflies",
+    category: "meetings-scheduling",
     environmentMapping: {
       FIREFLIES_TOKEN: "$secrets.FIREFLIES_TOKEN",
     },
