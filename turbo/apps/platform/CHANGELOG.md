@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.292.1](https://github.com/vm0-ai/vm0/compare/app-v0.292.0...app-v0.292.1) (2026-04-24)
+
+
+### Bug Fixes
+
+* improve mobile composer controls ([#10996](https://github.com/vm0-ai/vm0/issues/10996)) ([65cd9f5](https://github.com/vm0-ai/vm0/commit/65cd9f54b089e0bf5bd33608c536191d76f2b034))
+
 ## [0.292.0](https://github.com/vm0-ai/vm0/compare/app-v0.291.0...app-v0.292.0) (2026-04-24)
 
 
