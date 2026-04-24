@@ -67,7 +67,7 @@ function mockAPIs({
       ]);
     }),
     mockApi(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, { threads });
+      return respond(200, { threads, hasMore: false });
     }),
     mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
       return respond(200, {

@@ -19,6 +19,7 @@ import {
 export { reloadChatThreads$ } from "./chat-thread-list-reload.ts";
 
 const internalChatAgentId$ = state<string | null>(null);
+const internalLoadAllChatThreads$ = state(false);
 
 export const currentChatAgentId$ = computed(
   async (get): Promise<string | null> => {
@@ -135,29 +136,59 @@ export const patchThreadRead$ = command(({ set }, _threadId: string) => {
   set(reloadChatThreads$);
 });
 
-export const chatThreads$ = computed(async (get) => {
-  get(reloadChatThreadsCounter$);
+interface ChatThreadListResult {
+  threads: ChatThreadListItem[];
+  hasMore: boolean;
+}
 
-  const agentId = await get(currentChatAgentId$);
-  if (!agentId) {
-    return [];
-  }
+export const loadAllChatThreads$ = command(({ set }) => {
+  set(internalLoadAllChatThreads$, true);
+});
 
-  const client = get(zeroClient$)(chatThreadsContract);
-  const result = await accept(
-    client.list({ query: { agentId: agentId } }),
-    [200],
-  );
-  const threads = result.body.threads;
+const chatThreadListResult$ = computed(
+  async (get): Promise<ChatThreadListResult> => {
+    get(reloadChatThreadsCounter$);
+    const includeAll = get(internalLoadAllChatThreads$);
 
-  const currentThread = await get(currentChatThread$);
-  return threads.map((t) => {
+    const agentId = await get(currentChatAgentId$);
+    if (!agentId) {
+      return { threads: [], hasMore: false };
+    }
+
+    const client = get(zeroClient$)(chatThreadsContract);
+    const result = await accept(
+      client.list({
+        query: {
+          agentId: agentId,
+          ...(includeAll ? ({ all: "true" } as const) : {}),
+        },
+      }),
+      [200],
+    );
+    const threads = result.body.threads;
+
+    const currentThread = await get(currentChatThread$);
     return {
-      ...t,
-      title:
-        t.id === currentThread?.id ? t.title || currentThread.title : t.title,
+      threads: threads.map((t) => {
+        return {
+          ...t,
+          title:
+            t.id === currentThread?.id
+              ? t.title || currentThread.title
+              : t.title,
+        };
+      }),
+      hasMore: result.body.hasMore,
     };
-  });
+  },
+);
+
+export const chatThreads$ = computed(async (get) => {
+  return (await get(chatThreadListResult$)).threads;
+});
+
+export const chatThreadsHasMore$ = computed(async (get) => {
+  return (await get(chatThreadListResult$)).hasMore;
 });
 
 /**

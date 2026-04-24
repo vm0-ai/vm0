@@ -399,11 +399,17 @@ export async function insertTestChatThread(
   userId: string,
   agentComposeId: string,
   title: string,
+  createdAt?: Date,
 ): Promise<string> {
   initServices();
   const [thread] = await globalThis.services.db
     .insert(chatThreads)
-    .values({ userId, agentComposeId, title })
+    .values({
+      userId,
+      agentComposeId,
+      title,
+      ...(createdAt ? { createdAt } : {}),
+    })
     .returning({ id: chatThreads.id });
   return thread!.id;
 }

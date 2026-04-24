@@ -7,7 +7,13 @@ import {
   useLastResolved,
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
-import { IconPlus, IconSearch, IconX, IconTrash } from "@tabler/icons-react";
+import {
+  IconChevronDown,
+  IconPlus,
+  IconSearch,
+  IconX,
+  IconTrash,
+} from "@tabler/icons-react";
 import {
   Button,
   Dialog,
@@ -21,6 +27,8 @@ import {
 import type { ChatThreadListItem } from "@vm0/core/contracts/chat-threads";
 import {
   chatThreads$,
+  chatThreadsHasMore$,
+  loadAllChatThreads$,
   deleteChatThread$,
   createNewChatThread$,
 } from "../../signals/chat-page/chat-message.ts";
@@ -46,6 +54,7 @@ export function ZeroChatListPage() {
     recentSessionsLoadable.state === "hasData"
       ? recentSessionsLoadable.data
       : [];
+  const hasMoreChatThreads = useLastResolved(chatThreadsHasMore$) ?? false;
   const loading = recentSessionsLoadable.state === "loading";
   const error =
     recentSessionsLoadable.state === "hasError"
@@ -66,6 +75,7 @@ export function ZeroChatListPage() {
 
   const searchTerm = useGet(chatListQuery$);
   const setSearchTerm = useSet(setChatListQuery$);
+  const loadAllChatThreads = useSet(loadAllChatThreads$);
 
   const trimmedTerm = searchTerm.trim().toLowerCase();
   const filteredSessions = trimmedTerm
@@ -150,6 +160,8 @@ export function ZeroChatListPage() {
           searchTerm={searchTerm}
           selectedRecentId={selectedRecentId}
           onRecentSelect={onRecentSelect}
+          onLoadAll={loadAllChatThreads}
+          hasMore={hasMoreChatThreads}
         />
       </div>
     </div>
@@ -163,6 +175,8 @@ function ChatList({
   searchTerm,
   selectedRecentId,
   onRecentSelect,
+  onLoadAll,
+  hasMore,
 }: {
   loading: boolean;
   error: string | null;
@@ -170,6 +184,8 @@ function ChatList({
   searchTerm: string;
   selectedRecentId: string | null;
   onRecentSelect: (id: string) => void;
+  onLoadAll: () => void;
+  hasMore: boolean;
 }) {
   const pendingDeleteThreadId = useGet(pendingDeleteThreadId$);
   const setPendingDeleteThreadId = useSet(setPendingDeleteThreadId$);
@@ -205,11 +221,19 @@ function ChatList({
 
   if (sessions.length === 0) {
     return (
-      <p className="px-3 py-8 text-sm text-muted-foreground text-center">
-        {searchTerm.trim()
-          ? "No chats match your search"
-          : "Start a conversation and it'll show up here"}
-      </p>
+      <div className="flex flex-col items-center gap-3 px-3 py-8">
+        <p className="text-sm text-muted-foreground text-center">
+          {searchTerm.trim()
+            ? "No chats match your search"
+            : "Start a conversation and it'll show up here"}
+        </p>
+        {hasMore && (
+          <Button type="button" variant="outline" size="sm" onClick={onLoadAll}>
+            <IconChevronDown size={14} stroke={2} />
+            Load all
+          </Button>
+        )}
+      </div>
     );
   }
 
@@ -230,6 +254,18 @@ function ChatList({
           );
         })}
       </div>
+      {hasMore && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={onLoadAll}
+          className="mt-3 w-full"
+        >
+          <IconChevronDown size={14} stroke={2} />
+          Load all
+        </Button>
+      )}
 
       <Dialog
         open={pendingDeleteThreadId !== null}

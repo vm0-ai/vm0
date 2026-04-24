@@ -68,7 +68,7 @@ function mockBaseAPIs(
   setMockTeam(agents);
   server.use(
     mockApi(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, { threads });
+      return respond(200, { threads, hasMore: false });
     }),
   );
 }
@@ -117,6 +117,62 @@ describe("zero sidebar - chat thread list display (SIDEBAR-D-001)", () => {
       expect(within(sidebar).getByText("Fix the bug")).toBeInTheDocument();
     });
   });
+
+  it("shows Load all when the server has hidden older threads", async () => {
+    const user = userEvent.setup();
+    const firstThread = {
+      id: "thread-1",
+      title: "Recent chat",
+      agent: { id: DEFAULT_AGENT_ID, avatarUrl: null },
+      createdAt: "2026-03-10T00:00:00Z",
+      updatedAt: "2026-03-10T00:00:00Z",
+      isRead: false,
+      isArchived: false,
+      running: false,
+    };
+    const olderThread = {
+      id: "thread-2",
+      title: "Older chat",
+      agent: { id: DEFAULT_AGENT_ID, avatarUrl: null },
+      createdAt: "2026-03-09T00:00:00Z",
+      updatedAt: "2026-03-09T00:00:00Z",
+      isRead: false,
+      isArchived: false,
+      running: false,
+    };
+    const observedAllValues: ("true" | undefined)[] = [];
+
+    mockBaseAPIs();
+    server.use(
+      mockApi(chatThreadsContract.list, ({ query, respond }) => {
+        observedAllValues.push(query.all);
+        return respond(200, {
+          threads:
+            query.all === "true" ? [firstThread, olderThread] : [firstThread],
+          hasMore: query.all !== "true",
+        });
+      }),
+    );
+    detachedSetupPage({ context, path: "/" });
+
+    await waitFor(() => {
+      const sidebar = getSidebar();
+      expect(within(sidebar).getByText("Recent chat")).toBeInTheDocument();
+      expect(within(sidebar).getByText("Load all")).toBeInTheDocument();
+    });
+    expect(
+      within(getSidebar()).queryByText("Older chat"),
+    ).not.toBeInTheDocument();
+
+    await user.click(within(getSidebar()).getByText("Load all"));
+
+    await waitFor(() => {
+      const sidebar = getSidebar();
+      expect(within(sidebar).getByText("Older chat")).toBeInTheDocument();
+      expect(within(sidebar).queryByText("Load all")).not.toBeInTheDocument();
+    });
+    expect(observedAllValues).toContain("true");
+  });
 });
 
 describe("zero sidebar - loading state (SIDEBAR-D-002)", () => {
@@ -125,7 +181,7 @@ describe("zero sidebar - loading state (SIDEBAR-D-002)", () => {
     server.use(
       mockApi(chatThreadsContract.list, async ({ respond }) => {
         await deferred.promise;
-        return respond(200, { threads: [] });
+        return respond(200, { threads: [], hasMore: false });
       }),
     );
 

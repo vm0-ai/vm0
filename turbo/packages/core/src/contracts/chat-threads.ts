@@ -173,9 +173,13 @@ export const chatThreadsContract = c.router({
     headers: authHeadersSchema,
     query: z.object({
       agentId: z.string().min(1).optional(),
+      all: z.literal("true").optional(),
     }),
     responses: {
-      200: z.object({ threads: z.array(chatThreadListItemSchema) }),
+      200: z.object({
+        threads: z.array(chatThreadListItemSchema),
+        hasMore: z.boolean(),
+      }),
       401: apiErrorSchema,
       404: apiErrorSchema,
     },

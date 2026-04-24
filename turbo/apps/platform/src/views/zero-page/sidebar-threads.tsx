@@ -10,6 +10,7 @@ import {
   IconX,
   IconPlus,
   IconChevronRight,
+  IconChevronDown,
   IconTrash,
 } from "@tabler/icons-react";
 import type { ChatThreadListItem } from "@vm0/core/contracts/chat-threads";
@@ -35,6 +36,8 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
   chatThreads$,
+  chatThreadsHasMore$,
+  loadAllChatThreads$,
   deleteChatThread$,
   createNewChatThread$,
 } from "../../signals/chat-page/chat-message.ts";
@@ -151,8 +154,10 @@ function ChatThreads() {
   const setPendingDeleteThreadId = useSet(setPendingDeleteThreadId$);
   const deleteChatThread = useSet(deleteChatThread$);
   const pageSignal = useGet(pageSignal$);
+  const loadAllChatThreads = useSet(loadAllChatThreads$);
 
   const chatThreads = useLastResolved(chatThreads$) ?? [];
+  const hasMoreChatThreads = useLastResolved(chatThreadsHasMore$) ?? false;
   const features = useLastResolved(featureSwitch$);
   const showReadIndicator =
     features?.[FeatureSwitchKey.ChatThreadReadIndicator] ?? false;
@@ -178,13 +183,31 @@ function ChatThreads() {
     detach(deleteChatThread(threadId, pageSignal), Reason.DomCallback);
   }
 
+  const loadAllButton = hasMoreChatThreads ? (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      onClick={() => {
+        loadAllChatThreads();
+      }}
+      className="mt-1 h-8 w-full justify-center text-xs text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent"
+    >
+      <IconChevronDown size={14} stroke={2} />
+      Load all
+    </Button>
+  ) : null;
+
   if (filteredChatThreads.length === 0) {
     return (
-      <p className="px-2 py-2 text-xs text-muted-foreground/70 leading-relaxed">
-        {trimmedTerm
-          ? "No chats match your search"
-          : "Start a conversation and it'll show up here"}
-      </p>
+      <>
+        <p className="px-2 py-2 text-xs text-muted-foreground/70 leading-relaxed">
+          {trimmedTerm
+            ? "No chats match your search"
+            : "Start a conversation and it'll show up here"}
+        </p>
+        {loadAllButton}
+      </>
     );
   }
   return (
@@ -200,6 +223,7 @@ function ChatThreads() {
           />
         );
       })}
+      {loadAllButton}
       <Dialog
         open={pendingDeleteThreadId !== null}
         onOpenChange={(open) => {

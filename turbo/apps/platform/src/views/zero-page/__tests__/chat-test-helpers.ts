@@ -94,7 +94,7 @@ export function mockSubagentThread(threadId: string) {
       });
     }),
     mockApi(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, { threads: [] });
+      return respond(200, { threads: [], hasMore: false });
     }),
     mockApi(zeroAgentsByIdContract.get, ({ params, respond }) => {
       const agents: Record<
@@ -356,7 +356,7 @@ export function mockChatLifecycle(options?: {
       });
     }),
     mockApi(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, { threads: threadList });
+      return respond(200, { threads: threadList, hasMore: false });
     }),
     mockApi(chatThreadsContract.create, ({ respond }) => {
       return respond(201, {

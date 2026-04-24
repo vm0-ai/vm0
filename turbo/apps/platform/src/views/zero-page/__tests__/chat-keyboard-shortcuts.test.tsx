@@ -56,6 +56,7 @@ function mockThreadList(threads: { id: string; title: string }[]) {
             running: false,
           };
         }),
+        hasMore: false,
       });
     }),
   );
@@ -179,6 +180,7 @@ describe("chat page keyboard shortcuts", () => {
               running: false,
             },
           ],
+          hasMore: false,
         });
       }),
       mockApi(chatThreadByIdContract.get, ({ respond }) => {

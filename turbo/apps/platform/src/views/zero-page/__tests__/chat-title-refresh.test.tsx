@@ -43,6 +43,7 @@ describe("chat title refresh", () => {
               running: false,
             },
           ],
+          hasMore: false,
         });
       }),
     );

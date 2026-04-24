@@ -46,7 +46,7 @@ interface ThreadFixture {
 function mockAPIs(threadsRef: { current: ThreadFixture[] }) {
   server.use(
     mockApi(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, { threads: threadsRef.current });
+      return respond(200, { threads: threadsRef.current, hasMore: false });
     }),
     mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
       return respond(200, {

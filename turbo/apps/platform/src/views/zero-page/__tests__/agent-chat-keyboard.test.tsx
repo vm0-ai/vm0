@@ -32,6 +32,7 @@ function mockThreadList(threads: { id: string; title: string }[]) {
             running: false,
           };
         }),
+        hasMore: false,
       });
     }),
   );

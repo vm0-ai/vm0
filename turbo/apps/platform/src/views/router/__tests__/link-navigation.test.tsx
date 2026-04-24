@@ -38,7 +38,7 @@ function mockAPIs() {
   ]);
   server.use(
     mockApi(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, { threads: [] });
+      return respond(200, { threads: [], hasMore: false });
     }),
   );
 }

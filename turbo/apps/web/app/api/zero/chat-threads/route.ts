@@ -104,12 +104,14 @@ const router = tsr.router(chatThreadsContract, {
       }
     }
 
-    const threads = await listChatThreads(userId, callerOrgId, query.agentId);
+    const result = await listChatThreads(userId, callerOrgId, query.agentId, {
+      includeAll: query.all === "true",
+    });
 
     return {
       status: 200 as const,
       body: {
-        threads: threads.map((t) => {
+        threads: result.threads.map((t) => {
           return {
             id: t.id,
             title: t.title,
@@ -124,6 +126,7 @@ const router = tsr.router(chatThreadsContract, {
             running: t.running,
           };
         }),
+        hasMore: result.hasMore,
       },
     };
   },

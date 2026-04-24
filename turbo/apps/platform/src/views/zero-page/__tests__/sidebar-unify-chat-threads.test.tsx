@@ -73,6 +73,7 @@ function mockUnifiedThreads(observedQueries: ListQuery[]) {
             running: false,
           },
         ],
+        hasMore: false,
       });
     }),
     mockApi(chatThreadByIdContract.get, ({ params, respond }) => {

@@ -25,7 +25,7 @@ const mockApi = createMockApi(context);
 function setupBaseHandlers(threadId: string) {
   server.use(
     mockApi(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, { threads: [] });
+      return respond(200, { threads: [], hasMore: false });
     }),
     mockApi(chatThreadMessagesContract.list, ({ respond }) => {
       return respond(200, { messages: [] });
