@@ -74,12 +74,20 @@ export const setupChatPage$ = command(
     signal.throwIfAborted();
 
     // The list is mounted with visibility:hidden under the skeleton so
-    // scrollHeight is already correct; wait one frame for React to commit
-    // the message DOM, then scroll and reveal in the same tick.
+    // scrollHeight is already correct. Scroll to bottom in the current frame
+    // so the position is correct on first paint, then hide the skeleton in the
+    // next frame. Separating the two ensures ChatThreadComposer's re-render
+    // (actionsLoading false → real buttons) cannot race with scrollToBottom$
+    // and cause a visible scroll jump.
     animationFrame(
       () => {
         set(thread.scrollToBottom$);
-        set(thread.hideSkeleton$);
+        animationFrame(
+          () => {
+            set(thread.hideSkeleton$);
+          },
+          { signal },
+        );
       },
       { signal },
     );
