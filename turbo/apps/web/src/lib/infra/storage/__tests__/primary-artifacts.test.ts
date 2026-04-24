@@ -79,6 +79,10 @@ describe("Unified artifact list (ContextArtifact[])", () => {
     expect(manifest.artifacts[0]!.vasVersionId).toBe(versionId);
     expect(manifest.artifacts[0]!.mountPath).toBe(WORKING_DIR);
     expect(manifest.artifacts[0]!.manifestUrl).toBeDefined();
+    // Round-trip guard: `vasStorageId` must reach the manifest. Guest-agent's
+    // (forthcoming) skip-VAS check uses it as the hash prefix; a silently
+    // dropped field would degrade the optimization without surfacing here.
+    expect(manifest.artifacts[0]!.vasStorageId).toMatch(/^[0-9a-f-]{36}$/);
     expect(manifest.storages).toHaveLength(0);
   });
 
