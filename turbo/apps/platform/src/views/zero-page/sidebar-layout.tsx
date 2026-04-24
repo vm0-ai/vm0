@@ -20,6 +20,7 @@ import { ZeroSidebar } from "./zero-sidebar.tsx";
 import {
   currentChatAgent$,
   currentChatAgentId$,
+  earliestUnreadEndedThread$,
 } from "../../signals/agent-chat.ts";
 import { createNewChatThread$ } from "../../signals/chat-page/chat-message.ts";
 import { AvatarFromUrl } from "./zero-sidebar-shared.tsx";
@@ -128,13 +129,32 @@ function InviteButtonLeaf() {
   );
 }
 
-function NewChatButtonLeaf() {
+function NewOrUnreadChatButtonLeaf() {
   const currentChatAgentId = useResolved(currentChatAgentId$);
   const [creatingLoadable, createNewChat] =
     useLoadableSet(createNewChatThread$);
   const navigateToChatFn = useSet(navigateToChat$);
   const pageSignal = useGet(pageSignal$);
   const creating = creatingLoadable.state === "loading";
+  const unreadThread = useLastResolved(earliestUnreadEndedThread$);
+
+  if (unreadThread) {
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          navigateToChatFn(unreadThread.id);
+        }}
+        className="flex items-center gap-1.5 h-8 px-3 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors shrink-0"
+      >
+        <span
+          className="shrink-0 h-2 w-2 rounded-full bg-primary"
+          aria-label="Unread"
+        />
+        unread
+      </button>
+    );
+  }
 
   const handleNewChat = () => {
     detach(
@@ -169,7 +189,7 @@ function MobileTopBarActions({ activeId }: { activeId: RouteKey | null }) {
     <>
       {inChatRoute && <AutoReadToggleLeaf />}
       {inChatRoute &&
-        (newButtonEnabled ? <NewChatButtonLeaf /> : <InviteButtonLeaf />)}
+        (newButtonEnabled ? <NewOrUnreadChatButtonLeaf /> : <InviteButtonLeaf />)}
     </>
   );
 }
