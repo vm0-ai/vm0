@@ -351,7 +351,10 @@ async function insertRunWithAdvisoryLock(
       stamp({ run_id: queueResult.runId });
 
       const persistT = await timed(async () => {
-        return persistZeroRunMetadata(queueResult.runId, params);
+        return persistZeroRunMetadata(queueResult.runId, params, {
+          selectedModelOverride: runParams.selectedModelOverride,
+          modelProviderId: runParams.modelProviderId,
+        });
       });
       emit(CHAT_REQUEST_OPS.persist_zero_run_metadata, persistT.ms);
 
@@ -370,7 +373,10 @@ async function insertRunWithAdvisoryLock(
   stamp({ run_id: run.id });
 
   const persistT = await timed(async () => {
-    return persistZeroRunMetadata(run.id, params);
+    return persistZeroRunMetadata(run.id, params, {
+      selectedModelOverride: runParams.selectedModelOverride,
+      modelProviderId: runParams.modelProviderId,
+    });
   });
   emit(CHAT_REQUEST_OPS.persist_zero_run_metadata, persistT.ms);
 
@@ -900,6 +906,7 @@ export async function createZeroRun(
 async function persistZeroRunMetadata(
   runId: string,
   params: CreateZeroRunParams,
+  modelOverride?: { selectedModelOverride?: string; modelProviderId?: string },
 ): Promise<void> {
   await globalThis.services.db.insert(zeroRuns).values({
     id: runId,
@@ -908,7 +915,7 @@ async function persistZeroRunMetadata(
     triggerAgentId: params.triggerAgentId ?? null,
     chatThreadId: params.chatThreadId ?? null,
     modelProvider: params.modelProvider ?? null,
-    selectedModel: null,
+    selectedModel: modelOverride?.selectedModelOverride ?? null,
   });
 }
 
