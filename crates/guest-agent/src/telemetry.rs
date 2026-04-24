@@ -22,7 +22,19 @@ const LOG_TAG: &str = "sandbox:guest-agent";
 
 /// Read new bytes from `file_path` starting at the position stored in `pos_path`.
 /// Returns the new content and the updated position.
-fn read_file_delta(file_path: &str, pos_path: &str) -> (String, u64) {
+///
+/// When `to_eof` is false (normal tick), the read is aligned to the last
+/// newline: any trailing bytes after the last `\n` are treated as an
+/// in-progress write by the producer and left for the next tick. This
+/// prevents the producer-consumer race from splitting a log line mid-write,
+/// which would corrupt UTF-8 multibyte characters via `from_utf8_lossy`
+/// (the broken byte is replaced by U+FFFD and permanently lost, since the
+/// position has already advanced past it).
+///
+/// When `to_eof` is true (final pass), the tail is consumed as-is — there
+/// will be no subsequent tick to pick it up. Any trailing fragment without
+/// a newline is uploaded verbatim.
+fn read_file_delta(file_path: &str, pos_path: &str, to_eof: bool) -> (String, u64) {
     let last_pos: u64 = std::fs::read_to_string(pos_path)
         .ok()
         .and_then(|s| s.trim().parse().ok())
@@ -44,15 +56,30 @@ fn read_file_delta(file_path: &str, pos_path: &str) -> (String, u64) {
 
     let to_read = (file_len - last_pos) as usize;
     let mut buf = vec![0u8; to_read];
-    match file.read_exact(&mut buf) {
-        Ok(()) => (String::from_utf8_lossy(&buf).into_owned(), file_len),
-        Err(_) => (String::new(), last_pos),
+    if file.read_exact(&mut buf).is_err() {
+        return (String::new(), last_pos);
+    }
+
+    if to_eof {
+        return (String::from_utf8_lossy(&buf).into_owned(), file_len);
+    }
+
+    match buf.iter().rposition(|&b| b == b'\n') {
+        Some(idx) => {
+            let consumed = idx + 1;
+            let new_pos = last_pos + consumed as u64;
+            let Some(slice) = buf.get(..consumed) else {
+                return (String::new(), last_pos);
+            };
+            (String::from_utf8_lossy(slice).into_owned(), new_pos)
+        }
+        None => (String::new(), last_pos),
     }
 }
 
 /// Read new JSONL entries from a file, skipping invalid lines.
-fn read_jsonl_delta(file_path: &str, pos_path: &str) -> (Vec<Value>, u64) {
-    let (content, new_pos) = read_file_delta(file_path, pos_path);
+fn read_jsonl_delta(file_path: &str, pos_path: &str, to_eof: bool) -> (Vec<Value>, u64) {
+    let (content, new_pos) = read_file_delta(file_path, pos_path, to_eof);
     if content.is_empty() {
         return (Vec::new(), new_pos);
     }
@@ -72,19 +99,29 @@ fn save_position(pos_path: &str, pos: u64) {
 }
 
 /// Perform one telemetry upload cycle.
-async fn upload_telemetry(masker: &SecretMasker) -> Result<(), AgentError> {
+///
+/// `final_pass` should be true only for the very last upload before the
+/// agent exits — any trailing fragment after the last newline is then
+/// consumed as-is, accepting a small mid-write race window in exchange
+/// for not losing the tail. Every earlier upload (periodic tick and the
+/// silent pre-checkpoint pass) must use `false` so a later pass can safely
+/// pick up the tail once the producer completes the line.
+async fn upload_telemetry(masker: &SecretMasker, final_pass: bool) -> Result<(), AgentError> {
     // Read deltas
     let (system_log, log_pos) = read_file_delta(
         paths::system_log_file(),
         paths::telemetry_system_log_pos_file(),
+        final_pass,
     );
     let (metrics, metrics_pos) = read_jsonl_delta(
         paths::metrics_log_file(),
         paths::telemetry_metrics_pos_file(),
+        final_pass,
     );
     let (sandbox_ops, sandbox_ops_pos) = read_jsonl_delta(
         paths::sandbox_ops_file(),
         paths::telemetry_sandbox_ops_pos_file(),
+        final_pass,
     );
 
     // Nothing new
@@ -134,19 +171,25 @@ pub async fn telemetry_loop(shutdown: CancellationToken, masker: Arc<SecretMaske
         tokio::select! {
             _ = shutdown.cancelled() => break,
             _ = interval.tick() => {
-                let _ = upload_telemetry(&masker).await;
+                let _ = upload_telemetry(&masker, false).await;
             }
         }
     }
 }
 
 /// Final telemetry upload before agent completion.
+///
+/// Uses `final_pass = true` to consume the EOF tail: there is no subsequent
+/// upload that could pick up an otherwise-deferred fragment. A small mid-
+/// write race remains — vsock-guest may still be writing a chunk of
+/// system_log when we snapshot — but one potentially-split final line is a
+/// better tradeoff than silently dropping the whole tail.
 pub async fn final_upload(masker: &SecretMasker) -> Result<(), AgentError> {
     if !env::has_api() {
         return Ok(());
     }
     log_info!(LOG_TAG, "Performing final telemetry upload...");
-    upload_telemetry(masker).await
+    upload_telemetry(masker, true).await
 }
 
 /// Same as [`final_upload`] but without the log banner or error log.
@@ -155,11 +198,17 @@ pub async fn final_upload(masker: &SecretMasker) -> Result<(), AgentError> {
 /// sequence: only the post-`▷ Cleanup` catch-up emits the banner, and
 /// a first-pass failure is silently deferred to the catch-up (which reads
 /// the same unchanged file position and re-uploads the delta).
+///
+/// Uses newline-aligned reads (`final_pass = false`) because more log data
+/// is still being written during `▷ Cleanup` after this returns — the real
+/// end-of-life flush is [`final_upload`]. If this pass ate the EOF tail
+/// mid-write, it could split a UTF-8 multibyte character and the catch-up
+/// would skip past the broken byte, losing the character permanently.
 pub async fn final_upload_silent(masker: &SecretMasker) -> Result<(), AgentError> {
     if !env::has_api() {
         return Ok(());
     }
-    upload_telemetry(masker).await
+    upload_telemetry(masker, false).await
 }
 
 #[cfg(test)]
@@ -172,11 +221,12 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("log.txt");
         let pos = dir.path().join("log.pos");
-        fs::write(&file, "hello world").unwrap();
+        fs::write(&file, "hello world\n").unwrap();
 
-        let (content, new_pos) = read_file_delta(file.to_str().unwrap(), pos.to_str().unwrap());
-        assert_eq!(content, "hello world");
-        assert_eq!(new_pos, 11);
+        let (content, new_pos) =
+            read_file_delta(file.to_str().unwrap(), pos.to_str().unwrap(), false);
+        assert_eq!(content, "hello world\n");
+        assert_eq!(new_pos, 12);
     }
 
     #[test]
@@ -184,13 +234,14 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("log.txt");
         let pos = dir.path().join("log.pos");
-        fs::write(&file, "hello world").unwrap();
+        fs::write(&file, "hello world\n").unwrap();
         // Simulate having already read 6 bytes
         fs::write(&pos, "6").unwrap();
 
-        let (content, new_pos) = read_file_delta(file.to_str().unwrap(), pos.to_str().unwrap());
-        assert_eq!(content, "world");
-        assert_eq!(new_pos, 11);
+        let (content, new_pos) =
+            read_file_delta(file.to_str().unwrap(), pos.to_str().unwrap(), false);
+        assert_eq!(content, "world\n");
+        assert_eq!(new_pos, 12);
     }
 
     #[test]
@@ -201,7 +252,8 @@ mod tests {
         fs::write(&file, "done").unwrap();
         fs::write(&pos, "4").unwrap();
 
-        let (content, new_pos) = read_file_delta(file.to_str().unwrap(), pos.to_str().unwrap());
+        let (content, new_pos) =
+            read_file_delta(file.to_str().unwrap(), pos.to_str().unwrap(), false);
         assert!(content.is_empty());
         assert_eq!(new_pos, 4);
     }
@@ -212,7 +264,8 @@ mod tests {
         let file = dir.path().join("missing.txt");
         let pos = dir.path().join("missing.pos");
 
-        let (content, new_pos) = read_file_delta(file.to_str().unwrap(), pos.to_str().unwrap());
+        let (content, new_pos) =
+            read_file_delta(file.to_str().unwrap(), pos.to_str().unwrap(), false);
         assert!(content.is_empty());
         assert_eq!(new_pos, 0);
     }
@@ -224,7 +277,8 @@ mod tests {
         let pos = dir.path().join("data.pos");
         fs::write(&file, "{\"a\":1}\n{\"b\":2}\ninvalid\n").unwrap();
 
-        let (entries, new_pos) = read_jsonl_delta(file.to_str().unwrap(), pos.to_str().unwrap());
+        let (entries, new_pos) =
+            read_jsonl_delta(file.to_str().unwrap(), pos.to_str().unwrap(), false);
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0]["a"], 1);
         assert_eq!(entries[1]["b"], 2);
@@ -249,7 +303,8 @@ mod tests {
         fs::write(&file, "short").unwrap();
         fs::write(&pos, "100").unwrap();
 
-        let (content, new_pos) = read_file_delta(file.to_str().unwrap(), pos.to_str().unwrap());
+        let (content, new_pos) =
+            read_file_delta(file.to_str().unwrap(), pos.to_str().unwrap(), false);
         assert!(content.is_empty());
         assert_eq!(new_pos, 100);
     }
@@ -260,12 +315,13 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("log.txt");
         let pos = dir.path().join("log.pos");
-        fs::write(&file, "data").unwrap();
+        fs::write(&file, "data\n").unwrap();
         fs::write(&pos, "notanumber").unwrap();
 
-        let (content, new_pos) = read_file_delta(file.to_str().unwrap(), pos.to_str().unwrap());
-        assert_eq!(content, "data");
-        assert_eq!(new_pos, 4);
+        let (content, new_pos) =
+            read_file_delta(file.to_str().unwrap(), pos.to_str().unwrap(), false);
+        assert_eq!(content, "data\n");
+        assert_eq!(new_pos, 5);
     }
 
     #[test]
@@ -275,7 +331,8 @@ mod tests {
         let pos = dir.path().join("empty.pos");
         fs::write(&file, "").unwrap();
 
-        let (entries, new_pos) = read_jsonl_delta(file.to_str().unwrap(), pos.to_str().unwrap());
+        let (entries, new_pos) =
+            read_jsonl_delta(file.to_str().unwrap(), pos.to_str().unwrap(), false);
         assert!(entries.is_empty());
         assert_eq!(new_pos, 0);
     }
@@ -287,9 +344,247 @@ mod tests {
         let pos = dir.path().join("bad.pos");
         fs::write(&file, "bad1\nbad2\nbad3\n").unwrap();
 
-        let (entries, new_pos) = read_jsonl_delta(file.to_str().unwrap(), pos.to_str().unwrap());
+        let (entries, new_pos) =
+            read_jsonl_delta(file.to_str().unwrap(), pos.to_str().unwrap(), false);
         assert!(entries.is_empty());
         assert!(new_pos > 0);
+    }
+
+    /// Tick mode: an in-progress line (no trailing \n) must be deferred
+    /// to the next tick instead of being uploaded half-written.
+    #[test]
+    fn read_file_delta_defers_trailing_fragment() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("log.txt");
+        let pos = dir.path().join("log.pos");
+        // Two complete lines followed by a partial write.
+        fs::write(&file, "line1\nline2\npartial").unwrap();
+
+        // First tick: read up to the last newline, leave "partial" behind.
+        let (content, new_pos) =
+            read_file_delta(file.to_str().unwrap(), pos.to_str().unwrap(), false);
+        assert_eq!(content, "line1\nline2\n");
+        assert_eq!(new_pos, 12);
+
+        // Simulate the producer completing the line.
+        fs::write(&file, "line1\nline2\npartial done\n").unwrap();
+        fs::write(&pos, "12").unwrap();
+
+        // Second tick: now "partial done\n" is complete.
+        let (content2, new_pos2) =
+            read_file_delta(file.to_str().unwrap(), pos.to_str().unwrap(), false);
+        assert_eq!(content2, "partial done\n");
+        assert_eq!(new_pos2, 25);
+    }
+
+    /// Final pass: trailing fragment without a newline must be consumed,
+    /// since there will be no subsequent tick to pick it up.
+    #[test]
+    fn read_file_delta_final_pass_consumes_fragment() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("log.txt");
+        let pos = dir.path().join("log.pos");
+        fs::write(&file, "line1\npartial").unwrap();
+
+        let (content, new_pos) =
+            read_file_delta(file.to_str().unwrap(), pos.to_str().unwrap(), true);
+        assert_eq!(content, "line1\npartial");
+        assert_eq!(new_pos, 13);
+    }
+
+    /// Regression: a multibyte UTF-8 character split across two ticks must
+    /// survive intact. Before the fix, `from_utf8_lossy` replaced each
+    /// split byte with U+FFFD and the broken char was permanently lost
+    /// because `save_position` had advanced past it.
+    #[test]
+    fn read_file_delta_utf8_multibyte_survives_split() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("log.txt");
+        let pos = dir.path().join("log.pos");
+        // "中" is 3 bytes (0xE4 0xB8 0xAD). Simulate the producer having
+        // written only the first byte mid-line: "prefix\n\xE4".
+        let mut partial = Vec::from("prefix\n");
+        partial.push(0xE4);
+        fs::write(&file, &partial).unwrap();
+
+        // First tick: stops at the newline, leaves the orphan 0xE4 behind.
+        let (content, new_pos) =
+            read_file_delta(file.to_str().unwrap(), pos.to_str().unwrap(), false);
+        assert_eq!(content, "prefix\n");
+        assert_eq!(new_pos, 7);
+        fs::write(&pos, new_pos.to_string()).unwrap();
+
+        // Producer finishes writing the character and terminates the line.
+        let mut complete = partial.clone();
+        complete.extend_from_slice(&[0xB8, 0xAD]); // rest of "中"
+        complete.extend_from_slice(b"\n");
+        fs::write(&file, &complete).unwrap();
+
+        // Second tick: reads the complete multibyte character.
+        let (content2, new_pos2) =
+            read_file_delta(file.to_str().unwrap(), pos.to_str().unwrap(), false);
+        assert_eq!(content2, "中\n");
+        assert_eq!(new_pos2, complete.len() as u64);
+        // No U+FFFD anywhere — the character is intact.
+        assert!(!content2.contains('\u{FFFD}'));
+    }
+
+    /// A JSONL file with a partially-written trailing record must not have
+    /// that record silently dropped. The half line is deferred to the next
+    /// tick, and once the producer completes it, the entry is uploaded.
+    #[test]
+    fn read_jsonl_delta_defers_partial_line() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("data.jsonl");
+        let pos = dir.path().join("data.pos");
+        fs::write(&file, "{\"a\":1}\n{\"b\":2").unwrap();
+
+        // First tick: only {"a":1} is complete.
+        let (entries, new_pos) =
+            read_jsonl_delta(file.to_str().unwrap(), pos.to_str().unwrap(), false);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0]["a"], 1);
+        assert_eq!(new_pos, 8);
+        fs::write(&pos, new_pos.to_string()).unwrap();
+
+        // Producer completes the record.
+        fs::write(&file, "{\"a\":1}\n{\"b\":2}\n").unwrap();
+        let (entries2, new_pos2) =
+            read_jsonl_delta(file.to_str().unwrap(), pos.to_str().unwrap(), false);
+        assert_eq!(entries2.len(), 1);
+        assert_eq!(entries2[0]["b"], 2);
+        assert_eq!(new_pos2, 16);
+    }
+
+    /// Tick mode, first tick, delta contains no newline at all. Must
+    /// return empty without advancing the position so the data is
+    /// picked up intact once the producer writes the terminating \n.
+    #[test]
+    fn read_file_delta_tick_no_newline_at_all() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("log.txt");
+        let pos = dir.path().join("log.pos");
+        fs::write(&file, "partial").unwrap();
+
+        let (content, new_pos) =
+            read_file_delta(file.to_str().unwrap(), pos.to_str().unwrap(), false);
+        assert!(content.is_empty());
+        assert_eq!(new_pos, 0);
+
+        // Producer completes the line — the next tick picks up everything.
+        fs::write(&file, "partial done\n").unwrap();
+        let (content2, new_pos2) =
+            read_file_delta(file.to_str().unwrap(), pos.to_str().unwrap(), false);
+        assert_eq!(content2, "partial done\n");
+        assert_eq!(new_pos2, 13);
+    }
+
+    /// Final pass must consume the whole buffer even when the file contains
+    /// no newlines at all — otherwise the tail is silently dropped.
+    #[test]
+    fn read_file_delta_final_pass_all_no_newline() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("log.txt");
+        let pos = dir.path().join("log.pos");
+        fs::write(&file, "no_newline").unwrap();
+
+        let (content, new_pos) =
+            read_file_delta(file.to_str().unwrap(), pos.to_str().unwrap(), true);
+        assert_eq!(content, "no_newline");
+        assert_eq!(new_pos, 10);
+    }
+
+    /// Same guarantee as the 3-byte multibyte test, but with a 4-byte
+    /// emoji — the most common case in real Claude Code output. A split
+    /// in the middle of the 4-byte sequence must not corrupt the char.
+    #[test]
+    fn read_file_delta_utf8_4byte_emoji_survives_split() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("log.txt");
+        let pos = dir.path().join("log.pos");
+        // "😀" is 4 bytes (0xF0 0x9F 0x98 0x80). Producer wrote the first
+        // two bytes mid-line: "prefix\n\xF0\x9F".
+        let mut partial = Vec::from("prefix\n");
+        partial.extend_from_slice(&[0xF0, 0x9F]);
+        fs::write(&file, &partial).unwrap();
+
+        // First tick stops at \n, defers the orphan bytes.
+        let (content, new_pos) =
+            read_file_delta(file.to_str().unwrap(), pos.to_str().unwrap(), false);
+        assert_eq!(content, "prefix\n");
+        assert_eq!(new_pos, 7);
+        fs::write(&pos, new_pos.to_string()).unwrap();
+
+        // Producer finishes the emoji and terminates the line.
+        let mut complete = partial.clone();
+        complete.extend_from_slice(&[0x98, 0x80]);
+        complete.extend_from_slice(b"\n");
+        fs::write(&file, &complete).unwrap();
+
+        let (content2, new_pos2) =
+            read_file_delta(file.to_str().unwrap(), pos.to_str().unwrap(), false);
+        assert_eq!(content2, "😀\n");
+        assert_eq!(new_pos2, complete.len() as u64);
+        assert!(!content2.contains('\u{FFFD}'));
+    }
+
+    /// Documents the final_pass behavior under the residual mid-chunk
+    /// race tracked in #11010: if vsock-guest's chunk boundary split a
+    /// UTF-8 character, final_upload sees invalid bytes. The code must
+    /// replace them with U+FFFD and advance the position — not panic,
+    /// not truncate the tail. Guards against accidental replacement of
+    /// `from_utf8_lossy` with the stricter `from_utf8`.
+    #[test]
+    fn read_file_delta_final_pass_invalid_utf8_replaces_with_fffd() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("log.txt");
+        let pos = dir.path().join("log.pos");
+        // Complete "log\n" followed by a lone 0xE4 (first byte of a
+        // 3-byte UTF-8 char, the rest never arrived).
+        let mut torn = Vec::from("log\n");
+        torn.push(0xE4);
+        fs::write(&file, &torn).unwrap();
+
+        let (content, new_pos) =
+            read_file_delta(file.to_str().unwrap(), pos.to_str().unwrap(), true);
+        assert_eq!(content, "log\n\u{FFFD}");
+        assert_eq!(new_pos, 5);
+    }
+
+    /// Regression for the `final_upload_silent` bug: the pre-checkpoint
+    /// pass must not consume an in-flight UTF-8 byte sequence. Simulates
+    /// the real call sequence — `final_upload_silent` (newline-aligned),
+    /// producer continues writing, `final_upload` catch-up (consumes EOF).
+    #[test]
+    fn silent_pass_then_final_catch_up_preserves_utf8() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("log.txt");
+        let pos = dir.path().join("log.pos");
+        // Producer state at the moment the silent pass fires: "log\n" plus
+        // the first byte of "中" (0xE4).
+        let mut partial = Vec::from("log\n");
+        partial.push(0xE4);
+        fs::write(&file, &partial).unwrap();
+
+        // Silent pre-checkpoint pass: newline-aligned, defers the orphan byte.
+        let (content, new_pos) =
+            read_file_delta(file.to_str().unwrap(), pos.to_str().unwrap(), false);
+        assert_eq!(content, "log\n");
+        assert_eq!(new_pos, 4);
+        fs::write(&pos, new_pos.to_string()).unwrap();
+
+        // Producer finishes "中" and appends a final line.
+        let mut complete = partial.clone();
+        complete.extend_from_slice(&[0xB8, 0xAD]);
+        complete.extend_from_slice(b"\ntail");
+        fs::write(&file, &complete).unwrap();
+
+        // Catch-up final pass: consumes the rest including the no-newline tail.
+        let (content2, new_pos2) =
+            read_file_delta(file.to_str().unwrap(), pos.to_str().unwrap(), true);
+        assert_eq!(content2, "中\ntail");
+        assert_eq!(new_pos2, complete.len() as u64);
+        assert!(!content2.contains('\u{FFFD}'));
     }
 
     #[test]
