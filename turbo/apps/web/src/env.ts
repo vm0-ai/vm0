@@ -26,9 +26,10 @@ function initEnv() {
         .positive()
         .default(10000),
       // Database driver selection
-      // Defaults to 'neon' (optimized for serverless/Vercel)
-      // Set to 'pg' for local development with standard Postgres
-      DB_DRIVER: z.enum(["pg", "neon"]).default("neon"),
+      // Defaults to 'pg' — node-postgres TCP pool + attachDatabasePool is the
+      // Vercel Fluid + Neon 2026 recommended path. Override to 'neon' only
+      // for environments that specifically need the WebSocket driver.
+      DB_DRIVER: z.enum(["pg", "neon"]).default("pg"),
       CLERK_SECRET_KEY: z.string().min(1),
       E2B_API_KEY: z.string().min(1).optional(),
       VM0_API_URL: z.url().optional(),
