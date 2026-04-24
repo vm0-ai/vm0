@@ -359,9 +359,6 @@ importers:
       ably:
         specifier: ^2.17.0
         version: 2.21.0(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
-      agentphone:
-        specifier: 1.0.2
-        version: 1.0.2
       archiver:
         specifier: ^7.0.1
         version: 7.0.1
@@ -4707,10 +4704,6 @@ packages:
   agent-base@7.1.4:
     resolution: {integrity: sha512-MnA+YT8fwfJPgBx3m60MNqakm30XOkyIoH1y6huTQvC0PwZG7ki8NacLBcrPbNoo8vEZy7Jpuk7+jMO+CUovTQ==}
     engines: {node: '>= 14'}
-
-  agentphone@1.0.2:
-    resolution: {integrity: sha512-hp7yJ5FS0BUpmdGwdbIlC7ZY8kld/T+DwUdvBCB6kZrnHyLL4ATY0b244JwQlwpP/+CPUf4V0WtHL2N3VVRPIw==}
-    engines: {node: '>=18.0.0'}
 
   ajv-formats@2.1.1:
     resolution: {integrity: sha512-Wx0Kx52hxE7C18hkMEggYlEifqWZtYaRgouJor+WMdPnQyEK13vgEWyVNup7SoeeoLMsr4kf5h6dOW11I15MUA==}
@@ -12618,8 +12611,6 @@ snapshots:
       - supports-color
 
   agent-base@7.1.4: {}
-
-  agentphone@1.0.2: {}
 
   ajv-formats@2.1.1:
     dependencies:

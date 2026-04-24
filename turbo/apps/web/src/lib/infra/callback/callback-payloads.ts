@@ -87,4 +87,3 @@ export interface ChatCallbackPayload {
 export interface VoiceChatCallbackPayload {
   taskId: string;
 }
-

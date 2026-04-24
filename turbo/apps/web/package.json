@@ -37,7 +37,6 @@
     "@vm0/core": "workspace:*",
     "@vm0/ui": "workspace:*",
     "ably": "^2.17.0",
-    "agentphone": "1.0.2",
     "archiver": "^7.0.1",
     "cpu-features": "0.0.10",
     "croner": "^9.1.0",
