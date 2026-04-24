@@ -775,30 +775,32 @@ export function ZeroChatComposer({
     }
     const plainText = e.clipboardData.getData("text/plain");
     let pastedPlainText = false;
-    for (const item of items) {
-      if (item.kind === "file") {
-        const file = item.getAsFile();
-        if (file) {
-          if (file.size > MAX_FILE_SIZE) {
-            toast.error(`${file.name} exceeds the 1 GB limit`);
-            continue;
-          }
-          e.preventDefault();
-          if (!pastedPlainText && plainText) {
-            const nextInput = insertPastedText(
-              e.currentTarget,
-              input,
-              plainText,
-            );
-            if (nextInput !== input) {
-              onInputChange(nextInput);
-            }
-            pastedPlainText = true;
-          }
-          detach(uploadAttachment(file, rootSignal), Reason.DomCallback);
-          onDraftChange?.();
-        }
+    const applyPlainText = () => {
+      if (pastedPlainText || !plainText) {
+        return;
       }
+      const nextInput = insertPastedText(e.currentTarget, input, plainText);
+      if (nextInput !== input) {
+        onInputChange(nextInput);
+      }
+      pastedPlainText = true;
+    };
+    for (const item of items) {
+      if (item.kind !== "file") {
+        continue;
+      }
+      const file = item.getAsFile();
+      if (!file) {
+        continue;
+      }
+      if (file.size > MAX_FILE_SIZE) {
+        toast.error(`${file.name} exceeds the 1 GB limit`);
+        continue;
+      }
+      e.preventDefault();
+      applyPlainText();
+      detach(uploadAttachment(file, rootSignal), Reason.DomCallback);
+      onDraftChange?.();
     }
   };
 
