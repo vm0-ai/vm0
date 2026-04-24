@@ -138,7 +138,7 @@ describe("zeroActivityDetailPageDisplay", () => {
     expect(scheduleLink.getAttribute("href")).toContain("/schedules/sched-123");
   });
 
-  it("should render selected model when ModelDetail feature is enabled (ACT-D-019)", async () => {
+  it("should render selected model when present (ACT-D-019)", async () => {
     mockDetailAPI({
       modelProvider: "anthropic-api-key",
       selectedModel: "claude-sonnet-4.5",
@@ -147,7 +147,6 @@ describe("zeroActivityDetailPageDisplay", () => {
     detachedSetupPage({
       context,
       path: `/activities/${BASE_LOG_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ModelDetail]: true },
     });
 
     await waitFor(() => {

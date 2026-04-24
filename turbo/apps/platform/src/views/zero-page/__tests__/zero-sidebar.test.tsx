@@ -151,7 +151,6 @@ describe("zero sidebar", () => {
     detachedSetupPage({
       context,
       path: "/",
-      featureSwitches: { [FeatureSwitchKey.UnifyChatThreads]: true },
     });
 
     // Wait for chat threads to render
@@ -178,7 +177,6 @@ describe("zero sidebar", () => {
     detachedSetupPage({
       context,
       path: "/",
-      featureSwitches: { [FeatureSwitchKey.UnifyChatThreads]: true },
     });
 
     // Wait for chat threads to render

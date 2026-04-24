@@ -13,7 +13,6 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   zeroAgentsByIdContract,
   zeroAgentInstructionsContract,
@@ -94,7 +93,7 @@ describe("model-provider-picker - display with null value", () => {
   // the trigger must show that model's display name, not blank or placeholder.
   it("shows default provider selectedModel display name when value is null (MPKR-D-001)", async () => {
     setupMockAgent();
-    setMockFeatureSwitches({ [FeatureSwitchKey.ModelProviderSelection]: true });
+    setMockFeatureSwitches({});
     setMockOrgModelProviders([
       {
         id: "00000000-0000-4000-a000-000000000001",
@@ -124,7 +123,7 @@ describe("model-provider-picker - display with null value", () => {
   // fall back to getDefaultModel for the provider type (claude-sonnet-4-6 for anthropic-api-key).
   it("falls back to provider type default model when selectedModel is null (MPKR-D-002)", async () => {
     setupMockAgent();
-    setMockFeatureSwitches({ [FeatureSwitchKey.ModelProviderSelection]: true });
+    setMockFeatureSwitches({});
     setMockOrgModelProviders([
       {
         id: "00000000-0000-4000-a000-000000000002",
@@ -154,7 +153,7 @@ describe("model-provider-picker - display with null value", () => {
   // the trigger must show the placeholder text.
   it("shows placeholder when no default provider exists (MPKR-D-003)", async () => {
     setupMockAgent();
-    setMockFeatureSwitches({ [FeatureSwitchKey.ModelProviderSelection]: true });
+    setMockFeatureSwitches({});
     setMockOrgModelProviders([
       {
         id: "00000000-0000-4000-a000-000000000003",

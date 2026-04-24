@@ -101,9 +101,7 @@ import {
   scheduleAgentModelDefault$,
   type ScheduleSettingsSnapshot,
 } from "../../signals/schedule-page/schedule-form.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { orgModelProviders$ } from "../../signals/external/org-model-providers.ts";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   ModelProviderPicker,
   type ModelProviderSelection,
@@ -319,9 +317,6 @@ function ScheduleSettingsForm({
   const showDeleteConfirmVal = useGet(showDeleteConfirm$);
   const setShowDeleteConfirmVal = useSet(setShowDeleteConfirm$);
 
-  const features = useLastResolved(featureSwitch$);
-  const showModelPicker =
-    features?.[FeatureSwitchKey.ModelProviderSelection] ?? false;
   const orgProviders = useLastResolved(orgModelProviders$);
 
   const agentModelDefault = useLastResolved(scheduleAgentModelDefault$) ?? null;
@@ -486,36 +481,34 @@ function ScheduleSettingsForm({
             />
           </InlineSettingsRow>
 
-          {showModelPicker &&
-            orgProviders &&
-            orgProviders.modelProviders.length > 0 && (
-              <InlineSettingsRow
-                label="Model"
-                description="Override the agent's default model for this schedule."
-              >
-                <div className={SCHEDULE_DETAIL_CONTROL_WIDTH}>
-                  <ModelProviderPicker
-                    providers={orgProviders.modelProviders}
-                    value={
-                      form.modelProviderId && form.selectedModel
-                        ? {
-                            modelProviderId: form.modelProviderId,
-                            selectedModel: form.selectedModel,
-                          }
-                        : null
-                    }
-                    onChange={(sel: ModelProviderSelection | null) => {
-                      updateForm({
-                        modelProviderId: sel?.modelProviderId ?? null,
-                        selectedModel: sel?.selectedModel ?? null,
-                      });
-                    }}
-                    agentDefault={agentModelDefault}
-                    inheritLabel="agent"
-                  />
-                </div>
-              </InlineSettingsRow>
-            )}
+          {orgProviders && orgProviders.modelProviders.length > 0 && (
+            <InlineSettingsRow
+              label="Model"
+              description="Override the agent's default model for this schedule."
+            >
+              <div className={SCHEDULE_DETAIL_CONTROL_WIDTH}>
+                <ModelProviderPicker
+                  providers={orgProviders.modelProviders}
+                  value={
+                    form.modelProviderId && form.selectedModel
+                      ? {
+                          modelProviderId: form.modelProviderId,
+                          selectedModel: form.selectedModel,
+                        }
+                      : null
+                  }
+                  onChange={(sel: ModelProviderSelection | null) => {
+                    updateForm({
+                      modelProviderId: sel?.modelProviderId ?? null,
+                      selectedModel: sel?.selectedModel ?? null,
+                    });
+                  }}
+                  agentDefault={agentModelDefault}
+                  inheritLabel="agent"
+                />
+              </div>
+            </InlineSettingsRow>
+          )}
         </CardContent>
       </Card>
 

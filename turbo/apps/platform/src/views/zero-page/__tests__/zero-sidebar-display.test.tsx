@@ -23,7 +23,6 @@ import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -175,7 +174,6 @@ describe("zero sidebar - search results filter (SIDEBAR-D-003)", () => {
     detachedSetupPage({
       context,
       path: "/",
-      featureSwitches: { [FeatureSwitchKey.UnifyChatThreads]: true },
     });
 
     await waitFor(() => {
@@ -219,7 +217,6 @@ describe("zero sidebar - search term displays in input (SIDEBAR-D-004)", () => {
     detachedSetupPage({
       context,
       path: "/",
-      featureSwitches: { [FeatureSwitchKey.UnifyChatThreads]: true },
     });
 
     await waitFor(() => {
@@ -388,7 +385,6 @@ describe("zero sidebar - new chat button enabled/disabled state (SIDEBAR-D-010)"
     detachedSetupPage({
       context,
       path: "/",
-      featureSwitches: { [FeatureSwitchKey.UnifyChatThreads]: true },
     });
 
     await waitFor(() => {
@@ -415,7 +411,6 @@ describe("zero sidebar - new chat button enabled/disabled state (SIDEBAR-D-010)"
     detachedSetupPage({
       context,
       path: "/",
-      featureSwitches: { [FeatureSwitchKey.UnifyChatThreads]: true },
     });
 
     await waitFor(() => {

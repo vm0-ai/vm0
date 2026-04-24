@@ -160,11 +160,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show admin-only daily credits chart and per-run records on Usage page",
     enabled: false,
   },
-  [FeatureSwitchKey.ModelDetail]: {
-    maintainer: "ethan@vm0.ai",
-    description: "Show the selected model name in activity details",
-    enabled: false,
-  },
   [FeatureSwitchKey.ZeroDebug]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -191,12 +186,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Enable voice input (microphone + STT) in chat — gates the mic button and the /api/zero/voice-io/stt route",
     enabled: true,
-  },
-  [FeatureSwitchKey.AudioOutput]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Enable audio output in chat (TTS read-aloud + auto-read) — gates the volume/read buttons and the /api/zero/voice-io/tts route",
-    enabled: false,
   },
   [FeatureSwitchKey.AutoSkill]: {
     maintainer: "lancy@vm0.ai",
@@ -227,12 +216,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable manual chat history loading from a Load history button at the top of a thread. When off, chat stays in the latest-50/no-history mode.",
     enabled: false,
   },
-  [FeatureSwitchKey.InlineThinkingDot]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Show an inline streaming cursor on the last assistant message while the agent run is still active, so users see the agent is still working even after it has produced output",
-    enabled: false,
-  },
   [FeatureSwitchKey.FreshdeskConnector]: {
     maintainer: "ethan@vm0.ai",
     description: "Enable the Freshdesk helpdesk connector",
@@ -254,25 +237,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Gate the custom /settings/api-keys UI for issuing personal access tokens used by the /api/v1 public surface. When disabled, the settings page redirects to / and the sidebar menu item is hidden. The backend /api/v1 verification does NOT consult this flag — previously issued PATs continue to work.",
-    enabled: false,
-  },
-  [FeatureSwitchKey.ModelProviderSelection]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Show the model provider + model picker on the agent profile page and schedule dialog. " +
-      "Allows per-agent and per-schedule model selection, overriding the org default. " +
-      "Staff-only during initial rollout.",
-    enabled: true,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.UnifyChatThreads]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Replace the per-agent chat list with a unified Chats view that includes " +
-      "threads from every agent in the user's org (sub-agents included). " +
-      "Gates the sidebar + /chats title/placeholder/aria-label swaps, the per-row " +
-      "agent avatar render, and the unscoped request shape. New-chat creation " +
-      "still uses the current-agent fallback.",
     enabled: false,
   },
   [FeatureSwitchKey.ConnectorCategories]: {

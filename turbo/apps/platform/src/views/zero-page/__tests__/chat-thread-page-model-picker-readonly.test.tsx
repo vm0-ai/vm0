@@ -14,7 +14,6 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   chatMessagesContract,
   chatThreadByIdContract,
@@ -105,9 +104,7 @@ describe("chat thread page — model picker read-only", () => {
     resetMockOrgModelProviders();
     resetMockFeatureSwitches();
     resetMockOnboardingStatus();
-    setMockFeatureSwitches({
-      [FeatureSwitchKey.ModelProviderSelection]: true,
-    });
+    setMockFeatureSwitches({});
     setMockOnboardingStatus({ defaultAgentId: AGENT_ID });
     setMockOrgModelProviders([
       {

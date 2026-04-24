@@ -319,7 +319,7 @@ describe("zeroActivityDetailPage", () => {
     });
   });
 
-  it("should display selectedModel when ModelDetail feature is enabled", async () => {
+  it("should display selectedModel when it is present on completed runs", async () => {
     const logDetail: LogDetail = {
       id: "a0000000-0000-4000-a000-000000000005",
       sessionId: "session_model",
@@ -357,7 +357,6 @@ describe("zeroActivityDetailPage", () => {
     detachedSetupPage({
       context,
       path: "/activities/a0000000-0000-4000-a000-000000000005",
-      featureSwitches: { [FeatureSwitchKey.ModelDetail]: true },
     });
 
     await waitFor(() => {
@@ -370,7 +369,7 @@ describe("zeroActivityDetailPage", () => {
     expect(screen.getByText("claude-sonnet-4.5")).toBeInTheDocument();
   });
 
-  it("should display provider label when ModelDetail feature is disabled", async () => {
+  it("should prefer selectedModel over provider label when both are present", async () => {
     const logDetail: LogDetail = {
       id: "a0000000-0000-4000-a000-000000000006",
       sessionId: "session_no_model",
@@ -408,7 +407,6 @@ describe("zeroActivityDetailPage", () => {
     detachedSetupPage({
       context,
       path: "/activities/a0000000-0000-4000-a000-000000000006",
-      featureSwitches: { [FeatureSwitchKey.ModelDetail]: false },
     });
 
     await waitFor(() => {
@@ -417,12 +415,10 @@ describe("zeroActivityDetailPage", () => {
       ).toBeInTheDocument();
     });
 
-    // Provider label should be displayed, not selectedModel
-    expect(screen.getByText("Anthropic")).toBeInTheDocument();
-    expect(screen.queryByText("claude-sonnet-4.5")).toBeNull();
+    expect(screen.getByText("claude-sonnet-4.5")).toBeInTheDocument();
   });
 
-  it("should fallback to provider label when ModelDetail is enabled but selectedModel is null", async () => {
+  it("should fallback to provider label when selectedModel is null", async () => {
     const logDetail: LogDetail = {
       id: "a0000000-0000-4000-a000-000000000007",
       sessionId: "session_null_model",
@@ -460,7 +456,6 @@ describe("zeroActivityDetailPage", () => {
     detachedSetupPage({
       context,
       path: "/activities/a0000000-0000-4000-a000-000000000007",
-      featureSwitches: { [FeatureSwitchKey.ModelDetail]: true },
     });
 
     await waitFor(() => {
