@@ -274,7 +274,12 @@ function TriggerLabel({
       <ResponsiveTriggerContent
         mobileIcon={mobileIcon}
         provider={provider}
-        label={<span className="truncate">{displayName}</span>}
+        label={
+          <span className="flex items-center gap-1.5 min-w-0">
+            {provider && <ProviderIcon type={provider.type} size={16} />}
+            <span className="truncate">{displayName}</span>
+          </span>
+        }
       />
     );
   }
