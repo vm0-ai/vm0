@@ -492,6 +492,57 @@ describe("createZeroRun() — service-only parameters", () => {
     });
   });
 
+  describe("agent model fallback (resolveEffectiveModel)", () => {
+    it("should use agent defaults when callers do not provide model overrides", async () => {
+      const agentName = uniqueId("model-agent");
+      await createTestCompose(agentName);
+      await createTestZeroAgent(user.orgId, agentName, {
+        displayName: "ModelBot",
+        selectedModel: "test-model-from-agent",
+      });
+      const modelAgentId = await getTestZeroAgentId(user.orgId, agentName);
+
+      const result = await createZeroRun(
+        baseParams({
+          agentId: modelAgentId,
+          triggerSource: "slack",
+        }),
+      );
+      expect(result.runId).toBeDefined();
+
+      await context.mocks.flushAfter();
+
+      const zeroRun = await findTestZeroRun(result.runId);
+      expect(zeroRun).toBeDefined();
+      expect(zeroRun!.selectedModel).toBe("test-model-from-agent");
+    });
+
+    it("should let caller overrides take priority over agent defaults", async () => {
+      const agentName = uniqueId("over-model-agent");
+      await createTestCompose(agentName);
+      await createTestZeroAgent(user.orgId, agentName, {
+        displayName: "OverrideModelBot",
+        selectedModel: "agent-default-model",
+      });
+      const overrideAgentId = await getTestZeroAgentId(user.orgId, agentName);
+
+      const result = await createZeroRun(
+        baseParams({
+          agentId: overrideAgentId,
+          selectedModelOverride: "caller-explicit-model",
+          triggerSource: "slack",
+        }),
+      );
+      expect(result.runId).toBeDefined();
+
+      await context.mocks.flushAfter();
+
+      const zeroRun = await findTestZeroRun(result.runId);
+      expect(zeroRun).toBeDefined();
+      expect(zeroRun!.selectedModel).toBe("caller-explicit-model");
+    });
+  });
+
   describe("capture network bodies short-circuit", () => {
     it("skips DB UPDATE and leaves captureNetworkBodies unset when quota is zero", async () => {
       const before = await getTestUserPreferencesAll();
