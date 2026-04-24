@@ -34,6 +34,10 @@ import {
   setMockFeatureSwitches,
   resetMockFeatureSwitches,
 } from "../../../mocks/handlers/api-feature-switches.ts";
+import {
+  setMockTeam,
+  resetMockTeam,
+} from "../../../mocks/handlers/api-agents.ts";
 import { setChatShortcutHelpOpen$ } from "../../../signals/chat-page/chat-shortcut-help.ts";
 import { mockChatLifecycle, PLACEHOLDER } from "./chat-test-helpers.ts";
 
@@ -143,16 +147,46 @@ describe("chat composer — mobile icon trigger", () => {
   beforeEach(() => {
     resetMockOrgModelProviders();
     resetMockFeatureSwitches();
+    resetMockTeam();
   });
 
-  // CHAT-MP-MOBILE-001: When the composer renders the picker, the trigger
-  // must contain BOTH a mobile-only icon branch (`sm:hidden`) and a
-  // desktop-only label branch (`hidden sm:inline-flex`). Both render to the
-  // DOM at all times — the visibility switch is pure CSS — so the test can
-  // assert the structure directly without viewport simulation.
+  const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
+
+  async function openAgentChatWithPicker(): Promise<void> {
+    setMockTeam([
+      {
+        id: AGENT_ID,
+        displayName: "Test Agent",
+        description: null,
+        sound: null,
+        avatarUrl: null,
+        headVersionId: "v1",
+        updatedAt: "2024-01-01T00:00:00Z",
+      },
+    ]);
+
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+
+    await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
+
+    // Wait until the picker trigger mounts
+    await waitFor(() => {
+      expect(
+        screen.getByRole("combobox", { name: "Claude Sonnet 4.6" }),
+      ).toBeInTheDocument();
+    });
+  }
+
+  // CHAT-MP-MOBILE-001: On the agent chat landing page, the composer renders
+  // the picker with mobileIconTrigger enabled — the trigger must contain BOTH
+  // a mobile-only icon branch (`sm:hidden`) and a desktop-only label branch
+  // (`hidden sm:inline-flex`). Both render to the DOM at all times because
+  // the visibility switch is pure CSS.
   it("renders provider icon on mobile and model label on desktop (CHAT-MP-MOBILE-001)", async () => {
     enableModelPicker();
-    await openThreadWithPicker();
+    await openAgentChatWithPicker();
 
     const trigger = screen.getByRole("combobox", { name: "Claude Sonnet 4.6" });
 
@@ -172,10 +206,11 @@ describe("chat composer — mobile icon trigger", () => {
     expect(providerImg?.getAttribute("alt")).toBe("");
   });
 
-  // CHAT-MP-MOBILE-002: When no provider is marked as the workspace default
-  // and the user has not picked a model, `resolved` is null — the trigger
-  // falls back to the placeholder label on desktop and must still show an
-  // icon (IconCpu) on mobile so the control never appears empty.
+  // CHAT-MP-MOBILE-002: On the agent chat landing page, when no provider is
+  // marked as the workspace default and the user has not picked a model,
+  // `resolved` is null — the trigger falls back to the placeholder label on
+  // desktop and must still show an icon (IconCpu) on mobile so the control
+  // never appears empty.
   it("falls back to IconCpu on mobile when no provider resolves (CHAT-MP-MOBILE-002)", async () => {
     // A provider exists (so the composer renders the picker) but none is
     // marked as default, so `effectiveDefault` is null.
@@ -197,8 +232,19 @@ describe("chat composer — mobile icon trigger", () => {
       },
     ]);
 
-    mockChatLifecycle({ threadId: THREAD_ID });
-    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+    setMockTeam([
+      {
+        id: AGENT_ID,
+        displayName: "Test Agent",
+        description: null,
+        sound: null,
+        avatarUrl: null,
+        headVersionId: "v1",
+        updatedAt: "2024-01-01T00:00:00Z",
+      },
+    ]);
+
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
     await waitFor(() => {
       return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;

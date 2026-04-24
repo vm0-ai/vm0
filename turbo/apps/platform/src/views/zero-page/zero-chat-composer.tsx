@@ -188,6 +188,10 @@ interface ZeroChatComposerProps {
     disabled?: boolean;
     /** The agent-level default model, shown as a "Default" tag in the dropdown. */
     agentDefault?: ModelProviderSelection | null;
+    /** When true, trigger shows only model name without provider label. Defaults to true. */
+    compactTrigger?: boolean;
+    /** When true, trigger shows a provider icon on mobile instead of text. Defaults to true. */
+    mobileIconTrigger?: boolean;
   };
 }
 
@@ -566,7 +570,7 @@ function MicButton({
             className={cn(
               "inline-flex shrink-0 items-center justify-center rounded-lg transition-colors",
               recording || transcribing
-                ? "gap-[3px] h-9 w-[52px] bg-[#2E9E9F] text-white hover:bg-[#279394]"
+                ? "gap-[3px] h-9 w-[52px] mr-2 bg-[#2E9E9F] text-white hover:bg-[#279394]"
                 : "h-9 w-9 text-muted-foreground hover:bg-accent hover:text-foreground",
             )}
             onClick={handleClick}
@@ -1075,8 +1079,8 @@ export function ZeroChatComposer({
                           "hover:bg-accent hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground",
                         )}
                         sessionProviderType={modelPicker.sessionProviderType}
-                        compactTrigger
-                        mobileIconTrigger
+                        compactTrigger={modelPicker.compactTrigger ?? true}
+                        mobileIconTrigger={modelPicker.mobileIconTrigger ?? true}
                         open={modelPickerOpen}
                         onOpenChange={setModelPickerOpen}
                         disabled={modelPicker.disabled}

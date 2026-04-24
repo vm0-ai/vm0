@@ -508,6 +508,7 @@ function ChatThreadComposer({
                   // continuity.
                   disabled: hasUserMessages,
                   agentDefault: agentModelDefault,
+                  mobileIconTrigger: false,
                 }
               : undefined
           }
