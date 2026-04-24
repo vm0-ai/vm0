@@ -110,54 +110,61 @@ const MODEL_PRICING: (typeof creditPricing.$inferInsert)[] = [
     cacheReadTokenPrice: usd(0.028),
     cacheCreationTokenPrice: 0,
   },
-  {
-    // Output is image tokens (~1290 tokens/image at $30/1M ≈ $0.039/image).
-    // 20% margin applied on top of Google's public pricing.
-    model: "gemini-2.5-flash-image",
-    modelProvider: "vm0",
-    inputTokenPrice: usd(0.3 * 1.2),
-    outputTokenPrice: usd(30 * 1.2),
-    cacheReadTokenPrice: 0,
-    cacheCreationTokenPrice: 0,
-  },
 ];
 
-// https://docs.x.com/x-api/getting-started/pricing
-const X_CONNECTOR_PRICING: Array<{
-  category: string;
-  unitPrice: number;
-}> = [
-  // reads — $/resource
-  { category: "posts.read", unitPrice: usd(0.005) },
-  { category: "user.read", unitPrice: usd(0.01) },
-  { category: "dm_event.read", unitPrice: usd(0.01) },
-  { category: "following_followers.read", unitPrice: usd(0.01) },
-  { category: "list.read", unitPrice: usd(0.005) },
-  { category: "space.read", unitPrice: usd(0.005) },
-  { category: "community.read", unitPrice: usd(0.005) },
-  { category: "note.read", unitPrice: usd(0.005) },
-  { category: "media.read", unitPrice: usd(0.005) },
-  { category: "analytics.read", unitPrice: usd(0.005) },
-  { category: "trend.read", unitPrice: usd(0.01) },
-  // writes — $/request
-  { category: "content.create", unitPrice: usd(0.015) },
-  { category: "content.create_with_url", unitPrice: usd(0.2) },
-  { category: "dm_interaction.create", unitPrice: usd(0.015) },
-  { category: "user_interaction.create", unitPrice: usd(0.015) },
-  { category: "interaction.delete", unitPrice: usd(0.01) },
-  { category: "content.manage", unitPrice: usd(0.005) },
-  { category: "list.create", unitPrice: usd(0.01) },
-  { category: "list.manage", unitPrice: usd(0.005) },
-  { category: "bookmark", unitPrice: usd(0.005) },
-  { category: "media_metadata", unitPrice: usd(0.005) },
-  { category: "privacy.update", unitPrice: usd(0.01) },
-  { category: "mute.delete", unitPrice: usd(0.005) },
-  { category: "counts.recent", unitPrice: usd(0.005) },
-  { category: "counts.all", unitPrice: usd(0.01) },
-  // fallback — priced at the minimum bucket rate across the table
-  // above, so an unknown includes key can never be billed at more
-  // than X charges for the cheapest known bucket.
-  { category: "__fallback__", unitPrice: usd(0.005) },
+type UsagePricingRow = [category: string, unitPrice: number, unitSize: number];
+
+function usageGroup(
+  kind: string,
+  provider: string,
+  rows: UsagePricingRow[],
+): (typeof usagePricing.$inferInsert)[] {
+  return rows.map(([category, unitPrice, unitSize]) => {
+    return { kind, provider, category, unitPrice, unitSize };
+  });
+}
+
+const USAGE_PRICING: (typeof usagePricing.$inferInsert)[] = [
+  // X connector — https://docs.x.com/x-api/getting-started/pricing
+  ...usageGroup("connector", "x", [
+    // Reads — $/resource
+    ["posts.read", usd(0.005), 1],
+    ["user.read", usd(0.01), 1],
+    ["dm_event.read", usd(0.01), 1],
+    ["following_followers.read", usd(0.01), 1],
+    ["list.read", usd(0.005), 1],
+    ["space.read", usd(0.005), 1],
+    ["community.read", usd(0.005), 1],
+    ["note.read", usd(0.005), 1],
+    ["media.read", usd(0.005), 1],
+    ["analytics.read", usd(0.005), 1],
+    ["trend.read", usd(0.01), 1],
+    // Writes — $/request
+    ["content.create", usd(0.015), 1],
+    ["content.create_with_url", usd(0.2), 1],
+    ["dm_interaction.create", usd(0.015), 1],
+    ["user_interaction.create", usd(0.015), 1],
+    ["interaction.delete", usd(0.01), 1],
+    ["content.manage", usd(0.005), 1],
+    ["list.create", usd(0.01), 1],
+    ["list.manage", usd(0.005), 1],
+    ["bookmark", usd(0.005), 1],
+    ["media_metadata", usd(0.005), 1],
+    ["privacy.update", usd(0.01), 1],
+    ["mute.delete", usd(0.005), 1],
+    ["counts.recent", usd(0.005), 1],
+    ["counts.all", usd(0.01), 1],
+    // Fallback — priced at the minimum bucket rate across the table above,
+    // so an unknown includes key can never be billed at more than X charges
+    // for the cheapest known bucket.
+    ["__fallback__", usd(0.005), 1],
+  ]),
+
+  // Gemini 2.5 Flash Image — https://cloud.google.com/vertex-ai/generative-ai/pricing
+  // $30/1M output tokens × 1290 tokens per 1024×1024 image = $0.0387/image.
+  ...usageGroup("image", "gemini-2.5-flash-image", [
+    ["output_image", usd(0.0387), 1],
+  ]),
 ];
 
 /**
@@ -220,18 +227,12 @@ async function devSeed() {
     }
     console.log(`✅ Seeded ${MODEL_PRICING.length} credit pricing entries`);
 
-    // --- usage_pricing (connector / x) ---
-    console.log("Seeding usage_pricing (connector/x)...");
-    for (const p of X_CONNECTOR_PRICING) {
+    // --- usage_pricing (batch upsert) ---
+    console.log("Seeding usage_pricing...");
+    for (const p of USAGE_PRICING) {
       await db
         .insert(usagePricing)
-        .values({
-          kind: "connector",
-          provider: "x",
-          category: p.category,
-          unitPrice: p.unitPrice,
-          unitSize: 1,
-        })
+        .values(p)
         .onConflictDoUpdate({
           target: [
             usagePricing.kind,
@@ -244,11 +245,11 @@ async function devSeed() {
             updatedAt: new Date(),
           },
         });
-      console.log(`  connector/x/${p.category}: ${p.unitPrice} credits/call`);
+      console.log(
+        `  ${p.kind}/${p.provider}/${p.category}: ${p.unitPrice} credits per ${p.unitSize}`,
+      );
     }
-    console.log(
-      `✅ Seeded ${X_CONNECTOR_PRICING.length} X connector pricing entries`,
-    );
+    console.log(`✅ Seeded ${USAGE_PRICING.length} usage pricing entries`);
 
     // --- vm0_api_keys (transactional replace) ---
     console.log("Seeding vm0_api_keys...");

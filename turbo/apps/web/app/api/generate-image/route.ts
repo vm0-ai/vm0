@@ -1,22 +1,28 @@
 import { GoogleGenAI } from "@google/genai";
 import { getVercelOidcToken } from "@vercel/oidc";
-import { randomUUID } from "crypto";
 import { ExternalAccountClient } from "google-auth-library";
-import { NextRequest, NextResponse } from "next/server";
-import { creditUsage } from "../../../src/db/schema/credit-usage";
+import { eq } from "drizzle-orm";
+import { after, NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
+import { usageEvent } from "../../../src/db/schema/usage-event";
 import { env } from "../../../src/env";
 import { getAuthContext } from "../../../src/lib/auth/get-auth-context";
 import { initServices } from "../../../src/lib/init-services";
 import { isApiError } from "../../../src/lib/shared/errors";
+import { processOrgUsageEvents } from "../../../src/lib/zero/credit/usage-event-service";
 import { resolveOrg } from "../../../src/lib/zero/org/resolve-org";
 import { checkOrgCredits } from "../../../src/lib/zero/zero-run-policy";
 
 export const runtime = "nodejs";
 
 const MODEL = "gemini-2.5-flash-image";
-// Treated as a vm0-bundled model so checkOrgCredits() and the process-credits
-// cron both engage; pricing lives in credit_pricing keyed by this pair.
-const MODEL_PROVIDER = "vm0";
+// usage_event row shape. Pricing lives in usage_pricing keyed by the same
+// (kind, provider, category) triple; see scripts/dev-seed.ts.
+const USAGE_KIND = "image";
+const USAGE_PROVIDER = MODEL;
+const USAGE_CATEGORY = "output_image";
+
+const idempotencyKeySchema = z.uuid();
 
 interface GeneratedImage {
   mimeType: string;
@@ -109,6 +115,22 @@ export async function POST(req: NextRequest) {
   }
   const { userId } = authCtx;
 
+  const idempotencyKeyResult = idempotencyKeySchema.safeParse(
+    req.headers.get("Idempotency-Key"),
+  );
+  if (!idempotencyKeyResult.success) {
+    return NextResponse.json(
+      {
+        error: {
+          message: "Idempotency-Key header (UUID) is required",
+          code: "BAD_REQUEST",
+        },
+      },
+      { status: 400 },
+    );
+  }
+  const idempotencyKey = idempotencyKeyResult.data;
+
   const ai = buildClient();
   if (!ai) {
     return NextResponse.json(
@@ -140,7 +162,7 @@ export async function POST(req: NextRequest) {
   const { org } = await resolveOrg(authCtx);
 
   try {
-    await checkOrgCredits(org.orgId, userId, MODEL_PROVIDER, db);
+    await checkOrgCredits(org.orgId, userId, "vm0", db);
   } catch (error) {
     if (isApiError(error)) {
       return NextResponse.json(
@@ -149,6 +171,37 @@ export async function POST(req: NextRequest) {
       );
     }
     throw error;
+  }
+
+  // Reserve the idempotency key atomically with quantity=0 before calling
+  // the model. A concurrent/duplicate POST with the same key loses the
+  // unique-index race and returns no row — we respond 409 without touching
+  // Vertex. quantity is backfilled once the response is known.
+  const [reserved] = await db
+    .insert(usageEvent)
+    .values({
+      runId: null,
+      idempotencyKey,
+      orgId: org.orgId,
+      userId,
+      kind: USAGE_KIND,
+      provider: USAGE_PROVIDER,
+      category: USAGE_CATEGORY,
+      quantity: 0,
+    })
+    .onConflictDoNothing({ target: [usageEvent.idempotencyKey] })
+    .returning({ id: usageEvent.id });
+
+  if (!reserved) {
+    return NextResponse.json(
+      {
+        error: {
+          message: "Idempotency-Key already used; retry with a new key",
+          code: "CONFLICT",
+        },
+      },
+      { status: 409 },
+    );
   }
 
   const result = await ai.models.generateContent({
@@ -176,18 +229,16 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Record pending credit_usage; the process-credits cron settles it later
-  // against credit_pricing. A fresh messageId keeps each call under its own
-  // row via the (run_id, message_id) unique index.
-  await db.insert(creditUsage).values({
-    runId: null,
-    messageId: randomUUID(),
-    orgId: org.orgId,
-    userId,
-    model: MODEL,
-    modelProvider: MODEL_PROVIDER,
-    inputTokens: result.usageMetadata?.promptTokenCount ?? 0,
-    outputTokens: result.usageMetadata?.candidatesTokenCount ?? 0,
+  // Finalize the reservation with the real image count; the row now bills
+  // quantity × unit_price / unit_size credits. Settle inline via after()
+  // so the org balance reflects the charge before the next request lands.
+  await db
+    .update(usageEvent)
+    .set({ quantity: images.length })
+    .where(eq(usageEvent.id, reserved.id));
+
+  after(() => {
+    return processOrgUsageEvents(org.orgId);
   });
 
   return NextResponse.json({ images });
