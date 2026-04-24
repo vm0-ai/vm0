@@ -6,9 +6,13 @@
  * Real (internal): signals, state management
  */
 
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
 import { testContext } from "../../__tests__/test-helpers.ts";
-import { copyToClipboard$, copyStatus$ } from "../clipboard.ts";
+import {
+  copyToClipboard$,
+  copyStatus$,
+  writeChatMessageToClipboard,
+} from "../clipboard.ts";
 
 const context = testContext();
 
@@ -22,11 +26,45 @@ function setupClipboardMock() {
   return writeTextMock;
 }
 
+interface TestClipboardItemInstance {
+  items: Record<string, Blob>;
+}
+
+class TestClipboardItem implements TestClipboardItemInstance {
+  readonly items: Record<string, Blob>;
+
+  constructor(items: Record<string, Blob>) {
+    this.items = items;
+  }
+}
+
+function setupRichClipboardMock() {
+  const writeMock = vi.fn<(items: ClipboardItem[]) => Promise<void>>();
+  const writeTextMock = vi.fn<(data: string) => Promise<void>>();
+  vi.stubGlobal("ClipboardItem", TestClipboardItem);
+  Object.defineProperty(navigator, "clipboard", {
+    value: { write: writeMock, writeText: writeTextMock },
+    writable: true,
+    configurable: true,
+  });
+  return { writeMock, writeTextMock };
+}
+
+type FetchFn = (
+  input: RequestInfo | URL,
+  init?: RequestInit,
+) => Promise<Response>;
+
 describe("copyToClipboard$", () => {
   let writeTextMock: ReturnType<typeof setupClipboardMock>;
 
   beforeEach(() => {
     writeTextMock = setupClipboardMock();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   it("copies text and sets status to copied", async () => {
@@ -62,5 +100,54 @@ describe("copyToClipboard$", () => {
     await context.store.set(copyToClipboard$, "some text", context.signal);
 
     expect(context.store.get(copyStatus$)).toBe("idle");
+  });
+});
+
+describe("writeChatMessageToClipboard", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it("writes html metadata and the first png image for external paste targets", async () => {
+    const { writeMock } = setupRichClipboardMock();
+    const fetchMock = vi
+      .fn<FetchFn>()
+      .mockResolvedValue(
+        new Response(new Blob(["png"], { type: "image/png" }), { status: 200 }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const ok = await writeChatMessageToClipboard({
+      text: "Look at this",
+      attachments: [
+        {
+          id: "file-1",
+          filename: "photo.png",
+          contentType: "image/png",
+          size: 3,
+          url: "http://localhost:3000/f/user-1/file-1/photo.png",
+        },
+      ],
+    });
+
+    expect(ok).toBeTruthy();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:3000/f/user-1/file-1/photo.png?raw=1",
+      { mode: "cors" },
+    );
+
+    const item = writeMock.mock.calls[0]?.[0][0] as unknown as
+      | TestClipboardItemInstance
+      | undefined;
+    expect(item).toBeDefined();
+    expect(item?.items["image/png"]).toBeInstanceOf(Blob);
+    const html = await item!.items["text/html"]!.text();
+    expect(html).toContain("data-vm0-chat-message");
+    expect(html).toContain("<img");
+    expect(html).toContain("photo.png");
+    const text = await item!.items["text/plain"]!.text();
+    expect(text).toContain("Attachments:");
+    expect(text).toContain("photo.png");
   });
 });

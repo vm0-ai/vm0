@@ -46,7 +46,10 @@ import { zeroClient$ } from "../api-client.ts";
 import { orgModelProviders$ } from "../external/org-model-providers.ts";
 import { agentById } from "../agent.ts";
 import { pinnedAgentIds$ } from "../zero-page/zero-pinned-agents.ts";
-import { writeToClipboard } from "../zero-page/clipboard.ts";
+import {
+  writeChatMessageToClipboard,
+  type ChatClipboardPayload,
+} from "../zero-page/clipboard.ts";
 import type { GroupedChatMessageGroup } from "./chat-message.ts";
 import { logger } from "../log.ts";
 
@@ -175,7 +178,10 @@ export interface ChatThreadSignals {
   timelineExpandedIds$: Computed<Set<string>>;
   toggleTimelineExpanded$: Command<void, [string]>;
   copiedMessageId$: Computed<string | null>;
-  copyMessage$: Command<Promise<void>, [string, string, AbortSignal]>;
+  copyMessage$: Command<
+    Promise<void>,
+    [string, ChatClipboardPayload, AbortSignal]
+  >;
   // ── Focus ─────────────────────────────────────────────────────────────────
   setInputRef$: Command<(() => void) | undefined, [HTMLElement | null]>;
   focusInput$: Command<void, []>;
@@ -426,10 +432,10 @@ function createThreadUIState() {
     async (
       { get, set },
       messageId: string,
-      content: string,
+      payload: ChatClipboardPayload,
       signal: AbortSignal,
     ) => {
-      const ok = await writeToClipboard(content);
+      const ok = await writeChatMessageToClipboard(payload);
       signal.throwIfAborted();
       if (!ok) {
         return;

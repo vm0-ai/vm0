@@ -30,6 +30,7 @@ export {
 export {
   zeroChatAttachments$,
   uploadZeroAttachment$,
+  restoreZeroAttachments$,
   removeZeroAttachment$,
   zeroDragOver$,
   setZeroDragOver$,

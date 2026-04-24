@@ -109,6 +109,7 @@ export interface DraftSignals {
   setInput$: Command<void, [string]>;
   attachments$: Computed<ZeroChatAttachment[]>;
   uploadAttachment$: Command<Promise<void>, [File, AbortSignal]>;
+  restoreAttachments$: Command<void, [PersistedAttachment[]]>;
   removeAttachment$: Command<void, [ZeroChatAttachment]>;
   dragOver$: Computed<boolean>;
   setDragOver$: Command<void, [boolean]>;
@@ -198,6 +199,18 @@ export function createDraftSignals(): DraftSignals {
     },
   );
 
+  const restoreAttachments$ = command(
+    ({ set }, persisted: PersistedAttachment[]) => {
+      if (persisted.length === 0) {
+        return;
+      }
+      const restored = persisted.map(createRestoredAttachment);
+      set(internalAttachments$, (prev) => {
+        return [...prev, ...restored];
+      });
+    },
+  );
+
   const removeAttachment$ = command(
     ({ set }, attachment: ZeroChatAttachment) => {
       set(attachment.cancel$);
@@ -238,6 +251,7 @@ export function createDraftSignals(): DraftSignals {
     setInput$,
     attachments$,
     uploadAttachment$,
+    restoreAttachments$,
     removeAttachment$,
     dragOver$,
     setDragOver$,
@@ -286,6 +300,15 @@ export const uploadZeroAttachment$ = command(
     const draft = get(currentDraft$);
     if (draft) {
       await set(draft.uploadAttachment$, file, signal);
+    }
+  },
+);
+
+export const restoreZeroAttachments$ = command(
+  ({ get, set }, attachments: PersistedAttachment[]) => {
+    const draft = get(currentDraft$);
+    if (draft) {
+      set(draft.restoreAttachments$, attachments);
     }
   },
 );
