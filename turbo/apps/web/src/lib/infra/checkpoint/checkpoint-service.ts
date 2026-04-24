@@ -161,7 +161,9 @@ export async function createCheckpoint(
     ? null
     : decodeToContextArtifacts(
         rawPayload,
-        Array.isArray(rawPayload) ? "" : extractWorkingDir(version.content),
+        Array.isArray(rawPayload)
+          ? undefined
+          : extractWorkingDir(version.content),
       );
 
   const snapshotFields = {

@@ -11,9 +11,9 @@ import { initServices } from "../../../lib/init-services";
  * `artifact_names` column is no longer on the real `agent_sessions` table and
  * `checkpoints.artifact_snapshots` has already been normalised. We stage the
  * pre-migration shapes in shadow tables with the same structure, execute the
- * backfill bodies verbatim, and assert the projection semantics. Column
- * drop/add assertions run against the real tables via
- * `information_schema.columns`.
+ * backfill bodies verbatim, and assert the projection semantics. Schema-drift
+ * enforcement (dropped/added columns) is handled by CI `test-migrate` which
+ * diffs the Drizzle schema TS against migration SQL.
  */
 
 const AUTO_MEMORY_MOUNT_PATH =
@@ -135,22 +135,6 @@ async function readSessionArtifacts(id: string): Promise<unknown> {
   return result.rows[0]?.artifacts ?? null;
 }
 
-async function columnExists(
-  table: string,
-  column: string,
-): Promise<boolean> {
-  // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: information_schema check
-  const result = await globalThis.services.db.execute<{ exists: boolean }>(sql`
-    SELECT EXISTS (
-      SELECT 1 FROM information_schema.columns
-      WHERE table_schema = 'public'
-        AND table_name = ${table}
-        AND column_name = ${column}
-    ) AS exists
-  `);
-  return result.rows[0]?.exists === true;
-}
-
 describe("migration 0308 unify artifact shape", () => {
   beforeEach(async () => {
     context.setupMocks();
@@ -246,21 +230,4 @@ describe("migration 0308 unify artifact shape", () => {
     });
   });
 
-  describe("schema assertions (real tables post-migration)", () => {
-    it("drops the legacy artifact_names column from agent_sessions", async () => {
-      expect(await columnExists("agent_sessions", "artifact_names")).toBe(
-        false,
-      );
-    });
-
-    it("adds the artifacts column to agent_sessions", async () => {
-      expect(await columnExists("agent_sessions", "artifacts")).toBe(true);
-    });
-
-    it("keeps the checkpoints.artifact_snapshots column (nullable jsonb)", async () => {
-      expect(await columnExists("checkpoints", "artifact_snapshots")).toBe(
-        true,
-      );
-    });
-  });
 });

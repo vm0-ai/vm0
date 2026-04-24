@@ -38,12 +38,14 @@ export function isEmptyArtifactPayload(raw: unknown): boolean {
 /**
  * Decode the JSONB column into the unified `ContextArtifact[]` form consumed
  * by `resolve-checkpoint.ts` (and any other code path that needs mountPath
- * stamped on every entry). Legacy entries get their mountPath via the name
- * heuristic.
+ * stamped on every entry). Legacy `Record<name, version>` entries get their
+ * mountPath via the name heuristic, so callers that may hit the legacy path
+ * MUST pass `workingDir`. Array-shape payloads carry their own mountPath, so
+ * callers that know they only ever handle canonical-shape data can omit it.
  */
 export function decodeToContextArtifacts(
   raw: unknown,
-  workingDir: string,
+  workingDir?: string,
 ): ContextArtifact[] {
   if (raw === null || raw === undefined) return [];
 
@@ -61,6 +63,12 @@ export function decodeToContextArtifacts(
   if (typeof raw !== "object") {
     throw badRequest(
       "Invalid checkpoint: artifactSnapshots must be an array or object",
+    );
+  }
+
+  if (workingDir === undefined) {
+    throw badRequest(
+      "Invalid checkpoint: legacy Record-shape artifactSnapshots require a workingDir",
     );
   }
 
