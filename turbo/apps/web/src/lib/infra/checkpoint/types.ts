@@ -59,12 +59,17 @@ export interface CheckpointRequest {
 }
 
 /**
- * Response from checkpoint creation
+ * Response from checkpoint creation.
+ *
+ * `artifacts` always echoes the canonical Array shape that was persisted
+ * to the JSONB column — even when the caller sent a legacy Record payload,
+ * the writer normalises before persisting and the response echoes the
+ * normalised form. This keeps on-wire and on-disk representations in sync.
  */
 export interface CheckpointResponse {
   checkpointId: string;
   agentSessionId: string;
   conversationId: string;
-  artifacts?: ArtifactSnapshotsPayload;
+  artifacts?: Array<{ name: string; version: string; mountPath: string }>;
   volumes?: Record<string, string>;
 }

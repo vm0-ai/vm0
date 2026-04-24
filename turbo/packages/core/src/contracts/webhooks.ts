@@ -66,6 +66,23 @@ const artifactSnapshotsSchema = z.union([
 ]);
 
 /**
+ * Canonical artifact snapshots response schema.
+ *
+ * The checkpoint webhook normalises inputs on write (legacy Record payloads
+ * are converted to the canonical Array shape before persisting), so the 200
+ * response always echoes the canonical Array — never the Record. Keeping the
+ * response schema narrower than the request schema surfaces the "on-wire
+ * shape == on-disk shape" contract in the type system.
+ */
+const canonicalArtifactSnapshotsSchema = z.array(
+  z.object({
+    name: z.string(),
+    version: z.string(),
+    mountPath: z.string(),
+  }),
+);
+
+/**
  * Volume versions snapshot schema
  */
 const volumeVersionsSnapshotSchema = z.object({
@@ -179,7 +196,7 @@ export const webhookCheckpointsContract = c.router({
         checkpointId: z.string(),
         agentSessionId: z.string(),
         conversationId: z.string(),
-        artifacts: artifactSnapshotsSchema.optional(),
+        artifacts: canonicalArtifactSnapshotsSchema.optional(),
         volumes: z.record(z.string(), z.string()).optional(),
       }),
       400: apiErrorSchema,
