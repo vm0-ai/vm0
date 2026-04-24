@@ -30,9 +30,9 @@ describe("isFeatureEnabled", () => {
   });
 
   it("should return true when orgId hash matches enabledOrgIdHashes", () => {
-    // SlackAgentSwitch has enabledOrgIdHashes: STAFF_ORG_ID_HASHES
+    // PlatformConnectors has enabledOrgIdHashes: STAFF_ORG_ID_HASHES
     expect(
-      isFeatureEnabled(FeatureSwitchKey.SlackAgentSwitch, {
+      isFeatureEnabled(FeatureSwitchKey.PlatformConnectors, {
         orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
       }),
     ).toBe(true);
@@ -40,19 +40,19 @@ describe("isFeatureEnabled", () => {
 
   it("should return false when orgId does not match enabledOrgIdHashes", () => {
     expect(
-      isFeatureEnabled(FeatureSwitchKey.SlackAgentSwitch, {
+      isFeatureEnabled(FeatureSwitchKey.PlatformConnectors, {
         orgId: "org_nonexistent",
       }),
     ).toBe(false);
   });
 
   it("should return false when no orgId provided but switch has enabledOrgIdHashes", () => {
-    expect(isFeatureEnabled(FeatureSwitchKey.SlackAgentSwitch)).toBe(false);
+    expect(isFeatureEnabled(FeatureSwitchKey.PlatformConnectors)).toBe(false);
   });
 
   it("should return true when orgId matches even if userId does not", () => {
     expect(
-      isFeatureEnabled(FeatureSwitchKey.SlackAgentSwitch, {
+      isFeatureEnabled(FeatureSwitchKey.PlatformConnectors, {
         userId: "non-matching-user",
         orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
       }),
@@ -71,8 +71,8 @@ describe("getAllFeatureStates", () => {
     const states = getAllFeatureStates({
       orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
     });
-    // SlackAgentSwitch has STAFF_ORG_ID_HASHES and should be true
-    expect(states[FeatureSwitchKey.SlackAgentSwitch]).toBe(true);
+    // PlatformConnectors has STAFF_ORG_ID_HASHES and should be true
+    expect(states[FeatureSwitchKey.PlatformConnectors]).toBe(true);
     // Globally enabled should still be true
     expect(states[FeatureSwitchKey.Dummy]).toBe(true);
     // Switches without org hashes should remain false
@@ -83,7 +83,7 @@ describe("getAllFeatureStates", () => {
     const states = getAllFeatureStates({
       orgId: "org_nonexistent",
     });
-    expect(states[FeatureSwitchKey.SlackAgentSwitch]).toBe(false);
+    expect(states[FeatureSwitchKey.PlatformConnectors]).toBe(false);
   });
 
   it("should apply overrides to enable disabled features", () => {

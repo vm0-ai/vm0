@@ -40,7 +40,6 @@ export enum FeatureSwitchKey {
   AudioOutput = "audioOutput",
   AutoSkill = "autoSkill",
   ScheduleRunHistory = "scheduleRunHistory",
-  SlackAgentSwitch = "slackAgentSwitch",
   TestOauthConnector = "testOauthConnector",
   ChatHeaderNewButton = "chatHeaderNewButton",
   ChatThreadReadIndicator = "chatThreadReadIndicator",

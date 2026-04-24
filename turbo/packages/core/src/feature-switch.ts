@@ -265,24 +265,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Gate the custom /settings/api-keys UI for issuing personal access tokens used by the /api/v1 public surface. When disabled, the settings page redirects to / and the sidebar menu item is hidden. The backend /api/v1 verification does NOT consult this flag — previously issued PATs continue to work.",
     enabled: false,
   },
-  [FeatureSwitchKey.SlackAgentSwitch]: {
-    maintainer: "yuma@vm0.ai",
-    description:
-      "Per-user agent override in the org-aware Slack app. When enabled for an org, " +
-      "members can choose which agent replies to their Slack mentions / DMs via " +
-      "`/zero switch` (opens an agent picker modal) or the Switch button on the " +
-      "App Home tab. The help text for `/zero help` also lists the switch subcommand. " +
-      "Selecting an alternate agent persists a row in `slack_user_agent_preferences` " +
-      "so the preference follows the user across every Slack workspace joined under " +
-      "the same org, and subsequent mention / DM replies from a non-default agent " +
-      "carry a `Sent via <agent>` footer so it's clear which agent produced the reply. " +
-      "When gated off, the modal, slash subcommand, App Home button, and help line " +
-      "are hidden AND any existing DB preferences are ignored at read time — every " +
-      "user falls back to the org default agent with no footer. Staff-only during the " +
-      "rollout window defined by `enabledOrgIdHashes`.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.ModelProviderSelection]: {
     maintainer: "ethan@vm0.ai",
     description:

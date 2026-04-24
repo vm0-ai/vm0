@@ -1,6 +1,4 @@
 import { eq, and } from "drizzle-orm";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { slackOrgInstallations } from "../../../../db/schema/slack-org-installation";
 import { slackOrgConnections } from "../../../../db/schema/slack-org-connection";
 import { decryptSecretValue } from "../../../shared/crypto/secrets-encryption";
@@ -105,11 +103,7 @@ export async function refreshOrgAppHome(
     isOverrideActive = Boolean(
       overrideComposeId && overrideComposeId !== defaultComposeId,
     );
-    // Show the Switch button only when both (a) there's a default to switch
-    // from/to and (b) the feature is enabled for this org.
-    canSwitch =
-      Boolean(defaultComposeId) &&
-      isFeatureEnabled(FeatureSwitchKey.SlackAgentSwitch, { orgId });
+    canSwitch = Boolean(defaultComposeId);
   }
 
   // Get user email for display

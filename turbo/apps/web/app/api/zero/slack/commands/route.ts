@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server";
 import { eq, and } from "drizzle-orm";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { initServices } from "../../../../../src/lib/init-services";
 import { env } from "../../../../../src/env";
 import {
@@ -302,19 +300,11 @@ export async function POST(request: Request) {
     .where(eq(slackOrgInstallations.slackWorkspaceId, payload.team_id))
     .limit(1);
 
-  // Whether /zero switch is exposed for this workspace's org. The feature is
-  // staff-gated; for unbound installations we can't evaluate it (no orgId), so
-  // default to off.
-  const switchEnabled = Boolean(
-    installation?.orgId &&
-    isFeatureEnabled(FeatureSwitchKey.SlackAgentSwitch, {
-      orgId: installation.orgId,
-    }),
-  );
+  const canSwitchAgents = Boolean(installation?.orgId);
 
   // Handle help command (doesn't require installation)
   if (subCommand === "help" || subCommand === "") {
-    return ephemeral(buildHelpMessage({ canSwitch: switchEnabled }));
+    return ephemeral(buildHelpMessage({ canSwitch: canSwitchAgents }));
   }
 
   // Handle connect command
@@ -366,14 +356,9 @@ export async function POST(request: Request) {
 
   // Handle switch command
   if (subCommand === "switch") {
-    if (!switchEnabled) {
-      // Feature is gated off for this org — treat as unknown, show help
-      // without advertising the switch subcommand.
-      return ephemeral(buildHelpMessage({ canSwitch: false }));
-    }
     return handleSwitch(payload, installation, connection);
   }
 
   // Unknown command
-  return ephemeral(buildHelpMessage({ canSwitch: switchEnabled }));
+  return ephemeral(buildHelpMessage({ canSwitch: canSwitchAgents }));
 }
