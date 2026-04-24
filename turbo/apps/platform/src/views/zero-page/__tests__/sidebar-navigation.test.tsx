@@ -13,7 +13,6 @@ import {
 } from "@vm0/core/contracts/chat-threads";
 import { zeroTeamContract } from "@vm0/core/contracts/zero-team";
 import { zeroAgentsByIdContract } from "@vm0/core/contracts/zero-agents";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -23,7 +22,7 @@ function mockSubagentAPIs() {
   const threads: {
     id: string;
     title: string | null;
-    agentId: string;
+    agent: { id: string; avatarUrl: string | null };
     createdAt: string;
     updatedAt: string;
     isRead: boolean;
@@ -33,7 +32,7 @@ function mockSubagentAPIs() {
     {
       id: "thread-sub-1",
       title: "Subagent thread",
-      agentId: "subagent-compose-id",
+      agent: { id: "subagent-compose-id", avatarUrl: null },
       createdAt: "2026-03-10T00:00:00Z",
       updatedAt: "2026-03-10T00:00:00Z",
       isRead: false,
@@ -146,7 +145,7 @@ function mockSubagentAPIs() {
       const newThread = {
         id: "new-thread-id",
         title: body.title ?? null,
-        agentId: body.agentId,
+        agent: { id: body.agentId, avatarUrl: null },
         createdAt: now,
         updatedAt: now,
         isRead: false,
@@ -172,7 +171,6 @@ describe("sidebar new chat navigation", () => {
     detachedSetupPage({
       context,
       path: "/agents/c0000000-0000-4000-a000-000000000001/chat",
-      featureSwitches: { [FeatureSwitchKey.UnifyChatThreads]: true },
     });
 
     // Wait for thread list to load
@@ -195,7 +193,6 @@ describe("sidebar new chat navigation", () => {
     detachedSetupPage({
       context,
       path: "/agents/subagent-compose-id/chat",
-      featureSwitches: { [FeatureSwitchKey.UnifyChatThreads]: true },
     });
 
     // Wait for thread list to load — confirms currentChatAgentId$ has resolved
@@ -232,7 +229,6 @@ describe("sidebar new chat navigation", () => {
     detachedSetupPage({
       context,
       path: "/agents/c0000000-0000-4000-a000-000000000001/chat",
-      featureSwitches: { [FeatureSwitchKey.UnifyChatThreads]: true },
     });
 
     // Wait for thread list to load
@@ -270,7 +266,10 @@ describe("sidebar new chat navigation", () => {
             {
               id: "new-thread-id",
               title: null,
-              agentId: "c0000000-0000-4000-a000-000000000001",
+              agent: {
+                id: "c0000000-0000-4000-a000-000000000001",
+                avatarUrl: null,
+              },
               createdAt: "2026-03-10T00:00:00Z",
               updatedAt: "2026-03-10T00:00:00Z",
               isRead: false,
@@ -301,7 +300,6 @@ describe("sidebar new chat navigation", () => {
     detachedSetupPage({
       context,
       path: "/agents/c0000000-0000-4000-a000-000000000001/chat",
-      featureSwitches: { [FeatureSwitchKey.UnifyChatThreads]: true },
     });
 
     // Wait for thread list to load (thread with null title appears as "New chat" span)
