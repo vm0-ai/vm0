@@ -215,14 +215,29 @@ export async function createCheckpoint(
   // Use volume versions from snapshot for return value
   const volumes = volumeSnapshot?.versions;
 
+  // Echo back the normalised canonical shape that was persisted so the
+  // response matches the on-disk representation — not the caller's raw
+  // input shape. Writer inputs always carry a concrete `version` string
+  // (Record values are strings, Array entries require version), so we
+  // assert it here to satisfy the response schema's non-optional version.
+  const responseArtifacts = artifactSnapshotsForDb?.map((entry) => {
+    if (entry.version === undefined) {
+      throw new Error(
+        `Invalid checkpoint: artifact "${entry.name}" missing version after normalisation`,
+      );
+    }
+    return {
+      name: entry.name,
+      version: entry.version,
+      mountPath: entry.mountPath,
+    };
+  });
+
   return {
     checkpointId: checkpoint.id,
     agentSessionId: agentSession.id,
     conversationId: conversation.id,
-    artifacts:
-      rawPayload && !isEmptyArtifactPayload(rawPayload)
-        ? rawPayload
-        : undefined,
+    artifacts: responseArtifacts,
     volumes,
   };
 }

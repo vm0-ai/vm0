@@ -341,7 +341,15 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       expect(data.checkpointId).toBeDefined();
       expect(data.agentSessionId).toBeDefined();
       expect(data.conversationId).toBeDefined();
-      expect(data.artifacts).toEqual(artifactSnapshots);
+      // Response echoes the normalised canonical shape persisted to the DB,
+      // not the caller's raw Record input.
+      expect(data.artifacts).toEqual([
+        {
+          name: "test-artifact",
+          version: "version-123-456",
+          mountPath: "/home/user/workspace",
+        },
+      ]);
     });
 
     it("should persist legacy Record payload as canonical Array via mountPath heuristic", async () => {
@@ -376,12 +384,9 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
 
       expect(response.status).toBe(200);
       const data = await response.json();
-      // Response echoes whatever the sender sent, so the Record survives here.
-      expect(data.artifacts).toEqual(artifactSnapshots);
-
-      const checkpoint = await findTestCheckpoint(testRunId);
-      expect(checkpoint).toBeDefined();
-      expect(checkpoint!.artifactSnapshots).toEqual([
+      // Response echoes the normalised canonical Array shape, matching the
+      // on-disk representation rather than the caller's raw Record input.
+      const expectedCanonical = [
         {
           name: "artifact-a",
           version: "version-aaa",
@@ -392,7 +397,12 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
           version: "version-bbb",
           mountPath: "/home/user/workspace",
         },
-      ]);
+      ];
+      expect(data.artifacts).toEqual(expectedCanonical);
+
+      const checkpoint = await findTestCheckpoint(testRunId);
+      expect(checkpoint).toBeDefined();
+      expect(checkpoint!.artifactSnapshots).toEqual(expectedCanonical);
     });
 
     it("should persist canonical array-shape artifactSnapshots verbatim", async () => {
