@@ -467,51 +467,53 @@ function ChatThreadComposer({
   return (
     <footer
       data-chat-composer
-      className="relative shrink-0 overflow-y-auto [scrollbar-gutter:stable] px-4 sm:px-6 pt-3 pb-2 bg-[hsl(var(--background))]"
+      className="relative shrink-0 bg-[hsl(var(--background))]"
       style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}
     >
       <div className="pointer-events-none absolute inset-x-0 -top-5 h-5 bg-gradient-to-t from-[hsl(var(--background))] to-transparent" />
-      <div className="mx-auto max-w-[900px]">
-        <ZeroChatComposer
-          className="w-full min-w-0"
-          input={input}
-          onInputChange={handleInputChange}
-          onSend={handleSend}
-          sending={sending}
-          onCancel={() => {
-            detach(cancelRun(pageSignal), Reason.DomCallback);
-          }}
-          displayName={displayName}
-          autoFocus={
-            autoFocusProp &&
-            !hasMessages &&
-            !window.matchMedia("(pointer: coarse)").matches
-          }
-          onDraftChange={handleDraftChange}
-          draft={thread.draft}
-          composerFileInput$={thread.composerFileInput$}
-          setComposerFileInput$={thread.setComposerFileInput$}
-          setInputRef={setInputRef}
-          actionsLoading={skeletonVisible}
-          modelPicker={
-            modelFeatureEnabled &&
-            orgProviders &&
-            orgProviders.modelProviders.length > 0
-              ? {
-                  providers: orgProviders.modelProviders,
-                  value: modelSelection,
-                  onChange: setModelSelection,
-                  sessionProviderType:
-                    threadData?.latestSessionProviderType ?? null,
-                  // Lock as soon as the thread has a user message — provider
-                  // must stay consistent within a session to maintain
-                  // continuity.
-                  disabled: hasUserMessages,
-                  agentDefault: agentModelDefault,
-                }
-              : undefined
-          }
-        />
+      <div className="overflow-y-auto [scrollbar-gutter:stable] px-4 sm:px-6 pt-3 pb-2">
+        <div className="mx-auto max-w-[900px]">
+          <ZeroChatComposer
+            className="w-full min-w-0"
+            input={input}
+            onInputChange={handleInputChange}
+            onSend={handleSend}
+            sending={sending}
+            onCancel={() => {
+              detach(cancelRun(pageSignal), Reason.DomCallback);
+            }}
+            displayName={displayName}
+            autoFocus={
+              autoFocusProp &&
+              !hasMessages &&
+              !window.matchMedia("(pointer: coarse)").matches
+            }
+            onDraftChange={handleDraftChange}
+            draft={thread.draft}
+            composerFileInput$={thread.composerFileInput$}
+            setComposerFileInput$={thread.setComposerFileInput$}
+            setInputRef={setInputRef}
+            actionsLoading={skeletonVisible}
+            modelPicker={
+              modelFeatureEnabled &&
+              orgProviders &&
+              orgProviders.modelProviders.length > 0
+                ? {
+                    providers: orgProviders.modelProviders,
+                    value: modelSelection,
+                    onChange: setModelSelection,
+                    sessionProviderType:
+                      threadData?.latestSessionProviderType ?? null,
+                    // Lock as soon as the thread has a user message — provider
+                    // must stay consistent within a session to maintain
+                    // continuity.
+                    disabled: hasUserMessages,
+                    agentDefault: agentModelDefault,
+                  }
+                : undefined
+            }
+          />
+        </div>
       </div>
     </footer>
   );
