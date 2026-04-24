@@ -17,6 +17,8 @@ const MODEL_DISPLAY_NAMES = Object.freeze<Record<string, string>>({
   // DeepSeek
   "deepseek-chat": "DeepSeek Chat",
   "deepseek-reasoner": "DeepSeek Reasoner",
+  "deepseek-v4-pro": "DeepSeek V4 Pro",
+  "deepseek-v4-flash": "DeepSeek V4 Flash",
   // MiniMax
   "MiniMax-M2.7": "MiniMax M2.7",
   "MiniMax-M2.1": "MiniMax M2.1",

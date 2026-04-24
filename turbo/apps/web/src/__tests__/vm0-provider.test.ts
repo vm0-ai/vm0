@@ -154,6 +154,20 @@ describe("VM0 managed model provider", () => {
       expect(getVm0ApiModel("kimi-k2.6")).toBe("kimi-k2.6");
     });
 
+    it("should resolve DeepSeek V4 models to deepseek-api-key", () => {
+      expect(getVm0ConcreteProviderType("deepseek-v4-pro")).toBe(
+        "deepseek-api-key",
+      );
+      expect(getVm0Vendor("deepseek-v4-pro")).toBe("deepseek");
+      expect(getVm0ApiModel("deepseek-v4-pro")).toBe("deepseek-v4-pro");
+
+      expect(getVm0ConcreteProviderType("deepseek-v4-flash")).toBe(
+        "deepseek-api-key",
+      );
+      expect(getVm0Vendor("deepseek-v4-flash")).toBe("deepseek");
+      expect(getVm0ApiModel("deepseek-v4-flash")).toBe("deepseek-v4-flash");
+    });
+
     it("should fall back to display name when no apiModel override is set", () => {
       expect(getVm0ApiModel("claude-sonnet-4-6")).toBe("claude-sonnet-4-6");
     });
@@ -181,6 +195,8 @@ describe("VM0 managed model provider", () => {
           "kimi-k2.6",
           "kimi-k2.5",
           "MiniMax-M2.7",
+          "deepseek-v4-pro",
+          "deepseek-v4-flash",
           "deepseek-chat",
           "deepseek-reasoner",
         ]),
