@@ -320,10 +320,14 @@ function resolveIconType(
   provider: ModelProviderResponse | undefined,
   model: string | undefined,
 ): ModelProviderType | undefined {
-  if (!provider) return undefined;
+  if (!provider) {
+    return undefined;
+  }
   if (provider.type === "vm0" && model) {
     const entry = VM0_MODEL_TO_PROVIDER[model];
-    if (entry) return entry.concreteType as ModelProviderType;
+    if (entry) {
+      return entry.concreteType as ModelProviderType;
+    }
   }
   return provider.type;
 }
