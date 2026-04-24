@@ -161,12 +161,19 @@ RUN curl -fsSL https://downloads.1password.com/linux/keys/1password.asc | gpg --
 # Install agent-browser for browser automation
 RUN npm install -g agent-browser@0.22.0
 
-# Install Chromium via the same script used by CI browser tests. The script uses
-# chrome-for-testing so headed browser automation gets a full browser, not just
-# Playwright's headless shell.
-COPY install-playwright-chromium.sh /usr/local/bin/install-playwright-chromium
-RUN chmod +x /usr/local/bin/install-playwright-chromium \
-    && /usr/local/bin/install-playwright-chromium
+# Install Chromium via Playwright (supports both amd64 and arm64)
+# Use chrome-for-testing to ensure full browser (not just headless shell)
+# is downloaded, needed for headed mode (AGENT_BROWSER_HEADED=1)
+RUN npx -y playwright@1.58.2 install-deps chromium \
+    && npx -y playwright@1.58.2 install chrome-for-testing
+
+# Symlink Chromium binary to a stable path for agent-browser
+# Grant world read+execute so non-root users (e.g. vscode) can launch Chrome
+RUN CHROMIUM_PATH=$(find /root/.cache/ms-playwright/chromium-*/chrome-linux* -type f -name chrome 2>/dev/null | head -1) \
+    && test -n "$CHROMIUM_PATH" || { echo "ERROR: Chromium not found"; ls -laR /root/.cache/ms-playwright/; exit 1; } \
+    && ln -sf "$CHROMIUM_PATH" /usr/local/bin/playwright-chromium \
+    && chmod o+x /root /root/.cache /root/.cache/ms-playwright \
+    && chmod -R o+rX /root/.cache/ms-playwright/
 
 ENV AGENT_BROWSER_EXECUTABLE_PATH=/usr/local/bin/playwright-chromium
 

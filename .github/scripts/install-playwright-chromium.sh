@@ -5,8 +5,7 @@ PLAYWRIGHT_BROWSER_INSTALL_VERSION="${PLAYWRIGHT_BROWSER_INSTALL_VERSION:-1.59.1
 PLAYWRIGHT_CHROMIUM_LINK="${PLAYWRIGHT_CHROMIUM_LINK:-/usr/local/bin/playwright-chromium}"
 BROWSER_CACHE="${PLAYWRIGHT_BROWSERS_PATH:-${HOME:-/root}/.cache/ms-playwright}"
 
-# Keep this aligned with E2E Playwright browser installation while making the
-# resolved executable path explicit for Vitest Browser and agent-browser users.
+# Keep CI's explicit browser install aligned with the E2E Playwright command.
 npx -y "playwright@${PLAYWRIGHT_BROWSER_INSTALL_VERSION}" install --with-deps chromium
 
 chromium_path="$(
@@ -32,8 +31,6 @@ if ! { mkdir -p "$link_dir" && ln -sf "$chromium_path" "$PLAYWRIGHT_CHROMIUM_LIN
   fi
 fi
 
-# Allow non-root users, like the devcontainer's vscode user, to launch the
-# browser installed by root during image build.
 chmod o+x "${HOME:-/root}" "${HOME:-/root}/.cache" "$BROWSER_CACHE" 2>/dev/null || true
 chmod -R o+rX "$BROWSER_CACHE" 2>/dev/null || true
 

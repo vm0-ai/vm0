@@ -557,7 +557,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
       - name: Install shared browser
-        run: bash docker/toolchain/install-playwright-chromium.sh
+        run: bash .github/scripts/install-playwright-chromium.sh
       - name: Verify shared browser
         run: |
           test -n "${AGENT_BROWSER_EXECUTABLE_PATH:-}"

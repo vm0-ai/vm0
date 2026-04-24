@@ -3,6 +3,3 @@
 
 # Allow Dockerfile
 !Dockerfile
-
-# Allow shared browser installer used by the development image and CI.
-!install-playwright-chromium.sh
