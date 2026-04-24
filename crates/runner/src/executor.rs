@@ -1231,8 +1231,13 @@ fn build_env_json(
     // Artifacts config (multi-mount).
     //
     // Emit a single `VM0_ARTIFACTS` env var containing a JSON array of
-    // `{name, mountPath, versionId}` objects. Guest-agent parses this on
-    // startup and iterates the list when taking snapshots at run end.
+    // `{name, mountPath, storageId, versionId}` objects. Guest-agent
+    // parses this on startup and iterates the list when taking snapshots
+    // at run end. The shape here must stay lockstep with guest-agent's
+    // `ArtifactEnv` — the two ship as one unit via `include_bytes!`, and
+    // `ArtifactEnv` deserializes strict (no `serde(default)`), so a
+    // field drop here will panic the VM at startup instead of silently
+    // producing empty strings.
     //
     // Empty-list case: do not set the env var at all (matches the prior
     // "unset = no artifact" convention).
@@ -1246,6 +1251,7 @@ fn build_env_json(
                 serde_json::json!({
                     "name": a.vas_storage_name,
                     "mountPath": a.mount_path,
+                    "storageId": a.vas_storage_id,
                     "versionId": a.vas_version_id,
                 })
             })
@@ -1428,6 +1434,7 @@ mod tests {
                 archive_url: None,
                 cached: false,
                 vas_storage_name: "my-vol".into(),
+                vas_storage_id: "sid-1".into(),
                 vas_version_id: "v1".into(),
             }],
             cleanup_paths: vec![],
@@ -1439,6 +1446,7 @@ mod tests {
         assert_eq!(parsed.len(), 1);
         assert_eq!(parsed[0]["name"], "my-vol");
         assert_eq!(parsed[0]["mountPath"], "/artifacts");
+        assert_eq!(parsed[0]["storageId"], "sid-1");
         assert_eq!(parsed[0]["versionId"], "v1");
         // Legacy singleton env vars must no longer be emitted.
         assert!(!env.contains_key("VM0_ARTIFACT_DRIVER"));
@@ -1458,6 +1466,7 @@ mod tests {
                     archive_url: None,
                     cached: false,
                     vas_storage_name: "art-a".into(),
+                    vas_storage_id: "sid-a".into(),
                     vas_version_id: "v1".into(),
                 },
                 ArtifactEntry {
@@ -1465,6 +1474,7 @@ mod tests {
                     archive_url: None,
                     cached: false,
                     vas_storage_name: "art-b".into(),
+                    vas_storage_id: "sid-b".into(),
                     vas_version_id: "v2".into(),
                 },
             ],
@@ -1477,8 +1487,10 @@ mod tests {
         assert_eq!(parsed.len(), 2);
         assert_eq!(parsed[0]["name"], "art-a");
         assert_eq!(parsed[0]["mountPath"], "/workspace");
+        assert_eq!(parsed[0]["storageId"], "sid-a");
         assert_eq!(parsed[1]["name"], "art-b");
         assert_eq!(parsed[1]["mountPath"], "/data");
+        assert_eq!(parsed[1]["storageId"], "sid-b");
     }
 
     #[test]
@@ -2206,6 +2218,7 @@ mod tests {
                 archive_url: None,
                 cached: false,
                 vas_storage_name: "memory".into(),
+                vas_storage_id: String::new(),
                 vas_version_id: "v2".into(),
             }],
             cleanup_paths: vec![],
@@ -2998,6 +3011,7 @@ mod tests {
             archive_url: Some(url.into()),
             cached: false,
             vas_storage_name: name.into(),
+            vas_storage_id: String::new(),
             vas_version_id: ver.into(),
         }
     }
@@ -3120,6 +3134,7 @@ mod tests {
             archive_url: Some("https://s3/a-v2".into()),
             cached: false,
             vas_storage_name: "art-a".into(),
+            vas_storage_id: String::new(),
             vas_version_id: "v2".into(),
         };
         let art_b = ArtifactEntry {
@@ -3127,6 +3142,7 @@ mod tests {
             archive_url: Some("https://s3/b-v1".into()),
             cached: false,
             vas_storage_name: "art-b".into(),
+            vas_storage_id: String::new(),
             vas_version_id: "v1".into(),
         };
         let manifest = StorageManifest {
@@ -3283,6 +3299,7 @@ mod tests {
                 archive_url: None, // API returned null
                 cached: false,
                 vas_storage_name: "my-art".into(),
+                vas_storage_id: String::new(),
                 vas_version_id: "v2".into(),
             }],
             cleanup_paths: vec![],

@@ -92,8 +92,8 @@ static POST_RESULT_SIGKILL_GRACE: LazyLock<u64> = LazyLock::new(|| {
 // Artifacts (multi-mount)
 //
 // The runner emits a single `VM0_ARTIFACTS` env var containing a JSON array
-// of `{name, mountPath, versionId}` entries — one per artifact mounted at
-// boot. If the env var is unset or empty, there are no artifacts.
+// of `{name, mountPath, storageId, versionId}` entries — one per artifact
+// mounted at boot. If the env var is unset or empty, there are no artifacts.
 // ---------------------------------------------------------------------------
 
 #[derive(Clone, Debug, serde::Deserialize)]
@@ -101,6 +101,7 @@ static POST_RESULT_SIGKILL_GRACE: LazyLock<u64> = LazyLock::new(|| {
 pub struct ArtifactEnv {
     pub name: String,
     pub mount_path: String,
+    pub storage_id: String,
     pub version_id: String,
 }
 

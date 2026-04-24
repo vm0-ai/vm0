@@ -190,11 +190,12 @@ async function resolveVersion(
   storageType: "volume" | "artifact",
   version: string,
   userId: string,
-): Promise<{ versionId: string; s3Key: string }> {
+): Promise<{ versionId: string; s3Key: string; storageId: string }> {
   if (version === "latest") {
     // Fetch storage + HEAD version in a single JOIN query
     const [result] = await globalThis.services.db
       .select({
+        storageId: storages.id,
         headVersionId: storages.headVersionId,
         versionId: storageVersions.id,
         s3Key: storageVersions.s3Key,
@@ -223,7 +224,11 @@ async function resolveVersion(
       throw new Error(`Storage "${storageName}" HEAD version not found`);
     }
 
-    return { versionId: result.versionId, s3Key: result.s3Key };
+    return {
+      versionId: result.versionId,
+      s3Key: result.s3Key,
+      storageId: result.storageId,
+    };
   }
 
   // For non-latest versions, need storage ID first for prefix resolution
@@ -262,7 +267,11 @@ async function resolveVersion(
     throw new Error(result.error);
   }
 
-  return { versionId: result.version.id, s3Key: result.version.s3Key };
+  return {
+    versionId: result.version.id,
+    s3Key: result.version.s3Key,
+    storageId: dbStorage.id,
+  };
 }
 
 interface StorageLookup {
@@ -288,7 +297,9 @@ function lookupKey(
  */
 async function batchResolveLatestVersions(
   lookups: StorageLookup[],
-): Promise<Map<string, { versionId: string; s3Key: string }>> {
+): Promise<
+  Map<string, { versionId: string; s3Key: string; storageId: string }>
+> {
   if (lookups.length === 0) return new Map();
 
   const tuples = lookups.map((l) => {
@@ -301,6 +312,7 @@ async function batchResolveLatestVersions(
       userId: storages.userId,
       name: storages.name,
       type: storages.type,
+      storageId: storages.id,
       versionId: storageVersions.id,
       s3Key: storageVersions.s3Key,
     })
@@ -310,12 +322,16 @@ async function batchResolveLatestVersions(
       sql`(${storages.orgId}, ${storages.userId}, ${storages.name}, ${storages.type}) IN (${sql.join(tuples, sql`, `)})`,
     );
 
-  const result = new Map<string, { versionId: string; s3Key: string }>();
+  const result = new Map<
+    string,
+    { versionId: string; s3Key: string; storageId: string }
+  >();
   for (const row of rows) {
     if (row.versionId && row.s3Key) {
       result.set(lookupKey(row.orgId, row.userId, row.name, row.type), {
         versionId: row.versionId,
         s3Key: row.s3Key,
+        storageId: row.storageId,
       });
     }
   }
@@ -388,7 +404,10 @@ async function resolveAdditionalVolume(
  */
 async function resolveArtifactEntry(
   artifactSource: ResolvedArtifact,
-  allResults: Map<string, { versionId: string; s3Key: string }>,
+  allResults: Map<
+    string,
+    { versionId: string; s3Key: string; storageId: string }
+  >,
   runtimeClerkOrgId: string,
   userId: string,
   bucketName: string,
@@ -396,6 +415,7 @@ async function resolveArtifactEntry(
   const isLatest = artifactSource.vasVersion === "latest";
   let versionId: string;
   let s3Key: string;
+  let storageId: string;
 
   if (isLatest) {
     const key = lookupKey(
@@ -412,6 +432,7 @@ async function resolveArtifactEntry(
     }
     versionId = resolved.versionId;
     s3Key = resolved.s3Key;
+    storageId = resolved.storageId;
   } else {
     const resolved = await resolveVersion(
       runtimeClerkOrgId,
@@ -422,6 +443,7 @@ async function resolveArtifactEntry(
     );
     versionId = resolved.versionId;
     s3Key = resolved.s3Key;
+    storageId = resolved.storageId;
   }
 
   const archiveKey = `${s3Key}/archive.tar.gz`;
@@ -436,6 +458,7 @@ async function resolveArtifactEntry(
   return {
     mountPath: artifactSource.mountPath,
     vasStorageName: artifactSource.vasStorageName,
+    vasStorageId: storageId,
     vasVersionId: versionId,
     archiveUrl,
     manifestUrl,
@@ -656,7 +679,9 @@ async function executeBatchResolution(
   runtimeClerkOrgId: string,
   userId: string,
   resolvedArtifacts: ResolvedArtifact[],
-): Promise<Map<string, { versionId: string; s3Key: string }>> {
+): Promise<
+  Map<string, { versionId: string; s3Key: string; storageId: string }>
+> {
   // Phase 1: System org batch (system compose volumes + system additional volumes)
   const systemLookups: StorageLookup[] = [
     ...partitioned.latestSystemComposeVolumes.map((v) => {
@@ -812,10 +837,13 @@ async function buildStorageEntry(
  * Look up a volume result, trying primary key first, then fallback key.
  */
 function lookupWithFallback(
-  allResults: Map<string, { versionId: string; s3Key: string }>,
+  allResults: Map<
+    string,
+    { versionId: string; s3Key: string; storageId: string }
+  >,
   primaryKey: string,
   fallbackKey: string,
-): { versionId: string; s3Key: string } | undefined {
+): { versionId: string; s3Key: string; storageId: string } | undefined {
   return allResults.get(primaryKey) ?? allResults.get(fallbackKey);
 }
 
@@ -823,7 +851,10 @@ function lookupWithFallback(
  * Build storage manifest from batch results and individually-resolved entries.
  */
 async function buildManifestFromResults(
-  allResults: Map<string, { versionId: string; s3Key: string }>,
+  allResults: Map<
+    string,
+    { versionId: string; s3Key: string; storageId: string }
+  >,
   partitioned: PartitionedVolumes,
   agentClerkOrgId: string,
   runtimeClerkOrgId: string,
