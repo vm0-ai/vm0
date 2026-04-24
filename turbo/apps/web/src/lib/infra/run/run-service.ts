@@ -345,18 +345,9 @@ export async function buildAndDispatchRun(opts: {
         op: "api_step_validate_and_insert",
         ms: timings.transaction - timings.authorize,
       },
-      {
-        op: "api_step_callbacks_and_token",
-        ms: timings.token - timings.transaction,
-      },
-      // Split of api_step_callbacks_and_token into 3 diagnostic spans to
-      // isolate the Vercel after() scheduling gap from Phase-1 residual work
-      // and Phase-2 real work. Only the chat route stamps both anchors; other
-      // callers (telegram, slack, email, github, schedule, voice-chat) leave
-      // them undefined, and the split is skipped. The back-compat parent span
-      // above continues to emit unchanged for ~1 release cycle — once the
-      // three below are confirmed populated in Axiom, the parent (and this
-      // comment) can be removed in a follow-up PR.
+      // Only the chat route stamps both anchors; other callers (telegram,
+      // slack, email, github, schedule, voice-chat) leave them undefined, and
+      // the split is skipped.
       ...(timings.responseReady !== undefined &&
       timings.dispatchStart !== undefined
         ? [
@@ -439,10 +430,9 @@ export interface CreateRunRecordResult {
   transactionTime: number;
   /**
    * Stamped by the route handler via CreateZeroRunResult.markResponseReady()
-   * right before returning HTTP 201. Used by the instrumentation split of
-   * api_step_callbacks_and_token into Phase-1 residual / after()-scheduling /
-   * Phase-2 spans. Undefined on non-chat triggers that don't participate in
-   * the marker protocol.
+   * right before returning HTTP 201. Anchors the Phase-1 residual /
+   * after()-scheduling / Phase-2 diagnostic span split. Undefined on non-chat
+   * triggers that don't participate in the marker protocol.
    */
   responseReadyAt?: number;
 }
