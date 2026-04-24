@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.26.7](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.26.6...sandbox-fc-v0.26.7) (2026-04-24)
+
+
+### Refactoring
+
+* **sandbox-fc:** trim verbose panic boilerplate in api tests ([#10955](https://github.com/vm0-ai/vm0/issues/10955)) ([170ddde](https://github.com/vm0-ai/vm0/commit/170ddde1ffd2d503c679e33f8876a60f92899b4d))
+
 ## [0.26.6](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.26.5...sandbox-fc-v0.26.6) (2026-04-23)
 
 
