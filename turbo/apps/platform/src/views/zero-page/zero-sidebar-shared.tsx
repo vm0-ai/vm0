@@ -1,5 +1,5 @@
 import { useLastResolved } from "ccstate-react";
-import { FeatureSwitchKey } from "@vm0/core";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { agents$ } from "../../signals/agent.ts";
 import { currentChatAgentDisplayName$ } from "../../signals/agent-chat.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";

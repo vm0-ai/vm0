@@ -16,17 +16,18 @@ import type { AgentComposeYaml } from "../agent-compose/types";
 import { prepareForExecution } from "./context/execution-preparer";
 import { executeRunnerJob } from "./executors/runner-executor";
 import type { ExecutorResult, PreparedContext } from "./executors/types";
-import type { ExecutionContext, DispatchTimings } from "./types";
+import type {
+  ContextArtifact,
+  ExecutionContext,
+  DispatchTimings,
+} from "./types";
 import { recordSandboxOperation } from "../metrics";
 
 import { encryptSecretValue } from "../../shared/crypto/secrets-encryption";
-import {
-  type OrgTier,
-  type RunStatus,
-  type GetRunResponse,
-  type FirewallPolicies,
-  type ConnectorType,
-} from "@vm0/core";
+import { type RunStatus, type GetRunResponse } from "@vm0/core/contracts/runs";
+import type { OrgTier } from "@vm0/core/contracts/orgs";
+import type { FirewallPolicies } from "@vm0/core/contracts/firewalls";
+import type { ConnectorType } from "@vm0/core/contracts/connectors";
 import { publishCancelNotification } from "../realtime/client";
 import type { CancelRunResult } from "../../zero/zero-run-cancel";
 
@@ -101,9 +102,6 @@ export interface CreateRunParams {
   conversationId?: string;
   vars?: Record<string, string>;
   secrets?: Record<string, string>;
-  artifactName?: string;
-  artifactVersion?: string;
-  memoryName?: string;
   volumeVersions?: Record<string, string>;
   callbacks?: Array<{ url: string; secret: string; payload: unknown }>;
   resumedFromCheckpointId?: string;
@@ -432,8 +430,11 @@ interface InsertRunParams {
   }>;
   resumedFromCheckpointId?: string;
   sessionId?: string;
-  artifactName?: string;
-  memoryName?: string;
+  /**
+   * Seed for agent_sessions.artifacts on new runs. Unused when sessionId
+   * is provided (existing session row is reused).
+   */
+  artifacts?: ContextArtifact[];
 }
 
 /**
@@ -457,8 +458,7 @@ export async function insertRunRecord(
         userId: params.userId,
         orgId: params.orgId,
         agentComposeId: params.agentComposeId,
-        artifactName: params.artifactName,
-        memoryName: params.memoryName,
+        artifacts: params.artifacts ?? [],
         conversationId: null,
       })
       .returning({ id: agentSessions.id });

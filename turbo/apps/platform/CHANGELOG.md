@@ -1,5 +1,147 @@
 # Changelog
 
+## [0.291.0](https://github.com/vm0-ai/vm0/compare/app-v0.290.0...app-v0.291.0) (2026-04-24)
+
+
+### Features
+
+* classify built-in connectors with ai-first grouping ([#10838](https://github.com/vm0-ai/vm0/issues/10838)) ([bd3e2a3](https://github.com/vm0-ai/vm0/commit/bd3e2a3d5d525bbe872723fe122fbd9ddf345a8f))
+
+
+### Bug Fixes
+
+* redirect missing agent routes to default agent ([#10942](https://github.com/vm0-ai/vm0/issues/10942)) ([9442bf0](https://github.com/vm0-ai/vm0/commit/9442bf08d0ae97a05ab5be4221f3277a7decdfe9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.232.0
+
+## [0.290.0](https://github.com/vm0-ai/vm0/compare/app-v0.289.0...app-v0.290.0) (2026-04-24)
+
+
+### Features
+
+* add browser-use connector ([#10922](https://github.com/vm0-ai/vm0/issues/10922)) ([9a4edc4](https://github.com/vm0-ai/vm0/commit/9a4edc45e87e7863d5d2bfa79d522938b4703aa8))
+* mobile header unread badge for ended threads ([#10926](https://github.com/vm0-ai/vm0/issues/10926)) ([091b3e0](https://github.com/vm0-ai/vm0/commit/091b3e05af3f662c1069bd8c44fd007c14853619))
+* **platform:** improve chat document previews ([#10940](https://github.com/vm0-ai/vm0/issues/10940)) ([fe836c8](https://github.com/vm0-ai/vm0/commit/fe836c852bafc7325eb2fd2b094371d766d97271))
+
+
+### Bug Fixes
+
+* **platform:** remember last used agent on web home ([#10846](https://github.com/vm0-ai/vm0/issues/10846)) ([e3d7908](https://github.com/vm0-ai/vm0/commit/e3d790875428ecf6d3edf84e470fe8a8a80407c3))
+* **platform:** use fallback json parsing in voice chat session ([#10907](https://github.com/vm0-ai/vm0/issues/10907)) ([3865a42](https://github.com/vm0-ai/vm0/commit/3865a420d1d01dc1b4d366cf552621ee59a516bb))
+* route voice input quota upsell to the Compare plans modal ([#10807](https://github.com/vm0-ai/vm0/issues/10807)) ([#10814](https://github.com/vm0-ai/vm0/issues/10814)) ([5cae762](https://github.com/vm0-ai/vm0/commit/5cae7625a282e0a66cb9f24a3353079991b3fbca))
+* **zero:** prevent sidebar chat section flicker when agent id reloads ([#10929](https://github.com/vm0-ai/vm0/issues/10929)) ([6185126](https://github.com/vm0-ai/vm0/commit/6185126ce8a08dddd80a3693e62664cd7c2f2331))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.231.0
+
+## [0.289.0](https://github.com/vm0-ai/vm0/compare/app-v0.288.1...app-v0.289.0) (2026-04-23)
+
+
+### Features
+
+* gate Zapier connector behind ZapierConnector feature switch ([#10871](https://github.com/vm0-ai/vm0/issues/10871)) ([fc602ff](https://github.com/vm0-ai/vm0/commit/fc602ffa85e3a8ec3fb10943e714c8264a80098f))
+* gate Zapier use case behind ZapierConnector feature switch ([#10890](https://github.com/vm0-ai/vm0/issues/10890)) ([367f48a](https://github.com/vm0-ai/vm0/commit/367f48acc02a0da335ef7b9a8d7fbb7d000f156a))
+
+
+### Bug Fixes
+
+* disable reasoner task backfill in voice chat ([#10889](https://github.com/vm0-ai/vm0/issues/10889)) ([174da7b](https://github.com/vm0-ai/vm0/commit/174da7b8cba74e8bedcf95533e278bb443f2342d))
+* lock model provider picker once thread has messages ([#10900](https://github.com/vm0-ai/vm0/issues/10900)) ([1550e48](https://github.com/vm0-ai/vm0/commit/1550e48cf4312360aa0e4d9de5096105fc07c572))
+* **voice-chat:** recover mic on track ended event for iOS notification center and screen auto-dim ([#10888](https://github.com/vm0-ai/vm0/issues/10888)) ([70bcbfc](https://github.com/vm0-ai/vm0/commit/70bcbfce26bce0c50aa396ddceaddf1a0cc7902f))
+
+
+### Refactoring
+
+* drop voice-chat-candidate prefix in platform signals and rename ably topic ([#10885](https://github.com/vm0-ai/vm0/issues/10885)) ([391b756](https://github.com/vm0-ai/vm0/commit/391b7561cd40b50e1d542ef278333724e21e88a7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.230.0
+
+## [0.288.1](https://github.com/vm0-ai/vm0/compare/app-v0.288.0...app-v0.288.1) (2026-04-23)
+
+
+### Refactoring
+
+* remove turbo core root imports ([#10820](https://github.com/vm0-ai/vm0/issues/10820)) ([ec85609](https://github.com/vm0-ai/vm0/commit/ec8560930db70e5c1f853961ff51606e601da875))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.229.4
+
+## [0.288.0](https://github.com/vm0-ai/vm0/compare/app-v0.287.1...app-v0.288.0) (2026-04-23)
+
+
+### Features
+
+* **pricing:** add voice input across website and in-app Compare plans ([#10813](https://github.com/vm0-ai/vm0/issues/10813)) ([c38e057](https://github.com/vm0-ai/vm0/commit/c38e057579af77832f56d3975ef8fb181f2e8e85))
+
+
+### Bug Fixes
+
+* harden speakerphone barge-in in voice chat candidate ([#10845](https://github.com/vm0-ai/vm0/issues/10845)) ([fca73af](https://github.com/vm0-ai/vm0/commit/fca73af116b1f57a2487edd2c7aff47e408c0b33))
+* **platform:** make chat image downloads work from lightbox ([#10840](https://github.com/vm0-ai/vm0/issues/10840)) ([143449c](https://github.com/vm0-ai/vm0/commit/143449cb7b63d41ecfc5540c34045754f0e44932))
+
+## [0.287.1](https://github.com/vm0-ai/vm0/compare/app-v0.287.0...app-v0.287.1) (2026-04-23)
+
+
+### Refactoring
+
+* **platform:** show org name and campaign code on redeem page ([#10788](https://github.com/vm0-ai/vm0/issues/10788)) ([2cb2857](https://github.com/vm0-ai/vm0/commit/2cb2857c3422e7844d5cf70734217d9e3b580905))
+
+## [0.287.0](https://github.com/vm0-ai/vm0/compare/app-v0.286.4...app-v0.287.0) (2026-04-23)
+
+
+### Features
+
+* add tooltip to attachment upload button ([#10827](https://github.com/vm0-ai/vm0/issues/10827)) ([7246574](https://github.com/vm0-ai/vm0/commit/72465742ce94f00af185f4aa45ca9e1a55907f57))
+
+
+### Bug Fixes
+
+* open queue drawer via URL param and remove /queue route ([#10684](https://github.com/vm0-ai/vm0/issues/10684)) ([f547217](https://github.com/vm0-ai/vm0/commit/f547217cf19e0a66463e93d6db57f918968b8a41))
+
+
+### Refactoring
+
+* **platform:** improve model picker trigger consistency in composer ([#10821](https://github.com/vm0-ai/vm0/issues/10821)) ([71e5d1c](https://github.com/vm0-ai/vm0/commit/71e5d1c92538470efa6dc08ccf707d844b919a49))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.229.3
+
+## [0.286.4](https://github.com/vm0-ai/vm0/compare/app-v0.286.3...app-v0.286.4) (2026-04-23)
+
+
+### Bug Fixes
+
+* **voice-chat-candidate:** adaptive echo cancellation and server-side session config ([#10795](https://github.com/vm0-ai/vm0/issues/10795)) ([2782e42](https://github.com/vm0-ai/vm0/commit/2782e42e8a562a4c20ecebbd5630de0f6ae21cf3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.229.2
+
 ## [0.286.3](https://github.com/vm0-ai/vm0/compare/app-v0.286.2...app-v0.286.3) (2026-04-23)
 
 

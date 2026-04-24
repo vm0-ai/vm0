@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const gamma = {
   gamma: {
     label: "Gamma",
+    category: "marketing-content-growth",
     environmentMapping: {
       GAMMA_TOKEN: "$secrets.GAMMA_TOKEN",
     },

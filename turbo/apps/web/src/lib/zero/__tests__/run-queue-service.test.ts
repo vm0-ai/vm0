@@ -25,7 +25,11 @@ import {
   cleanupExpiredQueueEntries,
   dispatchQueuedZeroRun,
 } from "../zero-run-queue-service";
-import { seedTestRun } from "../../../__tests__/db-test-seeders/runs";
+import {
+  seedTestRun,
+  insertTestQueueEntry,
+} from "../../../__tests__/db-test-seeders/runs";
+import { insertTestChatThread } from "../../../__tests__/db-test-seeders/agents";
 import { mockAblyPublish } from "../../../__tests__/ably-mock";
 
 const context = testContext();
@@ -134,6 +138,40 @@ describe("run-queue-service", () => {
       // Queue entry should be deleted
       const queueEntry = await findTestQueueEntry(queued.runId);
       expect(queueEntry).toBeUndefined();
+    });
+
+    it("publishes chatThreadRunUpdated after dequeue so the chat UI can swap 'Waiting in queue' for the live thinking indicator", async () => {
+      vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
+      reloadEnv();
+
+      // Seed a thread and a queued run that is linked to it through
+      // zero_runs.chat_thread_id (this is what publishChatThreadRunUpdated
+      // looks up to route the signal). seedTestRun creates both agent_runs
+      // and zero_runs in one shot; we then manually attach a queue entry
+      // so drainOrgQueue can pick it up. An occupying "running" run keeps
+      // the single concurrency slot busy until we free it.
+      const threadId = await insertTestChatThread(
+        user.userId,
+        composeId,
+        "queue test",
+      );
+      await seedTestRun(user.userId, composeId, { prompt: "Running" });
+      const { runId: queuedRunId } = await seedTestRun(user.userId, composeId, {
+        prompt: "Queued",
+        status: "queued",
+        chatThreadId: threadId,
+      });
+      await insertTestQueueEntry(queuedRunId);
+
+      await markRunningRunsAsCompleted(user.userId);
+
+      mockAblyPublish.mockClear();
+      await drainOrgQueue(user.orgId, dispatchQueuedZeroRun);
+
+      expect(mockAblyPublish).toHaveBeenCalledWith(
+        `chatThreadRunUpdated:${threadId}`,
+        null,
+      );
     });
 
     it("should register callbacks for queued zero runs on dispatch", async () => {

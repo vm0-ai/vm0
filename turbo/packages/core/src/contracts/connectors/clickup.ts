@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const clickup = {
   clickup: {
     label: "ClickUp",
+    category: "engineering-team-execution",
     environmentMapping: {
       CLICKUP_TOKEN: "$secrets.CLICKUP_TOKEN",
     },

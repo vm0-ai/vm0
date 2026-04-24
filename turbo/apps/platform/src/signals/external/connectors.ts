@@ -2,9 +2,9 @@ import { command, computed, state } from "ccstate";
 import {
   zeroConnectorsMainContract,
   zeroConnectorsByTypeContract,
-  type ConnectorListResponse,
-  type ConnectorType,
-} from "@vm0/core";
+} from "@vm0/core/contracts/zero-connectors";
+import type { ConnectorType } from "@vm0/core/contracts/connectors";
+import type { ConnectorListResponse } from "@vm0/core/contracts/connector-schemas";
 import { zeroClient$ } from "../api-client";
 import { accept } from "../../lib/accept.ts";
 
@@ -41,7 +41,13 @@ export const deleteConnector$ = command(
   async ({ get, set }, type: ConnectorType, _signal: AbortSignal) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroConnectorsByTypeContract);
-    await accept(client.delete({ params: { type } }), [204]);
+    await accept(
+      client.delete({
+        params: { type },
+        fetchOptions: { signal: _signal },
+      }),
+      [204],
+    );
 
     set(internalReloadConnectors$, (x) => {
       return x + 1;

@@ -4,6 +4,7 @@ import type { ConnectorConfig } from "../connectors";
 export const figma = {
   figma: {
     label: "Figma",
+    category: "docs-files-knowledge",
     environmentMapping: {
       FIGMA_TOKEN: "$secrets.FIGMA_ACCESS_TOKEN",
     },

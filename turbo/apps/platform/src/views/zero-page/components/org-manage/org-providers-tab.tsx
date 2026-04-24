@@ -2,7 +2,10 @@
 // oxlint-disable max-lines-per-function
 import { useGet, useSet, useLoadable } from "ccstate-react";
 import { IconPlus, IconDotsVertical } from "@tabler/icons-react";
-import { MODEL_PROVIDER_TYPES, type ModelProviderType } from "@vm0/core";
+import {
+  MODEL_PROVIDER_TYPES,
+  type ModelProviderType,
+} from "@vm0/core/contracts/model-providers";
 import {
   cn,
   Button,

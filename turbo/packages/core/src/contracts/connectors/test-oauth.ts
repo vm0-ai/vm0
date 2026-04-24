@@ -4,6 +4,7 @@ import type { ConnectorConfig } from "../connectors";
 export const testOauth = {
   "test-oauth": {
     label: "Test OAuth (internal)",
+    category: "data-automation-infrastructure",
     featureFlag: FeatureSwitchKey.TestOauthConnector,
     environmentMapping: {
       TEST_OAUTH_TOKEN: "$secrets.TEST_OAUTH_ACCESS_TOKEN",

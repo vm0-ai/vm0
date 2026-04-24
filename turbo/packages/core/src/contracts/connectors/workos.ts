@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const workos = {
   workos: {
     label: "WorkOS",
+    category: "engineering-team-execution",
     helpText:
       "Connect to WorkOS for enterprise SSO, SCIM directory sync, RBAC fine-grained authorization, and audit log management.",
     environmentMapping: { WORKOS_TOKEN: "$secrets.WORKOS_TOKEN" },

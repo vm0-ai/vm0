@@ -391,6 +391,59 @@ describe("zero org switcher - pending invitations badge hidden when none (SIDEBA
   });
 });
 
+describe("zero org switcher - sidebar re-renders on Clerk listener event", () => {
+  it("updates the sidebar avatar and name when Clerk mutates the active org in place", async () => {
+    // Reproduces the bug fixed by this PR: Clerk's SDK mutates
+    // `clerk.organization.imageUrl` in place after `reload()`, and
+    // components reading the Clerk object directly never re-rendered.
+    // The fix routes reads through `currentOrgInfo$`, which re-emits a
+    // fresh snapshot on every Clerk listener event.
+    detachedSetupPage({
+      context,
+      path: "/",
+      org: {
+        activeOrg: {
+          id: "org_1",
+          name: "Original Name",
+          imageUrl: "https://example.com/original.png",
+          hasImage: true,
+        },
+        memberships: [{ id: "org_1" }],
+      },
+    });
+
+    // Initial render uses the original name + avatar
+    const initialImg = await waitFor(() => {
+      const img = screen.getByAltText("Original Name") as HTMLImageElement;
+      expect(img).toBeInTheDocument();
+      return img;
+    });
+    expect(initialImg.src).toBe("https://example.com/original.png");
+
+    // Simulate Clerk's in-place mutation after `organization.reload()`
+    mockOrganization({
+      activeOrg: {
+        id: "org_1",
+        name: "Renamed Workspace",
+        imageUrl: "https://example.com/updated.png",
+        hasImage: true,
+      },
+      memberships: [{ id: "org_1" }],
+    });
+    fireClerkListeners();
+
+    // Sidebar must reflect both the new name and the new logo without a page reload
+    await waitFor(() => {
+      const updatedImg = screen.getByAltText(
+        "Renamed Workspace",
+      ) as HTMLImageElement;
+      expect(updatedImg).toBeInTheDocument();
+      expect(updatedImg.src).toBe("https://example.com/updated.png");
+    });
+    expect(screen.getByText("Renamed Workspace")).toBeInTheDocument();
+  });
+});
+
 describe("zero org switcher - create workspace visibility based on createOrganizationEnabled", () => {
   it("hides create workspace when createOrganizationEnabled is false", async () => {
     detachedSetupPage({

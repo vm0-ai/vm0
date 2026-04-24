@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const monday = {
   monday: {
     label: "Monday.com",
+    category: "engineering-team-execution",
     environmentMapping: {
       MONDAY_TOKEN: "$secrets.MONDAY_ACCESS_TOKEN",
     },

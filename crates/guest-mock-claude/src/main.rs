@@ -6,9 +6,18 @@
 //! Usage: mock-claude [options] <prompt>
 //!
 //! Special test prefixes:
-//!   @fail:<message>  - Output message to stderr and exit with code 1
-//!   @stuck-tool      - Emit WebFetch tool_use then hang (test stuck-tool watchdog)
-//!   @orphan-pipe     - Emit events, spawn child holding stdout, then exit
+//!   @fail:<message>           - Output message to stderr and exit with code 1
+//!   @stuck-tool               - Emit WebFetch tool_use then hang (test stuck-tool watchdog)
+//!   @orphan-pipe              - Emit events, spawn child holding stdout, then exit
+//!   @hang-after-result        - Emit result event, then hang the process
+//!                               (SIGTERM kills it → exits with 143; tests
+//!                               the SigtermPending→Done reap path)
+//!   @hang-after-result-deaf   - Same, but ignores SIGTERM so only SIGKILL
+//!                               can terminate it; tests the
+//!                               SigkillPending→Done escalation path
+//!   @exit-after-result        - Emit result event, exit(0) immediately;
+//!                               tests that reap stays no-op on the
+//!                               happy path
 
 use serde_json::{Value, json};
 use std::io::Write;
@@ -122,6 +131,49 @@ fn build_session_history_path(session_id: &str, cwd: &str, home: &str) -> Option
 fn create_session_history(session_id: &str, cwd: &str) -> Option<String> {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/home/user".to_string());
     build_session_history_path(session_id, cwd, &home)
+}
+
+/// Emit the init + result JSONL pair that the `*-after-result` test
+/// prefixes share, flush stdout so guest-agent sees them, and write
+/// the session history checkpoint file. Caller decides what happens
+/// after (hang / exit / ignore SIGTERM).
+fn emit_post_result_pair() {
+    let session_id = generate_session_id();
+    let cwd = std::env::current_dir()
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|_| "/".to_string());
+
+    let init_event = json!({
+        "type": "system",
+        "subtype": "init",
+        "cwd": cwd,
+        "session_id": session_id,
+        "tools": ["Bash"],
+        "model": "mock-claude"
+    });
+    println!("{init_event}");
+
+    let result_event = json!({
+        "type": "result",
+        "subtype": "success",
+        "session_id": session_id,
+        "is_error": false,
+        "duration_ms": 100,
+        "num_turns": 1,
+        "result": "Done.",
+        "total_cost_usd": 0,
+        "usage": {"input_tokens": 0, "output_tokens": 0}
+    });
+    println!("{result_event}");
+
+    if let Some(path) = create_session_history(&session_id, &cwd)
+        && let Ok(mut file) = std::fs::File::create(&path)
+    {
+        let _ = writeln!(file, "{init_event}");
+        let _ = writeln!(file, "{result_event}");
+    }
+
+    let _ = std::io::stdout().flush();
 }
 
 /// Execute prompt in text mode: inherited stdio, propagate exit code.
@@ -358,6 +410,48 @@ fn main() -> ExitCode {
             // Spawn a child that inherits stdout and sleeps forever.
             // This keeps the stdout pipe open after this process exits.
             let _ = Command::new("sleep").arg("3600").spawn();
+        }
+        return ExitCode::SUCCESS;
+    }
+
+    // The three `*-after-result` prefixes all emit the same init+result
+    // pair; only what happens *after* differs. Dispatch by order: the
+    // more-specific `-deaf` / `@exit-` must match before the generic
+    // `@hang-after-result`.
+    //
+    // See: https://github.com/vm0-ai/vm0/issues/10879
+    if parsed.prompt.starts_with("@hang-after-result-deaf") {
+        if parsed.output_format == "stream-json" {
+            emit_post_result_pair();
+            // Ignore SIGTERM so only SIGKILL can terminate this process.
+            // Exercises the SigtermPending → SigkillPending → Done
+            // escalation branch of the reap FSM.
+            // SAFETY: signal(SIGTERM, SIG_IGN) is async-signal-safe and
+            // has no data-race concerns at program start.
+            unsafe {
+                libc::signal(libc::SIGTERM, libc::SIG_IGN);
+            }
+            std::thread::sleep(std::time::Duration::from_secs(3600));
+        }
+        return ExitCode::SUCCESS;
+    }
+    if parsed.prompt.starts_with("@exit-after-result") {
+        if parsed.output_format == "stream-json" {
+            emit_post_result_pair();
+            // Exit immediately. Exercises the happy path: guest-agent's
+            // reap gets armed but `child.wait()` fires before any grace
+            // window elapses, so no signal is ever sent.
+        }
+        return ExitCode::SUCCESS;
+    }
+    if parsed.prompt.starts_with("@hang-after-result") {
+        if parsed.output_format == "stream-json" {
+            emit_post_result_pair();
+            // Hang this process forever. guest-agent's post-result reap
+            // SIGTERMs it within POST_RESULT_SIGTERM_GRACE_SECS; the
+            // default SIGTERM handler then exits with 143. Exercises
+            // the SigtermPending → Done path.
+            std::thread::sleep(std::time::Duration::from_secs(3600));
         }
         return ExitCode::SUCCESS;
     }

@@ -12,7 +12,6 @@ import {
   MODEL_PROVIDER_TYPES,
   getAuthMethodsForType,
   getSecretsForAuthMethod,
-  getModelDisplayName,
   getModels,
   getVm0VisibleModels,
   getDefaultModel,
@@ -20,7 +19,8 @@ import {
   allowsCustomModel,
   getCustomModelPlaceholder,
   type ModelProviderType,
-} from "@vm0/core";
+} from "@vm0/core/contracts/model-providers";
+import { getModelDisplayName } from "@vm0/core/model-display-name";
 import {
   getUIDefaultModel,
   getUISecretField,

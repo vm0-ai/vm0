@@ -1,9 +1,7 @@
 import { command, computed, state } from "ccstate";
-import {
-  FeatureSwitchKey,
-  getAllFeatureStates,
-  zeroFeatureSwitchesContract,
-} from "@vm0/core";
+import { getAllFeatureStates } from "@vm0/core/feature-switch";
+import { zeroFeatureSwitchesContract } from "@vm0/core/contracts/zero-feature-switches";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { clerk$, user$ } from "../auth";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
@@ -61,7 +59,13 @@ export const setFeatureSwitch$ = command(
     const createClient = get(zeroClient$);
     const client = createClient(zeroFeatureSwitchesContract);
     signal.throwIfAborted();
-    await accept(client.update({ body: { switches: overrides } }), [200]);
+    await accept(
+      client.update({
+        body: { switches: overrides },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
     signal.throwIfAborted();
     set(internalReload$, (v) => {
       return v + 1;
@@ -74,7 +78,7 @@ export const resetFeatureSwitches$ = command(
     const createClient = get(zeroClient$);
     const client = createClient(zeroFeatureSwitchesContract);
     signal.throwIfAborted();
-    await accept(client.delete(), [200]);
+    await accept(client.delete({ fetchOptions: { signal } }), [200]);
     signal.throwIfAborted();
     set(internalReload$, (v) => {
       return v + 1;

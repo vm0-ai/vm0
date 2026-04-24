@@ -86,6 +86,7 @@ def real_flow():
         request_body: bytes | None = None,
         request_headers: http.Headers | None = None,
         request_content_type: str | None = None,
+        request_encoding: str | None = None,
         with_response: bool = True,
         response_status: int = 200,
         response_body: bytes | None = None,
@@ -101,6 +102,8 @@ def real_flow():
             if request_content_type:
                 pairs.insert(0, ("Content-Type", request_content_type))
             req_headers = _headers(*pairs)
+        if request_encoding:
+            req_headers[b"Content-Encoding"] = request_encoding.encode()
         req = tutils.treq(
             scheme=scheme.encode(),
             method=method.encode(),

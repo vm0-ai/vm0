@@ -3,7 +3,7 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../../../../src/lib/ts-rest-handler";
-import { runAgentEventsContract } from "@vm0/core";
+import { runAgentEventsContract } from "@vm0/core/contracts/runs";
 import { initServices } from "../../../../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../../../../src/lib/zero/org/resolve-org";

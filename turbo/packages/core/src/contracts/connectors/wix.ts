@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const wix = {
   wix: {
     label: "Wix",
+    category: "marketing-content-growth",
     environmentMapping: {
       WIX_TOKEN: "$secrets.WIX_TOKEN",
     },

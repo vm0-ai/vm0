@@ -20,7 +20,7 @@ use crate::error::{RunnerError, RunnerResult};
 use crate::http::HttpClient;
 use crate::idle_pool::IdleEntry;
 use crate::kmsg_log;
-use crate::paths::{LogPaths, guest};
+use crate::paths::{HomePaths, LogPaths, guest};
 use crate::proxy::{self, ProxyRegistryHandle};
 use crate::telemetry::JobTelemetry;
 use crate::types::{
@@ -35,6 +35,7 @@ pub struct ExecutorConfig {
     pub http: HttpClient,
     pub log_paths: LogPaths,
     pub ip_log_map: kmsg_log::IpLogMap,
+    pub home: HomePaths,
 }
 
 /// Per-job VM parameters resolved from the profile config.
@@ -69,23 +70,22 @@ pub struct ExecuteOutcome {
 pub async fn execute_job(
     factory: &dyn SandboxFactory,
     context: ExecutionContext,
-    sandbox_id: SandboxId,
+    dispatch: NewSandboxDispatch,
     config: &ExecutorConfig,
     params: &JobParams,
-    reuse_result: SandboxReuseResult,
     cancel: CancellationToken,
 ) -> (ExecuteOutcome, JobTelemetry) {
     let run_id = context.run_id;
     let mut telemetry =
         JobTelemetry::new(config.http.clone(), run_id, context.sandbox_token.clone());
 
-    record_reuse_result(&mut telemetry, reuse_result);
+    record_reuse_result(&mut telemetry, dispatch.reuse_result);
     record_api_latency("api_to_vm_start", &context, &mut telemetry);
 
     let outcome = match execute_new_sandbox(
         factory,
         &context,
-        sandbox_id,
+        dispatch,
         config,
         params,
         &mut telemetry,
@@ -152,8 +152,8 @@ pub async fn execute_job_reuse(
 }
 
 /// Emit a single telemetry event capturing the outcome of the reuse decision.
-/// `Reused` emits `sandbox_reuse_hit`; every miss variant (including
-/// `FeatureDisabled`) emits `sandbox_reuse_miss`. Firing on every job makes
+/// `Reused` emits `sandbox_reuse_hit`; every miss variant emits
+/// `sandbox_reuse_miss`. Firing on every job makes
 /// the reuse success rate queryable in Axiom as
 /// `countif(op_type == "sandbox_reuse_hit") / countif(op_type startswith "sandbox_reuse_")`.
 /// Miss-reason breakdown lives on the `agent_runs.sandbox_reuse_result`
@@ -162,8 +162,7 @@ pub async fn execute_job_reuse(
 fn record_reuse_result(telemetry: &mut JobTelemetry, result: SandboxReuseResult) {
     let action_type = match result {
         SandboxReuseResult::Reused => "sandbox_reuse_hit",
-        SandboxReuseResult::FeatureDisabled
-        | SandboxReuseResult::NoSessionId
+        SandboxReuseResult::NoSessionId
         | SandboxReuseResult::PoolMiss
         | SandboxReuseResult::ProfileMismatch
         | SandboxReuseResult::UnparkFailed => "sandbox_reuse_miss",
@@ -184,18 +183,33 @@ fn record_api_latency(action_type: &str, context: &ExecutionContext, telemetry: 
     }
 }
 
+/// Dispatch inputs for the fresh-create path — the counterpart to
+/// [`IdleEntry`] on the reuse path. Holds the UUID for the new VM and the
+/// categorized reason no idle VM was reused. Both originate in
+/// `cmd/start.rs`; the id becomes the sandbox's identity, the reuse result
+/// is forwarded to the guest for /complete metadata.
+#[derive(Clone, Copy)]
+pub struct NewSandboxDispatch {
+    pub id: SandboxId,
+    pub reuse_result: SandboxReuseResult,
+}
+
 /// Create a new sandbox, run the job, and return the sandbox for possible reuse.
 ///
 /// The caller is responsible for stop + destroy (or parking in the idle pool).
 async fn execute_new_sandbox(
     factory: &dyn SandboxFactory,
     context: &ExecutionContext,
-    sandbox_id: SandboxId,
+    dispatch: NewSandboxDispatch,
     config: &ExecutorConfig,
     params: &JobParams,
     telemetry: &mut JobTelemetry,
     cancel: CancellationToken,
 ) -> RunnerResult<ExecuteOutcome> {
+    let NewSandboxDispatch {
+        id: sandbox_id,
+        reuse_result,
+    } = dispatch;
     let sandbox_config = SandboxConfig {
         id: sandbox_id,
         resources: sandbox::ResourceLimits {
@@ -233,8 +247,11 @@ async fn execute_new_sandbox(
         sandbox.as_ref(),
         context,
         config,
-        params.restore_guest_state,
-        None,
+        RunStart {
+            restore_guest_state: params.restore_guest_state,
+            reuse_result,
+            prev_storage: None,
+        },
         telemetry,
         cancel,
     )
@@ -295,8 +312,11 @@ async fn execute_reused_sandbox(
         sandbox.as_ref(),
         context,
         config,
-        true,
-        Some(prev_storage),
+        RunStart {
+            restore_guest_state: true,
+            reuse_result: SandboxReuseResult::Reused,
+            prev_storage: Some(prev_storage),
+        },
         telemetry,
         cancel,
     )
@@ -383,12 +403,21 @@ async fn post_job_cleanup(
     unregister_proxy(config, context, source_ip).await;
 }
 
+/// How this run is entering its sandbox. Each field feeds a distinct step:
+/// `restore_guest_state` gates clock/entropy repair, `prev_storage` enables
+/// the download-skip optimization on reuse, and `reuse_result` is forwarded
+/// to the guest for /complete metadata.
+struct RunStart<'a> {
+    restore_guest_state: bool,
+    reuse_result: SandboxReuseResult,
+    prev_storage: Option<&'a crate::idle_pool::StorageFingerprints>,
+}
+
 async fn run_in_sandbox(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
     config: &ExecutorConfig,
-    restore_guest_state: bool,
-    prev_storage: Option<&crate::idle_pool::StorageFingerprints>,
+    start: RunStart<'_>,
     telemetry: &mut JobTelemetry,
     cancel: CancellationToken,
 ) -> RunnerResult<(i32, Option<String>)> {
@@ -400,7 +429,7 @@ async fn run_in_sandbox(
 
     // 1. Fix guest clock and reseed entropy (must happen before HTTPS calls).
     //    Needed after snapshot restore (frozen clock) and after idle reuse (drifted clock).
-    if restore_guest_state {
+    if start.restore_guest_state {
         fix_guest_clock(sandbox).await?;
         reseed_guest_entropy(sandbox).await?;
     }
@@ -410,13 +439,9 @@ async fn run_in_sandbox(
 
     // 3. Download storages (skipping entries unchanged since the previous turn)
     if let Some(manifest) = &context.storage_manifest {
-        let filtered;
-        let effective = match prev_storage {
-            Some(prev) => {
-                filtered = filter_unchanged_storages(manifest, prev);
-                &filtered
-            }
-            None => manifest,
+        let mut effective: StorageManifest = match start.prev_storage {
+            Some(prev) => filter_unchanged_storages(manifest, prev),
+            None => manifest.clone(),
         };
         // Short-circuit: skip the vsock exec if every entry was filtered out
         // and there are no paths to clean up.
@@ -428,7 +453,20 @@ async fn run_in_sandbox(
         }
         let t = Instant::now();
         let result = if has_work {
-            download_storages(sandbox, context, effective, &log_file).await
+            // Populate the runner-side cache first, rewriting eligible entries'
+            // `archive_url` to `file:///tmp/vm0-storage-cache/...` so the guest
+            // reads from its tmpfs instead of hitting R2 per turn.
+            async {
+                crate::storage_cache::populate_cache(
+                    &mut effective,
+                    sandbox,
+                    &config.home,
+                    telemetry,
+                )
+                .await?;
+                download_storages(sandbox, context, &effective, &log_file).await
+            }
+            .await
         } else {
             Ok(())
         };
@@ -457,7 +495,7 @@ async fn run_in_sandbox(
     }
 
     // 5. Build env vars (passed directly via vsock protocol)
-    let env_map = build_env_json(context, &config.api_url);
+    let env_map = build_env_json(context, &config.api_url, sandbox.id(), start.reuse_result);
     let env_pairs: Vec<(String, String)> = env_map.into_iter().collect();
     let env_refs: Vec<(&str, &str)> = env_pairs
         .iter()
@@ -1116,7 +1154,12 @@ fn is_valid_session_id(id: &str) -> bool {
 ///   1. `environment` (user-provided env, includes expanded vars)
 ///   2. `user_timezone` TZ (unless `environment` already sets TZ)
 ///   3. System variables (VM0_*, secrets, etc.) — always win
-fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, String> {
+fn build_env_json(
+    context: &ExecutionContext,
+    api_url: &str,
+    sandbox_id: &str,
+    reuse_result: SandboxReuseResult,
+) -> HashMap<String, String> {
     let mut env = HashMap::new();
 
     // --- User-provided environment ---
@@ -1143,6 +1186,11 @@ fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, 
     env.insert("VM0_API_URL".into(), api_url.into());
     env.insert("VM0_RUN_ID".into(), context.run_id.to_string());
     env.insert("VM0_API_TOKEN".into(), context.sandbox_token.clone());
+    env.insert("VM0_SANDBOX_ID".into(), sandbox_id.into());
+    env.insert(
+        "VM0_SANDBOX_REUSE_RESULT".into(),
+        reuse_result.as_wire().into(),
+    );
     env.insert("VM0_PROMPT".into(), context.prompt.clone());
     if let Some(asp) = &context.append_system_prompt
         && !asp.is_empty()
@@ -1183,8 +1231,13 @@ fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, 
     // Artifacts config (multi-mount).
     //
     // Emit a single `VM0_ARTIFACTS` env var containing a JSON array of
-    // `{name, mountPath, versionId}` objects. Guest-agent parses this on
-    // startup and iterates the list when taking snapshots at run end.
+    // `{name, mountPath, storageId, versionId}` objects. Guest-agent
+    // parses this on startup and iterates the list when taking snapshots
+    // at run end. The shape here must stay lockstep with guest-agent's
+    // `ArtifactEnv` — the two ship as one unit via `include_bytes!`, and
+    // `ArtifactEnv` deserializes strict (no `serde(default)`), so a
+    // field drop here will panic the VM at startup instead of silently
+    // producing empty strings.
     //
     // Empty-list case: do not set the env var at all (matches the prior
     // "unset = no artifact" convention).
@@ -1198,6 +1251,7 @@ fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, 
                 serde_json::json!({
                     "name": a.vas_storage_name,
                     "mountPath": a.mount_path,
+                    "storageId": a.vas_storage_id,
                     "versionId": a.vas_version_id,
                 })
             })
@@ -1275,6 +1329,11 @@ mod tests {
     use sandbox_mock::MockSandboxFactory;
     use std::sync::Arc;
 
+    fn build_env_for_test(ctx: &ExecutionContext, api_url: &str) -> HashMap<String, String> {
+        let sid = SandboxId::new_v4().to_string();
+        build_env_json(ctx, api_url, &sid, SandboxReuseResult::Reused)
+    }
+
     fn minimal_context() -> ExecutionContext {
         ExecutionContext {
             run_id: RunId::nil(),
@@ -1310,19 +1369,44 @@ mod tests {
     #[test]
     fn build_env_json_required_keys() {
         let ctx = minimal_context();
-        let env = build_env_json(&ctx, "https://api.example.com");
+        let env = build_env_for_test(&ctx, "https://api.example.com");
 
         assert_eq!(env.get("VM0_API_URL").unwrap(), "https://api.example.com");
         assert_eq!(env.get("VM0_RUN_ID").unwrap(), &RunId::nil().to_string());
         assert_eq!(env.get("VM0_API_TOKEN").unwrap(), "tok");
         assert_eq!(env.get("VM0_PROMPT").unwrap(), "test prompt");
         assert_eq!(env.get("VM0_WORKING_DIR").unwrap(), "/workspace");
+        // Guest-agent needs these to post /complete with full metadata when
+        // checkpoint lands before VM teardown.
+        assert!(
+            env.get("VM0_SANDBOX_ID")
+                .unwrap()
+                .parse::<uuid::Uuid>()
+                .is_ok()
+        );
+        assert_eq!(env.get("VM0_SANDBOX_REUSE_RESULT").unwrap(), "reused");
+    }
+
+    #[test]
+    fn build_env_json_sandbox_reuse_result_wire_format() {
+        let ctx = minimal_context();
+        let sid = SandboxId::new_v4().to_string();
+        for (variant, expected) in [
+            (SandboxReuseResult::Reused, "reused"),
+            (SandboxReuseResult::NoSessionId, "noSessionId"),
+            (SandboxReuseResult::PoolMiss, "poolMiss"),
+            (SandboxReuseResult::ProfileMismatch, "profileMismatch"),
+            (SandboxReuseResult::UnparkFailed, "unparkFailed"),
+        ] {
+            let env = build_env_json(&ctx, "http://localhost", &sid, variant);
+            assert_eq!(env.get("VM0_SANDBOX_REUSE_RESULT").unwrap(), expected);
+        }
     }
 
     #[test]
     fn build_env_json_empty_cli_agent_type_defaults_to_claude_code() {
         let ctx = minimal_context();
-        let env = build_env_json(&ctx, "http://localhost");
+        let env = build_env_for_test(&ctx, "http://localhost");
         assert_eq!(env.get("CLI_AGENT_TYPE").unwrap(), "claude-code");
     }
 
@@ -1330,7 +1414,7 @@ mod tests {
     fn build_env_json_custom_cli_agent_type() {
         let mut ctx = minimal_context();
         ctx.cli_agent_type = "custom-agent".into();
-        let env = build_env_json(&ctx, "http://localhost");
+        let env = build_env_for_test(&ctx, "http://localhost");
         assert_eq!(env.get("CLI_AGENT_TYPE").unwrap(), "custom-agent");
     }
 
@@ -1350,17 +1434,19 @@ mod tests {
                 archive_url: None,
                 cached: false,
                 vas_storage_name: "my-vol".into(),
+                vas_storage_id: "sid-1".into(),
                 vas_version_id: "v1".into(),
             }],
             cleanup_paths: vec![],
         });
 
-        let env = build_env_json(&ctx, "http://localhost");
+        let env = build_env_for_test(&ctx, "http://localhost");
         let raw = env.get("VM0_ARTIFACTS").expect("VM0_ARTIFACTS must be set");
         let parsed: Vec<serde_json::Value> = serde_json::from_str(raw).unwrap();
         assert_eq!(parsed.len(), 1);
         assert_eq!(parsed[0]["name"], "my-vol");
         assert_eq!(parsed[0]["mountPath"], "/artifacts");
+        assert_eq!(parsed[0]["storageId"], "sid-1");
         assert_eq!(parsed[0]["versionId"], "v1");
         // Legacy singleton env vars must no longer be emitted.
         assert!(!env.contains_key("VM0_ARTIFACT_DRIVER"));
@@ -1380,6 +1466,7 @@ mod tests {
                     archive_url: None,
                     cached: false,
                     vas_storage_name: "art-a".into(),
+                    vas_storage_id: "sid-a".into(),
                     vas_version_id: "v1".into(),
                 },
                 ArtifactEntry {
@@ -1387,20 +1474,23 @@ mod tests {
                     archive_url: None,
                     cached: false,
                     vas_storage_name: "art-b".into(),
+                    vas_storage_id: "sid-b".into(),
                     vas_version_id: "v2".into(),
                 },
             ],
             cleanup_paths: vec![],
         });
 
-        let env = build_env_json(&ctx, "http://localhost");
+        let env = build_env_for_test(&ctx, "http://localhost");
         let raw = env.get("VM0_ARTIFACTS").unwrap();
         let parsed: Vec<serde_json::Value> = serde_json::from_str(raw).unwrap();
         assert_eq!(parsed.len(), 2);
         assert_eq!(parsed[0]["name"], "art-a");
         assert_eq!(parsed[0]["mountPath"], "/workspace");
+        assert_eq!(parsed[0]["storageId"], "sid-a");
         assert_eq!(parsed[1]["name"], "art-b");
         assert_eq!(parsed[1]["mountPath"], "/data");
+        assert_eq!(parsed[1]["storageId"], "sid-b");
     }
 
     #[test]
@@ -1412,7 +1502,7 @@ mod tests {
             cleanup_paths: vec![],
         });
 
-        let env = build_env_json(&ctx, "http://localhost");
+        let env = build_env_for_test(&ctx, "http://localhost");
         assert!(!env.contains_key("VM0_ARTIFACTS"));
     }
 
@@ -1421,7 +1511,7 @@ mod tests {
         let mut ctx = minimal_context();
         ctx.secret_values = Some(vec!["secret1".into(), "secret2".into()]);
 
-        let env = build_env_json(&ctx, "http://localhost");
+        let env = build_env_for_test(&ctx, "http://localhost");
         let val = env.get("VM0_SECRET_VALUES").unwrap();
 
         use base64::Engine as _;
@@ -1446,7 +1536,7 @@ mod tests {
             session_history: "{}".into(),
         });
 
-        let env = build_env_json(&ctx, "http://localhost");
+        let env = build_env_for_test(&ctx, "http://localhost");
         assert_eq!(env.get("VM0_RESUME_SESSION_ID").unwrap(), "sess-123");
     }
 
@@ -1459,7 +1549,7 @@ mod tests {
             ("CUSTOM".into(), "value".into()),
         ]));
 
-        let env = build_env_json(&ctx, "http://localhost");
+        let env = build_env_for_test(&ctx, "http://localhost");
         // System variables take precedence over user environment
         assert_eq!(env.get("VM0_PROMPT").unwrap(), "test prompt");
         assert_eq!(env.get("CUSTOM").unwrap(), "value");
@@ -1473,7 +1563,7 @@ mod tests {
             ("OTHER".into(), "abc".into()),
         ]));
 
-        let env = build_env_json(&ctx, "http://localhost");
+        let env = build_env_for_test(&ctx, "http://localhost");
         assert_eq!(env.get("MY_VAR").unwrap(), "123");
         assert_eq!(env.get("OTHER").unwrap(), "abc");
     }
@@ -1483,7 +1573,7 @@ mod tests {
         let mut ctx = minimal_context();
         ctx.api_start_time = Some(1_700_000_000.5);
 
-        let env = build_env_json(&ctx, "http://localhost");
+        let env = build_env_for_test(&ctx, "http://localhost");
         assert_eq!(env.get("VM0_API_START_TIME").unwrap(), "1700000000");
     }
 
@@ -1492,7 +1582,7 @@ mod tests {
         let mut ctx = minimal_context();
         ctx.secret_values = Some(vec![]);
 
-        let env = build_env_json(&ctx, "http://localhost");
+        let env = build_env_for_test(&ctx, "http://localhost");
         // VM0_SECRET_VALUES always present because sandbox_token is included
         let val = env.get("VM0_SECRET_VALUES").unwrap();
         use base64::Engine as _;
@@ -1506,7 +1596,7 @@ mod tests {
     fn build_env_json_with_append_system_prompt() {
         let mut ctx = minimal_context();
         ctx.append_system_prompt = Some("Your name is Aria.".into());
-        let env = build_env_json(&ctx, "http://localhost");
+        let env = build_env_for_test(&ctx, "http://localhost");
         assert_eq!(
             env.get("VM0_APPEND_SYSTEM_PROMPT").unwrap(),
             "Your name is Aria."
@@ -1516,7 +1606,7 @@ mod tests {
     #[test]
     fn build_env_json_without_append_system_prompt() {
         let ctx = minimal_context();
-        let env = build_env_json(&ctx, "http://localhost");
+        let env = build_env_for_test(&ctx, "http://localhost");
         assert!(!env.contains_key("VM0_APPEND_SYSTEM_PROMPT"));
     }
 
@@ -1524,7 +1614,7 @@ mod tests {
     fn build_env_json_empty_append_system_prompt_omitted() {
         let mut ctx = minimal_context();
         ctx.append_system_prompt = Some("".into());
-        let env = build_env_json(&ctx, "http://localhost");
+        let env = build_env_for_test(&ctx, "http://localhost");
         assert!(!env.contains_key("VM0_APPEND_SYSTEM_PROMPT"));
     }
 
@@ -1533,7 +1623,7 @@ mod tests {
         let mut ctx = minimal_context();
         ctx.user_timezone = Some("Asia/Shanghai".into());
 
-        let env = build_env_json(&ctx, "http://localhost");
+        let env = build_env_for_test(&ctx, "http://localhost");
         assert_eq!(env.get("TZ").unwrap(), "Asia/Shanghai");
     }
 
@@ -1543,7 +1633,7 @@ mod tests {
         ctx.user_timezone = Some("Asia/Shanghai".into());
         ctx.environment = Some(HashMap::from([("TZ".into(), "America/New_York".into())]));
 
-        let env = build_env_json(&ctx, "http://localhost");
+        let env = build_env_for_test(&ctx, "http://localhost");
         // User environment TZ takes precedence
         assert_eq!(env.get("TZ").unwrap(), "America/New_York");
     }
@@ -1557,7 +1647,7 @@ mod tests {
             ("CUSTOM_ENV".into(), "kept".into()),
         ]));
 
-        let env = build_env_json(&ctx, "http://localhost");
+        let env = build_env_for_test(&ctx, "http://localhost");
         // System variables take precedence over user environment
         assert_eq!(env.get("VM0_PROMPT").unwrap(), "test prompt");
         assert_eq!(env.get("VM0_API_TOKEN").unwrap(), "tok");
@@ -1572,7 +1662,7 @@ mod tests {
         ctx.vars = Some(HashMap::from([("ONLY_VARS".into(), "vars-value".into())]));
         ctx.environment = Some(HashMap::from([("ONLY_ENV".into(), "env-value".into())]));
 
-        let env = build_env_json(&ctx, "http://localhost");
+        let env = build_env_for_test(&ctx, "http://localhost");
         assert!(!env.contains_key("ONLY_VARS"));
         assert_eq!(env.get("ONLY_ENV").unwrap(), "env-value");
     }
@@ -1587,7 +1677,7 @@ mod tests {
         unsafe { std::env::set_var("USE_MOCK_CLAUDE", "true") };
 
         let ctx = minimal_context();
-        let env = build_env_json(&ctx, "http://localhost");
+        let env = build_env_for_test(&ctx, "http://localhost");
         assert_eq!(env.get("USE_MOCK_CLAUDE").unwrap(), "true");
 
         // Restore
@@ -1605,7 +1695,7 @@ mod tests {
 
         let mut ctx = minimal_context();
         ctx.debug_no_mock_claude = Some(true);
-        let env = build_env_json(&ctx, "http://localhost");
+        let env = build_env_for_test(&ctx, "http://localhost");
         assert!(!env.contains_key("USE_MOCK_CLAUDE"));
 
         // Restore
@@ -1618,7 +1708,7 @@ mod tests {
     #[test]
     fn build_env_json_does_not_inject_vm0_token() {
         let ctx = minimal_context();
-        let env = build_env_json(&ctx, "http://localhost");
+        let env = build_env_for_test(&ctx, "http://localhost");
         assert!(!env.contains_key("VM0_TOKEN"));
     }
 
@@ -1788,7 +1878,7 @@ mod tests {
     fn build_env_json_with_disallowed_tools() {
         let mut ctx = minimal_context();
         ctx.disallowed_tools = Some(vec!["CronCreate".into(), "CronDelete".into()]);
-        let env = build_env_json(&ctx, "http://localhost");
+        let env = build_env_for_test(&ctx, "http://localhost");
         assert_eq!(
             env.get("VM0_DISALLOWED_TOOLS").unwrap(),
             "CronCreate,CronDelete"
@@ -1799,14 +1889,14 @@ mod tests {
     fn build_env_json_empty_disallowed_tools_omitted() {
         let mut ctx = minimal_context();
         ctx.disallowed_tools = Some(vec![]);
-        let env = build_env_json(&ctx, "http://localhost");
+        let env = build_env_for_test(&ctx, "http://localhost");
         assert!(!env.contains_key("VM0_DISALLOWED_TOOLS"));
     }
 
     #[test]
     fn build_env_json_no_disallowed_tools() {
         let ctx = minimal_context();
-        let env = build_env_json(&ctx, "http://localhost");
+        let env = build_env_for_test(&ctx, "http://localhost");
         assert!(!env.contains_key("VM0_DISALLOWED_TOOLS"));
     }
 
@@ -1814,7 +1904,7 @@ mod tests {
     fn build_env_json_with_tools() {
         let mut ctx = minimal_context();
         ctx.tools = Some(vec!["Bash".into(), "Edit".into()]);
-        let env = build_env_json(&ctx, "http://localhost");
+        let env = build_env_for_test(&ctx, "http://localhost");
         assert_eq!(env.get("VM0_TOOLS").unwrap(), "Bash,Edit");
     }
 
@@ -1822,14 +1912,14 @@ mod tests {
     fn build_env_json_empty_tools_omitted() {
         let mut ctx = minimal_context();
         ctx.tools = Some(vec![]);
-        let env = build_env_json(&ctx, "http://localhost");
+        let env = build_env_for_test(&ctx, "http://localhost");
         assert!(!env.contains_key("VM0_TOOLS"));
     }
 
     #[test]
     fn build_env_json_no_tools() {
         let ctx = minimal_context();
-        let env = build_env_json(&ctx, "http://localhost");
+        let env = build_env_for_test(&ctx, "http://localhost");
         assert!(!env.contains_key("VM0_TOOLS"));
     }
 
@@ -1837,7 +1927,7 @@ mod tests {
     fn build_env_json_with_settings() {
         let mut ctx = minimal_context();
         ctx.settings = Some(r#"{"hooks":{}}"#.into());
-        let env = build_env_json(&ctx, "http://localhost");
+        let env = build_env_for_test(&ctx, "http://localhost");
         assert_eq!(env.get("VM0_SETTINGS").unwrap(), r#"{"hooks":{}}"#);
     }
 
@@ -1845,14 +1935,14 @@ mod tests {
     fn build_env_json_empty_settings_omitted() {
         let mut ctx = minimal_context();
         ctx.settings = Some("".into());
-        let env = build_env_json(&ctx, "http://localhost");
+        let env = build_env_for_test(&ctx, "http://localhost");
         assert!(!env.contains_key("VM0_SETTINGS"));
     }
 
     #[test]
     fn build_env_json_no_settings() {
         let ctx = minimal_context();
-        let env = build_env_json(&ctx, "http://localhost");
+        let env = build_env_for_test(&ctx, "http://localhost");
         assert!(!env.contains_key("VM0_SETTINGS"));
     }
 
@@ -1863,7 +1953,7 @@ mod tests {
         flags.insert("computerUse".into(), true);
         flags.insert("voiceChat".into(), false);
         ctx.feature_flags = Some(flags);
-        let env = build_env_json(&ctx, "http://localhost");
+        let env = build_env_for_test(&ctx, "http://localhost");
         let raw = env
             .get("VM0_FEATURE_FLAGS")
             .expect("VM0_FEATURE_FLAGS should be set");
@@ -1876,14 +1966,14 @@ mod tests {
     fn build_env_json_empty_feature_flags_omitted() {
         let mut ctx = minimal_context();
         ctx.feature_flags = Some(HashMap::new());
-        let env = build_env_json(&ctx, "http://localhost");
+        let env = build_env_for_test(&ctx, "http://localhost");
         assert!(!env.contains_key("VM0_FEATURE_FLAGS"));
     }
 
     #[test]
     fn build_env_json_no_feature_flags() {
         let ctx = minimal_context();
-        let env = build_env_json(&ctx, "http://localhost");
+        let env = build_env_for_test(&ctx, "http://localhost");
         assert!(!env.contains_key("VM0_FEATURE_FLAGS"));
     }
 
@@ -2128,11 +2218,12 @@ mod tests {
                 archive_url: None,
                 cached: false,
                 vas_storage_name: "memory".into(),
+                vas_storage_id: String::new(),
                 vas_version_id: "v2".into(),
             }],
             cleanup_paths: vec![],
         });
-        let env = build_env_json(&ctx, "http://localhost");
+        let env = build_env_for_test(&ctx, "http://localhost");
         assert!(!env.contains_key("VM0_MEMORY_DRIVER"));
         assert!(!env.contains_key("VM0_MEMORY_MOUNT_PATH"));
         assert!(!env.contains_key("VM0_MEMORY_NAME"));
@@ -2331,6 +2422,7 @@ mod tests {
             http: crate::http::HttpClient::new("http://localhost:9999".into()).unwrap(),
             log_paths: LogPaths::new(log_dir),
             ip_log_map: kmsg_log::new_ip_log_map(),
+            home: HomePaths::with_root(dir.to_path_buf()),
         }
     }
 
@@ -2358,11 +2450,13 @@ mod tests {
     ) -> RunnerResult<(i32, Option<String>)> {
         let mut telemetry = test_telemetry(config, ctx);
         let cancel = tokio_util::sync::CancellationToken::new();
-        let sandbox_id = SandboxId::new_v4();
         let outcome = execute_new_sandbox(
             factory,
             ctx,
-            sandbox_id,
+            NewSandboxDispatch {
+                id: SandboxId::new_v4(),
+                reuse_result: SandboxReuseResult::PoolMiss,
+            },
             config,
             params,
             &mut telemetry,
@@ -2495,10 +2589,12 @@ mod tests {
         let (outcome, _telemetry) = execute_job(
             &factory,
             minimal_context(),
-            SandboxId::new_v4(),
+            NewSandboxDispatch {
+                id: SandboxId::new_v4(),
+                reuse_result: SandboxReuseResult::NoSessionId,
+            },
             &config,
             &default_params(),
-            SandboxReuseResult::NoSessionId,
             cancel,
         )
         .await;
@@ -2519,10 +2615,12 @@ mod tests {
         let (outcome, _telemetry) = execute_job(
             &factory,
             minimal_context(),
-            SandboxId::new_v4(),
+            NewSandboxDispatch {
+                id: SandboxId::new_v4(),
+                reuse_result: SandboxReuseResult::NoSessionId,
+            },
             &config,
             &default_params(),
-            SandboxReuseResult::NoSessionId,
             cancel,
         )
         .await;
@@ -2547,10 +2645,12 @@ mod tests {
         let (outcome, _telemetry) = execute_job(
             &factory,
             minimal_context(),
-            SandboxId::new_v4(),
+            NewSandboxDispatch {
+                id: SandboxId::new_v4(),
+                reuse_result: SandboxReuseResult::NoSessionId,
+            },
             &config,
             &default_params(),
-            SandboxReuseResult::NoSessionId,
             cancel,
         )
         .await;
@@ -2602,10 +2702,12 @@ mod tests {
         let (outcome, _telemetry) = execute_job(
             &factory,
             ctx,
-            SandboxId::new_v4(),
+            NewSandboxDispatch {
+                id: SandboxId::new_v4(),
+                reuse_result: SandboxReuseResult::NoSessionId,
+            },
             &config,
             &default_params(),
-            SandboxReuseResult::NoSessionId,
             cancel,
         )
         .await;
@@ -2660,10 +2762,12 @@ mod tests {
         let (outcome, _telemetry) = execute_job(
             &factory,
             minimal_context(),
-            SandboxId::new_v4(),
+            NewSandboxDispatch {
+                id: SandboxId::new_v4(),
+                reuse_result: SandboxReuseResult::NoSessionId,
+            },
             &config,
             &default_params(),
-            SandboxReuseResult::NoSessionId,
             cancel,
         )
         .await;
@@ -2880,10 +2984,12 @@ mod tests {
         let (outcome, _telemetry) = execute_job(
             &factory,
             minimal_context(),
-            SandboxId::new_v4(),
+            NewSandboxDispatch {
+                id: SandboxId::new_v4(),
+                reuse_result: SandboxReuseResult::NoSessionId,
+            },
             &config,
             &default_params(),
-            SandboxReuseResult::NoSessionId,
             cancel,
         )
         .await;
@@ -2905,6 +3011,7 @@ mod tests {
             archive_url: Some(url.into()),
             cached: false,
             vas_storage_name: name.into(),
+            vas_storage_id: String::new(),
             vas_version_id: ver.into(),
         }
     }
@@ -3027,6 +3134,7 @@ mod tests {
             archive_url: Some("https://s3/a-v2".into()),
             cached: false,
             vas_storage_name: "art-a".into(),
+            vas_storage_id: String::new(),
             vas_version_id: "v2".into(),
         };
         let art_b = ArtifactEntry {
@@ -3034,6 +3142,7 @@ mod tests {
             archive_url: Some("https://s3/b-v1".into()),
             cached: false,
             vas_storage_name: "art-b".into(),
+            vas_storage_id: String::new(),
             vas_version_id: "v1".into(),
         };
         let manifest = StorageManifest {
@@ -3190,6 +3299,7 @@ mod tests {
                 archive_url: None, // API returned null
                 cached: false,
                 vas_storage_name: "my-art".into(),
+                vas_storage_id: String::new(),
                 vas_version_id: "v2".into(),
             }],
             cleanup_paths: vec![],
@@ -3274,7 +3384,6 @@ mod tests {
     #[test]
     fn record_reuse_result_emits_miss_for_every_miss_variant() {
         let variants = [
-            SandboxReuseResult::FeatureDisabled,
             SandboxReuseResult::NoSessionId,
             SandboxReuseResult::PoolMiss,
             SandboxReuseResult::ProfileMismatch,
@@ -3300,10 +3409,12 @@ mod tests {
         let (_outcome, telemetry) = execute_job(
             &factory,
             minimal_context(),
-            SandboxId::new_v4(),
+            NewSandboxDispatch {
+                id: SandboxId::new_v4(),
+                reuse_result: SandboxReuseResult::PoolMiss,
+            },
             &config,
             &default_params(),
-            SandboxReuseResult::PoolMiss,
             cancel,
         )
         .await;
@@ -3328,10 +3439,12 @@ mod tests {
         let (outcome, _telemetry) = execute_job(
             &factory,
             minimal_context(),
-            SandboxId::new_v4(),
+            NewSandboxDispatch {
+                id: SandboxId::new_v4(),
+                reuse_result: SandboxReuseResult::NoSessionId,
+            },
             &config,
             &default_params(),
-            SandboxReuseResult::NoSessionId,
             cancel,
         )
         .await;

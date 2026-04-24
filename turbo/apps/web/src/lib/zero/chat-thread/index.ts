@@ -3,11 +3,16 @@ export {
   listChatThreads,
   getChatThread,
   getChatThreadMessages,
-  getActiveRunIdsForThread,
+  getActiveRunsForThread,
   updateChatThreadTitle,
   updateChatThreadDraft,
   deleteChatThread,
   markThreadRead,
   resolveAttachFileUrls,
 } from "./chat-thread-service";
-export { getMessagesSince } from "./chat-message-service";
+export {
+  getMessagesBefore,
+  getMessagesFromLastUserMessage,
+  getMessagesSince,
+  type MessageRow,
+} from "./chat-message-service";

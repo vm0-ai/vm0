@@ -19,8 +19,8 @@ import {
   zeroOrgContract,
   zeroOrgLeaveContract,
   zeroOrgDeleteContract,
-  type OrgResponse,
-} from "@vm0/core";
+} from "@vm0/core/contracts/zero-org";
+import type { OrgResponse } from "@vm0/core/contracts/orgs";
 import { org$, isOrgAdmin$, refreshOrg$ } from "../../../../signals/org.ts";
 import { clerk$, resolveWebOrigin } from "../../../../signals/auth.ts";
 import { zeroClient$ } from "../../../../signals/api-client.ts";
@@ -52,10 +52,14 @@ import {
   saveError$,
   setSaveError$,
 } from "../../../../signals/zero-page/settings/org-manage-tabs-state.ts";
+import { readImageDimensions } from "./read-image-dimensions.ts";
 
 const sectionCardStyle = {
   border: "0.7px solid hsl(var(--gray-400))",
 } as const;
+
+const MIN_LOGO_DIMENSION = 100;
+const MAX_LOGO_DIMENSION = 4096;
 
 function extractErrorMessage(
   result: { status: number; body: unknown },
@@ -132,7 +136,25 @@ function ProfileSection({
   const hasSlugChange = slug !== (org.slug ?? "");
   const hasChanges = hasNameChange || hasSlugChange || !!pendingLogoFile;
 
-  const handleFileSelect = (file: File) => {
+  const handleFileSelect = async (file: File) => {
+    const dimensions = await readImageDimensions(file);
+    if (!dimensions) {
+      toast.error("Could not read image file");
+      return;
+    }
+    const { width, height } = dimensions;
+    if (width < MIN_LOGO_DIMENSION || height < MIN_LOGO_DIMENSION) {
+      toast.error(
+        `Logo is too small (${width}×${height}px). Minimum size is ${MIN_LOGO_DIMENSION}×${MIN_LOGO_DIMENSION}px.`,
+      );
+      return;
+    }
+    if (width > MAX_LOGO_DIMENSION || height > MAX_LOGO_DIMENSION) {
+      toast.error(
+        `Logo is too large (${width}×${height}px). Maximum size is ${MAX_LOGO_DIMENSION}×${MAX_LOGO_DIMENSION}px.`,
+      );
+      return;
+    }
     setPendingLogoFile(file);
     setPendingLogoPreview(URL.createObjectURL(file));
   };
@@ -246,7 +268,7 @@ function ProfileSection({
                 onChange={(e) => {
                   const file = e.target.files?.[0];
                   if (file) {
-                    handleFileSelect(file);
+                    detach(handleFileSelect(file), Reason.DomCallback);
                   }
                   e.target.value = "";
                 }}

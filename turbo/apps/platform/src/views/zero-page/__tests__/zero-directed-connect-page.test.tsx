@@ -15,14 +15,15 @@ import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import {
   CONNECTOR_TYPES,
   type ConnectorType,
-  zeroSecretsContract,
-  zeroUserConnectorsContract,
-} from "@vm0/core";
+} from "@vm0/core/contracts/connectors";
+import { zeroSecretsContract } from "@vm0/core/contracts/zero-secrets";
+import { zeroUserConnectorsContract } from "@vm0/core/contracts/user-connectors";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 function mockConnectors(
   connectors: { type: ConnectorType; externalUsername?: string }[],
@@ -97,6 +98,75 @@ describe("directed connect page", () => {
     });
     expect(screen.getByText("Connected")).toBeInTheDocument();
     expect(screen.queryByText("Connect")).not.toBeInTheDocument();
+  });
+
+  it("shows Reconnect button alongside Connected pill when already connected", async () => {
+    mockConnectors([{ type: "github" }]);
+
+    detachedSetupPage({ context, path: "/connectors/github/connect" });
+
+    await waitFor(() => {
+      expect(screen.getByText("GitHub connected")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Connected")).toBeInTheDocument();
+    const reconnectBtn = screen.getAllByRole("button").find((el) => {
+      return el.textContent?.trim() === "Reconnect";
+    });
+    expect(reconnectBtn).toBeDefined();
+  });
+  it("reconnect button reopens OAuth flow for an already-connected OAuth connector", async () => {
+    const openSpy = vi
+      .spyOn(window, "open")
+      .mockReturnValue({ closed: true } as Window);
+    mockConnectors([{ type: "github" }]);
+
+    detachedSetupPage({ context, path: "/connectors/github/connect" });
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByRole("button").find((el) => {
+          return el.textContent?.trim() === "Reconnect";
+        }),
+      ).toBeDefined();
+    });
+
+    const reconnectBtn = screen.getAllByRole("button").find((el) => {
+      return el.textContent?.trim() === "Reconnect";
+    });
+    expect(reconnectBtn).toBeDefined();
+    click(reconnectBtn!);
+
+    expect(openSpy).toHaveBeenCalledWith(
+      expect.stringContaining("/api/zero/connectors/github/authorize"),
+      "_blank",
+      expect.any(String),
+    );
+  });
+
+  it("reconnect button opens api-token dialog for an already-connected api-token connector", async () => {
+    mockConnectors([{ type: "axiom" }]);
+
+    detachedSetupPage({ context, path: "/connectors/axiom/connect" });
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByRole("button").find((el) => {
+          return el.textContent?.trim() === "Reconnect";
+        }),
+      ).toBeDefined();
+    });
+
+    const reconnectBtn = screen.getAllByRole("button").find((el) => {
+      return el.textContent?.trim() === "Reconnect";
+    });
+    expect(reconnectBtn).toBeDefined();
+    click(reconnectBtn!);
+
+    // api-token connectors route the reconnect click through the token dialog
+    // rather than an OAuth popup.
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("xaat-...")).toBeInTheDocument();
+    });
   });
 
   it("normalizes uppercase type in URL to match connector key", async () => {

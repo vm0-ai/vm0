@@ -53,7 +53,10 @@ import {
 import { isConcurrentRunLimit, isInsufficientCredits } from "../shared/errors";
 import { logger } from "../shared/logger";
 import { publishOrgSignal } from "./realtime";
-import type { OrgTier, QueueResponse, TriggerSource } from "@vm0/core";
+import { publishChatThreadRunUpdated } from "./chat-thread/chat-message-service";
+import type { TriggerSource } from "@vm0/core/contracts/logs";
+import type { OrgTier } from "@vm0/core/contracts/orgs";
+import type { QueueResponse } from "@vm0/core/contracts/runs";
 
 const log = logger("zero:run-queue-service");
 
@@ -117,8 +120,7 @@ export async function enqueueRun(
           userId,
           orgId,
           agentComposeId,
-          artifactName: params.artifactName,
-          memoryName: params.memoryName,
+          artifacts: [],
           conversationId: null,
         })
         .returning({ id: agentSessions.id });
@@ -208,6 +210,16 @@ export async function drainOrgQueue(
       // Single transaction: advisory lock → concurrency check → dequeue → status update
       const dequeued = await dequeueNextAtomic(db, orgId);
       if (!dequeued) return; // Queue empty, entry skipped, or concurrency full
+
+      // Status just transitioned queued → pending. Notify any chat thread
+      // watching this run so the UI can swap "Waiting in queue" for the
+      // normal thinking indicator. No-op for non-chat runs; fire-and-forget
+      // so a realtime hiccup doesn't stall the drain loop.
+      publishChatThreadRunUpdated(dequeued.runId).catch((err: unknown) => {
+        log.error("Failed to publish chatThreadRunUpdated after dequeue", {
+          err,
+        });
+      });
 
       // Decrypt CreateRunParams (outside transaction — no lock held)
       const decryptedMap = decryptSecretsMap(

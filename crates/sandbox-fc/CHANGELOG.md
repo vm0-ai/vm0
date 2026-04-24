@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.26.7](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.26.6...sandbox-fc-v0.26.7) (2026-04-24)
+
+
+### Refactoring
+
+* **sandbox-fc:** trim verbose panic boilerplate in api tests ([#10955](https://github.com/vm0-ai/vm0/issues/10955)) ([170ddde](https://github.com/vm0-ai/vm0/commit/170ddde1ffd2d503c679e33f8876a60f92899b4d))
+
+## [0.26.6](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.26.5...sandbox-fc-v0.26.6) (2026-04-23)
+
+
+### Bug Fixes
+
+* **sandbox-fc:** reconcile orphan netns from idle pool indexes at startup ([#10841](https://github.com/vm0-ai/vm0/issues/10841)) ([cd3d6f9](https://github.com/vm0-ai/vm0/commit/cd3d6f91d18845b954689362e2cc30b4a5ec8463))
+
+## [0.26.5](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.26.4...sandbox-fc-v0.26.5) (2026-04-23)
+
+## [0.26.4](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.26.3...sandbox-fc-v0.26.4) (2026-04-23)
+
 ## [0.26.3](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.26.2...sandbox-fc-v0.26.3) (2026-04-22)
 
 

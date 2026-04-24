@@ -3,17 +3,24 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import { accept } from "../../../lib/accept.ts";
 import {
   CONNECTOR_TYPES,
-  FeatureSwitchKey,
-  hasRequiredScopes,
+  type ConnectorType,
+  type ConnectorDisplayCategory,
+} from "@vm0/core/contracts/connectors";
+import { hasRequiredScopes } from "@vm0/core/contracts/connector-utils";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import {
   zeroConnectorScopeDiffContract,
   zeroConnectorsMainContract,
   zeroPlatformConnectorContract,
+} from "@vm0/core/contracts/zero-connectors";
+import {
   zeroSecretsContract,
   zeroVariablesContract,
-  type ConnectorListResponse,
-  type ConnectorType,
-  type ConnectorResponse,
-} from "@vm0/core";
+} from "@vm0/core/contracts/zero-secrets";
+import type {
+  ConnectorListResponse,
+  ConnectorResponse,
+} from "@vm0/core/contracts/connector-schemas";
 import { featureSwitch$ } from "../../external/feature-switch.ts";
 import {
   connectors$,
@@ -44,6 +51,7 @@ export interface ConnectorTypeWithStatus {
   type: ConnectorType;
   label: string;
   helpText: string;
+  category: ConnectorDisplayCategory;
   /** Lowercase aliases/keywords used by connector search (from CONNECTOR_TYPES). */
   tags: readonly string[];
   connected: boolean;
@@ -112,11 +120,13 @@ export const allConnectorTypes$ = computed(async (get) => {
       const flagEnabled = !flag || !!features?.[flag];
       const methods = CONNECTOR_TYPES[type].authMethods;
       // Connector visible if any auth method should be shown. api-token is
-      // always available regardless of flag; oauth requires the per-connector
-      // flag; platform requires both the per-connector flag and the global
-      // PlatformConnectors flag.
+      // always available regardless of flag unless strictFeatureFlag is set;
+      // oauth requires the per-connector flag; platform requires both the
+      // per-connector flag and the global PlatformConnectors flag.
       const showOauth = flagEnabled && "oauth" in methods;
-      const showApiToken = "api-token" in methods;
+      const showApiToken =
+        "api-token" in methods &&
+        (flagEnabled || !CONNECTOR_TYPES[type].strictFeatureFlag);
       const showPlatform =
         flagEnabled && platformGloballyEnabled && "platform" in methods;
       return showOauth || showApiToken || showPlatform;
@@ -127,7 +137,9 @@ export const allConnectorTypes$ = computed(async (get) => {
       const flag = CONNECTOR_TYPES[type].featureFlag;
       const flagEnabled = !flag || !!features?.[flag];
       const showOauth = flagEnabled && "oauth" in config.authMethods;
-      const showApiToken = "api-token" in config.authMethods;
+      const showApiToken =
+        "api-token" in config.authMethods &&
+        (flagEnabled || !config.strictFeatureFlag);
       const showPlatform =
         flagEnabled &&
         platformGloballyEnabled &&
@@ -147,6 +159,7 @@ export const allConnectorTypes$ = computed(async (get) => {
         type,
         label: isExperimental ? `[Experimental] ${config.label}` : config.label,
         helpText: config.helpText,
+        category: config.category,
         tags: config.tags ?? [],
         connected: connector !== null,
         connector,
@@ -285,6 +298,7 @@ export const enablePlatformConnector$ = command(
       client.create({
         params: { type },
         body: {},
+        fetchOptions: { signal },
       }),
       [200],
     );
@@ -325,11 +339,20 @@ export const submitApiToken$ = command(
       const isVariable = apiTokenConfig?.secrets[name]?.type === "variable";
       if (isVariable) {
         await accept(
-          variablesClient.set({ body: { name, value } }),
+          variablesClient.set({
+            body: { name, value },
+            fetchOptions: { signal },
+          }),
           [200, 201],
         );
       } else {
-        await accept(secretsClient.set({ body: { name, value } }), [200, 201]);
+        await accept(
+          secretsClient.set({
+            body: { name, value },
+            fetchOptions: { signal },
+          }),
+          [200, 201],
+        );
       }
       signal.throwIfAborted();
     }

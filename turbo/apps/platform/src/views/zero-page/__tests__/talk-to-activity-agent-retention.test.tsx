@@ -4,12 +4,14 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
-import { FeatureSwitchKey, zeroAgentsByIdContract } from "@vm0/core";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { zeroAgentsByIdContract } from "@vm0/core/contracts/zero-agents";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 import { setMockOnboardingStatus } from "../../../mocks/handlers/api-onboarding.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 function mockTwoAgents() {
   setMockOnboardingStatus({
@@ -91,7 +93,7 @@ describe("talk to activity agent retention", () => {
     detachedSetupPage({
       context,
       path: "/agents/agent-bar-id/chat",
-      featureSwitches: { [FeatureSwitchKey.ActivityLogList]: true },
+      featureSwitches: { [FeatureSwitchKey.ZeroDebug]: true },
     });
 
     // Wait for sidebar to show "bar" as the active chat agent

@@ -7,10 +7,12 @@ import type {
   LogDetail,
   AgentEvent,
 } from "../../../signals/zero-page/log-types.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
-import { logsByIdContract, zeroRunAgentEventsContract } from "@vm0/core";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
+import { logsByIdContract } from "@vm0/core/contracts/logs";
+import { zeroRunAgentEventsContract } from "@vm0/core/contracts/zero-runs";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 const BASE_LOG_ID = "a7000000-0000-4000-8000-000000000001";
 

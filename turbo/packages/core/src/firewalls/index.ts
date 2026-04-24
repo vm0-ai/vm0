@@ -33,7 +33,6 @@ import {
 } from "./vercel.generated";
 import { getConnectorEnvironmentMapping } from "../contracts/connector-utils";
 import { agentmailFirewall } from "./agentmail.generated";
-import { agentphoneFirewall } from "./agentphone.generated";
 import { amplitudeFirewall } from "./amplitude.generated";
 import { anthropicManagedAgentsFirewall } from "./anthropic-managed-agents.generated";
 import { ahrefsFirewall } from "./ahrefs.generated";
@@ -52,6 +51,7 @@ import { braveSearchFirewall } from "./brave-search.generated";
 import { brevoFirewall } from "./brevo.generated";
 import { brightDataFirewall } from "./bright-data.generated";
 import { browserbaseFirewall } from "./browserbase.generated";
+import { browserUseFirewall } from "./browser-use.generated";
 import { browserlessFirewall } from "./browserless.generated";
 import { bufferFirewall } from "./buffer.generated";
 import { calComFirewall } from "./cal-com.generated";
@@ -218,7 +218,6 @@ export interface PermissionGroup<T extends { name: string }> {
 
 const CONNECTOR_FIREWALLS = {
   agentmail: agentmailFirewall,
-  agentphone: agentphoneFirewall,
   amplitude: amplitudeFirewall,
   "anthropic-managed-agents": anthropicManagedAgentsFirewall,
   ahrefs: ahrefsFirewall,
@@ -235,6 +234,7 @@ const CONNECTOR_FIREWALLS = {
   brevo: brevoFirewall,
   "bright-data": brightDataFirewall,
   browserbase: browserbaseFirewall,
+  "browser-use": browserUseFirewall,
   browserless: browserlessFirewall,
   buffer: bufferFirewall,
   "cal-com": calComFirewall,

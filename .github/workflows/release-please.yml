@@ -66,9 +66,10 @@ jobs:
             echo "✅ Created $gate check run on $PR_HEAD"
           done
 
-  # Run database migrations in production (always runs as a gate for all deploy jobs)
+  # Run database migrations in production (runs after builds-complete to reduce
+  # downtime: builds stage first, then migrate, then promote traffic.)
   migrate-production:
-    needs: release-please
+    needs: [release-please, builds-complete]
     if: ${{ needs.release-please.outputs.releases_created == 'true' }}
     runs-on: ubuntu-latest
     container:
@@ -346,6 +347,11 @@ jobs:
             GITHUB_APP_CLIENT_SECRET=${{ secrets.VM0_GITHUB_APP_CLIENT_SECRET }}
             GITHUB_APP_WEBHOOK_SECRET=${{ secrets.VM0_GITHUB_APP_WEBHOOK_SECRET }}
             GITHUB_APP_PRIVATE_KEY=${{ secrets.VM0_GITHUB_APP_PRIVATE_KEY }}
+            GCP_PROJECT_ID=${{ vars.GCP_PROJECT_ID }}
+            GCP_PROJECT_NUMBER=${{ vars.GCP_PROJECT_NUMBER }}
+            GCP_SERVICE_ACCOUNT_EMAIL=${{ vars.GCP_SERVICE_ACCOUNT_EMAIL }}
+            GCP_WORKLOAD_IDENTITY_POOL_ID=${{ vars.GCP_WORKLOAD_IDENTITY_POOL_ID }}
+            GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID=${{ vars.GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID }}
 
       - name: Calculate duration
         id: duration
@@ -397,7 +403,6 @@ jobs:
   builds-complete:
     needs:
       - release-please
-      - migrate-production
       - build-web-production
       - build-app-production
       - build-runner-production
@@ -432,7 +437,7 @@ jobs:
           echo "✅ All build-phase jobs succeeded or were skipped."
 
   promote-web-production:
-    needs: [release-please, builds-complete, build-web-production]
+    needs: [release-please, builds-complete, build-web-production, migrate-production]
     if: >-
       !failure() && !cancelled() &&
       needs.release-please.outputs.web_release_created == 'true'
@@ -654,7 +659,7 @@ jobs:
 
   # Promote app staged deployment to production (traffic switch)
   promote-app-production:
-    needs: [release-please, builds-complete, build-app-production, promote-web-production]
+    needs: [release-please, builds-complete, build-app-production, promote-web-production, migrate-production]
     if: >-
       !failure() && !cancelled() &&
       needs.release-please.outputs.app_release_created == 'true'
@@ -1008,7 +1013,7 @@ jobs:
           echo "Updated rollback dashboard issue #${ISSUE_NUMBER}"
 
   publish-npm:
-    needs: [release-please, builds-complete]
+    needs: [release-please, builds-complete, migrate-production]
     if: >-
       !failure() && !cancelled() &&
       needs.release-please.outputs.cli_release_created == 'true'
@@ -1369,7 +1374,7 @@ jobs:
   # the schema and API it targets are live. Host-level prep
   # (provision-runner, provision-monitoring) already ran in build.
   promote-runner-production:
-    needs: [release-please, builds-complete, promote-web-production, resolve-image-cache, build-runner-production]
+    needs: [release-please, builds-complete, promote-web-production, resolve-image-cache, build-runner-production, migrate-production]
     if: >-
       !failure() && !cancelled() &&
       needs.release-please.outputs.runner_rs_release_created == 'true'
@@ -1435,6 +1440,7 @@ jobs:
           AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
           AWS_METAL_RUNNER_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           SENTRY_DSN_RUNNER: ${{ secrets.SENTRY_DSN_RUNNER }}
+          AXIOM_TOKEN_TELEMETRY: ${{ secrets.AXIOM_TOKEN_TELEMETRY }}
           RUNNER_VERSION: ${{ needs.release-please.outputs.runner_rs_version }}
           R2_ACCOUNT_ID: ${{ needs.resolve-image-cache.outputs.r2-account-id }}
           R2_USER_STORAGES_BUCKET_NAME: ${{ needs.resolve-image-cache.outputs.r2-bucket }}
@@ -1445,6 +1451,8 @@ jobs:
             playbooks/promote-runner.yml \
             -e "ansible_user=${AWS_METAL_RUNNER_USER}" \
             -e "sentry_dsn=${SENTRY_DSN_RUNNER}" \
+            -e "axiom_token_telemetry=${AXIOM_TOKEN_TELEMETRY}" \
+            -e "axiom_dataset_suffix=prod" \
             -e "runner_version=${RUNNER_VERSION}" \
             -e "r2_account_id=${R2_ACCOUNT_ID:-}" \
             -e "r2_access_key_id=${R2_ACCESS_KEY_ID:-}" \
@@ -1534,7 +1542,7 @@ jobs:
   # Build E2B templates to production account
   # Uses production environment E2B_API_KEY secret
   build-e2b-template-production:
-    needs: [release-please, migrate-production]
+    needs: [release-please]
     # Build when any release is created
     if: ${{ needs.release-please.outputs.releases_created == 'true' }}
     runs-on: ubuntu-latest
@@ -1559,7 +1567,7 @@ jobs:
 
   # Generate Software Bill of Materials (SBOM) for CASA compliance (CASA-DEP-003)
   sbom:
-    needs: [release-please, migrate-production]
+    needs: [release-please]
     if: ${{ needs.release-please.outputs.releases_created == 'true' }}
     runs-on: ubuntu-latest
     container:

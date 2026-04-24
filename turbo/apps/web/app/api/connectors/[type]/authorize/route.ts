@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { connectorTypeSchema } from "@vm0/core";
+import { connectorTypeSchema } from "@vm0/core/contracts/connectors";
 import { env } from "../../../../../src/env";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";

@@ -1,5 +1,6 @@
 import { command, computed, state } from "ccstate";
-import { zeroUserConnectorsContract, type ConnectorType } from "@vm0/core";
+import type { ConnectorType } from "@vm0/core/contracts/connectors";
+import { zeroUserConnectorsContract } from "@vm0/core/contracts/user-connectors";
 import { accept } from "../../lib/accept.ts";
 import { pathParams$, searchParams$ } from "../route.ts";
 import { zeroClient$ } from "../api-client.ts";
@@ -66,7 +67,10 @@ export const authorizeConnector$ = command(
 
     // Get current enabled types for this agent
     const current = await accept(
-      client.get({ params: { id: agentId } }),
+      client.get({
+        params: { id: agentId },
+        fetchOptions: { signal },
+      }),
       [200],
     );
     signal.throwIfAborted();
@@ -79,6 +83,7 @@ export const authorizeConnector$ = command(
         client.update({
           params: { id: agentId },
           body: { enabledTypes: [...currentTypes, connectorType] },
+          fetchOptions: { signal },
         }),
         [200],
       );

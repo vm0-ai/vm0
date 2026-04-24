@@ -7,7 +7,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@vm0/ui/components/ui/dialog";
-import { getSelectableProviderTypes, type ModelProviderType } from "@vm0/core";
+import {
+  getSelectableProviderTypes,
+  type ModelProviderType,
+} from "@vm0/core/contracts/model-providers";
 import {
   orgConfiguredProviders$,
   orgOpenAddDialog$,

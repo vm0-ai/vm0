@@ -5,7 +5,7 @@
  * Uses SUPPORTED_FRAMEWORKS from @vm0/core as the source of truth.
  */
 
-import type { SupportedFramework } from "@vm0/core";
+import type { SupportedFramework } from "@vm0/core/frameworks";
 
 /**
  * Framework default configuration

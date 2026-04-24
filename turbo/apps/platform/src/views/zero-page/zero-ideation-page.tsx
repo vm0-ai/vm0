@@ -1,6 +1,6 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
-import { useGet, useSet } from "ccstate-react";
+import { useGet, useLastResolved, useSet } from "ccstate-react";
 import {
   IconArrowUpRight,
   IconMessageCircle,
@@ -9,6 +9,7 @@ import {
 import { Card, CardContent, cn, Input } from "@vm0/ui";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { getCategories } from "./zero-ideation-data.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { currentAgentId$ } from "../../signals/agent.ts";
 import {
@@ -18,7 +19,8 @@ import {
   setIdeationSearchQuery$,
 } from "../../signals/zero-page/zero-ideation.ts";
 export function ZeroIdeationPage() {
-  const categories = getCategories().slice(0, 5);
+  const features = useLastResolved(featureSwitch$);
+  const categories = getCategories(features).slice(0, 5);
   const activeTab = useGet(ideationActiveTab$);
   const setActiveTab = useSet(setIdeationActiveTab$);
   const searchQuery = useGet(ideationSearchQuery$);

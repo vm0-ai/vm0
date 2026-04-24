@@ -186,6 +186,10 @@ DEV_MODEL_MOONSHOT_KEY=op://Development/moonshot/DEV_MODEL_MOONSHOT_KEY
 DEV_MODEL_ZAI_KEY=op://Development/z.ai/DEV_MODEL_ZAI_KEY
 DEV_MODEL_MINIMAX_KEY=op://Development/minimax/DEV_MODEL_MINIMAX_KEY
 
+# Optional: Gemini Developer API key (for /api/generate-image in local dev).
+# Production uses Vertex AI via OIDC federation; see GCP_* vars injected by CI.
+GEMINI_API_KEY=op://Development/gemini/GEMINI_API_KEY
+
 # Optional: Web Push (VAPID) — for PWA push notifications
 VAPID_PUBLIC_KEY=op://Development/vapid/VAPID_PUBLIC_KEY
 VAPID_PRIVATE_KEY=op://Development/vapid/VAPID_PRIVATE_KEY

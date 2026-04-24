@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const db9 = {
   db9: {
     label: "db9",
+    category: "data-automation-infrastructure",
     environmentMapping: {
       DB9_API_KEY: "$secrets.DB9_API_KEY",
     },

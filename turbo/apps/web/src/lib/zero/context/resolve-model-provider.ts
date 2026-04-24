@@ -11,7 +11,7 @@ import {
   getVm0ApiModel,
   type ModelProviderType,
   type ModelProviderFramework,
-} from "@vm0/core";
+} from "@vm0/core/contracts/model-providers";
 import { badRequest, noModelProvider } from "../../shared/errors";
 import { logger } from "../../shared/logger";
 import { getSecretValue, getSecretValues } from "../secret/secret-service";

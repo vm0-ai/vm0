@@ -20,7 +20,6 @@ describe("zero CLI program", () => {
       "doctor",
       "logs",
       "search",
-      "phone",
       "preference",
       "run",
       "schedule",
@@ -55,6 +54,6 @@ describe("zero CLI program", () => {
   });
 
   it("should have exactly 19 commands", () => {
-    expect(commandNames).toHaveLength(19);
+    expect(commandNames).toHaveLength(18);
   });
 });

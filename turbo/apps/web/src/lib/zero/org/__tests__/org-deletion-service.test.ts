@@ -35,7 +35,11 @@ import { findTestSlackOrgInstallation } from "../../../../__tests__/db-test-asse
 import { createTestZeroAgent } from "../../../../__tests__/db-test-seeders/agents";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route
 import { deleteOrgData } from "../org-deletion-service";
-import { seedTestRun } from "../../../../__tests__/db-test-seeders/runs";
+import {
+  seedTestRun,
+  setTestRunRunnerGroup,
+} from "../../../../__tests__/db-test-seeders/runs";
+import { mockAblyPublish } from "../../../../__tests__/ably-mock";
 
 const context = testContext();
 
@@ -77,6 +81,47 @@ describe("deleteOrgData", () => {
     expect(await findTestRunRecord(pendingRunId)).toBeUndefined();
     expect(await findTestRunRecord(runningRunId)).toBeUndefined();
     expect(await findTestQueueEntry(queuedRunId)).toBeUndefined();
+  });
+
+  it("should notify runner groups for in-flight runs before deletion (#10763)", async () => {
+    context.setupMocks();
+    const { userId, orgId } = await context.setupUser();
+
+    const { composeId } = await createTestCompose(uniqueId("cancel-notify"));
+
+    const { runId: runningRunId } = await seedTestRun(userId, composeId, {
+      status: "running",
+      startedAt: new Date(),
+    });
+    await setTestRunRunnerGroup(runningRunId, "test-group-running");
+
+    // Queued run — runnerGroup null; must not produce a publish even though
+    // it transitions to cancelled.
+    const { runId: queuedRunId } = await seedTestRun(userId, composeId, {
+      status: "queued",
+    });
+
+    // Completed run with a runnerGroup — already terminal; the UPDATE's
+    // status filter excludes it and nothing should be published for it.
+    const { runId: completedRunId } = await seedTestRun(userId, composeId, {
+      status: "completed",
+      completedAt: new Date(),
+    });
+    await setTestRunRunnerGroup(completedRunId, "test-group-completed");
+
+    mockAblyPublish.mockClear();
+
+    await deleteOrgData(orgId);
+
+    const cancelPublishes = mockAblyPublish.mock.calls.filter((call) => {
+      return call[0] === "cancel";
+    });
+    const cancelledRunIds = cancelPublishes.map((call) => {
+      return (call[1] as { runId?: string }).runId;
+    });
+    expect(cancelledRunIds).toEqual([runningRunId]);
+    expect(cancelledRunIds).not.toContain(queuedRunId);
+    expect(cancelledRunIds).not.toContain(completedRunId);
   });
 
   it("should cascade delete agent composes and children", async () => {

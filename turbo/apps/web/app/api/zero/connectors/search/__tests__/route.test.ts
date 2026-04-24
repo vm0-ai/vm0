@@ -3,7 +3,10 @@ import { GET } from "../route";
 import { createTestRequest } from "../../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
-import { CONNECTOR_TYPES, ConnectorType } from "@vm0/core";
+import {
+  CONNECTOR_TYPES,
+  type ConnectorType,
+} from "@vm0/core/contracts/connectors";
 
 const context = testContext();
 

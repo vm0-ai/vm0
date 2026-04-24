@@ -1,4 +1,5 @@
-import { isFeatureEnabled, FeatureSwitchKey } from "@vm0/core";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { loadFeatureSwitchOverrides } from "../../user/feature-switches-service";
 import { decryptSecretValue } from "../../../shared/crypto/secrets-encryption";
 import { env } from "../../../../env";
@@ -194,7 +195,7 @@ export async function handleOrgMention(
   });
 
   if (status === "queued") {
-    const queueUrl = `${getAppUrl()}/queue`;
+    const queueUrl = `${getAppUrl()}/?queue=1`;
     await client.chat.postEphemeral({
       channel: context.channelId,
       user: context.userId,

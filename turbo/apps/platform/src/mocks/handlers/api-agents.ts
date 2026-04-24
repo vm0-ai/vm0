@@ -1,24 +1,23 @@
-/**
- * Agents API Handlers
- *
- * Mock handlers for agent-related endpoints.
- * Default behavior: user has one agent.
- */
-
 import {
   zeroTeamContract,
+  type TeamComposeItem,
+} from "@vm0/core/contracts/zero-team";
+import {
   zeroComposesListContract,
   zeroComposesByIdContract,
-  zeroUserConnectorsContract,
+} from "@vm0/core/contracts/zero-composes";
+import { zeroUserConnectorsContract } from "@vm0/core/contracts/user-connectors";
+import {
   zeroAgentsByIdContract,
   zeroAgentInstructionsContract,
+} from "@vm0/core/contracts/zero-agents";
+import {
   chatThreadsContract,
   chatThreadByIdContract,
   chatThreadMarkReadContract,
   chatThreadMessagesContract,
-  type ComposeListItem,
-  type TeamComposeItem,
-} from "@vm0/core";
+} from "@vm0/core/contracts/chat-threads";
+import type { ComposeListItem } from "@vm0/core/contracts/composes";
 import { mockApi } from "../msw-contract.ts";
 
 const DEFAULT_TEAM: TeamComposeItem[] = [

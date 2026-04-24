@@ -4,6 +4,7 @@ import type { ConnectorConfig } from "../connectors";
 export const dropbox = {
   dropbox: {
     label: "Dropbox",
+    category: "docs-files-knowledge",
     environmentMapping: {
       DROPBOX_TOKEN: "$secrets.DROPBOX_ACCESS_TOKEN",
     },

@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
-import { zeroRunsMainContract } from "@vm0/core";
+import { zeroRunsMainContract } from "@vm0/core/contracts/zero-runs";
 import { initServices } from "../../../../src/lib/init-services";
 import {
   requireAuth,

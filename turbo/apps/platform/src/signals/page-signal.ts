@@ -10,10 +10,14 @@ export const setPageSignal$ = command(({ set }, signal: AbortSignal) => {
   set(innerPageSignal$, { signal });
 });
 
+export const maybePageSignal$ = computed((get) => {
+  return get(innerPageSignal$)?.signal;
+});
+
 export const pageSignal$ = computed((get) => {
-  const holder = get(innerPageSignal$);
-  if (!holder) {
+  const signal = get(maybePageSignal$);
+  if (!signal) {
     throw new Error("page signal not set");
   }
-  return holder.signal;
+  return signal;
 });

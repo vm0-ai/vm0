@@ -20,6 +20,7 @@ const log = logger("webhook:stripe");
  *
  * Handles incoming Stripe webhook events:
  * - checkout.session.completed — subscription activated
+ * - checkout.session.async_payment_succeeded — delayed one-time payment settled
  * - invoice.paid — grant monthly credits
  * - customer.subscription.updated — sync status/tier changes
  * - customer.subscription.deleted — downgrade to free
@@ -70,6 +71,9 @@ export async function POST(request: Request) {
   // correct `data.object` type without explicit casts.
   switch (event.type) {
     case "checkout.session.completed":
+      await handleCheckoutCompleted(event.data.object);
+      break;
+    case "checkout.session.async_payment_succeeded":
       await handleCheckoutCompleted(event.data.object);
       break;
     case "invoice.paid":

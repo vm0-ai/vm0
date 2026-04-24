@@ -14,10 +14,11 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { mockConnectors } from "./zero-connectors-page-test-helpers.ts";
-import { zeroConnectorScopeDiffContract } from "@vm0/core";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { zeroConnectorScopeDiffContract } from "@vm0/core/contracts/zero-connectors";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 test("connect button opens api-token form (CONN-I-011)", async () => {
   detachedSetupPage({ context, path: "/connectors" });

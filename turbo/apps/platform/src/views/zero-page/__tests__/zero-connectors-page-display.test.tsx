@@ -7,42 +7,176 @@
  * - Real (internal): All signals, components, rendering
  */
 
-import { describe, expect, it, vi } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { mockConnectors } from "./zero-connectors-page-test-helpers.ts";
-import { zeroConnectorsMainContract } from "@vm0/core";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { zeroConnectorsMainContract } from "@vm0/core/contracts/zero-connectors";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe("connectors page - count display", () => {
-  it("connected connectors count is displayed (CONN-D-001)", async () => {
-    mockConnectors([{ type: "github" }, { type: "linear" }]);
+  it("ai categories render before non-ai categories (CONN-D-001)", async () => {
+    mockConnectors([
+      { type: "github" },
+      { type: "openai", authMethod: "platform" },
+    ]);
 
-    detachedSetupPage({ context, path: "/connectors" });
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.ConnectorCategories]: true },
+    });
 
     await waitFor(() => {
-      expect(screen.getByText("Connected (2)")).toBeInTheDocument();
+      expect(screen.getByTestId("connector-category-ai")).toBeInTheDocument();
     });
+    expect(
+      screen.getByTestId("connector-category-ai-general-models"),
+    ).toBeInTheDocument();
+
+    const aiGroup = screen.getByTestId("connector-category-ai");
+    const engineeringGroup = screen.getByTestId(
+      "connector-category-engineering-team-execution",
+    );
+    expect(
+      aiGroup.compareDocumentPosition(engineeringGroup) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
-  it("available connectors count is displayed (CONN-D-002)", async () => {
+  it("only matching categories are shown for search-filtered results (CONN-D-002)", async () => {
     mockConnectors([{ type: "github" }]);
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.ConnectorCategories]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("connector-category-ai")).toBeInTheDocument();
+    });
+    expect(
+      screen.getByTestId("connector-category-ai-general-models"),
+    ).toBeInTheDocument();
+
+    await userEvent.type(
+      screen.getByPlaceholderText("Find connectors"),
+      "github",
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("connector-category-engineering-team-execution"),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByTestId("connector-category-ai"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("connector-category-communication-collaboration"),
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe("connectors page - grouped display", () => {
+  it("does not render categories or the category menu when the feature switch is off", async () => {
+    mockConnectors([
+      { type: "github" },
+      { type: "openai", authMethod: "platform" },
+    ]);
 
     detachedSetupPage({ context, path: "/connectors" });
 
     await waitFor(() => {
-      const availableHeading = screen.getByText(/^Available \(\d+\)$/);
-      expect(availableHeading).toBeInTheDocument();
-      const count = Number.parseInt(
-        availableHeading.textContent?.match(/\d+/)?.[0] ?? "0",
-      );
-      expect(count).toBeGreaterThan(0);
+      expect(screen.getByText("GitHub")).toBeInTheDocument();
     });
+
+    expect(
+      screen.queryByTestId("connector-category-ai"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("connector-category-engineering-team-execution"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("navigation", {
+        name: "Connector categories",
+      }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders a category menu that scrolls to grouped sections", async () => {
+    const scrollIntoView = vi
+      .spyOn(Element.prototype, "scrollIntoView")
+      .mockImplementation(() => {});
+
+    mockConnectors([
+      { type: "github" },
+      { type: "openai", authMethod: "platform" },
+    ]);
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.ConnectorCategories]: true },
+    });
+
+    await screen.findByRole("navigation", {
+      name: "Connector categories",
+    });
+
+    await userEvent.click(
+      screen.getByTestId("connector-category-menu-engineering-team-execution"),
+    );
+
+    // Assert the correct section was targeted (user-observable: the scrolled
+    // element is the engineering section). Do not assert on the options
+    // object — that couples the test to implementation detail.
+    const engineeringSection = screen.getByTestId(
+      "connector-category-engineering-team-execution",
+    );
+    const scrolledInto = scrollIntoView.mock.instances.some((instance) => {
+      return instance === engineeringSection;
+    });
+    expect(scrolledInto).toBeTruthy();
+  });
+
+  it("connected connectors are shown before available ones within a category", async () => {
+    mockConnectors([{ type: "github", externalUsername: "octocat" }]);
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.ConnectorCategories]: true },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("connector-category-engineering-team-execution"),
+      ).toBeInTheDocument();
+    });
+
+    const engineeringSection = screen.getByTestId(
+      "connector-category-engineering-team-execution",
+    );
+    const labels = within(engineeringSection)
+      .getAllByTestId("connector-card-label")
+      .map((element) => {
+        return element.textContent;
+      });
+    expect(labels[0]).toBe("GitHub");
+    expect(labels).toContain("Asana");
   });
 });
 
@@ -71,8 +205,8 @@ describe("connectors page - connector status indicators", () => {
     // in flight and "Connecting…" remains visible. The never-resolving promise
     // is cancelled by the abort signal via fetchOptions.signal in setLoop.
     server.use(
-      mockApi(zeroConnectorsMainContract.list, () => {
-        return new Promise<never>(() => {});
+      mockApi(zeroConnectorsMainContract.list, ({ never }) => {
+        return never();
       }),
     );
 
@@ -166,10 +300,8 @@ describe("connectors page - connector status indicators", () => {
 describe("connectors page - loading state", () => {
   it("loading skeleton shown while connectors load (CONN-D-007)", async () => {
     server.use(
-      mockApi(zeroConnectorsMainContract.list, () => {
-        return new Promise<never>(() => {
-          // Never resolves — keeps component in loading state
-        });
+      mockApi(zeroConnectorsMainContract.list, ({ never }) => {
+        return never();
       }),
     );
 

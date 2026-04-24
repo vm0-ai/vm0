@@ -1,29 +1,31 @@
 import { eq } from "drizzle-orm";
 import {
   BILLABLE_CONNECTORS,
-  getModelProviderFirewall,
   getConnectorFirewall,
   isFirewallConnectorType,
-  type ConnectorType,
-  type ExpandedFirewallConfig,
+} from "@vm0/core/firewalls";
+import type { ConnectorType } from "@vm0/core/contracts/connectors";
+import type {
+  ExpandedFirewallConfig,
+  FirewallPolicies,
+  Firewalls,
+  NetworkPolicies,
+} from "@vm0/core/contracts/firewalls";
+import {
+  getModelProviderFirewall,
   type ModelProviderType,
-  type FirewallPolicies,
-  type Firewalls,
-  type NetworkPolicies,
-} from "@vm0/core";
+} from "@vm0/core/contracts/model-providers";
 import { zeroRuns } from "../../db/schema/zero-run";
 import { badRequest, notFound } from "../shared/errors";
 import { logger } from "../shared/logger";
 import type {
+  ContextArtifact,
   ExecutionContext,
   ResumeSession,
-  ArtifactSnapshot,
 } from "../infra/run/types";
-import type {
-  AdditionalArtifact,
-  AdditionalVolume,
-} from "../infra/storage/types";
-import { AUTO_MEMORY_MOUNT_PATH } from "../infra/storage/types";
+import type { ConversationResolution } from "../infra/run/resolvers";
+import type { AdditionalVolume } from "../infra/storage/types";
+import { AUTO_MEMORY_ARTIFACT_NAME, AUTO_MEMORY_MOUNT_PATH } from "./memory";
 import { expandEnvironmentFromCompose } from "../infra/run/environment";
 import { getUserPreferences } from "./user/user-preferences-service";
 import { getApiTokenConnectorTypes } from "./connector/connector-service";
@@ -60,6 +62,38 @@ export {
 const log = logger("zero:build-context");
 
 /**
+ * Append the auto-memory artifact when this is a new run. On resume paths
+ * (checkpoint, session, conversation continue) the resolver already emitted
+ * memory at AUTO_MEMORY_MOUNT_PATH in resolution.artifacts — re-injecting here
+ * would risk shadowing a divergent user-declared artifact named "memory".
+ * When the resolution has no memory entry (very old data that predates
+ * memory-as-artifact) we log and skip rather than silently mount over a path
+ * the user may have declared for a different purpose.
+ */
+function injectAutoMemoryArtifactIfNewRun(
+  artifacts: ContextArtifact[],
+  resolution: ConversationResolution | null,
+  logContext: Record<string, string>,
+): ContextArtifact[] {
+  if (resolution === null) {
+    return [
+      ...artifacts,
+      { name: AUTO_MEMORY_ARTIFACT_NAME, mountPath: AUTO_MEMORY_MOUNT_PATH },
+    ];
+  }
+  const hasMemory = artifacts.some((a) => {
+    return a.name === AUTO_MEMORY_ARTIFACT_NAME;
+  });
+  if (!hasMemory) {
+    log.warn(
+      "Resume resolution has no memory artifact — skipping auto-injection",
+      logContext,
+    );
+  }
+  return artifacts;
+}
+
+/**
  * Parameters for building Zero execution context.
  * Contains all fields needed to resolve secrets, model providers, connectors,
  * and build the final ExecutionContext for sandbox dispatch.
@@ -71,9 +105,7 @@ interface BuildZeroContextParams {
   // Base parameters
   agentComposeVersionId?: string;
   conversationId?: string;
-  artifactName?: string;
-  artifactVersion?: string;
-  memoryName?: string;
+  artifacts?: ContextArtifact[];
   vars?: Record<string, string>;
   secrets?: Record<string, string>;
   volumeVersions?: Record<string, string>;
@@ -349,14 +381,11 @@ interface ResolvedCliContext {
   // Session/checkpoint resolution
   agentComposeVersionId?: string;
   agentCompose?: unknown;
-  artifactName?: string;
-  artifactVersion?: string;
-  memoryName?: string;
+  artifacts: ContextArtifact[];
   vars?: Record<string, string>;
   volumeVersions?: Record<string, string>;
   additionalVolumes?: AdditionalVolume[];
   resumeSession?: ResumeSession;
-  resumeArtifact?: ArtifactSnapshot;
 
   // Secrets/environment resolution
   secrets?: Record<string, string>;
@@ -408,15 +437,12 @@ export async function resolveCliRunContext(
   // Initialize context variables
   let agentComposeVersionId: string | undefined = params.agentComposeVersionId;
   let agentCompose: unknown;
-  let artifactName: string | undefined;
-  let artifactVersion: string | undefined;
+  let artifacts: ContextArtifact[] = [];
   let vars: Record<string, string> | undefined = params.vars;
-  let memoryName: string | undefined;
   let volumeVersions: Record<string, string> | undefined =
     params.volumeVersions;
   let additionalVolumes: AdditionalVolume[] | undefined;
   let resumeSession: ResumeSession | undefined;
-  let resumeArtifact: ArtifactSnapshot | undefined;
 
   // Step 1: Resolve source (checkpoint/session/conversation).
   const resolveStart = Date.now();
@@ -428,14 +454,11 @@ export async function resolveCliRunContext(
     const defaults = applyResolutionDefaults(params, resolution);
     agentComposeVersionId = defaults.agentComposeVersionId;
     agentCompose = defaults.agentCompose;
-    artifactName = defaults.artifactName;
-    artifactVersion = defaults.artifactVersion;
-    memoryName = defaults.memoryName;
+    artifacts = defaults.artifacts;
     vars = defaults.vars;
     volumeVersions = defaults.volumeVersions;
     additionalVolumes = defaults.additionalVolumes;
     resumeSession = defaults.resumeSession;
-    resumeArtifact = defaults.resumeArtifact;
   }
   // Step 3: New run — resolve compose from composeId or agentComposeVersionId
   else if (!agentComposeVersionId && params.composeId) {
@@ -444,6 +467,12 @@ export async function resolveCliRunContext(
       params.orgId,
     );
   }
+
+  // Memory injection — see injectAutoMemoryArtifactIfNewRun().
+  artifacts = injectAutoMemoryArtifactIfNewRun(artifacts, resolution, {
+    userId: params.userId,
+    orgId: params.orgId,
+  });
 
   // Load compose content if we have a version ID
   if (!agentCompose && agentComposeVersionId) {
@@ -455,6 +484,7 @@ export async function resolveCliRunContext(
   if (!agentCompose) {
     // No compose available — return only what we can resolve
     return {
+      artifacts,
       vars,
       billableFirewalls: [],
       timings: {
@@ -533,14 +563,11 @@ export async function resolveCliRunContext(
   return {
     agentComposeVersionId,
     agentCompose,
-    artifactName,
-    artifactVersion,
-    memoryName,
+    artifacts,
     vars: mergedVars ?? vars,
     volumeVersions,
     additionalVolumes,
     resumeSession,
-    resumeArtifact,
     secrets,
     environment,
     secretConnectorMap,
@@ -579,16 +606,13 @@ export async function buildZeroExecutionContext(
   // Initialize context variables
   let agentComposeVersionId: string | undefined = params.agentComposeVersionId;
   let agentCompose: unknown;
-  let artifactName: string | undefined = params.artifactName;
-  let artifactVersion: string | undefined = params.artifactVersion;
+  let artifacts: ContextArtifact[] = params.artifacts ?? [];
   let vars: Record<string, string> | undefined = params.vars;
-  let memoryName: string | undefined = params.memoryName;
   let volumeVersions: Record<string, string> | undefined =
     params.volumeVersions;
   let additionalVolumes: AdditionalVolume[] | undefined =
     params.additionalVolumes;
   let resumeSession: ResumeSession | undefined;
-  let resumeArtifact: ArtifactSnapshot | undefined;
 
   // Step 1: Resolve source (checkpoint/session/conversation).
   const resolveStart = Date.now();
@@ -601,18 +625,13 @@ export async function buildZeroExecutionContext(
     const defaults = applyResolutionDefaults(params, resolution);
     agentComposeVersionId = defaults.agentComposeVersionId;
     agentCompose = defaults.agentCompose;
-    artifactName = defaults.artifactName;
-    artifactVersion = defaults.artifactVersion;
-    memoryName = defaults.memoryName;
+    artifacts = defaults.artifacts;
     vars = defaults.vars;
     volumeVersions = defaults.volumeVersions;
     additionalVolumes = params.additionalVolumes || defaults.additionalVolumes;
     resumeSession = defaults.resumeSession;
-    resumeArtifact = defaults.resumeArtifact;
 
-    log.debug(
-      `Resolution applied: artifact=${artifactName}@${artifactVersion}`,
-    );
+    log.debug(`Resolution applied: artifacts=${JSON.stringify(artifacts)}`);
   }
   // Step 3: New run - use pre-loaded compose or load from DB
   else if (agentComposeVersionId) {
@@ -620,6 +639,11 @@ export async function buildZeroExecutionContext(
       params.agentCompose ??
       (await loadAgentComposeForNewRun(agentComposeVersionId));
   }
+
+  // Memory injection — see injectAutoMemoryArtifactIfNewRun().
+  artifacts = injectAutoMemoryArtifactIfNewRun(artifacts, resolution, {
+    runId: params.runId,
+  });
 
   // Validate required fields
   if (!agentComposeVersionId) {
@@ -707,16 +731,6 @@ export async function buildZeroExecutionContext(
     mergedVars,
   );
 
-  // Synthesize memory as an additional artifact mounted directly at Claude
-  // Code's auto-memory path. This replaces the guest-agent symlink bootstrap:
-  // the runner mounts memory at AUTO_MEMORY_MOUNT_PATH so Claude Code finds
-  // it without any in-sandbox symlink work. Session-row bookkeeping
-  // (agent_sessions.memory_name) is handled separately by the write path;
-  // the field is not propagated through the execution context.
-  const memoryArtifacts: AdditionalArtifact[] | undefined = memoryName
-    ? [{ name: memoryName, mountPath: AUTO_MEMORY_MOUNT_PATH }]
-    : undefined;
-
   // Build final execution context
   return {
     context: {
@@ -731,9 +745,7 @@ export async function buildZeroExecutionContext(
       secrets,
       secretConnectorMap,
       sandboxToken: params.sandboxToken,
-      artifactName,
-      artifactVersion,
-      artifacts: memoryArtifacts,
+      artifacts,
       volumeVersions,
       additionalVolumes,
       environment,
@@ -744,7 +756,6 @@ export async function buildZeroExecutionContext(
       tools: params.tools,
       settings: params.settings,
       resumeSession,
-      resumeArtifact,
       // Metadata for vm0_start event
       agentName: params.agentName,
       resumedFromCheckpointId: params.resumedFromCheckpointId,

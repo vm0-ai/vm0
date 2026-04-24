@@ -10,10 +10,11 @@ import {
   resetMockUsageMembers,
   resetMockMemberCreditCaps,
 } from "../../../mocks/handlers/api-usage.ts";
-import { zeroMemberCreditCapContract } from "@vm0/core";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { zeroMemberCreditCapContract } from "@vm0/core/contracts/zero-member-credit-cap";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 interface CapturedCapCall {
   userId: string;

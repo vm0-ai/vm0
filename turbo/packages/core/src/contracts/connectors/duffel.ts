@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const duffel = {
   duffel: {
     label: "Duffel",
+    category: "data-automation-infrastructure",
     environmentMapping: {
       DUFFEL_TOKEN: "$secrets.DUFFEL_TOKEN",
     },

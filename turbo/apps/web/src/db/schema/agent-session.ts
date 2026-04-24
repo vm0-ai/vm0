@@ -1,14 +1,15 @@
 import {
   pgTable,
   uuid,
-  varchar,
   text,
   timestamp,
   index,
+  jsonb,
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { agentComposes } from "./agent-compose";
 import { conversations } from "./conversation";
+import type { ContextArtifact } from "../../lib/infra/run/types";
 
 /**
  * Agent Sessions table
@@ -37,18 +38,18 @@ export const agentSessions = pgTable(
         onDelete: "set null",
       },
     ),
-    artifactName: varchar("artifact_name", { length: 255 }),
-    memoryName: varchar("memory_name", { length: 255 }),
+    artifacts: jsonb("artifacts")
+      .$type<ContextArtifact[]>()
+      .notNull()
+      .default([]),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => {
     return [
-      // Composite index for findOrCreate pattern
-      index("idx_agent_sessions_user_compose_artifact").on(
+      index("idx_agent_sessions_user_compose").on(
         table.userId,
         table.agentComposeId,
-        table.artifactName,
       ),
       index("idx_agent_sessions_org").on(table.orgId),
     ];

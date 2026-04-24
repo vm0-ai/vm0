@@ -1,4 +1,4 @@
-import { getConnectorOAuthConfig } from "@vm0/core";
+import { getConnectorOAuthConfig } from "@vm0/core/contracts/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
 

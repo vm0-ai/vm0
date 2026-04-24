@@ -15,6 +15,11 @@ const c = initContract();
  * Sandbox reuse outcome. One enum value per code branch in the runner's
  * reuse-decision block. `reused` means the sandbox was unparked from the idle
  * pool; the remaining variants describe why reuse did not happen.
+ *
+ * `featureDisabled` is legacy: written by older runners while reuse was gated
+ * by the `sandboxReuse` feature flag (removed when reuse went to full rollout
+ * in #10744). Retained here so historical `agent_runs.sandbox_reuse_result`
+ * rows still parse on read. The runner no longer emits it.
  */
 export const sandboxReuseResultSchema = z.enum([
   "reused",
@@ -39,6 +44,19 @@ const agentEventSchema = z
     sequenceNumber: z.number().int().nonnegative(),
   })
   .passthrough();
+
+/**
+ * Artifact snapshots schema — canonical `Array<{name, version, mountPath}>`
+ * form. Legacy `Record<name, version>` support was removed in #10913 after
+ * the DB migration and guest-agent writer flip completed.
+ */
+const artifactSnapshotsSchema = z.array(
+  z.object({
+    name: z.string(),
+    version: z.string(),
+    mountPath: z.string(),
+  }),
+);
 
 /**
  * Volume versions snapshot schema
@@ -141,9 +159,10 @@ export const webhookCheckpointsContract = c.router({
             64,
             "cliAgentSessionHistoryHash must be a 64-character SHA-256 hex string",
           ),
-        // Multi-artifact snapshot map: artifact name → version id.
-        // Authoritative payload persisted to checkpoints.artifact_snapshots.
-        artifactSnapshots: z.record(z.string(), z.string()).optional(),
+        // Multi-artifact snapshot payload. Canonical
+        // `Array<{name, version, mountPath}>` form persisted verbatim to
+        // checkpoints.artifact_snapshots.
+        artifactSnapshots: artifactSnapshotsSchema.optional(),
         volumeVersionsSnapshot: volumeVersionsSnapshotSchema.optional(),
       })
       .strict(),
@@ -152,7 +171,7 @@ export const webhookCheckpointsContract = c.router({
         checkpointId: z.string(),
         agentSessionId: z.string(),
         conversationId: z.string(),
-        artifacts: z.record(z.string(), z.string()).optional(),
+        artifacts: artifactSnapshotsSchema.optional(),
         volumes: z.record(z.string(), z.string()).optional(),
       }),
       400: apiErrorSchema,

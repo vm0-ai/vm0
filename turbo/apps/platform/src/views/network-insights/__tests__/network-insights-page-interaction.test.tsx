@@ -10,10 +10,14 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { setMockOrg } from "../../../mocks/handlers/api-org.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
-import { zeroInsightsContract, type InsightsResponse } from "@vm0/core";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
+import {
+  zeroInsightsContract,
+  type InsightsResponse,
+} from "@vm0/core/contracts/zero-insights";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 function daysAgoIso(n: number): string {
   const d = new Date();

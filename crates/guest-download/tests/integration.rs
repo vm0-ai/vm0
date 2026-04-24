@@ -9,6 +9,18 @@ enum TarEntry<'a> {
     File(&'a str, &'a [u8]),
     Symlink(&'a str, &'a str),
     Hardlink(&'a str, &'a str),
+    /// Hand-crafted entry for malicious-input tests that `tar::Builder`
+    /// rejects (absolute paths, `..` components, empty linkname). Always
+    /// written after all non-Raw entries in the archive.
+    Raw {
+        path: &'a [u8],
+        /// Typeflag byte: `b'0'` regular file, `b'2'` symlink.
+        entry_type: u8,
+        /// Octal mode string like `b"0000644\0"`.
+        mode: &'a [u8; 8],
+        /// Empty = no data block appended (size stays zero).
+        content: &'a [u8],
+    },
 }
 
 /// Create a tar.gz archive in memory containing the given files.
@@ -19,7 +31,53 @@ fn create_tar_gz(files: &[(&str, &[u8])]) -> std::io::Result<Vec<u8>> {
 
 /// Create a tar.gz archive with mixed file and symlink entries.
 fn create_tar_gz_entries(entries: &[TarEntry]) -> std::io::Result<Vec<u8>> {
+    /// Strip builder-written EOF, splice hand-crafted tar headers onto the
+    /// end, and re-add EOF. Scoped as an inner fn so the indexing-slicing
+    /// allow (needed because `allow-indexing-slicing-in-tests` only matches
+    /// `#[test]` fns, not helper fns) stays off the rest of the helper.
+    #[allow(clippy::indexing_slicing)]
+    fn append_raw_entries(tar_data: &mut Vec<u8>, entries: &[TarEntry]) {
+        while tar_data.len() >= 512 && tar_data[tar_data.len() - 512..].iter().all(|&b| b == 0) {
+            tar_data.truncate(tar_data.len() - 512);
+        }
+        for entry in entries {
+            if let TarEntry::Raw {
+                path,
+                entry_type,
+                mode,
+                content,
+            } = entry
+            {
+                let mut header_block = [0u8; 512];
+                header_block[..path.len()].copy_from_slice(path);
+                header_block[100..108].copy_from_slice(*mode);
+                header_block[108..116].copy_from_slice(b"0000000\0"); // uid
+                header_block[116..124].copy_from_slice(b"0000000\0"); // gid
+                let size_str = format!("{:011o}\0", content.len());
+                header_block[124..136].copy_from_slice(size_str.as_bytes());
+                header_block[136..148].copy_from_slice(b"00000000000\0"); // mtime
+                header_block[156] = *entry_type;
+                header_block[257..263].copy_from_slice(b"ustar\0");
+                header_block[263..265].copy_from_slice(b"00");
+                // Checksum: field filled with spaces, sum all bytes, write result.
+                header_block[148..156].copy_from_slice(b"        ");
+                let cksum: u32 = header_block.iter().map(|&b| b as u32).sum();
+                let cksum_str = format!("{:06o}\0 ", cksum);
+                header_block[148..156].copy_from_slice(cksum_str.as_bytes());
+
+                tar_data.extend_from_slice(&header_block);
+                if !content.is_empty() {
+                    let mut data_block = [0u8; 512];
+                    data_block[..content.len()].copy_from_slice(content);
+                    tar_data.extend_from_slice(&data_block);
+                }
+            }
+        }
+        tar_data.extend_from_slice(&[0u8; 1024]); // EOF
+    }
+
     let mut tar_data = Vec::new();
+    let has_raw = entries.iter().any(|e| matches!(e, TarEntry::Raw { .. }));
     {
         let mut builder = tar::Builder::new(&mut tar_data);
         for entry in entries {
@@ -47,9 +105,14 @@ fn create_tar_gz_entries(entries: &[TarEntry]) -> std::io::Result<Vec<u8>> {
                     header.set_cksum();
                     builder.append_link(&mut header, path, target)?;
                 }
+                TarEntry::Raw { .. } => {} // appended after builder finishes
             }
         }
         builder.finish()?;
+    }
+
+    if has_raw {
+        append_raw_entries(&mut tar_data, entries);
     }
 
     let mut gz_data = Vec::new();
@@ -676,60 +739,17 @@ fn symlink_within_target_allowed() {
 fn path_traversal_via_dotdot_blocked() {
     let server = MockServer::start();
 
-    // Build a raw tar with ../outside.txt — the tar crate builder rejects .. paths,
-    // so we construct the tar entry manually to simulate a malicious archive.
-    let tar_gz = {
-        let content = b"escaped";
-        let path_bytes = b"../outside.txt";
-
-        // Build legit entry via tar crate, then append raw malicious entry
-        let mut full_tar: Vec<u8> = Vec::new();
-        {
-            let mut builder = tar::Builder::new(&mut full_tar);
-            let mut h = tar::Header::new_gnu();
-            h.set_size(4);
-            h.set_mode(0o644);
-            h.set_cksum();
-            builder
-                .append_data(&mut h, "legit.txt", b"safe" as &[u8])
-                .unwrap();
-            builder.into_inner().unwrap();
-        }
-        // Strip EOF markers (trailing 512-byte zero blocks)
-        while full_tar.len() >= 512 && full_tar[full_tar.len() - 512..].iter().all(|&b| b == 0) {
-            full_tar.truncate(full_tar.len() - 512);
-        }
-
-        // Raw tar header for ../outside.txt
-        let mut header_block = [0u8; 512];
-        header_block[..path_bytes.len()].copy_from_slice(path_bytes);
-        header_block[100..108].copy_from_slice(b"0000644\0"); // mode
-        header_block[108..116].copy_from_slice(b"0000000\0"); // uid
-        header_block[116..124].copy_from_slice(b"0000000\0"); // gid
-        let size_str = format!("{:011o}\0", content.len());
-        header_block[124..136].copy_from_slice(size_str.as_bytes());
-        header_block[136..148].copy_from_slice(b"00000000000\0"); // mtime
-        header_block[156] = b'0'; // regular file
-        header_block[257..263].copy_from_slice(b"ustar\0");
-        header_block[263..265].copy_from_slice(b"00");
-        // Checksum (with checksum field as spaces)
-        header_block[148..156].copy_from_slice(b"        ");
-        let cksum: u32 = header_block.iter().map(|&b| b as u32).sum();
-        let cksum_str = format!("{:06o}\0 ", cksum);
-        header_block[148..156].copy_from_slice(cksum_str.as_bytes());
-
-        full_tar.extend_from_slice(&header_block);
-        let mut data_block = [0u8; 512];
-        data_block[..content.len()].copy_from_slice(content);
-        full_tar.extend_from_slice(&data_block);
-        full_tar.extend_from_slice(&[0u8; 1024]); // EOF
-
-        let mut gz_data = Vec::new();
-        let mut encoder = GzEncoder::new(&mut gz_data, Compression::fast());
-        encoder.write_all(&full_tar).unwrap();
-        encoder.finish().unwrap();
-        gz_data
-    };
+    // tar::Builder rejects `..` paths, so hand-craft the entry via TarEntry::Raw.
+    let tar_gz = create_tar_gz_entries(&[
+        TarEntry::File("legit.txt", b"safe"),
+        TarEntry::Raw {
+            path: b"../outside.txt",
+            entry_type: b'0',
+            mode: b"0000644\0",
+            content: b"escaped",
+        },
+    ])
+    .unwrap();
 
     server.mock(|when, then| {
         when.method(GET).path("/storage.tar.gz");
@@ -954,55 +974,17 @@ fn hardlink_relative_dotdot_escape_blocked() {
 fn absolute_path_entry_blocked() {
     let server = MockServer::start();
 
-    // Build raw tar with /etc/passwd entry — tar crate builder rejects absolute paths
-    let tar_gz = {
-        let content = b"malicious";
-        let path_bytes = b"/etc/passwd";
-
-        let mut full_tar: Vec<u8> = Vec::new();
-        {
-            let mut builder = tar::Builder::new(&mut full_tar);
-            let mut h = tar::Header::new_gnu();
-            h.set_size(4);
-            h.set_mode(0o644);
-            h.set_cksum();
-            builder
-                .append_data(&mut h, "legit.txt", b"safe" as &[u8])
-                .unwrap();
-            builder.into_inner().unwrap();
-        }
-        while full_tar.len() >= 512 && full_tar[full_tar.len() - 512..].iter().all(|&b| b == 0) {
-            full_tar.truncate(full_tar.len() - 512);
-        }
-
-        let mut header_block = [0u8; 512];
-        header_block[..path_bytes.len()].copy_from_slice(path_bytes);
-        header_block[100..108].copy_from_slice(b"0000644\0");
-        header_block[108..116].copy_from_slice(b"0000000\0");
-        header_block[116..124].copy_from_slice(b"0000000\0");
-        let size_str = format!("{:011o}\0", content.len());
-        header_block[124..136].copy_from_slice(size_str.as_bytes());
-        header_block[136..148].copy_from_slice(b"00000000000\0");
-        header_block[156] = b'0';
-        header_block[257..263].copy_from_slice(b"ustar\0");
-        header_block[263..265].copy_from_slice(b"00");
-        header_block[148..156].copy_from_slice(b"        ");
-        let cksum: u32 = header_block.iter().map(|&b| b as u32).sum();
-        let cksum_str = format!("{:06o}\0 ", cksum);
-        header_block[148..156].copy_from_slice(cksum_str.as_bytes());
-
-        full_tar.extend_from_slice(&header_block);
-        let mut data_block = [0u8; 512];
-        data_block[..content.len()].copy_from_slice(content);
-        full_tar.extend_from_slice(&data_block);
-        full_tar.extend_from_slice(&[0u8; 1024]);
-
-        let mut gz_data = Vec::new();
-        let mut encoder = GzEncoder::new(&mut gz_data, Compression::fast());
-        encoder.write_all(&full_tar).unwrap();
-        encoder.finish().unwrap();
-        gz_data
-    };
+    // tar::Builder rejects absolute paths, so hand-craft the entry.
+    let tar_gz = create_tar_gz_entries(&[
+        TarEntry::File("legit.txt", b"safe"),
+        TarEntry::Raw {
+            path: b"/etc/passwd",
+            entry_type: b'0',
+            mode: b"0000644\0",
+            content: b"malicious",
+        },
+    ])
+    .unwrap();
 
     server.mock(|when, then| {
         when.method(GET).path("/storage.tar.gz");
@@ -1034,51 +1016,18 @@ fn absolute_path_entry_blocked() {
 fn symlink_missing_link_target_skipped() {
     let server = MockServer::start();
 
-    // Build raw tar with a symlink entry that has no link target in the header
-    let tar_gz = {
-        let mut full_tar: Vec<u8> = Vec::new();
-        {
-            let mut builder = tar::Builder::new(&mut full_tar);
-            let mut h = tar::Header::new_gnu();
-            h.set_size(4);
-            h.set_mode(0o644);
-            h.set_cksum();
-            builder
-                .append_data(&mut h, "legit.txt", b"safe" as &[u8])
-                .unwrap();
-            builder.into_inner().unwrap();
-        }
-        while full_tar.len() >= 512 && full_tar[full_tar.len() - 512..].iter().all(|&b| b == 0) {
-            full_tar.truncate(full_tar.len() - 512);
-        }
-
-        // Symlink header with empty link target (linkname field at bytes 157-257 is all zeros)
-        let path_bytes = b"bad_symlink";
-        let mut header_block = [0u8; 512];
-        header_block[..path_bytes.len()].copy_from_slice(path_bytes);
-        header_block[100..108].copy_from_slice(b"0000777\0");
-        header_block[108..116].copy_from_slice(b"0000000\0");
-        header_block[116..124].copy_from_slice(b"0000000\0");
-        header_block[124..136].copy_from_slice(b"00000000000\0");
-        header_block[136..148].copy_from_slice(b"00000000000\0");
-        header_block[156] = b'2'; // symlink type
-        // linkname at 157..257 left as zeros (empty target)
-        header_block[257..263].copy_from_slice(b"ustar\0");
-        header_block[263..265].copy_from_slice(b"00");
-        header_block[148..156].copy_from_slice(b"        ");
-        let cksum: u32 = header_block.iter().map(|&b| b as u32).sum();
-        let cksum_str = format!("{:06o}\0 ", cksum);
-        header_block[148..156].copy_from_slice(cksum_str.as_bytes());
-
-        full_tar.extend_from_slice(&header_block);
-        full_tar.extend_from_slice(&[0u8; 1024]);
-
-        let mut gz_data = Vec::new();
-        let mut encoder = GzEncoder::new(&mut gz_data, Compression::fast());
-        encoder.write_all(&full_tar).unwrap();
-        encoder.finish().unwrap();
-        gz_data
-    };
+    // Symlink entry with empty linkname (bytes 157..257 stay zeroed). tar::Builder
+    // requires a non-empty target, so hand-craft the entry.
+    let tar_gz = create_tar_gz_entries(&[
+        TarEntry::File("legit.txt", b"safe"),
+        TarEntry::Raw {
+            path: b"bad_symlink",
+            entry_type: b'2',
+            mode: b"0000777\0",
+            content: b"",
+        },
+    ])
+    .unwrap();
 
     server.mock(|when, then| {
         when.method(GET).path("/storage.tar.gz");
@@ -1101,4 +1050,70 @@ fn symlink_missing_link_target_skipped() {
     );
     // Malformed symlink should NOT be created
     assert!(mount.join("bad_symlink").symlink_metadata().is_err());
+}
+
+// ---------------------------------------------------------------------------
+// file:// scheme — host-staged tarballs (epic #10800)
+// ---------------------------------------------------------------------------
+
+// Successful file:// extraction: the local tarball is read and its contents are
+// extracted into the mount path. The staged tarball is intentionally left in
+// place — /tmp is wiped on VM teardown, and deleting it early breaks runs where
+// two manifest entries share the same staged path.
+#[test]
+fn file_scheme_extraction_success() {
+    let tar_gz = create_tar_gz(&[("hello.txt", b"hello from file")]).unwrap();
+
+    let dir = tempfile::tempdir().unwrap();
+    let staged = dir.path().join("staged.tar.gz");
+    std::fs::write(&staged, &tar_gz).unwrap();
+
+    let mount = dir.path().join("mount");
+    let url = format!("file://{}", staged.display());
+    let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
+
+    let result = guest_download::run(manifest.to_str().unwrap());
+
+    assert!(result);
+    assert_eq!(
+        std::fs::read_to_string(mount.join("hello.txt")).unwrap(),
+        "hello from file"
+    );
+    // Staged tarball is preserved — runner cleans /tmp on VM teardown.
+    assert!(staged.exists());
+}
+
+// Storage with a missing file:// target fails the run. The runner only rewrites
+// archive_url to file:// after vsock-staging succeeds, so a missing file means a
+// broken runner contract — fatal, no retry (status_code is None, retriable false).
+#[test]
+fn file_scheme_missing_storage_fatal() {
+    let dir = tempfile::tempdir().unwrap();
+    let missing = dir.path().join("never-existed.tar.gz");
+    assert!(!missing.exists());
+
+    let mount = dir.path().join("mount");
+    let url = format!("file://{}", missing.display());
+    let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
+
+    let result = guest_download::run(manifest.to_str().unwrap());
+    assert!(!result);
+}
+
+// Artifacts treat HTTP 404 as non-fatal ("may not exist on first run"), but the
+// file:// path has no status_code, so a missing local file is fatal for artifacts
+// too. Same reasoning as storages: the runner only stages + rewrites after the
+// file lands, so a missing file signals a broken contract, not an absent artifact.
+#[test]
+fn file_scheme_missing_artifact_fatal() {
+    let dir = tempfile::tempdir().unwrap();
+    let missing = dir.path().join("never-existed.tar.gz");
+    assert!(!missing.exists());
+
+    let mount = dir.path().join("artifact_mount");
+    let url = format!("file://{}", missing.display());
+    let manifest = write_manifest(&dir, &[], Some((mount.to_str().unwrap(), Some(&url)))).unwrap();
+
+    let result = guest_download::run(manifest.to_str().unwrap());
+    assert!(!result);
 }

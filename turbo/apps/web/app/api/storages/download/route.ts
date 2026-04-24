@@ -1,5 +1,6 @@
 import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
-import { storagesDownloadContract, VOLUME_ORG_USER_ID } from "@vm0/core";
+import { storagesDownloadContract } from "@vm0/core/contracts/storages";
+import { VOLUME_ORG_USER_ID } from "@vm0/core/storage-names";
 import { initServices } from "../../../../src/lib/init-services";
 import { storages, storageVersions } from "../../../../src/db/schema/storage";
 import { agentRuns } from "../../../../src/db/schema/agent-run";

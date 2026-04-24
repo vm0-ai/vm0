@@ -332,9 +332,9 @@ describe("handleCors", () => {
         headers: { origin: "not-a-valid-url" },
       });
 
-      expect(() => {
-        handleCors(request);
-      }).toThrow();
+      const response = handleCors(request);
+
+      expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
     });
 
     it("should handle origin with unusual port", async () => {
@@ -358,9 +358,7 @@ describe("handleCors", () => {
 
       const response = handleCors(request);
 
-      expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
-        "http://app.vm0.ai",
-      );
+      expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
     });
 
     it("should handle case sensitivity in hostname (lowercase vm6.ai)", async () => {
@@ -372,9 +370,9 @@ describe("handleCors", () => {
 
       const response = handleCors(request);
 
-      // URL hostname is automatically lowercased by URL constructor
+      // URL.origin canonicalizes the hostname casing.
       expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
-        "https://test-app.VM6.AI",
+        "https://test-app.vm6.ai",
       );
     });
   });

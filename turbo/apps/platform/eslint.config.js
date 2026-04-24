@@ -39,6 +39,7 @@ export default [
       "ccstate/no-side-effect-in-render": "error",
       "ccstate/no-non-zero-api": "error",
       "ccstate/no-new-abort-controller": "error",
+      "ccstate/no-new-promise": "error",
       "ccstate/no-direct-local-storage": "error",
       "ccstate/no-detach-in-signals": "error",
       "ccstate/no-direct-fetch": "error",
@@ -46,6 +47,7 @@ export default [
       "ccstate/no-void-statement": "error",
       "ccstate/no-abort-swallower": "error",
       "ccstate/require-accept": "error",
+      "ccstate/require-client-signal": "error",
       "ccstate/command-async-signal": "error",
       "ccstate/no-getter-setter-params": "error",
       "ccstate/no-store-in-params": [
@@ -77,6 +79,7 @@ export default [
       "ccstate/no-get-by-role-name": "error",
       "ccstate/no-user-clear-tab": "error",
       "ccstate/no-raw-msw-http": "error",
+      "ccstate/no-mockapi-raw-async": "error",
       "no-restricted-syntax": [
         "error",
         {
@@ -144,11 +147,31 @@ export default [
       "ccstate/no-raw-msw-http": "off",
     },
   },
+  // Allow /api/ path prefix in browser test setup. The string literal is used
+  // as an unhandled-request matcher, not as an actual API call target.
+  {
+    files: ["src/test/browser-setup.ts"],
+    rules: {
+      "ccstate/no-non-zero-api": "off",
+    },
+  },
   // Allow direct localStorage in the abstraction layer only
   {
     files: ["src/signals/external/local-storage.ts"],
     rules: {
       "ccstate/no-direct-local-storage": "off",
+    },
+  },
+  // Allow new Promise() in the dedicated helper that wraps a one-shot
+  // browser DOM event pair (<img> load/error). No ambient signal exists at
+  // the DOM layer; isolating the pattern to a single-purpose file keeps the
+  // rule active for the rest of org-general-tab.tsx.
+  {
+    files: [
+      "src/views/zero-page/components/org-manage/read-image-dimensions.ts",
+    ],
+    rules: {
+      "ccstate/no-new-promise": "off",
     },
   },
   // Allow new AbortController in signal infrastructure, test helpers, and
@@ -192,13 +215,16 @@ export default [
       "no-restricted-syntax": "off",
     },
   },
-  // voice-chat-candidate-session.ts wraps three browser APIs that are specified
+  // voice-chat-session.ts wraps three browser APIs that are specified
   // to throw: JSON.parse on untrusted Realtime DC event data, navigator.wakeLock.request
   // (OS deny or hidden document), and navigator.mediaDevices.getUserMedia (permission
   // denied or no hardware). Each try block has recovery logic that cannot use accept()
   // or useLoadableSet.
   {
-    files: ["src/signals/voice-chat-candidate/voice-chat-candidate-session.ts"],
+    files: [
+      "src/signals/voice-chat/voice-chat-session.ts",
+      "src/signals/voice-chat-candidate/voice-chat-candidate-session.ts",
+    ],
     rules: {
       "no-restricted-syntax": "off",
     },

@@ -17,9 +17,11 @@ import { screen, waitFor } from "@testing-library/react";
 import {
   CONNECTOR_TYPES,
   type ConnectorType,
+} from "@vm0/core/contracts/connectors";
+import {
   type ScheduleResponse,
   zeroSchedulesMainContract,
-} from "@vm0/core";
+} from "@vm0/core/contracts/zero-schedules";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
@@ -29,9 +31,10 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { setMockOrg, resetMockOrg } from "../../../mocks/handlers/api-org.ts";
 import { setMockSchedules } from "../../../mocks/handlers/api-schedules.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 beforeEach(() => {
   resetMockOrg();

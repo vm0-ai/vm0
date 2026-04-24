@@ -59,9 +59,11 @@ import { AttachmentChips } from "./zero-attachment-chips.tsx";
 import {
   CONNECTOR_TYPES,
   type ConnectorType,
-  type ModelProviderResponse,
-  type ModelProviderType,
-} from "@vm0/core";
+} from "@vm0/core/contracts/connectors";
+import type {
+  ModelProviderResponse,
+  ModelProviderType,
+} from "@vm0/core/contracts/model-providers";
 import {
   ModelProviderPicker,
   type ModelProviderSelection,
@@ -110,7 +112,11 @@ import {
   startRecording$,
   stopAndTranscribe$,
 } from "../../signals/voice-io/voice-io-stt.ts";
-import { setBillingDialogOpen$ } from "../../signals/zero-page/billing.ts";
+import {
+  setActiveOrgManageTab$,
+  setBillingSubPage$,
+} from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
+import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
 
 const MAX_FILE_SIZE = 1024 * 1024 * 1024; // 1 GB — keep in sync with web constants
 
@@ -515,7 +521,9 @@ function MicButton({
   const transcribing = useGet(sttTranscribing$);
   const startRec = useSet(startRecording$);
   const stopAndTranscribe = useSet(stopAndTranscribe$);
-  const openBillingDialog = useSet(setBillingDialogOpen$);
+  const setTab = useSet(setActiveOrgManageTab$);
+  const setSubPage = useSet(setBillingSubPage$);
+  const openOrgManage = useSet(setOrgManageDialogOpen$);
   const signal = useGet(pageSignal$);
 
   if (!available) {
@@ -537,7 +545,9 @@ function MicButton({
       );
     } else {
       if (quota && !quota.allowed) {
-        openBillingDialog(true);
+        setTab("billing");
+        setSubPage(true);
+        detach(openOrgManage(true, signal), Reason.DomCallback);
         return;
       }
       detach(startRec(signal), Reason.DomCallback);
@@ -886,7 +896,7 @@ export function ZeroChatComposer({
         ref={setFileInputEl}
         type="file"
         className="hidden"
-        accept="image/*,video/mp4,video/webm,video/quicktime,.pdf,.txt,.csv,.md,.json"
+        accept="image/*,video/mp4,video/webm,video/quicktime,.pdf,.txt,.csv,.md,.json,.html"
         multiple
         onChange={handleFileChange}
       />
@@ -935,14 +945,23 @@ export function ZeroChatComposer({
             />
             <div className="flex items-center justify-between gap-2 px-4 pb-3 pt-1">
               <div className="flex items-center gap-1 text-muted-foreground">
-                <button
-                  type="button"
-                  className="p-[9px] rounded-lg hover:bg-accent hover:text-foreground transition-colors duration-200"
-                  aria-label="Attach"
-                  onClick={handleFileSelect}
-                >
-                  <IconPaperclip size={18} stroke={1.5} />
-                </button>
+                <TooltipProvider delayDuration={300}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        className="p-[9px] rounded-lg hover:bg-accent hover:text-foreground transition-colors duration-200"
+                        aria-label="Attach"
+                        onClick={handleFileSelect}
+                      >
+                        <IconPaperclip size={18} stroke={1.5} />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" className="text-xs">
+                      Attach
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
                 <ConnectorsPopoverButton
                   agentConnectors={agentConnectors}
                   connectorsLoading={connectorsLoading}
@@ -970,8 +989,8 @@ export function ZeroChatComposer({
                         onChange={modelPicker.onChange}
                         placeholder="Default"
                         triggerClassName={cn(
-                          "h-8 w-auto max-w-[12rem] gap-1 border-transparent bg-transparent px-2 text-xs text-muted-foreground transition-colors",
-                          "hover:bg-accent hover:text-foreground focus:bg-accent focus:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground",
+                          "h-9 w-auto max-w-[12rem] gap-1 border-transparent bg-transparent px-2 text-sm text-muted-foreground transition-colors",
+                          "hover:bg-accent hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground",
                         )}
                         sessionProviderType={modelPicker.sessionProviderType}
                         compactTrigger

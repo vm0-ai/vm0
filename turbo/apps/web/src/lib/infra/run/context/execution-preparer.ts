@@ -7,7 +7,8 @@ import {
   ensureStorageExists,
 } from "../../../infra/storage/storage-service";
 import type { StorageManifest } from "../../../infra/storage/types";
-import { DEFAULT_PROFILE, getAllFeatureStates } from "@vm0/core";
+import { getAllFeatureStates } from "@vm0/core/feature-switch";
+import { DEFAULT_PROFILE } from "@vm0/core/contracts/runners";
 import { badRequest } from "../../../shared/errors";
 import { logger } from "../../../shared/logger";
 import { extractWorkingDir } from "../utils/extract-working-dir";
@@ -114,19 +115,16 @@ export async function prepareForExecution(
 
   const agentOrgId = agentComposeInfo.orgId;
 
-  // Auto-create artifact storages if they don't exist yet. Memory now rides
-  // in context.artifacts (zero synthesizes it), so the memory branch is
-  // covered by the artifacts[] loop below. Infra no longer creates type=
-  // 'memory' rows — #10601 flipped existing rows to type='artifact'.
+  // Auto-create artifact storages if they don't exist yet. Every entry in the
+  // unified artifact list already carries its own mountPath (zero synthesizes
+  // the memory entry); infra creates one storage row per entry.
+  const artifacts = context.artifacts ?? [];
   const ensureStart = Date.now();
-  await Promise.all([
-    context.artifactName
-      ? ensureStorageExists(orgId, userId, context.artifactName, "artifact")
-      : null,
-    ...(context.artifacts ?? []).map((entry) => {
+  await Promise.all(
+    artifacts.map((entry) => {
       return ensureStorageExists(orgId, userId, entry.name, "artifact");
     }),
-  ]);
+  );
   const ensureEnd = Date.now();
 
   // Prepare storage manifest with dual orgs (see docs/resource-model.md)
@@ -139,13 +137,9 @@ export async function prepareForExecution(
     agentOrgId,
     orgId,
     userId,
-    context.artifactName,
-    context.artifactVersion,
+    artifacts,
     context.volumeVersions,
-    context.resumeArtifact,
-    workingDir,
     context.additionalVolumes,
-    context.artifacts,
   );
   const storageEnd = Date.now();
 
@@ -229,11 +223,6 @@ function buildPreparedContext(
     secretConnectorMap: context.secretConnectorMap || null,
     // Resume support
     resumeSession: context.resumeSession || null,
-    resumeArtifact: context.resumeArtifact || null,
-
-    // Artifact settings
-    artifactName: context.artifactName || null,
-    artifactVersion: context.artifactVersion || null,
 
     // Firewall for proxy-side token replacement
     firewalls: toNullable(context.firewalls),

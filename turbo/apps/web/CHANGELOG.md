@@ -1,5 +1,178 @@
 # Changelog
 
+## [12.297.0](https://github.com/vm0-ai/vm0/compare/web-v12.296.0...web-v12.297.0) (2026-04-24)
+
+
+### Features
+
+* thread storage id from web to guest-agent (part 1 of [#10967](https://github.com/vm0-ai/vm0/issues/10967)) ([#10978](https://github.com/vm0-ai/vm0/issues/10978)) ([85f2193](https://github.com/vm0-ai/vm0/commit/85f219383d3cf7b81ca6f41358276d5388acb8c0))
+
+## [12.296.0](https://github.com/vm0-ai/vm0/compare/web-v12.295.0...web-v12.296.0) (2026-04-24)
+
+
+### Features
+
+* **slack:** graduate agent switching ([#10964](https://github.com/vm0-ai/vm0/issues/10964)) ([cf070f8](https://github.com/vm0-ai/vm0/commit/cf070f857f4ded9f16f5a6d932ba091b3d022ec5))
+
+
+### Bug Fixes
+
+* add missing pricing FAQ i18n keys for upgradeCredits ([#10925](https://github.com/vm0-ai/vm0/issues/10925)) ([c256c67](https://github.com/vm0-ai/vm0/commit/c256c67c05d921af193752eac44b1efa55d9202c))
+* redirect missing agent routes to default agent ([#10942](https://github.com/vm0-ai/vm0/issues/10942)) ([9442bf0](https://github.com/vm0-ai/vm0/commit/9442bf08d0ae97a05ab5be4221f3277a7decdfe9))
+
+
+### Performance Improvements
+
+* **db:** switch production db driver from neon websocket to pg tcp pool under fluid ([#10959](https://github.com/vm0-ai/vm0/issues/10959)) ([151c602](https://github.com/vm0-ai/vm0/commit/151c6024deac793212a68f8078cc8015c3a86937)), closes [#10953](https://github.com/vm0-ai/vm0/issues/10953)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.232.0
+
+## [12.295.0](https://github.com/vm0-ai/vm0/compare/web-v12.294.0...web-v12.295.0) (2026-04-24)
+
+
+### Features
+
+* add browser-use connector ([#10922](https://github.com/vm0-ai/vm0/issues/10922)) ([9a4edc4](https://github.com/vm0-ai/vm0/commit/9a4edc45e87e7863d5d2bfa79d522938b4703aa8))
+* integrate Gemini 2.5 Flash Image via Vertex AI + Vercel OIDC ([#10611](https://github.com/vm0-ai/vm0/issues/10611)) ([93b8ddd](https://github.com/vm0-ai/vm0/commit/93b8ddd9cc498787968d8e911195a1d46333c4df))
+* **platform:** improve chat document previews ([#10940](https://github.com/vm0-ai/vm0/issues/10940)) ([fe836c8](https://github.com/vm0-ai/vm0/commit/fe836c852bafc7325eb2fd2b094371d766d97271))
+
+
+### Bug Fixes
+
+* **web:** notify runners on org/user deletion cancel path ([#10946](https://github.com/vm0-ai/vm0/issues/10946)) ([6d8c3e4](https://github.com/vm0-ai/vm0/commit/6d8c3e4f20938a8b88c8afa6a32c2d73bb4018fb))
+
+
+### Performance Improvements
+
+* **chat-messages:** short-circuit round3 capture arm when quota is zero ([#10950](https://github.com/vm0-ai/vm0/issues/10950)) ([2f10594](https://github.com/vm0-ai/vm0/commit/2f10594218a09d57876bc7933edb0e7cf17c2379))
+* **chat:** fuse round2 user_prefs + feature_sw into single cte ([#10949](https://github.com/vm0-ai/vm0/issues/10949)) ([7e5f020](https://github.com/vm0-ai/vm0/commit/7e5f020e7cb45389fb9cb8b0a136248e5a88d818)), closes [#10943](https://github.com/vm0-ai/vm0/issues/10943)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.231.0
+
+## [12.294.0](https://github.com/vm0-ai/vm0/compare/web-v12.293.0...web-v12.294.0) (2026-04-23)
+
+
+### Features
+
+* **billing:** add usage_event processor cron ([#10713](https://github.com/vm0-ai/vm0/issues/10713)) ([b52552b](https://github.com/vm0-ai/vm0/commit/b52552b448230c9c49075c15647d66144cde5049))
+* **compose:** support mount_path on artifact entries ([#10908](https://github.com/vm0-ai/vm0/issues/10908)) ([#10914](https://github.com/vm0-ai/vm0/issues/10914)) ([c907fd5](https://github.com/vm0-ai/vm0/commit/c907fd5196df2160c999db1a3a39340c0d9342e0))
+
+
+### Bug Fixes
+
+* disable reasoner task backfill in voice chat ([#10889](https://github.com/vm0-ai/vm0/issues/10889)) ([174da7b](https://github.com/vm0-ai/vm0/commit/174da7b8cba74e8bedcf95533e278bb443f2342d))
+* remove starter credit grant from campaign checkout path ([#10896](https://github.com/vm0-ai/vm0/issues/10896)) ([1cc59a2](https://github.com/vm0-ai/vm0/commit/1cc59a2d89586fc39014074f57b8b3a73e3555fc))
+* **slack:** show reply-to footer when &gt;1 user mentions Zero in thread ([#10904](https://github.com/vm0-ai/vm0/issues/10904)) ([f2c73a3](https://github.com/vm0-ai/vm0/commit/f2c73a3d12a05354eb7303a32fb864aa962c1cbe))
+* **voice-chat:** recover mic on track ended event for iOS notification center and screen auto-dim ([#10888](https://github.com/vm0-ai/vm0/issues/10888)) ([70bcbfc](https://github.com/vm0-ai/vm0/commit/70bcbfce26bce0c50aa396ddceaddf1a0cc7902f))
+* **web:** dispatch cancel side effects for voice-chat mismatch path ([#10916](https://github.com/vm0-ai/vm0/issues/10916)) ([1a46ebb](https://github.com/vm0-ai/vm0/commit/1a46ebbfcf18284383095bef57ce424985ebe5f4))
+* **zero:** skip memory injection on checkpoint/session resume paths ([#10910](https://github.com/vm0-ai/vm0/issues/10910)) ([#10920](https://github.com/vm0-ai/vm0/issues/10920)) ([8b20975](https://github.com/vm0-ai/vm0/commit/8b20975e7be4ecc83861d30e988ece6aa56c5a31))
+
+
+### Refactoring
+
+* **checkpoint:** tolerate array-shape artifact snapshots end-to-end ([#10919](https://github.com/vm0-ai/vm0/issues/10919)) ([0a12bc6](https://github.com/vm0-ai/vm0/commit/0a12bc68a8efb87d07f65fb56aac19708addda56))
+* drop voice-chat-candidate prefix in platform signals and rename ably topic ([#10885](https://github.com/vm0-ai/vm0/issues/10885)) ([391b756](https://github.com/vm0-ai/vm0/commit/391b7561cd40b50e1d542ef278333724e21e88a7))
+* **infra:** flatten artifact scalars to record map (closes [#10861](https://github.com/vm0-ai/vm0/issues/10861)) ([#10876](https://github.com/vm0-ai/vm0/issues/10876)) ([fce4760](https://github.com/vm0-ai/vm0/commit/fce4760ddad775fcb33dce2c0a78baf61609c343))
+* **infra:** unify artifact model with tolerant resolvers ([#10915](https://github.com/vm0-ai/vm0/issues/10915)) ([b43e572](https://github.com/vm0-ai/vm0/commit/b43e572c5c7367b35506df4f33ecbea88ed78c7a))
+* **web:** rename backend voice-chat-candidate dirs, service exports, and event-consumer registry ([#10886](https://github.com/vm0-ai/vm0/issues/10886)) ([39315bd](https://github.com/vm0-ai/vm0/commit/39315bd8a7f6d1b0044954992b757259fe6a276f))
+
+
+### Performance Improvements
+
+* **chat-messages:** fold compose content into round 1 to drop round 2 load arm ([#10881](https://github.com/vm0-ai/vm0/issues/10881)) ([b37c664](https://github.com/vm0-ai/vm0/commit/b37c6648e253de2da9fb96d47cee304caf35f012))
+* **chat:** fuse org credit-check queries into a single cte ([#10882](https://github.com/vm0-ai/vm0/issues/10882)) ([4d60d3e](https://github.com/vm0-ai/vm0/commit/4d60d3e7cdf919aa4d721d14f4059a5063ad7661)), closes [#10874](https://github.com/vm0-ai/vm0/issues/10874) [#10796](https://github.com/vm0-ai/vm0/issues/10796)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.230.0
+
+## [12.293.0](https://github.com/vm0-ai/vm0/compare/web-v12.292.0...web-v12.293.0) (2026-04-23)
+
+
+### Features
+
+* **db:** rename feature_candidate_voice_chat_* tables and schema to voice_chat_* ([#10860](https://github.com/vm0-ai/vm0/issues/10860)) ([ce7ca21](https://github.com/vm0-ai/vm0/commit/ce7ca21fc22c936febeb6c1cfeb5a3a00cfd7d6f)), closes [#10854](https://github.com/vm0-ai/vm0/issues/10854)
+
+
+### Refactoring
+
+* remove turbo core root imports ([#10820](https://github.com/vm0-ai/vm0/issues/10820)) ([ec85609](https://github.com/vm0-ai/vm0/commit/ec8560930db70e5c1f853961ff51606e601da875))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.229.4
+
+## [12.292.0](https://github.com/vm0-ai/vm0/compare/web-v12.291.1...web-v12.292.0) (2026-04-23)
+
+
+### Features
+
+* **pricing:** add voice input across website and in-app Compare plans ([#10813](https://github.com/vm0-ai/vm0/issues/10813)) ([c38e057](https://github.com/vm0-ai/vm0/commit/c38e057579af77832f56d3975ef8fb181f2e8e85))
+
+
+### Bug Fixes
+
+* harden speakerphone barge-in in voice chat candidate ([#10845](https://github.com/vm0-ai/vm0/issues/10845)) ([fca73af](https://github.com/vm0-ai/vm0/commit/fca73af116b1f57a2487edd2c7aff47e408c0b33))
+
+## [12.291.1](https://github.com/vm0-ai/vm0/compare/web-v12.291.0...web-v12.291.1) (2026-04-23)
+
+
+### Bug Fixes
+
+* validate redirect URLs in checkout and portal billing routes ([#10693](https://github.com/vm0-ai/vm0/issues/10693)) ([5264769](https://github.com/vm0-ai/vm0/commit/52647691ec0e63d91479d139ae9242d38fc5744e))
+
+## [12.291.0](https://github.com/vm0-ai/vm0/compare/web-v12.290.1...web-v12.291.0) (2026-04-23)
+
+
+### Features
+
+* add cold outreach pipeline use case (Apollo + Instantly) ([#10689](https://github.com/vm0-ai/vm0/issues/10689)) ([3e781e8](https://github.com/vm0-ai/vm0/commit/3e781e85eb3a591a46b8e110e2e8bd4b395fd63c))
+
+
+### Bug Fixes
+
+* add auto-recharge threshold/amount bounds and loop prevention ([#10695](https://github.com/vm0-ai/vm0/issues/10695)) ([9e2e011](https://github.com/vm0-ai/vm0/commit/9e2e011d6404f6641a6cccfa1ca7dd324f5939f4))
+* **auth:** stop password toggle flicker on sign-in page ([#10817](https://github.com/vm0-ai/vm0/issues/10817)) ([91b0566](https://github.com/vm0-ai/vm0/commit/91b0566425fe4f61bda742b93003efbe0b432354)), closes [#10462](https://github.com/vm0-ai/vm0/issues/10462)
+* don't let sessions.expire failure permanently block campaign redemption ([#10694](https://github.com/vm0-ai/vm0/issues/10694)) ([68dc4bf](https://github.com/vm0-ai/vm0/commit/68dc4bf9de08b9b68b50fb4522730304a9772e17))
+* open queue drawer via URL param and remove /queue route ([#10684](https://github.com/vm0-ai/vm0/issues/10684)) ([f547217](https://github.com/vm0-ai/vm0/commit/f547217cf19e0a66463e93d6db57f918968b8a41))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.229.3
+
+## [12.290.1](https://github.com/vm0-ai/vm0/compare/web-v12.290.0...web-v12.290.1) (2026-04-23)
+
+
+### Bug Fixes
+
+* **voice-chat-candidate:** adaptive echo cancellation and server-side session config ([#10795](https://github.com/vm0-ai/vm0/issues/10795)) ([2782e42](https://github.com/vm0-ai/vm0/commit/2782e42e8a562a4c20ecebbd5630de0f6ae21cf3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.229.2
+
 ## [12.290.0](https://github.com/vm0-ai/vm0/compare/web-v12.289.0...web-v12.290.0) (2026-04-23)
 
 

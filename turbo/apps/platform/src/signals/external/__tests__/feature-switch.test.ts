@@ -7,13 +7,14 @@ import {
   setFeatureSwitch$,
   resetFeatureSwitches$,
 } from "../feature-switch";
-import { FeatureSwitchKey, zeroFeatureSwitchesContract } from "@vm0/core";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { zeroFeatureSwitchesContract } from "@vm0/core/contracts/zero-feature-switches";
 import {
   getMockFeatureSwitches,
   setMockFeatureSwitches,
 } from "../../../mocks/handlers/api-feature-switches";
 import { server } from "../../../mocks/server";
-import { mockApi } from "../../../mocks/msw-contract";
+import { createMockApi } from "../../../mocks/msw-contract";
 
 vi.mock("@vm0/ui/components/ui/sonner", () => {
   return { toast: { error: vi.fn(), success: vi.fn() } };
@@ -24,6 +25,7 @@ beforeEach(() => {
 });
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 describe("feature switch", () => {
   it("should support dummy switch", async () => {

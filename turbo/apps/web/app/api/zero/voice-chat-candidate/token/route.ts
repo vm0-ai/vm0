@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
 import { initServices } from "../../../../../src/lib/init-services";
+import { getVoiceChatCandidateSession } from "../../../../../src/lib/zero/voice-chat-candidate/session-service";
+import { buildTalkerPayload } from "../../../../../src/lib/zero/voice-chat-candidate/talker-instructions";
 import {
   createEphemeralToken,
   isOpenAiTokenError,
@@ -9,9 +11,10 @@ import { logger } from "../../../../../src/lib/shared/logger";
 import {
   badRequestResponse,
   forbiddenResponse,
-  isVoiceChatCandidateEnabled,
+  isVoiceChatEnabled,
+  notFoundResponse,
   unauthorizedResponse,
-  voiceChatCandidateTokenBodySchema,
+  voiceChatTokenBodySchema,
 } from "../_support";
 
 const log = logger("api:zero:voice-chat-candidate:token");
@@ -24,11 +27,11 @@ export async function POST(request: Request): Promise<Response> {
   );
   if (!authCtx) return unauthorizedResponse();
 
-  if (!(await isVoiceChatCandidateEnabled(authCtx))) {
+  if (!(await isVoiceChatEnabled(authCtx))) {
     return forbiddenResponse();
   }
 
-  const parsed = voiceChatCandidateTokenBodySchema.safeParse(
+  const parsed = voiceChatTokenBodySchema.safeParse(
     await request.json().catch(() => {
       return undefined;
     }),
@@ -38,12 +41,26 @@ export async function POST(request: Request): Promise<Response> {
     return badRequestResponse(issue?.message ?? "Invalid request body");
   }
 
+  const session = await getVoiceChatCandidateSession(parsed.data.sessionId);
+  if (
+    !session ||
+    session.orgId !== authCtx.orgId ||
+    session.userId !== authCtx.userId
+  ) {
+    return notFoundResponse("Voice-chat-candidate session not found");
+  }
+
+  const { talkerInstructions } = await buildTalkerPayload(session);
+
   // Narrow catch: only map upstream OpenAI failures to 500 with the documented
   // error body. Any other exception (logic bug, unavailable service, etc.)
   // propagates to the framework error handler — per project "avoid defensive
   // programming" rule.
   try {
-    const result = await createEphemeralToken(parsed.data?.model);
+    const result = await createEphemeralToken({
+      instructions: talkerInstructions,
+      noiseReduction: parsed.data.noiseReduction,
+    });
     return NextResponse.json(result);
   } catch (error) {
     if (isOpenAiTokenError(error)) {

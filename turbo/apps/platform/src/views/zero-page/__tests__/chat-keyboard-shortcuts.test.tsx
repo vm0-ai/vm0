@@ -5,14 +5,16 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
+import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 import {
   chatThreadsContract,
   chatThreadMessagesContract,
   chatThreadByIdContract,
-} from "@vm0/core";
+} from "@vm0/core/contracts/chat-threads";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 
@@ -141,6 +143,28 @@ describe("chat page keyboard shortcuts", () => {
     // The thread carries both agentId (legacy) and agent.id (preferred).
     // The escape navigation must use agent.id, not agentId.
     const AGENT_ID_FROM_OBJECT = "a2222222-0000-4000-a000-000000000002";
+    // Include the thread's agent in the team so the chat page setup does not
+    // treat it as missing and redirect to the default agent.
+    setMockTeam([
+      {
+        id: AGENT_ID,
+        displayName: null,
+        description: null,
+        sound: null,
+        avatarUrl: null,
+        headVersionId: "version_1",
+        updatedAt: "2024-01-01T00:00:00Z",
+      },
+      {
+        id: AGENT_ID_FROM_OBJECT,
+        displayName: null,
+        description: null,
+        sound: null,
+        avatarUrl: null,
+        headVersionId: "version_1",
+        updatedAt: "2024-01-01T00:00:00Z",
+      },
+    ]);
     server.use(
       mockApi(chatThreadsContract.list, ({ respond }) => {
         return respond(200, {

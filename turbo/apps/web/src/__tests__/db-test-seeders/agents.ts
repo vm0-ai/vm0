@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import type { RawPermissionPolicies } from "@vm0/core";
+import type { RawPermissionPolicies } from "@vm0/core/contracts/firewalls";
 import { initServices } from "../../lib/init-services";
 import {
   agentComposes,
@@ -15,6 +15,7 @@ import { zeroRuns } from "../../db/schema/zero-run";
 import { composeJobs } from "../../db/schema/compose-job";
 import { uniqueId } from "../test-helpers";
 import { getMessagesByThreadId } from "../../lib/zero/chat-thread/chat-message-service";
+import type { ContextArtifact } from "../../lib/infra/run/types";
 
 /**
  * @why-db-direct Creates compose + zero_agents WITHOUT a version — API always
@@ -498,6 +499,53 @@ export async function setTestChatMessageAttachFiles(
     .update(chatMessages)
     .set({ attachFiles: ids })
     .where(eq(chatMessages.runId, runId));
+}
+
+/**
+ * Overwrite `agent_sessions.artifacts` for a session.
+ *
+ * @why-db-direct `agent_sessions.artifacts` is written by the run pipeline
+ * from the resolved artifact list. Resolver tests need to seed arbitrary
+ * artifact lists (including the auto-memory entry) to exercise downstream
+ * consumers.
+ */
+export async function setTestSessionArtifacts(
+  sessionId: string,
+  artifacts: ContextArtifact[],
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .update(agentSessions)
+    .set({ artifacts })
+    .where(eq(agentSessions.id, sessionId));
+}
+
+/**
+ * Update the cliAgentType on the conversation linked to a session.
+ *
+ * @why-db-direct Test checkpoint helpers seed conversations with
+ * cliAgentType "test-agent" while composes default to framework
+ * "claude-code". Resolver compatibility checks compare these, so
+ * resolveSession tests need to align the conversation framework before
+ * invoking the resolver.
+ */
+export async function setTestSessionFramework(
+  sessionId: string,
+  framework: string,
+): Promise<void> {
+  initServices();
+  const [session] = await globalThis.services.db
+    .select({ conversationId: agentSessions.conversationId })
+    .from(agentSessions)
+    .where(eq(agentSessions.id, sessionId))
+    .limit(1);
+  if (!session?.conversationId) {
+    throw new Error(`Session ${sessionId} has no conversation`);
+  }
+  await globalThis.services.db
+    .update(conversations)
+    .set({ cliAgentType: framework })
+    .where(eq(conversations.id, session.conversationId));
 }
 
 /**

@@ -1,8 +1,12 @@
 import type { ConnectorConfig } from "../connectors";
+import { FeatureSwitchKey } from "../../feature-switch-key";
 
 export const zapier = {
   zapier: {
     label: "Zapier",
+    featureFlag: FeatureSwitchKey.ZapierConnector,
+    strictFeatureFlag: true,
+    category: "data-automation-infrastructure",
     environmentMapping: {
       ZAPIER_TOKEN: "$secrets.ZAPIER_TOKEN",
     },

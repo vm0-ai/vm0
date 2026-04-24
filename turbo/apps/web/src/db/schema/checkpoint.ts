@@ -1,6 +1,7 @@
 import { pgTable, uuid, jsonb, timestamp } from "drizzle-orm/pg-core";
 import { agentRuns } from "./agent-run";
 import { conversations } from "./conversation";
+import type { ContextArtifact } from "../../lib/infra/run/types";
 
 /**
  * Checkpoints table
@@ -26,7 +27,7 @@ export const checkpoints = pgTable("checkpoints", {
     )
     .notNull(),
   agentComposeSnapshot: jsonb("agent_compose_snapshot").notNull(),
-  artifactSnapshots: jsonb("artifact_snapshots"),
+  artifactSnapshots: jsonb("artifact_snapshots").$type<ContextArtifact[]>(),
   volumeVersionsSnapshot: jsonb("volume_versions_snapshot"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

@@ -18,12 +18,12 @@ import {
 import {
   areProvidersCompatible,
   getDefaultModel,
-  getModelDisplayName,
   getModels,
   MODEL_PROVIDER_TYPES,
   type ModelProviderResponse,
   type ModelProviderType,
-} from "@vm0/core";
+} from "@vm0/core/contracts/model-providers";
+import { getModelDisplayName } from "@vm0/core/model-display-name";
 import {
   getUILabel,
   getVm0ModelMultiplier,
@@ -480,7 +480,7 @@ function ModelSelectDropdown({
           />
         </SelectValue>
       </SelectTrigger>
-      <SelectContent className="max-h-64">
+      <SelectContent className="max-h-[280px]">
         {showUseDefault && (
           <InheritToggleRow
             effectiveDefault={effectiveDefault}

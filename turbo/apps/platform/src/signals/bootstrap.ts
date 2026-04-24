@@ -16,7 +16,6 @@ import { ROUTES, type RoutePath } from "./route-paths.ts";
 import { setupGlobalMethod$ } from "./bootstrap/global-method.ts";
 import { setupLoggers$ } from "./bootstrap/loggers.ts";
 import { setupSlackConnectPage$ } from "./zero-page/slack-connect-page.ts";
-import { setupQueuePage$ } from "./queue-page/queue-page-setup.ts";
 import { setupActivityPage$ } from "./activity-page/activity-page-setup.ts";
 import { setupActivityDetailPage$ } from "./activity-page/activity-detail-page-setup.ts";
 import { setupActivityInspectPage$ } from "./activity-page/activity-inspect-page-setup.ts";
@@ -42,7 +41,6 @@ import { setupPermissionAllowPage$ } from "./permission-allow/permission-allow-p
 import { setupReportErrorPage$ } from "./report-error/report-error-page-setup.ts";
 import { setupChatListPage$ } from "./zero-page/chat-list-page-setup.ts";
 import { setupLabPage$ } from "./lab-page/lab-page-setup.ts";
-import { setupPhonePage$ } from "./phone-page/phone-page-setup.ts";
 import { setupNetworkInsightsPage$ } from "./network-insights/network-insights-page-setup.ts";
 import { setupUsagePage$ } from "./usage-page/usage-page-setup.ts";
 import { initSlackOrg$ as handleSlackRedirect$ } from "./zero-page/zero-slack.ts";
@@ -152,10 +150,6 @@ const ROUTE_CONFIG = [
     setup: setupAuthPageWrapper(setupSlackConnectPage$),
   },
   {
-    path: ROUTES.queues,
-    setup: setupAuthPageWrapper(setupQueuePage$),
-  },
-  {
     path: ROUTES.activityInspect,
     setup: setupAuthPageWrapper(setupActivityInspectPage$),
   },
@@ -186,10 +180,6 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.schedules,
     setup: setupAuthPageWrapper(setupSchedulePage$),
-  },
-  {
-    path: ROUTES.phone,
-    setup: setupAuthPageWrapper(setupPhonePage$),
   },
   {
     path: ROUTES.lab,
@@ -259,7 +249,6 @@ const ROUTE_CONFIG = [
     path: "/schedule/:id",
     setup: redirectWithId(ROUTES.scheduleDetail, "scheduleId"),
   },
-  { path: "/queue", setup: redirectTo(ROUTES.queues) },
   { path: "/preferences", setup: redirectTo(ROUTES.settings) },
 
   {

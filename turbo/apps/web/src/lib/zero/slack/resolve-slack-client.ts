@@ -1,5 +1,5 @@
 import type { WebClient } from "@slack/web-api";
-import type { ZeroCapability } from "@vm0/core";
+import type { ZeroCapability } from "@vm0/core/contracts/composes";
 import { requireAuth, isAuthError } from "../../auth/require-auth";
 import { isSandboxAuth } from "../../auth/capability-check";
 import { resolveOrg } from "../org/resolve-org";

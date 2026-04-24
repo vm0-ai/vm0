@@ -1,5 +1,6 @@
 import { createHandler, tsr } from "../../../../../../src/lib/ts-rest-handler";
-import { zeroRunNetworkLogsContract, type AxiomNetworkEvent } from "@vm0/core";
+import { zeroRunNetworkLogsContract } from "@vm0/core/contracts/zero-runs";
+import type { AxiomNetworkEvent } from "@vm0/core/contracts/runs";
 import { initServices } from "../../../../../../src/lib/init-services";
 import {
   requireAuth,

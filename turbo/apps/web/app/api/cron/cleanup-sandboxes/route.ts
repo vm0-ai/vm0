@@ -1,5 +1,6 @@
 import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
-import { cronCleanupSandboxesContract, createErrorResponse } from "@vm0/core";
+import { cronCleanupSandboxesContract } from "@vm0/core/contracts/cron";
+import { createErrorResponse } from "@vm0/core/contracts/errors";
 import { initServices } from "../../../../src/lib/init-services";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
 import {
@@ -20,6 +21,7 @@ import {
   dispatchQueuedZeroRun,
 } from "../../../../src/lib/zero/zero-run-queue-service";
 import { processOrgCredits } from "../../../../src/lib/zero/credit/credit-service";
+import { processOrgUsageEvents } from "../../../../src/lib/zero/credit/usage-event-service";
 import { logger } from "../../../../src/lib/shared/logger";
 import { env } from "../../../../src/env";
 
@@ -246,6 +248,7 @@ const router = tsr.router(cronCleanupSandboxesContract, {
           );
 
           await processOrgCredits(run.orgId);
+          await processOrgUsageEvents(run.orgId);
 
           const isDebug =
             run.composeName?.startsWith(DEBUG_COMPOSE_PREFIX) ?? false;

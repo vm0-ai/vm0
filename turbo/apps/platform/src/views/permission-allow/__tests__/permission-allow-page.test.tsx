@@ -6,12 +6,13 @@ import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import {
   zeroAgentsByIdContract,
   type PermissionAccessRequestResponse,
-} from "@vm0/core";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+} from "@vm0/core/contracts/zero-agents";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { setMockPermissionRequests } from "../../../mocks/handlers/api-permission-access-requests.ts";
 import { setMockOrg } from "../../../mocks/handlers/api-org.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const REQUEST_ID = "d0000000-0000-4000-a000-000000000001";

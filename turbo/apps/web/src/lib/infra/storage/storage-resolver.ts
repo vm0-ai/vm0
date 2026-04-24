@@ -2,16 +2,13 @@ import type {
   AgentVolumeConfig,
   VolumeConfig,
   ResolvedVolume,
-  ResolvedArtifact,
   VolumeResolutionResult,
   VolumeError,
   StorageDriver,
 } from "./types";
-import {
-  expandVariablesInString,
-  getInstructionsStorageName,
-  getValidatedFramework,
-} from "@vm0/core";
+import { getValidatedFramework } from "@vm0/core/frameworks";
+import { expandVariablesInString } from "@vm0/core/variable-expander";
+import { getInstructionsStorageName } from "@vm0/core/storage-names";
 
 /**
  * Get the mount path for instructions based on framework
@@ -126,28 +123,6 @@ function resolveVasVolume(
 }
 
 /**
- * Resolve artifact configuration
- * @param workingDir - Working directory where artifact will be mounted
- * @param artifactName - Required artifact storage name
- * @param artifactVersion - Optional version (defaults to "latest")
- */
-function resolveArtifact(
-  workingDir: string,
-  artifactName: string,
-  artifactVersion: string = "latest",
-): { artifact: ResolvedArtifact; errors: VolumeError[] } {
-  return {
-    artifact: {
-      driver: "vas",
-      mountPath: workingDir,
-      vasStorageName: artifactName,
-      vasVersion: artifactVersion,
-    },
-    errors: [],
-  };
-}
-
-/**
  * Process volume declarations from agent config into resolved volumes.
  */
 function processVolumeDeclarations(
@@ -248,28 +223,20 @@ function resolveInstructions(
 }
 
 /**
- * Resolve volumes from agent configuration
+ * Resolve volumes from agent configuration.
+ *
  * @param config - Agent configuration with volume definitions
  * @param vars - Template variables for placeholder replacement
- * @param artifactName - Required artifact storage name
- * @param artifactVersion - Optional artifact version (defaults to "latest")
- * @param skipArtifact - Skip artifact resolution (used when resuming from checkpoint)
  * @param volumeVersionOverrides - Optional volume version overrides (volume name -> version)
- * @param workingDir - Working directory for artifact mount path
- * @returns Resolution result with resolved volumes, artifact, and errors
+ * @returns Resolution result with resolved volumes and errors
  */
 export function resolveVolumes(
   config: AgentVolumeConfig,
   vars: Record<string, string> = {},
-  artifactName?: string,
-  artifactVersion?: string,
-  skipArtifact?: boolean,
   volumeVersionOverrides?: Record<string, string>,
-  workingDir?: string,
 ): VolumeResolutionResult {
   const volumes: ResolvedVolume[] = [];
   const errors: VolumeError[] = [];
-  let artifact: ResolvedArtifact | null = null;
 
   // Get first agent (currently only support one agent)
   const agentValues = config.agents ? Object.values(config.agents) : [];
@@ -293,15 +260,5 @@ export function resolveVolumes(
     volumes.push(...resolveInstructions(config, agent));
   }
 
-  // Process artifact (skip when resuming from checkpoint or when not provided)
-  // Artifact is now optional - runs without artifact won't have persistent storage
-  if (workingDir && !skipArtifact && artifactName) {
-    const { artifact: resolvedArtifact, errors: artifactErrors } =
-      resolveArtifact(workingDir, artifactName, artifactVersion);
-
-    artifact = resolvedArtifact;
-    errors.push(...artifactErrors);
-  }
-
-  return { volumes, artifact, errors };
+  return { volumes, errors };
 }

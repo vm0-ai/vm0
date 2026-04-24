@@ -10,7 +10,7 @@ import {
   DialogFooter,
 } from "@vm0/ui/components/ui/dialog";
 import { Button } from "@vm0/ui/components/ui/button";
-import { MODEL_PROVIDER_TYPES } from "@vm0/core";
+import { MODEL_PROVIDER_TYPES } from "@vm0/core/contracts/model-providers";
 import { getProviderShape, getUILabel } from "./provider-ui-config.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";

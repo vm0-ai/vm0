@@ -1,11 +1,13 @@
 import { eq } from "drizzle-orm";
-import { randomBytes } from "crypto";
+import { randomBytes, randomUUID } from "crypto";
 import { initServices } from "../../lib/init-services";
 import { orgMetadata } from "../../db/schema/org-metadata";
 import { creditPricing } from "../../db/schema/credit-pricing";
 import { creditExpiresRecord } from "../../db/schema/credit-expires-record";
 import { creditUsage } from "../../db/schema/credit-usage";
 import { clientCreditUsage } from "../../db/schema/client-credit-usage";
+import { usageEvent } from "../../db/schema/usage-event";
+import { usagePricing } from "../../db/schema/usage-pricing";
 import { insightsDaily } from "../../db/schema/insights-daily";
 import { orgPromoRedemption } from "../../db/schema/org-promo-redemption";
 import {
@@ -204,6 +206,77 @@ export async function insertOrgPromoRedemption(params: {
 // ---------------------------------------------------------------------------
 // Usage / insights seeders.
 // ---------------------------------------------------------------------------
+
+/**
+ * Insert a usage_pricing record for testing.
+ * Uses upsert so tests can safely set pricing for the same triple.
+ *
+ * @why-db-direct Usage pricing is reference data managed via seeders/migrations,
+ * not API endpoints. No user-facing flow creates pricing records.
+ */
+export async function insertTestUsagePricing(params: {
+  kind: string;
+  provider: string;
+  category: string;
+  unitPrice: number;
+  unitSize?: number;
+}): Promise<void> {
+  initServices();
+  const unitSize = params.unitSize ?? 1;
+  await globalThis.services.db
+    .insert(usagePricing)
+    .values({
+      kind: params.kind,
+      provider: params.provider,
+      category: params.category,
+      unitPrice: params.unitPrice,
+      unitSize,
+    })
+    .onConflictDoUpdate({
+      target: [usagePricing.kind, usagePricing.provider, usagePricing.category],
+      set: { unitPrice: params.unitPrice, unitSize, updatedAt: new Date() },
+    });
+}
+
+/**
+ * Insert a usage_event record for testing the billing processor.
+ *
+ * @why-db-direct Usage events are normally written by the agent usage-event
+ * webhook. Tests need precise control over kind/provider/category/quantity
+ * and status without executing agents.
+ *
+ * @returns The usage_event record ID
+ */
+export async function insertTestUsageEvent(
+  orgId: string,
+  options: {
+    userId?: string;
+    kind?: string;
+    provider?: string;
+    category?: string;
+    quantity?: number;
+    status?: string;
+    creditsCharged?: number;
+    idempotencyKey?: string;
+  },
+): Promise<string> {
+  initServices();
+  const [record] = await globalThis.services.db
+    .insert(usageEvent)
+    .values({
+      orgId,
+      userId: options.userId ?? "test-user",
+      kind: options.kind ?? "connector",
+      provider: options.provider ?? "x",
+      category: options.category ?? "tweet.read",
+      quantity: options.quantity ?? 1,
+      status: options.status ?? "pending",
+      creditsCharged: options.creditsCharged ?? null,
+      idempotencyKey: options.idempotencyKey ?? randomUUID(),
+    })
+    .returning({ id: usageEvent.id });
+  return record!.id;
+}
 
 /**
  * Insert a credit_usage record for testing.

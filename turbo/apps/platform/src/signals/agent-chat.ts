@@ -2,11 +2,11 @@ import { command, computed, state } from "ccstate";
 import {
   chatThreadByIdContract,
   chatThreadsContract,
-  FeatureSwitchKey,
   type ChatThreadListItem,
-  type ModelProviderType,
   type PersistedAttachment,
-} from "@vm0/core";
+} from "@vm0/core/contracts/chat-threads";
+import type { ModelProviderType } from "@vm0/core/contracts/model-providers";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { agentById, defaultAgentId$ } from "./agent.ts";
 import { zeroClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";
@@ -67,6 +67,11 @@ export interface ChatThread {
    */
   latestSessionProviderType: ModelProviderType | null;
   activeRunIds: string[];
+  /**
+   * Active (non-terminal) runs with live status. Source of truth for the
+   * queued/running distinction — `activeRunIds` is derived from these ids.
+   */
+  activeRuns: { id: string; status: string }[];
   isLegacySession: boolean;
   draftContent: string | null;
   draftAttachments: PersistedAttachment[] | null;
@@ -79,6 +84,14 @@ export interface ChatThread {
   selectedModel: string | null;
 }
 
+// Note: `create-chat-thread.ts` has a near-identical `threadData$` inside
+// `createThreadData`. Both are intentionally kept:
+//  - `currentChatThread$` is a route-scoped computed used for sidebar title
+//    merging in `chatThreads$`.
+//  - `threadData$` lives inside the per-thread signal factory so it can be
+//    invalidated independently (reloadThread$) for the open chat page.
+// The `[200, 404]` accept list and `{ toast: false }` must stay aligned so
+// missing-thread redirects (see `chat-page-setup.ts`) behave consistently.
 export const currentChatThread$ = computed(
   async (get): Promise<ChatThread | null> => {
     const threadId = get(currentChatThreadId$);
@@ -90,8 +103,12 @@ export const currentChatThread$ = computed(
 
     const threadResult = await accept(
       threadClient.get({ params: { id: threadId } }),
-      [200],
+      [200, 404],
+      { toast: false },
     );
+    if (threadResult.status === 404) {
+      return null;
+    }
 
     const body = threadResult.body;
     return {
@@ -101,6 +118,7 @@ export const currentChatThread$ = computed(
       latestSessionId: body.latestSessionId ?? null,
       latestSessionProviderType: body.latestSessionProviderType ?? null,
       activeRunIds: body.activeRunIds,
+      activeRuns: body.activeRuns ?? [],
       isLegacySession: false,
       draftContent: body.draftContent ?? null,
       draftAttachments: body.draftAttachments ?? null,
@@ -152,3 +170,26 @@ export const chatThreads$ = computed(async (get) => {
     };
   });
 });
+
+/**
+ * The earliest ended-but-unread thread that is not the currently open thread.
+ * Used by the mobile header to prompt the user to check pending replies.
+ */
+export const earliestUnreadEndedThread$ = computed(
+  async (get): Promise<ChatThreadListItem | null> => {
+    const threads = await get(chatThreads$);
+    const currentThreadId = get(currentChatThreadId$);
+
+    const candidates = threads
+      .filter((t) => {
+        return !t.running && !t.isRead && t.id !== currentThreadId;
+      })
+      .sort((a, b) => {
+        return (
+          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+        );
+      });
+
+    return candidates[0] ?? null;
+  },
+);

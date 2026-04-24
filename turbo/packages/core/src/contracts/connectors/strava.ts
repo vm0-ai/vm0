@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const strava = {
   strava: {
     label: "Strava",
+    category: "data-automation-infrastructure",
     environmentMapping: {
       STRAVA_TOKEN: "$secrets.STRAVA_ACCESS_TOKEN",
     },

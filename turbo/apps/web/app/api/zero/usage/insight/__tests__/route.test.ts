@@ -16,10 +16,10 @@ import {
   insertTestChatThread,
 } from "../../../../../../src/__tests__/db-test-seeders/agents";
 import {
-  triggerSourceSchema,
   type UsageInsightResponse,
   type UsageInsightBucket,
-} from "@vm0/core";
+} from "@vm0/core/contracts/zero-usage-insight";
+import { triggerSourceSchema } from "@vm0/core/contracts/logs";
 
 import { GET } from "../route";
 
@@ -151,8 +151,8 @@ describe("GET /api/zero/usage/insight", () => {
     expect(totalByBucket["email"]).toBeGreaterThanOrEqual(50);
     // schedule <- schedule (50 credits)
     expect(totalByBucket["schedule"]).toBeGreaterThanOrEqual(50);
-    // others <- 7 other sources (350 credits)
-    expect(totalByBucket["others"]).toBeGreaterThanOrEqual(350);
+    // others <- 5 other sources (250 credits)
+    expect(totalByBucket["others"]).toBeGreaterThanOrEqual(250);
   });
 
   it("groupBy=agent with 9 agents produces top-7 + others series keys", async () => {

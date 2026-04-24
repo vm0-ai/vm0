@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const lark = {
   lark: {
     label: "Lark",
+    category: "communication-collaboration",
     environmentMapping: {
       LARK_TOKEN: "$secrets.LARK_TOKEN",
       LARK_APP_ID: "$vars.LARK_APP_ID",

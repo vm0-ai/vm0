@@ -1,5 +1,8 @@
 import { command } from "ccstate";
-import type { AttachFile, PagedChatMessage } from "@vm0/core";
+import type {
+  AttachFile,
+  PagedChatMessage,
+} from "@vm0/core/contracts/chat-threads";
 import type {
   DraftSignals,
   ZeroChatAttachment,

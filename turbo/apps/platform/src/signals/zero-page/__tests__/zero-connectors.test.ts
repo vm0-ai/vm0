@@ -8,15 +8,16 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { allConnectorTypes$ } from "../settings/connectors.ts";
 import { zeroAddedConnectors$ } from "../zero-connectors.ts";
-import {
-  type ConnectorType,
-  zeroAgentsByIdContract,
-  zeroUserConnectorsContract,
-} from "@vm0/core";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import type { ConnectorType } from "@vm0/core/contracts/connectors";
+import { zeroAgentsByIdContract } from "@vm0/core/contracts/zero-agents";
+import { zeroUserConnectorsContract } from "@vm0/core/contracts/user-connectors";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
+import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 describe("connectors", () => {
   it("should show gmail connector without any feature switch", async () => {
@@ -97,8 +98,82 @@ describe("connectors", () => {
   });
 });
 
+describe("connectors — strictFeatureFlag", () => {
+  it("hides zapier when ZapierConnector feature switch is disabled", async () => {
+    detachedSetupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.ZapierConnector]: false },
+      withoutRender: true,
+    });
+
+    const connectorTypes = await context.store.get(allConnectorTypes$);
+    const zapier = connectorTypes.find((c) => {
+      return c.type === "zapier";
+    });
+
+    expect(zapier).toBeUndefined();
+  });
+
+  it("shows zapier when ZapierConnector feature switch is enabled", async () => {
+    detachedSetupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.ZapierConnector]: true },
+      withoutRender: true,
+    });
+
+    const connectorTypes = await context.store.get(allConnectorTypes$);
+    const zapier = connectorTypes.find((c) => {
+      return c.type === "zapier";
+    });
+
+    expect(zapier).toBeDefined();
+    expect(zapier?.availableAuthMethods).toContain("api-token");
+  });
+
+  it("shows mercury (api-token, no strictFeatureFlag) even when its flag is disabled", async () => {
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+    });
+
+    const connectorTypes = await context.store.get(allConnectorTypes$);
+    const mercury = connectorTypes.find((c) => {
+      return c.type === "mercury";
+    });
+
+    // mercury has api-token auth and no strictFeatureFlag, so it is always visible
+    expect(mercury).toBeDefined();
+    expect(mercury?.availableAuthMethods).toContain("api-token");
+  });
+});
+
 describe("zero connectors — agent switch", () => {
   it("should return seeded connectors for new agent after switching", async () => {
+    // Register both agents in the team list so the detail page setup can
+    // resolve them without triggering the missing-agent redirect guard.
+    setMockTeam([
+      {
+        id: "agent-a",
+        displayName: "Agent A",
+        description: null,
+        sound: null,
+        avatarUrl: null,
+        headVersionId: "version_1",
+        updatedAt: "2024-01-01T00:00:00Z",
+      },
+      {
+        id: "agent-b",
+        displayName: "Agent B",
+        description: null,
+        sound: null,
+        avatarUrl: null,
+        headVersionId: "version_1",
+        updatedAt: "2024-01-01T00:00:00Z",
+      },
+    ]);
     // Mock two agents with different user-connector permissions
     server.use(
       mockApi(zeroAgentsByIdContract.get, ({ params, respond }) => {

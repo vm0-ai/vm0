@@ -1,9 +1,6 @@
 import { eq } from "drizzle-orm";
 import { initServices } from "../../lib/init-services";
-import {
-  featureCandidateVoiceChatSessions,
-  featureCandidateVoiceChatTasks,
-} from "../../db/schema/voice-chat-candidate";
+import { voiceChatSessions, voiceChatTasks } from "../../db/schema/voice-chat";
 import { appendVoiceChatCandidateItem } from "../../lib/zero/voice-chat-candidate/item-service";
 import { createVoiceChatCandidateSession } from "../../lib/zero/voice-chat-candidate/session-service";
 import { uniqueId } from "../test-helpers";
@@ -34,6 +31,7 @@ export async function appendTestVoiceChatCandidateItem(params: {
 export async function insertTestVoiceChatCandidateTask(
   sessionId: string,
   overrides: {
+    prompt?: string;
     result?: string;
     resultUpdatedAt?: Date;
     finishedAt?: Date;
@@ -45,17 +43,17 @@ export async function insertTestVoiceChatCandidateTask(
   const status = overrides.status ?? "done";
   const isFinished = status === "done" || status === "failed";
   const [row] = await globalThis.services.db
-    .insert(featureCandidateVoiceChatTasks)
+    .insert(voiceChatTasks)
     .values({
       sessionId,
       callId: uniqueId("call"),
-      prompt: "Summarize the situation",
+      prompt: overrides.prompt ?? "Summarize the situation",
       status,
       result: overrides.result ?? "A".repeat(500) + " important data",
       resultUpdatedAt: overrides.resultUpdatedAt ?? twoMinutesAgo,
       finishedAt: isFinished ? (overrides.finishedAt ?? twoMinutesAgo) : null,
     })
-    .returning({ id: featureCandidateVoiceChatTasks.id });
+    .returning({ id: voiceChatTasks.id });
   return row!.id;
 }
 
@@ -87,9 +85,9 @@ export async function simulateConcurrentVoiceChatCandidateSessionWrite(
 ): Promise<void> {
   initServices();
   await globalThis.services.db
-    .update(featureCandidateVoiceChatSessions)
+    .update(voiceChatSessions)
     .set({ summaryVersion, conversationSummary })
-    .where(eq(featureCandidateVoiceChatSessions.id, sessionId));
+    .where(eq(voiceChatSessions.id, sessionId));
 }
 
 /**
@@ -108,7 +106,7 @@ export async function insertTestVoiceChatCandidateSession(overrides: {
   initServices();
   const now = new Date();
   const [row] = await globalThis.services.db
-    .insert(featureCandidateVoiceChatSessions)
+    .insert(voiceChatSessions)
     .values({
       orgId: overrides.orgId,
       userId: overrides.userId,
@@ -117,6 +115,6 @@ export async function insertTestVoiceChatCandidateSession(overrides: {
       lastSummaryAt: overrides.lastSummaryAt ?? null,
       createdAt: overrides.createdAt ?? now,
     })
-    .returning({ id: featureCandidateVoiceChatSessions.id });
+    .returning({ id: voiceChatSessions.id });
   return row!.id;
 }

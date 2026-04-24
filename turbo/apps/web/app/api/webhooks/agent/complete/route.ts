@@ -3,7 +3,7 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../../src/lib/ts-rest-handler";
-import { webhookCompleteContract } from "@vm0/core";
+import { webhookCompleteContract } from "@vm0/core/contracts/webhooks";
 import { initServices } from "../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import { checkpoints } from "../../../../../src/db/schema/checkpoint";
@@ -14,6 +14,7 @@ import {
   dispatchTerminalSideEffects,
 } from "../../../../../src/lib/infra/run/run-status";
 import { getSandboxAuthForRun } from "../../../../../src/lib/auth/get-sandbox-auth";
+import { decodeToRecord } from "../../../../../src/lib/infra/checkpoint/decode-artifact-snapshots";
 import type { RunResult } from "../../../../../src/lib/infra/run/types";
 import { logger } from "../../../../../src/lib/shared/logger";
 import {
@@ -21,6 +22,7 @@ import {
   dispatchQueuedZeroRun,
 } from "../../../../../src/lib/zero/zero-run-queue-service";
 import { processOrgCredits } from "../../../../../src/lib/zero/credit/credit-service";
+import { processOrgUsageEvents } from "../../../../../src/lib/zero/credit/usage-event-service";
 import { after } from "next/server";
 import { env } from "../../../../../src/env";
 
@@ -40,18 +42,24 @@ function scheduleTerminalSideEffects(
       return drainOrgQueue(orgId, dispatchQueuedZeroRun);
     });
     await processOrgCredits(orgId);
+    await processOrgUsageEvents(orgId);
   });
 }
 
 /**
  * Build a RunResult from a checkpoint record.
+ *
+ * `checkpoint.artifactSnapshots` is a JSONB column (runtime type `unknown`)
+ * that may contain either the legacy Record<name, version> shape or the
+ * canonical Array<{name, version, mountPath}>. `RunResult.artifact` is still
+ * Record-shaped for downstream consumers, so we project the array shape back
+ * to Record on the way out. Empty payloads project to null and are dropped.
  */
 function buildRunResult(
   checkpoint: typeof checkpoints.$inferSelect,
   sessionId: string | undefined,
 ): RunResult {
-  const artifactSnapshots =
-    (checkpoint.artifactSnapshots as Record<string, string> | null) ?? null;
+  const artifactRecord = decodeToRecord(checkpoint.artifactSnapshots);
   const volumeVersions = checkpoint.volumeVersionsSnapshot as
     | { versions: Record<string, string> }
     | undefined;
@@ -63,8 +71,8 @@ function buildRunResult(
     volumes: volumeVersions?.versions,
   };
 
-  if (artifactSnapshots && Object.keys(artifactSnapshots).length > 0) {
-    result.artifact = artifactSnapshots;
+  if (artifactRecord) {
+    result.artifact = artifactRecord;
   }
 
   return result;

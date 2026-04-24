@@ -1,5 +1,5 @@
 import { command, computed, state } from "ccstate";
-import { zeroInsightsContract } from "@vm0/core";
+import { zeroInsightsContract } from "@vm0/core/contracts/zero-insights";
 import { zeroClient$ } from "../api-client.ts";
 
 // ---------------------------------------------------------------------------

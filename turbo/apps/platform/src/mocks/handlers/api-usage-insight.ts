@@ -4,7 +4,10 @@
  * Mock handler for /api/zero/usage/insight endpoint.
  */
 
-import { zeroUsageInsightContract, type UsageInsightResponse } from "@vm0/core";
+import {
+  zeroUsageInsightContract,
+  type UsageInsightResponse,
+} from "@vm0/core/contracts/zero-usage-insight";
 import { mockApi } from "../msw-contract.ts";
 
 const defaultResponse: UsageInsightResponse = {
@@ -24,10 +27,6 @@ const defaultResponse: UsageInsightResponse = {
 };
 
 let mockUsageInsightResponse: UsageInsightResponse = { ...defaultResponse };
-
-export function setMockUsageInsight(data: Partial<UsageInsightResponse>): void {
-  mockUsageInsightResponse = { ...defaultResponse, ...data };
-}
 
 export function resetMockUsageInsight(): void {
   mockUsageInsightResponse = { ...defaultResponse };

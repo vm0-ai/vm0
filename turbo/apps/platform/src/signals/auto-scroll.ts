@@ -1,4 +1,4 @@
-import { command, state } from "ccstate";
+import { command, state, type Command } from "ccstate";
 import { onRef } from "./utils.ts";
 import { logger } from "./log.ts";
 
@@ -56,6 +56,10 @@ function scrollInfo(el: HTMLElement) {
 interface RestoreState {
   pendingRestorePosition: number | null;
   suppressNextScrollToBottom: boolean;
+  // Snapshot taken just before prepending older messages. The ResizeObserver
+  // detects the resulting height increase and adds the delta to scrollTop so
+  // the user's viewport stays anchored on the same content.
+  pendingPrependScrollHeight: number | null;
 }
 
 function attachUserInputListeners(
@@ -95,6 +99,95 @@ function observeContainerResize(
   });
 }
 
+interface ScrollHandlerContext {
+  el: HTMLElement;
+  restoreState: RestoreState;
+  id: string | undefined;
+  lastUserInputAt: { v: number };
+  lastKnownScrollTop: { v: number };
+  isDisabled: () => boolean;
+  setDisabled: (v: boolean) => void;
+  clearCache: () => void;
+  saveCache: (top: number) => void;
+}
+
+function buildScrollHandler(ctx: ScrollHandlerContext) {
+  return () => {
+    const { el, restoreState, lastUserInputAt, lastKnownScrollTop } = ctx;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const userRecent =
+      performance.now() - lastUserInputAt.v < USER_INPUT_WINDOW_MS;
+    if (restoreState.pendingRestorePosition !== null && userRecent) {
+      restoreState.pendingRestorePosition = null;
+    }
+    if (distanceFromBottom <= AT_BOTTOM_THRESHOLD) {
+      const wasDisabled = ctx.isDisabled();
+      ctx.setDisabled(false);
+      ctx.clearCache();
+      if (wasDisabled) {
+        L.debug("re-enabled (at bottom)", scrollInfo(el));
+      }
+    } else if (el.scrollTop < lastKnownScrollTop.v) {
+      // Only treat a scrollTop decrease as "user scrolled up" when it
+      // coincides with a recent user input. The browser can also decrease
+      // scrollTop on its own — when content below the viewport shrinks it
+      // clamps to the new max, and scroll anchoring can nudge position on
+      // layout changes. Those programmatic shifts should not disable
+      // auto-scroll; we want ResizeObserver to snap back to the bottom.
+      if (userRecent) {
+        const wasDisabled = ctx.isDisabled();
+        ctx.setDisabled(true);
+        if (!wasDisabled) {
+          L.debug("DISABLED (scrolled up)", scrollInfo(el));
+        }
+      } else {
+        L.debug("scrollTop decreased without user input", scrollInfo(el));
+      }
+    }
+    if (ctx.id !== undefined && ctx.isDisabled()) {
+      ctx.saveCache(el.scrollTop);
+    }
+    lastKnownScrollTop.v = el.scrollTop;
+  };
+}
+
+interface ResizeHandlerContext {
+  el: HTMLElement;
+  restoreState: RestoreState;
+  isDisabled: () => boolean;
+}
+
+function buildResizeHandler(ctx: ResizeHandlerContext) {
+  return () => {
+    const { el, restoreState } = ctx;
+    const disabled = ctx.isDisabled();
+    L.debug("ResizeObserver fired", scrollInfo(el), `disabled=${disabled}`);
+    if (restoreState.pendingRestorePosition !== null) {
+      el.scrollTop = restoreState.pendingRestorePosition;
+      if (el.scrollTop >= restoreState.pendingRestorePosition) {
+        restoreState.pendingRestorePosition = null;
+      }
+      return;
+    }
+    if (restoreState.pendingPrependScrollHeight !== null) {
+      const delta = el.scrollHeight - restoreState.pendingPrependScrollHeight;
+      restoreState.pendingPrependScrollHeight = null;
+      if (delta > 0) {
+        el.scrollTop += delta;
+        L.debug(
+          "prepend compensation applied",
+          `delta=${delta}`,
+          scrollInfo(el),
+        );
+      }
+      return;
+    }
+    if (!disabled) {
+      el.scrollTop = el.scrollHeight;
+    }
+  };
+}
+
 /**
  * Factory that creates scroll-management signals for a scrollable container.
  *
@@ -118,17 +211,15 @@ function observeContainerResize(
  * a chance to invoke `scrollToBottom$`. The cache is cleared once the user
  * scrolls back to the bottom.
  */
+export type RecordScrollHeightForPrepend$ = Command<void, []>;
+
 export function createScrollSignals(id?: string) {
   const internalScrollContainer$ = state<HTMLElement | null>(null);
   const autoScrollDisabled$ = state(false);
-  // `pendingRestorePosition` is held while ResizeObserver is still growing the
-  // container up to a saved position — set scrollTop clamps early and needs to
-  // be re-applied. `suppressNextScrollToBottom` is set when bind-time restore
-  // happened and the caller has not yet fired its post-load scrollToBottom$.
-  // That call must be suppressed so it doesn't override the restored position.
   const restoreState: RestoreState = {
     pendingRestorePosition: null,
     suppressNextScrollToBottom: false,
+    pendingPrependScrollHeight: null,
   };
 
   const setScrollContainer$ = onRef(
@@ -146,78 +237,47 @@ export function createScrollSignals(id?: string) {
         L.debug("container bound → restoring", `id=${id}`, `saved=${saved}`);
       }
 
-      let lastKnownScrollTop = el.scrollTop;
-      let lastUserInputAt = 0;
+      const lastKnownScrollTop = { v: el.scrollTop };
+      const lastUserInputAt = { v: 0 };
 
       const markUserInput = () => {
-        lastUserInputAt = performance.now();
+        lastUserInputAt.v = performance.now();
         restoreState.suppressNextScrollToBottom = false;
       };
 
-      const onScroll = () => {
-        const distanceFromBottom =
-          el.scrollHeight - el.scrollTop - el.clientHeight;
-        const userRecent =
-          performance.now() - lastUserInputAt < USER_INPUT_WINDOW_MS;
-        if (restoreState.pendingRestorePosition !== null && userRecent) {
-          restoreState.pendingRestorePosition = null;
-        }
-        if (distanceFromBottom <= AT_BOTTOM_THRESHOLD) {
-          const wasDisabled = get(autoScrollDisabled$);
-          set(autoScrollDisabled$, false);
+      const ctx: ScrollHandlerContext = {
+        el,
+        restoreState,
+        id,
+        lastUserInputAt,
+        lastKnownScrollTop,
+        isDisabled: () => {
+          return get(autoScrollDisabled$);
+        },
+        setDisabled: (v) => {
+          set(autoScrollDisabled$, v);
+        },
+        clearCache: () => {
           if (id !== undefined) {
             set(clearCachedScrollTop$, id);
           }
-          if (wasDisabled) {
-            L.debug("re-enabled (at bottom)", scrollInfo(el));
-          }
-        } else if (el.scrollTop < lastKnownScrollTop) {
-          // Only treat a scrollTop decrease as "user scrolled up" when it
-          // coincides with a recent user input. The browser can also decrease
-          // scrollTop on its own — when content below the viewport shrinks it
-          // clamps to the new max, and scroll anchoring can nudge position on
-          // layout changes. Those programmatic shifts should not disable
-          // auto-scroll; we want ResizeObserver to snap back to the bottom.
-          if (userRecent) {
-            const wasDisabled = get(autoScrollDisabled$);
-            set(autoScrollDisabled$, true);
-            if (!wasDisabled) {
-              L.debug("DISABLED (scrolled up)", scrollInfo(el));
-            }
-          } else {
-            L.debug("scrollTop decreased without user input", scrollInfo(el));
-          }
-        }
-        if (id !== undefined && get(autoScrollDisabled$)) {
-          set(setCachedScrollTop$, id, el.scrollTop);
-        }
-        lastKnownScrollTop = el.scrollTop;
-      };
-
-      attachUserInputListeners(el, markUserInput, onScroll, signal);
-
-      observeContainerResize(
-        el,
-        () => {
-          const disabled = get(autoScrollDisabled$);
-          L.debug(
-            "ResizeObserver fired",
-            scrollInfo(el),
-            `disabled=${disabled}`,
-          );
-          if (restoreState.pendingRestorePosition !== null) {
-            el.scrollTop = restoreState.pendingRestorePosition;
-            if (el.scrollTop >= restoreState.pendingRestorePosition) {
-              restoreState.pendingRestorePosition = null;
-            }
-            return;
-          }
-          if (!disabled) {
-            el.scrollTop = el.scrollHeight;
+        },
+        saveCache: (top) => {
+          if (id !== undefined) {
+            set(setCachedScrollTop$, id, top);
           }
         },
-        signal,
-      );
+      };
+
+      const onScroll = buildScrollHandler(ctx);
+      const onResize = buildResizeHandler({
+        el,
+        restoreState,
+        isDisabled: ctx.isDisabled,
+      });
+
+      attachUserInputListeners(el, markUserInput, onScroll, signal);
+      observeContainerResize(el, onResize, signal);
 
       signal.addEventListener("abort", () => {
         L.debug("container unbound (abort)");
@@ -253,6 +313,17 @@ export function createScrollSignals(id?: string) {
     scrollEl.scrollTop = scrollEl.scrollHeight;
   });
 
+  // Snapshot the container's current scrollHeight before prepending messages.
+  // The ResizeObserver callback will detect the resulting height increase and
+  // compensate scrollTop so the viewport stays anchored on the same content.
+  const recordScrollHeightForPrepend$ = command(({ get }) => {
+    const el = get(internalScrollContainer$);
+    if (el) {
+      restoreState.pendingPrependScrollHeight = el.scrollHeight;
+      L.debug("recordScrollHeightForPrepend$", `height=${el.scrollHeight}`);
+    }
+  });
+
   // Scrolling to top is an explicit opt-out of auto-scroll — disable it so
   // ResizeObserver doesn't snap back to the bottom when new messages arrive.
   const scrollToTop$ = command(({ get, set }) => {
@@ -268,5 +339,11 @@ export function createScrollSignals(id?: string) {
     scrollEl.scrollTop = 0;
   });
 
-  return { setScrollContainer$, autoScroll$, scrollToBottom$, scrollToTop$ };
+  return {
+    setScrollContainer$,
+    autoScroll$,
+    scrollToBottom$,
+    scrollToTop$,
+    recordScrollHeightForPrepend$,
+  };
 }

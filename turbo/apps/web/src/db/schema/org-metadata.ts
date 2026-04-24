@@ -46,10 +46,6 @@ export const orgMetadata = pgTable(
     }),
     autoRechargeAmount: bigint("auto_recharge_amount", { mode: "number" }),
     autoRechargePendingAt: timestamp("auto_recharge_pending_at"),
-    // AgentPhone phone channel fields
-    agentphoneAgentId: varchar("agentphone_agent_id", { length: 255 }),
-    agentphoneNumberId: varchar("agentphone_number_id", { length: 255 }),
-    agentphoneNumber: varchar("agentphone_number", { length: 20 }),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

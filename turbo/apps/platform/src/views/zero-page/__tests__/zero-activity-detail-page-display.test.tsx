@@ -4,19 +4,18 @@ import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
-import {
-  FeatureSwitchKey,
-  logsByIdContract,
-  zeroRunAgentEventsContract,
-} from "@vm0/core";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { logsByIdContract } from "@vm0/core/contracts/logs";
+import { zeroRunAgentEventsContract } from "@vm0/core/contracts/zero-runs";
 import type {
   LogDetail,
   AgentEventsResponse,
   AgentEvent,
 } from "../../../signals/zero-page/log-types.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 const BASE_LOG_ID = "d0000000-0000-4000-8000-000000000001";
 
@@ -362,7 +361,7 @@ describe("zeroActivityDetailPageDisplay", () => {
     detachedSetupPage({
       context,
       path: `/activities/${BASE_LOG_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ShowSystemPrompt]: true },
+      featureSwitches: { [FeatureSwitchKey.ZeroDebug]: true },
     });
 
     await waitFor(() => {

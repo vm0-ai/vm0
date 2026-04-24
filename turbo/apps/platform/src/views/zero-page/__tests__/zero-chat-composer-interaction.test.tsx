@@ -1,10 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import {
-  zeroConnectorsMainContract,
-  zeroUserConnectorsContract,
-} from "@vm0/core";
+import { zeroConnectorsMainContract } from "@vm0/core/contracts/zero-connectors";
+import { zeroUserConnectorsContract } from "@vm0/core/contracts/user-connectors";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
@@ -12,7 +10,7 @@ import {
   fill,
   click,
 } from "../../../__tests__/page-helper.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { mockUploadSuccess } from "../../../mocks/upload-helpers.ts";
 import {
   mockChatLifecycle,
@@ -22,6 +20,7 @@ import {
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const CHAT_PATH = `/agents/${AGENT_ID}/chat`;
@@ -81,6 +80,21 @@ describe("zero chat composer - textarea interaction", () => {
 });
 
 describe("zero chat composer - file input", () => {
+  // CHAT-I-022
+  it("renders attachment button with correct accessible label", async () => {
+    mockChatLifecycle();
+
+    detachedSetupPage({ context, path: CHAT_PATH });
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
+    });
+
+    // Attachment button renders with aria-label for accessibility
+    const attachButton = screen.getByLabelText("Attach");
+    expect(attachButton).toBeInTheDocument();
+  });
+
   // CHAT-I-023
   it("shows attachment chip after a file is selected via the file input", async () => {
     const user = userEvent.setup();
@@ -110,7 +124,9 @@ describe("zero chat composer - file input", () => {
     await user.upload(fileInput, file);
 
     await waitFor(() => {
-      expect(screen.getByLabelText(/test\.png/)).toBeInTheDocument();
+      expect(
+        screen.getByLabelText("Open image preview for test.png"),
+      ).toBeInTheDocument();
     });
   });
 });

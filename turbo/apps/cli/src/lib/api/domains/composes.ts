@@ -4,7 +4,7 @@ import {
   composesByIdContract,
   composesVersionsContract,
   agentComposeApiContentSchema,
-} from "@vm0/core";
+} from "@vm0/core/contracts/composes";
 import type { z } from "zod";
 import {
   ApiRequestError,

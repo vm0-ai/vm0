@@ -4,6 +4,7 @@ import type { ConnectorConfig } from "../connectors";
 export const garminConnect = {
   "garmin-connect": {
     label: "Garmin Connect",
+    category: "data-automation-infrastructure",
     environmentMapping: {
       GARMIN_CONNECT_TOKEN: "$secrets.GARMIN_CONNECT_ACCESS_TOKEN",
     },

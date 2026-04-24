@@ -1240,7 +1240,7 @@ checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
 name = "guest-agent"
-version = "0.22.1"
+version = "0.24.0"
 dependencies = [
  "aho-corasick",
  "base64",
@@ -1272,7 +1272,7 @@ dependencies = [
 
 [[package]]
 name = "guest-download"
-version = "0.19.1"
+version = "0.20.1"
 dependencies = [
  "flate2",
  "guest-common",
@@ -1295,8 +1295,9 @@ dependencies = [
 
 [[package]]
 name = "guest-mock-claude"
-version = "0.17.2"
+version = "0.17.3"
 dependencies = [
+ "libc",
  "serde_json",
  "tempfile",
 ]
@@ -1877,9 +1878,9 @@ checksum = "09edd9e8b54e49e587e4f6295a7d29c3ea94d469cb40ab8ca70b288248a81db2"
 
 [[package]]
 name = "libc"
-version = "0.2.185"
+version = "0.2.186"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "52ff2c0fe9bc6cb6b14a0592c2ff4fa9ceb83eea9db979b0487cd054946a2b8f"
+checksum = "68ab91017fe16c622486840e4c83c9a37afeff978bd239b5293d61ece587de66"
 
 [[package]]
 name = "libredox"
@@ -2004,7 +2005,7 @@ dependencies = [
 
 [[package]]
 name = "nbd-cow"
-version = "0.4.6"
+version = "0.4.7"
 dependencies = [
  "bitvec",
  "libc",
@@ -2502,7 +2503,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.93.2"
+version = "0.94.0"
 dependencies = [
  "ably-subscriber",
  "async-trait",
@@ -2513,6 +2514,7 @@ dependencies = [
  "chrono",
  "clap",
  "flate2",
+ "futures-util",
  "guest-agent",
  "guest-download",
  "guest-init",
@@ -2679,7 +2681,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox"
-version = "0.12.3"
+version = "0.12.4"
 dependencies = [
  "async-trait",
  "serde",
@@ -2691,7 +2693,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.26.3"
+version = "0.26.7"
 dependencies = [
  "async-trait",
  "base64",
@@ -2716,7 +2718,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-mock"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "async-trait",
  "sandbox",

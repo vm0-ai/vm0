@@ -4,6 +4,8 @@ import {
   extractVariableReferencesFromString,
   expandVariables,
   expandVariablesInString,
+  expandMountPath,
+  WORKING_DIR_TEMPLATE,
   validateRequiredVariables,
   groupVariablesBySource,
   formatMissingVariables,
@@ -358,5 +360,52 @@ describe("formatMissingVariables", () => {
     ];
     const msg = formatMissingVariables(missing);
     expect(msg).toContain("Environment variables: A, B");
+  });
+});
+
+describe("expandMountPath", () => {
+  test("passes through strings without the working_dir template", () => {
+    const { result, missing } = expandMountPath("/a/b", "/wd");
+    expect(result).toBe("/a/b");
+    expect(missing).toBe(false);
+  });
+
+  test("expands the full template to working_dir", () => {
+    const { result, missing } = expandMountPath(WORKING_DIR_TEMPLATE, "/wd");
+    expect(result).toBe("/wd");
+    expect(missing).toBe(false);
+  });
+
+  test("expands template embedded in a longer path", () => {
+    const { result, missing } = expandMountPath(
+      `${WORKING_DIR_TEMPLATE}/sub`,
+      "/wd",
+    );
+    expect(result).toBe("/wd/sub");
+    expect(missing).toBe(false);
+  });
+
+  test("signals missing when template is present but workingDir is undefined", () => {
+    const { result, missing } = expandMountPath(
+      WORKING_DIR_TEMPLATE,
+      undefined,
+    );
+    expect(result).toBe(WORKING_DIR_TEMPLATE);
+    expect(missing).toBe(true);
+  });
+
+  test("does not signal missing when template is absent and workingDir is undefined", () => {
+    const { result, missing } = expandMountPath("/a/b", undefined);
+    expect(result).toBe("/a/b");
+    expect(missing).toBe(false);
+  });
+
+  test("replaces multiple occurrences of the template", () => {
+    const { result, missing } = expandMountPath(
+      `${WORKING_DIR_TEMPLATE}/x/${WORKING_DIR_TEMPLATE}`,
+      "/wd",
+    );
+    expect(result).toBe("/wd/x//wd");
+    expect(missing).toBe(false);
   });
 });

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.3](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.17.2...guest-mock-claude-v0.17.3) (2026-04-23)
+
+
+### Bug Fixes
+
+* **guest-agent:** reap cli process group after type=result ([#10879](https://github.com/vm0-ai/vm0/issues/10879)) ([#10897](https://github.com/vm0-ai/vm0/issues/10897)) ([1ac27f9](https://github.com/vm0-ai/vm0/commit/1ac27f9884d00d01ef072bef59c4b5389c053d1a))
+
 ## [0.17.2](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.17.1...guest-mock-claude-v0.17.2) (2026-04-22)
 
 

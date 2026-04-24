@@ -4,12 +4,13 @@ This document describes the testing patterns for `turbo/apps/platform`.
 
 ## Test Categories
 
-App has two main types of tests:
+App has three main types of tests:
 
-| Type | Location | Suffix | Purpose |
-|------|----------|--------|---------|
-| UI Tests | `views/` | `.test.tsx` | Test user interactions and UI state |
-| State Tests | `signals/` | `.test.ts` | Test state management logic |
+| Type          | Location   | Suffix                     | Purpose                                                                 |
+| ------------- | ---------- | -------------------------- | ----------------------------------------------------------------------- |
+| UI Tests      | `views/`   | `.test.tsx`                | Test user interactions and UI state                                     |
+| State Tests   | `signals/` | `.test.ts`                 | Test state management logic                                             |
+| Browser Tests | `src/`     | `.btest.tsx` / `.btest.ts` | Test browser layout, rendering, scroll, and observer behavior in Chrome |
 
 ## UI Tests
 
@@ -75,6 +76,22 @@ describe("someSignal", () => {
   });
 });
 ```
+
+## Browser Tests (Btest)
+
+Use Btest only when the behavior depends on real browser layout or render
+timing, such as scroll anchoring, `ResizeObserver`, or rerender-driven
+measurements. These tests run in Chromium through Vitest Browser Mode and are
+kept out of the normal happy-dom suite.
+
+```bash
+pnpm --filter @vm0/app btest
+```
+
+Browser tests use the `.btest.ts` or `.btest.tsx` suffix and share the same
+mock handlers and Clerk mocks as regular platform tests. They should still test
+behavior through user-visible DOM state or platform helpers; do not use them for
+logic that happy-dom can cover reliably.
 
 ## Mock Infrastructure
 
@@ -176,13 +193,13 @@ http.get("*/api/logs", ({ request }) => {
 All handlers are collected in `handlers/index.ts`:
 
 ```typescript
-import { apiModelProvidersHandlers, resetMockModelProviders } from "./api-model-providers";
+import {
+  apiModelProvidersHandlers,
+  resetMockModelProviders,
+} from "./api-model-providers";
 import { apiOrgHandlers } from "./api-org";
 
-export const handlers = [
-  ...apiModelProvidersHandlers,
-  ...apiOrgHandlers,
-];
+export const handlers = [...apiModelProvidersHandlers, ...apiOrgHandlers];
 
 export function resetAllMockHandlers(): void {
   resetMockModelProviders();
@@ -313,6 +330,7 @@ describe("MyFeature", () => {
 ```
 
 Features:
+
 - Creates fresh store for each test
 - Provides AbortSignal for cleanup
 - Automatically resets mock handlers after each test
@@ -322,8 +340,8 @@ Features:
 
 ```typescript
 await setupPage({
-  context,                    // Required: test context
-  path: "/dashboard",         // Required: initial route
+  context, // Required: test context
+  path: "/dashboard", // Required: initial route
 
   // Optional: override authenticated user
   user: { id: "user-1", fullName: "Test User" },

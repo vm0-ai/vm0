@@ -5,12 +5,12 @@ import {
 } from "../../../db/schema/agent-compose";
 import { storages } from "../../../db/schema/storage";
 import { agentRuns } from "../../../db/schema/agent-run";
-import { getInstructionsStorageName } from "@vm0/core";
+import type { ComposeResponse } from "@vm0/core/contracts/composes";
+import { getInstructionsStorageName } from "@vm0/core/storage-names";
 import { notFound, conflict } from "../../shared/errors";
 import { canAccessCompose } from "../agent/compose-access";
 import { listS3Objects, deleteS3Objects } from "../s3/s3-client";
 import type { AgentComposeYaml } from "./types";
-import type { ComposeResponse } from "@vm0/core";
 
 /**
  * Get a compose's orgId by compose ID.

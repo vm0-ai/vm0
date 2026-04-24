@@ -1,9 +1,9 @@
+import { connectorTypeSchema } from "@vm0/core/contracts/connectors";
 import {
-  getInstructionsFilename,
   getConnectorEnvironmentMapping,
   getEligibleConnectorTypes,
-  connectorTypeSchema,
-} from "@vm0/core";
+} from "@vm0/core/contracts/connector-utils";
+import { getInstructionsFilename } from "@vm0/core/frameworks";
 
 /**
  * Build compose content for a zero agent.

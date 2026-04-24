@@ -1,16 +1,9 @@
-/**
- * Org Members API Handlers
- *
- * Mock handlers for /api/zero/org/members, /api/zero/org/invite,
- * and /api/zero/org/membership-requests endpoints.
- */
-
 import {
   zeroOrgMembersContract,
   zeroOrgInviteContract,
   zeroOrgMembershipRequestsContract,
-  type OrgMembersResponse,
-} from "@vm0/core";
+} from "@vm0/core/contracts/zero-org-members";
+import type { OrgMembersResponse } from "@vm0/core/contracts/org-members";
 import { mockApi } from "../msw-contract.ts";
 
 let mockOrgMembersResponse: OrgMembersResponse = {

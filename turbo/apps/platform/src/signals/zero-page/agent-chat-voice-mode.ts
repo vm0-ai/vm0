@@ -1,11 +1,12 @@
 import { command, computed, state } from "ccstate";
+import type { VoiceChatTask } from "@vm0/core";
 import {
-  startVoiceChatCandidate$,
-  endVoiceChatCandidate$,
-  vccLastUserMessage$,
-  vccLastAssistantMessage$,
-  vccActiveTasks$,
-} from "../voice-chat-candidate/voice-chat-candidate-session.ts";
+  startVoiceChat$,
+  endVoiceChat$,
+  voiceChatLastUserMessage$,
+  voiceChatLastAssistantMessage$,
+  voiceChatTaskFeed$,
+} from "../voice-chat/voice-chat-session.ts";
 
 type VoiceMode = "off" | "on";
 
@@ -17,14 +18,14 @@ export const agentChatVoiceMode$ = computed((get) => {
 
 /**
  * Flip voice mode on and begin the WebRTC / Ably handshake. The UI reflects
- * "connecting" via `vccStatus$` until `startVoiceChatCandidate$` resolves.
+ * "connecting" via `voiceChatStatus$` until `startVoiceChat$` resolves.
  * Callers in the views layer should detach this promise via `detach(...)` so
  * the click handler returns immediately.
  */
 export const enterAgentChatVoiceMode$ = command(
   async ({ set }, agentId: string, signal: AbortSignal) => {
     set(internalVoiceMode$, "on");
-    await set(startVoiceChatCandidate$, agentId, signal);
+    await set(startVoiceChat$, agentId, signal);
   },
 );
 
@@ -34,23 +35,26 @@ export const enterAgentChatVoiceMode$ = command(
  */
 export const exitAgentChatVoiceMode$ = command(({ set }) => {
   set(internalVoiceMode$, "off");
-  set(endVoiceChatCandidate$);
+  set(endVoiceChat$);
 });
 
 // Subtitle computeds mirror the per-role local state maintained by the
-// voice-chat-candidate signal module. Those states are set directly in
+// voice-chat signal module. Those states are set directly in
 // `appendItem$` after each successful DB write, so re-rendering is driven
 // purely by the user's and Talker's finalized turns — no server roundtrip.
-export const lastUserMessage$ = vccLastUserMessage$;
-export const lastAgentMessage$ = vccLastAssistantMessage$;
+export const lastUserMessage$ = voiceChatLastUserMessage$;
+export const lastAgentMessage$ = voiceChatLastAssistantMessage$;
 
 /**
  * Task cards shown in voice mode — only in-flight work. The server returns
  * active plus recently-finished tasks so the Talker has context, but the UI
  * drops `done` and `failed` so the list reads as a live working queue.
  */
-export const agentChatPendingTasks$ = computed((get) => {
-  return get(vccActiveTasks$).filter((t) => {
-    return t.status !== "done" && t.status !== "failed";
-  });
-});
+export const agentChatPendingTasks$ = computed(
+  async (get): Promise<VoiceChatTask[]> => {
+    const tasks = await get(voiceChatTaskFeed$);
+    return tasks.filter((t) => {
+      return t.status !== "done" && t.status !== "failed";
+    });
+  },
+);

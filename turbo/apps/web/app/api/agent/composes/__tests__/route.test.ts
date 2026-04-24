@@ -16,7 +16,8 @@ import {
 } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 import { generateZeroToken } from "../../../../../src/lib/auth/sandbox-token";
-import { getInstructionsStorageName, SUPPORTED_FRAMEWORKS } from "@vm0/core";
+import { SUPPORTED_FRAMEWORKS } from "@vm0/core/frameworks";
+import { getInstructionsStorageName } from "@vm0/core/storage-names";
 
 vi.hoisted(() => {
   vi.stubEnv("R2_USER_STORAGES_BUCKET_NAME", "test-storages-bucket");

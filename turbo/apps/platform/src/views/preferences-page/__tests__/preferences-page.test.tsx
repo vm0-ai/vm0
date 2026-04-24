@@ -6,11 +6,12 @@ import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import {
   type UserPreferencesResponse,
   zeroUserPreferencesContract,
-} from "@vm0/core";
+} from "@vm0/core/contracts/zero-user-preferences";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 function createMockPreferences(
   overrides?: Partial<UserPreferencesResponse>,

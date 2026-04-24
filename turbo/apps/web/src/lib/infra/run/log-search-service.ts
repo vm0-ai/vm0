@@ -1,4 +1,4 @@
-import type { RunEvent } from "@vm0/core";
+import type { RunEvent } from "@vm0/core/contracts/runs";
 import {
   agentComposes,
   agentComposeVersions,

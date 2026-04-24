@@ -6,9 +6,11 @@ import {
 import {
   composesMainContract,
   AGENT_NAME_REGEX,
+} from "@vm0/core/contracts/composes";
+import {
   SUPPORTED_FRAMEWORKS,
   isSupportedFramework,
-} from "@vm0/core";
+} from "@vm0/core/frameworks";
 import { initServices } from "../../../../src/lib/init-services";
 import {
   agentComposes,

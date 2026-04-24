@@ -3,6 +3,18 @@
  */
 
 /**
+ * Artifact snapshot payload sent by the writer. Each entry's `version` is
+ * always a resolved concrete string — distinct from `ContextArtifact`
+ * (execution-context type) where `version` is optional and defaults to
+ * "latest".
+ */
+export type ArtifactSnapshotsPayload = Array<{
+  name: string;
+  version: string;
+  mountPath: string;
+}>;
+
+/**
  * Agent compose snapshot stored in checkpoint
  * Uses version ID for reproducibility (content-addressed versioning)
  * Note: Environment is re-expanded from vars/secrets on resume, not stored
@@ -37,20 +49,21 @@ export interface CheckpointRequest {
   cliAgentType: string;
   cliAgentSessionId: string;
   cliAgentSessionHistoryHash: string;
-  // Multi-artifact snapshot map: artifactName -> versionId. Emitted
-  // unconditionally by the guest-agent; may be empty or missing when the
-  // guest snapshotted nothing.
-  artifactSnapshots?: Record<string, string>;
+  // Multi-artifact snapshot payload. Canonical array shape only; persisted
+  // verbatim to the JSONB column. May be empty or missing when the guest
+  // snapshotted nothing.
+  artifactSnapshots?: ArtifactSnapshotsPayload;
   volumeVersionsSnapshot?: VolumeVersionsSnapshot;
 }
 
 /**
- * Response from checkpoint creation
+ * Response from checkpoint creation. `artifacts` echoes the canonical array
+ * shape persisted to the JSONB column.
  */
 export interface CheckpointResponse {
   checkpointId: string;
   agentSessionId: string;
   conversationId: string;
-  artifacts?: Record<string, string>;
+  artifacts?: Array<{ name: string; version: string; mountPath: string }>;
   volumes?: Record<string, string>;
 }

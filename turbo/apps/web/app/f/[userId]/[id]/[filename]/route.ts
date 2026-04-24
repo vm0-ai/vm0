@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { initServices } from "../../../../../src/lib/init-services";
 import { generatePresignedUrl } from "../../../../../src/lib/infra/s3/s3-client";
 import { env } from "../../../../../src/env";
+import { applyCorsHeaders } from "../../../../../proxy.cors";
 
 /**
  * Permanent file URL resolver.
@@ -22,9 +23,57 @@ import { env } from "../../../../../src/env";
  * a refresh well before the underlying presigned URL expires.
  *
  * Pass `?download=1` to force the browser to save instead of render inline.
+ * Pass `?raw=1` to proxy the file bytes through this route instead of
+ * redirecting, which keeps text previews same-origin and avoids CORS issues
+ * on presigned object URLs.
  */
 
 const SIGNED_TTL_SECONDS = 300;
+
+function normalizedContentType(contentType: string | null): string {
+  return contentType?.split(";")[0]?.trim().toLowerCase() ?? "";
+}
+
+function isHtmlRawResponse(
+  filename: string,
+  contentType: string | null,
+): boolean {
+  const ext = filename.split(".").pop()?.toLowerCase();
+  return (
+    ext === "html" ||
+    ext === "htm" ||
+    normalizedContentType(contentType) === "text/html"
+  );
+}
+
+function rawResponseContentType(
+  filename: string,
+  contentType: string | null,
+): string {
+  if (isHtmlRawResponse(filename, contentType)) {
+    return "text/plain; charset=utf-8";
+  }
+  return contentType ?? "application/octet-stream";
+}
+
+function contentDispositionAttachment(filename: string): string {
+  return `attachment; filename="${filename.replace(/["\\\r\n]/g, "_")}"`;
+}
+
+export function OPTIONS(request: NextRequest) {
+  return applyCorsHeaders(
+    request,
+    new NextResponse(null, {
+      status: 200,
+      headers: {
+        "Access-Control-Allow-Methods": "GET, OPTIONS",
+        "Access-Control-Allow-Headers":
+          "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization, Range",
+        "Access-Control-Max-Age": "86400",
+      },
+    }),
+  );
+}
 
 export async function GET(
   request: NextRequest,
@@ -39,6 +88,7 @@ export async function GET(
   const s3Key = `uploads/${userId}/${id}/${filename}`;
 
   const wantDownload = request.nextUrl.searchParams.get("download") === "1";
+  const wantRaw = request.nextUrl.searchParams.get("raw") === "1";
   const signed = await generatePresignedUrl(
     bucket,
     s3Key,
@@ -47,11 +97,47 @@ export async function GET(
     true,
   );
 
-  return new NextResponse(null, {
-    status: 302,
-    headers: {
-      Location: signed,
-      "Cache-Control": "private, max-age=60, must-revalidate",
-    },
-  });
+  if (wantRaw) {
+    const range = request.headers.get("Range");
+    const upstream = await fetch(signed, {
+      headers: range ? { Range: range } : undefined,
+    });
+    const upstreamContentType = upstream.headers.get("Content-Type");
+    const headers: Record<string, string> = {
+      "Content-Type": rawResponseContentType(filename, upstreamContentType),
+      "Content-Disposition": contentDispositionAttachment(filename),
+      "Content-Security-Policy": "sandbox",
+      "X-Content-Type-Options": "nosniff",
+      "Cache-Control": upstream.ok
+        ? "private, max-age=60, must-revalidate"
+        : "no-store",
+    };
+    const contentRange = upstream.headers.get("Content-Range");
+    if (contentRange) {
+      headers["Content-Range"] = contentRange;
+    }
+    const acceptRanges = upstream.headers.get("Accept-Ranges");
+    if (acceptRanges) {
+      headers["Accept-Ranges"] = acceptRanges;
+    }
+
+    return applyCorsHeaders(
+      request,
+      new NextResponse(upstream.body, {
+        status: upstream.status,
+        headers,
+      }),
+    );
+  }
+
+  return applyCorsHeaders(
+    request,
+    new NextResponse(null, {
+      status: 302,
+      headers: {
+        Location: signed,
+        "Cache-Control": "private, max-age=60, must-revalidate",
+      },
+    }),
+  );
 }

@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const plain = {
   plain: {
     label: "Plain",
+    category: "communication-collaboration",
     environmentMapping: {
       PLAIN_TOKEN: "$secrets.PLAIN_TOKEN",
     },

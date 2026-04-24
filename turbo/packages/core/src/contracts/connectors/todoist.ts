@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const todoist = {
   todoist: {
     label: "Todoist",
+    category: "engineering-team-execution",
     environmentMapping: {
       TODOIST_TOKEN: "$secrets.TODOIST_ACCESS_TOKEN",
     },

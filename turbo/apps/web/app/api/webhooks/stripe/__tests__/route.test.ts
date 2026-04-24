@@ -14,6 +14,7 @@ import {
   insertOrgMembersEntry,
   getOrgMembersEntry,
   findCreditExpiresRecords,
+  findCreditExpiresRecordByStripeInvoiceId,
   insertCreditExpiresRecord,
   setOrgCredits,
 } from "../../../../../src/__tests__/api-test-helpers";
@@ -70,6 +71,12 @@ const TEST_PRICE_TEAM_LEGACY = "price_test_team_legacy";
 const TEST_ZERO_PRICE = JSON.stringify({
   pro: [TEST_PRICE_PRO],
   team: [TEST_PRICE_TEAM, TEST_PRICE_TEAM_LEGACY],
+});
+const TEST_ONE_TIME_CAMPAIGN = JSON.stringify({
+  ZERO100: {
+    priceId: "price_test_campaign",
+    couponId: "ZERO100",
+  },
 });
 
 /**
@@ -138,6 +145,7 @@ describe("POST /api/webhooks/stripe", () => {
     vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_fake");
     vi.stubEnv("STRIPE_WEBHOOK_SECRET", TEST_WEBHOOK_SECRET);
     vi.stubEnv("ZERO_PRICE", TEST_ZERO_PRICE);
+    vi.stubEnv("ZERO_ONE_TIME_CAMPAIGN", TEST_ONE_TIME_CAMPAIGN);
     reloadEnv();
 
     stripeMocks.constructEvent.mockReset();
@@ -256,6 +264,55 @@ describe("POST /api/webhooks/stripe", () => {
 
       const billing = await getOrgBillingFields(user.orgId);
       expect(billing?.tier).toBe("pro");
+    });
+
+    it("does not grant one-time credits before checkout payment settles", async () => {
+      const sessionId = uniqueId("cs-unpaid");
+      const creditsBefore = await getOrgCredits(user.orgId);
+
+      const response = await sendWebhookEvent("checkout.session.completed", {
+        id: sessionId,
+        subscription: null,
+        customer: "cus_one_time",
+        payment_status: "unpaid",
+        metadata: {
+          purpose: "one_time_purchase",
+          orgId: user.orgId,
+          campaignKey: "ZERO100",
+        },
+      });
+
+      expect(response.status).toBe(200);
+      expect(await getOrgCredits(user.orgId)).toBe(creditsBefore);
+      expect(
+        await findCreditExpiresRecordByStripeInvoiceId(user.orgId, sessionId),
+      ).toBeUndefined();
+    });
+
+    it("grants one-time credits on async payment success", async () => {
+      const sessionId = uniqueId("cs-async-paid");
+      const creditsBefore = await getOrgCredits(user.orgId);
+
+      const response = await sendWebhookEvent(
+        "checkout.session.async_payment_succeeded",
+        {
+          id: sessionId,
+          subscription: null,
+          customer: "cus_one_time",
+          payment_status: "paid",
+          metadata: {
+            purpose: "one_time_purchase",
+            orgId: user.orgId,
+            campaignKey: "ZERO100",
+          },
+        },
+      );
+
+      expect(response.status).toBe(200);
+      expect(await getOrgCredits(user.orgId)).toBe(creditsBefore! + 100_000);
+      expect(
+        await findCreditExpiresRecordByStripeInvoiceId(user.orgId, sessionId),
+      ).toBeDefined();
     });
   });
 

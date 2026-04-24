@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const dify = {
   dify: {
     label: "Dify",
+    category: "ai-agent-apps",
     environmentMapping: {
       DIFY_TOKEN: "$secrets.DIFY_TOKEN",
     },

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.4](https://github.com/vm0-ai/vm0/compare/sandbox-v0.12.3...sandbox-v0.12.4) (2026-04-23)
+
+
+### Documentation
+
+* document sandbox trait surface (closes [#10774](https://github.com/vm0-ai/vm0/issues/10774)) ([#10804](https://github.com/vm0-ai/vm0/issues/10804)) ([5d3db1d](https://github.com/vm0-ai/vm0/commit/5d3db1d17be27b239f6baac1d65fed7c5cc43753))
+
 ## [0.12.3](https://github.com/vm0-ai/vm0/compare/sandbox-v0.12.2...sandbox-v0.12.3) (2026-04-22)
 
 

@@ -3,7 +3,8 @@
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { eq, sql } from "drizzle-orm";
-import { VM0_MODEL_TO_PROVIDER, getEligibleConnectorTypes } from "@vm0/core";
+import { getEligibleConnectorTypes } from "@vm0/core/contracts/connector-utils";
+import { VM0_MODEL_TO_PROVIDER } from "@vm0/core/contracts/model-providers";
 import { schema } from "../src/db/db";
 import { creditPricing } from "../src/db/schema/credit-pricing";
 import { usagePricing } from "../src/db/schema/usage-pricing";
@@ -109,35 +110,54 @@ const MODEL_PRICING: (typeof creditPricing.$inferInsert)[] = [
     cacheReadTokenPrice: usd(0.028),
     cacheCreationTokenPrice: 0,
   },
+  {
+    // Output is image tokens (~1290 tokens/image at $30/1M ≈ $0.039/image).
+    // 20% margin applied on top of Google's public pricing.
+    model: "gemini-2.5-flash-image",
+    modelProvider: "vm0",
+    inputTokenPrice: usd(0.3 * 1.2),
+    outputTokenPrice: usd(30 * 1.2),
+    cacheReadTokenPrice: 0,
+    cacheCreationTokenPrice: 0,
+  },
 ];
 
+// https://docs.x.com/x-api/getting-started/pricing
 const X_CONNECTOR_PRICING: Array<{
   category: string;
   unitPrice: number;
 }> = [
-  { category: "block.read", unitPrice: usd(0.01) },
-  { category: "bookmark.read", unitPrice: usd(0.01) },
-  { category: "bookmark.write", unitPrice: usd(0.005) },
-  { category: "dm.read", unitPrice: usd(0.01) },
-  { category: "dm.write", unitPrice: usd(0.015) },
-  { category: "follows.read", unitPrice: usd(0.01) },
-  { category: "follows.write", unitPrice: usd(0.015) },
-  { category: "like.read", unitPrice: usd(0.01) },
-  { category: "like.write", unitPrice: usd(0.015) },
+  // reads — $/resource
+  { category: "posts.read", unitPrice: usd(0.005) },
+  { category: "user.read", unitPrice: usd(0.01) },
+  { category: "dm_event.read", unitPrice: usd(0.01) },
+  { category: "following_followers.read", unitPrice: usd(0.01) },
   { category: "list.read", unitPrice: usd(0.005) },
-  { category: "list.write", unitPrice: usd(0.01) },
-  { category: "media.read", unitPrice: usd(0.005) },
-  { category: "media.write", unitPrice: usd(0.015) },
-  { category: "mute.read", unitPrice: usd(0.01) },
-  { category: "mute.write", unitPrice: usd(0.015) },
-  { category: "places.read", unitPrice: usd(0.01) },
-  { category: "polls.read", unitPrice: usd(0.01) },
   { category: "space.read", unitPrice: usd(0.005) },
-  { category: "timeline.read", unitPrice: usd(0.005) },
-  { category: "topics.read", unitPrice: usd(0.01) },
-  { category: "tweet.read", unitPrice: usd(0.01) },
-  { category: "tweet.write", unitPrice: usd(0.2) },
-  { category: "users.read", unitPrice: usd(0.01) },
+  { category: "community.read", unitPrice: usd(0.005) },
+  { category: "note.read", unitPrice: usd(0.005) },
+  { category: "media.read", unitPrice: usd(0.005) },
+  { category: "analytics.read", unitPrice: usd(0.005) },
+  { category: "trend.read", unitPrice: usd(0.01) },
+  // writes — $/request
+  { category: "content.create", unitPrice: usd(0.015) },
+  { category: "content.create_with_url", unitPrice: usd(0.2) },
+  { category: "dm_interaction.create", unitPrice: usd(0.015) },
+  { category: "user_interaction.create", unitPrice: usd(0.015) },
+  { category: "interaction.delete", unitPrice: usd(0.01) },
+  { category: "content.manage", unitPrice: usd(0.005) },
+  { category: "list.create", unitPrice: usd(0.01) },
+  { category: "list.manage", unitPrice: usd(0.005) },
+  { category: "bookmark", unitPrice: usd(0.005) },
+  { category: "media_metadata", unitPrice: usd(0.005) },
+  { category: "privacy.update", unitPrice: usd(0.01) },
+  { category: "mute.delete", unitPrice: usd(0.005) },
+  { category: "counts.recent", unitPrice: usd(0.005) },
+  { category: "counts.all", unitPrice: usd(0.01) },
+  // fallback — priced at the minimum bucket rate across the table
+  // above, so an unknown includes key can never be billed at more
+  // than X charges for the cheapest known bucket.
+  { category: "__fallback__", unitPrice: usd(0.005) },
 ];
 
 /**

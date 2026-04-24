@@ -3,6 +3,7 @@
 mod artifact;
 pub mod checkpoint;
 pub mod cli;
+pub mod complete;
 mod constants;
 pub mod env;
 pub mod error;

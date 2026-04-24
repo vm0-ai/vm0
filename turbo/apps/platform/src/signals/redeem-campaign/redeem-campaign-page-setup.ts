@@ -1,6 +1,6 @@
 import { command } from "ccstate";
 import { createElement } from "react";
-import { zeroBillingRedeemContract } from "@vm0/core";
+import { zeroBillingRedeemContract } from "@vm0/core/contracts/zero-billing";
 import { RedeemCampaignPage } from "../../views/redeem-campaign-page/redeem-campaign-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
@@ -25,7 +25,7 @@ import {
  */
 export const setupRedeemCampaignPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    set(updatePage$, createElement(RedeemCampaignPage));
+    set(updatePage$, createElement(RedeemCampaignPage), "minimal");
     set(updateDocumentTitle$, "Claim your credits");
 
     const params = get(pathParams$);

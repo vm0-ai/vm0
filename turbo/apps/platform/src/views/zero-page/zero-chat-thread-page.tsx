@@ -26,7 +26,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@vm0/ui";
-import { FeatureSwitchKey, RUN_ERROR_GUIDANCE } from "@vm0/core";
+import { RUN_ERROR_GUIDANCE } from "@vm0/core/contracts/errors";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
   ttsPlayingRunId$,
@@ -39,10 +40,19 @@ import {
 } from "../../signals/voice-io/voice-io-settings.ts";
 import { Markdown } from "../components/markdown.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
-import { FileAttachmentChip, ImageLightbox } from "./zero-attachment-chips.tsx";
+import {
+  AttachmentLightbox,
+  FileAttachmentChip,
+  PreviewableFileAttachmentChip,
+} from "./zero-attachment-chips.tsx";
+import {
+  AttachmentPreview,
+  classifyChatAttachment,
+  filenameFromUrl,
+} from "./zero-attachment-preview.tsx";
 import {
   lightboxUrl$ as attachmentLightboxUrl$,
-  setLightboxUrl$ as setAttachmentLightboxUrl$,
+  openImageLightbox$ as openAttachmentImageLightbox$,
 } from "../../signals/zero-page/zero-attachment-chips.ts";
 import {
   pinnedAgentIds$,
@@ -52,6 +62,7 @@ import {
   chatShortcutHelpOpen$,
   setChatShortcutHelpOpen$,
 } from "../../signals/chat-page/chat-shortcut-help.ts";
+import { openQueueDrawer$ } from "../../signals/queue-page/queue-drawer-state.ts";
 import { ShortcutHelpDialog } from "../components/shortcut-help-dialog.tsx";
 
 import type {
@@ -273,6 +284,8 @@ function ZeroChatThreadPageInner({
   const setScrollContainer = useSet(thread.setScrollContainer$);
   const skeletonVisible = useGet(thread.skeletonVisible$);
   const lightboxUrl = useGet(attachmentLightboxUrl$);
+  const hasOlderMessages = useGet(thread.hasOlderMessages$);
+  const setTopSentinelRef = useSet(thread.setTopSentinelRef$);
 
   return (
     <div className="flex flex-1 flex-col min-h-0 bg-transparent">
@@ -290,6 +303,17 @@ function ZeroChatThreadPageInner({
               className="w-full max-w-[900px] mx-auto flex flex-col gap-6 pb-4 overflow-visible"
               style={{ visibility: skeletonVisible ? "hidden" : "visible" }}
             >
+              {hasOlderMessages && (
+                <div
+                  ref={setTopSentinelRef}
+                  className="flex justify-center py-2"
+                >
+                  <div className="flex items-center gap-2 text-muted-foreground text-xs">
+                    <Skeleton className="h-3 w-3 rounded-full" />
+                    <span>Loading older messages…</span>
+                  </div>
+                </div>
+              )}
               {sessionError && (
                 <div className="flex-1 flex items-center justify-center py-16">
                   <div className="flex items-center gap-2 text-destructive">
@@ -336,7 +360,7 @@ function ZeroChatThreadPageInner({
       </div>
 
       <ChatThreadComposer thread={thread} autoFocus={autoFocus} />
-      {lightboxUrl && <ImageLightbox url={lightboxUrl} />}
+      {lightboxUrl && <AttachmentLightbox />}
     </div>
   );
 }
@@ -354,6 +378,9 @@ function ChatThreadComposer({
 }) {
   const groups = useLastResolved(thread.groupedChatMessages$) ?? [];
   const hasMessages = groups.length > 0;
+  const hasUserMessages = groups.some((g) => {
+    return g.role === "user";
+  });
   const displayName = useLastResolved(thread.agentDisplayName$) ?? "Zero";
   const allFinishedLoadable = useLastLoadable(thread.allFinished$);
   const allFinished =
@@ -443,11 +470,10 @@ function ChatThreadComposer({
                   onChange: setModelSelection,
                   sessionProviderType:
                     threadData?.latestSessionProviderType ?? null,
-                  // Lock once the thread has stored values — mirrors the
-                  // backend guard in rejectIfThreadModelLocked.
-                  disabled: Boolean(
-                    threadData?.modelProviderId && threadData?.selectedModel,
-                  ),
+                  // Lock as soon as the thread has a user message — provider
+                  // must stay consistent within a session to maintain
+                  // continuity.
+                  disabled: hasUserMessages,
                   agentDefault: agentModelDefault,
                 }
               : undefined
@@ -514,8 +540,26 @@ function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
   const lastIsAssistant = lastGroup?.role === "assistant";
   const waitingForAssistant = !!lastGroup && !lastIsAssistant;
   const running = runActive || waitingForAssistant;
-  const label = useGet(thread.rotatingPhrase$);
+  const rotatingLabel = useGet(thread.rotatingPhrase$);
   const donePhrase = useGet(thread.donePhrase$);
+  const latestRunStatus = useLastResolved(thread.latestRunStatus$);
+  const isQueued = latestRunStatus === "queued";
+  const openQueueDrawer = useSet(openQueueDrawer$);
+
+  const thinkingLabel = isQueued ? (
+    <p className="zero-shimmer-text text-xs truncate">
+      Waiting in{" "}
+      <button
+        type="button"
+        onClick={openQueueDrawer}
+        className="cursor-pointer underline underline-offset-2"
+      >
+        queue...
+      </button>
+    </p>
+  ) : (
+    <p className="zero-shimmer-text text-xs truncate">{rotatingLabel}</p>
+  );
 
   if (!lastGroup) {
     return null;
@@ -537,7 +581,7 @@ function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
                 <span />
                 <span />
               </span>
-              <p className="zero-shimmer-text text-xs truncate">{label}</p>
+              {thinkingLabel}
             </div>
           ) : (
             <div className="flex flex-col gap-1.5 h-5 justify-center">
@@ -570,7 +614,7 @@ function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
               <span />
               <span />
             </span>
-            <p className="zero-shimmer-text text-xs truncate">{label}</p>
+            {thinkingLabel}
           </div>
         </div>
       </div>
@@ -644,6 +688,177 @@ function parseInlineAttachments(content: string): {
     },
   );
   return { cleanContent: cleaned.trim(), parsed };
+}
+
+type BodyRenderBlock =
+  | {
+      type: "markdown";
+      content: string;
+    }
+  | {
+      type: "preview";
+      preview: {
+        filename: string;
+        url: string;
+        kind: "markdown" | "text" | "json" | "csv" | "pdf" | "html";
+      };
+    };
+
+function parseBodyRenderBlocks(content: string): {
+  cleanContent: string;
+  blocks: BodyRenderBlock[];
+} {
+  const blocks: BodyRenderBlock[] = [];
+  const lines = content.split("\n");
+  const keptLines: string[] = [];
+  const markdownBuffer: string[] = [];
+  let openFence: {
+    marker: "`" | "~";
+    length: number;
+  } | null = null;
+
+  const flushMarkdownBuffer = () => {
+    const joined = markdownBuffer.join("\n").trim();
+    if (joined) {
+      blocks.push({ type: "markdown", content: joined });
+    }
+    markdownBuffer.length = 0;
+  };
+
+  for (const line of lines) {
+    const trimmedLine = line.trim();
+    const fenceMatch = trimmedLine.match(/^(`{3,}|~{3,})/);
+    if (fenceMatch) {
+      const fence = fenceMatch[1];
+      const marker = fence.startsWith("`") ? "`" : "~";
+      if (
+        openFence &&
+        openFence.marker === marker &&
+        fence.length >= openFence.length
+      ) {
+        openFence = null;
+      } else if (!openFence) {
+        openFence = { marker, length: fence.length };
+      }
+      markdownBuffer.push(line);
+      keptLines.push(line);
+      continue;
+    }
+
+    if (openFence) {
+      markdownBuffer.push(line);
+      keptLines.push(line);
+      continue;
+    }
+
+    const wrappers: [string, string][] = [
+      ["**", "**"],
+      ["__", "__"],
+      ["*", "*"],
+      ["_", "_"],
+      ["~~", "~~"],
+    ];
+    let candidate = trimmedLine;
+
+    for (const [prefix, suffix] of wrappers) {
+      if (candidate.startsWith(prefix) && candidate.endsWith(suffix)) {
+        candidate = candidate
+          .slice(prefix.length, candidate.length - suffix.length)
+          .trim();
+        break;
+      }
+    }
+
+    const match = candidate.match(/^\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)$/);
+    if (!match) {
+      markdownBuffer.push(line);
+      keptLines.push(line);
+      continue;
+    }
+
+    const url = match[2];
+    const filename = filenameFromUrl(url);
+    const kind = classifyChatAttachment({ filename, url });
+
+    if (
+      kind === "markdown" ||
+      kind === "text" ||
+      kind === "json" ||
+      kind === "csv" ||
+      kind === "pdf" ||
+      kind === "html"
+    ) {
+      flushMarkdownBuffer();
+      blocks.push({
+        type: "preview",
+        preview: { filename, url, kind },
+      });
+      continue;
+    }
+
+    markdownBuffer.push(line);
+    keptLines.push(line);
+  }
+
+  flushMarkdownBuffer();
+
+  return {
+    cleanContent: keptLines.join("\n").trim(),
+    blocks,
+  };
+}
+
+function BodyContentBlocks({
+  blocks,
+  openLightbox,
+  hardBreaks,
+}: {
+  blocks: BodyRenderBlock[];
+  openLightbox: (url: string) => void;
+  hardBreaks: boolean;
+}) {
+  return (
+    <div className="flex flex-col gap-3">
+      {blocks.map((block) => {
+        if (block.type === "markdown") {
+          return (
+            <Markdown
+              key={`markdown-${block.content}`}
+              source={
+                hardBreaks
+                  ? block.content.replace(/\n/g, "  \n")
+                  : block.content
+              }
+              mediaPreview
+              onImageClick={openLightbox}
+            />
+          );
+        }
+
+        return (
+          <AttachmentPreview
+            key={`preview-${block.preview.url}`}
+            attachment={{
+              filename: block.preview.filename,
+              url: block.preview.url,
+              contentType:
+                block.preview.kind === "markdown"
+                  ? "text/markdown"
+                  : block.preview.kind === "text"
+                    ? "text/plain"
+                    : block.preview.kind === "json"
+                      ? "application/json"
+                      : block.preview.kind === "csv"
+                        ? "text/csv"
+                        : block.preview.kind === "pdf"
+                          ? "application/pdf"
+                          : "text/html",
+            }}
+          />
+        );
+      })}
+    </div>
+  );
 }
 
 function isImageFilename(filename: string): boolean {
@@ -781,13 +996,97 @@ function resolveAttachments(
       ? message.attachFiles
       : parsed;
   return source.map((f) => {
+    const contentType =
+      "contentType" in f && typeof f.contentType === "string"
+        ? f.contentType
+        : undefined;
+    const kind = classifyChatAttachment({
+      filename: f.filename,
+      url: f.url,
+      contentType,
+    });
     return {
       filename: f.filename,
       url: f.url,
-      isImage: isImageFilename(f.filename),
-      isVideo: isVideoFilename(f.filename),
+      contentType,
+      isImage: kind === "image" || isImageFilename(f.filename),
+      isVideo: kind === "video" || isVideoFilename(f.filename),
+      kind,
     };
   });
+}
+
+function UserMessageAttachments({
+  attachments,
+  onImageClick,
+}: {
+  attachments: ReturnType<typeof resolveAttachments>;
+  onImageClick: (url: string) => void;
+}) {
+  if (attachments.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="border-t border-foreground/10 px-3 py-2.5 flex flex-wrap gap-2">
+      {attachments.map((a) => {
+        if (a.isImage) {
+          return (
+            <button
+              key={a.url}
+              type="button"
+              onClick={() => {
+                onImageClick(a.url);
+              }}
+              className="group relative rounded-lg overflow-hidden border border-foreground/10 hover:border-foreground/25 transition-colors"
+            >
+              <img
+                src={a.url}
+                alt={a.filename}
+                className="h-9 max-w-[72px] object-cover"
+              />
+              <span className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-colors">
+                <IconPhoto
+                  size={18}
+                  className="text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow"
+                />
+              </span>
+            </button>
+          );
+        }
+        if (a.isVideo) {
+          return (
+            <video
+              key={a.url}
+              src={a.url}
+              controls
+              className="max-h-48 max-w-full rounded-lg border border-foreground/10"
+            />
+          );
+        }
+        if (
+          a.kind === "markdown" ||
+          a.kind === "text" ||
+          a.kind === "json" ||
+          a.kind === "csv" ||
+          a.kind === "pdf" ||
+          a.kind === "html"
+        ) {
+          return (
+            <PreviewableFileAttachmentChip
+              key={a.url}
+              filename={a.filename}
+              url={a.url}
+              kind={a.kind}
+            />
+          );
+        }
+        return (
+          <FileAttachmentChip key={a.url} filename={a.filename} url={a.url} />
+        );
+      })}
+    </div>
+  );
 }
 
 function PagedUserMessage({
@@ -812,11 +1111,12 @@ function PagedUserMessage({
     cleanContent.trim() === ATTACH_ONLY_PLACEHOLDER
       ? ""
       : cleanContent;
-  const displayContent = strippedContent.replace(/\n/g, "  \n");
+  const { cleanContent: cleanBodyContent, blocks: bodyBlocks } =
+    parseBodyRenderBlocks(strippedContent);
   const pageSignal = useGet(pageSignal$);
-  const setLightboxUrl = useSet(setAttachmentLightboxUrl$);
+  const openImageLightbox = useSet(openAttachmentImageLightbox$);
   const openLightbox = (url: string) => {
-    setLightboxUrl(url);
+    openImageLightbox(url);
   };
   const copiedId = useGet(thread.copiedMessageId$);
   const copied = copiedId === message.id;
@@ -840,64 +1140,21 @@ function PagedUserMessage({
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex flex-col items-end w-full">
           <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-sm leading-relaxed [overflow-wrap:anywhere] overflow-hidden">
-            {displayContent && (
+            {bodyBlocks.length > 0 && (
               <div className="px-4 py-3">
-                <Markdown
-                  source={displayContent}
-                  mediaPreview
-                  onImageClick={openLightbox}
+                <BodyContentBlocks
+                  blocks={bodyBlocks}
+                  openLightbox={openLightbox}
+                  hardBreaks
                 />
               </div>
             )}
-            {allAttachments.length > 0 && (
-              <div className="border-t border-foreground/10 px-3 py-2.5 flex flex-wrap gap-2">
-                {allAttachments.map((a) => {
-                  if (a.isImage) {
-                    return (
-                      <button
-                        key={a.url}
-                        type="button"
-                        onClick={() => {
-                          return setLightboxUrl(a.url);
-                        }}
-                        className="group relative rounded-lg overflow-hidden border border-foreground/10 hover:border-foreground/25 transition-colors"
-                      >
-                        <img
-                          src={a.url}
-                          alt={a.filename}
-                          className="h-9 max-w-[72px] object-cover"
-                        />
-                        <span className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-colors">
-                          <IconPhoto
-                            size={18}
-                            className="text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow"
-                          />
-                        </span>
-                      </button>
-                    );
-                  }
-                  if (a.isVideo) {
-                    return (
-                      <video
-                        key={a.url}
-                        src={a.url}
-                        controls
-                        className="max-h-48 max-w-full rounded-lg border border-foreground/10"
-                      />
-                    );
-                  }
-                  return (
-                    <FileAttachmentChip
-                      key={a.url}
-                      filename={a.filename}
-                      url={a.url}
-                    />
-                  );
-                })}
-              </div>
-            )}
+            <UserMessageAttachments
+              attachments={allAttachments}
+              onImageClick={openLightbox}
+            />
           </div>
-          {cleanContent && (
+          {cleanBodyContent && (
             <div className="flex justify-end mt-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
               <button
                 type="button"
@@ -956,9 +1213,9 @@ function PagedAssistantGroup({
 }
 
 function PagedAssistantMessageItem({ message }: { message: PagedChatMessage }) {
-  const setLightboxUrl = useSet(setAttachmentLightboxUrl$);
+  const openImageLightbox = useSet(openAttachmentImageLightbox$);
   const openLightbox = (url: string) => {
-    setLightboxUrl(url);
+    openImageLightbox(url);
   };
 
   if (message.error) {
@@ -970,13 +1227,16 @@ function PagedAssistantMessageItem({ message }: { message: PagedChatMessage }) {
   }
 
   if (message.content) {
+    const { blocks } = parseBodyRenderBlocks(message.content);
     return (
       <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-sm leading-relaxed min-w-0 [overflow-wrap:anywhere]">
-        <Markdown
-          source={message.content}
-          mediaPreview
-          onImageClick={openLightbox}
-        />
+        {blocks.length > 0 ? (
+          <BodyContentBlocks
+            blocks={blocks}
+            openLightbox={openLightbox}
+            hardBreaks={false}
+          />
+        ) : null}
       </div>
     );
   }

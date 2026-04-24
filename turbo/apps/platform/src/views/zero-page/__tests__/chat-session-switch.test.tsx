@@ -4,17 +4,20 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { detachedNavigateTo$ } from "../../../signals/route.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
   chatThreadMessagesContract,
   chatThreadByIdContract,
-  logsByIdContract,
+} from "@vm0/core/contracts/chat-threads";
+import { logsByIdContract } from "@vm0/core/contracts/logs";
+import {
   zeroRunAgentEventsContract,
   zeroRunsByIdContract,
-  zeroQueuePositionContract,
-} from "@vm0/core";
+} from "@vm0/core/contracts/zero-runs";
+import { zeroQueuePositionContract } from "@vm0/core/contracts/zero-queue-position";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 describe("chat session switch", () => {
   it("should show running state when switching to a session with an active run", async () => {

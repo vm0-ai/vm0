@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const amplitude = {
   amplitude: {
     label: "Amplitude",
+    category: "data-automation-infrastructure",
     tags: ["analytics", "product-analytics", "events", "funnels"],
     environmentMapping: {
       AMPLITUDE_API_KEY: "$secrets.AMPLITUDE_API_KEY",

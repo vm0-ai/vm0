@@ -1,5 +1,5 @@
 import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
-import { zeroFeatureSwitchesContract } from "@vm0/core";
+import { zeroFeatureSwitchesContract } from "@vm0/core/contracts/zero-feature-switches";
 import { initServices } from "../../../../src/lib/init-services";
 import {
   requireAuth,

@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const minimax = {
   minimax: {
     label: "MiniMax",
+    category: "ai-general-models",
     environmentMapping: {
       MINIMAX_TOKEN: "$secrets.MINIMAX_TOKEN",
     },

@@ -10,23 +10,23 @@
  *
  * External mocks: feature-switch backend (via setMockFeatureSwitches) is not
  * needed here — these tests exercise only the page signals. The derived
- * conversation / task signals read from internal state in the voice-chat-
- * candidate module, which we drive through the real `startVoiceChatCandidate$`
- * happy path with MSW-stubbed endpoints + a stubbed WebRTC peer.
+ * conversation / task signals read from internal state in the voice-chat
+ * module, which we drive through the real `startVoiceChat$` happy path with
+ * MSW-stubbed endpoints + a stubbed WebRTC peer.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { http, HttpResponse } from "msw";
-import { zeroVoiceChatCandidateContract } from "@vm0/core";
+import { zeroVoiceChatContract } from "@vm0/core/contracts/zero-voice-chat";
 import { server } from "../../../mocks/server.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import { detach, Reason } from "../../utils.ts";
 import {
-  startVoiceChatCandidate$,
-  vccStatus$,
-} from "../../voice-chat-candidate/voice-chat-candidate-session.ts";
+  startVoiceChat$,
+  voiceChatStatus$,
+} from "../../voice-chat/voice-chat-session.ts";
 import { trinityEnabled$ } from "../../external/feature-switch.ts";
 import {
   agentChatVoiceMode$,
@@ -38,6 +38,7 @@ import {
 } from "../agent-chat-voice-mode.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const SESSION_ID = "11111111-1111-4111-8111-111111111111";
@@ -104,21 +105,11 @@ function taskPayload(overrides: {
   };
 }
 
-function mockCandidateEndpoints(options: {
-  items: ReturnType<typeof itemPayload>[];
+function mockVoiceChatEndpoints(options: {
   tasks: ReturnType<typeof taskPayload>[];
 }) {
-  const itemsForRole = (role: "user" | "assistant" | "task_result") => {
-    return options.items
-      .filter((i) => {
-        return i.role === role;
-      })
-      .sort((a, b) => {
-        return a.seq - b.seq;
-      });
-  };
   server.use(
-    mockApi(zeroVoiceChatCandidateContract.createSession, ({ respond }) => {
+    mockApi(zeroVoiceChatContract.createSession, ({ respond }) => {
       return respond(200, {
         session: sessionPayload(),
         recentTaskLogs: "",
@@ -127,26 +118,12 @@ function mockCandidateEndpoints(options: {
         talkerInstructionTokens: 0,
       });
     }),
-    mockApi(zeroVoiceChatCandidateContract.token, ({ respond }) => {
+    mockApi(zeroVoiceChatContract.token, ({ respond }) => {
       return respond(200, {
         client_secret: { value: "ek_test", expires_at: 9_999_999_999 },
       });
     }),
-    mockApi(zeroVoiceChatCandidateContract.readItems, ({ query, respond }) => {
-      const all = itemsForRole("task_result");
-      if (query.sinceSeq === undefined) {
-        return respond(200, {
-          items: all.length > 0 ? [all[all.length - 1]!] : [],
-        });
-      }
-      const since = query.sinceSeq;
-      return respond(200, {
-        items: all.filter((i) => {
-          return i.seq > since;
-        }),
-      });
-    }),
-    mockApi(zeroVoiceChatCandidateContract.getSession, ({ respond }) => {
+    mockApi(zeroVoiceChatContract.getSession, ({ respond }) => {
       return respond(200, {
         session: sessionPayload(),
         recentTaskLogs: "",
@@ -155,7 +132,7 @@ function mockCandidateEndpoints(options: {
         talkerInstructionTokens: 0,
       });
     }),
-    mockApi(zeroVoiceChatCandidateContract.listTasks, ({ respond }) => {
+    mockApi(zeroVoiceChatContract.listTasks, ({ respond }) => {
       const active = options.tasks
         .filter((t) => {
           return (
@@ -247,7 +224,7 @@ interface FakeDC {
 }
 
 async function driveSession(
-  items: ReturnType<typeof itemPayload>[],
+  _items: ReturnType<typeof itemPayload>[],
   tasks: ReturnType<typeof taskPayload>[],
 ): Promise<void> {
   await setupPage({
@@ -256,11 +233,11 @@ async function driveSession(
     withoutRender: true,
     featureSwitches: { trinity: true },
   });
-  mockCandidateEndpoints({ items, tasks });
+  mockVoiceChatEndpoints({ tasks });
   const dcRef: { current: FakeDC | null } = { current: null };
   stubWebRTC(dcRef);
   detach(
-    context.store.set(startVoiceChatCandidate$, AGENT_ID, context.signal),
+    context.store.set(startVoiceChat$, AGENT_ID, context.signal),
     Reason.DomCallback,
   );
   await vi.waitFor(() => {
@@ -268,7 +245,7 @@ async function driveSession(
   });
   dcRef.current?.emitOpen();
   await vi.waitFor(() => {
-    expect(context.store.get(vccStatus$)).toBe("connected");
+    expect(context.store.get(voiceChatStatus$)).toBe("connected");
   });
 }
 
@@ -411,7 +388,7 @@ describe("agent-chat-voice-mode", () => {
         ],
       );
 
-      const tasks = context.store.get(agentChatPendingTasks$);
+      const tasks = await context.store.get(agentChatPendingTasks$);
       expect(
         tasks.map((t) => {
           return t.callId;

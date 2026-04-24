@@ -4,7 +4,7 @@ import {
   hasAuthMethods,
   type ModelProviderType,
   type SecretFieldConfig,
-} from "@vm0/core";
+} from "@vm0/core/contracts/model-providers";
 
 /**
  * Provider dialog shape: determines which dialog UI to render

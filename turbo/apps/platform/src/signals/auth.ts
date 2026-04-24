@@ -2,6 +2,7 @@ import { command, computed, state } from "ccstate";
 import { clearSentryUser, setSentryUser } from "../lib/sentry.ts";
 
 const reload$ = state(0);
+const clerkVersion$ = state(0);
 
 /**
  * Resolve the web app origin from the current app origin.
@@ -73,6 +74,12 @@ export const setupClerk$ = command(
       } else {
         clearSentryUser();
       }
+      // Bump on every clerk event so signals tracking mutable clerk state
+      // (e.g. current org's imageUrl after reload()) re-compute and their
+      // subscribers re-render.
+      set(clerkVersion$, (x) => {
+        return x + 1;
+      });
       const currentUserId = clerk.user?.id ?? null;
       if (currentUserId !== prevUserId) {
         prevUserId = currentUserId;
@@ -152,6 +159,28 @@ export const user$ = computed(async (get) => {
   get(reload$);
   const clerk = await get(clerk$);
   return clerk.user ?? undefined;
+});
+
+/**
+ * Snapshot of the Clerk active organization, re-emitted on every clerk
+ * event (via clerkVersion$). Read this instead of `clerk.organization.*`
+ * directly when you want the UI to react to in-place mutations such as
+ * `clerk.organization.reload()` after a logo or name update.
+ */
+export const currentOrgInfo$ = computed(async (get) => {
+  get(clerkVersion$);
+  const clerk = await get(clerk$);
+  const org = clerk.organization;
+  if (!org) {
+    return null;
+  }
+  return {
+    id: org.id,
+    name: org.name,
+    slug: org.slug,
+    imageUrl: org.imageUrl,
+    hasImage: org.hasImage,
+  };
 });
 
 /**

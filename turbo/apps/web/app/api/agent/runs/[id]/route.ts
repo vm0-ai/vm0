@@ -1,5 +1,5 @@
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
-import { runsByIdContract } from "@vm0/core";
+import { runsByIdContract } from "@vm0/core/contracts/runs";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
   requireAuth,

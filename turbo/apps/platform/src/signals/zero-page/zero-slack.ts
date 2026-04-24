@@ -1,6 +1,6 @@
 import { command, computed, state } from "ccstate";
 import { toast } from "@vm0/ui/components/ui/sonner";
-import { zeroIntegrationsSlackContract } from "@vm0/core";
+import { zeroIntegrationsSlackContract } from "@vm0/core/contracts/zero-integrations-slack";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 import { awaitRealtimeReady$, setAblyLoop$ } from "../realtime.ts";

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { buildComposeContent } from "../build-compose-content";
-import { getInstructionsFilename } from "@vm0/core";
+import { getInstructionsFilename } from "@vm0/core/frameworks";
 
 describe("buildComposeContent", () => {
   it("should return valid compose structure without volumes", () => {

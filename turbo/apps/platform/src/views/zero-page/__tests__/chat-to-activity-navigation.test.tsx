@@ -7,16 +7,17 @@ import type {
   LogDetail,
   AgentEventsResponse,
 } from "../../../signals/zero-page/log-types.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
   chatThreadMessagesContract,
   chatThreadByIdContract,
-  logsByIdContract,
-  zeroRunAgentEventsContract,
-} from "@vm0/core";
+} from "@vm0/core/contracts/chat-threads";
+import { logsByIdContract } from "@vm0/core/contracts/logs";
+import { zeroRunAgentEventsContract } from "@vm0/core/contracts/zero-runs";
 import { setMockComposesList } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 function mockChatWithActivityLink() {
   server.use(

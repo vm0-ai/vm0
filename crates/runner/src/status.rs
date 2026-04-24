@@ -96,12 +96,25 @@ struct MutableState {
 }
 
 impl StatusTracker {
-    pub fn new(path: PathBuf, max_concurrent: usize) -> Self {
+    /// Build a tracker that will persist status to `path`. The file is
+    /// not touched until [`write_initial`](Self::write_initial) — or any
+    /// mutator — is called.
+    ///
+    /// `max_concurrent` is the cap reported in the status file (not
+    /// enforced here). `proxy_port` / `dns_port` are set-once
+    /// initialization values captured from the MITM proxy and DNS
+    /// resolver before the tracker is shared via `Arc`.
+    pub fn new(
+        path: PathBuf,
+        max_concurrent: usize,
+        proxy_port: Option<u16>,
+        dns_port: Option<u16>,
+    ) -> Self {
         Self {
             started_at: Utc::now(),
             max_concurrent,
-            proxy_port: None,
-            dns_port: None,
+            proxy_port,
+            dns_port,
             path,
             state: Mutex::new(MutableState {
                 mode: RunnerMode::Running,
@@ -111,30 +124,24 @@ impl StatusTracker {
         }
     }
 
-    pub async fn set_proxy_port(&mut self, port: u16) {
-        self.proxy_port = Some(port);
-        let state = self.state.lock().await;
-        self.write_status(&state).await;
-    }
-
-    pub async fn set_dns_port(&mut self, port: u16) {
-        self.dns_port = Some(port);
-        let state = self.state.lock().await;
-        self.write_status(&state).await;
-    }
-
+    /// Transition the reported lifecycle mode (Running / Draining /
+    /// Stopping / Stopped) and flush the status file.
     pub async fn set_mode(&self, mode: RunnerMode) {
         let mut state = self.state.lock().await;
         state.mode = mode;
         self.write_status(&state).await;
     }
 
+    /// Register an active run and flush the status file. No-op semantics
+    /// on duplicate `run_id`: the previous `sandbox_id` is overwritten.
     pub async fn add_run(&self, run_id: RunId, sandbox_id: SandboxId) {
         let mut state = self.state.lock().await;
         state.active_runs.insert(run_id, sandbox_id);
         self.write_status(&state).await;
     }
 
+    /// Drop an active run from the status file. Silently succeeds if
+    /// `run_id` was not present.
     pub async fn remove_run(&self, run_id: RunId) {
         let mut state = self.state.lock().await;
         state.active_runs.remove(&run_id);
@@ -208,7 +215,7 @@ mod tests {
     async fn write_initial_creates_file() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("status.json");
-        let tracker = StatusTracker::new(path.clone(), 4);
+        let tracker = StatusTracker::new(path.clone(), 4, None, None);
 
         tracker.write_initial().await;
 
@@ -224,7 +231,7 @@ mod tests {
     async fn set_mode_updates_file() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("status.json");
-        let tracker = StatusTracker::new(path.clone(), 4);
+        let tracker = StatusTracker::new(path.clone(), 4, None, None);
 
         tracker.write_initial().await;
         tracker.set_mode(RunnerMode::Draining).await;
@@ -237,7 +244,7 @@ mod tests {
     async fn add_run_records_sandbox_id() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("status.json");
-        let tracker = StatusTracker::new(path.clone(), 4);
+        let tracker = StatusTracker::new(path.clone(), 4, None, None);
 
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
@@ -256,7 +263,7 @@ mod tests {
     async fn add_and_remove_run() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("status.json");
-        let tracker = StatusTracker::new(path.clone(), 4);
+        let tracker = StatusTracker::new(path.clone(), 4, None, None);
 
         let run1 = RunId::new_v4();
         let sb1 = SandboxId::new_v4();
@@ -283,8 +290,8 @@ mod tests {
     async fn proxy_port_in_status() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("status.json");
-        let mut tracker = StatusTracker::new(path.clone(), 4);
-        tracker.set_proxy_port(8080).await;
+        let tracker = StatusTracker::new(path.clone(), 4, Some(8080), None);
+        tracker.write_initial().await;
 
         let status = read_status(&path);
         assert_eq!(status["proxy_port"], 8080);
@@ -294,7 +301,7 @@ mod tests {
     async fn proxy_port_absent_when_not_set() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("status.json");
-        let tracker = StatusTracker::new(path.clone(), 4);
+        let tracker = StatusTracker::new(path.clone(), 4, None, None);
 
         tracker.write_initial().await;
 
@@ -306,7 +313,7 @@ mod tests {
     async fn timestamps_are_iso8601() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("status.json");
-        let tracker = StatusTracker::new(path.clone(), 4);
+        let tracker = StatusTracker::new(path.clone(), 4, None, None);
 
         tracker.write_initial().await;
 
@@ -322,7 +329,7 @@ mod tests {
     async fn set_idle_info_round_trip() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("status.json");
-        let tracker = StatusTracker::new(path.clone(), 4);
+        let tracker = StatusTracker::new(path.clone(), 4, None, None);
 
         tracker.write_initial().await;
 
@@ -357,7 +364,7 @@ mod tests {
     async fn set_idle_info_empty_omitted() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("status.json");
-        let tracker = StatusTracker::new(path.clone(), 4);
+        let tracker = StatusTracker::new(path.clone(), 4, None, None);
 
         tracker.set_idle_info(vec![]).await;
 

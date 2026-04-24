@@ -1,6 +1,6 @@
 import { createHmac, hkdfSync } from "crypto";
 import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
-import { zeroDeveloperSupportContract } from "@vm0/core";
+import { zeroDeveloperSupportContract } from "@vm0/core/contracts/zero-developer-support";
 import { initServices } from "../../../../src/lib/init-services";
 import {
   requireAuth,

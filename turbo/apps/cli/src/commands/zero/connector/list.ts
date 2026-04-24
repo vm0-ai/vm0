@@ -2,9 +2,9 @@ import { Command } from "commander";
 import chalk from "chalk";
 import {
   CONNECTOR_TYPES,
-  isFeatureEnabled,
   type ConnectorType,
-} from "@vm0/core";
+} from "@vm0/core/contracts/connectors";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { listZeroConnectors } from "../../../lib/api";
 import { getActiveOrg } from "../../../lib/api/config";
 import { withErrorHandler } from "../../../lib/command";
@@ -32,9 +32,14 @@ export const listCommand = new Command()
       const allTypesRaw = Object.keys(CONNECTOR_TYPES) as ConnectorType[];
       const allTypes: ConnectorType[] = [];
       for (const type of allTypesRaw) {
-        const flag = CONNECTOR_TYPES[type].featureFlag;
-        const hasApiToken = "api-token" in CONNECTOR_TYPES[type].authMethods;
-        if (flag && !isFeatureEnabled(flag, { orgId }) && !hasApiToken) {
+        const config = CONNECTOR_TYPES[type];
+        const flag = config.featureFlag;
+        const hasApiToken = "api-token" in config.authMethods;
+        if (
+          flag &&
+          !isFeatureEnabled(flag, { orgId }) &&
+          (!hasApiToken || config.strictFeatureFlag)
+        ) {
           continue;
         }
         allTypes.push(type);

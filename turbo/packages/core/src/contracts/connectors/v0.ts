@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const v0 = {
   v0: {
     label: "v0",
+    category: "ai-agent-apps",
     environmentMapping: {
       V0_TOKEN: "$secrets.V0_TOKEN",
     },

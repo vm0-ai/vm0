@@ -12,14 +12,15 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
   zeroAgentsByIdContract,
   zeroAgentInstructionsContract,
-} from "@vm0/core";
+} from "@vm0/core/contracts/zero-agents";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 beforeEach(() => {
   vi.clearAllMocks();

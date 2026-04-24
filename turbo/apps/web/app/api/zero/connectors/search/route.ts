@@ -1,13 +1,15 @@
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
 import {
   zeroConnectorsSearchContract,
-  createErrorResponse,
-  CONNECTOR_TYPES,
-  ConnectorType,
   ConnectorSearchAuthMethod,
-  FeatureSwitchKey,
-  getAllFeatureStates,
-} from "@vm0/core";
+} from "@vm0/core/contracts/zero-connectors";
+import {
+  type ConnectorType,
+  CONNECTOR_TYPES,
+} from "@vm0/core/contracts/connectors";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { getAllFeatureStates } from "@vm0/core/feature-switch";
+import { createErrorResponse } from "@vm0/core/contracts/errors";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
 import { loadFeatureSwitchOverrides } from "../../../../../src/lib/zero/user/feature-switches-service";

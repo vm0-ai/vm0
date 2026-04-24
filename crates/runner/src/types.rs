@@ -194,6 +194,12 @@ pub struct ArtifactEntry {
     #[serde(default)]
     pub cached: bool,
     pub vas_storage_name: String,
+    /// Storage UUID, used guest-side to locally recompute the content hash
+    /// and skip VAS calls when an artifact is unchanged since mount.
+    /// `#[serde(default)]` so manifests from older web deploys (which do
+    /// not set this field) still deserialize cleanly.
+    #[serde(default)]
+    pub vas_storage_id: String,
     pub vas_version_id: String,
 }
 
@@ -204,11 +210,6 @@ pub struct ResumeSession {
     pub session_history: String,
 }
 
-/// Feature flag keys (must match TypeScript `FeatureSwitchKey` values).
-pub mod feature_flags {
-    pub const SANDBOX_REUSE: &str = "sandboxReuse";
-}
-
 impl ExecutionContext {
     /// Extract the session ID from `resume_session` for sandbox reuse.
     ///
@@ -217,14 +218,6 @@ impl ExecutionContext {
     /// guest filesystem post-execution (see `read_guest_session_id`).
     pub fn session_id(&self) -> Option<&str> {
         self.resume_session.as_ref().map(|r| r.session_id.as_str())
-    }
-
-    /// Check whether a feature flag is enabled for this job.
-    pub fn feature_enabled(&self, flag: &str) -> bool {
-        self.feature_flags
-            .as_ref()
-            .and_then(|f| f.get(flag).copied())
-            .unwrap_or(false)
     }
 }
 
@@ -280,11 +273,24 @@ pub struct CompleteRequest {
 #[serde(rename_all = "camelCase")]
 pub enum SandboxReuseResult {
     Reused,
-    FeatureDisabled,
     NoSessionId,
     PoolMiss,
     ProfileMismatch,
     UnparkFailed,
+}
+
+impl SandboxReuseResult {
+    /// Wire-format string, kept lockstep with the `#[serde(rename_all =
+    /// "camelCase")]` derive via `as_wire_matches_serde_serialization`.
+    pub const fn as_wire(self) -> &'static str {
+        match self {
+            Self::Reused => "reused",
+            Self::NoSessionId => "noSessionId",
+            Self::PoolMiss => "poolMiss",
+            Self::ProfileMismatch => "profileMismatch",
+            Self::UnparkFailed => "unparkFailed",
+        }
+    }
 }
 
 #[cfg(test)]
@@ -508,10 +514,6 @@ mod tests {
     #[test]
     fn sandbox_reuse_result_serializes_camel_case() {
         assert_eq!(
-            serde_json::to_value(SandboxReuseResult::FeatureDisabled).unwrap(),
-            serde_json::json!("featureDisabled"),
-        );
-        assert_eq!(
             serde_json::to_value(SandboxReuseResult::NoSessionId).unwrap(),
             serde_json::json!("noSessionId"),
         );
@@ -527,6 +529,24 @@ mod tests {
             serde_json::to_value(SandboxReuseResult::UnparkFailed).unwrap(),
             serde_json::json!("unparkFailed"),
         );
+    }
+
+    /// `as_wire` is hand-written; pin it to the serde derive so adding a
+    /// variant forces both sides to stay in sync.
+    #[test]
+    fn as_wire_matches_serde_serialization() {
+        for variant in [
+            SandboxReuseResult::Reused,
+            SandboxReuseResult::NoSessionId,
+            SandboxReuseResult::PoolMiss,
+            SandboxReuseResult::ProfileMismatch,
+            SandboxReuseResult::UnparkFailed,
+        ] {
+            assert_eq!(
+                serde_json::to_value(variant).unwrap(),
+                serde_json::Value::String(variant.as_wire().to_string()),
+            );
+        }
     }
 
     #[test]

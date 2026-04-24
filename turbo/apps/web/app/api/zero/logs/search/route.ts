@@ -8,7 +8,7 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../../src/lib/ts-rest-handler";
-import { zeroLogsSearchContract } from "@vm0/core";
+import { zeroLogsSearchContract } from "@vm0/core/contracts/zero-runs";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
   requireAuth,

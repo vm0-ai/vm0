@@ -12,7 +12,7 @@ import {
   getDefaultAuthMethod,
   getSecretsForAuthMethod,
   type ModelProviderType,
-} from "@vm0/core";
+} from "@vm0/core/contracts/model-providers";
 
 export interface SetupInput {
   type: ModelProviderType;

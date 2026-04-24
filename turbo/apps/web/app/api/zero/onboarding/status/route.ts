@@ -1,5 +1,5 @@
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
-import { onboardingStatusContract } from "@vm0/core";
+import { onboardingStatusContract } from "@vm0/core/contracts/onboarding";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";

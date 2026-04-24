@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const etsy = {
   etsy: {
     label: "Etsy",
+    category: "data-automation-infrastructure",
     environmentMapping: {
       ETSY_TOKEN: "$secrets.ETSY_TOKEN",
     },

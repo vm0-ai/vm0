@@ -1,5 +1,5 @@
 import chalk from "chalk";
-import { RUN_ERROR_GUIDANCE } from "@vm0/core";
+import { RUN_ERROR_GUIDANCE } from "@vm0/core/contracts/errors";
 import { ApiRequestError } from "../api/core/client-factory";
 
 /**

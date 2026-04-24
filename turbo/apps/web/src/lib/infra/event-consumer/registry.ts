@@ -21,8 +21,8 @@ export const eventConsumers: EventConsumerConfig[] = [
     eventTypes: ["assistant"],
   },
   {
-    name: "voice-chat-candidate",
-    path: "/api/internal/event-consumers/voice-chat-candidate",
+    name: "voice-chat",
+    path: "/api/internal/event-consumers/voice-chat",
     eventTypes: ["assistant"],
   },
 ];

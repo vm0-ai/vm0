@@ -4,6 +4,7 @@ import type { ConnectorConfig } from "../connectors";
 export const posthog = {
   posthog: {
     label: "PostHog",
+    category: "data-automation-infrastructure",
     environmentMapping: {
       POSTHOG_TOKEN: "$secrets.POSTHOG_ACCESS_TOKEN",
     },

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { connectorTypeSchema } from "@vm0/core";
+import { connectorTypeSchema } from "@vm0/core/contracts/connectors";
 import { initServices } from "../../../../../src/lib/init-services";
 import { upsertOAuthConnector } from "../../../../../src/lib/zero/connector/connector-service";
 import { PROVIDER_HANDLERS } from "../../../../../src/lib/zero/connector/provider-registry";

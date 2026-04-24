@@ -81,14 +81,26 @@ const checkoutRequestSchema = z.object({
 });
 
 const portalRequestSchema = z.object({
-  returnUrl: z.string().min(1),
+  returnUrl: z.string().url(),
 });
 
-const autoRechargeUpdateRequestSchema = z.object({
-  enabled: z.boolean(),
-  threshold: z.number().int().positive().optional(),
-  amount: z.number().int().min(1000).optional(),
-});
+const autoRechargeUpdateRequestSchema = z
+  .object({
+    enabled: z.boolean(),
+    threshold: z.number().int().positive().max(10_000_000).optional(),
+    amount: z.number().int().min(1000).max(10_000_000).optional(),
+  })
+  .refine(
+    (data) => {
+      return (
+        !data.enabled ||
+        data.threshold === undefined ||
+        data.amount === undefined ||
+        data.threshold < data.amount
+      );
+    },
+    { message: "threshold must be less than amount to avoid recharge loops" },
+  );
 
 const redeemRequestSchema = z.object({
   successUrl: z.string().url(),

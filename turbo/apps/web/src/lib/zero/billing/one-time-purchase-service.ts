@@ -266,11 +266,22 @@ async function cleanupStaleRedemption(
   const db = globalThis.services.db;
   const stripe = getStripe();
   // Expire the Stripe session so it stops showing up in dashboard listings.
-  // If this throws, let it propagate — the original error (coupon gone, price
-  // archived, etc.) is lost but so is the need to surface it once we can no
-  // longer keep Stripe state in sync. Sessions auto-expire after 24h anyway,
-  // so the side effect of a failed expire is cosmetic.
-  await stripe.checkout.sessions.expire(stripeSessionId);
+  // Sessions auto-expire after 24h anyway so a failure here is cosmetic — but
+  // we must NOT let it block the DB row deletion below. A naturally-expired
+  // session causes Stripe to throw, which previously prevented cleanup and
+  // permanently locked the org out of the campaign.
+  try {
+    await stripe.checkout.sessions.expire(stripeSessionId);
+  } catch {
+    log.info(
+      "one_time_purchase session already expired or un-expirable, continuing cleanup",
+      {
+        orgId: params.orgId,
+        campaignKey: params.campaignKey,
+        stripeSessionId,
+      },
+    );
+  }
   await db
     .delete(orgPromoRedemption)
     .where(

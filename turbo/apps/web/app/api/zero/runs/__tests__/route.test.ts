@@ -38,8 +38,9 @@ import { seedTestRun } from "../../../../../src/__tests__/db-test-seeders/runs";
 import { updateUserPreferences } from "../../../../../src/lib/zero/user/user-preferences-service";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Test setup: direct service call for data setup in runs route tests
 import { updateUserFeatureSwitches } from "../../../../../src/lib/zero/user/feature-switches-service";
-import { FeatureSwitchKey, getCustomSkillStorageName } from "@vm0/core";
-import * as core from "@vm0/core";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { getCustomSkillStorageName } from "@vm0/core/storage-names";
+import * as featureSwitchCore from "@vm0/core/feature-switch";
 import { bindCustomSkillToAgent } from "../../../../../src/__tests__/db-test-seeders/skills";
 
 const context = testContext();
@@ -868,7 +869,7 @@ describe("POST /api/zero/runs", () => {
     });
 
     it("should inject skill guidance when AutoSkill feature switch is enabled", async () => {
-      vi.spyOn(core, "isFeatureEnabled").mockImplementation(
+      vi.spyOn(featureSwitchCore, "isFeatureEnabled").mockImplementation(
         (key: FeatureSwitchKey) => {
           if (key === FeatureSwitchKey.AutoSkill) return true;
           return false;
@@ -898,7 +899,7 @@ describe("POST /api/zero/runs", () => {
     });
 
     it("should pass user overrides to AutoSkill feature check", async () => {
-      const spy = vi.spyOn(core, "isFeatureEnabled");
+      const spy = vi.spyOn(featureSwitchCore, "isFeatureEnabled");
 
       await updateUserFeatureSwitches(user.orgId, user.userId, {
         [FeatureSwitchKey.AutoSkill]: false,

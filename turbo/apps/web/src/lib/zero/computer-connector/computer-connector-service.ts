@@ -6,7 +6,7 @@
  */
 import { createHash, randomUUID } from "crypto";
 import { eq, and } from "drizzle-orm";
-import type { ComputerConnectorCreateResponse } from "@vm0/core";
+import type { ComputerConnectorCreateResponse } from "@vm0/core/contracts/connector-schemas";
 import { connectors } from "../../../db/schema/connector";
 import { secrets } from "../../../db/schema/secret";
 import { decryptSecretValue } from "../../shared/crypto";

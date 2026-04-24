@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const braveSearch = {
   "brave-search": {
     label: "Brave Search",
+    category: "data-automation-infrastructure",
     environmentMapping: {
       BRAVE_API_KEY: "$secrets.BRAVE_API_KEY",
     },

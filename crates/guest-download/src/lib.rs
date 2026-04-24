@@ -8,6 +8,7 @@
 use guest_common::{log_error, log_info, log_warn, telemetry::record_sandbox_op};
 use serde::Deserialize;
 use std::fs;
+use std::io::Read;
 use std::path::{Component, Path, PathBuf};
 use std::sync::LazyLock;
 use std::thread;
@@ -431,22 +432,34 @@ fn download_and_extract(url: &str, target_path: &str) -> Result<(), DownloadErro
         status_code: None,
     })?;
 
-    // Make HTTP request using global agent
-    let response = HTTP_AGENT.get(url).call().map_err(|e| {
-        let (retriable, status_code) = match &e {
-            // Retry on server errors (5xx) and rate limiting (429)
-            ureq::Error::StatusCode(code) => (*code >= 500 || *code == 429, Some(*code)),
-            _ => (true, None), // network/timeout errors are retriable
-        };
-        DownloadError {
-            message: format!("HTTP {e} url={url}"),
-            retriable,
-            status_code,
-        }
-    })?;
+    // Obtain a reader for the archive bytes. HTTP is the production path today;
+    // file:// is used by the runner-side storage cache (epic #10800) to feed
+    // host-staged tarballs that were pushed into the guest over vsock.
+    let reader: Box<dyn Read> = if let Some(path) = url.strip_prefix("file://") {
+        log_info!(LOG_TAG, "Reading local archive from {path}");
+        let file = fs::File::open(path).map_err(|e| DownloadError {
+            message: format!("Failed to open local archive {path}: {e}"),
+            retriable: false,
+            status_code: None,
+        })?;
+        Box::new(file)
+    } else {
+        let response = HTTP_AGENT.get(url).call().map_err(|e| {
+            let (retriable, status_code) = match &e {
+                // Retry on server errors (5xx) and rate limiting (429)
+                ureq::Error::StatusCode(code) => (*code >= 500 || *code == 429, Some(*code)),
+                _ => (true, None), // network/timeout errors are retriable
+            };
+            DownloadError {
+                message: format!("HTTP {e} url={url}"),
+                retriable,
+                status_code,
+            }
+        })?;
+        Box::new(response.into_body().into_reader())
+    };
 
-    // Stream: HTTP response -> GzDecoder -> tar::Archive
-    let reader = response.into_body().into_reader();
+    // Stream: reader -> GzDecoder -> tar::Archive
     let decoder = flate2::read::GzDecoder::new(reader);
     let mut archive = tar::Archive::new(decoder);
 
@@ -706,6 +719,13 @@ mod tests {
     fn is_valid_url_valid() {
         assert!(is_valid_url(&Some(
             "https://example.com/archive.tar.gz".to_string()
+        )));
+    }
+
+    #[test]
+    fn is_valid_url_file_scheme() {
+        assert!(is_valid_url(&Some(
+            "file:///tmp/vm0-storage-cache/abc.tar.gz".to_string()
         )));
     }
 

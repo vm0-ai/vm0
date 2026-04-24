@@ -1,5 +1,5 @@
 import { generateCallbackSecret, getApiUrl } from "../../infra/callback";
-import type { VoiceChatCandidateCallbackPayload } from "../../infra/callback/callback-payloads";
+import type { VoiceChatCallbackPayload } from "../../infra/callback/callback-payloads";
 import type { CreateZeroRunParams } from "../zero-run-service";
 
 interface VoiceChatCandidateTaskTriggerContext {
@@ -19,7 +19,7 @@ interface VoiceChatCandidateTaskTriggerContext {
 export function adaptVoiceChatCandidateTaskTrigger(
   ctx: VoiceChatCandidateTaskTriggerContext,
 ): CreateZeroRunParams {
-  const callbackPayload: VoiceChatCandidateCallbackPayload = {
+  const callbackPayload: VoiceChatCallbackPayload = {
     taskId: ctx.taskId,
   };
   return {

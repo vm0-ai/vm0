@@ -181,6 +181,84 @@ describe("/api/zero/billing/auto-recharge", () => {
       expect(response.status).toBe(400);
     });
 
+    it("returns 400 when amount exceeds the maximum", async () => {
+      await updateOrgTier(user.orgId, "pro");
+
+      const request = createTestRequest(BASE_URL, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          enabled: true,
+          threshold: 1000,
+          amount: 10_000_001,
+        }),
+      });
+
+      const response = await PUT(request);
+      expect(response.status).toBe(400);
+    });
+
+    it("returns 400 when threshold exceeds the maximum", async () => {
+      await updateOrgTier(user.orgId, "pro");
+
+      const request = createTestRequest(BASE_URL, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          enabled: true,
+          threshold: 10_000_001,
+          amount: 20_000_000,
+        }),
+      });
+
+      const response = await PUT(request);
+      expect(response.status).toBe(400);
+    });
+
+    it("returns 400 when threshold equals amount", async () => {
+      await updateOrgTier(user.orgId, "pro");
+
+      const request = createTestRequest(BASE_URL, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          enabled: true,
+          threshold: 5000,
+          amount: 5000,
+        }),
+      });
+
+      const response = await PUT(request);
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        error: {
+          message: "threshold must be less than amount to avoid recharge loops",
+        },
+      });
+    });
+
+    it("returns 400 when threshold is greater than amount", async () => {
+      await updateOrgTier(user.orgId, "pro");
+
+      const request = createTestRequest(BASE_URL, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          enabled: true,
+          threshold: 6000,
+          amount: 5000,
+        }),
+      });
+
+      const response = await PUT(request);
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        error: {
+          message: "threshold must be less than amount to avoid recharge loops",
+        },
+      });
+    });
+
     it("returns 403 for non-admin member", async () => {
       mockClerk({
         userId: user.userId,

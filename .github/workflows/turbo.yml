@@ -544,6 +544,29 @@ jobs:
           files: turbo/junit.xml
           report_type: test_results
 
+  test-app-browser:
+    needs: [detect-release]
+    # Skip for release-please PRs, commits, and merge queue entries
+    if: needs.detect-release.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
+    env:
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/toolchain-init
+      - name: Install shared browser
+        run: bash .github/scripts/install-playwright-chromium.sh
+      - name: Verify shared browser
+        run: |
+          test -n "${AGENT_BROWSER_EXECUTABLE_PATH:-}"
+          test -x "$AGENT_BROWSER_EXECUTABLE_PATH"
+          "$AGENT_BROWSER_EXECUTABLE_PATH" --version
+      - name: Test App Browser
+        working-directory: turbo
+        run: pnpm --filter @vm0/app btest
+
   test-other:
     needs: [detect-release]
     # Skip for release-please PRs, commits, and merge queue entries
@@ -582,8 +605,9 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260419
     needs: [prepare]
-    # Deploy if job-ref is set (PR or main), not a release-please commit, and web, CLI, runner, or platform changed
+    # Deploy if job-ref is set (PR or main), not a release-please commit, not a merge queue run, and web, CLI, runner, or platform changed
     if: |
+      github.event_name != 'merge_group' &&
       (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
       needs.prepare.outputs.job-ref != '' && (
         needs.prepare.outputs.web-changed == 'true' ||
@@ -738,6 +762,11 @@ jobs:
           GITHUB_APP_CLIENT_SECRET: ${{ secrets.VM0_GITHUB_APP_CLIENT_SECRET }}
           GITHUB_APP_WEBHOOK_SECRET: ${{ secrets.VM0_GITHUB_APP_WEBHOOK_SECRET }}
           GITHUB_APP_PRIVATE_KEY: ${{ secrets.VM0_GITHUB_APP_PRIVATE_KEY }}
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          GCP_PROJECT_NUMBER: ${{ vars.GCP_PROJECT_NUMBER }}
+          GCP_SERVICE_ACCOUNT_EMAIL: ${{ vars.GCP_SERVICE_ACCOUNT_EMAIL }}
+          GCP_WORKLOAD_IDENTITY_POOL_ID: ${{ vars.GCP_WORKLOAD_IDENTITY_POOL_ID }}
+          GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID: ${{ vars.GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID }}
           DEV_MODEL_ANTHROPIC_KEY: fake-key
         run: |
           # --- Start Neon branch creation in background ---
@@ -948,6 +977,11 @@ jobs:
             GITHUB_APP_CLIENT_SECRET=${{ secrets.VM0_GITHUB_APP_CLIENT_SECRET }}
             GITHUB_APP_WEBHOOK_SECRET=${{ secrets.VM0_GITHUB_APP_WEBHOOK_SECRET }}
             GITHUB_APP_PRIVATE_KEY=${{ secrets.VM0_GITHUB_APP_PRIVATE_KEY }}
+            GCP_PROJECT_ID=${{ vars.GCP_PROJECT_ID }}
+            GCP_PROJECT_NUMBER=${{ vars.GCP_PROJECT_NUMBER }}
+            GCP_SERVICE_ACCOUNT_EMAIL=${{ vars.GCP_SERVICE_ACCOUNT_EMAIL }}
+            GCP_WORKLOAD_IDENTITY_POOL_ID=${{ vars.GCP_WORKLOAD_IDENTITY_POOL_ID }}
+            GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID=${{ vars.GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID }}
 
       - name: Finish deployment
         uses: bobheadxi/deployments@v1
@@ -1282,6 +1316,7 @@ jobs:
         test-web,
         test-cli,
         test-app,
+        test-app-browser,
         test-other,
       ]
     if: |
@@ -2159,6 +2194,7 @@ jobs:
       - test-migrate
       - test-cli
       - test-app
+      - test-app-browser
       - test-other
       - deploy-web
       - deploy-app
@@ -2221,6 +2257,7 @@ jobs:
           check_result "test-web" "${{ needs.test-web.result }}" ""
           check_result "test-cli" "${{ needs.test-cli.result }}" ""
           check_result "test-app" "${{ needs.test-app.result }}" ""
+          check_result "test-app-browser" "${{ needs.test-app-browser.result }}" ""
           check_result "test-other" "${{ needs.test-other.result }}" ""
 
           # May-skip: 'success' or 'skipped' are both acceptable

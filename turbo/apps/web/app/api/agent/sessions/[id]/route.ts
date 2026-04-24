@@ -3,7 +3,8 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../../src/lib/ts-rest-handler";
-import { sessionsByIdContract, extractAndGroupVariables } from "@vm0/core";
+import { sessionsByIdContract } from "@vm0/core/contracts/sessions";
+import { extractAndGroupVariables } from "@vm0/core/variable-expander";
 import { eq } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
@@ -102,7 +103,9 @@ const router = tsr.router(sessionsByIdContract, {
         id: session.id,
         agentComposeId: session.agentComposeId,
         conversationId: session.conversationId,
-        artifactName: session.artifactName,
+        artifactNames: session.artifacts.map((a) => {
+          return a.name;
+        }),
         secretNames,
         createdAt: session.createdAt.toISOString(),
         updatedAt: session.updatedAt.toISOString(),

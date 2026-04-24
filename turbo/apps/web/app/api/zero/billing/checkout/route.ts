@@ -1,5 +1,6 @@
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
-import { zeroBillingCheckoutContract, createErrorResponse } from "@vm0/core";
+import { zeroBillingCheckoutContract } from "@vm0/core/contracts/zero-billing";
+import { createErrorResponse } from "@vm0/core/contracts/errors";
 import { initServices } from "../../../../../src/lib/init-services";
 import { env } from "../../../../../src/env";
 import {
@@ -16,7 +17,7 @@ const router = tsr.router(zeroBillingCheckoutContract, {
   create: async ({ body, headers }) => {
     initServices();
 
-    const { STRIPE_SECRET_KEY } = env();
+    const { STRIPE_SECRET_KEY, NEXT_PUBLIC_APP_URL } = env();
 
     if (!STRIPE_SECRET_KEY) {
       return createErrorResponse(
@@ -33,6 +34,17 @@ const router = tsr.router(zeroBillingCheckoutContract, {
       return createErrorResponse(
         "FORBIDDEN",
         "Only org admins can manage billing",
+      );
+    }
+
+    const appOrigin = new URL(NEXT_PUBLIC_APP_URL).origin;
+    if (
+      new URL(body.successUrl).origin !== appOrigin ||
+      new URL(body.cancelUrl).origin !== appOrigin
+    ) {
+      return createErrorResponse(
+        "BAD_REQUEST",
+        "successUrl and cancelUrl must match the platform origin",
       );
     }
 

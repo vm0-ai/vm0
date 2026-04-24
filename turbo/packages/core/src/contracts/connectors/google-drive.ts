@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const googleDrive = {
   "google-drive": {
     label: "Google Drive",
+    category: "docs-files-knowledge",
     environmentMapping: {
       GOOGLE_DRIVE_TOKEN: "$secrets.GOOGLE_DRIVE_ACCESS_TOKEN",
     },

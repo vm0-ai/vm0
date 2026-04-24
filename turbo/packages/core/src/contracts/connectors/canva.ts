@@ -4,6 +4,7 @@ import type { ConnectorConfig } from "../connectors";
 export const canva = {
   canva: {
     label: "Canva",
+    category: "docs-files-knowledge",
     environmentMapping: {
       CANVA_TOKEN: "$secrets.CANVA_ACCESS_TOKEN",
     },

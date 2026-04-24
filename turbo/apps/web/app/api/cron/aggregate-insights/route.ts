@@ -16,7 +16,10 @@ import {
   getDatasetName,
   DATASETS,
 } from "../../../../src/lib/shared/axiom";
-import { getConnectorFirewall, isFirewallConnectorType } from "@vm0/core";
+import {
+  getConnectorFirewall,
+  isFirewallConnectorType,
+} from "@vm0/core/firewalls";
 import { clerkClient } from "@clerk/nextjs/server";
 
 const log = logger("cron:aggregate-insights");

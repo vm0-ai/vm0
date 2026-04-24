@@ -1,5 +1,5 @@
 import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
-import { chatThreadsContract } from "@vm0/core";
+import { chatThreadsContract } from "@vm0/core/contracts/chat-threads";
 import { initServices } from "../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
 import {
@@ -50,12 +50,7 @@ const router = tsr.router(chatThreadsContract, {
       };
     }
 
-    const thread = await createChatThread(
-      userId,
-      body.agentId,
-      body.title,
-      body.sourceScheduleRunId,
-    );
+    const thread = await createChatThread(userId, body.agentId, body.title);
     await publishThreadListChanged(userId);
 
     return {

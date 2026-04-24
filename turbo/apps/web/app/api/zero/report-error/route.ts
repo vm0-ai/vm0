@@ -3,7 +3,7 @@ import {
   createSilentErrorHandler,
   tsr,
 } from "../../../../src/lib/ts-rest-handler";
-import { zeroReportErrorContract } from "@vm0/core";
+import { zeroReportErrorContract } from "@vm0/core/contracts/zero-report-error";
 import { initServices } from "../../../../src/lib/init-services";
 import {
   requireAuth,

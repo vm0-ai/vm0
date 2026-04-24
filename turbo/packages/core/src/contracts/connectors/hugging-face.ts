@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const huggingFace = {
   "hugging-face": {
     label: "Hugging Face",
+    category: "ai-general-models",
     environmentMapping: {
       HUGGING_FACE_TOKEN: "$secrets.HUGGING_FACE_TOKEN",
     },

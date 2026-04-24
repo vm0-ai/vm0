@@ -1,7 +1,7 @@
 import "server-only";
 import { after } from "next/server";
 import { and, eq } from "drizzle-orm";
-import { featureCandidateVoiceChatSessions } from "../../../db/schema/voice-chat-candidate";
+import { voiceChatSessions } from "../../../db/schema/voice-chat";
 import {
   agentComposes,
   agentComposeVersions,
@@ -10,12 +10,9 @@ import {
   appendVoiceChatCandidateItem,
   readVoiceChatCandidateItems,
 } from "./item-service";
-import { createVoiceChatCandidateTask, listSessionTasks } from "./task-service";
+import { listSessionTasks } from "./task-service";
 import { callReasoner } from "./reasoner";
 import { compactVoiceChatCandidateTaskResults } from "./compact-task-results";
-import { buildSlowBrainAppendSystemPrompt } from "./build-slow-brain-prompt";
-import { adaptVoiceChatCandidateTaskTrigger } from "./adapt-task-trigger";
-import { createZeroRun } from "../zero-run-service";
 import { publishUserSignal } from "../../infra/realtime/client";
 import { isBadRequest } from "../../shared/errors";
 import { logger } from "../../shared/logger";
@@ -36,8 +33,8 @@ export async function triggerReasoning(sessionId: string): Promise<void> {
   // themselves are stateless; there's no "ended" concept to gate on.
   const [session] = await db
     .select()
-    .from(featureCandidateVoiceChatSessions)
-    .where(eq(featureCandidateVoiceChatSessions.id, sessionId))
+    .from(voiceChatSessions)
+    .where(eq(voiceChatSessions.id, sessionId))
     .limit(1);
   if (!session) return;
 
@@ -48,7 +45,7 @@ export async function triggerReasoning(sessionId: string): Promise<void> {
   // the tick duration on any exit path.
   const startedAt = new Date();
   const acquired = await db
-    .update(featureCandidateVoiceChatSessions)
+    .update(voiceChatSessions)
     .set({
       reasoningStatus: "running",
       lastReasoningStartedAt: startedAt,
@@ -56,11 +53,11 @@ export async function triggerReasoning(sessionId: string): Promise<void> {
     })
     .where(
       and(
-        eq(featureCandidateVoiceChatSessions.id, sessionId),
-        eq(featureCandidateVoiceChatSessions.reasoningStatus, "idle"),
+        eq(voiceChatSessions.id, sessionId),
+        eq(voiceChatSessions.reasoningStatus, "idle"),
       ),
     )
-    .returning({ id: featureCandidateVoiceChatSessions.id });
+    .returning({ id: voiceChatSessions.id });
 
   if (acquired.length === 0) {
     // Losing racer: flag that work is pending and report back the current
@@ -68,10 +65,10 @@ export async function triggerReasoning(sessionId: string): Promise<void> {
     // before we set the flag, our signal would be lost — schedule a re-tick
     // ourselves in that case.
     const [row] = await db
-      .update(featureCandidateVoiceChatSessions)
+      .update(voiceChatSessions)
       .set({ reasoningPending: true })
-      .where(eq(featureCandidateVoiceChatSessions.id, sessionId))
-      .returning({ status: featureCandidateVoiceChatSessions.reasoningStatus });
+      .where(eq(voiceChatSessions.id, sessionId))
+      .returning({ status: voiceChatSessions.reasoningStatus });
     if (row?.status === "idle") {
       after(() => {
         return triggerReasoning(sessionId);
@@ -87,17 +84,17 @@ export async function triggerReasoning(sessionId: string): Promise<void> {
   // write, wasting an LLM round-trip.
   const [freshSession] = await db
     .select()
-    .from(featureCandidateVoiceChatSessions)
-    .where(eq(featureCandidateVoiceChatSessions.id, sessionId))
+    .from(voiceChatSessions)
+    .where(eq(voiceChatSessions.id, sessionId))
     .limit(1);
   if (!freshSession) {
     await db
-      .update(featureCandidateVoiceChatSessions)
+      .update(voiceChatSessions)
       .set({
         reasoningStatus: "idle",
         lastReasoningDurationMs: Date.now() - startedAt.getTime(),
       })
-      .where(eq(featureCandidateVoiceChatSessions.id, sessionId));
+      .where(eq(voiceChatSessions.id, sessionId));
     return;
   }
   const currentSession = freshSession;
@@ -181,7 +178,7 @@ export async function triggerReasoning(sessionId: string): Promise<void> {
     // summary columns still exist in the schema but are unused — the Talker's
     // Task board reads live state from the tasks table.
     const updated = await db
-      .update(featureCandidateVoiceChatSessions)
+      .update(voiceChatSessions)
       .set({
         conversationSummary: result.conversationSummary,
         summarySeq: maxSeq,
@@ -192,14 +189,11 @@ export async function triggerReasoning(sessionId: string): Promise<void> {
       })
       .where(
         and(
-          eq(featureCandidateVoiceChatSessions.id, sessionId),
-          eq(
-            featureCandidateVoiceChatSessions.summaryVersion,
-            currentSession.summaryVersion,
-          ),
+          eq(voiceChatSessions.id, sessionId),
+          eq(voiceChatSessions.summaryVersion, currentSession.summaryVersion),
         ),
       )
-      .returning({ id: featureCandidateVoiceChatSessions.id });
+      .returning({ id: voiceChatSessions.id });
 
     if (updated.length > 0) {
       await publishUserSignal(
@@ -209,12 +203,12 @@ export async function triggerReasoning(sessionId: string): Promise<void> {
     } else {
       log.info(`reasoner version contention for ${sessionId}, dropping tick`);
       await db
-        .update(featureCandidateVoiceChatSessions)
+        .update(voiceChatSessions)
         .set({
           reasoningStatus: "idle",
           lastReasoningDurationMs: Date.now() - startedAt.getTime(),
         })
-        .where(eq(featureCandidateVoiceChatSessions.id, sessionId));
+        .where(eq(voiceChatSessions.id, sessionId));
     }
   } else {
     // Step 5b — reasoner returned null (missing key / HTTP error / empty /
@@ -233,62 +227,13 @@ export async function triggerReasoning(sessionId: string): Promise<void> {
       if (!isBadRequest(err)) throw err;
     }
     await db
-      .update(featureCandidateVoiceChatSessions)
+      .update(voiceChatSessions)
       .set({
         reasoningStatus: "idle",
         lastSummaryAt: new Date(),
         lastReasoningDurationMs: Date.now() - startedAt.getTime(),
       })
-      .where(eq(featureCandidateVoiceChatSessions.id, sessionId));
-  }
-
-  // Step 5c — if the Reasoner detected tasks the Talker promised but never
-  // dispatched, create them now. This runs after the lock is released so
-  // slow spawnRun calls do not block concurrent ticks.
-  if (
-    result !== null &&
-    result.missingTasks.length > 0 &&
-    currentSession.agentId
-  ) {
-    const agentId = currentSession.agentId;
-    const apiStartTime = Date.now();
-    const appendSystemPrompt = buildSlowBrainAppendSystemPrompt({
-      agentSystemPrompt,
-      items: transcript,
-      sessionTasks: tasks,
-    });
-
-    for (let i = 0; i < result.missingTasks.length; i++) {
-      const prompt = result.missingTasks[i];
-      if (!prompt) continue;
-      await createVoiceChatCandidateTask({
-        sessionId,
-        callId: `reasoner-auto-${apiStartTime}-${String(i)}`,
-        prompt,
-        spawnRun: (taskId) => {
-          const runParams = adaptVoiceChatCandidateTaskTrigger({
-            userId: currentSession.userId,
-            agentId,
-            taskId,
-            prompt,
-            appendSystemPrompt,
-            apiStartTime,
-          });
-          return createZeroRun(runParams);
-        },
-      });
-      await appendVoiceChatCandidateItem({
-        sessionId,
-        role: "system_note",
-        content: `Reasoner auto-created task: ${prompt}`,
-        realtimeItemId: null,
-      });
-    }
-
-    await publishUserSignal(
-      [currentSession.userId],
-      `voice-chat-candidate:${sessionId}`,
-    );
+      .where(eq(voiceChatSessions.id, sessionId));
   }
 
   // Step 6 — compact old finished-task results along the exponential
@@ -392,7 +337,6 @@ function parseAssistantInterruptedNote(
   try {
     parsed = JSON.parse(content);
   } catch {
-    log.warn(`failed to parse assistant interrupted note: ${content}`);
     return null;
   }
   if (!parsed || typeof parsed !== "object") {
@@ -431,27 +375,27 @@ async function releaseAndDrain(
 ): Promise<void> {
   const db = globalThis.services.db;
   await db
-    .update(featureCandidateVoiceChatSessions)
+    .update(voiceChatSessions)
     .set({
       reasoningStatus: "idle",
       lastReasoningDurationMs: Date.now() - startedAt.getTime(),
     })
-    .where(eq(featureCandidateVoiceChatSessions.id, sessionId));
+    .where(eq(voiceChatSessions.id, sessionId));
   await drainPending(sessionId);
 }
 
 async function drainPending(sessionId: string): Promise<void> {
   const db = globalThis.services.db;
   const drained = await db
-    .update(featureCandidateVoiceChatSessions)
+    .update(voiceChatSessions)
     .set({ reasoningPending: false })
     .where(
       and(
-        eq(featureCandidateVoiceChatSessions.id, sessionId),
-        eq(featureCandidateVoiceChatSessions.reasoningPending, true),
+        eq(voiceChatSessions.id, sessionId),
+        eq(voiceChatSessions.reasoningPending, true),
       ),
     )
-    .returning({ id: featureCandidateVoiceChatSessions.id });
+    .returning({ id: voiceChatSessions.id });
 
   if (drained.length > 0) {
     after(() => {

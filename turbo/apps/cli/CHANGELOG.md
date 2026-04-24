@@ -1,5 +1,74 @@
 # Changelog
 
+## [9.132.2](https://github.com/vm0-ai/vm0/compare/cli-v9.132.1...cli-v9.132.2) (2026-04-24)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.232.0
+
+## [9.132.1](https://github.com/vm0-ai/vm0/compare/cli-v9.132.0...cli-v9.132.1) (2026-04-24)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.231.0
+
+## [9.132.0](https://github.com/vm0-ai/vm0/compare/cli-v9.131.5...cli-v9.132.0) (2026-04-23)
+
+
+### Features
+
+* gate Zapier connector behind ZapierConnector feature switch ([#10871](https://github.com/vm0-ai/vm0/issues/10871)) ([fc602ff](https://github.com/vm0-ai/vm0/commit/fc602ffa85e3a8ec3fb10943e714c8264a80098f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.230.0
+
+## [9.131.5](https://github.com/vm0-ai/vm0/compare/cli-v9.131.4...cli-v9.131.5) (2026-04-23)
+
+
+### Refactoring
+
+* remove turbo core root imports ([#10820](https://github.com/vm0-ai/vm0/issues/10820)) ([ec85609](https://github.com/vm0-ai/vm0/commit/ec8560930db70e5c1f853961ff51606e601da875))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.229.4
+
+## [9.131.4](https://github.com/vm0-ai/vm0/compare/cli-v9.131.3...cli-v9.131.4) (2026-04-23)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.229.3
+
+## [9.131.3](https://github.com/vm0-ai/vm0/compare/cli-v9.131.2...cli-v9.131.3) (2026-04-23)
+
+
+### Bug Fixes
+
+* **voice-chat-candidate:** adaptive echo cancellation and server-side session config ([#10795](https://github.com/vm0-ai/vm0/issues/10795)) ([2782e42](https://github.com/vm0-ai/vm0/commit/2782e42e8a562a4c20ecebbd5630de0f6ae21cf3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.229.2
+
 ## [9.131.2](https://github.com/vm0-ai/vm0/compare/cli-v9.131.1...cli-v9.131.2) (2026-04-23)
 
 

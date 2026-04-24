@@ -21,7 +21,7 @@ use sandbox::SandboxControl;
 use tracing::info;
 
 use crate::error::{RunnerError, RunnerResult};
-use crate::process::{self, FirecrackerProcessInfo, RunnerProcessInfo};
+use crate::process::{self, FirecrackerProcessInfo};
 
 // ---------------------------------------------------------------------------
 // CLI args
@@ -56,7 +56,8 @@ pub async fn run_kill(args: KillArgs, control: &dyn SandboxControl) -> RunnerRes
 
     // Phase 2: Resolve target — mode depends on which flag was passed.
     let target = if let Some(ref run_id) = args.run {
-        resolve_by_run_id(run_id, &discovered.runners, &discovered.firecrackers).await?
+        let mappings = process::collect_active_run_mappings(&discovered.runners).await;
+        resolve_by_run_id(run_id, &mappings, &discovered.firecrackers)?
     } else if let Some(ref sandbox_id) = args.sandbox {
         resolve_by_sandbox_id(sandbox_id, &discovered.firecrackers)?
     } else {
@@ -122,15 +123,16 @@ pub async fn run_kill(args: KillArgs, control: &dyn SandboxControl) -> RunnerRes
 
 /// Resolve a `--run` prefix to a single Firecracker process.
 ///
-/// Reads every reachable runner's status.json to map run_id → sandbox_id,
-/// then locates the FC by sandbox_id.
-async fn resolve_by_run_id<'a>(
+/// Maps run_id → sandbox_id via the provided mappings, then locates the FC
+/// by sandbox_id. The caller is responsible for collecting `mappings` via
+/// [`process::collect_active_run_mappings`] so this function stays pure and
+/// testable.
+fn resolve_by_run_id<'a>(
     input: &str,
-    runners: &[RunnerProcessInfo],
+    mappings: &process::ActiveRunMappings,
     firecrackers: &'a [FirecrackerProcessInfo],
 ) -> RunnerResult<&'a FirecrackerProcessInfo> {
-    let mappings = process::collect_active_run_mappings(runners).await;
-    let sandbox_id = process::resolve_run_to_sandbox(input, &mappings)?;
+    let sandbox_id = process::resolve_run_to_sandbox(input, mappings)?;
     firecrackers
         .iter()
         .find(|fc| fc.sandbox_id == sandbox_id)
@@ -432,11 +434,13 @@ mod tests {
     fn by_run_id_mapped_sandbox_not_running() {
         let status = mappings(vec![("run-x-1".into(), "sandbox-gone".into())]);
         let fcs: Vec<FirecrackerProcessInfo> = vec![];
-        let sandbox_id = process::resolve_run_to_sandbox("run-x", &status).unwrap();
-        assert!(
-            fcs.iter().find(|fc| fc.sandbox_id == sandbox_id).is_none(),
-            "FC should not exist"
-        );
+        let Err(e) = resolve_by_run_id("run-x", &status, &fcs) else {
+            panic!("expected error when sandbox has no firecracker process");
+        };
+        let msg = e.to_string();
+        assert!(msg.contains("run 'run-x'"), "{msg}");
+        assert!(msg.contains("sandbox-gone"), "{msg}");
+        assert!(msg.contains("no firecracker process"), "{msg}");
     }
 
     // -- resolve_by_sandbox_id tests -----------------------------------------

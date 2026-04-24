@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const customerIo = {
   "customer-io": {
     label: "Customer.io",
+    category: "communication-collaboration",
     environmentMapping: {
       CUSTOMERIO_APP_TOKEN: "$secrets.CUSTOMERIO_APP_TOKEN",
     },

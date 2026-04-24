@@ -15,10 +15,11 @@ import {
   setMockOrgLogo,
   resetMockOrgLogo,
 } from "../../../mocks/handlers/api-org.ts";
-import { zeroOrgContract } from "@vm0/core";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { zeroOrgContract } from "@vm0/core/contracts/zero-org";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 beforeEach(() => {
   resetMockOrg();
@@ -69,11 +70,8 @@ describe("org general tab - display", () => {
 
     // Now trigger a refresh with a never-resolving org response
     server.use(
-      mockApi(zeroOrgContract.get, async ({ respond }) => {
-        // Never resolves — keeps loading state visible
-        await new Promise<void>(() => {
-          /* intentionally never resolves */
-        });
+      mockApi(zeroOrgContract.get, async ({ respond, never }) => {
+        await never();
         return respond(200, {
           id: "org_1",
           slug: "test-org",
@@ -120,6 +118,23 @@ describe("org general tab - display", () => {
   // ORG-D-013
   it("logo upload preview is shown after selecting a file", async () => {
     const user = userEvent.setup();
+    // Happy-dom does not decode image bytes, so `new Image()` never fires
+    // `load` with real dimensions. Stub Image so readImageDimensions resolves
+    // with an in-range size (100–4096 px) that the upload handler accepts.
+    class FakeImage {
+      naturalWidth = 512;
+      naturalHeight = 512;
+      private listeners: Record<string, () => void> = {};
+      addEventListener(event: string, cb: () => void) {
+        this.listeners[event] = cb;
+      }
+      set src(_value: string) {
+        queueMicrotask(() => {
+          this.listeners.load?.();
+        });
+      }
+    }
+    vi.stubGlobal("Image", FakeImage);
     vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:mock-preview");
     vi.spyOn(URL, "revokeObjectURL").mockReturnValue(undefined);
     setMockOrg({ slug: "test-org", name: "Test Org" });

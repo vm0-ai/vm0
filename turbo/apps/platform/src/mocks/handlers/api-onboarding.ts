@@ -1,16 +1,9 @@
-/**
- * Onboarding API Handlers
- *
- * Mock handlers for /api/zero/onboarding endpoints.
- * Default behavior: onboarding is complete (all flags true).
- */
-
 import {
   onboardingStatusContract,
   onboardingSetupContract,
   onboardingCompleteContract,
   type OnboardingStatusResponse,
-} from "@vm0/core";
+} from "@vm0/core/contracts/onboarding";
 import { mockApi } from "../msw-contract.ts";
 
 const DEFAULT_ONBOARDING_STATUS: OnboardingStatusResponse = {

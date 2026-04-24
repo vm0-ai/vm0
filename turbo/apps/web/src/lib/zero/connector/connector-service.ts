@@ -1,13 +1,17 @@
 import { eq, and, inArray } from "drizzle-orm";
 import {
-  CONNECTOR_TYPES,
-  type ConnectorAuthMethodType,
-  type ConnectorType,
-  type ConnectorResponse,
-  connectorTypeSchema,
   deriveApiTokenConnectedTypes,
   getApiTokenFieldsByType,
-} from "@vm0/core";
+} from "@vm0/core/contracts/connector-utils";
+import type {
+  ConnectorAuthMethodType,
+  ConnectorType,
+} from "@vm0/core/contracts/connectors";
+import {
+  CONNECTOR_TYPES,
+  connectorTypeSchema,
+} from "@vm0/core/contracts/connectors";
+import type { ConnectorResponse } from "@vm0/core/contracts/connector-schemas";
 import { connectors } from "../../../db/schema/connector";
 import { userPlatformConnectors } from "../../../db/schema/user-platform-connector";
 import { secrets } from "../../../db/schema/secret";

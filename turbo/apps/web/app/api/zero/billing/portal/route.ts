@@ -1,5 +1,6 @@
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
-import { zeroBillingPortalContract, createErrorResponse } from "@vm0/core";
+import { zeroBillingPortalContract } from "@vm0/core/contracts/zero-billing";
+import { createErrorResponse } from "@vm0/core/contracts/errors";
 import { initServices } from "../../../../../src/lib/init-services";
 import { env } from "../../../../../src/env";
 import {
@@ -13,7 +14,7 @@ const router = tsr.router(zeroBillingPortalContract, {
   create: async ({ body, headers }) => {
     initServices();
 
-    const { STRIPE_SECRET_KEY } = env();
+    const { STRIPE_SECRET_KEY, NEXT_PUBLIC_APP_URL } = env();
     if (!STRIPE_SECRET_KEY) {
       return createErrorResponse(
         "PROVIDER_UNAVAILABLE",
@@ -29,6 +30,14 @@ const router = tsr.router(zeroBillingPortalContract, {
       return createErrorResponse(
         "FORBIDDEN",
         "Only org admins can manage billing",
+      );
+    }
+
+    const appOrigin = new URL(NEXT_PUBLIC_APP_URL).origin;
+    if (new URL(body.returnUrl).origin !== appOrigin) {
+      return createErrorResponse(
+        "BAD_REQUEST",
+        "returnUrl must match the platform origin",
       );
     }
 

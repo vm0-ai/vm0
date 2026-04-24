@@ -2,8 +2,8 @@ import { useGet, useSet } from "ccstate-react";
 import {
   SOURCE_BUCKET_COLORS,
   type SourceBucket,
-  type UsageInsightBucket,
-} from "@vm0/core";
+} from "@vm0/core/usage-source-bucket";
+import type { UsageInsightBucket } from "@vm0/core/contracts/zero-usage-insight";
 import {
   chartTooltip$,
   chartWidth$,

@@ -9,12 +9,18 @@ import {
   detachedNavigateTo$,
 } from "../route.ts";
 import { onboardGuard$ } from "./onboard-guard.ts";
-import { currentAgentId$, defaultAgentId$ } from "../agent.ts";
-import { setChatAgentId$, currentChatAgent$ } from "../agent-chat.ts";
+import {
+  currentAgentId$,
+  defaultAgentId$,
+  agents$,
+  rememberLastUsedAgentId$,
+} from "../agent.ts";
+import { setChatAgentId$ } from "../agent-chat.ts";
 import { talkDraft$ } from "./chat-draft.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { reloadTagline$ } from "./zero-chat-page.ts";
 import { setupAgentChatPageKeyboard$ } from "./agent-chat-keyboard.ts";
+import { openQueueDrawer$ } from "../queue-page/queue-drawer-state.ts";
 
 export const setupAgentChatPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -43,31 +49,40 @@ export const setupAgentChatPage$ = command(
       throw new Error("Chat page requires an active agent, but none found");
     }
 
-    const agent = await get(currentChatAgent$);
+    const agents = await get(agents$);
     signal.throwIfAborted();
+    const agent = agents.find((candidate) => {
+      return candidate.id === agentId;
+    });
     if (!agent) {
       const defaultAgentId = await get(defaultAgentId$);
       signal.throwIfAborted();
-      if (!defaultAgentId) {
+      if (!defaultAgentId || defaultAgentId === agentId) {
         throw new Error("Chat page requires an active agent, but none found");
       }
 
       set(detachedNavigateTo$, "/agents/:agentId/chat", {
         pathParams: { agentId: defaultAgentId },
+        searchParams: get(searchParams$),
         replace: true,
       });
       return;
     }
 
-    set(updateDocumentTitle$, agent.displayName ?? "");
+    set(rememberLastUsedAgentId$, agentId);
+    set(updateDocumentTitle$, agent.displayName ?? "Chat");
 
     const params = get(searchParams$);
     const prompt = params.get("prompt");
+    const queue = params.get("queue");
     if (prompt) {
       set(get(talkDraft$).setInput$, prompt);
       const next = new URLSearchParams(params);
       next.delete("prompt");
       set(updateSearchParams$, next);
+    }
+    if (queue === "1") {
+      set(openQueueDrawer$);
     }
   },
 );

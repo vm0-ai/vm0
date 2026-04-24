@@ -1,5 +1,67 @@
 # Changelog
 
+## [8.232.0](https://github.com/vm0-ai/vm0/compare/core-v8.231.0...core-v8.232.0) (2026-04-24)
+
+
+### Features
+
+* classify built-in connectors with ai-first grouping ([#10838](https://github.com/vm0-ai/vm0/issues/10838)) ([bd3e2a3](https://github.com/vm0-ai/vm0/commit/bd3e2a3d5d525bbe872723fe122fbd9ddf345a8f))
+* **slack:** graduate agent switching ([#10964](https://github.com/vm0-ai/vm0/issues/10964)) ([cf070f8](https://github.com/vm0-ai/vm0/commit/cf070f857f4ded9f16f5a6d932ba091b3d022ec5))
+
+## [8.231.0](https://github.com/vm0-ai/vm0/compare/core-v8.230.0...core-v8.231.0) (2026-04-24)
+
+
+### Features
+
+* add browser-use connector ([#10922](https://github.com/vm0-ai/vm0/issues/10922)) ([9a4edc4](https://github.com/vm0-ai/vm0/commit/9a4edc45e87e7863d5d2bfa79d522938b4703aa8))
+
+
+### Bug Fixes
+
+* **core:** guide users to add https:// in firewall url errors ([#10958](https://github.com/vm0-ai/vm0/issues/10958)) ([9ecde92](https://github.com/vm0-ai/vm0/commit/9ecde92e4c2b3ba2cb94cf7747ed1ba37c129b94)), closes [#10923](https://github.com/vm0-ai/vm0/issues/10923)
+
+## [8.230.0](https://github.com/vm0-ai/vm0/compare/core-v8.229.4...core-v8.230.0) (2026-04-23)
+
+
+### Features
+
+* **compose:** support mount_path on artifact entries ([#10908](https://github.com/vm0-ai/vm0/issues/10908)) ([#10914](https://github.com/vm0-ai/vm0/issues/10914)) ([c907fd5](https://github.com/vm0-ai/vm0/commit/c907fd5196df2160c999db1a3a39340c0d9342e0))
+* gate Zapier connector behind ZapierConnector feature switch ([#10871](https://github.com/vm0-ai/vm0/issues/10871)) ([fc602ff](https://github.com/vm0-ai/vm0/commit/fc602ffa85e3a8ec3fb10943e714c8264a80098f))
+
+
+### Refactoring
+
+* **checkpoint:** tolerate array-shape artifact snapshots end-to-end ([#10919](https://github.com/vm0-ai/vm0/issues/10919)) ([0a12bc6](https://github.com/vm0-ai/vm0/commit/0a12bc68a8efb87d07f65fb56aac19708addda56))
+* **infra:** flatten artifact scalars to record map (closes [#10861](https://github.com/vm0-ai/vm0/issues/10861)) ([#10876](https://github.com/vm0-ai/vm0/issues/10876)) ([fce4760](https://github.com/vm0-ai/vm0/commit/fce4760ddad775fcb33dce2c0a78baf61609c343))
+* **web:** rename backend voice-chat-candidate dirs, service exports, and event-consumer registry ([#10886](https://github.com/vm0-ai/vm0/issues/10886)) ([39315bd](https://github.com/vm0-ai/vm0/commit/39315bd8a7f6d1b0044954992b757259fe6a276f))
+
+## [8.229.4](https://github.com/vm0-ai/vm0/compare/core-v8.229.3...core-v8.229.4) (2026-04-23)
+
+
+### Refactoring
+
+* remove turbo core root imports ([#10820](https://github.com/vm0-ai/vm0/issues/10820)) ([ec85609](https://github.com/vm0-ai/vm0/commit/ec8560930db70e5c1f853961ff51606e601da875))
+
+## [8.229.3](https://github.com/vm0-ai/vm0/compare/core-v8.229.2...core-v8.229.3) (2026-04-23)
+
+
+### Bug Fixes
+
+* add auto-recharge threshold/amount bounds and loop prevention ([#10695](https://github.com/vm0-ai/vm0/issues/10695)) ([9e2e011](https://github.com/vm0-ai/vm0/commit/9e2e011d6404f6641a6cccfa1ca7dd324f5939f4))
+* open queue drawer via URL param and remove /queue route ([#10684](https://github.com/vm0-ai/vm0/issues/10684)) ([f547217](https://github.com/vm0-ai/vm0/commit/f547217cf19e0a66463e93d6db57f918968b8a41))
+
+
+### Refactoring
+
+* remove sandbox-reuse feature flag and enable full rollout ([#10822](https://github.com/vm0-ai/vm0/issues/10822)) ([fc6df59](https://github.com/vm0-ai/vm0/commit/fc6df59ddecd7ede3457ad63d8f71813c6dd6fb9))
+
+## [8.229.2](https://github.com/vm0-ai/vm0/compare/core-v8.229.1...core-v8.229.2) (2026-04-23)
+
+
+### Bug Fixes
+
+* **voice-chat-candidate:** adaptive echo cancellation and server-side session config ([#10795](https://github.com/vm0-ai/vm0/issues/10795)) ([2782e42](https://github.com/vm0-ai/vm0/commit/2782e42e8a562a4c20ecebbd5630de0f6ae21cf3))
+
 ## [8.229.1](https://github.com/vm0-ai/vm0/compare/core-v8.229.0...core-v8.229.1) (2026-04-23)
 
 

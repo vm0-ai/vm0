@@ -115,6 +115,43 @@ const volumeConfigSchema = z.object({
 });
 
 /**
+ * Template literal that resolves to the compose's framework-derived
+ * working_dir during mount-path expansion.
+ */
+export const MOUNT_PATH_TEMPLATE = "${{ working_dir }}";
+
+/**
+ * Mount path must be an absolute path (starts with "/") OR the literal
+ * template "${{ working_dir }}" which resolves to the framework's working_dir.
+ */
+const mountPathSchema = z
+  .string()
+  .min(1, "mount_path cannot be empty")
+  .refine((val) => {
+    return val === MOUNT_PATH_TEMPLATE || val.startsWith("/");
+  }, `mount_path must be an absolute path or "${MOUNT_PATH_TEMPLATE}"`);
+
+/**
+ * Artifact entry in compose.
+ * - name: required storage name
+ * - version: optional, defaults to "latest" at resolution time
+ * - mount_path: optional, defaults to working_dir at resolution time.
+ *   May be the literal template "${{ working_dir }}".
+ */
+const artifactConfigSchema = z.object({
+  name: z.string().min(1, "Artifact name is required"),
+  version: z.string().min(1).optional(),
+  mount_path: mountPathSchema.optional(),
+});
+
+const artifactsArraySchema = z.array(artifactConfigSchema).refine((items) => {
+  const names = items.map((i) => {
+    return i.name;
+  });
+  return new Set(names).size === names.length;
+}, "Artifact names must be unique");
+
+/**
  * Agent definition schema
  */
 const agentDefinitionSchema = z.object({
@@ -190,6 +227,7 @@ const agentComposeContentSchema = z.object({
   version: z.string().min(1, "Version is required"),
   agents: z.record(z.string(), agentDefinitionSchema),
   volumes: z.record(z.string(), volumeConfigSchema).optional(),
+  artifacts: artifactsArraySchema.optional(),
 });
 
 /**
@@ -209,6 +247,7 @@ const agentComposeApiContentSchema = z.object({
     }),
   ),
   volumes: z.record(z.string(), volumeConfigSchema).optional(),
+  artifacts: artifactsArraySchema.optional(),
 });
 
 /**
@@ -482,6 +521,8 @@ export type ComposesInstructionsContract = typeof composesInstructionsContract;
 export {
   agentNameSchema,
   volumeConfigSchema,
+  artifactConfigSchema,
+  artifactsArraySchema,
   agentDefinitionSchema,
   agentComposeContentSchema,
   agentComposeApiContentSchema,
@@ -494,3 +535,4 @@ export {
 // Export inferred types for consumers
 export type ComposeResponse = z.infer<typeof composeResponseSchema>;
 export type ComposeListItem = z.infer<typeof composeListItemSchema>;
+export type ArtifactConfig = z.infer<typeof artifactConfigSchema>;

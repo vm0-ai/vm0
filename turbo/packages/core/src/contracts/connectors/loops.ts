@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const loops = {
   loops: {
     label: "Loops",
+    category: "communication-collaboration",
     environmentMapping: {
       LOOPS_TOKEN: "$secrets.LOOPS_TOKEN",
     },

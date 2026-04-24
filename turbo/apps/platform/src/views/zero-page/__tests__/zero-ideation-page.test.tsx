@@ -8,6 +8,7 @@ import {
   click,
 } from "../../../__tests__/page-helper.ts";
 import { getCategories } from "../zero-ideation-data.ts";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { pathname } from "../../../signals/location.ts";
 import {
   setMockComposesList,
@@ -66,7 +67,7 @@ describe("ideation page - direct route rendering", () => {
 });
 
 describe("ideation page - category tabs", () => {
-  const categories = getCategories().slice(0, 5);
+  const categories = getCategories(undefined).slice(0, 5);
 
   it("should render All tab and each category tab", async () => {
     await renderIdeationPage();
@@ -342,6 +343,36 @@ describe("ideation page - navigation", () => {
 
     await waitFor(() => {
       expect(pathname()).toBe(`/agents/${customAgentId}/chat`);
+    });
+  });
+});
+
+describe("ideation page - ZapierConnector feature switch", () => {
+  it("should hide the Zapier use case card when ZapierConnector switch is off (default)", async () => {
+    mockChatAPI();
+    detachedSetupPage({ context, path: IDEAS_PATH });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Ideas & Use Cases" }),
+      ).toBeInTheDocument();
+    });
+
+    expect(
+      screen.queryByText("Zapier → VM0 migration"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("should show the Zapier use case card when ZapierConnector switch is on", async () => {
+    mockChatAPI();
+    detachedSetupPage({
+      context,
+      path: IDEAS_PATH,
+      featureSwitches: { [FeatureSwitchKey.ZapierConnector]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Zapier → VM0 migration")).toBeInTheDocument();
     });
   });
 });

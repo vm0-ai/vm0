@@ -14,7 +14,7 @@ import {
   type PersistedAttachment,
   type ResolvedAttachFile,
   persistedAttachmentSchema,
-} from "@vm0/core";
+} from "@vm0/core/contracts/chat-threads";
 import { listS3Objects } from "../../infra/s3/s3-client";
 import { env } from "../../../env";
 import { EXT_MIMETYPE_MAP } from "../../shared/mimetype";
@@ -22,18 +22,11 @@ import { buildFileUrl } from "../uploads/file-url";
 
 /**
  * Create a new chat thread.
- *
- * `sourceScheduleRunId`, when set, marks this thread as continuing a
- * previously scheduled agent run. The chat messages route reads it once on the
- * thread's first run to seed a system prompt instructing the agent to pull the
- * original run's telemetry via `zero logs <id>`; subsequent runs inherit the
- * resulting session context and do not get the prompt again.
  */
 export async function createChatThread(
   userId: string,
   agentComposeId: string,
   title?: string | null,
-  sourceScheduleRunId?: string | null,
 ): Promise<{ id: string; createdAt: Date }> {
   const [thread] = await globalThis.services.db
     .insert(chatThreads)
@@ -41,7 +34,6 @@ export async function createChatThread(
       userId,
       agentComposeId,
       title: title ?? null,
-      sourceScheduleRunId: sourceScheduleRunId ?? null,
     })
     .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
 
@@ -202,7 +194,6 @@ export async function getChatThread(
   id: string;
   title: string | null;
   agentComposeId: string;
-  sourceScheduleRunId: string | null;
   draftContent: string | null;
   draftAttachments: PersistedAttachment[] | null;
   modelProviderId: string | null;
@@ -224,7 +215,6 @@ export async function getChatThread(
     id: thread.id,
     title: thread.title,
     agentComposeId: thread.agentComposeId,
-    sourceScheduleRunId: thread.sourceScheduleRunId ?? null,
     draftContent: thread.draftContent ?? null,
     draftAttachments: persistedAttachmentSchema
       .array()
@@ -385,13 +375,15 @@ export async function getChatThreadMessages(
 }
 
 /**
- * Return run IDs for this thread that are not yet in a terminal state.
+ * Return non-terminal runs for this thread with live status. The UI uses
+ * `status` to distinguish queued from running so it can show "Waiting in
+ * queue" without a second API round-trip.
  */
-export async function getActiveRunIdsForThread(
+export async function getActiveRunsForThread(
   threadId: string,
-): Promise<string[]> {
-  const rows = await globalThis.services.db
-    .select({ id: zeroRuns.id })
+): Promise<{ id: string; status: string }[]> {
+  return globalThis.services.db
+    .select({ id: zeroRuns.id, status: agentRuns.status })
     .from(zeroRuns)
     .innerJoin(agentRuns, eq(zeroRuns.id, agentRuns.id))
     .where(
@@ -400,7 +392,4 @@ export async function getActiveRunIdsForThread(
         inArray(agentRuns.status, ["queued", "pending", "running"]),
       ),
     );
-  return rows.map((r) => {
-    return r.id;
-  });
 }

@@ -4,6 +4,7 @@ import type { ConnectorConfig } from "../connectors";
 export const freshdesk = {
   freshdesk: {
     label: "Freshdesk",
+    category: "communication-collaboration",
     tags: ["helpdesk", "tickets", "customer-support"],
     environmentMapping: {
       FRESHDESK_TOKEN: "$secrets.FRESHDESK_TOKEN",

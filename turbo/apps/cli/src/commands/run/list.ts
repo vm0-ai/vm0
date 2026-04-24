@@ -3,7 +3,11 @@ import chalk from "chalk";
 import { listRuns } from "../../lib/api";
 import { formatRelativeTime } from "../../lib/utils/file-utils";
 import { parseTime } from "../../lib/utils/time-parser";
-import { ALL_RUN_STATUSES, type RunStatus, type RunListItem } from "@vm0/core";
+import {
+  ALL_RUN_STATUSES,
+  type RunListItem,
+  type RunStatus,
+} from "@vm0/core/contracts/runs";
 import { withErrorHandler } from "../../lib/command";
 
 /** Standard UUID string length (with hyphens) */

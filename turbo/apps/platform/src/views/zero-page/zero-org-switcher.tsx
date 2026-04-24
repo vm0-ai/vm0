@@ -17,7 +17,7 @@ import {
   IconPlus,
   IconMail,
 } from "@tabler/icons-react";
-import { clerk$ } from "../../signals/auth.ts";
+import { clerk$, currentOrgInfo$ } from "../../signals/auth.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -211,9 +211,9 @@ function OrgDropdownContent() {
   const clerkLoadable = useLastLoadable(clerk$);
   const orgData = useLastResolved(org$);
   const pendingInvitations = useLastResolved(userInvitations$);
+  const currentOrg = useLastResolved(currentOrgInfo$);
 
   const clerk = clerkLoadable.state === "hasData" ? clerkLoadable.data : null;
-  const currentOrg = clerk?.organization;
   const orgName = currentOrg?.name ?? "Organization";
   const orgSlug = orgData?.slug;
 
@@ -285,10 +285,7 @@ function PendingInvitationsBadge() {
 }
 
 export function ZeroOrgSwitcher() {
-  const clerkLoadable = useLastLoadable(clerk$);
-
-  const clerk = clerkLoadable.state === "hasData" ? clerkLoadable.data : null;
-  const currentOrg = clerk?.organization;
+  const currentOrg = useLastResolved(currentOrgInfo$);
   const orgName = currentOrg?.name ?? "Organization";
 
   return (

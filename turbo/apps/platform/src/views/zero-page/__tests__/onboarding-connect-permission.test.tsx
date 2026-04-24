@@ -8,16 +8,17 @@ import {
   click,
 } from "../../../__tests__/page-helper.ts";
 import { permissionDialogType$ } from "../../../signals/zero-page/settings/connectors.ts";
+import type { ConnectorListResponse } from "@vm0/core/contracts/connector-schemas";
+import { zeroConnectorsMainContract } from "@vm0/core/contracts/zero-connectors";
 import {
-  type ConnectorListResponse,
-  zeroConnectorsMainContract,
   onboardingStatusContract,
   onboardingSetupContract,
-} from "@vm0/core";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+} from "@vm0/core/contracts/onboarding";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { triggerAblyEvent, hasSubscription } from "../../../mocks/ably.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 function makeGithubConnectedResponse(): ConnectorListResponse {
   return {

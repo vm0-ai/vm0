@@ -26,7 +26,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@vm0/ui";
-import { FeatureSwitchKey } from "@vm0/core";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   featureSwitch$,
   trinityEnabled$,
@@ -50,6 +50,7 @@ import {
 } from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
 import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
+import { AttachmentLightbox } from "./zero-attachment-chips.tsx";
 import { orgModelProviders$ } from "../../signals/external/org-model-providers.ts";
 import {
   chatPageInput$,
@@ -59,6 +60,7 @@ import {
   chatPageTaglineIndex$,
   suggestedPrompts$,
 } from "../../signals/zero-page/zero-chat-page.ts";
+import { lightboxUrl$ as attachmentLightboxUrl$ } from "../../signals/zero-page/zero-attachment-chips.ts";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { activeRoute$ } from "../../signals/active-route.ts";
@@ -71,7 +73,7 @@ import {
   startNewZeroSession$,
 } from "../../signals/chat-page/chat-message.ts";
 import { navigateToChat$ } from "../../signals/zero-page/zero-nav.ts";
-import { vccStatus$ } from "../../signals/voice-chat-candidate/voice-chat-candidate-session.ts";
+import { voiceChatStatus$ } from "../../signals/voice-chat/voice-chat-session.ts";
 
 function getTagline(
   agentName: string,
@@ -276,7 +278,7 @@ function PinPill() {
 
 export function VoiceChatLauncher() {
   const trinityEnabled = useLastResolved(trinityEnabled$) ?? false;
-  const vccStatus = useGet(vccStatus$);
+  const voiceChatStatus = useGet(voiceChatStatus$);
   const activeRoute = useGet(activeRoute$);
   const currentChatAgentId = useLastResolved(currentChatAgentId$);
   const navigate = useSet(detachedNavigateTo$);
@@ -296,8 +298,8 @@ export function VoiceChatLauncher() {
     });
   };
 
-  const isConnecting = onTalk && vccStatus === "connecting";
-  const isConnected = onTalk && vccStatus === "connected";
+  const isConnecting = onTalk && voiceChatStatus === "connecting";
+  const isConnected = onTalk && voiceChatStatus === "connected";
   const colorClass = isConnected
     ? "text-green-600 hover:text-green-700"
     : isConnecting
@@ -439,9 +441,10 @@ export function AgentChatPage() {
         )
       : "";
 
-  const suggestedPrompts = useGet(suggestedPrompts$);
+  const suggestedPrompts = useLastResolved(suggestedPrompts$) ?? [];
   const navigate = useSet(detachedNavigateTo$);
   const pageSignal = useGet(pageSignal$);
+  const lightboxUrl = useGet(attachmentLightboxUrl$);
 
   const handleSend = (text: string) => {
     setInput("");
@@ -568,6 +571,7 @@ export function AgentChatPage() {
           </div>
         </div>
       </main>
+      {lightboxUrl && <AttachmentLightbox />}
     </div>
   );
 }

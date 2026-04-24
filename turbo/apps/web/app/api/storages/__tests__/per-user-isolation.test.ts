@@ -8,7 +8,7 @@ import {
 } from "../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../src/__tests__/clerk-mock";
-import { VOLUME_ORG_USER_ID } from "@vm0/core";
+import { VOLUME_ORG_USER_ID } from "@vm0/core/storage-names";
 
 const context = testContext();
 

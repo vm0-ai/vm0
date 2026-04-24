@@ -4,6 +4,7 @@ import type { ConnectorConfig } from "../connectors";
 export const outlookMail = {
   "outlook-mail": {
     label: "Outlook Mail",
+    category: "communication-collaboration",
     environmentMapping: {
       OUTLOOK_MAIL_TOKEN: "$secrets.OUTLOOK_MAIL_ACCESS_TOKEN",
     },

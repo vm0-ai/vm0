@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const googleSheets = {
   "google-sheets": {
     label: "Google Sheets",
+    category: "docs-files-knowledge",
     environmentMapping: {
       GOOGLE_SHEETS_TOKEN: "$secrets.GOOGLE_SHEETS_ACCESS_TOKEN",
     },

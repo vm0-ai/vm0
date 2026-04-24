@@ -13,9 +13,7 @@ export const CHAT_REQUEST_OPS = {
   resolve_thread_get_thread: "api_chat_send_resolve_thread_get_thread",
   resolve_thread_session_id: "api_chat_send_resolve_thread_session_id",
   resolve_thread_get_messages: "api_chat_send_resolve_thread_get_messages",
-  resolve_thread_has_any_run: "api_chat_send_resolve_thread_has_any_run",
   resolve_thread_incomplete: "api_chat_send_resolve_thread_incomplete",
-  resolve_thread_continue_from: "api_chat_send_resolve_thread_continue_from",
   resolve_model_override: "api_chat_send_resolve_model_override",
   create_run_round1_agent: "api_chat_send_create_run_round1_agent",
   create_run_round1_compose: "api_chat_send_create_run_round1_compose",
@@ -24,8 +22,16 @@ export const CHAT_REQUEST_OPS = {
   create_run_round2_custom_connectors:
     "api_chat_send_create_run_round2_custom_connectors",
   create_run_round2_org_meta: "api_chat_send_create_run_round2_org_meta",
+  create_run_round2_user_context:
+    "api_chat_send_create_run_round2_user_context",
+  // Retained for back-compat of Axiom dashboards reading historical series;
+  // no longer emitted — fused into `..._round2_user_context`.
   create_run_round2_user_prefs: "api_chat_send_create_run_round2_user_prefs",
+  // Retained for back-compat of Axiom dashboards reading historical series;
+  // no longer emitted — fused into `..._round2_user_context`.
   create_run_round2_feature_sw: "api_chat_send_create_run_round2_feature_sw",
+  // Retained for back-compat of Axiom dashboards reading historical series;
+  // no longer emitted — compose content is now fetched in Round 1.
   create_run_round2_load_compose:
     "api_chat_send_create_run_round2_load_compose",
   create_run_round3_credits: "api_chat_send_create_run_round3_credits",

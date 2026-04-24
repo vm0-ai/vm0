@@ -2143,6 +2143,34 @@
       "when": 1776923396136,
       "tag": "0305_billing_error",
       "breakpoints": true
+    },
+    {
+      "idx": 306,
+      "version": "7",
+      "when": 1776939873298,
+      "tag": "0306_lame_vargas",
+      "breakpoints": true
+    },
+    {
+      "idx": 307,
+      "version": "7",
+      "when": 1776939874298,
+      "tag": "0307_flatten_artifact_scalars",
+      "breakpoints": true
+    },
+    {
+      "idx": 308,
+      "version": "7",
+      "when": 1776991913173,
+      "tag": "0308_unify_artifact_shape",
+      "breakpoints": true
+    },
+    {
+      "idx": 309,
+      "version": "7",
+      "when": 1776991913174,
+      "tag": "0309_remove_phone_imessage_integration",
+      "breakpoints": true
     }
   ]
 }

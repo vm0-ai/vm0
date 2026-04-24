@@ -12,7 +12,7 @@ import {
 import { allOrgScheduleEntries$ } from "./zero-schedule.ts";
 import { zeroActivityDetail$ } from "../../signals/activity-page/activity-signals.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
-import { FeatureSwitchKey } from "@vm0/core";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 interface MobileBreadcrumb {
   section: string;
@@ -99,7 +99,7 @@ const teamDetailBreadcrumb$ = computed(
 const activityDetailBreadcrumb$ = computed(
   async (get): Promise<MobileBreadcrumb | null> => {
     const features = await get(featureSwitch$);
-    if (!features?.[FeatureSwitchKey.ActivityLogList]) {
+    if (!features?.[FeatureSwitchKey.ZeroDebug]) {
       return null;
     }
     const params = get(pathParams$) as Params;
@@ -199,7 +199,6 @@ export const mobileBreadcrumb$ = computed(
     > = {
       works: { label: "Works", path: ROUTES.works },
       settings: { label: "Settings", path: ROUTES.settings },
-      queues: { label: "Queue", path: ROUTES.queues },
       connectors: { label: "Connectors", path: ROUTES.connectors },
     };
     if (route) {

@@ -20,7 +20,10 @@ import {
 } from "drizzle-orm";
 import { z } from "zod";
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
-import { chatSearchContract, type ChatSearchMessage } from "@vm0/core";
+import {
+  chatSearchContract,
+  type ChatSearchMessage,
+} from "@vm0/core/contracts/chat-threads";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
   requireAuth,

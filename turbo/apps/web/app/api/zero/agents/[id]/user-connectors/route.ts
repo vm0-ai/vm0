@@ -1,5 +1,6 @@
 import { createHandler, tsr } from "../../../../../../src/lib/ts-rest-handler";
-import { zeroUserConnectorsContract, connectorTypeSchema } from "@vm0/core";
+import { zeroUserConnectorsContract } from "@vm0/core/contracts/user-connectors";
+import { connectorTypeSchema } from "@vm0/core/contracts/connectors";
 import { initServices } from "../../../../../../src/lib/init-services";
 import {
   requireAuth,

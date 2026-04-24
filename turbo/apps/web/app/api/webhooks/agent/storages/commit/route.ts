@@ -1,5 +1,6 @@
 import { createHandler, tsr } from "../../../../../../src/lib/ts-rest-handler";
-import { webhookStoragesCommitContract, VOLUME_ORG_USER_ID } from "@vm0/core";
+import { webhookStoragesCommitContract } from "@vm0/core/contracts/webhooks";
+import { VOLUME_ORG_USER_ID } from "@vm0/core/storage-names";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
 import {

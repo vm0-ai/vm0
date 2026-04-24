@@ -1,6 +1,6 @@
 import { vi } from "vitest";
 import { http as mswHttp, HttpResponse } from "msw";
-import type { ConnectorType } from "@vm0/core";
+import type { ConnectorType } from "@vm0/core/contracts/connectors";
 import { server } from "../../mocks/server";
 import { reloadEnv } from "../../env";
 import { GET as connectorCallbackRoute } from "../../../app/api/connectors/[type]/callback/route";

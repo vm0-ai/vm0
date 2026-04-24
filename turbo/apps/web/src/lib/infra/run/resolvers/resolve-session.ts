@@ -120,22 +120,20 @@ export async function resolveSession(
   const [lastRun] = lastRunResult;
   const lastRunVars =
     (lastRun?.vars as Record<string, string> | null) ?? undefined;
+  const workingDir = extractWorkingDir(version.content);
 
   return {
     conversationId: session.conversationId,
     agentComposeVersionId: versionId,
     agentCompose: version.content,
-    workingDir: extractWorkingDir(version.content),
+    workingDir,
     conversationData: {
       cliAgentSessionId: conversation.cliAgentSessionId,
       cliAgentSessionHistory: sessionHistory,
     },
-    artifactName: session.artifactName ?? undefined,
-    artifactVersion: session.artifactName ? "latest" : undefined,
-    memoryName: session.memoryName ?? undefined,
+    artifacts: session.artifacts,
     vars: lastRunVars,
     volumeVersions: undefined,
-    buildResumeArtifact: !!session.artifactName,
     previousRunId: conversation.runId,
   };
 }

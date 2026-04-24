@@ -1,13 +1,16 @@
-import type { AdditionalArtifact, AdditionalVolume } from "../storage/types";
-import type { Firewalls, NetworkPolicies } from "@vm0/core";
+import type { AdditionalVolume } from "../storage/types";
+import type { Firewalls, NetworkPolicies } from "@vm0/core/contracts/firewalls";
 
 /**
- * Single-artifact reference used by resume flows.
- * Fields align with CLI parameters --artifact-name and --artifact-version.
+ * Artifact entry on an ExecutionContext: a name, optional version ("latest"
+ * when undefined), and an explicit mount path. Replaces the old split between
+ * "primary" (name→version map, mount forced to working_dir) and "additional"
+ * (list with explicit mount paths). Every entry now carries its own mount.
  */
-export interface ArtifactSnapshot {
-  artifactName: string;
-  artifactVersion: string;
+export interface ContextArtifact {
+  name: string;
+  version?: string;
+  mountPath: string;
 }
 
 /**
@@ -69,13 +72,10 @@ export interface ExecutionContext {
   secretConnectorMap?: Record<string, string>; // Secret name → connector type for OAuth refresh
   sandboxToken: string;
 
-  // Artifact settings (new runs only)
-  artifactName?: string;
-  artifactVersion?: string;
-
-  // Additional artifacts passed at run time (beyond the primary artifact
-  // derived from compose working_dir). Each entry carries its own mountPath.
-  artifacts?: AdditionalArtifact[];
+  // Artifacts: unified list where every entry carries its own mountPath.
+  // Version is optional — undefined means "latest". New runs use undefined or
+  // "latest"; resume paths inject concrete version IDs from snapshots.
+  artifacts?: ContextArtifact[];
 
   // Volume version overrides (volume name -> version)
   volumeVersions?: Record<string, string>;
@@ -108,7 +108,6 @@ export interface ExecutionContext {
 
   // Resume-specific (optional)
   resumeSession?: ResumeSession;
-  resumeArtifact?: ArtifactSnapshot;
 
   // Metadata for vm0_start event
   agentName?: string;

@@ -23,19 +23,21 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
-  FeatureSwitchKey,
   chatMessagesContract,
   chatThreadByIdContract,
   chatThreadMessagesContract,
+} from "@vm0/core/contracts/chat-threads";
+import {
   zeroAgentsByIdContract,
   zeroAgentInstructionsContract,
-  type ModelProviderResponse,
-} from "@vm0/core";
+} from "@vm0/core/contracts/zero-agents";
+import type { ModelProviderResponse } from "@vm0/core/contracts/model-providers";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 import {
   setMockOrgModelProviders,
@@ -51,6 +53,7 @@ import {
 } from "../../../mocks/handlers/api-onboarding.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 const AGENT_ID = "e0000000-0000-4000-a000-000000000010";
 
@@ -171,6 +174,12 @@ function mockOrgProviders(options: {
 function mockThread(options: {
   modelProviderId: string | null;
   selectedModel: string | null;
+  messages?: {
+    id: string;
+    role: "user" | "assistant";
+    content: string;
+    createdAt: string;
+  }[];
 }) {
   server.use(
     mockApi(chatThreadByIdContract.get, ({ respond }) => {
@@ -191,7 +200,7 @@ function mockThread(options: {
       });
     }),
     mockApi(chatThreadMessagesContract.list, ({ respond }) => {
-      return respond(200, { messages: [] });
+      return respond(200, { messages: options.messages ?? [] });
     }),
     mockApi(chatMessagesContract.send, ({ respond }) => {
       return respond(201, {
@@ -359,6 +368,14 @@ describe("chat composer — default model resolution", () => {
     mockThread({
       modelProviderId: ZAI_PROVIDER_ID,
       selectedModel: "glm-5.1",
+      messages: [
+        {
+          id: "msg-user-1",
+          role: "user" as const,
+          content: "Use GLM",
+          createdAt: "2026-03-10T00:01:00Z",
+        },
+      ],
     });
 
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });

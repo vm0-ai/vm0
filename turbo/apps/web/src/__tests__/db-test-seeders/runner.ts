@@ -1,4 +1,4 @@
-import type { StoredExecutionContext } from "@vm0/core";
+import type { StoredExecutionContext } from "@vm0/core/contracts/runners";
 import { initServices } from "../../lib/init-services";
 import { runnerJobQueue } from "../../db/schema/runner-job-queue";
 import { runnerState } from "../../db/schema/runner-state";

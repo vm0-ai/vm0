@@ -4,6 +4,7 @@ import type { ConnectorConfig } from "../connectors";
 export const mercury = {
   mercury: {
     label: "Mercury",
+    category: "sales-crm-business-operations",
     environmentMapping: {
       MERCURY_TOKEN: "$secrets.MERCURY_ACCESS_TOKEN",
     },

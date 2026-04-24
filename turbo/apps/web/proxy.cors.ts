@@ -20,59 +20,91 @@ const allowedOrigins = [
  * @param origin - The origin header from the request
  * @returns true if origin is allowed for the current environment
  */
-function isOriginAllowed(origin: string | null): boolean {
-  if (!origin) return false;
+function getAllowedOrigin(origin: string | null): string | null {
+  if (!origin) return null;
 
-  // Check exact match against allowlist
-  if (allowedOrigins.includes(origin)) return true;
+  try {
+    const url = new URL(origin);
+    const normalizedOrigin = url.origin;
+    const { hostname, protocol } = url;
 
-  const url = new URL(origin);
-  const hostname = url.hostname;
+    // Check exact match against allowlist
+    if (allowedOrigins.includes(normalizedOrigin)) return normalizedOrigin;
 
-  // Always allow *.vm0.ai subdomains
-  if (hostname.endsWith(".vm0.ai")) return true;
+    // Only localhost is allowed over http, and only in development.
+    const allowHttpLocalhost =
+      env().NODE_ENV === "development" &&
+      protocol === "http:" &&
+      hostname === "localhost";
+    if (!allowHttpLocalhost && protocol !== "https:") return null;
 
-  // Preview environment: additionally allow *.vm6.ai
-  if (env().VERCEL_ENV === "preview") {
-    if (hostname.endsWith(".vm6.ai")) return true;
+    // Always allow *.vm0.ai subdomains
+    if (hostname.endsWith(".vm0.ai")) return normalizedOrigin;
+
+    // Preview environment: additionally allow *.vm6.ai
+    if (env().VERCEL_ENV === "preview" && hostname.endsWith(".vm6.ai")) {
+      return normalizedOrigin;
+    }
+
+    // Development environment: additionally allow localhost, *.vm6.ai, *.vm7.ai
+    if (env().NODE_ENV === "development") {
+      if (hostname === "localhost") return normalizedOrigin;
+      if (hostname.endsWith(".vm6.ai")) return normalizedOrigin;
+      if (hostname.endsWith(".vm7.ai")) return normalizedOrigin;
+    }
+  } catch {
+    return null;
   }
 
-  // Development environment: additionally allow localhost and *.vm6.ai
-  if (env().NODE_ENV === "development") {
-    if (hostname === "localhost") return true;
-    if (hostname.endsWith(".vm6.ai")) return true;
-    if (hostname.endsWith(".vm7.ai")) return true;
-  }
+  return null;
+}
 
-  return false;
+export function applyCorsHeaders(
+  request: NextRequest,
+  response: NextResponse,
+): NextResponse {
+  const allowedOrigin = getAllowedOrigin(request.headers.get("origin"));
+  if (allowedOrigin) {
+    setAllowedOriginHeaders(response, allowedOrigin);
+  }
+  return response;
+}
+
+function setAllowedOriginHeaders(
+  response: NextResponse,
+  allowedOrigin: string,
+): void {
+  // allowedOrigin comes only from getAllowedOrigin's exact allowlist or
+  // environment-scoped subdomain gates; CORS cannot use "*" with credentials.
+  // nosemgrep: javascript.express.security.cors-misconfiguration.cors-misconfiguration
+  response.headers.set("Access-Control-Allow-Origin", allowedOrigin);
+  response.headers.set("Access-Control-Allow-Credentials", "true");
+  response.headers.set("Vary", "Origin");
 }
 
 export function handleCors(request: NextRequest) {
-  const origin = request.headers.get("origin");
+  const allowedOrigin = getAllowedOrigin(request.headers.get("origin"));
 
   // Only set CORS headers if there's an origin (browser requests)
-  if (origin && isOriginAllowed(origin)) {
+  if (allowedOrigin) {
     // Handle preflight requests — return a fresh response without
     // x-middleware-next so Next.js does NOT forward to the route handler.
     if (request.method === "OPTIONS") {
-      return new NextResponse(null, {
+      const response = new NextResponse(null, {
         status: 200,
         headers: {
-          "Access-Control-Allow-Origin": origin,
-          "Access-Control-Allow-Credentials": "true",
           "Access-Control-Allow-Methods":
             "GET, POST, PUT, DELETE, PATCH, OPTIONS",
           "Access-Control-Allow-Headers":
-            "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization",
+            "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization, Range",
           "Access-Control-Max-Age": "86400",
         },
       });
+      setAllowedOriginHeaders(response, allowedOrigin);
+      return response;
     }
 
-    const response = NextResponse.next();
-    response.headers.set("Access-Control-Allow-Origin", origin);
-    response.headers.set("Access-Control-Allow-Credentials", "true");
-    return response;
+    return applyCorsHeaders(request, NextResponse.next());
   }
 
   return NextResponse.next();

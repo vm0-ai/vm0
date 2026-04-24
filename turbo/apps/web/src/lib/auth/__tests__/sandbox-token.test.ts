@@ -17,10 +17,11 @@ import {
 
 // SECRETS_ENCRYPTION_KEY is set in setup.ts
 
-// Mock isFeatureEnabled from @vm0/core for conditional capability tests
+// Mock isFeatureEnabled from @vm0/core/feature-switch for conditional capability tests
 const mockIsFeatureEnabled = vi.fn();
-vi.mock("@vm0/core", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@vm0/core")>();
+vi.mock("@vm0/core/feature-switch", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@vm0/core/feature-switch")>();
   return {
     ...actual,
     isFeatureEnabled: (...args: unknown[]) => {

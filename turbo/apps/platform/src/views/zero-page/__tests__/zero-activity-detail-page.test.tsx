@@ -3,18 +3,17 @@ import { screen, waitFor } from "@testing-library/react";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
-import {
-  FeatureSwitchKey,
-  logsByIdContract,
-  zeroRunAgentEventsContract,
-} from "@vm0/core";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { logsByIdContract } from "@vm0/core/contracts/logs";
+import { zeroRunAgentEventsContract } from "@vm0/core/contracts/zero-runs";
 import type {
   LogDetail,
   AgentEventsResponse,
 } from "../../../signals/zero-page/log-types.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 function mockActivityDetailAPI() {
   const logDetail: LogDetail = {
@@ -86,13 +85,13 @@ describe("zeroActivityDetailPage", () => {
     expect(screen.getByText("9.0s")).toBeInTheDocument();
   });
 
-  it("should hide Activity breadcrumb when ActivityLogList switch is off", async () => {
+  it("should hide Activity breadcrumb when ZeroDebug switch is off", async () => {
     mockActivityDetailAPI();
 
     detachedSetupPage({
       context,
       path: "/activities/a0000000-0000-4000-a000-000000000001",
-      featureSwitches: { [FeatureSwitchKey.ActivityLogList]: false },
+      featureSwitches: { [FeatureSwitchKey.ZeroDebug]: false },
     });
 
     await waitFor(() => {
@@ -108,13 +107,13 @@ describe("zeroActivityDetailPage", () => {
     expect(activityLinks).toHaveLength(0);
   });
 
-  it("should show Activity breadcrumb when ActivityLogList switch is on", async () => {
+  it("should show Activity breadcrumb when ZeroDebug switch is on", async () => {
     mockActivityDetailAPI();
 
     detachedSetupPage({
       context,
       path: "/activities/a0000000-0000-4000-a000-000000000001",
-      featureSwitches: { [FeatureSwitchKey.ActivityLogList]: true },
+      featureSwitches: { [FeatureSwitchKey.ZeroDebug]: true },
     });
 
     await waitFor(() => {
@@ -301,7 +300,7 @@ describe("zeroActivityDetailPage", () => {
     detachedSetupPage({
       context,
       path: "/activities/a0000000-0000-4000-a000-000000000004",
-      featureSwitches: { [FeatureSwitchKey.ShowSystemPrompt]: true },
+      featureSwitches: { [FeatureSwitchKey.ZeroDebug]: true },
     });
 
     // Wait for System Prompt card to appear

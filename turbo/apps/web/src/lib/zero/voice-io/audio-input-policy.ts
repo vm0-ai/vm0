@@ -1,4 +1,4 @@
-import type { OrgTier } from "@vm0/core";
+import type { OrgTier } from "@vm0/core/contracts/orgs";
 import { getCount } from "../behavior/user-behavior-count-service";
 
 export const AUDIO_INPUT_FREE_QUOTA = 10;

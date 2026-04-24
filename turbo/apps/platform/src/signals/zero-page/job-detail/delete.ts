@@ -1,6 +1,6 @@
 import { command } from "ccstate";
 import { toast } from "@vm0/ui/components/ui/sonner";
-import { zeroAgentsByIdContract } from "@vm0/core";
+import { zeroAgentsByIdContract } from "@vm0/core/contracts/zero-agents";
 import { zeroClient$ } from "../../api-client.ts";
 import { accept } from "../../../lib/accept.ts";
 import { zeroJobDetail$ } from "./detail.ts";
