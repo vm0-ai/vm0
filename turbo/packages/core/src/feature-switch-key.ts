@@ -36,7 +36,6 @@ export enum FeatureSwitchKey {
   AuditLink = "auditLink",
   AudioInput = "audioInput",
   AudioOutput = "audioOutput",
-  AutoSkill = "autoSkill",
   TestOauthConnector = "testOauthConnector",
   ChatHeaderNewButton = "chatHeaderNewButton",
   ChatThreadReadIndicator = "chatThreadReadIndicator",

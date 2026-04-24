@@ -198,11 +198,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable audio output in chat (TTS read-aloud + auto-read) — gates the volume/read buttons and the /api/zero/voice-io/tts route",
     enabled: false,
   },
-  [FeatureSwitchKey.AutoSkill]: {
-    maintainer: "lancy@vm0.ai",
-    description: "Enable automatic skill creation in agent prompts",
-    enabled: false,
-  },
   [FeatureSwitchKey.TestOauthConnector]: {
     maintainer: "liangyou@vm0.ai",
     description:

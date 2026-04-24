@@ -5,7 +5,6 @@ import {
   getCustomSkillStorageName,
   getSkillStorageName,
 } from "@vm0/core/storage-names";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { orgTierSchema } from "@vm0/core/contracts/orgs";
 import { resolveFirewallPolicies } from "@vm0/core/firewalls";
@@ -47,11 +46,7 @@ import { buildZeroExecutionContext } from "./build-zero-context";
 import { buildAutoMemoryArtifact } from "./memory";
 import { getOrgMetadata, type OrgMetadata } from "./org/org-metadata-service";
 import { isConcurrentRunLimit } from "../shared/errors";
-import {
-  DISALLOWED_TOOLS,
-  buildAgentPrompt,
-  buildAutoSkillGuidance,
-} from "./agent-prompt";
+import { DISALLOWED_TOOLS, buildAgentPrompt } from "./agent-prompt";
 import { zeroAgents } from "../../db/schema/zero-agent";
 import { zeroRuns } from "../../db/schema/zero-run";
 import { userConnectors } from "../../db/schema/user-connector";
@@ -400,23 +395,12 @@ async function insertRunWithAdvisoryLock(
   };
 }
 
-/** Assemble the final system prompt from parts. Extracted to reduce complexity. */
 function assembleSystemPrompt(
   agentPrompt: string,
   userInfo: string,
   appendSystemPrompt: string | undefined,
-  featureOverrides: Partial<Record<FeatureSwitchKey, boolean>> | undefined,
-  orgId: string,
 ): string {
   const parts = [agentPrompt, userInfo];
-  if (
-    isFeatureEnabled(FeatureSwitchKey.AutoSkill, {
-      orgId,
-      overrides: featureOverrides,
-    })
-  ) {
-    parts.push(buildAutoSkillGuidance());
-  }
   if (appendSystemPrompt) {
     parts.push(appendSystemPrompt);
   }
@@ -615,8 +599,6 @@ async function createZeroRunRecord(
     agentPrompt,
     userInfo,
     params.appendSystemPrompt,
-    featureOverrides,
-    resolved.orgId,
   );
 
   // Construct CreateRunParams (infra knows nothing about ZERO_TOKEN)
