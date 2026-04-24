@@ -53,9 +53,15 @@ export const chatThreads = pgTable(
      * Slack-style watermark: the last timestamp up to which the user has read
      * messages in this thread. Forward-only — never rewound.
      * NULL means the thread has never been explicitly marked read.
-     * Used to derive `isRead` in the thread list query.
+     * Kept for compatibility with existing data; new read state is derived
+     * from `lastReadMessageId`.
      */
     lastReadAt: timestamp("last_read_at"),
+    /**
+     * ID of the latest message the user has marked read in this thread.
+     * NULL means the thread has never been explicitly marked read.
+     */
+    lastReadMessageId: uuid("last_read_message_id"),
     /**
      * Per-thread model override. When both fields are non-null the send route
      * uses this combination for the next run; otherwise it falls back to the
@@ -82,6 +88,10 @@ export const chatThreads = pgTable(
       index("idx_chat_threads_user_last_read").on(
         table.userId,
         table.lastReadAt,
+      ),
+      index("idx_chat_threads_user_last_read_message").on(
+        table.userId,
+        table.lastReadMessageId,
       ),
     ];
   },

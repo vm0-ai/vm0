@@ -1,4 +1,4 @@
-import { eq, and, desc, inArray, isNull, sql, or, lt } from "drizzle-orm";
+import { eq, and, desc, inArray, isNull, sql } from "drizzle-orm";
 import { chatThreads } from "../../../db/schema/chat-thread";
 import { chatMessages } from "../../../db/schema/chat-message";
 import { zeroRuns } from "../../../db/schema/zero-run";
@@ -83,10 +83,11 @@ export async function listChatThreads(
 > {
   const lastMessage = globalThis.services.db
     .select({
+      id: chatMessages.id,
       chatThreadId: chatMessages.chatThreadId,
       createdAt: chatMessages.createdAt,
       archivedAt: chatMessages.archivedAt,
-      rn: sql<number>`ROW_NUMBER() OVER (PARTITION BY ${chatMessages.chatThreadId} ORDER BY ${chatMessages.createdAt} DESC)`.as(
+      rn: sql<number>`ROW_NUMBER() OVER (PARTITION BY ${chatMessages.chatThreadId} ORDER BY ${chatMessages.createdAt} DESC, ${chatMessages.id} DESC)`.as(
         "rn",
       ),
     })
@@ -111,9 +112,8 @@ export async function listChatThreads(
       createdAt: chatThreads.createdAt,
       updatedAt: chatThreads.updatedAt,
       isRead: sql<boolean>`CASE
-        WHEN ${lastMessage.createdAt} IS NULL THEN true
-        WHEN ${chatThreads.lastReadAt} IS NULL THEN false
-        ELSE ${chatThreads.lastReadAt} >= ${lastMessage.createdAt}
+        WHEN ${lastMessage.id} IS NULL THEN true
+        ELSE COALESCE(${chatThreads.lastReadMessageId} = ${lastMessage.id}, false)
       END`,
       lastMessageArchivedAt: lastMessage.archivedAt,
       running: sql<boolean>`EXISTS (
@@ -139,50 +139,43 @@ export async function listChatThreads(
 }
 
 /**
- * Advance the read cursor for a thread to `cursor` (default: server NOW()).
- * Forward-only: if the stored cursor is already >= cursor, it is not rewound.
- * Always returns the current `last_read_at` value after the operation.
+ * Mark a thread read up to its current latest message.
+ *
+ * Idempotent: when the stored message id already matches the latest message,
+ * no row is updated and callers should not emit realtime fanout.
  */
 export async function markThreadRead(
   userId: string,
   threadId: string,
-  cursor?: Date,
-): Promise<Date> {
-  const effectiveCursor = cursor
-    ? new Date(Math.min(cursor.getTime(), Date.now()))
-    : new Date();
-
-  const [updated] = await globalThis.services.db
-    .update(chatThreads)
-    .set({ lastReadAt: effectiveCursor })
-    .where(
-      and(
-        eq(chatThreads.id, threadId),
-        eq(chatThreads.userId, userId),
-        or(
-          isNull(chatThreads.lastReadAt),
-          lt(chatThreads.lastReadAt, effectiveCursor),
-        ),
-      ),
-    )
-    .returning({ lastReadAt: chatThreads.lastReadAt });
-
-  if (updated?.lastReadAt) {
-    return updated.lastReadAt;
-  }
-
-  // Guard rejected (cursor didn't advance) — return current value
-  const [current] = await globalThis.services.db
-    .select({ lastReadAt: chatThreads.lastReadAt })
+): Promise<{ lastReadMessageId: string | null; changed: boolean }> {
+  const [thread] = await globalThis.services.db
+    .select({ lastReadMessageId: chatThreads.lastReadMessageId })
     .from(chatThreads)
     .where(and(eq(chatThreads.id, threadId), eq(chatThreads.userId, userId)))
     .limit(1);
 
-  if (!current) {
+  if (!thread) {
     throw notFound("Chat thread not found");
   }
 
-  return current.lastReadAt ?? new Date(0);
+  const [latestMessage] = await globalThis.services.db
+    .select({ id: chatMessages.id })
+    .from(chatMessages)
+    .where(eq(chatMessages.chatThreadId, threadId))
+    .orderBy(desc(chatMessages.createdAt), desc(chatMessages.id))
+    .limit(1);
+
+  const latestMessageId = latestMessage?.id ?? null;
+  if (thread.lastReadMessageId === latestMessageId) {
+    return { lastReadMessageId: latestMessageId, changed: false };
+  }
+
+  await globalThis.services.db
+    .update(chatThreads)
+    .set({ lastReadMessageId: latestMessageId })
+    .where(and(eq(chatThreads.id, threadId), eq(chatThreads.userId, userId)));
+
+  return { lastReadMessageId: latestMessageId, changed: true };
 }
 
 /**

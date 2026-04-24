@@ -50,6 +50,7 @@ import { setupRedeemCampaignPage$ } from "./redeem-campaign/redeem-campaign-page
 import { setupRealtime$ } from "./realtime.ts";
 import { setupPwaEdgeSwipe$ } from "./zero-page/pwa-edge-swipe.ts";
 import { setupSidebarShortcut$ } from "./zero-page/zero-nav.ts";
+import { detach, Reason } from "./utils.ts";
 
 /**
  * Catch-all fallback — redirects unknown paths to /.
@@ -313,23 +314,23 @@ export const bootstrap$ = command(
 
     set(handleBillingRedirect$);
     set(handleSlackRedirect$);
-    await set(setupRealtime$, signal);
+    detach(set(startSkeletonCycling$, signal), Reason.Daemon, "app-skeleton");
 
     await Promise.all([
+      set(setupRealtime$, signal),
       set(setupGlobalMethod$, signal),
       set(registerServiceWorker$, signal),
       set(setupNotificationListener$, signal),
       set(setupInstallPrompt$, signal),
       set(setupPwaEdgeSwipe$, signal),
       set(setupSidebarShortcut$, signal),
-      set(startSkeletonCycling$, signal),
       (async () => {
         await set(setupClerk$, signal);
         await set(watchOrgSwitch$, signal);
       })(),
-      set(setupRoutes$, signal),
     ]);
 
+    await set(setupRoutes$, signal);
     signal.throwIfAborted();
   },
 );

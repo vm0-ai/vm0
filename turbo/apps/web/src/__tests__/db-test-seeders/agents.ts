@@ -373,9 +373,9 @@ export async function createTestSessionWithConversation(
 /**
  * Set last_read_at on a chat thread directly in the database.
  *
- * @why-db-direct The mark-read API sets last_read_at via a forward-only
- * cursor (it never rewinds). Tests that need to seed a specific lastReadAt
- * value (including null) must bypass the API to avoid the forward-only guard.
+ * @why-db-direct Legacy tests may need to seed the compatibility timestamp
+ * field directly. The mark-read API now derives read state from
+ * last_read_message_id instead.
  */
 export async function setTestChatThreadLastReadAt(
   threadId: string,
@@ -385,6 +385,23 @@ export async function setTestChatThreadLastReadAt(
   await globalThis.services.db
     .update(chatThreads)
     .set({ lastReadAt })
+    .where(eq(chatThreads.id, threadId));
+}
+
+/**
+ * Set last_read_message_id on a chat thread directly in the database.
+ *
+ * @why-db-direct Tests need to seed exact read state without invoking the
+ * mark-read API, which derives the value from the current latest message.
+ */
+export async function setTestChatThreadLastReadMessageId(
+  threadId: string,
+  lastReadMessageId: string | null,
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .update(chatThreads)
+    .set({ lastReadMessageId })
     .where(eq(chatThreads.id, threadId));
 }
 

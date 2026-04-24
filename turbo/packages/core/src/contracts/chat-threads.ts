@@ -235,7 +235,7 @@ export const chatThreadByIdContract = c.router({
 });
 
 /**
- * Mark a chat thread as read (Slack-style watermark).
+ * Mark a chat thread as read up to its current latest message.
  * Separate contract so it can be served by its own route file.
  */
 export const chatThreadMarkReadContract = c.router({
@@ -244,15 +244,16 @@ export const chatThreadMarkReadContract = c.router({
     path: "/api/zero/chat-threads/:id/mark-read",
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.string() }),
-    body: z.object({
-      cursor: z.string().datetime().optional(),
-    }),
+    body: c.noBody(),
     responses: {
-      200: z.object({ lastReadAt: z.string() }),
+      200: z.object({
+        lastReadMessageId: z.string().nullable(),
+        changed: z.boolean(),
+      }),
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Mark a chat thread as read up to the given cursor",
+    summary: "Mark a chat thread as read up to the latest message",
   },
 });
 

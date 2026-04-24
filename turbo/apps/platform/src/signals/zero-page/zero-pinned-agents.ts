@@ -1,23 +1,19 @@
-import { command, computed, state } from "ccstate";
-import { zeroUserPreferencesContract } from "@vm0/core/contracts/zero-user-preferences";
-import { accept } from "../../lib/accept.ts";
-import { zeroClient$ } from "../api-client.ts";
-import { clerk$ } from "../auth.ts";
+import { command, computed } from "ccstate";
 import { zeroOnboardingStatus$ } from "./zero-onboarding.ts";
 import { agents$, defaultAgentId$ } from "../agent.ts";
 import { currentChatAgentId$ } from "../agent-chat.ts";
-
-const reloadPinned$ = state(0);
+import {
+  reloadUserPreferences$,
+  updateUserPreference$,
+  userPreferences$,
+} from "./settings/user-preferences.ts";
 
 /**
  * Pinned agent IDs fetched from user preferences API.
  */
 const serverPinnedIds$ = computed(async (get) => {
-  get(reloadPinned$);
-  const createClient = get(zeroClient$);
-  const client = createClient(zeroUserPreferencesContract);
-  const result = await accept(client.get(), [200]);
-  return result.body.pinnedAgentIds;
+  const preferences = await get(userPreferences$);
+  return preferences.pinnedAgentIds;
 });
 
 /**
@@ -71,31 +67,10 @@ export const updatePinnedAgentIds$ = command(
       return id !== defaultAgentId;
     });
 
-    const createClient = get(zeroClient$);
-    const client = createClient(zeroUserPreferencesContract);
-    await accept(
-      client.update({
-        body: { pinnedAgentIds: ids },
-        fetchOptions: { signal },
-      }),
-      [200],
-    );
-    signal.throwIfAborted();
-
-    const clerk = await get(clerk$);
-    signal.throwIfAborted();
-
-    await clerk.session?.getToken({ skipCache: true });
-    signal.throwIfAborted();
-
-    set(reloadPinned$, (x) => {
-      return x + 1;
-    });
+    await set(updateUserPreference$, { pinnedAgentIds: ids }, signal);
   },
 );
 
 export const reloadPinnedAgents$ = command(({ set }) => {
-  set(reloadPinned$, (x) => {
-    return x + 1;
-  });
+  set(reloadUserPreferences$);
 });

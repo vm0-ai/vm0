@@ -21,11 +21,7 @@ import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
 import { talkDraft$ } from "../zero-page/chat-draft.ts";
 import { prepareUserMessageFromDraft$ } from "./resolve-draft-attachments.ts";
 
-export {
-  chatThreads$,
-  currentChatThread$,
-  reloadChatThreads$,
-} from "../agent-chat.ts";
+export { chatThreads$, reloadChatThreads$ } from "../agent-chat.ts";
 
 export {
   zeroChatAttachments$,

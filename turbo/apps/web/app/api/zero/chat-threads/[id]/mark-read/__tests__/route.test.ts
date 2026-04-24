@@ -5,8 +5,8 @@ import {
   createTestRequest,
   createTestCompose,
   insertTestChatMessage,
-  setTestChatThreadLastReadAt,
-  getTestChatThreadLastReadAt,
+  setTestChatThreadLastReadMessageId,
+  getTestChatThreadLastReadMessageId,
 } from "../../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -50,8 +50,6 @@ describe("POST /api/zero/chat-threads/:id/mark-read", () => {
         `http://localhost:3000/api/zero/chat-threads/${threadId}/mark-read`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({}),
         },
       ),
     );
@@ -67,8 +65,6 @@ describe("POST /api/zero/chat-threads/:id/mark-read", () => {
         "http://localhost:3000/api/zero/chat-threads/00000000-0000-0000-0000-000000000000/mark-read",
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({}),
         },
       ),
     );
@@ -99,8 +95,6 @@ describe("POST /api/zero/chat-threads/:id/mark-read", () => {
         `http://localhost:3000/api/zero/chat-threads/${otherThreadId}/mark-read`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({}),
         },
       ),
     );
@@ -108,159 +102,152 @@ describe("POST /api/zero/chat-threads/:id/mark-read", () => {
     expect(response.status).toBe(404);
   });
 
-  it("advances last_read_at and returns new value", async () => {
-    const before = Date.now();
+  it("stores the current latest message id and returns it", async () => {
+    await insertTestChatMessage({
+      chatThreadId: threadId,
+      role: "assistant",
+      content: "older",
+      createdAt: new Date("2024-01-01T00:00:00Z"),
+    });
+    const latest = await insertTestChatMessage({
+      chatThreadId: threadId,
+      role: "assistant",
+      content: "latest",
+      createdAt: new Date("2024-01-01T00:01:00Z"),
+    });
+
     const response = await markRead(
       createTestRequest(
         `http://localhost:3000/api/zero/chat-threads/${threadId}/mark-read`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({}),
         },
       ),
     );
-    const after = Date.now();
     const data = await response.json();
 
     expect(response.status).toBe(200);
-    expect(data.lastReadAt).toBeDefined();
-
-    const lastReadAt = new Date(data.lastReadAt).getTime();
-    expect(lastReadAt).toBeGreaterThanOrEqual(before);
-    expect(lastReadAt).toBeLessThanOrEqual(after);
+    expect(data).toEqual({ lastReadMessageId: latest.id, changed: true });
+    await expect(getTestChatThreadLastReadMessageId(threadId)).resolves.toBe(
+      latest.id,
+    );
   });
 
-  it("does not rewind last_read_at when cursor is behind current", async () => {
-    // Set last_read_at to now
-    const firstRes = await markRead(
-      createTestRequest(
-        `http://localhost:3000/api/zero/chat-threads/${threadId}/mark-read`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({}),
-        },
-      ),
-    );
-    const { lastReadAt: firstValue } = await firstRes.json();
+  it("does not update or publish when latest message id has not changed", async () => {
+    const latest = await insertTestChatMessage({
+      chatThreadId: threadId,
+      role: "assistant",
+      content: "latest",
+    });
+    await setTestChatThreadLastReadMessageId(threadId, latest.id);
+    mockAblyPublish.mockClear();
 
-    // Try to set a cursor in the past — should be rejected (forward-only)
-    const pastCursor = new Date(
-      new Date(firstValue).getTime() - 60000,
-    ).toISOString();
-    const secondRes = await markRead(
-      createTestRequest(
-        `http://localhost:3000/api/zero/chat-threads/${threadId}/mark-read`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ cursor: pastCursor }),
-        },
-      ),
-    );
-    const { lastReadAt: secondValue } = await secondRes.json();
-
-    expect(secondRes.status).toBe(200);
-    // Value should be unchanged (cursor was not rewound)
-    expect(secondValue).toBe(firstValue);
-  });
-
-  it("is idempotent for the same cursor", async () => {
-    const cursor = new Date().toISOString();
-
-    const firstRes = await markRead(
-      createTestRequest(
-        `http://localhost:3000/api/zero/chat-threads/${threadId}/mark-read`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ cursor }),
-        },
-      ),
-    );
-    const { lastReadAt: first } = await firstRes.json();
-
-    const secondRes = await markRead(
-      createTestRequest(
-        `http://localhost:3000/api/zero/chat-threads/${threadId}/mark-read`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ cursor }),
-        },
-      ),
-    );
-    const { lastReadAt: second } = await secondRes.json();
-
-    expect(secondRes.status).toBe(200);
-    expect(second).toBe(first);
-  });
-
-  it("uses server time when no cursor provided", async () => {
-    const before = Date.now();
     const response = await markRead(
       createTestRequest(
         `http://localhost:3000/api/zero/chat-threads/${threadId}/mark-read`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({}),
         },
       ),
     );
-    const after = Date.now();
     const data = await response.json();
 
     expect(response.status).toBe(200);
-    const ts = new Date(data.lastReadAt).getTime();
-    expect(ts).toBeGreaterThanOrEqual(before);
-    expect(ts).toBeLessThanOrEqual(after);
+    expect(data).toEqual({ lastReadMessageId: latest.id, changed: false });
+    expect(mockAblyPublish).not.toHaveBeenCalled();
+  });
+
+  it("updates to a newer latest message id", async () => {
+    const older = await insertTestChatMessage({
+      chatThreadId: threadId,
+      role: "assistant",
+      content: "older",
+      createdAt: new Date("2024-01-01T00:00:00Z"),
+    });
+    const latest = await insertTestChatMessage({
+      chatThreadId: threadId,
+      role: "assistant",
+      content: "latest",
+      createdAt: new Date("2024-01-01T00:01:00Z"),
+    });
+    await setTestChatThreadLastReadMessageId(threadId, older.id);
+
+    const response = await markRead(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads/${threadId}/mark-read`,
+        {
+          method: "POST",
+        },
+      ),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data).toEqual({ lastReadMessageId: latest.id, changed: true });
+    await expect(getTestChatThreadLastReadMessageId(threadId)).resolves.toBe(
+      latest.id,
+    );
+  });
+
+  it("returns null and does not publish when the thread has no messages", async () => {
+    mockAblyPublish.mockClear();
+
+    const response = await markRead(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads/${threadId}/mark-read`,
+        {
+          method: "POST",
+        },
+      ),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data).toEqual({ lastReadMessageId: null, changed: false });
+    expect(mockAblyPublish).not.toHaveBeenCalled();
   });
 
   it("marks thread read so it shows as read in thread list", async () => {
-    // Insert a message so the thread is "unread" (last_read_at is null)
-    await insertTestChatMessage({
+    const message = await insertTestChatMessage({
       chatThreadId: threadId,
       role: "assistant",
       content: "hello",
     });
-    // Null out last_read_at to simulate an unread thread
-    await setTestChatThreadLastReadAt(threadId, null);
 
-    // Mark as read
     const markRes = await markRead(
       createTestRequest(
         `http://localhost:3000/api/zero/chat-threads/${threadId}/mark-read`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({}),
         },
       ),
     );
     expect(markRes.status).toBe(200);
 
-    // Verify DB state
-    const lastReadAt = await getTestChatThreadLastReadAt(threadId);
-    expect(lastReadAt).not.toBeNull();
+    await expect(getTestChatThreadLastReadMessageId(threadId)).resolves.toBe(
+      message.id,
+    );
   });
 
-  it("publishes Ably signal on mark-read", async () => {
+  it("publishes Ably signal when the read message id changes", async () => {
+    const message = await insertTestChatMessage({
+      chatThreadId: threadId,
+      role: "assistant",
+      content: "hello",
+    });
+
     await markRead(
       createTestRequest(
         `http://localhost:3000/api/zero/chat-threads/${threadId}/mark-read`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({}),
         },
       ),
     );
 
     expect(mockAblyPublish).toHaveBeenCalledWith(
       expect.stringContaining(`chatThreadReadCursorUpdated:${threadId}`),
-      expect.objectContaining({ lastReadAt: expect.any(String) }),
+      { lastReadMessageId: message.id },
     );
     expect(mockAblyPublish).toHaveBeenCalledWith("threadListChanged", null);
   });

@@ -248,14 +248,14 @@ describe("setupRealtime$ authCallback", () => {
     const store = createStore();
     const controller = new AbortController();
 
-    // First two calls succeed (bootstrap probe + initial auth). The third
-    // — standing in for Ably's proactive renewal — returns 500 so we can
-    // assert the authCallback's error path is wired up correctly.
+    // Initial auth succeeds. The next call — standing in for Ably's proactive
+    // renewal — returns 500 so we can assert the authCallback's error path is
+    // wired up correctly.
     let call = 0;
     server.use(
       mockApi(platformRealtimeTokenContract.create, ({ respond }) => {
         call += 1;
-        if (call >= 3) {
+        if (call >= 2) {
           return respond(500, {
             error: {
               code: "INTERNAL_SERVER_ERROR",

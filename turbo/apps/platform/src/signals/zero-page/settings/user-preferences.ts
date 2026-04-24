@@ -13,6 +13,12 @@ import { accept } from "../../../lib/accept.ts";
 
 const internalReloadPreferences$ = state(0);
 
+export const reloadUserPreferences$ = command(({ set }) => {
+  set(internalReloadPreferences$, (x) => {
+    return x + 1;
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Data fetching
 // ---------------------------------------------------------------------------
@@ -49,8 +55,6 @@ export const updateUserPreference$ = command(
     const clerk = await get(clerk$);
     await clerk.session?.getToken({ skipCache: true });
 
-    set(internalReloadPreferences$, (x) => {
-      return x + 1;
-    });
+    set(reloadUserPreferences$);
   },
 );

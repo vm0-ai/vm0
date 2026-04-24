@@ -2,7 +2,6 @@ import { command, state, type Command } from "ccstate";
 import { platformRealtimeTokenContract } from "@vm0/core/contracts/realtime";
 import { Realtime, type RealtimeChannel, type InboundMessage } from "ably";
 import { zeroClient$ } from "./api-client.ts";
-import { accept } from "../lib/accept.ts";
 import { createAblyAuthCallback } from "../lib/ably-auth.ts";
 import { createDeferredPromise, throwIfAbort } from "./utils.ts";
 import { logger } from "./log.ts";
@@ -80,20 +79,6 @@ export const setupRealtime$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const createClient = get(zeroClient$);
     const client = createClient(platformRealtimeTokenContract);
-
-    // Health-check the token endpoint so bootstrap surfaces auth errors
-    // before handing the session over to the Ably SDK.
-    await accept(
-      client.create({
-        body: {},
-        fetchOptions: { signal },
-      }),
-      [200],
-      {
-        toast: false,
-      },
-    );
-    signal.throwIfAborted();
 
     const ably = new Realtime({
       // Ably TokenRequest is single-use — see lib/ably-auth.ts for why

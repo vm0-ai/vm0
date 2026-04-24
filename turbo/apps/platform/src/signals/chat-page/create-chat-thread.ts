@@ -901,7 +901,6 @@ function createRunTracking(
     await accept(
       client.markRead({
         params: { id: threadId },
-        body: {},
         fetchOptions: { signal: sig },
       }),
       [200],
@@ -942,7 +941,7 @@ function createRunTracking(
 
       const onMessageCreated$ = command(async ({ set }, sig: AbortSignal) => {
         await set(fetchNextPage$, sig);
-        // Advance read cursor when a new message arrives while focused
+        // Advance read marker when a new message arrives while focused.
         if (document.visibilityState === "visible") {
           await set(markThreadRead$, sig);
         }

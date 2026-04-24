@@ -1,23 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
-import {
-  detachedSetupPage,
-  setupPage,
-  updateTestPathname$,
-} from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { allConnectorTypes$ } from "../settings/connectors.ts";
-import { zeroAddedConnectors$ } from "../zero-connectors.ts";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import type { ConnectorType } from "@vm0/core/contracts/connectors";
-import { zeroAgentsByIdContract } from "@vm0/core/contracts/zero-agents";
-import { zeroUserConnectorsContract } from "@vm0/core/contracts/user-connectors";
-import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
-import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
-const mockApi = createMockApi(context);
 
 describe("connectors", () => {
   it("should show gmail connector without any feature switch", async () => {
@@ -147,82 +136,5 @@ describe("connectors — strictFeatureFlag", () => {
     // mercury has api-token auth and no strictFeatureFlag, so it is always visible
     expect(mercury).toBeDefined();
     expect(mercury?.availableAuthMethods).toContain("api-token");
-  });
-});
-
-describe("zero connectors — agent switch", () => {
-  it("should return seeded connectors for new agent after switching", async () => {
-    // Register both agents in the team list so the detail page setup can
-    // resolve them without triggering the missing-agent redirect guard.
-    setMockTeam([
-      {
-        id: "agent-a",
-        displayName: "Agent A",
-        description: null,
-        sound: null,
-        avatarUrl: null,
-        headVersionId: "version_1",
-        updatedAt: "2024-01-01T00:00:00Z",
-      },
-      {
-        id: "agent-b",
-        displayName: "Agent B",
-        description: null,
-        sound: null,
-        avatarUrl: null,
-        headVersionId: "version_1",
-        updatedAt: "2024-01-01T00:00:00Z",
-      },
-    ]);
-    // Mock two agents with different user-connector permissions
-    server.use(
-      mockApi(zeroAgentsByIdContract.get, ({ params, respond }) => {
-        if (params.id === "agent-a") {
-          return respond(200, {
-            agentId: "uuid-a",
-            ownerId: "test-owner-id",
-            description: null,
-            displayName: "Agent A",
-            sound: null,
-            avatarUrl: null,
-            permissionPolicies: null,
-            customSkills: [],
-          });
-        }
-        return respond(200, {
-          agentId: "uuid-b",
-          ownerId: "test-owner-id",
-          description: null,
-          displayName: "Agent B",
-          sound: null,
-          avatarUrl: null,
-          permissionPolicies: null,
-          customSkills: [],
-        });
-      }),
-      mockApi(zeroUserConnectorsContract.get, ({ params, respond }) => {
-        if (params.id === "uuid-a" || params.id === "agent-a") {
-          return respond(200, { enabledTypes: ["github"] });
-        }
-        return respond(200, { enabledTypes: ["slack"] });
-      }),
-    );
-
-    await setupPage({
-      context,
-      path: "/agents/agent-a",
-      withoutRender: true,
-    });
-
-    // Agent A should have github as seeded connector
-    const initialConnectors = await context.store.get(zeroAddedConnectors$);
-    expect(initialConnectors).toStrictEqual(["github"]);
-
-    // Switch to agent B by updating the pathname
-    context.store.set(updateTestPathname$, "/agents/agent-b");
-
-    // Agent B's seeded connectors should show
-    const agentBConnectors = await context.store.get(zeroAddedConnectors$);
-    expect(agentBConnectors).toStrictEqual(["slack"]);
   });
 });

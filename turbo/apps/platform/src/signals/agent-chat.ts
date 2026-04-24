@@ -1,6 +1,5 @@
 import { command, computed, state } from "ccstate";
 import {
-  chatThreadByIdContract,
   chatThreadsContract,
   type ChatThreadListItem,
   type PersistedAttachment,
@@ -78,50 +77,6 @@ export interface ChatThread {
   modelProviderId: string | null;
   selectedModel: string | null;
 }
-
-// Note: `create-chat-thread.ts` has a near-identical `threadData$` inside
-// `createThreadData`. Both are intentionally kept:
-//  - `currentChatThread$` is a route-scoped computed read by
-//    `zero-connectors.ts` to resolve the current thread's agent.
-//  - `threadData$` lives inside the per-thread signal factory so it can be
-//    invalidated independently (reloadThread$) for the open chat page.
-// The `[200, 404]` accept list and `{ toast: false }` must stay aligned so
-// missing-thread redirects (see `chat-page-setup.ts`) behave consistently.
-export const currentChatThread$ = computed(
-  async (get): Promise<ChatThread | null> => {
-    const threadId = get(currentChatThreadId$);
-    if (!threadId) {
-      return null;
-    }
-
-    const threadClient = get(zeroClient$)(chatThreadByIdContract);
-
-    const threadResult = await accept(
-      threadClient.get({ params: { id: threadId } }),
-      [200, 404],
-      { toast: false },
-    );
-    if (threadResult.status === 404) {
-      return null;
-    }
-
-    const body = threadResult.body;
-    return {
-      id: threadId,
-      title: body.title ?? null,
-      agentId: body.agentId,
-      latestSessionId: body.latestSessionId ?? null,
-      latestSessionProviderType: body.latestSessionProviderType ?? null,
-      activeRunIds: body.activeRunIds,
-      activeRuns: body.activeRuns ?? [],
-      isLegacySession: false,
-      draftContent: body.draftContent ?? null,
-      draftAttachments: body.draftAttachments ?? null,
-      modelProviderId: body.modelProviderId ?? null,
-      selectedModel: body.selectedModel ?? null,
-    };
-  },
-);
 
 export const chatThreads$ = computed(async (get) => {
   get(reloadChatThreadsCounter$);

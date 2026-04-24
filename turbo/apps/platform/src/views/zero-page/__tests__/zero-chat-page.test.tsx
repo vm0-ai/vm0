@@ -13,6 +13,7 @@ import {
 import { getCategories } from "../zero-ideation-data.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
+import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -323,6 +324,86 @@ describe("zero chat page - connectors popover", () => {
     expect(
       screen.getByRole("switch", { name: "Add GitHub" }),
     ).toBeInTheDocument();
+  });
+
+  it("uses the current chat agent when loading composer connector permissions", async () => {
+    setMockTeam([
+      {
+        id: "agent-b",
+        displayName: "Agent B",
+        description: null,
+        sound: null,
+        avatarUrl: null,
+        headVersionId: "version_1",
+        updatedAt: "2024-01-01T00:00:00Z",
+      },
+    ]);
+    setMockConnectors([
+      {
+        id: crypto.randomUUID(),
+        type: "github",
+        authMethod: "oauth",
+        externalId: null,
+        externalUsername: null,
+        externalEmail: null,
+        oauthScopes: ["repo"],
+        needsReconnect: false,
+        createdAt: "2026-01-01T00:00:00Z",
+        updatedAt: "2026-01-01T00:00:00Z",
+      },
+      {
+        id: crypto.randomUUID(),
+        type: "slack",
+        authMethod: "oauth",
+        externalId: null,
+        externalUsername: null,
+        externalEmail: null,
+        oauthScopes: ["chat:write"],
+        needsReconnect: false,
+        createdAt: "2026-01-01T00:00:00Z",
+        updatedAt: "2026-01-01T00:00:00Z",
+      },
+    ]);
+    const connectorAgentIds: string[] = [];
+    server.use(
+      mockApi(zeroAgentsByIdContract.get, ({ params, respond }) => {
+        return respond(200, {
+          agentId: params.id === "agent-b" ? "uuid-b" : "uuid-default",
+          ownerId: "test-user-123",
+          description: null,
+          displayName: params.id === "agent-b" ? "Agent B" : null,
+          sound: null,
+          avatarUrl: null,
+          permissionPolicies: null,
+          customSkills: [],
+          modelProviderId: null,
+          selectedModel: null,
+        });
+      }),
+      mockApi(zeroUserConnectorsContract.get, ({ params, respond }) => {
+        connectorAgentIds.push(params.id);
+        return respond(200, {
+          enabledTypes: params.id === "uuid-b" ? ["slack"] : ["github"],
+        });
+      }),
+    );
+    mockChatAPI();
+    detachedSetupPage({ context, path: "/agents/agent-b/chat" });
+
+    const connectorsButton = await waitFor(() => {
+      return screen.getByLabelText("Connectors");
+    });
+    click(connectorsButton);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("switch", { name: "Remove Slack" }),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.getByRole("switch", { name: "Add GitHub" }),
+    ).toBeInTheDocument();
+    expect(connectorAgentIds).toContain("uuid-b");
   });
 });
 
