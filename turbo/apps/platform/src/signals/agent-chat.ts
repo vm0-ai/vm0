@@ -11,10 +11,7 @@ import { zeroClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";
 import { pathParams$ } from "./route.ts";
 import { activeRoute$ } from "./active-route.ts";
-import {
-  reloadChatThreads$,
-  reloadChatThreadsCounter$,
-} from "./chat-thread-list-reload.ts";
+import { reloadChatThreadsCounter$ } from "./chat-thread-list-reload.ts";
 
 export { reloadChatThreads$ } from "./chat-thread-list-reload.ts";
 
@@ -84,8 +81,8 @@ export interface ChatThread {
 
 // Note: `create-chat-thread.ts` has a near-identical `threadData$` inside
 // `createThreadData`. Both are intentionally kept:
-//  - `currentChatThread$` is a route-scoped computed used for sidebar title
-//    merging in `chatThreads$`.
+//  - `currentChatThread$` is a route-scoped computed read by
+//    `zero-connectors.ts` to resolve the current thread's agent.
 //  - `threadData$` lives inside the per-thread signal factory so it can be
 //    invalidated independently (reloadThread$) for the open chat page.
 // The `[200, 404]` accept list and `{ toast: false }` must stay aligned so
@@ -126,15 +123,6 @@ export const currentChatThread$ = computed(
   },
 );
 
-/**
- * Mark a thread as read in the sidebar by triggering a full reload.
- * Uses reload (rather than in-place patch) so the server's authoritative
- * `last_read_at` value is reflected without client-side bookkeeping.
- */
-export const patchThreadRead$ = command(({ set }, _threadId: string) => {
-  set(reloadChatThreads$);
-});
-
 export const chatThreads$ = computed(async (get) => {
   get(reloadChatThreadsCounter$);
 
@@ -148,16 +136,7 @@ export const chatThreads$ = computed(async (get) => {
     client.list({ query: { agentId: agentId } }),
     [200],
   );
-  const threads = result.body.threads;
-
-  const currentThread = await get(currentChatThread$);
-  return threads.map((t) => {
-    return {
-      ...t,
-      title:
-        t.id === currentThread?.id ? t.title || currentThread.title : t.title,
-    };
-  });
+  return result.body.threads;
 });
 
 /**

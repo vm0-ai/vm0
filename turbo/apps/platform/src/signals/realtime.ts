@@ -174,10 +174,13 @@ export const setAblyLoop$ = command(
       throw new Error("channel not estibilished");
     }
 
-    const done = await set(loopCommand$, signal);
-    if (done) {
-      return;
-    }
+    // No implicit prime on subscribe. Callers whose loop body sets up
+    // baseline state (voice-chat session instructions, connector
+    // `initialUpdatedAt`) must run the body themselves before calling this.
+    // Chat / queue / slack subscribers don't need a baseline because their
+    // data is fetched through separate computeds, and the implicit prime
+    // fanned out through multiple run/message channels caused duplicate
+    // refetches on every route change.
 
     let deferred = createDeferredPromise(signal);
 
