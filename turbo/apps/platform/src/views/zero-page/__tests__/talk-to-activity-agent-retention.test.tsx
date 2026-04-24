@@ -93,7 +93,7 @@ describe("talk to activity agent retention", () => {
     detachedSetupPage({
       context,
       path: "/agents/agent-bar-id/chat",
-      featureSwitches: { [FeatureSwitchKey.ActivityLogList]: true },
+      featureSwitches: { [FeatureSwitchKey.ZeroDebug]: true },
     });
 
     // Wait for sidebar to show "bar" as the active chat agent

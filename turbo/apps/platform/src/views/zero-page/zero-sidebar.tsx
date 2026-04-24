@@ -222,9 +222,7 @@ function SidebarNavContent() {
   const slackScopeMismatch = useLastResolved(slackOrgScopeMismatch$) ?? false;
 
   const manageNav = MANAGE_NAV.filter((item) => {
-    return (
-      item.id !== "activities" || features?.[FeatureSwitchKey.ActivityLogList]
-    );
+    return item.id !== "activities" || features?.[FeatureSwitchKey.ZeroDebug];
   });
   const footerNav = FOOTER_NAV.filter((item) => {
     return !item.featureGate || features?.[item.featureGate];

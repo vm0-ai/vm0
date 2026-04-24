@@ -181,11 +181,11 @@ describe("activity paged events", () => {
 
     // Start on the list page so setup can complete while the run is still
     // "running" (polling on the detail page would loop forever).
-    // Enable ActivityLogList so the breadcrumb link back to /activities is rendered.
+    // Enable ZeroDebug so the breadcrumb link back to /activities is rendered.
     detachedSetupPage({
       context,
       path: "/activities",
-      featureSwitches: { [FeatureSwitchKey.ActivityLogList]: true },
+      featureSwitches: { [FeatureSwitchKey.ZeroDebug]: true },
     });
 
     await waitFor(() => {

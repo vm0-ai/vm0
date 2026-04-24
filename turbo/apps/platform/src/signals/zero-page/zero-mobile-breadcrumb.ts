@@ -99,7 +99,7 @@ const teamDetailBreadcrumb$ = computed(
 const activityDetailBreadcrumb$ = computed(
   async (get): Promise<MobileBreadcrumb | null> => {
     const features = await get(featureSwitch$);
-    if (!features?.[FeatureSwitchKey.ActivityLogList]) {
+    if (!features?.[FeatureSwitchKey.ZeroDebug]) {
       return null;
     }
     const params = get(pathParams$) as Params;

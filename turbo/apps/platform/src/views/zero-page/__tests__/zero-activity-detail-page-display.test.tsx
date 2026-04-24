@@ -361,7 +361,7 @@ describe("zeroActivityDetailPageDisplay", () => {
     detachedSetupPage({
       context,
       path: `/activities/${BASE_LOG_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ShowSystemPrompt]: true },
+      featureSwitches: { [FeatureSwitchKey.ZeroDebug]: true },
     });
 
     await waitFor(() => {

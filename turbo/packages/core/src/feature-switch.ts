@@ -154,11 +154,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Show the data export option in account menu",
     enabled: false,
   },
-  [FeatureSwitchKey.ShowSystemPrompt]: {
-    maintainer: "ethan@vm0.ai",
-    description: "Show the appended system prompt in activity detail steps",
-    enabled: false,
-  },
   [FeatureSwitchKey.UsageAnalytics]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -170,14 +165,10 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Show the selected model name in activity details",
     enabled: false,
   },
-  [FeatureSwitchKey.ActivityLogList]: {
-    maintainer: "ethan@vm0.ai",
-    description: "Show the Activities list page and breadcrumb navigation",
-    enabled: false,
-  },
   [FeatureSwitchKey.ZeroDebug]: {
     maintainer: "ethan@vm0.ai",
-    description: "Reveal debug tabs in activity pages and Debug preferences",
+    description:
+      "Reveal activity debug surfaces, activity log navigation, appended system prompts, and Debug preferences",
     enabled: false,
   },
   [FeatureSwitchKey.ComputerUse]: {

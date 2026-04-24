@@ -148,7 +148,7 @@ function ActivityNotFound() {
   return (
     <div className="h-full flex flex-col min-h-0">
       <nav className="hidden md:flex shrink-0 items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
-        {features?.[FeatureSwitchKey.ActivityLogList] && (
+        {features?.[FeatureSwitchKey.ZeroDebug] && (
           <>
             <ActivityBreadcrumbLink />
             <span className="text-muted-foreground/40 select-none">/</span>
@@ -380,7 +380,7 @@ function prepareRenderData(
   const prompt = detail.prompt ?? "";
   const appendSystemPrompt = detail.appendSystemPrompt ?? "";
   const showSystemPrompt =
-    (features?.[FeatureSwitchKey.ShowSystemPrompt] ?? false) &&
+    (features?.[FeatureSwitchKey.ZeroDebug] ?? false) &&
     appendSystemPrompt.trim().length > 0;
   return {
     events,
@@ -710,7 +710,7 @@ function ActivityDetailContent({
         className="flex-1 flex flex-col min-h-0 overflow-auto"
       >
         <nav className="hidden md:flex shrink-0 items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
-          {features?.[FeatureSwitchKey.ActivityLogList] && (
+          {features?.[FeatureSwitchKey.ZeroDebug] && (
             <>
               <ActivityBreadcrumbLink />
               <span className="text-muted-foreground/40 select-none">/</span>
@@ -832,7 +832,7 @@ function ActivitySkeleton() {
     <div className="h-full flex flex-col min-h-0 overflow-hidden">
       <div className="flex-1 flex flex-col min-h-0 overflow-auto">
         <nav className="hidden md:flex shrink-0 items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
-          {features?.[FeatureSwitchKey.ActivityLogList] && (
+          {features?.[FeatureSwitchKey.ZeroDebug] && (
             <>
               <ActivityBreadcrumbLink />
               <span className="text-muted-foreground/40 select-none">/</span>
