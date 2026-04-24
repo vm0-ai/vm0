@@ -140,7 +140,7 @@ describe("zero sidebar - chat thread list display (SIDEBAR-D-001)", () => {
       isArchived: false,
       running: false,
     };
-    const observedAllValues: Array<"true" | undefined> = [];
+    const observedAllValues: ("true" | undefined)[] = [];
 
     mockBaseAPIs();
     server.use(
