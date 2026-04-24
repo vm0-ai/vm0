@@ -276,6 +276,145 @@ function resolveEffectiveModel(
   };
 }
 
+/** Context needed by insertRunWithAdvisoryLock — carved out of createZeroRunRecord. */
+interface InsertRunWithAdvisoryLockParams {
+  resolved: Awaited<ReturnType<typeof resolveStartRunCompose>>;
+  runParams: CreateRunParams;
+  orgTier: ReturnType<typeof orgTierSchema.parse>;
+  composeId: string;
+  params: CreateZeroRunParams;
+  authorizeTime: number;
+  emit: (op: string, ms: number) => void;
+  stamp: (updates: Partial<ChatSpanDimensions>) => void;
+}
+
+/**
+ * Acquire advisory lock, check concurrency, insert run record (or enqueue on
+ * limit). Extracted to keep createZeroRunRecord complexity in check.
+ */
+async function insertRunWithAdvisoryLock(
+  ctx: InsertRunWithAdvisoryLockParams,
+): Promise<{
+  runId: string;
+  status: RunStatus;
+  createdAt: Date;
+  sessionId: string;
+  record?: CreateRunRecordResult;
+}> {
+  const {
+    resolved,
+    runParams,
+    orgTier,
+    composeId,
+    params,
+    authorizeTime,
+    emit,
+    stamp,
+  } = ctx;
+
+  let run;
+  try {
+    run = await globalThis.services.db.transaction(async (tx) => {
+      const lockStart = Date.now();
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtext(${resolved.orgId}))`,
+      );
+      emit(CHAT_REQUEST_OPS.create_run_advisory_lock, Date.now() - lockStart);
+
+      const concurrencyT = await timed(async () => {
+        return checkRunConcurrencyLimit(resolved.orgId, orgTier, tx);
+      });
+      emit(CHAT_REQUEST_OPS.create_run_concurrency_check, concurrencyT.ms);
+
+      const insertT = await timed(async () => {
+        return insertRunRecord(tx, {
+          userId: runParams.userId,
+          orgId: resolved.orgId,
+          agentComposeId: composeId,
+          agentComposeVersionId: runParams.agentComposeVersionId,
+          prompt: runParams.prompt,
+          appendSystemPrompt: runParams.appendSystemPrompt,
+          vars: runParams.vars,
+          secrets: runParams.secrets,
+          additionalVolumes: runParams.additionalVolumes,
+          resumedFromCheckpointId: runParams.resumedFromCheckpointId,
+          sessionId: runParams.sessionId,
+        });
+      });
+      emit(CHAT_REQUEST_OPS.create_run_insert_run_record, insertT.ms);
+      return insertT.result;
+    });
+  } catch (error) {
+    if (isConcurrentRunLimit(error)) {
+      const queueResult = await enqueueRun(runParams);
+
+      stamp({ run_id: queueResult.runId });
+
+      const persistT = await timed(async () => {
+        return persistZeroRunMetadata(queueResult.runId, params);
+      });
+      emit(CHAT_REQUEST_OPS.persist_zero_run_metadata, persistT.ms);
+
+      return {
+        runId: queueResult.runId,
+        status: queueResult.status,
+        createdAt: queueResult.createdAt,
+        sessionId: queueResult.sessionId,
+      };
+    }
+    throw error;
+  }
+
+  const transactionTime = Date.now();
+
+  stamp({ run_id: run.id });
+
+  const persistT = await timed(async () => {
+    return persistZeroRunMetadata(run.id, params);
+  });
+  emit(CHAT_REQUEST_OPS.persist_zero_run_metadata, persistT.ms);
+
+  const record: CreateRunRecordResult = {
+    run: { id: run.id, createdAt: run.createdAt },
+    composeContent: resolved.composeContent,
+    orgId: resolved.orgId,
+    apiStartTime: params.apiStartTime,
+    authorizeTime,
+    transactionTime,
+  };
+
+  return {
+    runId: run.id,
+    status: "pending" as RunStatus,
+    createdAt: run.createdAt,
+    sessionId: run.sessionId,
+    record,
+  };
+}
+
+/** Assemble the final system prompt from parts. Extracted to reduce complexity. */
+function assembleSystemPrompt(
+  agentPrompt: string,
+  userInfo: string,
+  appendSystemPrompt: string | undefined,
+  featureOverrides: Partial<Record<FeatureSwitchKey, boolean>> | undefined,
+  orgId: string,
+): string {
+  const parts = [agentPrompt, userInfo];
+  if (
+    isFeatureEnabled(FeatureSwitchKey.AutoSkill, {
+      orgId,
+      overrides: featureOverrides,
+    })
+  ) {
+    parts.push(buildAutoSkillGuidance());
+  }
+  if (appendSystemPrompt) {
+    parts.push(appendSystemPrompt);
+  }
+  return parts.join("\n\n");
+}
+
 /**
  * Create a zero run record with pre-flight checks but without dispatching.
  *
@@ -457,7 +596,6 @@ async function createZeroRunRecord(
     allowedConnectorTypes ?? [],
   );
 
-  // Build agent system prompt: identity + tools + user info, then trigger context
   const agentPrompt = buildAgentPrompt(agent);
   const userInfo = buildUserInfo({
     name: cachedUser.name ?? undefined,
@@ -465,20 +603,13 @@ async function createZeroRunRecord(
     timezone: userTimezone || "UTC",
     ...params.userInfoExtras,
   });
-  let { appendSystemPrompt } = params;
-  const systemParts = [agentPrompt, userInfo];
-  if (
-    isFeatureEnabled(FeatureSwitchKey.AutoSkill, {
-      orgId: resolved.orgId,
-      overrides: featureOverrides,
-    })
-  ) {
-    systemParts.push(buildAutoSkillGuidance());
-  }
-  if (appendSystemPrompt) {
-    systemParts.push(appendSystemPrompt);
-  }
-  appendSystemPrompt = systemParts.join("\n\n");
+  const appendSystemPrompt = assembleSystemPrompt(
+    agentPrompt,
+    userInfo,
+    params.appendSystemPrompt,
+    featureOverrides,
+    resolved.orgId,
+  );
 
   // Construct CreateRunParams (infra knows nothing about ZERO_TOKEN)
   // Inject system + custom skill volumes (needed on every run).
@@ -518,10 +649,8 @@ async function createZeroRunRecord(
   };
 
   // ── Round 3: Pre-flight checks (need compose content) ───────────────
-  const apiStartTime = params.apiStartTime;
-  const composeId = resolved.composeId;
   authorizeCompose(params.userId, resolved.orgId, {
-    id: composeId,
+    id: resolved.composeId,
     userId: resolved.composeUserId,
     orgId: resolved.orgId,
   });
@@ -568,92 +697,34 @@ async function createZeroRunRecord(
   }
 
   // ── Round 4: Advisory lock + concurrency check + INSERT ─────────────
-  let run;
-  try {
-    run = await globalThis.services.db.transaction(async (tx) => {
-      const lockStart = Date.now();
-      await tx.execute(
-        sql`SELECT pg_advisory_xact_lock(hashtext(${resolved.orgId}))`,
-      );
-      emit(CHAT_REQUEST_OPS.create_run_advisory_lock, Date.now() - lockStart);
+  const lockResult = await insertRunWithAdvisoryLock({
+    resolved,
+    runParams,
+    orgTier,
+    composeId: resolved.composeId,
+    params,
+    authorizeTime,
+    emit,
+    stamp,
+  });
 
-      const concurrencyT = await timed(async () => {
-        return checkRunConcurrencyLimit(resolved.orgId, orgTier, tx);
-      });
-      emit(CHAT_REQUEST_OPS.create_run_concurrency_check, concurrencyT.ms);
-
-      const insertT = await timed(async () => {
-        return insertRunRecord(tx, {
-          userId: runParams.userId,
-          orgId: resolved.orgId,
-          agentComposeId: composeId,
-          agentComposeVersionId: runParams.agentComposeVersionId,
-          prompt: runParams.prompt,
-          appendSystemPrompt: runParams.appendSystemPrompt,
-          vars: runParams.vars,
-          secrets: runParams.secrets,
-          additionalVolumes: runParams.additionalVolumes,
-          resumedFromCheckpointId: runParams.resumedFromCheckpointId,
-          sessionId: runParams.sessionId,
-        });
-      });
-      emit(CHAT_REQUEST_OPS.create_run_insert_run_record, insertT.ms);
-      return insertT.result;
-    });
-  } catch (error) {
-    if (isConcurrentRunLimit(error)) {
-      // Enqueue without token — dispatchQueuedZeroRun generates a fresh
-      // token at dispatch time.
-      const queueResult = await enqueueRun(runParams);
-
-      // run_id is now known — stamp it so the persist span below carries it.
-      stamp({ run_id: queueResult.runId });
-
-      const persistT = await timed(async () => {
-        return persistZeroRunMetadata(queueResult.runId, params);
-      });
-      emit(CHAT_REQUEST_OPS.persist_zero_run_metadata, persistT.ms);
-
-      return {
-        runId: queueResult.runId,
-        status: queueResult.status,
-        createdAt: queueResult.createdAt,
-        sessionId: queueResult.sessionId,
-      };
-    }
-    throw error;
+  // Enqueued runs (concurrency limit) short-circuit here
+  if (!lockResult.record) {
+    return {
+      runId: lockResult.runId,
+      status: lockResult.status,
+      createdAt: lockResult.createdAt,
+      sessionId: lockResult.sessionId,
+    };
   }
 
-  const transactionTime = Date.now();
-
-  // run_id is now known after the tx committed — stamp it on the shared dims
-  // object so the persist span (and any future Phase-1 spans) carry it. The
-  // in-tx emissions above intentionally emit with run_id absent since the
-  // record wasn't yet durable.
-  stamp({ run_id: run.id });
-
-  // Persist zero-layer metadata immediately so that activity queries
-  // (LEFT JOIN zero_runs) see the correct triggerSource before dispatch
-  // completes. Model fields are updated later in dispatchZeroRun().
-  const persistT = await timed(async () => {
-    return persistZeroRunMetadata(run.id, params);
-  });
-  emit(CHAT_REQUEST_OPS.persist_zero_run_metadata, persistT.ms);
-
-  const record: CreateRunRecordResult = {
-    run: { id: run.id, createdAt: run.createdAt },
-    composeContent: resolved.composeContent,
-    orgId: resolved.orgId,
-    apiStartTime,
-    authorizeTime,
-    transactionTime,
-  };
+  const { record } = lockResult;
 
   return {
-    runId: run.id,
+    runId: lockResult.runId,
     status: "pending",
-    createdAt: run.createdAt,
-    sessionId: run.sessionId,
+    createdAt: lockResult.createdAt,
+    sessionId: lockResult.sessionId,
     record,
     runParams,
     orgId: resolved.orgId,
