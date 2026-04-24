@@ -262,7 +262,8 @@ describe("zero chat thread page display - body link document preview", () => {
 
     await waitFor(() => {
       expect(screen.getByTestId("attachment-preview-json")).toBeInTheDocument();
-      expect(screen.getByText('{"status":"ok","count":2}')).toBeInTheDocument();
+      expect(screen.getByText(/"status": "ok"/)).toBeInTheDocument();
+      expect(screen.getByText(/"count": 2/)).toBeInTheDocument();
     });
 
     await userEvent.click(
@@ -272,9 +273,7 @@ describe("zero chat thread page display - body link document preview", () => {
     );
 
     await waitFor(() => {
-      expect(
-        screen.queryByText('{"status":"ok","count":2}'),
-      ).not.toBeInTheDocument();
+      expect(screen.queryByText(/"status": "ok"/)).not.toBeInTheDocument();
     });
   });
 
@@ -518,7 +517,8 @@ describe("zero chat thread page display - attachment json preview", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('{"status":"ok","count":2}')).toBeInTheDocument();
+      expect(screen.getByText(/"status": "ok"/)).toBeInTheDocument();
+      expect(screen.getByText(/"count": 2/)).toBeInTheDocument();
     });
   });
 });
