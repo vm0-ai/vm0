@@ -113,7 +113,7 @@ function mockSubagentAPIs() {
       });
     }),
     mockApi(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, { threads });
+      return respond(200, { threads, hasMore: false });
     }),
     mockApi(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
@@ -258,6 +258,7 @@ describe("sidebar new chat navigation", () => {
               running: false,
             },
           ],
+          hasMore: false,
         });
       }),
       mockApi(chatThreadByIdContract.get, ({ respond }) => {

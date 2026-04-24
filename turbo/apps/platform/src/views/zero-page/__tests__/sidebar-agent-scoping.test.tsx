@@ -130,7 +130,7 @@ function mockTwoAgents() {
             return t.agentId === agentId;
           })
         : [];
-      return respond(200, { threads: filtered });
+      return respond(200, { threads: filtered, hasMore: false });
     }),
   );
 }

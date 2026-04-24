@@ -126,7 +126,7 @@ export const apiAgentsHandlers = [
 
   // GET /api/zero/chat-threads
   mockApi(chatThreadsContract.list, ({ respond }) => {
-    return respond(200, { threads: [] });
+    return respond(200, { threads: [], hasMore: false });
   }),
 
   // POST /api/zero/chat-threads (create new thread)

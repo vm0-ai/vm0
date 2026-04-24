@@ -108,7 +108,7 @@ function mockBaseAPIs(options?: {
   setMockTeam(agents);
   server.use(
     mockApi(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, { threads });
+      return respond(200, { threads, hasMore: false });
     }),
   );
 }
@@ -290,7 +290,7 @@ describe("zero sidebar - chat section stable during agent id reload (SIDEBAR-D-0
     server.use(
       mockApi(chatThreadsContract.list, async ({ respond }) => {
         await hangDeferred.promise;
-        return respond(200, { threads: [] });
+        return respond(200, { threads: [], hasMore: false });
       }),
     );
 

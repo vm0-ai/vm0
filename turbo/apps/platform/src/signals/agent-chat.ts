@@ -152,7 +152,7 @@ const chatThreadListResult$ = computed(
     if (unifyChatThreads) {
       const result = await accept(client.list({ query: allQuery }), [200]);
       threads = result.body.threads;
-      hasMore = result.body.hasMore ?? false;
+      hasMore = result.body.hasMore;
     } else {
       const agentId = await get(currentChatAgentId$);
       if (!agentId) {
@@ -163,7 +163,7 @@ const chatThreadListResult$ = computed(
         [200],
       );
       threads = result.body.threads;
-      hasMore = result.body.hasMore ?? false;
+      hasMore = result.body.hasMore;
     }
 
     const currentThread = await get(currentChatThread$);

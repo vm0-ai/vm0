@@ -30,6 +30,7 @@ function mockAPIs() {
             running: false,
           },
         ],
+        hasMore: false,
       });
     }),
     mockApi(chatThreadMessagesContract.list, ({ query, respond }) => {

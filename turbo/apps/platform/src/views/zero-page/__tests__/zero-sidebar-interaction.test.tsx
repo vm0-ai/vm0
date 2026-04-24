@@ -114,7 +114,7 @@ function mockBaseAPIs(options?: {
   setMockTeam(agents);
   server.use(
     mockApi(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, { threads });
+      return respond(200, { threads, hasMore: false });
     }),
     mockApi(zeroAgentsByIdContract.get, ({ params, respond }) => {
       const agents: Record<
@@ -340,7 +340,7 @@ describe("zero sidebar - confirm delete removes thread (SIDEBAR-D-019)", () => {
     setMockTeam([makeDefaultAgent()]);
     server.use(
       mockApi(chatThreadsContract.list, ({ respond }) => {
-        return respond(200, { threads });
+        return respond(200, { threads, hasMore: false });
       }),
       mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
         const thread = threads.find((t) => {

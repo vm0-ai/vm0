@@ -68,7 +68,7 @@ function mockBaseAPIs(
   setMockTeam(agents);
   server.use(
     mockApi(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, { threads });
+      return respond(200, { threads, hasMore: false });
     }),
   );
 }
@@ -181,7 +181,7 @@ describe("zero sidebar - loading state (SIDEBAR-D-002)", () => {
     server.use(
       mockApi(chatThreadsContract.list, async ({ respond }) => {
         await deferred.promise;
-        return respond(200, { threads: [] });
+        return respond(200, { threads: [], hasMore: false });
       }),
     );
 

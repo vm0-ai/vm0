@@ -196,7 +196,7 @@ export const chatThreadsContract = c.router({
     responses: {
       200: z.object({
         threads: z.array(chatThreadListItemSchema),
-        hasMore: z.boolean().optional(),
+        hasMore: z.boolean(),
       }),
       401: apiErrorSchema,
       404: apiErrorSchema,

@@ -52,7 +52,7 @@ function mockAPIs() {
 
   server.use(
     mockApi(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, { threads });
+      return respond(200, { threads, hasMore: false });
     }),
     mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
       const thread = threads.find((t) => {
@@ -199,7 +199,7 @@ describe("sidebar chat delete", () => {
 
     server.use(
       mockApi(chatThreadsContract.list, ({ respond }) => {
-        return respond(200, { threads });
+        return respond(200, { threads, hasMore: false });
       }),
       mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
         const thread = threads.find((t) => {

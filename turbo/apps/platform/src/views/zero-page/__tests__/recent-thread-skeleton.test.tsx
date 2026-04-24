@@ -54,6 +54,7 @@ function mockAgentsWithThreads() {
             running: false,
           },
         ],
+        hasMore: false,
       });
     }),
     mockApi(chatThreadByIdContract.get, ({ respond }) => {
@@ -98,7 +99,7 @@ describe("recent thread skeleton (#7546)", () => {
     server.use(
       mockApi(chatThreadsContract.list, async ({ respond }) => {
         await hangDeferred.promise;
-        return respond(200, { threads: [] });
+        return respond(200, { threads: [], hasMore: false });
       }),
     );
 

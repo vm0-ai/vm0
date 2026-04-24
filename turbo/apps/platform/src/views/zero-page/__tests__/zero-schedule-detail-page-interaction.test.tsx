@@ -37,7 +37,7 @@ function mockAPIs(overrides: Partial<ScheduleResponse> = {}) {
   ]);
   server.use(
     mockApi(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, { threads: [] });
+      return respond(200, { threads: [], hasMore: false });
     }),
   );
 }
@@ -160,7 +160,7 @@ describe("zero schedule detail page - toggle switch changes enabled state (SCHED
         });
       }),
       mockApi(chatThreadsContract.list, ({ respond }) => {
-        return respond(200, { threads: [] });
+        return respond(200, { threads: [], hasMore: false });
       }),
     );
 
@@ -250,7 +250,7 @@ describe("zero schedule detail page - instruction save button saves instructions
         });
       }),
       mockApi(chatThreadsContract.list, ({ respond }) => {
-        return respond(200, { threads: [] });
+        return respond(200, { threads: [], hasMore: false });
       }),
       mockApi(zeroSchedulesMainContract.deploy, ({ respond }) => {
         saved = true;
