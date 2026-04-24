@@ -163,18 +163,24 @@ export async function enqueueRun(
       expiresAt,
     });
 
-    return { ...inserted, sessionId };
+    // Post-insert queue depth, captured inside the same transaction so the
+    // enqueue hot path doesn't pay a separate round-trip after commit.
+    // Directional (racing inserts/deletes across orgs can skew by ±1) but
+    // correlates with queue pressure per org.
+    const [depthRow] = await tx
+      .select({ depth: count() })
+      .from(agentRunQueue)
+      .where(eq(agentRunQueue.orgId, orgId));
+
+    return {
+      ...inserted,
+      sessionId,
+      queueDepth: Number(depthRow?.depth ?? 0),
+    };
   });
 
   log.debug(`Enqueued run ${run.id} for user ${userId}`);
 
-  // Point-in-time telemetry for queue entry. Depth is directional (racing
-  // inserts/deletes can skew by ±1) but correlates with queue pressure per
-  // org. Counted after the insert so the new entry is included.
-  const [depthRow] = await globalThis.services.db
-    .select({ depth: count() })
-    .from(agentRunQueue)
-    .where(eq(agentRunQueue.orgId, orgId));
   recordSandboxOperation({
     sandboxType: "runner",
     actionType: "enqueue_zero_run",
@@ -182,7 +188,7 @@ export async function enqueueRun(
     success: true,
     runId: run.id,
     dimensions: {
-      queue_depth: Number(depthRow?.depth ?? 0),
+      queue_depth: run.queueDepth,
       trigger_source: params.triggerSource ?? null,
     },
   });
