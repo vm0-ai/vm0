@@ -169,11 +169,14 @@ export const earliestUnreadEndedThread$ = computed(
     const currentThreadId = get(currentChatThreadId$);
 
     const candidates = threads
-      .filter((t) => !t.running && !t.isRead && t.id !== currentThreadId)
-      .sort(
-        (a, b) =>
-          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-      );
+      .filter((t) => {
+        return !t.running && !t.isRead && t.id !== currentThreadId;
+      })
+      .sort((a, b) => {
+        return (
+          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+        );
+      });
 
     return candidates[0] ?? null;
   },

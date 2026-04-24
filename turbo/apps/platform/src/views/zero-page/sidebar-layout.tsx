@@ -189,7 +189,11 @@ function MobileTopBarActions({ activeId }: { activeId: RouteKey | null }) {
     <>
       {inChatRoute && <AutoReadToggleLeaf />}
       {inChatRoute &&
-        (newButtonEnabled ? <NewOrUnreadChatButtonLeaf /> : <InviteButtonLeaf />)}
+        (newButtonEnabled ? (
+          <NewOrUnreadChatButtonLeaf />
+        ) : (
+          <InviteButtonLeaf />
+        ))}
     </>
   );
 }
