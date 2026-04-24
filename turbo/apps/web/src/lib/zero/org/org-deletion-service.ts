@@ -19,18 +19,20 @@ import { orgMembersMetadata } from "../../../db/schema/org-members-metadata";
 import { orgCache } from "../../../db/schema/org-cache";
 import { orgMetadata } from "../../../db/schema/org-metadata";
 import { cleanupWorkspaceInstallation } from "../slack-org/connect-service";
+import { publishCancelNotification } from "../../infra/realtime/client";
 
 const log = logger("service:org-deletion");
 
 /**
- * Cancel all pending/running/queued agent runs for an org.
- * Bulk cancel only updates status — no side effects needed since the
- * entire org is being deleted.
+ * Cancel all pending/running/queued agent runs for an org and notify
+ * runners so mitmproxy stops emitting webhooks before the rows are
+ * deleted. The Ably publish is best-effort — on failure, the runner
+ * continues to natural completion (see publishCancelNotification).
  */
 async function cancelOrgRuns(orgId: string): Promise<void> {
   const db = globalThis.services.db;
 
-  const result = await db
+  const cancelled = await db
     .update(agentRuns)
     .set({ status: "cancelled", completedAt: new Date() })
     .where(
@@ -38,11 +40,22 @@ async function cancelOrgRuns(orgId: string): Promise<void> {
         eq(agentRuns.orgId, orgId),
         inArray(agentRuns.status, ["queued", "pending", "running"]),
       ),
-    );
+    )
+    .returning({ id: agentRuns.id, runnerGroup: agentRuns.runnerGroup });
 
   await db.delete(agentRunQueue).where(eq(agentRunQueue.orgId, orgId));
 
-  log.info("org runs cancelled", { orgId, count: result.rowCount });
+  await Promise.allSettled(
+    cancelled
+      .filter((r) => {
+        return r.runnerGroup !== null;
+      })
+      .map((r) => {
+        return publishCancelNotification(r.runnerGroup!, r.id);
+      }),
+  );
+
+  log.info("org runs cancelled", { orgId, count: cancelled.length });
 }
 
 /**

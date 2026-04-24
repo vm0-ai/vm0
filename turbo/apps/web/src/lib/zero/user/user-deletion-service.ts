@@ -23,18 +23,20 @@ import { orgMembersCache } from "../../../db/schema/org-members-cache";
 import { orgMembersMetadata } from "../../../db/schema/org-members-metadata";
 import { userCache } from "../../../db/schema/user-cache";
 import { users } from "../../../db/schema/user";
+import { publishCancelNotification } from "../../infra/realtime/client";
 
 const log = logger("service:user-deletion");
 
 /**
- * Cancel all pending/running/queued agent runs for a user.
- * Bulk cancel only updates status — no side effects needed since the
- * entire user is being deleted.
+ * Cancel all pending/running/queued agent runs for a user and notify
+ * runners so mitmproxy stops emitting webhooks before the rows are
+ * deleted. The Ably publish is best-effort — on failure, the runner
+ * continues to natural completion (see publishCancelNotification).
  */
 async function cancelUserRuns(userId: string): Promise<void> {
   const db = globalThis.services.db;
 
-  const result = await db
+  const cancelled = await db
     .update(agentRuns)
     .set({ status: "cancelled", completedAt: new Date() })
     .where(
@@ -42,11 +44,22 @@ async function cancelUserRuns(userId: string): Promise<void> {
         eq(agentRuns.userId, userId),
         inArray(agentRuns.status, ["queued", "pending", "running"]),
       ),
-    );
+    )
+    .returning({ id: agentRuns.id, runnerGroup: agentRuns.runnerGroup });
 
   await db.delete(agentRunQueue).where(eq(agentRunQueue.userId, userId));
 
-  log.info("user runs cancelled", { userId, count: result.rowCount });
+  await Promise.allSettled(
+    cancelled
+      .filter((r) => {
+        return r.runnerGroup !== null;
+      })
+      .map((r) => {
+        return publishCancelNotification(r.runnerGroup!, r.id);
+      }),
+  );
+
+  log.info("user runs cancelled", { userId, count: cancelled.length });
 }
 
 /**
