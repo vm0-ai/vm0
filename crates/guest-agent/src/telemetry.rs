@@ -20,21 +20,32 @@ use tokio_util::sync::CancellationToken;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
 
+/// Whether an upload pass should defer a trailing fragment to the next tick,
+/// or consume it as-is because no next tick is coming.
+///
+/// `Tick` is used by the periodic uploader and the silent pre-checkpoint
+/// pass. `Final` is reserved for the very last upload before agent exit.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum UploadMode {
+    Tick,
+    Final,
+}
+
 /// Read new bytes from `file_path` starting at the position stored in `pos_path`.
 /// Returns the new content and the updated position.
 ///
-/// When `to_eof` is false (normal tick), the read is aligned to the last
-/// newline: any trailing bytes after the last `\n` are treated as an
-/// in-progress write by the producer and left for the next tick. This
-/// prevents the producer-consumer race from splitting a log line mid-write,
-/// which would corrupt UTF-8 multibyte characters via `from_utf8_lossy`
-/// (the broken byte is replaced by U+FFFD and permanently lost, since the
-/// position has already advanced past it).
+/// In `Tick` mode, the read is aligned to the last newline: any trailing
+/// bytes after the last `\n` are treated as an in-progress write by the
+/// producer and left for the next tick. This prevents the producer-consumer
+/// race from splitting a log line mid-write, which would corrupt UTF-8
+/// multibyte characters via `from_utf8_lossy` (the broken byte is replaced
+/// by U+FFFD and permanently lost, since the position has already advanced
+/// past it).
 ///
-/// When `to_eof` is true (final pass), the tail is consumed as-is — there
-/// will be no subsequent tick to pick it up. Any trailing fragment without
-/// a newline is uploaded verbatim.
-fn read_file_delta(file_path: &str, pos_path: &str, to_eof: bool) -> (String, u64) {
+/// In `Final` mode, the tail is consumed as-is — there will be no subsequent
+/// tick to pick it up. Any trailing fragment without a newline is uploaded
+/// verbatim.
+fn read_file_delta(file_path: &str, pos_path: &str, mode: UploadMode) -> (String, u64) {
     let last_pos: u64 = std::fs::read_to_string(pos_path)
         .ok()
         .and_then(|s| s.trim().parse().ok())
@@ -60,7 +71,7 @@ fn read_file_delta(file_path: &str, pos_path: &str, to_eof: bool) -> (String, u6
         return (String::new(), last_pos);
     }
 
-    if to_eof {
+    if mode == UploadMode::Final {
         return (String::from_utf8_lossy(&buf).into_owned(), file_len);
     }
 
@@ -68,6 +79,11 @@ fn read_file_delta(file_path: &str, pos_path: &str, to_eof: bool) -> (String, u6
         Some(idx) => {
             let consumed = idx + 1;
             let new_pos = last_pos + consumed as u64;
+            // `consumed <= buf.len()` by construction (rposition returns
+            // a valid index into buf, so idx + 1 <= buf.len()), so this
+            // `get` always returns Some. The let-else exists only to
+            // satisfy `clippy::indexing_slicing = "deny"` without an
+            // explicit suppression or `expect`.
             let Some(slice) = buf.get(..consumed) else {
                 return (String::new(), last_pos);
             };
@@ -78,8 +94,8 @@ fn read_file_delta(file_path: &str, pos_path: &str, to_eof: bool) -> (String, u6
 }
 
 /// Read new JSONL entries from a file, skipping invalid lines.
-fn read_jsonl_delta(file_path: &str, pos_path: &str, to_eof: bool) -> (Vec<Value>, u64) {
-    let (content, new_pos) = read_file_delta(file_path, pos_path, to_eof);
+fn read_jsonl_delta(file_path: &str, pos_path: &str, mode: UploadMode) -> (Vec<Value>, u64) {
+    let (content, new_pos) = read_file_delta(file_path, pos_path, mode);
     if content.is_empty() {
         return (Vec::new(), new_pos);
     }
@@ -100,28 +116,28 @@ fn save_position(pos_path: &str, pos: u64) {
 
 /// Perform one telemetry upload cycle.
 ///
-/// `final_pass` should be true only for the very last upload before the
-/// agent exits — any trailing fragment after the last newline is then
-/// consumed as-is, accepting a small mid-write race window in exchange
-/// for not losing the tail. Every earlier upload (periodic tick and the
-/// silent pre-checkpoint pass) must use `false` so a later pass can safely
-/// pick up the tail once the producer completes the line.
-async fn upload_telemetry(masker: &SecretMasker, final_pass: bool) -> Result<(), AgentError> {
+/// `UploadMode::Final` should be used only for the very last upload before
+/// the agent exits — any trailing fragment after the last newline is then
+/// consumed as-is, accepting a small mid-write race window in exchange for
+/// not losing the tail. Every earlier upload (periodic tick and the silent
+/// pre-checkpoint pass) must use `UploadMode::Tick` so a later pass can
+/// safely pick up the tail once the producer completes the line.
+async fn upload_telemetry(masker: &SecretMasker, mode: UploadMode) -> Result<(), AgentError> {
     // Read deltas
     let (system_log, log_pos) = read_file_delta(
         paths::system_log_file(),
         paths::telemetry_system_log_pos_file(),
-        final_pass,
+        mode,
     );
     let (metrics, metrics_pos) = read_jsonl_delta(
         paths::metrics_log_file(),
         paths::telemetry_metrics_pos_file(),
-        final_pass,
+        mode,
     );
     let (sandbox_ops, sandbox_ops_pos) = read_jsonl_delta(
         paths::sandbox_ops_file(),
         paths::telemetry_sandbox_ops_pos_file(),
-        final_pass,
+        mode,
     );
 
     // Nothing new
@@ -171,7 +187,7 @@ pub async fn telemetry_loop(shutdown: CancellationToken, masker: Arc<SecretMaske
         tokio::select! {
             _ = shutdown.cancelled() => break,
             _ = interval.tick() => {
-                let _ = upload_telemetry(&masker, false).await;
+                let _ = upload_telemetry(&masker, UploadMode::Tick).await;
             }
         }
     }
@@ -179,7 +195,7 @@ pub async fn telemetry_loop(shutdown: CancellationToken, masker: Arc<SecretMaske
 
 /// Final telemetry upload before agent completion.
 ///
-/// Uses `final_pass = true` to consume the EOF tail: there is no subsequent
+/// Uses `UploadMode::Final` to consume the EOF tail: there is no subsequent
 /// upload that could pick up an otherwise-deferred fragment. A small mid-
 /// write race remains — vsock-guest may still be writing a chunk of
 /// system_log when we snapshot — but one potentially-split final line is a
@@ -189,7 +205,7 @@ pub async fn final_upload(masker: &SecretMasker) -> Result<(), AgentError> {
         return Ok(());
     }
     log_info!(LOG_TAG, "Performing final telemetry upload...");
-    upload_telemetry(masker, true).await
+    upload_telemetry(masker, UploadMode::Final).await
 }
 
 /// Same as [`final_upload`] but without the log banner or error log.
@@ -199,16 +215,16 @@ pub async fn final_upload(masker: &SecretMasker) -> Result<(), AgentError> {
 /// a first-pass failure is silently deferred to the catch-up (which reads
 /// the same unchanged file position and re-uploads the delta).
 ///
-/// Uses newline-aligned reads (`final_pass = false`) because more log data
-/// is still being written during `▷ Cleanup` after this returns — the real
-/// end-of-life flush is [`final_upload`]. If this pass ate the EOF tail
-/// mid-write, it could split a UTF-8 multibyte character and the catch-up
-/// would skip past the broken byte, losing the character permanently.
+/// Uses `UploadMode::Tick` because more log data is still being written
+/// during `▷ Cleanup` after this returns — the real end-of-life flush is
+/// [`final_upload`]. If this pass ate the EOF tail mid-write, it could
+/// split a UTF-8 multibyte character and the catch-up would skip past the
+/// broken byte, losing the character permanently.
 pub async fn final_upload_silent(masker: &SecretMasker) -> Result<(), AgentError> {
     if !env::has_api() {
         return Ok(());
     }
-    upload_telemetry(masker, false).await
+    upload_telemetry(masker, UploadMode::Tick).await
 }
 
 #[cfg(test)]
@@ -223,8 +239,11 @@ mod tests {
         let pos = dir.path().join("log.pos");
         fs::write(&file, "hello world\n").unwrap();
 
-        let (content, new_pos) =
-            read_file_delta(file.to_str().unwrap(), pos.to_str().unwrap(), false);
+        let (content, new_pos) = read_file_delta(
+            file.to_str().unwrap(),
+            pos.to_str().unwrap(),
+            UploadMode::Tick,
+        );
         assert_eq!(content, "hello world\n");
         assert_eq!(new_pos, 12);
     }
@@ -238,8 +257,11 @@ mod tests {
         // Simulate having already read 6 bytes
         fs::write(&pos, "6").unwrap();
 
-        let (content, new_pos) =
-            read_file_delta(file.to_str().unwrap(), pos.to_str().unwrap(), false);
+        let (content, new_pos) = read_file_delta(
+            file.to_str().unwrap(),
+            pos.to_str().unwrap(),
+            UploadMode::Tick,
+        );
         assert_eq!(content, "world\n");
         assert_eq!(new_pos, 12);
     }
@@ -252,8 +274,11 @@ mod tests {
         fs::write(&file, "done").unwrap();
         fs::write(&pos, "4").unwrap();
 
-        let (content, new_pos) =
-            read_file_delta(file.to_str().unwrap(), pos.to_str().unwrap(), false);
+        let (content, new_pos) = read_file_delta(
+            file.to_str().unwrap(),
+            pos.to_str().unwrap(),
+            UploadMode::Tick,
+        );
         assert!(content.is_empty());
         assert_eq!(new_pos, 4);
     }
@@ -264,8 +289,11 @@ mod tests {
         let file = dir.path().join("missing.txt");
         let pos = dir.path().join("missing.pos");
 
-        let (content, new_pos) =
-            read_file_delta(file.to_str().unwrap(), pos.to_str().unwrap(), false);
+        let (content, new_pos) = read_file_delta(
+            file.to_str().unwrap(),
+            pos.to_str().unwrap(),
+            UploadMode::Tick,
+        );
         assert!(content.is_empty());
         assert_eq!(new_pos, 0);
     }
@@ -277,8 +305,11 @@ mod tests {
         let pos = dir.path().join("data.pos");
         fs::write(&file, "{\"a\":1}\n{\"b\":2}\ninvalid\n").unwrap();
 
-        let (entries, new_pos) =
-            read_jsonl_delta(file.to_str().unwrap(), pos.to_str().unwrap(), false);
+        let (entries, new_pos) = read_jsonl_delta(
+            file.to_str().unwrap(),
+            pos.to_str().unwrap(),
+            UploadMode::Tick,
+        );
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0]["a"], 1);
         assert_eq!(entries[1]["b"], 2);
@@ -303,8 +334,11 @@ mod tests {
         fs::write(&file, "short").unwrap();
         fs::write(&pos, "100").unwrap();
 
-        let (content, new_pos) =
-            read_file_delta(file.to_str().unwrap(), pos.to_str().unwrap(), false);
+        let (content, new_pos) = read_file_delta(
+            file.to_str().unwrap(),
+            pos.to_str().unwrap(),
+            UploadMode::Tick,
+        );
         assert!(content.is_empty());
         assert_eq!(new_pos, 100);
     }
@@ -318,8 +352,11 @@ mod tests {
         fs::write(&file, "data\n").unwrap();
         fs::write(&pos, "notanumber").unwrap();
 
-        let (content, new_pos) =
-            read_file_delta(file.to_str().unwrap(), pos.to_str().unwrap(), false);
+        let (content, new_pos) = read_file_delta(
+            file.to_str().unwrap(),
+            pos.to_str().unwrap(),
+            UploadMode::Tick,
+        );
         assert_eq!(content, "data\n");
         assert_eq!(new_pos, 5);
     }
@@ -331,8 +368,11 @@ mod tests {
         let pos = dir.path().join("empty.pos");
         fs::write(&file, "").unwrap();
 
-        let (entries, new_pos) =
-            read_jsonl_delta(file.to_str().unwrap(), pos.to_str().unwrap(), false);
+        let (entries, new_pos) = read_jsonl_delta(
+            file.to_str().unwrap(),
+            pos.to_str().unwrap(),
+            UploadMode::Tick,
+        );
         assert!(entries.is_empty());
         assert_eq!(new_pos, 0);
     }
@@ -344,8 +384,11 @@ mod tests {
         let pos = dir.path().join("bad.pos");
         fs::write(&file, "bad1\nbad2\nbad3\n").unwrap();
 
-        let (entries, new_pos) =
-            read_jsonl_delta(file.to_str().unwrap(), pos.to_str().unwrap(), false);
+        let (entries, new_pos) = read_jsonl_delta(
+            file.to_str().unwrap(),
+            pos.to_str().unwrap(),
+            UploadMode::Tick,
+        );
         assert!(entries.is_empty());
         assert!(new_pos > 0);
     }
@@ -361,8 +404,11 @@ mod tests {
         fs::write(&file, "line1\nline2\npartial").unwrap();
 
         // First tick: read up to the last newline, leave "partial" behind.
-        let (content, new_pos) =
-            read_file_delta(file.to_str().unwrap(), pos.to_str().unwrap(), false);
+        let (content, new_pos) = read_file_delta(
+            file.to_str().unwrap(),
+            pos.to_str().unwrap(),
+            UploadMode::Tick,
+        );
         assert_eq!(content, "line1\nline2\n");
         assert_eq!(new_pos, 12);
 
@@ -371,8 +417,11 @@ mod tests {
         fs::write(&pos, "12").unwrap();
 
         // Second tick: now "partial done\n" is complete.
-        let (content2, new_pos2) =
-            read_file_delta(file.to_str().unwrap(), pos.to_str().unwrap(), false);
+        let (content2, new_pos2) = read_file_delta(
+            file.to_str().unwrap(),
+            pos.to_str().unwrap(),
+            UploadMode::Tick,
+        );
         assert_eq!(content2, "partial done\n");
         assert_eq!(new_pos2, 25);
     }
@@ -386,8 +435,11 @@ mod tests {
         let pos = dir.path().join("log.pos");
         fs::write(&file, "line1\npartial").unwrap();
 
-        let (content, new_pos) =
-            read_file_delta(file.to_str().unwrap(), pos.to_str().unwrap(), true);
+        let (content, new_pos) = read_file_delta(
+            file.to_str().unwrap(),
+            pos.to_str().unwrap(),
+            UploadMode::Final,
+        );
         assert_eq!(content, "line1\npartial");
         assert_eq!(new_pos, 13);
     }
@@ -408,8 +460,11 @@ mod tests {
         fs::write(&file, &partial).unwrap();
 
         // First tick: stops at the newline, leaves the orphan 0xE4 behind.
-        let (content, new_pos) =
-            read_file_delta(file.to_str().unwrap(), pos.to_str().unwrap(), false);
+        let (content, new_pos) = read_file_delta(
+            file.to_str().unwrap(),
+            pos.to_str().unwrap(),
+            UploadMode::Tick,
+        );
         assert_eq!(content, "prefix\n");
         assert_eq!(new_pos, 7);
         fs::write(&pos, new_pos.to_string()).unwrap();
@@ -421,8 +476,11 @@ mod tests {
         fs::write(&file, &complete).unwrap();
 
         // Second tick: reads the complete multibyte character.
-        let (content2, new_pos2) =
-            read_file_delta(file.to_str().unwrap(), pos.to_str().unwrap(), false);
+        let (content2, new_pos2) = read_file_delta(
+            file.to_str().unwrap(),
+            pos.to_str().unwrap(),
+            UploadMode::Tick,
+        );
         assert_eq!(content2, "中\n");
         assert_eq!(new_pos2, complete.len() as u64);
         // No U+FFFD anywhere — the character is intact.
@@ -440,8 +498,11 @@ mod tests {
         fs::write(&file, "{\"a\":1}\n{\"b\":2").unwrap();
 
         // First tick: only {"a":1} is complete.
-        let (entries, new_pos) =
-            read_jsonl_delta(file.to_str().unwrap(), pos.to_str().unwrap(), false);
+        let (entries, new_pos) = read_jsonl_delta(
+            file.to_str().unwrap(),
+            pos.to_str().unwrap(),
+            UploadMode::Tick,
+        );
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0]["a"], 1);
         assert_eq!(new_pos, 8);
@@ -449,8 +510,11 @@ mod tests {
 
         // Producer completes the record.
         fs::write(&file, "{\"a\":1}\n{\"b\":2}\n").unwrap();
-        let (entries2, new_pos2) =
-            read_jsonl_delta(file.to_str().unwrap(), pos.to_str().unwrap(), false);
+        let (entries2, new_pos2) = read_jsonl_delta(
+            file.to_str().unwrap(),
+            pos.to_str().unwrap(),
+            UploadMode::Tick,
+        );
         assert_eq!(entries2.len(), 1);
         assert_eq!(entries2[0]["b"], 2);
         assert_eq!(new_pos2, 16);
@@ -466,15 +530,21 @@ mod tests {
         let pos = dir.path().join("log.pos");
         fs::write(&file, "partial").unwrap();
 
-        let (content, new_pos) =
-            read_file_delta(file.to_str().unwrap(), pos.to_str().unwrap(), false);
+        let (content, new_pos) = read_file_delta(
+            file.to_str().unwrap(),
+            pos.to_str().unwrap(),
+            UploadMode::Tick,
+        );
         assert!(content.is_empty());
         assert_eq!(new_pos, 0);
 
         // Producer completes the line — the next tick picks up everything.
         fs::write(&file, "partial done\n").unwrap();
-        let (content2, new_pos2) =
-            read_file_delta(file.to_str().unwrap(), pos.to_str().unwrap(), false);
+        let (content2, new_pos2) = read_file_delta(
+            file.to_str().unwrap(),
+            pos.to_str().unwrap(),
+            UploadMode::Tick,
+        );
         assert_eq!(content2, "partial done\n");
         assert_eq!(new_pos2, 13);
     }
@@ -488,8 +558,11 @@ mod tests {
         let pos = dir.path().join("log.pos");
         fs::write(&file, "no_newline").unwrap();
 
-        let (content, new_pos) =
-            read_file_delta(file.to_str().unwrap(), pos.to_str().unwrap(), true);
+        let (content, new_pos) = read_file_delta(
+            file.to_str().unwrap(),
+            pos.to_str().unwrap(),
+            UploadMode::Final,
+        );
         assert_eq!(content, "no_newline");
         assert_eq!(new_pos, 10);
     }
@@ -509,8 +582,11 @@ mod tests {
         fs::write(&file, &partial).unwrap();
 
         // First tick stops at \n, defers the orphan bytes.
-        let (content, new_pos) =
-            read_file_delta(file.to_str().unwrap(), pos.to_str().unwrap(), false);
+        let (content, new_pos) = read_file_delta(
+            file.to_str().unwrap(),
+            pos.to_str().unwrap(),
+            UploadMode::Tick,
+        );
         assert_eq!(content, "prefix\n");
         assert_eq!(new_pos, 7);
         fs::write(&pos, new_pos.to_string()).unwrap();
@@ -521,8 +597,11 @@ mod tests {
         complete.extend_from_slice(b"\n");
         fs::write(&file, &complete).unwrap();
 
-        let (content2, new_pos2) =
-            read_file_delta(file.to_str().unwrap(), pos.to_str().unwrap(), false);
+        let (content2, new_pos2) = read_file_delta(
+            file.to_str().unwrap(),
+            pos.to_str().unwrap(),
+            UploadMode::Tick,
+        );
         assert_eq!(content2, "😀\n");
         assert_eq!(new_pos2, complete.len() as u64);
         assert!(!content2.contains('\u{FFFD}'));
@@ -545,8 +624,11 @@ mod tests {
         torn.push(0xE4);
         fs::write(&file, &torn).unwrap();
 
-        let (content, new_pos) =
-            read_file_delta(file.to_str().unwrap(), pos.to_str().unwrap(), true);
+        let (content, new_pos) = read_file_delta(
+            file.to_str().unwrap(),
+            pos.to_str().unwrap(),
+            UploadMode::Final,
+        );
         assert_eq!(content, "log\n\u{FFFD}");
         assert_eq!(new_pos, 5);
     }
@@ -567,8 +649,11 @@ mod tests {
         fs::write(&file, &partial).unwrap();
 
         // Silent pre-checkpoint pass: newline-aligned, defers the orphan byte.
-        let (content, new_pos) =
-            read_file_delta(file.to_str().unwrap(), pos.to_str().unwrap(), false);
+        let (content, new_pos) = read_file_delta(
+            file.to_str().unwrap(),
+            pos.to_str().unwrap(),
+            UploadMode::Tick,
+        );
         assert_eq!(content, "log\n");
         assert_eq!(new_pos, 4);
         fs::write(&pos, new_pos.to_string()).unwrap();
@@ -580,8 +665,11 @@ mod tests {
         fs::write(&file, &complete).unwrap();
 
         // Catch-up final pass: consumes the rest including the no-newline tail.
-        let (content2, new_pos2) =
-            read_file_delta(file.to_str().unwrap(), pos.to_str().unwrap(), true);
+        let (content2, new_pos2) = read_file_delta(
+            file.to_str().unwrap(),
+            pos.to_str().unwrap(),
+            UploadMode::Final,
+        );
         assert_eq!(content2, "中\ntail");
         assert_eq!(new_pos2, complete.len() as u64);
         assert!(!content2.contains('\u{FFFD}'));
