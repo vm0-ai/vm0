@@ -1,5 +1,20 @@
 # Changelog
 
+## [12.300.1](https://github.com/vm0-ai/vm0/compare/web-v12.300.0...web-v12.300.1) (2026-04-24)
+
+
+### Performance Improvements
+
+* **chat:** avoid redundant startup requests ([#11039](https://github.com/vm0-ai/vm0/issues/11039)) ([549f656](https://github.com/vm0-ai/vm0/commit/549f656df8a35fc90b962d71ca1764e12d44975e))
+* **chat:** defer user message insert into after() to speed 201 response ([#11037](https://github.com/vm0-ai/vm0/issues/11037)) ([8fcf43b](https://github.com/vm0-ai/vm0/commit/8fcf43bc24c3ae5df879595705300ff9bb8829e9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.234.1
+
 ## [12.300.0](https://github.com/vm0-ai/vm0/compare/web-v12.299.0...web-v12.300.0) (2026-04-24)
 
 

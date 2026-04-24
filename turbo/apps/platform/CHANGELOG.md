@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.293.1](https://github.com/vm0-ai/vm0/compare/app-v0.293.0...app-v0.293.1) (2026-04-24)
+
+
+### Bug Fixes
+
+* **chat:** restore composer gradient clipped by overflow scroll container ([#11029](https://github.com/vm0-ai/vm0/issues/11029)) ([a03a7a7](https://github.com/vm0-ai/vm0/commit/a03a7a70f9e267ec823dad0b4184094ae10c90a2))
+
+
+### Performance Improvements
+
+* **chat:** avoid redundant startup requests ([#11039](https://github.com/vm0-ai/vm0/issues/11039)) ([549f656](https://github.com/vm0-ai/vm0/commit/549f656df8a35fc90b962d71ca1764e12d44975e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.234.1
+
 ## [0.293.0](https://github.com/vm0-ai/vm0/compare/app-v0.292.1...app-v0.293.0) (2026-04-24)
 
 

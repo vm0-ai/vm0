@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.95.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.94.2...runner-rs-v0.95.0) (2026-04-24)
+
+
+### Features
+
+* **runner:** log axiom telemetry enabled/disabled at startup ([#11040](https://github.com/vm0-ai/vm0/issues/11040)) ([7528e66](https://github.com/vm0-ai/vm0/commit/7528e66045d690c2372ad1b0ef41bd33d3c5afe2))
+
+
+### Bug Fixes
+
+* **runner:** treat claim 404 as race-lost, not api error (closes [#11041](https://github.com/vm0-ai/vm0/issues/11041)) ([#11045](https://github.com/vm0-ai/vm0/issues/11045)) ([83815d2](https://github.com/vm0-ai/vm0/commit/83815d22670be1553082c6a9398c78cdcfa8547d))
+
 ## [0.94.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.94.1...runner-rs-v0.94.2) (2026-04-24)
 
 
