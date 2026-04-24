@@ -188,7 +188,7 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
     expect(data.messages[1].content).toBe("Third");
   });
 
-  it("anchors at the last user message when no cursor is provided", async () => {
+  it("returns the latest messages when no cursor is provided and reports hasHistoryBefore", async () => {
     const createRes = await POST(
       createTestRequest("http://localhost:3000/api/zero/chat-threads", {
         method: "POST",
@@ -198,9 +198,9 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
     );
     const { id: threadId } = await createRes.json();
 
-    // Insert 3 messages: A (user), B (assistant), C (user).
-    // The no-cursor path anchors at the last user message (C), so only C is
-    // returned and hasMore=true because A and B precede the anchor.
+    // Insert 3 messages: A, B, C. With limit=2, the endpoint returns the two
+    // newest messages (B, C) and reports hasHistoryBefore=true because A
+    // precedes the returned slice.
     await insertTestChatMessage({
       chatThreadId: threadId,
       userId: testUserId,
@@ -222,7 +222,7 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
 
     const response = await GET(
       createTestRequest(
-        `http://localhost:3000/api/zero/chat-threads/${threadId}/messages`,
+        `http://localhost:3000/api/zero/chat-threads/${threadId}/messages?limit=2`,
       ),
     );
     const data = await response.json();

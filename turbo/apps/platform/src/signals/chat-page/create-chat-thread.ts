@@ -186,7 +186,7 @@ export interface ChatThreadSignals {
   latestRunStatus$: Computed<Promise<string | null>>;
   allFinished$: Computed<Promise<boolean>>;
   fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>;
-  loadHistory$: Command<Promise<void>, []>;
+  loadHistory$: Command<Promise<void>, [AbortSignal]>;
   loadPagedMessages$: Command<Promise<void>, [AbortSignal]>;
   // ── Thinking indicator ───────────────────────────────────────────────────
   blockColors$: Computed<[string, string, string]>;
@@ -756,7 +756,39 @@ function createPagedMessages(
     set(appendDeltaMessages$, [msg]);
   });
 
-  const loadHistory$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const loadHistory$ = createLoadHistoryCommand({
+    threadId,
+    threadData$,
+    earliestChatMessageId$,
+    historyMessages$,
+    loadedHistoryHasMore$,
+  });
+
+  return {
+    earliestChatMessageId$,
+    latestChatMessageId$,
+    groupedChatMessages$,
+    hasOlderHistory$,
+    fetchNextPage$,
+    loadHistory$,
+    insertOptimisticMessage$,
+  };
+}
+
+function createLoadHistoryCommand({
+  threadId,
+  threadData$,
+  earliestChatMessageId$,
+  historyMessages$,
+  loadedHistoryHasMore$,
+}: {
+  threadId: string;
+  threadData$: Computed<Promise<ChatThread | null>>;
+  earliestChatMessageId$: Computed<Promise<string | undefined>>;
+  historyMessages$: State<PagedChatMessage[]>;
+  loadedHistoryHasMore$: State<boolean | null>;
+}): Command<Promise<void>, [AbortSignal]> {
+  return command(async ({ get, set }, signal: AbortSignal): Promise<void> => {
     const thread = await get(threadData$);
     signal.throwIfAborted();
     if (!thread) {
@@ -776,6 +808,7 @@ function createPagedMessages(
       client.list({
         params: { threadId },
         query: { beforeId, limit: 50 },
+        fetchOptions: { signal },
       }),
       [200],
     );
@@ -789,16 +822,6 @@ function createPagedMessages(
     });
     set(loadedHistoryHasMore$, result.body.hasHistoryBefore ?? false);
   });
-
-  return {
-    earliestChatMessageId$,
-    latestChatMessageId$,
-    groupedChatMessages$,
-    hasOlderHistory$,
-    fetchNextPage$,
-    loadHistory$,
-    insertOptimisticMessage$,
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -1169,8 +1192,13 @@ function createChatThreadSignals(
   const { threadData$, reloadThread$ } = createThreadData(threadId);
   const { modelSelection$, setModelSelection$ } =
     createModelSelection(threadData$);
-  const { setScrollContainer$, autoScroll$, scrollToBottom$, scrollToTop$ } =
-    createScrollSignals(threadId);
+  const {
+    setScrollContainer$,
+    autoScroll$,
+    scrollToBottom$,
+    scrollToTop$,
+    recordScrollHeightForPrepend$,
+  } = createScrollSignals(threadId);
   const { skeletonVisible$, hideSkeleton$ } = createSkeletonSignals();
   const { composerFileInput$, setComposerFileInput$ } =
     createComposerFileInput();
@@ -1188,9 +1216,18 @@ function createChatThreadSignals(
     groupedChatMessages$,
     hasOlderHistory$,
     fetchNextPage$,
-    loadHistory$,
+    loadHistory$: loadPagedHistory$,
     insertOptimisticMessage$,
   } = createPagedMessages(threadId, threadData$);
+
+  // Anchor the scroll viewport to current content before the prepend so the
+  // ResizeObserver compensation keeps the user reading the same spot.
+  const loadHistory$: Command<Promise<void>, [AbortSignal]> = command(
+    async ({ set }, signal: AbortSignal): Promise<void> => {
+      set(recordScrollHeightForPrepend$);
+      await set(loadPagedHistory$, signal);
+    },
+  );
 
   const { scheduleDraftSync$, cancelDraftSync$, flushDraftClear$ } =
     createDraftSync(threadId, draft);

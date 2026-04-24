@@ -39,7 +39,7 @@ import {
   toggleAutoRead$,
 } from "../../signals/voice-io/voice-io-settings.ts";
 import { Markdown } from "../components/markdown.tsx";
-import { detach, Reason } from "../../signals/utils.ts";
+import { detach, Reason, onDomEventFn } from "../../signals/utils.ts";
 import {
   AttachmentLightbox,
   FileAttachmentChip,
@@ -73,6 +73,7 @@ import {
   currentChatThreadSignals$,
   type ChatThreadSignals,
 } from "../../signals/chat-page/create-chat-thread.ts";
+import type { ChatThread } from "../../signals/agent-chat.ts";
 import { ATTACH_ONLY_PLACEHOLDER } from "../../signals/chat-page/resolve-draft-attachments.ts";
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
 import { orgModelProviders$ } from "../../signals/external/org-model-providers.ts";
@@ -264,9 +265,14 @@ export function ZeroChatThreadPage() {
   );
 }
 
-function getSessionError(
-  threadDataLoadable: ReturnType<typeof useLastLoadable>,
-  groupsLoadable: ReturnType<typeof useLastLoadable>,
+type LoadableValue<T> =
+  | { state: "loading" }
+  | { state: "hasData"; data: T }
+  | { state: "hasError"; error: unknown };
+
+function resolveSessionError(
+  threadDataLoadable: LoadableValue<ChatThread | null>,
+  groupsLoadable: LoadableValue<GroupedChatMessageGroup[]>,
 ): string | null {
   if (threadDataLoadable.state === "hasError") {
     return threadDataLoadable.error instanceof Error
@@ -295,7 +301,7 @@ function ZeroChatThreadPageInner({
     thread.loadHistory$,
   );
   const threadDataLoadable = useLastLoadable(thread.threadData$);
-  const sessionError = getSessionError(threadDataLoadable, groupsLoadable);
+  const sessionError = resolveSessionError(threadDataLoadable, groupsLoadable);
   const messagesLoading = groupsLoadable.state === "loading";
   const groups = groupsLoadable.state === "hasData" ? groupsLoadable.data : [];
   const setScrollContainer = useSet(thread.setScrollContainer$);
@@ -304,6 +310,10 @@ function ZeroChatThreadPageInner({
   const manualHistoryEnabled =
     features?.[FeatureSwitchKey.ChatManualHistory] ?? false;
   const loadingHistory = loadHistoryLoadable.state === "loading";
+  const pageSignal = useGet(pageSignal$);
+  const onLoadHistory = onDomEventFn(() => {
+    return loadHistory(pageSignal);
+  });
 
   return (
     <div className="flex flex-1 flex-col min-h-0 bg-transparent">
@@ -329,28 +339,7 @@ function ZeroChatThreadPageInner({
                     <button
                       type="button"
                       disabled={loadingHistory}
-                      onClick={() => {
-                        (async () => {
-                          const scrollContainer =
-                            document.querySelector<HTMLElement>(
-                              "[data-scroll-container]",
-                            );
-                          const beforeHeight =
-                            scrollContainer?.scrollHeight ?? 0;
-                          const beforeTop = scrollContainer?.scrollTop ?? 0;
-                          await loadHistory();
-                          window.requestAnimationFrame(() => {
-                            if (!scrollContainer) {
-                              return;
-                            }
-                            const heightDelta =
-                              scrollContainer.scrollHeight - beforeHeight;
-                            scrollContainer.scrollTop = beforeTop + heightDelta;
-                          });
-                        })().catch(() => {
-                          return undefined;
-                        });
-                      }}
+                      onClick={onLoadHistory}
                       className="inline-flex h-8 items-center rounded-lg border border-border bg-background px-3 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       Load history
