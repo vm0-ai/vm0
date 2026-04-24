@@ -105,6 +105,11 @@ export const setupChatPage$ = command(
       );
     }
 
+    // Seed message queue from server data on first visit.
+    if (isNew && threadData.draftQueue && threadData.draftQueue.length > 0) {
+      set(thread.seedQueue$);
+    }
+
     await get(thread.groupedChatMessages$);
     signal.throwIfAborted();
 
@@ -141,6 +146,7 @@ export const setupChatPage$ = command(
     await Promise.all([
       set(thread.runPhraseLoop$, signal),
       set(thread.loadPagedMessages$, signal),
+      set(thread.dequeueLoop$, signal),
       set(
         setAblyLoop$,
         `chatThreadRunUpdated:${threadId}`,

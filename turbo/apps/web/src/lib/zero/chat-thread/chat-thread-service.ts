@@ -192,6 +192,7 @@ export async function getChatThread(
   agentComposeId: string;
   draftContent: string | null;
   draftAttachments: PersistedAttachment[] | null;
+  draftQueue: { text: string }[] | null;
   modelProviderId: string | null;
   selectedModel: string | null;
   lastReadMessageId: string | null;
@@ -217,6 +218,7 @@ export async function getChatThread(
       .array()
       .nullable()
       .parse(thread.draftAttachments ?? null),
+    draftQueue: (thread.draftQueue as { text: string }[] | null) ?? null,
     modelProviderId: thread.modelProviderId ?? null,
     selectedModel: thread.selectedModel ?? null,
     lastReadMessageId: thread.lastReadMessageId ?? null,
@@ -234,10 +236,15 @@ export async function updateChatThreadDraft(
   userId: string,
   draftContent: string | null,
   draftAttachments: PersistedAttachment[] | null,
+  draftQueue?: { text: string }[] | null,
 ): Promise<void> {
   const updated = await globalThis.services.db
     .update(chatThreads)
-    .set({ draftContent, draftAttachments })
+    .set({
+      draftContent,
+      draftAttachments,
+      ...(draftQueue !== undefined ? { draftQueue } : {}),
+    })
     .where(and(eq(chatThreads.id, threadId), eq(chatThreads.userId, userId)))
     .returning({ id: chatThreads.id });
 

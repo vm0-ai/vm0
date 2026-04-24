@@ -1,5 +1,6 @@
 import { command, computed, state } from "ccstate";
 import {
+  chatThreadByIdContract,
   chatThreadsContract,
   type ChatThreadListItem,
   type PersistedAttachment,
@@ -70,6 +71,7 @@ export interface ChatThread {
   isLegacySession: boolean;
   draftContent: string | null;
   draftAttachments: PersistedAttachment[] | null;
+  draftQueue: { text: string }[] | null;
   /**
    * Per-thread model override. Both fields set together or both null. When
    * set, the send route uses this combination, overriding the agent and org
@@ -78,6 +80,50 @@ export interface ChatThread {
   modelProviderId: string | null;
   selectedModel: string | null;
 }
+
+// Note: `create-chat-thread.ts` has a near-identical `threadData$` inside
+// `createThreadData`. Both are intentionally kept:
+//  - `currentChatThread$` is a route-scoped computed used for sidebar title
+//    merging in `chatThreads$`.
+//  - `threadData$` lives inside the per-thread signal factory so it can be
+//    invalidated independently (reloadThread$) for the open chat page.
+// The `[200, 404]` accept list and `{ toast: false }` must stay aligned so
+// missing-thread redirects (see `chat-page-setup.ts`) behave consistently.
+const currentChatThread$ = computed(async (get): Promise<ChatThread | null> => {
+  const threadId = get(currentChatThreadId$);
+  if (!threadId) {
+    return null;
+  }
+
+  const threadClient = get(zeroClient$)(chatThreadByIdContract);
+
+  const threadResult = await accept(
+    threadClient.get({ params: { id: threadId } }),
+    [200, 404],
+    { toast: false },
+  );
+  if (threadResult.status === 404) {
+    return null;
+  }
+
+  const body = threadResult.body;
+  return {
+    id: threadId,
+    title: body.title ?? null,
+    agentId: body.agentId,
+    latestSessionId: body.latestSessionId ?? null,
+    lastReadMessageId: body.lastReadMessageId ?? null,
+    latestSessionProviderType: body.latestSessionProviderType ?? null,
+    activeRunIds: body.activeRunIds,
+    activeRuns: body.activeRuns ?? [],
+    isLegacySession: false,
+    draftContent: body.draftContent ?? null,
+    draftAttachments: body.draftAttachments ?? null,
+    draftQueue: body.draftQueue ?? null,
+    modelProviderId: body.modelProviderId ?? null,
+    selectedModel: body.selectedModel ?? null,
+  };
+});
 
 export const chatThreads$ = computed(async (get) => {
   get(reloadChatThreadsCounter$);
@@ -92,7 +138,16 @@ export const chatThreads$ = computed(async (get) => {
     client.list({ query: { agentId: agentId } }),
     [200],
   );
-  return result.body.threads;
+  const threads = result.body.threads;
+
+  const currentThread = await get(currentChatThread$);
+  return threads.map((t) => {
+    return {
+      ...t,
+      title:
+        t.id === currentThread?.id ? t.title || currentThread.title : t.title,
+    };
+  });
 });
 
 /**

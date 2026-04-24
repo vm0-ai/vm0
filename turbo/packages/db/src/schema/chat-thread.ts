@@ -50,6 +50,12 @@ export const chatThreads = pgTable(
      */
     draftAttachments: jsonb("draft_attachments").$type<PersistedAttachment[]>(),
     /**
+     * Client-side message queue persisted alongside the draft. Each entry is a
+     * user message waiting to be sent after the current AI run completes.
+     * Null when the queue is empty.
+     */
+    draftQueue: jsonb("draft_queue").$type<{ text: string }[]>(),
+    /**
      * Slack-style watermark: the last timestamp up to which the user has read
      * messages in this thread. Forward-only — never rewound.
      * NULL means the thread has never been explicitly marked read.

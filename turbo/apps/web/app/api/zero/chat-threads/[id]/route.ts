@@ -88,6 +88,7 @@ const router = tsr.router(chatThreadByIdContract, {
           updatedAt: thread.updatedAt.toISOString(),
           draftContent: thread.draftContent,
           draftAttachments: thread.draftAttachments,
+          draftQueue: thread.draftQueue,
           modelProviderId: thread.modelProviderId,
           selectedModel: thread.selectedModel,
         },
@@ -122,6 +123,7 @@ const router = tsr.router(chatThreadByIdContract, {
         userId,
         body.draftContent ?? null,
         body.draftAttachments ?? null,
+        body.draftQueue ?? null,
       );
       return { status: 204 as const, body: undefined };
     } catch (error) {

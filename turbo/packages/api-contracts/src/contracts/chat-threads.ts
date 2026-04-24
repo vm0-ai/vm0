@@ -131,6 +131,10 @@ const chatThreadDetailSchema = z.object({
   updatedAt: z.string(),
   draftContent: z.string().nullable().optional(),
   draftAttachments: z.array(persistedAttachmentSchema).nullable().optional(),
+  draftQueue: z
+    .array(z.object({ text: z.string() }))
+    .nullable()
+    .optional(),
   /**
    * Per-thread model override. Both fields set together or both null.
    * When set, the send route uses this combination (overriding the agent
@@ -216,6 +220,10 @@ export const chatThreadByIdContract = c.router({
       draftContent: z.string().nullable().optional(),
       draftAttachments: z
         .array(persistedAttachmentSchema)
+        .nullable()
+        .optional(),
+      draftQueue: z
+        .array(z.object({ text: z.string() }))
         .nullable()
         .optional(),
     }),
