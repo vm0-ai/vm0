@@ -99,6 +99,20 @@ function buildClient(): GoogleGenAI | null {
 }
 
 export async function POST(req: NextRequest) {
+  try {
+    return await handlePost(req);
+  } catch (error) {
+    if (isApiError(error)) {
+      return NextResponse.json(
+        { error: { message: error.message, code: error.code } },
+        { status: error.statusCode },
+      );
+    }
+    throw error;
+  }
+}
+
+async function handlePost(req: NextRequest) {
   initServices();
 
   const authCtx = await getAuthContext(
@@ -141,18 +155,7 @@ export async function POST(req: NextRequest) {
 
   const db = globalThis.services.db;
   const { org } = await resolveOrg(authCtx);
-
-  try {
-    await checkOrgCredits(org.orgId, userId, "vm0", db);
-  } catch (error) {
-    if (isApiError(error)) {
-      return NextResponse.json(
-        { error: { message: error.message, code: error.code } },
-        { status: error.statusCode },
-      );
-    }
-    throw error;
-  }
+  await checkOrgCredits(org.orgId, userId, "vm0", db);
 
   const result = await ai.models.generateContent({
     model: MODEL,
