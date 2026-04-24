@@ -10,6 +10,7 @@ import {
   getLatestSessionIdForThread,
   publishThreadListChanged,
 } from "./chat-message-service";
+import { formatChatRunErrorMessage } from "./chat-run-error-message";
 import {
   type PersistedAttachment,
   type ResolvedAttachFile,
@@ -347,9 +348,17 @@ export async function getChatThreadMessages(
       // falls back to agent_runs.error, covering the case where the terminal
       // callback failed to deliver and chat_messages.error was never written.
       const isPlaceholder = row.sequenceNumber === null;
-      const effectiveError = isPlaceholder
+      const rawEffectiveError = isPlaceholder
         ? (row.error ?? row.runError ?? undefined)
         : (row.error ?? undefined);
+      const effectiveError =
+        rawEffectiveError && isPlaceholder && !row.error && row.runId
+          ? await formatChatRunErrorMessage({
+              chatThreadId: threadId,
+              runId: row.runId,
+              errorMessage: rawEffectiveError,
+            })
+          : rawEffectiveError;
 
       const attachFiles =
         row.attachFiles && row.attachFiles.length > 0
