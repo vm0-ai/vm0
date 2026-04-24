@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.94.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.94.1...runner-rs-v0.94.2) (2026-04-24)
+
+
+### Bug Fixes
+
+* **runner:** make rootfs assembly atomic via staging + rename ([#11013](https://github.com/vm0-ai/vm0/issues/11013)) ([ab3c249](https://github.com/vm0-ai/vm0/commit/ab3c249f5c4a4684d7aa3cf0dc736fe8e5f6eac3))
+
+
+### Performance Improvements
+
+* **guest-agent:** skip vas snapshot for unchanged artifacts (part 2 of [#10967](https://github.com/vm0-ai/vm0/issues/10967)) ([#10989](https://github.com/vm0-ai/vm0/issues/10989)) ([4d4b18e](https://github.com/vm0-ai/vm0/commit/4d4b18ede0f7f13c767cb8d50726d9ea1e69c780))
+
 ## [0.94.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.94.0...runner-rs-v0.94.1) (2026-04-24)
 
 

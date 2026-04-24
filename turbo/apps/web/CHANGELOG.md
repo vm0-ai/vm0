@@ -1,5 +1,38 @@
 # Changelog
 
+## [12.300.0](https://github.com/vm0-ai/vm0/compare/web-v12.299.0...web-v12.300.0) (2026-04-24)
+
+
+### Features
+
+* **eslint:** add no-global-assignment rule banning new globals ([#11005](https://github.com/vm0-ai/vm0/issues/11005)) ([2dec8c9](https://github.com/vm0-ai/vm0/commit/2dec8c9ddd2cff2b1985806373dc3059b33e4c05))
+* remove deprecated deepseek-chat/reasoner, add v4 credit multipliers ([#11014](https://github.com/vm0-ai/vm0/issues/11014)) ([7f4eb57](https://github.com/vm0-ai/vm0/commit/7f4eb57fcf8f8d3a4040787ec854fac5fac51ec0))
+* **web:** make use-case try-it button prominent ([#10994](https://github.com/vm0-ai/vm0/issues/10994)) ([e4af2a5](https://github.com/vm0-ai/vm0/commit/e4af2a54e90dffa8a75816d068214caacc13d356))
+
+
+### Bug Fixes
+
+* fall back to agent default model in createZeroRunRecord ([#11016](https://github.com/vm0-ai/vm0/issues/11016)) ([c8e31b3](https://github.com/vm0-ai/vm0/commit/c8e31b3f18f79cf980d368951c2256e8f6d2cdfd))
+* **pricing:** render structured data server-side ([#10991](https://github.com/vm0-ai/vm0/issues/10991)) ([1b57854](https://github.com/vm0-ai/vm0/commit/1b57854488bfe90b6c3d4a708c2c50d2326c8707))
+* **zero:** seed memory artifact into agent_sessions.artifacts on new runs ([#11032](https://github.com/vm0-ai/vm0/issues/11032)) ([d4aa838](https://github.com/vm0-ai/vm0/commit/d4aa8389229ce94f3acefb589afb5489a148ac91))
+
+
+### Refactoring
+
+* remove chat thread list item agentId ([#10998](https://github.com/vm0-ai/vm0/issues/10998)) ([2d62c16](https://github.com/vm0-ai/vm0/commit/2d62c168caa019b7e65e26d6f2bf713b798608a8))
+
+
+### Performance Improvements
+
+* **guest-agent:** skip vas snapshot for unchanged artifacts (part 2 of [#10967](https://github.com/vm0-ai/vm0/issues/10967)) ([#10989](https://github.com/vm0-ai/vm0/issues/10989)) ([4d4b18e](https://github.com/vm0-ai/vm0/commit/4d4b18ede0f7f13c767cb8d50726d9ea1e69c780))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.234.0
+
 ## [12.299.0](https://github.com/vm0-ai/vm0/compare/web-v12.298.0...web-v12.299.0) (2026-04-24)
 
 

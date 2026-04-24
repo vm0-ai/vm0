@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.293.0](https://github.com/vm0-ai/vm0/compare/app-v0.292.1...app-v0.293.0) (2026-04-24)
+
+
+### Features
+
+* remove deprecated deepseek-chat/reasoner, add v4 credit multipliers ([#11014](https://github.com/vm0-ai/vm0/issues/11014)) ([7f4eb57](https://github.com/vm0-ai/vm0/commit/7f4eb57fcf8f8d3a4040787ec854fac5fac51ec0))
+
+
+### Bug Fixes
+
+* restore mobile spacing between mic and send button in composer ([#11020](https://github.com/vm0-ai/vm0/issues/11020)) ([54e8d10](https://github.com/vm0-ai/vm0/commit/54e8d108e3d05869b9debdcc0ad567b44e3b67fb))
+* show provider logo in compact model picker ([#11024](https://github.com/vm0-ai/vm0/issues/11024)) ([2f4d402](https://github.com/vm0-ai/vm0/commit/2f4d402fe7dc154ef147d679a93d513c92bfd0ec))
+
+
+### Refactoring
+
+* remove chat thread list item agentId ([#10998](https://github.com/vm0-ai/vm0/issues/10998)) ([2d62c16](https://github.com/vm0-ai/vm0/commit/2d62c168caa019b7e65e26d6f2bf713b798608a8))
+* remove unifyChatThreads feature flag ([#11006](https://github.com/vm0-ai/vm0/issues/11006)) ([4c5a8cf](https://github.com/vm0-ai/vm0/commit/4c5a8cfb0ee29f4d8259f01c0a2d3960d44f4e21))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.234.0
+
 ## [0.292.1](https://github.com/vm0-ai/vm0/compare/app-v0.292.0...app-v0.292.1) (2026-04-24)
 
 
