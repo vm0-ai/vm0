@@ -34,7 +34,7 @@ import {
   checkRunConcurrencyLimit,
   authorizeCompose,
   validateComposeRequirements,
-  checkOrgCredits,
+  checkOrgCreditsForRun,
   checkModelProviderConfigured,
 } from "./zero-run-policy";
 import {
@@ -499,6 +499,7 @@ async function createZeroRunRecord(
     orgTier,
     additionalVolumes: skillVolumes.length > 0 ? skillVolumes : undefined,
     debugNoMockClaude: params.debugNoMockClaude,
+    triggerSource: params.triggerSource,
   };
 
   // ── Round 3: Pre-flight checks (need compose content) ───────────────
@@ -516,7 +517,11 @@ async function createZeroRunRecord(
   }
 
   const round3Credits = timed(async () => {
-    return checkOrgCredits(resolved.orgId, params.userId, params.modelProvider);
+    return checkOrgCreditsForRun(
+      resolved.orgId,
+      params.userId,
+      params.modelProvider,
+    );
   });
   const round3ModelProvider = timed(async () => {
     return checkModelProviderConfigured(

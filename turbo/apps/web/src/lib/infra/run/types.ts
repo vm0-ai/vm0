@@ -125,6 +125,11 @@ export interface ExecutionContext {
   // API start time for E2E timing metrics — epoch millis captured at the route
   // handler's first line by the caller (see issue #9936).
   apiStartTime: number;
+
+  // True when the run was previously enqueued and is now being dispatched from
+  // the queue. Used only for telemetry (was_queued dimension on api_to_executor)
+  // so latency queries can separate queue-dispatch from direct-dispatch runs.
+  wasQueued?: boolean;
 }
 
 /**

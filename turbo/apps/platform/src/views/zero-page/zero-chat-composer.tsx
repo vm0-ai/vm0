@@ -229,11 +229,11 @@ function ConnectorTriggerIcons({
     return <IconPlug size={18} stroke={1.5} />;
   }
   return (
-    <span className="flex items-center -space-x-1.5">
+    <span className="flex items-center -space-x-2 sm:-space-x-1.5">
       {enabled.map((c) => {
         return (
           <span key={c.type} className="relative shrink-0">
-            <span className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-background zero-border">
+            <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-background zero-border sm:h-7 sm:w-7">
               <ConnectorIcon type={c.type as ConnectorType} size={16} />
             </span>
           </span>
@@ -409,7 +409,7 @@ function ConnectorsPopoverButton({
             <TooltipTrigger asChild>
               <button
                 type="button"
-                className="inline-flex shrink-0 items-center justify-center rounded-lg h-9 min-w-9 px-1.5 hover:bg-accent transition-colors"
+                className="inline-flex h-8 min-w-8 shrink-0 items-center justify-center rounded-lg px-1 transition-colors hover:bg-accent sm:h-9 sm:min-w-9 sm:px-1.5"
                 aria-label="Connectors"
               >
                 <ConnectorTriggerIcons connectors={agentConnectors} />
@@ -1025,13 +1025,13 @@ export function ZeroChatComposer({
               onPaste={handlePaste}
             />
             <div className="flex items-center justify-between gap-2 px-4 pb-3 pt-1">
-              <div className="flex items-center gap-1 text-muted-foreground">
+              <div className="flex items-center gap-0 text-muted-foreground sm:gap-1">
                 <TooltipProvider delayDuration={300}>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <button
                         type="button"
-                        className="p-[9px] rounded-lg hover:bg-accent hover:text-foreground transition-colors duration-200"
+                        className="rounded-lg p-2 transition-colors duration-200 hover:bg-accent hover:text-foreground sm:p-[9px]"
                         aria-label="Attach"
                         onClick={handleFileSelect}
                       >
@@ -1053,7 +1053,7 @@ export function ZeroChatComposer({
                   onToggle={handleToggle}
                 />
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-0 sm:gap-2">
                 {actionsLoading ? (
                   <Skeleton
                     className={cn(
@@ -1070,11 +1070,13 @@ export function ZeroChatComposer({
                         onChange={modelPicker.onChange}
                         placeholder="Default"
                         triggerClassName={cn(
-                          "h-9 w-auto max-w-[12rem] gap-1 border-transparent bg-transparent px-2 text-sm text-muted-foreground transition-colors",
+                          "h-9 w-9 max-w-none gap-0 border-transparent bg-transparent px-0 text-sm text-muted-foreground transition-colors sm:w-auto sm:max-w-[12rem] sm:gap-1 sm:px-2",
+                          "[&>span]:flex [&>span]:items-center [&>span]:justify-center sm:[&>span]:justify-start [&>svg]:hidden sm:[&>svg]:block",
                           "hover:bg-accent hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground",
                         )}
                         sessionProviderType={modelPicker.sessionProviderType}
                         compactTrigger
+                        mobileIconTrigger
                         open={modelPickerOpen}
                         onOpenChange={setModelPickerOpen}
                         disabled={modelPicker.disabled}
@@ -1082,7 +1084,7 @@ export function ZeroChatComposer({
                         inheritLabel="agent"
                       />
                     )}
-                    <div className="mx-0.5 h-5 w-px bg-border/60" />
+                    <div className="mx-0 h-5 w-px bg-border/60 sm:mx-0.5" />
                     <MicButton
                       onTranscribed={(text) => {
                         const base = input;

@@ -619,14 +619,12 @@ describe("POST /api/zero/chat/messages", () => {
       );
     });
 
-    // Two `org_metadata` SELECTs remain per POST after this dedup (Round 2
-    // tier via getOrgMetadata + Round 3 credits via checkOrgCredits). Dedup
-    // target is the duplicate `resolveOrg ↔ Round 2` pair in the
-    // modelSelection branch (3→2) plus the `zero_agents` pair on every POST
-    // (2→1). The checkOrgCredits read is a separate credits-admission path
-    // tracked as a follow-up (out of scope for #10594).
+    // One `org_metadata` SELECT per POST: the `resolveOrg` tier+credits read.
+    // The credits-admission path (checkOrgCreditsForRun) only touches
+    // org_metadata on the vm0 branch; BYOK and default-non-vm0 paths
+    // short-circuit before the balance check (#10951).
     describe("deduplicates per-request reads", () => {
-      it("reads zero_agents once and org_metadata twice without modelSelection", async () => {
+      it("reads zero_agents once and org_metadata once without modelSelection", async () => {
         const counter = createQueryCounter();
         try {
           const response = await POST(
@@ -642,13 +640,13 @@ describe("POST /api/zero/chat/messages", () => {
 
           expect(response.status).toBe(201);
           expect(counter.countMatching(/from\s+"?zero_agents"?/i)).toBe(1);
-          expect(counter.countMatching(/from\s+"?org_metadata"?/i)).toBe(2);
+          expect(counter.countMatching(/from\s+"?org_metadata"?/i)).toBe(1);
         } finally {
           counter.restore();
         }
       });
 
-      it("reads zero_agents once and org_metadata twice with modelSelection (duplicate pair eliminated)", async () => {
+      it("reads zero_agents once and org_metadata once with modelSelection (BYOK fast-exit)", async () => {
         const providerId = await getTestModelProviderIdByType(
           user.orgId,
           "anthropic-api-key",
@@ -672,10 +670,10 @@ describe("POST /api/zero/chat/messages", () => {
 
           expect(response.status).toBe(201);
           expect(counter.countMatching(/from\s+"?zero_agents"?/i)).toBe(1);
-          // 3→2: resolveOrg still reads org_metadata for tier+credits, Round 3
-          // checkOrgCredits reads credits; Round 2 now hits the preload path
-          // built from resolveOrg's already-fetched tier (the eliminated dup).
-          expect(counter.countMatching(/from\s+"?org_metadata"?/i)).toBe(2);
+          // modelProvider="anthropic" triggers checkOrgCreditsForRun's BYOK
+          // fast-exit — no org_metadata read from credits admission. Round 2
+          // uses resolveOrg's preloaded tier (the eliminated dup from #10594).
+          expect(counter.countMatching(/from\s+"?org_metadata"?/i)).toBe(1);
         } finally {
           counter.restore();
         }

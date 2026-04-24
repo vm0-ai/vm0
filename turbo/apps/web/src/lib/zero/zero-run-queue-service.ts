@@ -31,7 +31,7 @@ import {
   checkRunConcurrencyLimit,
   authorizeCompose,
   validateComposeRequirements,
-  checkOrgCredits,
+  checkOrgCreditsForRun,
   checkModelProviderConfigured,
 } from "./zero-run-policy";
 import {
@@ -57,6 +57,7 @@ import { publishChatThreadRunUpdated } from "./chat-thread/chat-message-service"
 import type { TriggerSource } from "@vm0/core/contracts/logs";
 import type { OrgTier } from "@vm0/core/contracts/orgs";
 import type { QueueResponse } from "@vm0/core/contracts/runs";
+import { recordSandboxOperation } from "../infra/metrics";
 
 const log = logger("zero:run-queue-service");
 
@@ -162,10 +163,35 @@ export async function enqueueRun(
       expiresAt,
     });
 
-    return { ...inserted, sessionId };
+    // Post-insert queue depth, captured inside the same transaction so the
+    // enqueue hot path doesn't pay a separate round-trip after commit.
+    // Directional (racing inserts/deletes across orgs can skew by ±1) but
+    // correlates with queue pressure per org.
+    const [depthRow] = await tx
+      .select({ depth: count() })
+      .from(agentRunQueue)
+      .where(eq(agentRunQueue.orgId, orgId));
+
+    return {
+      ...inserted,
+      sessionId,
+      queueDepth: Number(depthRow?.depth ?? 0),
+    };
   });
 
   log.debug(`Enqueued run ${run.id} for user ${userId}`);
+
+  recordSandboxOperation({
+    sandboxType: "runner",
+    actionType: "enqueue_zero_run",
+    durationMs: 0,
+    success: true,
+    runId: run.id,
+    dimensions: {
+      queue_depth: run.queueDepth,
+      trigger_source: params.triggerSource ?? null,
+    },
+  });
 
   // Notify all org members whose queue view should refresh.
   await publishOrgSignal(orgId, "queue:changed");
@@ -294,7 +320,7 @@ async function dequeueNextAtomic(
 
       // Look up org tier from org table (source of truth).
       // Falls back to "free" (most conservative limit) if row is missing.
-      // Credits are checked by checkOrgCredits() within this transaction.
+      // Credits are checked by checkOrgCreditsForRun() within this transaction.
       const [orgRow] = await tx
         .select({ tier: orgMetadata.tier })
         .from(orgMetadata)
@@ -314,8 +340,9 @@ async function dequeueNextAtomic(
         user_id: string;
         encrypted_params: string | null;
         model_provider: string | null;
+        created_at: Date;
       }>(
-        sql`SELECT q.run_id, q.user_id, q.encrypted_params, zr.model_provider
+        sql`SELECT q.run_id, q.user_id, q.encrypted_params, zr.model_provider, q.created_at
          FROM agent_run_queue q
          JOIN agent_runs r ON r.id = q.run_id
          LEFT JOIN zero_runs zr ON zr.id = r.id
@@ -331,7 +358,12 @@ async function dequeueNextAtomic(
 
         // Unified pre-flight credit check (org-level + per-member cap)
         try {
-          await checkOrgCredits(orgId, row.user_id, row.model_provider, tx);
+          await checkOrgCreditsForRun(
+            orgId,
+            row.user_id,
+            row.model_provider,
+            tx,
+          );
         } catch (error) {
           if (isInsufficientCredits(error)) {
             await transitionRunStatus(
@@ -364,6 +396,25 @@ async function dequeueNextAtomic(
           log.debug(`Run ${row.run_id} already processed, skipping`);
           continue;
         }
+
+        // Remaining queue depth for this org, inside the same advisory lock
+        // so the number reflects the post-dequeue state exactly.
+        const [remainingRow] = await tx
+          .select({ depth: count() })
+          .from(agentRunQueue)
+          .where(eq(agentRunQueue.orgId, orgId));
+
+        const enqueuedAtMs = new Date(row.created_at).getTime();
+        recordSandboxOperation({
+          sandboxType: "runner",
+          actionType: "dequeue_zero_run",
+          durationMs: Date.now() - enqueuedAtMs,
+          success: true,
+          runId: row.run_id,
+          dimensions: {
+            queue_depth_at_dequeue: Number(remainingRow?.depth ?? 0),
+          },
+        });
 
         log.debug(`Dequeued run ${row.run_id} for org ${orgId}`);
         return {
@@ -559,6 +610,9 @@ export async function dispatchQueuedZeroRun(
     runId,
     apiStartTime,
   });
+  // Tag the context so the downstream api_to_executor span records
+  // was_queued=true for runs that came through the queue.
+  contextResult.context.wasQueued = true;
 
   // Update zero_runs with resolved model fields before dispatch so metadata
   // is recorded even if dispatch succeeds but a later step fails.

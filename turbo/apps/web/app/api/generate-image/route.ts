@@ -10,7 +10,7 @@ import { initServices } from "../../../src/lib/init-services";
 import { isApiError } from "../../../src/lib/shared/errors";
 import { processOrgUsageEvents } from "../../../src/lib/zero/credit/usage-event-service";
 import { resolveOrg } from "../../../src/lib/zero/org/resolve-org";
-import { checkOrgCredits } from "../../../src/lib/zero/zero-run-policy";
+import { checkOrgCredits } from "../../../src/lib/zero/credit/check-org-credits";
 
 export const runtime = "nodejs";
 
@@ -157,7 +157,7 @@ async function handlePost(req: NextRequest) {
 
   const db = globalThis.services.db;
   const { org } = await resolveOrg(authCtx);
-  await checkOrgCredits(org.orgId, userId, "vm0", db);
+  await checkOrgCredits(org.orgId, userId, db);
 
   const result = await ai.models.generateContent({
     model: MODEL,

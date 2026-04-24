@@ -7,6 +7,7 @@ import {
   getPagedMessages,
   resolveAttachFileUrls,
 } from "../../../../../../src/lib/zero/chat-thread";
+import { formatChatRunErrorMessage } from "../../../../../../src/lib/zero/chat-thread/chat-run-error-message";
 import { isNotFound } from "../../../../../../src/lib/shared/errors";
 
 const router = tsr.router(chatThreadMessagesContract, {
@@ -40,9 +41,17 @@ const router = tsr.router(chatThreadMessagesContract, {
           // event-backed rows and error rows use their own error field.
           const isLegacyPlaceholder =
             row.sequenceNumber === null && row.content === null && !row.error;
-          const effectiveError = isLegacyPlaceholder
+          const rawEffectiveError = isLegacyPlaceholder
             ? (row.runError ?? undefined)
             : (row.error ?? undefined);
+          const effectiveError =
+            rawEffectiveError && isLegacyPlaceholder && row.runId
+              ? await formatChatRunErrorMessage({
+                  chatThreadId: params.threadId,
+                  runId: row.runId,
+                  errorMessage: rawEffectiveError,
+                })
+              : rawEffectiveError;
           const attachFiles =
             row.attachFiles && row.attachFiles.length > 0
               ? await resolveAttachFileUrls(userId, row.attachFiles)

@@ -1,4 +1,5 @@
 import type { MouseEvent, ReactNode } from "react";
+import { IconCpu } from "@tabler/icons-react";
 import {
   Select,
   SelectContent,
@@ -28,6 +29,7 @@ import {
   getUILabel,
   getVm0ModelMultiplier,
 } from "./settings/provider-ui-config";
+import { ProviderIcon } from "./settings/provider-icons";
 
 export interface ModelProviderSelection {
   modelProviderId: string;
@@ -57,6 +59,11 @@ interface ModelProviderPickerProps {
    * space is tight and the full breakdown lives in the open dropdown.
    */
   compactTrigger?: boolean;
+  /**
+   * When true, the trigger renders as a provider icon on mobile while keeping
+   * the normal label on larger screens.
+   */
+  mobileIconTrigger?: boolean;
   /** Controlled open state for programmatic toggle (e.g. keyboard shortcut). */
   open?: boolean;
   /** Callback when the open state changes. */
@@ -236,6 +243,7 @@ interface TriggerLabelProps {
   effectiveDefault: ModelProviderSelection | null;
   placeholder: string;
   compact: boolean;
+  mobileIcon: boolean;
 }
 
 function TriggerLabel({
@@ -244,27 +252,46 @@ function TriggerLabel({
   effectiveDefault,
   placeholder,
   compact,
+  mobileIcon,
 }: TriggerLabelProps) {
   // When no explicit value, show the effective default model name
   const resolved = value ?? effectiveDefault;
   if (!resolved) {
-    return <span>{placeholder}</span>;
+    return (
+      <ResponsiveTriggerContent
+        mobileIcon={mobileIcon}
+        provider={undefined}
+        label={<span>{placeholder}</span>}
+      />
+    );
   }
   const displayName = getModelDisplayName(resolved.selectedModel);
-  if (compact) {
-    return <span className="truncate">{displayName}</span>;
-  }
   const provider = providers.find((p) => {
     return p.id === resolved.modelProviderId;
   });
+  if (compact) {
+    return (
+      <ResponsiveTriggerContent
+        mobileIcon={mobileIcon}
+        provider={provider}
+        label={<span className="truncate">{displayName}</span>}
+      />
+    );
+  }
   if (!provider) {
-    return <span>{displayName}</span>;
+    return (
+      <ResponsiveTriggerContent
+        mobileIcon={mobileIcon}
+        provider={undefined}
+        label={<span>{displayName}</span>}
+      />
+    );
   }
   const multiplier =
     provider.type === "vm0"
       ? getVm0ModelMultiplier(resolved.selectedModel)
       : undefined;
-  return (
+  const label = (
     <span className="flex items-center gap-1.5 min-w-0">
       <span className="truncate">{displayName}</span>
       <span className="shrink-0 text-xs text-muted-foreground">
@@ -272,6 +299,41 @@ function TriggerLabel({
       </span>
       {multiplier !== undefined && <MultiplierBadge multiplier={multiplier} />}
     </span>
+  );
+  return (
+    <ResponsiveTriggerContent
+      mobileIcon={mobileIcon}
+      provider={provider}
+      label={label}
+    />
+  );
+}
+
+function ResponsiveTriggerContent({
+  mobileIcon,
+  provider,
+  label,
+}: {
+  mobileIcon: boolean;
+  provider: ModelProviderResponse | undefined;
+  label: ReactNode;
+}) {
+  if (!mobileIcon) {
+    return label;
+  }
+  return (
+    <>
+      <span className="flex items-center justify-center sm:hidden">
+        {provider ? (
+          <ProviderIcon type={provider.type} size={18} />
+        ) : (
+          <IconCpu size={18} stroke={1.5} />
+        )}
+      </span>
+      <span className="hidden min-w-0 sm:inline-flex sm:items-center">
+        {label}
+      </span>
+    </>
   );
 }
 
@@ -299,6 +361,7 @@ function DisabledPickerLabel({
   value,
   placeholder,
   compactTrigger,
+  mobileIconTrigger,
   triggerClassName,
   agentDefault,
 }: Pick<
@@ -307,11 +370,13 @@ function DisabledPickerLabel({
   | "value"
   | "placeholder"
   | "compactTrigger"
+  | "mobileIconTrigger"
   | "triggerClassName"
   | "agentDefault"
 > & {
   placeholder: string;
   compactTrigger: boolean;
+  mobileIconTrigger: boolean;
 }) {
   const { effectiveDefault } = resolveEffectiveDefault(agentDefault, providers);
   const resolved = value ?? effectiveDefault;
@@ -332,6 +397,7 @@ function DisabledPickerLabel({
         effectiveDefault={effectiveDefault}
         placeholder={placeholder}
         compact={compactTrigger}
+        mobileIcon={mobileIconTrigger}
       />
     </span>
   );
@@ -434,6 +500,7 @@ function ModelSelectDropdown({
   placeholder,
   triggerClassName,
   compactTrigger,
+  mobileIconTrigger,
   onChange,
   open,
   onOpenChange,
@@ -447,6 +514,7 @@ function ModelSelectDropdown({
   placeholder: string;
   triggerClassName: string | undefined;
   compactTrigger: boolean;
+  mobileIconTrigger: boolean;
   onChange: (value: ModelProviderSelection | null) => void;
   open: boolean | undefined;
   onOpenChange: ((open: boolean) => void) | undefined;
@@ -477,6 +545,7 @@ function ModelSelectDropdown({
             effectiveDefault={effectiveDefault}
             placeholder={placeholder}
             compact={compactTrigger}
+            mobileIcon={mobileIconTrigger}
           />
         </SelectValue>
       </SelectTrigger>
@@ -521,6 +590,7 @@ export function ModelProviderPicker({
   triggerClassName,
   sessionProviderType,
   compactTrigger = false,
+  mobileIconTrigger = false,
   open,
   onOpenChange,
   disabled = false,
@@ -534,6 +604,7 @@ export function ModelProviderPicker({
         value={value}
         placeholder={placeholder}
         compactTrigger={compactTrigger}
+        mobileIconTrigger={mobileIconTrigger}
         triggerClassName={triggerClassName}
         agentDefault={agentDefault}
       />
@@ -555,6 +626,7 @@ export function ModelProviderPicker({
       placeholder={placeholder}
       triggerClassName={triggerClassName}
       compactTrigger={compactTrigger}
+      mobileIconTrigger={mobileIconTrigger}
       onChange={onChange}
       open={open}
       onOpenChange={onOpenChange}
