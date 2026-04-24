@@ -356,9 +356,9 @@ function ChatThreadComposer({
 }) {
   const groups = useLastResolved(thread.groupedChatMessages$) ?? [];
   const hasMessages = groups.length > 0;
-  const hasUserMessages = groups.some((g) => {
-    return g.role === "user";
-  });
+  // Read from a dedicated signal so this component only re-renders when the
+  // boolean actually changes (false → true), not on every subsequent message.
+  const hasUserMessages = useLastResolved(thread.hasUserMessages$) ?? false;
   const displayName = useLastResolved(thread.agentDisplayName$) ?? "Zero";
   const allFinishedLoadable = useLastLoadable(thread.allFinished$);
   const allFinished =
