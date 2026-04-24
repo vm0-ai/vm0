@@ -14,10 +14,7 @@ import {
 } from "@tabler/icons-react";
 import type { ChatThreadListItem } from "@vm0/core/contracts/chat-threads";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import {
-  AgentAvatarImg,
-  useChatThreadsTitleLabels,
-} from "./zero-sidebar-shared.tsx";
+import { useChatThreadsTitleLabels } from "./zero-sidebar-shared.tsx";
 import {
   Tooltip,
   TooltipContent,
@@ -67,13 +64,11 @@ function ChatThreadItem({
   isSelected,
   onSelect,
   showReadIndicator,
-  showAgentAvatar,
 }: {
   session: ChatThreadListItem;
   isSelected: boolean;
   onSelect?: (id: string) => void;
   showReadIndicator: boolean;
-  showAgentAvatar: boolean;
 }) {
   const setPendingDeleteThreadId = useSet(setPendingDeleteThreadId$);
   const isUnread = showReadIndicator && !session.isRead;
@@ -115,13 +110,6 @@ function ChatThreadItem({
           <span
             className="shrink-0 h-2 w-2 rounded-full bg-primary"
             aria-label="Unread"
-          />
-        )}
-        {showAgentAvatar && (
-          <AgentAvatarImg
-            name={session.agent?.id ?? session.agentId}
-            alt=""
-            className="h-4 w-4 shrink-0 rounded-full object-cover object-top"
           />
         )}
         <span className="truncate min-w-0 flex-1">
@@ -168,8 +156,6 @@ function ChatThreads() {
   const features = useLastResolved(featureSwitch$);
   const showReadIndicator =
     features?.[FeatureSwitchKey.ChatThreadReadIndicator] ?? false;
-  const unifyChatThreads =
-    features?.[FeatureSwitchKey.UnifyChatThreads] ?? false;
   const searchTerm = useGet(sidebarSearchTerm$);
   const trimmedTerm = searchTerm.trim().toLowerCase();
   const filteredChatThreads = trimmedTerm
@@ -211,7 +197,6 @@ function ChatThreads() {
             isSelected={currentChatThreadId === session.id}
             onSelect={onRecentSelect}
             showReadIndicator={showReadIndicator}
-            showAgentAvatar={unifyChatThreads}
           />
         );
       })}

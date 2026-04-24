@@ -1,26 +1,18 @@
 import { useLastResolved } from "ccstate-react";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { agents$ } from "../../signals/agent.ts";
-import { currentChatAgentDisplayName$ } from "../../signals/agent-chat.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { resolveAvatarUrl, resolveAvatarSvgConfig } from "./avatar-utils.ts";
 import { AvatarSvgPreview } from "./avatar-svg-preview.tsx";
 
 /**
- * Returns label/placeholder strings that vary based on the UnifyChatThreads
- * feature switch. Used by both the sidebar thread list and the full chat-list
- * page so the two surfaces stay in sync without duplicating the logic.
+ * Returns unified label/placeholder strings for the chat thread list.
+ * Used by both the sidebar thread list and the full chat-list page so the
+ * two surfaces stay in sync without duplicating the logic.
  */
 export function useChatThreadsTitleLabels() {
-  const agentDisplayName = useLastResolved(currentChatAgentDisplayName$);
-  const features = useLastResolved(featureSwitch$);
-  const unify = features?.[FeatureSwitchKey.UnifyChatThreads] ?? false;
   return {
-    titleLabel: unify ? "Chats" : `Chats with ${agentDisplayName}`,
-    searchPlaceholder: unify
-      ? "Search chats"
-      : `Search chat with ${agentDisplayName}`,
-    newChatAriaLabel: unify ? "New chat" : `New chat with ${agentDisplayName}`,
+    titleLabel: "Chats",
+    searchPlaceholder: "Search chats",
+    newChatAriaLabel: "New chat",
   };
 }
 
