@@ -260,6 +260,22 @@ function buildSystemSkillVolumes(connectorTypes: readonly string[]): Array<{
   });
 }
 
+/** Resolve model with agent-level fallback so every trigger inherits agent defaults. */
+function resolveEffectiveModel(
+  params: Pick<
+    CreateZeroRunParams,
+    "modelProviderId" | "selectedModelOverride"
+  >,
+  row?: ZeroAgentForRun | null,
+): { modelProviderId?: string; selectedModelOverride?: string } {
+  return {
+    modelProviderId:
+      params.modelProviderId ?? row?.modelProviderId ?? undefined,
+    selectedModelOverride:
+      params.selectedModelOverride ?? row?.selectedModel ?? undefined,
+  };
+}
+
 /**
  * Create a zero run record with pre-flight checks but without dispatching.
  *
@@ -486,8 +502,7 @@ async function createZeroRunRecord(
     sessionId: params.sessionId,
     appendSystemPrompt,
     modelProvider: params.modelProvider,
-    modelProviderId: params.modelProviderId ?? row?.modelProviderId ?? undefined,
-    selectedModelOverride: params.selectedModelOverride ?? row?.selectedModel ?? undefined,
+    ...resolveEffectiveModel(params, row),
     callbacks: params.callbacks,
     disallowedTools: [...DISALLOWED_TOOLS],
     vars: { ZERO_AGENT_ID: params.agentId },
