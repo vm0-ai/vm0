@@ -49,10 +49,10 @@ export function initServices(): void {
           throw new Error("DATABASE_URL is required at runtime");
         }
         if (useNeon) {
-          // Use Neon serverless driver (default)
-          // Optimized for Neon's connection pooler and serverless environments
-          // Automatically used unless DB_DRIVER=pg is explicitly set
-          // See: https://vercel.com/guides/connection-pooling-with-functions
+          // Opt-in WebSocket driver via @neondatabase/serverless. Kept as a
+          // rollback / escape hatch (set DB_DRIVER=neon to activate) and for
+          // environments without TCP support. The default path is the `pg`
+          // branch below.
           _pool = new NeonPool({
             connectionString: this.env.DATABASE_URL,
             max: this.env.DB_POOL_MAX,
@@ -60,11 +60,14 @@ export function initServices(): void {
             connectionTimeoutMillis: this.env.DB_POOL_CONNECT_TIMEOUT_MS,
           });
         } else {
-          // Standard PostgreSQL TCP driver + Vercel Fluid lifecycle.
-          // `attachDatabasePool` uses `waitUntil` to close idle connections
-          // before Fluid suspends the instance, so the TCP pool can be reused
-          // safely across requests without leaking connections on suspend.
-          // Ref: https://neon.com/docs/guides/vercel-connection-methods
+          // Default: node-postgres TCP pool + Vercel Fluid lifecycle.
+          // `attachDatabasePool` registers a `waitUntil`-based handler that
+          // closes idle connections before Fluid suspends the instance, so
+          // the pool reuses connections across requests without leaking on
+          // suspend.
+          // Refs:
+          //   https://vercel.com/guides/connection-pooling-with-functions
+          //   https://neon.com/docs/guides/vercel-connection-methods
           const pgPool = new PgPool({
             connectionString: this.env.DATABASE_URL,
             max: this.env.DB_POOL_MAX,
@@ -80,14 +83,14 @@ export function initServices(): void {
     get db() {
       if (!_db) {
         if (useNeon) {
-          // Use Neon serverless driver with drizzle
-          // This supports interactive transactions (required for storage commit)
+          // Drizzle adapter paired with the @neondatabase/serverless pool.
           _db = drizzleNeonServerless({
             client: this.pool as NeonPool,
             schema,
           });
         } else {
-          // Use regular pg driver with drizzle (default)
+          // Default Drizzle adapter paired with node-postgres. Supports
+          // interactive transactions (used by storage commit).
           _db = drizzleNodePg(this.pool as PgPool, { schema });
         }
       }
