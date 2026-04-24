@@ -57,7 +57,7 @@ export const setupAgentChatPage$ = command(
     if (!agent) {
       const defaultAgentId = await get(defaultAgentId$);
       signal.throwIfAborted();
-      if (!defaultAgentId) {
+      if (!defaultAgentId || defaultAgentId === agentId) {
         throw new Error("Chat page requires an active agent, but none found");
       }
 

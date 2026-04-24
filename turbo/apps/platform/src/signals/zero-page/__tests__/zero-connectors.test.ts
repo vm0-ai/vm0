@@ -14,6 +14,7 @@ import { zeroAgentsByIdContract } from "@vm0/core/contracts/zero-agents";
 import { zeroUserConnectorsContract } from "@vm0/core/contracts/user-connectors";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
+import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -151,6 +152,28 @@ describe("connectors — strictFeatureFlag", () => {
 
 describe("zero connectors — agent switch", () => {
   it("should return seeded connectors for new agent after switching", async () => {
+    // Register both agents in the team list so the detail page setup can
+    // resolve them without triggering the missing-agent redirect guard.
+    setMockTeam([
+      {
+        id: "agent-a",
+        displayName: "Agent A",
+        description: null,
+        sound: null,
+        avatarUrl: null,
+        headVersionId: "version_1",
+        updatedAt: "2024-01-01T00:00:00Z",
+      },
+      {
+        id: "agent-b",
+        displayName: "Agent B",
+        description: null,
+        sound: null,
+        avatarUrl: null,
+        headVersionId: "version_1",
+        updatedAt: "2024-01-01T00:00:00Z",
+      },
+    ]);
     // Mock two agents with different user-connector permissions
     server.use(
       mockApi(zeroAgentsByIdContract.get, ({ params, respond }) => {
