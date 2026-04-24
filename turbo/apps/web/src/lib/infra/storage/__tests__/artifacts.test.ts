@@ -58,7 +58,7 @@ describe("Unified artifact list (ContextArtifact[])", () => {
   });
 
   it("resolves a single artifact at its explicit mount path", async () => {
-    const artifactName = uniqueId("primary-one");
+    const artifactName = uniqueId("artifact-one");
     const { versionId } = await createTestArtifact(artifactName);
 
     const artifacts: ContextArtifact[] = [
@@ -83,8 +83,8 @@ describe("Unified artifact list (ContextArtifact[])", () => {
   });
 
   it("resolves multiple artifacts with independent mount paths", async () => {
-    const nameA = uniqueId("primary-a");
-    const nameB = uniqueId("primary-b");
+    const nameA = uniqueId("artifact-a");
+    const nameB = uniqueId("artifact-b");
     const { versionId: vA } = await createTestArtifact(nameA);
     const { versionId: vB } = await createTestArtifact(nameB);
 
@@ -115,7 +115,7 @@ describe("Unified artifact list (ContextArtifact[])", () => {
   });
 
   it("resolves artifact with an explicit pinned version", async () => {
-    const artifactName = uniqueId("primary-pinned");
+    const artifactName = uniqueId("artifact-pinned");
     const { versionId } = await createTestArtifact(artifactName);
 
     const artifacts: ContextArtifact[] = [
@@ -137,8 +137,8 @@ describe("Unified artifact list (ContextArtifact[])", () => {
   });
 
   it("mixes artifact, compose volume, and per-entry mount path", async () => {
-    const artifactA = uniqueId("primary-mix");
-    const artifactB = uniqueId("additional-mix");
+    const artifactA = uniqueId("artifact-mix");
+    const artifactB = uniqueId("artifact-mix-b");
     const volumeStorageName = uniqueId("vol-mix");
     const volumeKey = uniqueId("vol");
 
@@ -220,7 +220,7 @@ describe("Unified artifact list (ContextArtifact[])", () => {
   });
 
   it("artifacts coexist with additional volumes at different mount paths", async () => {
-    const artifactName = uniqueId("primary-with-vol");
+    const artifactName = uniqueId("artifact-with-vol");
     const volumeName = uniqueId("addvol-with-artifact");
     const { versionId: artifactVersion } =
       await createTestArtifact(artifactName);

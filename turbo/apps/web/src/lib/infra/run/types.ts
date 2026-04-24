@@ -2,10 +2,8 @@ import type { AdditionalVolume } from "../storage/types";
 import type { Firewalls, NetworkPolicies } from "@vm0/core/contracts/firewalls";
 
 /**
- * Artifact entry on an ExecutionContext: a name, optional version ("latest"
- * when undefined), and an explicit mount path. Replaces the old split between
- * "primary" (name→version map, mount forced to working_dir) and "additional"
- * (list with explicit mount paths). Every entry now carries its own mount.
+ * Artifact entry on an ExecutionContext: a name, optional version
+ * ("latest" when undefined), and an explicit mount path.
  */
 export interface ContextArtifact {
   name: string;
