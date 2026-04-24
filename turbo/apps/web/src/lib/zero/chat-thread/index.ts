@@ -11,8 +11,5 @@ export {
   resolveAttachFileUrls,
 } from "./chat-thread-service";
 export {
-  getMessagesBefore,
-  getMessagesFromLastUserMessage,
   getPagedMessages,
-  type MessageRow,
 } from "./chat-message-service";

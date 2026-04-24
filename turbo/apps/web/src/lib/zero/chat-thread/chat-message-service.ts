@@ -33,7 +33,7 @@ const messageRowProjection = {
   attachFiles: chatMessages.attachFiles,
 } as const;
 
-export type MessageRow = {
+type MessageRow = {
   id: string;
   role: string;
   content: string | null;
@@ -316,7 +316,7 @@ export async function getLatestMessagesByThreadId(
  * Falls back to the latest 50 messages when the thread has no user messages.
  * Also returns `hasMore` so callers can offer backward pagination.
  */
-export async function getMessagesFromLastUserMessage(
+async function getMessagesFromLastUserMessage(
   chatThreadId: string,
 ): Promise<{
   messages: MessageRow[];
@@ -400,7 +400,7 @@ export async function getMessagesFromLastUserMessage(
  * Fetches `limit + 1` rows internally so `hasMore` can be derived in a single
  * query without a separate COUNT probe.
  */
-export async function getMessagesBefore(
+async function getMessagesBefore(
   chatThreadId: string,
   beforeId: string,
   limit: number,

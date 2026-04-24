@@ -1,4 +1,4 @@
-import { command, state, type Command } from "ccstate";
+import { command, state } from "ccstate";
 import { onRef } from "./utils.ts";
 import { logger } from "./log.ts";
 
@@ -211,8 +211,6 @@ function buildResizeHandler(ctx: ResizeHandlerContext) {
  * a chance to invoke `scrollToBottom$`. The cache is cleared once the user
  * scrolls back to the bottom.
  */
-export type RecordScrollHeightForPrepend$ = Command<void, []>;
-
 export function createScrollSignals(id?: string) {
   const internalScrollContainer$ = state<HTMLElement | null>(null);
   const autoScrollDisabled$ = state(false);
