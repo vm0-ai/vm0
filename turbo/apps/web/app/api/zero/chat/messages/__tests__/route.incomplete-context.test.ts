@@ -3,10 +3,7 @@ import { POST } from "../route";
 import {
   createTestRequest,
   createTestCompose,
-  createTestSessionWithConversation,
   insertOrgDefaultModelProvider,
-  insertTestChatMessage,
-  insertTestChatThread,
   getTestRun,
   setTestRunStatus,
   setTestRunResult,
@@ -21,7 +18,6 @@ import {
   uniqueId,
   type UserContext,
 } from "../../../../../../src/__tests__/test-helpers";
-import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
 import { reloadEnv } from "../../../../../../src/env";
 
 const URL = "http://localhost:3000/api/zero/chat/messages";
@@ -309,60 +305,44 @@ describe("POST /api/zero/chat/messages — incomplete rounds context", () => {
   });
 
   it("anchors incomplete rounds correctly on a long thread with a mid-thread success", async () => {
-    const threadId = await insertTestChatThread(
-      user.userId,
-      agentId,
-      "long anchored thread",
-    );
-    const startedAt = Date.now() - 60_000;
-    let offsetMs = 0;
-
-    const seedRound = async (
-      prompt: string,
-      status: "cancelled" | "completed",
-      result?: Record<string, unknown>,
-    ) => {
-      const createdAt = new Date(startedAt + offsetMs);
-      offsetMs += 1_000;
-      const { runId } = await seedTestRun(user.userId, agentId, {
-        status,
-        prompt,
-        chatThreadId: threadId,
-        createdAt,
-        completedAt: createdAt,
-        result,
-      });
-      await insertTestChatMessage({
-        chatThreadId: threadId,
-        role: "user",
-        content: prompt,
-        runId,
-        createdAt,
-      });
-      return runId;
-    };
-
     // Pre-success tail: 30+ cancelled rounds the anchor must exclude.
-    await seedRound("early fail", "cancelled");
+    const first = await sendMessage({ agentId, prompt: "early fail" });
+    await setTestRunStatus(first.runId, "cancelled");
+
     for (let i = 0; i < 30; i++) {
-      await seedRound(`pre-success ${i}`, "cancelled");
+      const sent = await sendMessage({
+        agentId,
+        prompt: `pre-success ${i}`,
+        threadId: first.threadId,
+      });
+      await setTestRunStatus(sent.runId, "cancelled");
     }
 
     // Mid-thread success — stamps `agentSessionId` onto agent_runs.result,
     // which is what the SQL anchor subquery keys off.
-    const session = await createTestSessionWithConversation(
-      user.userId,
+    const success = await sendMessage({
       agentId,
+      prompt: "success run",
+      threadId: first.threadId,
+    });
+    const { agentSessionId } = await completeTestRun(
+      user.userId,
+      success.runId,
     );
-    await seedRound("success run", "completed", { agentSessionId: session.id });
+    await setTestRunResult(success.runId, { agentSessionId });
 
     // Post-success incomplete round — must appear in incompleteContext.
-    await seedRound("post-success cancel", "cancelled");
+    const afterSuccess = await sendMessage({
+      agentId,
+      prompt: "post-success cancel",
+      threadId: first.threadId,
+    });
+    await setTestRunStatus(afterSuccess.runId, "cancelled");
 
     const next = await sendMessage({
       agentId,
       prompt: "final",
-      threadId,
+      threadId: first.threadId,
     });
 
     const run = await getTestRun(next.runId);

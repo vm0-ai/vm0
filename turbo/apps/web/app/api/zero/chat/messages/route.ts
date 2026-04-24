@@ -39,7 +39,10 @@ import {
   publishThreadListChanged,
   PREVIOUS_CONTEXT_MESSAGES,
 } from "../../../../../src/lib/zero/chat-thread/chat-message-service";
-import { generateChatTitle } from "../../../../../src/lib/zero/ai/lightweight-model";
+import {
+  generateChatTitle,
+  isLightweightModelConfigured,
+} from "../../../../../src/lib/zero/ai/lightweight-model";
 import { zeroRuns } from "../../../../../src/db/schema/zero-run";
 import { zeroAgentSchedules } from "../../../../../src/db/schema/zero-agent-schedule";
 import {
@@ -464,41 +467,42 @@ const router = tsr.router(chatMessagesContract, {
       // callback regenerates the title with the full current exchange
       // once the run completes.
       //
-      // Title context fetch lives in this fire-and-forget IIFE so the
-      // ~275ms `chat_messages` read is not on the POST response path. For
-      // brand-new threads the fetch is skipped (no prior rounds exist), so
-      // we only pay the round trip on follow-up sends.
-      if (body.hasTextContent !== false) {
-        void (async () => {
+      // Title generation is non-critical. Keep it out of the response path
+      // and do not schedule the DB context fetch when the lightweight model is
+      // unavailable (common in tests and local dev).
+      if (body.hasTextContent !== false && isLightweightModelConfigured()) {
+        after(async () => {
           let priorRounds:
             | { role: "user" | "assistant"; content: string }[]
             | undefined;
-          if (!isNewThread) {
-            const fetchT = await timed(async () => {
-              return getLatestMessagesByThreadId(
-                threadId,
-                PREVIOUS_CONTEXT_MESSAGES,
+          try {
+            if (!isNewThread) {
+              const fetchT = await timed(async () => {
+                return getLatestMessagesByThreadId(
+                  threadId,
+                  PREVIOUS_CONTEXT_MESSAGES,
+                );
+              });
+              recordChatSpan(
+                CHAT_REQUEST_OPS.title_context_fetch,
+                fetchT.ms,
+                dims,
               );
+              const mapped = fetchT.result.map((m) => {
+                return { role: m.role, content: m.content };
+              });
+              priorRounds = mapped.length > 0 ? mapped : undefined;
+            }
+            const title = await generateChatTitle({
+              currentUserMessage: body.prompt,
+              priorRounds,
             });
-            recordChatSpan(
-              CHAT_REQUEST_OPS.title_context_fetch,
-              fetchT.ms,
-              dims,
-            );
-            const mapped = fetchT.result.map((m) => {
-              return { role: m.role, content: m.content };
-            });
-            priorRounds = mapped.length > 0 ? mapped : undefined;
+            if (title) {
+              await updateChatThreadTitle(threadId, authCtx.userId, title);
+            }
+          } catch (err: unknown) {
+            log.warn("Chat title generation failed", { threadId, err });
           }
-          const title = await generateChatTitle({
-            currentUserMessage: body.prompt,
-            priorRounds,
-          });
-          if (title) {
-            await updateChatThreadTitle(threadId, authCtx.userId, title);
-          }
-        })().catch((err: unknown) => {
-          log.warn("Chat title generation failed", { threadId, err });
         });
       }
 
