@@ -12,7 +12,7 @@ npx -y "playwright@${PLAYWRIGHT_BROWSER_INSTALL_VERSION}" install-deps chromium
 npx -y "playwright@${PLAYWRIGHT_BROWSER_INSTALL_VERSION}" install chrome-for-testing
 
 chromium_path="$(
-  find "${PLAYWRIGHT_CACHE_DIR}/chromium-"/chrome-linux* -type f -name chrome 2>/dev/null | head -1
+  find "${PLAYWRIGHT_CACHE_DIR}"/chromium-*/chrome-linux* -type f -name chrome 2>/dev/null | head -1
 )"
 
 if [ -z "$chromium_path" ]; then
