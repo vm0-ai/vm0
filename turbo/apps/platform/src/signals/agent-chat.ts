@@ -95,8 +95,12 @@ export const currentChatThread$ = computed(
 
     const threadResult = await accept(
       threadClient.get({ params: { id: threadId } }),
-      [200],
+      [200, 404],
+      { toast: false },
     );
+    if (threadResult.status === 404) {
+      return null;
+    }
 
     const body = threadResult.body;
     return {

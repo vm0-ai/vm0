@@ -5,8 +5,10 @@ import { ZeroChatThreadPage } from "../../views/zero-page/zero-chat-thread-page.
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { setChatAgentId$, currentChatThreadId$ } from "../agent-chat.ts";
+import { defaultAgentId$ } from "../agent.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
+import { detachedNavigateTo$, searchParams$ } from "../route.ts";
 import {
   currentChatThreadSignals$,
   ensureDraft$,
@@ -44,18 +46,30 @@ export const setupChatPage$ = command(
     const thread = get(currentChatThreadSignals$)!;
     const threadData = await get(thread.threadData$);
     signal.throwIfAborted();
+    if (!threadData) {
+      const defaultAgentId = await get(defaultAgentId$);
+      signal.throwIfAborted();
+      if (!defaultAgentId) {
+        throw new Error("Chat page requires a default agent, but none found");
+      }
+      set(detachedNavigateTo$, "/agents/:agentId/chat", {
+        pathParams: { agentId: defaultAgentId },
+        searchParams: get(searchParams$),
+        replace: true,
+      });
+      return;
+    }
 
     // Use threadData for title (reliable on page refresh) instead of chatThreads$
-    const sessionTitle = threadData?.title ?? "New chat";
+    const sessionTitle = threadData.title ?? "New chat";
     set(updateDocumentTitle$, sessionTitle);
 
-    set(setChatAgentId$, threadData?.agentId ?? null);
+    set(setChatAgentId$, threadData.agentId ?? null);
 
     // Seed draft from server data on first visit (local cache was empty).
     // Local-first: if the user already has local state, we do NOT overwrite it.
     if (
       isNew &&
-      threadData !== null &&
       (threadData.draftContent !== null ||
         (threadData.draftAttachments !== null &&
           threadData.draftAttachments.length > 0))
