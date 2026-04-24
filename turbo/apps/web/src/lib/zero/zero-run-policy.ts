@@ -1,10 +1,9 @@
-import { eq, and, count, gt, or, sql } from "drizzle-orm";
+import { eq, and, count, gt, or } from "drizzle-orm";
 import { env } from "../../env";
 import { agentRuns } from "../../db/schema/agent-run";
 import {
   concurrentRunLimit,
   forbidden,
-  insufficientCredits,
   noModelProvider,
 } from "../shared/errors";
 import { canAccessCompose } from "../infra/agent/compose-access";
@@ -12,6 +11,7 @@ import { logger } from "../shared/logger";
 import { modelProviders } from "../../db/schema/model-provider";
 import { ORG_SENTINEL_USER_ID } from "./org/org-sentinel";
 import { MODEL_PROVIDER_ENV_VARS } from "./context/resolve-model-provider";
+import { checkOrgCredits } from "./credit/check-org-credits";
 import type { Database } from "../../types/global";
 import type { OrgTier } from "@vm0/core/contracts/orgs";
 import type { AgentComposeYaml } from "../infra/agent-compose/types";
@@ -124,97 +124,45 @@ export async function validateComposeRequirements(
 }
 
 /**
- * Pre-flight check: ensure the org has sufficient credits for VM0 runs.
- * Skips for non-VM0 provider runs. Queries orgMetadata + orgMembersMetadata.
+ * LLM-run credit admission. Resolves vm0 vs. BYOK from `modelProvider`
+ * (or the org default when nullish) and delegates to `checkOrgCredits`
+ * for the vm0 case. Returns silently for BYOK — the user pays the
+ * provider, so no vm0 balance is touched.
  *
- * Accepts an optional `db` parameter so callers running inside a transaction
- * (e.g. dequeueNextAtomic with pg_advisory_xact_lock) can pass the transaction
- * object and keep all reads within the same isolation boundary.
- *
- * The spendable balance used for admission is
- *   org_metadata.credits − getUnsettledExpiredAmount(orgId)
- * — the same form `getBillingStatus` presents in the UI. Without this
- * subtraction a dormant non-subscription org whose credits have all expired
- * but haven't been settled yet (nothing triggers `expireCredits` until the
- * next `processOrgCredits` batch or subscription renewal) would be admitted
- * on its stale inflated balance, the run would burn real COGS, and only the
- * next settlement would notice.
+ * Accepts an optional `db` so callers inside a transaction (e.g.
+ * `drainOrgQueue` under `pg_advisory_xact_lock`) keep the read within
+ * the same boundary. Non-LLM callers use `checkOrgCredits` directly.
  */
-export async function checkOrgCredits(
+export async function checkOrgCreditsForRun(
   orgId: string,
   userId: string,
   modelProvider: string | null | undefined,
-  db: typeof globalThis.services.db = globalThis.services.db,
+  db: Database = globalThis.services.db,
 ): Promise<void> {
+  // Fast exit for explicit BYOK — no DB touch.
   if (modelProvider && modelProvider !== "vm0") {
     return;
   }
 
-  // One round-trip to collapse: default provider, member cap, org credits,
-  // unsettled-expired sum. Each subquery hits an index and each scalar
-  // subselect returns NULL when the underlying row is missing.
-  const { rows } = await db.execute<{
-    default_type: string | null;
-    credit_enabled: boolean | null;
-    credits: string | null;
-    unsettled_expired: string | null;
-  }>(sql`
-    WITH default_provider AS (
-      SELECT type FROM model_providers
-      WHERE org_id = ${orgId}
-        AND user_id = ${ORG_SENTINEL_USER_ID}
-        AND is_default = true
-      LIMIT 1
-    ),
-    member AS (
-      SELECT credit_enabled FROM org_members_metadata
-      WHERE org_id = ${orgId} AND user_id = ${userId}
-      LIMIT 1
-    ),
-    org AS (
-      SELECT credits FROM org_metadata
-      WHERE org_id = ${orgId}
-      LIMIT 1
-    ),
-    expired AS (
-      SELECT COALESCE(SUM(remaining), 0)::bigint AS total
-      FROM credit_expires_record
-      WHERE org_id = ${orgId}
-        AND expires_at <= now()
-        AND remaining > 0
-    )
-    SELECT
-      (SELECT type FROM default_provider) AS default_type,
-      (SELECT credit_enabled FROM member) AS credit_enabled,
-      (SELECT credits FROM org) AS credits,
-      (SELECT total FROM expired) AS unsettled_expired
-  `);
-
-  const row = rows[0];
-  if (!row) return;
-
-  const isVm0 = modelProvider === "vm0" || row.default_type === "vm0";
-
-  if (isVm0 && row.credit_enabled === false) {
-    throw insufficientCredits();
+  let isVm0 = modelProvider === "vm0";
+  if (!isVm0) {
+    const [defaultProvider] = await db
+      .select({ type: modelProviders.type })
+      .from(modelProviders)
+      .where(
+        and(
+          eq(modelProviders.orgId, orgId),
+          eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
+          eq(modelProviders.isDefault, true),
+        ),
+      )
+      .limit(1);
+    isVm0 = defaultProvider?.type === "vm0";
   }
 
-  if (row.credits == null) {
-    if (isVm0) {
-      throw insufficientCredits();
-    }
-    return;
-  }
+  if (!isVm0) return;
 
-  const credits = Number(row.credits);
-  const unsettledExpired = Number(row.unsettled_expired ?? 0);
-  if (credits - unsettledExpired > 0) {
-    return;
-  }
-
-  if (isVm0) {
-    throw insufficientCredits();
-  }
+  await checkOrgCredits(orgId, userId, db);
 }
 
 /**

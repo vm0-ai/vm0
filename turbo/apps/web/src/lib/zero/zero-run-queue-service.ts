@@ -31,7 +31,7 @@ import {
   checkRunConcurrencyLimit,
   authorizeCompose,
   validateComposeRequirements,
-  checkOrgCredits,
+  checkOrgCreditsForRun,
   checkModelProviderConfigured,
 } from "./zero-run-policy";
 import {
@@ -294,7 +294,7 @@ async function dequeueNextAtomic(
 
       // Look up org tier from org table (source of truth).
       // Falls back to "free" (most conservative limit) if row is missing.
-      // Credits are checked by checkOrgCredits() within this transaction.
+      // Credits are checked by checkOrgCreditsForRun() within this transaction.
       const [orgRow] = await tx
         .select({ tier: orgMetadata.tier })
         .from(orgMetadata)
@@ -331,7 +331,12 @@ async function dequeueNextAtomic(
 
         // Unified pre-flight credit check (org-level + per-member cap)
         try {
-          await checkOrgCredits(orgId, row.user_id, row.model_provider, tx);
+          await checkOrgCreditsForRun(
+            orgId,
+            row.user_id,
+            row.model_provider,
+            tx,
+          );
         } catch (error) {
           if (isInsufficientCredits(error)) {
             await transitionRunStatus(
