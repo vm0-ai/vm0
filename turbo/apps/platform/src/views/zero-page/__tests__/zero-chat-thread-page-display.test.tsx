@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -9,6 +10,7 @@ import { setMockUserPreferences } from "../../../mocks/handlers/api-user-prefere
 import {
   mockChatLifecycle,
   mockSubagentThread,
+  PLACEHOLDER,
   SUB_AGENT_ID,
 } from "./chat-test-helpers.ts";
 
@@ -636,6 +638,49 @@ describe("zero chat thread page display - message status indicators", () => {
 
     await waitFor(() => {
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+    });
+  });
+});
+
+describe("zero chat thread page display - manual history button", () => {
+  it("keeps load history hidden when the feature switch is off", async () => {
+    mockChatLifecycle({
+      historyMessages: [
+        {
+          role: "user",
+          content: "Older message",
+          createdAt: "2026-03-09T23:59:59Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: "/chats/thread-test-1" });
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Load history")).not.toBeInTheDocument();
+  });
+
+  it("shows load history when the feature switch is on and history exists", async () => {
+    mockChatLifecycle({
+      historyMessages: [
+        {
+          role: "user",
+          content: "Older message",
+          createdAt: "2026-03-09T23:59:59Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+      featureSwitches: { [FeatureSwitchKey.ChatManualHistory]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Load history")).toBeInTheDocument();
     });
   });
 });

@@ -1,9 +1,12 @@
 import { eq } from "drizzle-orm";
 import { connectorTypeSchema } from "@vm0/core/contracts/connectors";
 import { logger } from "../../shared/logger";
+import { deleteWebhook } from "../telegram/client";
+import { decryptSecretValue } from "../../shared/crypto/secrets-encryption";
 import { revokeConnectorToken } from "../connector/connector-service";
 import { connectors } from "../../../db/schema/connector";
 import { githubUserLinks } from "../../../db/schema/github-user-link";
+import { telegramInstallations } from "../../../db/schema/telegram-installation";
 import { telegramUserLinks } from "../../../db/schema/telegram-user-link";
 import { slackOrgConnections } from "../../../db/schema/slack-org-connection";
 
@@ -29,6 +32,12 @@ export async function cleanupUserExternalServices(
       name: "github links",
       fn: () => {
         return deleteGitHubUserLinks(userId);
+      },
+    },
+    {
+      name: "telegram owned bots",
+      fn: () => {
+        return deleteOwnedTelegramInstallations(userId);
       },
     },
     {
@@ -106,6 +115,51 @@ async function deleteTelegramUserLinks(userId: string): Promise<void> {
     .where(eq(telegramUserLinks.vm0UserId, userId));
   if (result.rowCount && result.rowCount > 0) {
     log.debug("deleted telegram user links", {
+      userId,
+      count: result.rowCount,
+    });
+  }
+}
+
+/**
+ * Delete Telegram bot installations owned by a user.
+ * Best-effort Telegram deleteWebhook call per bot, then DB delete
+ * (cascades to user_links, thread_sessions, messages).
+ */
+async function deleteOwnedTelegramInstallations(userId: string): Promise<void> {
+  const db = globalThis.services.db;
+  const owned = await db
+    .select({
+      telegramBotId: telegramInstallations.telegramBotId,
+      encryptedBotToken: telegramInstallations.encryptedBotToken,
+    })
+    .from(telegramInstallations)
+    .where(eq(telegramInstallations.ownerUserId, userId));
+
+  if (owned.length === 0) return;
+
+  const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
+  for (const inst of owned) {
+    try {
+      const botToken = decryptSecretValue(
+        inst.encryptedBotToken,
+        encryptionKey,
+      );
+      await deleteWebhook(botToken);
+    } catch (error) {
+      log.error("failed to deregister telegram webhook (best-effort)", {
+        telegramBotId: inst.telegramBotId,
+        error,
+      });
+    }
+  }
+
+  const result = await db
+    .delete(telegramInstallations)
+    .where(eq(telegramInstallations.ownerUserId, userId));
+
+  if (result.rowCount && result.rowCount > 0) {
+    log.debug("deleted owned telegram installations", {
       userId,
       count: result.rowCount,
     });

@@ -243,11 +243,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // Get Telegram installation for bot token
   const [installation] = await globalThis.services.db
     .select({
-      id: telegramInstallations.id,
+      telegramBotId: telegramInstallations.telegramBotId,
       encryptedBotToken: telegramInstallations.encryptedBotToken,
     })
     .from(telegramInstallations)
-    .where(eq(telegramInstallations.id, payload.installationId))
+    .where(eq(telegramInstallations.telegramBotId, payload.installationId))
     .limit(1);
 
   if (!installation) {

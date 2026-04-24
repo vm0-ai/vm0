@@ -43,7 +43,7 @@ export async function handleStartCommand(
   const [installation] = await globalThis.services.db
     .select()
     .from(telegramInstallations)
-    .where(eq(telegramInstallations.id, installationId))
+    .where(eq(telegramInstallations.telegramBotId, installationId))
     .limit(1);
 
   if (!installation) {
@@ -74,7 +74,6 @@ export async function handleStartCommand(
       return;
     }
     const connectUrl = buildConnectUrl(
-      installationId,
       installation.telegramBotId,
       fromUserId,
       botToken,
@@ -117,8 +116,9 @@ export async function handleStartCommand(
     })
     .onConflictDoNothing();
 
-  // Auto-grant permission
-  await ensureOrgAndArtifact(payload.vm0UserId);
+  // Auto-grant permission. The installation's orgId was snapshot at
+  // registration and is the authoritative org for this bot.
+  await ensureOrgAndArtifact(payload.vm0UserId, installation.orgId);
 
   await sendMessage(
     client,

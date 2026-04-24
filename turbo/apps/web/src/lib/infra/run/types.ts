@@ -136,6 +136,21 @@ export interface DispatchTimings {
   apiStart: number;
   authorize: number;
   transaction: number;
+  /**
+   * Stamped by the route handler right before returning HTTP 201, via
+   * CreateZeroRunResult.markResponseReady(). Anchors the end of Phase-1
+   * residual work (persist_run + insert_chat_message + route sync) and the
+   * start of the Next.js after() scheduling gap. Absent on non-chat triggers
+   * that don't participate in the marker protocol.
+   */
+  responseReady?: number;
+  /**
+   * Stamped at the first synchronous line of dispatchZeroRun (inside the
+   * after() callback). Anchors the end of the after() scheduling gap and the
+   * start of Phase-2 real work (registerCallbacks + token generation).
+   * Absent on non-chat triggers (paired with responseReady).
+   */
+  dispatchStart?: number;
   token: number;
   resolveSourceDuration?: number;
   resolveSecretsDuration?: number;

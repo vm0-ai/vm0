@@ -6,7 +6,7 @@
  * Real (internal): signals, state management
  */
 
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import { copyToClipboard$, copyStatus$ } from "../clipboard.ts";
 
@@ -27,6 +27,11 @@ describe("copyToClipboard$", () => {
 
   beforeEach(() => {
     writeTextMock = setupClipboardMock();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   it("copies text and sets status to copied", async () => {

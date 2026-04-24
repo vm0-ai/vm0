@@ -94,8 +94,9 @@ describe("/api/integrations/telegram/link", () => {
     it("returns linked: true with telegramUserId when linked", async () => {
       const user = await context.setupUser();
       await createTestTelegramInstallation({
-        adminUserId: user.userId,
+        ownerUserId: user.userId,
         vm0UserId: user.userId,
+        orgId: user.orgId,
       });
 
       const response = await GET(linkRequest("GET"));
@@ -107,10 +108,11 @@ describe("/api/integrations/telegram/link", () => {
     });
 
     it("returns installation info when botId matches an existing bot", async () => {
-      await context.setupUser();
+      const user = await context.setupUser();
       const telegramBotId = uniqueId("bot");
       const installationId = await createTestTelegramInstallation({
         telegramBotId,
+        orgId: user.orgId,
       });
 
       const response = await GET(
@@ -124,6 +126,20 @@ describe("/api/integrations/telegram/link", () => {
         id: installationId,
         botUsername: `bot_${telegramBotId}`,
       });
+    });
+
+    it("returns 403 when botId belongs to another org", async () => {
+      await context.setupUser();
+      const telegramBotId = uniqueId("bot");
+      await createTestTelegramInstallation({ telegramBotId });
+
+      const response = await GET(
+        linkRequest("GET", undefined, { botId: telegramBotId }),
+      );
+      const data = await response.json();
+
+      expect(response.status).toBe(403);
+      expect(data.error.code).toBe("FORBIDDEN");
     });
 
     it("returns linked: false without installation for unknown botId", async () => {
@@ -164,8 +180,9 @@ describe("/api/integrations/telegram/link", () => {
     it("deletes user link and returns 204", async () => {
       const user = await context.setupUser();
       await createTestTelegramInstallation({
-        adminUserId: user.userId,
+        ownerUserId: user.userId,
         vm0UserId: user.userId,
+        orgId: user.orgId,
       });
 
       const response = await DELETE(linkRequest("DELETE"));
@@ -216,10 +233,11 @@ describe("/api/integrations/telegram/link", () => {
     });
 
     it("returns 400 without telegramAuth or connectSignature", async () => {
-      await context.setupUser();
+      const user = await context.setupUser();
       const telegramBotId = uniqueId("bot");
       const installationId = await createTestTelegramInstallation({
         telegramBotId,
+        orgId: user.orgId,
       });
 
       const response = await POST(linkRequest("POST", { installationId }));
@@ -230,10 +248,11 @@ describe("/api/integrations/telegram/link", () => {
     });
 
     it("links account via telegramAuth with valid login widget data", async () => {
-      await context.setupUser();
+      const user = await context.setupUser();
       const telegramBotId = uniqueId("bot");
       const installationId = await createTestTelegramInstallation({
         telegramBotId,
+        orgId: user.orgId,
       });
 
       const telegramUserId = 99001;
@@ -255,10 +274,11 @@ describe("/api/integrations/telegram/link", () => {
     });
 
     it("links account via connectSignature with valid signed params", async () => {
-      await context.setupUser();
+      const user = await context.setupUser();
       const telegramBotId = uniqueId("bot");
       const installationId = await createTestTelegramInstallation({
         telegramBotId,
+        orgId: user.orgId,
       });
 
       const telegramUserId = "99002";
@@ -286,11 +306,31 @@ describe("/api/integrations/telegram/link", () => {
       expect(getData.linked).toBe(true);
     });
 
-    it("returns 400 for invalid telegramAuth hash", async () => {
+    it("returns 403 when connecting a bot from another org", async () => {
       await context.setupUser();
       const telegramBotId = uniqueId("bot");
       const installationId = await createTestTelegramInstallation({
         telegramBotId,
+      });
+
+      const response = await POST(
+        linkRequest("POST", {
+          installationId,
+          telegramAuth: makeTelegramAuth(99004),
+        }),
+      );
+      const data = await response.json();
+
+      expect(response.status).toBe(403);
+      expect(data.error.code).toBe("FORBIDDEN");
+    });
+
+    it("returns 400 for invalid telegramAuth hash", async () => {
+      const user = await context.setupUser();
+      const telegramBotId = uniqueId("bot");
+      const installationId = await createTestTelegramInstallation({
+        telegramBotId,
+        orgId: user.orgId,
       });
 
       const response = await POST(
@@ -311,10 +351,11 @@ describe("/api/integrations/telegram/link", () => {
     });
 
     it("returns 400 for invalid connectSignature", async () => {
-      await context.setupUser();
+      const user = await context.setupUser();
       const telegramBotId = uniqueId("bot");
       const installationId = await createTestTelegramInstallation({
         telegramBotId,
+        orgId: user.orgId,
       });
 
       const response = await POST(

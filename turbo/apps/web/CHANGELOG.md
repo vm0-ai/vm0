@@ -1,5 +1,26 @@
 # Changelog
 
+## [12.298.0](https://github.com/vm0-ai/vm0/compare/web-v12.297.0...web-v12.298.0) (2026-04-24)
+
+
+### Features
+
+* add deepseek v4 models ([#10956](https://github.com/vm0-ai/vm0/issues/10956)) ([292ed24](https://github.com/vm0-ai/vm0/commit/292ed2401576ed7451962e7c3e391ea61a6b9e3b))
+* add promo-video-from-recordings use case ([#10691](https://github.com/vm0-ai/vm0/issues/10691)) ([303abec](https://github.com/vm0-ai/vm0/commit/303abec703e642dd9f4910ec7dd13af5a119c95b))
+
+
+### Refactoring
+
+* **generate-image:** migrate to usage_event billing + tests + production gate ([#10979](https://github.com/vm0-ai/vm0/issues/10979)) ([72ea577](https://github.com/vm0-ai/vm0/commit/72ea577bce1b150076ea7d5e6cea155ef7e2dddf))
+* **telegram:** pivot installation PK to telegram_bot_id and add owner+org columns ([#10250](https://github.com/vm0-ai/vm0/issues/10250)) ([5fdd5b6](https://github.com/vm0-ai/vm0/commit/5fdd5b6c8d0a6f32a3a916af419d0a378e3a3de1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.233.0
+
 ## [12.297.0](https://github.com/vm0-ai/vm0/compare/web-v12.296.0...web-v12.297.0) (2026-04-24)
 
 

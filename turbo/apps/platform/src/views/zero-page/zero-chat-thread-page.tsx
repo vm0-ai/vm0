@@ -39,7 +39,7 @@ import {
   toggleAutoRead$,
 } from "../../signals/voice-io/voice-io-settings.ts";
 import { Markdown } from "../components/markdown.tsx";
-import { detach, Reason } from "../../signals/utils.ts";
+import { detach, Reason, onDomEventFn } from "../../signals/utils.ts";
 import {
   AttachmentLightbox,
   FileAttachmentChip,
@@ -73,7 +73,9 @@ import {
   currentChatThreadSignals$,
   type ChatThreadSignals,
 } from "../../signals/chat-page/create-chat-thread.ts";
+import type { ChatThread } from "../../signals/agent-chat.ts";
 import { ATTACH_ONLY_PLACEHOLDER } from "../../signals/chat-page/resolve-draft-attachments.ts";
+import type { ChatClipboardAttachment } from "../../signals/zero-page/clipboard.ts";
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
 import { orgModelProviders$ } from "../../signals/external/org-model-providers.ts";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
@@ -112,7 +114,7 @@ function HeaderAgentAvatar({ thread }: { thread: ChatThreadSignals }) {
   const agentId = useLastResolved(thread.agentId$);
 
   if (!agentId) {
-    return null;
+    return <Skeleton className="h-8 w-8 rounded-xl" />;
   }
 
   return (
@@ -199,7 +201,11 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
           <HeaderAgentAvatar thread={thread} />
           <PinPillButton thread={thread} />
         </div>
-        <span className="font-semibold text-foreground">{displayName}</span>
+        {displayName ? (
+          <span className="font-semibold text-foreground">{displayName}</span>
+        ) : (
+          <Skeleton className="h-5 w-32 rounded" />
+        )}
       </div>
       <div className="hidden sm:flex items-center gap-0.5">
         {audioOutputEnabled && (
@@ -260,6 +266,28 @@ export function ZeroChatThreadPage() {
   );
 }
 
+type LoadableValue<T> =
+  | { state: "loading" }
+  | { state: "hasData"; data: T }
+  | { state: "hasError"; error: unknown };
+
+function resolveSessionError(
+  threadDataLoadable: LoadableValue<ChatThread | null>,
+  groupsLoadable: LoadableValue<GroupedChatMessageGroup[]>,
+): string | null {
+  if (threadDataLoadable.state === "hasError") {
+    return threadDataLoadable.error instanceof Error
+      ? threadDataLoadable.error.message
+      : "Failed to load chat";
+  }
+  if (groupsLoadable.state === "hasError") {
+    return groupsLoadable.error instanceof Error
+      ? groupsLoadable.error.message
+      : "Failed to load messages";
+  }
+  return null;
+}
+
 function ZeroChatThreadPageInner({
   thread,
   autoFocus = true,
@@ -267,25 +295,26 @@ function ZeroChatThreadPageInner({
   thread: ChatThreadSignals;
   autoFocus?: boolean;
 }) {
+  const features = useLastResolved(featureSwitch$);
   const groupsLoadable = useLastLoadable(thread.groupedChatMessages$);
+  const hasOlderHistory = useLastResolved(thread.hasOlderHistory$) ?? false;
+  const [loadHistoryLoadable, loadHistory] = useLoadableSet(
+    thread.loadHistory$,
+  );
   const threadDataLoadable = useLastLoadable(thread.threadData$);
-  const sessionError =
-    threadDataLoadable.state === "hasError"
-      ? threadDataLoadable.error instanceof Error
-        ? threadDataLoadable.error.message
-        : "Failed to load chat"
-      : groupsLoadable.state === "hasError"
-        ? groupsLoadable.error instanceof Error
-          ? groupsLoadable.error.message
-          : "Failed to load messages"
-        : null;
+  const sessionError = resolveSessionError(threadDataLoadable, groupsLoadable);
   const messagesLoading = groupsLoadable.state === "loading";
   const groups = groupsLoadable.state === "hasData" ? groupsLoadable.data : [];
   const setScrollContainer = useSet(thread.setScrollContainer$);
   const skeletonVisible = useGet(thread.skeletonVisible$);
   const lightboxUrl = useGet(attachmentLightboxUrl$);
-  const hasOlderMessages = useGet(thread.hasOlderMessages$);
-  const setTopSentinelRef = useSet(thread.setTopSentinelRef$);
+  const manualHistoryEnabled =
+    features?.[FeatureSwitchKey.ChatManualHistory] ?? false;
+  const loadingHistory = loadHistoryLoadable.state === "loading";
+  const pageSignal = useGet(pageSignal$);
+  const onLoadHistory = onDomEventFn(() => {
+    return loadHistory(pageSignal);
+  });
 
   return (
     <div className="flex flex-1 flex-col min-h-0 bg-transparent">
@@ -303,17 +332,21 @@ function ZeroChatThreadPageInner({
               className="w-full max-w-[900px] mx-auto flex flex-col gap-6 pb-4 overflow-visible"
               style={{ visibility: skeletonVisible ? "hidden" : "visible" }}
             >
-              {hasOlderMessages && (
-                <div
-                  ref={setTopSentinelRef}
-                  className="flex justify-center py-2"
-                >
-                  <div className="flex items-center gap-2 text-muted-foreground text-xs">
-                    <Skeleton className="h-3 w-3 rounded-full" />
-                    <span>Loading older messages…</span>
+              {!sessionError &&
+                !skeletonVisible &&
+                manualHistoryEnabled &&
+                hasOlderHistory && (
+                  <div className="flex justify-center">
+                    <button
+                      type="button"
+                      disabled={loadingHistory}
+                      onClick={onLoadHistory}
+                      className="inline-flex h-8 items-center rounded-lg border border-border bg-background px-3 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Load history
+                    </button>
                   </div>
-                </div>
-              )}
+                )}
               {sessionError && (
                 <div className="flex-1 flex items-center justify-center py-16">
                   <div className="flex items-center gap-2 text-destructive">
@@ -1016,6 +1049,97 @@ function resolveAttachments(
   });
 }
 
+function attachmentIdFromUrl(url: string): string | null {
+  if (!URL.canParse(url, window.location.origin)) {
+    return null;
+  }
+  const parsed = new URL(url, window.location.origin);
+  const match = parsed.pathname.match(/^\/f\/[^/]+\/([^/]+)\/[^/]+$/);
+  return match?.[1] ?? null;
+}
+
+function inferAttachmentContentType(filename: string, kind: string): string {
+  const lower = filename.toLowerCase();
+  if (lower.endsWith(".png")) {
+    return "image/png";
+  }
+  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) {
+    return "image/jpeg";
+  }
+  if (lower.endsWith(".gif")) {
+    return "image/gif";
+  }
+  if (lower.endsWith(".webp")) {
+    return "image/webp";
+  }
+  if (lower.endsWith(".svg")) {
+    return "image/svg+xml";
+  }
+  if (lower.endsWith(".mp4")) {
+    return "video/mp4";
+  }
+  if (lower.endsWith(".webm")) {
+    return "video/webm";
+  }
+  if (lower.endsWith(".mov")) {
+    return "video/quicktime";
+  }
+  switch (kind) {
+    case "markdown": {
+      return "text/markdown";
+    }
+    case "text": {
+      return "text/plain";
+    }
+    case "json": {
+      return "application/json";
+    }
+    case "csv": {
+      return "text/csv";
+    }
+    case "pdf": {
+      return "application/pdf";
+    }
+    case "html": {
+      return "text/html";
+    }
+    default: {
+      return "application/octet-stream";
+    }
+  }
+}
+
+function clipboardAttachmentsFromMessage(
+  message: PagedChatMessage,
+  parsed: { filename: string; url: string }[],
+): ChatClipboardAttachment[] {
+  const source =
+    message.attachFiles && message.attachFiles.length > 0
+      ? message.attachFiles
+      : parsed;
+  return source.map((f) => {
+    const contentType =
+      "contentType" in f && typeof f.contentType === "string"
+        ? f.contentType
+        : undefined;
+    const kind = classifyChatAttachment({
+      filename: f.filename,
+      url: f.url,
+      contentType,
+    });
+    return {
+      id:
+        "id" in f && typeof f.id === "string"
+          ? f.id
+          : attachmentIdFromUrl(f.url),
+      filename: f.filename,
+      url: f.url,
+      contentType: contentType ?? inferAttachmentContentType(f.filename, kind),
+      size: "size" in f && typeof f.size === "number" ? f.size : 0,
+    };
+  });
+}
+
 function UserMessageAttachments({
   attachments,
   onImageClick,
@@ -1111,8 +1235,7 @@ function PagedUserMessage({
     cleanContent.trim() === ATTACH_ONLY_PLACEHOLDER
       ? ""
       : cleanContent;
-  const { cleanContent: cleanBodyContent, blocks: bodyBlocks } =
-    parseBodyRenderBlocks(strippedContent);
+  const { blocks: bodyBlocks } = parseBodyRenderBlocks(strippedContent);
   const pageSignal = useGet(pageSignal$);
   const openImageLightbox = useSet(openAttachmentImageLightbox$);
   const openLightbox = (url: string) => {
@@ -1121,18 +1244,24 @@ function PagedUserMessage({
   const copiedId = useGet(thread.copiedMessageId$);
   const copied = copiedId === message.id;
   const copyMessage = useSet(thread.copyMessage$);
+  const allAttachments = resolveAttachments(message, parsed);
+  const clipboardAttachments = clipboardAttachmentsFromMessage(message, parsed);
+  const copyText = strippedContent;
+  const canCopy = copyText.trim().length > 0 || clipboardAttachments.length > 0;
 
   const handleCopy = () => {
-    if (!cleanContent) {
+    if (!canCopy) {
       return;
     }
     detach(
-      copyMessage(message.id, cleanContent, pageSignal),
+      copyMessage(
+        message.id,
+        { text: copyText, attachments: clipboardAttachments },
+        pageSignal,
+      ),
       Reason.DomCallback,
     );
   };
-
-  const allAttachments = resolveAttachments(message, parsed);
 
   return (
     <div data-role="user" className="group">
@@ -1154,7 +1283,7 @@ function PagedUserMessage({
               onImageClick={openLightbox}
             />
           </div>
-          {cleanBodyContent && (
+          {canCopy && (
             <div className="flex justify-end mt-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
               <button
                 type="button"
@@ -1277,7 +1406,11 @@ function PagedGroupActions({
       return;
     }
     detach(
-      copyMessage(group.beginMessageId, content, pageSignal),
+      copyMessage(
+        group.beginMessageId,
+        { text: content, attachments: [] },
+        pageSignal,
+      ),
       Reason.DomCallback,
     );
   };

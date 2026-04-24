@@ -11,19 +11,19 @@ import { telegramInstallations } from "./telegram-installation";
 
 /**
  * Telegram User Links table
- * Maps Telegram users to VM0 users for account linking
- * Allows users to interact with VM0 agents via Telegram
+ * Maps Telegram users to VM0 users for account linking.
+ * Allows users to interact with VM0 agents via Telegram.
  */
 export const telegramUserLinks = pgTable(
   "telegram_user_links",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     telegramUserId: varchar("telegram_user_id", { length: 255 }).notNull(),
-    installationId: uuid("installation_id")
+    installationId: varchar("installation_id", { length: 255 })
       .notNull()
       .references(
         () => {
-          return telegramInstallations.id;
+          return telegramInstallations.telegramBotId;
         },
         { onDelete: "cascade" },
       ),

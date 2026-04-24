@@ -655,6 +655,11 @@ async function createZeroRunRecord(
 async function dispatchZeroRun(
   result: ZeroRunRecordResult,
 ): Promise<{ status: RunStatus; sandboxId?: string } | undefined> {
+  // Capture the after() callback entry as the first synchronous line — the
+  // gap between this timestamp and record.responseReadyAt (if stamped by the
+  // route) is the Vercel after() scheduling latency.
+  const dispatchStart = Date.now();
+
   const { record, runParams, orgId, zeroParams } = result;
 
   // Nothing to dispatch if run was enqueued (concurrency limit)
@@ -698,6 +703,8 @@ async function dispatchZeroRun(
         apiStart: record.apiStartTime,
         authorize: record.authorizeTime,
         transaction: record.transactionTime,
+        responseReady: record.responseReadyAt,
+        dispatchStart,
         token: tokenTime,
         resolveSourceDuration: contextResult.timings.resolveSourceAndOrg,
         resolveSecretsDuration: contextResult.timings.resolveSecrets,
@@ -739,6 +746,15 @@ export interface CreateZeroRunResult {
   status: RunStatus;
   createdAt: Date;
   sessionId: string;
+  /**
+   * Called by the route handler right before returning the HTTP 201 response.
+   * Stamps the response-ready timestamp used by the Phase-2 instrumentation
+   * split (api_phase1_post_tx_sync / api_after_scheduling_gap /
+   * api_phase2_callbacks_token_pure). Idempotent — later calls are no-ops.
+   * Non-chat callers can ignore this safely; the three split spans are
+   * skipped when the marker is never called.
+   */
+  markResponseReady: () => void;
 }
 
 /**
@@ -770,11 +786,18 @@ export async function createZeroRun(
     });
   }
 
+  const markResponseReady = (): void => {
+    if (result.record && result.record.responseReadyAt === undefined) {
+      result.record.responseReadyAt = Date.now();
+    }
+  };
+
   return {
     runId: result.runId,
     status: result.status,
     createdAt: result.createdAt,
     sessionId: result.sessionId,
+    markResponseReady,
   };
 }
 

@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.292.0](https://github.com/vm0-ai/vm0/compare/app-v0.291.0...app-v0.292.0) (2026-04-24)
+
+
+### Features
+
+* add deepseek v4 models ([#10956](https://github.com/vm0-ai/vm0/issues/10956)) ([292ed24](https://github.com/vm0-ai/vm0/commit/292ed2401576ed7451962e7c3e391ea61a6b9e3b))
+
+
+### Bug Fixes
+
+* copy chat attachments with messages ([#10984](https://github.com/vm0-ai/vm0/issues/10984)) ([472280e](https://github.com/vm0-ai/vm0/commit/472280e02b3c8f5324a46f745561abaa799d3cbd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.233.0
+
 ## [0.291.0](https://github.com/vm0-ai/vm0/compare/app-v0.290.0...app-v0.291.0) (2026-04-24)
 
 

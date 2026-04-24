@@ -410,6 +410,78 @@ describe("POST /api/zero/chat/messages", () => {
           spanSpy.mockRestore();
         }
       });
+
+      it("emits the 3-way split of api_step_callbacks_and_token alongside the back-compat parent", async () => {
+        // Spans below are source="web" (recordSandboxOperation), not web-chat.
+        // They are emitted by buildAndDispatchRun inside the after() callback
+        // so the spy must survive until flushAfter() drains the queue.
+        const spanSpy = vi
+          .spyOn(axiomClient, "ingestSandboxOpLog")
+          .mockImplementation(() => {
+            return;
+          });
+
+        try {
+          const response = await POST(
+            createTestRequest(URL, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                agentId,
+                prompt: "hello phase-2 split test",
+              }),
+            }),
+          );
+          expect(response.status).toBe(201);
+
+          // Phase-2 spans are emitted inside the after() callback.
+          await context.mocks.flushAfter();
+
+          const dispatchSpans = spanSpy.mock.calls
+            .map((c) => {
+              return c[0];
+            })
+            .filter((e) => {
+              return e.source === "web";
+            });
+
+          const byOp = new Map(
+            dispatchSpans.map((e) => {
+              return [e.op_type, e];
+            }),
+          );
+
+          // Back-compat parent span — still emitted for ~1 release cycle.
+          expect(byOp.has("api_step_callbacks_and_token")).toBe(true);
+
+          // Three-way split — only emitted when the chat route stamped both
+          // responseReady (via markResponseReady) and dispatchStart.
+          expect(byOp.has("api_phase1_post_tx_sync")).toBe(true);
+          expect(byOp.has("api_after_scheduling_gap")).toBe(true);
+          expect(byOp.has("api_phase2_callbacks_token_pure")).toBe(true);
+
+          const parent = byOp.get("api_step_callbacks_and_token")!;
+          const phase1 = byOp.get("api_phase1_post_tx_sync")!;
+          const gap = byOp.get("api_after_scheduling_gap")!;
+          const phase2 = byOp.get("api_phase2_callbacks_token_pure")!;
+
+          // All four should be non-negative numbers.
+          for (const span of [parent, phase1, gap, phase2]) {
+            expect(typeof span.duration_ms).toBe("number");
+            expect(span.duration_ms).toBeGreaterThanOrEqual(0);
+          }
+
+          // The three children should sum to the parent within a small
+          // tolerance (same-process Date.now() jitter only).
+          const childrenSum =
+            phase1.duration_ms + gap.duration_ms + phase2.duration_ms;
+          expect(
+            Math.abs(childrenSum - parent.duration_ms),
+          ).toBeLessThanOrEqual(10);
+        } finally {
+          spanSpy.mockRestore();
+        }
+      });
     });
 
     describe("Signal Publishing", () => {

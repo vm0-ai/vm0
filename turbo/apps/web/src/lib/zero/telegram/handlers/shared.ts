@@ -5,7 +5,6 @@ import { telegramUserLinks } from "../../../../db/schema/telegram-user-link";
 import { agentComposes } from "../../../../db/schema/agent-compose";
 import { getAppUrl } from "../../url";
 import { resolveAgentId } from "../../zero-compose-service";
-import { resolveOrgOrNull } from "../../org/resolve-org";
 import { validateAgentSession } from "../../zero-run-validation";
 import { ensureStorageExists } from "../../../infra/storage/storage-service";
 import {
@@ -240,13 +239,16 @@ async function completePendingLink(
 }
 
 /**
- * Ensure org and artifact storage exist for a user.
+ * Ensure artifact storage exists for a user within the given org.
+ *
+ * The caller must resolve and authorize the org before invoking this —
+ * we do not re-check membership here.
  */
-export async function ensureOrgAndArtifact(vm0UserId: string): Promise<void> {
-  const org = await resolveOrgOrNull({ userId: vm0UserId });
-  if (!org) return;
-
-  await ensureStorageExists(org.orgId, vm0UserId, "artifact", "artifact");
+export async function ensureOrgAndArtifact(
+  vm0UserId: string,
+  orgId: string,
+): Promise<void> {
+  await ensureStorageExists(orgId, vm0UserId, "artifact", "artifact");
 }
 
 /**
@@ -302,14 +304,13 @@ export async function resolveSessionCompose(
  * create the user link with the correct Telegram user ID.
  */
 export function buildConnectUrl(
-  installationId: string,
   telegramBotId: string,
   telegramUserId: string,
   botToken: string,
 ): string {
   const appUrl = getAppUrl();
   const ts = Math.floor(Date.now() / 1000);
-  const sig = signConnectParams(installationId, telegramUserId, ts, botToken);
+  const sig = signConnectParams(telegramBotId, telegramUserId, ts, botToken);
   return `${appUrl}/telegram/connect?bot=${telegramBotId}&tgUser=${telegramUserId}&ts=${ts}&sig=${sig}`;
 }
 

@@ -48,6 +48,7 @@ import type { Command, Computed } from "ccstate";
 import {
   zeroChatAttachments$ as singletonAttachments$,
   uploadZeroAttachment$ as singletonUpload$,
+  restoreZeroAttachments$ as singletonRestore$,
   removeZeroAttachment$ as singletonRemove$,
   canSendZeroChat$ as singletonCanSend$,
   zeroDragOver$ as singletonDragOver$,
@@ -55,6 +56,7 @@ import {
   composerFileInput$ as singletonComposerFileInput$,
   setComposerFileInput$ as singletonSetComposerFileInput$,
 } from "../../signals/chat-page/chat-message.ts";
+import type { PersistedAttachment } from "@vm0/core/contracts/chat-threads";
 import { AttachmentChips } from "./zero-attachment-chips.tsx";
 import {
   CONNECTOR_TYPES,
@@ -117,6 +119,7 @@ import {
   setBillingSubPage$,
 } from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
 import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
+import { readChatMessageFromClipboard } from "../../signals/zero-page/clipboard.ts";
 
 const MAX_FILE_SIZE = 1024 * 1024 * 1024; // 1 GB — keep in sync with web constants
 
@@ -629,6 +632,9 @@ function useResolvedComposerSignals(
   const uploadAttachment = useSet(
     draft ? draft.uploadAttachment$ : singletonUpload$,
   );
+  const restoreAttachments = useSet(
+    draft ? draft.restoreAttachments$ : singletonRestore$,
+  );
   const removeAttachment = useSet(
     draft ? draft.removeAttachment$ : singletonRemove$,
   );
@@ -647,12 +653,50 @@ function useResolvedComposerSignals(
     canSend,
     attachments,
     uploadAttachment,
+    restoreAttachments,
     removeAttachment,
     fileInputEl,
     setFileInputEl,
     dragOver,
     setDragOver,
   };
+}
+
+function insertPastedText(
+  textarea: HTMLTextAreaElement,
+  currentValue: string,
+  pastedText: string,
+): string {
+  if (!pastedText) {
+    return currentValue;
+  }
+  const start = textarea.selectionStart;
+  const end = textarea.selectionEnd;
+  return `${currentValue.slice(0, start)}${pastedText}${currentValue.slice(end)}`;
+}
+
+function toPersistedAttachments(
+  attachments: readonly {
+    id: string | null;
+    url: string;
+    filename: string;
+    contentType: string;
+    size: number;
+  }[],
+): PersistedAttachment[] {
+  return attachments
+    .filter((attachment): attachment is PersistedAttachment => {
+      return attachment.id !== null;
+    })
+    .map((attachment) => {
+      return {
+        id: attachment.id,
+        url: attachment.url,
+        filename: attachment.filename,
+        contentType: attachment.contentType,
+        size: attachment.size,
+      };
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -691,6 +735,7 @@ export function ZeroChatComposer({
     canSend,
     attachments,
     uploadAttachment,
+    restoreAttachments,
     removeAttachment,
     fileInputEl,
     setFileInputEl,
@@ -703,23 +748,59 @@ export function ZeroChatComposer({
 
   // File upload handlers (paste / drag-drop)
   const handlePaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
+    const chatPayload = readChatMessageFromClipboard(e.clipboardData);
+    if (chatPayload && chatPayload.attachments.length > 0) {
+      const persistedAttachments = toPersistedAttachments(
+        chatPayload.attachments,
+      );
+      if (persistedAttachments.length > 0) {
+        e.preventDefault();
+        const nextInput = insertPastedText(
+          e.currentTarget,
+          input,
+          chatPayload.text,
+        );
+        if (nextInput !== input) {
+          onInputChange(nextInput);
+        }
+        restoreAttachments(persistedAttachments);
+        onDraftChange?.();
+        return;
+      }
+    }
+
     const items = e.clipboardData?.items;
     if (!items) {
       return;
     }
-    for (const item of items) {
-      if (item.kind === "file") {
-        const file = item.getAsFile();
-        if (file) {
-          if (file.size > MAX_FILE_SIZE) {
-            toast.error(`${file.name} exceeds the 1 GB limit`);
-            continue;
-          }
-          e.preventDefault();
-          detach(uploadAttachment(file, rootSignal), Reason.DomCallback);
-          onDraftChange?.();
-        }
+    const plainText = e.clipboardData.getData("text/plain");
+    let pastedPlainText = false;
+    const applyPlainText = () => {
+      if (pastedPlainText || !plainText) {
+        return;
       }
+      const nextInput = insertPastedText(e.currentTarget, input, plainText);
+      if (nextInput !== input) {
+        onInputChange(nextInput);
+      }
+      pastedPlainText = true;
+    };
+    for (const item of items) {
+      if (item.kind !== "file") {
+        continue;
+      }
+      const file = item.getAsFile();
+      if (!file) {
+        continue;
+      }
+      if (file.size > MAX_FILE_SIZE) {
+        toast.error(`${file.name} exceeds the 1 GB limit`);
+        continue;
+      }
+      e.preventDefault();
+      applyPlainText();
+      detach(uploadAttachment(file, rootSignal), Reason.DomCallback);
+      onDraftChange?.();
     }
   };
 

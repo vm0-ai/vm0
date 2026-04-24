@@ -221,6 +221,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show the unread watermark dot and bold title for chat threads with unread messages in the sidebar",
     enabled: false,
   },
+  [FeatureSwitchKey.ChatManualHistory]: {
+    maintainer: "linghan@vm0.ai",
+    description:
+      "Enable manual chat history loading from a Load history button at the top of a thread. When off, chat stays in the latest-50/no-history mode.",
+    enabled: false,
+  },
   [FeatureSwitchKey.InlineThinkingDot]: {
     maintainer: "ethan@vm0.ai",
     description:

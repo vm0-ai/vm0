@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.233.0](https://github.com/vm0-ai/vm0/compare/core-v8.232.0...core-v8.233.0) (2026-04-24)
+
+
+### Features
+
+* add deepseek v4 models ([#10956](https://github.com/vm0-ai/vm0/issues/10956)) ([292ed24](https://github.com/vm0-ai/vm0/commit/292ed2401576ed7451962e7c3e391ea61a6b9e3b))
+
 ## [8.232.0](https://github.com/vm0-ai/vm0/compare/core-v8.231.0...core-v8.232.0) (2026-04-24)
 
 

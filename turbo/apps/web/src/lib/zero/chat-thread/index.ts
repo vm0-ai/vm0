@@ -10,9 +10,4 @@ export {
   markThreadRead,
   resolveAttachFileUrls,
 } from "./chat-thread-service";
-export {
-  getMessagesBefore,
-  getMessagesFromLastUserMessage,
-  getMessagesSince,
-  type MessageRow,
-} from "./chat-message-service";
+export { getPagedMessages } from "./chat-message-service";
