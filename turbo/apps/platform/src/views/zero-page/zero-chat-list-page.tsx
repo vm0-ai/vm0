@@ -162,7 +162,6 @@ export function ZeroChatListPage() {
           onRecentSelect={onRecentSelect}
           onLoadAll={loadAllChatThreads}
           hasMore={hasMoreChatThreads}
-          showAgentAvatar={unifyChatThreads}
         />
       </div>
     </div>
@@ -178,7 +177,6 @@ function ChatList({
   onRecentSelect,
   onLoadAll,
   hasMore,
-  showAgentAvatar,
 }: {
   loading: boolean;
   error: string | null;
@@ -188,7 +186,6 @@ function ChatList({
   onRecentSelect: (id: string) => void;
   onLoadAll: () => void;
   hasMore: boolean;
-  showAgentAvatar: boolean;
 }) {
   const pendingDeleteThreadId = useGet(pendingDeleteThreadId$);
   const setPendingDeleteThreadId = useSet(setPendingDeleteThreadId$);
