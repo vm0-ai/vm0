@@ -3,18 +3,16 @@
  */
 
 /**
- * Artifact snapshot payload shapes the writer may send. Legacy Record is still
- * accepted (pre-#10911 guest-agents) and the canonical array shape carries
- * mountPath per entry (post-#10911). Receiver tolerance lives in
- * `decode-artifact-snapshots.ts`.
- *
- * Note: the array-entry's `version` is always a resolved concrete string —
- * distinct from `ContextArtifact` (execution-context type) where `version` is
- * optional and defaults to "latest".
+ * Artifact snapshot payload sent by the writer. Each entry's `version` is
+ * always a resolved concrete string — distinct from `ContextArtifact`
+ * (execution-context type) where `version` is optional and defaults to
+ * "latest".
  */
-export type ArtifactSnapshotsPayload =
-  | Record<string, string>
-  | Array<{ name: string; version: string; mountPath: string }>;
+export type ArtifactSnapshotsPayload = Array<{
+  name: string;
+  version: string;
+  mountPath: string;
+}>;
 
 /**
  * Agent compose snapshot stored in checkpoint
@@ -51,20 +49,16 @@ export interface CheckpointRequest {
   cliAgentType: string;
   cliAgentSessionId: string;
   cliAgentSessionHistoryHash: string;
-  // Multi-artifact snapshot payload. Accepts both legacy Record (pre-#10911)
-  // and canonical array (post-#10911) shapes; persisted verbatim to the
-  // JSONB column. May be empty or missing when the guest snapshotted nothing.
+  // Multi-artifact snapshot payload. Canonical array shape only; persisted
+  // verbatim to the JSONB column. May be empty or missing when the guest
+  // snapshotted nothing.
   artifactSnapshots?: ArtifactSnapshotsPayload;
   volumeVersionsSnapshot?: VolumeVersionsSnapshot;
 }
 
 /**
- * Response from checkpoint creation.
- *
- * `artifacts` always echoes the canonical Array shape that was persisted
- * to the JSONB column — even when the caller sent a legacy Record payload,
- * the writer normalises before persisting and the response echoes the
- * normalised form. This keeps on-wire and on-disk representations in sync.
+ * Response from checkpoint creation. `artifacts` echoes the canonical array
+ * shape persisted to the JSONB column.
  */
 export interface CheckpointResponse {
   checkpointId: string;

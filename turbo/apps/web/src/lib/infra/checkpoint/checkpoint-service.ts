@@ -1,6 +1,5 @@
 import { and, eq } from "drizzle-orm";
 import { agentRuns } from "../../../db/schema/agent-run";
-import { agentComposeVersions } from "../../../db/schema/agent-compose";
 import { conversations } from "../../../db/schema/conversation";
 import { checkpoints } from "../../../db/schema/checkpoint";
 import { notFound } from "../../shared/errors";
@@ -17,7 +16,6 @@ import {
   decodeToContextArtifacts,
   isEmptyArtifactPayload,
 } from "./decode-artifact-snapshots";
-import { extractWorkingDir } from "../run/utils/extract-working-dir";
 
 const log = logger("checkpoint");
 
@@ -59,17 +57,6 @@ export async function createCheckpoint(
     throw notFound(
       "Agent compose version not found (agent may have been deleted)",
     );
-  }
-
-  // Fetch agent compose version to get composeId for session
-  const [version] = await globalThis.services.db
-    .select()
-    .from(agentComposeVersions)
-    .where(eq(agentComposeVersions.id, run.agentComposeVersionId))
-    .limit(1);
-
-  if (!version) {
-    throw notFound("Agent compose version not found");
   }
 
   log.debug(
@@ -148,23 +135,14 @@ export async function createCheckpoint(
       }
     : null;
 
-  // Normalise the artifactSnapshots payload before persisting — legacy
-  // Record<name, version> inputs get converted to the canonical
-  // Array<{name, version, mountPath}> shape via a mountPath heuristic
-  // (memory → AUTO_MEMORY_MOUNT_PATH, else → compose workingDir). Array-shape
-  // inputs already carry their own mountPath, so we skip the workingDir
-  // lookup — this keeps the writer tolerant of malformed compose content
-  // for canonical-shape payloads. Empty payloads (null, {}, []) collapse to
-  // NULL so "no artifacts" has a single on-disk representation.
+  // Normalise the artifactSnapshots payload before persisting. The webhook
+  // contract now only accepts the canonical Array<{name, version, mountPath}>
+  // shape; empty payloads (null, []) collapse to NULL so "no artifacts" has
+  // a single on-disk representation.
   const rawPayload = request.artifactSnapshots ?? null;
   const artifactSnapshotsForDb = isEmptyArtifactPayload(rawPayload)
     ? null
-    : decodeToContextArtifacts(
-        rawPayload,
-        Array.isArray(rawPayload)
-          ? undefined
-          : extractWorkingDir(version.content),
-      );
+    : decodeToContextArtifacts(rawPayload);
 
   const snapshotFields = {
     conversationId: conversation.id,
@@ -215,11 +193,9 @@ export async function createCheckpoint(
   // Use volume versions from snapshot for return value
   const volumes = volumeSnapshot?.versions;
 
-  // Echo back the normalised canonical shape that was persisted so the
-  // response matches the on-disk representation — not the caller's raw
-  // input shape. Writer inputs always carry a concrete `version` string
-  // (Record values are strings, Array entries require version), so we
-  // assert it here to satisfy the response schema's non-optional version.
+  // Echo back the persisted canonical shape. The webhook contract requires
+  // `version` on every entry, so the undefined-branch assertion guards
+  // against a ContextArtifact leaking in from a non-webhook caller.
   const responseArtifacts = artifactSnapshotsForDb?.map((entry) => {
     if (entry.version === undefined) {
       throw new Error(

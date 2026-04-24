@@ -121,7 +121,7 @@ export async function resolveCheckpoint(
   }
   const agentCompose = version.content as AgentComposeYaml;
   const workingDir = extractWorkingDir(agentCompose);
-  const artifacts = decodeToContextArtifacts(rawArtifacts, workingDir);
+  const artifacts = decodeToContextArtifacts(rawArtifacts);
 
   return {
     conversationId: checkpoint.conversationId,

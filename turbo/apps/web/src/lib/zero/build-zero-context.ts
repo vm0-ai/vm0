@@ -25,10 +25,7 @@ import type {
 } from "../infra/run/types";
 import type { ConversationResolution } from "../infra/run/resolvers";
 import type { AdditionalVolume } from "../infra/storage/types";
-import {
-  AUTO_MEMORY_ARTIFACT_NAME,
-  AUTO_MEMORY_MOUNT_PATH,
-} from "../infra/storage/types";
+import { AUTO_MEMORY_ARTIFACT_NAME, AUTO_MEMORY_MOUNT_PATH } from "./memory";
 import { expandEnvironmentFromCompose } from "../infra/run/environment";
 import { getUserPreferences } from "./user/user-preferences-service";
 import { getApiTokenConnectorTypes } from "./connector/connector-service";

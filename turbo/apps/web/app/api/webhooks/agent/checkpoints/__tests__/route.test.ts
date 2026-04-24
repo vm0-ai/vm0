@@ -64,9 +64,13 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
             cliAgentSessionId: "test-session",
             cliAgentSessionHistoryHash:
               "ec3ac9679505be3bb8233c4ef0b39c8ee206d2c37fc8610edc19f41fbfb9661e",
-            artifactSnapshots: {
-              "test-artifact": "version-123",
-            },
+            artifactSnapshots: [
+              {
+                name: "test-artifact",
+                version: "version-123",
+                mountPath: "/home/user/workspace",
+              },
+            ],
           }),
         },
       );
@@ -96,9 +100,13 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
             cliAgentSessionId: "test-session",
             cliAgentSessionHistoryHash:
               "ec3ac9679505be3bb8233c4ef0b39c8ee206d2c37fc8610edc19f41fbfb9661e",
-            artifactSnapshots: {
-              "test-artifact": "version-123",
-            },
+            artifactSnapshots: [
+              {
+                name: "test-artifact",
+                version: "version-123",
+                mountPath: "/home/user/workspace",
+              },
+            ],
           }),
         },
       );
@@ -125,9 +133,13 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
             // cliAgentSessionId: missing
             cliAgentSessionHistoryHash:
               "ec3ac9679505be3bb8233c4ef0b39c8ee206d2c37fc8610edc19f41fbfb9661e",
-            artifactSnapshots: {
-              "test-artifact": "version-123",
-            },
+            artifactSnapshots: [
+              {
+                name: "test-artifact",
+                version: "version-123",
+                mountPath: "/home/user/workspace",
+              },
+            ],
           }),
         },
       );
@@ -153,9 +165,13 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
             cliAgentType: "claude-code",
             cliAgentSessionId: "test-session",
             // cliAgentSessionHistoryHash: missing
-            artifactSnapshots: {
-              "test-artifact": "version-123",
-            },
+            artifactSnapshots: [
+              {
+                name: "test-artifact",
+                version: "version-123",
+                mountPath: "/home/user/workspace",
+              },
+            ],
           }),
         },
       );
@@ -247,9 +263,13 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
             cliAgentSessionId: "test-session",
             cliAgentSessionHistoryHash:
               "ec3ac9679505be3bb8233c4ef0b39c8ee206d2c37fc8610edc19f41fbfb9661e",
-            artifactSnapshots: {
-              "test-artifact": "version-123",
-            },
+            artifactSnapshots: [
+              {
+                name: "test-artifact",
+                version: "version-123",
+                mountPath: "/home/user/workspace",
+              },
+            ],
           }),
         },
       );
@@ -295,9 +315,13 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
             cliAgentSessionId: "test-session",
             cliAgentSessionHistoryHash:
               "ec3ac9679505be3bb8233c4ef0b39c8ee206d2c37fc8610edc19f41fbfb9661e",
-            artifactSnapshots: {
-              "test-artifact": "version-123",
-            },
+            artifactSnapshots: [
+              {
+                name: "test-artifact",
+                version: "version-123",
+                mountPath: "/home/user/workspace",
+              },
+            ],
           }),
         },
       );
@@ -312,9 +336,13 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
 
   describe("Success", () => {
     it("should create checkpoint with single artifact", async () => {
-      const artifactSnapshots = {
-        "test-artifact": "version-123-456",
-      };
+      const artifactSnapshots = [
+        {
+          name: "test-artifact",
+          version: "version-123-456",
+          mountPath: "/home/user/workspace",
+        },
+      ];
 
       const request = createTestRequest(
         "http://localhost:3000/api/webhooks/agent/checkpoints",
@@ -341,68 +369,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       expect(data.checkpointId).toBeDefined();
       expect(data.agentSessionId).toBeDefined();
       expect(data.conversationId).toBeDefined();
-      // Response echoes the normalised canonical shape persisted to the DB,
-      // not the caller's raw Record input.
-      expect(data.artifacts).toEqual([
-        {
-          name: "test-artifact",
-          version: "version-123-456",
-          mountPath: "/home/user/workspace",
-        },
-      ]);
-    });
-
-    it("should persist legacy Record payload as canonical Array via mountPath heuristic", async () => {
-      // Legacy Record input: the writer normalises to canonical
-      // Array<{name, version, mountPath}> via the name heuristic — non-"memory"
-      // entries resolve mountPath to the compose working_dir
-      // (/home/user/workspace for claude-code).
-      const artifactSnapshots = {
-        "artifact-a": "version-aaa",
-        "artifact-b": "version-bbb",
-      };
-
-      const request = createTestRequest(
-        "http://localhost:3000/api/webhooks/agent/checkpoints",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${testToken}`,
-          },
-          body: JSON.stringify({
-            runId: testRunId,
-            cliAgentType: "claude-code",
-            cliAgentSessionId: "multi-artifact-session",
-            cliAgentSessionHistoryHash: sha256("multi-artifact-history"),
-            artifactSnapshots,
-          }),
-        },
-      );
-
-      const response = await POST(request);
-
-      expect(response.status).toBe(200);
-      const data = await response.json();
-      // Response echoes the normalised canonical Array shape, matching the
-      // on-disk representation rather than the caller's raw Record input.
-      const expectedCanonical = [
-        {
-          name: "artifact-a",
-          version: "version-aaa",
-          mountPath: "/home/user/workspace",
-        },
-        {
-          name: "artifact-b",
-          version: "version-bbb",
-          mountPath: "/home/user/workspace",
-        },
-      ];
-      expect(data.artifacts).toEqual(expectedCanonical);
-
-      const checkpoint = await findTestCheckpoint(testRunId);
-      expect(checkpoint).toBeDefined();
-      expect(checkpoint!.artifactSnapshots).toEqual(expectedCanonical);
+      expect(data.artifacts).toEqual(artifactSnapshots);
     });
 
     it("should persist canonical array-shape artifactSnapshots verbatim", async () => {
@@ -454,9 +421,13 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
 
   describe("Session independence", () => {
     it("should create independent sessions for separate artifact runs", async () => {
-      const artifactSnapshots = {
-        "my-app": "v1",
-      };
+      const artifactSnapshots = [
+        {
+          name: "my-app",
+          version: "v1",
+          mountPath: "/home/user/workspace",
+        },
+      ];
 
       // Allow multiple concurrent runs and re-enable Clerk auth for API route calls
       vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "0");
@@ -593,9 +564,13 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
         cliAgentType: "claude-code",
         cliAgentSessionId: "test-session-unique",
         cliAgentSessionHistoryHash: sha256("test-session-unique-history"),
-        artifactSnapshots: {
-          "test-artifact": "version-123",
-        },
+        artifactSnapshots: [
+          {
+            name: "test-artifact",
+            version: "version-123",
+            mountPath: "/home/user/workspace",
+          },
+        ],
       };
 
       // First request - should succeed

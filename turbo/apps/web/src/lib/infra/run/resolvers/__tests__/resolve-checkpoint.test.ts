@@ -11,17 +11,11 @@ import {
   uniqueId,
   type UserContext,
 } from "../../../../../__tests__/test-helpers";
-import {
-  AUTO_MEMORY_ARTIFACT_NAME,
-  AUTO_MEMORY_MOUNT_PATH,
-} from "../../../storage/types";
 import type { ContextArtifact } from "../../types";
 
 const context = testContext();
 
-const WORKING_DIR = "/home/user/workspace";
-
-describe("resolveCheckpoint — artifactSnapshots shape tolerance", () => {
+describe("resolveCheckpoint — artifactSnapshots decoding", () => {
   let user: UserContext;
   let composeId: string;
 
@@ -32,36 +26,7 @@ describe("resolveCheckpoint — artifactSnapshots shape tolerance", () => {
     composeId = compose.composeId;
   });
 
-  it("decodes legacy Record<name, version> via mountPath heuristic", async () => {
-    const { runId } = await createTestRun(composeId, "legacy shape run");
-    const { checkpointId } = await createTestCheckpoint(user.userId, runId);
-
-    await setTestCheckpointArtifactSnapshots(checkpointId, {
-      [AUTO_MEMORY_ARTIFACT_NAME]: "v-mem",
-      "my-artifact": "v-art",
-    });
-
-    const resolution = await resolveCheckpoint(checkpointId, user.userId);
-
-    expect(resolution.artifacts).toHaveLength(2);
-    const byName = Object.fromEntries(
-      resolution.artifacts.map((a) => {
-        return [a.name, a];
-      }),
-    );
-    expect(byName[AUTO_MEMORY_ARTIFACT_NAME]).toEqual({
-      name: AUTO_MEMORY_ARTIFACT_NAME,
-      version: "v-mem",
-      mountPath: AUTO_MEMORY_MOUNT_PATH,
-    });
-    expect(byName["my-artifact"]).toEqual({
-      name: "my-artifact",
-      version: "v-art",
-      mountPath: WORKING_DIR,
-    });
-  });
-
-  it("passes new-shape ContextArtifact[] through unchanged", async () => {
+  it("passes canonical ContextArtifact[] through unchanged", async () => {
     const { runId } = await createTestRun(composeId, "new shape run");
     const { checkpointId } = await createTestCheckpoint(user.userId, runId);
 
@@ -100,20 +65,6 @@ describe("resolveCheckpoint — artifactSnapshots shape tolerance", () => {
 
     await expect(resolveCheckpoint(checkpointId, user.userId)).rejects.toThrow(
       /artifactSnapshots\[0\]/,
-    );
-  });
-
-  it("rejects legacy Record entries with non-string versions", async () => {
-    const { runId } = await createTestRun(composeId, "malformed record run");
-    const { checkpointId } = await createTestCheckpoint(user.userId, runId);
-
-    // Legacy Record shape where a version is not a string.
-    await setTestCheckpointArtifactSnapshots(checkpointId, {
-      bad: 42,
-    } as unknown as Record<string, string>);
-
-    await expect(resolveCheckpoint(checkpointId, user.userId)).rejects.toThrow(
-      /"bad"/,
     );
   });
 });

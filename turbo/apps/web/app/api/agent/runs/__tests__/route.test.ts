@@ -31,7 +31,7 @@ import { GET as getSessionById } from "../../sessions/[id]/route";
 import { POST as completeWebhook } from "../../../webhooks/agent/complete/route";
 import { POST as pollRoute } from "../../../runners/poll/route";
 import type { AgentComposeYaml } from "../../../../../src/lib/infra/agent-compose/types";
-import { AUTO_MEMORY_MOUNT_PATH } from "../../../../../src/lib/infra/storage/types";
+import { AUTO_MEMORY_MOUNT_PATH } from "../../../../../src/lib/zero/memory";
 import { createTestZeroAgent } from "../../../../../src/__tests__/db-test-seeders/agents";
 import { bindCustomSkillToAgent } from "../../../../../src/__tests__/db-test-seeders/skills";
 import {

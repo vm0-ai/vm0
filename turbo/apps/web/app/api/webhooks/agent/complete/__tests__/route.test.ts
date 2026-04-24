@@ -228,9 +228,13 @@ describe("POST /api/webhooks/agent/complete", () => {
             cliAgentSessionId: "test-session",
             cliAgentSessionHistoryHash:
               "ec3ac9679505be3bb8233c4ef0b39c8ee206d2c37fc8610edc19f41fbfb9661e",
-            artifactSnapshots: {
-              "test-artifact": "v1",
-            },
+            artifactSnapshots: [
+              {
+                name: "test-artifact",
+                version: "v1",
+                mountPath: "/home/user/workspace",
+              },
+            ],
           }),
         },
       );
@@ -259,57 +263,6 @@ describe("POST /api/webhooks/agent/complete", () => {
       const data = await response.json();
       expect(data.success).toBe(true);
       expect(data.status).toBe("completed");
-    });
-
-    it("should surface full artifact map in result when checkpoint has artifactSnapshots", async () => {
-      const artifactSnapshots = {
-        "frontend-build": "v-frontend-1",
-        "backend-build": "v-backend-2",
-      };
-
-      const checkpointRequest = createTestRequest(
-        "http://localhost:3000/api/webhooks/agent/checkpoints",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${testToken}`,
-          },
-          body: JSON.stringify({
-            runId: testRunId,
-            cliAgentType: "claude-code",
-            cliAgentSessionId: "multi-artifact-complete",
-            cliAgentSessionHistoryHash:
-              "ec3ac9679505be3bb8233c4ef0b39c8ee206d2c37fc8610edc19f41fbfb9661e",
-            artifactSnapshots,
-          }),
-        },
-      );
-      const checkpointResponse = await checkpointWebhook(checkpointRequest);
-      expect(checkpointResponse.status).toBe(200);
-
-      const request = createTestRequest(
-        "http://localhost:3000/api/webhooks/agent/complete",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${testToken}`,
-          },
-          body: JSON.stringify({
-            runId: testRunId,
-            exitCode: 0,
-          }),
-        },
-      );
-
-      const response = await POST(request);
-      expect(response.status).toBe(200);
-
-      const run = await findTestRunRecord(testRunId);
-      expect(run!.status).toBe("completed");
-      const result = run!.result as { artifact?: Record<string, string> };
-      expect(result.artifact).toEqual(artifactSnapshots);
     });
 
     it("should project array-shape artifactSnapshots to Record in result.artifact", async () => {
@@ -1083,9 +1036,13 @@ describe("POST /api/webhooks/agent/complete", () => {
               cliAgentSessionId: "recovery-session",
               cliAgentSessionHistoryHash:
                 "ec3ac9679505be3bb8233c4ef0b39c8ee206d2c37fc8610edc19f41fbfb9661e",
-              artifactSnapshots: {
-                "recovery-artifact": "v1",
-              },
+              artifactSnapshots: [
+                {
+                  name: "recovery-artifact",
+                  version: "v1",
+                  mountPath: "/home/user/workspace",
+                },
+              ],
             }),
           },
         ),

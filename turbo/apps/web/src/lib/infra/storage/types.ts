@@ -9,26 +9,6 @@ export type StorageDriver = "vas";
 // Re-export VolumeConfig from agent-config for convenience
 export type { VolumeConfig };
 
-// Derived from /home/user/workspace via Claude Code's project-name encoding:
-// strip leading "/", replace "/" with "-", prepend "-". Since zero always runs
-// with workingDir=/home/user/workspace, the encoded folder is always
-// "-home-user-workspace". Mounting memory directly here removes the need for
-// the guest-agent symlink bootstrap.
-//
-// The legacy DEFAULT_MEMORY_MOUNT_PATH (=/home/user/.vm0/memory) was removed
-// in #10602 — it had no remaining callers once memory started riding in
-// artifacts[] and is not part of any wire contract.
-export const AUTO_MEMORY_MOUNT_PATH =
-  "/home/user/.claude/projects/-home-user-workspace/memory";
-
-/**
- * Storage name used for the auto-synthesized memory artifact. Zero-layer runs
- * always include a ContextArtifact entry with this name mounted at
- * AUTO_MEMORY_MOUNT_PATH so Claude Code finds persistent memory without any
- * in-sandbox symlink bootstrap.
- */
-export const AUTO_MEMORY_ARTIFACT_NAME = "memory";
-
 /**
  * Resolved volume with all template variables replaced
  */

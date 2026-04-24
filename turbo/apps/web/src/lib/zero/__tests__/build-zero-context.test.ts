@@ -31,10 +31,7 @@ import { setVariable } from "../variable/variable-service";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
 import { isNoModelProvider } from "../../shared/errors";
 import { reloadEnv } from "../../../env";
-import {
-  AUTO_MEMORY_ARTIFACT_NAME,
-  AUTO_MEMORY_MOUNT_PATH,
-} from "../../infra/storage/types";
+import { AUTO_MEMORY_ARTIFACT_NAME, AUTO_MEMORY_MOUNT_PATH } from "../memory";
 import type { TriggerSource } from "@vm0/core/contracts/logs";
 
 const context = testContext();
@@ -501,9 +498,13 @@ describe("Org-Level Runtime Resolution (Zero Layer)", () => {
     it("checkpoint resume trusts resolution memory entry", async () => {
       const seed = await createTestRun(agentId, "seed");
       const { checkpointId } = await completeTestRun(user.userId, seed.runId);
-      await setTestCheckpointArtifactSnapshots(checkpointId, {
-        [AUTO_MEMORY_ARTIFACT_NAME]: "latest",
-      });
+      await setTestCheckpointArtifactSnapshots(checkpointId, [
+        {
+          name: AUTO_MEMORY_ARTIFACT_NAME,
+          version: "latest",
+          mountPath: AUTO_MEMORY_MOUNT_PATH,
+        },
+      ]);
 
       const resumed = await createTestRun(agentId, "resume", { checkpointId });
       await context.mocks.flushAfter();

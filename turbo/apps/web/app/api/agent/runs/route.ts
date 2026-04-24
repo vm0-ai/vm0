@@ -15,10 +15,8 @@ import {
   agentComposeVersions,
 } from "../../../../src/db/schema/agent-compose";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
-import {
-  type AdditionalVolume,
-  AUTO_MEMORY_ARTIFACT_NAME,
-} from "../../../../src/lib/infra/storage/types";
+import type { AdditionalVolume } from "../../../../src/lib/infra/storage/types";
+import { AUTO_MEMORY_ARTIFACT_NAME } from "../../../../src/lib/zero/memory";
 import { and, eq, inArray, desc, gte, lte, sql } from "drizzle-orm";
 import {
   loadCompose,

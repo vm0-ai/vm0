@@ -14,10 +14,6 @@ import {
   uniqueId,
   type UserContext,
 } from "../../../../../__tests__/test-helpers";
-import {
-  AUTO_MEMORY_ARTIFACT_NAME,
-  AUTO_MEMORY_MOUNT_PATH,
-} from "../../../storage/types";
 
 const context = testContext();
 
@@ -38,33 +34,15 @@ describe("resolveSession — artifacts passthrough", () => {
     const { runId } = await createTestRun(composeId, "session expansion run");
     const { agentSessionId } = await completeTestRun(user.userId, runId);
     await setTestSessionFramework(agentSessionId, "claude-code");
-    await setTestSessionArtifacts(agentSessionId, [
-      {
-        name: AUTO_MEMORY_ARTIFACT_NAME,
-        version: "latest",
-        mountPath: AUTO_MEMORY_MOUNT_PATH,
-      },
+    const entries = [
+      { name: "mem", version: "latest", mountPath: "/opt/mem" },
       { name: "ctx", version: "latest", mountPath: WORKING_DIR },
-    ]);
+    ];
+    await setTestSessionArtifacts(agentSessionId, entries);
 
     const resolution = await resolveSession(agentSessionId, user.userId);
 
-    expect(resolution.artifacts).toHaveLength(2);
-    const byName = Object.fromEntries(
-      resolution.artifacts.map((a) => {
-        return [a.name, a];
-      }),
-    );
-    expect(byName[AUTO_MEMORY_ARTIFACT_NAME]).toEqual({
-      name: AUTO_MEMORY_ARTIFACT_NAME,
-      version: "latest",
-      mountPath: AUTO_MEMORY_MOUNT_PATH,
-    });
-    expect(byName["ctx"]).toEqual({
-      name: "ctx",
-      version: "latest",
-      mountPath: WORKING_DIR,
-    });
+    expect(resolution.artifacts).toEqual(entries);
   });
 
   it("returns empty artifact list when session has no artifacts", async () => {
