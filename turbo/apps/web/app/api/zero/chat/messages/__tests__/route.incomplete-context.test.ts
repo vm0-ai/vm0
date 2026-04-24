@@ -32,7 +32,11 @@ async function sendMessage(body: Record<string, unknown>) {
     }),
   );
   expect(response.status).toBe(201);
-  return response.json() as Promise<{ runId: string; threadId: string }>;
+  const data = (await response.json()) as { runId: string; threadId: string };
+  // insertChatMessage is deferred into after() — drain so subsequent sends
+  // see the user message row when building the incomplete-rounds context.
+  await context.mocks.flushAfter();
+  return data;
 }
 
 describe("POST /api/zero/chat/messages — incomplete rounds context", () => {

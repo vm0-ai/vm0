@@ -481,32 +481,43 @@ const router = tsr.router(chatMessagesContract, {
         userProfile: userProfileFromClaims(authCtx),
       });
 
-      // Persist user message to chat_messages.
-      // Only file IDs are stored — metadata is resolved at query time from S3.
-      // insertChatMessage also publishes chatThreadMessageCreated internally,
-      // so the paged-messages view picks up the new row.
-      // Stamp with the runId so the callback's prior-context filter can
-      // exclude this message structurally (by runId) instead of by content.
-      await insertChatMessage({
-        chatThreadId: threadId,
-        userId: authCtx.userId,
-        role: "user",
-        content: body.prompt,
-        runId: result.runId,
-        attachFiles: body.attachFiles?.map((f: AttachFile) => {
-          return f.id;
-        }),
-        id: body.clientMessageId,
-        spanDims: dims,
-      });
-
       // Stamp response-ready for the Phase-2 instrumentation split before
       // registering the signals after() so we can measure its closure-entry
       // offset against the same responseReady anchor used by dispatchZeroRun.
       const responseReadyAt = result.markResponseReady();
 
+      // Persist user message to chat_messages in after() so the 201 response
+      // flushes before the INSERT (+ internal chatThreadMessageCreated publish)
+      // runs. The response body omits the row id and the client renders
+      // optimistically via clientMessageId, so no caller blocks on this write.
+      //
+      // Ordering: insertChatMessage MUST complete before publishUserSignal /
+      // publishThreadListChanged fire — those signals tell other devices to
+      // refetch the thread list / paged-messages view, and they must see the
+      // new row on refetch. The `await`s below preserve that ordering.
       after(async () => {
         const signalsEnterAt = Date.now();
+        try {
+          // Stamp with the runId so the callback's prior-context filter can
+          // exclude this message structurally (by runId) instead of by content.
+          await insertChatMessage({
+            chatThreadId: threadId,
+            userId: authCtx.userId,
+            role: "user",
+            content: body.prompt,
+            runId: result.runId,
+            attachFiles: body.attachFiles?.map((f: AttachFile) => {
+              return f.id;
+            }),
+            id: body.clientMessageId,
+            spanDims: dims,
+          });
+        } catch (err: unknown) {
+          log.error("Deferred insertChatMessage failed", {
+            runId: result.runId,
+            err,
+          });
+        }
         await publishUserSignal(
           [authCtx.userId],
           `chatThreadRunCreated:${threadId}`,
