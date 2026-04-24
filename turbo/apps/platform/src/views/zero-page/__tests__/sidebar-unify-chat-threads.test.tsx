@@ -1,14 +1,10 @@
 /**
  * Unified chat-threads sidebar behaviour (#10162).
  *
- * When the `unifyChatThreads` feature switch is ON, the sidebar:
- *  - calls `chatThreadsContract.list` WITHOUT an `agentId` query param,
- *  - renders the `"Chats"` title (no "with {agent}" suffix),
- *  - shows per-row agent avatars so threads from different agents are
- *    distinguishable at a glance.
- *
- * When the flag is OFF, the existing per-agent behaviour is preserved
- * (title `"Chats with {agent}"`, scoped request, no per-row avatar).
+ * The sidebar always uses unified labels ("Chats", "Search chats", "New chat").
+ * The `unifyChatThreads` feature switch still controls the API request shape:
+ *  - When ON: calls `chatThreadsContract.list` WITHOUT an `agentId` query param
+ *  - When OFF: calls with an `agentId` param (scoped to the current agent)
  */
 
 import { beforeEach, describe, expect, it } from "vitest";
@@ -177,8 +173,7 @@ describe("sidebar unify chat threads (#10162)", () => {
     ).toBeTruthy();
   });
 
-  it("renders the flag-on title 'Chats' (without agent suffix)", async () => {
-    setMockFeatureSwitches({ unifyChatThreads: true });
+  it("always renders the unified title 'Chats' regardless of feature switch", async () => {
     const observed: ListQuery[] = [];
     mockUnifiedThreads(observed);
     detachedSetupPage({ context, path: "/" });
@@ -189,24 +184,5 @@ describe("sidebar unify chat threads (#10162)", () => {
     expect(
       within(getSidebar()).queryByText(/^Chats with /),
     ).not.toBeInTheDocument();
-  });
-
-  it("renders the legacy title 'Chats with {agent}' when the flag is OFF", async () => {
-    setMockFeatureSwitches({ unifyChatThreads: false });
-    const observed: ListQuery[] = [];
-    mockUnifiedThreads(observed);
-    detachedSetupPage({ context, path: "/" });
-
-    await waitFor(() => {
-      expect(
-        within(getSidebar()).getByText(/^Chats with /),
-      ).toBeInTheDocument();
-    });
-    // Every list call must carry an agentId — no unscoped fallback.
-    expect(
-      observed.every((q) => {
-        return typeof q.agentId === "string";
-      }),
-    ).toBeTruthy();
   });
 });
