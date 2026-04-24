@@ -265,9 +265,8 @@ async fn create_checkpoint_impl() -> Result<(), AgentError> {
     );
 
     // Compute SHA-256 hash of session history for presigned URL upload
-    let history_bytes = session_history.as_bytes();
-    let history_hash = hex::encode(Sha256::digest(history_bytes));
-    let history_size = history_bytes.len() as u64;
+    let history_hash = hex::encode(Sha256::digest(session_history.as_bytes()));
+    let history_size = session_history.len() as u64;
     log_info!(
         LOG_TAG,
         "Session history hash={}, size={history_size}",
@@ -279,9 +278,8 @@ async fn create_checkpoint_impl() -> Result<(), AgentError> {
     // path is web-API bound (prepare + S3 PUT); the artifact path is VAS-bound
     // (prepare + HEAD update). Serial, wall time was dominated by whichever
     // was longer plus the other; concurrent, it's just the longer one.
-    let history_bytes = session_history.into_bytes();
     let (_, artifact_snapshots) = tokio::try_join!(
-        upload_session_history(&history_hash, history_size, history_bytes),
+        upload_session_history(&history_hash, history_size, session_history.into_bytes()),
         snapshot_artifacts(),
     )?;
 
