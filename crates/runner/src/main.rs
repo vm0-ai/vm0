@@ -199,23 +199,33 @@ async fn main() -> ExitCode {
         None => (None, None),
     };
 
-    let _guard = match &cli.command {
-        Command::Start(args) => match init_tracing_with_file(&args.config, axiom_layer) {
-            Ok(guard) => Some(guard),
-            Err(e) => {
-                // The failed `init_tracing_with_file` already consumed `axiom_layer`,
-                // so the stderr fallback runs without Axiom — acceptable degraded
-                // mode (home/log-dir setup is already broken at this point).
-                init_tracing_stderr(None);
-                tracing::warn!("file logging unavailable, using stderr only: {e}");
-                None
+    let (_guard, axiom_installed) = match &cli.command {
+        Command::Start(args) => {
+            let was_enabled = axiom_layer.is_some();
+            match init_tracing_with_file(&args.config, axiom_layer) {
+                Ok(guard) => (Some(guard), was_enabled),
+                Err(e) => {
+                    // The failed `init_tracing_with_file` already consumed `axiom_layer`,
+                    // so the stderr fallback runs without Axiom — acceptable degraded
+                    // mode (home/log-dir setup is already broken at this point).
+                    init_tracing_stderr(None);
+                    tracing::warn!("file logging unavailable, using stderr only: {e}");
+                    (None, false)
+                }
             }
-        },
+        }
         _ => {
+            let was_enabled = axiom_layer.is_some();
             init_tracing_stderr(axiom_layer);
-            None
+            (None, was_enabled)
         }
     };
+
+    if axiom_installed {
+        tracing::info!("axiom telemetry enabled");
+    } else {
+        tracing::info!("axiom telemetry disabled");
+    }
 
     let result = match cli.command {
         Command::Setup => cmd::run_setup().await.map(|()| ExitCode::SUCCESS),
