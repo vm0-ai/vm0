@@ -910,12 +910,6 @@ export {
   type CreateVoiceChatTaskBody,
 } from "./zero-voice-chat";
 export {
-  zeroPhoneStatusContract,
-  zeroPhoneLinkContract,
-  zeroPhoneSetupContract,
-  type PhoneStatusResponse,
-} from "./zero-phone";
-export {
   zeroUploadsContract,
   type ZeroUploadsContract,
   type UploadPrepareResponse,

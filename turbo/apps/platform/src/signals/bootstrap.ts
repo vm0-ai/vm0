@@ -41,7 +41,6 @@ import { setupPermissionAllowPage$ } from "./permission-allow/permission-allow-p
 import { setupReportErrorPage$ } from "./report-error/report-error-page-setup.ts";
 import { setupChatListPage$ } from "./zero-page/chat-list-page-setup.ts";
 import { setupLabPage$ } from "./lab-page/lab-page-setup.ts";
-import { setupPhonePage$ } from "./phone-page/phone-page-setup.ts";
 import { setupNetworkInsightsPage$ } from "./network-insights/network-insights-page-setup.ts";
 import { setupUsagePage$ } from "./usage-page/usage-page-setup.ts";
 import { initSlackOrg$ as handleSlackRedirect$ } from "./zero-page/zero-slack.ts";
@@ -181,10 +180,6 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.schedules,
     setup: setupAuthPageWrapper(setupSchedulePage$),
-  },
-  {
-    path: ROUTES.phone,
-    setup: setupAuthPageWrapper(setupPhonePage$),
   },
   {
     path: ROUTES.lab,

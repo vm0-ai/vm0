@@ -195,11 +195,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Show audit log links in Slack messages",
     enabled: false,
   },
-  [FeatureSwitchKey.PhoneIntegration]: {
-    maintainer: "ethan@vm0.ai",
-    description: "Show the Phone page for voice call integration",
-    enabled: false,
-  },
   [FeatureSwitchKey.AudioInput]: {
     maintainer: "lancy@vm0.ai",
     description:

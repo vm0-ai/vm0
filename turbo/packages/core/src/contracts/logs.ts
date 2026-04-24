@@ -48,8 +48,6 @@ export const triggerSourceSchema = z.enum([
   "github",
   "cli",
   "agent",
-  "phone",
-  "imessage",
   "voice-chat",
 ]);
 

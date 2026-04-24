@@ -3,7 +3,6 @@ import { FeatureSwitchKey } from "../feature-switch-key";
 import { axiom } from "./connectors/axiom";
 import { ahrefs } from "./connectors/ahrefs";
 import { agentmail } from "./connectors/agentmail";
-import { agentphone } from "./connectors/agentphone";
 import { airtable } from "./connectors/airtable";
 import { anthropicManagedAgents } from "./connectors/anthropic-managed-agents";
 import { github } from "./connectors/github";
@@ -265,7 +264,6 @@ const CONNECTOR_TYPES_DEF = {
   ...axiom,
   ...ahrefs,
   ...agentmail,
-  ...agentphone,
   ...airtable,
   ...anthropicManagedAgents,
   ...github,

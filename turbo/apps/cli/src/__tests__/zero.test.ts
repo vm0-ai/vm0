@@ -20,7 +20,6 @@ describe("zero CLI program", () => {
       "doctor",
       "logs",
       "search",
-      "phone",
       "preference",
       "run",
       "schedule",

@@ -36,7 +36,6 @@ export enum FeatureSwitchKey {
   ComputerUse = "computerUse",
   Lab = "lab",
   AuditLink = "auditLink",
-  PhoneIntegration = "phoneIntegration",
   AudioInput = "audioInput",
   AudioOutput = "audioOutput",
   AutoSkill = "autoSkill",
