@@ -5,9 +5,6 @@ import { mockedClerk } from "../__tests__/mock-auth.ts";
 import { worker } from "../mocks/browser.ts";
 import { clearAllDetached } from "../signals/utils.ts";
 
-// eslint-disable-next-line ccstate/no-non-zero-api -- matcher for unhandled requests, not an app API call.
-const appApiPathPrefix = "/api/";
-
 vi.mock("@clerk/clerk-js", () => {
   return {
     Clerk: function MockClerk() {
@@ -23,10 +20,11 @@ vi.hoisted(() => {
 
 function shouldFailUnhandledRequest(request: Request): boolean {
   const url = new URL(request.url);
-  if (url.pathname.startsWith(appApiPathPrefix)) {
+  const apiUrl = import.meta.env.VITE_API_URL as string;
+  if (url.pathname.startsWith("/api/")) {
     return true;
   }
-  if (url.origin === "http://localhost:3000") {
+  if (url.origin === apiUrl) {
     return true;
   }
   if (url.origin !== location.origin && !isCommonAssetRequest(request)) {
@@ -56,6 +54,7 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
+  vi.clearAllMocks();
   vi.spyOn(console, "error").mockImplementation((...message: unknown[]) => {
     const str = message.map(String).join(" ");
     if (str.includes("AbortError")) {
@@ -68,7 +67,7 @@ beforeEach(() => {
       return;
     }
     const err = message[0];
-    throw err instanceof Error ? err : new Error(err as unknown as string);
+    throw err instanceof Error ? err : new Error(String(err));
   });
 });
 

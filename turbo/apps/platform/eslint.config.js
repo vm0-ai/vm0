@@ -147,6 +147,14 @@ export default [
       "ccstate/no-raw-msw-http": "off",
     },
   },
+  // Allow /api/ path prefix in browser test setup. The string literal is used
+  // as an unhandled-request matcher, not as an actual API call target.
+  {
+    files: ["src/test/browser-setup.ts"],
+    rules: {
+      "ccstate/no-non-zero-api": "off",
+    },
+  },
   // Allow direct localStorage in the abstraction layer only
   {
     files: ["src/signals/external/local-storage.ts"],
