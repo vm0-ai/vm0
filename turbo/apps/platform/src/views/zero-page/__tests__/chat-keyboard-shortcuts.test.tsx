@@ -11,6 +11,7 @@ import {
   chatThreadMessagesContract,
   chatThreadByIdContract,
 } from "@vm0/core/contracts/chat-threads";
+import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -143,6 +144,30 @@ describe("chat page keyboard shortcuts", () => {
     // The thread carries both agentId (legacy) and agent.id (preferred).
     // The escape navigation must use agent.id, not agentId.
     const AGENT_ID_FROM_OBJECT = "a2222222-0000-4000-a000-000000000002";
+
+    // Register both agents in the mock team so the redirect guard in
+    // setupAgentChatPage$ does not fire when navigating to AGENT_ID_FROM_OBJECT.
+    setMockTeam([
+      {
+        id: AGENT_ID,
+        displayName: null,
+        description: null,
+        sound: null,
+        avatarUrl: null,
+        headVersionId: "version_1",
+        updatedAt: "2024-01-01T00:00:00Z",
+      },
+      {
+        id: AGENT_ID_FROM_OBJECT,
+        displayName: null,
+        description: null,
+        sound: null,
+        avatarUrl: null,
+        headVersionId: "version_1",
+        updatedAt: "2024-01-01T00:00:00Z",
+      },
+    ]);
+
     server.use(
       mockApi(chatThreadsContract.list, ({ respond }) => {
         return respond(200, {
