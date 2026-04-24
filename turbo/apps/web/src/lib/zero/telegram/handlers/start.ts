@@ -116,8 +116,9 @@ export async function handleStartCommand(
     })
     .onConflictDoNothing();
 
-  // Auto-grant permission
-  await ensureOrgAndArtifact(payload.vm0UserId);
+  // Auto-grant permission. The installation's orgId was snapshot at
+  // registration and is the authoritative org for this bot.
+  await ensureOrgAndArtifact(payload.vm0UserId, installation.orgId);
 
   await sendMessage(
     client,

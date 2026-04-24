@@ -62,35 +62,30 @@ export async function DELETE(request: Request) {
 
   const db = globalThis.services.db;
 
-  const links = await db
-    .select({ id: telegramUserLinks.id })
-    .from(telegramUserLinks)
-    .innerJoin(
-      telegramInstallations,
-      eq(telegramUserLinks.installationId, telegramInstallations.telegramBotId),
-    )
+  // Single-statement delete scoped to the user's active org via a sub-select
+  // over telegram_installations. Atomic — no race window between SELECT and
+  // DELETE, and returning() tells us whether anything was removed.
+  const orgInstallations = db
+    .select({ telegramBotId: telegramInstallations.telegramBotId })
+    .from(telegramInstallations)
+    .where(eq(telegramInstallations.orgId, org.orgId));
+
+  const deleted = await db
+    .delete(telegramUserLinks)
     .where(
       and(
         eq(telegramUserLinks.vm0UserId, userId),
-        eq(telegramInstallations.orgId, org.orgId),
+        inArray(telegramUserLinks.installationId, orgInstallations),
       ),
-    );
+    )
+    .returning({ id: telegramUserLinks.id });
 
-  if (links.length === 0) {
+  if (deleted.length === 0) {
     return NextResponse.json(
       { error: { message: "No linked Telegram account", code: "NOT_FOUND" } },
       { status: 404 },
     );
   }
-
-  await db.delete(telegramUserLinks).where(
-    inArray(
-      telegramUserLinks.id,
-      links.map((link) => {
-        return link.id;
-      }),
-    ),
-  );
 
   return new NextResponse(null, { status: 204 });
 }

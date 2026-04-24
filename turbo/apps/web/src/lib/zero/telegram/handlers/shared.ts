@@ -5,7 +5,6 @@ import { telegramUserLinks } from "../../../../db/schema/telegram-user-link";
 import { agentComposes } from "../../../../db/schema/agent-compose";
 import { getAppUrl } from "../../url";
 import { resolveAgentId } from "../../zero-compose-service";
-import { resolveOrgOrNull } from "../../org/resolve-org";
 import { validateAgentSession } from "../../zero-run-validation";
 import { ensureStorageExists } from "../../../infra/storage/storage-service";
 import {
@@ -240,18 +239,16 @@ async function completePendingLink(
 }
 
 /**
- * Ensure org and artifact storage exist for a user.
+ * Ensure artifact storage exists for a user within the given org.
+ *
+ * The caller must resolve and authorize the org before invoking this —
+ * we do not re-check membership here.
  */
 export async function ensureOrgAndArtifact(
   vm0UserId: string,
-  orgId?: string,
+  orgId: string,
 ): Promise<void> {
-  const org = orgId ? { orgId } : await resolveOrgOrNull({ userId: vm0UserId });
-  if (!org) {
-    return;
-  }
-
-  await ensureStorageExists(org.orgId, vm0UserId, "artifact", "artifact");
+  await ensureStorageExists(orgId, vm0UserId, "artifact", "artifact");
 }
 
 /**
