@@ -21,6 +21,7 @@ import {
   getDefaultModel,
   getModels,
   MODEL_PROVIDER_TYPES,
+  VM0_MODEL_TO_PROVIDER,
   type ModelProviderResponse,
   type ModelProviderType,
 } from "@vm0/core/contracts/model-providers";
@@ -260,7 +261,7 @@ function TriggerLabel({
     return (
       <ResponsiveTriggerContent
         mobileIcon={mobileIcon}
-        provider={undefined}
+        iconType={undefined}
         label={<span>{placeholder}</span>}
       />
     );
@@ -269,14 +270,15 @@ function TriggerLabel({
   const provider = providers.find((p) => {
     return p.id === resolved.modelProviderId;
   });
+  const iconType = resolveIconType(provider, resolved.selectedModel);
   if (compact) {
     return (
       <ResponsiveTriggerContent
         mobileIcon={mobileIcon}
-        provider={provider}
+        iconType={iconType}
         label={
           <span className="flex items-center gap-1.5 min-w-0">
-            {provider && <ProviderIcon type={provider.type} size={16} />}
+            {iconType && <ProviderIcon type={iconType} size={16} />}
             <span className="truncate">{displayName}</span>
           </span>
         }
@@ -287,7 +289,7 @@ function TriggerLabel({
     return (
       <ResponsiveTriggerContent
         mobileIcon={mobileIcon}
-        provider={undefined}
+        iconType={undefined}
         label={<span>{displayName}</span>}
       />
     );
@@ -308,19 +310,31 @@ function TriggerLabel({
   return (
     <ResponsiveTriggerContent
       mobileIcon={mobileIcon}
-      provider={provider}
+      iconType={iconType}
       label={label}
     />
   );
 }
 
+function resolveIconType(
+  provider: ModelProviderResponse | undefined,
+  model: string | undefined,
+): ModelProviderType | undefined {
+  if (!provider) return undefined;
+  if (provider.type === "vm0" && model) {
+    const entry = VM0_MODEL_TO_PROVIDER[model];
+    if (entry) return entry.concreteType as ModelProviderType;
+  }
+  return provider.type;
+}
+
 function ResponsiveTriggerContent({
   mobileIcon,
-  provider,
+  iconType,
   label,
 }: {
   mobileIcon: boolean;
-  provider: ModelProviderResponse | undefined;
+  iconType: ModelProviderType | undefined;
   label: ReactNode;
 }) {
   if (!mobileIcon) {
@@ -329,8 +343,8 @@ function ResponsiveTriggerContent({
   return (
     <>
       <span className="flex items-center justify-center sm:hidden">
-        {provider ? (
-          <ProviderIcon type={provider.type} size={18} />
+        {iconType ? (
+          <ProviderIcon type={iconType} size={18} />
         ) : (
           <IconCpu size={18} stroke={1.5} />
         )}
