@@ -225,7 +225,7 @@ describe("zero sidebar - search input accepts text (SIDEBAR-D-015)", () => {
     const searchChatsBtn1 = screen.getByLabelText("Search chats");
     click(searchChatsBtn1);
 
-    const searchInput = screen.getByPlaceholderText(/Search chat with/);
+    const searchInput = screen.getByPlaceholderText("Search chats");
     await user.type(searchInput, "hello");
 
     expect(searchInput).toHaveValue("hello");
@@ -251,7 +251,7 @@ describe("zero sidebar - clear search button resets search (SIDEBAR-D-016)", () 
     const searchChatsBtn2 = screen.getByLabelText("Search chats");
     click(searchChatsBtn2);
 
-    const searchInput = screen.getByPlaceholderText(/Search chat with/);
+    const searchInput = screen.getByPlaceholderText("Search chats");
     await user.type(searchInput, "First");
 
     expect(screen.queryByText("Second chat")).not.toBeInTheDocument();
@@ -294,11 +294,16 @@ describe("zero sidebar - new chat button creates session (SIDEBAR-D-017)", () =>
       }),
     );
 
-    // Start on /agents so the new chat button triggers thread creation (not route navigation)
-    detachedSetupPage({ context, path: "/agents" });
+    // Start on the default agent chat page so currentChatAgentId$ resolves before we click
+    detachedSetupPage({ context, path: `/agents/${DEFAULT_AGENT_ID}/chat` });
 
+    // Wait for the sidebar to finish loading (empty state confirms threads loaded
+    // and the default agent id has resolved)
     const newChatButton = await waitFor(() => {
-      return screen.getByLabelText("New chat with Zero");
+      expect(
+        screen.getByText("Start a conversation and it'll show up here"),
+      ).toBeInTheDocument();
+      return screen.getByLabelText("New chat");
     });
 
     click(newChatButton);

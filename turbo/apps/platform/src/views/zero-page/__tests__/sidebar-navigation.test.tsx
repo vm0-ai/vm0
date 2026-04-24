@@ -166,12 +166,17 @@ describe("sidebar new chat navigation", () => {
   it("should create thread and navigate to /chat/:threadId when clicking new chat for default agent", async () => {
     mockSubagentAPIs();
 
-    // Start on /team so the "new chat" button navigates away
-    detachedSetupPage({ context, path: "/agents" });
+    // Start on the default agent chat page — this synchronously sets currentChatAgentId$
+    // so ChatThreadsSection doesn't remount between waitFor and click
+    detachedSetupPage({
+      context,
+      path: "/agents/c0000000-0000-4000-a000-000000000001/chat",
+    });
 
-    // Wait for the sidebar to render with the new chat button
+    // Wait for thread list to load
     const newChatButton = await waitFor(() => {
-      return screen.getByLabelText("New chat with Zero");
+      expect(screen.getByText("Subagent thread")).toBeInTheDocument();
+      return screen.getByLabelText("New chat");
     });
 
     click(newChatButton);
@@ -187,9 +192,10 @@ describe("sidebar new chat navigation", () => {
 
     detachedSetupPage({ context, path: "/agents/subagent-compose-id/chat" });
 
-    // Wait for the subagent chat to load — find the new chat button for the subagent
+    // Wait for thread list to load — confirms currentChatAgentId$ has resolved
     const newChatButton = await waitFor(() => {
-      return screen.getByLabelText("New chat with Helper Bot");
+      expect(screen.getByText("Subagent thread")).toBeInTheDocument();
+      return screen.getByLabelText("New chat");
     });
 
     click(newChatButton);
@@ -215,10 +221,17 @@ describe("sidebar new chat navigation", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: "/agents" });
+    // Start on the default agent chat page — this synchronously sets currentChatAgentId$
+    // so ChatThreadsSection doesn't remount between waitFor and click
+    detachedSetupPage({
+      context,
+      path: "/agents/c0000000-0000-4000-a000-000000000001/chat",
+    });
 
+    // Wait for thread list to load
     const newChatButton = await waitFor(() => {
-      return screen.getByLabelText("New chat with Zero");
+      expect(screen.getByText("Subagent thread")).toBeInTheDocument();
+      return screen.getByLabelText("New chat");
     });
 
     click(newChatButton);
@@ -276,10 +289,19 @@ describe("sidebar new chat navigation", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: "/agents" });
+    // Start on the default agent chat page — this synchronously sets currentChatAgentId$
+    // so ChatThreadsSection doesn't remount between waitFor and click
+    detachedSetupPage({
+      context,
+      path: "/agents/c0000000-0000-4000-a000-000000000001/chat",
+    });
 
+    // Wait for thread list to load (thread with null title appears as "New chat" span)
     const newChatButton = await waitFor(() => {
-      return screen.getByLabelText("New chat with Zero");
+      expect(
+        screen.getByText("New chat", { selector: "span" }),
+      ).toBeInTheDocument();
+      return screen.getByLabelText("New chat");
     });
 
     click(newChatButton);

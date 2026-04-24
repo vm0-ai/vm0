@@ -132,8 +132,8 @@ describe("zero sidebar - chat session list collapses and expands (SIDEBAR-D-011)
       expect(screen.getByText("Deploy to prod")).toBeInTheDocument();
     });
 
-    // Collapse: click the "Chats with Zero" header span
-    const chatsHeader = screen.getByText(/Chats with/);
+    // Collapse: click the "Chats" header span
+    const chatsHeader = screen.getByText("Chats");
     click(chatsHeader);
 
     // Thread list should be hidden

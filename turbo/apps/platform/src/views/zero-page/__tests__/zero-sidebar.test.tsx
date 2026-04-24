@@ -161,7 +161,7 @@ describe("zero sidebar", () => {
     click(searchButton);
 
     // Type search query
-    const searchInput = screen.getByPlaceholderText("Search chat with Zero");
+    const searchInput = screen.getByPlaceholderText("Search chats");
     await fill(searchInput, "First");
 
     // Only matching thread should be visible
@@ -183,7 +183,7 @@ describe("zero sidebar", () => {
     click(searchButton);
 
     // Type search query that filters out one thread
-    const searchInput = screen.getByPlaceholderText("Search chat with Zero");
+    const searchInput = screen.getByPlaceholderText("Search chats");
     await fill(searchInput, "First");
 
     expect(screen.queryByText("Second chat")).not.toBeInTheDocument();
