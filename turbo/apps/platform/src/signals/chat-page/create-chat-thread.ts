@@ -174,6 +174,7 @@ export interface ChatThreadSignals {
   // ── Paged messages (sole rendering path) ─────────────────────────────────
   latestChatMessageId$: Computed<Promise<string | undefined>>;
   groupedChatMessages$: Computed<Promise<GroupedChatMessageGroup[]>>;
+  hasUserMessages$: Computed<Promise<boolean>>;
   latestRunStatus$: Computed<Promise<string | null>>;
   allFinished$: Computed<Promise<boolean>>;
   fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>;
@@ -1124,6 +1125,15 @@ function createChatThreadSignals(
     return thread?.activeRuns[0]?.status ?? null;
   });
 
+  // Stable boolean that flips false→true once a user message exists. Using a
+  // dedicated signal (rather than deriving inline from groupedChatMessages$)
+  // means ChatThreadComposer only re-renders when this value actually changes,
+  // not on every message arrival after the first user turn.
+  const hasUserMessages$ = computed(async (get): Promise<boolean> => {
+    const groups = await get(groupedChatMessages$);
+    return groups.some((g) => g.role === "user");
+  });
+
   return {
     threadData$,
     modelSelection$,
@@ -1152,6 +1162,7 @@ function createChatThreadSignals(
     scheduleDraftSync$,
     latestChatMessageId$,
     groupedChatMessages$,
+    hasUserMessages$,
     latestRunStatus$,
     allFinished$,
     fetchNextPage$,
