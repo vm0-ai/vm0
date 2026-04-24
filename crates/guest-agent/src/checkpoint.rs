@@ -26,6 +26,16 @@ fn fail(op: &str, start: std::time::Instant, msg: impl Into<String>) -> AgentErr
     AgentError::Checkpoint(msg)
 }
 
+/// Shape one entry of the `artifactSnapshots` payload. Keys are the
+/// camelCase names the web Zod receiver (`artifactSnapshotsSchema`) expects.
+fn build_artifact_snapshot_entry(name: &str, version: &str, mount_path: &str) -> serde_json::Value {
+    json!({
+        "name": name,
+        "version": version,
+        "mountPath": mount_path,
+    })
+}
+
 /// Create a checkpoint after a successful run.
 pub async fn create_checkpoint() -> Result<(), AgentError> {
     let start = std::time::Instant::now();
@@ -207,7 +217,9 @@ async fn create_checkpoint_impl() -> Result<(), AgentError> {
 
     // Snapshot all configured artifacts. Memory rides in env::artifacts()
     // post-#10602, so there is no longer a separate memory arm.
-    let artifact_snapshots: Option<serde_json::Map<String, serde_json::Value>> = {
+    // Payload shape is `Array<{name, version, mountPath}>` per #10911 — the
+    // receiver tolerates the legacy `Record<name, version>` form too (#10919).
+    let artifact_snapshots: Option<serde_json::Value> = {
         let entries = env::artifacts();
         if entries.is_empty() {
             log_info!(
@@ -216,7 +228,7 @@ async fn create_checkpoint_impl() -> Result<(), AgentError> {
             );
             None
         } else {
-            let mut results = serde_json::Map::new();
+            let mut results = Vec::with_capacity(entries.len());
             for entry in entries {
                 log_info!(
                     LOG_TAG,
@@ -241,12 +253,13 @@ async fn create_checkpoint_impl() -> Result<(), AgentError> {
                     entry.name,
                     snapshot.version_id
                 );
-                results.insert(
-                    entry.name.clone(),
-                    serde_json::Value::String(snapshot.version_id),
-                );
+                results.push(build_artifact_snapshot_entry(
+                    &entry.name,
+                    &snapshot.version_id,
+                    &entry.mount_path,
+                ));
             }
-            Some(results)
+            Some(serde_json::Value::Array(results))
         }
     };
 
@@ -261,10 +274,7 @@ async fn create_checkpoint_impl() -> Result<(), AgentError> {
     if let Some(snaps) = artifact_snapshots
         && let Some(obj) = payload.as_object_mut()
     {
-        obj.insert(
-            "artifactSnapshots".to_string(),
-            serde_json::Value::Object(snaps),
-        );
+        obj.insert("artifactSnapshots".to_string(), snaps);
     }
 
     log_info!(LOG_TAG, "Calling checkpoint API...");
@@ -304,5 +314,36 @@ async fn create_checkpoint_impl() -> Result<(), AgentError> {
         Err(AgentError::Checkpoint(
             "Invalid checkpoint API response".into(),
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn artifact_snapshot_entry_shape_matches_receiver_schema() {
+        let entry = build_artifact_snapshot_entry("workspace", "v-abc-123", "/workspace");
+        assert_eq!(
+            entry,
+            json!({
+                "name": "workspace",
+                "version": "v-abc-123",
+                "mountPath": "/workspace",
+            })
+        );
+    }
+
+    #[test]
+    fn artifact_snapshot_entry_uses_camel_case_keys() {
+        let entry = build_artifact_snapshot_entry("n", "v", "/m");
+        let obj = entry.as_object().expect("entry must be a JSON object");
+        // Contract-boundary invariant: the web Zod receiver requires camelCase
+        // `mountPath`; a snake_case slip would silently cause a 400 on the
+        // webhook side.
+        assert!(obj.contains_key("name"));
+        assert!(obj.contains_key("version"));
+        assert!(obj.contains_key("mountPath"));
+        assert!(!obj.contains_key("mount_path"));
     }
 }
