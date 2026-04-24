@@ -9,7 +9,9 @@ import {
 import { animationFrame, delay } from "signal-timers";
 import {
   createDeferredPromise,
+  detach,
   onRef,
+  Reason,
   resetSignal,
   setLoop,
 } from "../utils.ts";
@@ -705,9 +707,8 @@ function createTopSentinelRef(
           if (!get(hasOlderMessages$)) {
             return;
           }
-          // Fire-and-forget: IntersectionObserver callbacks are synchronous,
-          // rejection is intentionally swallowed (signal aborts clean up).
-          set(loadOlderMessages$, signal).catch(() => {});
+          // Fire-and-forget: IntersectionObserver callbacks are synchronous.
+          detach(set(loadOlderMessages$, signal), Reason.DomCallback);
         },
         { threshold: 0.1 },
       );
