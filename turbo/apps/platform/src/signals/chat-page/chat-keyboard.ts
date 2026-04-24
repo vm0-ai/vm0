@@ -27,7 +27,7 @@ const navigateToAdjacentThread$ = command(
     }
     if (direction === "prev" && idx === 0) {
       // Escape upwards from the first thread to the agent chat page.
-      const agentId = threads[0]!.agent?.id ?? threads[0]!.agentId;
+      const agentId = threads[0]!.agent.id;
       set(detachedNavigateTo$, "/agents/:agentId/chat", {
         pathParams: { agentId },
       });

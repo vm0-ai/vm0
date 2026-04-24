@@ -1,13 +1,8 @@
 /**
  * Unified chat-threads sidebar behaviour (#10162).
- *
- * The sidebar always uses unified labels ("Chats", "Search chats", "New chat").
- * The `unifyChatThreads` feature switch still controls the API request shape:
- *  - When ON: calls `chatThreadsContract.list` WITHOUT an `agentId` query param
- *  - When OFF: calls with an `agentId` param (scoped to the current agent)
  */
 
-import { beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import {
   chatThreadsContract,
@@ -19,7 +14,6 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
-import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-switches.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
@@ -61,7 +55,6 @@ function mockUnifiedThreads(observedQueries: ListQuery[]) {
           {
             id: "thread-default",
             title: "Default thread",
-            agentId: DEFAULT_AGENT_ID,
             agent: { id: DEFAULT_AGENT_ID, avatarUrl: null },
             createdAt: "2026-03-10T00:00:00Z",
             updatedAt: "2026-03-10T00:00:00Z",
@@ -72,7 +65,6 @@ function mockUnifiedThreads(observedQueries: ListQuery[]) {
           {
             id: "thread-sub",
             title: "Sub thread",
-            agentId: SUB_AGENT_ID,
             agent: { id: SUB_AGENT_ID, avatarUrl: null },
             createdAt: "2026-03-09T00:00:00Z",
             updatedAt: "2026-03-09T00:00:00Z",
@@ -148,32 +140,8 @@ function getSidebar(): HTMLElement {
   return screen.getByRole("navigation", { name: "Sidebar" });
 }
 
-describe("sidebar unify chat threads (#10162)", () => {
-  beforeEach(() => {
-    setMockFeatureSwitches({});
-  });
-
-  it("calls list with no agentId when unifyChatThreads is ON", async () => {
-    setMockFeatureSwitches({ unifyChatThreads: true });
-    const observed: ListQuery[] = [];
-    mockUnifiedThreads(observed);
-    detachedSetupPage({ context, path: "/" });
-
-    await waitFor(() => {
-      expect(
-        within(getSidebar()).getByText("Default thread"),
-      ).toBeInTheDocument();
-      expect(within(getSidebar()).getByText("Sub thread")).toBeInTheDocument();
-    });
-    // At least one call went through without agentId — the unified request shape.
-    expect(
-      observed.some((q) => {
-        return q.agentId === undefined;
-      }),
-    ).toBeTruthy();
-  });
-
-  it("always renders the unified title 'Chats' regardless of feature switch", async () => {
+describe("sidebar chat threads (#10162)", () => {
+  it("renders the unified title 'Chats'", async () => {
     const observed: ListQuery[] = [];
     mockUnifiedThreads(observed);
     detachedSetupPage({ context, path: "/" });

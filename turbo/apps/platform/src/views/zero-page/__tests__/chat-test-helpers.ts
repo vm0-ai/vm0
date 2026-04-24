@@ -154,7 +154,7 @@ export async function sendMessageInUI(
 interface ThreadListItem {
   id: string;
   title: string | null;
-  agentId: string;
+  agent: { id: string; avatarUrl: string | null };
   createdAt: string;
   updatedAt: string;
   isRead: boolean;

@@ -6,13 +6,11 @@ import {
   type PersistedAttachment,
 } from "@vm0/core/contracts/chat-threads";
 import type { ModelProviderType } from "@vm0/core/contracts/model-providers";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { agentById, defaultAgentId$ } from "./agent.ts";
 import { zeroClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";
 import { pathParams$ } from "./route.ts";
 import { activeRoute$ } from "./active-route.ts";
-import { featureSwitch$ } from "./external/feature-switch.ts";
 import {
   reloadChatThreads$,
   reloadChatThreadsCounter$,
@@ -140,26 +138,17 @@ export const patchThreadRead$ = command(({ set }, _threadId: string) => {
 export const chatThreads$ = computed(async (get) => {
   get(reloadChatThreadsCounter$);
 
-  const features = await get(featureSwitch$);
-  const unifyChatThreads = features[FeatureSwitchKey.UnifyChatThreads] ?? false;
+  const agentId = await get(currentChatAgentId$);
+  if (!agentId) {
+    return [];
+  }
 
   const client = get(zeroClient$)(chatThreadsContract);
-
-  let threads: ChatThreadListItem[];
-  if (unifyChatThreads) {
-    const result = await accept(client.list({ query: {} }), [200]);
-    threads = result.body.threads;
-  } else {
-    const agentId = await get(currentChatAgentId$);
-    if (!agentId) {
-      return [];
-    }
-    const result = await accept(
-      client.list({ query: { agentId: agentId } }),
-      [200],
-    );
-    threads = result.body.threads;
-  }
+  const result = await accept(
+    client.list({ query: { agentId: agentId } }),
+    [200],
+  );
+  const threads = result.body.threads;
 
   const currentThread = await get(currentChatThread$);
   return threads.map((t) => {

@@ -30,7 +30,6 @@ import {
   chatThreadByIdContract,
 } from "@vm0/core/contracts/chat-threads";
 import { zeroAgentsByIdContract } from "@vm0/core/contracts/zero-agents";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -45,7 +44,7 @@ function makeThread(
 ): {
   id: string;
   title: string;
-  agentId: string;
+  agent: { id: string; avatarUrl: string | null };
   createdAt: string;
   updatedAt: string;
   isRead: boolean;
@@ -55,7 +54,7 @@ function makeThread(
   return {
     id,
     title,
-    agentId: DEFAULT_AGENT_ID,
+    agent: { id: DEFAULT_AGENT_ID, avatarUrl: null },
     createdAt,
     updatedAt: createdAt,
     isRead: false,
@@ -92,7 +91,7 @@ function mockBaseAPIs(options?: {
   threads?: {
     id: string;
     title: string;
-    agentId: string;
+    agent: { id: string; avatarUrl: string | null };
     createdAt: string;
     updatedAt: string;
     isRead: boolean;
@@ -220,7 +219,6 @@ describe("zero sidebar - search input accepts text (SIDEBAR-D-015)", () => {
     detachedSetupPage({
       context,
       path: "/",
-      featureSwitches: { [FeatureSwitchKey.UnifyChatThreads]: true },
     });
 
     await waitFor(() => {
@@ -249,7 +247,6 @@ describe("zero sidebar - clear search button resets search (SIDEBAR-D-016)", () 
     detachedSetupPage({
       context,
       path: "/",
-      featureSwitches: { [FeatureSwitchKey.UnifyChatThreads]: true },
     });
 
     await waitFor(() => {
@@ -307,7 +304,6 @@ describe("zero sidebar - new chat button creates session (SIDEBAR-D-017)", () =>
     detachedSetupPage({
       context,
       path: `/agents/${DEFAULT_AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.UnifyChatThreads]: true },
     });
 
     // Wait for the sidebar to finish loading (empty state confirms threads loaded

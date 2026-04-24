@@ -46,7 +46,7 @@ function mockAgentsWithThreads() {
           {
             id: THREAD_ID,
             title: "My test conversation",
-            agentId: "agent-alpha",
+            agent: { id: "agent-alpha", avatarUrl: null },
             createdAt: "2026-03-10T00:00:00Z",
             updatedAt: "2026-03-10T00:00:00Z",
             isRead: false,

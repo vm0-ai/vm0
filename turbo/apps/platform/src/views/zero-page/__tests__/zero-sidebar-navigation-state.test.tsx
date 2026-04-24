@@ -24,7 +24,6 @@ import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { chatThreadsContract } from "@vm0/core/contracts/chat-threads";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 import { setChatAgentId$ } from "../../../signals/agent-chat.ts";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -39,7 +38,7 @@ function makeThread(
 ): {
   id: string;
   title: string;
-  agentId: string;
+  agent: { id: string; avatarUrl: string | null };
   createdAt: string;
   updatedAt: string;
   isRead: boolean;
@@ -49,7 +48,7 @@ function makeThread(
   return {
     id,
     title,
-    agentId: DEFAULT_AGENT_ID,
+    agent: { id: DEFAULT_AGENT_ID, avatarUrl: null },
     createdAt,
     updatedAt: createdAt,
     isRead: false,
@@ -86,7 +85,7 @@ function mockBaseAPIs(options?: {
   threads?: {
     id: string;
     title: string;
-    agentId: string;
+    agent: { id: string; avatarUrl: string | null };
     createdAt: string;
     updatedAt: string;
     isRead: boolean;
@@ -129,7 +128,6 @@ describe("zero sidebar - chat session list collapses and expands (SIDEBAR-D-011)
     detachedSetupPage({
       context,
       path: "/",
-      featureSwitches: { [FeatureSwitchKey.UnifyChatThreads]: true },
     });
 
     // Wait for thread to appear

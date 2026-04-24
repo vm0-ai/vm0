@@ -196,8 +196,6 @@ describe("VM0 managed model provider", () => {
         "MiniMax-M2.7",
         "deepseek-v4-pro",
         "deepseek-v4-flash",
-        "deepseek-chat",
-        "deepseek-reasoner",
       ]);
     });
   });

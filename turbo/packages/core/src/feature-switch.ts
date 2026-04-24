@@ -265,16 +265,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: true,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.UnifyChatThreads]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Replace the per-agent chat list with a unified Chats view that includes " +
-      "threads from every agent in the user's org (sub-agents included). " +
-      "Gates the sidebar + /chats title/placeholder/aria-label swaps, the per-row " +
-      "agent avatar render, and the unscoped request shape. New-chat creation " +
-      "still uses the current-agent fallback.",
-    enabled: false,
-  },
   [FeatureSwitchKey.ConnectorCategories]: {
     maintainer: "ethan@vm0.ai",
     description:

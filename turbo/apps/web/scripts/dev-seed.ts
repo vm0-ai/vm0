@@ -110,22 +110,6 @@ const MODEL_PRICING: (typeof creditPricing.$inferInsert)[] = [
     cacheReadTokenPrice: usd(0.028),
     cacheCreationTokenPrice: 0,
   },
-  {
-    model: "deepseek-chat",
-    modelProvider: "vm0",
-    inputTokenPrice: usd(0.14),
-    outputTokenPrice: usd(0.28),
-    cacheReadTokenPrice: usd(0.028),
-    cacheCreationTokenPrice: 0,
-  },
-  {
-    model: "deepseek-reasoner",
-    modelProvider: "vm0",
-    inputTokenPrice: usd(0.14),
-    outputTokenPrice: usd(0.28),
-    cacheReadTokenPrice: usd(0.028),
-    cacheCreationTokenPrice: 0,
-  },
 ];
 
 type UsagePricingRow = [category: string, unitPrice: number, unitSize: number];

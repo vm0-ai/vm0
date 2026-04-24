@@ -143,8 +143,6 @@ describe("getVm0VisibleModels", () => {
     expect(models).toContain("glm-5.1");
     expect(models).toContain("deepseek-v4-pro");
     expect(models).toContain("deepseek-v4-flash");
-    expect(models).toContain("deepseek-chat");
-    expect(models).toContain("deepseek-reasoner");
     // All feature-flagged models must be hidden when no features are provided
     const featureFlaggedModels = Object.entries(VM0_MODEL_TO_PROVIDER)
       .filter(([, config]) => {
@@ -162,8 +160,6 @@ describe("getVm0VisibleModels", () => {
     const models = getVm0VisibleModels({});
     expect(models).toContain("deepseek-v4-pro");
     expect(models).toContain("deepseek-v4-flash");
-    expect(models).toContain("deepseek-chat");
-    expect(models).toContain("deepseek-reasoner");
   });
 });
 

@@ -90,14 +90,6 @@ export const VM0_MODEL_TO_PROVIDER: Record<string, Vm0ModelConfig> = {
     concreteType: "deepseek-api-key",
     vendor: "deepseek",
   },
-  "deepseek-chat": {
-    concreteType: "deepseek-api-key",
-    vendor: "deepseek",
-  },
-  "deepseek-reasoner": {
-    concreteType: "deepseek-api-key",
-    vendor: "deepseek",
-  },
 };
 
 /**
@@ -257,12 +249,7 @@ export const MODEL_PROVIDER_TYPES = {
       API_TIMEOUT_MS: "600000",
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
     } as Record<string, string>,
-    models: [
-      "deepseek-v4-pro",
-      "deepseek-v4-flash",
-      "deepseek-chat",
-      "deepseek-reasoner",
-    ] as string[],
+    models: ["deepseek-v4-pro", "deepseek-v4-flash"] as string[],
     defaultModel: "deepseek-v4-flash",
   },
   "zai-api-key": {

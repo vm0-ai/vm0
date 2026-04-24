@@ -23,7 +23,6 @@ import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -35,7 +34,7 @@ function mockBaseAPIs(
     threads?: {
       id: string;
       title: string;
-      agentId: string;
+      agent: { id: string; avatarUrl: string | null };
       createdAt: string;
       updatedAt: string;
       isRead: boolean;
@@ -89,7 +88,7 @@ describe("zero sidebar - chat thread list display (SIDEBAR-D-001)", () => {
         {
           id: "thread-1",
           title: "Deploy to production",
-          agentId: DEFAULT_AGENT_ID,
+          agent: { id: DEFAULT_AGENT_ID, avatarUrl: null },
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:00:00Z",
           isRead: false,
@@ -99,7 +98,7 @@ describe("zero sidebar - chat thread list display (SIDEBAR-D-001)", () => {
         {
           id: "thread-2",
           title: "Fix the bug",
-          agentId: DEFAULT_AGENT_ID,
+          agent: { id: DEFAULT_AGENT_ID, avatarUrl: null },
           createdAt: "2026-03-09T00:00:00Z",
           updatedAt: "2026-03-09T00:00:00Z",
           isRead: false,
@@ -152,7 +151,7 @@ describe("zero sidebar - search results filter (SIDEBAR-D-003)", () => {
         {
           id: "thread-1",
           title: "Deploy to production",
-          agentId: DEFAULT_AGENT_ID,
+          agent: { id: DEFAULT_AGENT_ID, avatarUrl: null },
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:00:00Z",
           isRead: false,
@@ -162,7 +161,7 @@ describe("zero sidebar - search results filter (SIDEBAR-D-003)", () => {
         {
           id: "thread-2",
           title: "Fix the bug",
-          agentId: DEFAULT_AGENT_ID,
+          agent: { id: DEFAULT_AGENT_ID, avatarUrl: null },
           createdAt: "2026-03-09T00:00:00Z",
           updatedAt: "2026-03-09T00:00:00Z",
           isRead: false,
@@ -175,7 +174,6 @@ describe("zero sidebar - search results filter (SIDEBAR-D-003)", () => {
     detachedSetupPage({
       context,
       path: "/",
-      featureSwitches: { [FeatureSwitchKey.UnifyChatThreads]: true },
     });
 
     await waitFor(() => {
@@ -206,7 +204,7 @@ describe("zero sidebar - search term displays in input (SIDEBAR-D-004)", () => {
         {
           id: "thread-1",
           title: "Deploy to production",
-          agentId: DEFAULT_AGENT_ID,
+          agent: { id: DEFAULT_AGENT_ID, avatarUrl: null },
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:00:00Z",
           isRead: false,
@@ -219,7 +217,6 @@ describe("zero sidebar - search term displays in input (SIDEBAR-D-004)", () => {
     detachedSetupPage({
       context,
       path: "/",
-      featureSwitches: { [FeatureSwitchKey.UnifyChatThreads]: true },
     });
 
     await waitFor(() => {
@@ -388,7 +385,6 @@ describe("zero sidebar - new chat button enabled/disabled state (SIDEBAR-D-010)"
     detachedSetupPage({
       context,
       path: "/",
-      featureSwitches: { [FeatureSwitchKey.UnifyChatThreads]: true },
     });
 
     await waitFor(() => {
@@ -415,7 +411,6 @@ describe("zero sidebar - new chat button enabled/disabled state (SIDEBAR-D-010)"
     detachedSetupPage({
       context,
       path: "/",
-      featureSwitches: { [FeatureSwitchKey.UnifyChatThreads]: true },
     });
 
     await waitFor(() => {
