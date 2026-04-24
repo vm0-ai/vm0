@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.93.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.93.8...runner-rs-v0.93.9) (2026-04-24)
+
+
+### Bug Fixes
+
+* **mitm-addon:** guard flow.request.content against bad content-encoding ([#10968](https://github.com/vm0-ai/vm0/issues/10968)) ([a90e863](https://github.com/vm0-ai/vm0/commit/a90e86331ccf4455ef14f288430962583f7d54cf))
+
 ## [0.93.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.93.7...runner-rs-v0.93.8) (2026-04-24)
 
 ## [0.93.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.93.6...runner-rs-v0.93.7) (2026-04-23)
