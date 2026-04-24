@@ -21,6 +21,10 @@ load '../../helpers/browser'
 setup_file() {
   browser_setup
 
+  if [[ -n "${CLERK_SECRET_KEY:-}" ]]; then
+    delete_e2e_account_if_exists
+  fi
+
   # Generate a password for sign-up
   SIGNUP_PASSWORD="$(generate_password)"
   export SIGNUP_PASSWORD
