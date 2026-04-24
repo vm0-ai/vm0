@@ -9,9 +9,7 @@ import {
 import { animationFrame, delay } from "signal-timers";
 import {
   createDeferredPromise,
-  detach,
   onRef,
-  Reason,
   resetSignal,
   setLoop,
 } from "../utils.ts";
@@ -698,7 +696,13 @@ function createTopSentinelRef(
   loadOlderMessages$: Command<Promise<void>, [AbortSignal]>,
 ) {
   return onRef(
-    command(({ get, set }, el: HTMLElement, signal: AbortSignal) => {
+    command(async ({ get, set }, el: HTMLElement, signal: AbortSignal) => {
+      // `notify` is replaced at the start of each iteration. The
+      // IntersectionObserver callback calls it to unblock the awaiting
+      // loop. All Promise-returning calls are properly awaited so no
+      // floating promises are created.
+      let notify: ((value: void) => void) | null = null;
+
       const observer = new IntersectionObserver(
         (entries) => {
           if (!entries[0]?.isIntersecting) {
@@ -707,8 +711,9 @@ function createTopSentinelRef(
           if (!get(hasOlderMessages$)) {
             return;
           }
-          // Fire-and-forget: IntersectionObserver callbacks are synchronous.
-          detach(set(loadOlderMessages$, signal), Reason.DomCallback);
+          const fn = notify;
+          notify = null;
+          fn?.();
         },
         { threshold: 0.1 },
       );
@@ -716,6 +721,14 @@ function createTopSentinelRef(
       signal.addEventListener("abort", () => {
         observer.disconnect();
       });
+
+      while (!signal.aborted) {
+        const deferred = createDeferredPromise<void>(signal);
+        notify = deferred.resolve;
+        await deferred.promise;
+        signal.throwIfAborted();
+        await set(loadOlderMessages$, signal);
+      }
     }),
   );
 }
