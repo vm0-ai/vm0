@@ -12,6 +12,8 @@ import {
   findTestZeroRun,
   findTestRunCallbacks,
   createTestSessionWithConversation,
+  getTestUserPreferencesAll,
+  updateTestUserPreferencesAll,
 } from "../../../__tests__/api-test-helpers";
 import {
   clearComposeHeadVersion,
@@ -487,6 +489,49 @@ describe("createZeroRun() — service-only parameters", () => {
       ).rejects.toMatchObject({
         message: expect.stringContaining("Agent compose not found"),
       });
+    });
+  });
+
+  describe("capture network bodies short-circuit", () => {
+    it("skips DB UPDATE and leaves captureNetworkBodies unset when quota is zero", async () => {
+      const before = await getTestUserPreferencesAll();
+      expect(before.captureNetworkBodiesRemaining).toBe(0);
+
+      const result = await createZeroRun(baseParams());
+      await context.mocks.flushAfter();
+
+      const after = await getTestUserPreferencesAll();
+      expect(after.captureNetworkBodiesRemaining).toBe(0);
+
+      const job = await findTestRunnerJobEntry(result.runId);
+      expect(job).toBeDefined();
+      expect(job!.executionContext.captureNetworkBodies).toBeFalsy();
+    });
+
+    it("decrements quota and enables captureNetworkBodies when quota is positive", async () => {
+      await updateTestUserPreferencesAll({ captureNetworkBodiesRemaining: 3 });
+
+      const result = await createZeroRun(baseParams());
+      await context.mocks.flushAfter();
+
+      const after = await getTestUserPreferencesAll();
+      expect(after.captureNetworkBodiesRemaining).toBe(2);
+
+      const job = await findTestRunnerJobEntry(result.runId);
+      expect(job).toBeDefined();
+      expect(job!.executionContext.captureNetworkBodies).toBe(true);
+    });
+
+    it("consumes the last quota slot and skips the UPDATE on subsequent runs", async () => {
+      await updateTestUserPreferencesAll({ captureNetworkBodiesRemaining: 1 });
+
+      await createZeroRun(baseParams());
+      const mid = await getTestUserPreferencesAll();
+      expect(mid.captureNetworkBodiesRemaining).toBe(0);
+
+      await createZeroRun(baseParams());
+      const end = await getTestUserPreferencesAll();
+      expect(end.captureNetworkBodiesRemaining).toBe(0);
     });
   });
 });
