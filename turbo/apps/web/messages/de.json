@@ -207,7 +207,9 @@
       "howSecure": "Wie sicher ist VM0?",
       "howSecureAnswer": "Jeder Agentenlauf wird in einer isolierten Firecracker-microVM mit Hardware-Level-KVM-Isolation ausgeführt. Credentials werden auf Netzwerkebene injiziert und nie dem Agenten-Code ausgesetzt. Sämtlicher Agent-HTTP/HTTPS-Verkehr wird pro Lauf mit SHA-256-Integrität protokolliert.",
       "annualBilling": "Bieten Sie Jahresabrechnung oder Rabatte an?",
-      "annualBillingAnswer": "Kontaktieren Sie uns, um Mengenpreise, Jahresabrechnungsrabatte und individuelle Vereinbarungen für Ihr Team zu besprechen."
+      "annualBillingAnswer": "Kontaktieren Sie uns, um Mengenpreise, Jahresabrechnungsrabatte und individuelle Vereinbarungen für Ihr Team zu besprechen.",
+      "upgradeCredits": "Was passiert mit meinen Credits bei einem Upgrade?",
+      "upgradeCreditsAnswer": "Bei einem Upgrade werden Ihre verbleibenden Credits übernommen und Sie erhalten sofort das monatliche Credit-Kontingent des neuen Plans. Sie zahlen nur die anteilige Differenz für den Rest des Abrechnungszeitraums."
     },
     "perMonth": "/Monat"
   },
