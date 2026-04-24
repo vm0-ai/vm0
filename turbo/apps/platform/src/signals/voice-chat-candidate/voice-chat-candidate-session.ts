@@ -584,6 +584,12 @@ const startAblyLoop$ = command(
       return false;
     });
 
+    // Prime once before subscribing so instructions reach the live DC session
+    // immediately. `setAblyLoop$` no longer primes its subscribers.
+    const done = await set(pollBody$, signal);
+    if (done) {
+      return;
+    }
     await set(setAblyLoop$, ablyTopic(sessionId), pollBody$, signal);
   },
 );

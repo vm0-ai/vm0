@@ -538,6 +538,13 @@ export const connectConnector$ = command(
     await set(awaitRealtimeReady$, signal);
     signal.throwIfAborted();
 
+    // Prime once so `initialUpdatedAt` snapshots the current server state.
+    // `setAblyLoop$` no longer primes its subscribers, and without this the
+    // first ably event would be taken as the baseline instead of signalling
+    // completion.
+    await set(onConnectorChanged$, signal);
+    signal.throwIfAborted();
+
     await raceUnderSignal(signal, (childSignal) => {
       return [
         set(

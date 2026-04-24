@@ -302,10 +302,11 @@ describe("sidebar new chat navigation", () => {
       path: "/agents/c0000000-0000-4000-a000-000000000001/chat",
     });
 
-    // Wait for thread list to load (thread with null title appears as "New chat" span)
+    // Wait for thread list to load — the thread row for the not-yet-named
+    // thread is identifiable by its link href.
     const newChatButton = await waitFor(() => {
       expect(
-        screen.getByText("New chat", { selector: "span" }),
+        document.querySelector(`a[href="/chats/new-thread-id"]`),
       ).toBeInTheDocument();
       return screen.getByLabelText("New chat");
     });
@@ -317,10 +318,11 @@ describe("sidebar new chat navigation", () => {
       expect(pathname()).toBe("/chats/new-thread-id");
     });
 
-    // 2. Verify sidebar shows "New chat" entry (thread has title: null)
+    // 2. Verify sidebar row is rendered for the new thread. title is null so
+    //    the row renders a skeleton placeholder instead of literal text.
     await waitFor(() => {
       expect(
-        screen.getByText("New chat", { selector: "span" }),
+        document.querySelector(`a[href="/chats/new-thread-id"]`),
       ).toBeInTheDocument();
     });
 
