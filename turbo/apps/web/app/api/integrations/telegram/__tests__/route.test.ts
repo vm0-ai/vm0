@@ -58,6 +58,7 @@ describe("/api/integrations/telegram", () => {
       await createTestTelegramInstallation({
         ownerUserId: user.userId,
         vm0UserId: user.userId,
+        orgId: user.orgId,
       });
 
       const request = new Request(
@@ -79,6 +80,7 @@ describe("/api/integrations/telegram", () => {
       // Create installation with admin but no user link (omit vm0UserId)
       await createTestTelegramInstallation({
         ownerUserId: user.userId,
+        orgId: user.orgId,
       });
 
       const request = new Request(
@@ -91,6 +93,23 @@ describe("/api/integrations/telegram", () => {
       expect(data.isAdmin).toBe(true);
       expect(data.isConnected).toBe(false);
       expect(data.bot.username).toBeDefined();
+    });
+
+    it("does not return a linked bot from another org", async () => {
+      const user = await context.setupUser();
+      await createTestTelegramInstallation({
+        ownerUserId: user.userId,
+        vm0UserId: user.userId,
+      });
+
+      const request = new Request(
+        "http://localhost:3000/api/integrations/telegram",
+      );
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(404);
+      expect(data.error.code).toBe("NOT_FOUND");
     });
   });
 
@@ -119,6 +138,7 @@ describe("/api/integrations/telegram", () => {
       await createTestTelegramInstallation({
         ownerUserId: "other-owner",
         vm0UserId: user.userId,
+        orgId: user.orgId,
       });
 
       const request = new Request(
@@ -141,6 +161,7 @@ describe("/api/integrations/telegram", () => {
       await createTestTelegramInstallation({
         ownerUserId: user.userId,
         vm0UserId: user.userId,
+        orgId: user.orgId,
       });
 
       // Create a new agent to switch to
@@ -183,6 +204,7 @@ describe("/api/integrations/telegram", () => {
       await createTestTelegramInstallation({
         ownerUserId: "other-owner",
         vm0UserId: user.userId,
+        orgId: user.orgId,
       });
 
       const request = new Request(
@@ -201,6 +223,7 @@ describe("/api/integrations/telegram", () => {
       await createTestTelegramInstallation({
         ownerUserId: user.userId,
         vm0UserId: user.userId,
+        orgId: user.orgId,
       });
 
       const deleteHandler = telegramDeleteWebhook();

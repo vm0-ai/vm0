@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { initServices } from "../../../../src/lib/init-services";
 import { env } from "../../../../src/env";
-import { getUserId } from "../../../../src/lib/auth/get-auth-context";
+import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
 import { telegramInstallations } from "../../../../src/db/schema/telegram-installation";
 import { agentComposes } from "../../../../src/db/schema/agent-compose";
 import {
@@ -17,6 +17,7 @@ import { resolveDefaultAgentComposeId } from "../../../../src/lib/infra/agent-co
 import { logger } from "../../../../src/lib/shared/logger";
 import { checkTelegramDomain } from "../../../../src/lib/zero/telegram/check-domain";
 import { buildTelegramWebhookUrl } from "../../../../src/lib/zero/telegram/webhook-url";
+import { resolveOrg } from "../../../../src/lib/zero/org/resolve-org";
 
 const registerBodySchema = z.object({
   botToken: z.string().min(1),
@@ -48,14 +49,16 @@ export async function POST(request: Request) {
   initServices();
 
   const authHeader = request.headers.get("authorization");
-  const userId = await getUserId(authHeader ?? undefined);
+  const authCtx = await getAuthContext(authHeader ?? undefined);
 
-  if (!userId) {
+  if (!authCtx) {
     return NextResponse.json(
       { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
       { status: 401 },
     );
   }
+  const { org } = await resolveOrg(authCtx);
+  const userId = authCtx.userId;
 
   const parseResult = registerBodySchema.safeParse(await request.json());
   if (!parseResult.success) {
@@ -136,6 +139,18 @@ export async function POST(request: Request) {
     return NextResponse.json(
       { error: { message: "Agent not found", code: "NOT_FOUND" } },
       { status: 404 },
+    );
+  }
+  if (compose.orgId !== org.orgId) {
+    return NextResponse.json(
+      {
+        error: {
+          message:
+            "Telegram bots can only be connected to agents in the active organization.",
+          code: "FORBIDDEN",
+        },
+      },
+      { status: 403 },
     );
   }
 

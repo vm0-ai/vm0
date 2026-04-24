@@ -47,14 +47,32 @@ export async function GET(request: Request) {
     );
   }
   const { userId } = authCtx;
+  const { org } = await resolveOrg(authCtx);
 
   const db = globalThis.services.db;
 
-  // Find user's most recent Telegram link
+  // Find user's most recent Telegram link in the active org.
   const [userLink] = await db
-    .select()
+    .select({
+      id: telegramUserLinks.id,
+      telegramUserId: telegramUserLinks.telegramUserId,
+      installationId: telegramUserLinks.installationId,
+      vm0UserId: telegramUserLinks.vm0UserId,
+      dmWelcomeSent: telegramUserLinks.dmWelcomeSent,
+      createdAt: telegramUserLinks.createdAt,
+      updatedAt: telegramUserLinks.updatedAt,
+    })
     .from(telegramUserLinks)
-    .where(eq(telegramUserLinks.vm0UserId, userId))
+    .innerJoin(
+      telegramInstallations,
+      eq(telegramUserLinks.installationId, telegramInstallations.telegramBotId),
+    )
+    .where(
+      and(
+        eq(telegramUserLinks.vm0UserId, userId),
+        eq(telegramInstallations.orgId, org.orgId),
+      ),
+    )
     .orderBy(desc(telegramUserLinks.createdAt))
     .limit(1);
 
@@ -70,7 +88,12 @@ export async function GET(request: Request) {
     [installation] = await db
       .select()
       .from(telegramInstallations)
-      .where(eq(telegramInstallations.ownerUserId, userId))
+      .where(
+        and(
+          eq(telegramInstallations.ownerUserId, userId),
+          eq(telegramInstallations.orgId, org.orgId),
+        ),
+      )
       .limit(1);
   }
 
@@ -115,8 +138,7 @@ export async function GET(request: Request) {
     }
   }
 
-  // Resolve user's default org and get existing secrets, vars, connectors
-  const { org } = await resolveOrg(authCtx);
+  // Get existing secrets, vars, connectors from the active org.
   const [userSecrets, userVars, userConnectors] = await Promise.all([
     listSecrets(org.orgId, userId),
     listVariables(org.orgId, userId),
@@ -195,6 +217,7 @@ export async function PATCH(request: Request) {
     );
   }
   const { userId } = authCtx;
+  const { org: targetOrg } = await resolveOrg(authCtx);
 
   const parseResult = patchBodySchema.safeParse(await request.json());
   if (!parseResult.success) {
@@ -207,11 +230,28 @@ export async function PATCH(request: Request) {
 
   const db = globalThis.services.db;
 
-  // Find user's Telegram link
+  // Find user's Telegram link in the active org.
   const [userLink] = await db
-    .select()
+    .select({
+      id: telegramUserLinks.id,
+      telegramUserId: telegramUserLinks.telegramUserId,
+      installationId: telegramUserLinks.installationId,
+      vm0UserId: telegramUserLinks.vm0UserId,
+      dmWelcomeSent: telegramUserLinks.dmWelcomeSent,
+      createdAt: telegramUserLinks.createdAt,
+      updatedAt: telegramUserLinks.updatedAt,
+    })
     .from(telegramUserLinks)
-    .where(eq(telegramUserLinks.vm0UserId, userId))
+    .innerJoin(
+      telegramInstallations,
+      eq(telegramUserLinks.installationId, telegramInstallations.telegramBotId),
+    )
+    .where(
+      and(
+        eq(telegramUserLinks.vm0UserId, userId),
+        eq(telegramInstallations.orgId, targetOrg.orgId),
+      ),
+    )
     .orderBy(desc(telegramUserLinks.createdAt))
     .limit(1);
 
@@ -248,9 +288,6 @@ export async function PATCH(request: Request) {
       { status: 403 },
     );
   }
-
-  // Resolve org from authenticated user's context
-  const { org: targetOrg } = await resolveOrg(authCtx);
 
   // Find agent
   const [compose] = await db
@@ -299,6 +336,7 @@ export async function DELETE(request: Request) {
     );
   }
   const { userId } = authCtx;
+  const { org } = await resolveOrg(authCtx);
 
   const { SECRETS_ENCRYPTION_KEY } = env();
   const db = globalThis.services.db;
@@ -307,7 +345,12 @@ export async function DELETE(request: Request) {
   const [installation] = await db
     .select()
     .from(telegramInstallations)
-    .where(eq(telegramInstallations.ownerUserId, userId))
+    .where(
+      and(
+        eq(telegramInstallations.ownerUserId, userId),
+        eq(telegramInstallations.orgId, org.orgId),
+      ),
+    )
     .limit(1);
 
   if (!installation) {

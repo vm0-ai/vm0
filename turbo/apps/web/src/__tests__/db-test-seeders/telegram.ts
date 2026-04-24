@@ -22,6 +22,7 @@ export async function createTestTelegramInstallation(options?: {
   ownerUserId?: string;
   vm0UserId?: string;
   telegramBotId?: string;
+  orgId?: string;
 }): Promise<string> {
   initServices();
   const { SECRETS_ENCRYPTION_KEY } = globalThis.services.env;
@@ -30,7 +31,7 @@ export async function createTestTelegramInstallation(options?: {
   const ownerUserId = options?.ownerUserId ?? uniqueId("test-owner");
 
   const orgSlug = uniqueId("org");
-  const orgId = uniqueId("org");
+  const orgId = options?.orgId ?? uniqueId("org");
 
   // Pre-populate org cache for getOrgNameAndSlug()
   await globalThis.services.db

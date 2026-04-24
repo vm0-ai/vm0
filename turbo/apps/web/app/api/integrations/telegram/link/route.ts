@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
-import { eq, desc } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { initServices } from "../../../../../src/lib/init-services";
 import { env } from "../../../../../src/env";
-import { getUserId } from "../../../../../src/lib/auth/get-auth-context";
+import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
 import { telegramUserLinks } from "../../../../../src/db/schema/telegram-user-link";
 import { telegramInstallations } from "../../../../../src/db/schema/telegram-installation";
 import {
@@ -22,8 +22,22 @@ import {
   verifyTelegramLogin,
 } from "../../../../../src/lib/zero/telegram/verify-login";
 import { verifyConnectSignature } from "../../../../../src/lib/zero/telegram/connect-token";
+import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
 
 const log = logger("api:telegram:link");
+
+function orgMismatchResponse() {
+  return NextResponse.json(
+    {
+      error: {
+        message:
+          "This Telegram bot belongs to a different organization. Switch to the bot's organization to connect.",
+        code: "FORBIDDEN",
+      },
+    },
+    { status: 403 },
+  );
+}
 
 /**
  * DELETE /api/integrations/telegram/link
@@ -35,28 +49,48 @@ export async function DELETE(request: Request) {
   initServices();
 
   const authHeader = request.headers.get("authorization");
-  const userId = await getUserId(authHeader ?? undefined);
+  const authCtx = await getAuthContext(authHeader ?? undefined);
 
-  if (!userId) {
+  if (!authCtx) {
     return NextResponse.json(
       { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
       { status: 401 },
     );
   }
+  const { org } = await resolveOrg(authCtx);
+  const userId = authCtx.userId;
 
   const db = globalThis.services.db;
 
-  const deleted = await db
-    .delete(telegramUserLinks)
-    .where(eq(telegramUserLinks.vm0UserId, userId))
-    .returning({ id: telegramUserLinks.id });
+  const links = await db
+    .select({ id: telegramUserLinks.id })
+    .from(telegramUserLinks)
+    .innerJoin(
+      telegramInstallations,
+      eq(telegramUserLinks.installationId, telegramInstallations.telegramBotId),
+    )
+    .where(
+      and(
+        eq(telegramUserLinks.vm0UserId, userId),
+        eq(telegramInstallations.orgId, org.orgId),
+      ),
+    );
 
-  if (deleted.length === 0) {
+  if (links.length === 0) {
     return NextResponse.json(
       { error: { message: "No linked Telegram account", code: "NOT_FOUND" } },
       { status: 404 },
     );
   }
+
+  await db.delete(telegramUserLinks).where(
+    inArray(
+      telegramUserLinks.id,
+      links.map((link) => {
+        return link.id;
+      }),
+    ),
+  );
 
   return new NextResponse(null, { status: 204 });
 }
@@ -82,23 +116,34 @@ export async function GET(request: Request) {
   initServices();
 
   const authHeader = request.headers.get("authorization");
-  const userId = await getUserId(authHeader ?? undefined);
+  const authCtx = await getAuthContext(authHeader ?? undefined);
 
-  if (!userId) {
+  if (!authCtx) {
     return NextResponse.json(
       { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
       { status: 401 },
     );
   }
+  const { org } = await resolveOrg(authCtx);
+  const userId = authCtx.userId;
 
-  // Find user's most recent Telegram link
+  // Find user's most recent Telegram link in the active org.
   const [userLink] = await globalThis.services.db
     .select({
       telegramUserId: telegramUserLinks.telegramUserId,
       installationId: telegramUserLinks.installationId,
     })
     .from(telegramUserLinks)
-    .where(eq(telegramUserLinks.vm0UserId, userId))
+    .innerJoin(
+      telegramInstallations,
+      eq(telegramUserLinks.installationId, telegramInstallations.telegramBotId),
+    )
+    .where(
+      and(
+        eq(telegramUserLinks.vm0UserId, userId),
+        eq(telegramInstallations.orgId, org.orgId),
+      ),
+    )
     .orderBy(desc(telegramUserLinks.createdAt))
     .limit(1);
 
@@ -121,12 +166,16 @@ export async function GET(request: Request) {
       .select({
         telegramBotId: telegramInstallations.telegramBotId,
         botUsername: telegramInstallations.botUsername,
+        orgId: telegramInstallations.orgId,
       })
       .from(telegramInstallations)
       .where(eq(telegramInstallations.telegramBotId, botId))
       .limit(1);
 
     if (installation) {
+      if (installation.orgId !== org.orgId) {
+        return orgMismatchResponse();
+      }
       return NextResponse.json({
         linked: false,
         installation: {
@@ -151,14 +200,16 @@ export async function POST(request: Request) {
   initServices();
 
   const authHeader = request.headers.get("authorization");
-  const userId = await getUserId(authHeader ?? undefined);
+  const authCtx = await getAuthContext(authHeader ?? undefined);
 
-  if (!userId) {
+  if (!authCtx) {
     return NextResponse.json(
       { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
       { status: 401 },
     );
   }
+  const { org } = await resolveOrg(authCtx);
+  const userId = authCtx.userId;
 
   const parseResult = linkBodySchema.safeParse(await request.json());
   if (!parseResult.success) {
@@ -183,6 +234,7 @@ export async function POST(request: Request) {
       botUsername: telegramInstallations.botUsername,
       encryptedBotToken: telegramInstallations.encryptedBotToken,
       defaultComposeId: telegramInstallations.defaultComposeId,
+      orgId: telegramInstallations.orgId,
     })
     .from(telegramInstallations)
     .where(eq(telegramInstallations.telegramBotId, body.installationId))
@@ -193,6 +245,9 @@ export async function POST(request: Request) {
       { error: { message: "Installation not found", code: "NOT_FOUND" } },
       { status: 404 },
     );
+  }
+  if (installation.orgId !== org.orgId) {
+    return orgMismatchResponse();
   }
 
   // If telegramAuth is provided, verify and create a direct link
@@ -230,7 +285,7 @@ export async function POST(request: Request) {
         ],
         set: { vm0UserId: userId, updatedAt: new Date() },
       });
-    await ensureOrgAndArtifact(userId);
+    await ensureOrgAndArtifact(userId, org.orgId);
 
     return NextResponse.json({
       botUsername: installation.botUsername,
@@ -282,7 +337,7 @@ export async function POST(request: Request) {
         ],
         set: { vm0UserId: userId, updatedAt: new Date() },
       });
-    await ensureOrgAndArtifact(userId);
+    await ensureOrgAndArtifact(userId, org.orgId);
 
     // Send success message to user in Telegram (non-blocking)
     const client = createTelegramClient(botToken);
