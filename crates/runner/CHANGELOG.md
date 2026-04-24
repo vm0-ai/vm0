@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.94.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.94.0...runner-rs-v0.94.1) (2026-04-24)
+
+
+### Bug Fixes
+
+* **mitm-addon:** retarget seed-consistency test at usage_pricing + trigger on dev-seed.ts ([#11000](https://github.com/vm0-ai/vm0/issues/11000)) ([a436db1](https://github.com/vm0-ai/vm0/commit/a436db14325c0292b5038d83eaad5cab9fedfc98))
+
 ## [0.94.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.93.9...runner-rs-v0.94.0) (2026-04-24)
 
 

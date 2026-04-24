@@ -1,5 +1,22 @@
 # Changelog
 
+## [12.299.0](https://github.com/vm0-ai/vm0/compare/web-v12.298.0...web-v12.299.0) (2026-04-24)
+
+
+### Features
+
+* **telemetry:** add enqueue/dequeue spans to zero-run queue ([#10988](https://github.com/vm0-ai/vm0/issues/10988)) ([6e0a522](https://github.com/vm0-ai/vm0/commit/6e0a5229d59633ad8419e04ba2efca6dd2d79827))
+
+
+### Bug Fixes
+
+* adjust chat run error messaging ([#10983](https://github.com/vm0-ai/vm0/issues/10983)) ([79c9251](https://github.com/vm0-ai/vm0/commit/79c9251a1bf9fd3663e2cf415b3ba4da94ba5549))
+
+
+### Refactoring
+
+* **zero-run-policy:** decouple credit check from model-provider selection ([#10995](https://github.com/vm0-ai/vm0/issues/10995)) ([93bbe71](https://github.com/vm0-ai/vm0/commit/93bbe71197615aa827b8ad1c2c3d5261e33a5557))
+
 ## [12.298.0](https://github.com/vm0-ai/vm0/compare/web-v12.297.0...web-v12.298.0) (2026-04-24)
 
 
