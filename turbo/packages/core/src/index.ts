@@ -779,8 +779,9 @@ export {
   type ZeroUploadsContract,
   type UploadPrepareResponse,
   type ZeroIntegrationsTelegramContract,
-  type TelegramStatusResponse,
-  type TelegramRegisterResponse,
+  type TelegramBot,
+  type TelegramBotStatus,
+  type TelegramListResponse,
   type TelegramLinkStatusResponse,
 } from "./contracts";
 export {

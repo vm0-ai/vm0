@@ -1,12 +1,15 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { HttpResponse } from "msw";
+import { HttpResponse, http as mswHttp } from "msw";
 import { POST } from "../route";
 import {
   testContext,
   uniqueId,
 } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
-import { createTestCompose } from "../../../../../src/__tests__/api-test-helpers";
+import {
+  createTestCompose,
+  updateOrgDefaultAgent,
+} from "../../../../../src/__tests__/api-test-helpers";
 import { server } from "../../../../../src/mocks/server";
 import { http } from "../../../../../src/__tests__/msw";
 
@@ -66,6 +69,14 @@ function telegramSetMyCommands() {
   );
 }
 
+function telegramOauthHead() {
+  return mswHttp.head("https://oauth.telegram.org/auth", () => {
+    return new HttpResponse(null, {
+      headers: { "content-length": "0" },
+    });
+  });
+}
+
 function registerRequest(body: Record<string, unknown>) {
   return new Request("http://localhost:3000/api/telegram/register", {
     method: "POST",
@@ -82,6 +93,7 @@ function testBotId(): string {
 describe("POST /api/telegram/register", () => {
   beforeEach(() => {
     context.setupMocks();
+    server.use(telegramOauthHead());
   });
 
   it("returns 401 when not authenticated", async () => {
@@ -122,7 +134,7 @@ describe("POST /api/telegram/register", () => {
     await context.setupUser();
 
     const botId = testBotId();
-    const { composeId } = await createTestCompose(uniqueId("agent"));
+    const { composeId, name } = await createTestCompose(uniqueId("agent"));
 
     const getMeHandler = telegramGetMe(botId, `bot_${botId}`);
     const setWebhookHandler = telegramSetWebhook(true);
@@ -139,14 +151,45 @@ describe("POST /api/telegram/register", () => {
     const body = await response.json();
 
     expect(response.status).toBe(201);
-    expect(body.botId).toBe(botId);
-    expect(body.botUsername).toBe(`bot_${botId}`);
-    expect(body.webhookUrl).toContain("/api/telegram/webhook/");
-    expect(body.id).toBeDefined();
+    expect(body).toEqual(
+      expect.objectContaining({
+        id: botId,
+        username: `bot_${botId}`,
+        agent: { id: composeId, name },
+        isOwner: true,
+        isConnected: false,
+        domainConfigured: false,
+      }),
+    );
+    expect(body.environment).toBeDefined();
 
     expect(getMeHandler.mocked).toHaveBeenCalledTimes(1);
     expect(setWebhookHandler.mocked).toHaveBeenCalledTimes(1);
     expect(setCommandsHandler.mocked).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses the active org default agent when defaultAgentId is omitted", async () => {
+    const user = await context.setupUser();
+
+    const botId = testBotId();
+    const { composeId, name } = await createTestCompose(uniqueId("agent"));
+    await updateOrgDefaultAgent(user.orgId, composeId);
+
+    const getMeHandler = telegramGetMe(botId, `default_bot_${botId}`);
+    const setWebhookHandler = telegramSetWebhook(true);
+    const setCommandsHandler = telegramSetMyCommands();
+    server.use(
+      getMeHandler.handler,
+      setWebhookHandler.handler,
+      setCommandsHandler.handler,
+    );
+
+    const response = await POST(registerRequest({ botToken: TEST_BOT_TOKEN }));
+    const body = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(body.id).toBe(botId);
+    expect(body.agent).toEqual({ id: composeId, name });
   });
 
   it("returns 409 when bot is already registered", async () => {
@@ -188,13 +231,13 @@ describe("POST /api/telegram/register", () => {
     const getMeHandler = telegramGetMe(botId, `noagent_bot_${botId}`);
     server.use(getMeHandler.handler);
 
-    // No defaultAgentId in body and VM0_DEFAULT_AGENT env var not set
     const response = await POST(registerRequest({ botToken: TEST_BOT_TOKEN }));
     const body = await response.json();
 
     expect(response.status).toBe(400);
     expect(body.error.code).toBe("BAD_REQUEST");
     expect(body.error.message).toContain("No default agent specified");
+    expect(body.error.message).not.toContain("VM0_DEFAULT_AGENT");
   });
 
   it("returns 404 when defaultAgentId references a nonexistent agent", async () => {

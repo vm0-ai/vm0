@@ -932,7 +932,8 @@ export {
 export {
   zeroIntegrationsTelegramContract,
   type ZeroIntegrationsTelegramContract,
-  type TelegramStatusResponse,
-  type TelegramRegisterResponse,
+  type TelegramBot,
+  type TelegramBotStatus,
+  type TelegramListResponse,
   type TelegramLinkStatusResponse,
 } from "./zero-integrations-telegram";

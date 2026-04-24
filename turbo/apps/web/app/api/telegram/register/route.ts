@@ -6,6 +6,7 @@ import { env } from "../../../../src/env";
 import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
 import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import {
   getMe,
   setWebhook,
@@ -13,15 +14,14 @@ import {
 } from "../../../../src/lib/zero/telegram/client";
 import { encryptSecretValue } from "../../../../src/lib/shared/crypto/secrets-encryption";
 import { generateCallbackSecret } from "../../../../src/lib/infra/callback/hmac";
-import { resolveDefaultAgentComposeId } from "../../../../src/lib/infra/agent-compose/resolve-default";
 import { logger } from "../../../../src/lib/shared/logger";
-import { checkTelegramDomain } from "../../../../src/lib/zero/telegram/check-domain";
 import { buildTelegramWebhookUrl } from "../../../../src/lib/zero/telegram/webhook-url";
 import { resolveOrg } from "../../../../src/lib/zero/org/resolve-org";
+import { buildTelegramBotStatus } from "../../integrations/telegram/telegram-status";
 
 const registerBodySchema = z.object({
   botToken: z.string().min(1),
-  defaultAgentId: z.string().optional(),
+  defaultAgentId: z.string().trim().min(1).optional(),
 });
 
 const log = logger("api:telegram:register");
@@ -62,8 +62,13 @@ export async function POST(request: Request) {
 
   const parseResult = registerBodySchema.safeParse(await request.json());
   if (!parseResult.success) {
+    const invalidField = parseResult.error.issues[0]?.path[0];
+    const message =
+      invalidField === "defaultAgentId"
+        ? "defaultAgentId must be non-empty"
+        : "botToken is required";
     return NextResponse.json(
-      { error: { message: "botToken is required", code: "BAD_REQUEST" } },
+      { error: { message, code: "BAD_REQUEST" } },
       { status: 400 },
     );
   }
@@ -113,14 +118,22 @@ export async function POST(request: Request) {
   }
 
   // 3. Resolve default agent
-  const defaultAgentId =
-    body.defaultAgentId ?? (await resolveDefaultAgentComposeId());
+  let defaultAgentId = body.defaultAgentId;
+  if (!defaultAgentId) {
+    const [metadata] = await globalThis.services.db
+      .select({ defaultAgentId: orgMetadata.defaultAgentId })
+      .from(orgMetadata)
+      .where(eq(orgMetadata.orgId, org.orgId))
+      .limit(1);
+    defaultAgentId = metadata?.defaultAgentId ?? undefined;
+  }
+
   if (!defaultAgentId) {
     return NextResponse.json(
       {
         error: {
           message:
-            "No default agent specified. Provide defaultAgentId or set VM0_DEFAULT_AGENT env var.",
+            "No default agent specified. Provide defaultAgentId or configure a default agent for the active organization.",
           code: "BAD_REQUEST",
         },
       },
@@ -221,21 +234,7 @@ export async function POST(request: Request) {
     log.warn("Failed to register bot commands", { error });
   });
 
-  // Check if domain is configured for Telegram OAuth
-  const { NEXT_PUBLIC_APP_URL } = env();
-  const domainConfigured = await checkTelegramDomain(
-    telegramBotId,
-    NEXT_PUBLIC_APP_URL,
-  );
-
-  return NextResponse.json(
-    {
-      id: installation.telegramBotId,
-      botId: telegramBotId,
-      botUsername: botInfoResult.username,
-      webhookUrl,
-      domainConfigured,
-    },
-    { status: 201 },
-  );
+  return NextResponse.json(await buildTelegramBotStatus(installation, userId), {
+    status: 201,
+  });
 }

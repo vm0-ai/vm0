@@ -11,18 +11,25 @@ const telegramEnvironmentSchema = z.object({
   missingVars: z.array(z.string()),
 });
 
-const telegramStatusResponseSchema = z.object({
-  installationId: z.string(),
-  bot: z.object({ id: z.string(), username: z.string() }),
+const telegramBotSchema = z.object({
+  id: z.string(),
+  username: z.string().nullable(),
   agent: z.object({ id: z.string(), name: z.string() }).nullable(),
-  isAdmin: z.boolean(),
+  isOwner: z.boolean(),
   isConnected: z.boolean(),
+});
+
+const telegramBotStatusSchema = telegramBotSchema.extend({
   domainConfigured: z.boolean(),
   environment: telegramEnvironmentSchema,
 });
 
+const telegramListResponseSchema = z.object({
+  bots: z.array(telegramBotSchema),
+});
+
 const telegramUpdateBodySchema = z.object({
-  agentName: z.string().min(1),
+  defaultAgentId: z.string().trim().min(1),
 });
 
 const telegramLinkStatusResponseSchema = z.discriminatedUnion("linked", [
@@ -37,44 +44,48 @@ const telegramLinkStatusResponseSchema = z.discriminatedUnion("linked", [
 
 const telegramRegisterBodySchema = z.object({
   botToken: z.string().min(1),
-  defaultAgentId: z.string().optional(),
-});
-
-const telegramRegisterResponseSchema = z.object({
-  id: z.string(),
-  botId: z.string(),
-  botUsername: z.string(),
-  webhookUrl: z.string(),
-  domainConfigured: z.boolean(),
+  defaultAgentId: z.string().trim().min(1).optional(),
 });
 
 /**
  * Zero integrations Telegram contract
- * Covers all five Telegram integration endpoints.
+ * Covers all Telegram integration endpoints.
  *
  * Path note: these endpoints use /api/integrations/ and /api/telegram/ (not /api/zero/)
  * because they are served by the platform app directly, not the Zero sub-application.
  * This is intentional and matches the real server routing.
  */
 export const zeroIntegrationsTelegramContract = c.router({
-  getStatus: {
+  list: {
     method: "GET",
     path: "/api/integrations/telegram",
     headers: authHeadersSchema,
     responses: {
-      200: telegramStatusResponseSchema,
+      200: telegramListResponseSchema,
+      401: apiErrorSchema,
+    },
+    summary: "List Telegram bot integrations owned by the authenticated user",
+  },
+  getBot: {
+    method: "GET",
+    path: "/api/integrations/telegram/:botId",
+    headers: authHeadersSchema,
+    pathParams: z.object({ botId: z.string().min(1) }),
+    responses: {
+      200: telegramBotStatusSchema,
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Get Telegram bot integration status for the authenticated user",
+    summary: "Get Telegram bot integration status",
   },
-  update: {
+  updateBot: {
     method: "PATCH",
-    path: "/api/integrations/telegram",
+    path: "/api/integrations/telegram/:botId",
     headers: authHeadersSchema,
+    pathParams: z.object({ botId: z.string().min(1) }),
     body: telegramUpdateBodySchema,
     responses: {
-      200: z.object({ ok: z.boolean() }),
+      200: telegramBotStatusSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
@@ -84,15 +95,17 @@ export const zeroIntegrationsTelegramContract = c.router({
   },
   disconnect: {
     method: "DELETE",
-    path: "/api/integrations/telegram",
+    path: "/api/integrations/telegram/:botId",
     headers: authHeadersSchema,
+    pathParams: z.object({ botId: z.string().min(1) }),
     body: c.noBody(),
     responses: {
       204: c.noBody(),
       401: apiErrorSchema,
+      403: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Uninstall the Telegram bot (admin only)",
+    summary: "Uninstall the Telegram bot",
   },
   getLinkStatus: {
     method: "GET",
@@ -111,9 +124,10 @@ export const zeroIntegrationsTelegramContract = c.router({
     headers: authHeadersSchema,
     body: telegramRegisterBodySchema,
     responses: {
-      201: telegramRegisterResponseSchema,
+      201: telegramBotStatusSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
+      403: apiErrorSchema,
       404: apiErrorSchema,
       409: apiErrorSchema,
       500: apiErrorSchema,
@@ -125,12 +139,9 @@ export const zeroIntegrationsTelegramContract = c.router({
 
 export type ZeroIntegrationsTelegramContract =
   typeof zeroIntegrationsTelegramContract;
-export type TelegramStatusResponse = z.infer<
-  typeof telegramStatusResponseSchema
->;
-export type TelegramRegisterResponse = z.infer<
-  typeof telegramRegisterResponseSchema
->;
+export type TelegramBot = z.infer<typeof telegramBotSchema>;
+export type TelegramBotStatus = z.infer<typeof telegramBotStatusSchema>;
+export type TelegramListResponse = z.infer<typeof telegramListResponseSchema>;
 export type TelegramLinkStatusResponse = z.infer<
   typeof telegramLinkStatusResponseSchema
 >;

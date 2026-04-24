@@ -200,7 +200,7 @@ describe("/api/integrations/telegram/link", () => {
       mockClerk({ userId: null });
 
       const response = await POST(
-        linkRequest("POST", { installationId: "some-id" }),
+        linkRequest("POST", { telegramBotId: "some-id" }),
       );
       const data = await response.json();
 
@@ -208,7 +208,7 @@ describe("/api/integrations/telegram/link", () => {
       expect(data.error.code).toBe("UNAUTHORIZED");
     });
 
-    it("returns 400 when installationId is missing", async () => {
+    it("returns 400 when telegramBotId is missing", async () => {
       await context.setupUser();
 
       const response = await POST(linkRequest("POST", {}));
@@ -223,7 +223,7 @@ describe("/api/integrations/telegram/link", () => {
 
       const response = await POST(
         linkRequest("POST", {
-          installationId: "00000000-0000-0000-0000-000000000000",
+          telegramBotId: "00000000-0000-0000-0000-000000000000",
         }),
       );
       const data = await response.json();
@@ -240,7 +240,9 @@ describe("/api/integrations/telegram/link", () => {
         orgId: user.orgId,
       });
 
-      const response = await POST(linkRequest("POST", { installationId }));
+      const response = await POST(
+        linkRequest("POST", { telegramBotId: installationId }),
+      );
       const data = await response.json();
 
       expect(response.status).toBe(400);
@@ -259,7 +261,7 @@ describe("/api/integrations/telegram/link", () => {
       const telegramAuth = makeTelegramAuth(telegramUserId);
 
       const response = await POST(
-        linkRequest("POST", { installationId, telegramAuth }),
+        linkRequest("POST", { telegramBotId: installationId, telegramAuth }),
       );
       const data = await response.json();
 
@@ -290,7 +292,7 @@ describe("/api/integrations/telegram/link", () => {
 
       const response = await POST(
         linkRequest("POST", {
-          installationId,
+          telegramBotId: installationId,
           connectSignature: { telegramUserId, timestamp: ts, signature: sig },
         }),
       );
@@ -315,7 +317,7 @@ describe("/api/integrations/telegram/link", () => {
 
       const response = await POST(
         linkRequest("POST", {
-          installationId,
+          telegramBotId: installationId,
           telegramAuth: makeTelegramAuth(99004),
         }),
       );
@@ -335,7 +337,7 @@ describe("/api/integrations/telegram/link", () => {
 
       const response = await POST(
         linkRequest("POST", {
-          installationId,
+          telegramBotId: installationId,
           telegramAuth: {
             id: 12345,
             first_name: "Test",
@@ -360,7 +362,7 @@ describe("/api/integrations/telegram/link", () => {
 
       const response = await POST(
         linkRequest("POST", {
-          installationId,
+          telegramBotId: installationId,
           connectSignature: {
             telegramUserId: "99003",
             timestamp: Math.floor(Date.now() / 1000),

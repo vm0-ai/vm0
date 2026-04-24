@@ -48,6 +48,7 @@ export enum FeatureSwitchKey {
   ApiKeys = "apiKeys",
   ConnectorCategories = "connectorCategories",
   PlatformConnectors = "platformConnectors",
+  TelegramIntegration = "telegramIntegration",
   Trinity = "trinity",
   ZapierConnector = "zapierConnector",
 }

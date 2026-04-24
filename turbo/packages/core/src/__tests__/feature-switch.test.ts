@@ -74,6 +74,7 @@ describe("getAllFeatureStates", () => {
     // PlatformConnectors has STAFF_ORG_ID_HASHES and should be true
     expect(states[FeatureSwitchKey.PlatformConnectors]).toBe(true);
     expect(states[FeatureSwitchKey.ConnectorCategories]).toBe(true);
+    expect(states[FeatureSwitchKey.TelegramIntegration]).toBe(true);
     // Globally enabled should still be true
     expect(states[FeatureSwitchKey.Dummy]).toBe(true);
     // Switches without org hashes should remain false
@@ -86,6 +87,7 @@ describe("getAllFeatureStates", () => {
     });
     expect(states[FeatureSwitchKey.PlatformConnectors]).toBe(false);
     expect(states[FeatureSwitchKey.ConnectorCategories]).toBe(false);
+    expect(states[FeatureSwitchKey.TelegramIntegration]).toBe(false);
   });
 
   it("should apply overrides to enable disabled features", () => {

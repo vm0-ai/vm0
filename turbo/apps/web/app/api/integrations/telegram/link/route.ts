@@ -97,7 +97,7 @@ const connectSignatureSchema = z.object({
 });
 
 const linkBodySchema = z.object({
-  installationId: z.string().min(1),
+  telegramBotId: z.string().min(1),
   telegramAuth: telegramAuthSchema.optional(),
   connectSignature: connectSignatureSchema.optional(),
 });
@@ -189,7 +189,7 @@ export async function GET(request: Request) {
  *
  * Create a pending user link for account linking via Telegram.
  * The link auto-completes when the user sends their first message to the bot.
- * Body: { installationId: string }
+ * Body: { telegramBotId: string }
  */
 export async function POST(request: Request) {
   initServices();
@@ -211,7 +211,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error: {
-          message: "installationId is required",
+          message: "telegramBotId is required",
           code: "BAD_REQUEST",
         },
       },
@@ -232,7 +232,7 @@ export async function POST(request: Request) {
       orgId: telegramInstallations.orgId,
     })
     .from(telegramInstallations)
-    .where(eq(telegramInstallations.telegramBotId, body.installationId))
+    .where(eq(telegramInstallations.telegramBotId, body.telegramBotId))
     .limit(1);
 
   if (!installation) {
@@ -297,7 +297,7 @@ export async function POST(request: Request) {
 
     if (
       !verifyConnectSignature(
-        body.installationId,
+        body.telegramBotId,
         body.connectSignature.telegramUserId,
         body.connectSignature.timestamp,
         body.connectSignature.signature,
