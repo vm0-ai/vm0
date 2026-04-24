@@ -1,6 +1,7 @@
 import { Pool as PgPool } from "pg";
 import { Pool as NeonPool } from "@neondatabase/serverless";
 import Stripe from "stripe";
+import { attachDatabasePool } from "@vercel/functions";
 import { drizzle as drizzleNodePg } from "drizzle-orm/node-postgres";
 import { drizzle as drizzleNeonServerless } from "drizzle-orm/neon-serverless";
 import { schema } from "../db/db";
@@ -59,14 +60,19 @@ export function initServices(): void {
             connectionTimeoutMillis: this.env.DB_POOL_CONNECT_TIMEOUT_MS,
           });
         } else {
-          // Use standard PostgreSQL driver
-          // Set DB_DRIVER=pg for local development or self-hosted deployments
-          _pool = new PgPool({
+          // Standard PostgreSQL TCP driver + Vercel Fluid lifecycle.
+          // `attachDatabasePool` uses `waitUntil` to close idle connections
+          // before Fluid suspends the instance, so the TCP pool can be reused
+          // safely across requests without leaking connections on suspend.
+          // Ref: https://neon.com/docs/guides/vercel-connection-methods
+          const pgPool = new PgPool({
             connectionString: this.env.DATABASE_URL,
             max: this.env.DB_POOL_MAX,
-            idleTimeoutMillis: this.env.DB_POOL_IDLE_TIMEOUT_MS ?? 30000,
+            idleTimeoutMillis: this.env.DB_POOL_IDLE_TIMEOUT_MS ?? 5000,
             connectionTimeoutMillis: this.env.DB_POOL_CONNECT_TIMEOUT_MS,
           });
+          attachDatabasePool(pgPool);
+          _pool = pgPool;
         }
       }
       return _pool;

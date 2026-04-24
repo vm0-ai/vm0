@@ -35,6 +35,7 @@
     "@team-plain/typescript-sdk": "^5.12.1",
     "@ts-rest/core": "3.53.0-rc.1",
     "@ts-rest/serverless": "3.53.0-rc.1",
+    "@vercel/functions": "^3.4.4",
     "@vercel/oidc": "^3.2.1",
     "@vm0/core": "workspace:*",
     "@vm0/ui": "workspace:*",
