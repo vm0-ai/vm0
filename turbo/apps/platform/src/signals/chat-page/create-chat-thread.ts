@@ -705,7 +705,9 @@ function createTopSentinelRef(
           if (!get(hasOlderMessages$)) {
             return;
           }
-          void set(loadOlderMessages$, signal);
+          // Fire-and-forget: IntersectionObserver callbacks are synchronous,
+          // rejection is intentionally swallowed (signal aborts clean up).
+          set(loadOlderMessages$, signal).catch(() => undefined);
         },
         { threshold: 0.1 },
       );
