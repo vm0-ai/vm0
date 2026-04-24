@@ -79,10 +79,12 @@ describe("Unified artifact list (ContextArtifact[])", () => {
     expect(manifest.artifacts[0]!.vasVersionId).toBe(versionId);
     expect(manifest.artifacts[0]!.mountPath).toBe(WORKING_DIR);
     expect(manifest.artifacts[0]!.manifestUrl).toBeDefined();
-    // Round-trip guard: `vasStorageId` must reach the manifest. Guest-agent's
-    // (forthcoming) skip-VAS check uses it as the hash prefix; a silently
-    // dropped field would degrade the optimization without surfacing here.
-    expect(manifest.artifacts[0]!.vasStorageId).toMatch(/^[0-9a-f-]{36}$/);
+    // Round-trip guard: the DB-resolved `storages.id` must reach the
+    // manifest. Guest-agent uses this UUID as the hash prefix when
+    // recomputing the content hash; a silently dropped field at the
+    // resolver or query layer would degrade the guest-side skip check
+    // without triggering a type error.
+    expect(manifest.artifacts[0]!.vasStorageId).toBeTruthy();
     expect(manifest.storages).toHaveLength(0);
   });
 

@@ -1231,14 +1231,13 @@ fn build_env_json(
     // Artifacts config (multi-mount).
     //
     // Emit a single `VM0_ARTIFACTS` env var containing a JSON array of
-    // `{name, mountPath, storageId, versionId}` objects. Guest-agent parses
-    // this on startup and iterates the list when taking snapshots at run
-    // end. `storageId` is used guest-side to locally recompute the content
-    // hash for a skip-VAS fast path (follow-up PR). The shape here must
-    // stay lockstep with guest-agent's `ArtifactEnv` — the two ship as one
-    // unit via `include_bytes!`, and `ArtifactEnv` deserializes strict
-    // (no `serde(default)`), so a field drop here will panic the VM at
-    // startup instead of silently producing empty strings.
+    // `{name, mountPath, storageId, versionId}` objects. Guest-agent
+    // parses this on startup and iterates the list when taking snapshots
+    // at run end. The shape here must stay lockstep with guest-agent's
+    // `ArtifactEnv` — the two ship as one unit via `include_bytes!`, and
+    // `ArtifactEnv` deserializes strict (no `serde(default)`), so a
+    // field drop here will panic the VM at startup instead of silently
+    // producing empty strings.
     //
     // Empty-list case: do not set the env var at all (matches the prior
     // "unset = no artifact" convention).
