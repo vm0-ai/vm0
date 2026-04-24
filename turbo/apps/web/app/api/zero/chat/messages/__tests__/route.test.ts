@@ -198,6 +198,10 @@ describe("POST /api/zero/chat/messages", () => {
       expect(response.status).toBe(201);
       const data = await response.json();
 
+      // insertChatMessage is deferred into after() — drain it before reading
+      // the thread detail so the user message row is visible.
+      await context.mocks.flushAfter();
+
       // Verify the thread contains the user message (no assistant placeholder
       // is inserted at send time — only the user message is appended).
       const threadResponse = await GET(
@@ -342,6 +346,10 @@ describe("POST /api/zero/chat/messages", () => {
           );
           expect(response.status).toBe(201);
           const data = await response.json();
+
+          // The insert_chat_message span is emitted inside after() now —
+          // drain the queue before reading spy calls.
+          await context.mocks.flushAfter();
 
           expect(spanSpy).toHaveBeenCalled();
           const chatSpanEvents = spanSpy.mock.calls
@@ -555,6 +563,9 @@ describe("POST /api/zero/chat/messages", () => {
       expect(response.status).toBe(201);
       const data = await response.json();
 
+      // insertChatMessage is deferred into after() — drain before reading.
+      await context.mocks.flushAfter();
+
       // Verify file IDs are persisted in chat_messages
       const messages = await getTestChatMessagesByThread(data.threadId);
       const userMsg = messages.find((m) => {
@@ -592,6 +603,9 @@ describe("POST /api/zero/chat/messages", () => {
       );
       expect(sendResponse.status).toBe(201);
       const sendData = await sendResponse.json();
+
+      // insertChatMessage is deferred into after() — drain before reading.
+      await context.mocks.flushAfter();
 
       // Mock S3 to return the file for resolution
       context.mocks.s3.listS3Objects.mockImplementation(
