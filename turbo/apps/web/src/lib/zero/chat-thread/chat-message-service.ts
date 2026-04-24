@@ -316,7 +316,9 @@ export async function getLatestMessagesByThreadId(
  * Falls back to the latest 50 messages when the thread has no user messages.
  * Also returns `hasMore` so callers can offer backward pagination.
  */
-export async function getMessagesFromLastUserMessage(chatThreadId: string): Promise<{
+export async function getMessagesFromLastUserMessage(
+  chatThreadId: string,
+): Promise<{
   messages: MessageRow[];
   hasMore: boolean;
 }> {

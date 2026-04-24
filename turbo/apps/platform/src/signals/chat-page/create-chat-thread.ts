@@ -191,6 +191,9 @@ export interface ChatThreadSignals {
   // Called once in chat-page-setup after groupedChatMessages$ first resolves.
   syncInitialHasMore$: Command<Promise<void>, []>;
   loadOlderMessages$: Command<Promise<void>, [AbortSignal]>;
+  // Bind to the top-sentinel element. Sets up an IntersectionObserver that
+  // triggers loadOlderMessages$ when the sentinel enters the viewport.
+  setTopSentinelRef$: Command<(() => void) | undefined, [HTMLElement | null]>;
   latestRunStatus$: Computed<Promise<string | null>>;
   allFinished$: Computed<Promise<boolean>>;
   fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>;
@@ -605,51 +608,10 @@ function mergeIntoGroups(
   return result;
 }
 
-function createPagedMessages(
-  threadId: string,
-  recordScrollHeightForPrepend$: RecordScrollHeightForPrepend$,
-) {
-  // Initial page — anchored at the last user message so the UI opens at the
-  // start of the latest conversation turn. Returns both the message list and
-  // `hasMore` so a single fetch populates both without a second request.
-  const initialFetch$ = computed(
-    async (
-      get,
-    ): Promise<{ messages: PagedChatMessage[]; hasMore: boolean }> => {
-      const client = get(zeroClient$)(chatThreadMessagesContract);
-      const result = await accept(
-        // No sinceId/beforeId → server picks the last-user-message anchor
-        client.list({
-          params: { threadId },
-          query: { limit: 50 },
-        }),
-        [200],
-      );
-      L.debug("initialFetch$", {
-        threadId,
-        count: result.body.messages.length,
-        hasMore: result.body.hasMore,
-      });
-      return {
-        messages: result.body.messages,
-        hasMore: result.body.hasMore ?? false,
-      };
-    },
-  );
+type DeltaMessages$ = State<PagedChatMessage[]>;
 
-  // Whether there are messages older than the initial anchor. Seeded from the
-  // first API response and updated after each backward page load.
-  const hasOlderMessages$ = state(false);
-
-  // Older messages loaded via backward pagination (prepended). Stored
-  // separately so they don't invalidate the initialFetch$ computed.
-  const olderMessages$ = state<PagedChatMessage[]>([]);
-
-  // Everything beyond the initial page: subsequent fetchNextPage results
-  // and optimistic inserts. Dedup on write (keyed by id).
-  const deltaMessages$ = state<PagedChatMessage[]>([]);
-
-  const appendDeltaMessages$ = command(({ set }, msgs: PagedChatMessage[]) => {
+function createAppendDelta(deltaMessages$: DeltaMessages$) {
+  return command(({ set }, msgs: PagedChatMessage[]) => {
     if (msgs.length === 0) {
       return;
     }
@@ -669,6 +631,124 @@ function createPagedMessages(
       return changed ? Array.from(byId.values()) : prev;
     });
   });
+}
+
+function createOlderMessagesLoader(
+  threadId: string,
+  hasOlderMessages$: State<boolean>,
+  olderMessages$: State<PagedChatMessage[]>,
+  oldestMessageId$: Computed<Promise<string | undefined>>,
+  recordScrollHeightForPrepend$: RecordScrollHeightForPrepend$,
+) {
+  return command(async ({ get, set }, signal: AbortSignal) => {
+    if (!get(hasOlderMessages$)) {
+      return;
+    }
+    const beforeId = await get(oldestMessageId$);
+    signal.throwIfAborted();
+    if (!beforeId) {
+      return;
+    }
+    const client = get(zeroClient$)(chatThreadMessagesContract);
+    const result = await accept(
+      client.list({
+        params: { threadId },
+        query: { beforeId, limit: 50 },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    const { messages, hasMore } = result.body;
+    L.debug("loadOlderMessages$", {
+      threadId,
+      beforeId,
+      count: messages.length,
+      hasMore,
+    });
+    if (messages.length === 0) {
+      set(hasOlderMessages$, false);
+      return;
+    }
+    set(recordScrollHeightForPrepend$);
+    set(olderMessages$, (prev) => {
+      const byId = new Map<string, PagedChatMessage>();
+      for (const m of messages) {
+        byId.set(m.id, m);
+      }
+      for (const m of prev) {
+        byId.set(m.id, m);
+      }
+      return Array.from(byId.values()).sort((a, b) => {
+        return a.createdAt < b.createdAt
+          ? -1
+          : a.createdAt > b.createdAt
+            ? 1
+            : 0;
+      });
+    });
+    set(hasOlderMessages$, hasMore ?? false);
+  });
+}
+
+function createTopSentinelRef(
+  hasOlderMessages$: State<boolean>,
+  loadOlderMessages$: Command<Promise<void>, [AbortSignal]>,
+) {
+  return onRef(
+    command(({ get, set }, el: HTMLElement, signal: AbortSignal) => {
+      const observer = new IntersectionObserver(
+        (entries) => {
+          if (!entries[0]?.isIntersecting) {
+            return;
+          }
+          if (!get(hasOlderMessages$)) {
+            return;
+          }
+          set(loadOlderMessages$, signal);
+        },
+        { threshold: 0.1 },
+      );
+      observer.observe(el);
+      signal.addEventListener("abort", () => {
+        observer.disconnect();
+      });
+    }),
+  );
+}
+
+function createPagedMessages(
+  threadId: string,
+  recordScrollHeightForPrepend$: RecordScrollHeightForPrepend$,
+) {
+  // Initial page — anchored at the last user message so the UI opens at the
+  // start of the latest conversation turn. Returns both the message list and
+  // `hasMore` so a single fetch populates both without a second request.
+  const initialFetch$ = computed(
+    async (
+      get,
+    ): Promise<{ messages: PagedChatMessage[]; hasMore: boolean }> => {
+      const client = get(zeroClient$)(chatThreadMessagesContract);
+      const result = await accept(
+        client.list({ params: { threadId }, query: { limit: 50 } }),
+        [200],
+      );
+      L.debug("initialFetch$", {
+        threadId,
+        count: result.body.messages.length,
+        hasMore: result.body.hasMore,
+      });
+      return {
+        messages: result.body.messages,
+        hasMore: result.body.hasMore ?? false,
+      };
+    },
+  );
+
+  const hasOlderMessages$ = state(false);
+  const olderMessages$ = state<PagedChatMessage[]>([]);
+  const deltaMessages$ = state<PagedChatMessage[]>([]);
+  const appendDeltaMessages$ = createAppendDelta(deltaMessages$);
 
   const groupedChatMessages$ = computed(
     async (get): Promise<GroupedChatMessageGroup[]> => {
@@ -679,9 +759,6 @@ function createPagedMessages(
     },
   );
 
-  // Reads `hasMore` from the already-resolved initialFetch$ and stores it in
-  // the writable hasOlderMessages$ state so loadOlderMessages$ can update it.
-  // Called once from chat-page-setup after the initial fetch completes.
   const syncInitialHasMore$ = command(async ({ get, set }) => {
     const { hasMore } = await get(initialFetch$);
     set(hasOlderMessages$, hasMore);
@@ -699,8 +776,6 @@ function createPagedMessages(
     },
   );
 
-  // ID of the oldest currently-loaded message — used as the `beforeId` cursor
-  // for backward pagination.
   const oldestMessageId$ = computed(
     async (get): Promise<string | undefined> => {
       const groups = await get(groupedChatMessages$);
@@ -712,7 +787,6 @@ function createPagedMessages(
   const fetchNextPage$ = command(async ({ get, set }, signal: AbortSignal) => {
     const sinceId = await get(latestChatMessageId$);
     signal.throwIfAborted();
-
     const client = get(zeroClient$)(chatThreadMessagesContract);
     const result = await accept(
       client.list({
@@ -723,7 +797,6 @@ function createPagedMessages(
       [200],
     );
     signal.throwIfAborted();
-
     L.debug("fetchNextPage$", {
       threadId,
       sinceId,
@@ -736,72 +809,24 @@ function createPagedMessages(
           return { id: m.id, runId: m.runId, status: m.status };
         }),
     });
-
     if (result.body.messages.length === 0) {
       return true;
     }
-
     set(appendDeltaMessages$, result.body.messages);
     return false;
   });
 
-  // Load older messages (backward pagination). Records the current
-  // scrollHeight before prepending so the scroll position is preserved.
-  const loadOlderMessages$ = command(
-    async ({ get, set }, signal: AbortSignal) => {
-      if (!get(hasOlderMessages$)) {
-        return;
-      }
+  const loadOlderMessages$ = createOlderMessagesLoader(
+    threadId,
+    hasOlderMessages$,
+    olderMessages$,
+    oldestMessageId$,
+    recordScrollHeightForPrepend$,
+  );
 
-      const beforeId = await get(oldestMessageId$);
-      signal.throwIfAborted();
-      if (!beforeId) {
-        return;
-      }
-
-      const client = get(zeroClient$)(chatThreadMessagesContract);
-      const result = await accept(
-        client.list({
-          params: { threadId },
-          query: { beforeId, limit: 50 },
-          fetchOptions: { signal },
-        }),
-        [200],
-      );
-      signal.throwIfAborted();
-
-      const { messages, hasMore } = result.body;
-      L.debug("loadOlderMessages$", {
-        threadId,
-        beforeId,
-        count: messages.length,
-        hasMore,
-      });
-
-      if (messages.length === 0) {
-        set(hasOlderMessages$, false);
-        return;
-      }
-
-      // Snapshot scrollHeight before the state update so the ResizeObserver
-      // can compensate after React re-renders the prepended messages.
-      set(recordScrollHeightForPrepend$);
-
-      set(olderMessages$, (prev) => {
-        const byId = new Map<string, PagedChatMessage>();
-        for (const m of messages) {
-          byId.set(m.id, m);
-        }
-        for (const m of prev) {
-          byId.set(m.id, m);
-        }
-        return Array.from(byId.values()).sort((a, b) => {
-          return a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0;
-        });
-      });
-
-      set(hasOlderMessages$, hasMore ?? false);
-    },
+  const setTopSentinelRef$ = createTopSentinelRef(
+    hasOlderMessages$,
+    loadOlderMessages$,
   );
 
   const insertOptimisticMessage$ = command(({ set }, msg: PagedChatMessage) => {
@@ -813,6 +838,7 @@ function createPagedMessages(
     groupedChatMessages$,
     hasOlderMessages$,
     loadOlderMessages$,
+    setTopSentinelRef$,
     syncInitialHasMore$,
     fetchNextPage$,
     insertOptimisticMessage$,
@@ -1210,6 +1236,7 @@ function createChatThreadSignals(
     groupedChatMessages$,
     hasOlderMessages$,
     loadOlderMessages$,
+    setTopSentinelRef$,
     syncInitialHasMore$,
     fetchNextPage$,
     insertOptimisticMessage$,
@@ -1278,6 +1305,7 @@ function createChatThreadSignals(
     groupedChatMessages$,
     hasOlderMessages$,
     loadOlderMessages$,
+    setTopSentinelRef$,
     syncInitialHasMore$,
     latestRunStatus$,
     allFinished$,

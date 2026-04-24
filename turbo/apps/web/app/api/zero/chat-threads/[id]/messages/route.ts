@@ -42,7 +42,11 @@ const router = tsr.router(chatThreadMessagesContract, {
         rows = result.messages;
         hasMore = result.hasMore;
       } else if (query.sinceId) {
-        rows = await getMessagesSince(params.threadId, query.sinceId, query.limit);
+        rows = await getMessagesSince(
+          params.threadId,
+          query.sinceId,
+          query.limit,
+        );
       } else {
         const result = await getMessagesFromLastUserMessage(params.threadId);
         rows = result.messages;
