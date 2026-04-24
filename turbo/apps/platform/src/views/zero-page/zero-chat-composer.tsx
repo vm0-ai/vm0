@@ -1025,7 +1025,7 @@ export function ZeroChatComposer({
               onPaste={handlePaste}
             />
             <div className="flex items-center justify-between gap-2 px-4 pb-3 pt-1">
-              <div className="flex items-center gap-0 text-muted-foreground sm:gap-1">
+              <div className="flex items-center gap-1 text-muted-foreground sm:gap-1.5">
                 <TooltipProvider delayDuration={300}>
                   <Tooltip>
                     <TooltipTrigger asChild>
