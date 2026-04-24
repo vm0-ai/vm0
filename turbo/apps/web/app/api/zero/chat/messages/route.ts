@@ -51,6 +51,7 @@ import { publishUserSignal } from "../../../../../src/lib/infra/realtime/client"
 import { logger } from "../../../../../src/lib/shared/logger";
 import {
   recordChatSpan,
+  recordSandboxOperation,
   type ChatSpanDimensions,
 } from "../../../../../src/lib/infra/metrics";
 import {
@@ -499,16 +500,32 @@ const router = tsr.router(chatMessagesContract, {
         spanDims: dims,
       });
 
+      // Stamp response-ready for the Phase-2 instrumentation split before
+      // registering the signals after() so we can measure its closure-entry
+      // offset against the same responseReady anchor used by dispatchZeroRun.
+      const responseReadyAt = result.markResponseReady();
+
       after(async () => {
+        const signalsEnterAt = Date.now();
         await publishUserSignal(
           [authCtx.userId],
           `chatThreadRunCreated:${threadId}`,
         );
         await publishThreadListChanged(authCtx.userId);
+        // Cross-referenced with api_after_schedule_to_closure in Axiom to
+        // infer whether Vercel fires the two chat-route after() callbacks in
+        // parallel or serial: near-equal durations imply parallel, a large
+        // gap implies serial.
+        if (responseReadyAt !== undefined) {
+          recordSandboxOperation({
+            sandboxType: "chat",
+            actionType: "api_after_signals_enter_offset",
+            durationMs: signalsEnterAt - responseReadyAt,
+            success: true,
+            runId: result.runId,
+          });
+        }
       });
-
-      // Stamp response-ready for the Phase-2 instrumentation split. Idempotent.
-      result.markResponseReady();
 
       return {
         status: 201 as const,

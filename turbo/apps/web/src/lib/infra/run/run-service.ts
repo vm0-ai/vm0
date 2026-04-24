@@ -365,6 +365,25 @@ export async function buildAndDispatchRun(opts: {
             },
           ]
         : []),
+      // Further split of api_after_scheduling_gap: isolate pure Vercel
+      // platform scheduling (response flush + after() fire) from JS-local
+      // closure-to-dispatch overhead. Only stamped on the chat path, which
+      // captures afterEnterAt at the first synchronous line of the after()
+      // closure in zero-run-service.ts.
+      ...(timings.responseReady !== undefined &&
+      timings.afterEnterAt !== undefined &&
+      timings.dispatchStart !== undefined
+        ? [
+            {
+              op: "api_after_schedule_to_closure",
+              ms: timings.afterEnterAt - timings.responseReady,
+            },
+            {
+              op: "api_after_closure_to_dispatch",
+              ms: timings.dispatchStart - timings.afterEnterAt,
+            },
+          ]
+        : []),
       { op: "api_step_build_context", ms: buildContextTime - timings.token },
       { op: "api_step_prepare", ms: prepareTime - buildContextTime },
       { op: "api_step_dispatch", ms: dispatchTime - prepareTime },

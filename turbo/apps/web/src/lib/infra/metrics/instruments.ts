@@ -1,7 +1,7 @@
 import { ingestSandboxOpLog } from "../../shared/axiom";
 
 export function recordSandboxOperation(attrs: {
-  sandboxType: "runner" | "docker";
+  sandboxType: "runner" | "docker" | "chat";
   actionType: string;
   durationMs: number;
   success: boolean;

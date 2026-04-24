@@ -457,14 +457,39 @@ describe("POST /api/zero/chat/messages", () => {
           expect(byOp.has("api_after_scheduling_gap")).toBe(true);
           expect(byOp.has("api_phase2_callbacks_token_pure")).toBe(true);
 
+          // Further split of api_after_scheduling_gap — only emitted when the
+          // after() closure in zero-run-service.ts stamped afterEnterAt.
+          expect(byOp.has("api_after_schedule_to_closure")).toBe(true);
+          expect(byOp.has("api_after_closure_to_dispatch")).toBe(true);
+
+          // The signals-path after() callback emits its own closure-entry
+          // offset against the same responseReady anchor.
+          expect(byOp.has("api_after_signals_enter_offset")).toBe(true);
+
           const phase1 = byOp.get("api_phase1_post_tx_sync")!;
           const gap = byOp.get("api_after_scheduling_gap")!;
           const phase2 = byOp.get("api_phase2_callbacks_token_pure")!;
+          const scheduleToClosure = byOp.get("api_after_schedule_to_closure")!;
+          const closureToDispatch = byOp.get("api_after_closure_to_dispatch")!;
+          const signalsOffset = byOp.get("api_after_signals_enter_offset")!;
 
-          for (const span of [phase1, gap, phase2]) {
+          for (const span of [
+            phase1,
+            gap,
+            phase2,
+            scheduleToClosure,
+            closureToDispatch,
+            signalsOffset,
+          ]) {
             expect(typeof span.duration_ms).toBe("number");
             expect(span.duration_ms).toBeGreaterThanOrEqual(0);
           }
+
+          // The two closure-entry subspans sum to api_after_scheduling_gap
+          // within same-process jitter.
+          const gapSum =
+            scheduleToClosure.duration_ms + closureToDispatch.duration_ms;
+          expect(Math.abs(gapSum - gap.duration_ms)).toBeLessThanOrEqual(10);
         } finally {
           spanSpy.mockRestore();
         }

@@ -150,6 +150,14 @@ export interface DispatchTimings {
    */
   responseReady?: number;
   /**
+   * Stamped as the first synchronous line of the Next.js after() closure,
+   * before dispatchZeroRun is invoked. Isolates pure platform after()
+   * scheduling (responseReady → afterEnterAt) from JS-local closure-to-
+   * dispatch overhead (afterEnterAt → dispatchStart). Absent on non-chat
+   * triggers (paired with responseReady and dispatchStart).
+   */
+  afterEnterAt?: number;
+  /**
    * Stamped at the first synchronous line of dispatchZeroRun (inside the
    * after() callback). Anchors the end of the after() scheduling gap and the
    * start of Phase-2 real work (registerCallbacks + token generation).

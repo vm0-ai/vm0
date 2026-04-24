@@ -735,10 +735,12 @@ async function createZeroRunRecord(
  */
 async function dispatchZeroRun(
   result: ZeroRunRecordResult,
+  afterEnterAt?: number,
 ): Promise<{ status: RunStatus; sandboxId?: string } | undefined> {
-  // Capture the after() callback entry as the first synchronous line — the
-  // gap between this timestamp and record.responseReadyAt (if stamped by the
-  // route) is the Vercel after() scheduling latency.
+  // Captured at the first synchronous line of dispatchZeroRun; paired with
+  // afterEnterAt (stamped inside the after() closure before this call) and
+  // record.responseReadyAt to split the post-response gap into pure platform
+  // scheduling vs. JS-local closure-to-dispatch overhead.
   const dispatchStart = Date.now();
 
   const { record, runParams, orgId, zeroParams } = result;
@@ -785,6 +787,7 @@ async function dispatchZeroRun(
         authorize: record.authorizeTime,
         transaction: record.transactionTime,
         responseReady: record.responseReadyAt,
+        afterEnterAt,
         dispatchStart,
         token: tokenTime,
         resolveSourceDuration: contextResult.timings.resolveSourceAndOrg,
@@ -832,10 +835,15 @@ export interface CreateZeroRunResult {
    * Stamps the response-ready timestamp used by the Phase-2 instrumentation
    * split (api_phase1_post_tx_sync / api_after_scheduling_gap /
    * api_phase2_callbacks_token_pure). Idempotent — later calls are no-ops.
-   * Non-chat callers can ignore this safely; the three split spans are
+   * Non-chat callers can ignore the return value; the three split spans are
    * skipped when the marker is never called.
+   *
+   * Returns the stamped timestamp so the caller can reference it from other
+   * after() callbacks (e.g. the chat route's signals callback measures its
+   * own closure-entry offset against it). Returns undefined when the underlying
+   * record was queued rather than inserted.
    */
-  markResponseReady: () => void;
+  markResponseReady: () => number | undefined;
 }
 
 /**
@@ -858,7 +866,8 @@ export async function createZeroRun(
   // (concurrency limit) are drained by the queue worker later.
   if (result.record) {
     after(() => {
-      return dispatchZeroRun(result).catch((err: unknown) => {
+      const afterEnterAt = Date.now();
+      return dispatchZeroRun(result, afterEnterAt).catch((err: unknown) => {
         log.error("Deferred dispatch failed", {
           runId: result.runId,
           err,
@@ -867,10 +876,12 @@ export async function createZeroRun(
     });
   }
 
-  const markResponseReady = (): void => {
-    if (result.record && result.record.responseReadyAt === undefined) {
+  const markResponseReady = (): number | undefined => {
+    if (!result.record) return undefined;
+    if (result.record.responseReadyAt === undefined) {
       result.record.responseReadyAt = Date.now();
     }
+    return result.record.responseReadyAt;
   };
 
   return {
