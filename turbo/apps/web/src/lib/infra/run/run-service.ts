@@ -344,6 +344,31 @@ export async function buildAndDispatchRun(opts: {
         op: "api_step_callbacks_and_token",
         ms: timings.token - timings.transaction,
       },
+      // Split of api_step_callbacks_and_token into 3 diagnostic spans to
+      // isolate the Vercel after() scheduling gap from Phase-1 residual work
+      // and Phase-2 real work. Only the chat route stamps both anchors; other
+      // callers (telegram, slack, email, github, schedule, voice-chat) leave
+      // them undefined, and the split is skipped. The back-compat parent span
+      // above continues to emit unchanged for ~1 release cycle — once the
+      // three below are confirmed populated in Axiom, the parent (and this
+      // comment) can be removed in a follow-up PR.
+      ...(timings.responseReady !== undefined &&
+      timings.dispatchStart !== undefined
+        ? [
+            {
+              op: "api_phase1_post_tx_sync",
+              ms: timings.responseReady - timings.transaction,
+            },
+            {
+              op: "api_after_scheduling_gap",
+              ms: timings.dispatchStart - timings.responseReady,
+            },
+            {
+              op: "api_phase2_callbacks_token_pure",
+              ms: timings.token - timings.dispatchStart,
+            },
+          ]
+        : []),
       { op: "api_step_build_context", ms: buildContextTime - timings.token },
       { op: "api_step_prepare", ms: prepareTime - buildContextTime },
       { op: "api_step_dispatch", ms: dispatchTime - prepareTime },
@@ -407,6 +432,14 @@ export interface CreateRunRecordResult {
   apiStartTime: number;
   authorizeTime: number;
   transactionTime: number;
+  /**
+   * Stamped by the route handler via CreateZeroRunResult.markResponseReady()
+   * right before returning HTTP 201. Used by the instrumentation split of
+   * api_step_callbacks_and_token into Phase-1 residual / after()-scheduling /
+   * Phase-2 spans. Undefined on non-chat triggers that don't participate in
+   * the marker protocol.
+   */
+  responseReadyAt?: number;
 }
 
 /**

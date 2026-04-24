@@ -507,6 +507,9 @@ const router = tsr.router(chatMessagesContract, {
         await publishThreadListChanged(authCtx.userId);
       });
 
+      // Stamp response-ready for the Phase-2 instrumentation split. Idempotent.
+      result.markResponseReady();
+
       return {
         status: 201 as const,
         body: {
