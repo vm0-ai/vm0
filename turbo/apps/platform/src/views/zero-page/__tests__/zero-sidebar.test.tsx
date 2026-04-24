@@ -148,7 +148,11 @@ describe("zero sidebar", () => {
 
   it("should filter chat sessions when searching", async () => {
     mockAPIs();
-    detachedSetupPage({ context, path: "/" });
+    detachedSetupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.UnifyChatThreads]: true },
+    });
 
     // Wait for chat threads to render
     await waitFor(() => {
@@ -171,7 +175,11 @@ describe("zero sidebar", () => {
 
   it("should close search and reset filter", async () => {
     mockAPIs();
-    detachedSetupPage({ context, path: "/" });
+    detachedSetupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.UnifyChatThreads]: true },
+    });
 
     // Wait for chat threads to render
     await waitFor(() => {

@@ -23,6 +23,7 @@ import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -171,7 +172,11 @@ describe("zero sidebar - search results filter (SIDEBAR-D-003)", () => {
       ],
     });
 
-    detachedSetupPage({ context, path: "/" });
+    detachedSetupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.UnifyChatThreads]: true },
+    });
 
     await waitFor(() => {
       expect(
@@ -211,7 +216,11 @@ describe("zero sidebar - search term displays in input (SIDEBAR-D-004)", () => {
       ],
     });
 
-    detachedSetupPage({ context, path: "/" });
+    detachedSetupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.UnifyChatThreads]: true },
+    });
 
     await waitFor(() => {
       expect(
@@ -376,7 +385,11 @@ describe("zero sidebar - Slack scope mismatch indicator (SIDEBAR-D-009)", () => 
 describe("zero sidebar - new chat button enabled/disabled state (SIDEBAR-D-010)", () => {
   it("shows the new chat button as enabled when not creating a session", async () => {
     mockBaseAPIs();
-    detachedSetupPage({ context, path: "/" });
+    detachedSetupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.UnifyChatThreads]: true },
+    });
 
     await waitFor(() => {
       const newChatButton = screen.getByLabelText("New chat");
@@ -399,7 +412,11 @@ describe("zero sidebar - new chat button enabled/disabled state (SIDEBAR-D-010)"
       }),
     );
 
-    detachedSetupPage({ context, path: "/" });
+    detachedSetupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.UnifyChatThreads]: true },
+    });
 
     await waitFor(() => {
       expect(screen.getByLabelText("New chat")).toBeDefined();

@@ -30,6 +30,7 @@ import {
   chatThreadByIdContract,
 } from "@vm0/core/contracts/chat-threads";
 import { zeroAgentsByIdContract } from "@vm0/core/contracts/zero-agents";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -216,7 +217,11 @@ describe("zero sidebar - search input accepts text (SIDEBAR-D-015)", () => {
     mockBaseAPIs({
       threads: [makeThread("thread-1", "First chat", "2026-03-10T00:00:00Z")],
     });
-    detachedSetupPage({ context, path: "/" });
+    detachedSetupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.UnifyChatThreads]: true },
+    });
 
     await waitFor(() => {
       expect(screen.getByText("First chat")).toBeInTheDocument();
@@ -241,7 +246,11 @@ describe("zero sidebar - clear search button resets search (SIDEBAR-D-016)", () 
         makeThread("thread-2", "Second chat", "2026-03-09T00:00:00Z"),
       ],
     });
-    detachedSetupPage({ context, path: "/" });
+    detachedSetupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.UnifyChatThreads]: true },
+    });
 
     await waitFor(() => {
       expect(screen.getByText("First chat")).toBeInTheDocument();
@@ -295,7 +304,11 @@ describe("zero sidebar - new chat button creates session (SIDEBAR-D-017)", () =>
     );
 
     // Start on the default agent chat page so currentChatAgentId$ resolves before we click
-    detachedSetupPage({ context, path: `/agents/${DEFAULT_AGENT_ID}/chat` });
+    detachedSetupPage({
+      context,
+      path: `/agents/${DEFAULT_AGENT_ID}/chat`,
+      featureSwitches: { [FeatureSwitchKey.UnifyChatThreads]: true },
+    });
 
     // Wait for the sidebar to finish loading (empty state confirms threads loaded
     // and the default agent id has resolved)
