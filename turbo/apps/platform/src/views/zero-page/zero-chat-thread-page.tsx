@@ -264,6 +264,23 @@ export function ZeroChatThreadPage() {
   );
 }
 
+function getSessionError(
+  threadDataLoadable: ReturnType<typeof useLastLoadable>,
+  groupsLoadable: ReturnType<typeof useLastLoadable>,
+): string | null {
+  if (threadDataLoadable.state === "hasError") {
+    return threadDataLoadable.error instanceof Error
+      ? threadDataLoadable.error.message
+      : "Failed to load chat";
+  }
+  if (groupsLoadable.state === "hasError") {
+    return groupsLoadable.error instanceof Error
+      ? groupsLoadable.error.message
+      : "Failed to load messages";
+  }
+  return null;
+}
+
 function ZeroChatThreadPageInner({
   thread,
   autoFocus = true,
@@ -278,16 +295,7 @@ function ZeroChatThreadPageInner({
     thread.loadHistory$,
   );
   const threadDataLoadable = useLastLoadable(thread.threadData$);
-  const sessionError =
-    threadDataLoadable.state === "hasError"
-      ? threadDataLoadable.error instanceof Error
-        ? threadDataLoadable.error.message
-        : "Failed to load chat"
-      : groupsLoadable.state === "hasError"
-        ? groupsLoadable.error instanceof Error
-          ? groupsLoadable.error.message
-          : "Failed to load messages"
-        : null;
+  const sessionError = getSessionError(threadDataLoadable, groupsLoadable);
   const messagesLoading = groupsLoadable.state === "loading";
   const groups = groupsLoadable.state === "hasData" ? groupsLoadable.data : [];
   const setScrollContainer = useSet(thread.setScrollContainer$);
@@ -321,21 +329,26 @@ function ZeroChatThreadPageInner({
                     <button
                       type="button"
                       disabled={loadingHistory}
-                      onClick={async () => {
-                        const scrollContainer =
-                          document.querySelector<HTMLElement>(
-                            "[data-scroll-container]",
-                          );
-                        const beforeHeight = scrollContainer?.scrollHeight ?? 0;
-                        const beforeTop = scrollContainer?.scrollTop ?? 0;
-                        await loadHistory();
-                        requestAnimationFrame(() => {
-                          if (!scrollContainer) {
-                            return;
-                          }
-                          const heightDelta =
-                            scrollContainer.scrollHeight - beforeHeight;
-                          scrollContainer.scrollTop = beforeTop + heightDelta;
+                      onClick={() => {
+                        (async () => {
+                          const scrollContainer =
+                            document.querySelector<HTMLElement>(
+                              "[data-scroll-container]",
+                            );
+                          const beforeHeight =
+                            scrollContainer?.scrollHeight ?? 0;
+                          const beforeTop = scrollContainer?.scrollTop ?? 0;
+                          await loadHistory();
+                          window.requestAnimationFrame(() => {
+                            if (!scrollContainer) {
+                              return;
+                            }
+                            const heightDelta =
+                              scrollContainer.scrollHeight - beforeHeight;
+                            scrollContainer.scrollTop = beforeTop + heightDelta;
+                          });
+                        })().catch(() => {
+                          return undefined;
                         });
                       }}
                       className="inline-flex h-8 items-center rounded-lg border border-border bg-background px-3 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"

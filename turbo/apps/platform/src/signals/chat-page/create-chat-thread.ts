@@ -633,13 +633,11 @@ function createAppendDelta(deltaMessages$: DeltaMessages$) {
   });
 }
 
-function createPagedMessages(
+function createInitialPage$(
   threadId: string,
   threadData$: Computed<Promise<ChatThread | null>>,
 ) {
-  const loadedHistoryHasMore$ = state<boolean | null>(null);
-  const historyMessages$ = state<PagedChatMessage[]>([]);
-  const initialPage$ = computed(
+  return computed(
     async (
       get,
     ): Promise<{
@@ -667,6 +665,15 @@ function createPagedMessages(
       };
     },
   );
+}
+
+function createPagedMessages(
+  threadId: string,
+  threadData$: Computed<Promise<ChatThread | null>>,
+) {
+  const loadedHistoryHasMore$ = state<boolean | null>(null);
+  const historyMessages$ = state<PagedChatMessage[]>([]);
+  const initialPage$ = createInitialPage$(threadId, threadData$);
 
   const deltaMessages$ = state<PagedChatMessage[]>([]);
   const appendDeltaMessages$ = createAppendDelta(deltaMessages$);
@@ -749,14 +756,16 @@ function createPagedMessages(
     set(appendDeltaMessages$, [msg]);
   });
 
-  const loadHistory$ = command(async ({ get, set }) => {
+  const loadHistory$ = command(async ({ get, set }, signal: AbortSignal) => {
     const thread = await get(threadData$);
+    signal.throwIfAborted();
     if (!thread) {
       set(loadedHistoryHasMore$, false);
       return;
     }
 
     const beforeId = await get(earliestChatMessageId$);
+    signal.throwIfAborted();
     if (!beforeId) {
       set(loadedHistoryHasMore$, false);
       return;
@@ -770,6 +779,7 @@ function createPagedMessages(
       }),
       [200],
     );
+    signal.throwIfAborted();
 
     set(historyMessages$, (prev) => {
       if (result.body.messages.length === 0) {
