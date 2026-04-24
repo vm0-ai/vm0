@@ -46,6 +46,7 @@ import type {
 import { generateZeroToken, generateSandboxToken } from "../auth/sandbox-token";
 import { loadFeatureSwitchOverrides } from "./user/feature-switches-service";
 import { buildZeroExecutionContext } from "./build-zero-context";
+import { buildAutoMemoryArtifact } from "./memory";
 import {
   encryptSecretsMap,
   decryptSecretsMap,
@@ -121,7 +122,7 @@ export async function enqueueRun(
           userId,
           orgId,
           agentComposeId,
-          artifacts: [],
+          artifacts: [buildAutoMemoryArtifact()],
           conversationId: null,
         })
         .returning({ id: agentSessions.id });

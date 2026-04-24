@@ -22,9 +22,13 @@ import {
 } from "../../../__tests__/db-test-seeders/agents";
 import { bindCustomSkillToAgent } from "../../../__tests__/db-test-seeders/skills";
 import { createTestUserConnector } from "../../../__tests__/db-test-seeders/connectors";
-import { getTestZeroAgentId } from "../../../__tests__/db-test-assertions/agents";
+import {
+  getTestZeroAgentId,
+  getTestAgentSessionArtifacts,
+} from "../../../__tests__/db-test-assertions/agents";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route
 import { createZeroRun } from "../zero-run-service";
+import { AUTO_MEMORY_ARTIFACT_NAME, AUTO_MEMORY_MOUNT_PATH } from "../memory";
 import { reloadEnv } from "../../../env";
 import type { TriggerSource } from "@vm0/core/contracts/logs";
 
@@ -540,6 +544,23 @@ describe("createZeroRun() — service-only parameters", () => {
       const zeroRun = await findTestZeroRun(result.runId);
       expect(zeroRun).toBeDefined();
       expect(zeroRun!.selectedModel).toBe("caller-explicit-model");
+    });
+  });
+
+  describe("auto-memory artifact seeding", () => {
+    it("seeds agent_sessions.artifacts with memory on new session creation", async () => {
+      const result = await createZeroRun(baseParams());
+
+      const run = await findTestRunRecord(result.runId);
+      expect(run).toBeDefined();
+
+      const artifacts = await getTestAgentSessionArtifacts(run!.sessionId);
+      expect(artifacts).toEqual([
+        {
+          name: AUTO_MEMORY_ARTIFACT_NAME,
+          mountPath: AUTO_MEMORY_MOUNT_PATH,
+        },
+      ]);
     });
   });
 

@@ -44,6 +44,7 @@ import {
 } from "./zero-run-queue-service";
 import { generateZeroToken, generateSandboxToken } from "../auth/sandbox-token";
 import { buildZeroExecutionContext } from "./build-zero-context";
+import { buildAutoMemoryArtifact } from "./memory";
 import { getOrgMetadata, type OrgMetadata } from "./org/org-metadata-service";
 import { isConcurrentRunLimit } from "../shared/errors";
 import {
@@ -339,6 +340,7 @@ async function insertRunWithAdvisoryLock(
           additionalVolumes: runParams.additionalVolumes,
           resumedFromCheckpointId: runParams.resumedFromCheckpointId,
           sessionId: runParams.sessionId,
+          artifacts: [buildAutoMemoryArtifact()],
         });
       });
       emit(CHAT_REQUEST_OPS.create_run_insert_run_record, insertT.ms);

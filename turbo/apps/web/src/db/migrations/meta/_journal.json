@@ -2178,6 +2178,13 @@
       "when": 1777100000000,
       "tag": "0310_telegram_owner_org",
       "breakpoints": true
+    },
+    {
+      "idx": 311,
+      "version": "7",
+      "when": 1777200000000,
+      "tag": "0311_backfill_session_memory_artifact",
+      "breakpoints": true
     }
   ]
 }

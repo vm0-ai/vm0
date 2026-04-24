@@ -1,5 +1,6 @@
 import { and, eq, or, sql } from "drizzle-orm";
 import type { SandboxReuseResult } from "@vm0/core/contracts/webhooks";
+import type { ContextArtifact } from "../../lib/infra/run/types";
 import { agentRuns } from "../../db/schema/agent-run";
 import { agentSessions } from "../../db/schema/agent-session";
 import { zeroRuns } from "../../db/schema/zero-run";
@@ -9,6 +10,7 @@ import {
 } from "../../db/schema/agent-compose";
 import { agentRunCallbacks } from "../../db/schema/agent-run-callback";
 import { agentRunQueue } from "../../db/schema/agent-run-queue";
+import { checkpoints } from "../../db/schema/checkpoint";
 import { conversations } from "../../db/schema/conversation";
 import { sandboxTelemetry } from "../../db/schema/sandbox-telemetry";
 import { usageDaily } from "../../db/schema/usage-daily";
@@ -724,6 +726,63 @@ export async function insertTestUsageDaily(params: {
     date: params.date,
     runCount: 5,
   });
+}
+
+/**
+ * Seed a checkpoint row directly with the given `artifact_snapshots`.
+ *
+ * @why-db-direct Migration 0311 backfill tests must stage pre-migration
+ * rows (checkpoint carrying a memory entry) that the webhook path no
+ * longer produces identically. A direct INSERT is the only way to place
+ * an arbitrary `artifact_snapshots` JSON blob on a checkpoint row with a
+ * controlled `created_at`.
+ */
+export async function seedTestCheckpointDirect(
+  runId: string,
+  artifactSnapshots: ContextArtifact[],
+  options?: { createdAt?: Date },
+): Promise<{ checkpointId: string }> {
+  initServices();
+  const [conversation] = await globalThis.services.db
+    .select({ id: conversations.id })
+    .from(conversations)
+    .where(eq(conversations.runId, runId))
+    .limit(1);
+  if (!conversation) {
+    throw new Error(
+      `No conversation for run ${runId}; call insertTestConversation first`,
+    );
+  }
+  const [row] = await globalThis.services.db
+    .insert(checkpoints)
+    .values({
+      runId,
+      conversationId: conversation.id,
+      agentComposeSnapshot: {},
+      artifactSnapshots,
+      ...(options?.createdAt ? { createdAt: options.createdAt } : {}),
+    })
+    .returning({ id: checkpoints.id });
+  return { checkpointId: row!.id };
+}
+
+/**
+ * Overwrite `agent_sessions.artifacts` JSONB for an existing session.
+ *
+ * @why-db-direct No API route sets `agent_sessions.artifacts` after
+ * creation — the column is write-once at session insert. Migration 0311
+ * idempotence tests need to seed a session whose `artifacts` already
+ * carries memory to assert the guard skips it.
+ */
+export async function setTestAgentSessionArtifacts(
+  sessionId: string,
+  artifacts: ContextArtifact[],
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .update(agentSessions)
+    .set({ artifacts })
+    .where(eq(agentSessions.id, sessionId));
 }
 
 /**

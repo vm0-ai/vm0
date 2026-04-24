@@ -135,6 +135,21 @@ export async function getTestAgentSessionWithConversation(
 }
 
 /**
+ * Read the artifacts column of an agent_sessions row.
+ */
+export async function getTestAgentSessionArtifacts(
+  sessionId: string,
+): Promise<Array<{ name: string; version?: string; mountPath: string }>> {
+  initServices();
+  const [row] = await globalThis.services.db
+    .select({ artifacts: agentSessions.artifacts })
+    .from(agentSessions)
+    .where(eq(agentSessions.id, sessionId))
+    .limit(1);
+  return row?.artifacts ?? [];
+}
+
+/**
  * Read the last_read_at value for a chat thread.
  *
  * @why-db-direct No API route exposes last_read_at directly. Tests that
