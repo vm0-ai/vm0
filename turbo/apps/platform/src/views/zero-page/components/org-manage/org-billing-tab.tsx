@@ -97,7 +97,7 @@ const PLANS = [
     features: [
       "120,000 credits / month",
       "Pay as you go after that",
-      "5 concurrent runs",
+      "20 concurrent runs",
       "Unlimited total agents",
       "Bring your own LLM keys",
       "Voice input",

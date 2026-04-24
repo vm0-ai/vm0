@@ -143,7 +143,7 @@ const pricingJsonLd = {
       priceCurrency: "USD",
       billingIncrement: "month",
       description:
-        "120,000 credits/month, 5 concurrent agents, dedicated support, team management",
+        "120,000 credits/month, 20 concurrent agents, dedicated support, team management",
     },
   ],
 };

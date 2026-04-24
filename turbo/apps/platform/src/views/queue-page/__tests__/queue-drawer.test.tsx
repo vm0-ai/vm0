@@ -129,7 +129,7 @@ describe("queue drawer", () => {
       expect(screen.getByText("Upgrade to Team")).toBeInTheDocument();
       expect(screen.getByText("$200")).toBeInTheDocument();
       expect(
-        screen.getAllByText("5 concurrent runs").length,
+        screen.getAllByText("20 concurrent runs").length,
       ).toBeGreaterThanOrEqual(1);
     });
   });

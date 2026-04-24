@@ -124,7 +124,7 @@
       "description": "Scale fast with zero friction and full flexibility.",
       "features": {
         "credits": "120,000 credits / month",
-        "concurrentRuns": "5 concurrent runs",
+        "concurrentRuns": "20 concurrent runs",
         "unlimitedAgents": "Unlimited total agents",
         "bringOwnLLM": "Bring your own LLM keys",
         "voiceInput": "Voice input",
