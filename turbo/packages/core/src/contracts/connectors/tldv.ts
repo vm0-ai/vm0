@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const tldv = {
   tldv: {
     label: "tl;dv",
+    category: "meetings-scheduling",
     environmentMapping: {
       TLDV_TOKEN: "$secrets.TLDV_TOKEN",
     },

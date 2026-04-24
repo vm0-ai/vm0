@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const podchaser = {
   podchaser: {
     label: "Podchaser",
+    category: "data-automation-infrastructure",
     environmentMapping: {
       PODCHASER_TOKEN: "$secrets.PODCHASER_TOKEN",
     },

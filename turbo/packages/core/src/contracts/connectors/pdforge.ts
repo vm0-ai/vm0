@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const pdforge = {
   pdforge: {
     label: "PDForge",
+    category: "data-automation-infrastructure",
     environmentMapping: {
       PDFORGE_API_KEY: "$secrets.PDFORGE_API_KEY",
     },

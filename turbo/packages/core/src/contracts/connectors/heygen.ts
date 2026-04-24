@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const heygen = {
   heygen: {
     label: "HeyGen",
+    category: "marketing-content-growth",
     environmentMapping: {
       HEYGEN_TOKEN: "$secrets.HEYGEN_TOKEN",
     },

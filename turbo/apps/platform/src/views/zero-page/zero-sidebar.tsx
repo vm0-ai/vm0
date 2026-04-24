@@ -20,7 +20,6 @@ import {
   IconLayoutSidebarLeftCollapse,
   IconPlug,
   IconFlask,
-  IconPhone,
   IconSparkles,
   IconMenu2,
 } from "@tabler/icons-react";
@@ -137,15 +136,6 @@ const FOOTER_NAV = [
     icon: IconLayoutGrid as NavIcon,
     iconImg: slackIcon,
     featureGate: undefined,
-  },
-  {
-    id: "phone",
-    activeKeys: ["phone"],
-    pathname: "/phone",
-    label: "Phone",
-    icon: IconPhone as NavIcon,
-    iconImg: undefined,
-    featureGate: FeatureSwitchKey.PhoneIntegration,
   },
   {
     id: "lab",

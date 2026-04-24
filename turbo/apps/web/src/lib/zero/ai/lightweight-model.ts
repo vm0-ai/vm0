@@ -20,6 +20,10 @@ interface OpenRouterResponse {
   }>;
 }
 
+export function isLightweightModelConfigured(): boolean {
+  return Boolean(env().OPENROUTER_API_KEY);
+}
+
 /**
  * Generate text using a lightweight model via OpenRouter.
  *

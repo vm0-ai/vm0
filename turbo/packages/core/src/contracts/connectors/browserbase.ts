@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const browserbase = {
   browserbase: {
     label: "Browserbase",
+    category: "data-automation-infrastructure",
     environmentMapping: {
       BROWSERBASE_TOKEN: "$secrets.BROWSERBASE_TOKEN",
       BROWSERBASE_PROJECT_ID: "$vars.BROWSERBASE_PROJECT_ID",

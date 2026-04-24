@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const twenty = {
   twenty: {
     label: "Twenty",
+    category: "sales-crm-business-operations",
     environmentMapping: {
       TWENTY_TOKEN: "$secrets.TWENTY_TOKEN",
     },

@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const intercom = {
   intercom: {
     label: "Intercom",
+    category: "communication-collaboration",
     environmentMapping: {
       INTERCOM_TOKEN: "$secrets.INTERCOM_TOKEN",
     },

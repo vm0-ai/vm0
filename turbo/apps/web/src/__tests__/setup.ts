@@ -46,8 +46,6 @@ const resetEnv = vi.hoisted(() => {
     // Runner executor default group (runs dispatch to runner)
     // Uses "vm0" org which is hardcoded as public in isOfficialRunnerGroup
     vi.stubEnv("RUNNER_DEFAULT_GROUP", "vm0/default");
-    // AgentPhone integration
-    vi.stubEnv("AGENTPHONE_API_KEY", "test-agentphone-api-key");
     // Realtime pub/sub (Ably) — required env; tests use a mocked Ably client
     vi.stubEnv("ABLY_API_KEY", "test-key:test-secret");
     // OpenAI (voice-chat ephemeral token minting, STT, TTS) — required env

@@ -4,6 +4,7 @@ import { accept } from "../../../lib/accept.ts";
 import {
   CONNECTOR_TYPES,
   type ConnectorType,
+  type ConnectorDisplayCategory,
 } from "@vm0/core/contracts/connectors";
 import { hasRequiredScopes } from "@vm0/core/contracts/connector-utils";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -50,6 +51,7 @@ export interface ConnectorTypeWithStatus {
   type: ConnectorType;
   label: string;
   helpText: string;
+  category: ConnectorDisplayCategory;
   /** Lowercase aliases/keywords used by connector search (from CONNECTOR_TYPES). */
   tags: readonly string[];
   connected: boolean;
@@ -157,6 +159,7 @@ export const allConnectorTypes$ = computed(async (get) => {
         type,
         label: isExperimental ? `[Experimental] ${config.label}` : config.label,
         helpText: config.helpText,
+        category: config.category,
         tags: config.tags ?? [],
         connected: connector !== null,
         connector,

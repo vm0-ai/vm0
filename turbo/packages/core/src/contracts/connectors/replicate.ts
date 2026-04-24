@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const replicate = {
   replicate: {
     label: "Replicate",
+    category: "ai-image-video",
     environmentMapping: {
       REPLICATE_TOKEN: "$secrets.REPLICATE_TOKEN",
     },

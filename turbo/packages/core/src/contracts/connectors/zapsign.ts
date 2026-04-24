@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const zapsign = {
   zapsign: {
     label: "ZapSign",
+    category: "data-automation-infrastructure",
     environmentMapping: {
       ZAPSIGN_TOKEN: "$secrets.ZAPSIGN_TOKEN",
     },

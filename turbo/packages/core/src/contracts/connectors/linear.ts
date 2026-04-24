@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const linear = {
   linear: {
     label: "Linear",
+    category: "engineering-team-execution",
     tags: ["issues", "tickets", "project-management"],
     environmentMapping: {
       LINEAR_TOKEN: "$secrets.LINEAR_ACCESS_TOKEN",

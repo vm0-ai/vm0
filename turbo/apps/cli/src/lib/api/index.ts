@@ -178,14 +178,5 @@ export {
   getComputerUseHost,
 } from "./domains/zero-computer-use";
 
-// Domain modules - Phone Calls
-export {
-  createPhoneCall,
-  listPhoneCalls,
-  getPhoneCallDetail,
-  type PhoneCall,
-  type TranscriptEntry,
-} from "./domains/phone-calls";
-
 // Domain modules - Web
 export { downloadWebFile, uploadWebFile } from "./domains/web";

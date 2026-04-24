@@ -33,7 +33,7 @@ const messageRowProjection = {
   attachFiles: chatMessages.attachFiles,
 } as const;
 
-type MessageRow = {
+export type MessageRow = {
   id: string;
   role: string;
   content: string | null;
@@ -306,6 +306,138 @@ export async function getLatestMessagesByThreadId(
       content: row.content as string,
     };
   });
+}
+
+/**
+ * Fetch messages starting from the last user message (inclusive) to the end of
+ * the thread, ordered chronologically. On entry, the UI anchors at the start
+ * of the latest conversation turn rather than loading an arbitrary slice.
+ *
+ * Falls back to the latest 50 messages when the thread has no user messages.
+ * Also returns `hasMore` so callers can offer backward pagination.
+ */
+export async function getMessagesFromLastUserMessage(
+  chatThreadId: string,
+): Promise<{
+  messages: MessageRow[];
+  hasMore: boolean;
+}> {
+  const db = globalThis.services.db;
+
+  const columns = {
+    id: chatMessages.id,
+    role: chatMessages.role,
+    content: chatMessages.content,
+    runId: chatMessages.runId,
+    error: chatMessages.error,
+    sequenceNumber: chatMessages.sequenceNumber,
+    createdAt: chatMessages.createdAt,
+    runStatus: agentRuns.status,
+    runError: agentRuns.error,
+    attachFiles: chatMessages.attachFiles,
+  };
+
+  const [lastUserMsg] = await db
+    .select({ id: chatMessages.id })
+    .from(chatMessages)
+    .where(
+      and(
+        eq(chatMessages.chatThreadId, chatThreadId),
+        eq(chatMessages.role, "user"),
+      ),
+    )
+    .orderBy(desc(chatMessages.createdAt), desc(chatMessages.sequenceNumber))
+    .limit(1);
+
+  if (!lastUserMsg) {
+    const rows = await db
+      .select(columns)
+      .from(chatMessages)
+      .leftJoin(agentRuns, eq(chatMessages.runId, agentRuns.id))
+      .where(eq(chatMessages.chatThreadId, chatThreadId))
+      .orderBy(desc(chatMessages.createdAt), desc(chatMessages.sequenceNumber))
+      .limit(50);
+    return { messages: rows.reverse(), hasMore: false };
+  }
+
+  const fromAnchor = sql`(
+    ${chatMessages.createdAt},
+    COALESCE(${chatMessages.sequenceNumber}, -1)
+  ) >= (
+    SELECT cm.created_at, COALESCE(cm.sequence_number, -1)
+    FROM chat_messages cm WHERE cm.id = ${lastUserMsg.id}
+  )`;
+
+  const messages = await db
+    .select(columns)
+    .from(chatMessages)
+    .leftJoin(agentRuns, eq(chatMessages.runId, agentRuns.id))
+    .where(and(eq(chatMessages.chatThreadId, chatThreadId), fromAnchor))
+    .orderBy(asc(chatMessages.createdAt), asc(chatMessages.sequenceNumber));
+
+  const beforeAnchor = sql`(
+    ${chatMessages.createdAt},
+    COALESCE(${chatMessages.sequenceNumber}, -1)
+  ) < (
+    SELECT cm.created_at, COALESCE(cm.sequence_number, -1)
+    FROM chat_messages cm WHERE cm.id = ${lastUserMsg.id}
+  )`;
+
+  const [older] = await db
+    .select({ id: chatMessages.id })
+    .from(chatMessages)
+    .where(and(eq(chatMessages.chatThreadId, chatThreadId), beforeAnchor))
+    .limit(1);
+
+  return { messages, hasMore: older !== undefined };
+}
+
+/**
+ * Fetch up to `limit` messages strictly before the cursor message, returned
+ * in chronological order (ASC). Used for backward pagination when the user
+ * scrolls up to load older history.
+ *
+ * Fetches `limit + 1` rows internally so `hasMore` can be derived in a single
+ * query without a separate COUNT probe.
+ */
+export async function getMessagesBefore(
+  chatThreadId: string,
+  beforeId: string,
+  limit: number,
+): Promise<{ messages: MessageRow[]; hasMore: boolean }> {
+  const db = globalThis.services.db;
+
+  const columns = {
+    id: chatMessages.id,
+    role: chatMessages.role,
+    content: chatMessages.content,
+    runId: chatMessages.runId,
+    error: chatMessages.error,
+    sequenceNumber: chatMessages.sequenceNumber,
+    createdAt: chatMessages.createdAt,
+    runStatus: agentRuns.status,
+    runError: agentRuns.error,
+    attachFiles: chatMessages.attachFiles,
+  };
+
+  const cursorCondition = sql`(
+    ${chatMessages.createdAt},
+    COALESCE(${chatMessages.sequenceNumber}, -1)
+  ) < (
+    SELECT cm.created_at, COALESCE(cm.sequence_number, -1)
+    FROM chat_messages cm WHERE cm.id = ${beforeId}
+  )`;
+
+  const rows = await db
+    .select(columns)
+    .from(chatMessages)
+    .leftJoin(agentRuns, eq(chatMessages.runId, agentRuns.id))
+    .where(and(eq(chatMessages.chatThreadId, chatThreadId), cursorCondition))
+    .orderBy(desc(chatMessages.createdAt), desc(chatMessages.sequenceNumber))
+    .limit(limit + 1);
+
+  const hasMore = rows.length > limit;
+  return { messages: rows.slice(0, limit).reverse(), hasMore };
 }
 
 /**

@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const anthropicManagedAgents = {
   "anthropic-managed-agents": {
     label: "Anthropic Managed Agents",
+    category: "ai-agent-apps",
     environmentMapping: {
       ANTHROPIC_MANAGED_AGENTS_TOKEN: "$secrets.ANTHROPIC_MANAGED_AGENTS_TOKEN",
     },

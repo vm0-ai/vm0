@@ -391,7 +391,15 @@ export const chatSearchContract = c.router({
 
 /**
  * Paginated chat messages contract (/api/zero/chat-threads/:threadId/messages)
- * Cursor-based pagination using message UUID as sinceId.
+ * Cursor-based pagination using message UUID as sinceId / beforeId.
+ *
+ * Query params (mutually exclusive):
+ *   sinceId  — forward pagination: messages strictly after this cursor
+ *   beforeId — backward pagination: messages strictly before this cursor
+ *   (neither) — initial load anchored at the last user message
+ *
+ * Response includes `hasMore` for initial load and backward pagination so the
+ * UI knows whether to offer upward scroll loading.
  */
 const pagedChatMessageSchema = z.object({
   id: z.string(),
@@ -412,11 +420,13 @@ export const chatThreadMessagesContract = c.router({
     pathParams: z.object({ threadId: z.string() }),
     query: z.object({
       sinceId: z.string().uuid().optional(),
+      beforeId: z.string().uuid().optional(),
       limit: z.coerce.number().min(1).max(50).default(50),
     }),
     responses: {
       200: z.object({
         messages: z.array(pagedChatMessageSchema),
+        hasMore: z.boolean().optional(),
       }),
       401: apiErrorSchema,
       404: apiErrorSchema,

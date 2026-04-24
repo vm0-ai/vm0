@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const reportei = {
   reportei: {
     label: "Reportei",
+    category: "marketing-content-growth",
     environmentMapping: {
       REPORTEI_TOKEN: "$secrets.REPORTEI_TOKEN",
     },

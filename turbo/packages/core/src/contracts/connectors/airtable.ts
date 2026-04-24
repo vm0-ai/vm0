@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const airtable = {
   airtable: {
     label: "Airtable",
+    category: "docs-files-knowledge",
     environmentMapping: {
       AIRTABLE_TOKEN: "$secrets.AIRTABLE_ACCESS_TOKEN",
     },

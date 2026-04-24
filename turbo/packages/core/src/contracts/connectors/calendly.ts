@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const calendly = {
   calendly: {
     label: "Calendly",
+    category: "meetings-scheduling",
     environmentMapping: {
       CALENDLY_TOKEN: "$secrets.CALENDLY_TOKEN",
     },

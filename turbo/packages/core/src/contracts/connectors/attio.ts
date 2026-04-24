@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const attio = {
   attio: {
     label: "Attio",
+    category: "sales-crm-business-operations",
     environmentMapping: {
       ATTIO_TOKEN: "$secrets.ATTIO_TOKEN",
     },

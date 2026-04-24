@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const cloudinary = {
   cloudinary: {
     label: "Cloudinary",
+    category: "marketing-content-growth",
     environmentMapping: {
       CLOUDINARY_TOKEN: "$secrets.CLOUDINARY_TOKEN",
       CLOUDINARY_API_SECRET: "$secrets.CLOUDINARY_API_SECRET",

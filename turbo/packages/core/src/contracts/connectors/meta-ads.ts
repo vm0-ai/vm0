@@ -4,6 +4,7 @@ import type { ConnectorConfig } from "../connectors";
 export const metaAds = {
   "meta-ads": {
     label: "Meta Ads",
+    category: "marketing-content-growth",
     environmentMapping: {
       META_ADS_TOKEN: "$secrets.META_ADS_ACCESS_TOKEN",
     },

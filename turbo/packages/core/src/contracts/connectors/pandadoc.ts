@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const pandadoc = {
   pandadoc: {
     label: "PandaDoc",
+    category: "data-automation-infrastructure",
     environmentMapping: {
       PANDADOC_TOKEN: "$secrets.PANDADOC_TOKEN",
     },

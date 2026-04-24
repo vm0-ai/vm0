@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const asana = {
   asana: {
     label: "Asana",
+    category: "engineering-team-execution",
     environmentMapping: {
       ASANA_TOKEN: "$secrets.ASANA_ACCESS_TOKEN",
     },

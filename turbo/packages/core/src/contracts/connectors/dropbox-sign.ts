@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const dropboxSign = {
   "dropbox-sign": {
     label: "Dropbox Sign",
+    category: "data-automation-infrastructure",
     tags: ["hellosign", "e-signature", "signature", "sign", "document"],
     environmentMapping: {
       DROPBOX_SIGN_TOKEN: "$secrets.DROPBOX_SIGN_TOKEN",

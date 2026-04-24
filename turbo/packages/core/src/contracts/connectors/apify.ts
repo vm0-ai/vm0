@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const apify = {
   apify: {
     label: "Apify",
+    category: "data-automation-infrastructure",
     environmentMapping: {
       APIFY_TOKEN: "$secrets.APIFY_TOKEN",
     },

@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const drive9 = {
   drive9: {
     label: "drive9",
+    category: "docs-files-knowledge",
     environmentMapping: {
       DRIVE9_TOKEN: "$secrets.DRIVE9_TOKEN",
     },

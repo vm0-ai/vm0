@@ -258,20 +258,26 @@ def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
     log_entry["request_headers"] = _redact_headers(flow.request.headers)
 
     # Request body
-    if flow.request.content:
+    if flow.request.raw_content:
         req_ct = flow.request.headers.get("content-type", "")
-        body = flow.request.content
-        truncated = len(body) > STREAM_BUFFER_LIMIT
-        if truncated:
-            body = _truncate_bytes_utf8_safe(body, STREAM_BUFFER_LIMIT)
-        encoded, encoding = _encode_body(body, req_ct)
-        if encoded is not None:
-            log_entry["request_body"] = encoded
-            log_entry["request_body_encoding"] = encoding
-            if truncated:
-                log_entry["request_body_truncated"] = True
-        else:
+        try:
+            body = flow.request.content
+        except (zlib.error, ValueError):
+            # ZlibError (decompression failure) or ValueError from mitmproxy
+            # when Content-Encoding doesn't match the body bytes.
             log_entry["request_body_encoding"] = "binary"
+        else:
+            truncated = len(body) > STREAM_BUFFER_LIMIT
+            if truncated:
+                body = _truncate_bytes_utf8_safe(body, STREAM_BUFFER_LIMIT)
+            encoded, encoding = _encode_body(body, req_ct)
+            if encoded is not None:
+                log_entry["request_body"] = encoded
+                log_entry["request_body_encoding"] = encoding
+                if truncated:
+                    log_entry["request_body_truncated"] = True
+            else:
+                log_entry["request_body_encoding"] = "binary"
 
     # Response headers
     if flow.response:

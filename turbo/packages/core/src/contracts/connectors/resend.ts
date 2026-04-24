@@ -4,6 +4,7 @@ import type { ConnectorConfig } from "../connectors";
 export const resend = {
   resend: {
     label: "Resend",
+    category: "communication-collaboration",
     environmentMapping: {
       RESEND_TOKEN: "$secrets.RESEND_TOKEN",
     },

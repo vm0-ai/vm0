@@ -112,7 +112,11 @@ import {
   startRecording$,
   stopAndTranscribe$,
 } from "../../signals/voice-io/voice-io-stt.ts";
-import { setBillingDialogOpen$ } from "../../signals/zero-page/billing.ts";
+import {
+  setActiveOrgManageTab$,
+  setBillingSubPage$,
+} from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
+import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
 
 const MAX_FILE_SIZE = 1024 * 1024 * 1024; // 1 GB — keep in sync with web constants
 
@@ -517,7 +521,9 @@ function MicButton({
   const transcribing = useGet(sttTranscribing$);
   const startRec = useSet(startRecording$);
   const stopAndTranscribe = useSet(stopAndTranscribe$);
-  const openBillingDialog = useSet(setBillingDialogOpen$);
+  const setTab = useSet(setActiveOrgManageTab$);
+  const setSubPage = useSet(setBillingSubPage$);
+  const openOrgManage = useSet(setOrgManageDialogOpen$);
   const signal = useGet(pageSignal$);
 
   if (!available) {
@@ -539,7 +545,9 @@ function MicButton({
       );
     } else {
       if (quota && !quota.allowed) {
-        openBillingDialog(true);
+        setTab("billing");
+        setSubPage(true);
+        detach(openOrgManage(true, signal), Reason.DomCallback);
         return;
       }
       detach(startRec(signal), Reason.DomCallback);

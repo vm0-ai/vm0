@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const zep = {
   zep: {
     label: "Zep",
+    category: "ai-memory-tracing-eval",
     helpText:
       "Connect to Zep for long-term memory and conversation history management in AI agents.",
     environmentMapping: { ZEP_TOKEN: "$secrets.ZEP_TOKEN" },

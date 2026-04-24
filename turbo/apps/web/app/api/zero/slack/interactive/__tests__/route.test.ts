@@ -1,5 +1,5 @@
 import { createHmac } from "crypto";
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import {
   testContext,
   uniqueId,
@@ -19,18 +19,6 @@ import {
   seedSlackUserAgentPreference,
 } from "../../../../../../src/__tests__/db-test-assertions/slack";
 import { reloadEnv } from "../../../../../../src/env";
-
-vi.mock("@vm0/core/feature-switch", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("@vm0/core/feature-switch")>();
-  return {
-    ...actual,
-    isFeatureEnabled: vi.fn().mockReturnValue(true),
-  };
-});
-
-const { isFeatureEnabled } = await import("@vm0/core/feature-switch");
-const mockIsFeatureEnabled = isFeatureEnabled as ReturnType<typeof vi.fn>;
 
 const { POST } = await import("../route");
 
@@ -97,7 +85,6 @@ describe("POST /api/zero/slack/interactive", () => {
     context.setupMocks();
     user = await context.setupUser();
     reloadEnv();
-    mockIsFeatureEnabled.mockReturnValue(true);
   });
 
   describe("signature verification", () => {
@@ -338,69 +325,6 @@ describe("POST /api/zero/slack/interactive", () => {
       const { WebClient } = await import("@slack/web-api");
       const mockClient = new WebClient();
       expect(mockClient.views.open).toHaveBeenCalledOnce();
-    });
-
-    it("does not open picker when feature is gated off for the org", async () => {
-      mockIsFeatureEnabled.mockReturnValue(false);
-
-      const workspaceId = uniqueId("T-ws");
-      const slackUserId = uniqueId("U-slack");
-      await createTestSlackOrgInstallation({ workspaceId, orgId: user.orgId });
-      await seedTestSlackOrgConnection({
-        slackUserId,
-        slackWorkspaceId: workspaceId,
-        vm0UserId: user.userId,
-      });
-      const defaultCompose = await createTestCompose(uniqueId("default"));
-      await updateOrgDefaultAgent(user.orgId, defaultCompose.agentId);
-      await createTestCompose(uniqueId("alt"));
-
-      const request = createInteractiveRequest({
-        type: "block_actions",
-        user: { id: slackUserId, username: "testuser", team_id: workspaceId },
-        team: { id: workspaceId, domain: "test" },
-        trigger_id: "trigger-home",
-        actions: [{ action_id: "home_switch_agent", block_id: "home" }],
-      });
-
-      const response = await POST(request);
-      expect(response.status).toBe(200);
-
-      const { WebClient } = await import("@slack/web-api");
-      const mockClient = new WebClient();
-      expect(mockClient.views.open).not.toHaveBeenCalled();
-    });
-  });
-
-  describe("switch_agent_modal feature gate defense", () => {
-    it("does not persist a preference when the feature is gated off", async () => {
-      mockIsFeatureEnabled.mockReturnValue(false);
-
-      const workspaceId = uniqueId("T-ws");
-      const slackUserId = uniqueId("U-slack");
-      await createTestSlackOrgInstallation({ workspaceId, orgId: user.orgId });
-      await seedTestSlackOrgConnection({
-        slackUserId,
-        slackWorkspaceId: workspaceId,
-        vm0UserId: user.userId,
-      });
-      const defaultCompose = await createTestCompose(uniqueId("default"));
-      await updateOrgDefaultAgent(user.orgId, defaultCompose.agentId);
-      const alternate = await createTestCompose(uniqueId("alt"));
-
-      const request = createInteractiveRequest(
-        buildAgentPickerSubmission({
-          workspaceId,
-          slackUserId,
-          selectedValue: alternate.composeId,
-          channelId: "C-origin",
-        }),
-      );
-      const response = await POST(request);
-      expect(response.status).toBe(200);
-
-      const saved = await findSlackUserAgentPreference(user.userId, user.orgId);
-      expect(saved).toBeUndefined();
     });
   });
 });

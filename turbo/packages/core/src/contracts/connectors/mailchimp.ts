@@ -4,6 +4,7 @@ import type { ConnectorConfig } from "../connectors";
 export const mailchimp = {
   mailchimp: {
     label: "Mailchimp",
+    category: "communication-collaboration",
     environmentMapping: {
       MAILCHIMP_TOKEN: "$secrets.MAILCHIMP_ACCESS_TOKEN",
     },

@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const kommo = {
   kommo: {
     label: "Kommo",
+    category: "sales-crm-business-operations",
     environmentMapping: {
       KOMMO_API_KEY: "$secrets.KOMMO_API_KEY",
       KOMMO_SUBDOMAIN: "$vars.KOMMO_SUBDOMAIN",

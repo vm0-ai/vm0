@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const tavily = {
   tavily: {
     label: "Tavily",
+    category: "data-automation-infrastructure",
     environmentMapping: {
       TAVILY_TOKEN: "$secrets.TAVILY_TOKEN",
     },

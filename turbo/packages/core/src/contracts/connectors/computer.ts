@@ -4,6 +4,7 @@ import type { ConnectorConfig } from "../connectors";
 export const computer = {
   computer: {
     label: "Computer",
+    category: "engineering-team-execution",
     environmentMapping: {
       COMPUTER_CONNECTOR_BRIDGE_TOKEN:
         "$secrets.COMPUTER_CONNECTOR_BRIDGE_TOKEN",

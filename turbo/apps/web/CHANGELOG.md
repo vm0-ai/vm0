@@ -1,5 +1,32 @@
 # Changelog
 
+## [12.295.0](https://github.com/vm0-ai/vm0/compare/web-v12.294.0...web-v12.295.0) (2026-04-24)
+
+
+### Features
+
+* add browser-use connector ([#10922](https://github.com/vm0-ai/vm0/issues/10922)) ([9a4edc4](https://github.com/vm0-ai/vm0/commit/9a4edc45e87e7863d5d2bfa79d522938b4703aa8))
+* integrate Gemini 2.5 Flash Image via Vertex AI + Vercel OIDC ([#10611](https://github.com/vm0-ai/vm0/issues/10611)) ([93b8ddd](https://github.com/vm0-ai/vm0/commit/93b8ddd9cc498787968d8e911195a1d46333c4df))
+* **platform:** improve chat document previews ([#10940](https://github.com/vm0-ai/vm0/issues/10940)) ([fe836c8](https://github.com/vm0-ai/vm0/commit/fe836c852bafc7325eb2fd2b094371d766d97271))
+
+
+### Bug Fixes
+
+* **web:** notify runners on org/user deletion cancel path ([#10946](https://github.com/vm0-ai/vm0/issues/10946)) ([6d8c3e4](https://github.com/vm0-ai/vm0/commit/6d8c3e4f20938a8b88c8afa6a32c2d73bb4018fb))
+
+
+### Performance Improvements
+
+* **chat-messages:** short-circuit round3 capture arm when quota is zero ([#10950](https://github.com/vm0-ai/vm0/issues/10950)) ([2f10594](https://github.com/vm0-ai/vm0/commit/2f10594218a09d57876bc7933edb0e7cf17c2379))
+* **chat:** fuse round2 user_prefs + feature_sw into single cte ([#10949](https://github.com/vm0-ai/vm0/issues/10949)) ([7e5f020](https://github.com/vm0-ai/vm0/commit/7e5f020e7cb45389fb9cb8b0a136248e5a88d818)), closes [#10943](https://github.com/vm0-ai/vm0/issues/10943)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.231.0
+
 ## [12.294.0](https://github.com/vm0-ai/vm0/compare/web-v12.293.0...web-v12.294.0) (2026-04-23)
 
 

@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const msg9 = {
   msg9: {
     label: "msg9",
+    category: "communication-collaboration",
     environmentMapping: {
       MSG9_TOKEN: "$secrets.MSG9_TOKEN",
     },

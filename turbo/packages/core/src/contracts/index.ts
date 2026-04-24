@@ -392,8 +392,13 @@ export {
 export {
   connectorTypeSchema,
   CONNECTOR_TYPES,
+  CONNECTOR_DISPLAY_CATEGORY_GROUPS,
+  CONNECTOR_DISPLAY_CATEGORY_META,
+  CONNECTOR_DISPLAY_CATEGORY_ORDER,
   type ConnectorType,
   type ConnectorConfig,
+  type ConnectorDisplayCategory,
+  type ConnectorDisplayCategoryGroup,
   type ConnectorSecretConfig,
   type ConnectorAuthMethodConfig,
   type ConnectorAuthMethodType,
@@ -909,12 +914,6 @@ export {
   type AppendVoiceChatItemBody,
   type CreateVoiceChatTaskBody,
 } from "./zero-voice-chat";
-export {
-  zeroPhoneStatusContract,
-  zeroPhoneLinkContract,
-  zeroPhoneSetupContract,
-  type PhoneStatusResponse,
-} from "./zero-phone";
 export {
   zeroUploadsContract,
   type ZeroUploadsContract,

@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const googleMeet = {
   "google-meet": {
     label: "Google Meet",
+    category: "meetings-scheduling",
     environmentMapping: {
       GOOGLE_MEET_TOKEN: "$secrets.GOOGLE_MEET_ACCESS_TOKEN",
     },

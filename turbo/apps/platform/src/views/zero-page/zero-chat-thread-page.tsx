@@ -284,6 +284,8 @@ function ZeroChatThreadPageInner({
   const setScrollContainer = useSet(thread.setScrollContainer$);
   const skeletonVisible = useGet(thread.skeletonVisible$);
   const lightboxUrl = useGet(attachmentLightboxUrl$);
+  const hasOlderMessages = useGet(thread.hasOlderMessages$);
+  const setTopSentinelRef = useSet(thread.setTopSentinelRef$);
 
   return (
     <div className="flex flex-1 flex-col min-h-0 bg-transparent">
@@ -301,6 +303,17 @@ function ZeroChatThreadPageInner({
               className="w-full max-w-[900px] mx-auto flex flex-col gap-6 pb-4 overflow-visible"
               style={{ visibility: skeletonVisible ? "hidden" : "visible" }}
             >
+              {hasOlderMessages && (
+                <div
+                  ref={setTopSentinelRef}
+                  className="flex justify-center py-2"
+                >
+                  <div className="flex items-center gap-2 text-muted-foreground text-xs">
+                    <Skeleton className="h-3 w-3 rounded-full" />
+                    <span>Loading older messages…</span>
+                  </div>
+                </div>
+              )}
               {sessionError && (
                 <div className="flex-1 flex items-center justify-center py-16">
                   <div className="flex items-center gap-2 text-destructive">

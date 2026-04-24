@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const shopify = {
   shopify: {
     label: "Shopify",
+    category: "data-automation-infrastructure",
     tags: ["ecommerce", "store", "products", "orders"],
     environmentMapping: {
       SHOPIFY_TOKEN: "$secrets.SHOPIFY_TOKEN",

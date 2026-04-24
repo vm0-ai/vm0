@@ -54,9 +54,6 @@ import * as vm0ApiKeySchema from "./schema/vm0-api-key";
 import * as zeroSkillSchema from "./schema/zero-skill";
 import * as computerUseHostSchema from "./schema/computer-use-host";
 import * as insightsDailySchema from "./schema/insights-daily";
-import * as phoneUserLinkSchema from "./schema/phone-user-link";
-import * as phoneThreadSessionSchema from "./schema/phone-thread-session";
-import * as pendingOutboundCallSchema from "./schema/pending-outbound-call";
 import * as voiceChatSchema from "./schema/voice-chat";
 import * as userFeatureSwitchesSchema from "./schema/user-feature-switches";
 import * as userBehaviorCountSchema from "./schema/user-behavior-count";
@@ -121,9 +118,6 @@ export const schema = {
   ...zeroSkillSchema,
   ...computerUseHostSchema,
   ...insightsDailySchema,
-  ...phoneUserLinkSchema,
-  ...phoneThreadSessionSchema,
-  ...pendingOutboundCallSchema,
   ...voiceChatSchema,
   ...userFeatureSwitchesSchema,
   ...userBehaviorCountSchema,

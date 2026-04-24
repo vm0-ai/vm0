@@ -6,6 +6,7 @@ export const zapier = {
     label: "Zapier",
     featureFlag: FeatureSwitchKey.ZapierConnector,
     strictFeatureFlag: true,
+    category: "data-automation-infrastructure",
     environmentMapping: {
       ZAPIER_TOKEN: "$secrets.ZAPIER_TOKEN",
     },

@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const xero = {
   xero: {
     label: "Xero",
+    category: "data-automation-infrastructure",
     environmentMapping: {
       XERO_TOKEN: "$secrets.XERO_ACCESS_TOKEN",
     },

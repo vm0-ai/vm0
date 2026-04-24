@@ -39,26 +39,30 @@ describe("connectors page", () => {
   it("shows available connectors when none are connected", async () => {
     detachedSetupPage({ context, path: "/connectors" });
 
-    // Default mock returns no connected connectors, so all should be in "Available"
     await waitFor(() => {
       expect(screen.getByText("GitHub")).toBeInTheDocument();
     });
-    expect(screen.getByText(/Available/)).toBeInTheDocument();
-    // "Connected" section should not appear
-    expect(screen.queryByText(/Connected \(/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("connector-category-ai"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("connector-category-ai-general-models"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("connector-category-engineering-team-execution"),
+    ).not.toBeInTheDocument();
   });
 
-  it("shows connected and available sections when some connectors are connected", async () => {
+  it("shows connected connectors", async () => {
     mockConnectors([{ type: "github", externalUsername: "testuser" }]);
 
     detachedSetupPage({ context, path: "/connectors" });
 
     await waitFor(() => {
-      expect(screen.getByText(/Connected \(/)).toBeInTheDocument();
+      expect(screen.getByText("GitHub")).toBeInTheDocument();
     });
-    // The connected connector should show the GitHub label
     expect(screen.getByText("GitHub")).toBeInTheDocument();
-    expect(screen.getByText(/Available/)).toBeInTheDocument();
+    expect(screen.getByLabelText("More options")).toBeInTheDocument();
   });
 
   it("filters connectors by search term", async () => {
@@ -149,7 +153,7 @@ describe("connectors page", () => {
 
     // Wait for the connected GitHub card to appear
     await waitFor(() => {
-      expect(screen.getByText(/Connected \(/)).toBeInTheDocument();
+      expect(screen.getByLabelText("More options")).toBeInTheDocument();
     });
 
     // Radix DropdownMenu opens on click
@@ -189,7 +193,7 @@ describe("connectors page", () => {
     detachedSetupPage({ context, path: "/connectors" });
 
     await waitFor(() => {
-      expect(screen.getByText(/Connected \(/)).toBeInTheDocument();
+      expect(screen.getByLabelText("More options")).toBeInTheDocument();
     });
 
     // Radix DropdownMenu opens on click

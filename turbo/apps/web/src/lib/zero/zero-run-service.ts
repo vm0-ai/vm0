@@ -526,6 +526,9 @@ async function createZeroRunRecord(
     );
   });
   const round3Capture = timed(async () => {
+    if (userContextT.result.captureNetworkBodiesRemaining <= 0) {
+      return false;
+    }
     return consumeCaptureNetworkBodies(resolved.orgId, params.userId);
   });
 

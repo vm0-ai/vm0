@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const googleCalendar = {
   "google-calendar": {
     label: "Google Calendar",
+    category: "meetings-scheduling",
     tags: ["calendar", "scheduling", "gcal"],
     environmentMapping: {
       GOOGLE_CALENDAR_TOKEN: "$secrets.GOOGLE_CALENDAR_ACCESS_TOKEN",

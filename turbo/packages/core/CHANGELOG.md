@@ -1,5 +1,17 @@
 # Changelog
 
+## [8.231.0](https://github.com/vm0-ai/vm0/compare/core-v8.230.0...core-v8.231.0) (2026-04-24)
+
+
+### Features
+
+* add browser-use connector ([#10922](https://github.com/vm0-ai/vm0/issues/10922)) ([9a4edc4](https://github.com/vm0-ai/vm0/commit/9a4edc45e87e7863d5d2bfa79d522938b4703aa8))
+
+
+### Bug Fixes
+
+* **core:** guide users to add https:// in firewall url errors ([#10958](https://github.com/vm0-ai/vm0/issues/10958)) ([9ecde92](https://github.com/vm0-ai/vm0/commit/9ecde92e4c2b3ba2cb94cf7747ed1ba37c129b94)), closes [#10923](https://github.com/vm0-ai/vm0/issues/10923)
+
 ## [8.230.0](https://github.com/vm0-ai/vm0/compare/core-v8.229.4...core-v8.230.0) (2026-04-23)
 
 

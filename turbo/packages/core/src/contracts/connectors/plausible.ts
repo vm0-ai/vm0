@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const plausible = {
   plausible: {
     label: "Plausible",
+    category: "data-automation-infrastructure",
     environmentMapping: {
       PLAUSIBLE_TOKEN: "$secrets.PLAUSIBLE_TOKEN",
     },

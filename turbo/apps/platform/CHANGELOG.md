@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.290.0](https://github.com/vm0-ai/vm0/compare/app-v0.289.0...app-v0.290.0) (2026-04-24)
+
+
+### Features
+
+* add browser-use connector ([#10922](https://github.com/vm0-ai/vm0/issues/10922)) ([9a4edc4](https://github.com/vm0-ai/vm0/commit/9a4edc45e87e7863d5d2bfa79d522938b4703aa8))
+* mobile header unread badge for ended threads ([#10926](https://github.com/vm0-ai/vm0/issues/10926)) ([091b3e0](https://github.com/vm0-ai/vm0/commit/091b3e05af3f662c1069bd8c44fd007c14853619))
+* **platform:** improve chat document previews ([#10940](https://github.com/vm0-ai/vm0/issues/10940)) ([fe836c8](https://github.com/vm0-ai/vm0/commit/fe836c852bafc7325eb2fd2b094371d766d97271))
+
+
+### Bug Fixes
+
+* **platform:** remember last used agent on web home ([#10846](https://github.com/vm0-ai/vm0/issues/10846)) ([e3d7908](https://github.com/vm0-ai/vm0/commit/e3d790875428ecf6d3edf84e470fe8a8a80407c3))
+* **platform:** use fallback json parsing in voice chat session ([#10907](https://github.com/vm0-ai/vm0/issues/10907)) ([3865a42](https://github.com/vm0-ai/vm0/commit/3865a420d1d01dc1b4d366cf552621ee59a516bb))
+* route voice input quota upsell to the Compare plans modal ([#10807](https://github.com/vm0-ai/vm0/issues/10807)) ([#10814](https://github.com/vm0-ai/vm0/issues/10814)) ([5cae762](https://github.com/vm0-ai/vm0/commit/5cae7625a282e0a66cb9f24a3353079991b3fbca))
+* **zero:** prevent sidebar chat section flicker when agent id reloads ([#10929](https://github.com/vm0-ai/vm0/issues/10929)) ([6185126](https://github.com/vm0-ai/vm0/commit/6185126ce8a08dddd80a3693e62664cd7c2f2331))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.231.0
+
 ## [0.289.0](https://github.com/vm0-ai/vm0/compare/app-v0.288.1...app-v0.289.0) (2026-04-23)
 
 
