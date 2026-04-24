@@ -91,7 +91,7 @@ describe("zero chat composer - file input", () => {
     });
 
     // Attachment button renders with aria-label for accessibility
-    const attachButton = screen.getByRole("button", { name: "Attach" });
+    const attachButton = screen.getByLabelText("Attach");
     expect(attachButton).toBeInTheDocument();
   });
 
