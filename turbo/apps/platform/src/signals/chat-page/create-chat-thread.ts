@@ -705,7 +705,7 @@ function createTopSentinelRef(
           if (!get(hasOlderMessages$)) {
             return;
           }
-          set(loadOlderMessages$, signal);
+          void set(loadOlderMessages$, signal);
         },
         { threshold: 0.1 },
       );
