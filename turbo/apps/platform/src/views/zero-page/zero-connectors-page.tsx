@@ -1,5 +1,6 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
+import type { ReactNode } from "react";
 import {
   useGet,
   useSet,
@@ -17,6 +18,7 @@ import {
   CONNECTOR_TYPES,
   type ConnectorType,
 } from "@vm0/core/contracts/connectors";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { isGoogleOAuthConnector } from "@vm0/core/contracts/connector-utils";
 import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
 import {
@@ -46,7 +48,17 @@ import {
   matchesConnectorSearch,
   type ConnectorTypeWithStatus,
 } from "../../signals/zero-page/settings/connectors.ts";
+import {
+  activeConnectorCategoryId$,
+  attachConnectorCategoryScrollTracking$,
+  getConnectorCategorySectionId,
+  groupConnectorsByCategory,
+  resetActiveConnectorCategory$,
+  scrollToConnectorCategory,
+  type ConnectorCategoryGroup,
+} from "../../signals/zero-page/settings/connector-categories.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import { ScopeReviewModal } from "./components/settings/scope-review-modal.tsx";
 import { ConnectorPermissionDialog } from "./components/settings/connector-permission-dialog.tsx";
@@ -63,6 +75,225 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@vm0/ui";
+
+// Callback ref that attaches scroll tracking while enabled. Each call returns
+// a fresh ref callback; React only invokes it when the underlying element
+// changes, so listeners are registered on mount and cleaned up on unmount.
+function useScrollTrackingRef(
+  enabled: boolean,
+  attach: (el: HTMLElement) => () => void,
+  resetActive: () => void,
+) {
+  let cleanup: (() => void) | null = null;
+  return (el: HTMLDivElement | null) => {
+    if (cleanup) {
+      cleanup();
+      cleanup = null;
+    }
+    if (el && enabled) {
+      cleanup = attach(el);
+    } else {
+      resetActive();
+    }
+  };
+}
+
+function ConnectorCategoryMenu({
+  activeCategoryId,
+  groups,
+}: {
+  activeCategoryId: string | null;
+  groups: readonly ConnectorCategoryGroup<ConnectorTypeWithStatus>[];
+}) {
+  if (groups.length <= 1) {
+    return null;
+  }
+
+  return (
+    <aside className="pointer-events-none absolute bottom-0 left-full top-[60px] ml-16 hidden w-44 xl:block">
+      <nav
+        aria-label="Connector categories"
+        className="group pointer-events-auto sticky top-[28vh] flex flex-col gap-3 pb-3 pl-5"
+      >
+        {groups.flatMap((group) => {
+          if (group.kind === "group") {
+            const isActiveChild = group.sections.some((section) => {
+              return activeCategoryId === section.category;
+            });
+            return [
+              <ConnectorCategoryMenuItem
+                key={group.id}
+                activeState={
+                  activeCategoryId === group.id
+                    ? "current"
+                    : isActiveChild
+                      ? "ancestor"
+                      : null
+                }
+                depth="parent"
+                label={group.label}
+                menuLabel={group.menuLabel}
+                targetId={group.id}
+                onClick={() => {
+                  scrollToConnectorCategory(group.id);
+                }}
+              />,
+              ...group.sections.map((section) => {
+                return (
+                  <ConnectorCategoryMenuItem
+                    key={section.category}
+                    activeState={
+                      activeCategoryId === section.category ? "current" : null
+                    }
+                    depth="child"
+                    label={section.label}
+                    menuLabel={section.menuLabel}
+                    targetId={section.category}
+                    onClick={() => {
+                      scrollToConnectorCategory(section.category);
+                    }}
+                  />
+                );
+              }),
+            ];
+          }
+
+          const section = group.sections[0];
+          return [
+            <ConnectorCategoryMenuItem
+              key={section.category}
+              activeState={
+                activeCategoryId === section.category ? "current" : null
+              }
+              depth="parent"
+              label={section.label}
+              menuLabel={section.menuLabel}
+              targetId={section.category}
+              onClick={() => {
+                scrollToConnectorCategory(section.category);
+              }}
+            />,
+          ];
+        })}
+      </nav>
+    </aside>
+  );
+}
+
+function ConnectorCategoryMenuItem({
+  activeState,
+  depth,
+  label,
+  menuLabel,
+  targetId,
+  onClick,
+}: {
+  activeState: "current" | "ancestor" | null;
+  depth: "parent" | "child";
+  label: string;
+  menuLabel: string;
+  targetId: string;
+  onClick: () => void;
+}) {
+  const isChild = depth === "child";
+  const lineClass =
+    activeState === "current"
+      ? isChild
+        ? "ml-1 w-3 bg-foreground/70 group-hover/item:bg-foreground/80"
+        : "w-4 bg-foreground/70 group-hover/item:bg-foreground/80"
+      : activeState === "ancestor"
+        ? "w-4 bg-muted-foreground/55 group-hover/item:bg-foreground/60"
+        : isChild
+          ? "ml-1 w-3 bg-muted-foreground/20 group-hover:bg-muted-foreground/35 group-hover/item:bg-foreground/50"
+          : "w-4 bg-muted-foreground/20 group-hover:bg-muted-foreground/35 group-hover/item:bg-foreground/50";
+
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      aria-current={activeState === "current" ? "true" : undefined}
+      data-testid={`connector-category-menu-${targetId}`}
+      title={label}
+      className={`group/item relative flex h-3 w-full items-center text-left leading-snug transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 ${
+        activeState === "current"
+          ? isChild
+            ? "text-[11px] text-foreground hover:text-foreground"
+            : "text-xs font-medium text-foreground hover:text-foreground"
+          : isChild
+            ? "text-[11px] text-muted-foreground/70 hover:text-foreground"
+            : "text-xs font-medium text-muted-foreground hover:text-foreground"
+      }`}
+      onClick={onClick}
+    >
+      <span
+        aria-hidden="true"
+        className={`block h-0.5 rounded-sm transition-colors ${lineClass}`}
+      />
+      <span className="absolute left-7 top-1/2 block -translate-y-1/2 translate-x-1 whitespace-nowrap opacity-0 transition duration-150 group-hover:translate-x-0 group-hover:opacity-100 group-focus-within:translate-x-0 group-focus-within:opacity-100">
+        {menuLabel}
+      </span>
+    </button>
+  );
+}
+
+function ConnectorCategoryGroupSection({
+  group,
+  renderCard,
+}: {
+  group: ConnectorCategoryGroup<ConnectorTypeWithStatus>;
+  renderCard: (connector: ConnectorTypeWithStatus) => ReactNode;
+}) {
+  if (group.kind === "group") {
+    return (
+      <section
+        key={group.id}
+        id={getConnectorCategorySectionId(group.id)}
+        className="scroll-mt-6 flex flex-col gap-4"
+        data-testid={`connector-category-${group.id}`}
+      >
+        <h2 className="text-sm font-medium text-muted-foreground">
+          {group.label}
+        </h2>
+        <div className="flex flex-col gap-5">
+          {group.sections.map((section) => {
+            return (
+              <div
+                key={section.category}
+                id={getConnectorCategorySectionId(section.category)}
+                className="scroll-mt-6 flex flex-col gap-3"
+                data-testid={`connector-category-${section.category}`}
+              >
+                <h3 className="text-xs font-medium text-muted-foreground/80">
+                  {section.label}
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {section.connectors.map(renderCard)}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+    );
+  }
+
+  const section = group.sections[0];
+  return (
+    <section
+      key={section.category}
+      id={getConnectorCategorySectionId(section.category)}
+      className="scroll-mt-6 flex flex-col gap-3"
+      data-testid={`connector-category-${section.category}`}
+    >
+      <h2 className="text-sm font-medium text-muted-foreground">
+        {section.label}
+      </h2>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        {section.connectors.map(renderCard)}
+      </div>
+    </section>
+  );
+}
 
 function GlobalConnectorCard({
   connector,
@@ -162,7 +393,10 @@ function GlobalConnectorCard({
             />
           )}
         </span>
-        <span className="min-w-0 flex-1 text-sm font-medium text-foreground truncate">
+        <span
+          data-testid="connector-card-label"
+          className="min-w-0 flex-1 text-sm font-medium text-foreground truncate"
+        >
           {connector.label}
         </span>
       </div>
@@ -227,7 +461,10 @@ function AvailableConnectorCard({
             />
           )}
         </span>
-        <span className="min-w-0 flex-1 text-sm font-medium text-foreground truncate">
+        <span
+          data-testid="connector-card-label"
+          className="min-w-0 flex-1 text-sm font-medium text-foreground truncate"
+        >
           {connector.label}
         </span>
         {isPolling ? (
@@ -281,6 +518,72 @@ function AvailableConnectorCard({
   );
 }
 
+function renderBuiltinList({
+  loadingState,
+  showConnectorCategories,
+  grouped,
+  filtered,
+  renderCard,
+  search,
+}: {
+  loadingState: "loading" | "hasData" | "hasError";
+  showConnectorCategories: boolean;
+  grouped: ConnectorCategoryGroup<ConnectorTypeWithStatus>[];
+  filtered: ConnectorTypeWithStatus[];
+  renderCard: (connector: ConnectorTypeWithStatus) => ReactNode;
+  search: string;
+}): ReactNode {
+  if (loadingState !== "hasData") {
+    return (
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        {Array.from({ length: 6 }, (_, i) => {
+          return (
+            <div
+              key={i}
+              data-testid="connector-skeleton"
+              className="zero-card flex flex-col animate-pulse"
+            >
+              <div className="flex h-14 items-center gap-2.5 px-5">
+                <span className="h-5 w-5 shrink-0 rounded-lg bg-muted/50" />
+                <span className="h-4 w-24 rounded bg-muted/50" />
+              </div>
+              <div className="flex h-11 items-center border-t border-border/30 px-5">
+                <span className="h-3 w-16 rounded bg-muted/30" />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  if (filtered.length === 0 && search) {
+    return (
+      <p className="py-12 text-center text-sm text-muted-foreground">
+        No connectors matching &ldquo;{search}&rdquo;
+      </p>
+    );
+  }
+
+  if (showConnectorCategories) {
+    return grouped.map((group) => {
+      return (
+        <ConnectorCategoryGroupSection
+          key={group.id}
+          group={group}
+          renderCard={renderCard}
+        />
+      );
+    });
+  }
+
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+      {filtered.map(renderCard)}
+    </div>
+  );
+}
+
 export function ZeroConnectorsPage() {
   const allTypesLoadable = useLastLoadable(allConnectorTypes$);
   const pollingType = useGet(pollingConnectorType$);
@@ -298,6 +601,21 @@ export function ZeroConnectorsPage() {
   const setActiveTab = useSet(setConnectorsPageTab$);
   const isAdmin = useLastResolved(isOrgAdmin$) ?? false;
   const openCreateCustom = useSet(openCustomConnectorCreateDialog$);
+  const activeCategoryId = useGet(activeConnectorCategoryId$);
+  const attachScrollTracking = useSet(attachConnectorCategoryScrollTracking$);
+  const resetActiveCategory = useSet(resetActiveConnectorCategory$);
+  const features = useLastResolved(featureSwitch$);
+  const showConnectorCategories =
+    features?.[FeatureSwitchKey.ConnectorCategories] ?? false;
+  const categoryTrackingEnabled =
+    activeTab === "builtin" &&
+    allTypesLoadable.state === "hasData" &&
+    showConnectorCategories;
+  const scrollContainerRef = useScrollTrackingRef(
+    categoryTrackingEnabled,
+    attachScrollTracking,
+    resetActiveCategory,
+  );
 
   const search = useGet(connectorsSearch$);
   const setSearch = useSet(setConnectorsSearch$);
@@ -307,19 +625,6 @@ export function ZeroConnectorsPage() {
 
   const filtered = allConnectors.filter((c) => {
     return matchesConnectorSearch(search, c);
-  });
-
-  const connected = filtered.filter((c) => {
-    if (optimisticConnected.has(c.type)) {
-      return true;
-    }
-    return c.connected;
-  });
-  const notConnected = filtered.filter((c) => {
-    if (optimisticConnected.has(c.type)) {
-      return false;
-    }
-    return !c.connected;
   });
 
   const connectHandler = (type: ConnectorType) => {
@@ -367,10 +672,23 @@ export function ZeroConnectorsPage() {
   };
 
   const renderCard = (c: ConnectorTypeWithStatus) => {
+    const effectiveConnector = getEffective(c);
+    if (!effectiveConnector.connected) {
+      return (
+        <AvailableConnectorCard
+          key={c.type}
+          connector={effectiveConnector}
+          isPolling={pollingType === c.type}
+          onConnect={() => {
+            return connectHandler(c.type);
+          }}
+        />
+      );
+    }
     return (
       <GlobalConnectorCard
         key={c.type}
-        connector={getEffective(c)}
+        connector={effectiveConnector}
         isPolling={pollingType === c.type}
         onConnect={() => {
           return connectHandler(c.type);
@@ -385,10 +703,26 @@ export function ZeroConnectorsPage() {
     );
   };
 
+  const grouped = showConnectorCategories
+    ? groupConnectorsByCategory(filtered.map(getEffective))
+    : [];
+
+  const builtinList = renderBuiltinList({
+    loadingState: allTypesLoadable.state,
+    showConnectorCategories,
+    grouped,
+    filtered,
+    renderCard,
+    search,
+  });
+
   return (
-    <div className="flex flex-1 flex-col min-h-0 overflow-auto [scrollbar-gutter:stable]">
+    <div
+      ref={scrollContainerRef}
+      className="flex flex-1 flex-col min-h-0 overflow-auto [scrollbar-gutter:stable]"
+    >
       <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-3 md:pt-10 pb-0 md:pb-3">
-        <div className="mx-auto max-w-[900px]">
+        <div className="mx-auto max-w-[960px]">
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div className="min-w-0 hidden md:block">
               <h1 className="text-lg font-semibold tracking-tight text-foreground">
@@ -419,100 +753,46 @@ export function ZeroConnectorsPage() {
       </header>
 
       <main className="flex-1 px-4 sm:px-6 pt-3 pb-16">
-        <div className="mx-auto max-w-[900px] flex flex-col gap-6">
-          <div className="flex items-center justify-between">
-            <Tabs
-              value={activeTab}
-              onValueChange={(v) => {
-                return setActiveTab(v === "custom" ? "custom" : "builtin");
-              }}
-            >
-              <TabsList>
-                <TabsTrigger value="builtin">Built-in</TabsTrigger>
-                <TabsTrigger value="custom">Custom</TabsTrigger>
-              </TabsList>
-            </Tabs>
-            {activeTab === "custom" && isAdmin && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="zero-btn-morandi h-9 gap-2 shrink-0 rounded-lg border"
-                onClick={openCreateCustom}
-              >
-                <IconPlus size={14} stroke={2} />
-                New connector
-              </Button>
+        <div className="relative mx-auto w-full max-w-[960px]">
+          {activeTab === "builtin" &&
+            allTypesLoadable.state === "hasData" &&
+            showConnectorCategories && (
+              <ConnectorCategoryMenu
+                activeCategoryId={activeCategoryId}
+                groups={grouped}
+              />
             )}
+
+          <div className="min-w-0 flex flex-col gap-6">
+            <div className="flex items-center justify-between">
+              <Tabs
+                value={activeTab}
+                onValueChange={(v) => {
+                  return setActiveTab(v === "custom" ? "custom" : "builtin");
+                }}
+              >
+                <TabsList>
+                  <TabsTrigger value="builtin">Built-in</TabsTrigger>
+                  <TabsTrigger value="custom">Custom</TabsTrigger>
+                </TabsList>
+              </Tabs>
+              {activeTab === "custom" && isAdmin && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="zero-btn-morandi h-9 gap-2 shrink-0 rounded-lg border"
+                  onClick={openCreateCustom}
+                >
+                  <IconPlus size={14} stroke={2} />
+                  New connector
+                </Button>
+              )}
+            </div>
+
+            {activeTab === "builtin" && builtinList}
+
+            {activeTab === "custom" && <CustomConnectorsPanel />}
           </div>
-
-          {activeTab === "builtin" && (
-            <>
-              {connected.length > 0 && (
-                <section className="flex flex-col gap-3">
-                  <h2 className="text-sm font-medium text-muted-foreground">
-                    Connected ({connected.length})
-                  </h2>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {connected.map(renderCard)}
-                  </div>
-                </section>
-              )}
-
-              {notConnected.length > 0 && (
-                <section className="flex flex-col gap-3">
-                  <h2 className="text-sm font-medium text-muted-foreground">
-                    Available ({notConnected.length})
-                  </h2>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {notConnected.map((c) => {
-                      return (
-                        <AvailableConnectorCard
-                          key={c.type}
-                          connector={c}
-                          isPolling={pollingType === c.type}
-                          onConnect={() => {
-                            return connectHandler(c.type);
-                          }}
-                        />
-                      );
-                    })}
-                  </div>
-                </section>
-              )}
-
-              {allTypesLoadable.state !== "hasData" && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {Array.from({ length: 6 }, (_, i) => {
-                    return (
-                      <div
-                        key={i}
-                        data-testid="connector-skeleton"
-                        className="zero-card flex flex-col animate-pulse"
-                      >
-                        <div className="flex h-14 items-center gap-2.5 px-5">
-                          <span className="h-5 w-5 shrink-0 rounded-lg bg-muted/50" />
-                          <span className="h-4 w-24 rounded bg-muted/50" />
-                        </div>
-                        <div className="flex h-11 items-center border-t border-border/30 px-5">
-                          <span className="h-3 w-16 rounded bg-muted/30" />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {allTypesLoadable.state === "hasData" &&
-                filtered.length === 0 &&
-                search && (
-                  <p className="py-12 text-center text-sm text-muted-foreground">
-                    No connectors matching &ldquo;{search}&rdquo;
-                  </p>
-                )}
-            </>
-          )}
-
-          {activeTab === "custom" && <CustomConnectorsPanel />}
         </div>
       </main>
 

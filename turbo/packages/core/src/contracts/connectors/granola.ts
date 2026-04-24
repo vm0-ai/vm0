@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const granola = {
   granola: {
     label: "Granola",
+    category: "meetings-scheduling",
     environmentMapping: {
       GRANOLA_TOKEN: "$secrets.GRANOLA_TOKEN",
     },

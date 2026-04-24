@@ -4,6 +4,7 @@ import type { ConnectorConfig } from "../connectors";
 export const outlookCalendar = {
   "outlook-calendar": {
     label: "Outlook Calendar",
+    category: "meetings-scheduling",
     environmentMapping: {
       OUTLOOK_CALENDAR_TOKEN: "$secrets.OUTLOOK_CALENDAR_ACCESS_TOKEN",
     },

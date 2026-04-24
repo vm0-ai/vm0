@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const zeptomail = {
   zeptomail: {
     label: "ZeptoMail",
+    category: "communication-collaboration",
     environmentMapping: {
       ZEPTOMAIL_TOKEN: "$secrets.ZEPTOMAIL_TOKEN",
     },

@@ -14,7 +14,7 @@ MSW intercepts HTTP requests at the network level, providing realistic API mocki
 
 ```
 src/mocks/
-├── browser.ts          # Browser (Service Worker) setup for development
+├── browser.ts          # Browser (Service Worker) setup for Btest/development
 ├── server.ts           # Node.js server setup for testing
 └── handlers/
     ├── index.ts        # Aggregates all handlers
@@ -24,6 +24,7 @@ src/mocks/
 ## Usage in Tests
 
 MSW is automatically configured in `src/test/setup.ts`. All tests have access to mocked APIs without additional setup.
+Vitest Browser Tests use `src/test/browser-setup.ts` and the same handlers via `src/mocks/browser.ts`.
 
 ### Using Default Handlers
 
@@ -89,7 +90,7 @@ async function enableMocking() {
   if (import.meta.env.DEV) {
     const { worker } = await import("./mocks/browser.ts");
     return worker.start({
-      onUnhandledRequest: "bypass", // Don't warn about unhandled requests
+      onUnhandledRequest: "error",
     });
   }
 }
@@ -152,7 +153,7 @@ export const handlers = [...exampleHandlers, ...productHandlers];
 2. **Test error scenarios**: Create handlers for 400, 404, 500 responses
 3. **Use TypeScript**: Define types for request/response bodies
 4. **Isolate test data**: Override handlers in tests rather than mutating shared mock data
-5. **Don't mock everything**: Use `onUnhandledRequest: "bypass"` to let real requests through
+5. **Keep API calls explicit**: Use `onUnhandledRequest: "error"` in tests so missing handlers fail fast
 
 ## API Reference
 

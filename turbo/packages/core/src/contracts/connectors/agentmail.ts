@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const agentmail = {
   agentmail: {
     label: "AgentMail",
+    category: "communication-collaboration",
     environmentMapping: {
       AGENTMAIL_TOKEN: "$secrets.AGENTMAIL_TOKEN",
     },

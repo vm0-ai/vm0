@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const klaviyo = {
   klaviyo: {
     label: "Klaviyo",
+    category: "marketing-content-growth",
     environmentMapping: {
       KLAVIYO_TOKEN: "$secrets.KLAVIYO_TOKEN",
     },

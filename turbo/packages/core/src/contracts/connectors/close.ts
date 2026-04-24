@@ -4,6 +4,7 @@ import type { ConnectorConfig } from "../connectors";
 export const close = {
   close: {
     label: "Close",
+    category: "sales-crm-business-operations",
     environmentMapping: {
       CLOSE_TOKEN: "$secrets.CLOSE_ACCESS_TOKEN",
     },

@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const browserless = {
   browserless: {
     label: "Browserless",
+    category: "data-automation-infrastructure",
     environmentMapping: {
       BROWSERLESS_TOKEN: "$secrets.BROWSERLESS_TOKEN",
     },

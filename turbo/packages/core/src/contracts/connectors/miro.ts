@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const miro = {
   miro: {
     label: "Miro",
+    category: "docs-files-knowledge",
     environmentMapping: {
       MIRO_TOKEN: "$secrets.MIRO_TOKEN",
     },

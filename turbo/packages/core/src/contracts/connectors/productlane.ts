@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const productlane = {
   productlane: {
     label: "Productlane",
+    category: "sales-crm-business-operations",
     environmentMapping: {
       PRODUCTLANE_TOKEN: "$secrets.PRODUCTLANE_TOKEN",
     },

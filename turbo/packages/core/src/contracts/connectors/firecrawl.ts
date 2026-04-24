@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const firecrawl = {
   firecrawl: {
     label: "Firecrawl",
+    category: "data-automation-infrastructure",
     environmentMapping: {
       FIRECRAWL_TOKEN: "$secrets.FIRECRAWL_TOKEN",
     },

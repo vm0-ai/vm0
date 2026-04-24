@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const luma = {
   luma: {
     label: "Luma AI",
+    category: "ai-image-video",
     environmentMapping: {
       LUMA_TOKEN: "$secrets.LUMA_TOKEN",
     },

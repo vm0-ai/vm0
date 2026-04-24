@@ -544,6 +544,29 @@ jobs:
           files: turbo/junit.xml
           report_type: test_results
 
+  test-app-browser:
+    needs: [detect-release]
+    # Skip for release-please PRs, commits, and merge queue entries
+    if: needs.detect-release.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
+    env:
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/toolchain-init
+      - name: Install shared browser
+        run: bash .github/scripts/install-playwright-chromium.sh
+      - name: Verify shared browser
+        run: |
+          test -n "${AGENT_BROWSER_EXECUTABLE_PATH:-}"
+          test -x "$AGENT_BROWSER_EXECUTABLE_PATH"
+          "$AGENT_BROWSER_EXECUTABLE_PATH" --version
+      - name: Test App Browser
+        working-directory: turbo
+        run: pnpm --filter @vm0/app btest
+
   test-other:
     needs: [detect-release]
     # Skip for release-please PRs, commits, and merge queue entries
@@ -1293,6 +1316,7 @@ jobs:
         test-web,
         test-cli,
         test-app,
+        test-app-browser,
         test-other,
       ]
     if: |
@@ -2170,6 +2194,7 @@ jobs:
       - test-migrate
       - test-cli
       - test-app
+      - test-app-browser
       - test-other
       - deploy-web
       - deploy-app
@@ -2232,6 +2257,7 @@ jobs:
           check_result "test-web" "${{ needs.test-web.result }}" ""
           check_result "test-cli" "${{ needs.test-cli.result }}" ""
           check_result "test-app" "${{ needs.test-app.result }}" ""
+          check_result "test-app-browser" "${{ needs.test-app-browser.result }}" ""
           check_result "test-other" "${{ needs.test-other.result }}" ""
 
           # May-skip: 'success' or 'skipped' are both acceptable

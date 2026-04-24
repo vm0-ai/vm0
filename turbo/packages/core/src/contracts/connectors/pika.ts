@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const pika = {
   pika: {
     label: "Pika",
+    category: "ai-image-video",
     environmentMapping: {
       PIKA_TOKEN: "$secrets.PIKA_TOKEN",
     },

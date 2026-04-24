@@ -16,18 +16,6 @@ import {
 import { countSlackOrgConnections } from "../../../../../../src/__tests__/db-test-assertions/slack";
 import { reloadEnv } from "../../../../../../src/env";
 
-vi.mock("@vm0/core/feature-switch", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("@vm0/core/feature-switch")>();
-  return {
-    ...actual,
-    isFeatureEnabled: vi.fn().mockReturnValue(true),
-  };
-});
-
-const { isFeatureEnabled } = await import("@vm0/core/feature-switch");
-const mockIsFeatureEnabled = isFeatureEnabled as ReturnType<typeof vi.fn>;
-
 const { POST } = await import("../route");
 
 const SIGNING_SECRET = "test-slack-signing-secret";
@@ -85,7 +73,6 @@ describe("POST /api/zero/slack/commands", () => {
     context.setupMocks();
     user = await context.setupUser();
     reloadEnv();
-    mockIsFeatureEnabled.mockReturnValue(true);
   });
 
   describe("signature verification", () => {
@@ -386,7 +373,7 @@ describe("POST /api/zero/slack/commands", () => {
       expect(mockClient.views.open).not.toHaveBeenCalled();
     });
 
-    it("help output advertises the switch subcommand when feature is enabled", async () => {
+    it("help output advertises the switch subcommand for org-bound workspaces", async () => {
       const workspaceId = uniqueId("T-ws");
       await createTestSlackOrgInstallation({ workspaceId, orgId: user.orgId });
 
@@ -398,11 +385,9 @@ describe("POST /api/zero/slack/commands", () => {
       expect(JSON.stringify(data.blocks)).toContain("/zero switch");
     });
 
-    it("help output omits switch when feature is gated off for the org", async () => {
-      mockIsFeatureEnabled.mockReturnValue(false);
-
+    it("help output omits switch when the workspace is not bound to an org", async () => {
       const workspaceId = uniqueId("T-ws");
-      await createTestSlackOrgInstallation({ workspaceId, orgId: user.orgId });
+      await createTestSlackOrgInstallation({ workspaceId, orgId: null });
 
       const body = buildCommandBody({ team_id: workspaceId, text: "help" });
       const request = createCommandRequest(body);
@@ -411,39 +396,6 @@ describe("POST /api/zero/slack/commands", () => {
       const data = await response.json();
       expect(JSON.stringify(data.blocks)).not.toContain("/zero switch");
       expect(JSON.stringify(data.blocks)).toContain("/zero connect");
-    });
-
-    it("returns help (without switch) and does NOT open the picker when feature is gated off", async () => {
-      mockIsFeatureEnabled.mockReturnValue(false);
-
-      const workspaceId = uniqueId("T-ws");
-      const slackUserId = uniqueId("U-slack");
-      await createTestSlackOrgInstallation({ workspaceId, orgId: user.orgId });
-      await seedTestSlackOrgConnection({
-        slackUserId,
-        slackWorkspaceId: workspaceId,
-        vm0UserId: user.userId,
-      });
-      const defaultCompose = await createTestCompose(uniqueId("default"));
-      await updateOrgDefaultAgent(user.orgId, defaultCompose.agentId);
-      await createTestCompose(uniqueId("alt"));
-
-      const body = buildCommandBody({
-        team_id: workspaceId,
-        user_id: slackUserId,
-        text: "switch",
-      });
-      const request = createCommandRequest(body);
-      const response = await POST(request);
-
-      expect(response.status).toBe(200);
-      const data = await response.json();
-      expect(data.response_type).toBe("ephemeral");
-      expect(JSON.stringify(data.blocks)).not.toContain("/zero switch");
-
-      const { WebClient } = await import("@slack/web-api");
-      const mockClient = new WebClient();
-      expect(mockClient.views.open).not.toHaveBeenCalled();
     });
   });
 });

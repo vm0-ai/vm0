@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const chatwoot = {
   chatwoot: {
     label: "Chatwoot",
+    category: "communication-collaboration",
     environmentMapping: {
       CHATWOOT_TOKEN: "$secrets.CHATWOOT_TOKEN",
     },

@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const wrike = {
   wrike: {
     label: "Wrike",
+    category: "engineering-team-execution",
     environmentMapping: {
       WRIKE_TOKEN: "$secrets.WRIKE_TOKEN",
     },

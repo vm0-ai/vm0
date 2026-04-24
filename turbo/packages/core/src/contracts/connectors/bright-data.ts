@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const brightData = {
   "bright-data": {
     label: "Bright Data",
+    category: "data-automation-infrastructure",
     environmentMapping: {
       BRIGHTDATA_TOKEN: "$secrets.BRIGHTDATA_TOKEN",
     },

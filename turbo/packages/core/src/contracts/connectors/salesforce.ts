@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const salesforce = {
   salesforce: {
     label: "Salesforce",
+    category: "sales-crm-business-operations",
     environmentMapping: {
       SALESFORCE_TOKEN: "$secrets.SALESFORCE_TOKEN",
       SALESFORCE_INSTANCE: "$vars.SALESFORCE_INSTANCE",

@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const streak = {
   streak: {
     label: "Streak",
+    category: "sales-crm-business-operations",
     environmentMapping: {
       STREAK_TOKEN: "$secrets.STREAK_TOKEN",
     },

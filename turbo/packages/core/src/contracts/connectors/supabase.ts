@@ -4,6 +4,7 @@ import type { ConnectorConfig } from "../connectors";
 export const supabase = {
   supabase: {
     label: "Supabase",
+    category: "data-automation-infrastructure",
     environmentMapping: {
       SUPABASE_TOKEN: "$secrets.SUPABASE_ACCESS_TOKEN",
     },

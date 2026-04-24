@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const e2b = {
   e2b: {
     label: "E2B",
+    category: "data-automation-infrastructure",
     environmentMapping: {
       E2B_TOKEN: "$secrets.E2B_TOKEN",
     },

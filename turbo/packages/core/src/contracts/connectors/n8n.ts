@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const n8n = {
   n8n: {
     label: "n8n",
+    category: "data-automation-infrastructure",
     helpText:
       "Connect your n8n instance to manage workflows, trigger executions, and automate processes",
     environmentMapping: {

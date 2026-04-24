@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const greenhouse = {
   greenhouse: {
     label: "Greenhouse",
+    category: "sales-crm-business-operations",
     environmentMapping: {
       GREENHOUSE_TOKEN: "$secrets.GREENHOUSE_TOKEN",
     },

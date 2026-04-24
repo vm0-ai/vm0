@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const similarweb = {
   similarweb: {
     label: "SimilarWeb",
+    category: "marketing-content-growth",
     environmentMapping: {
       SIMILARWEB_TOKEN: "$secrets.SIMILARWEB_TOKEN",
     },

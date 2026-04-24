@@ -4,6 +4,7 @@ import type { ConnectorConfig } from "../connectors";
 export const reddit = {
   reddit: {
     label: "Reddit",
+    category: "data-automation-infrastructure",
     environmentMapping: {
       REDDIT_TOKEN: "$secrets.REDDIT_ACCESS_TOKEN",
     },

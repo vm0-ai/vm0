@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const fal = {
   fal: {
     label: "fal.ai",
+    category: "ai-image-video",
     environmentMapping: {
       FAL_TOKEN: "$secrets.FAL_TOKEN",
     },

@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const vercel = {
   vercel: {
     label: "Vercel",
+    category: "engineering-team-execution",
     environmentMapping: {
       VERCEL_TOKEN: "$secrets.VERCEL_ACCESS_TOKEN",
     },

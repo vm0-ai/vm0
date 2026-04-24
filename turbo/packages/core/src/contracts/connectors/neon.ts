@@ -4,6 +4,7 @@ import type { ConnectorConfig } from "../connectors";
 export const neon = {
   neon: {
     label: "Neon",
+    category: "data-automation-infrastructure",
     environmentMapping: {
       NEON_TOKEN: "$secrets.NEON_ACCESS_TOKEN",
     },

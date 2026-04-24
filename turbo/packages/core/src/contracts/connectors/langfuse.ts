@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const langfuse = {
   langfuse: {
     label: "Langfuse",
+    category: "ai-memory-tracing-eval",
     tags: ["observability", "tracing", "llm", "analytics"],
     environmentMapping: {
       LANGFUSE_PUBLIC_KEY: "$secrets.LANGFUSE_PUBLIC_KEY",

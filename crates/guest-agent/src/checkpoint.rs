@@ -36,6 +36,136 @@ fn build_artifact_snapshot_entry(name: &str, version: &str, mount_path: &str) ->
     })
 }
 
+/// Prepare + upload the session history to S3 via a presigned URL. If the
+/// prepare endpoint reports `existing=true`, skip the upload (content-addressed
+/// dedup). Telemetry is recorded under `session_history_prepare` and
+/// `session_history_s3_upload` to match the pre-parallelization op names.
+async fn upload_session_history(
+    history_hash: &str,
+    history_size: u64,
+    history_bytes: Vec<u8>,
+) -> Result<(), AgentError> {
+    let prep_start = std::time::Instant::now();
+    let prep_resp = match http::post_json(
+        urls::checkpoint_prepare_history_url(),
+        &json!({
+            "runId": env::run_id(),
+            "hash": history_hash,
+            "size": history_size,
+        }),
+        constants::HTTP_MAX_RETRIES,
+    )
+    .await
+    {
+        Ok(Some(v)) => {
+            record_sandbox_op("session_history_prepare", prep_start.elapsed(), true, None);
+            v
+        }
+        Ok(None) => {
+            record_sandbox_op("session_history_prepare", prep_start.elapsed(), false, None);
+            return Err(AgentError::Checkpoint(
+                "Empty prepare-history response".into(),
+            ));
+        }
+        Err(e) => {
+            record_sandbox_op("session_history_prepare", prep_start.elapsed(), false, None);
+            return Err(e);
+        }
+    };
+
+    let existing = prep_resp
+        .get("existing")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    if existing {
+        log_info!(
+            LOG_TAG,
+            "Session history already exists in S3 (deduplicated)"
+        );
+        return Ok(());
+    }
+
+    let presigned_url = prep_resp
+        .get("presignedUrl")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| {
+            AgentError::Checkpoint("No presignedUrl in prepare-history response".into())
+        })?;
+
+    log_info!(LOG_TAG, "Uploading session history to S3...");
+    let upload_start = std::time::Instant::now();
+    if let Err(e) = http::put_presigned(
+        presigned_url,
+        Bytes::from(history_bytes),
+        "application/octet-stream",
+    )
+    .await
+    {
+        record_sandbox_op(
+            "session_history_s3_upload",
+            upload_start.elapsed(),
+            false,
+            None,
+        );
+        return Err(e);
+    }
+    record_sandbox_op(
+        "session_history_s3_upload",
+        upload_start.elapsed(),
+        true,
+        None,
+    );
+    log_info!(LOG_TAG, "Session history uploaded to S3");
+    Ok(())
+}
+
+/// Snapshot all configured artifacts. Memory rides in env::artifacts()
+/// post-#10602, so there is no longer a separate memory arm. Payload shape is
+/// `Array<{name, version, mountPath}>` per #10911 — the receiver tolerates the
+/// legacy `Record<name, version>` form too (#10919).
+async fn snapshot_artifacts() -> Result<Option<serde_json::Value>, AgentError> {
+    let entries = env::artifacts();
+    if entries.is_empty() {
+        log_info!(
+            LOG_TAG,
+            "No artifact configured, creating checkpoint without artifact snapshot"
+        );
+        return Ok(None);
+    }
+    let mut results = Vec::with_capacity(entries.len());
+    for entry in entries {
+        log_info!(
+            LOG_TAG,
+            "Creating VAS snapshot for artifact '{}' at {}",
+            entry.name,
+            entry.mount_path
+        );
+        let files = artifact::walk_files(&entry.mount_path).await?;
+        let snapshot = artifact::create_snapshot(
+            &entry.mount_path,
+            files,
+            &entry.name,
+            "artifact",
+            env::run_id(),
+            &format!("Checkpoint from run {}", env::run_id()),
+            &entry.version_id,
+        )
+        .await?;
+        log_info!(
+            LOG_TAG,
+            "VAS artifact snapshot created: {}@{}",
+            entry.name,
+            snapshot.version_id
+        );
+        results.push(build_artifact_snapshot_entry(
+            &entry.name,
+            &snapshot.version_id,
+            &entry.mount_path,
+        ));
+    }
+    Ok(Some(serde_json::Value::Array(results)))
+}
+
 /// Create a checkpoint after a successful run.
 pub async fn create_checkpoint() -> Result<(), AgentError> {
     let start = std::time::Instant::now();
@@ -135,133 +265,23 @@ async fn create_checkpoint_impl() -> Result<(), AgentError> {
     );
 
     // Compute SHA-256 hash of session history for presigned URL upload
-    let history_bytes = session_history.as_bytes();
-    let history_hash = hex::encode(Sha256::digest(history_bytes));
-    let history_size = history_bytes.len() as u64;
+    let history_hash = hex::encode(Sha256::digest(session_history.as_bytes()));
+    let history_size = session_history.len() as u64;
     log_info!(
         LOG_TAG,
         "Session history hash={}, size={history_size}",
         &history_hash[..8]
     );
 
-    // Upload session history via presigned URL (bypasses Vercel 4.5MB body limit)
-    let prep_start = std::time::Instant::now();
-    let prep_result = http::post_json(
-        urls::checkpoint_prepare_history_url(),
-        &json!({
-            "runId": env::run_id(),
-            "hash": history_hash,
-            "size": history_size,
-        }),
-        constants::HTTP_MAX_RETRIES,
-    )
-    .await;
-    let prep_resp = match prep_result {
-        Ok(Some(v)) => v,
-        Ok(None) => {
-            record_sandbox_op("session_history_prepare", prep_start.elapsed(), false, None);
-            return Err(AgentError::Checkpoint(
-                "Empty prepare-history response".into(),
-            ));
-        }
-        Err(e) => {
-            record_sandbox_op("session_history_prepare", prep_start.elapsed(), false, None);
-            return Err(e);
-        }
-    };
-    record_sandbox_op("session_history_prepare", prep_start.elapsed(), true, None);
-
-    let existing = prep_resp
-        .get("existing")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-
-    if existing {
-        log_info!(
-            LOG_TAG,
-            "Session history already exists in S3 (deduplicated)"
-        );
-    } else {
-        let presigned_url = prep_resp
-            .get("presignedUrl")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| {
-                AgentError::Checkpoint("No presignedUrl in prepare-history response".into())
-            })?;
-
-        log_info!(LOG_TAG, "Uploading session history to S3...");
-        let upload_start = std::time::Instant::now();
-        if let Err(e) = http::put_presigned(
-            presigned_url,
-            Bytes::from(session_history.into_bytes()),
-            "application/octet-stream",
-        )
-        .await
-        {
-            record_sandbox_op(
-                "session_history_s3_upload",
-                upload_start.elapsed(),
-                false,
-                None,
-            );
-            return Err(e);
-        }
-        record_sandbox_op(
-            "session_history_s3_upload",
-            upload_start.elapsed(),
-            true,
-            None,
-        );
-        log_info!(LOG_TAG, "Session history uploaded to S3");
-    }
-
-    // Snapshot all configured artifacts. Memory rides in env::artifacts()
-    // post-#10602, so there is no longer a separate memory arm.
-    // Payload shape is `Array<{name, version, mountPath}>` per #10911 — the
-    // receiver tolerates the legacy `Record<name, version>` form too (#10919).
-    let artifact_snapshots: Option<serde_json::Value> = {
-        let entries = env::artifacts();
-        if entries.is_empty() {
-            log_info!(
-                LOG_TAG,
-                "No artifact configured, creating checkpoint without artifact snapshot"
-            );
-            None
-        } else {
-            let mut results = Vec::with_capacity(entries.len());
-            for entry in entries {
-                log_info!(
-                    LOG_TAG,
-                    "Creating VAS snapshot for artifact '{}' at {}",
-                    entry.name,
-                    entry.mount_path
-                );
-                let files = artifact::walk_files(&entry.mount_path).await?;
-                let snapshot = artifact::create_snapshot(
-                    &entry.mount_path,
-                    files,
-                    &entry.name,
-                    "artifact",
-                    env::run_id(),
-                    &format!("Checkpoint from run {}", env::run_id()),
-                    &entry.version_id,
-                )
-                .await?;
-                log_info!(
-                    LOG_TAG,
-                    "VAS artifact snapshot created: {}@{}",
-                    entry.name,
-                    snapshot.version_id
-                );
-                results.push(build_artifact_snapshot_entry(
-                    &entry.name,
-                    &snapshot.version_id,
-                    &entry.mount_path,
-                ));
-            }
-            Some(serde_json::Value::Array(results))
-        }
-    };
+    // History upload and artifact snapshots are independent pre-requisites
+    // of the final checkpoint API call, so run them concurrently. The history
+    // path is web-API bound (prepare + S3 PUT); the artifact path is VAS-bound
+    // (prepare + HEAD update). Serial, wall time was dominated by whichever
+    // was longer plus the other; concurrent, it's just the longer one.
+    let (_, artifact_snapshots) = tokio::try_join!(
+        upload_session_history(&history_hash, history_size, session_history.into_bytes()),
+        snapshot_artifacts(),
+    )?;
 
     // Build and send checkpoint payload (session history hash only, content uploaded to S3)
     let mut payload = json!({

@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const together = {
   together: {
     label: "Together AI",
+    category: "ai-general-models",
     environmentMapping: {
       TOGETHER_TOKEN: "$secrets.TOGETHER_TOKEN",
     },

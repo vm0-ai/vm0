@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const minio = {
   minio: {
     label: "MinIO",
+    category: "docs-files-knowledge",
     environmentMapping: {
       MINIO_TOKEN: "$secrets.MINIO_TOKEN",
       MINIO_SECRET_TOKEN: "$secrets.MINIO_SECRET_TOKEN",

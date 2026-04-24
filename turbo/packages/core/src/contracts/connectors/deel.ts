@@ -4,6 +4,7 @@ import type { ConnectorConfig } from "../connectors";
 export const deel = {
   deel: {
     label: "Deel",
+    category: "sales-crm-business-operations",
     environmentMapping: {
       DEEL_TOKEN: "$secrets.DEEL_ACCESS_TOKEN",
     },

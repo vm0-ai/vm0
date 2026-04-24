@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const calCom = {
   "cal-com": {
     label: "Cal.com",
+    category: "meetings-scheduling",
     environmentMapping: {
       CALCOM_TOKEN: "$secrets.CALCOM_TOKEN",
     },

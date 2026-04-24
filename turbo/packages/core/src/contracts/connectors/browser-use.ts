@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const browserUse = {
   "browser-use": {
     label: "Browser Use",
+    category: "data-automation-infrastructure",
     environmentMapping: {
       BROWSER_USE_TOKEN: "$secrets.BROWSER_USE_TOKEN",
     },

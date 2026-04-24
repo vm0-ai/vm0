@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const jotform = {
   jotform: {
     label: "Jotform",
+    category: "data-automation-infrastructure",
     environmentMapping: {
       JOTFORM_TOKEN: "$secrets.JOTFORM_TOKEN",
     },

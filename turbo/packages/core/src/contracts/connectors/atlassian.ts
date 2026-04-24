@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const atlassian = {
   atlassian: {
     label: "Atlassian (Jira/Confluence)",
+    category: "engineering-team-execution",
     environmentMapping: {
       ATLASSIAN_TOKEN: "$secrets.ATLASSIAN_TOKEN",
       ATLASSIAN_EMAIL: "$vars.ATLASSIAN_EMAIL",

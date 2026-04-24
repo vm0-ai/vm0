@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const scrapeninja = {
   scrapeninja: {
     label: "ScrapeNinja",
+    category: "data-automation-infrastructure",
     environmentMapping: {
       SCRAPENINJA_TOKEN: "$secrets.SCRAPENINJA_TOKEN",
     },

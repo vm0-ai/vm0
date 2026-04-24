@@ -4,6 +4,7 @@ import type { ConnectorConfig } from "../connectors";
 export const zoom = {
   zoom: {
     label: "Zoom",
+    category: "meetings-scheduling",
     environmentMapping: {
       ZOOM_TOKEN: "$secrets.ZOOM_ACCESS_TOKEN",
     },

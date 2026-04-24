@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const pipedrive = {
   pipedrive: {
     label: "Pipedrive",
+    category: "sales-crm-business-operations",
     environmentMapping: {
       PIPEDRIVE_TOKEN: "$secrets.PIPEDRIVE_TOKEN",
     },

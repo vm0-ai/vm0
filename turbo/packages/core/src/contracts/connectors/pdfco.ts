@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const pdfco = {
   pdfco: {
     label: "PDF.co",
+    category: "data-automation-infrastructure",
     environmentMapping: {
       PDFCO_TOKEN: "$secrets.PDFCO_TOKEN",
     },

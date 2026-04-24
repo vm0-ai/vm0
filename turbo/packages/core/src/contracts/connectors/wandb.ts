@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const wandb = {
   wandb: {
     label: "Weights & Biases",
+    category: "ai-memory-tracing-eval",
     helpText:
       "Connect to Weights & Biases for ML experiment tracking and LLM observability.",
     environmentMapping: { WANDB_TOKEN: "$secrets.WANDB_TOKEN" },

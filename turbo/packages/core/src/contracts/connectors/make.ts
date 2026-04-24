@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const make = {
   make: {
     label: "Make",
+    category: "data-automation-infrastructure",
     environmentMapping: {
       MAKE_TOKEN: "$secrets.MAKE_TOKEN",
     },

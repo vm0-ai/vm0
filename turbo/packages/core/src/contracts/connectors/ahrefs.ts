@@ -4,6 +4,7 @@ import type { ConnectorConfig } from "../connectors";
 export const ahrefs = {
   ahrefs: {
     label: "Ahrefs",
+    category: "marketing-content-growth",
     environmentMapping: {
       AHREFS_TOKEN: "$secrets.AHREFS_ACCESS_TOKEN",
     },

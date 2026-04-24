@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const explorium = {
   explorium: {
     label: "Explorium",
+    category: "sales-crm-business-operations",
     environmentMapping: {
       EXPLORIUM_TOKEN: "$secrets.EXPLORIUM_TOKEN",
     },

@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const pinecone = {
   pinecone: {
     label: "Pinecone",
+    category: "data-automation-infrastructure",
     environmentMapping: {
       PINECONE_TOKEN: "$secrets.PINECONE_TOKEN",
     },

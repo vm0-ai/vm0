@@ -457,7 +457,7 @@ def response(flow: http.HTTPFlow) -> None:
     firewall_action = flow.metadata.get("firewall_action", "ALLOW")
 
     # Calculate sizes
-    request_size = len(flow.request.content) if flow.request.content else 0
+    request_size = len(flow.request.raw_content or b"")
     # Use buffered body length when complete; fall back to Content-Length header.
     stream_buf = flow.metadata.get("stream_buffer")
     stream_state = flow.metadata.get("stream_buffer_state")
@@ -580,7 +580,7 @@ def error(flow: http.HTTPFlow) -> None:
         host = flow.request.pretty_host
         port = flow.request.port
 
-    request_size = len(flow.request.content) if flow.request.content else 0
+    request_size = len(flow.request.raw_content or b"")
     error_msg = flow.error.msg if flow.error else "unknown error"
 
     # [NETWORK_LOG_FIELDS] — keep in sync with response() and runs.ts schema

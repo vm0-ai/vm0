@@ -3,6 +3,7 @@ import type { ConnectorConfig } from "../connectors";
 export const instantly = {
   instantly: {
     label: "Instantly",
+    category: "communication-collaboration",
     environmentMapping: {
       INSTANTLY_API_KEY: "$secrets.INSTANTLY_API_KEY",
     },
