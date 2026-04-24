@@ -1053,7 +1053,7 @@ export function ZeroChatComposer({
                   onToggle={handleToggle}
                 />
               </div>
-              <div className="flex items-center gap-0 sm:gap-2">
+              <div className="flex items-center gap-1 sm:gap-2">
                 {actionsLoading ? (
                   <Skeleton
                     className={cn(
