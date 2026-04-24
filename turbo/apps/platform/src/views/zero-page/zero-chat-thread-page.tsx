@@ -696,6 +696,10 @@ function parseBodyRenderBlocks(content: string): {
   const lines = content.split("\n");
   const keptLines: string[] = [];
   const markdownBuffer: string[] = [];
+  let openFence: {
+    marker: "`" | "~";
+    length: number;
+  } | null = null;
 
   const flushMarkdownBuffer = () => {
     const joined = markdownBuffer.join("\n").trim();
@@ -707,6 +711,30 @@ function parseBodyRenderBlocks(content: string): {
 
   for (const line of lines) {
     const trimmedLine = line.trim();
+    const fenceMatch = trimmedLine.match(/^(`{3,}|~{3,})/);
+    if (fenceMatch) {
+      const fence = fenceMatch[1];
+      const marker = fence.startsWith("`") ? "`" : "~";
+      if (
+        openFence &&
+        openFence.marker === marker &&
+        fence.length >= openFence.length
+      ) {
+        openFence = null;
+      } else if (!openFence) {
+        openFence = { marker, length: fence.length };
+      }
+      markdownBuffer.push(line);
+      keptLines.push(line);
+      continue;
+    }
+
+    if (openFence) {
+      markdownBuffer.push(line);
+      keptLines.push(line);
+      continue;
+    }
+
     const wrappers: [string, string][] = [
       ["**", "**"],
       ["__", "__"],
@@ -767,9 +795,11 @@ function parseBodyRenderBlocks(content: string): {
 function BodyContentBlocks({
   blocks,
   openLightbox,
+  hardBreaks,
 }: {
   blocks: BodyRenderBlock[];
   openLightbox: (url: string) => void;
+  hardBreaks: boolean;
 }) {
   return (
     <div className="flex flex-col gap-3">
@@ -778,7 +808,11 @@ function BodyContentBlocks({
           return (
             <Markdown
               key={`markdown-${block.content}`}
-              source={block.content.replace(/\n/g, "  \n")}
+              source={
+                hardBreaks
+                  ? block.content.replace(/\n/g, "  \n")
+                  : block.content
+              }
               mediaPreview
               onImageClick={openLightbox}
             />
@@ -1095,6 +1129,7 @@ function PagedUserMessage({
                 <BodyContentBlocks
                   blocks={bodyBlocks}
                   openLightbox={openLightbox}
+                  hardBreaks
                 />
               </div>
             )}
@@ -1180,7 +1215,11 @@ function PagedAssistantMessageItem({ message }: { message: PagedChatMessage }) {
     return (
       <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-sm leading-relaxed min-w-0 [overflow-wrap:anywhere]">
         {blocks.length > 0 ? (
-          <BodyContentBlocks blocks={blocks} openLightbox={openLightbox} />
+          <BodyContentBlocks
+            blocks={blocks}
+            openLightbox={openLightbox}
+            hardBreaks={false}
+          />
         ) : null}
       </div>
     );

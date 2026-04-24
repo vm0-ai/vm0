@@ -65,11 +65,21 @@ export function applyCorsHeaders(
 ): NextResponse {
   const allowedOrigin = getAllowedOrigin(request.headers.get("origin"));
   if (allowedOrigin) {
-    response.headers.set("Access-Control-Allow-Origin", allowedOrigin);
-    response.headers.set("Access-Control-Allow-Credentials", "true");
-    response.headers.set("Vary", "Origin");
+    setAllowedOriginHeaders(response, allowedOrigin);
   }
   return response;
+}
+
+function setAllowedOriginHeaders(
+  response: NextResponse,
+  allowedOrigin: string,
+): void {
+  // allowedOrigin comes only from getAllowedOrigin's exact allowlist or
+  // environment-scoped subdomain gates; CORS cannot use "*" with credentials.
+  // nosemgrep: javascript.express.security.cors-misconfiguration.cors-misconfiguration
+  response.headers.set("Access-Control-Allow-Origin", allowedOrigin);
+  response.headers.set("Access-Control-Allow-Credentials", "true");
+  response.headers.set("Vary", "Origin");
 }
 
 export function handleCors(request: NextRequest) {
@@ -80,19 +90,18 @@ export function handleCors(request: NextRequest) {
     // Handle preflight requests — return a fresh response without
     // x-middleware-next so Next.js does NOT forward to the route handler.
     if (request.method === "OPTIONS") {
-      return new NextResponse(null, {
+      const response = new NextResponse(null, {
         status: 200,
         headers: {
-          "Access-Control-Allow-Origin": allowedOrigin,
-          "Access-Control-Allow-Credentials": "true",
           "Access-Control-Allow-Methods":
             "GET, POST, PUT, DELETE, PATCH, OPTIONS",
           "Access-Control-Allow-Headers":
             "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization",
           "Access-Control-Max-Age": "86400",
-          Vary: "Origin",
         },
       });
+      setAllowedOriginHeaders(response, allowedOrigin);
+      return response;
     }
 
     return applyCorsHeaders(request, NextResponse.next());

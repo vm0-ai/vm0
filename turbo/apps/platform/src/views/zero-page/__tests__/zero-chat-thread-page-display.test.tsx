@@ -404,6 +404,61 @@ describe("zero chat thread page display - body link document preview", () => {
       ).not.toBeInTheDocument();
     });
   });
+
+  it("preserves assistant soft line breaks without forcing hard breaks", async () => {
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "assistant",
+          content:
+            "Here is some text that wraps\nacross multiple lines for readability.",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: "/chats/thread-test-1" });
+
+    await waitFor(() => {
+      const assistant = document.querySelector(
+        '[data-role="assistant"] .zero-chat-bubble-assistant',
+      );
+      expect(assistant?.textContent?.replace(/\s+/g, " ")).toContain(
+        "Here is some text that wraps across multiple lines for readability.",
+      );
+      expect(assistant?.querySelector("br")).toBeNull();
+    });
+  });
+
+  it("keeps previewable markdown links inside assistant code fences as code", async () => {
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "assistant",
+          content:
+            "Here is the syntax:\n```markdown\n[PRD](https://example.com/prd.md)\n```\nDone.",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: "/chats/thread-test-1" });
+
+    await waitFor(() => {
+      const assistant = document.querySelector(
+        '[data-role="assistant"] .zero-chat-bubble-assistant',
+      );
+      expect(assistant?.textContent).toContain(
+        "[PRD](https://example.com/prd.md)",
+      );
+    });
+    expect(screen.queryByTestId("attachment-preview-markdown")).toBeNull();
+    expect(
+      screen.queryByRole("button", {
+        name: "Open markdown preview for prd.md",
+      }),
+    ).toBeNull();
+  });
 });
 
 // CHAT-D-065: Video attachments render an inline <video controls> player.

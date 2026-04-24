@@ -79,6 +79,35 @@ describe("GET /f/[userId]/[id]/[filename]", () => {
     expect(res.status).toBe(200);
     await expect(res.text()).resolves.toBe("# Raw markdown");
     expect(res.headers.get("Content-Type")).toContain("text/markdown");
+    expect(res.headers.get("Content-Disposition")).toBe(
+      'attachment; filename="notes.md"',
+    );
+    expect(res.headers.get("Content-Security-Policy")).toBe("sandbox");
+    expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff");
+  });
+
+  it("serves raw html as inert text with download headers", async () => {
+    context.mocks.s3.generatePresignedUrl.mockResolvedValue(
+      "https://signed.example.com/evil.html",
+    );
+    server.use(
+      http.get("https://signed.example.com/evil.html", () => {
+        return HttpResponse.html("<script>window.evil = true</script>");
+      }),
+    );
+
+    const res = await invoke("user_alice", "file-id", "evil.html", "?raw=1");
+
+    expect(res.status).toBe(200);
+    await expect(res.text()).resolves.toBe(
+      "<script>window.evil = true</script>",
+    );
+    expect(res.headers.get("Content-Type")).toContain("text/plain");
+    expect(res.headers.get("Content-Disposition")).toBe(
+      'attachment; filename="evil.html"',
+    );
+    expect(res.headers.get("Content-Security-Policy")).toBe("sandbox");
+    expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff");
   });
 
   it("adds cors headers for allowed origins on raw responses", async () => {

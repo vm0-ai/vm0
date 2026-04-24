@@ -30,6 +30,36 @@ import { applyCorsHeaders } from "../../../../../proxy.cors";
 
 const SIGNED_TTL_SECONDS = 300;
 
+function normalizedContentType(contentType: string | null): string {
+  return contentType?.split(";")[0]?.trim().toLowerCase() ?? "";
+}
+
+function isHtmlRawResponse(
+  filename: string,
+  contentType: string | null,
+): boolean {
+  const ext = filename.split(".").pop()?.toLowerCase();
+  return (
+    ext === "html" ||
+    ext === "htm" ||
+    normalizedContentType(contentType) === "text/html"
+  );
+}
+
+function rawResponseContentType(
+  filename: string,
+  contentType: string | null,
+): string {
+  if (isHtmlRawResponse(filename, contentType)) {
+    return "text/plain; charset=utf-8";
+  }
+  return contentType ?? "application/octet-stream";
+}
+
+function contentDispositionAttachment(filename: string): string {
+  return `attachment; filename="${filename.replace(/["\\\r\n]/g, "_")}"`;
+}
+
 export function OPTIONS(request: NextRequest) {
   return applyCorsHeaders(
     request,
@@ -69,13 +99,16 @@ export async function GET(
 
   if (wantRaw) {
     const upstream = await fetch(signed);
+    const upstreamContentType = upstream.headers.get("Content-Type");
     return applyCorsHeaders(
       request,
       new NextResponse(upstream.body, {
         status: upstream.status,
         headers: {
-          "Content-Type":
-            upstream.headers.get("Content-Type") ?? "application/octet-stream",
+          "Content-Type": rawResponseContentType(filename, upstreamContentType),
+          "Content-Disposition": contentDispositionAttachment(filename),
+          "Content-Security-Policy": "sandbox",
+          "X-Content-Type-Options": "nosniff",
           "Cache-Control": "private, max-age=60, must-revalidate",
         },
       }),
