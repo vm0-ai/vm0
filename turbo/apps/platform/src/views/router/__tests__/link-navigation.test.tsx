@@ -20,13 +20,14 @@ import {
 const context = testContext();
 const mockApi = createMockApi(context);
 
-const DEFAULT_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
-
 function mockAPIs() {
   setMockComposesList([]);
+  // Seed the team with the default agent so setupAgentChatPage$ (reached
+  // via the home redirect) does not treat the default agent as missing and
+  // trigger an unhandled detached navigation rejection after the test ends.
   setMockTeam([
     {
-      id: DEFAULT_AGENT_ID,
+      id: "c0000000-0000-4000-a000-000000000001",
       displayName: null,
       description: null,
       sound: null,

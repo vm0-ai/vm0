@@ -10,6 +10,7 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
+import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 import {
   chatThreadByIdContract,
   chatMessagesContract,
@@ -127,6 +128,19 @@ describe("talk navigation", () => {
 
   it("should navigate to /agents/:id/chat after completing onboarding", async () => {
     const MOCK_AGENT_ID = "d0000000-0000-4000-a000-000000000001";
+    // Register the onboarding-created default agent in the team so the chat
+    // page setup can find it instead of treating it as missing.
+    setMockTeam([
+      {
+        id: MOCK_AGENT_ID,
+        displayName: null,
+        description: null,
+        sound: null,
+        avatarUrl: null,
+        headVersionId: "version_1",
+        updatedAt: "2024-01-01T00:00:00Z",
+      },
+    ]);
     // Track onboarding status: starts as needing onboarding, then completes
     let onboardingComplete = false;
 
