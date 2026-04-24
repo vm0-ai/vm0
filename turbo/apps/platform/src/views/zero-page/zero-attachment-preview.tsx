@@ -33,6 +33,8 @@ interface ChatAttachmentDescriptor {
   contentType?: string;
 }
 
+const TEXT_PREVIEW_MAX_BYTES = 65_536;
+
 function fileExt(filename: string): string {
   return filename.split(".").pop()?.toLowerCase() ?? "";
 }
@@ -119,20 +121,83 @@ function normalizePlatformFileUrl(url: string): string {
   return url;
 }
 
-function toDownloadUrl(url: string): string {
+function appendSearchParam(url: string, key: string, value: string): string {
   const normalizedUrl = normalizePlatformFileUrl(url);
-  if (normalizedUrl.includes("download=1")) {
-    return normalizedUrl;
+  if (!URL.canParse(normalizedUrl, window.location.origin)) {
+    const hashIndex = normalizedUrl.indexOf("#");
+    const base =
+      hashIndex === -1 ? normalizedUrl : normalizedUrl.slice(0, hashIndex);
+    const hash = hashIndex === -1 ? "" : normalizedUrl.slice(hashIndex);
+    if (base.includes(`${key}=${value}`)) {
+      return normalizedUrl;
+    }
+    return `${base}${base.includes("?") ? "&" : "?"}${key}=${value}${hash}`;
   }
-  return `${normalizedUrl}${normalizedUrl.includes("?") ? "&" : "?"}download=1`;
+
+  const parsed = new URL(normalizedUrl, window.location.origin);
+  if (parsed.searchParams.get(key) !== value) {
+    parsed.searchParams.set(key, value);
+  }
+  return parsed.toString();
+}
+
+function toDownloadUrl(url: string): string {
+  return appendSearchParam(url, "download", "1");
 }
 
 function toRawUrl(url: string): string {
-  const normalizedUrl = normalizePlatformFileUrl(url);
-  if (normalizedUrl.includes("raw=1")) {
-    return normalizedUrl;
+  return appendSearchParam(url, "raw", "1");
+}
+
+async function readLimitedText(response: Response): Promise<string> {
+  const reader = response.body?.getReader();
+  if (!reader) {
+    return "";
   }
-  return `${normalizedUrl}${normalizedUrl.includes("?") ? "&" : "?"}raw=1`;
+
+  const chunks: Uint8Array[] = [];
+  let received = 0;
+  let reachedLimit = false;
+
+  while (received < TEXT_PREVIEW_MAX_BYTES) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+
+    const remaining = TEXT_PREVIEW_MAX_BYTES - received;
+    const chunk =
+      value.byteLength > remaining ? value.slice(0, remaining) : value;
+    chunks.push(chunk);
+    received += chunk.byteLength;
+    if (received >= TEXT_PREVIEW_MAX_BYTES) {
+      reachedLimit = true;
+      break;
+    }
+  }
+
+  if (reachedLimit) {
+    await reader.cancel();
+  }
+
+  const bytes = new Uint8Array(received);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(bytes);
+}
+
+function fetchPreviewText(url: string): Promise<string> {
+  return fetch(toRawUrl(url), {
+    headers: { Range: `bytes=0-${String(TEXT_PREVIEW_MAX_BYTES - 1)}` },
+  }).then(async (response) => {
+    if (!response.ok) {
+      throw new Error(`HTTP ${String(response.status)}`);
+    }
+    return await readLimitedText(response);
+  });
 }
 
 function formatPreviewText(kind: "text" | "json", text: string): string {
@@ -182,13 +247,7 @@ class TextPreview extends Component<TextPreviewProps, TextPreviewState> {
   #loadText() {
     this.setState({ status: "loading", text: "" });
 
-    fetch(toRawUrl(this.props.url))
-      .then(async (response) => {
-        if (!response.ok) {
-          throw new Error(`HTTP ${String(response.status)}`);
-        }
-        return await response.text();
-      })
+    fetchPreviewText(this.props.url)
       .then((text) => {
         if (this.#active) {
           this.setState({ status: "loaded", text });

@@ -68,7 +68,7 @@ export function OPTIONS(request: NextRequest) {
       headers: {
         "Access-Control-Allow-Methods": "GET, OPTIONS",
         "Access-Control-Allow-Headers":
-          "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization",
+          "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization, Range",
         "Access-Control-Max-Age": "86400",
       },
     }),
@@ -98,19 +98,34 @@ export async function GET(
   );
 
   if (wantRaw) {
-    const upstream = await fetch(signed);
+    const range = request.headers.get("Range");
+    const upstream = await fetch(signed, {
+      headers: range ? { Range: range } : undefined,
+    });
     const upstreamContentType = upstream.headers.get("Content-Type");
+    const headers: Record<string, string> = {
+      "Content-Type": rawResponseContentType(filename, upstreamContentType),
+      "Content-Disposition": contentDispositionAttachment(filename),
+      "Content-Security-Policy": "sandbox",
+      "X-Content-Type-Options": "nosniff",
+      "Cache-Control": upstream.ok
+        ? "private, max-age=60, must-revalidate"
+        : "no-store",
+    };
+    const contentRange = upstream.headers.get("Content-Range");
+    if (contentRange) {
+      headers["Content-Range"] = contentRange;
+    }
+    const acceptRanges = upstream.headers.get("Accept-Ranges");
+    if (acceptRanges) {
+      headers["Accept-Ranges"] = acceptRanges;
+    }
+
     return applyCorsHeaders(
       request,
       new NextResponse(upstream.body, {
         status: upstream.status,
-        headers: {
-          "Content-Type": rawResponseContentType(filename, upstreamContentType),
-          "Content-Disposition": contentDispositionAttachment(filename),
-          "Content-Security-Policy": "sandbox",
-          "X-Content-Type-Options": "nosniff",
-          "Cache-Control": "private, max-age=60, must-revalidate",
-        },
+        headers,
       }),
     );
   }

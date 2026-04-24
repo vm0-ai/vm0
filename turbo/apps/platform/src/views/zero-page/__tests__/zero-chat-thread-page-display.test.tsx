@@ -1,4 +1,3 @@
-/* eslint-disable ccstate/no-get-by-role-name */
 import { beforeEach, describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -69,9 +68,7 @@ describe("zero chat thread page display - attachment image preview", () => {
     detachedSetupPage({ context, path: "/chats/thread-test-1" });
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("img", { name: "photo.png" }),
-      ).toBeInTheDocument();
+      expect(screen.getByAltText("photo.png")).toBeInTheDocument();
     });
   });
 });
@@ -79,9 +76,13 @@ describe("zero chat thread page display - attachment image preview", () => {
 // CHAT-D-037: Attachment document previews render in ChatMessageRow
 describe("zero chat thread page display - attachment document preview", () => {
   it("keeps markdown attachments as chips and opens preview on click", async () => {
-    const docUrl = "https://example.com/notes.md";
+    const docUrl = "https://example.com/notes.md#intro";
+    let requestedUrl = "";
+    let requestedRange = "";
     server.use(
-      http.get(docUrl, () => {
+      http.get("https://example.com/notes.md", ({ request }) => {
+        requestedUrl = request.url;
+        requestedRange = request.headers.get("Range") ?? "";
         return HttpResponse.text("# PRD\n\nPreview body");
       }),
     );
@@ -100,22 +101,20 @@ describe("zero chat thread page display - attachment document preview", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("button", {
-          name: "Open markdown preview for notes.md",
-        }),
+        screen.getByLabelText("Open markdown preview for notes.md"),
       ).toBeInTheDocument();
     });
 
     await userEvent.click(
-      screen.getByRole("button", {
-        name: "Open markdown preview for notes.md",
-      }),
+      screen.getByLabelText("Open markdown preview for notes.md"),
     );
 
     await waitFor(() => {
       expect(screen.getByText("PRD")).toBeInTheDocument();
       expect(screen.getByText("Preview body")).toBeInTheDocument();
     });
+    expect(new URL(requestedUrl).searchParams.get("raw")).toBe("1");
+    expect(requestedRange).toBe("bytes=0-65535");
   });
 });
 
@@ -145,16 +144,12 @@ describe("zero chat thread page display - body link document preview", () => {
         screen.getByTestId("attachment-preview-markdown"),
       ).toBeInTheDocument();
       expect(
-        screen.getByRole("button", {
-          name: "Open markdown preview for notes.md",
-        }),
+        screen.getByLabelText("Open markdown preview for notes.md"),
       ).toBeInTheDocument();
     });
 
     await userEvent.click(
-      screen.getByRole("button", {
-        name: "Open markdown preview for notes.md",
-      }),
+      screen.getByLabelText("Open markdown preview for notes.md"),
     );
 
     await waitFor(() => {
@@ -185,16 +180,12 @@ describe("zero chat thread page display - body link document preview", () => {
     await waitFor(() => {
       expect(screen.getByTestId("attachment-preview-html")).toBeInTheDocument();
       expect(
-        screen.getByRole("button", {
-          name: "Open html preview for report.html",
-        }),
+        screen.getByLabelText("Open html preview for report.html"),
       ).toBeInTheDocument();
     });
 
     await userEvent.click(
-      screen.getByRole("button", {
-        name: "Open html preview for report.html",
-      }),
+      screen.getByLabelText("Open html preview for report.html"),
     );
 
     await waitFor(() => {
@@ -224,16 +215,12 @@ describe("zero chat thread page display - body link document preview", () => {
     await waitFor(() => {
       expect(screen.getByTestId("attachment-preview-html")).toBeInTheDocument();
       expect(
-        screen.getByRole("button", {
-          name: "Open html preview for cute_kitten.html",
-        }),
+        screen.getByLabelText("Open html preview for cute_kitten.html"),
       ).toBeInTheDocument();
     });
 
     await userEvent.click(
-      screen.getByRole("button", {
-        name: "Open html preview for cute_kitten.html",
-      }),
+      screen.getByLabelText("Open html preview for cute_kitten.html"),
     );
 
     await waitFor(() => {
@@ -268,9 +255,7 @@ describe("zero chat thread page display - body link document preview", () => {
     });
 
     await userEvent.click(
-      screen.getByRole("button", {
-        name: "Collapse json preview for data.json",
-      }),
+      screen.getByLabelText("Collapse json preview for data.json"),
     );
 
     await waitFor(() => {
@@ -302,16 +287,12 @@ describe("zero chat thread page display - body link document preview", () => {
     await waitFor(() => {
       expect(screen.getByTestId("attachment-preview-pdf")).toBeInTheDocument();
       expect(
-        screen.getByRole("button", {
-          name: "Open pdf preview for document.pdf",
-        }),
+        screen.getByLabelText("Open pdf preview for document.pdf"),
       ).toBeInTheDocument();
     });
 
     await userEvent.click(
-      screen.getByRole("button", {
-        name: "Open pdf preview for document.pdf",
-      }),
+      screen.getByLabelText("Open pdf preview for document.pdf"),
     );
 
     await waitFor(() => {
@@ -343,34 +324,30 @@ describe("zero chat thread page display - body link document preview", () => {
     await waitFor(() => {
       expect(screen.getByTestId("attachment-preview-csv")).toBeInTheDocument();
       expect(
-        screen.getByRole("button", {
-          name: "Open csv preview for report.csv",
-        }),
+        screen.getByLabelText("Open csv preview for report.csv"),
       ).toBeInTheDocument();
     });
 
     await userEvent.click(
-      screen.getByRole("button", {
-        name: "Open csv preview for report.csv",
-      }),
+      screen.getByLabelText("Open csv preview for report.csv"),
     );
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("columnheader", { name: "name" }),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByRole("columnheader", { name: "count" }),
-      ).toBeInTheDocument();
-      expect(screen.getByRole("cell", { name: "kitten" })).toBeInTheDocument();
-      expect(screen.getByRole("cell", { name: "2" })).toBeInTheDocument();
+      expect(screen.getByText("name")).toBeInTheDocument();
+      expect(screen.getByText("count")).toBeInTheDocument();
+      expect(screen.getByText("kitten")).toBeInTheDocument();
+      expect(screen.getByText("2")).toBeInTheDocument();
     });
   });
 
   it("renders text body links inline and supports collapse", async () => {
-    const txtUrl = "https://example.com/readme.txt";
+    const txtUrl = "https://example.com/readme.txt#summary";
+    let requestedUrl = "";
+    let requestedRange = "";
     server.use(
-      http.get(txtUrl, () => {
+      http.get("https://example.com/readme.txt", ({ request }) => {
+        requestedUrl = request.url;
+        requestedRange = request.headers.get("Range") ?? "";
         return HttpResponse.text("hello from text preview");
       }),
     );
@@ -391,11 +368,15 @@ describe("zero chat thread page display - body link document preview", () => {
       expect(screen.getByTestId("attachment-preview-text")).toBeInTheDocument();
       expect(screen.getByText("hello from text preview")).toBeInTheDocument();
     });
+    expect(new URL(requestedUrl).searchParams.get("raw")).toBe("1");
+    expect(requestedRange).toBe("bytes=0-65535");
+    expect(screen.getByLabelText("Download readme.txt")).toHaveAttribute(
+      "href",
+      "https://example.com/readme.txt?download=1#summary",
+    );
 
     await userEvent.click(
-      screen.getByRole("button", {
-        name: "Collapse text preview for readme.txt",
-      }),
+      screen.getByLabelText("Collapse text preview for readme.txt"),
     );
 
     await waitFor(() => {
@@ -454,9 +435,7 @@ describe("zero chat thread page display - body link document preview", () => {
     });
     expect(screen.queryByTestId("attachment-preview-markdown")).toBeNull();
     expect(
-      screen.queryByRole("button", {
-        name: "Open markdown preview for prd.md",
-      }),
+      screen.queryByLabelText("Open markdown preview for prd.md"),
     ).toBeNull();
   });
 });
@@ -519,16 +498,12 @@ describe("zero chat thread page display - attachment html preview", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("button", {
-          name: "Open html preview for report.html",
-        }),
+        screen.getByLabelText("Open html preview for report.html"),
       ).toBeInTheDocument();
     });
 
     await userEvent.click(
-      screen.getByRole("button", {
-        name: "Open html preview for report.html",
-      }),
+      screen.getByLabelText("Open html preview for report.html"),
     );
 
     await waitFor(() => {
@@ -560,16 +535,12 @@ describe("zero chat thread page display - attachment json preview", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("button", {
-          name: "Open json preview for data.json",
-        }),
+        screen.getByLabelText("Open json preview for data.json"),
       ).toBeInTheDocument();
     });
 
     await userEvent.click(
-      screen.getByRole("button", {
-        name: "Open json preview for data.json",
-      }),
+      screen.getByLabelText("Open json preview for data.json"),
     );
 
     await waitFor(() => {
@@ -603,16 +574,12 @@ describe("zero chat thread page display - attachment pdf preview", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("button", {
-          name: "Open pdf preview for document.pdf",
-        }),
+        screen.getByLabelText("Open pdf preview for document.pdf"),
       ).toBeInTheDocument();
     });
 
     await userEvent.click(
-      screen.getByRole("button", {
-        name: "Open pdf preview for document.pdf",
-      }),
+      screen.getByLabelText("Open pdf preview for document.pdf"),
     );
 
     await waitFor(() => {

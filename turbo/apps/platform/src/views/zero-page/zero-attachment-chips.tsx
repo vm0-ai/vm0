@@ -1,4 +1,4 @@
-import { Component, type MouseEvent } from "react";
+import { Component, type MouseEvent, type ReactNode } from "react";
 import { useGet, useSet, useLoadable } from "ccstate-react";
 import { createPortal } from "react-dom";
 import {
@@ -28,6 +28,7 @@ import docJsonIcon from "./assets/doc-json.svg";
 import docHtmlIcon from "./assets/doc-html.svg";
 
 const log = logger("zero-attachment-chips");
+const TEXT_PREVIEW_MAX_BYTES = 65_536;
 
 /**
  * Return the icon path for a known file extension, or null for unknown types.
@@ -103,10 +104,72 @@ function triggerDirectDownload(url: string, filename: string): void {
 }
 
 function toRawUrl(url: string): string {
-  if (url.includes("raw=1")) {
-    return url;
+  if (!URL.canParse(url, window.location.origin)) {
+    const hashIndex = url.indexOf("#");
+    const base = hashIndex === -1 ? url : url.slice(0, hashIndex);
+    const hash = hashIndex === -1 ? "" : url.slice(hashIndex);
+    if (base.includes("raw=1")) {
+      return url;
+    }
+    return `${base}${base.includes("?") ? "&" : "?"}raw=1${hash}`;
   }
-  return `${url}${url.includes("?") ? "&" : "?"}raw=1`;
+
+  const parsed = new URL(url, window.location.origin);
+  if (parsed.searchParams.get("raw") !== "1") {
+    parsed.searchParams.set("raw", "1");
+  }
+  return parsed.toString();
+}
+
+async function readLimitedText(response: Response): Promise<string> {
+  const reader = response.body?.getReader();
+  if (!reader) {
+    return "";
+  }
+
+  const chunks: Uint8Array[] = [];
+  let received = 0;
+  let reachedLimit = false;
+
+  while (received < TEXT_PREVIEW_MAX_BYTES) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+
+    const remaining = TEXT_PREVIEW_MAX_BYTES - received;
+    const chunk =
+      value.byteLength > remaining ? value.slice(0, remaining) : value;
+    chunks.push(chunk);
+    received += chunk.byteLength;
+    if (received >= TEXT_PREVIEW_MAX_BYTES) {
+      reachedLimit = true;
+      break;
+    }
+  }
+
+  if (reachedLimit) {
+    await reader.cancel();
+  }
+
+  const bytes = new Uint8Array(received);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(bytes);
+}
+
+function fetchPreviewText(url: string): Promise<string> {
+  return fetch(toRawUrl(url), {
+    headers: { Range: `bytes=0-${String(TEXT_PREVIEW_MAX_BYTES - 1)}` },
+  }).then(async (res) => {
+    if (!res.ok) {
+      throw new Error(`HTTP ${String(res.status)}`);
+    }
+    return await readLimitedText(res);
+  });
 }
 
 type TextLoadState = {
@@ -114,11 +177,13 @@ type TextLoadState = {
   text: string;
 };
 
-class TextPreviewLoader<
-  Props extends {
+class TextPreviewLoader extends Component<
+  {
     url: string;
+    children: (state: TextLoadState) => ReactNode;
   },
-> extends Component<Props, TextLoadState> {
+  TextLoadState
+> {
   state: TextLoadState = {
     status: "loading",
     text: "",
@@ -131,7 +196,7 @@ class TextPreviewLoader<
     this.loadText();
   }
 
-  componentDidUpdate(previousProps: Readonly<Props>) {
+  componentDidUpdate(previousProps: Readonly<{ url: string }>) {
     if (previousProps.url !== this.props.url) {
       this.loadText();
     }
@@ -144,13 +209,7 @@ class TextPreviewLoader<
   loadText() {
     this.setState({ status: "loading", text: "" });
 
-    fetch(toRawUrl(this.props.url))
-      .then(async (res) => {
-        if (!res.ok) {
-          throw new Error(`HTTP ${String(res.status)}`);
-        }
-        return await res.text();
-      })
+    fetchPreviewText(this.props.url)
       .then((text) => {
         if (this.#active) {
           this.setState({ status: "loaded", text });
@@ -161,6 +220,11 @@ class TextPreviewLoader<
           this.setState({ status: "error", text: "" });
         }
       });
+  }
+
+  render() {
+    const { status, text } = this.state;
+    return this.props.children({ status, text });
   }
 }
 
@@ -391,142 +455,157 @@ export function AttachmentLightbox() {
   );
 }
 
-class MarkdownLightboxBody extends TextPreviewLoader<{ url: string }> {
-  render() {
-    if (this.state.status === "loading") {
-      return (
-        <div className="flex h-[min(78vh,900px)] items-center justify-center p-6 text-muted-foreground">
-          <IconLoader2 size={20} className="animate-spin" />
-        </div>
-      );
-    }
+function MarkdownLightboxBody({ url }: { url: string }) {
+  return (
+    <TextPreviewLoader url={url}>
+      {({ status, text }) => {
+        if (status === "loading") {
+          return (
+            <div className="flex h-[min(78vh,900px)] items-center justify-center p-6 text-muted-foreground">
+              <IconLoader2 size={20} className="animate-spin" />
+            </div>
+          );
+        }
 
-    if (this.state.status === "error") {
-      return (
-        <div className="flex h-[min(78vh,900px)] items-center justify-center p-6 text-sm text-muted-foreground">
-          Markdown preview unavailable.
-        </div>
-      );
-    }
+        if (status === "error") {
+          return (
+            <div className="flex h-[min(78vh,900px)] items-center justify-center p-6 text-sm text-muted-foreground">
+              Markdown preview unavailable.
+            </div>
+          );
+        }
 
-    return (
-      <div className="h-[min(78vh,900px)] overflow-auto p-6">
-        <Markdown source={this.state.text} />
-      </div>
-    );
-  }
+        return (
+          <div className="h-[min(78vh,900px)] overflow-auto p-6">
+            <Markdown source={text} />
+          </div>
+        );
+      }}
+    </TextPreviewLoader>
+  );
 }
 
-class PlainTextLightboxBody extends TextPreviewLoader<{
+function PlainTextLightboxBody({
+  kind,
+  url,
+}: {
   kind: "text" | "json" | "csv";
   url: string;
-}> {
-  render() {
-    const { kind } = this.props;
+}) {
+  return (
+    <TextPreviewLoader url={url}>
+      {({ status, text }) => {
+        if (status === "loading") {
+          return (
+            <div className="flex h-[min(78vh,900px)] items-center justify-center p-6 text-muted-foreground">
+              <IconLoader2 size={20} className="animate-spin" />
+            </div>
+          );
+        }
 
-    if (this.state.status === "loading") {
-      return (
-        <div className="flex h-[min(78vh,900px)] items-center justify-center p-6 text-muted-foreground">
-          <IconLoader2 size={20} className="animate-spin" />
-        </div>
-      );
-    }
+        if (status === "error") {
+          return (
+            <div className="flex h-[min(78vh,900px)] items-center justify-center p-6 text-sm text-muted-foreground">
+              {kind === "json" ? "JSON" : kind === "csv" ? "CSV" : "Text"}{" "}
+              preview unavailable.
+            </div>
+          );
+        }
 
-    if (this.state.status === "error") {
-      return (
-        <div className="flex h-[min(78vh,900px)] items-center justify-center p-6 text-sm text-muted-foreground">
-          {kind === "json" ? "JSON" : kind === "csv" ? "CSV" : "Text"} preview
-          unavailable.
-        </div>
-      );
-    }
+        const trimmed = formatPlainPreviewText(kind, text);
+        const display =
+          trimmed.length > 16_000
+            ? `${trimmed.slice(0, 16_000)}\n\n…`
+            : trimmed;
 
-    const trimmed = formatPlainPreviewText(kind, this.state.text);
-    const display =
-      trimmed.length > 16_000 ? `${trimmed.slice(0, 16_000)}\n\n…` : trimmed;
-
-    return (
-      <div className="h-[min(78vh,900px)] overflow-auto p-6">
-        <pre className="whitespace-pre-wrap break-words rounded-lg bg-muted/50 p-4 text-sm text-foreground">
-          {display}
-        </pre>
-      </div>
-    );
-  }
+        return (
+          <div className="h-[min(78vh,900px)] overflow-auto p-6">
+            <pre className="whitespace-pre-wrap break-words rounded-lg bg-muted/50 p-4 text-sm text-foreground">
+              {display}
+            </pre>
+          </div>
+        );
+      }}
+    </TextPreviewLoader>
+  );
 }
 
-class CsvLightboxBody extends TextPreviewLoader<{ url: string }> {
-  render() {
-    if (this.state.status === "loading") {
-      return (
-        <div className="flex h-[min(78vh,900px)] items-center justify-center p-6 text-muted-foreground">
-          <IconLoader2 size={20} className="animate-spin" />
-        </div>
-      );
-    }
+function CsvLightboxBody({ url }: { url: string }) {
+  return (
+    <TextPreviewLoader url={url}>
+      {({ status, text }) => {
+        if (status === "loading") {
+          return (
+            <div className="flex h-[min(78vh,900px)] items-center justify-center p-6 text-muted-foreground">
+              <IconLoader2 size={20} className="animate-spin" />
+            </div>
+          );
+        }
 
-    if (this.state.status === "error") {
-      return (
-        <div className="flex h-[min(78vh,900px)] items-center justify-center p-6 text-sm text-muted-foreground">
-          CSV preview unavailable.
-        </div>
-      );
-    }
+        if (status === "error") {
+          return (
+            <div className="flex h-[min(78vh,900px)] items-center justify-center p-6 text-sm text-muted-foreground">
+              CSV preview unavailable.
+            </div>
+          );
+        }
 
-    const rows = parseCsvRows(this.state.text);
-    if (rows.length === 0) {
-      return (
-        <div className="flex h-[min(78vh,900px)] items-center justify-center p-6 text-sm text-muted-foreground">
-          CSV preview unavailable.
-        </div>
-      );
-    }
+        const rows = parseCsvRows(text);
+        if (rows.length === 0) {
+          return (
+            <div className="flex h-[min(78vh,900px)] items-center justify-center p-6 text-sm text-muted-foreground">
+              CSV preview unavailable.
+            </div>
+          );
+        }
 
-    const [header, ...body] = rows;
+        const [header, ...body] = rows;
 
-    return (
-      <div className="h-[min(78vh,900px)] overflow-auto p-6">
-        <div className="overflow-auto rounded-lg border border-foreground/10">
-          <table className="min-w-full divide-y divide-foreground/10 text-sm">
-            <thead className="bg-muted/40">
-              <tr>
-                {header.map((cell) => {
-                  return (
-                    <th
-                      key={`header-${cell}`}
-                      className="whitespace-nowrap px-3 py-2 text-left font-medium text-foreground"
-                    >
-                      {cell}
-                    </th>
-                  );
-                })}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-foreground/10 bg-background">
-              {body.map((row) => {
-                const rowKey = `row-${row.join("\u0001")}`;
-                return (
-                  <tr key={rowKey}>
-                    {header.map((column, cellIndex) => {
-                      const value = row[cellIndex] ?? "";
+        return (
+          <div className="h-[min(78vh,900px)] overflow-auto p-6">
+            <div className="overflow-auto rounded-lg border border-foreground/10">
+              <table className="min-w-full divide-y divide-foreground/10 text-sm">
+                <thead className="bg-muted/40">
+                  <tr>
+                    {header.map((cell) => {
                       return (
-                        <td
-                          key={`${rowKey}-${column}-${value}`}
-                          className="whitespace-nowrap px-3 py-2 text-foreground"
+                        <th
+                          key={`header-${cell}`}
+                          className="whitespace-nowrap px-3 py-2 text-left font-medium text-foreground"
                         >
-                          {value}
-                        </td>
+                          {cell}
+                        </th>
                       );
                     })}
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    );
-  }
+                </thead>
+                <tbody className="divide-y divide-foreground/10 bg-background">
+                  {body.map((row) => {
+                    const rowKey = `row-${row.join("\u0001")}`;
+                    return (
+                      <tr key={rowKey}>
+                        {header.map((column, cellIndex) => {
+                          const value = row[cellIndex] ?? "";
+                          return (
+                            <td
+                              key={`${rowKey}-${column}-${value}`}
+                              className="whitespace-nowrap px-3 py-2 text-foreground"
+                            >
+                              {value}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        );
+      }}
+    </TextPreviewLoader>
+  );
 }
 
 // ---------------------------------------------------------------------------

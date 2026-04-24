@@ -1,4 +1,3 @@
-/* eslint-disable ccstate/no-get-by-role-name */
 import { describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -49,9 +48,7 @@ describe("chat-d-056: file type icon renders based on getFileTypeIcon", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("button", {
-          name: "Open pdf preview for document.pdf",
-        }),
+        screen.getByLabelText("Open pdf preview for document.pdf"),
       ).toBeInTheDocument();
     });
   });
@@ -202,11 +199,7 @@ describe("chat-i-059: image preview button opens lightbox", () => {
       ).toBeInTheDocument();
     });
 
-    await user.click(
-      screen.getByRole("button", {
-        name: "Open image preview for photo.png",
-      }),
-    );
+    await user.click(screen.getByLabelText("Open image preview for photo.png"));
 
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
@@ -253,11 +246,7 @@ describe("chat-i-060: close button closes lightbox", () => {
       ).toBeInTheDocument();
     });
 
-    await user.click(
-      screen.getByRole("button", {
-        name: "Open image preview for photo.png",
-      }),
-    );
+    await user.click(screen.getByLabelText("Open image preview for photo.png"));
 
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
@@ -310,11 +299,7 @@ describe("chat-i-061: backdrop click closes lightbox", () => {
       ).toBeInTheDocument();
     });
 
-    await user.click(
-      screen.getByRole("button", {
-        name: "Open image preview for photo.png",
-      }),
-    );
+    await user.click(screen.getByLabelText("Open image preview for photo.png"));
 
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
@@ -389,11 +374,7 @@ describe("chat-i-066: lightbox download fallback uses direct download", () => {
       ).toBeInTheDocument();
     });
 
-    await user.click(
-      screen.getByRole("button", {
-        name: "Open image preview for photo.png",
-      }),
-    );
+    await user.click(screen.getByLabelText("Open image preview for photo.png"));
 
     const downloadButton = await waitFor(() => {
       return screen.getByLabelText("Download");
@@ -482,9 +463,7 @@ describe("chat-d-063: preview button renders for previewable file attachment", (
 
     await waitFor(() => {
       expect(
-        screen.getByRole("button", {
-          name: `Open pdf preview for ${filename}`,
-        }),
+        screen.getByLabelText(`Open pdf preview for ${filename}`),
       ).toBeInTheDocument();
     });
   });
@@ -519,9 +498,7 @@ describe("chat-d-063: preview button renders for previewable file attachment", (
 
     await waitFor(() => {
       expect(
-        screen.getByRole("button", {
-          name: `Open pdf preview for ${filename}`,
-        }),
+        screen.getByLabelText(`Open pdf preview for ${filename}`),
       ).toBeInTheDocument();
     });
   });

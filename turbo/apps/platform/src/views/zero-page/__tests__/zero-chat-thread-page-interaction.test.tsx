@@ -1,4 +1,3 @@
-/* eslint-disable ccstate/no-get-by-role-name */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -126,14 +125,10 @@ describe("zero chat thread page - image attachment opens lightbox", () => {
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("img", { name: "photo.png" }),
-      ).toBeInTheDocument();
+      expect(screen.getByAltText("photo.png")).toBeInTheDocument();
     });
 
-    const imageButton = screen
-      .getByRole("img", { name: "photo.png" })
-      .closest("button")!;
+    const imageButton = screen.getByAltText("photo.png").closest("button")!;
     click(imageButton);
 
     await waitFor(() => {
@@ -177,7 +172,7 @@ describe("zero chat thread page - image attachment opens lightbox", () => {
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
     const imageButton = await waitFor(() => {
-      return screen.getByRole("img", { name: "photo.png" }).closest("button")!;
+      return screen.getByAltText("photo.png").closest("button")!;
     });
     click(imageButton);
 
@@ -214,9 +209,7 @@ describe("zero chat thread page - document preview opens global lightbox", () =>
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
     const previewButton = await waitFor(() => {
-      return screen.getByRole("button", {
-        name: "Open html preview for report.html",
-      });
+      return screen.getByLabelText("Open html preview for report.html");
     });
 
     await userEvent.click(previewButton);

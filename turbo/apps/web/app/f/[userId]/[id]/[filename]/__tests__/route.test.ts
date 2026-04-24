@@ -110,6 +110,57 @@ describe("GET /f/[userId]/[id]/[filename]", () => {
     expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff");
   });
 
+  it("forwards range requests and preserves partial content metadata", async () => {
+    context.mocks.s3.generatePresignedUrl.mockResolvedValue(
+      "https://signed.example.com/large.txt",
+    );
+    let upstreamRange = "";
+    server.use(
+      http.get("https://signed.example.com/large.txt", ({ request }) => {
+        upstreamRange = request.headers.get("Range") ?? "";
+        return HttpResponse.text("preview chunk", {
+          status: 206,
+          headers: {
+            "Content-Type": "text/plain; charset=utf-8",
+            "Content-Range": "bytes 0-12/1000000",
+            "Accept-Ranges": "bytes",
+          },
+        });
+      }),
+    );
+
+    const res = await invoke("user_alice", "file-id", "large.txt", "?raw=1", {
+      headers: { Range: "bytes=0-65535" },
+    });
+
+    expect(upstreamRange).toBe("bytes=0-65535");
+    expect(res.status).toBe(206);
+    expect(res.headers.get("Content-Range")).toBe("bytes 0-12/1000000");
+    expect(res.headers.get("Accept-Ranges")).toBe("bytes");
+    expect(res.headers.get("Cache-Control")).toContain("max-age=60");
+  });
+
+  it("does not cache upstream raw errors", async () => {
+    context.mocks.s3.generatePresignedUrl.mockResolvedValue(
+      "https://signed.example.com/unavailable.txt",
+    );
+    server.use(
+      http.get("https://signed.example.com/unavailable.txt", () => {
+        return HttpResponse.text("try again", { status: 503 });
+      }),
+    );
+
+    const res = await invoke(
+      "user_alice",
+      "file-id",
+      "unavailable.txt",
+      "?raw=1",
+    );
+
+    expect(res.status).toBe(503);
+    expect(res.headers.get("Cache-Control")).toBe("no-store");
+  });
+
   it("adds cors headers for allowed origins on raw responses", async () => {
     vi.stubEnv("NODE_ENV", "development");
     reloadEnv();
@@ -156,5 +207,6 @@ describe("GET /f/[userId]/[id]/[filename]", () => {
     expect(res.headers.get("Access-Control-Allow-Methods")).toContain(
       "OPTIONS",
     );
+    expect(res.headers.get("Access-Control-Allow-Headers")).toContain("Range");
   });
 });
