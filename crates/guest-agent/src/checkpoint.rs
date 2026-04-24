@@ -137,7 +137,7 @@ async fn snapshot_artifacts() -> Result<Option<serde_json::Value>, AgentError> {
     for entry in entries {
         log_info!(
             LOG_TAG,
-            "Creating VAS snapshot for artifact '{}' at {}",
+            "Processing artifact '{}' at {}",
             entry.name,
             entry.mount_path
         );
@@ -174,6 +174,11 @@ async fn snapshot_artifacts() -> Result<Option<serde_json::Value>, AgentError> {
             continue;
         }
 
+        log_info!(
+            LOG_TAG,
+            "Creating VAS snapshot for artifact '{}'",
+            entry.name
+        );
         let snapshot = artifact::create_snapshot(
             &entry.mount_path,
             files,

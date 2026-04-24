@@ -6,8 +6,10 @@
 //! the checkpoint step can skip the prepare+commit round-trips when the
 //! artifact is unchanged since mount (see issue #10967).
 //!
-//! The two implementations must stay byte-identical; `ts_parity.rs` in the
-//! test suite carries fixtures shared with the TS side.
+//! The two implementations must stay byte-identical. The inline `#[cfg(test)]`
+//! suite below and its TS counterpart at
+//! `turbo/apps/web/src/lib/infra/storage/__tests__/content-hash-parity.test.ts`
+//! hardcode the same fixture vectors — a drift on either side fails CI.
 
 use sha2::{Digest, Sha256};
 
