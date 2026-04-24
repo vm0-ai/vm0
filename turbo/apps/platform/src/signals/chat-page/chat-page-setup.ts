@@ -76,7 +76,7 @@ export const setupChatPage$ = command(
     // Seed hasOlderMessages$ from the already-cached initial fetch result.
     // This must run after groupedChatMessages$ resolves so the computed value
     // is available without issuing a second HTTP request.
-    await set(thread.syncInitialHasMore$);
+    await set(thread.syncInitialHasMore$, signal);
     signal.throwIfAborted();
 
     // The list is mounted with visibility:hidden under the skeleton so

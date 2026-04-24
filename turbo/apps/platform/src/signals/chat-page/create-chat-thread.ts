@@ -189,7 +189,7 @@ export interface ChatThreadSignals {
   hasOlderMessages$: State<boolean>;
   // Seeds hasOlderMessages$ from the initial fetch without a second request.
   // Called once in chat-page-setup after groupedChatMessages$ first resolves.
-  syncInitialHasMore$: Command<Promise<void>, []>;
+  syncInitialHasMore$: Command<Promise<void>, [AbortSignal]>;
   loadOlderMessages$: Command<Promise<void>, [AbortSignal]>;
   // Bind to the top-sentinel element. Sets up an IntersectionObserver that
   // triggers loadOlderMessages$ when the sentinel enters the viewport.
@@ -707,7 +707,7 @@ function createTopSentinelRef(
           }
           // Fire-and-forget: IntersectionObserver callbacks are synchronous,
           // rejection is intentionally swallowed (signal aborts clean up).
-          set(loadOlderMessages$, signal).catch(() => undefined);
+          set(loadOlderMessages$, signal).catch(() => {});
         },
         { threshold: 0.1 },
       );
@@ -761,10 +761,13 @@ function createPagedMessages(
     },
   );
 
-  const syncInitialHasMore$ = command(async ({ get, set }) => {
-    const { hasMore } = await get(initialFetch$);
-    set(hasOlderMessages$, hasMore);
-  });
+  const syncInitialHasMore$ = command(
+    async ({ get, set }, signal: AbortSignal) => {
+      const { hasMore } = await get(initialFetch$);
+      signal.throwIfAborted();
+      set(hasOlderMessages$, hasMore);
+    },
+  );
 
   const latestChatMessageId$ = computed(
     async (get): Promise<string | undefined> => {

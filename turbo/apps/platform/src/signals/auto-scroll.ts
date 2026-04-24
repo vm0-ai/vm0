@@ -251,8 +251,12 @@ export function createScrollSignals(id?: string) {
         id,
         lastUserInputAt,
         lastKnownScrollTop,
-        isDisabled: () => get(autoScrollDisabled$),
-        setDisabled: (v) => set(autoScrollDisabled$, v),
+        isDisabled: () => {
+          return get(autoScrollDisabled$);
+        },
+        setDisabled: (v) => {
+          set(autoScrollDisabled$, v);
+        },
         clearCache: () => {
           if (id !== undefined) {
             set(clearCachedScrollTop$, id);
