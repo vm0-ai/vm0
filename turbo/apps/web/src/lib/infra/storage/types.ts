@@ -96,6 +96,7 @@ export interface ManifestStorage {
 export interface ManifestArtifact {
   mountPath: string;
   vasStorageName: string;
+  vasStorageId: string;
   vasVersionId: string;
   /** Presigned URL for downloading archive.tar.gz */
   archiveUrl: string;

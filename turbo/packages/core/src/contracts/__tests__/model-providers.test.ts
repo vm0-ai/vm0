@@ -1,5 +1,4 @@
 import { describe, it, expect } from "vitest";
-import { FeatureSwitchKey } from "../../feature-switch-key";
 import {
   getProviderBaseUrl,
   areProvidersCompatible,
@@ -142,6 +141,10 @@ describe("getVm0VisibleModels", () => {
     expect(models).toContain("kimi-k2.5");
     expect(models).toContain("MiniMax-M2.7");
     expect(models).toContain("glm-5.1");
+    expect(models).toContain("deepseek-v4-pro");
+    expect(models).toContain("deepseek-v4-flash");
+    expect(models).toContain("deepseek-chat");
+    expect(models).toContain("deepseek-reasoner");
     // All feature-flagged models must be hidden when no features are provided
     const featureFlaggedModels = Object.entries(VM0_MODEL_TO_PROVIDER)
       .filter(([, config]) => {
@@ -155,31 +158,11 @@ describe("getVm0VisibleModels", () => {
     }
   });
 
-  it("hides deepseek-chat when Vm0DeepseekModel flag is disabled", () => {
-    const models = getVm0VisibleModels({
-      [FeatureSwitchKey.Vm0DeepseekModel]: false,
-    });
-    expect(models).not.toContain("deepseek-chat");
-  });
-
-  it("shows deepseek-chat when Vm0DeepseekModel flag is enabled", () => {
-    const models = getVm0VisibleModels({
-      [FeatureSwitchKey.Vm0DeepseekModel]: true,
-    });
+  it("DeepSeek V4 models and compatibility aliases are not feature gated", () => {
+    const models = getVm0VisibleModels({});
+    expect(models).toContain("deepseek-v4-pro");
+    expect(models).toContain("deepseek-v4-flash");
     expect(models).toContain("deepseek-chat");
-  });
-
-  it("hides deepseek-reasoner when Vm0DeepseekModel flag is disabled", () => {
-    const models = getVm0VisibleModels({
-      [FeatureSwitchKey.Vm0DeepseekModel]: false,
-    });
-    expect(models).not.toContain("deepseek-reasoner");
-  });
-
-  it("shows deepseek-reasoner when Vm0DeepseekModel flag is enabled", () => {
-    const models = getVm0VisibleModels({
-      [FeatureSwitchKey.Vm0DeepseekModel]: true,
-    });
     expect(models).toContain("deepseek-reasoner");
   });
 });

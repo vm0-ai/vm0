@@ -4362,6 +4362,91 @@
           "Revisa la lista extraída antes de que termine la reunión. Treinta segundos de revisión atrapan atribuciones equivocadas que de otro modo vivirían una semana."
         ]
       },
+      "promo-video-from-recordings": {
+        "title": "Convierte grabaciones de pantalla en videos promocionales profesionales",
+        "description": "Apunta a Zero a una carpeta de Google Drive con grabaciones de pantalla sin audio. Escribe el guión de narración, selecciona música, añade transiciones y exporta un corto promocional SaaS listo para compartir en 30–90 segundos.",
+        "timeSaved": "~2 horas ahorradas por video",
+        "headings": {
+          "scenario": "Por qué producir videos promocionales a partir de grabaciones toma tanto tiempo",
+          "prompt": "Cómo pedir a Zero que produzca un video promocional a partir de tus grabaciones",
+          "steps": "Cómo Zero transforma material en bruto en un corto promocional profesional",
+          "nextActions": "Ajusta el corte, reutiliza para otros canales o programa un lote",
+          "integrations": "Integraciones requeridas: Slack, Google Drive y Notion",
+          "tips": "Buenas prácticas para la producción de videos promocionales con Zero"
+        },
+        "scenario": "Acabas de terminar de grabar un recorrido de una nueva funcionalidad: tres capturas de pantalla sin audio en una carpeta de Google Drive. Ahora viene la parte difícil: escribir el guión de narración, elegir música de fondo, sincronizar transiciones y editar todo en un promo de 60 segundos. Podrías pasar la tarde en un editor de video, o simplemente apuntar a Zero a la carpeta. Indícale tus grabaciones en Google Drive, dile qué debe comunicar el video, y te entrega un corto promocional SaaS pulido — narración, música, transiciones y todo — listo para publicar.",
+        "promptVariants": [
+          {
+            "label": "Producción completa",
+            "prompt": "@Zero toma las 3 grabaciones de pantalla de la carpeta ‘Dashboard Launch’ en Google Drive. Produce un video promocional de 60 segundos con narración, música de fondo y transiciones suaves. El tono debe ser profesional y dinámico. Destaca la velocidad y facilidad de uso."
+          },
+          {
+            "label": "Corte rápido",
+            "prompt": "@Zero toma la última grabación de pantalla de la carpeta ‘Product Demos’ en Google Drive y conviértela en un teaser de producto de 30 segundos. Añade una narración corta y música de fondo. Que sea impactante."
+          },
+          {
+            "label": "Producción por lotes",
+            "prompt": "@Zero cada viernes, revisa la carpeta ‘Raw Recordings’ en Google Drive en busca de archivos nuevos, produce un corto promocional de 60 segundos con narración y música para cada uno, y publica los cortes finales en #marketing-assets."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Ming",
+            "text": "@Zero toma las 3 grabaciones de pantalla de la carpeta ‘Permissions UI’ en Google Drive y conviértelas en un video promocional de 60 segundos. Tono: profesional, destaca seguridad y simplicidad."
+          },
+          {
+            "name": "Zero",
+            "text": "3 grabaciones obtenidas de Google Drive. Video promocional completo — 58s de duración.\n\nNarración: 6 segmentos cubriendo configuración de permisos, asignación de roles y registros de auditoría\nMúsica: Pista ambient dinámica, sincronizada con las transiciones\nTransiciones: Fundidos cruzados suaves entre cada pantalla\n\nCorte final subido a Google Drive y compartido aquí. Listo para revisión."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero obtiene las grabaciones de Google Drive",
+            "description": "Zero se conecta a tu Google Drive, localiza la carpeta especificada e ingiere las grabaciones de pantalla en bruto. Identifica momentos clave e interacciones de UI para determinar la secuencia y ritmo óptimos."
+          },
+          {
+            "title": "Zero escribe la narración y selecciona la música",
+            "description": "Basándose en tu brief, Zero genera un guión de narración que destaca las propuestas de valor del producto. Selecciona una pista de música de fondo y asigna los segmentos de narración a las marcas de tiempo del video."
+          },
+          {
+            "title": "Zero ensambla y exporta el corte final",
+            "description": "Zero añade transiciones entre escenas, superpone narración y música, y exporta un corto promocional pulido (30–90s). El video final se guarda en Google Drive y se comparte en Slack."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Solicitar una revisión",
+            "description": "Ajustar tono, ritmo o énfasis",
+            "examplePrompt": "@Zero haz la narración más conversacional y recorta 10 segundos de la sección intermedia."
+          },
+          {
+            "title": "Reutilizar para otro canal",
+            "description": "Crear una versión más corta para redes sociales",
+            "examplePrompt": "@Zero crea una versión teaser de 15 segundos de este video optimizada para X/Twitter."
+          },
+          {
+            "title": "Hacerlo rutina",
+            "description": "Automatizar la producción de videos promocionales para cada lanzamiento",
+            "examplePrompt": "@Zero cada viernes, revisa ‘Raw Recordings’ en Google Drive en busca de archivos nuevos y produce un promo de 60 segundos para cada uno. Publícalo en #marketing-assets."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Zero recibe tu brief y entrega actualizaciones de progreso y el enlace del video final a través de Slack."
+          },
+          {
+            "description": "Zero lee las grabaciones de pantalla en bruto desde Google Drive y guarda el video promocional terminado en la misma carpeta o en una especificada."
+          },
+          {
+            "description": "Opcionalmente, Zero guarda el guión de narración y el brief del video en Notion para tu archivo de contenido y referencia futura."
+          }
+        ],
+        "tips": [
+          "Incluye un brief claro con tu solicitud: audiencia objetivo, mensaje clave y tono deseado. Cuanto más específico seas, mejor será el primer corte.",
+          "Organiza las grabaciones en una carpeta dedicada de Google Drive por proyecto o funcionalidad. Zero funciona mejor cuando la carpeta fuente está limpia y organizada.",
+          "Pide una revisión del guión de narración antes del renderizado completo si quieres ajustar el mensaje primero."
+        ]
+      },
       "seo-blog-writing": {
         "title": "Escribe artículos de blog optimizados para SEO con investigación de palabras clave e imágenes IA",
         "description": "Zero extrae datos de palabras clave de Ahrefs, redacta un artículo orientado a términos de alta oportunidad, genera una imagen destacada con Fal.ai y publica todo en Strapi como borrador. Un solo prompt, de principio a fin.",

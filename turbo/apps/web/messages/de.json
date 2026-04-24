@@ -4362,6 +4362,91 @@
           "Prüft die extrahierte Liste, bevor das Meeting endet. Dreißig Sekunden Review fangen Zuschreibungsfehler ab, die sonst eine Woche bestehen bleiben."
         ]
       },
+      "promo-video-from-recordings": {
+        "title": "Verwandeln Sie rohe Bildschirmaufnahmen in professionelle Promo-Videos",
+        "description": "Verweisen Sie Zero auf einen Google-Drive-Ordner mit stummen Bildschirmaufnahmen. Es schreibt das Narrationsskript, wählt Musik aus, fügt Übergänge hinzu und exportiert einen fertigen SaaS-Werbespot in 30–90 Sekunden.",
+        "timeSaved": "~2 Std. pro Video gespart",
+        "headings": {
+          "scenario": "Warum die Produktion von Promo-Videos aus Bildschirmaufnahmen so lange dauert",
+          "prompt": "So beauftragen Sie Zero mit der Produktion eines Promo-Videos aus Ihren Aufnahmen",
+          "steps": "Wie Zero Rohmaterial in einen professionellen Werbespot verwandelt",
+          "nextActions": "Schnitt anpassen, für andere Kanäle umfunktionieren oder Batch-Produktion starten",
+          "integrations": "Erforderliche Integrationen: Slack, Google Drive und Notion",
+          "tips": "Best Practices für die Promo-Video-Produktion mit Zero"
+        },
+        "scenario": "Sie haben gerade einen Feature-Walkthrough aufgenommen — drei stumme Bildschirmaufnahmen liegen in einem Google-Drive-Ordner. Jetzt kommt der schwierige Teil: Narrationsskript schreiben, Hintergrundmusik auswählen, Übergänge timen und alles zu einem straffen 60-Sekunden-Promo zusammenschneiden. Sie könnten den Nachmittag im Video-Editor verbringen, oder Sie verweisen Zero auf Ihren Google-Drive-Ordner. Sagen Sie Zero, was das Video kommunizieren soll, und es liefert einen professionellen SaaS-Werbespot — Narration, Musik, Übergänge und alles — bereit zum Veröffentlichen.",
+        "promptVariants": [
+          {
+            "label": "Volle Produktion",
+            "prompt": "@Zero hole die 3 Bildschirmaufnahmen aus dem Ordner ‘Dashboard Launch’ in Google Drive. Produziere ein 60-Sekunden-Promo-Video mit Narration, Hintergrundmusik und flüssigen Übergängen. Der Ton sollte professionell und dynamisch sein. Betone Geschwindigkeit und Benutzerfreundlichkeit."
+          },
+          {
+            "label": "Schneller Schnitt",
+            "prompt": "@Zero nimm die neueste Bildschirmaufnahme aus dem Ordner ‘Product Demos’ in Google Drive und verwandle sie in einen 30-Sekunden-Produkt-Teaser. Füge eine kurze Narration und Hintergrundmusik hinzu. Halte es prägnant."
+          },
+          {
+            "label": "Batch-Produktion",
+            "prompt": "@Zero prüfe jeden Freitag den Ordner ‘Raw Recordings’ in Google Drive auf neue Dateien, produziere für jede einen 60-Sekunden-Werbespot mit Narration und Musik und poste die fertigen Schnitte in #marketing-assets."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Ming",
+            "text": "@Zero hole die 3 Bildschirmaufnahmen aus dem Ordner ‘Permissions UI’ in Google Drive und mache daraus ein 60-Sekunden-Promo-Video. Ton: professionell, betone Sicherheit und Einfachheit."
+          },
+          {
+            "name": "Zero",
+            "text": "3 Aufnahmen aus Google Drive geladen. Promo-Video fertig — 58s Laufzeit.\n\nNarration: 6 Segmente zu Berechtigungseinrichtung, Rollenzuweisung und Audit-Logs\nMusik: Beschwingter Ambient-Track, auf Übergänge abgestimmt\nÜbergänge: Sanfte Überblendungen zwischen den Szenen\n\nFertiger Schnitt in Google Drive hochgeladen und hier gepostet. Bereit zur Überprüfung."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero lädt Aufnahmen aus Google Drive",
+            "description": "Zero verbindet sich mit Ihrem Google Drive, findet den angegebenen Ordner und nimmt die rohen Bildschirmaufnahmen auf. Es identifiziert Schlüsselmomente und UI-Interaktionen, um die optimale Reihenfolge und das Tempo zu bestimmen."
+          },
+          {
+            "title": "Zero schreibt die Narration und wählt Musik aus",
+            "description": "Basierend auf Ihrem Briefing erstellt Zero ein Narrationsskript, das die Wertversprechen des Produkts hervorhebt. Es wählt einen Hintergrundmusik-Track und ordnet Narrationssegmente den Video-Zeitstempeln zu."
+          },
+          {
+            "title": "Zero erstellt und exportiert den fertigen Schnitt",
+            "description": "Zero fügt Übergänge zwischen Szenen ein, legt Narration und Musik übereinander und exportiert einen professionellen Werbespot (30–90s). Das fertige Video wird in Google Drive gespeichert und in Slack geteilt."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Änderung anfordern",
+            "description": "Ton, Tempo oder Schwerpunkt anpassen",
+            "examplePrompt": "@Zero mache die Narration umgangssprachlicher und kürze 10 Sekunden aus dem Mittelteil."
+          },
+          {
+            "title": "Für einen anderen Kanal umfunktionieren",
+            "description": "Kürzere Version für Social Media erstellen",
+            "examplePrompt": "@Zero erstelle eine 15-Sekunden-Teaser-Version dieses Videos, optimiert für X/Twitter."
+          },
+          {
+            "title": "Zur Routine machen",
+            "description": "Promo-Video-Produktion für jedes Feature-Release automatisieren",
+            "examplePrompt": "@Zero prüfe jeden Freitag ‘Raw Recordings’ in Google Drive auf neue Dateien und produziere für jede einen 60-Sekunden-Werbespot. Poste in #marketing-assets."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Zero empfängt Ihr Briefing und liefert Fortschritts-Updates sowie den Link zum fertigen Video über Slack."
+          },
+          {
+            "description": "Zero liest rohe Bildschirmaufnahmen aus Google Drive und speichert das fertige Promo-Video zurück in denselben oder einen angegebenen Ordner."
+          },
+          {
+            "description": "Optional speichert Zero das Narrationsskript und das Video-Briefing in Notion für Ihr Content-Archiv und künftige Referenz."
+          }
+        ],
+        "tips": [
+          "Fügen Sie Ihrer Anfrage ein klares Briefing bei: Zielgruppe, Kernbotschaft und gewünschter Ton. Je spezifischer Sie sind, desto besser wird der erste Schnitt.",
+          "Organisieren Sie Aufnahmen in einem dedizierten Google-Drive-Ordner pro Projekt oder Feature. Zero arbeitet am besten, wenn der Quellordner sauber und fokussiert ist.",
+          "Fordern Sie eine Narrationsskript-Überprüfung vor dem vollständigen Rendering an, wenn Sie die Botschaft zuerst feinabstimmen möchten."
+        ]
+      },
       "seo-blog-writing": {
         "title": "SEO-optimierte Blogbeiträge mit Keyword-Recherche und KI-Bildern schreiben",
         "description": "Zero holt Keyword-Daten aus Ahrefs, verfasst einen Blogbeitrag für vielversprechende Suchbegriffe, generiert ein Titelbild mit Fal.ai und veröffentlicht alles als Entwurf in Strapi. Ein Prompt, von Anfang bis Ende.",

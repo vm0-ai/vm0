@@ -154,6 +154,20 @@ describe("VM0 managed model provider", () => {
       expect(getVm0ApiModel("kimi-k2.6")).toBe("kimi-k2.6");
     });
 
+    it("should resolve DeepSeek V4 models to deepseek-api-key", () => {
+      expect(getVm0ConcreteProviderType("deepseek-v4-pro")).toBe(
+        "deepseek-api-key",
+      );
+      expect(getVm0Vendor("deepseek-v4-pro")).toBe("deepseek");
+      expect(getVm0ApiModel("deepseek-v4-pro")).toBe("deepseek-v4-pro");
+
+      expect(getVm0ConcreteProviderType("deepseek-v4-flash")).toBe(
+        "deepseek-api-key",
+      );
+      expect(getVm0Vendor("deepseek-v4-flash")).toBe("deepseek");
+      expect(getVm0ApiModel("deepseek-v4-flash")).toBe("deepseek-v4-flash");
+    });
+
     it("should fall back to display name when no apiModel override is set", () => {
       expect(getVm0ApiModel("claude-sonnet-4-6")).toBe("claude-sonnet-4-6");
     });
@@ -171,20 +185,20 @@ describe("VM0 managed model provider", () => {
     });
 
     it("should have all VM0 provider models mapped", () => {
-      expect(Object.keys(VM0_MODEL_TO_PROVIDER)).toEqual(
-        expect.arrayContaining([
-          "claude-opus-4-7",
-          "claude-opus-4-6",
-          "claude-sonnet-4-6",
-          "glm-5.1",
-          "claude-haiku-4-5",
-          "kimi-k2.6",
-          "kimi-k2.5",
-          "MiniMax-M2.7",
-          "deepseek-chat",
-          "deepseek-reasoner",
-        ]),
-      );
+      expect(Object.keys(VM0_MODEL_TO_PROVIDER)).toStrictEqual([
+        "claude-opus-4-7",
+        "claude-opus-4-6",
+        "claude-sonnet-4-6",
+        "glm-5.1",
+        "claude-haiku-4-5",
+        "kimi-k2.6",
+        "kimi-k2.5",
+        "MiniMax-M2.7",
+        "deepseek-v4-pro",
+        "deepseek-v4-flash",
+        "deepseek-chat",
+        "deepseek-reasoner",
+      ]);
     });
   });
 
@@ -215,6 +229,80 @@ describe("VM0 managed model provider", () => {
       // The apiModel override must flow through to ANTHROPIC_MODEL — this is the core fix
       expect(result.injectedEnvironment?.ANTHROPIC_MODEL).toBe("z-ai/glm-5.1");
       expect(result.secrets?.OPENROUTER_API_KEY).toBeDefined();
+    });
+  });
+
+  describe("deepseek v4 routing integration", () => {
+    it("should inject deepseek-v4-pro as ANTHROPIC_MODEL when resolving vm0 deepseek-v4-pro provider", async () => {
+      const userId = uniqueId("ds-v4-pro-route");
+      const { orgId } = await setupOrg(
+        userId,
+        "org:admin",
+        uniqueId("ds-v4-pro"),
+      );
+
+      await insertOrgDefaultModelProvider(orgId, "vm0", "deepseek-v4-pro");
+      await insertVm0ApiKeys([
+        {
+          vendor: "deepseek",
+          model: "deepseek-v4-pro",
+          apiKey: "sk-dstestkey-pro",
+          label: "deepseek-v4-pro test key",
+        },
+      ]);
+
+      const result = await resolveModelProviderSecrets(
+        orgId,
+        "claude-code",
+        false,
+      );
+
+      expect(result.resolvedModelProvider).toBe("vm0");
+      expect(result.concreteProviderType).toBe("deepseek-api-key");
+      expect(result.selectedModel).toBe("deepseek-v4-pro");
+      expect(result.injectedEnvironment?.ANTHROPIC_MODEL).toBe(
+        "deepseek-v4-pro",
+      );
+      expect(result.injectedEnvironment?.ANTHROPIC_BASE_URL).toBe(
+        "https://api.deepseek.com/anthropic",
+      );
+      expect(result.secrets?.DEEPSEEK_API_KEY).toBeDefined();
+    });
+
+    it("should inject deepseek-v4-flash as ANTHROPIC_MODEL when resolving vm0 deepseek-v4-flash provider", async () => {
+      const userId = uniqueId("ds-v4-flash-route");
+      const { orgId } = await setupOrg(
+        userId,
+        "org:admin",
+        uniqueId("ds-v4-flash"),
+      );
+
+      await insertOrgDefaultModelProvider(orgId, "vm0", "deepseek-v4-flash");
+      await insertVm0ApiKeys([
+        {
+          vendor: "deepseek",
+          model: "deepseek-v4-flash",
+          apiKey: "sk-dstestkey-flash",
+          label: "deepseek-v4-flash test key",
+        },
+      ]);
+
+      const result = await resolveModelProviderSecrets(
+        orgId,
+        "claude-code",
+        false,
+      );
+
+      expect(result.resolvedModelProvider).toBe("vm0");
+      expect(result.concreteProviderType).toBe("deepseek-api-key");
+      expect(result.selectedModel).toBe("deepseek-v4-flash");
+      expect(result.injectedEnvironment?.ANTHROPIC_MODEL).toBe(
+        "deepseek-v4-flash",
+      );
+      expect(result.injectedEnvironment?.ANTHROPIC_BASE_URL).toBe(
+        "https://api.deepseek.com/anthropic",
+      );
+      expect(result.secrets?.DEEPSEEK_API_KEY).toBeDefined();
     });
   });
 });

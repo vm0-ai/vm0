@@ -24,6 +24,7 @@ import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { chatThreadsContract } from "@vm0/core/contracts/chat-threads";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 import { setChatAgentId$ } from "../../../signals/agent-chat.ts";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -125,15 +126,19 @@ describe("zero sidebar - chat session list collapses and expands (SIDEBAR-D-011)
         makeThread("thread-1", "Deploy to prod", "2026-03-10T00:00:00Z"),
       ],
     });
-    detachedSetupPage({ context, path: "/" });
+    detachedSetupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.UnifyChatThreads]: true },
+    });
 
     // Wait for thread to appear
     await waitFor(() => {
       expect(screen.getByText("Deploy to prod")).toBeInTheDocument();
     });
 
-    // Collapse: click the "Chats with Zero" header span
-    const chatsHeader = screen.getByText(/Chats with/);
+    // Collapse: click the "Chats" header span
+    const chatsHeader = screen.getByText("Chats");
     click(chatsHeader);
 
     // Thread list should be hidden

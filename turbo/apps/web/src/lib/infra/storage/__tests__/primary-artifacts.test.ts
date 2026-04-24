@@ -79,6 +79,12 @@ describe("Unified artifact list (ContextArtifact[])", () => {
     expect(manifest.artifacts[0]!.vasVersionId).toBe(versionId);
     expect(manifest.artifacts[0]!.mountPath).toBe(WORKING_DIR);
     expect(manifest.artifacts[0]!.manifestUrl).toBeDefined();
+    // Round-trip guard: the DB-resolved `storages.id` must reach the
+    // manifest. Guest-agent uses this UUID as the hash prefix when
+    // recomputing the content hash; a silently dropped field at the
+    // resolver or query layer would degrade the guest-side skip check
+    // without triggering a type error.
+    expect(manifest.artifacts[0]!.vasStorageId).toBeTruthy();
     expect(manifest.storages).toHaveLength(0);
   });
 

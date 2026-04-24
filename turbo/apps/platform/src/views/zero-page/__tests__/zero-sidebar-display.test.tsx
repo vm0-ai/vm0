@@ -23,6 +23,7 @@ import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -227,7 +228,11 @@ describe("zero sidebar - search results filter (SIDEBAR-D-003)", () => {
       ],
     });
 
-    detachedSetupPage({ context, path: "/" });
+    detachedSetupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.UnifyChatThreads]: true },
+    });
 
     await waitFor(() => {
       expect(
@@ -237,7 +242,7 @@ describe("zero sidebar - search results filter (SIDEBAR-D-003)", () => {
 
     const searchChatsBtn1 = screen.getByLabelText("Search chats");
     click(searchChatsBtn1);
-    const searchInput = screen.getByPlaceholderText(/Search chat with/);
+    const searchInput = screen.getByPlaceholderText("Search chats");
     await user.type(searchInput, "deploy");
 
     expect(
@@ -267,7 +272,11 @@ describe("zero sidebar - search term displays in input (SIDEBAR-D-004)", () => {
       ],
     });
 
-    detachedSetupPage({ context, path: "/" });
+    detachedSetupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.UnifyChatThreads]: true },
+    });
 
     await waitFor(() => {
       expect(
@@ -277,7 +286,7 @@ describe("zero sidebar - search term displays in input (SIDEBAR-D-004)", () => {
 
     const searchChatsBtn2 = screen.getByLabelText("Search chats");
     click(searchChatsBtn2);
-    const searchInput = screen.getByPlaceholderText(/Search chat with/);
+    const searchInput = screen.getByPlaceholderText("Search chats");
     await user.type(searchInput, "deploy");
 
     expect(searchInput).toHaveValue("deploy");
@@ -432,10 +441,14 @@ describe("zero sidebar - Slack scope mismatch indicator (SIDEBAR-D-009)", () => 
 describe("zero sidebar - new chat button enabled/disabled state (SIDEBAR-D-010)", () => {
   it("shows the new chat button as enabled when not creating a session", async () => {
     mockBaseAPIs();
-    detachedSetupPage({ context, path: "/" });
+    detachedSetupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.UnifyChatThreads]: true },
+    });
 
     await waitFor(() => {
-      const newChatButton = screen.getByLabelText(/New chat with/i);
+      const newChatButton = screen.getByLabelText("New chat");
       expect(newChatButton).not.toBeDisabled();
     });
   });
@@ -455,19 +468,23 @@ describe("zero sidebar - new chat button enabled/disabled state (SIDEBAR-D-010)"
       }),
     );
 
-    detachedSetupPage({ context, path: "/" });
+    detachedSetupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.UnifyChatThreads]: true },
+    });
 
     await waitFor(() => {
-      expect(screen.getByLabelText(/New chat with/i)).toBeDefined();
+      expect(screen.getByLabelText("New chat")).toBeDefined();
     });
 
     // Trigger new chat creation
-    const newChatBtn = screen.getByLabelText(/New chat with/i);
+    const newChatBtn = screen.getByLabelText("New chat");
     click(newChatBtn);
 
     // Button should become disabled while POST is in flight
     await waitFor(() => {
-      expect(screen.getByLabelText(/New chat with/i)).toBeDisabled();
+      expect(screen.getByLabelText("New chat")).toBeDisabled();
     });
 
     deferred.resolve();

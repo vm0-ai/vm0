@@ -2,21 +2,24 @@ import { GoogleGenAI } from "@google/genai";
 import { getVercelOidcToken } from "@vercel/oidc";
 import { randomUUID } from "crypto";
 import { ExternalAccountClient } from "google-auth-library";
-import { NextRequest, NextResponse } from "next/server";
-import { creditUsage } from "../../../src/db/schema/credit-usage";
+import { after, NextRequest, NextResponse } from "next/server";
+import { usageEvent } from "../../../src/db/schema/usage-event";
 import { env } from "../../../src/env";
 import { getAuthContext } from "../../../src/lib/auth/get-auth-context";
 import { initServices } from "../../../src/lib/init-services";
 import { isApiError } from "../../../src/lib/shared/errors";
+import { processOrgUsageEvents } from "../../../src/lib/zero/credit/usage-event-service";
 import { resolveOrg } from "../../../src/lib/zero/org/resolve-org";
 import { checkOrgCredits } from "../../../src/lib/zero/zero-run-policy";
 
 export const runtime = "nodejs";
 
 const MODEL = "gemini-2.5-flash-image";
-// Treated as a vm0-bundled model so checkOrgCredits() and the process-credits
-// cron both engage; pricing lives in credit_pricing keyed by this pair.
-const MODEL_PROVIDER = "vm0";
+// usage_event row shape. Pricing lives in usage_pricing keyed by the same
+// (kind, provider, category) triple; see scripts/dev-seed.ts.
+const USAGE_KIND = "image";
+const USAGE_PROVIDER = MODEL;
+const USAGE_CATEGORY = "output_image";
 
 interface GeneratedImage {
   mimeType: string;
@@ -44,16 +47,18 @@ function hasInlineData(part: unknown): part is InlineDataPart {
 
 let cachedClient: GoogleGenAI | undefined;
 
-// Prefer the Gemini Developer API key when present (local/dev: one shared
-// string in 1Password, no gcloud required). Fall back to Vertex AI via
-// Vercel OIDC → GCP Workload Identity Federation → SA impersonation on
-// production, where no long-lived credential exists by design.
+// Production is always Vertex AI via Vercel OIDC → GCP Workload Identity
+// Federation → SA impersonation — no static credentials exist by design,
+// and a stray GEMINI_API_KEY must not quietly divert charges to a second
+// billing account. Preview/dev may opt into the Gemini Developer API path
+// as a convenience so one shared key in 1Password works without gcloud.
 function buildClient(): GoogleGenAI | null {
   if (cachedClient) return cachedClient;
 
   const validated = env();
+  const allowDevKey = validated.VERCEL_ENV !== "production";
 
-  if (validated.GEMINI_API_KEY) {
+  if (allowDevKey && validated.GEMINI_API_KEY) {
     cachedClient = new GoogleGenAI({ apiKey: validated.GEMINI_API_KEY });
     return cachedClient;
   }
@@ -96,6 +101,20 @@ function buildClient(): GoogleGenAI | null {
 }
 
 export async function POST(req: NextRequest) {
+  try {
+    return await handlePost(req);
+  } catch (error) {
+    if (isApiError(error)) {
+      return NextResponse.json(
+        { error: { message: error.message, code: error.code } },
+        { status: error.statusCode },
+      );
+    }
+    throw error;
+  }
+}
+
+async function handlePost(req: NextRequest) {
   initServices();
 
   const authCtx = await getAuthContext(
@@ -138,18 +157,7 @@ export async function POST(req: NextRequest) {
 
   const db = globalThis.services.db;
   const { org } = await resolveOrg(authCtx);
-
-  try {
-    await checkOrgCredits(org.orgId, userId, MODEL_PROVIDER, db);
-  } catch (error) {
-    if (isApiError(error)) {
-      return NextResponse.json(
-        { error: { message: error.message, code: error.code } },
-        { status: error.statusCode },
-      );
-    }
-    throw error;
-  }
+  await checkOrgCredits(org.orgId, userId, "vm0", db);
 
   const result = await ai.models.generateContent({
     model: MODEL,
@@ -176,18 +184,24 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Record pending credit_usage; the process-credits cron settles it later
-  // against credit_pricing. A fresh messageId keeps each call under its own
-  // row via the (run_id, message_id) unique index.
-  await db.insert(creditUsage).values({
+  // Record the billable event only after Vertex succeeds. `idempotencyKey`
+  // is required by the schema but serves as a per-row uniqueness tag here,
+  // not a client-facing retry key — clients do not send one. Settle inline
+  // via after() so the org balance reflects the charge before the next
+  // request lands.
+  await db.insert(usageEvent).values({
     runId: null,
-    messageId: randomUUID(),
+    idempotencyKey: randomUUID(),
     orgId: org.orgId,
     userId,
-    model: MODEL,
-    modelProvider: MODEL_PROVIDER,
-    inputTokens: result.usageMetadata?.promptTokenCount ?? 0,
-    outputTokens: result.usageMetadata?.candidatesTokenCount ?? 0,
+    kind: USAGE_KIND,
+    provider: USAGE_PROVIDER,
+    category: USAGE_CATEGORY,
+    quantity: images.length,
+  });
+
+  after(() => {
+    return processOrgUsageEvents(org.orgId);
   });
 
   return NextResponse.json({ images });

@@ -160,6 +160,12 @@ const PLAUSIBLE: ConnectorRef = {
   icon: "/assets/connectors/plausible.svg",
 };
 
+const GOOGLE_DRIVE: ConnectorRef = {
+  id: "google-drive",
+  label: "Google Drive",
+  icon: "/assets/connectors/google-drive.svg",
+};
+
 const APOLLO: ConnectorRef = {
   id: "apollo",
   label: "Apollo",
@@ -1309,6 +1315,39 @@ export const USE_CASES: UseCase[] = [
       { connector: NOTION, required: true },
     ],
     relatedSlugs: ["standup-summary", "document-decisions", "morning-brief"],
+    stepCount: 3,
+    nextActionCount: 3,
+    integrationCount: 3,
+    tipCount: 3,
+    promptVariantCount: 3,
+    slackPreviewCount: 2,
+  },
+
+  {
+    slug: "promo-video-from-recordings",
+    color: "#c86478",
+    avatar: {
+      rotation: 3,
+      skin: 4,
+      hairStyle: 1,
+      hairColor: 3,
+      expression: 5,
+      intensity: "m",
+    },
+    roles: ["product", "ops"],
+    capability: "multi-tool",
+    model: "Claude 4 Sonnet",
+    connectors: [SLACK, GOOGLE_DRIVE, NOTION],
+    integrations: [
+      { connector: SLACK, required: true },
+      { connector: GOOGLE_DRIVE, required: true },
+      { connector: NOTION, required: false },
+    ],
+    relatedSlugs: [
+      "marketing-content-automation",
+      "competitor-audit",
+      "multilingual-cms-publishing",
+    ],
     stepCount: 3,
     nextActionCount: 3,
     integrationCount: 3,

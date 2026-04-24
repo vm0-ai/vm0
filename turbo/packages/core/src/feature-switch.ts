@@ -277,11 +277,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.Vm0DeepseekModel]: {
-    maintainer: "ethan@vm0.ai",
-    description: "Enable the DeepSeek-V3.2 (deepseek-chat) VM0 managed model",
-    enabled: false,
-  },
   [FeatureSwitchKey.PlatformConnectors]: {
     maintainer: "liangyou@vm0.ai",
     description:
