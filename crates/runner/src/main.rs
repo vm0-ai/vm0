@@ -163,8 +163,13 @@ fn init_tracing_with_file(
 
 /// Initialize tracing with stderr output only (no rolling log file on disk),
 /// plus an optional Axiom layer.
+///
+/// Explicitly writes to stderr so commands like `runner exec` — which pipe the
+/// guest program's stdout through verbatim — don't have tracing lines
+/// interleaved into captured output. The `fmt::layer()` default writer is
+/// stdout, which is the wrong sink for a CLI tool.
 fn init_tracing_stderr(axiom_layer: Option<axiom_layer::AxiomLayer>) {
-    let fmt_layer = tracing_subscriber::fmt::layer();
+    let fmt_layer = tracing_subscriber::fmt::layer().with_writer(std::io::stderr);
     tracing_subscriber::registry()
         .with(fmt_layer)
         .with(axiom_layer)
@@ -199,23 +204,30 @@ async fn main() -> ExitCode {
         None => (None, None),
     };
 
-    let _guard = match &cli.command {
+    let was_enabled = axiom_layer.is_some();
+    let (_guard, axiom_installed) = match &cli.command {
         Command::Start(args) => match init_tracing_with_file(&args.config, axiom_layer) {
-            Ok(guard) => Some(guard),
+            Ok(guard) => (Some(guard), was_enabled),
             Err(e) => {
                 // The failed `init_tracing_with_file` already consumed `axiom_layer`,
                 // so the stderr fallback runs without Axiom — acceptable degraded
                 // mode (home/log-dir setup is already broken at this point).
                 init_tracing_stderr(None);
                 tracing::warn!("file logging unavailable, using stderr only: {e}");
-                None
+                (None, false)
             }
         },
         _ => {
             init_tracing_stderr(axiom_layer);
-            None
+            (None, was_enabled)
         }
     };
+
+    if axiom_installed {
+        tracing::info!("axiom telemetry enabled");
+    } else {
+        tracing::info!("axiom telemetry disabled");
+    }
 
     let result = match cli.command {
         Command::Setup => cmd::run_setup().await.map(|()| ExitCode::SUCCESS),

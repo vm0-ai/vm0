@@ -2,7 +2,6 @@ import { command, state, type Command } from "ccstate";
 import { platformRealtimeTokenContract } from "@vm0/core/contracts/realtime";
 import { Realtime, type RealtimeChannel, type InboundMessage } from "ably";
 import { zeroClient$ } from "./api-client.ts";
-import { accept } from "../lib/accept.ts";
 import { createAblyAuthCallback } from "../lib/ably-auth.ts";
 import { createDeferredPromise, throwIfAbort } from "./utils.ts";
 import { logger } from "./log.ts";
@@ -80,20 +79,6 @@ export const setupRealtime$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const createClient = get(zeroClient$);
     const client = createClient(platformRealtimeTokenContract);
-
-    // Health-check the token endpoint so bootstrap surfaces auth errors
-    // before handing the session over to the Ably SDK.
-    await accept(
-      client.create({
-        body: {},
-        fetchOptions: { signal },
-      }),
-      [200],
-      {
-        toast: false,
-      },
-    );
-    signal.throwIfAborted();
 
     const ably = new Realtime({
       // Ably TokenRequest is single-use — see lib/ably-auth.ts for why
@@ -174,10 +159,13 @@ export const setAblyLoop$ = command(
       throw new Error("channel not estibilished");
     }
 
-    const done = await set(loopCommand$, signal);
-    if (done) {
-      return;
-    }
+    // No implicit prime on subscribe. Callers whose loop body sets up
+    // baseline state (voice-chat session instructions, connector
+    // `initialUpdatedAt`) must run the body themselves before calling this.
+    // Chat / queue / slack subscribers don't need a baseline because their
+    // data is fetched through separate computeds, and the implicit prime
+    // fanned out through multiple run/message channels caused duplicate
+    // refetches on every route change.
 
     let deferred = createDeferredPromise(signal);
 

@@ -24,7 +24,6 @@ import { prepareUserMessageFromDraft$ } from "./resolve-draft-attachments.ts";
 import {
   currentChatThreadId$,
   reloadChatThreads$,
-  patchThreadRead$,
   type ChatThread,
 } from "../agent-chat.ts";
 import {
@@ -897,17 +896,18 @@ function createRunTracking(
     return thread.activeRunIds.length === 0;
   });
 
-  const markThreadRead$ = command(async ({ get, set }, sig: AbortSignal) => {
+  const markThreadRead$ = command(async ({ get }, sig: AbortSignal) => {
     const client = get(zeroClient$)(chatThreadMarkReadContract);
     await accept(
       client.markRead({
         params: { id: threadId },
-        body: {},
         fetchOptions: { signal: sig },
       }),
       [200],
     );
-    set(patchThreadRead$, threadId);
+    // Server broadcasts `threadListChanged` via Ably on mark-read; the
+    // sidebar reloads from that channel. Bumping reloadChatThreads$ here too
+    // forces a redundant refetch that blocks subsequent keyboard navigation.
   });
 
   const loadPagedMessages$ = command(
@@ -941,7 +941,7 @@ function createRunTracking(
 
       const onMessageCreated$ = command(async ({ set }, sig: AbortSignal) => {
         await set(fetchNextPage$, sig);
-        // Advance read cursor when a new message arrives while focused
+        // Advance read marker when a new message arrives while focused.
         if (document.visibilityState === "visible") {
           await set(markThreadRead$, sig);
         }
@@ -959,10 +959,9 @@ function createRunTracking(
         return false;
       });
 
-      const onReadCursorUpdated$ = command(({ set }) => {
-        set(patchThreadRead$, threadId);
-        return false;
-      });
+      // `chatThreadReadCursorUpdated:<id>` used to bump `patchThreadRead$`
+      // here; dropped because `threadListChanged` already fans out to the
+      // sidebar, and the extra reload blocks keyboard navigation.
 
       await Promise.all([
         set(
@@ -981,12 +980,6 @@ function createRunTracking(
           setAblyLoop$,
           `chatThreadRunUpdated:${thread.id}`,
           onRunChanged$,
-          signal,
-        ),
-        set(
-          setAblyLoop$,
-          `chatThreadReadCursorUpdated:${threadId}`,
-          onReadCursorUpdated$,
           signal,
         ),
       ]);

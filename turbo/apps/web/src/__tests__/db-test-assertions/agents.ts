@@ -170,6 +170,25 @@ export async function getTestChatThreadLastReadAt(
 }
 
 /**
+ * Read the last_read_message_id value for a chat thread.
+ *
+ * @why-db-direct No API route exposes last_read_message_id directly. Tests
+ * that need to assert exact DB state after mark-read require direct access.
+ */
+export async function getTestChatThreadLastReadMessageId(
+  threadId: string,
+): Promise<string | null | undefined> {
+  initServices();
+  const [row] = await globalThis.services.db
+    .select({ lastReadMessageId: chatThreads.lastReadMessageId })
+    .from(chatThreads)
+    .where(eq(chatThreads.id, threadId))
+    .limit(1);
+  if (!row) return undefined;
+  return row.lastReadMessageId;
+}
+
+/**
  * Get the agent compose name by compose ID.
  */
 export async function getTestAgentComposeName(

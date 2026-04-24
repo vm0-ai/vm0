@@ -1,40 +1,19 @@
 import { command, computed, state } from "ccstate";
-import { zeroAgentsByIdContract } from "@vm0/core/contracts/zero-agents";
 import { zeroUserConnectorsContract } from "@vm0/core/contracts/user-connectors";
 import { reloadOnboardingStatus$ } from "./zero-onboarding.ts";
 import { zeroClient$ } from "../api-client.ts";
-import { currentAgentId$, defaultAgentId$ } from "../agent.ts";
-import { currentChatThread$ } from "../chat-page/chat-message.ts";
+import { currentChatAgent$ } from "../agent-chat.ts";
 import { accept } from "../../lib/accept.ts";
 
 // ---------------------------------------------------------------------------
 // Agent name resolution
 // ---------------------------------------------------------------------------
 
-const zeroAgentId$ = computed(async (get) => {
-  const agentId = get(currentAgentId$);
-  if (agentId !== null) {
-    return agentId;
-  }
-  const thread = await get(currentChatThread$);
-  if (thread?.agentId) {
-    return thread.agentId;
-  }
-  return await get(defaultAgentId$);
-});
-
 const internalComposeReload$ = state(0);
 
 const zeroAgent$ = computed(async (get) => {
   get(internalComposeReload$);
-  const agentId = await get(zeroAgentId$);
-  if (!agentId) {
-    return null;
-  }
-
-  const client = get(zeroClient$)(zeroAgentsByIdContract);
-  const result = await accept(client.get({ params: { id: agentId } }), [200]);
-  return result.body;
+  return await get(currentChatAgent$);
 });
 
 // ---------------------------------------------------------------------------

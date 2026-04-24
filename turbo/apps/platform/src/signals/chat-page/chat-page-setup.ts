@@ -28,22 +28,17 @@ export const setupChatPage$ = command(
     // available on first render. `isNew` tells us whether the local cache
     // was empty — if so, we will seed draft signals from server data below.
     const { isNew } = set(ensureDraft$, threadId);
-
-    set(
-      updatePage$,
-      createElement(ZeroChatThreadPage, { key: threadId }),
-      "sidebar",
-    );
     set(updateDocumentTitle$, "Chat");
     set(setupChatPageKeyboard$, signal);
-
-    await set(hideAppSkeleton$, signal);
 
     if (await set(onboardGuard$, signal)) {
       return;
     }
 
-    const thread = get(currentChatThreadSignals$)!;
+    const thread = get(currentChatThreadSignals$);
+    if (!thread) {
+      throw new Error("thread signals are required to load chat page");
+    }
     const threadData = await get(thread.threadData$);
     signal.throwIfAborted();
     if (!threadData) {
@@ -60,11 +55,19 @@ export const setupChatPage$ = command(
       return;
     }
 
+    set(setChatAgentId$, threadData.agentId ?? null);
+
+    set(
+      updatePage$,
+      createElement(ZeroChatThreadPage, { key: threadId }),
+      "sidebar",
+    );
+
+    await set(hideAppSkeleton$, signal);
+
     // Use threadData for title (reliable on page refresh) instead of chatThreads$
     const sessionTitle = threadData.title ?? "New chat";
     set(updateDocumentTitle$, sessionTitle);
-
-    set(setChatAgentId$, threadData.agentId ?? null);
 
     // Seed draft from server data on first visit (local cache was empty).
     // Local-first: if the user already has local state, we do NOT overwrite it.

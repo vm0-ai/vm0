@@ -8,7 +8,7 @@ import { isNotFound } from "../../../../../../src/lib/shared/errors";
 import { publishUserSignal } from "../../../../../../src/lib/infra/realtime/client";
 
 const router = tsr.router(chatThreadMarkReadContract, {
-  markRead: async ({ params, headers, body }) => {
+  markRead: async ({ params, headers }) => {
     initServices();
 
     const userId = await getUserId(headers.authorization);
@@ -21,21 +21,21 @@ const router = tsr.router(chatThreadMarkReadContract, {
       };
     }
 
-    const cursor = body.cursor ? new Date(body.cursor) : undefined;
-
     try {
-      const newLastReadAt = await markThreadRead(userId, params.id, cursor);
+      const result = await markThreadRead(userId, params.id);
 
-      await publishUserSignal(
-        [userId],
-        `chatThreadReadCursorUpdated:${params.id}`,
-        { lastReadAt: newLastReadAt.toISOString() },
-      );
-      await publishThreadListChanged(userId);
+      if (result.changed) {
+        await publishUserSignal(
+          [userId],
+          `chatThreadReadCursorUpdated:${params.id}`,
+          { lastReadMessageId: result.lastReadMessageId },
+        );
+        await publishThreadListChanged(userId);
+      }
 
       return {
         status: 200 as const,
-        body: { lastReadAt: newLastReadAt.toISOString() },
+        body: result,
       };
     } catch (error) {
       if (isNotFound(error)) {

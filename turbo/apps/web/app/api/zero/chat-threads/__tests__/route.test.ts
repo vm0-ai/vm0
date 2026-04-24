@@ -5,7 +5,7 @@ import {
   createTestCompose,
   getOrgCacheEntry,
   insertTestChatMessage,
-  setTestChatThreadLastReadAt,
+  setTestChatThreadLastReadMessageId,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -258,8 +258,8 @@ describe("GET /api/zero/chat-threads - List Threads", () => {
     expect(data.threads[0].isArchived).toBe(false);
   });
 
-  it("reports isRead based on last_read_at watermark", async () => {
-    // Thread with last_read_at >= last message → read
+  it("reports isRead based on last_read_message_id", async () => {
+    // Thread whose last_read_message_id matches the last message → read
     const readCreate = await POST(
       createTestRequest("http://localhost:3000/api/zero/chat-threads", {
         method: "POST",
@@ -268,16 +268,14 @@ describe("GET /api/zero/chat-threads - List Threads", () => {
       }),
     );
     const { id: readId } = await readCreate.json();
-    await insertTestChatMessage({
+    const readMessage = await insertTestChatMessage({
       chatThreadId: readId,
       role: "assistant",
       content: "hi",
     });
-    // Set last_read_at to a future time to ensure it is >= the message's
-    // DB-server createdAt regardless of any clock skew between Node.js and Postgres.
-    await setTestChatThreadLastReadAt(readId, new Date(Date.now() + 60_000));
+    await setTestChatThreadLastReadMessageId(readId, readMessage.id);
 
-    // Thread with last_read_at IS NULL → unread
+    // Thread with last_read_message_id NULL → unread
     const unreadCreate = await POST(
       createTestRequest("http://localhost:3000/api/zero/chat-threads", {
         method: "POST",
@@ -291,8 +289,7 @@ describe("GET /api/zero/chat-threads - List Threads", () => {
       role: "assistant",
       content: "hi",
     });
-    // Explicitly null out last_read_at so message is newer than cursor
-    await setTestChatThreadLastReadAt(unreadId, null);
+    await setTestChatThreadLastReadMessageId(unreadId, null);
 
     const response = await GET(
       createTestRequest(

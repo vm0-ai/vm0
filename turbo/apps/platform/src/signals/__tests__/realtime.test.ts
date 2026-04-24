@@ -39,20 +39,33 @@ afterEach(() => {
 });
 
 describe("setAblyLoop$ with mock Ably", () => {
-  it("resolves when loopCommand$ returns true on first call", async () => {
+  it("does not invoke loopCommand$ before the first ably event", async () => {
     const { store, controller } = setupTestStore();
 
     await store.set(setupRealtime$, controller.signal);
 
-    const body = vi.fn().mockReturnValue(true);
+    const body = vi.fn().mockReturnValue(false);
     const loopCommand$ = command((_store, _signal: AbortSignal) => {
       return body() as boolean;
     });
 
-    await store.set(setAblyLoop$, "topic", loopCommand$, controller.signal);
+    const loopPromise = store.set(
+      setAblyLoop$,
+      "topic",
+      loopCommand$,
+      controller.signal,
+    );
 
-    expect(body).toHaveBeenCalledOnce();
+    // Subscription registers without ever firing the loop body. Callers that
+    // need a baseline tick must run the loop command themselves before
+    // calling setAblyLoop$.
+    await vi.waitFor(() => {
+      expect(hasSubscription("topic")).toBeTruthy();
+    });
+    expect(body).not.toHaveBeenCalled();
+
     controller.abort();
+    await expect(loopPromise).rejects.toThrow();
   });
 
   it("iterates when triggerAblyEvent fires, resolves when body returns true", async () => {
@@ -63,7 +76,7 @@ describe("setAblyLoop$ with mock Ably", () => {
     let calls = 0;
     const loopCommand$ = command((_store, _signal: AbortSignal) => {
       calls++;
-      return calls >= 3;
+      return calls >= 2;
     });
 
     const loopPromise = store.set(
@@ -73,25 +86,24 @@ describe("setAblyLoop$ with mock Ably", () => {
       controller.signal,
     );
 
-    // First call happens immediately inside setAblyLoop$ (calls === 1), then
-    // the loop subscribes and waits on deferred.promise. Match real Ably
-    // semantics: don't fire server-side events until the subscription is
-    // confirmed — otherwise events arrive before the callback is registered
-    // and get dropped on the floor.
+    // The loop subscribes and waits on deferred.promise without running the
+    // body first. Match real Ably semantics: don't fire server-side events
+    // until the subscription is confirmed — otherwise events arrive before
+    // the callback is registered and get dropped on the floor.
     await vi.waitFor(() => {
-      expect(calls).toBe(1);
       expect(hasSubscription("test-topic")).toBeTruthy();
     });
+    expect(calls).toBe(0);
 
-    triggerAblyEvent("test-topic"); // calls === 2, returns false → loop continues
+    triggerAblyEvent("test-topic"); // calls === 1, returns false → loop continues
     await vi.waitFor(() => {
-      expect(calls).toBe(2);
+      expect(calls).toBe(1);
     });
 
-    triggerAblyEvent("test-topic"); // calls === 3, returns true → loop resolves
+    triggerAblyEvent("test-topic"); // calls === 2, returns true → loop resolves
     await loopPromise;
 
-    expect(calls).toBe(3);
+    expect(calls).toBe(2);
     controller.abort();
   });
 
@@ -124,20 +136,20 @@ describe("setAblyLoop$ with mock Ably", () => {
       controller.signal,
     );
 
-    // Wait for both loops' first iteration + subscription registration.
+    // Wait for both subscriptions to register. Loop bodies haven't run yet.
     await vi.waitFor(() => {
-      expect(callsA).toBe(1);
-      expect(callsB).toBe(1);
       expect(hasSubscription("topic-a")).toBeTruthy();
       expect(hasSubscription("topic-b")).toBeTruthy();
     });
+    expect(callsA).toBe(0);
+    expect(callsB).toBe(0);
 
     triggerAblyReconnect();
 
-    // Each subscriber gets poked once → each loop body runs again.
+    // Each subscriber gets poked once → each loop body runs exactly once.
     await vi.waitFor(() => {
-      expect(callsA).toBe(2);
-      expect(callsB).toBe(2);
+      expect(callsA).toBe(1);
+      expect(callsB).toBe(1);
     });
 
     controller.abort();
@@ -236,14 +248,14 @@ describe("setupRealtime$ authCallback", () => {
     const store = createStore();
     const controller = new AbortController();
 
-    // First two calls succeed (bootstrap probe + initial auth). The third
-    // — standing in for Ably's proactive renewal — returns 500 so we can
-    // assert the authCallback's error path is wired up correctly.
+    // Initial auth succeeds. The next call — standing in for Ably's proactive
+    // renewal — returns 500 so we can assert the authCallback's error path is
+    // wired up correctly.
     let call = 0;
     server.use(
       mockApi(platformRealtimeTokenContract.create, ({ respond }) => {
         call += 1;
-        if (call >= 3) {
+        if (call >= 2) {
           return respond(500, {
             error: {
               code: "INTERNAL_SERVER_ERROR",

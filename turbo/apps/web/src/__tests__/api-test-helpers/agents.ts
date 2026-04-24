@@ -30,12 +30,14 @@ export {
   setTestChatMessageAttachFiles,
   setTestChatMessageContent,
   setTestChatThreadLastReadAt,
+  setTestChatThreadLastReadMessageId,
 } from "../db-test-seeders/agents";
 
 export {
   getTestAgentSessionWithConversation,
   getTestAgentComposeName,
   getTestChatThreadLastReadAt,
+  getTestChatThreadLastReadMessageId,
 } from "../db-test-assertions/agents";
 
 // ---------------------------------------------------------------------------

@@ -112,9 +112,11 @@ function ChatThreadItem({
             aria-label="Unread"
           />
         )}
-        <span className="truncate min-w-0 flex-1">
-          {session.title ?? "New chat"}
-        </span>
+        {session.title ? (
+          <span className="truncate min-w-0 flex-1">{session.title}</span>
+        ) : (
+          <Skeleton className="h-3 flex-1 min-w-0 rounded" />
+        )}
       </Link>
       <div className="absolute right-0 top-0 flex h-8 w-8 items-center justify-center">
         <TooltipProvider delayDuration={200}>

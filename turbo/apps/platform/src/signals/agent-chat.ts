@@ -1,6 +1,5 @@
 import { command, computed, state } from "ccstate";
 import {
-  chatThreadByIdContract,
   chatThreadsContract,
   type ChatThreadListItem,
   type PersistedAttachment,
@@ -11,10 +10,7 @@ import { zeroClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";
 import { pathParams$ } from "./route.ts";
 import { activeRoute$ } from "./active-route.ts";
-import {
-  reloadChatThreads$,
-  reloadChatThreadsCounter$,
-} from "./chat-thread-list-reload.ts";
+import { reloadChatThreadsCounter$ } from "./chat-thread-list-reload.ts";
 
 export { reloadChatThreads$ } from "./chat-thread-list-reload.ts";
 
@@ -82,59 +78,6 @@ export interface ChatThread {
   selectedModel: string | null;
 }
 
-// Note: `create-chat-thread.ts` has a near-identical `threadData$` inside
-// `createThreadData`. Both are intentionally kept:
-//  - `currentChatThread$` is a route-scoped computed used for sidebar title
-//    merging in `chatThreads$`.
-//  - `threadData$` lives inside the per-thread signal factory so it can be
-//    invalidated independently (reloadThread$) for the open chat page.
-// The `[200, 404]` accept list and `{ toast: false }` must stay aligned so
-// missing-thread redirects (see `chat-page-setup.ts`) behave consistently.
-export const currentChatThread$ = computed(
-  async (get): Promise<ChatThread | null> => {
-    const threadId = get(currentChatThreadId$);
-    if (!threadId) {
-      return null;
-    }
-
-    const threadClient = get(zeroClient$)(chatThreadByIdContract);
-
-    const threadResult = await accept(
-      threadClient.get({ params: { id: threadId } }),
-      [200, 404],
-      { toast: false },
-    );
-    if (threadResult.status === 404) {
-      return null;
-    }
-
-    const body = threadResult.body;
-    return {
-      id: threadId,
-      title: body.title ?? null,
-      agentId: body.agentId,
-      latestSessionId: body.latestSessionId ?? null,
-      latestSessionProviderType: body.latestSessionProviderType ?? null,
-      activeRunIds: body.activeRunIds,
-      activeRuns: body.activeRuns ?? [],
-      isLegacySession: false,
-      draftContent: body.draftContent ?? null,
-      draftAttachments: body.draftAttachments ?? null,
-      modelProviderId: body.modelProviderId ?? null,
-      selectedModel: body.selectedModel ?? null,
-    };
-  },
-);
-
-/**
- * Mark a thread as read in the sidebar by triggering a full reload.
- * Uses reload (rather than in-place patch) so the server's authoritative
- * `last_read_at` value is reflected without client-side bookkeeping.
- */
-export const patchThreadRead$ = command(({ set }, _threadId: string) => {
-  set(reloadChatThreads$);
-});
-
 export const chatThreads$ = computed(async (get) => {
   get(reloadChatThreadsCounter$);
 
@@ -148,16 +91,7 @@ export const chatThreads$ = computed(async (get) => {
     client.list({ query: { agentId: agentId } }),
     [200],
   );
-  const threads = result.body.threads;
-
-  const currentThread = await get(currentChatThread$);
-  return threads.map((t) => {
-    return {
-      ...t,
-      title:
-        t.id === currentThread?.id ? t.title || currentThread.title : t.title,
-    };
-  });
+  return result.body.threads;
 });
 
 /**
