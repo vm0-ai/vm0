@@ -233,4 +233,78 @@ describe("VM0 managed model provider", () => {
       expect(result.secrets?.OPENROUTER_API_KEY).toBeDefined();
     });
   });
+
+  describe("deepseek v4 routing integration", () => {
+    it("should inject deepseek-v4-pro as ANTHROPIC_MODEL when resolving vm0 deepseek-v4-pro provider", async () => {
+      const userId = uniqueId("ds-v4-pro-route");
+      const { orgId } = await setupOrg(
+        userId,
+        "org:admin",
+        uniqueId("ds-v4-pro"),
+      );
+
+      await insertOrgDefaultModelProvider(orgId, "vm0", "deepseek-v4-pro");
+      await insertVm0ApiKeys([
+        {
+          vendor: "deepseek",
+          model: "deepseek-v4-pro",
+          apiKey: "sk-dstestkey-pro",
+          label: "deepseek-v4-pro test key",
+        },
+      ]);
+
+      const result = await resolveModelProviderSecrets(
+        orgId,
+        "claude-code",
+        false,
+      );
+
+      expect(result.resolvedModelProvider).toBe("vm0");
+      expect(result.concreteProviderType).toBe("deepseek-api-key");
+      expect(result.selectedModel).toBe("deepseek-v4-pro");
+      expect(result.injectedEnvironment?.ANTHROPIC_MODEL).toBe(
+        "deepseek-v4-pro",
+      );
+      expect(result.injectedEnvironment?.ANTHROPIC_BASE_URL).toBe(
+        "https://api.deepseek.com/anthropic",
+      );
+      expect(result.secrets?.DEEPSEEK_API_KEY).toBeDefined();
+    });
+
+    it("should inject deepseek-v4-flash as ANTHROPIC_MODEL when resolving vm0 deepseek-v4-flash provider", async () => {
+      const userId = uniqueId("ds-v4-flash-route");
+      const { orgId } = await setupOrg(
+        userId,
+        "org:admin",
+        uniqueId("ds-v4-flash"),
+      );
+
+      await insertOrgDefaultModelProvider(orgId, "vm0", "deepseek-v4-flash");
+      await insertVm0ApiKeys([
+        {
+          vendor: "deepseek",
+          model: "deepseek-v4-flash",
+          apiKey: "sk-dstestkey-flash",
+          label: "deepseek-v4-flash test key",
+        },
+      ]);
+
+      const result = await resolveModelProviderSecrets(
+        orgId,
+        "claude-code",
+        false,
+      );
+
+      expect(result.resolvedModelProvider).toBe("vm0");
+      expect(result.concreteProviderType).toBe("deepseek-api-key");
+      expect(result.selectedModel).toBe("deepseek-v4-flash");
+      expect(result.injectedEnvironment?.ANTHROPIC_MODEL).toBe(
+        "deepseek-v4-flash",
+      );
+      expect(result.injectedEnvironment?.ANTHROPIC_BASE_URL).toBe(
+        "https://api.deepseek.com/anthropic",
+      );
+      expect(result.secrets?.DEEPSEEK_API_KEY).toBeDefined();
+    });
+  });
 });
