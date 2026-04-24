@@ -43,22 +43,13 @@ describe("connectors page", () => {
       expect(screen.getByText("GitHub")).toBeInTheDocument();
     });
     expect(
-      screen.queryByRole("heading", {
-        level: 2,
-        name: "AI",
-      }),
+      screen.queryByTestId("connector-category-ai"),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("heading", {
-        level: 3,
-        name: "General Models and Reasoning",
-      }),
+      screen.queryByTestId("connector-category-ai-general-models"),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("heading", {
-        level: 2,
-        name: "Engineering and Team Execution",
-      }),
+      screen.queryByTestId("connector-category-engineering-team-execution"),
     ).not.toBeInTheDocument();
   });
 

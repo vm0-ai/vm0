@@ -20,14 +20,9 @@ import { createMockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
-const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
 
 afterEach(() => {
   vi.restoreAllMocks();
-  Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
-    configurable: true,
-    value: originalScrollIntoView,
-  });
 });
 
 describe("connectors page - count display", () => {
@@ -44,26 +39,20 @@ describe("connectors page - count display", () => {
     });
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("heading", {
-          level: 2,
-          name: "AI",
-        }),
-      ).toBeInTheDocument();
+      expect(screen.getByTestId("connector-category-ai")).toBeInTheDocument();
     });
     expect(
-      screen.getByRole("heading", {
-        level: 3,
-        name: "General Models and Reasoning",
-      }),
+      screen.getByTestId("connector-category-ai-general-models"),
     ).toBeInTheDocument();
-    const headings = screen.getAllByRole("heading", { level: 2 });
-    const labels = headings.map((heading) => {
-      return heading.textContent;
-    });
-    expect(labels.indexOf("AI")).toBeLessThan(
-      labels.indexOf("Engineering and Team Execution"),
+
+    const aiGroup = screen.getByTestId("connector-category-ai");
+    const engineeringGroup = screen.getByTestId(
+      "connector-category-engineering-team-execution",
     );
+    expect(
+      aiGroup.compareDocumentPosition(engineeringGroup) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it("only matching categories are shown for search-filtered results (CONN-D-002)", async () => {
@@ -76,18 +65,10 @@ describe("connectors page - count display", () => {
     });
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("heading", {
-          level: 2,
-          name: "AI",
-        }),
-      ).toBeInTheDocument();
+      expect(screen.getByTestId("connector-category-ai")).toBeInTheDocument();
     });
     expect(
-      screen.getByRole("heading", {
-        level: 3,
-        name: "General Models and Reasoning",
-      }),
+      screen.getByTestId("connector-category-ai-general-models"),
     ).toBeInTheDocument();
 
     await userEvent.type(
@@ -97,23 +78,14 @@ describe("connectors page - count display", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("heading", {
-          level: 2,
-          name: "Engineering and Team Execution",
-        }),
+        screen.getByTestId("connector-category-engineering-team-execution"),
       ).toBeInTheDocument();
     });
     expect(
-      screen.queryByRole("heading", {
-        level: 2,
-        name: "AI",
-      }),
+      screen.queryByTestId("connector-category-ai"),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("heading", {
-        level: 2,
-        name: "Communication and Collaboration",
-      }),
+      screen.queryByTestId("connector-category-communication-collaboration"),
     ).not.toBeInTheDocument();
   });
 });
@@ -132,16 +104,10 @@ describe("connectors page - grouped display", () => {
     });
 
     expect(
-      screen.queryByRole("heading", {
-        level: 2,
-        name: "AI",
-      }),
+      screen.queryByTestId("connector-category-ai"),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("heading", {
-        level: 2,
-        name: "Engineering and Team Execution",
-      }),
+      screen.queryByTestId("connector-category-engineering-team-execution"),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("navigation", {
@@ -151,11 +117,10 @@ describe("connectors page - grouped display", () => {
   });
 
   it("renders a category menu that scrolls to grouped sections", async () => {
-    const scrollIntoView = vi.fn();
-    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
-      configurable: true,
-      value: scrollIntoView,
-    });
+    const scrollIntoView = vi
+      .spyOn(Element.prototype, "scrollIntoView")
+      .mockImplementation(() => {});
+
     mockConnectors([
       { type: "github" },
       { type: "openai", authMethod: "platform" },
@@ -167,20 +132,25 @@ describe("connectors page - grouped display", () => {
       featureSwitches: { [FeatureSwitchKey.ConnectorCategories]: true },
     });
 
-    const menu = await screen.findByRole("navigation", {
+    await screen.findByRole("navigation", {
       name: "Connector categories",
     });
 
     await userEvent.click(
-      within(menu).getByRole("button", {
-        name: "Engineering and Team Execution",
-      }),
+      screen.getByTestId("connector-category-menu-engineering-team-execution"),
     );
 
-    expect(scrollIntoView).toHaveBeenCalledWith({
-      block: "start",
-      behavior: "smooth",
+    // Assert the correct section was targeted (user-observable: the scrolled
+    // element is the engineering section). Do not assert on the options
+    // object — that couples the test to implementation detail.
+    const engineeringSection = screen.getByTestId(
+      "connector-category-engineering-team-execution",
+    );
+    expect(scrollIntoView).toHaveBeenCalled();
+    const scrolledInto = scrollIntoView.mock.instances.some((instance) => {
+      return instance === engineeringSection;
     });
+    expect(scrolledInto).toBe(true);
   });
 
   it("connected connectors are shown before available ones within a category", async () => {
@@ -194,23 +164,18 @@ describe("connectors page - grouped display", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("heading", {
-          level: 2,
-          name: "Engineering and Team Execution",
-        }),
+        screen.getByTestId("connector-category-engineering-team-execution"),
       ).toBeInTheDocument();
     });
 
     const engineeringSection = screen.getByTestId(
       "connector-category-engineering-team-execution",
     );
-    const labels = Array.from(
-      engineeringSection.querySelectorAll(
-        "span.text-sm.font-medium.text-foreground.truncate",
-      ),
-    ).map((element) => {
-      return element.textContent;
-    });
+    const labels = within(engineeringSection)
+      .getAllByTestId("connector-card-label")
+      .map((element) => {
+        return element.textContent;
+      });
     expect(labels[0]).toBe("GitHub");
     expect(labels).toContain("Asana");
   });

@@ -156,6 +156,7 @@ function ConnectorCategoryMenu({
                   depth="parent"
                   label={group.label}
                   menuLabel={group.menuLabel}
+                  targetId={group.id}
                   onClick={() => {
                     scrollToConnectorCategory(group.id);
                   }}
@@ -170,6 +171,7 @@ function ConnectorCategoryMenu({
                       depth="child"
                       label={section.label}
                       menuLabel={section.menuLabel}
+                      targetId={section.category}
                       onClick={() => {
                         scrollToConnectorCategory(section.category);
                       }}
@@ -190,6 +192,7 @@ function ConnectorCategoryMenu({
               depth="parent"
               label={section.label}
               menuLabel={section.menuLabel}
+              targetId={section.category}
               onClick={() => {
                 scrollToConnectorCategory(section.category);
               }}
@@ -206,12 +209,14 @@ function ConnectorCategoryMenuItem({
   depth,
   label,
   menuLabel,
+  targetId,
   onClick,
 }: {
   activeState: "current" | "ancestor" | null;
   depth: "parent" | "child";
   label: string;
   menuLabel: string;
+  targetId: string;
   onClick: () => void;
 }) {
   const isChild = depth === "child";
@@ -231,6 +236,7 @@ function ConnectorCategoryMenuItem({
       type="button"
       aria-label={label}
       aria-current={activeState === "current" ? "true" : undefined}
+      data-testid={`connector-category-menu-${targetId}`}
       title={label}
       className={`group/item relative flex h-3 w-full items-center text-left leading-snug transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 ${
         activeState === "current"
@@ -411,7 +417,10 @@ function GlobalConnectorCard({
             />
           )}
         </span>
-        <span className="min-w-0 flex-1 text-sm font-medium text-foreground truncate">
+        <span
+          data-testid="connector-card-label"
+          className="min-w-0 flex-1 text-sm font-medium text-foreground truncate"
+        >
           {connector.label}
         </span>
       </div>
@@ -476,7 +485,10 @@ function AvailableConnectorCard({
             />
           )}
         </span>
-        <span className="min-w-0 flex-1 text-sm font-medium text-foreground truncate">
+        <span
+          data-testid="connector-card-label"
+          className="min-w-0 flex-1 text-sm font-medium text-foreground truncate"
+        >
           {connector.label}
         </span>
         {isPolling ? (
