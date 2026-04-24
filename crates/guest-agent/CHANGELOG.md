@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.24.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.24.0...guest-agent-v0.24.1) (2026-04-24)
+
+
+### Bug Fixes
+
+* **guest-agent:** align telemetry reads to newline boundary ([#11026](https://github.com/vm0-ai/vm0/issues/11026)) ([df5532c](https://github.com/vm0-ai/vm0/commit/df5532cadc03d52337bbccbba519f1ea20702e78))
+
+
+### Performance Improvements
+
+* **guest-agent:** skip vas snapshot for unchanged artifacts (part 2 of [#10967](https://github.com/vm0-ai/vm0/issues/10967)) ([#10989](https://github.com/vm0-ai/vm0/issues/10989)) ([4d4b18e](https://github.com/vm0-ai/vm0/commit/4d4b18ede0f7f13c767cb8d50726d9ea1e69c780))
+
 ## [0.24.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.23.1...guest-agent-v0.24.0) (2026-04-24)
 
 

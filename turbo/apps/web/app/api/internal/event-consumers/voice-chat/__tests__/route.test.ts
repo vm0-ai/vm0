@@ -77,7 +77,9 @@ async function seedSessionWithQueuedTask() {
         status: "queued",
         createdAt: new Date(),
         sessionId: session.id,
-        markResponseReady: () => {},
+        markResponseReady: () => {
+          return undefined;
+        },
       };
     },
   });

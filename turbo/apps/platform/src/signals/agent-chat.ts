@@ -138,14 +138,17 @@ export const patchThreadRead$ = command(({ set }, _threadId: string) => {
 export const chatThreads$ = computed(async (get) => {
   get(reloadChatThreadsCounter$);
 
-  const client = get(zeroClient$)(chatThreadsContract);
-
   const agentId = await get(currentChatAgentId$);
   if (!agentId) {
     return [];
   }
-  const result = await accept(client.list({ query: { agentId } }), [200]);
-  const threads: ChatThreadListItem[] = result.body.threads;
+
+  const client = get(zeroClient$)(chatThreadsContract);
+  const result = await accept(
+    client.list({ query: { agentId: agentId } }),
+    [200],
+  );
+  const threads = result.body.threads;
 
   const currentThread = await get(currentChatThread$);
   return threads.map((t) => {

@@ -2,10 +2,8 @@ import type { AdditionalVolume } from "../storage/types";
 import type { Firewalls, NetworkPolicies } from "@vm0/core/contracts/firewalls";
 
 /**
- * Artifact entry on an ExecutionContext: a name, optional version ("latest"
- * when undefined), and an explicit mount path. Replaces the old split between
- * "primary" (name→version map, mount forced to working_dir) and "additional"
- * (list with explicit mount paths). Every entry now carries its own mount.
+ * Artifact entry on an ExecutionContext: a name, optional version
+ * ("latest" when undefined), and an explicit mount path.
  */
 export interface ContextArtifact {
   name: string;
@@ -149,6 +147,14 @@ export interface DispatchTimings {
    * that don't participate in the marker protocol.
    */
   responseReady?: number;
+  /**
+   * Stamped as the first synchronous line of the Next.js after() closure,
+   * before dispatchZeroRun is invoked. Isolates pure platform after()
+   * scheduling (responseReady → afterEnterAt) from JS-local closure-to-
+   * dispatch overhead (afterEnterAt → dispatchStart). Absent on non-chat
+   * triggers (paired with responseReady and dispatchStart).
+   */
+  afterEnterAt?: number;
   /**
    * Stamped at the first synchronous line of dispatchZeroRun (inside the
    * after() callback). Anchors the end of the after() scheduling gap and the

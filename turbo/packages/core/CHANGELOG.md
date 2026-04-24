@@ -1,5 +1,18 @@
 # Changelog
 
+## [8.234.0](https://github.com/vm0-ai/vm0/compare/core-v8.233.0...core-v8.234.0) (2026-04-24)
+
+
+### Features
+
+* remove deprecated deepseek-chat/reasoner, add v4 credit multipliers ([#11014](https://github.com/vm0-ai/vm0/issues/11014)) ([7f4eb57](https://github.com/vm0-ai/vm0/commit/7f4eb57fcf8f8d3a4040787ec854fac5fac51ec0))
+
+
+### Refactoring
+
+* remove chat thread list item agentId ([#10998](https://github.com/vm0-ai/vm0/issues/10998)) ([2d62c16](https://github.com/vm0-ai/vm0/commit/2d62c168caa019b7e65e26d6f2bf713b798608a8))
+* remove unifyChatThreads feature flag ([#11006](https://github.com/vm0-ai/vm0/issues/11006)) ([4c5a8cf](https://github.com/vm0-ai/vm0/commit/4c5a8cfb0ee29f4d8259f01c0a2d3960d44f4e21))
+
 ## [8.233.0](https://github.com/vm0-ai/vm0/compare/core-v8.232.0...core-v8.233.0) (2026-04-24)
 
 

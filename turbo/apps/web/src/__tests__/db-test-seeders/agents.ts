@@ -157,6 +157,8 @@ export async function createTestZeroAgent(
     description?: string;
     sound?: string;
     permissionPolicies?: RawPermissionPolicies;
+    modelProviderId?: string | null;
+    selectedModel?: string | null;
   },
 ): Promise<void> {
   initServices();
@@ -183,6 +185,8 @@ export async function createTestZeroAgent(
       description: metadata.description ?? null,
       sound: metadata.sound ?? null,
       permissionPolicies: metadata.permissionPolicies ?? null,
+      modelProviderId: metadata.modelProviderId ?? null,
+      selectedModel: metadata.selectedModel ?? null,
     })
     .onConflictDoUpdate({
       target: [zeroAgents.orgId, zeroAgents.name],
@@ -191,6 +195,8 @@ export async function createTestZeroAgent(
         description: metadata.description ?? null,
         sound: metadata.sound ?? null,
         permissionPolicies: metadata.permissionPolicies ?? null,
+        modelProviderId: metadata.modelProviderId ?? null,
+        selectedModel: metadata.selectedModel ?? null,
       },
     });
 }

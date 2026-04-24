@@ -125,12 +125,13 @@ jobs:
             echo "any-changed=false" >> "$GITHUB_OUTPUT"
           fi
 
-          # Files outside crates/ that mitm-addon tests read directly. Written
-          # AFTER the any-changed aggregation so a dev-seed.ts edit doesn't
-          # force every crate job to re-run; only mitm-addon-test needs it.
-          # Keep in sync with paths referenced in
-          # crates/runner/mitm-addon/tests/.
-          if git diff --name-only "$BASE_REF" HEAD | grep -qE "^turbo/apps/web/scripts/dev-seed\.ts$"; then
+          # mitm-addon tests include cross-language consistency checks that
+          # read turbo/ files (e.g. dev-seed.ts, generated firewall specs) as
+          # the source of truth. Any turbo/ change could drift the contract,
+          # so trigger mitm-addon-test on all turbo/ edits. Written AFTER the
+          # any-changed aggregation so a turbo-only edit doesn't force every
+          # crate job to re-run.
+          if git diff --name-only "$BASE_REF" HEAD | grep -qE "^turbo/"; then
             echo "mitm-addon-turbo-changed=true" >> "$GITHUB_OUTPUT"
           else
             echo "mitm-addon-turbo-changed=false" >> "$GITHUB_OUTPUT"

@@ -187,6 +187,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable voice input (microphone + STT) in chat — gates the mic button and the /api/zero/voice-io/stt route",
     enabled: true,
   },
+  [FeatureSwitchKey.AudioOutput]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Enable audio output in chat (TTS read-aloud + auto-read) — gates the volume/read buttons and the /api/zero/voice-io/tts route",
+    enabled: false,
+  },
   [FeatureSwitchKey.AutoSkill]: {
     maintainer: "lancy@vm0.ai",
     description: "Enable automatic skill creation in agent prompts",
@@ -238,6 +244,15 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Gate the custom /settings/api-keys UI for issuing personal access tokens used by the /api/v1 public surface. When disabled, the settings page redirects to / and the sidebar menu item is hidden. The backend /api/v1 verification does NOT consult this flag — previously issued PATs continue to work.",
     enabled: false,
+  },
+  [FeatureSwitchKey.ModelProviderSelection]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Show the model provider + model picker on the agent profile page and schedule dialog. " +
+      "Allows per-agent and per-schedule model selection, overriding the org default. " +
+      "Staff-only during initial rollout.",
+    enabled: true,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ConnectorCategories]: {
     maintainer: "ethan@vm0.ai",

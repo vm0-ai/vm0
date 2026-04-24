@@ -1025,7 +1025,7 @@ export function ZeroChatComposer({
               onPaste={handlePaste}
             />
             <div className="flex items-center justify-between gap-2 px-4 pb-3 pt-1">
-              <div className="flex items-center gap-0 text-muted-foreground sm:gap-1">
+              <div className="flex items-center gap-1 text-muted-foreground sm:gap-1.5">
                 <TooltipProvider delayDuration={300}>
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -1053,7 +1053,7 @@ export function ZeroChatComposer({
                   onToggle={handleToggle}
                 />
               </div>
-              <div className="flex items-center gap-0 sm:gap-2">
+              <div className="flex items-center gap-1 sm:gap-2">
                 {actionsLoading ? (
                   <Skeleton
                     className={cn(
@@ -1070,7 +1070,7 @@ export function ZeroChatComposer({
                         onChange={modelPicker.onChange}
                         placeholder="Default"
                         triggerClassName={cn(
-                          "h-9 w-9 max-w-none gap-0 border-transparent bg-transparent px-0 text-sm text-muted-foreground transition-colors sm:w-auto sm:max-w-[12rem] sm:gap-1 sm:px-2",
+                          "h-9 w-9 max-w-none gap-0 border-transparent bg-transparent px-0 text-sm text-muted-foreground transition-colors sm:w-auto sm:max-w-[14rem] sm:gap-1 sm:px-2",
                           "[&>span]:flex [&>span]:items-center [&>span]:justify-center sm:[&>span]:justify-start [&>svg]:hidden sm:[&>svg]:block",
                           "hover:bg-accent hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground",
                         )}

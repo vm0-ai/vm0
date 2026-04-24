@@ -411,7 +411,7 @@ describe("POST /api/zero/chat/messages", () => {
         }
       });
 
-      it("emits the 3-way split of api_step_callbacks_and_token alongside the back-compat parent", async () => {
+      it("emits the 3-way diagnostic split for the callbacks+token phase", async () => {
         // Spans below are source="web" (recordSandboxOperation), not web-chat.
         // They are emitted by buildAndDispatchRun inside the after() callback
         // so the spy must survive until flushAfter() drains the queue.
@@ -451,33 +451,45 @@ describe("POST /api/zero/chat/messages", () => {
             }),
           );
 
-          // Back-compat parent span — still emitted for ~1 release cycle.
-          expect(byOp.has("api_step_callbacks_and_token")).toBe(true);
-
           // Three-way split — only emitted when the chat route stamped both
           // responseReady (via markResponseReady) and dispatchStart.
           expect(byOp.has("api_phase1_post_tx_sync")).toBe(true);
           expect(byOp.has("api_after_scheduling_gap")).toBe(true);
           expect(byOp.has("api_phase2_callbacks_token_pure")).toBe(true);
 
-          const parent = byOp.get("api_step_callbacks_and_token")!;
+          // Further split of api_after_scheduling_gap — only emitted when the
+          // after() closure in zero-run-service.ts stamped afterEnterAt.
+          expect(byOp.has("api_after_schedule_to_closure")).toBe(true);
+          expect(byOp.has("api_after_closure_to_dispatch")).toBe(true);
+
+          // The signals-path after() callback emits its own closure-entry
+          // offset against the same responseReady anchor.
+          expect(byOp.has("api_after_signals_enter_offset")).toBe(true);
+
           const phase1 = byOp.get("api_phase1_post_tx_sync")!;
           const gap = byOp.get("api_after_scheduling_gap")!;
           const phase2 = byOp.get("api_phase2_callbacks_token_pure")!;
+          const scheduleToClosure = byOp.get("api_after_schedule_to_closure")!;
+          const closureToDispatch = byOp.get("api_after_closure_to_dispatch")!;
+          const signalsOffset = byOp.get("api_after_signals_enter_offset")!;
 
-          // All four should be non-negative numbers.
-          for (const span of [parent, phase1, gap, phase2]) {
+          for (const span of [
+            phase1,
+            gap,
+            phase2,
+            scheduleToClosure,
+            closureToDispatch,
+            signalsOffset,
+          ]) {
             expect(typeof span.duration_ms).toBe("number");
             expect(span.duration_ms).toBeGreaterThanOrEqual(0);
           }
 
-          // The three children should sum to the parent within a small
-          // tolerance (same-process Date.now() jitter only).
-          const childrenSum =
-            phase1.duration_ms + gap.duration_ms + phase2.duration_ms;
-          expect(
-            Math.abs(childrenSum - parent.duration_ms),
-          ).toBeLessThanOrEqual(10);
+          // The two closure-entry subspans sum to api_after_scheduling_gap
+          // within same-process jitter.
+          const gapSum =
+            scheduleToClosure.duration_ms + closureToDispatch.duration_ms;
+          expect(Math.abs(gapSum - gap.duration_ms)).toBeLessThanOrEqual(10);
         } finally {
           spanSpy.mockRestore();
         }

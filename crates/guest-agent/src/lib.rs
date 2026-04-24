@@ -5,6 +5,7 @@ pub mod checkpoint;
 pub mod cli;
 pub mod complete;
 mod constants;
+mod content_hash;
 pub mod env;
 pub mod error;
 pub mod events;

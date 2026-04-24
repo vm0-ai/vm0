@@ -5,7 +5,6 @@ import {
   getCustomSkillStorageName,
   getSkillStorageName,
 } from "@vm0/core/storage-names";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { orgTierSchema } from "@vm0/core/contracts/orgs";
 import { resolveFirewallPolicies } from "@vm0/core/firewalls";
@@ -44,13 +43,10 @@ import {
 } from "./zero-run-queue-service";
 import { generateZeroToken, generateSandboxToken } from "../auth/sandbox-token";
 import { buildZeroExecutionContext } from "./build-zero-context";
+import { buildAutoMemoryArtifact } from "./memory";
 import { getOrgMetadata, type OrgMetadata } from "./org/org-metadata-service";
 import { isConcurrentRunLimit } from "../shared/errors";
-import {
-  DISALLOWED_TOOLS,
-  buildAgentPrompt,
-  buildAutoSkillGuidance,
-} from "./agent-prompt";
+import { DISALLOWED_TOOLS, buildAgentPrompt } from "./agent-prompt";
 import { zeroAgents } from "../../db/schema/zero-agent";
 import { zeroRuns } from "../../db/schema/zero-run";
 import { userConnectors } from "../../db/schema/user-connector";
@@ -260,6 +256,157 @@ function buildSystemSkillVolumes(connectorTypes: readonly string[]): Array<{
   });
 }
 
+/** Resolve model with agent-level fallback so every trigger inherits agent defaults. */
+function resolveEffectiveModel(
+  params: Pick<
+    CreateZeroRunParams,
+    "modelProviderId" | "selectedModelOverride"
+  >,
+  row?: ZeroAgentForRun | null,
+): { modelProviderId?: string; selectedModelOverride?: string } {
+  return {
+    modelProviderId:
+      params.modelProviderId ?? row?.modelProviderId ?? undefined,
+    selectedModelOverride:
+      params.selectedModelOverride ?? row?.selectedModel ?? undefined,
+  };
+}
+
+/** Context needed by insertRunWithAdvisoryLock — carved out of createZeroRunRecord. */
+interface InsertRunWithAdvisoryLockParams {
+  resolved: Awaited<ReturnType<typeof resolveStartRunCompose>>;
+  runParams: CreateRunParams;
+  orgTier: ReturnType<typeof orgTierSchema.parse>;
+  composeId: string;
+  params: CreateZeroRunParams;
+  authorizeTime: number;
+  emit: (op: string, ms: number) => void;
+  stamp: (updates: Partial<ChatSpanDimensions>) => void;
+}
+
+/**
+ * Acquire advisory lock, check concurrency, insert run record (or enqueue on
+ * limit). Extracted to keep createZeroRunRecord complexity in check.
+ */
+async function insertRunWithAdvisoryLock(
+  ctx: InsertRunWithAdvisoryLockParams,
+): Promise<{
+  runId: string;
+  status: RunStatus;
+  createdAt: Date;
+  sessionId: string;
+  record?: CreateRunRecordResult;
+}> {
+  const {
+    resolved,
+    runParams,
+    orgTier,
+    composeId,
+    params,
+    authorizeTime,
+    emit,
+    stamp,
+  } = ctx;
+
+  let run;
+  try {
+    run = await globalThis.services.db.transaction(async (tx) => {
+      const lockStart = Date.now();
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtext(${resolved.orgId}))`,
+      );
+      emit(CHAT_REQUEST_OPS.create_run_advisory_lock, Date.now() - lockStart);
+
+      const concurrencyT = await timed(async () => {
+        return checkRunConcurrencyLimit(resolved.orgId, orgTier, tx);
+      });
+      emit(CHAT_REQUEST_OPS.create_run_concurrency_check, concurrencyT.ms);
+
+      const insertT = await timed(async () => {
+        return insertRunRecord(tx, {
+          userId: runParams.userId,
+          orgId: resolved.orgId,
+          agentComposeId: composeId,
+          agentComposeVersionId: runParams.agentComposeVersionId,
+          prompt: runParams.prompt,
+          appendSystemPrompt: runParams.appendSystemPrompt,
+          vars: runParams.vars,
+          secrets: runParams.secrets,
+          additionalVolumes: runParams.additionalVolumes,
+          resumedFromCheckpointId: runParams.resumedFromCheckpointId,
+          sessionId: runParams.sessionId,
+          artifacts: [buildAutoMemoryArtifact()],
+        });
+      });
+      emit(CHAT_REQUEST_OPS.create_run_insert_run_record, insertT.ms);
+      return insertT.result;
+    });
+  } catch (error) {
+    if (isConcurrentRunLimit(error)) {
+      const queueResult = await enqueueRun(runParams);
+
+      stamp({ run_id: queueResult.runId });
+
+      const persistT = await timed(async () => {
+        return persistZeroRunMetadata(queueResult.runId, params, {
+          selectedModelOverride: runParams.selectedModelOverride,
+          modelProviderId: runParams.modelProviderId,
+        });
+      });
+      emit(CHAT_REQUEST_OPS.persist_zero_run_metadata, persistT.ms);
+
+      return {
+        runId: queueResult.runId,
+        status: queueResult.status,
+        createdAt: queueResult.createdAt,
+        sessionId: queueResult.sessionId,
+      };
+    }
+    throw error;
+  }
+
+  const transactionTime = Date.now();
+
+  stamp({ run_id: run.id });
+
+  const persistT = await timed(async () => {
+    return persistZeroRunMetadata(run.id, params, {
+      selectedModelOverride: runParams.selectedModelOverride,
+      modelProviderId: runParams.modelProviderId,
+    });
+  });
+  emit(CHAT_REQUEST_OPS.persist_zero_run_metadata, persistT.ms);
+
+  const record: CreateRunRecordResult = {
+    run: { id: run.id, createdAt: run.createdAt },
+    composeContent: resolved.composeContent,
+    orgId: resolved.orgId,
+    apiStartTime: params.apiStartTime,
+    authorizeTime,
+    transactionTime,
+  };
+
+  return {
+    runId: run.id,
+    status: "pending" as RunStatus,
+    createdAt: run.createdAt,
+    sessionId: run.sessionId,
+    record,
+  };
+}
+
+function assembleSystemPrompt(
+  agentPrompt: string,
+  userInfo: string,
+  appendSystemPrompt: string | undefined,
+): string {
+  const parts = [agentPrompt, userInfo];
+  if (appendSystemPrompt) {
+    parts.push(appendSystemPrompt);
+  }
+  return parts.join("\n\n");
+}
+
 /**
  * Create a zero run record with pre-flight checks but without dispatching.
  *
@@ -441,7 +588,6 @@ async function createZeroRunRecord(
     allowedConnectorTypes ?? [],
   );
 
-  // Build agent system prompt: identity + tools + user info, then trigger context
   const agentPrompt = buildAgentPrompt(agent);
   const userInfo = buildUserInfo({
     name: cachedUser.name ?? undefined,
@@ -449,20 +595,11 @@ async function createZeroRunRecord(
     timezone: userTimezone || "UTC",
     ...params.userInfoExtras,
   });
-  let { appendSystemPrompt } = params;
-  const systemParts = [agentPrompt, userInfo];
-  if (
-    isFeatureEnabled(FeatureSwitchKey.AutoSkill, {
-      orgId: resolved.orgId,
-      overrides: featureOverrides,
-    })
-  ) {
-    systemParts.push(buildAutoSkillGuidance());
-  }
-  if (appendSystemPrompt) {
-    systemParts.push(appendSystemPrompt);
-  }
-  appendSystemPrompt = systemParts.join("\n\n");
+  const appendSystemPrompt = assembleSystemPrompt(
+    agentPrompt,
+    userInfo,
+    params.appendSystemPrompt,
+  );
 
   // Construct CreateRunParams (infra knows nothing about ZERO_TOKEN)
   // Inject system + custom skill volumes (needed on every run).
@@ -486,8 +623,7 @@ async function createZeroRunRecord(
     sessionId: params.sessionId,
     appendSystemPrompt,
     modelProvider: params.modelProvider,
-    modelProviderId: params.modelProviderId,
-    selectedModelOverride: params.selectedModelOverride,
+    ...resolveEffectiveModel(params, row),
     callbacks: params.callbacks,
     disallowedTools: [...DISALLOWED_TOOLS],
     vars: { ZERO_AGENT_ID: params.agentId },
@@ -503,10 +639,8 @@ async function createZeroRunRecord(
   };
 
   // ── Round 3: Pre-flight checks (need compose content) ───────────────
-  const apiStartTime = params.apiStartTime;
-  const composeId = resolved.composeId;
   authorizeCompose(params.userId, resolved.orgId, {
-    id: composeId,
+    id: resolved.composeId,
     userId: resolved.composeUserId,
     orgId: resolved.orgId,
   });
@@ -553,92 +687,34 @@ async function createZeroRunRecord(
   }
 
   // ── Round 4: Advisory lock + concurrency check + INSERT ─────────────
-  let run;
-  try {
-    run = await globalThis.services.db.transaction(async (tx) => {
-      const lockStart = Date.now();
-      await tx.execute(
-        sql`SELECT pg_advisory_xact_lock(hashtext(${resolved.orgId}))`,
-      );
-      emit(CHAT_REQUEST_OPS.create_run_advisory_lock, Date.now() - lockStart);
+  const lockResult = await insertRunWithAdvisoryLock({
+    resolved,
+    runParams,
+    orgTier,
+    composeId: resolved.composeId,
+    params,
+    authorizeTime,
+    emit,
+    stamp,
+  });
 
-      const concurrencyT = await timed(async () => {
-        return checkRunConcurrencyLimit(resolved.orgId, orgTier, tx);
-      });
-      emit(CHAT_REQUEST_OPS.create_run_concurrency_check, concurrencyT.ms);
-
-      const insertT = await timed(async () => {
-        return insertRunRecord(tx, {
-          userId: runParams.userId,
-          orgId: resolved.orgId,
-          agentComposeId: composeId,
-          agentComposeVersionId: runParams.agentComposeVersionId,
-          prompt: runParams.prompt,
-          appendSystemPrompt: runParams.appendSystemPrompt,
-          vars: runParams.vars,
-          secrets: runParams.secrets,
-          additionalVolumes: runParams.additionalVolumes,
-          resumedFromCheckpointId: runParams.resumedFromCheckpointId,
-          sessionId: runParams.sessionId,
-        });
-      });
-      emit(CHAT_REQUEST_OPS.create_run_insert_run_record, insertT.ms);
-      return insertT.result;
-    });
-  } catch (error) {
-    if (isConcurrentRunLimit(error)) {
-      // Enqueue without token — dispatchQueuedZeroRun generates a fresh
-      // token at dispatch time.
-      const queueResult = await enqueueRun(runParams);
-
-      // run_id is now known — stamp it so the persist span below carries it.
-      stamp({ run_id: queueResult.runId });
-
-      const persistT = await timed(async () => {
-        return persistZeroRunMetadata(queueResult.runId, params);
-      });
-      emit(CHAT_REQUEST_OPS.persist_zero_run_metadata, persistT.ms);
-
-      return {
-        runId: queueResult.runId,
-        status: queueResult.status,
-        createdAt: queueResult.createdAt,
-        sessionId: queueResult.sessionId,
-      };
-    }
-    throw error;
+  // Enqueued runs (concurrency limit) short-circuit here
+  if (!lockResult.record) {
+    return {
+      runId: lockResult.runId,
+      status: lockResult.status,
+      createdAt: lockResult.createdAt,
+      sessionId: lockResult.sessionId,
+    };
   }
 
-  const transactionTime = Date.now();
-
-  // run_id is now known after the tx committed — stamp it on the shared dims
-  // object so the persist span (and any future Phase-1 spans) carry it. The
-  // in-tx emissions above intentionally emit with run_id absent since the
-  // record wasn't yet durable.
-  stamp({ run_id: run.id });
-
-  // Persist zero-layer metadata immediately so that activity queries
-  // (LEFT JOIN zero_runs) see the correct triggerSource before dispatch
-  // completes. Model fields are updated later in dispatchZeroRun().
-  const persistT = await timed(async () => {
-    return persistZeroRunMetadata(run.id, params);
-  });
-  emit(CHAT_REQUEST_OPS.persist_zero_run_metadata, persistT.ms);
-
-  const record: CreateRunRecordResult = {
-    run: { id: run.id, createdAt: run.createdAt },
-    composeContent: resolved.composeContent,
-    orgId: resolved.orgId,
-    apiStartTime,
-    authorizeTime,
-    transactionTime,
-  };
+  const { record } = lockResult;
 
   return {
-    runId: run.id,
+    runId: lockResult.runId,
     status: "pending",
-    createdAt: run.createdAt,
-    sessionId: run.sessionId,
+    createdAt: lockResult.createdAt,
+    sessionId: lockResult.sessionId,
     record,
     runParams,
     orgId: resolved.orgId,
@@ -659,10 +735,12 @@ async function createZeroRunRecord(
  */
 async function dispatchZeroRun(
   result: ZeroRunRecordResult,
+  afterEnterAt?: number,
 ): Promise<{ status: RunStatus; sandboxId?: string } | undefined> {
-  // Capture the after() callback entry as the first synchronous line — the
-  // gap between this timestamp and record.responseReadyAt (if stamped by the
-  // route) is the Vercel after() scheduling latency.
+  // Captured at the first synchronous line of dispatchZeroRun; paired with
+  // afterEnterAt (stamped inside the after() closure before this call) and
+  // record.responseReadyAt to split the post-response gap into pure platform
+  // scheduling vs. JS-local closure-to-dispatch overhead.
   const dispatchStart = Date.now();
 
   const { record, runParams, orgId, zeroParams } = result;
@@ -709,6 +787,7 @@ async function dispatchZeroRun(
         authorize: record.authorizeTime,
         transaction: record.transactionTime,
         responseReady: record.responseReadyAt,
+        afterEnterAt,
         dispatchStart,
         token: tokenTime,
         resolveSourceDuration: contextResult.timings.resolveSourceAndOrg,
@@ -756,10 +835,15 @@ export interface CreateZeroRunResult {
    * Stamps the response-ready timestamp used by the Phase-2 instrumentation
    * split (api_phase1_post_tx_sync / api_after_scheduling_gap /
    * api_phase2_callbacks_token_pure). Idempotent — later calls are no-ops.
-   * Non-chat callers can ignore this safely; the three split spans are
+   * Non-chat callers can ignore the return value; the three split spans are
    * skipped when the marker is never called.
+   *
+   * Returns the stamped timestamp so the caller can reference it from other
+   * after() callbacks (e.g. the chat route's signals callback measures its
+   * own closure-entry offset against it). Returns undefined when the underlying
+   * record was queued rather than inserted.
    */
-  markResponseReady: () => void;
+  markResponseReady: () => number | undefined;
 }
 
 /**
@@ -782,7 +866,8 @@ export async function createZeroRun(
   // (concurrency limit) are drained by the queue worker later.
   if (result.record) {
     after(() => {
-      return dispatchZeroRun(result).catch((err: unknown) => {
+      const afterEnterAt = Date.now();
+      return dispatchZeroRun(result, afterEnterAt).catch((err: unknown) => {
         log.error("Deferred dispatch failed", {
           runId: result.runId,
           err,
@@ -791,10 +876,12 @@ export async function createZeroRun(
     });
   }
 
-  const markResponseReady = (): void => {
-    if (result.record && result.record.responseReadyAt === undefined) {
+  const markResponseReady = (): number | undefined => {
+    if (!result.record) return undefined;
+    if (result.record.responseReadyAt === undefined) {
       result.record.responseReadyAt = Date.now();
     }
+    return result.record.responseReadyAt;
   };
 
   return {
@@ -814,6 +901,7 @@ export async function createZeroRun(
 async function persistZeroRunMetadata(
   runId: string,
   params: CreateZeroRunParams,
+  modelOverride?: { selectedModelOverride?: string; modelProviderId?: string },
 ): Promise<void> {
   await globalThis.services.db.insert(zeroRuns).values({
     id: runId,
@@ -822,7 +910,7 @@ async function persistZeroRunMetadata(
     triggerAgentId: params.triggerAgentId ?? null,
     chatThreadId: params.chatThreadId ?? null,
     modelProvider: params.modelProvider ?? null,
-    selectedModel: null,
+    selectedModel: modelOverride?.selectedModelOverride ?? null,
   });
 }
 

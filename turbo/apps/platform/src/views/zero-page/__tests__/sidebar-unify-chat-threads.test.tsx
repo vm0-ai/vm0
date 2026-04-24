@@ -1,3 +1,7 @@
+/**
+ * Unified chat-threads sidebar behaviour (#10162).
+ */
+
 import { describe, expect, it } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import {
@@ -126,7 +130,7 @@ function getSidebar(): HTMLElement {
   return screen.getByRole("navigation", { name: "Sidebar" });
 }
 
-describe("sidebar chat threads", () => {
+describe("sidebar chat threads (#10162)", () => {
   it("always requests threads scoped to the current agent", async () => {
     const observed: ListQuery[] = [];
     mockThreads(observed);
@@ -150,7 +154,7 @@ describe("sidebar chat threads", () => {
     ).toBeFalsy();
   });
 
-  it("keeps the unified sidebar labels", async () => {
+  it("renders the unified title 'Chats'", async () => {
     const observed: ListQuery[] = [];
     mockThreads(observed);
     detachedSetupPage({ context, path: "/" });

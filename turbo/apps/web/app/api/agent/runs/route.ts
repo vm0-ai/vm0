@@ -16,7 +16,6 @@ import {
 } from "../../../../src/db/schema/agent-compose";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
 import type { AdditionalVolume } from "../../../../src/lib/infra/storage/types";
-import { AUTO_MEMORY_ARTIFACT_NAME } from "../../../../src/lib/zero/memory";
 import { and, eq, inArray, desc, gte, lte, sql } from "drizzle-orm";
 import {
   loadCompose,
@@ -363,14 +362,12 @@ const router = tsr.router(runsMainContract, {
           additionalVolumes: finalAdditionalVolumes,
           resumedFromCheckpointId: body.checkpointId,
           sessionId: body.sessionId,
-          // For new runs, seed agent_sessions.artifacts from the merged
-          // list so future continues can resolve the mount set. Skip the
-          // auto-injected memory entry: it is re-appended on every run by the
-          // zero layer and should not be recorded as a user-declared artifact.
+          // Seed agent_sessions.artifacts from the merged list so future
+          // continues can resolve the mount set. resolved.artifacts already
+          // carries any memory entry from the session/checkpoint snapshot;
+          // body.artifacts (CLI --artifact) is trusted as declared.
           // For resumes, this is unused since the existing session row is reused.
-          artifacts: mergedArtifacts.filter((a) => {
-            return a.name !== AUTO_MEMORY_ARTIFACT_NAME;
-          }),
+          artifacts: mergedArtifacts,
         });
       });
       const transactionTime = Date.now();
