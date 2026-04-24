@@ -365,18 +365,14 @@ const router = tsr.router(runsMainContract, {
           additionalVolumes: finalAdditionalVolumes,
           resumedFromCheckpointId: body.checkpointId,
           sessionId: body.sessionId,
-          // For new runs, seed agent_sessions.artifact_names from the merged
+          // For new runs, seed agent_sessions.artifacts from the merged
           // list so future continues can resolve the mount set. Skip the
           // auto-injected memory entry: it is re-appended on every run by the
           // zero layer and should not be recorded as a user-declared artifact.
           // For resumes, this is unused since the existing session row is reused.
-          artifactNames: mergedArtifacts
-            .filter((a) => {
-              return a.name !== AUTO_MEMORY_ARTIFACT_NAME;
-            })
-            .map((a) => {
-              return a.name;
-            }),
+          artifacts: mergedArtifacts.filter((a) => {
+            return a.name !== AUTO_MEMORY_ARTIFACT_NAME;
+          }),
         });
       });
       const transactionTime = Date.now();

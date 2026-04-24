@@ -1723,9 +1723,9 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(names).toContain(artifactB);
     });
 
-    it("should persist body.artifacts names into agent_sessions.artifact_names for new runs", async () => {
+    it("should persist body.artifacts into agent_sessions.artifacts for new runs", async () => {
       // Regression for issue #10861: on the new-run path the session row must
-      // be seeded with the artifact names from body.artifacts so that a later
+      // be seeded with the artifact list from body.artifacts so that a later
       // `continue` can resolve the mount set. Previously insertRunRecord was
       // fed an empty resolved.artifacts map and wrote [] into the session.
       const primary = uniqueId("session-art");
@@ -1738,7 +1738,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             agentComposeId: testComposeId,
-            prompt: "Session artifact_names seeding",
+            prompt: "Session artifacts seeding",
             artifacts: [{ name: primary, mountPath: "/home/user/workspace" }],
           }),
         },

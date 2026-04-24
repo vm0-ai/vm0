@@ -8,11 +8,6 @@ import { notFound, unauthorized, badRequest } from "../../../shared/errors";
 import { logger } from "../../../shared/logger";
 import { getAgentSessionWithConversation } from "../../agent-session";
 import type { ConversationResolution } from "./types";
-import type { ContextArtifact } from "../types";
-import {
-  AUTO_MEMORY_ARTIFACT_NAME,
-  AUTO_MEMORY_MOUNT_PATH,
-} from "../../storage/types";
 import { extractWorkingDir, extractCliAgentType } from "../utils";
 import { resolveSessionHistory } from "./resolve-session-history";
 
@@ -126,16 +121,6 @@ export async function resolveSession(
   const lastRunVars =
     (lastRun?.vars as Record<string, string> | null) ?? undefined;
   const workingDir = extractWorkingDir(version.content);
-  const artifacts: ContextArtifact[] = session.artifactNames.map((name) => {
-    return {
-      name,
-      version: "latest",
-      mountPath:
-        name === AUTO_MEMORY_ARTIFACT_NAME
-          ? AUTO_MEMORY_MOUNT_PATH
-          : workingDir,
-    };
-  });
 
   return {
     conversationId: session.conversationId,
@@ -146,7 +131,7 @@ export async function resolveSession(
       cliAgentSessionId: conversation.cliAgentSessionId,
       cliAgentSessionHistory: sessionHistory,
     },
-    artifacts,
+    artifacts: session.artifacts,
     vars: lastRunVars,
     volumeVersions: undefined,
     previousRunId: conversation.runId,

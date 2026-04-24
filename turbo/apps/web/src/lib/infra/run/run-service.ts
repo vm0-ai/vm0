@@ -16,7 +16,11 @@ import type { AgentComposeYaml } from "../agent-compose/types";
 import { prepareForExecution } from "./context/execution-preparer";
 import { executeRunnerJob } from "./executors/runner-executor";
 import type { ExecutorResult, PreparedContext } from "./executors/types";
-import type { ExecutionContext, DispatchTimings } from "./types";
+import type {
+  ContextArtifact,
+  ExecutionContext,
+  DispatchTimings,
+} from "./types";
 import { recordSandboxOperation } from "../metrics";
 
 import { encryptSecretValue } from "../../shared/crypto/secrets-encryption";
@@ -427,10 +431,10 @@ interface InsertRunParams {
   resumedFromCheckpointId?: string;
   sessionId?: string;
   /**
-   * Seed for agent_sessions.artifactNames on new runs. Unused when sessionId
+   * Seed for agent_sessions.artifacts on new runs. Unused when sessionId
    * is provided (existing session row is reused).
    */
-  artifactNames?: string[];
+  artifacts?: ContextArtifact[];
 }
 
 /**
@@ -454,7 +458,7 @@ export async function insertRunRecord(
         userId: params.userId,
         orgId: params.orgId,
         agentComposeId: params.agentComposeId,
-        artifactNames: params.artifactNames ?? [],
+        artifacts: params.artifacts ?? [],
         conversationId: null,
       })
       .returning({ id: agentSessions.id });

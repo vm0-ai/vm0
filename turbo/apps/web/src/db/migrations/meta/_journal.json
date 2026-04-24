@@ -2157,6 +2157,13 @@
       "when": 1776939874298,
       "tag": "0307_flatten_artifact_scalars",
       "breakpoints": true
+    },
+    {
+      "idx": 308,
+      "version": "7",
+      "when": 1776991913173,
+      "tag": "0308_unify_artifact_shape",
+      "breakpoints": true
     }
   ]
 }

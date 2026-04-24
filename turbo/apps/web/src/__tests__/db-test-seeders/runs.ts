@@ -1,4 +1,4 @@
-import { and, eq, or } from "drizzle-orm";
+import { and, eq, or, sql } from "drizzle-orm";
 import type { SandboxReuseResult } from "@vm0/core/contracts/webhooks";
 import { agentRuns } from "../../db/schema/agent-run";
 import { agentSessions } from "../../db/schema/agent-session";
@@ -9,7 +9,6 @@ import {
 } from "../../db/schema/agent-compose";
 import { agentRunCallbacks } from "../../db/schema/agent-run-callback";
 import { agentRunQueue } from "../../db/schema/agent-run-queue";
-import { checkpoints } from "../../db/schema/checkpoint";
 import { conversations } from "../../db/schema/conversation";
 import { sandboxTelemetry } from "../../db/schema/sandbox-telemetry";
 import { usageDaily } from "../../db/schema/usage-daily";
@@ -195,12 +194,19 @@ export async function seedTestRun(
   if (!compose) {
     throw new Error(`Compose ${agentComposeId} not found`);
   }
-  // Create a version for the run
+  // Create a version for the run. Content follows AgentComposeYaml shape so
+  // downstream consumers (checkpoint writer, session/conversation resolvers)
+  // can resolve workingDir via `extractWorkingDir`.
   const versionId = uniqueId("version");
   await globalThis.services.db.insert(agentComposeVersions).values({
     id: versionId,
     composeId: agentComposeId,
-    content: { name: "test-agent", model: "claude-3-5-sonnet-20241022" },
+    content: {
+      version: "1.0",
+      agents: {
+        "test-agent": { framework: "claude-code" },
+      },
+    },
     createdBy: userId,
   });
   await globalThis.services.db
@@ -725,15 +731,18 @@ export async function insertTestUsageDaily(params: {
  *
  * @why-db-direct `checkpoints.artifact_snapshots` is written by the
  * checkpoint webhook during run completion. Resolver tests need to seed
- * arbitrary legacy and new-shape payloads to exercise shape tolerance.
+ * arbitrary legacy and new-shape payloads to exercise shape tolerance, so
+ * the raw update bypasses the column's narrowed `ContextArtifact[]` type.
  */
 export async function setTestCheckpointArtifactSnapshots(
   checkpointId: string,
   snapshots: unknown,
 ): Promise<void> {
   initServices();
-  await globalThis.services.db
-    .update(checkpoints)
-    .set({ artifactSnapshots: snapshots })
-    .where(eq(checkpoints.id, checkpointId));
+  const payload = snapshots === null ? null : JSON.stringify(snapshots);
+  await globalThis.services.db.execute(sql`
+    UPDATE checkpoints
+    SET artifact_snapshots = ${payload}::jsonb
+    WHERE id = ${checkpointId}::uuid
+  `);
 }

@@ -79,7 +79,7 @@ function mapToAgentSessionData(
     orgId: session.orgId,
     agentComposeId: session.agentComposeId,
     conversationId: session.conversationId,
-    artifactNames: session.artifactNames,
+    artifacts: session.artifacts,
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
   };

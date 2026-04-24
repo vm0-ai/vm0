@@ -15,6 +15,7 @@ import { zeroRuns } from "../../db/schema/zero-run";
 import { composeJobs } from "../../db/schema/compose-job";
 import { uniqueId } from "../test-helpers";
 import { getMessagesByThreadId } from "../../lib/zero/chat-thread/chat-message-service";
+import type { ContextArtifact } from "../../lib/infra/run/types";
 
 /**
  * @why-db-direct Creates compose + zero_agents WITHOUT a version — API always
@@ -501,21 +502,21 @@ export async function setTestChatMessageAttachFiles(
 }
 
 /**
- * Overwrite `agent_sessions.artifact_names` for a session.
+ * Overwrite `agent_sessions.artifacts` for a session.
  *
- * @why-db-direct `agent_sessions.artifact_names` is written by the run
- * pipeline from the resolved artifact list. Resolver tests need to seed
- * arbitrary name lists (including the auto-memory name) to exercise the
- * mountPath heuristic expansion.
+ * @why-db-direct `agent_sessions.artifacts` is written by the run pipeline
+ * from the resolved artifact list. Resolver tests need to seed arbitrary
+ * artifact lists (including the auto-memory entry) to exercise downstream
+ * consumers.
  */
-export async function setTestSessionArtifactNames(
+export async function setTestSessionArtifacts(
   sessionId: string,
-  artifactNames: string[],
+  artifacts: ContextArtifact[],
 ): Promise<void> {
   initServices();
   await globalThis.services.db
     .update(agentSessions)
-    .set({ artifactNames })
+    .set({ artifacts })
     .where(eq(agentSessions.id, sessionId));
 }
 

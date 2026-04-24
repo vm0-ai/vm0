@@ -120,7 +120,7 @@ export async function enqueueRun(
           userId,
           orgId,
           agentComposeId,
-          artifactNames: [],
+          artifacts: [],
           conversationId: null,
         })
         .returning({ id: agentSessions.id });

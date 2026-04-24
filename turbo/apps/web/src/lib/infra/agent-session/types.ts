@@ -1,3 +1,5 @@
+import type { ContextArtifact } from "../run/types";
+
 /**
  * Agent Session types
  * Lightweight compose ↔ conversation association for continue operations
@@ -13,7 +15,7 @@ export interface AgentSessionData {
   orgId: string;
   agentComposeId: string;
   conversationId: string | null;
-  artifactNames: string[];
+  artifacts: ContextArtifact[];
   createdAt: Date;
   updatedAt: Date;
 }

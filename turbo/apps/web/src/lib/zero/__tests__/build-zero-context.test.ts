@@ -16,7 +16,7 @@ import {
 } from "../../../__tests__/api-test-helpers";
 import { getTestZeroAgentId } from "../../../__tests__/db-test-assertions/agents";
 import {
-  setTestSessionArtifactNames,
+  setTestSessionArtifacts,
   setTestSessionFramework,
 } from "../../../__tests__/db-test-seeders/agents";
 import { setTestCheckpointArtifactSnapshots } from "../../../__tests__/db-test-seeders/runs";
@@ -523,8 +523,12 @@ describe("Org-Level Runtime Resolution (Zero Layer)", () => {
       await context.mocks.flushAfter();
       await completeTestRun(user.userId, seed.runId);
       await setTestSessionFramework(seed.sessionId, "claude-code");
-      await setTestSessionArtifactNames(seed.sessionId, [
-        AUTO_MEMORY_ARTIFACT_NAME,
+      await setTestSessionArtifacts(seed.sessionId, [
+        {
+          name: AUTO_MEMORY_ARTIFACT_NAME,
+          version: "latest",
+          mountPath: AUTO_MEMORY_MOUNT_PATH,
+        },
       ]);
 
       const resumed = await createZeroRun(

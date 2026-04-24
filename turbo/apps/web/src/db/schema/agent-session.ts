@@ -9,6 +9,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { agentComposes } from "./agent-compose";
 import { conversations } from "./conversation";
+import type { ContextArtifact } from "../../lib/infra/run/types";
 
 /**
  * Agent Sessions table
@@ -37,8 +38,8 @@ export const agentSessions = pgTable(
         onDelete: "set null",
       },
     ),
-    artifactNames: jsonb("artifact_names")
-      .$type<string[]>()
+    artifacts: jsonb("artifacts")
+      .$type<ContextArtifact[]>()
       .notNull()
       .default([]),
     createdAt: timestamp("created_at").defaultNow().notNull(),

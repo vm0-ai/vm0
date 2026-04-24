@@ -344,7 +344,11 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       expect(data.artifacts).toEqual(artifactSnapshots);
     });
 
-    it("should persist artifactSnapshots map", async () => {
+    it("should persist legacy Record payload as canonical Array via mountPath heuristic", async () => {
+      // Legacy Record input: the writer normalises to canonical
+      // Array<{name, version, mountPath}> via the name heuristic — non-"memory"
+      // entries resolve mountPath to the compose working_dir
+      // (/home/user/workspace for claude-code).
       const artifactSnapshots = {
         "artifact-a": "version-aaa",
         "artifact-b": "version-bbb",
@@ -372,11 +376,23 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
 
       expect(response.status).toBe(200);
       const data = await response.json();
+      // Response echoes whatever the sender sent, so the Record survives here.
       expect(data.artifacts).toEqual(artifactSnapshots);
 
       const checkpoint = await findTestCheckpoint(testRunId);
       expect(checkpoint).toBeDefined();
-      expect(checkpoint!.artifactSnapshots).toEqual(artifactSnapshots);
+      expect(checkpoint!.artifactSnapshots).toEqual([
+        {
+          name: "artifact-a",
+          version: "version-aaa",
+          mountPath: "/home/user/workspace",
+        },
+        {
+          name: "artifact-b",
+          version: "version-bbb",
+          mountPath: "/home/user/workspace",
+        },
+      ]);
     });
 
     it("should persist canonical array-shape artifactSnapshots verbatim", async () => {

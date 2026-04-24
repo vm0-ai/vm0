@@ -6,7 +6,7 @@ import {
   createTestRun,
 } from "../../../../../__tests__/api-test-helpers";
 import {
-  setTestSessionArtifactNames,
+  setTestSessionArtifacts,
   setTestSessionFramework,
 } from "../../../../../__tests__/db-test-seeders/agents";
 import {
@@ -23,7 +23,7 @@ const context = testContext();
 
 const WORKING_DIR = "/home/user/workspace";
 
-describe("resolveSession — artifactNames expansion", () => {
+describe("resolveSession — artifacts passthrough", () => {
   let user: UserContext;
   let composeId: string;
 
@@ -34,13 +34,17 @@ describe("resolveSession — artifactNames expansion", () => {
     composeId = compose.composeId;
   });
 
-  it("expands session.artifactNames via mountPath heuristic with version 'latest'", async () => {
+  it("returns session.artifacts verbatim from the DB", async () => {
     const { runId } = await createTestRun(composeId, "session expansion run");
     const { agentSessionId } = await completeTestRun(user.userId, runId);
     await setTestSessionFramework(agentSessionId, "claude-code");
-    await setTestSessionArtifactNames(agentSessionId, [
-      AUTO_MEMORY_ARTIFACT_NAME,
-      "ctx",
+    await setTestSessionArtifacts(agentSessionId, [
+      {
+        name: AUTO_MEMORY_ARTIFACT_NAME,
+        version: "latest",
+        mountPath: AUTO_MEMORY_MOUNT_PATH,
+      },
+      { name: "ctx", version: "latest", mountPath: WORKING_DIR },
     ]);
 
     const resolution = await resolveSession(agentSessionId, user.userId);
@@ -63,11 +67,11 @@ describe("resolveSession — artifactNames expansion", () => {
     });
   });
 
-  it("returns empty artifact list when session has no artifactNames", async () => {
+  it("returns empty artifact list when session has no artifacts", async () => {
     const { runId } = await createTestRun(composeId, "empty session run");
     const { agentSessionId } = await completeTestRun(user.userId, runId);
     await setTestSessionFramework(agentSessionId, "claude-code");
-    await setTestSessionArtifactNames(agentSessionId, []);
+    await setTestSessionArtifacts(agentSessionId, []);
 
     const resolution = await resolveSession(agentSessionId, user.userId);
 

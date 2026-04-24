@@ -139,10 +139,6 @@ describe("migration 0307 flatten artifact scalars", () => {
     expect(await columnExists("memory_name")).toBe(false);
   });
 
-  it("adds the artifact_names column to agent_sessions", async () => {
-    expect(await columnExists("artifact_names")).toBe(true);
-  });
-
   it("drops the old idx_agent_sessions_user_compose_artifact index", async () => {
     expect(await indexExists("idx_agent_sessions_user_compose_artifact")).toBe(
       false,

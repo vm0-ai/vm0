@@ -13,7 +13,11 @@ import type {
   AgentComposeSnapshot,
   VolumeVersionsSnapshot,
 } from "./types";
-import { isEmptyArtifactPayload } from "./decode-artifact-snapshots";
+import {
+  decodeToContextArtifacts,
+  isEmptyArtifactPayload,
+} from "./decode-artifact-snapshots";
+import { extractWorkingDir } from "../run/utils/extract-working-dir";
 
 const log = logger("checkpoint");
 
@@ -144,14 +148,21 @@ export async function createCheckpoint(
       }
     : null;
 
-  // Persist the artifactSnapshots payload verbatim to the JSONB column —
-  // accepts both the legacy Record<name, version> shape and the canonical
-  // Array<{name, version, mountPath}> shape. Empty payloads (null, {}, [])
-  // collapse to NULL so "no artifacts" has a single on-disk representation.
+  // Normalise the artifactSnapshots payload before persisting — legacy
+  // Record<name, version> inputs get converted to the canonical
+  // Array<{name, version, mountPath}> shape via a mountPath heuristic
+  // (memory → AUTO_MEMORY_MOUNT_PATH, else → compose workingDir). Array-shape
+  // inputs already carry their own mountPath, so we skip the workingDir
+  // lookup — this keeps the writer tolerant of malformed compose content
+  // for canonical-shape payloads. Empty payloads (null, {}, []) collapse to
+  // NULL so "no artifacts" has a single on-disk representation.
   const rawPayload = request.artifactSnapshots ?? null;
   const artifactSnapshotsForDb = isEmptyArtifactPayload(rawPayload)
     ? null
-    : rawPayload;
+    : decodeToContextArtifacts(
+        rawPayload,
+        Array.isArray(rawPayload) ? "" : extractWorkingDir(version.content),
+      );
 
   const snapshotFields = {
     conversationId: conversation.id,
@@ -206,7 +217,10 @@ export async function createCheckpoint(
     checkpointId: checkpoint.id,
     agentSessionId: agentSession.id,
     conversationId: conversation.id,
-    artifacts: artifactSnapshotsForDb ?? undefined,
+    artifacts:
+      rawPayload && !isEmptyArtifactPayload(rawPayload)
+        ? rawPayload
+        : undefined,
     volumes,
   };
 }
