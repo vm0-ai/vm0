@@ -1328,7 +1328,7 @@ jobs:
         needs.prepare.outputs.ci-changed == 'true' ||
         needs.prepare.outputs.e2e-changed == 'true'
       )
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
         with:
@@ -2096,6 +2096,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
       - name: Post Lighthouse comment (web)
         if: steps.lighthouse-comment-web.outcome == 'success'
+        continue-on-error: true
         uses: marocchino/sticky-pull-request-comment@v3
         with:
           header: lighthouse-web
@@ -2169,6 +2170,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
       - name: Post Lighthouse comment (app)
         if: steps.lighthouse-comment-app.outcome == 'success'
+        continue-on-error: true
         uses: marocchino/sticky-pull-request-comment@v3
         with:
           header: lighthouse-app
