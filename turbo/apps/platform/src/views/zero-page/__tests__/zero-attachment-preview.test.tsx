@@ -1,0 +1,450 @@
+/**
+ * Tests for zero-attachment-preview.tsx
+ *
+ * Tests the AttachmentPreview component and its helpers for rendering
+ * chat attachment previews (text, json, markdown, csv, pdf, html).
+ */
+
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { server } from "../../../mocks/server.ts";
+import { http, HttpResponse } from "msw";
+import {
+  classifyChatAttachment,
+  type AttachmentPreview,
+} from "../zero-attachment-preview.tsx";
+import { setupPage } from "../../../__tests__/helper.ts";
+import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+
+const context = testContext();
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+// =============================================================================
+// classifyChatAttachment unit tests
+// =============================================================================
+
+describe("classifyChatAttachment", () => {
+  it("should classify image content type as image", () => {
+    const result = classifyChatAttachment({
+      filename: "photo.jpg",
+      url: "https://example.com/photo.jpg",
+      contentType: "image/jpeg",
+    });
+    expect(result).toBe("image");
+  });
+
+  it("should classify image extension as image", () => {
+    const result = classifyChatAttachment({
+      filename: "photo.png",
+      url: "https://example.com/photo.png",
+    });
+    expect(result).toBe("image");
+  });
+
+  it("should classify video content type as video", () => {
+    const result = classifyChatAttachment({
+      filename: "video.mp4",
+      url: "https://example.com/video.mp4",
+      contentType: "video/mp4",
+    });
+    expect(result).toBe("video");
+  });
+
+  it("should classify video extension as video", () => {
+    const result = classifyChatAttachment({
+      filename: "video.webm",
+      url: "https://example.com/video.webm",
+    });
+    expect(result).toBe("video");
+  });
+
+  it("should classify markdown files", () => {
+    const mdResult = classifyChatAttachment({
+      filename: "readme.md",
+      url: "https://example.com/readme.md",
+    });
+    expect(mdResult).toBe("markdown");
+
+    const markdownContentType = classifyChatAttachment({
+      filename: "readme",
+      url: "https://example.com/readme",
+      contentType: "text/markdown",
+    });
+    expect(markdownContentType).toBe("markdown");
+  });
+
+  it("should classify plain text files", () => {
+    const result = classifyChatAttachment({
+      filename: "notes.txt",
+      url: "https://example.com/notes.txt",
+    });
+    expect(result).toBe("text");
+  });
+
+  it("should classify JSON files", () => {
+    const result = classifyChatAttachment({
+      filename: "data.json",
+      url: "https://example.com/data.json",
+    });
+    expect(result).toBe("json");
+
+    const jsonContentType = classifyChatAttachment({
+      filename: "data",
+      url: "https://example.com/data",
+      contentType: "application/json",
+    });
+    expect(jsonContentType).toBe("json");
+  });
+
+  it("should classify CSV files", () => {
+    const result = classifyChatAttachment({
+      filename: "export.csv",
+      url: "https://example.com/export.csv",
+    });
+    expect(result).toBe("csv");
+
+    const csvContentType = classifyChatAttachment({
+      filename: "export",
+      url: "https://example.com/export",
+      contentType: "text/csv",
+    });
+    expect(csvContentType).toBe("csv");
+  });
+
+  it("should classify PDF files", () => {
+    const result = classifyChatAttachment({
+      filename: "document.pdf",
+      url: "https://example.com/document.pdf",
+    });
+    expect(result).toBe("pdf");
+
+    const pdfContentType = classifyChatAttachment({
+      filename: "document",
+      url: "https://example.com/document",
+      contentType: "application/pdf",
+    });
+    expect(pdfContentType).toBe("pdf");
+  });
+
+  it("should classify HTML files by extension and content type", () => {
+    const htmlResult = classifyChatAttachment({
+      filename: "page.html",
+      url: "https://example.com/page.html",
+    });
+    expect(htmlResult).toBe("html");
+
+    const htmResult = classifyChatAttachment({
+      filename: "page.htm",
+      url: "https://example.com/page.htm",
+    });
+    expect(htmResult).toBe("html");
+
+    const htmlContentType = classifyChatAttachment({
+      filename: "page",
+      url: "https://example.com/page",
+      contentType: "text/html",
+    });
+    expect(htmlContentType).toBe("html");
+  });
+
+  it("should fall back to 'file' for unknown types", () => {
+    const result = classifyChatAttachment({
+      filename: "archive.zip",
+      url: "https://example.com/archive.zip",
+    });
+    expect(result).toBe("file");
+  });
+
+  it("should handle filenames without extensions", () => {
+    const result = classifyChatAttachment({
+      filename: "noextension",
+      url: "https://example.com/noextension",
+    });
+    expect(result).toBe("file");
+  });
+
+  it("should handle SVG as image", () => {
+    const result = classifyChatAttachment({
+      filename: "icon.svg",
+      url: "https://example.com/icon.svg",
+    });
+    expect(result).toBe("image");
+  });
+
+  it("should handle contentType with charset suffix", () => {
+    const result = classifyChatAttachment({
+      filename: "data.json",
+      url: "https://example.com/data.json",
+      contentType: "application/json; charset=utf-8",
+    });
+    expect(result).toBe("json");
+  });
+});
+
+// =============================================================================
+// AttachmentPreview component tests
+// =============================================================================
+
+describe("AttachmentPreview component", () => {
+  async function renderPreview(attachment: {
+    filename: string;
+    url: string;
+    contentType?: string;
+  }) {
+    const result = render(
+      <AttachmentPreview attachment={attachment} />,
+    );
+    return result;
+  }
+
+  it("should render null for unrecognized file type (file kind)", async () => {
+    await renderPreview({
+      filename: "archive.zip",
+      url: "https://example.com/archive.zip",
+    });
+    expect(screen.container).toBeEmptyDOMElement();
+  });
+
+  it("should render text preview for .txt files", async () => {
+    server.use(
+      http.get("https://example.com/notes.txt", () => {
+        return HttpResponse.text("Hello world");
+      }),
+    );
+
+    await renderPreview({
+      filename: "notes.txt",
+      url: "https://example.com/notes.txt",
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-preview-text")).toBeInTheDocument();
+    });
+  });
+
+  it("should render json preview for .json files", async () => {
+    server.use(
+      http.get("https://example.com/data.json", () => {
+        return HttpResponse.json({ key: "value" });
+      }),
+    );
+
+    await renderPreview({
+      filename: "data.json",
+      url: "https://example.com/data.json",
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-preview-json")).toBeInTheDocument();
+    });
+  });
+
+  it("should render document thumbnail preview for markdown files", async () => {
+    await renderPreview({
+      filename: "readme.md",
+      url: "https://example.com/readme.md",
+    });
+
+    expect(screen.getByTestId("attachment-preview-markdown")).toBeInTheDocument();
+  });
+
+  it("should render document thumbnail preview for CSV files", async () => {
+    await renderPreview({
+      filename: "export.csv",
+      url: "https://example.com/export.csv",
+    });
+
+    expect(screen.getByTestId("attachment-preview-csv")).toBeInTheDocument();
+  });
+
+  it("should render document thumbnail preview for PDF files", async () => {
+    await renderPreview({
+      filename: "document.pdf",
+      url: "https://example.com/document.pdf",
+    });
+
+    expect(screen.getByTestId("attachment-preview-pdf")).toBeInTheDocument();
+  });
+
+  it("should render document thumbnail preview for HTML files", async () => {
+    await renderPreview({
+      filename: "page.html",
+      url: "https://example.com/page.html",
+    });
+
+    expect(screen.getByTestId("attachment-preview-html")).toBeInTheDocument();
+  });
+});
+
+// =============================================================================
+// TextPreview class component tests
+// =============================================================================
+
+describe("TextPreview loading and error states", () => {
+  it("should show loading spinner initially", async () => {
+    const { container } = render(
+      <AttachmentPreview
+        attachment={{ filename: "notes.txt", url: "https://example.com/notes.txt" }}
+      />,
+    );
+
+    // The text preview renders immediately with loading state
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-preview-text")).toBeInTheDocument();
+    });
+    // Loading spinner should be present
+    const spinner = container.querySelector(".animate-spin");
+    expect(spinner).toBeInTheDocument();
+  });
+
+  it("should show error state when fetch fails", async () => {
+    server.use(
+      http.get("https://example.com/error.txt", () => {
+        return new HttpResponse(null, { status: 500 });
+      }),
+    );
+
+    render(
+      <AttachmentPreview
+        attachment={{ filename: "error.txt", url: "https://example.com/error.txt" }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-preview-text")).toBeInTheDocument();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Preview unavailable.")).toBeInTheDocument();
+    });
+  });
+
+  it("should show loaded text content", async () => {
+    server.use(
+      http.get("https://example.com/hello.txt", () => {
+        return HttpResponse.text("Hello world");
+      }),
+    );
+
+    render(
+      <AttachmentPreview
+        attachment={{ filename: "hello.txt", url: "https://example.com/hello.txt" }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-preview-text")).toBeInTheDocument();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Hello world")).toBeInTheDocument();
+    });
+  });
+
+  it("should collapse text preview when collapsed", async () => {
+    server.use(
+      http.get("https://example.com/long.txt", () => {
+        return HttpResponse.text("Long content here");
+      }),
+    );
+
+    render(
+      <AttachmentPreview
+        attachment={{ filename: "long.txt", url: "https://example.com/long.txt" }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-preview-text")).toBeInTheDocument();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Long content here")).toBeInTheDocument();
+    });
+
+    // Click to collapse
+    const button = screen.getByRole("button", { name: /collapse/i });
+    fireEvent.click(button);
+
+    // Content should be hidden
+    await waitFor(() => {
+      expect(screen.queryByText("Long content here")).not.toBeInTheDocument();
+    });
+  });
+
+  it("should format JSON preview with indentation", async () => {
+    server.use(
+      http.get("https://example.com/data.json", () => {
+        return HttpResponse.json({ name: "test", value: 42 });
+      }),
+    );
+
+    render(
+      <AttachmentPreview
+        attachment={{ filename: "data.json", url: "https://example.com/data.json" }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-preview-json")).toBeInTheDocument();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/"name": "test"/)).toBeInTheDocument();
+    });
+  });
+});
+
+// =============================================================================
+// DocumentThumbnailPreview tests
+// =============================================================================
+
+describe("DocumentThumbnailPreview", () => {
+  it("should render markdown document preview", async () => {
+    render(
+      <AttachmentPreview
+        attachment={{ filename: "readme.md", url: "https://example.com/readme.md" }}
+      />,
+    );
+
+    const preview = screen.getByTestId("attachment-preview-markdown");
+    expect(preview).toBeInTheDocument();
+    expect(preview).toHaveAttribute("aria-label", expect.stringContaining("markdown"));
+  });
+
+  it("should render CSV document preview", async () => {
+    render(
+      <AttachmentPreview
+        attachment={{ filename: "export.csv", url: "https://example.com/export.csv" }}
+      />,
+    );
+
+    const preview = screen.getByTestId("attachment-preview-csv");
+    expect(preview).toBeInTheDocument();
+  });
+
+  it("should render PDF document preview", async () => {
+    render(
+      <AttachmentPreview
+        attachment={{ filename: "doc.pdf", url: "https://example.com/doc.pdf" }}
+      />,
+    );
+
+    const preview = screen.getByTestId("attachment-preview-pdf");
+    expect(preview).toBeInTheDocument();
+  });
+
+  it("should render HTML document preview", async () => {
+    render(
+      <AttachmentPreview
+        attachment={{ filename: "page.html", url: "https://example.com/page.html" }}
+      />,
+    );
+
+    const preview = screen.getByTestId("attachment-preview-html");
+    expect(preview).toBeInTheDocument();
+  });
+});
