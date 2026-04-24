@@ -47,16 +47,18 @@ function hasInlineData(part: unknown): part is InlineDataPart {
 
 let cachedClient: GoogleGenAI | undefined;
 
-// Prefer the Gemini Developer API key when present (local/dev: one shared
-// string in 1Password, no gcloud required). Fall back to Vertex AI via
-// Vercel OIDC → GCP Workload Identity Federation → SA impersonation on
-// production, where no long-lived credential exists by design.
+// Production is always Vertex AI via Vercel OIDC → GCP Workload Identity
+// Federation → SA impersonation — no static credentials exist by design,
+// and a stray GEMINI_API_KEY must not quietly divert charges to a second
+// billing account. Preview/dev may opt into the Gemini Developer API path
+// as a convenience so one shared key in 1Password works without gcloud.
 function buildClient(): GoogleGenAI | null {
   if (cachedClient) return cachedClient;
 
   const validated = env();
+  const allowDevKey = validated.VERCEL_ENV !== "production";
 
-  if (validated.GEMINI_API_KEY) {
+  if (allowDevKey && validated.GEMINI_API_KEY) {
     cachedClient = new GoogleGenAI({ apiKey: validated.GEMINI_API_KEY });
     return cachedClient;
   }

@@ -38,14 +38,33 @@ function postRequest(body: unknown): NextRequest {
 }
 
 describe("POST /api/generate-image", () => {
-  // The 503 branch depends on buildClient() observing an unconfigured env,
-  // which only works on the first POST() call in this file — once the route
-  // caches a client, subsequent calls skip the env check. Keep this block
-  // first; do NOT stub GEMINI_API_KEY here.
+  // The 503 branches depend on buildClient() observing an unconfigured env,
+  // which only works on calls where the route has not yet cached a client
+  // — once cached, subsequent calls skip the env check entirely. Keep this
+  // block first, do NOT stub GEMINI_API_KEY in ways that would succeed
+  // (e.g. outside production), and keep the tests ordered so every failed
+  // buildClient() leaves cachedClient undefined.
   describe("When unconfigured", () => {
     it("returns 503 when neither GEMINI_API_KEY nor GCP_* vars are set", async () => {
       context.setupMocks();
       await context.setupUser();
+
+      const response = await POST(postRequest({ prompt: "hello" }));
+
+      expect(response.status).toBe(503);
+      const data = await response.json();
+      expect(data.error.code).toBe("NOT_CONFIGURED");
+    });
+
+    it("ignores GEMINI_API_KEY in production and requires GCP vars", async () => {
+      context.setupMocks();
+      await context.setupUser();
+      // Production must never fall back to the Gemini Developer API — that
+      // bypasses OIDC and would route charges to an unmanaged billing
+      // account. The dev-only escape hatch is gated to non-production envs.
+      vi.stubEnv("VERCEL_ENV", "production");
+      vi.stubEnv("GEMINI_API_KEY", "stray-prod-key");
+      reloadEnv();
 
       const response = await POST(postRequest({ prompt: "hello" }));
 
