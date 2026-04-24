@@ -20,9 +20,9 @@ const ROLE_FILTERS: RoleFilter[] = [
   "engineering",
   "product",
   "marketing",
+  "sales",
   "support",
   "compliance",
-  "ops",
 ];
 
 const AVATAR_BASE = "/assets/avatar";
