@@ -544,6 +544,42 @@ export function FileAttachmentChip({
   );
 }
 
+export function PreviewableFileAttachmentChip({
+  filename,
+  url,
+  kind,
+}: {
+  filename: string;
+  url: string;
+  kind: "markdown" | "text" | "json" | "csv" | "pdf" | "html";
+}) {
+  const iconSrc = getFileTypeIcon(filename);
+  const openDocumentLightbox = useSet(openDocumentLightbox$);
+
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        openDocumentLightbox({ kind, url, filename });
+      }}
+      title={filename}
+      aria-label={`Open ${kind} preview for ${filename}`}
+      className="inline-flex items-center justify-center rounded-lg hover:bg-foreground/10 transition-colors p-0.5"
+    >
+      {iconSrc ? (
+        <img
+          alt=""
+          className="h-9 w-9 object-contain opacity-80"
+          aria-hidden="true"
+          src={iconSrc}
+        />
+      ) : (
+        <IconFile size={28} stroke={1.5} className="text-muted-foreground" />
+      )}
+    </button>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // AttachmentChip — chip shown in the composer before the message is sent
 // ---------------------------------------------------------------------------
@@ -577,6 +613,8 @@ function AttachmentChip({
               return url && openImageLightbox(url);
             }}
             disabled={!url}
+            aria-label={`Open image preview for ${attachment.filename}`}
+            title={attachment.filename}
             className="group relative h-9 w-9 rounded-lg overflow-hidden border border-foreground/10 hover:border-foreground/25 transition-colors"
           >
             {url ? (

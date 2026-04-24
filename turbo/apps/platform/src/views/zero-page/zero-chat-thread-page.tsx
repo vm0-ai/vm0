@@ -42,6 +42,7 @@ import { detach, Reason } from "../../signals/utils.ts";
 import {
   AttachmentLightbox,
   FileAttachmentChip,
+  PreviewableFileAttachmentChip,
 } from "./zero-attachment-chips.tsx";
 import {
   AttachmentPreview,
@@ -1022,13 +1023,11 @@ function UserMessageAttachments({
           a.kind === "html"
         ) {
           return (
-            <AttachmentPreview
+            <PreviewableFileAttachmentChip
               key={a.url}
-              attachment={{
-                filename: a.filename,
-                url: a.url,
-                contentType: a.contentType,
-              }}
+              filename={a.filename}
+              url={a.url}
+              kind={a.kind}
             />
           );
         }

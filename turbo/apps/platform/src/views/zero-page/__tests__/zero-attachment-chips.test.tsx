@@ -47,7 +47,6 @@ describe("chat-d-056: file type icon renders based on getFileTypeIcon", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByTestId("attachment-preview-pdf")).toBeInTheDocument();
       expect(
         screen.getByRole("button", {
           name: "Open pdf preview for document.pdf",
@@ -202,9 +201,11 @@ describe("chat-i-059: image preview button opens lightbox", () => {
       ).toBeInTheDocument();
     });
 
-    const chipDiv = document.querySelector<HTMLElement>('[title="photo.png"]');
-    const chipButton = chipDiv?.querySelector("button");
-    click(chipButton!);
+    await user.click(
+      screen.getByRole("button", {
+        name: "Open image preview for photo.png",
+      }),
+    );
 
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
@@ -251,9 +252,11 @@ describe("chat-i-060: close button closes lightbox", () => {
       ).toBeInTheDocument();
     });
 
-    const chipDiv = document.querySelector<HTMLElement>('[title="photo.png"]');
-    const chipButton = chipDiv?.querySelector("button");
-    click(chipButton!);
+    await user.click(
+      screen.getByRole("button", {
+        name: "Open image preview for photo.png",
+      }),
+    );
 
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
@@ -306,9 +309,11 @@ describe("chat-i-061: backdrop click closes lightbox", () => {
       ).toBeInTheDocument();
     });
 
-    const chipDiv = document.querySelector<HTMLElement>('[title="photo.png"]');
-    const chipButton = chipDiv?.querySelector("button");
-    click(chipButton!);
+    await user.click(
+      screen.getByRole("button", {
+        name: "Open image preview for photo.png",
+      }),
+    );
 
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
@@ -383,9 +388,11 @@ describe("chat-i-066: lightbox download fallback uses direct download", () => {
       ).toBeInTheDocument();
     });
 
-    const chipDiv = document.querySelector<HTMLElement>('[title="photo.png"]');
-    const chipButton = chipDiv?.querySelector("button");
-    click(chipButton!);
+    await user.click(
+      screen.getByRole("button", {
+        name: "Open image preview for photo.png",
+      }),
+    );
 
     const downloadButton = await waitFor(() => {
       return screen.getByLabelText("Download");
@@ -449,11 +456,11 @@ describe("chat-i-062: remove button on attachment chip calls onRemove", () => {
 });
 
 // ---------------------------------------------------------------------------
-// CHAT-D-063: Download link renders for file attachments in FileAttachmentChip
+// CHAT-D-063: Preview buttons render for previewable file attachments
 // ---------------------------------------------------------------------------
 
-describe("chat-d-063: download link renders for file attachment", () => {
-  it("renders a download anchor for file attachments in sent messages", async () => {
+describe("chat-d-063: preview button renders for previewable file attachment", () => {
+  it("renders a preview button for file attachments in sent messages", async () => {
     const fileUrl = "https://example.com/report.pdf";
     const filename = "report.pdf";
 
@@ -473,15 +480,15 @@ describe("chat-d-063: download link renders for file attachment", () => {
     });
 
     await waitFor(() => {
-      const link = document.querySelector<HTMLAnchorElement>(
-        `a[download="${filename}"]`,
-      );
-      expect(link).toBeInTheDocument();
-      expect(link?.getAttribute("href")).toBe(`${fileUrl}?download=1`);
+      expect(
+        screen.getByRole("button", {
+          name: `Open pdf preview for ${filename}`,
+        }),
+      ).toBeInTheDocument();
     });
   });
 
-  it("renders a download anchor from the structured attachFiles field", async () => {
+  it("renders a preview button from the structured attachFiles field", async () => {
     const fileUrl = "http://localhost:3000/f/user-1/file-1/spec.pdf";
     const filename = "spec.pdf";
 
@@ -510,11 +517,11 @@ describe("chat-d-063: download link renders for file attachment", () => {
     });
 
     await waitFor(() => {
-      const link = document.querySelector<HTMLAnchorElement>(
-        `a[download="${filename}"]`,
-      );
-      expect(link).toBeInTheDocument();
-      expect(link?.getAttribute("href")).toBe(`${fileUrl}?download=1`);
+      expect(
+        screen.getByRole("button", {
+          name: `Open pdf preview for ${filename}`,
+        }),
+      ).toBeInTheDocument();
     });
   });
 });

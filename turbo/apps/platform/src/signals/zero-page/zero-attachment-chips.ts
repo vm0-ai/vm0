@@ -23,12 +23,6 @@ export const lightboxUrl$ = computed((get) => {
   return get(internalLightboxState$);
 });
 
-const setLightboxUrl$ = command(
-  ({ set }, value: AttachmentLightboxState | null) => {
-    set(internalLightboxState$, value);
-  },
-);
-
 export const openImageLightbox$ = command(({ set }, url: string) => {
   set(internalLightboxState$, { kind: "image", url });
 });

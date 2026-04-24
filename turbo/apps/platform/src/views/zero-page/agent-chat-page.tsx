@@ -50,6 +50,7 @@ import {
 } from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
 import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
+import { AttachmentLightbox } from "./zero-attachment-chips.tsx";
 import { orgModelProviders$ } from "../../signals/external/org-model-providers.ts";
 import {
   chatPageInput$,
@@ -59,6 +60,7 @@ import {
   chatPageTaglineIndex$,
   suggestedPrompts$,
 } from "../../signals/zero-page/zero-chat-page.ts";
+import { lightboxUrl$ as attachmentLightboxUrl$ } from "../../signals/zero-page/zero-attachment-chips.ts";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { activeRoute$ } from "../../signals/active-route.ts";
@@ -442,6 +444,7 @@ export function AgentChatPage() {
   const suggestedPrompts = useGet(suggestedPrompts$);
   const navigate = useSet(detachedNavigateTo$);
   const pageSignal = useGet(pageSignal$);
+  const lightboxUrl = useGet(attachmentLightboxUrl$);
 
   const handleSend = (text: string) => {
     setInput("");
@@ -568,6 +571,7 @@ export function AgentChatPage() {
           </div>
         </div>
       </main>
+      {lightboxUrl && <AttachmentLightbox />}
     </div>
   );
 }
