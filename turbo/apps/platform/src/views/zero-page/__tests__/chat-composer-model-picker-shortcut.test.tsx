@@ -157,12 +157,14 @@ describe("chat composer — mobile icon trigger", () => {
     const trigger = screen.getByRole("combobox", { name: "Claude Sonnet 4.6" });
 
     // Desktop branch: label text lives inside a `hidden sm:inline-flex` span.
-    const desktopSpan = trigger.querySelector("span.hidden.sm\\:inline-flex");
+    const desktopSpan = trigger.querySelector(
+      String.raw`span.hidden.sm\:inline-flex`,
+    );
     expect(desktopSpan).not.toBeNull();
     expect(desktopSpan?.textContent).toContain("Claude Sonnet 4.6");
 
     // Mobile branch: provider icon lives inside a `sm:hidden` span.
-    const mobileSpan = trigger.querySelector("span.sm\\:hidden");
+    const mobileSpan = trigger.querySelector(String.raw`span.sm\:hidden`);
     expect(mobileSpan).not.toBeNull();
     // ProviderIcon renders an `<img alt="">` for known provider types.
     const providerImg = mobileSpan?.querySelector("img");
@@ -209,13 +211,15 @@ describe("chat composer — mobile icon trigger", () => {
     });
 
     // Desktop branch renders the placeholder label.
-    const desktopSpan = trigger.querySelector("span.hidden.sm\\:inline-flex");
+    const desktopSpan = trigger.querySelector(
+      String.raw`span.hidden.sm\:inline-flex`,
+    );
     expect(desktopSpan).not.toBeNull();
     expect(desktopSpan?.textContent).toContain("Default");
 
     // Mobile branch still exists; since no provider resolved, ProviderIcon's
     // `<img>` is NOT rendered — the IconCpu SVG fallback fills the slot.
-    const mobileSpan = trigger.querySelector("span.sm\\:hidden");
+    const mobileSpan = trigger.querySelector(String.raw`span.sm\:hidden`);
     expect(mobileSpan).not.toBeNull();
     expect(mobileSpan?.querySelector("img")).toBeNull();
     expect(mobileSpan?.querySelector("svg")).not.toBeNull();
