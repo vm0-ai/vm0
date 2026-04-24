@@ -276,12 +276,7 @@ function TriggerLabel({
       <ResponsiveTriggerContent
         mobileIcon={mobileIcon}
         iconType={iconType}
-        label={
-          <span className="flex items-center gap-1.5 min-w-0">
-            {iconType && <ProviderIcon type={iconType} size={16} />}
-            <span className="truncate">{displayName}</span>
-          </span>
-        }
+        label={<span className="truncate">{displayName}</span>}
       />
     );
   }
@@ -345,7 +340,7 @@ function ResponsiveTriggerContent({
     return label;
   }
   return (
-    <>
+    <span className="flex items-center min-w-0">
       <span className="flex items-center justify-center sm:hidden">
         {iconType ? (
           <ProviderIcon type={iconType} size={18} />
@@ -353,10 +348,11 @@ function ResponsiveTriggerContent({
           <IconCpu size={18} stroke={1.5} />
         )}
       </span>
-      <span className="hidden min-w-0 sm:inline-flex sm:items-center">
+      <span className="hidden min-w-0 sm:inline-flex sm:items-center sm:gap-1.5">
+        {iconType && <ProviderIcon type={iconType} size={16} />}
         {label}
       </span>
-    </>
+    </span>
   );
 }
 
