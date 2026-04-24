@@ -414,7 +414,7 @@ export const chatThreadMessagesContract = c.router({
     responses: {
       200: z.object({
         messages: z.array(pagedChatMessageSchema),
-        hasMore: z.boolean().optional(),
+        hasHistoryBefore: z.boolean().optional(),
       }),
       401: apiErrorSchema,
       404: apiErrorSchema,

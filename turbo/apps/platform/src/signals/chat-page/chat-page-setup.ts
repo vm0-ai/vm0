@@ -87,12 +87,6 @@ export const setupChatPage$ = command(
     await get(thread.groupedChatMessages$);
     signal.throwIfAborted();
 
-    // Seed hasOlderMessages$ from the already-cached initial fetch result.
-    // This must run after groupedChatMessages$ resolves so the computed value
-    // is available without issuing a second HTTP request.
-    await set(thread.syncInitialHasMore$, signal);
-    signal.throwIfAborted();
-
     // The list is mounted with visibility:hidden under the skeleton so
     // scrollHeight is already correct; wait one frame for React to commit
     // the message DOM, then scroll and reveal in the same tick.

@@ -13,6 +13,6 @@ export {
 export {
   getMessagesBefore,
   getMessagesFromLastUserMessage,
-  getMessagesSince,
+  getPagedMessages,
   type MessageRow,
 } from "./chat-message-service";

@@ -50,6 +50,7 @@ export const chatThreadV1MessagesContract = c.router({
     pathParams: z.object({ threadId: z.string().uuid() }),
     query: z.object({
       sinceId: z.string().uuid().optional(),
+      beforeId: z.string().uuid().optional(),
       limit: z.coerce.number().min(1).max(100).default(50),
     }),
     responses: {

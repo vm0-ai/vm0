@@ -267,7 +267,12 @@ function ZeroChatThreadPageInner({
   thread: ChatThreadSignals;
   autoFocus?: boolean;
 }) {
+  const features = useLastResolved(featureSwitch$);
   const groupsLoadable = useLastLoadable(thread.groupedChatMessages$);
+  const hasOlderHistory = useLastResolved(thread.hasOlderHistory$) ?? false;
+  const [loadHistoryLoadable, loadHistory] = useLoadableSet(
+    thread.loadHistory$,
+  );
   const threadDataLoadable = useLastLoadable(thread.threadData$);
   const sessionError =
     threadDataLoadable.state === "hasError"
@@ -284,8 +289,9 @@ function ZeroChatThreadPageInner({
   const setScrollContainer = useSet(thread.setScrollContainer$);
   const skeletonVisible = useGet(thread.skeletonVisible$);
   const lightboxUrl = useGet(attachmentLightboxUrl$);
-  const hasOlderMessages = useGet(thread.hasOlderMessages$);
-  const setTopSentinelRef = useSet(thread.setTopSentinelRef$);
+  const manualHistoryEnabled =
+    features?.[FeatureSwitchKey.ChatManualHistory] ?? false;
+  const loadingHistory = loadHistoryLoadable.state === "loading";
 
   return (
     <div className="flex flex-1 flex-col min-h-0 bg-transparent">
@@ -303,17 +309,37 @@ function ZeroChatThreadPageInner({
               className="w-full max-w-[900px] mx-auto flex flex-col gap-6 pb-4 overflow-visible"
               style={{ visibility: skeletonVisible ? "hidden" : "visible" }}
             >
-              {hasOlderMessages && (
-                <div
-                  ref={setTopSentinelRef}
-                  className="flex justify-center py-2"
-                >
-                  <div className="flex items-center gap-2 text-muted-foreground text-xs">
-                    <Skeleton className="h-3 w-3 rounded-full" />
-                    <span>Loading older messages…</span>
+              {!sessionError &&
+                !skeletonVisible &&
+                manualHistoryEnabled &&
+                hasOlderHistory && (
+                  <div className="flex justify-center">
+                    <button
+                      type="button"
+                      disabled={loadingHistory}
+                      onClick={async () => {
+                        const scrollContainer =
+                          document.querySelector<HTMLElement>(
+                            "[data-scroll-container]",
+                          );
+                        const beforeHeight = scrollContainer?.scrollHeight ?? 0;
+                        const beforeTop = scrollContainer?.scrollTop ?? 0;
+                        await loadHistory();
+                        requestAnimationFrame(() => {
+                          if (!scrollContainer) {
+                            return;
+                          }
+                          const heightDelta =
+                            scrollContainer.scrollHeight - beforeHeight;
+                          scrollContainer.scrollTop = beforeTop + heightDelta;
+                        });
+                      }}
+                      className="inline-flex h-8 items-center rounded-lg border border-border bg-background px-3 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Load history
+                    </button>
                   </div>
-                </div>
-              )}
+                )}
               {sessionError && (
                 <div className="flex-1 flex items-center justify-center py-16">
                   <div className="flex items-center gap-2 text-destructive">

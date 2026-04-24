@@ -8,7 +8,7 @@ import {
 } from "../../../../../../src/lib/auth/require-auth";
 import {
   getChatThread,
-  getMessagesSince,
+  getPagedMessages,
 } from "../../../../../../src/lib/zero/chat-thread";
 import { isNotFound } from "../../../../../../src/lib/shared/errors";
 
@@ -25,13 +25,14 @@ const router = tsr.router(chatThreadV1MessagesContract, {
       // Ownership check — throws notFound if the user does not own the thread
       await getChatThread(params.threadId, authCtx.userId);
 
-      const rows = await getMessagesSince(
+      const page = await getPagedMessages(
         params.threadId,
         query.sinceId,
+        query.beforeId,
         query.limit,
       );
 
-      const messages = rows.map((row) => {
+      const messages = page.messages.map((row) => {
         // Legacy placeholder rows (sequenceNumber IS NULL) fall back to runError;
         // event-backed rows and error rows use their own error field.
         const isLegacyPlaceholder =

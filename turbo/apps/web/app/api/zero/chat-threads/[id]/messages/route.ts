@@ -4,11 +4,8 @@ import { initServices } from "../../../../../../src/lib/init-services";
 import { getUserId } from "../../../../../../src/lib/auth/get-auth-context";
 import {
   getChatThread,
-  getMessagesBefore,
-  getMessagesFromLastUserMessage,
-  getMessagesSince,
+  getPagedMessages,
   resolveAttachFileUrls,
-  type MessageRow,
 } from "../../../../../../src/lib/zero/chat-thread";
 import { isNotFound } from "../../../../../../src/lib/shared/errors";
 
@@ -30,31 +27,15 @@ const router = tsr.router(chatThreadMessagesContract, {
       // Ownership check — throws notFound if user doesn't own the thread
       await getChatThread(params.threadId, userId);
 
-      let rows: MessageRow[];
-      let hasMore: boolean | undefined;
-
-      if (query.beforeId) {
-        const result = await getMessagesBefore(
-          params.threadId,
-          query.beforeId,
-          query.limit,
-        );
-        rows = result.messages;
-        hasMore = result.hasMore;
-      } else if (query.sinceId) {
-        rows = await getMessagesSince(
-          params.threadId,
-          query.sinceId,
-          query.limit,
-        );
-      } else {
-        const result = await getMessagesFromLastUserMessage(params.threadId);
-        rows = result.messages;
-        hasMore = result.hasMore;
-      }
+      const page = await getPagedMessages(
+        params.threadId,
+        query.sinceId,
+        query.beforeId,
+        query.limit,
+      );
 
       const messages = await Promise.all(
-        rows.map(async (row) => {
+        page.messages.map(async (row) => {
           // Legacy placeholder rows (sequenceNumber IS NULL) fall back to runError;
           // event-backed rows and error rows use their own error field.
           const isLegacyPlaceholder =
@@ -81,7 +62,7 @@ const router = tsr.router(chatThreadMessagesContract, {
 
       return {
         status: 200 as const,
-        body: { messages, ...(hasMore !== undefined ? { hasMore } : {}) },
+        body: { messages, hasHistoryBefore: page.hasHistoryBefore },
       };
     } catch (error) {
       if (isNotFound(error)) {

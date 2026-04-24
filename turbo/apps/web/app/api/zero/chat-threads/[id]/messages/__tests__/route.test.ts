@@ -228,9 +228,53 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
     const data = await response.json();
 
     expect(response.status).toBe(200);
-    expect(data.messages).toHaveLength(1);
-    expect(data.messages[0].content).toBe("C");
-    expect(data.hasMore).toBe(true);
+    expect(data.messages).toHaveLength(2);
+    expect(data.messages[0].content).toBe("B");
+    expect(data.messages[1].content).toBe("C");
+    expect(data.hasHistoryBefore).toBe(true);
+  });
+
+  it("should return older messages using beforeId and report whether more history exists", async () => {
+    const createRes = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testComposeId }),
+      }),
+    );
+    const { id: threadId } = await createRes.json();
+
+    const msg1 = await insertTestChatMessage({
+      chatThreadId: threadId,
+      userId: testUserId,
+      role: "user",
+      content: "A",
+    });
+    const msg2 = await insertTestChatMessage({
+      chatThreadId: threadId,
+      userId: testUserId,
+      role: "assistant",
+      content: "B",
+    });
+    const msg3 = await insertTestChatMessage({
+      chatThreadId: threadId,
+      userId: testUserId,
+      role: "user",
+      content: "C",
+    });
+
+    const response = await GET(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads/${threadId}/messages?beforeId=${msg3.id}&limit=2`,
+      ),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.messages).toHaveLength(2);
+    expect(data.messages[0].id).toBe(msg1.id);
+    expect(data.messages[1].id).toBe(msg2.id);
+    expect(data.hasHistoryBefore).toBe(false);
   });
 
   it("should return only user message when run has no assistant events", async () => {

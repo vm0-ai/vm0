@@ -174,6 +174,21 @@ interface MockLifecycleControl {
 
 export function mockChatLifecycle(options?: {
   threadId?: string;
+  historyMessages?: {
+    role: "user" | "assistant";
+    content: string | null;
+    runId?: string;
+    error?: string;
+    status?: string;
+    createdAt: string;
+    attachFiles?: {
+      id: string;
+      filename: string;
+      contentType: string;
+      size: number;
+      url: string;
+    }[];
+  }[];
   chatMessages?: {
     role: "user" | "assistant";
     content: string | null;
@@ -193,6 +208,7 @@ export function mockChatLifecycle(options?: {
   onRunCreate?: () => void;
 }): MockLifecycleControl {
   const threadId = options?.threadId ?? "thread-test-1";
+  const historyMessages = options?.historyMessages ?? [];
   const chatMessages = options?.chatMessages ?? [];
 
   let runStatus: RunStatus = "running";
@@ -214,8 +230,16 @@ export function mockChatLifecycle(options?: {
     // Paged messages endpoint — cursor-aware, version-aware mock.
     mockApi(chatThreadMessagesContract.list, ({ query, respond }) => {
       const sinceId = query.sinceId;
+      const beforeId = query.beforeId;
 
       const assistantId = `msg-assistant-run-v${assistantVersion}`;
+
+      const historicalMessages = historyMessages.map((message, i) => {
+        return {
+          id: `msg-history-${i}`,
+          ...message,
+        };
+      });
 
       const pagedMessages: {
         id: string;
@@ -233,6 +257,10 @@ export function mockChatLifecycle(options?: {
           url: string;
         }[];
       }[] = [];
+
+      for (const message of historicalMessages) {
+        pagedMessages.push(message);
+      }
 
       // Seed with pre-existing chatMessages (e.g. history on resume)
       for (let i = 0; i < chatMessages.length; i++) {
@@ -261,6 +289,23 @@ export function mockChatLifecycle(options?: {
         });
       }
 
+      if (beforeId) {
+        const beforeIndex = pagedMessages.findIndex((message) => {
+          return message.id === beforeId;
+        });
+        if (beforeIndex <= 0) {
+          return respond(200, { messages: [], hasHistoryBefore: false });
+        }
+        const olderMessages = pagedMessages.slice(
+          Math.max(0, beforeIndex - 50),
+          beforeIndex,
+        );
+        return respond(200, {
+          messages: olderMessages,
+          hasHistoryBefore: beforeIndex - olderMessages.length > 0,
+        });
+      }
+
       if (sinceId) {
         // If the assistant version bumped since the client's cursor, return
         // the updated assistant message as a "new" row. Otherwise return
@@ -276,7 +321,10 @@ export function mockChatLifecycle(options?: {
       }
 
       lastDeliveredVersion = assistantVersion;
-      return respond(200, { messages: pagedMessages });
+      return respond(200, {
+        messages: pagedMessages.slice(historyMessages.length),
+        hasHistoryBefore: historyMessages.length > 0,
+      });
     }),
     mockApi(chatThreadByIdContract.get, ({ respond }) => {
       const terminal = new Set(["completed", "failed", "cancelled", "timeout"]);
