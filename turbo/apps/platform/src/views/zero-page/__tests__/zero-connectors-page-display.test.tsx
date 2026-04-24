@@ -146,11 +146,10 @@ describe("connectors page - grouped display", () => {
     const engineeringSection = screen.getByTestId(
       "connector-category-engineering-team-execution",
     );
-    expect(scrollIntoView).toHaveBeenCalled();
     const scrolledInto = scrollIntoView.mock.instances.some((instance) => {
       return instance === engineeringSection;
     });
-    expect(scrolledInto).toBe(true);
+    expect(scrolledInto).toBeTruthy();
   });
 
   it("connected connectors are shown before available ones within a category", async () => {

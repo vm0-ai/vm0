@@ -1,6 +1,6 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
-import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import {
   useGet,
   useSet,
@@ -16,9 +16,9 @@ import {
 } from "@tabler/icons-react";
 import {
   CONNECTOR_TYPES,
-  FeatureSwitchKey,
   type ConnectorType,
 } from "@vm0/core/contracts/connectors";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { isGoogleOAuthConnector } from "@vm0/core/contracts/connector-utils";
 import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
 import {
@@ -49,7 +49,12 @@ import {
   type ConnectorTypeWithStatus,
 } from "../../signals/zero-page/settings/connectors.ts";
 import {
+  activeConnectorCategoryId$,
+  attachConnectorCategoryScrollTracking$,
+  getConnectorCategorySectionId,
   groupConnectorsByCategory,
+  resetActiveConnectorCategory$,
+  scrollToConnectorCategory,
   type ConnectorCategoryGroup,
 } from "../../signals/zero-page/settings/connector-categories.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -71,54 +76,26 @@ import {
   TooltipTrigger,
 } from "@vm0/ui";
 
-function getConnectorCategorySectionId(category: string): string {
-  return `connector-category-${category}`;
-}
-
-function scrollToConnectorCategory(category: string): void {
-  document
-    .getElementById(getConnectorCategorySectionId(category))
-    ?.scrollIntoView({ block: "start", behavior: "smooth" });
-}
-
-function getConnectorCategoryTargetIds(
-  groups: readonly ConnectorCategoryGroup<ConnectorTypeWithStatus>[],
-): string[] {
-  return groups.flatMap((group) => {
-    if (group.kind === "group") {
-      return [
-        group.id,
-        ...group.sections.map((section) => {
-          return section.category;
-        }),
-      ];
+// Callback ref that attaches scroll tracking while enabled. Each call returns
+// a fresh ref callback; React only invokes it when the underlying element
+// changes, so listeners are registered on mount and cleaned up on unmount.
+function useScrollTrackingRef(
+  enabled: boolean,
+  attach: (el: HTMLElement) => () => void,
+  resetActive: () => void,
+) {
+  let cleanup: (() => void) | null = null;
+  return (el: HTMLDivElement | null) => {
+    if (cleanup) {
+      cleanup();
+      cleanup = null;
     }
-    return [group.sections[0].category];
-  });
-}
-
-function getActiveConnectorCategoryId(
-  categoryIds: readonly string[],
-  scrollContainer: HTMLElement,
-): string | null {
-  let activeId = categoryIds[0] ?? null;
-  const anchorY = scrollContainer.getBoundingClientRect().top + 120;
-
-  for (const categoryId of categoryIds) {
-    const element = document.getElementById(
-      getConnectorCategorySectionId(categoryId),
-    );
-    if (!element) {
-      continue;
+    if (el && enabled) {
+      cleanup = attach(el);
+    } else {
+      resetActive();
     }
-    if (element.getBoundingClientRect().top <= anchorY) {
-      activeId = categoryId;
-      continue;
-    }
-    break;
-  }
-
-  return activeId;
+  };
 }
 
 function ConnectorCategoryMenu({
@@ -138,52 +115,51 @@ function ConnectorCategoryMenu({
         aria-label="Connector categories"
         className="group pointer-events-auto sticky top-[28vh] flex flex-col gap-3 pb-3 pl-5"
       >
-        {groups.map((group) => {
+        {groups.flatMap((group) => {
           if (group.kind === "group") {
             const isActiveChild = group.sections.some((section) => {
               return activeCategoryId === section.category;
             });
-            return (
-              <Fragment key={group.id}>
-                <ConnectorCategoryMenuItem
-                  activeState={
-                    activeCategoryId === group.id
-                      ? "current"
-                      : isActiveChild
-                        ? "ancestor"
-                        : null
-                  }
-                  depth="parent"
-                  label={group.label}
-                  menuLabel={group.menuLabel}
-                  targetId={group.id}
-                  onClick={() => {
-                    scrollToConnectorCategory(group.id);
-                  }}
-                />
-                {group.sections.map((section) => {
-                  return (
-                    <ConnectorCategoryMenuItem
-                      key={section.category}
-                      activeState={
-                        activeCategoryId === section.category ? "current" : null
-                      }
-                      depth="child"
-                      label={section.label}
-                      menuLabel={section.menuLabel}
-                      targetId={section.category}
-                      onClick={() => {
-                        scrollToConnectorCategory(section.category);
-                      }}
-                    />
-                  );
-                })}
-              </Fragment>
-            );
+            return [
+              <ConnectorCategoryMenuItem
+                key={group.id}
+                activeState={
+                  activeCategoryId === group.id
+                    ? "current"
+                    : isActiveChild
+                      ? "ancestor"
+                      : null
+                }
+                depth="parent"
+                label={group.label}
+                menuLabel={group.menuLabel}
+                targetId={group.id}
+                onClick={() => {
+                  scrollToConnectorCategory(group.id);
+                }}
+              />,
+              ...group.sections.map((section) => {
+                return (
+                  <ConnectorCategoryMenuItem
+                    key={section.category}
+                    activeState={
+                      activeCategoryId === section.category ? "current" : null
+                    }
+                    depth="child"
+                    label={section.label}
+                    menuLabel={section.menuLabel}
+                    targetId={section.category}
+                    onClick={() => {
+                      scrollToConnectorCategory(section.category);
+                    }}
+                  />
+                );
+              }),
+            ];
           }
 
           const section = group.sections[0];
-          return (
+          return [
             <ConnectorCategoryMenuItem
               key={section.category}
               activeState={
@@ -196,8 +172,8 @@ function ConnectorCategoryMenu({
               onClick={() => {
                 scrollToConnectorCategory(section.category);
               }}
-            />
-          );
+            />,
+          ];
         })}
       </nav>
     </aside>
@@ -542,8 +518,73 @@ function AvailableConnectorCard({
   );
 }
 
+function renderBuiltinList({
+  loadingState,
+  showConnectorCategories,
+  grouped,
+  filtered,
+  renderCard,
+  search,
+}: {
+  loadingState: "loading" | "hasData" | "hasError";
+  showConnectorCategories: boolean;
+  grouped: ConnectorCategoryGroup<ConnectorTypeWithStatus>[];
+  filtered: ConnectorTypeWithStatus[];
+  renderCard: (connector: ConnectorTypeWithStatus) => ReactNode;
+  search: string;
+}): ReactNode {
+  if (loadingState !== "hasData") {
+    return (
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        {Array.from({ length: 6 }, (_, i) => {
+          return (
+            <div
+              key={i}
+              data-testid="connector-skeleton"
+              className="zero-card flex flex-col animate-pulse"
+            >
+              <div className="flex h-14 items-center gap-2.5 px-5">
+                <span className="h-5 w-5 shrink-0 rounded-lg bg-muted/50" />
+                <span className="h-4 w-24 rounded bg-muted/50" />
+              </div>
+              <div className="flex h-11 items-center border-t border-border/30 px-5">
+                <span className="h-3 w-16 rounded bg-muted/30" />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  if (filtered.length === 0 && search) {
+    return (
+      <p className="py-12 text-center text-sm text-muted-foreground">
+        No connectors matching &ldquo;{search}&rdquo;
+      </p>
+    );
+  }
+
+  if (showConnectorCategories) {
+    return grouped.map((group) => {
+      return (
+        <ConnectorCategoryGroupSection
+          key={group.id}
+          group={group}
+          renderCard={renderCard}
+        />
+      );
+    });
+  }
+
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+      {filtered.map(renderCard)}
+    </div>
+  );
+}
+
 export function ZeroConnectorsPage() {
-  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const allTypesLoadable = useLastLoadable(allConnectorTypes$);
   const pollingType = useGet(pollingConnectorType$);
   const connect = useSet(connectConnector$);
@@ -560,10 +601,21 @@ export function ZeroConnectorsPage() {
   const setActiveTab = useSet(setConnectorsPageTab$);
   const isAdmin = useLastResolved(isOrgAdmin$) ?? false;
   const openCreateCustom = useSet(openCustomConnectorCreateDialog$);
-  const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
+  const activeCategoryId = useGet(activeConnectorCategoryId$);
+  const attachScrollTracking = useSet(attachConnectorCategoryScrollTracking$);
+  const resetActiveCategory = useSet(resetActiveConnectorCategory$);
   const features = useLastResolved(featureSwitch$);
   const showConnectorCategories =
     features?.[FeatureSwitchKey.ConnectorCategories] ?? false;
+  const categoryTrackingEnabled =
+    activeTab === "builtin" &&
+    allTypesLoadable.state === "hasData" &&
+    showConnectorCategories;
+  const scrollContainerRef = useScrollTrackingRef(
+    categoryTrackingEnabled,
+    attachScrollTracking,
+    resetActiveCategory,
+  );
 
   const search = useGet(connectorsSearch$);
   const setSearch = useSet(setConnectorsSearch$);
@@ -655,45 +707,14 @@ export function ZeroConnectorsPage() {
     ? groupConnectorsByCategory(filtered.map(getEffective))
     : [];
 
-  useEffect(() => {
-    if (
-      activeTab !== "builtin" ||
-      allTypesLoadable.state !== "hasData" ||
-      !showConnectorCategories
-    ) {
-      setActiveCategoryId(null);
-      return;
-    }
-
-    const scrollContainer = scrollContainerRef.current;
-    if (!scrollContainer) {
-      return;
-    }
-
-    const categoryIds = getConnectorCategoryTargetIds(grouped);
-    const updateActiveCategory = () => {
-      const nextActiveId = getActiveConnectorCategoryId(
-        categoryIds,
-        scrollContainer,
-      );
-      setActiveCategoryId((previousActiveId) => {
-        return previousActiveId === nextActiveId
-          ? previousActiveId
-          : nextActiveId;
-      });
-    };
-
-    updateActiveCategory();
-    scrollContainer.addEventListener("scroll", updateActiveCategory, {
-      passive: true,
-    });
-    window.addEventListener("resize", updateActiveCategory);
-
-    return () => {
-      scrollContainer.removeEventListener("scroll", updateActiveCategory);
-      window.removeEventListener("resize", updateActiveCategory);
-    };
-  }, [activeTab, allTypesLoadable.state, grouped, showConnectorCategories]);
+  const builtinList = renderBuiltinList({
+    loadingState: allTypesLoadable.state,
+    showConnectorCategories,
+    grouped,
+    filtered,
+    renderCard,
+    search,
+  });
 
   return (
     <div
@@ -768,56 +789,7 @@ export function ZeroConnectorsPage() {
               )}
             </div>
 
-            {activeTab === "builtin" && (
-              <>
-                {allTypesLoadable.state === "hasData" &&
-                  (showConnectorCategories ? (
-                    grouped.map((group) => {
-                      return (
-                        <ConnectorCategoryGroupSection
-                          key={group.id}
-                          group={group}
-                          renderCard={renderCard}
-                        />
-                      );
-                    })
-                  ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                      {filtered.map(renderCard)}
-                    </div>
-                  ))}
-
-                {allTypesLoadable.state !== "hasData" && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {Array.from({ length: 6 }, (_, i) => {
-                      return (
-                        <div
-                          key={i}
-                          data-testid="connector-skeleton"
-                          className="zero-card flex flex-col animate-pulse"
-                        >
-                          <div className="flex h-14 items-center gap-2.5 px-5">
-                            <span className="h-5 w-5 shrink-0 rounded-lg bg-muted/50" />
-                            <span className="h-4 w-24 rounded bg-muted/50" />
-                          </div>
-                          <div className="flex h-11 items-center border-t border-border/30 px-5">
-                            <span className="h-3 w-16 rounded bg-muted/30" />
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {allTypesLoadable.state === "hasData" &&
-                  filtered.length === 0 &&
-                  search && (
-                    <p className="py-12 text-center text-sm text-muted-foreground">
-                      No connectors matching &ldquo;{search}&rdquo;
-                    </p>
-                  )}
-              </>
-            )}
+            {activeTab === "builtin" && builtinList}
 
             {activeTab === "custom" && <CustomConnectorsPanel />}
           </div>
