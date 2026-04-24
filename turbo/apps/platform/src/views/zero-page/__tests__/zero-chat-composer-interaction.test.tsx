@@ -214,6 +214,49 @@ describe("zero chat composer - file input", () => {
       expect(screen.getByLabelText("Remove spec.pdf")).toBeInTheDocument();
     });
   });
+
+  it("preserves clipboard text when pasting files from a mixed external clipboard", async () => {
+    mockChatLifecycle();
+    server.use(
+      ...mockUploadSuccess({
+        id: "upload-1",
+        filename: "photo.png",
+        contentType: "image/png",
+        size: 3,
+        url: "https://example.com/photo.png",
+      }),
+    );
+
+    detachedSetupPage({ context, path: CHAT_PATH });
+
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
+    const file = new File(["png"], "photo.png", { type: "image/png" });
+
+    fireEvent.paste(textarea, {
+      clipboardData: {
+        getData: (type: string) => {
+          return type === "text/plain" ? "Please use this image" : "";
+        },
+        items: [
+          {
+            kind: "file",
+            getAsFile: () => {
+              return file;
+            },
+          },
+        ],
+      },
+    });
+
+    await waitFor(() => {
+      expect(textarea.value).toBe("Please use this image");
+      expect(
+        screen.getByLabelText("Open image preview for photo.png"),
+      ).toBeInTheDocument();
+    });
+  });
 });
 
 describe("zero chat composer - connectors popover", () => {

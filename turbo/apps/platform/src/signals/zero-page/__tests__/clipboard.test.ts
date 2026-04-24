@@ -50,11 +50,6 @@ function setupRichClipboardMock() {
   return { writeMock, writeTextMock };
 }
 
-type FetchFn = (
-  input: RequestInfo | URL,
-  init?: RequestInit,
-) => Promise<Response>;
-
 describe("copyToClipboard$", () => {
   let writeTextMock: ReturnType<typeof setupClipboardMock>;
 
@@ -109,14 +104,8 @@ describe("writeChatMessageToClipboard", () => {
     vi.restoreAllMocks();
   });
 
-  it("writes html metadata and the first png image for external paste targets", async () => {
+  it("writes image attachments as the same text and html payload as other files", async () => {
     const { writeMock } = setupRichClipboardMock();
-    const fetchMock = vi
-      .fn<FetchFn>()
-      .mockResolvedValue(
-        new Response(new Blob(["png"], { type: "image/png" }), { status: 200 }),
-      );
-    vi.stubGlobal("fetch", fetchMock);
 
     const ok = await writeChatMessageToClipboard({
       text: "Look at this",
@@ -132,21 +121,18 @@ describe("writeChatMessageToClipboard", () => {
     });
 
     expect(ok).toBeTruthy();
-    expect(fetchMock).toHaveBeenCalledWith(
-      "http://localhost:3000/f/user-1/file-1/photo.png?raw=1",
-      { mode: "cors" },
-    );
-
     const item = writeMock.mock.calls[0]?.[0][0] as unknown as
       | TestClipboardItemInstance
       | undefined;
     expect(item).toBeDefined();
-    expect(item?.items["image/png"]).toBeInstanceOf(Blob);
+    expect(item?.items["image/png"]).toBeUndefined();
     const html = await item!.items["text/html"]!.text();
     expect(html).toContain("data-vm0-chat-message");
     expect(html).toContain("<img");
+    expect(html).toContain("Look at this");
     expect(html).toContain("photo.png");
     const text = await item!.items["text/plain"]!.text();
+    expect(text).toContain("Look at this");
     expect(text).toContain("Attachments:");
     expect(text).toContain("photo.png");
   });

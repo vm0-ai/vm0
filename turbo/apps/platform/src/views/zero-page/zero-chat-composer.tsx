@@ -773,6 +773,8 @@ export function ZeroChatComposer({
     if (!items) {
       return;
     }
+    const plainText = e.clipboardData.getData("text/plain");
+    let pastedPlainText = false;
     for (const item of items) {
       if (item.kind === "file") {
         const file = item.getAsFile();
@@ -782,6 +784,17 @@ export function ZeroChatComposer({
             continue;
           }
           e.preventDefault();
+          if (!pastedPlainText && plainText) {
+            const nextInput = insertPastedText(
+              e.currentTarget,
+              input,
+              plainText,
+            );
+            if (nextInput !== input) {
+              onInputChange(nextInput);
+            }
+            pastedPlainText = true;
+          }
           detach(uploadAttachment(file, rootSignal), Reason.DomCallback);
           onDraftChange?.();
         }

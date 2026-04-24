@@ -105,56 +105,11 @@ function formatMessageHtml(payload: ChatClipboardPayload): string {
   return `<div ${CHAT_MESSAGE_CLIPBOARD_ATTR}="${encoded}">${textHtml}${attachmentsHtml}</div>`;
 }
 
-function toRawFileUrl(url: string): string {
-  if (!URL.canParse(url, window.location.origin)) {
-    return url;
-  }
-  const parsed = new URL(url, window.location.origin);
-  if (/^\/f\/[^/]+\/[^/]+\/[^/]+$/.test(parsed.pathname)) {
-    parsed.searchParams.set("raw", "1");
-  }
-  return parsed.toString();
-}
-
 function isImageAttachment(attachment: ChatClipboardAttachment): boolean {
   return (
     attachment.contentType.startsWith("image/") ||
     /\.(png|jpe?g|gif|webp|svg)$/i.test(attachment.filename)
   );
-}
-
-function clipboardImageMimeType(type: string): string | null {
-  return ["image/png", "image/jpeg", "image/gif", "image/webp"].includes(type)
-    ? type
-    : null;
-}
-
-async function fetchClipboardImage(
-  attachments: ChatClipboardAttachment[],
-): Promise<{ type: string; blob: Blob } | null> {
-  const image = attachments.find(isImageAttachment);
-  if (!image) {
-    return null;
-  }
-  // eslint-disable-next-line no-restricted-syntax -- clipboard image support is best-effort and must fall back when an image URL cannot be fetched
-  try {
-    const response = await fetch(toRawFileUrl(image.url), { mode: "cors" });
-    if (!response.ok) {
-      return null;
-    }
-    const blob = await response.blob();
-    const type = clipboardImageMimeType(blob.type || image.contentType);
-    if (!type) {
-      return null;
-    }
-    return {
-      type,
-      blob: blob.type === type ? blob : blob.slice(0, blob.size, type),
-    };
-  } catch (error: unknown) {
-    throwIfAbort(error);
-    return null;
-  }
 }
 
 async function writeClipboardItem(items: Record<string, Blob>): Promise<void> {
@@ -215,20 +170,6 @@ export async function writeChatMessageToClipboard(
     "text/plain": new Blob([plainText], { type: "text/plain" }),
     "text/html": new Blob([html], { type: "text/html" }),
   };
-  const image = await fetchClipboardImage(payload.attachments);
-
-  if (image) {
-    // eslint-disable-next-line no-restricted-syntax -- rich clipboard writes need an image fallback for browsers that reject mixed representations
-    try {
-      await writeClipboardItem({
-        ...baseItems,
-        [image.type]: image.blob,
-      });
-      return true;
-    } catch (error: unknown) {
-      throwIfAbort(error);
-    }
-  }
 
   // eslint-disable-next-line no-restricted-syntax -- rich clipboard writes fall back to text when the browser blocks ClipboardItem
   try {
