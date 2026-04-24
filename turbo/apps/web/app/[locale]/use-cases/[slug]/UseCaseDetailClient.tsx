@@ -53,15 +53,15 @@ function Section({
 
 function TryItLink({ href, label }: { href: string; label: string }) {
   return (
-    <div className="mt-2 flex justify-end opacity-0 transition-opacity group-hover:opacity-100 [@media(hover:none)]:opacity-100">
+    <div className="mt-4 flex justify-start">
       <a
         href={href}
         target="_blank"
         rel="noopener noreferrer"
-        className="inline-flex items-center gap-0.5 text-[13px] font-medium text-[#ed4e01]"
+        className="inline-flex items-center gap-1 rounded-full bg-[#ed4e01] px-4 py-2 text-[13px] font-semibold not-italic text-white shadow-sm transition-colors hover:bg-[#d64601]"
       >
         {label}
-        <IconArrowUpRight size={14} />
+        <IconArrowUpRight size={16} />
       </a>
     </div>
   );
@@ -98,7 +98,7 @@ function PromptVariants({
           );
         })}
       </div>
-      <div className="uc-prompt-block group">
+      <div className="uc-prompt-block">
         {activePrompt}
         <TryItLink
           href={buildPromptHref(activePrompt, connectors, platformUrl)}
