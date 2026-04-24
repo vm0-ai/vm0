@@ -11,7 +11,6 @@ import {
   IconLoader2,
   IconDownload,
   IconChartLine,
-  IconMessageCircle,
 } from "@tabler/icons-react";
 import {
   Button,
@@ -53,7 +52,6 @@ import {
   formatLogTime,
   formatDuration,
   currentRunId$,
-  startChatFromScheduleRun$,
 } from "../../signals/activity-page/activity-signals.ts";
 import {
   groupEventsIntoMessages,
@@ -188,7 +186,6 @@ export function ActivityHeaderCard({
   events,
   showModelDetail,
   onDownload,
-  onChatFromSchedule,
 }: {
   displayName: string;
   status: LogStatus;
@@ -208,7 +205,6 @@ export function ActivityHeaderCard({
   events: AgentEvent[];
   showModelDetail: boolean;
   onDownload?: () => void;
-  onChatFromSchedule?: () => void;
 }) {
   return (
     <div className="zero-card shrink-0 px-4 py-3">
@@ -306,26 +302,6 @@ export function ActivityHeaderCard({
             <span className="text-foreground whitespace-nowrap">{time}</span>
           </div>
           <div className="ml-auto flex items-center gap-1 shrink-0">
-            {onChatFromSchedule && (
-              <TooltipProvider delayDuration={200}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      aria-label="Continue as chat"
-                      className="h-7 w-7 shrink-0 rounded-lg text-muted-foreground hover:text-foreground p-0"
-                      onClick={onChatFromSchedule}
-                    >
-                      <IconMessageCircle size={14} stroke={1.5} />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="left">
-                    <p className="text-xs">Continue as chat</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            )}
             {(logDetail || onDownload) && (
               <TooltipProvider delayDuration={200}>
                 <Tooltip>
@@ -680,7 +656,6 @@ function ActivityDetailContent({
     detach(updateParams(next), Reason.DomCallback);
   };
   const fetchExtra = useSet(fetchDownloadExtra$);
-  const startChatFromScheduleRun = useSet(startChatFromScheduleRun$);
   const pageSignal = useGet(pageSignal$);
   const setScrollContainer = useSet(setActivityDetailScrollContainer$);
 
@@ -696,12 +671,6 @@ function ActivityDetailContent({
   const duration = formatDuration(detail.startedAt, detail.completedAt);
 
   const showDebugTabs = features?.[FeatureSwitchKey.ZeroDebug] ?? false;
-  const chatFromScheduleAgentId =
-    (features?.[FeatureSwitchKey.ScheduleRunHistory] ?? false) &&
-    detail.triggerSource === "schedule" &&
-    detail.scheduleId
-      ? detail.agentId
-      : null;
 
   return (
     <div className="h-full flex flex-col min-h-0 overflow-hidden">
@@ -740,22 +709,6 @@ function ActivityDetailContent({
                 Reason.DomCallback,
               );
             }}
-            onChatFromSchedule={
-              chatFromScheduleAgentId
-                ? () => {
-                    detach(
-                      startChatFromScheduleRun(
-                        {
-                          agentId: chatFromScheduleAgentId,
-                          runId: detail.id,
-                        },
-                        pageSignal,
-                      ),
-                      Reason.DomCallback,
-                    );
-                  }
-                : undefined
-            }
           />
 
           {showDebugTabs && (

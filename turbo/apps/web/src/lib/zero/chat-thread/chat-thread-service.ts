@@ -22,18 +22,11 @@ import { buildFileUrl } from "../uploads/file-url";
 
 /**
  * Create a new chat thread.
- *
- * `sourceScheduleRunId`, when set, marks this thread as continuing a
- * previously scheduled agent run. The chat messages route reads it once on the
- * thread's first run to seed a system prompt instructing the agent to pull the
- * original run's telemetry via `zero logs <id>`; subsequent runs inherit the
- * resulting session context and do not get the prompt again.
  */
 export async function createChatThread(
   userId: string,
   agentComposeId: string,
   title?: string | null,
-  sourceScheduleRunId?: string | null,
 ): Promise<{ id: string; createdAt: Date }> {
   const [thread] = await globalThis.services.db
     .insert(chatThreads)
@@ -41,7 +34,6 @@ export async function createChatThread(
       userId,
       agentComposeId,
       title: title ?? null,
-      sourceScheduleRunId: sourceScheduleRunId ?? null,
     })
     .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
 
@@ -202,7 +194,6 @@ export async function getChatThread(
   id: string;
   title: string | null;
   agentComposeId: string;
-  sourceScheduleRunId: string | null;
   draftContent: string | null;
   draftAttachments: PersistedAttachment[] | null;
   modelProviderId: string | null;
@@ -224,7 +215,6 @@ export async function getChatThread(
     id: thread.id,
     title: thread.title,
     agentComposeId: thread.agentComposeId,
-    sourceScheduleRunId: thread.sourceScheduleRunId ?? null,
     draftContent: thread.draftContent ?? null,
     draftAttachments: persistedAttachmentSchema
       .array()

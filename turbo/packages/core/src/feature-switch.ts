@@ -212,12 +212,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable automatic skill creation in agent prompts",
     enabled: false,
   },
-  [FeatureSwitchKey.ScheduleRunHistory]: {
-    maintainer: "linghan@vm0.ai",
-    description:
-      "Show Run History tab on schedules page and Chat-from-schedule button on activity detail",
-    enabled: false,
-  },
   [FeatureSwitchKey.TestOauthConnector]: {
     maintainer: "liangyou@vm0.ai",
     description:
@@ -388,7 +382,7 @@ export function getAllFeatureStates(
 
   if (ctx?.overrides) {
     for (const [key, value] of Object.entries(ctx.overrides)) {
-      if (value !== undefined) {
+      if (key in FEATURE_SWITCHES && value !== undefined) {
         result[key as FeatureSwitchKey] = value;
       }
     }
