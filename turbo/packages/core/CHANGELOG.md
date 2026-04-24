@@ -1,5 +1,13 @@
 # Changelog
 
+## [8.232.0](https://github.com/vm0-ai/vm0/compare/core-v8.231.0...core-v8.232.0) (2026-04-24)
+
+
+### Features
+
+* classify built-in connectors with ai-first grouping ([#10838](https://github.com/vm0-ai/vm0/issues/10838)) ([bd3e2a3](https://github.com/vm0-ai/vm0/commit/bd3e2a3d5d525bbe872723fe122fbd9ddf345a8f))
+* **slack:** graduate agent switching ([#10964](https://github.com/vm0-ai/vm0/issues/10964)) ([cf070f8](https://github.com/vm0-ai/vm0/commit/cf070f857f4ded9f16f5a6d932ba091b3d022ec5))
+
 ## [8.231.0](https://github.com/vm0-ai/vm0/compare/core-v8.230.0...core-v8.231.0) (2026-04-24)
 
 

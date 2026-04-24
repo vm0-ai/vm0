@@ -7,7 +7,6 @@ import {
   createTestCompose,
   insertOrgDefaultModelProvider,
   findTestCallbacksByRunId,
-  findTestRunRecord,
   getTestRun,
   getTestChatMessagesByThread,
   countUserRows,
@@ -17,7 +16,6 @@ import {
   getTestModelProviderIdByType,
 } from "../../../../../../src/__tests__/db-test-assertions/org";
 import { getTestZeroAgentId } from "../../../../../../src/__tests__/db-test-assertions/agents";
-import { POST as createChatThreadPOST } from "../../../chat-threads/route";
 import {
   testContext,
   uniqueId,
@@ -29,7 +27,6 @@ import { reloadEnv } from "../../../../../../src/env";
 import { server } from "../../../../../../src/mocks/server";
 import * as axiomClient from "../../../../../../src/lib/shared/axiom/client";
 import { http } from "../../../../../../src/__tests__/msw";
-import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
 import { mockAblyPublish } from "../../../../../../src/__tests__/ably-mock";
 import { createQueryCounter } from "../../../../../../src/__tests__/db-query-counter";
 import { GET as getChatThreadById } from "../../../chat-threads/[id]/route";
@@ -289,115 +286,6 @@ describe("POST /api/zero/chat/messages", () => {
       await context.mocks.flushAfter();
 
       expect(openRouterHandler.mocked).not.toHaveBeenCalled();
-    });
-
-    it("includes the schedule name in the continue-from-schedule prompt when the source run references a real schedule", async () => {
-      const { createTestSchedule } =
-        await import("../../../../../../src/__tests__/api-test-helpers");
-
-      const schedule = await createTestSchedule(
-        agentId,
-        `sched-${crypto.randomUUID().slice(0, 8)}`,
-        { prompt: "daily run" },
-      );
-      const { runId: sourceRunId } = await seedTestRun(user.userId, agentId, {
-        status: "completed",
-        scheduleId: schedule.id,
-        triggerSource: "schedule",
-      });
-
-      const createThreadResponse = await createChatThreadPOST(
-        createTestRequest("http://localhost:3000/api/zero/chat-threads", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            agentId,
-            sourceScheduleRunId: sourceRunId,
-          }),
-        }),
-      );
-      expect(createThreadResponse.status).toBe(201);
-      const { id: threadId } = await createThreadResponse.json();
-
-      const response = await POST(
-        createTestRequest(URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            agentId,
-            prompt: "continue from schedule",
-            threadId,
-          }),
-        }),
-      );
-      expect(response.status).toBe(201);
-      const { runId } = await response.json();
-
-      const run = await findTestRunRecord(runId);
-      expect(run?.appendSystemPrompt).toContain(sourceRunId);
-      expect(run?.appendSystemPrompt).toContain(
-        `scheduleName: ${schedule.name}`,
-      );
-      expect(run?.appendSystemPrompt).toContain("zero logs");
-      // Web chat UI context is always still present.
-      expect(run?.appendSystemPrompt).toContain(
-        "You are currently running inside: Web",
-      );
-    });
-
-    it("seeds the source-schedule prompt on the first run only", async () => {
-      // A thread created with sourceScheduleRunId should apply a built-in
-      // continue-from-schedule system prompt to the FIRST run in the thread
-      // only. Subsequent runs inherit the session context and do not get the
-      // prompt appended again.
-      const sourceScheduleRunId = crypto.randomUUID();
-      const createThreadResponse = await createChatThreadPOST(
-        createTestRequest("http://localhost:3000/api/zero/chat-threads", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ agentId, sourceScheduleRunId }),
-        }),
-      );
-      expect(createThreadResponse.status).toBe(201);
-      const { id: threadId } = await createThreadResponse.json();
-
-      const first = await POST(
-        createTestRequest(URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            agentId,
-            prompt: "continue please",
-            threadId,
-          }),
-        }),
-      );
-      expect(first.status).toBe(201);
-      const firstData = await first.json();
-      const firstRun = await findTestRunRecord(firstData.runId);
-      expect(firstRun?.appendSystemPrompt).toContain(sourceScheduleRunId);
-      expect(firstRun?.appendSystemPrompt).toContain("zero logs");
-
-      const second = await POST(
-        createTestRequest(URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            agentId,
-            prompt: "follow-up question",
-            threadId,
-          }),
-        }),
-      );
-      expect(second.status).toBe(201);
-      const secondData = await second.json();
-      const secondRun = await findTestRunRecord(secondData.runId);
-      // The composed prompt still carries the default agent tools preamble,
-      // but the source-run reference must not leak into follow-up runs.
-      expect(secondRun?.appendSystemPrompt ?? "").not.toContain(
-        sourceScheduleRunId,
-      );
-      expect(secondRun?.appendSystemPrompt ?? "").not.toContain("zero logs");
     });
 
     it("should generate title when hasTextContent is true (text message)", async () => {

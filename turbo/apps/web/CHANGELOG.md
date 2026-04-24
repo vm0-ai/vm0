@@ -1,5 +1,30 @@
 # Changelog
 
+## [12.296.0](https://github.com/vm0-ai/vm0/compare/web-v12.295.0...web-v12.296.0) (2026-04-24)
+
+
+### Features
+
+* **slack:** graduate agent switching ([#10964](https://github.com/vm0-ai/vm0/issues/10964)) ([cf070f8](https://github.com/vm0-ai/vm0/commit/cf070f857f4ded9f16f5a6d932ba091b3d022ec5))
+
+
+### Bug Fixes
+
+* add missing pricing FAQ i18n keys for upgradeCredits ([#10925](https://github.com/vm0-ai/vm0/issues/10925)) ([c256c67](https://github.com/vm0-ai/vm0/commit/c256c67c05d921af193752eac44b1efa55d9202c))
+* redirect missing agent routes to default agent ([#10942](https://github.com/vm0-ai/vm0/issues/10942)) ([9442bf0](https://github.com/vm0-ai/vm0/commit/9442bf08d0ae97a05ab5be4221f3277a7decdfe9))
+
+
+### Performance Improvements
+
+* **db:** switch production db driver from neon websocket to pg tcp pool under fluid ([#10959](https://github.com/vm0-ai/vm0/issues/10959)) ([151c602](https://github.com/vm0-ai/vm0/commit/151c6024deac793212a68f8078cc8015c3a86937)), closes [#10953](https://github.com/vm0-ai/vm0/issues/10953)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.232.0
+
 ## [12.295.0](https://github.com/vm0-ai/vm0/compare/web-v12.294.0...web-v12.295.0) (2026-04-24)
 
 

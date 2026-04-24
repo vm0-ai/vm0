@@ -190,7 +190,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "lancy@vm0.ai",
     description:
       "Enable voice input (microphone + STT) in chat — gates the mic button and the /api/zero/voice-io/stt route",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.AudioOutput]: {
     maintainer: "lancy@vm0.ai",
@@ -201,12 +201,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.AutoSkill]: {
     maintainer: "lancy@vm0.ai",
     description: "Enable automatic skill creation in agent prompts",
-    enabled: false,
-  },
-  [FeatureSwitchKey.ScheduleRunHistory]: {
-    maintainer: "linghan@vm0.ai",
-    description:
-      "Show Run History tab on schedules page and Chat-from-schedule button on activity detail",
     enabled: false,
   },
   [FeatureSwitchKey.TestOauthConnector]: {
@@ -364,7 +358,7 @@ export function getAllFeatureStates(
 
   if (ctx?.overrides) {
     for (const [key, value] of Object.entries(ctx.overrides)) {
-      if (value !== undefined) {
+      if (key in FEATURE_SWITCHES && value !== undefined) {
         result[key as FeatureSwitchKey] = value;
       }
     }
