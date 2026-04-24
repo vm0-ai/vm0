@@ -20,6 +20,7 @@ import { randomUUID } from "crypto";
 import { inArray } from "drizzle-orm";
 import { Axiom } from "@axiomhq/js";
 import { mockClerk, clearClerkMock } from "./clerk-mock";
+import { nextAfterCallbacks } from "./next-after-hooks";
 import { initServices } from "../lib/init-services";
 import * as s3Client from "../lib/infra/s3/s3-client";
 import * as axiomClient from "../lib/shared/axiom/client";
@@ -404,9 +405,9 @@ export function testContext(): TestContext {
       async flushAfter() {
         // Drain iteratively so callbacks that schedule more after() calls
         // (e.g. createZeroRun's deferred dispatch) are also executed.
-        while (globalThis.nextAfterCallbacks.length > 0) {
-          const callbacks = [...globalThis.nextAfterCallbacks];
-          globalThis.nextAfterCallbacks = [];
+        while (nextAfterCallbacks.length > 0) {
+          const callbacks = [...nextAfterCallbacks];
+          nextAfterCallbacks.length = 0;
           await Promise.all(
             callbacks.map((fn) => {
               return fn();

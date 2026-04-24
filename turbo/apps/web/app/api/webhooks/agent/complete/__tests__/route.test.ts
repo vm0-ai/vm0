@@ -29,6 +29,7 @@ import { createTestEmailThreadSession } from "../../../../../../src/__tests__/db
 import { generateReplyToken } from "../../../../../../src/lib/zero/email/handlers/shared";
 import { createTestZeroAgent } from "../../../../../../src/__tests__/db-test-seeders/agents";
 import { reloadEnv } from "../../../../../../src/env";
+import { nextAfterCallbacks } from "../../../../../../src/__tests__/next-after-hooks";
 import {
   testContext,
   uniqueId,
@@ -609,7 +610,7 @@ describe("POST /api/webhooks/agent/complete", () => {
       expect(response.status).toBe(200);
 
       // Only one after() callback: dispatchCallbacks
-      expect(globalThis.nextAfterCallbacks).toHaveLength(1);
+      expect(nextAfterCallbacks).toHaveLength(1);
       await context.mocks.flushAfter();
     });
 
