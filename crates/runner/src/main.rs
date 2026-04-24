@@ -163,8 +163,13 @@ fn init_tracing_with_file(
 
 /// Initialize tracing with stderr output only (no rolling log file on disk),
 /// plus an optional Axiom layer.
+///
+/// Explicitly writes to stderr so commands like `runner exec` — which pipe the
+/// guest program's stdout through verbatim — don't have tracing lines
+/// interleaved into captured output. The `fmt::layer()` default writer is
+/// stdout, which is the wrong sink for a CLI tool.
 fn init_tracing_stderr(axiom_layer: Option<axiom_layer::AxiomLayer>) {
-    let fmt_layer = tracing_subscriber::fmt::layer();
+    let fmt_layer = tracing_subscriber::fmt::layer().with_writer(std::io::stderr);
     tracing_subscriber::registry()
         .with(fmt_layer)
         .with(axiom_layer)
