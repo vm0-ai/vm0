@@ -30,51 +30,13 @@ fn create_tar_gz(files: &[(&str, &[u8])]) -> std::io::Result<Vec<u8>> {
 }
 
 /// Create a tar.gz archive with mixed file and symlink entries.
-///
-/// `indexing_slicing` is allowed here because this is test-harness code — the
-/// project already sets `allow-indexing-slicing-in-tests = true` in
-/// `clippy.toml`, but that config only matches `#[test]` functions, not
-/// free-standing helpers compiled into a test binary.
-#[allow(clippy::indexing_slicing)]
 fn create_tar_gz_entries(entries: &[TarEntry]) -> std::io::Result<Vec<u8>> {
-    let mut tar_data = Vec::new();
-    let has_raw = entries.iter().any(|e| matches!(e, TarEntry::Raw { .. }));
-    {
-        let mut builder = tar::Builder::new(&mut tar_data);
-        for entry in entries {
-            match entry {
-                TarEntry::File(path, contents) => {
-                    let mut header = tar::Header::new_gnu();
-                    header.set_size(contents.len() as u64);
-                    header.set_mode(0o644);
-                    header.set_cksum();
-                    builder.append_data(&mut header, path, *contents)?;
-                }
-                TarEntry::Symlink(path, target) => {
-                    let mut header = tar::Header::new_gnu();
-                    header.set_size(0);
-                    header.set_mode(0o777);
-                    header.set_entry_type(tar::EntryType::Symlink);
-                    header.set_cksum();
-                    builder.append_link(&mut header, path, target)?;
-                }
-                TarEntry::Hardlink(path, target) => {
-                    let mut header = tar::Header::new_gnu();
-                    header.set_size(0);
-                    header.set_mode(0o644);
-                    header.set_entry_type(tar::EntryType::Link);
-                    header.set_cksum();
-                    builder.append_link(&mut header, path, target)?;
-                }
-                TarEntry::Raw { .. } => {} // appended after builder finishes
-            }
-        }
-        builder.finish()?;
-    }
-
-    if has_raw {
-        // Strip builder-written EOF (trailing 512-byte zero blocks) so raw
-        // entries land inside the archive, then re-add EOF at the end.
+    /// Strip builder-written EOF, splice hand-crafted tar headers onto the
+    /// end, and re-add EOF. Scoped as an inner fn so the indexing-slicing
+    /// allow (needed because `allow-indexing-slicing-in-tests` only matches
+    /// `#[test]` fns, not helper fns) stays off the rest of the helper.
+    #[allow(clippy::indexing_slicing)]
+    fn append_raw_entries(tar_data: &mut Vec<u8>, entries: &[TarEntry]) {
         while tar_data.len() >= 512 && tar_data[tar_data.len() - 512..].iter().all(|&b| b == 0) {
             tar_data.truncate(tar_data.len() - 512);
         }
@@ -112,6 +74,45 @@ fn create_tar_gz_entries(entries: &[TarEntry]) -> std::io::Result<Vec<u8>> {
             }
         }
         tar_data.extend_from_slice(&[0u8; 1024]); // EOF
+    }
+
+    let mut tar_data = Vec::new();
+    let has_raw = entries.iter().any(|e| matches!(e, TarEntry::Raw { .. }));
+    {
+        let mut builder = tar::Builder::new(&mut tar_data);
+        for entry in entries {
+            match entry {
+                TarEntry::File(path, contents) => {
+                    let mut header = tar::Header::new_gnu();
+                    header.set_size(contents.len() as u64);
+                    header.set_mode(0o644);
+                    header.set_cksum();
+                    builder.append_data(&mut header, path, *contents)?;
+                }
+                TarEntry::Symlink(path, target) => {
+                    let mut header = tar::Header::new_gnu();
+                    header.set_size(0);
+                    header.set_mode(0o777);
+                    header.set_entry_type(tar::EntryType::Symlink);
+                    header.set_cksum();
+                    builder.append_link(&mut header, path, target)?;
+                }
+                TarEntry::Hardlink(path, target) => {
+                    let mut header = tar::Header::new_gnu();
+                    header.set_size(0);
+                    header.set_mode(0o644);
+                    header.set_entry_type(tar::EntryType::Link);
+                    header.set_cksum();
+                    builder.append_link(&mut header, path, target)?;
+                }
+                TarEntry::Raw { .. } => {} // appended after builder finishes
+            }
+        }
+        builder.finish()?;
+    }
+
+    if has_raw {
+        append_raw_entries(&mut tar_data, entries);
     }
 
     let mut gz_data = Vec::new();
