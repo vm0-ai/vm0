@@ -47,7 +47,6 @@ export enum FeatureSwitchKey {
   ZoomConnector = "zoomConnector",
   ApiKeys = "apiKeys",
   ModelProviderSelection = "modelProviderSelection",
-  UnifyChatThreads = "unifyChatThreads",
   ConnectorCategories = "connectorCategories",
   PlatformConnectors = "platformConnectors",
   Trinity = "trinity",
