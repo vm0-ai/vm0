@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import { useRef, useEffect, type CSSProperties } from "react";
 import {
   useGet,
   useSet,
@@ -275,6 +275,32 @@ function ZeroChatThreadPageInner({
   const setScrollContainer = useSet(thread.setScrollContainer$);
   const skeletonVisible = useGet(thread.skeletonVisible$);
   const lightboxUrl = useGet(attachmentLightboxUrl$);
+  const hasOlderMessages = useGet(thread.hasOlderMessages$);
+  const loadOlderMessages = useSet(thread.loadOlderMessages$);
+
+  // Trigger backward pagination when an IntersectionObserver detects the
+  // sentinel at the top of the message list entering the viewport.
+  const topSentinelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = topSentinelRef.current;
+    if (!el || !hasOlderMessages) {
+      return;
+    }
+    const controller = new AbortController();
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          void loadOlderMessages(controller.signal);
+        }
+      },
+      { threshold: 0.1 },
+    );
+    observer.observe(el);
+    return () => {
+      controller.abort();
+      observer.disconnect();
+    };
+  }, [hasOlderMessages, loadOlderMessages]);
 
   return (
     <div className="flex flex-1 flex-col min-h-0 bg-transparent">
@@ -292,6 +318,14 @@ function ZeroChatThreadPageInner({
               className="w-full max-w-[900px] mx-auto flex flex-col gap-6 pb-4 overflow-visible"
               style={{ visibility: skeletonVisible ? "hidden" : "visible" }}
             >
+              {hasOlderMessages && (
+                <div ref={topSentinelRef} className="flex justify-center py-2">
+                  <div className="flex items-center gap-2 text-muted-foreground text-xs">
+                    <Skeleton className="h-3 w-3 rounded-full" />
+                    <span>Loading older messages…</span>
+                  </div>
+                </div>
+              )}
               {sessionError && (
                 <div className="flex-1 flex items-center justify-center py-16">
                   <div className="flex items-center gap-2 text-destructive">

@@ -1,4 +1,4 @@
-import { command, state } from "ccstate";
+import { command, state, type Command } from "ccstate";
 import { onRef } from "./utils.ts";
 import { logger } from "./log.ts";
 
@@ -56,6 +56,10 @@ function scrollInfo(el: HTMLElement) {
 interface RestoreState {
   pendingRestorePosition: number | null;
   suppressNextScrollToBottom: boolean;
+  // Snapshot taken just before prepending older messages. The ResizeObserver
+  // detects the resulting height increase and adds the delta to scrollTop so
+  // the user's viewport stays anchored on the same content.
+  pendingPrependScrollHeight: number | null;
 }
 
 function attachUserInputListeners(
@@ -118,6 +122,8 @@ function observeContainerResize(
  * a chance to invoke `scrollToBottom$`. The cache is cleared once the user
  * scrolls back to the bottom.
  */
+export type RecordScrollHeightForPrepend$ = Command<void, []>;
+
 export function createScrollSignals(id?: string) {
   const internalScrollContainer$ = state<HTMLElement | null>(null);
   const autoScrollDisabled$ = state(false);
@@ -129,6 +135,7 @@ export function createScrollSignals(id?: string) {
   const restoreState: RestoreState = {
     pendingRestorePosition: null,
     suppressNextScrollToBottom: false,
+    pendingPrependScrollHeight: null,
   };
 
   const setScrollContainer$ = onRef(
@@ -212,6 +219,15 @@ export function createScrollSignals(id?: string) {
             }
             return;
           }
+          if (restoreState.pendingPrependScrollHeight !== null) {
+            const delta = el.scrollHeight - restoreState.pendingPrependScrollHeight;
+            restoreState.pendingPrependScrollHeight = null;
+            if (delta > 0) {
+              el.scrollTop += delta;
+              L.debug("prepend compensation applied", `delta=${delta}`, scrollInfo(el));
+            }
+            return;
+          }
           if (!disabled) {
             el.scrollTop = el.scrollHeight;
           }
@@ -253,6 +269,17 @@ export function createScrollSignals(id?: string) {
     scrollEl.scrollTop = scrollEl.scrollHeight;
   });
 
+  // Snapshot the container's current scrollHeight before prepending messages.
+  // The ResizeObserver callback will detect the resulting height increase and
+  // compensate scrollTop so the viewport stays anchored on the same content.
+  const recordScrollHeightForPrepend$ = command(({ get }) => {
+    const el = get(internalScrollContainer$);
+    if (el) {
+      restoreState.pendingPrependScrollHeight = el.scrollHeight;
+      L.debug("recordScrollHeightForPrepend$", `height=${el.scrollHeight}`);
+    }
+  });
+
   // Scrolling to top is an explicit opt-out of auto-scroll — disable it so
   // ResizeObserver doesn't snap back to the bottom when new messages arrive.
   const scrollToTop$ = command(({ get, set }) => {
@@ -268,5 +295,11 @@ export function createScrollSignals(id?: string) {
     scrollEl.scrollTop = 0;
   });
 
-  return { setScrollContainer$, autoScroll$, scrollToBottom$, scrollToTop$ };
+  return {
+    setScrollContainer$,
+    autoScroll$,
+    scrollToBottom$,
+    scrollToTop$,
+    recordScrollHeightForPrepend$,
+  };
 }
