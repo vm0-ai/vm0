@@ -24,7 +24,13 @@ export const CHAT_REQUEST_OPS = {
   create_run_round2_custom_connectors:
     "api_chat_send_create_run_round2_custom_connectors",
   create_run_round2_org_meta: "api_chat_send_create_run_round2_org_meta",
+  create_run_round2_user_context:
+    "api_chat_send_create_run_round2_user_context",
+  // Retained for back-compat of Axiom dashboards reading historical series;
+  // no longer emitted — fused into `..._round2_user_context`.
   create_run_round2_user_prefs: "api_chat_send_create_run_round2_user_prefs",
+  // Retained for back-compat of Axiom dashboards reading historical series;
+  // no longer emitted — fused into `..._round2_user_context`.
   create_run_round2_feature_sw: "api_chat_send_create_run_round2_feature_sw",
   // Retained for back-compat of Axiom dashboards reading historical series;
   // no longer emitted — compose content is now fetched in Round 1.

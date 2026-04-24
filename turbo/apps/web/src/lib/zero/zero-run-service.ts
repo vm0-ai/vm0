@@ -43,7 +43,6 @@ import {
   dispatchQueuedZeroRun,
 } from "./zero-run-queue-service";
 import { generateZeroToken, generateSandboxToken } from "../auth/sandbox-token";
-import { loadFeatureSwitchOverrides } from "./user/feature-switches-service";
 import { buildZeroExecutionContext } from "./build-zero-context";
 import { getOrgMetadata, type OrgMetadata } from "./org/org-metadata-service";
 import { isConcurrentRunLimit } from "../shared/errors";
@@ -56,10 +55,8 @@ import { zeroAgents } from "../../db/schema/zero-agent";
 import { zeroRuns } from "../../db/schema/zero-run";
 import { userConnectors } from "../../db/schema/user-connector";
 import { userCustomConnectors } from "../../db/schema/user-custom-connector";
-import {
-  consumeCaptureNetworkBodies,
-  getUserPreferences,
-} from "./user/user-preferences-service";
+import { consumeCaptureNetworkBodies } from "./user/user-preferences-service";
+import { loadRunUserContext } from "./user/user-context-service";
 import { getCachedUser } from "../auth/user-cache-service";
 import { buildUserInfo, type UserInfoOptions } from "./integration-prompt";
 import { SEED_SKILLS } from "./seed-skills";
@@ -391,31 +388,22 @@ async function createZeroRunRecord(
   const round2OrgMeta = timed(async () => {
     return loadOrgTier(params.preloadedOrgTier, resolved.orgId);
   });
-  const round2UserPrefs = timed(async () => {
-    return getUserPreferences(resolved.orgId, params.userId);
-  });
-  const round2FeatureSw = timed(async () => {
-    return loadFeatureSwitchOverrides(resolved.orgId, params.userId);
+  const round2UserContext = timed(async () => {
+    return loadRunUserContext(resolved.orgId, params.userId);
   });
 
-  const [
-    connectorRowsT,
-    customConnectorRowsT,
-    orgMetaT,
-    userPrefsT,
-    featureOverridesT,
-  ] = await Promise.all([
-    round2Connectors,
-    round2CustomConnectors,
-    round2OrgMeta,
-    round2UserPrefs,
-    round2FeatureSw,
-  ]);
+  const [connectorRowsT, customConnectorRowsT, orgMetaT, userContextT] =
+    await Promise.all([
+      round2Connectors,
+      round2CustomConnectors,
+      round2OrgMeta,
+      round2UserContext,
+    ]);
   const connectorRows = connectorRowsT.result;
   const customConnectorRows = customConnectorRowsT.result;
   const orgMeta = orgMetaT.result;
-  const userPrefs = userPrefsT.result;
-  const featureOverrides = featureOverridesT.result;
+  const { timezone: userTimezone, overrides: featureOverrides } =
+    userContextT.result;
 
   emit(CHAT_REQUEST_OPS.create_run_round2_connectors, connectorRowsT.ms);
   emit(
@@ -423,8 +411,7 @@ async function createZeroRunRecord(
     customConnectorRowsT.ms,
   );
   emit(CHAT_REQUEST_OPS.create_run_round2_org_meta, orgMetaT.ms);
-  emit(CHAT_REQUEST_OPS.create_run_round2_user_prefs, userPrefsT.ms);
-  emit(CHAT_REQUEST_OPS.create_run_round2_feature_sw, featureOverridesT.ms);
+  emit(CHAT_REQUEST_OPS.create_run_round2_user_context, userContextT.ms);
 
   const orgTier = orgTierSchema.parse(orgMeta.tier);
 
@@ -459,7 +446,7 @@ async function createZeroRunRecord(
   const userInfo = buildUserInfo({
     name: cachedUser.name ?? undefined,
     email: cachedUser.email,
-    timezone: userPrefs.timezone || "UTC",
+    timezone: userTimezone || "UTC",
     ...params.userInfoExtras,
   });
   let { appendSystemPrompt } = params;
@@ -649,7 +636,7 @@ async function createZeroRunRecord(
     orgId: resolved.orgId,
     zeroParams: params,
     featureSwitchOverrides: featureOverrides,
-    userTimezone: userPrefs.timezone ?? undefined,
+    userTimezone: userTimezone ?? undefined,
   };
 }
 
