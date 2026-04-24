@@ -23,7 +23,9 @@ import { prepareUserMessageFromDraft$ } from "./resolve-draft-attachments.ts";
 
 export {
   chatThreads$,
+  chatThreadsHasMore$,
   currentChatThread$,
+  loadAllChatThreads$,
   reloadChatThreads$,
 } from "../agent-chat.ts";
 

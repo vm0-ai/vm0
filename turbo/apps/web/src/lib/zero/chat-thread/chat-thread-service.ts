@@ -1,4 +1,15 @@
-import { eq, and, desc, inArray, isNull, sql, or, lt } from "drizzle-orm";
+import {
+  eq,
+  and,
+  desc,
+  inArray,
+  isNull,
+  sql,
+  or,
+  lt,
+  gte,
+  lte,
+} from "drizzle-orm";
 import { chatThreads } from "../../../db/schema/chat-thread";
 import { chatMessages } from "../../../db/schema/chat-message";
 import { zeroRuns } from "../../../db/schema/zero-run";
@@ -52,6 +63,13 @@ export async function createChatThread(
   return thread;
 }
 
+const DEFAULT_CHAT_THREAD_LIST_LIMIT = 25;
+const DEFAULT_CHAT_THREAD_LIST_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+interface ListChatThreadsOptions {
+  includeAll?: boolean;
+}
+
 /**
  * List chat threads for a user, ordered by the latest message's createdAt desc
  * (threads with no messages fall back to the thread's own createdAt). This
@@ -75,8 +93,9 @@ export async function listChatThreads(
   userId: string,
   orgId: string,
   agentComposeId?: string,
-): Promise<
-  Array<{
+  options: ListChatThreadsOptions = {},
+): Promise<{
+  threads: Array<{
     id: string;
     title: string | null;
     agentId: string;
@@ -86,8 +105,9 @@ export async function listChatThreads(
     isRead: boolean;
     lastMessageArchivedAt: Date | null;
     running: boolean;
-  }>
-> {
+  }>;
+  hasMore: boolean;
+}> {
   const lastMessage = globalThis.services.db
     .select({
       chatThreadId: chatMessages.chatThreadId,
@@ -109,7 +129,8 @@ export async function listChatThreads(
     filters.push(eq(chatThreads.agentComposeId, agentComposeId));
   }
 
-  const threads = await globalThis.services.db
+  const activityAtExpression = sql<Date>`COALESCE(${lastMessage.createdAt}, ${chatThreads.createdAt})`;
+  const rankedThreads = globalThis.services.db
     .select({
       id: chatThreads.id,
       title: chatThreads.title,
@@ -121,7 +142,7 @@ export async function listChatThreads(
         WHEN ${lastMessage.createdAt} IS NULL THEN true
         WHEN ${chatThreads.lastReadAt} IS NULL THEN false
         ELSE ${chatThreads.lastReadAt} >= ${lastMessage.createdAt}
-      END`,
+      END`.as("is_read"),
       lastMessageArchivedAt: lastMessage.archivedAt,
       running: sql<boolean>`EXISTS (
         SELECT 1
@@ -129,7 +150,13 @@ export async function listChatThreads(
         INNER JOIN ${agentRuns} ON ${agentRuns.id} = ${zeroRuns.id}
         WHERE ${zeroRuns.chatThreadId} = ${chatThreads.id}
           AND ${agentRuns.status} IN ('queued', 'pending', 'running')
-      )`,
+      )`.as("running"),
+      activityAt: activityAtExpression.as("activity_at"),
+      activityRank:
+        sql<number>`ROW_NUMBER() OVER (ORDER BY ${activityAtExpression} DESC)`.as(
+          "activity_rank",
+        ),
+      totalCount: sql<number>`COUNT(*) OVER ()`.as("total_count"),
     })
     .from(chatThreads)
     .innerJoin(zeroAgents, eq(zeroAgents.id, chatThreads.agentComposeId))
@@ -138,11 +165,41 @@ export async function listChatThreads(
       and(eq(lastMessage.chatThreadId, chatThreads.id), eq(lastMessage.rn, 1)),
     )
     .where(and(...filters))
-    .orderBy(
-      desc(sql`COALESCE(${lastMessage.createdAt}, ${chatThreads.createdAt})`),
-    );
+    .as("ranked_threads");
 
-  return threads;
+  const includeAll = options.includeAll ?? false;
+  const cutoff = new Date(Date.now() - DEFAULT_CHAT_THREAD_LIST_WINDOW_MS);
+  const rows = await globalThis.services.db
+    .select({
+      id: rankedThreads.id,
+      title: rankedThreads.title,
+      agentId: rankedThreads.agentId,
+      agentAvatarUrl: rankedThreads.agentAvatarUrl,
+      createdAt: rankedThreads.createdAt,
+      updatedAt: rankedThreads.updatedAt,
+      isRead: rankedThreads.isRead,
+      lastMessageArchivedAt: rankedThreads.lastMessageArchivedAt,
+      running: rankedThreads.running,
+      totalCount: rankedThreads.totalCount,
+    })
+    .from(rankedThreads)
+    .where(
+      includeAll
+        ? undefined
+        : or(
+            lte(rankedThreads.activityRank, DEFAULT_CHAT_THREAD_LIST_LIMIT),
+            gte(rankedThreads.activityAt, cutoff),
+          ),
+    )
+    .orderBy(desc(rankedThreads.activityAt));
+
+  const totalCount = Number(rows[0]?.totalCount ?? rows.length);
+  return {
+    threads: rows.map(({ totalCount: _totalCount, ...thread }) => {
+      return thread;
+    }),
+    hasMore: !includeAll && totalCount > rows.length,
+  };
 }
 
 /**

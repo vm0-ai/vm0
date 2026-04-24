@@ -5,6 +5,7 @@ import {
   createTestCompose,
   getOrgCacheEntry,
   insertTestChatMessage,
+  insertTestChatThread,
   setTestChatThreadLastReadAt,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
@@ -228,6 +229,76 @@ describe("GET /api/zero/chat-threads - List Threads", () => {
     expect(data.threads[0].id).toBeDefined();
     expect(data.threads[0].createdAt).toBeDefined();
     expect(data.threads[0].updatedAt).toBeDefined();
+  });
+
+  it("defaults to the newest 25 when all threads are older than 24 hours", async () => {
+    const now = Date.now();
+    const fortyEightHours = 48 * 60 * 60 * 1000;
+    const ids: string[] = [];
+
+    for (let i = 0; i < 30; i += 1) {
+      const createdAt = new Date(now - fortyEightHours - (29 - i) * 1000);
+      ids.push(
+        await insertTestChatThread(
+          user.userId,
+          testComposeId,
+          `Old thread ${i}`,
+          createdAt,
+        ),
+      );
+    }
+
+    const response = await GET(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads?agentId=${testComposeId}`,
+      ),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.threads).toHaveLength(25);
+    expect(data.hasMore).toBe(true);
+    expect(
+      data.threads.map((t: { id: string }) => {
+        return t.id;
+      }),
+    ).toEqual(ids.slice(5).reverse());
+
+    const allResponse = await GET(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads?agentId=${testComposeId}&all=true`,
+      ),
+    );
+    const allData = await allResponse.json();
+
+    expect(allResponse.status).toBe(200);
+    expect(allData.threads).toHaveLength(30);
+    expect(allData.hasMore).toBe(false);
+  });
+
+  it("includes more than 25 threads when they are active within 24 hours", async () => {
+    const now = Date.now();
+
+    for (let i = 0; i < 30; i += 1) {
+      const createdAt = new Date(now - (29 - i) * 1000);
+      await insertTestChatThread(
+        user.userId,
+        testComposeId,
+        `Recent thread ${i}`,
+        createdAt,
+      );
+    }
+
+    const response = await GET(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads?agentId=${testComposeId}`,
+      ),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.threads).toHaveLength(30);
+    expect(data.hasMore).toBe(false);
   });
 
   it("reports isRead=true and isArchived=false for a thread with no messages", async () => {
