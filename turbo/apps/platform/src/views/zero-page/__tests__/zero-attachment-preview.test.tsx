@@ -390,7 +390,9 @@ describe("text preview loading and error states", () => {
     });
 
     // Click to collapse
-    const button = screen.getByText(/collapse/i);
+    const button = screen.getAllByRole("button").find((el) => {
+      return /collapse/i.test(el.getAttribute("aria-label") ?? "");
+    })!;
     fireEvent.click(button);
 
     // Content should be hidden

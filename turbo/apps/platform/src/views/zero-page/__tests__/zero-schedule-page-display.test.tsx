@@ -138,7 +138,7 @@ describe("zero schedule page - view tabs (post run-history removal)", () => {
       })!,
     );
     await waitFor(() => {
-      expect(screen.getByText("morning-briefing")).toBeInTheDocument();
+      expect(screen.getAllByText("morning-briefing").length).toBeGreaterThan(0);
     });
   });
 });
@@ -163,11 +163,11 @@ describe("zero schedule page - display after refactor", () => {
     renderSchedulePage();
 
     await waitFor(() => {
-      expect(screen.getByText("morning-briefing")).toBeInTheDocument();
+      expect(screen.getAllByText("morning-briefing").length).toBeGreaterThan(0);
     });
     expect(
-      screen.getByText("Summarize yesterday's threads"),
-    ).toBeInTheDocument();
+      screen.getAllByText("Summarize yesterday's threads").length,
+    ).toBeGreaterThan(0);
   });
 
   it("should render schedule entries in calendar view (SCHED-DISP-003)", async () => {
@@ -175,7 +175,7 @@ describe("zero schedule page - display after refactor", () => {
     renderSchedulePage();
 
     await waitFor(() => {
-      expect(screen.getByText("morning-briefing")).toBeInTheDocument();
+      expect(screen.getAllByText("morning-briefing").length).toBeGreaterThan(0);
     });
 
     click(

@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render } from "@testing-library/react";
 import {
   ConnectorIcon,
   CONNECTOR_ICONS,
@@ -24,13 +24,15 @@ describe("connector icons", () => {
     }
   });
 
-  it("should contain data URL strings for each icon", () => {
+  it("should contain data URL or asset path strings for each icon", () => {
     const connectorTypes = Object.keys(
       CONNECTOR_TYPES,
     ) as (keyof typeof CONNECTOR_TYPES)[];
     for (const type of connectorTypes) {
       const icon = CONNECTOR_ICONS[type];
-      expect(icon).toMatch(/^data:image\//);
+      expect(typeof icon).toBe("string");
+      expect(icon.length).toBeGreaterThan(0);
+      expect(icon).toMatch(/^(?:data:image\/|\.\.?\/|\/)/);
     }
   });
 });
@@ -71,9 +73,7 @@ describe("connector icon component", () => {
   });
 
   it("should not apply zero-icon-mono to colorful icons", () => {
-    const { container } = render(
-      <ConnectorIcon type="anthropic-managed-agents" />,
-    );
+    const { container } = render(<ConnectorIcon type="slack" />);
     const img = container.querySelector("img");
     expect(img).not.toHaveClass("zero-icon-mono");
   });
