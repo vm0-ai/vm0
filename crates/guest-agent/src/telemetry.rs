@@ -136,9 +136,10 @@ fn save_position(pos_path: &str, pos: u64) {
 /// `UploadMode::Final` should be used only for the very last upload before
 /// the agent exits — any trailing fragment after the last newline is then
 /// consumed as-is, accepting a small mid-write race window in exchange for
-/// not losing the tail. Every earlier upload (periodic tick and the silent
-/// pre-checkpoint pass) must use `UploadMode::Live` so a later pass can
-/// safely pick up the tail once the producer completes the line.
+/// not losing the tail. Every earlier upload (periodic tick and the
+/// pre-checkpoint `flush(UploadMode::Live)`) must use `UploadMode::Live`
+/// so a later pass can safely pick up the tail once the producer
+/// completes the line.
 async fn upload_telemetry(masker: &SecretMasker, mode: UploadMode) -> Result<(), AgentError> {
     // Read deltas
     let (system_log, log_pos) = read_file_delta(

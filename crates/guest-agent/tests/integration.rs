@@ -931,12 +931,23 @@ async fn flush_is_incremental_between_calls() {
     let _ = std::fs::remove_file(pos_file);
 }
 
-/// Regression for #11008: every flush goes through the same select arm,
-/// so `save_position` is single-writer. Even when many concurrent
-/// `flush(UploadMode::Live)` calls race on `tokio::join!`, the pos file
-/// ends at exactly one byte advance (the first flush sees the delta,
-/// every subsequent flush sees an empty file) — never regresses, never
-/// duplicates the upload past the first.
+/// Regression for #11008. Combines two distinct guarantees that
+/// together produce the "exactly one HTTP POST" assertion:
+///
+/// 1. **Channel serialization**: every flush goes through the same
+///    `tokio::select!` arm in `run()`, so `upload_telemetry` calls are
+///    strictly sequential — `save_position` is single-writer.
+/// 2. **Empty-delta short-circuit**: the second and third flushes
+///    observe `pos == file_len` after the first flush advanced the
+///    position, hit the `system_log.is_empty() && metrics.is_empty()
+///    && sandbox_ops.is_empty()` early-return in `upload_telemetry`,
+///    and skip HTTP entirely.
+///
+/// Without (1), two flushes could read the same pos and post twice.
+/// Without (2), three flushes would all serialize but each would post
+/// (the second and third with empty bodies). Asserting `calls == 1`
+/// pins both: pos never regresses (1) and empty deltas don't generate
+/// HTTP traffic (2).
 #[tokio::test]
 async fn concurrent_flushes_do_not_regress_pos_file() {
     let _guard = TEST_MUTEX.lock().unwrap();
