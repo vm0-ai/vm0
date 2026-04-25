@@ -222,6 +222,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable manual chat history loading from a Load history button at the top of a thread. When off, chat stays in the latest-50/no-history mode.",
     enabled: false,
   },
+  [FeatureSwitchKey.ChatMessageStartButton]: {
+    maintainer: "linghan@vm0.ai",
+    description:
+      "Show an icon button in assistant message group actions that scrolls back to the start of that message group.",
+    enabled: false,
+  },
   [FeatureSwitchKey.FreshdeskConnector]: {
     maintainer: "ethan@vm0.ai",
     description: "Enable the Freshdesk helpdesk connector",

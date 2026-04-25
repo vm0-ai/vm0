@@ -258,6 +258,59 @@ describe("zero chat thread page - copy message button", () => {
     // The message should still be visible after copying (page remains stable)
     expect(screen.getAllByLabelText("Copy message").length).toBeGreaterThan(0);
   });
+
+  it("keeps the scroll-to-message-start button hidden when the feature switch is off", async () => {
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "assistant",
+          content: "A long assistant message",
+          runId: "run-legacy-1",
+          createdAt: "2026-03-10T00:00:01Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    await waitFor(() => {
+      expect(screen.getByText("A long assistant message")).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByLabelText("Scroll to message start"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("scrolls to the assistant message group start when the feature switch is on", async () => {
+    const scrollIntoView = vi
+      .spyOn(Element.prototype, "scrollIntoView")
+      .mockImplementation(() => {});
+
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "assistant",
+          content: "Another long assistant message",
+          runId: "run-legacy-2",
+          createdAt: "2026-03-10T00:00:01Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.ChatMessageStartButton]: true },
+    });
+
+    const button = await screen.findByLabelText("Scroll to message start");
+    click(button);
+
+    expect(scrollIntoView).toHaveBeenCalledWith({
+      block: "start",
+      behavior: "smooth",
+    });
+  });
 });
 
 // CHAT-N-053: View activity logs Link navigates to /activities/:id

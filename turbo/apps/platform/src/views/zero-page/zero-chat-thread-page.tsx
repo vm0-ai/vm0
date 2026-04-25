@@ -17,6 +17,7 @@ import {
   IconCheck,
   IconPin,
   IconVolume2,
+  IconArrowBarToUp,
 } from "@tabler/icons-react";
 import {
   cn,
@@ -1259,6 +1260,7 @@ function PagedAssistantGroup({
   group: GroupedChatMessageGroup;
   thread: ChatThreadSignals;
 }) {
+  const groupElementId = `chat-message-group-${group.beginMessageId}`;
   const fullContent = group.messages
     .map((m) => {
       return m.content;
@@ -1268,6 +1270,7 @@ function PagedAssistantGroup({
 
   return (
     <div
+      id={groupElementId}
       data-role="assistant"
       className="group flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300"
     >
@@ -1279,7 +1282,17 @@ function PagedAssistantGroup({
           })}
         </div>
       </div>
-      <PagedGroupActions group={group} content={fullContent} thread={thread} />
+      <PagedGroupActions
+        group={group}
+        content={fullContent}
+        thread={thread}
+        onScrollToMessageStart={() => {
+          document.getElementById(groupElementId)?.scrollIntoView({
+            block: "start",
+            behavior: "smooth",
+          });
+        }}
+      />
     </div>
   );
 }
@@ -1316,14 +1329,124 @@ function PagedAssistantMessageItem({ message }: { message: PagedChatMessage }) {
   return null;
 }
 
+function PagedGroupPrimaryActions({
+  firstRunId,
+  hasContent,
+  copied,
+  audioOutputEnabled,
+  isPlayingThis,
+  onCopy,
+  onTts,
+}: {
+  firstRunId: string | undefined;
+  hasContent: boolean;
+  copied: boolean;
+  audioOutputEnabled: boolean;
+  isPlayingThis: boolean;
+  onCopy: () => void;
+  onTts: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-1">
+      {firstRunId && (
+        <TooltipProvider delayDuration={300}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Link
+                pathname="/activities/:activityRunId"
+                options={{
+                  pathParams: { activityRunId: firstRunId },
+                }}
+                className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
+                aria-label="View run logs"
+              >
+                <IconChartLine size={18} stroke={1.5} />
+              </Link>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">View activity logs</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      )}
+      {hasContent && (
+        <TooltipProvider delayDuration={300}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={onCopy}
+                className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
+                aria-label="Copy message"
+              >
+                {copied ? (
+                  <IconCheck size={18} stroke={1.5} />
+                ) : (
+                  <IconCopy size={18} stroke={1.5} />
+                )}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              {copied ? "Copied!" : "Copy message"}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      )}
+      {hasContent && firstRunId && audioOutputEnabled && (
+        <TooltipProvider delayDuration={300}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={onTts}
+                className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
+                aria-label={isPlayingThis ? "Stop reading" : "Read aloud"}
+              >
+                {isPlayingThis ? (
+                  <IconPlayerStop size={18} stroke={1.5} />
+                ) : (
+                  <IconVolume2 size={18} stroke={1.5} />
+                )}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              {isPlayingThis ? "Stop reading" : "Read aloud"}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      )}
+    </div>
+  );
+}
+
+function MessageStartButton({ onClick }: { onClick: () => void }) {
+  return (
+    <TooltipProvider delayDuration={300}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            onClick={onClick}
+            className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
+            aria-label="Scroll to message start"
+          >
+            <IconArrowBarToUp size={18} stroke={1.5} />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">Scroll to start</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
 function PagedGroupActions({
   group,
   content,
   thread,
+  onScrollToMessageStart,
 }: {
   group: GroupedChatMessageGroup;
   content: string;
   thread: ChatThreadSignals;
+  onScrollToMessageStart: () => void;
 }) {
   const pageSignal = useGet(pageSignal$);
   const copiedId = useGet(thread.copiedMessageId$);
@@ -1332,10 +1455,13 @@ function PagedGroupActions({
 
   const features = useLastResolved(featureSwitch$);
   const audioOutputEnabled = features?.[FeatureSwitchKey.AudioOutput] ?? false;
+  const messageStartButtonEnabled =
+    features?.[FeatureSwitchKey.ChatMessageStartButton] ?? false;
   const playingRunId = useGet(ttsPlayingRunId$);
   const firstRunId = group.messages.find((m) => {
     return m.runId;
   })?.runId;
+  const hasContent = content.length > 0;
   const isPlayingThis = !!firstRunId && playingRunId === firstRunId;
   const playTts = useSet(playTts$);
   const stopTts = useSet(stopTts$);
@@ -1372,71 +1498,18 @@ function PagedGroupActions({
   return (
     <div className="@[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px]">
       <div className="hidden @[900px]:block" />
-      <div className="flex items-center pt-2 pb-1 gap-1 -ml-1">
-        {firstRunId && (
-          <TooltipProvider delayDuration={300}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Link
-                  pathname="/activities/:activityRunId"
-                  options={{
-                    pathParams: { activityRunId: firstRunId },
-                  }}
-                  className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
-                  aria-label="View run logs"
-                >
-                  <IconChartLine size={18} stroke={1.5} />
-                </Link>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">View activity logs</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )}
-        {content && (
-          <TooltipProvider delayDuration={300}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  onClick={handleCopy}
-                  className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
-                  aria-label="Copy message"
-                >
-                  {copied ? (
-                    <IconCheck size={18} stroke={1.5} />
-                  ) : (
-                    <IconCopy size={18} stroke={1.5} />
-                  )}
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                {copied ? "Copied!" : "Copy message"}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )}
-        {content && firstRunId && audioOutputEnabled && (
-          <TooltipProvider delayDuration={300}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  onClick={handleTts}
-                  className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
-                  aria-label={isPlayingThis ? "Stop reading" : "Read aloud"}
-                >
-                  {isPlayingThis ? (
-                    <IconPlayerStop size={18} stroke={1.5} />
-                  ) : (
-                    <IconVolume2 size={18} stroke={1.5} />
-                  )}
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                {isPlayingThis ? "Stop reading" : "Read aloud"}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+      <div className="flex items-center justify-between pt-2 pb-1 gap-2 -ml-1">
+        <PagedGroupPrimaryActions
+          firstRunId={firstRunId}
+          hasContent={hasContent}
+          copied={copied}
+          audioOutputEnabled={audioOutputEnabled}
+          isPlayingThis={isPlayingThis}
+          onCopy={handleCopy}
+          onTts={handleTts}
+        />
+        {messageStartButtonEnabled && (
+          <MessageStartButton onClick={onScrollToMessageStart} />
         )}
       </div>
     </div>
