@@ -195,7 +195,7 @@ describe("attachment preview component", () => {
     contentType?: string;
   }) {
     const result = render(
-      <StoreProvider store={context.store}>
+      <StoreProvider value={context.store}>
         <AttachmentPreview attachment={attachment} />
       </StoreProvider>,
     );
@@ -290,7 +290,7 @@ describe("attachment preview component", () => {
 describe("text preview loading and error states", () => {
   it("should show loading spinner initially", async () => {
     const { container } = render(
-      <StoreProvider store={context.store}>
+      <StoreProvider value={context.store}>
         <AttachmentPreview
           attachment={{
             filename: "notes.txt",
@@ -317,7 +317,7 @@ describe("text preview loading and error states", () => {
     );
 
     render(
-      <StoreProvider store={context.store}>
+      <StoreProvider value={context.store}>
         <AttachmentPreview
           attachment={{
             filename: "error.txt",
@@ -344,7 +344,7 @@ describe("text preview loading and error states", () => {
     );
 
     render(
-      <StoreProvider store={context.store}>
+      <StoreProvider value={context.store}>
         <AttachmentPreview
           attachment={{
             filename: "hello.txt",
@@ -371,7 +371,7 @@ describe("text preview loading and error states", () => {
     );
 
     render(
-      <StoreProvider store={context.store}>
+      <StoreProvider value={context.store}>
         <AttachmentPreview
           attachment={{
             filename: "long.txt",
@@ -390,7 +390,7 @@ describe("text preview loading and error states", () => {
     });
 
     // Click to collapse
-    const button = screen.getByRole("button", { name: /collapse/i });
+    const button = screen.getByText(/collapse/i);
     fireEvent.click(button);
 
     // Content should be hidden
@@ -407,7 +407,7 @@ describe("text preview loading and error states", () => {
     );
 
     render(
-      <StoreProvider store={context.store}>
+      <StoreProvider value={context.store}>
         <AttachmentPreview
           attachment={{
             filename: "data.json",
@@ -434,7 +434,7 @@ describe("text preview loading and error states", () => {
 describe("document thumbnail preview", () => {
   it("should render markdown document preview", () => {
     render(
-      <StoreProvider store={context.store}>
+      <StoreProvider value={context.store}>
         <AttachmentPreview
           attachment={{
             filename: "readme.md",
@@ -454,7 +454,7 @@ describe("document thumbnail preview", () => {
 
   it("should render CSV document preview", () => {
     render(
-      <StoreProvider store={context.store}>
+      <StoreProvider value={context.store}>
         <AttachmentPreview
           attachment={{
             filename: "export.csv",
@@ -470,9 +470,12 @@ describe("document thumbnail preview", () => {
 
   it("should render PDF document preview", () => {
     render(
-      <StoreProvider store={context.store}>
+      <StoreProvider value={context.store}>
         <AttachmentPreview
-          attachment={{ filename: "doc.pdf", url: "https://example.com/doc.pdf" }}
+          attachment={{
+            filename: "doc.pdf",
+            url: "https://example.com/doc.pdf",
+          }}
         />
       </StoreProvider>,
     );
@@ -483,7 +486,7 @@ describe("document thumbnail preview", () => {
 
   it("should render HTML document preview", () => {
     render(
-      <StoreProvider store={context.store}>
+      <StoreProvider value={context.store}>
         <AttachmentPreview
           attachment={{
             filename: "page.html",

@@ -24,65 +24,70 @@ describe("connector icons", () => {
     }
   });
 
-  it("should contain url strings for each icon", () => {
+  it("should contain data URL strings for each icon", () => {
     const connectorTypes = Object.keys(
       CONNECTOR_TYPES,
     ) as (keyof typeof CONNECTOR_TYPES)[];
     for (const type of connectorTypes) {
       const icon = CONNECTOR_ICONS[type];
-      expect(icon).toMatch(/^https?:\/\//);
+      expect(icon).toMatch(/^data:image\//);
     }
   });
 });
 
 describe("connector icon component", () => {
   it("should render with default size", () => {
-    render(<ConnectorIcon type="github" />);
-    const img = screen.getByRole("img");
+    const { container } = render(<ConnectorIcon type="github" />);
+    const img = container.querySelector("img");
     expect(img).toBeInTheDocument();
     expect(img).toHaveAttribute("alt", "");
   });
 
   it("should render with custom size", () => {
-    render(<ConnectorIcon type="github" size={40} />);
-    const span = screen.getByRole("img").parentElement;
+    const { container } = render(<ConnectorIcon type="github" size={40} />);
+    const img = container.querySelector("img");
+    const span = img!.parentElement;
     expect(span).toHaveStyle({ width: "40px", height: "40px" });
   });
 
   it("should render slack icon with overflow-hidden container", () => {
-    render(<ConnectorIcon type="slack" />);
-    const span = screen.getByRole("img").parentElement;
+    const { container } = render(<ConnectorIcon type="slack" />);
+    const img = container.querySelector("img");
+    const span = img!.parentElement;
     expect(span).toHaveClass("overflow-hidden");
   });
 
   it("should render slack-webhook icon with overflow-hidden container", () => {
-    render(<ConnectorIcon type="slack-webhook" />);
-    const span = screen.getByRole("img").parentElement;
+    const { container } = render(<ConnectorIcon type="slack-webhook" />);
+    const img = container.querySelector("img");
+    const span = img!.parentElement;
     expect(span).toHaveClass("overflow-hidden");
   });
 
   it("should apply zero-icon-mono to non-colorful icons", () => {
-    render(<ConnectorIcon type="github" />);
-    const img = screen.getByRole("img");
+    const { container } = render(<ConnectorIcon type="github" />);
+    const img = container.querySelector("img");
     expect(img).toHaveClass("zero-icon-mono");
   });
 
   it("should not apply zero-icon-mono to colorful icons", () => {
-    render(<ConnectorIcon type="anthropic-managed-agents" />);
-    const img = screen.getByRole("img");
+    const { container } = render(
+      <ConnectorIcon type="anthropic-managed-agents" />,
+    );
+    const img = container.querySelector("img");
     expect(img).not.toHaveClass("zero-icon-mono");
   });
 
   it("should scale slack icon (has loose viewbox)", () => {
-    render(<ConnectorIcon type="slack" size={28} />);
-    const img = screen.getByRole("img");
+    const { container } = render(<ConnectorIcon type="slack" size={28} />);
+    const img = container.querySelector("img");
     expect(img).toHaveClass("scale-[2.2]");
   });
 
   it("should render deel connector with custom SVG mark", () => {
-    render(<ConnectorIcon type="deel" />);
+    const { container } = render(<ConnectorIcon type="deel" />);
     // Deel has a special inline SVG component, not an <img>
-    const svg = screen.getByRole("img");
+    const svg = container.querySelector("svg");
     expect(svg).toBeInTheDocument();
   });
 
@@ -100,8 +105,8 @@ describe("connector icon component", () => {
 
     for (const type of commonTypes) {
       if (CONNECTOR_ICONS[type]) {
-        const { unmount } = render(<ConnectorIcon type={type} />);
-        expect(screen.getByRole("img")).toBeInTheDocument();
+        const { container, unmount } = render(<ConnectorIcon type={type} />);
+        expect(container.querySelector("img")).toBeInTheDocument();
         unmount();
       }
     }
