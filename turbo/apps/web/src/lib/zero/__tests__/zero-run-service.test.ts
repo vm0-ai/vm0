@@ -437,20 +437,18 @@ describe("createZeroRun() — service-only parameters", () => {
   });
 
   describe("deferred dispatch", () => {
-    it("returns after Phase 1; Phase 2 runs only once the after() queue flushes", async () => {
+    it("returns after Phase 1; Phase 2 dispatched via waitUntil completes", async () => {
       const result = await createZeroRun(baseParams());
 
       // Phase 1 is synchronous: run record exists immediately.
       const runBeforeFlush = await findTestRunRecord(result.runId);
       expect(runBeforeFlush).toBeDefined();
 
-      // Phase 2 is queued via after(): no runner job yet.
-      const jobBeforeFlush = await findTestRunnerJobEntry(result.runId);
-      expect(jobBeforeFlush).toBeUndefined();
-
+      // waitUntil() dispatches immediately, so the runner job may already exist.
+      // flushAfter() awaits the stored promise to guarantee completion.
       await context.mocks.flushAfter();
 
-      // After flushing, dispatch has run and the runner job is visible.
+      // After flushing, dispatch has completed and the runner job is visible.
       const jobAfterFlush = await findTestRunnerJobEntry(result.runId);
       expect(jobAfterFlush).toBeDefined();
     });

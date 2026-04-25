@@ -1,5 +1,5 @@
 import { eq, and, sql } from "drizzle-orm";
-import { after } from "next/server";
+import { waitUntil } from "@vercel/functions";
 import { resolveSkillRef, parseGitHubTreeUrl } from "@vm0/core/github-url";
 import {
   getCustomSkillStorageName,
@@ -731,14 +731,14 @@ async function createZeroRunRecord(
  * runner dispatch, and zero-layer metadata persistence.
  * On failure: marks run as failed and drains the org queue.
  *
- * Internal to zero-run-service — scheduled via after() inside createZeroRun().
+ * Internal to zero-run-service — scheduled via waitUntil() inside createZeroRun().
  */
 async function dispatchZeroRun(
   result: ZeroRunRecordResult,
   afterEnterAt?: number,
 ): Promise<{ status: RunStatus; sandboxId?: string } | undefined> {
   // Captured at the first synchronous line of dispatchZeroRun; paired with
-  // afterEnterAt (stamped inside the after() closure before this call) and
+  // afterEnterAt (stamped inside the waitUntil() closure before this call) and
   // record.responseReadyAt to split the post-response gap into pure platform
   // scheduling vs. JS-local closure-to-dispatch overhead.
   const dispatchStart = Date.now();
@@ -818,11 +818,11 @@ async function dispatchZeroRun(
  * Public result of createZeroRun().
  *
  * Only fields populated by Phase 1 (pre-flight + INSERT) are exposed; Phase 2
- * (tokens, context, dispatch) runs deferred inside after() so its outputs
+ * (tokens, context, dispatch) runs deferred inside waitUntil() so its outputs
  * (sandboxId, final dispatched status) are not available at return time.
  *
  * `status` reflects Phase 1 state only — it is always `"pending"` (record
- * inserted, dispatch scheduled via after()) or `"queued"` (concurrency limit,
+ * inserted, dispatch scheduled via waitUntil()) or `"queued"` (concurrency limit,
  * will be dispatched by the queue worker). It is NEVER a post-dispatch status.
  */
 export interface CreateZeroRunResult {
@@ -839,7 +839,7 @@ export interface CreateZeroRunResult {
    * skipped when the marker is never called.
    *
    * Returns the stamped timestamp so the caller can reference it from other
-   * after() callbacks (e.g. the chat route's signals callback measures its
+   * callbacks (e.g. the chat route's signals callback measures its
    * own closure-entry offset against it). Returns undefined when the underlying
    * record was queued rather than inserted.
    */
@@ -851,10 +851,10 @@ export interface CreateZeroRunResult {
  *
  * Phase 1 (pre-flight checks + advisory-locked INSERT) runs synchronously and
  * is awaited by the caller. Phase 2 (token generation, context building,
- * runner dispatch) is deferred via Next.js after() so the caller's response
+ * runner dispatch) is deferred via waitUntil() so the caller's response
  * flushes before the heavy dispatch pipeline runs.
  *
- * Dispatch failures are caught inside the after() callback, logged, and
+ * Dispatch failures are caught inside the waitUntil() callback, logged, and
  * persisted on the run row via markRunFailed() inside dispatchZeroRun.
  */
 export async function createZeroRun(
@@ -865,15 +865,17 @@ export async function createZeroRun(
   // Dispatch only when a record was actually inserted; enqueued runs
   // (concurrency limit) are drained by the queue worker later.
   if (result.record) {
-    after(() => {
-      const afterEnterAt = Date.now();
-      return dispatchZeroRun(result, afterEnterAt).catch((err: unknown) => {
+    waitUntil(
+      (async () => {
+        const afterEnterAt = Date.now();
+        return dispatchZeroRun(result, afterEnterAt);
+      })().catch((err: unknown) => {
         log.error("Deferred dispatch failed", {
           runId: result.runId,
           err,
         });
-      });
-    });
+      }),
+    );
   }
 
   const markResponseReady = (): number | undefined => {

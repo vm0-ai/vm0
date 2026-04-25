@@ -4,6 +4,7 @@ import { server } from "../mocks/server";
 import {
   nextAfterArgForms,
   nextAfterCallbacks,
+  nextWaitUntilPromises,
   resetNextAfterHooks,
 } from "./next-after-hooks";
 
@@ -106,6 +107,17 @@ vi.mock("next/server", async (importOriginal) => {
           return fnOrPromise;
         });
       }
+    },
+  };
+});
+
+// Mock @vercel/functions waitUntil() to capture promises for controlled
+// execution in tests. waitUntil() receives an already-started Promise —
+// the mock stores it so flushAfter() can await completion.
+vi.mock("@vercel/functions", () => {
+  return {
+    waitUntil: (promise: Promise<unknown>) => {
+      nextWaitUntilPromises.push(promise);
     },
   };
 });

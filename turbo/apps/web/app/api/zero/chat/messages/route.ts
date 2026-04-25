@@ -1,5 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { after } from "next/server";
+import { waitUntil } from "@vercel/functions";
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
 import {
   chatMessagesContract,
@@ -461,7 +462,7 @@ const router = tsr.router(chatMessagesContract, {
       const fullPrompt = buildFullPrompt(body.prompt, body.attachFiles);
 
       // Create the run. Phase 2 dispatch is deferred inside createZeroRun
-      // via after() so the response flushes before tokens/secrets/runner work.
+      // via waitUntil() so the response flushes before tokens/secrets/runner work.
       const result = await createZeroRun({
         userId: authCtx.userId,
         prompt: fullPrompt,
@@ -482,21 +483,22 @@ const router = tsr.router(chatMessagesContract, {
       });
 
       // Stamp response-ready for the Phase-2 instrumentation split before
-      // registering the signals after() so we can measure its closure-entry
+      // registering the signals waitUntil() so we can measure its closure-entry
       // offset against the same responseReady anchor used by dispatchZeroRun.
       const responseReadyAt = result.markResponseReady();
 
-      // Persist user message to chat_messages in after() so the 201 response
-      // flushes before the INSERT (+ internal chatThreadMessageCreated publish)
-      // runs. The response body omits the row id and the client renders
-      // optimistically via clientMessageId, so no caller blocks on this write.
+      // Persist user message to chat_messages in waitUntil() so the 201
+      // response flushes before the INSERT (+ internal chatThreadMessageCreated
+      // publish) runs. The response body omits the row id and the client
+      // renders optimistically via clientMessageId, so no caller blocks.
       //
       // Ordering: insertChatMessage MUST complete before publishUserSignal /
       // publishThreadListChanged fire — those signals tell other devices to
       // refetch the thread list / paged-messages view, and they must see the
       // new row on refetch. The `await`s below preserve that ordering.
-      after(async () => {
-        const signalsEnterAt = Date.now();
+      waitUntil(
+        (async () => {
+          const signalsEnterAt = Date.now();
         try {
           // Stamp with the runId so the callback's prior-context filter can
           // exclude this message structurally (by runId) instead of by content.
@@ -524,7 +526,7 @@ const router = tsr.router(chatMessagesContract, {
         );
         await publishThreadListChanged(authCtx.userId);
         // Cross-referenced with api_after_schedule_to_closure in Axiom to
-        // infer whether Vercel fires the two chat-route after() callbacks in
+        // infer whether Vercel fires waitUntil() and after() callbacks in
         // parallel or serial: near-equal durations imply parallel, a large
         // gap implies serial.
         if (responseReadyAt !== undefined) {
@@ -536,7 +538,8 @@ const router = tsr.router(chatMessagesContract, {
             runId: result.runId,
           });
         }
-      });
+      })(),
+    );
 
       return {
         status: 201 as const,

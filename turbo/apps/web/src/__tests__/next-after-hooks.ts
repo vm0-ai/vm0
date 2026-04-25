@@ -1,7 +1,7 @@
 // Test-only storage for Next.js `after()` callbacks captured by the
 // next/server mock in setup.ts. Exposed as module-scoped arrays so tests
 // can import them directly instead of reaching through globalThis.
-//
+
 // The arrays are mutated in place (never reassigned) so every importer
 // shares the same reference across the test lifecycle. Call
 // `resetNextAfterHooks()` from lifecycle hooks or between drain loops.
@@ -15,7 +15,13 @@ export const nextAfterCallbacks: Array<() => Promise<unknown>> = [];
 // calls after the context has been finalized.
 export const nextAfterArgForms: Array<"fn" | "promise"> = [];
 
+// Test-only storage for @vercel/functions waitUntil() promises captured by
+// the mock in setup.ts. waitUntil() receives an already-started Promise —
+// the mock stores the promise reference so flushAfter() can await it.
+export const nextWaitUntilPromises: Array<Promise<unknown>> = [];
+
 export function resetNextAfterHooks(): void {
   nextAfterCallbacks.length = 0;
   nextAfterArgForms.length = 0;
+  nextWaitUntilPromises.length = 0;
 }
