@@ -499,47 +499,47 @@ const router = tsr.router(chatMessagesContract, {
       waitUntil(
         (async () => {
           const signalsEnterAt = Date.now();
-        try {
-          // Stamp with the runId so the callback's prior-context filter can
-          // exclude this message structurally (by runId) instead of by content.
-          await insertChatMessage({
-            chatThreadId: threadId,
-            userId: authCtx.userId,
-            role: "user",
-            content: body.prompt,
-            runId: result.runId,
-            attachFiles: body.attachFiles?.map((f: AttachFile) => {
-              return f.id;
-            }),
-            id: body.clientMessageId,
-            spanDims: dims,
-          });
-        } catch (err: unknown) {
-          log.error("Deferred insertChatMessage failed", {
-            runId: result.runId,
-            err,
-          });
-        }
-        await publishUserSignal(
-          [authCtx.userId],
-          `chatThreadRunCreated:${threadId}`,
-        );
-        await publishThreadListChanged(authCtx.userId);
-        // Cross-referenced with api_after_schedule_to_closure in Axiom to
-        // infer whether Vercel fires waitUntil() and after() callbacks in
-        // parallel or serial: near-equal durations imply parallel, a large
-        // gap implies serial.
-        if (responseReadyAt !== undefined) {
-          recordSandboxOperation({
-            sandboxType: "chat",
-            actionType: "api_after_signals_enter_offset",
-            durationMs: signalsEnterAt - responseReadyAt,
-            success: true,
-            runId: result.runId,
-          });
-        }
-      })(),
-    );
+          try {
+            // Stamp with the runId so the callback's prior-context filter can
+            // exclude this message structurally (by runId) instead of by content.
+            await insertChatMessage({
+              chatThreadId: threadId,
+              userId: authCtx.userId,
+              role: "user",
+              content: body.prompt,
+              runId: result.runId,
+              attachFiles: body.attachFiles?.map((f: AttachFile) => {
+                return f.id;
+              }),
+              id: body.clientMessageId,
+              spanDims: dims,
+            });
+          } catch (err: unknown) {
+            log.error("Deferred insertChatMessage failed", {
+              runId: result.runId,
+              err,
+            });
+          }
+          await publishUserSignal(
+            [authCtx.userId],
+            `chatThreadRunCreated:${threadId}`,
+          );
+          await publishThreadListChanged(authCtx.userId);
+          // Cross-referenced with api_after_schedule_to_closure in Axiom to
+          // infer whether Vercel fires waitUntil() and after() callbacks in
+          // parallel or serial: near-equal durations imply parallel, a large
+          // gap implies serial.
+          if (responseReadyAt !== undefined) {
+            recordSandboxOperation({
+              sandboxType: "chat",
+              actionType: "api_after_signals_enter_offset",
+              durationMs: signalsEnterAt - responseReadyAt,
+              success: true,
+              runId: result.runId,
+            });
+          }
+        })(),
+      );
 
       return {
         status: 201 as const,

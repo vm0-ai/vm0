@@ -114,8 +114,12 @@ vi.mock("next/server", async (importOriginal) => {
 // Mock @vercel/functions waitUntil() to capture promises for controlled
 // execution in tests. waitUntil() receives an already-started Promise —
 // the mock stores it so flushAfter() can await completion.
-vi.mock("@vercel/functions", () => {
+// Spread the original module so that attachDatabasePool (used by init-services.ts)
+// and any other exports pass through to real implementations.
+vi.mock("@vercel/functions", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@vercel/functions")>();
   return {
+    ...original,
     waitUntil: (promise: Promise<unknown>) => {
       nextWaitUntilPromises.push(promise);
     },
