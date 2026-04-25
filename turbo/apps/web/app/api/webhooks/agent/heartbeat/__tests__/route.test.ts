@@ -11,7 +11,10 @@ import {
   type UserContext,
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
-import { nextAfterCallbacks, resetNextAfterHooks } from "../../../../../../src/__tests__/next-after-hooks";
+import {
+  nextAfterCallbacks,
+  resetNextAfterHooks,
+} from "../../../../../../src/__tests__/next-after-hooks";
 import { randomUUID } from "crypto";
 
 // Only mock external services
