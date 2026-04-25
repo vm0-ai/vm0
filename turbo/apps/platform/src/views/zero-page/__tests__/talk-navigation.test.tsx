@@ -13,8 +13,10 @@ import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 import {
   chatThreadByIdContract,
+  chatThreadMessagesContract,
   chatMessagesContract,
 } from "@vm0/core/contracts/chat-threads";
+import { createDeferredPromise } from "../../../signals/utils.ts";
 import {
   zeroRunAgentEventsContract,
   zeroRunsByIdContract,
@@ -30,20 +32,22 @@ const mockApi = createMockApi(context);
 
 const PLACEHOLDER = "Ask me to automate workflows, manage tasks...";
 
-function mockChatAPIs() {
+function mockChatAPIs(options?: { waitForSend?: Promise<void> }) {
   server.use(
     // Unified chat message endpoint (creates thread + run + association)
-    mockApi(chatMessagesContract.send, ({ respond }) => {
+    mockApi(chatMessagesContract.send, async ({ body, respond }) => {
+      await options?.waitForSend;
+      const threadId = body.clientThreadId ?? "new-thread-id-123";
       return respond(201, {
         runId: "run-abc-123",
-        threadId: "new-thread-id-123",
+        threadId,
         status: "pending",
         createdAt: "2026-03-10T00:00:00Z",
       });
     }),
-    mockApi(chatThreadByIdContract.get, ({ respond }) => {
+    mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
       return respond(200, {
-        id: "new-thread-id-123",
+        id: params.id,
         title: "Hello",
         agentId: "c0000000-0000-4000-a000-000000000001",
         chatMessages: [],
@@ -54,6 +58,9 @@ function mockChatAPIs() {
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:00Z",
       });
+    }),
+    mockApi(chatThreadMessagesContract.list, ({ respond }) => {
+      return respond(200, { messages: [], hasHistoryBefore: false });
     }),
     mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) => {
       return respond(200, {
@@ -120,10 +127,35 @@ describe("talk navigation", () => {
     // Press Enter to send
     await user.keyboard("{Enter}");
 
-    // The URL should navigate to /chat/new-thread-id-123
+    // The URL should navigate to the locally generated chat thread id.
     await waitFor(() => {
-      expect(pathname()).toBe("/chats/new-thread-id-123");
+      expect(pathname()).toMatch(/^\/chats\/[0-9a-f-]{36}$/);
     });
+  });
+
+  it("shows the optimistic first message before the send request returns", async () => {
+    const user = userEvent.setup();
+    const sendDeferred = createDeferredPromise<void>(context.signal);
+    mockChatAPIs({ waitForSend: sendDeferred.promise });
+
+    detachedSetupPage({
+      context,
+      path: "/agents/c0000000-0000-4000-a000-000000000001/chat",
+    });
+
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
+    await fill(textarea, "Hello before server");
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => {
+      expect(pathname()).toMatch(/^\/chats\/[0-9a-f-]{36}$/);
+      expect(screen.getByText("Hello before server")).toBeInTheDocument();
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+    });
+
+    sendDeferred.resolve();
   });
 
   it("should navigate to /agents/:id/chat after completing onboarding", async () => {

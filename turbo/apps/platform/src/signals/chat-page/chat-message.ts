@@ -1,6 +1,7 @@
 import { command, computed, state } from "ccstate";
-import { onRef, resetSignal } from "../utils.ts";
+import { onRef } from "../utils.ts";
 import { detachedNavigateTo$ } from "../route.ts";
+import { updateDocumentTitle$ } from "../document-title.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { zeroOnboardingStatus$ } from "../zero-page/zero-onboarding.ts";
 import { navigateToChat$ } from "../zero-page/zero-nav.ts";
@@ -9,6 +10,12 @@ import {
   chatThreads$,
   reloadChatThreads$,
 } from "../agent-chat.ts";
+import { setAblyLoop$ } from "../realtime.ts";
+import {
+  createChatThreadSignals,
+  ensureDraft$,
+  type LocalChatThreadSnapshot,
+} from "./create-chat-thread.ts";
 import {
   chatMessagesContract,
   chatThreadsContract,
@@ -68,30 +75,6 @@ async function createChatThread(
   return { id: result.body.id, title: result.body.title };
 }
 
-// ---------------------------------------------------------------------------
-// Talk-page send signal
-// ---------------------------------------------------------------------------
-
-/**
- * Signal for talk-page sends that must survive page navigation.
- *
- * The talk page navigates from `/agents/:id/chat` to `/chats/:id` on send,
- * which aborts the page-level signal.  This dedicated signal lets the
- * talk page pass a cancellable AbortSignal without coupling to the page
- * lifecycle.  It is reset each time `startNewZeroSession$` fires (which
- * is called before every talk-page send), so stale controllers are
- * cleaned up automatically.
- */
-export const resetTalkSendSignal$ = resetSignal();
-
-// ---------------------------------------------------------------------------
-// Session lifecycle
-// ---------------------------------------------------------------------------
-
-export const startNewZeroSession$ = command(({ set }) => {
-  set(resetTalkSendSignal$);
-});
-
 export const createNewChatThread$ = command(
   async (
     { get, set },
@@ -105,8 +88,6 @@ export const createNewChatThread$ = command(
       toast.error("No agent available for new chat session");
       return null;
     }
-
-    set(startNewZeroSession$);
 
     const createClient = get(zeroClient$);
     const thread = await createChatThread(
@@ -124,6 +105,52 @@ export const createNewChatThread$ = command(
 // Send new thread message (used by agent talk page)
 // ---------------------------------------------------------------------------
 
+export interface SendNewThreadMessageRequest {
+  agentId: string;
+  prompt: string;
+  modelSelection: ModelSelectionRequest | null;
+}
+
+export interface SendNewThreadMessageResult {
+  threadId: string;
+  runId: string;
+}
+
+export interface SendNewThreadMessagePending {
+  threadId: string;
+  pendingThread: ReturnType<typeof createChatThreadSignals>;
+  sendResult: Promise<SendNewThreadMessageResult>;
+}
+
+export const activateNewChatThreadPageLoops$ = command(
+  async (
+    { set },
+    thread: ReturnType<typeof createChatThreadSignals>,
+    threadId: string,
+    signal: AbortSignal,
+  ) => {
+    const onThreadUpdated$ = command(async ({ get, set }, sig: AbortSignal) => {
+      const data = await get(thread.threadData$);
+      sig.throwIfAborted();
+      if (data) {
+        set(updateDocumentTitle$, data.title ?? "New chat");
+      }
+      return false;
+    });
+
+    await Promise.all([
+      set(thread.runPhraseLoop$, signal),
+      set(thread.loadPagedMessages$, signal),
+      set(
+        setAblyLoop$,
+        `chatThreadRunUpdated:${threadId}`,
+        onThreadUpdated$,
+        signal,
+      ),
+    ]);
+  },
+);
+
 /**
  * Send the first message in a new or threadless chat. Returns the threadId.
  * Used by the agent talk page which navigates to the thread after sending.
@@ -135,11 +162,9 @@ export const createNewChatThread$ = command(
 export const sendNewThreadMessage$ = command(
   async (
     { get, set },
-    agentId: string,
-    prompt: string,
-    modelSelection: ModelSelectionRequest | null,
+    { agentId, prompt, modelSelection }: SendNewThreadMessageRequest,
     signal: AbortSignal,
-  ): Promise<string | null> => {
+  ): Promise<SendNewThreadMessagePending | null> => {
     // Mirror the in-thread send path: resolve the talk-page draft's uploaded
     // attachments so the first message carries structured `attachFiles` just
     // like follow-ups do (fixes #10243 for the new-thread entry point).
@@ -154,27 +179,66 @@ export const sendNewThreadMessage$ = command(
       return null;
     }
 
-    const client = get(zeroClient$)(chatMessagesContract);
-    const result = await accept(
-      client.send({
-        body: {
-          agentId,
-          prompt: prepared.prompt,
-          hasTextContent: prepared.hasTextContent,
-          clientMessageId: crypto.randomUUID(),
-          modelSelection,
-          attachFiles: prepared.attachFiles,
+    const threadId = crypto.randomUUID();
+    const clientMessageId = crypto.randomUUID();
+    const cancelRequested$ = state(false);
+    const localSnapshot: LocalChatThreadSnapshot = {
+      threadData: {
+        id: threadId,
+        title: null,
+        agentId,
+        latestSessionId: null,
+        latestSessionProviderType: null,
+        activeRunIds: [`pending-${threadId}`],
+        activeRuns: [{ id: `pending-${threadId}`, status: "pending" }],
+        isLegacySession: false,
+        draftContent: null,
+        draftAttachments: null,
+        modelProviderId: null,
+        selectedModel: null,
+      },
+      messages: [
+        {
+          id: clientMessageId,
+          role: "user",
+          content: prepared.prompt,
+          attachFiles: prepared.attachments,
+          createdAt: new Date().toISOString(),
         },
-        fetchOptions: { signal },
-      }),
-      [201],
-    );
-    signal.throwIfAborted();
-
-    // Drop the now-persisted attachments from the talk draft.
+      ],
+      cancelRequested$,
+    };
+    const { draft: threadDraft } = set(ensureDraft$, threadId);
+    const localThread = createChatThreadSignals(threadId, threadDraft, {
+      localSnapshot,
+    });
+    set(localThread.hideSkeleton$);
     set(draft.clear$);
-    set(reloadChatThreads$);
-    return result.body.threadId;
+
+    const client = get(zeroClient$)(chatMessagesContract);
+    const sendResult = (async (): Promise<SendNewThreadMessageResult> => {
+      const result = await accept(
+        client.send({
+          body: {
+            agentId,
+            prompt: prepared.prompt,
+            clientThreadId: threadId,
+            hasTextContent: prepared.hasTextContent,
+            clientMessageId,
+            modelSelection,
+            attachFiles: prepared.attachFiles,
+          },
+          fetchOptions: { signal },
+        }),
+        [201],
+      );
+      signal.throwIfAborted();
+      set(reloadChatThreads$);
+
+      return { threadId: result.body.threadId, runId: result.body.runId };
+    })();
+
+    return { threadId, pendingThread: localThread, sendResult };
   },
 );
 

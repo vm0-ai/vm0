@@ -240,8 +240,15 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
 // ZeroSessionChatPage — real conversation backed by agent runs
 // ---------------------------------------------------------------------------
 
-export function ZeroChatThreadPage() {
-  const thread = useGet(currentChatThreadSignals$);
+interface ZeroChatThreadPageProps {
+  thread?: ChatThreadSignals;
+}
+
+export function ZeroChatThreadPage({
+  thread: threadOverride,
+}: ZeroChatThreadPageProps) {
+  const currentThread = useGet(currentChatThreadSignals$);
+  const thread = threadOverride ?? currentThread;
   const shortcutHelpOpen = useGet(chatShortcutHelpOpen$);
   const setShortcutHelpOpen = useSet(setChatShortcutHelpOpen$);
 

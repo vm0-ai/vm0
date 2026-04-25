@@ -67,11 +67,14 @@ import { activeRoute$ } from "../../signals/active-route.ts";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
 import {
+  activateNewChatThreadPageLoops$,
   createNewChatThread$,
-  resetTalkSendSignal$,
-  sendNewThreadMessage$,
-  startNewZeroSession$,
 } from "../../signals/chat-page/chat-message.ts";
+import {
+  renderChatThreadPage$,
+  sendNewThreadOptimistically$,
+  settleThreadSignals$,
+} from "../../signals/chat-page/optimistic-chat-thread-page.ts";
 import { navigateToChat$ } from "../../signals/zero-page/zero-nav.ts";
 import { voiceChatStatus$ } from "../../signals/voice-chat/voice-chat-session.ts";
 
@@ -382,11 +385,14 @@ export function AgentChatPage() {
     currentChatAgentDisplayName$,
   );
 
-  const sendNewThread = useSet(sendNewThreadMessage$);
-  const startNewSession = useSet(startNewZeroSession$);
-  const resetTalkSendSignal = useSet(resetTalkSendSignal$);
-  const navigateToChatFn = useSet(navigateToChat$);
+  const sendNewThread = useSet(sendNewThreadOptimistically$);
   const { signal: rootSignal } = useGet(rootSignal$);
+  const pageSignal = useGet(pageSignal$);
+  const renderChatThreadPage = useSet(renderChatThreadPage$);
+  const activateNewChatThreadPageLoops = useSet(
+    activateNewChatThreadPageLoops$,
+  );
+  const settleThreadSignals = useSet(settleThreadSignals$);
 
   const orgProviders = useLastResolved(orgModelProviders$);
   const modelSelection = useLastResolved(chatPageModelSelection$) ?? null;
@@ -404,21 +410,36 @@ export function AgentChatPage() {
     if (!currentChatAgentId) {
       return;
     }
-    startNewSession();
-    // Link to rootSignal so the send is cancellable on app/test teardown,
-    // but not on page navigation (unlike pageSignal).
-    const talkSignal = resetTalkSendSignal(rootSignal);
+
     detach(
-      sendNewThread(
-        currentChatAgentId,
-        message,
-        modelSelection,
-        talkSignal,
-      ).then((threadId) => {
-        if (threadId) {
-          navigateToChatFn(threadId);
+      (async () => {
+        const result = await sendNewThread(
+          {
+            agentId: currentChatAgentId,
+            prompt: message,
+            modelSelection,
+          },
+          rootSignal,
+        );
+        if (!result) {
+          return;
         }
-      }),
+
+        await result.sendResult;
+        pageSignal.throwIfAborted();
+
+        const realThread = await settleThreadSignals(
+          result.threadId,
+          pageSignal,
+        );
+        pageSignal.throwIfAborted();
+        renderChatThreadPage(realThread);
+        await activateNewChatThreadPageLoops(
+          realThread,
+          result.threadId,
+          pageSignal,
+        );
+      })(),
       Reason.DomCallback,
     );
   };
@@ -439,7 +460,6 @@ export function AgentChatPage() {
 
   const suggestedPrompts = useLastResolved(suggestedPrompts$) ?? [];
   const navigate = useSet(detachedNavigateTo$);
-  const pageSignal = useGet(pageSignal$);
   const lightboxUrl = useGet(attachmentLightboxUrl$);
 
   const handleSend = (text: string) => {

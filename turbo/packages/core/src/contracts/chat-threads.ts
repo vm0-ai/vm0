@@ -270,6 +270,7 @@ export const chatMessagesContract = c.router({
       agentId: z.string().min(1),
       prompt: z.string().min(1),
       threadId: z.string().optional(),
+      clientThreadId: z.string().uuid().optional(),
       modelProvider: z.string().optional(),
       /**
        * Per-run model override; persisted on the thread so subsequent runs
