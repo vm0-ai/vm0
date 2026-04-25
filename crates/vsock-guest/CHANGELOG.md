@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.4](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.10.3...vsock-guest-v0.10.4) (2026-04-25)
+
+
+### Bug Fixes
+
+* **vsock-guest:** unblock exec and buffered spawn_watch on orphan stdout ([#11085](https://github.com/vm0-ai/vm0/issues/11085)) ([f659911](https://github.com/vm0-ai/vm0/commit/f65991104b0532ee80faf0885b075d41db7f3913))
+
 ## [0.10.3](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.10.2...vsock-guest-v0.10.3) (2026-04-22)
 
 

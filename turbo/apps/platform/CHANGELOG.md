@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.293.4](https://github.com/vm0-ai/vm0/compare/app-v0.293.3...app-v0.293.4) (2026-04-25)
+
+
+### Performance Improvements
+
+* reduce zero bootstrap blocking ([#11088](https://github.com/vm0-ai/vm0/issues/11088)) ([b62cc20](https://github.com/vm0-ai/vm0/commit/b62cc201e980e320df31acecd3615cb4277f9ac1))
+
 ## [0.293.3](https://github.com/vm0-ai/vm0/compare/app-v0.293.2...app-v0.293.3) (2026-04-25)
 
 

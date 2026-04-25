@@ -1,5 +1,7 @@
 # Changelog
 
+## [0.95.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.95.1...runner-rs-v0.95.2) (2026-04-25)
+
 ## [0.95.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.95.0...runner-rs-v0.95.1) (2026-04-25)
 
 ## [0.95.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.94.2...runner-rs-v0.95.0) (2026-04-24)

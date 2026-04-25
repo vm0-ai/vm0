@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.300.4](https://github.com/vm0-ai/vm0/compare/web-v12.300.3...web-v12.300.4) (2026-04-25)
+
+
+### Performance Improvements
+
+* reduce zero bootstrap blocking ([#11088](https://github.com/vm0-ai/vm0/issues/11088)) ([b62cc20](https://github.com/vm0-ai/vm0/commit/b62cc201e980e320df31acecd3615cb4277f9ac1))
+
 ## [12.300.3](https://github.com/vm0-ai/vm0/compare/web-v12.300.2...web-v12.300.3) (2026-04-25)
 
 
