@@ -862,6 +862,13 @@ export async function createZeroRun(
 ): Promise<CreateZeroRunResult> {
   const result = await createZeroRunRecord(params);
 
+  // Stamp responseReadyAt synchronously so the waitUntil() dispatch below
+  // has a valid anchor for the Phase-2 timing split. With waitUntil(), the
+  // IIFE starts executing before the caller can reach markResponseReady().
+  if (result.record && result.record.responseReadyAt === undefined) {
+    result.record.responseReadyAt = Date.now();
+  }
+
   // Dispatch only when a record was actually inserted; enqueued runs
   // (concurrency limit) are drained by the queue worker later.
   if (result.record) {
