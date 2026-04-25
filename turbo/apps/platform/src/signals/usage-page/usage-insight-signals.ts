@@ -37,12 +37,10 @@ export const setChartWidth$ = command(({ set }, width: number) => {
 export type InsightRange = "today" | "yesterday" | "7d" | "28d";
 export type InsightGroupBy = "source" | "agent";
 export type InsightMetric = "credits" | "tokens";
-export type InsightDetailTab = "schedules" | "chats";
 
 const internalRange$ = state<InsightRange>("today");
 const internalGroupBy$ = state<InsightGroupBy>("source");
 const internalMetric$ = state<InsightMetric>("credits");
-const internalDetailTab$ = state<InsightDetailTab>("schedules");
 
 export const range$ = computed((get) => {
   return get(internalRange$);
@@ -56,10 +54,6 @@ export const metric$ = computed((get) => {
   return get(internalMetric$);
 });
 
-export const detailTab$ = computed((get) => {
-  return get(internalDetailTab$);
-});
-
 export const setRange$ = command(({ set }, range: InsightRange) => {
   set(internalRange$, range);
 });
@@ -70,10 +64,6 @@ export const setGroupBy$ = command(({ set }, groupBy: InsightGroupBy) => {
 
 export const setMetric$ = command(({ set }, metric: InsightMetric) => {
   set(internalMetric$, metric);
-});
-
-export const setDetailTab$ = command(({ set }, tab: InsightDetailTab) => {
-  set(internalDetailTab$, tab);
 });
 
 const tz$ = computed(async (get) => {

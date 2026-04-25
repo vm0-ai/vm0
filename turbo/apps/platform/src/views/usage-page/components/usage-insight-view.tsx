@@ -6,13 +6,10 @@ import {
   setGroupBy$,
   metric$,
   setMetric$,
-  detailTab$,
-  setDetailTab$,
   usageInsightAsync$,
   type InsightRange,
   type InsightGroupBy,
   type InsightMetric,
-  type InsightDetailTab,
 } from "../../../signals/usage-page/usage-insight-signals.ts";
 import {
   Select,
@@ -20,15 +17,11 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-  Tabs,
-  TabsList,
-  TabsTrigger,
 } from "@vm0/ui";
 import { UsageInsightBarChart } from "./usage-insight-bar-chart.tsx";
 import { UsageInsightSchedulesTable } from "./usage-insight-schedules-table.tsx";
 import { UsageInsightChatsTable } from "./usage-insight-chats-table.tsx";
 import { UsageInsightTotalsBar } from "./usage-insight-totals-bar.tsx";
-import { UsageInsightEmptyState } from "./usage-insight-empty-state.tsx";
 
 export function UsageInsightView() {
   const range = useGet(range$);
@@ -37,17 +30,11 @@ export function UsageInsightView() {
   const setGroupBy = useSet(setGroupBy$);
   const metric = useGet(metric$);
   const setMetric = useSet(setMetric$);
-  const detailTab = useGet(detailTab$);
-  const setDetailTab = useSet(setDetailTab$);
   const loadable = useLoadable(usageInsightAsync$);
 
   const isLoading = loadable.state === "loading";
   const isError = loadable.state === "hasError";
   const data = loadable.state === "hasData" ? loadable.data : null;
-  const isEmpty =
-    data !== null &&
-    data.grandTotalCredits === 0 &&
-    data.grandTotalTokens === 0;
 
   const handleRangeChange = (val: string) => {
     setRange(val as InsightRange);
@@ -61,14 +48,9 @@ export function UsageInsightView() {
     setMetric(val as InsightMetric);
   };
 
-  const handleDetailTabChange = (val: string) => {
-    setDetailTab(val as InsightDetailTab);
-  };
-
   return (
-    <div className="flex flex-col gap-6">
-      {/* Header row with selectors */}
-      <div className="flex items-center justify-between gap-3 flex-wrap">
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-3 flex-wrap pb-1">
         <h2 className="text-sm font-medium text-foreground">Usage Insights</h2>
         <div className="flex items-center gap-2">
           <Select value={range} onValueChange={handleRangeChange}>
@@ -112,8 +94,7 @@ export function UsageInsightView() {
         </div>
       </div>
 
-      {/* Totals bar (100% stacked) */}
-      {data && !isEmpty && (
+      {data && (
         <UsageInsightTotalsBar
           data={data}
           metric={metric}
@@ -122,20 +103,18 @@ export function UsageInsightView() {
         />
       )}
 
-      {/* Chart */}
       {isLoading && !data && (
-        <div className="h-[220px] animate-pulse bg-muted/20 rounded-xl" />
+        <div className="h-[280px] animate-pulse bg-muted/20 rounded-[20px]" />
       )}
       {isError && (
         <div
-          className="rounded-xl bg-card px-5 py-8 text-center text-sm text-muted-foreground zero-border"
+          className="rounded-[20px] bg-card px-5 py-8 text-center text-sm text-muted-foreground border border-border/40"
           role="alert"
         >
           Failed to load usage insights. Please try again later.
         </div>
       )}
-      {isEmpty && <UsageInsightEmptyState />}
-      {data && !isEmpty && (
+      {data && (
         <UsageInsightBarChart
           buckets={data.buckets}
           metric={metric}
@@ -144,24 +123,11 @@ export function UsageInsightView() {
         />
       )}
 
-      {/* Detail tabs: Schedules / Chats */}
-      {data && !isEmpty && (
-        <Tabs
-          value={detailTab}
-          onValueChange={handleDetailTabChange}
-          className="flex flex-col gap-3"
-        >
-          <TabsList>
-            <TabsTrigger value="schedules">Schedules</TabsTrigger>
-            <TabsTrigger value="chats">Chats</TabsTrigger>
-          </TabsList>
-          {detailTab === "schedules" && (
-            <UsageInsightSchedulesTable data={data} metric={metric} />
-          )}
-          {detailTab === "chats" && (
-            <UsageInsightChatsTable data={data} metric={metric} />
-          )}
-        </Tabs>
+      {data && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          <UsageInsightSchedulesTable data={data} metric={metric} />
+          <UsageInsightChatsTable data={data} metric={metric} />
+        </div>
       )}
     </div>
   );

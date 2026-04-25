@@ -13,6 +13,7 @@ import {
   type InsightMetric,
   type InsightGroupBy,
 } from "../../../signals/usage-page/usage-insight-signals.ts";
+import { getCardPalette } from "../../../lib/card-palette.ts";
 
 // --- Constants ---
 
@@ -427,8 +428,18 @@ export function UsageInsightBarChart({
     setTooltip(null);
   };
 
+  const { bg, accent } = getCardPalette(1);
+
   return (
-    <div className="zero-card p-4">
+    <section
+      className={`${bg} rounded-[20px] p-6 border border-border/40 break-inside-avoid`}
+    >
+      <p
+        className="text-xs font-semibold uppercase tracking-widest mb-3"
+        style={{ color: accent }}
+      >
+        Trend
+      </p>
       <div ref={containerRef} className="w-full overflow-hidden">
         <div className="relative">
           <ChartSvg
@@ -447,7 +458,6 @@ export function UsageInsightBarChart({
           )}
         </div>
 
-        {/* Legend */}
         {sortedKeys.length > 1 && (
           <div className="flex flex-wrap gap-x-4 gap-y-1 px-1 pt-2 text-xs text-muted-foreground">
             {sortedKeys.map((key) => {
@@ -464,6 +474,6 @@ export function UsageInsightBarChart({
           </div>
         )}
       </div>
-    </div>
+    </section>
   );
 }

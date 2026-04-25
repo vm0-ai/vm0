@@ -11,6 +11,7 @@ import type {
   InsightMetric,
   InsightRange,
 } from "../../../signals/usage-page/usage-insight-signals.ts";
+import { getCardPalette } from "../../../lib/card-palette.ts";
 
 const AGENT_COLORS = [
   "hsl(var(--primary))",
@@ -98,22 +99,24 @@ export function UsageInsightTotalsBar({
 
   const totalLabel = metric === "credits" ? "credits" : "tokens";
   const rangeLabel = RANGE_LABELS[range];
+  const { bg, accent } = getCardPalette(0);
 
   return (
-    <section className="flex flex-col gap-2">
-      <div className="flex items-baseline justify-between gap-3">
-        <div className="flex flex-col">
-          <div className="text-2xl font-semibold tabular-nums text-foreground">
-            {formatTotal(total)}{" "}
-            <span className="text-sm font-normal text-muted-foreground">
-              {totalLabel}
-            </span>
-          </div>
-          <div className="text-xs text-muted-foreground">{rangeLabel}</div>
-        </div>
-      </div>
+    <section
+      className={`${bg} rounded-[20px] p-6 border border-border/40 break-inside-avoid`}
+    >
+      <p
+        className="text-xs font-semibold uppercase tracking-widest mb-3"
+        style={{ color: accent }}
+      >
+        {totalLabel}
+      </p>
+      <p className="text-5xl font-black leading-none tabular-nums font-serif">
+        {formatTotal(total)}
+      </p>
+      <p className="text-sm opacity-60 mt-2">{rangeLabel}</p>
       <div
-        className="flex h-3 w-full overflow-hidden rounded-full bg-muted"
+        className="mt-5 flex h-2.5 w-full overflow-hidden rounded-full bg-foreground/5"
         role="img"
         aria-label={`Total ${totalLabel} breakdown`}
       >
@@ -133,6 +136,27 @@ export function UsageInsightTotalsBar({
             );
           })}
       </div>
+      {total > 0 && sortedKeys.length > 0 && (
+        <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1">
+          {sortedKeys.map((key, i) => {
+            const value = perKey.get(key) ?? 0;
+            const pct = total > 0 ? Math.round((value / total) * 100) : 0;
+            return (
+              <li
+                key={key}
+                className="flex items-center gap-1.5 text-xs text-muted-foreground"
+              >
+                <span
+                  className="inline-block h-2 w-2 rounded-full"
+                  style={{ backgroundColor: colorForKey(key, i, groupBy) }}
+                />
+                <span className="truncate max-w-[140px]">{key}</span>
+                <span className="tabular-nums opacity-70">{pct}%</span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </section>
   );
 }

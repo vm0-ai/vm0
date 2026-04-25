@@ -174,8 +174,8 @@ describe("/_/usage page - empty state", () => {
   });
 });
 
-describe("/_/usage page - detail tabs", () => {
-  it("switches from schedules to chats tab", async () => {
+describe("/_/usage page - schedule and chat lists", () => {
+  it("shows schedules and chats side-by-side", async () => {
     server.use(
       mockApi(zeroUsageInsightContract.get, ({ respond }) => {
         return respond(200, usageInsightFixture);
@@ -190,29 +190,10 @@ describe("/_/usage page - detail tabs", () => {
       ).toBeInTheDocument();
     });
 
-    // Schedules tab should be visible by default
     await waitFor(() => {
       expect(screen.getByText("My Schedule")).toBeInTheDocument();
     });
 
-    // Click on Chats tab - use getAllByRole to avoid slow accessible name computation
-    await waitFor(() => {
-      expect(
-        screen.getAllByRole("tab").find((el) => {
-          return /^Chats$/.test(el.textContent ?? "");
-        }),
-      ).toBeDefined();
-    });
-    const chatsTab = screen.getAllByRole("tab").find((el) => {
-      return /^Chats$/.test(el.textContent ?? "");
-    });
-    click(chatsTab!);
-
-    await waitFor(() => {
-      expect(screen.getByText("Chat with Agent")).toBeInTheDocument();
-    });
-
-    // Schedules should no longer be visible
-    expect(screen.queryByText("My Schedule")).not.toBeInTheDocument();
+    expect(screen.getByText("Chat with Agent")).toBeInTheDocument();
   });
 });

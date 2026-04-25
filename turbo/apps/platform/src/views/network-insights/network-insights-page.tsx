@@ -37,6 +37,7 @@ import { userPreferences$ } from "../../signals/zero-page/settings/user-preferen
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { user$ } from "../../signals/auth.ts";
 import { formatCredits } from "../../lib/format-credits.ts";
+import { getCardPalette } from "../../lib/card-palette.ts";
 import {
   CONNECTOR_TYPES,
   type ConnectorType,
@@ -460,24 +461,6 @@ function SummaryCard({ day }: { day: DayInsight }) {
 }
 
 // ---------------------------------------------------------------------------
-
-interface CardPalette {
-  bg: string;
-  accent: string;
-}
-
-function getCardPalette(colorIndex: number): CardPalette {
-  const palette: CardPalette[] = [
-    { bg: "bg-[#EFC184]/20", accent: "#D4956A" }, // sandy orange — brand original
-    { bg: "bg-[#F3B8B1]/20", accent: "#E24B6A" }, // rose → brand vibrant rose
-    { bg: "bg-[#E1C43C]/15", accent: "#E1C43C" }, // mustard gold — brand original
-    { bg: "bg-gray-50", accent: "#98928B" }, // grey-50 → taupe
-    { bg: "bg-[#EC70A5]/15", accent: "#EC70A5" }, // hot pink — brand original
-    { bg: "bg-[#358A8E]/15", accent: "#358A8E" }, // teal — brand original
-    { bg: "bg-[#98928B]/15", accent: "#98928B" }, // taupe — brand original
-  ];
-  return palette[colorIndex % palette.length] ?? palette[0];
-}
 
 function Card({ children }: { children: React.ReactNode }) {
   return (
