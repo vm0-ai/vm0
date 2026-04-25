@@ -9,17 +9,19 @@ import {
   setTestRunResult,
   completeTestRun,
   insertTestAssistantEventMessages,
-  insertTestChatMessage,
   setTestChatMessageAttachFiles,
   setTestChatMessageContent,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import { getTestZeroAgentId } from "../../../../../../src/__tests__/db-test-assertions/agents";
-import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
 import {
   testContext,
   uniqueId,
   type UserContext,
 } from "../../../../../../src/__tests__/test-helpers";
+import {
+  seedTestChatRounds,
+  setTestChatRoundCreatedAt,
+} from "../../../../../../src/__tests__/db-test-seeders/runs";
 import { reloadEnv } from "../../../../../../src/env";
 
 const URL = "http://localhost:3000/api/zero/chat/messages";
@@ -39,37 +41,6 @@ async function sendMessage(body: Record<string, unknown>) {
   // see the user message row when building the incomplete-rounds context.
   await context.mocks.flushAfter();
   return data;
-}
-
-/**
- * Seed a prior round directly in the DB: one agent_runs row with the
- * requested status + one user chat_messages row linked by runId. Bypasses
- * the POST + deferred dispatch pipeline so tests that need many historical
- * rounds in a thread don't pay the per-round dispatch cost. The FINAL send
- * that reads the incomplete-rounds context still goes through the real
- * route handler.
- */
-async function seedPriorRound(params: {
-  userId: string;
-  agentComposeId: string;
-  chatThreadId: string;
-  prompt: string;
-  status?: string;
-}): Promise<{ runId: string }> {
-  const { runId } = await seedTestRun(params.userId, params.agentComposeId, {
-    status: params.status ?? "cancelled",
-    prompt: params.prompt,
-    chatThreadId: params.chatThreadId,
-    triggerSource: "web",
-  });
-  await insertTestChatMessage({
-    chatThreadId: params.chatThreadId,
-    userId: params.userId,
-    role: "user",
-    content: params.prompt,
-    runId,
-  });
-  return { runId };
 }
 
 describe("POST /api/zero/chat/messages — incomplete rounds context", () => {
@@ -267,17 +238,21 @@ describe("POST /api/zero/chat/messages — incomplete rounds context", () => {
     // First round goes through the real route to establish the thread.
     const first = await sendMessage({ agentId, prompt: "seed-0" });
     await setTestRunStatus(first.runId, "cancelled");
+    const seedBase = new Date(Date.now() - 60_000);
+    await setTestChatRoundCreatedAt(first.runId, seedBase);
 
     // Seed the remaining 24 cancelled rounds directly — skipping the POST +
     // deferred dispatch on each keeps the loop well under the 5s timeout in CI.
-    for (let i = 1; i < 25; i++) {
-      await seedPriorRound({
-        userId: user.userId,
-        agentComposeId: agentId,
-        chatThreadId: first.threadId,
-        prompt: `seed-${i}`,
-      });
-    }
+    await seedTestChatRounds({
+      userId: user.userId,
+      orgId: user.orgId,
+      agentComposeId: agentId,
+      chatThreadId: first.threadId,
+      prompts: Array.from({ length: 24 }, (_, index) => {
+        return `seed-${index + 1}`;
+      }),
+      createdAtStart: new Date(seedBase.getTime() + 1),
+    });
 
     const next = await sendMessage({
       agentId,
@@ -322,15 +297,16 @@ describe("POST /api/zero/chat/messages — incomplete rounds context", () => {
     // 'cancelled'/'failed'/'timeout') so they don't pay the POST + dispatch
     // cost and still satisfy the assertion that no incomplete block appears.
     const first = await sendMessage({ agentId, prompt: "round 0" });
-    for (let i = 1; i < 50; i++) {
-      await seedPriorRound({
-        userId: user.userId,
-        agentComposeId: agentId,
-        chatThreadId: first.threadId,
-        prompt: `round ${i}`,
-        status: "pending",
-      });
-    }
+    await seedTestChatRounds({
+      userId: user.userId,
+      orgId: user.orgId,
+      agentComposeId: agentId,
+      chatThreadId: first.threadId,
+      prompts: Array.from({ length: 49 }, (_, index) => {
+        return `round ${index + 1}`;
+      }),
+      status: "pending",
+    });
 
     const final = await sendMessage({
       agentId,
@@ -354,15 +330,19 @@ describe("POST /api/zero/chat/messages — incomplete rounds context", () => {
     // POST + dispatch cost 30 times over.
     const first = await sendMessage({ agentId, prompt: "early fail" });
     await setTestRunStatus(first.runId, "cancelled");
+    const preSuccessBase = new Date(Date.now() - 60_000);
+    await setTestChatRoundCreatedAt(first.runId, preSuccessBase);
 
-    for (let i = 0; i < 30; i++) {
-      await seedPriorRound({
-        userId: user.userId,
-        agentComposeId: agentId,
-        chatThreadId: first.threadId,
-        prompt: `pre-success ${i}`,
-      });
-    }
+    await seedTestChatRounds({
+      userId: user.userId,
+      orgId: user.orgId,
+      agentComposeId: agentId,
+      chatThreadId: first.threadId,
+      prompts: Array.from({ length: 30 }, (_, index) => {
+        return `pre-success ${index}`;
+      }),
+      createdAtStart: new Date(preSuccessBase.getTime() + 1),
+    });
 
     // Mid-thread success — stamps `agentSessionId` onto agent_runs.result,
     // which is what the SQL anchor subquery keys off.
