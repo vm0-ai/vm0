@@ -44,6 +44,10 @@
         "config": ["tsup.config.ts"]
       }
     },
+    "apps/api": {
+      "entry": ["src/index.ts", "src/**/*.{test,spec}.ts"],
+      "project": ["src/**/*.ts"]
+    },
     "apps/platform": {
       "entry": ["src/main.ts", "**/*.{test,spec}.ts?(x)"],
       "project": ["**/*.{ts,tsx}"],

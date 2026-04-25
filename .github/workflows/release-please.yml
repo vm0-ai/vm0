@@ -26,10 +26,12 @@ jobs:
       releases_created: ${{ steps.release.outputs.releases_created }}
       cli_release_created: ${{ steps.release.outputs['turbo/apps/cli--release_created'] }}
       web_release_created: ${{ steps.release.outputs['turbo/apps/web--release_created'] }}
+      api_release_created: ${{ steps.release.outputs['turbo/apps/api--release_created'] }}
       app_release_created: ${{ steps.release.outputs['turbo/apps/platform--release_created'] }}
       runner_rs_release_created: ${{ steps.release.outputs['crates/runner--release_created'] }}
       runner_rs_version: ${{ steps.release.outputs['crates/runner--version'] }}
       web_version: ${{ steps.release.outputs['turbo/apps/web--version'] }}
+      api_version: ${{ steps.release.outputs['turbo/apps/api--version'] }}
       app_version: ${{ steps.release.outputs['turbo/apps/platform--version'] }}
       cli_version: ${{ steps.release.outputs['turbo/apps/cli--version'] }}
     steps:
@@ -396,6 +398,118 @@ jobs:
                   type: mrkdwn
                   text: "*Web App* ❌ Staged build failed\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
+  # Build API production deployment (Staged - prod-eligible, not serving traffic)
+  build-api-production:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.api_release_created == 'true' }}
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
+    outputs:
+      deployment_url: ${{ steps.deploy.outputs.url }}
+    permissions:
+      contents: read
+    environment: production
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/toolchain-init
+
+      - name: Install neonctl
+        run: npm install -g neonctl@2.15.0
+
+      - name: Notify Slack - Starting
+        id: slack-start
+        if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
+        uses: slackapi/slack-github-action@v3.0.1
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            text: "*API* building staged production deployment..."
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*API* building staged production deployment...\n📦 Version: `${{ needs.release-please.outputs.api_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/api-v${{ needs.release-please.outputs.api_version }}|View Release>"
+
+      - name: Record start time
+        id: timer
+        run: echo "start=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      - name: Get Production Database URL
+        id: get-db-url
+        run: |
+          DATABASE_URL=$(neonctl connection-string production --project-id ${{ vars.NEON_PROJECT_ID }} --database-name neondb --pooled)
+          echo "database-url=$DATABASE_URL" >> "$GITHUB_OUTPUT"
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+
+      - name: Build API Staged Production Deployment
+        id: deploy
+        uses: ./.github/actions/vercel-deploy
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
+          vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_API }}
+          environment: production
+          deployment-env: api
+          prebuilt: "true"
+          skip-domain: "true"
+          skip-start: "true"
+          skip-finish: "true"
+          environment-variables: |
+            DATABASE_URL=${{ steps.get-db-url.outputs.database-url }}
+            CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}
+            SECRETS_ENCRYPTION_KEY=${{ secrets.SECRETS_ENCRYPTION_KEY }}
+            SENTRY_DSN=${{ secrets.SENTRY_DSN }}
+            SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
+            SENTRY_ORG=${{ vars.SENTRY_ORG }}
+            SENTRY_PROJECT=${{ vars.SENTRY_PROJECT_API || vars.SENTRY_PROJECT_WEB }}
+
+      - name: Calculate duration
+        id: duration
+        if: ${{ always() && steps.timer.outputs.start }}
+        run: |
+          elapsed=$(( $(date +%s) - ${{ steps.timer.outputs.start }} ))
+          h=$((elapsed / 3600)) m=$(( (elapsed % 3600) / 60 )) s=$((elapsed % 60))
+          if [ $h -gt 0 ]; then text="${h}h ${m}m ${s}s"
+          elif [ $m -gt 0 ]; then text="${m}m ${s}s"
+          else text="${s}s"; fi
+          echo "text=$text" >> "$GITHUB_OUTPUT"
+
+      - name: Notify Slack - Success
+        if: ${{ success() && steps.slack-start.outputs.ts }}
+        uses: slackapi/slack-github-action@v3.0.1
+        with:
+          method: chat.update
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*API* ✅ Staged build ready (not yet serving)"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*API* ✅ Staged build ready (not yet serving)\n📦 Version: `${{ needs.release-please.outputs.api_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/api-v${{ needs.release-please.outputs.api_version }}|View Release>"
+
+      - name: Notify Slack - Failure
+        if: ${{ failure() && steps.slack-start.outputs.ts }}
+        uses: slackapi/slack-github-action@v3.0.1
+        with:
+          method: chat.update
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*API* ❌ Staged build failed"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*API* ❌ Staged build failed\n📦 Version: `${{ needs.release-please.outputs.api_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/api-v${{ needs.release-please.outputs.api_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+
   # Promote web staged deployment to production (traffic switch)
   # Fan-in barrier: all build-phase jobs must finish (success or skipped) before
   # any promote-phase job starts. If any build fails, this job fails, which in
@@ -404,6 +518,7 @@ jobs:
     needs:
       - release-please
       - build-web-production
+      - build-api-production
       - build-app-production
       - build-runner-production
       - build-e2b-template-production
@@ -554,6 +669,132 @@ jobs:
                 text:
                   type: mrkdwn
                   text: "*Web App* ❌ Promote failed — DB at new schema, traffic on old code\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+
+  # Promote API staged deployment to production (vm0-api project only; no api.vm0.ai alias)
+  promote-api-production:
+    needs:
+      [
+        release-please,
+        builds-complete,
+        build-api-production,
+        migrate-production,
+      ]
+    if: >-
+      !failure() && !cancelled() &&
+      needs.release-please.outputs.api_release_created == 'true'
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
+    outputs:
+      deployment_url: ${{ needs.build-api-production.outputs.deployment_url }}
+      vercel_dashboard_url: ${{ steps.vercel-dashboard.outputs.url }}
+    permissions:
+      contents: read
+      deployments: write
+    environment: production
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/toolchain-init
+
+      - name: Start GitHub Deployment
+        id: deployment
+        uses: bobheadxi/deployments@v1
+        with:
+          step: start
+          token: ${{ github.token }}
+          env: api/production
+          ref: ${{ github.ref }}
+          desc: Promoting API staged deployment to production
+
+      - name: Notify Slack - Starting
+        id: slack-start
+        if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
+        uses: slackapi/slack-github-action@v3.0.1
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            text: "*API* promoting staged deployment to production..."
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*API* promoting staged deployment to production...\n📦 Version: `${{ needs.release-please.outputs.api_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/api-v${{ needs.release-please.outputs.api_version }}|View Release>"
+
+      - name: Record start time
+        id: timer
+        run: echo "start=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      - name: Promote API Deployment
+        uses: ./.github/actions/vercel-promote
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
+          vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_API }}
+          deployment-url: ${{ needs.build-api-production.outputs.deployment_url }}
+
+      - name: Resolve Vercel dashboard URL
+        id: vercel-dashboard
+        if: ${{ needs.build-api-production.outputs.deployment_url != '' }}
+        uses: ./.github/actions/vercel-dashboard-url
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          deployment-url: ${{ needs.build-api-production.outputs.deployment_url }}
+
+      - name: Finish GitHub Deployment
+        if: always()
+        uses: bobheadxi/deployments@v1
+        with:
+          step: finish
+          token: ${{ github.token }}
+          status: ${{ job.status }}
+          env: ${{ steps.deployment.outputs.env }}
+          env_url: ${{ steps.vercel-dashboard.outputs.url }}
+          deployment_id: ${{ steps.deployment.outputs.deployment_id }}
+
+      - name: Calculate duration
+        id: duration
+        if: ${{ always() && steps.timer.outputs.start }}
+        run: |
+          elapsed=$(( $(date +%s) - ${{ steps.timer.outputs.start }} ))
+          h=$((elapsed / 3600)) m=$(( (elapsed % 3600) / 60 )) s=$((elapsed % 60))
+          if [ $h -gt 0 ]; then text="${h}h ${m}m ${s}s"
+          elif [ $m -gt 0 ]; then text="${m}m ${s}s"
+          else text="${s}s"; fi
+          echo "text=$text" >> "$GITHUB_OUTPUT"
+
+      - name: Notify Slack - Success
+        if: ${{ success() && steps.slack-start.outputs.ts }}
+        uses: slackapi/slack-github-action@v3.0.1
+        with:
+          method: chat.update
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*API* ✅ Promoted to production"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*API* ✅ Promoted to production\n📦 Version: `${{ needs.release-please.outputs.api_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/api-v${{ needs.release-please.outputs.api_version }}|View Release>\n🔄 <${{ github.server_url }}/${{ github.repository }}/issues/${{ vars.ROLLBACK_ISSUE_NUMBER }}|Rollback Dashboard>"
+
+      - name: Notify Slack - Failure
+        if: ${{ failure() && steps.slack-start.outputs.ts }}
+        uses: slackapi/slack-github-action@v3.0.1
+        with:
+          method: chat.update
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*API* ❌ Promote failed"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*API* ❌ Promote failed\n📦 Version: `${{ needs.release-please.outputs.api_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/api-v${{ needs.release-please.outputs.api_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
   # Build app (Vite SPA) production deployment (Staged)
   build-app-production:
@@ -779,10 +1020,11 @@ jobs:
 
   # Update rollback dashboard issue after deployments
   update-rollback-dashboard:
-    needs: [release-please, promote-web-production, promote-app-production, promote-runner-production]
+    needs: [release-please, promote-web-production, promote-api-production, promote-app-production, promote-runner-production]
     if: >-
       always() &&
       (needs.promote-web-production.result == 'success' ||
+       needs.promote-api-production.result == 'success' ||
        needs.promote-app-production.result == 'success' ||
        needs.promote-runner-production.result == 'success')
     runs-on: ubuntu-latest
@@ -855,12 +1097,15 @@ jobs:
         id: entry
         env:
           WEB_VERSION: ${{ needs.release-please.outputs.web_version }}
+          API_VERSION: ${{ needs.release-please.outputs.api_version }}
           APP_VERSION: ${{ needs.release-please.outputs.app_version }}
           RUNNER_VERSION: ${{ needs.release-please.outputs.runner_rs_version }}
           WEB_RESULT: ${{ needs.promote-web-production.result }}
+          API_RESULT: ${{ needs.promote-api-production.result }}
           APP_RESULT: ${{ needs.promote-app-production.result }}
           RUNNER_RESULT: ${{ needs.promote-runner-production.result }}
           WEB_DASHBOARD_URL: ${{ needs.promote-web-production.outputs.vercel_dashboard_url }}
+          API_DASHBOARD_URL: ${{ needs.promote-api-production.outputs.vercel_dashboard_url }}
           APP_DASHBOARD_URL: ${{ needs.promote-app-production.outputs.vercel_dashboard_url }}
           SAFETY: ${{ steps.migration-safety.outputs.indicator }}
           MIGRATION_FILES: ${{ steps.migration-safety.outputs.details }}
@@ -873,6 +1118,9 @@ jobs:
           if [ "$WEB_RESULT" = "success" ] && [ -n "$WEB_VERSION" ]; then
             TITLE_PARTS="web v${WEB_VERSION}"
           fi
+          if [ "$API_RESULT" = "success" ] && [ -n "$API_VERSION" ]; then
+            TITLE_PARTS="${TITLE_PARTS:+$TITLE_PARTS / }api v${API_VERSION}"
+          fi
           if [ "$APP_RESULT" = "success" ] && [ -n "$APP_VERSION" ]; then
             TITLE_PARTS="${TITLE_PARTS:+$TITLE_PARTS / }app v${APP_VERSION}"
           fi
@@ -880,7 +1128,7 @@ jobs:
             TITLE_PARTS="${TITLE_PARTS:+$TITLE_PARTS / }runner v${RUNNER_VERSION}"
           fi
 
-          # Web/app migration-safety indicator (applies to web+app rollbacks)
+          # Web/API/app migration-safety indicator (applies to web/API/app rollbacks)
           case "$SAFETY" in
             destructive)
               INDICATOR="🔴 **Warning: destructive migration** ($MIGRATION_FILES)"
@@ -918,6 +1166,16 @@ jobs:
             fi
           fi
 
+          if [ -n "$API_VERSION" ]; then
+            if [ "$API_RESULT" = "success" ] && [ -n "$API_DASHBOARD_URL" ]; then
+              append_row "| api | v${API_VERSION} | [Rollback in Vercel](${API_DASHBOARD_URL}) |"
+            elif [ "$API_RESULT" = "success" ]; then
+              append_row "| api | v${API_VERSION} | _URL unavailable_ |"
+            else
+              append_row "| api | v${API_VERSION} | ❌ Deploy failed |"
+            fi
+          fi
+
           if [ -n "$APP_VERSION" ]; then
             if [ "$APP_RESULT" = "success" ] && [ -n "$APP_DASHBOARD_URL" ]; then
               append_row "| app | v${APP_VERSION} | [Rollback in Vercel](${APP_DASHBOARD_URL}) |"
@@ -941,9 +1199,9 @@ jobs:
           fi
 
           # Build full entry.
-          # - The migration-safety INDICATOR only describes web migrations
+          # - The migration-safety INDICATOR only describes web DB migrations
           #   (see Detect migration safety step), so suppress it for release
-          #   cycles with no web/app changes — otherwise a runner-only
+          #   cycles with no web/api/app changes — otherwise a runner-only
           #   release would print a misleading "🟢 Safe to rollback".
           # - Runner has no auto-computed compatibility indicator. We print
           #   a static advisory whenever the release includes runner so the
@@ -953,7 +1211,7 @@ jobs:
           #   checklist mindset and miss cases the list doesn't anticipate.
           {
             echo "### ${DATE} — ${TITLE_PARTS}"
-            if [ -n "$WEB_VERSION" ] || [ -n "$APP_VERSION" ]; then
+            if [ -n "$WEB_VERSION" ] || [ -n "$API_VERSION" ] || [ -n "$APP_VERSION" ]; then
               echo "${INDICATOR}"
             fi
             if [ -n "$RUNNER_VERSION" ]; then
@@ -1610,4 +1868,3 @@ jobs:
         with:
           name: sbom
           path: sbom.json
-
