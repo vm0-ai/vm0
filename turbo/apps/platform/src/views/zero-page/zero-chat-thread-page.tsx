@@ -313,7 +313,7 @@ function ZeroChatThreadPageInner({
     <div className="flex flex-1 flex-col min-h-0 bg-transparent">
       <ChatThreadHeader thread={thread} />
 
-      <div className="flex-1 min-h-0 relative">
+      <div className="flex-1 min-h-0 relative isolate">
         <div
           ref={setScrollContainer}
           data-scroll-container
@@ -374,7 +374,7 @@ function ZeroChatThreadPageInner({
         {skeletonVisible && !sessionError && (
           <div
             data-chat-skeleton
-            className="absolute inset-0 overflow-hidden pointer-events-none"
+            className="absolute inset-0 z-10 overflow-hidden pointer-events-none bg-background"
           >
             <main className="px-4 sm:px-6 py-4 items-center @container">
               <div className="w-full max-w-[900px] mx-auto flex flex-col gap-6 pb-4">
