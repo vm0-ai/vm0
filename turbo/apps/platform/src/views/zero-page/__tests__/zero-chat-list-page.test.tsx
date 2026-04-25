@@ -1,9 +1,8 @@
 /**
  * Tests for zero-chat-list-page.tsx
  *
- * Tests the chat list page with unified labels (after graduate unified chat
- * labels as permanent default, removing per-agent avatar display from header
- * and thread items).
+ * Tests the chat list page with agent-scoped labels (matching the sidebar
+ * after unified-list removal).
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -62,23 +61,25 @@ function setupPage() {
 }
 
 describe("zero chat list page - header and title", () => {
-  it("should render the page with unified 'Chats' title (CHAT-LIST-001)", async () => {
+  it("should render the page with agent-scoped 'Chats with Zero' title (CHAT-LIST-001)", async () => {
     mockChatThreads(createMockThreads());
     setupPage();
 
     await waitFor(() => {
       expect(
-        screen.getByRole("heading", { name: "Chats" }),
+        screen.getByRole("heading", { name: "Chats with Zero" }),
       ).toBeInTheDocument();
     });
   });
 
-  it("should show unified 'Search chats' placeholder (CHAT-LIST-002)", async () => {
+  it("should show agent-scoped 'Search chat with Zero' placeholder (CHAT-LIST-002)", async () => {
     mockChatThreads(createMockThreads());
     setupPage();
 
     await waitFor(() => {
-      expect(screen.getByPlaceholderText("Search chats")).toBeInTheDocument();
+      expect(
+        screen.getByPlaceholderText("Search chat with Zero"),
+      ).toBeInTheDocument();
     });
   });
 
@@ -191,7 +192,7 @@ describe("zero chat list page - search", () => {
       expect(screen.getAllByText("First chat thread")[0]).toBeInTheDocument();
     });
 
-    const searchInput = screen.getByPlaceholderText("Search chats");
+    const searchInput = screen.getByPlaceholderText("Search chat with Zero");
     await userEvent.type(searchInput, "First");
 
     await waitFor(() => {
@@ -212,7 +213,7 @@ describe("zero chat list page - search", () => {
       expect(screen.getAllByText("First chat thread")[0]).toBeInTheDocument();
     });
 
-    const searchInput = screen.getByPlaceholderText("Search chats");
+    const searchInput = screen.getByPlaceholderText("Search chat with Zero");
     await userEvent.type(searchInput, "nonexistent");
 
     await waitFor(() => {
@@ -230,7 +231,7 @@ describe("zero chat list page - search", () => {
       expect(screen.getAllByText("First chat thread")[0]).toBeInTheDocument();
     });
 
-    const searchInput = screen.getByPlaceholderText("Search chats");
+    const searchInput = screen.getByPlaceholderText("Search chat with Zero");
     await userEvent.type(searchInput, "First");
 
     await waitFor(() => {
@@ -255,7 +256,7 @@ describe("zero chat list page - search", () => {
       expect(screen.getAllByText("First chat thread")[0]).toBeInTheDocument();
     });
 
-    const searchInput = screen.getByPlaceholderText("Search chats");
+    const searchInput = screen.getByPlaceholderText("Search chat with Zero");
     await userEvent.type(searchInput, "first");
 
     await waitFor(() => {
