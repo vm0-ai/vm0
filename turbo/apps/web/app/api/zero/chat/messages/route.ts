@@ -183,7 +183,6 @@ async function resolveThread(
   userId: string,
   agentId: string,
   existingThreadId: string | undefined,
-  clientThreadId: string | undefined,
   dims?: ChatSpanDimensions,
 ): Promise<ResolvedThread> {
   const emit = (op: string, ms: number): void => {
@@ -192,7 +191,7 @@ async function resolveThread(
 
   if (!existingThreadId) {
     const createT = await timed(async () => {
-      return createChatThread(userId, agentId, null, clientThreadId);
+      return createChatThread(userId, agentId);
     });
     emit(CHAT_REQUEST_OPS.resolve_thread_create_thread, createT.ms);
     const thread = createT.result;
@@ -383,13 +382,7 @@ const router = tsr.router(chatMessagesContract, {
 
     try {
       const { threadId, sessionId, incompleteContext, isNewThread } =
-        await resolveThread(
-          authCtx.userId,
-          body.agentId,
-          body.threadId,
-          body.clientThreadId,
-          dims,
-        );
+        await resolveThread(authCtx.userId, body.agentId, body.threadId, dims);
 
       const overrideT = await timed(async () => {
         return resolveRunModelOverride(

@@ -130,25 +130,6 @@ describe("POST /api/zero/chat/messages", () => {
       expect(data.createdAt).toBeTruthy();
     });
 
-    it("should create a new thread with the provided clientThreadId", async () => {
-      const clientThreadId = crypto.randomUUID();
-      const response = await POST(
-        createTestRequest(URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            agentId,
-            prompt: "hello world",
-            clientThreadId,
-          }),
-        }),
-      );
-
-      expect(response.status).toBe(201);
-      const data = await response.json();
-      expect(data.threadId).toBe(clientThreadId);
-    });
-
     it("should reuse existing thread when threadId is provided", async () => {
       // First create a thread via the unified endpoint
       const firstResponse = await POST(

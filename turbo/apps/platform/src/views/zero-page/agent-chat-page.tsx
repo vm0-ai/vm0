@@ -1,3 +1,5 @@
+// TODO(#8609): split large components to comply with max-lines-per-function (128)
+// oxlint-disable max-lines-per-function
 import { Component } from "react";
 import {
   useGet,
@@ -17,7 +19,6 @@ import {
   IconPlus,
   IconUserPlus,
 } from "@tabler/icons-react";
-import type { ConnectorType } from "@vm0/core/contracts/connectors";
 import {
   Button,
   Tooltip,
@@ -65,11 +66,12 @@ import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { activeRoute$ } from "../../signals/active-route.ts";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
-import { createNewChatThread$ } from "../../signals/chat-page/chat-message.ts";
 import {
-  sendNewThreadOptimistically$,
-  settleThreadSignals$,
-} from "../../signals/chat-page/optimistic-chat-thread-page.ts";
+  createNewChatThread$,
+  resetTalkSendSignal$,
+  sendNewThreadMessage$,
+  startNewZeroSession$,
+} from "../../signals/chat-page/chat-message.ts";
 import { navigateToChat$ } from "../../signals/zero-page/zero-nav.ts";
 import { voiceChatStatus$ } from "../../signals/voice-chat/voice-chat-session.ts";
 
@@ -374,125 +376,17 @@ export function ChatAgentAvatar({
   );
 }
 
-interface SuggestedPrompt {
-  title: string;
-  description: string;
-  prompt: string;
-  connectors?: readonly ConnectorType[];
-}
-
-function SuggestedPromptButton({
-  item,
-  onSelectPrompt,
-}: {
-  item: SuggestedPrompt;
-  onSelectPrompt: (prompt: string) => void;
-}) {
-  return (
-    <button
-      type="button"
-      className="zero-card cursor-pointer p-4 text-left flex flex-col relative group hover:bg-muted/30 transition-colors"
-      onClick={() => {
-        onSelectPrompt(item.prompt);
-      }}
-    >
-      <IconArrowUpRight
-        size={14}
-        stroke={2}
-        className="absolute top-4 right-4 text-muted-foreground/0 group-hover:text-muted-foreground transition-colors"
-      />
-      <p className="text-sm font-semibold text-foreground pr-5">{item.title}</p>
-      <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
-        {item.description}
-      </p>
-      {item.connectors && item.connectors.length > 0 && (
-        <div className="flex items-center gap-1.5 mt-auto pt-2.5">
-          {item.connectors.map((type) => {
-            return (
-              <span
-                key={type}
-                className="flex h-7 w-7 items-center justify-center rounded-md border border-border/60 bg-background"
-              >
-                <ConnectorIcon type={type} size={14} />
-              </span>
-            );
-          })}
-        </div>
-      )}
-    </button>
-  );
-}
-
-function IdeasUseCasesButton() {
-  const currentChatAgentId = useLastResolved(currentChatAgentId$);
-  const navigate = useSet(detachedNavigateTo$);
-
-  const handleClick = () => {
-    if (!currentChatAgentId) {
-      return;
-    }
-    navigate("/agents/:agentId/ideas", {
-      pathParams: { agentId: currentChatAgentId },
-    });
-  };
-
-  return (
-    <button
-      type="button"
-      className="zero-card cursor-pointer p-4 text-left flex flex-col relative group hover:bg-muted/30 transition-colors"
-      onClick={handleClick}
-    >
-      <IconArrowUpRight
-        size={14}
-        stroke={2}
-        className="absolute top-4 right-4 text-muted-foreground/0 group-hover:text-muted-foreground transition-colors"
-      />
-      <p className="text-sm font-semibold text-foreground pr-5">
-        Ideas &amp; use cases
-      </p>
-      <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
-        Browse use cases across all connectors
-      </p>
-      <div className="flex items-center gap-1.5 mt-auto pt-2.5 text-sm font-medium text-primary">
-        <span>View all</span>
-        <IconArrowUpRight size={14} stroke={2} />
-      </div>
-    </button>
-  );
-}
-
-function SuggestedPromptsGrid({
-  onSelectPrompt,
-}: {
-  onSelectPrompt: (prompt: string) => void;
-}) {
-  const suggestedPrompts = useLastResolved(suggestedPrompts$) ?? [];
-  return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 w-full">
-      {suggestedPrompts.map((item) => {
-        return (
-          <SuggestedPromptButton
-            key={item.title}
-            item={item}
-            onSelectPrompt={onSelectPrompt}
-          />
-        );
-      })}
-      <IdeasUseCasesButton />
-    </div>
-  );
-}
-
 export function AgentChatPage() {
   const currentChatAgentId = useLastResolved(currentChatAgentId$);
   const currentChatAgentDisplayName = useLastResolved(
     currentChatAgentDisplayName$,
   );
 
-  const sendNewThread = useSet(sendNewThreadOptimistically$);
+  const sendNewThread = useSet(sendNewThreadMessage$);
+  const startNewSession = useSet(startNewZeroSession$);
+  const resetTalkSendSignal = useSet(resetTalkSendSignal$);
+  const navigateToChatFn = useSet(navigateToChat$);
   const { signal: rootSignal } = useGet(rootSignal$);
-  const pageSignal = useGet(pageSignal$);
-  const settleThreadSignals = useSet(settleThreadSignals$);
 
   const orgProviders = useLastResolved(orgModelProviders$);
   const modelSelection = useLastResolved(chatPageModelSelection$) ?? null;
@@ -510,26 +404,21 @@ export function AgentChatPage() {
     if (!currentChatAgentId) {
       return;
     }
-
+    startNewSession();
+    // Link to rootSignal so the send is cancellable on app/test teardown,
+    // but not on page navigation (unlike pageSignal).
+    const talkSignal = resetTalkSendSignal(rootSignal);
     detach(
-      (async () => {
-        const result = await sendNewThread(
-          {
-            agentId: currentChatAgentId,
-            prompt: message,
-            modelSelection,
-          },
-          rootSignal,
-        );
-        if (!result) {
-          return;
+      sendNewThread(
+        currentChatAgentId,
+        message,
+        modelSelection,
+        talkSignal,
+      ).then((threadId) => {
+        if (threadId) {
+          navigateToChatFn(threadId);
         }
-
-        await result.sendResult;
-        pageSignal.throwIfAborted();
-
-        await settleThreadSignals(result.threadId, pageSignal);
-      })(),
+      }),
       Reason.DomCallback,
     );
   };
@@ -548,6 +437,9 @@ export function AgentChatPage() {
         )
       : "";
 
+  const suggestedPrompts = useLastResolved(suggestedPrompts$) ?? [];
+  const navigate = useSet(detachedNavigateTo$);
+  const pageSignal = useGet(pageSignal$);
   const lightboxUrl = useGet(attachmentLightboxUrl$);
 
   const handleSend = (text: string) => {
@@ -579,6 +471,7 @@ export function AgentChatPage() {
             </div>
           </div>
 
+          {/* Composer */}
           <ZeroChatComposer
             className="w-full"
             input={input}
@@ -600,7 +493,76 @@ export function AgentChatPage() {
             }
           />
 
-          <SuggestedPromptsGrid onSelectPrompt={setInput} />
+          {/* Suggested prompts */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 w-full">
+            {suggestedPrompts.map(
+              ({ title, description, connectors, prompt }) => {
+                return (
+                  <button
+                    key={title}
+                    type="button"
+                    className="zero-card cursor-pointer p-4 text-left flex flex-col relative group hover:bg-muted/30 transition-colors"
+                    onClick={() => {
+                      return setInput(prompt);
+                    }}
+                  >
+                    <IconArrowUpRight
+                      size={14}
+                      stroke={2}
+                      className="absolute top-4 right-4 text-muted-foreground/0 group-hover:text-muted-foreground transition-colors"
+                    />
+                    <p className="text-sm font-semibold text-foreground pr-5">
+                      {title}
+                    </p>
+                    <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
+                      {description}
+                    </p>
+                    {connectors && connectors.length > 0 && (
+                      <div className="flex items-center gap-1.5 mt-auto pt-2.5">
+                        {connectors.map((type) => {
+                          return (
+                            <span
+                              key={type}
+                              className="flex h-7 w-7 items-center justify-center rounded-md border border-border/60 bg-background"
+                            >
+                              <ConnectorIcon type={type} size={14} />
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </button>
+                );
+              },
+            )}
+            <button
+              type="button"
+              className="zero-card cursor-pointer p-4 text-left flex flex-col relative group hover:bg-muted/30 transition-colors"
+              onClick={() => {
+                if (currentChatAgentId) {
+                  navigate("/agents/:agentId/ideas", {
+                    pathParams: { agentId: currentChatAgentId },
+                  });
+                }
+              }}
+            >
+              <IconArrowUpRight
+                size={14}
+                stroke={2}
+                className="absolute top-4 right-4 text-muted-foreground/0 group-hover:text-muted-foreground transition-colors"
+              />
+              <p className="text-sm font-semibold text-foreground pr-5">
+                Ideas &amp; use cases
+              </p>
+              <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
+                Browse use cases across all connectors
+              </p>
+              <div className="flex items-center gap-1.5 mt-auto pt-2.5 text-sm font-medium text-primary">
+                <span>View all</span>
+                <IconArrowUpRight size={14} stroke={2} />
+              </div>
+            </button>
+          </div>
         </div>
       </main>
       {lightboxUrl && <AttachmentLightbox />}

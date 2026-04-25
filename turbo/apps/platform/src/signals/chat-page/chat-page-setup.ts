@@ -39,14 +39,6 @@ export const setupChatPage$ = command(
     if (!thread) {
       throw new Error("thread signals are required to load chat page");
     }
-
-    set(
-      updatePage$,
-      createElement(ZeroChatThreadPage, { key: threadId }),
-      "sidebar",
-    );
-    await set(hideAppSkeleton$, signal);
-
     const threadData = await get(thread.threadData$);
     signal.throwIfAborted();
     if (!threadData) {
@@ -64,6 +56,14 @@ export const setupChatPage$ = command(
     }
 
     set(setChatAgentId$, threadData.agentId ?? null);
+
+    set(
+      updatePage$,
+      createElement(ZeroChatThreadPage, { key: threadId }),
+      "sidebar",
+    );
+
+    await set(hideAppSkeleton$, signal);
 
     // Use threadData for title (reliable on page refresh) instead of chatThreads$
     const sessionTitle = threadData.title ?? "New chat";

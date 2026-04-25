@@ -28,12 +28,10 @@ export async function createChatThread(
   userId: string,
   agentComposeId: string,
   title?: string | null,
-  id?: string,
 ): Promise<{ id: string; createdAt: Date }> {
   const [thread] = await globalThis.services.db
     .insert(chatThreads)
     .values({
-      ...(id ? { id } : {}),
       userId,
       agentComposeId,
       title: title ?? null,
