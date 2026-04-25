@@ -6,7 +6,7 @@
  * and thread items).
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
@@ -104,18 +104,17 @@ describe("zero chat list page - chat list rendering", () => {
   });
 
   it("should render 'New chat' as default title when title is null (CHAT-LIST-005)", async () => {
-    mockChatThreads([
-      {
-        id: "thread-null",
-        title: null,
-        agent: { id: "c0000000-0000-4000-a000-000000000001", avatarUrl: null },
-        createdAt: "2026-03-01T00:00:00Z",
-        updatedAt: "2026-03-01T00:00:00Z",
-        isRead: true,
-        isArchived: false,
-        running: false,
-      },
-    ]);
+    const threadWithNullTitle = {
+      id: "thread-null",
+      title: null,
+      agent: { id: "c0000000-0000-4000-a000-000000000001", avatarUrl: null },
+      createdAt: "2026-03-01T00:00:00Z",
+      updatedAt: "2026-03-01T00:00:00Z",
+      isRead: true,
+      isArchived: false,
+      running: false,
+    } as unknown as ReturnType<typeof createMockThreads>[number];
+    mockChatThreads([threadWithNullTitle]);
     setupPage();
 
     await waitFor(() => {
@@ -125,13 +124,11 @@ describe("zero chat list page - chat list rendering", () => {
 });
 
 describe("zero chat list page - loading skeleton", () => {
-  let consoleSpy: ReturnType<typeof vi.spyOn>;
-
   beforeEach(() => {
     // Suppress console.error during the loading→empty transition, which
     // triggers React's ErrorBoundary.componentDidCatch. The setup.ts spy
     // throws on console.error, which would cause unhandled errors.
-    consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
   // No afterEach needed — setup.ts's beforeEach re-establishes the
