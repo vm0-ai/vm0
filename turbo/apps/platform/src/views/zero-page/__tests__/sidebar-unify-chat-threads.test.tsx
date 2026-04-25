@@ -1,5 +1,5 @@
 /**
- * Unified chat-threads sidebar behaviour (#10162).
+ * Agent-scoped chat-threads sidebar behaviour after unified-list removal.
  */
 
 import { describe, expect, it } from "vitest";
@@ -154,16 +154,16 @@ describe("sidebar chat threads (#10162)", () => {
     ).toBeFalsy();
   });
 
-  it("renders the unified title 'Chats'", async () => {
+  it("renders the agent-scoped title 'Chats with Zero'", async () => {
     const observed: ListQuery[] = [];
     mockThreads(observed);
     detachedSetupPage({ context, path: "/" });
 
     await waitFor(() => {
-      expect(within(getSidebar()).getByText("Chats")).toBeInTheDocument();
+      expect(
+        within(getSidebar()).getByText("Chats with Zero"),
+      ).toBeInTheDocument();
     });
-    expect(
-      within(getSidebar()).queryByText(/^Chats with /),
-    ).not.toBeInTheDocument();
+    expect(within(getSidebar()).queryByText(/^Chats$/)).not.toBeInTheDocument();
   });
 });

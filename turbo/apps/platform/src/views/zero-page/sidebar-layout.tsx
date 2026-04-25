@@ -180,9 +180,10 @@ function MobileTopBarActions({ activeId }: { activeId: RouteKey | null }) {
   const features = useLastResolved(featureSwitch$);
   const newButtonEnabled =
     features?.[FeatureSwitchKey.ChatHeaderNewButton] ?? false;
+  const audioOutputEnabled = features?.[FeatureSwitchKey.AudioOutput] ?? false;
   return (
     <>
-      {inChatRoute && <AutoReadToggleLeaf />}
+      {inChatRoute && audioOutputEnabled && <AutoReadToggleLeaf />}
       {inChatRoute &&
         (newButtonEnabled ? (
           <NewOrUnreadChatButtonLeaf />

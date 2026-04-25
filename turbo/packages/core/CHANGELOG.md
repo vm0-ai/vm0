@@ -1,5 +1,22 @@
 # Changelog
 
+## [8.235.0](https://github.com/vm0-ai/vm0/compare/core-v8.234.1...core-v8.235.0) (2026-04-25)
+
+
+### Features
+
+* add Opus 4.7, DeepSeek, Kimi, and MiniMax models to OpenRouter BYOK ([#11062](https://github.com/vm0-ai/vm0/issues/11062)) ([9090365](https://github.com/vm0-ai/vm0/commit/9090365b4d4afce11f4ca3d24784e8773bcdc4aa))
+
+
+### Bug Fixes
+
+* **chat:** switch to new threads optimistically ([#11050](https://github.com/vm0-ai/vm0/issues/11050)) ([4897e71](https://github.com/vm0-ai/vm0/commit/4897e716fbfdcdfa4b3edac3f928f50f75cc57a2))
+
+
+### Refactoring
+
+* remove modelProviderSelection feature switch ([#11048](https://github.com/vm0-ai/vm0/issues/11048)) ([6a98e7a](https://github.com/vm0-ai/vm0/commit/6a98e7afba0f8ed985832a877d76546807aa0eae))
+
 ## [8.234.1](https://github.com/vm0-ai/vm0/compare/core-v8.234.0...core-v8.234.1) (2026-04-24)
 
 

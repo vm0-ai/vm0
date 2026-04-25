@@ -184,7 +184,7 @@ describe("zero sidebar - search results filter (SIDEBAR-D-003)", () => {
 
     const searchChatsBtn1 = screen.getByLabelText("Search chats");
     click(searchChatsBtn1);
-    const searchInput = screen.getByPlaceholderText("Search chats");
+    const searchInput = screen.getByPlaceholderText("Search chat with Zero");
     await user.type(searchInput, "deploy");
 
     expect(
@@ -227,7 +227,7 @@ describe("zero sidebar - search term displays in input (SIDEBAR-D-004)", () => {
 
     const searchChatsBtn2 = screen.getByLabelText("Search chats");
     click(searchChatsBtn2);
-    const searchInput = screen.getByPlaceholderText("Search chats");
+    const searchInput = screen.getByPlaceholderText("Search chat with Zero");
     await user.type(searchInput, "deploy");
 
     expect(searchInput).toHaveValue("deploy");
@@ -388,7 +388,7 @@ describe("zero sidebar - new chat button enabled/disabled state (SIDEBAR-D-010)"
     });
 
     await waitFor(() => {
-      const newChatButton = screen.getByLabelText("New chat");
+      const newChatButton = screen.getByLabelText("New chat with Zero");
       expect(newChatButton).not.toBeDisabled();
     });
   });
@@ -414,16 +414,16 @@ describe("zero sidebar - new chat button enabled/disabled state (SIDEBAR-D-010)"
     });
 
     await waitFor(() => {
-      expect(screen.getByLabelText("New chat")).toBeDefined();
+      expect(screen.getByLabelText("New chat with Zero")).toBeDefined();
     });
 
     // Trigger new chat creation
-    const newChatBtn = screen.getByLabelText("New chat");
+    const newChatBtn = screen.getByLabelText("New chat with Zero");
     click(newChatBtn);
 
     // Button should become disabled while POST is in flight
     await waitFor(() => {
-      expect(screen.getByLabelText("New chat")).toBeDisabled();
+      expect(screen.getByLabelText("New chat with Zero")).toBeDisabled();
     });
 
     deferred.resolve();
