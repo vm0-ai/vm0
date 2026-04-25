@@ -69,10 +69,7 @@ import type {
   GroupedChatMessageGroup,
   PagedChatMessage,
 } from "../../signals/chat-page/chat-message.ts";
-import {
-  currentChatThreadSignals$,
-  type ChatThreadSignals,
-} from "../../signals/chat-page/create-chat-thread.ts";
+import type { ChatThreadSignals } from "../../signals/chat-page/create-chat-thread.ts";
 import type { ChatThread } from "../../signals/agent-chat.ts";
 import { ATTACH_ONLY_PLACEHOLDER } from "../../signals/chat-page/resolve-draft-attachments.ts";
 import type { ChatClipboardAttachment } from "../../signals/zero-page/clipboard.ts";
@@ -241,20 +238,12 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
 // ---------------------------------------------------------------------------
 
 interface ZeroChatThreadPageProps {
-  thread?: ChatThreadSignals;
+  thread: ChatThreadSignals;
 }
 
-export function ZeroChatThreadPage({
-  thread: threadOverride,
-}: ZeroChatThreadPageProps) {
-  const currentThread = useGet(currentChatThreadSignals$);
-  const thread = threadOverride ?? currentThread;
+export function ZeroChatThreadPage({ thread }: ZeroChatThreadPageProps) {
   const shortcutHelpOpen = useGet(chatShortcutHelpOpen$);
   const setShortcutHelpOpen = useSet(setChatShortcutHelpOpen$);
-
-  if (!thread) {
-    return null;
-  }
 
   return (
     <>
