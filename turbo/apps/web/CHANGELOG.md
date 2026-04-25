@@ -1,5 +1,20 @@
 # Changelog
 
+## [12.300.2](https://github.com/vm0-ai/vm0/compare/web-v12.300.1...web-v12.300.2) (2026-04-25)
+
+
+### Bug Fixes
+
+* **chat:** switch to new threads optimistically ([#11050](https://github.com/vm0-ai/vm0/issues/11050)) ([4897e71](https://github.com/vm0-ai/vm0/commit/4897e716fbfdcdfa4b3edac3f928f50f75cc57a2))
+* re-add AudioOutput feature switch guards on UI and TTS route ([#11049](https://github.com/vm0-ai/vm0/issues/11049)) ([7f2e59b](https://github.com/vm0-ai/vm0/commit/7f2e59bac342ad624fea0ba7d4af336d12b92691))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.235.0
+
 ## [12.300.1](https://github.com/vm0-ai/vm0/compare/web-v12.300.0...web-v12.300.1) (2026-04-24)
 
 
