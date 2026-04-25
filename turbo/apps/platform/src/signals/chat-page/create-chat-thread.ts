@@ -240,6 +240,7 @@ function createThreadData(
       title: body.title ?? null,
       agentId: body.agentId,
       latestSessionId: body.latestSessionId ?? null,
+      lastReadMessageId: body.lastReadMessageId ?? null,
       latestSessionProviderType: body.latestSessionProviderType ?? null,
       activeRunIds: body.activeRunIds,
       activeRuns: body.activeRuns ?? [],
@@ -923,19 +924,70 @@ interface RunTrackingDeps {
   threadId: string;
   reloadThread$: Command<void, []>;
   threadData$: Computed<Promise<ChatThread | null>>;
+  latestChatMessageId$: Computed<Promise<string | undefined>>;
   fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>;
   autoScroll$: Command<void, []>;
   options: ChatThreadSignalOptions;
+}
+
+interface MarkThreadReadDeps {
+  threadId: string;
+  threadData$: Computed<Promise<ChatThread | null>>;
+  latestChatMessageId$: Computed<Promise<string | undefined>>;
+  locallyMarkedReadMessageId$: State<string | undefined>;
+}
+
+function createMarkThreadReadIfNeeded({
+  threadId,
+  threadData$,
+  latestChatMessageId$,
+  locallyMarkedReadMessageId$,
+}: MarkThreadReadDeps) {
+  return command(async ({ get, set }, sig: AbortSignal) => {
+    const latestMessageId = await get(latestChatMessageId$);
+    sig.throwIfAborted();
+    if (!latestMessageId) {
+      return;
+    }
+
+    const thread = await get(threadData$);
+    sig.throwIfAborted();
+    const lastReadMessageId =
+      get(locallyMarkedReadMessageId$) ?? thread?.lastReadMessageId ?? null;
+    if (lastReadMessageId === latestMessageId) {
+      return;
+    }
+
+    const client = get(zeroClient$)(chatThreadMarkReadContract);
+    const result = await accept(
+      client.markRead({
+        params: { id: threadId },
+        fetchOptions: { signal: sig },
+      }),
+      [200],
+    );
+    sig.throwIfAborted();
+    set(
+      locallyMarkedReadMessageId$,
+      result.body.lastReadMessageId ?? latestMessageId,
+    );
+    // Server broadcasts `threadListChanged` via Ably on mark-read; the
+    // sidebar reloads from that channel. Bumping reloadChatThreads$ here too
+    // forces a redundant refetch that blocks subsequent keyboard navigation.
+  });
 }
 
 function createRunTracking({
   threadId,
   reloadThread$,
   threadData$,
+  latestChatMessageId$,
   fetchNextPage$,
   autoScroll$,
   options,
 }: RunTrackingDeps) {
+  const locallyMarkedReadMessageId$ = state<string | undefined>(undefined);
+
   const allFinished$ = computed(async (get) => {
     const cancelRequested = options.localSnapshot
       ? get(options.localSnapshot.cancelRequested$)
@@ -950,18 +1002,11 @@ function createRunTracking({
     return thread.activeRunIds.length === 0;
   });
 
-  const markThreadRead$ = command(async ({ get }, sig: AbortSignal) => {
-    const client = get(zeroClient$)(chatThreadMarkReadContract);
-    await accept(
-      client.markRead({
-        params: { id: threadId },
-        fetchOptions: { signal: sig },
-      }),
-      [200],
-    );
-    // Server broadcasts `threadListChanged` via Ably on mark-read; the
-    // sidebar reloads from that channel. Bumping reloadChatThreads$ here too
-    // forces a redundant refetch that blocks subsequent keyboard navigation.
+  const markThreadReadIfNeeded$ = createMarkThreadReadIfNeeded({
+    threadId,
+    threadData$,
+    latestChatMessageId$,
+    locallyMarkedReadMessageId$,
   });
 
   const loadPagedMessages$ = command(
@@ -994,13 +1039,13 @@ function createRunTracking({
         await visibleDeferred.promise;
         signal.throwIfAborted();
       }
-      await set(markThreadRead$, signal);
+      await set(markThreadReadIfNeeded$, signal);
 
       const onMessageCreated$ = command(async ({ set }, sig: AbortSignal) => {
         await set(fetchNextPage$, sig);
         // Advance read marker when a new message arrives while focused.
         if (document.visibilityState === "visible") {
-          await set(markThreadRead$, sig);
+          await set(markThreadReadIfNeeded$, sig);
         }
         animationFrame(
           () => {
@@ -1295,6 +1340,7 @@ export function createChatThreadSignals(
     threadId,
     reloadThread$,
     threadData$,
+    latestChatMessageId$,
     fetchNextPage$,
     autoScroll$,
     options,

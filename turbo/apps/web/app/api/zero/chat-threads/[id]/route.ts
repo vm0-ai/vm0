@@ -80,6 +80,7 @@ const router = tsr.router(chatThreadByIdContract, {
           agentId: thread.agentComposeId,
           chatMessages,
           latestSessionId,
+          lastReadMessageId: thread.lastReadMessageId,
           latestSessionProviderType,
           activeRunIds,
           activeRuns,
