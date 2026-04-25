@@ -51,15 +51,6 @@ EOF
     echo "# Step 3: Verify run failed..."
     assert_failure
     assert_output --partial "Run failed"
-
-    # Extract Run ID to check system logs for the tool timeout message
-    RUN_ID=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | head -1)
-    [ -n "$RUN_ID" ] || {
-        echo "# Failed to extract Run ID from output"
-        echo "$output"
-        return 1
-    }
-
-    echo "# Step 4: Verify system logs contain tool timeout error..."
-    wait_for_log "$RUN_ID" --system -- "Tool timeout" "WebFetch"
+    assert_output --partial "Tool timeout"
+    assert_output --partial "WebFetch"
 }
