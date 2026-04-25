@@ -129,7 +129,7 @@ describe("zero chat list page - chat list rendering", () => {
 
     await waitFor(() => {
       // Skeleton lines should appear
-      const skeletons = screen.getAllByTestId(/skeleton/i);
+      const skeletons = screen.getAllByTestId("sidebar-skeleton");
       expect(skeletons.length).toBeGreaterThan(0);
     });
 
@@ -138,7 +138,7 @@ describe("zero chat list page - chat list rendering", () => {
     // Wait for the loading state to resolve before the test ends to prevent
     // async re-renders from triggering ErrorBoundary during afterEach cleanup.
     await waitFor(() => {
-      expect(screen.queryByTestId(/skeleton/i)).not.toBeInTheDocument();
+      expect(screen.queryByTestId("sidebar-skeleton")).not.toBeInTheDocument();
     });
   });
 
