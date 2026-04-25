@@ -28,12 +28,12 @@ export const setupChatPage$ = command(
     }
 
     const { draft, isNew } = set(ensureDraft$, threadId);
+    const thread = createChatThreadSignals(threadId, draft);
+    set(setupChatPageKeyboard$, thread, signal);
 
     const optimisticThread = get(optimisticThreadSend$);
     const matchingOptimisticThread =
       optimisticThread?.threadId === threadId ? optimisticThread : null;
-    const thread = createChatThreadSignals(threadId, draft);
-    set(setupChatPageKeyboard$, thread, signal);
 
     set(
       updatePage$,
@@ -50,6 +50,7 @@ export const setupChatPage$ = command(
       await matchingOptimisticThread.sendResult;
       signal.throwIfAborted();
 
+      set(thread.hideSkeleton$);
       set(
         updatePage$,
         createElement(ZeroChatThreadPage, {
@@ -101,7 +102,6 @@ export const setupChatPage$ = command(
       { signal },
     );
 
-    // Reactive document title: update when thread data changes via Ably events
     const onThreadUpdated$ = command(async ({ get, set }, sig: AbortSignal) => {
       const data = await get(thread.threadData$);
       sig.throwIfAborted();
