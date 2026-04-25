@@ -1,7 +1,6 @@
 import { command, computed, state } from "ccstate";
 import { onRef } from "../utils.ts";
 import { detachedNavigateTo$ } from "../route.ts";
-import { updateDocumentTitle$ } from "../document-title.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { zeroOnboardingStatus$ } from "../zero-page/zero-onboarding.ts";
 import { navigateToChat$ } from "../zero-page/zero-nav.ts";
@@ -11,7 +10,6 @@ import {
   insertOptimisticChatThread$,
   reloadChatThreads$,
 } from "../agent-chat.ts";
-import { setAblyLoop$ } from "../realtime.ts";
 import {
   createChatThreadSignals,
   ensureDraft$,
@@ -124,52 +122,12 @@ export interface SendNewThreadMessagePending {
   sendResult: Promise<SendNewThreadMessageResult>;
 }
 
-export const activateNewChatThreadPageLoops$ = command(
-  async (
-    { set },
-    thread: ReturnType<typeof createChatThreadSignals>,
-    threadId: string,
-    signal: AbortSignal,
-  ) => {
-    const onThreadUpdated$ = command(async ({ get, set }, sig: AbortSignal) => {
-      const data = await get(thread.threadData$);
-      sig.throwIfAborted();
-      if (data) {
-        set(updateDocumentTitle$, data.title ?? "New chat");
-      }
-      return false;
-    });
-
-    await Promise.all([
-      set(thread.runPhraseLoop$, signal),
-      set(thread.loadPagedMessages$, signal),
-      set(
-        setAblyLoop$,
-        `chatThreadRunUpdated:${threadId}`,
-        onThreadUpdated$,
-        signal,
-      ),
-    ]);
-  },
-);
-
-/**
- * Send the first message in a new or threadless chat. Returns the threadId.
- * Used by the agent talk page which navigates to the thread after sending.
- *
- * `modelSelection` comes from the composer's per-run model picker and is
- * always provided — `null` stores "no override" (inherit agent/org default)
- * on the newly created thread; a non-null object sets the thread override.
- */
 export const sendNewThreadMessage$ = command(
   async (
     { get, set },
     { agentId, prompt, modelSelection }: SendNewThreadMessageRequest,
     signal: AbortSignal,
   ): Promise<SendNewThreadMessagePending | null> => {
-    // Mirror the in-thread send path: resolve the talk-page draft's uploaded
-    // attachments so the first message carries structured `attachFiles` just
-    // like follow-ups do (fixes #10243 for the new-thread entry point).
     const draft = get(talkDraft$);
     const prepared = await set(
       prepareUserMessageFromDraft$,
@@ -177,6 +135,7 @@ export const sendNewThreadMessage$ = command(
       prompt,
       signal,
     );
+
     if (!prepared) {
       return null;
     }

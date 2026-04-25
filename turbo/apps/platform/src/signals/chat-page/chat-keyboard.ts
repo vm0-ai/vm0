@@ -4,7 +4,7 @@ import { chatThreads$, currentChatThreadId$ } from "../agent-chat.ts";
 import { navigateToChat$ } from "../zero-page/zero-nav.ts";
 import { detachedNavigateTo$ } from "../route.ts";
 import { onDomEventFn } from "../utils.ts";
-import { currentChatThreadSignals$ } from "./create-chat-thread.ts";
+import type { ChatThreadSignals } from "./create-chat-thread.ts";
 import { setChatShortcutHelpOpen$ } from "./chat-shortcut-help.ts";
 
 const navigateToAdjacentThread$ = command(
@@ -42,11 +42,7 @@ const navigateToAdjacentThread$ = command(
 );
 
 const scrollCurrentThread$ = command(
-  ({ get, set }, position: "top" | "bottom") => {
-    const thread = get(currentChatThreadSignals$);
-    if (!thread) {
-      return;
-    }
+  ({ set }, thread: ChatThreadSignals, position: "top" | "bottom") => {
     if (position === "top") {
       set(thread.scrollToTop$);
     } else {
@@ -68,7 +64,7 @@ const scrollCurrentThread$ = command(
 //    mod+shift+down on the last thread is a no-op)
 // - shift+/                   → open keyboard shortcut help (non-editable only)
 export const setupChatPageKeyboard$ = command(
-  ({ set }, signal: AbortSignal) => {
+  ({ set }, thread: ChatThreadSignals, signal: AbortSignal) => {
     document.addEventListener(
       "keydown",
       onDomEventFn(async (e: KeyboardEvent) => {
@@ -77,12 +73,12 @@ export const setupChatPageKeyboard$ = command(
         }
         if (matchShortcut("mod+arrowup", e)) {
           e.preventDefault();
-          set(scrollCurrentThread$, "top");
+          set(scrollCurrentThread$, thread, "top");
           return;
         }
         if (matchShortcut("mod+arrowdown", e)) {
           e.preventDefault();
-          set(scrollCurrentThread$, "bottom");
+          set(scrollCurrentThread$, thread, "bottom");
           return;
         }
         if (matchShortcut("mod+shift+arrowup", e)) {

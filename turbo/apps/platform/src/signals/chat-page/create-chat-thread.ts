@@ -21,11 +21,7 @@ import {
   type ZeroChatAttachment,
 } from "../zero-page/chat-draft.ts";
 import { prepareUserMessageFromDraft$ } from "./resolve-draft-attachments.ts";
-import {
-  currentChatThreadId$,
-  reloadChatThreads$,
-  type ChatThread,
-} from "../agent-chat.ts";
+import { reloadChatThreads$, type ChatThread } from "../agent-chat.ts";
 import {
   chatMessagesContract,
   chatThreadByIdContract,
@@ -214,12 +210,9 @@ interface ChatThreadSignalOptions {
 // Sub-factory: thread data fetching
 // ---------------------------------------------------------------------------
 
-// Note: `agent-chat.ts` exposes a route-scoped `currentChatThread$` with the
-// same `[200, 404]` + `{ toast: false }` shape for sidebar title merging.
-// This per-thread `threadData$` is scoped to a single signal factory so it
-// can be reloaded independently via `reloadThread$`. Keep the accept list
-// aligned so missing-thread redirects (see `chat-page-setup.ts`) and title
-// merging (see `chatThreads$`) both treat 404s the same way.
+// This per-thread `threadData$` is scoped to a single signal factory so it can
+// be reloaded independently via `reloadThread$`. Keep the accept list aligned
+// so missing-thread redirects and title merging both treat 404s the same way.
 function createThreadData(
   threadId: string,
   options: ChatThreadSignalOptions = {},
@@ -1371,22 +1364,3 @@ export function createChatThreadSignals(
     runPhraseLoop$,
   };
 }
-
-// ---------------------------------------------------------------------------
-// Package-scope computed: derives ChatThreadSignals from the current route
-// ---------------------------------------------------------------------------
-
-export const currentChatThreadSignals$ = computed(
-  (get): ChatThreadSignals | null => {
-    const threadId = get(currentChatThreadId$);
-    if (!threadId) {
-      return null;
-    }
-    const cache = get(draftCache$);
-    const draft = cache.get(threadId);
-    if (!draft) {
-      return null;
-    }
-    return createChatThreadSignals(threadId, draft);
-  },
-);

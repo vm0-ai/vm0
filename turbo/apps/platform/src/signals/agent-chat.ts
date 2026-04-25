@@ -51,7 +51,7 @@ export const currentChatThreadId$ = computed((get): string | null => {
 
 export interface ChatThread {
   id: string;
-  agentId?: string;
+  agentId: string;
   title: string | null;
   latestSessionId: string | null;
   /**
