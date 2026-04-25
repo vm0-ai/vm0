@@ -12,14 +12,10 @@ import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
-import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
   chatThreadsContract,
-  chatThreadByIdContract,
 } from "@vm0/core/contracts/chat-threads";
-import { zeroTeamContract } from "@vm0/core/contracts/zero-team";
-import { zeroAgentsByIdContract } from "@vm0/core/contracts/zero-agents";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 
 const context = testContext();
@@ -147,7 +143,7 @@ describe("zero chat list page - chat list rendering", () => {
   it("should show error message when API fails", async () => {
     server.use(
       mockApi(chatThreadsContract.list, ({ respond }) => {
-        return respond(500, { error: "Server error" });
+        return respond(401, { error: "Server error" });
       }),
     );
 

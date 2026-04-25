@@ -11,9 +11,7 @@ import { CONNECTOR_TYPES } from "@vm0/core/contracts/connectors";
 
 describe("CONNECTOR_ICONS", () => {
   it("should have an entry for every connector type", () => {
-    const connectorTypes = Object.keys(CONNECTOR_TYPES) as Array<
-      keyof typeof CONNECTOR_TYPES
-    >;
+    const connectorTypes = Object.keys(CONNECTOR_TYPES) as (keyof typeof CONNECTOR_TYPES)[];
     for (const type of connectorTypes) {
       expect(CONNECTOR_ICONS[type]).toBeDefined();
       expect(typeof CONNECTOR_ICONS[type]).toBe("string");
@@ -22,9 +20,7 @@ describe("CONNECTOR_ICONS", () => {
   });
 
   it("should contain url strings for each icon", () => {
-    const connectorTypes = Object.keys(CONNECTOR_TYPES) as Array<
-      keyof typeof CONNECTOR_TYPES
-    >;
+    const connectorTypes = Object.keys(CONNECTOR_TYPES) as (keyof typeof CONNECTOR_TYPES)[];
     for (const type of connectorTypes) {
       const icon = CONNECTOR_ICONS[type];
       expect(icon).toMatch(/^https?:\/\//);
@@ -65,7 +61,7 @@ describe("ConnectorIcon component", () => {
   });
 
   it("should not apply zero-icon-mono to colorful icons", () => {
-    render(<ConnectorIcon type="anthropic" />);
+    render(<ConnectorIcon type="anthropic-managed-agents" />);
     const img = screen.getByRole("img");
     expect(img).not.toHaveClass("zero-icon-mono");
   });
@@ -91,7 +87,7 @@ describe("ConnectorIcon component", () => {
       "linear",
       "notion",
       "google-drive",
-      "anthropic",
+      "anthropic-managed-agents",
       "openai",
     ] as const;
 

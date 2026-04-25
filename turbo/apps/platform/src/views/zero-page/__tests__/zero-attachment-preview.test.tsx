@@ -11,12 +11,8 @@ import { server } from "../../../mocks/server.ts";
 import { http, HttpResponse } from "msw";
 import {
   classifyChatAttachment,
-  type AttachmentPreview,
+  AttachmentPreview,
 } from "../zero-attachment-preview.tsx";
-import { setupPage } from "../../../__tests__/helper.ts";
-import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-
-const context = testContext();
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -166,7 +162,7 @@ describe("classifyChatAttachment", () => {
     expect(result).toBe("file");
   });
 
-  it("should handle SVG as image", () => {
+  it("should handle svg as image", () => {
     const result = classifyChatAttachment({
       filename: "icon.svg",
       url: "https://example.com/icon.svg",
@@ -174,7 +170,7 @@ describe("classifyChatAttachment", () => {
     expect(result).toBe("image");
   });
 
-  it("should handle contentType with charset suffix", () => {
+  it("should handle content type with charset suffix", () => {
     const result = classifyChatAttachment({
       filename: "data.json",
       url: "https://example.com/data.json",
@@ -189,7 +185,7 @@ describe("classifyChatAttachment", () => {
 // =============================================================================
 
 describe("AttachmentPreview component", () => {
-  async function renderPreview(attachment: {
+  function renderPreview(attachment: {
     filename: string;
     url: string;
     contentType?: string;
@@ -200,12 +196,12 @@ describe("AttachmentPreview component", () => {
     return result;
   }
 
-  it("should render null for unrecognized file type (file kind)", async () => {
-    await renderPreview({
+  it("should render null for unrecognized file type (file kind)", () => {
+    const { container } = renderPreview({
       filename: "archive.zip",
       url: "https://example.com/archive.zip",
     });
-    expect(screen.container).toBeEmptyDOMElement();
+    expect(container).toBeEmptyDOMElement();
   });
 
   it("should render text preview for .txt files", async () => {
@@ -215,7 +211,7 @@ describe("AttachmentPreview component", () => {
       }),
     );
 
-    await renderPreview({
+    renderPreview({
       filename: "notes.txt",
       url: "https://example.com/notes.txt",
     });
@@ -232,7 +228,7 @@ describe("AttachmentPreview component", () => {
       }),
     );
 
-    await renderPreview({
+    renderPreview({
       filename: "data.json",
       url: "https://example.com/data.json",
     });
@@ -243,7 +239,7 @@ describe("AttachmentPreview component", () => {
   });
 
   it("should render document thumbnail preview for markdown files", async () => {
-    await renderPreview({
+    renderPreview({
       filename: "readme.md",
       url: "https://example.com/readme.md",
     });
@@ -252,7 +248,7 @@ describe("AttachmentPreview component", () => {
   });
 
   it("should render document thumbnail preview for CSV files", async () => {
-    await renderPreview({
+    renderPreview({
       filename: "export.csv",
       url: "https://example.com/export.csv",
     });
@@ -261,7 +257,7 @@ describe("AttachmentPreview component", () => {
   });
 
   it("should render document thumbnail preview for PDF files", async () => {
-    await renderPreview({
+    renderPreview({
       filename: "document.pdf",
       url: "https://example.com/document.pdf",
     });
@@ -270,7 +266,7 @@ describe("AttachmentPreview component", () => {
   });
 
   it("should render document thumbnail preview for HTML files", async () => {
-    await renderPreview({
+    renderPreview({
       filename: "page.html",
       url: "https://example.com/page.html",
     });
@@ -403,7 +399,7 @@ describe("TextPreview loading and error states", () => {
 // =============================================================================
 
 describe("DocumentThumbnailPreview", () => {
-  it("should render markdown document preview", async () => {
+  it("should render markdown document preview", () => {
     render(
       <AttachmentPreview
         attachment={{ filename: "readme.md", url: "https://example.com/readme.md" }}
@@ -415,7 +411,7 @@ describe("DocumentThumbnailPreview", () => {
     expect(preview).toHaveAttribute("aria-label", expect.stringContaining("markdown"));
   });
 
-  it("should render CSV document preview", async () => {
+  it("should render CSV document preview", () => {
     render(
       <AttachmentPreview
         attachment={{ filename: "export.csv", url: "https://example.com/export.csv" }}
@@ -426,7 +422,7 @@ describe("DocumentThumbnailPreview", () => {
     expect(preview).toBeInTheDocument();
   });
 
-  it("should render PDF document preview", async () => {
+  it("should render PDF document preview", () => {
     render(
       <AttachmentPreview
         attachment={{ filename: "doc.pdf", url: "https://example.com/doc.pdf" }}
@@ -437,7 +433,7 @@ describe("DocumentThumbnailPreview", () => {
     expect(preview).toBeInTheDocument();
   });
 
-  it("should render HTML document preview", async () => {
+  it("should render HTML document preview", () => {
     render(
       <AttachmentPreview
         attachment={{ filename: "page.html", url: "https://example.com/page.html" }}

@@ -10,7 +10,6 @@ import { screen, waitFor } from "@testing-library/react";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
-import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 import {
   setMockSchedules,
   createMockScheduleResponse,
@@ -20,6 +19,7 @@ import {
   zeroSchedulesMainContract,
   type ScheduleResponse,
 } from "@vm0/core/contracts/zero-schedules";
+import { createDeferredPromise } from "../../../signals/utils.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -28,7 +28,7 @@ function createMockSchedules(): ScheduleResponse[] {
   return [
     createMockScheduleResponse({
       id: "f0000001-0000-4000-a000-000000000001",
-      displayName: "Zero",
+      displayName: "morning-briefing",
       name: "morning-briefing",
       cronExpression: "0 9 * * 1-5",
       prompt: "Summarize yesterday's threads",
@@ -167,21 +167,3 @@ describe("zero schedule page - display after refactor", () => {
     hangDeferred.resolve();
   });
 });
-
-// Helper for deferred promise
-function createDeferredPromise<T>(signal: AbortSignal): {
-  promise: Promise<T>;
-  resolve: (value: T) => void;
-  reject: (error: Error) => void;
-} {
-  let resolve: (value: T) => void;
-  let reject: (error: Error) => void;
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-  signal.addEventListener("abort", () => {
-    rej(new Error("Aborted"));
-  });
-  return { promise, resolve: resolve!, reject: reject! };
-}
