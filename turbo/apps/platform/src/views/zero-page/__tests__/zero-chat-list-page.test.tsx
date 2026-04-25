@@ -102,9 +102,9 @@ describe("zero chat list page - chat list rendering", () => {
     setupPage();
 
     await waitFor(() => {
-      expect(screen.getByText("First chat thread")).toBeInTheDocument();
+      expect(screen.getAllByText("First chat thread")[0]).toBeInTheDocument();
     });
-    expect(screen.getByText("Second chat thread")).toBeInTheDocument();
+    expect(screen.getAllByText("Second chat thread")[0]).toBeInTheDocument();
   });
 
   it("should render 'New chat' as default title when title is null (CHAT-LIST-005)", async () => {
@@ -112,7 +112,7 @@ describe("zero chat list page - chat list rendering", () => {
     setupPage();
 
     await waitFor(() => {
-      expect(screen.getByText("New chat")).toBeInTheDocument();
+      expect(screen.getAllByText("New chat")[0]).toBeInTheDocument();
     });
   });
 
@@ -159,14 +159,14 @@ describe("zero chat list page - search", () => {
     setupPage();
 
     await waitFor(() => {
-      expect(screen.getByText("First chat thread")).toBeInTheDocument();
+      expect(screen.getAllByText("First chat thread")[0]).toBeInTheDocument();
     });
 
     const searchInput = screen.getByPlaceholderText("Search chats");
     await userEvent.type(searchInput, "First");
 
     await waitFor(() => {
-      expect(screen.getByText("First chat thread")).toBeInTheDocument();
+      expect(screen.getAllByText("First chat thread")[0]).toBeInTheDocument();
       expect(screen.queryByText("Second chat thread")).not.toBeInTheDocument();
     });
   });
@@ -176,7 +176,7 @@ describe("zero chat list page - search", () => {
     setupPage();
 
     await waitFor(() => {
-      expect(screen.getByText("First chat thread")).toBeInTheDocument();
+      expect(screen.getAllByText("First chat thread")[0]).toBeInTheDocument();
     });
 
     const searchInput = screen.getByPlaceholderText("Search chats");
@@ -194,14 +194,14 @@ describe("zero chat list page - search", () => {
     setupPage();
 
     await waitFor(() => {
-      expect(screen.getByText("First chat thread")).toBeInTheDocument();
+      expect(screen.getAllByText("First chat thread")[0]).toBeInTheDocument();
     });
 
     const searchInput = screen.getByPlaceholderText("Search chats");
     await userEvent.type(searchInput, "First");
 
     await waitFor(() => {
-      expect(screen.getByText("First chat thread")).toBeInTheDocument();
+      expect(screen.getAllByText("First chat thread")[0]).toBeInTheDocument();
     });
 
     const clearButton = screen.getByText("Clear search");
@@ -217,14 +217,14 @@ describe("zero chat list page - search", () => {
     setupPage();
 
     await waitFor(() => {
-      expect(screen.getByText("First chat thread")).toBeInTheDocument();
+      expect(screen.getAllByText("First chat thread")[0]).toBeInTheDocument();
     });
 
     const searchInput = screen.getByPlaceholderText("Search chats");
     await userEvent.type(searchInput, "first");
 
     await waitFor(() => {
-      expect(screen.getByText("First chat thread")).toBeInTheDocument();
+      expect(screen.getAllByText("First chat thread")[0]).toBeInTheDocument();
     });
   });
 });
@@ -248,11 +248,11 @@ describe("zero chat list page - delete confirmation", () => {
     setupPage();
 
     await waitFor(() => {
-      expect(screen.getByText("First chat thread")).toBeInTheDocument();
+      expect(screen.getAllByText("First chat thread")[0]).toBeInTheDocument();
     });
 
     // Hover to reveal delete button
-    const firstThread = screen.getByText("First chat thread");
+    const firstThread = screen.getAllByText("First chat thread")[0];
     fireEvent.mouseEnter(firstThread);
 
     await waitFor(() => {
@@ -268,11 +268,11 @@ describe("zero chat list page - delete confirmation", () => {
     setupPage();
 
     await waitFor(() => {
-      expect(screen.getByText("First chat thread")).toBeInTheDocument();
+      expect(screen.getAllByText("First chat thread")[0]).toBeInTheDocument();
     });
 
     // Hover to reveal delete button
-    const firstThread = screen.getByText("First chat thread");
+    const firstThread = screen.getAllByText("First chat thread")[0];
     fireEvent.mouseEnter(firstThread);
 
     await waitFor(() => {

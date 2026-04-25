@@ -7,12 +7,16 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { StoreProvider } from "ccstate-react";
 import { server } from "../../../mocks/server.ts";
 import { http, HttpResponse } from "msw";
+import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
   classifyChatAttachment,
   AttachmentPreview,
 } from "../zero-attachment-preview.tsx";
+
+const context = testContext();
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -184,13 +188,17 @@ describe("classifyChatAttachment", () => {
 // AttachmentPreview component tests
 // =============================================================================
 
-describe("AttachmentPreview component", () => {
+describe("attachment preview component", () => {
   function renderPreview(attachment: {
     filename: string;
     url: string;
     contentType?: string;
   }) {
-    const result = render(<AttachmentPreview attachment={attachment} />);
+    const result = render(
+      <StoreProvider store={context.store}>
+        <AttachmentPreview attachment={attachment} />
+      </StoreProvider>,
+    );
     return result;
   }
 
@@ -236,7 +244,7 @@ describe("AttachmentPreview component", () => {
     });
   });
 
-  it("should render document thumbnail preview for markdown files", async () => {
+  it("should render document thumbnail preview for markdown files", () => {
     renderPreview({
       filename: "readme.md",
       url: "https://example.com/readme.md",
@@ -247,7 +255,7 @@ describe("AttachmentPreview component", () => {
     ).toBeInTheDocument();
   });
 
-  it("should render document thumbnail preview for CSV files", async () => {
+  it("should render document thumbnail preview for CSV files", () => {
     renderPreview({
       filename: "export.csv",
       url: "https://example.com/export.csv",
@@ -256,7 +264,7 @@ describe("AttachmentPreview component", () => {
     expect(screen.getByTestId("attachment-preview-csv")).toBeInTheDocument();
   });
 
-  it("should render document thumbnail preview for PDF files", async () => {
+  it("should render document thumbnail preview for PDF files", () => {
     renderPreview({
       filename: "document.pdf",
       url: "https://example.com/document.pdf",
@@ -265,7 +273,7 @@ describe("AttachmentPreview component", () => {
     expect(screen.getByTestId("attachment-preview-pdf")).toBeInTheDocument();
   });
 
-  it("should render document thumbnail preview for HTML files", async () => {
+  it("should render document thumbnail preview for HTML files", () => {
     renderPreview({
       filename: "page.html",
       url: "https://example.com/page.html",
@@ -279,15 +287,17 @@ describe("AttachmentPreview component", () => {
 // TextPreview class component tests
 // =============================================================================
 
-describe("TextPreview loading and error states", () => {
+describe("text preview loading and error states", () => {
   it("should show loading spinner initially", async () => {
     const { container } = render(
-      <AttachmentPreview
-        attachment={{
-          filename: "notes.txt",
-          url: "https://example.com/notes.txt",
-        }}
-      />,
+      <StoreProvider store={context.store}>
+        <AttachmentPreview
+          attachment={{
+            filename: "notes.txt",
+            url: "https://example.com/notes.txt",
+          }}
+        />
+      </StoreProvider>,
     );
 
     // The text preview renders immediately with loading state
@@ -307,12 +317,14 @@ describe("TextPreview loading and error states", () => {
     );
 
     render(
-      <AttachmentPreview
-        attachment={{
-          filename: "error.txt",
-          url: "https://example.com/error.txt",
-        }}
-      />,
+      <StoreProvider store={context.store}>
+        <AttachmentPreview
+          attachment={{
+            filename: "error.txt",
+            url: "https://example.com/error.txt",
+          }}
+        />
+      </StoreProvider>,
     );
 
     await waitFor(() => {
@@ -332,12 +344,14 @@ describe("TextPreview loading and error states", () => {
     );
 
     render(
-      <AttachmentPreview
-        attachment={{
-          filename: "hello.txt",
-          url: "https://example.com/hello.txt",
-        }}
-      />,
+      <StoreProvider store={context.store}>
+        <AttachmentPreview
+          attachment={{
+            filename: "hello.txt",
+            url: "https://example.com/hello.txt",
+          }}
+        />
+      </StoreProvider>,
     );
 
     await waitFor(() => {
@@ -357,12 +371,14 @@ describe("TextPreview loading and error states", () => {
     );
 
     render(
-      <AttachmentPreview
-        attachment={{
-          filename: "long.txt",
-          url: "https://example.com/long.txt",
-        }}
-      />,
+      <StoreProvider store={context.store}>
+        <AttachmentPreview
+          attachment={{
+            filename: "long.txt",
+            url: "https://example.com/long.txt",
+          }}
+        />
+      </StoreProvider>,
     );
 
     await waitFor(() => {
@@ -374,7 +390,7 @@ describe("TextPreview loading and error states", () => {
     });
 
     // Click to collapse
-    const button = screen.getByText(/collapse/i);
+    const button = screen.getByRole("button", { name: /collapse/i });
     fireEvent.click(button);
 
     // Content should be hidden
@@ -391,12 +407,14 @@ describe("TextPreview loading and error states", () => {
     );
 
     render(
-      <AttachmentPreview
-        attachment={{
-          filename: "data.json",
-          url: "https://example.com/data.json",
-        }}
-      />,
+      <StoreProvider store={context.store}>
+        <AttachmentPreview
+          attachment={{
+            filename: "data.json",
+            url: "https://example.com/data.json",
+          }}
+        />
+      </StoreProvider>,
     );
 
     await waitFor(() => {
@@ -413,15 +431,17 @@ describe("TextPreview loading and error states", () => {
 // DocumentThumbnailPreview tests
 // =============================================================================
 
-describe("DocumentThumbnailPreview", () => {
+describe("document thumbnail preview", () => {
   it("should render markdown document preview", () => {
     render(
-      <AttachmentPreview
-        attachment={{
-          filename: "readme.md",
-          url: "https://example.com/readme.md",
-        }}
-      />,
+      <StoreProvider store={context.store}>
+        <AttachmentPreview
+          attachment={{
+            filename: "readme.md",
+            url: "https://example.com/readme.md",
+          }}
+        />
+      </StoreProvider>,
     );
 
     const preview = screen.getByTestId("attachment-preview-markdown");
@@ -434,12 +454,14 @@ describe("DocumentThumbnailPreview", () => {
 
   it("should render CSV document preview", () => {
     render(
-      <AttachmentPreview
-        attachment={{
-          filename: "export.csv",
-          url: "https://example.com/export.csv",
-        }}
-      />,
+      <StoreProvider store={context.store}>
+        <AttachmentPreview
+          attachment={{
+            filename: "export.csv",
+            url: "https://example.com/export.csv",
+          }}
+        />
+      </StoreProvider>,
     );
 
     const preview = screen.getByTestId("attachment-preview-csv");
@@ -448,9 +470,11 @@ describe("DocumentThumbnailPreview", () => {
 
   it("should render PDF document preview", () => {
     render(
-      <AttachmentPreview
-        attachment={{ filename: "doc.pdf", url: "https://example.com/doc.pdf" }}
-      />,
+      <StoreProvider store={context.store}>
+        <AttachmentPreview
+          attachment={{ filename: "doc.pdf", url: "https://example.com/doc.pdf" }}
+        />
+      </StoreProvider>,
     );
 
     const preview = screen.getByTestId("attachment-preview-pdf");
@@ -459,12 +483,14 @@ describe("DocumentThumbnailPreview", () => {
 
   it("should render HTML document preview", () => {
     render(
-      <AttachmentPreview
-        attachment={{
-          filename: "page.html",
-          url: "https://example.com/page.html",
-        }}
-      />,
+      <StoreProvider store={context.store}>
+        <AttachmentPreview
+          attachment={{
+            filename: "page.html",
+            url: "https://example.com/page.html",
+          }}
+        />
+      </StoreProvider>,
     );
 
     const preview = screen.getByTestId("attachment-preview-html");

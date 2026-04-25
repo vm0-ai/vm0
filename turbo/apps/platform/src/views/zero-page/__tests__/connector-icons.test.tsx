@@ -12,7 +12,7 @@ import {
 } from "../components/settings/connector-icons.tsx";
 import { CONNECTOR_TYPES } from "@vm0/core/contracts/connectors";
 
-describe("CONNECTOR_ICONS", () => {
+describe("connector icons", () => {
   it("should have an entry for every connector type", () => {
     const connectorTypes = Object.keys(
       CONNECTOR_TYPES,
@@ -35,7 +35,7 @@ describe("CONNECTOR_ICONS", () => {
   });
 });
 
-describe("ConnectorIcon component", () => {
+describe("connector icon component", () => {
   it("should render with default size", () => {
     render(<ConnectorIcon type="github" />);
     const img = screen.getByRole("img");
