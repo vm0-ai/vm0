@@ -413,6 +413,7 @@ export const webhookStoragesPrepareContract = c.router({
       200: z.object({
         versionId: z.string(),
         existing: z.boolean(),
+        headCommitted: z.boolean().optional(),
         uploads: z
           .object({
             archive: presignedUploadSchema,

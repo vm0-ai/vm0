@@ -3,11 +3,13 @@
 //! Flow (caller first walks the mount via [`walk_files`], then invokes
 //! [`create_snapshot`] with the pre-walked file list):
 //! 1. POST `/storages/prepare` with file list → get presigned URLs
-//! 2. If deduplicated, POST `/storages/commit` to update HEAD
-//! 3. Create tar.gz archive
-//! 4. Create manifest.json
-//! 5. PUT archive + manifest to S3
-//! 6. POST `/storages/commit`
+//! 2. If deduplicated and HEAD was committed by prepare, return
+//! 3. If deduplicated without that compatibility signal, POST `/storages/commit`
+//!    to update HEAD
+//! 4. Create tar.gz archive
+//! 5. Create manifest.json
+//! 6. PUT archive + manifest to S3
+//! 7. POST `/storages/commit`
 
 use crate::constants;
 use crate::error::AgentError;
@@ -35,6 +37,8 @@ struct PrepareResponse {
     #[serde(rename = "versionId")]
     version_id: Option<String>,
     existing: Option<bool>,
+    #[serde(rename = "headCommitted")]
+    head_committed: Option<bool>,
     uploads: Option<Uploads>,
 }
 
@@ -140,9 +144,17 @@ pub(crate) async fn create_snapshot(
 
     // Step 2: Deduplication check
     if prep.existing.unwrap_or(false) {
+        if prep.head_committed.unwrap_or(false) {
+            log_info!(
+                LOG_TAG,
+                "Version already exists (deduplicated), HEAD committed by prepare"
+            );
+            return Ok(SnapshotResult { version_id });
+        }
+
         log_info!(
             LOG_TAG,
-            "Version already exists (deduplicated), updating HEAD"
+            "Version already exists (deduplicated), updating HEAD via commit fallback"
         );
         let mut commit_payload = json!({
             "storageName": storage_name,
@@ -427,7 +439,103 @@ fn create_archive(dir_path: &str, tar_path: &Path, file_paths: &[String]) -> boo
 #[cfg(test)]
 mod tests {
     use super::*;
+    use httpmock::prelude::*;
+    use serde_json::json;
     use std::os::unix::fs as unix_fs;
+    use std::sync::LazyLock;
+
+    static MOCK_SERVER: LazyLock<MockServer> = LazyLock::new(|| {
+        let server = MockServer::start();
+        unsafe {
+            std::env::set_var("VM0_API_URL", server.base_url());
+            std::env::set_var("VM0_API_TOKEN", "test-token-abc123");
+        }
+        server
+    });
+
+    #[tokio::test]
+    async fn create_snapshot_skips_dedup_commit_only_when_prepare_committed_head() {
+        let server = &*MOCK_SERVER;
+        let version_id = "a".repeat(64);
+        let files = vec![FileEntry {
+            path: "test.txt".to_string(),
+            hash: "b".repeat(64),
+            size: 100,
+        }];
+
+        let prepare_committed = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/storages/prepare");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body(json!({
+                    "versionId": version_id,
+                    "existing": true,
+                    "headCommitted": true
+                }));
+        });
+        let skipped_commit = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/storages/commit");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body(json!({ "success": true }));
+        });
+
+        let result = create_snapshot(
+            "/unused",
+            files.clone(),
+            "artifact-name",
+            "artifact",
+            "run-1",
+            "message",
+            "parent-version",
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(result.version_id, version_id);
+        prepare_committed.assert_calls_async(1).await;
+        skipped_commit.assert_calls_async(0).await;
+        prepare_committed.delete_async().await;
+        skipped_commit.delete_async().await;
+
+        let prepare_without_signal = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/storages/prepare");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body(json!({
+                    "versionId": version_id,
+                    "existing": true
+                }));
+        });
+        let fallback_commit = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/storages/commit");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body(json!({ "success": true }));
+        });
+
+        let result = create_snapshot(
+            "/unused",
+            files,
+            "artifact-name",
+            "artifact",
+            "run-1",
+            "message",
+            "parent-version",
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(result.version_id, version_id);
+        prepare_without_signal.assert_calls_async(1).await;
+        fallback_commit.assert_calls_async(1).await;
+        prepare_without_signal.delete_async().await;
+        fallback_commit.delete_async().await;
+    }
 
     #[test]
     fn walk_dir_skips_symlinks() {

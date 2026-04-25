@@ -42,7 +42,14 @@ export async function findTestStorage(
   name: string,
   type: "volume" | "artifact",
 ): Promise<
-  { id: string; name: string; userId: string; s3Prefix: string } | undefined
+  | {
+      id: string;
+      name: string;
+      userId: string;
+      s3Prefix: string;
+      headVersionId: string | null;
+    }
+  | undefined
 > {
   initServices();
   const [result] = await globalThis.services.db
@@ -51,6 +58,7 @@ export async function findTestStorage(
       name: storages.name,
       userId: storages.userId,
       s3Prefix: storages.s3Prefix,
+      headVersionId: storages.headVersionId,
     })
     .from(storages)
     .where(

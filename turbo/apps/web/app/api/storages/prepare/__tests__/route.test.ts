@@ -3,8 +3,12 @@ import { POST } from "../route";
 import {
   createTestRequest,
   createTestArtifact,
+  findTestStorage,
 } from "../../../../../src/__tests__/api-test-helpers";
-import { testContext } from "../../../../../src/__tests__/test-helpers";
+import {
+  testContext,
+  type UserContext,
+} from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 
 vi.hoisted(() => {
@@ -14,9 +18,11 @@ vi.hoisted(() => {
 const context = testContext();
 
 describe("POST /api/storages/prepare", () => {
+  let user: UserContext;
+
   beforeEach(async () => {
     context.setupMocks();
-    await context.setupUser();
+    user = await context.setupUser();
   });
 
   it("should return 401 when not authenticated", async () => {
@@ -127,7 +133,48 @@ describe("POST /api/storages/prepare", () => {
 
     const json = await response.json();
     expect(json.existing).toBe(true);
+    expect(json.headCommitted).toBe(true);
     expect(json.uploads).toBeUndefined();
+  });
+
+  it("should update HEAD during prepare when deduplicating an existing version", async () => {
+    const storageName = `dedup-head-${Date.now()}`;
+    const filesA = [{ path: "a.txt", hash: "a".repeat(64), size: 100 }];
+    const filesB = [{ path: "b.txt", hash: "b".repeat(64), size: 200 }];
+
+    const { versionId: versionA } = await createTestArtifact(storageName, {
+      files: filesA,
+    });
+    const { versionId: versionB } = await createTestArtifact(storageName, {
+      files: filesB,
+    });
+
+    const before = await findTestStorage(user.orgId, storageName, "artifact");
+    expect(before?.headVersionId).toBe(versionB);
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/storages/prepare",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          storageName,
+          storageType: "artifact",
+          files: filesA,
+        }),
+      },
+    );
+
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+
+    const json = await response.json();
+    expect(json.versionId).toBe(versionA);
+    expect(json.existing).toBe(true);
+    expect(json.headCommitted).toBe(true);
+
+    const after = await findTestStorage(user.orgId, storageName, "artifact");
+    expect(after?.headVersionId).toBe(versionA);
   });
 
   it("should compute deterministic version ID from files", async () => {
@@ -194,6 +241,7 @@ describe("POST /api/storages/prepare", () => {
     expect(json.versionId).toBe(versionId);
     // Should NOT return existing: true since S3 files are missing
     expect(json.existing).toBe(false);
+    expect(json.headCommitted).toBeUndefined();
     // Should return upload URLs for re-upload
     expect(json.uploads).toBeDefined();
     expect(json.uploads.archive.key).toBeDefined();
@@ -204,6 +252,42 @@ describe("POST /api/storages/prepare", () => {
     expect(json.uploads.manifest.presignedUrl).toBe(
       "https://mock-presigned-put-url",
     );
+  });
+
+  it("should not update HEAD when deduplicated version is missing S3 files", async () => {
+    const storageName = `s3missing-head-${Date.now()}`;
+    const filesA = [{ path: "a.txt", hash: "a".repeat(64), size: 100 }];
+    const filesB = [{ path: "b.txt", hash: "b".repeat(64), size: 200 }];
+
+    const { versionId: versionA } = await createTestArtifact(storageName, {
+      files: filesA,
+    });
+    const { versionId: versionB } = await createTestArtifact(storageName, {
+      files: filesB,
+    });
+
+    context.mocks.s3.verifyS3FilesExist.mockResolvedValueOnce(false);
+
+    const response = await POST(
+      createTestRequest("http://localhost:3000/api/storages/prepare", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          storageName,
+          storageType: "artifact",
+          files: filesA,
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    const json = await response.json();
+    expect(json.versionId).toBe(versionA);
+    expect(json.existing).toBe(false);
+    expect(json.headCommitted).toBeUndefined();
+
+    const storage = await findTestStorage(user.orgId, storageName, "artifact");
+    expect(storage?.headVersionId).toBe(versionB);
   });
 
   it("should use orgId (not slug) in upload keys for new storage", async () => {

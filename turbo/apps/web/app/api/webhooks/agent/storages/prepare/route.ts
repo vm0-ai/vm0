@@ -229,14 +229,25 @@ const router = tsr.router(webhookStoragesPrepareContract, {
         );
 
         if (s3Exists) {
+          if (storage.headVersionId !== versionId) {
+            await globalThis.services.db
+              .update(storages)
+              .set({
+                headVersionId: versionId,
+                updatedAt: new Date(),
+              })
+              .where(eq(storages.id, storage.id));
+          }
+
           log.debug(
-            `Version ${versionId} exists with S3 files, returning existing`,
+            `Version ${versionId} exists with S3 files, HEAD committed`,
           );
           return {
             status: 200 as const,
             body: {
               versionId,
               existing: true,
+              headCommitted: true,
             },
           };
         }

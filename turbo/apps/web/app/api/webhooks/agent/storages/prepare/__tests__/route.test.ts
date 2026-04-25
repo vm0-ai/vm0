@@ -6,6 +6,7 @@ import {
   createTestCompose,
   createTestRun,
   createTestSandboxToken,
+  findTestStorage,
 } from "../../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -39,6 +40,26 @@ function makePrepareRequest(
       headers,
       body: JSON.stringify({ runId, ...body }),
     },
+  );
+}
+
+async function commitStorage(
+  runId: string,
+  token: string,
+  body: Record<string, unknown>,
+) {
+  return commitPOST(
+    createTestRequest(
+      "http://localhost:3000/api/webhooks/agent/storages/commit",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ runId, ...body }),
+      },
+    ),
   );
 }
 
@@ -162,25 +183,12 @@ describe("POST /api/webhooks/agent/storages/prepare", () => {
     );
     const { versionId } = await prepareResponse.json();
 
-    // Commit → persist version in DB
-    const commitRequest = createTestRequest(
-      "http://localhost:3000/api/webhooks/agent/storages/commit",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${testToken}`,
-        },
-        body: JSON.stringify({
-          runId: testRunId,
-          storageName,
-          storageType: "volume",
-          versionId,
-          files,
-        }),
-      },
-    );
-    await commitPOST(commitRequest);
+    await commitStorage(testRunId, testToken, {
+      storageName,
+      storageType: "volume",
+      versionId,
+      files,
+    });
 
     // Prepare again with same files → should be deduplicated
     const response = await POST(
@@ -194,6 +202,118 @@ describe("POST /api/webhooks/agent/storages/prepare", () => {
     expect(response.status).toBe(200);
     const json = await response.json();
     expect(json.existing).toBe(true);
+    expect(json.headCommitted).toBe(true);
     expect(json).not.toHaveProperty("uploads");
+  });
+
+  it("should update HEAD during prepare when deduplicating an existing version", async () => {
+    const storageName = uniqueId("webhook-dedup-head");
+    const filesA = [{ path: "a.txt", hash: "a".repeat(64), size: 100 }];
+    const filesB = [{ path: "b.txt", hash: "b".repeat(64), size: 200 }];
+
+    const prepareA = await POST(
+      makePrepareRequest(testRunId, testToken, {
+        storageName,
+        storageType: "volume",
+        files: filesA,
+      }),
+    );
+    const { versionId: versionA } = await prepareA.json();
+    await commitStorage(testRunId, testToken, {
+      storageName,
+      storageType: "volume",
+      versionId: versionA,
+      files: filesA,
+    });
+
+    const prepareB = await POST(
+      makePrepareRequest(testRunId, testToken, {
+        storageName,
+        storageType: "volume",
+        files: filesB,
+      }),
+    );
+    const { versionId: versionB } = await prepareB.json();
+    await commitStorage(testRunId, testToken, {
+      storageName,
+      storageType: "volume",
+      versionId: versionB,
+      files: filesB,
+    });
+
+    const before = await findTestStorage(user.orgId, storageName, "volume");
+    expect(before?.headVersionId).toBe(versionB);
+
+    const response = await POST(
+      makePrepareRequest(testRunId, testToken, {
+        storageName,
+        storageType: "volume",
+        files: filesA,
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    const json = await response.json();
+    expect(json.versionId).toBe(versionA);
+    expect(json.existing).toBe(true);
+    expect(json.headCommitted).toBe(true);
+
+    const after = await findTestStorage(user.orgId, storageName, "volume");
+    expect(after?.headVersionId).toBe(versionA);
+  });
+
+  it("should not update HEAD when deduplicated version is missing S3 files", async () => {
+    const storageName = uniqueId("webhook-s3missing-head");
+    const filesA = [{ path: "a.txt", hash: "a".repeat(64), size: 100 }];
+    const filesB = [{ path: "b.txt", hash: "b".repeat(64), size: 200 }];
+
+    const prepareA = await POST(
+      makePrepareRequest(testRunId, testToken, {
+        storageName,
+        storageType: "volume",
+        files: filesA,
+      }),
+    );
+    const { versionId: versionA } = await prepareA.json();
+    await commitStorage(testRunId, testToken, {
+      storageName,
+      storageType: "volume",
+      versionId: versionA,
+      files: filesA,
+    });
+
+    const prepareB = await POST(
+      makePrepareRequest(testRunId, testToken, {
+        storageName,
+        storageType: "volume",
+        files: filesB,
+      }),
+    );
+    const { versionId: versionB } = await prepareB.json();
+    await commitStorage(testRunId, testToken, {
+      storageName,
+      storageType: "volume",
+      versionId: versionB,
+      files: filesB,
+    });
+
+    context.mocks.s3.verifyS3FilesExist.mockResolvedValueOnce(false);
+
+    const response = await POST(
+      makePrepareRequest(testRunId, testToken, {
+        storageName,
+        storageType: "volume",
+        files: filesA,
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    const json = await response.json();
+    expect(json.versionId).toBe(versionA);
+    expect(json.existing).toBe(false);
+    expect(json.headCommitted).toBeUndefined();
+
+    const storage = await findTestStorage(user.orgId, storageName, "volume");
+    expect(storage?.headVersionId).toBe(versionB);
   });
 });
