@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.293.3](https://github.com/vm0-ai/vm0/compare/app-v0.293.2...app-v0.293.3) (2026-04-25)
+
+
+### Bug Fixes
+
+* **chat:** route optimistic thread setup through chat page ([#11074](https://github.com/vm0-ai/vm0/issues/11074)) ([c9b69c9](https://github.com/vm0-ai/vm0/commit/c9b69c9538ade7bebe88db2f91a3f182eaf159e7))
+* prevent iOS native back-swipe during PWA edge gesture ([#11065](https://github.com/vm0-ai/vm0/issues/11065)) ([64a0ba7](https://github.com/vm0-ai/vm0/commit/64a0ba7ccbc06e2d91871045ded2d7e9b3533535))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.235.1
+
 ## [0.293.2](https://github.com/vm0-ai/vm0/compare/app-v0.293.1...app-v0.293.2) (2026-04-25)
 
 

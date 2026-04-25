@@ -1,5 +1,17 @@
 # Changelog
 
+## [8.235.1](https://github.com/vm0-ai/vm0/compare/core-v8.235.0...core-v8.235.1) (2026-04-25)
+
+
+### Bug Fixes
+
+* **chat:** route optimistic thread setup through chat page ([#11074](https://github.com/vm0-ai/vm0/issues/11074)) ([c9b69c9](https://github.com/vm0-ai/vm0/commit/c9b69c9538ade7bebe88db2f91a3f182eaf159e7))
+
+
+### Performance Improvements
+
+* replace after() with waitUntil() to eliminate Vercel scheduling gap ([#11078](https://github.com/vm0-ai/vm0/issues/11078)) ([7eee7bc](https://github.com/vm0-ai/vm0/commit/7eee7bcf7d1d78f8bc7cae3b34eba022e31e98d9))
+
 ## [8.235.0](https://github.com/vm0-ai/vm0/compare/core-v8.234.1...core-v8.235.0) (2026-04-25)
 
 

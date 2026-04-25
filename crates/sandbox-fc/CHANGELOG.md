@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.26.8](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.26.7...sandbox-fc-v0.26.8) (2026-04-25)
+
+
+### Documentation
+
+* **sandbox-fc:** refresh reconcile comment after [#10826](https://github.com/vm0-ai/vm0/issues/10826) closed ([#11073](https://github.com/vm0-ai/vm0/issues/11073)) ([09b6a9c](https://github.com/vm0-ai/vm0/commit/09b6a9c5ef3b0d4668f12218849182a127a111e8))
+
 ## [0.26.7](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.26.6...sandbox-fc-v0.26.7) (2026-04-24)
 
 
