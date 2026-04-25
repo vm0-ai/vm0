@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 
 use sandbox::{ExecRequest, Sandbox, SandboxConfig, SandboxFactory, SandboxId};
 use tokio_util::sync::CancellationToken;
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 
 use crate::ids::RunId;
 
@@ -94,16 +94,13 @@ pub async fn execute_job(
     .await
     {
         Ok(outcome) => outcome,
-        Err(e) => {
-            error!(run_id = %run_id, error = %e, "job execution failed");
-            ExecuteOutcome {
-                exit_code: 1,
-                error: Some(e.to_string()),
-                sandbox: None,
-                source_ip: String::new(),
-                guest_session_id: None,
-            }
-        }
+        Err(e) => ExecuteOutcome {
+            exit_code: 1,
+            error: Some(e.to_string()),
+            sandbox: None,
+            source_ip: String::new(),
+            guest_session_id: None,
+        },
     };
 
     info!(run_id = %run_id, exit_code = outcome.exit_code, "job finished");
