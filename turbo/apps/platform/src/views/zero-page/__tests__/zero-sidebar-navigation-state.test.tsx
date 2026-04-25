@@ -119,7 +119,7 @@ beforeEach(() => {
 });
 
 describe("zero sidebar - chat session list collapses and expands (SIDEBAR-D-011)", () => {
-  it("toggles chat thread list visibility when Chats header is clicked", async () => {
+  it("toggles chat thread list visibility when Chats with Zero header is clicked", async () => {
     mockBaseAPIs({
       threads: [
         makeThread("thread-1", "Deploy to prod", "2026-03-10T00:00:00Z"),
@@ -135,8 +135,8 @@ describe("zero sidebar - chat session list collapses and expands (SIDEBAR-D-011)
       expect(screen.getByText("Deploy to prod")).toBeInTheDocument();
     });
 
-    // Collapse: click the "Chats" header span
-    const chatsHeader = screen.getByText("Chats");
+    // Collapse: click the "Chats with Zero" header span
+    const chatsHeader = screen.getByText("Chats with Zero");
     click(chatsHeader);
 
     // Thread list should be hidden

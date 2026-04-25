@@ -176,7 +176,7 @@ describe("sidebar new chat navigation", () => {
     // Wait for thread list to load
     const newChatButton = await waitFor(() => {
       expect(screen.getByText("Subagent thread")).toBeInTheDocument();
-      return screen.getByLabelText("New chat");
+      return screen.getByLabelText(/^New chat/);
     });
 
     click(newChatButton);
@@ -198,7 +198,7 @@ describe("sidebar new chat navigation", () => {
     // Wait for thread list to load — confirms currentChatAgentId$ has resolved
     const newChatButton = await waitFor(() => {
       expect(screen.getByText("Subagent thread")).toBeInTheDocument();
-      return screen.getByLabelText("New chat");
+      return screen.getByLabelText(/^New chat/);
     });
 
     click(newChatButton);
@@ -234,7 +234,7 @@ describe("sidebar new chat navigation", () => {
     // Wait for thread list to load
     const newChatButton = await waitFor(() => {
       expect(screen.getByText("Subagent thread")).toBeInTheDocument();
-      return screen.getByLabelText("New chat");
+      return screen.getByLabelText(/^New chat/);
     });
 
     click(newChatButton);
@@ -308,7 +308,7 @@ describe("sidebar new chat navigation", () => {
       expect(
         document.querySelector(`a[href="/chats/new-thread-id"]`),
       ).toBeInTheDocument();
-      return screen.getByLabelText("New chat");
+      return screen.getByLabelText(/^New chat/);
     });
 
     click(newChatButton);

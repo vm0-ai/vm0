@@ -665,45 +665,6 @@ function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
   );
 }
 
-// Absolutely positioned so it contributes zero layout — the surrounding
-// message bubble's height is unchanged whether the cursor is shown or not.
-function InlineStreamingCursor({
-  thread,
-  groupBeginMessageId,
-}: {
-  thread: ChatThreadSignals;
-  groupBeginMessageId: string;
-}) {
-  const allFinished = useLastResolved(thread.allFinished$) ?? false;
-  const groups = useLastResolved(thread.groupedChatMessages$) ?? [];
-  const lastGroup = groups[groups.length - 1];
-  const isLastAssistantGroup =
-    !!lastGroup &&
-    lastGroup.role === "assistant" &&
-    lastGroup.beginMessageId === groupBeginMessageId;
-
-  if (allFinished || !isLastAssistantGroup) {
-    return null;
-  }
-
-  return (
-    <span
-      aria-hidden
-      className="pointer-events-none absolute -bottom-2 left-0 flex gap-1.5 animate-in fade-in duration-200"
-    >
-      {[0, 120, 240, 360, 480, 600, 720, 840].map((delay) => {
-        return (
-          <span
-            key={delay}
-            className="zero-dot-trail-item inline-block size-1 rounded-full bg-foreground/50"
-            style={{ animationDelay: `${delay}ms` }}
-          />
-        );
-      })}
-    </span>
-  );
-}
-
 /**
  * Parse inline attachment lines from message content.
  * Matches `[Attached file: name](url)` optionally followed by a curl line.
@@ -1331,10 +1292,6 @@ function PagedAssistantGroup({
           {group.messages.map((msg) => {
             return <PagedAssistantMessageItem key={msg.id} message={msg} />;
           })}
-          <InlineStreamingCursor
-            thread={thread}
-            groupBeginMessageId={group.beginMessageId}
-          />
         </div>
       </div>
       <PagedGroupActions group={group} content={fullContent} thread={thread} />

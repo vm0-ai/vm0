@@ -228,7 +228,7 @@ describe("zero sidebar - search input accepts text (SIDEBAR-D-015)", () => {
     const searchChatsBtn1 = screen.getByLabelText("Search chats");
     click(searchChatsBtn1);
 
-    const searchInput = screen.getByPlaceholderText("Search chats");
+    const searchInput = screen.getByPlaceholderText("Search chat with Zero");
     await user.type(searchInput, "hello");
 
     expect(searchInput).toHaveValue("hello");
@@ -257,7 +257,7 @@ describe("zero sidebar - clear search button resets search (SIDEBAR-D-016)", () 
     const searchChatsBtn2 = screen.getByLabelText("Search chats");
     click(searchChatsBtn2);
 
-    const searchInput = screen.getByPlaceholderText("Search chats");
+    const searchInput = screen.getByPlaceholderText("Search chat with Zero");
     await user.type(searchInput, "First");
 
     expect(screen.queryByText("Second chat")).not.toBeInTheDocument();
@@ -312,7 +312,7 @@ describe("zero sidebar - new chat button creates session (SIDEBAR-D-017)", () =>
       expect(
         screen.getByText("Start a conversation and it'll show up here"),
       ).toBeInTheDocument();
-      return screen.getByLabelText("New chat");
+      return screen.getByLabelText("New chat with Zero");
     });
 
     click(newChatButton);

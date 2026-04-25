@@ -1,18 +1,21 @@
 import { useLastResolved } from "ccstate-react";
 import { agents$ } from "../../signals/agent.ts";
+import { currentChatAgentDisplayName$ } from "../../signals/agent-chat.ts";
 import { resolveAvatarUrl, resolveAvatarSvgConfig } from "./avatar-utils.ts";
 import { AvatarSvgPreview } from "./avatar-svg-preview.tsx";
 
 /**
- * Returns unified label/placeholder strings for the chat thread list.
- * Used by both the sidebar thread list and the full chat-list page so the
- * two surfaces stay in sync without duplicating the logic.
+ * Returns labels for the current agent-scoped chat thread list.
+ * Used by both the sidebar thread list and the full chat-list page so the two
+ * surfaces stay in sync without duplicating the logic.
  */
 export function useChatThreadsTitleLabels() {
+  const agentDisplayName = useLastResolved(currentChatAgentDisplayName$);
+  const agentName = agentDisplayName ?? "Zero";
   return {
-    titleLabel: "Chats",
-    searchPlaceholder: "Search chats",
-    newChatAriaLabel: "New chat",
+    titleLabel: `Chats with ${agentName}`,
+    searchPlaceholder: `Search chat with ${agentName}`,
+    newChatAriaLabel: `New chat with ${agentName}`,
   };
 }
 
