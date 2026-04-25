@@ -46,7 +46,7 @@ const STDOUT_CHUNK_SIZE: usize = 8 * 1024;
 /// many seconds. If EOF is not received within this deadline, proceed to
 /// `send_process_exit()` anyway to prevent indefinite hangs when orphaned
 /// child processes hold pipe fds open.
-const STDOUT_DRAIN_DEADLINE_SECS: u64 = 5;
+const DRAIN_DEADLINE_SECS: u64 = 5;
 
 /// Convert a ProtocolError to an io::Error
 fn to_io_error(e: ProtocolError) -> io::Error {
@@ -427,7 +427,7 @@ fn spawn_with_pipes(command: &str, sudo: bool) -> io::Result<std::process::Child
 ///
 /// Drain threads run in parallel with `wait()` so a chatty child cannot
 /// deadlock on a full pipe buffer. After the child exits we wait up to
-/// [`STDOUT_DRAIN_DEADLINE_SECS`] for both drain threads to finish naturally
+/// [`DRAIN_DEADLINE_SECS`] for both drain threads to finish naturally
 /// — that's the grace window for in-flight bytes. If the deadline elapses
 /// (typically because an orphaned grandchild still holds the pipe), we set
 /// the cancel flag; drain threads observe it within ~100 ms and return,
@@ -494,9 +494,9 @@ fn wait_with_drain_and_timeout(
     let outcome = wait_with_kill_timeout(child, timeout_ms);
 
     // Grace period for in-flight bytes — most clean exits finish drain within
-    // a few ms. We bound the wait at STDOUT_DRAIN_DEADLINE_SECS to defang
+    // a few ms. We bound the wait at DRAIN_DEADLINE_SECS to defang
     // orphaned grandchildren that still hold the pipe.
-    let deadline = std::time::Instant::now() + Duration::from_secs(STDOUT_DRAIN_DEADLINE_SECS);
+    let deadline = std::time::Instant::now() + Duration::from_secs(DRAIN_DEADLINE_SECS);
     let mut completed = 0;
     while completed < 2 {
         let remaining = deadline.saturating_duration_since(std::time::Instant::now());
@@ -671,7 +671,7 @@ fn handle_write_file(path: &str, content: &[u8], use_sudo: bool, append: bool) -
     // Wait for drain to finish naturally up to the deadline; otherwise cancel
     // so the drain thread drops its fd and a still-writing grandchild gets
     // EPIPE on its next write.
-    let _ = done_rx.recv_timeout(Duration::from_secs(STDOUT_DRAIN_DEADLINE_SECS));
+    let _ = done_rx.recv_timeout(Duration::from_secs(DRAIN_DEADLINE_SECS));
     cancel.store(true, Ordering::Release);
     let stderr = stderr_handle.join().unwrap_or_default();
 
@@ -937,7 +937,7 @@ fn spawn_streaming_monitor(
         // Shared drain deadline: stdout + stderr share a single budget.
         // This matches guest-agent's 5s drain behavior.
         let expected = stdout_handle.is_some() as usize + stderr_handle.is_some() as usize;
-        let deadline = std::time::Instant::now() + Duration::from_secs(STDOUT_DRAIN_DEADLINE_SECS);
+        let deadline = std::time::Instant::now() + Duration::from_secs(DRAIN_DEADLINE_SECS);
         let mut completed = 0usize;
         while completed < expected {
             let remaining = deadline.saturating_duration_since(std::time::Instant::now());
@@ -958,7 +958,7 @@ fn spawn_streaming_monitor(
                 "WARN",
                 &format!(
                     "spawn_watch: pid={pid} stdout drain deadline reached after \
-                     {STDOUT_DRAIN_DEADLINE_SECS}s, possible orphaned child process",
+                     {DRAIN_DEADLINE_SECS}s, possible orphaned child process",
                 ),
             );
         }
@@ -1779,7 +1779,7 @@ mod tests {
 
     /// Regression test: if the main child exits but an orphaned background
     /// process holds the stdout fd open, `send_process_exit` must still arrive
-    /// within the drain deadline (STDOUT_DRAIN_DEADLINE_SECS).
+    /// within the drain deadline (DRAIN_DEADLINE_SECS).
     ///
     /// Before the fix, the monitor thread blocked forever on `stdout.read()`
     /// because the orphaned process kept the pipe write end open.
@@ -1971,7 +1971,7 @@ mod tests {
             String::from_utf8_lossy(&stdout),
         );
         assert!(
-            elapsed < Duration::from_secs(STDOUT_DRAIN_DEADLINE_SECS + 5),
+            elapsed < Duration::from_secs(DRAIN_DEADLINE_SECS + 5),
             "MSG_EXEC_RESULT should arrive within drain deadline, took {elapsed:?}",
         );
 
@@ -2178,7 +2178,7 @@ mod tests {
             String::from_utf8_lossy(&stdout),
         );
         assert!(
-            elapsed < Duration::from_secs(STDOUT_DRAIN_DEADLINE_SECS + 5),
+            elapsed < Duration::from_secs(DRAIN_DEADLINE_SECS + 5),
             "MSG_PROCESS_EXIT should arrive within drain deadline, took {elapsed:?}",
         );
 
