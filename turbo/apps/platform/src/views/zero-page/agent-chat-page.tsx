@@ -66,10 +66,7 @@ import { activeRoute$ } from "../../signals/active-route.ts";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
 import { createNewChatThread$ } from "../../signals/chat-page/chat-message.ts";
-import {
-  sendNewThreadOptimistically$,
-  settleThreadSignals$,
-} from "../../signals/chat-page/optimistic-chat-thread-page.ts";
+import { sendNewThreadOptimistically$ } from "../../signals/chat-page/optimistic-chat-thread-page.ts";
 import { navigateToChat$ } from "../../signals/zero-page/zero-nav.ts";
 import { voiceChatStatus$ } from "../../signals/voice-chat/voice-chat-session.ts";
 
@@ -492,7 +489,6 @@ export function AgentChatPage() {
   const sendNewThread = useSet(sendNewThreadOptimistically$);
   const { signal: rootSignal } = useGet(rootSignal$);
   const pageSignal = useGet(pageSignal$);
-  const settleThreadSignals = useSet(settleThreadSignals$);
 
   const orgProviders = useLastResolved(orgModelProviders$);
   const modelSelection = useLastResolved(chatPageModelSelection$) ?? null;
@@ -512,24 +508,14 @@ export function AgentChatPage() {
     }
 
     detach(
-      (async () => {
-        const result = await sendNewThread(
-          {
-            agentId: currentChatAgentId,
-            prompt: message,
-            modelSelection,
-          },
-          rootSignal,
-        );
-        if (!result) {
-          return;
-        }
-
-        await result.sendResult;
-        pageSignal.throwIfAborted();
-
-        await settleThreadSignals(result.threadId, pageSignal);
-      })(),
+      sendNewThread(
+        {
+          agentId: currentChatAgentId,
+          prompt: message,
+          modelSelection,
+        },
+        rootSignal,
+      ),
       Reason.DomCallback,
     );
   };

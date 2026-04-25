@@ -8,6 +8,7 @@ import { navigateToChat$ } from "../zero-page/zero-nav.ts";
 import {
   currentChatThreadId$,
   chatThreads$,
+  insertOptimisticChatThread$,
   reloadChatThreads$,
 } from "../agent-chat.ts";
 import { setAblyLoop$ } from "../realtime.ts";
@@ -118,6 +119,7 @@ export interface SendNewThreadMessageResult {
 
 export interface SendNewThreadMessagePending {
   threadId: string;
+  agentId: string;
   pendingThread: ReturnType<typeof createChatThreadSignals>;
   sendResult: Promise<SendNewThreadMessageResult>;
 }
@@ -181,6 +183,12 @@ export const sendNewThreadMessage$ = command(
 
     const threadId = crypto.randomUUID();
     const clientMessageId = crypto.randomUUID();
+    const createdAt = new Date().toISOString();
+    set(insertOptimisticChatThread$, {
+      id: threadId,
+      agentId,
+      time: createdAt,
+    });
     const cancelRequested$ = state(false);
     const localSnapshot: LocalChatThreadSnapshot = {
       threadData: {
@@ -203,7 +211,7 @@ export const sendNewThreadMessage$ = command(
           role: "user",
           content: prepared.prompt,
           attachFiles: prepared.attachments,
-          createdAt: new Date().toISOString(),
+          createdAt,
         },
       ],
       cancelRequested$,
@@ -238,7 +246,7 @@ export const sendNewThreadMessage$ = command(
       return { threadId: result.body.threadId, runId: result.body.runId };
     })();
 
-    return { threadId, pendingThread: localThread, sendResult };
+    return { threadId, agentId, pendingThread: localThread, sendResult };
   },
 );
 

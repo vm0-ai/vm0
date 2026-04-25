@@ -14,6 +14,7 @@ import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 import {
   chatThreadByIdContract,
   chatThreadMessagesContract,
+  chatThreadsContract,
   chatMessagesContract,
 } from "@vm0/core/contracts/chat-threads";
 import { createDeferredPromise } from "../../../signals/utils.ts";
@@ -61,6 +62,9 @@ function mockChatAPIs(options?: { waitForSend?: Promise<void> }) {
     }),
     mockApi(chatThreadMessagesContract.list, ({ respond }) => {
       return respond(200, { messages: [], hasHistoryBefore: false });
+    }),
+    mockApi(chatThreadsContract.list, ({ respond }) => {
+      return respond(200, { threads: [] });
     }),
     mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) => {
       return respond(200, {
@@ -156,6 +160,45 @@ describe("talk navigation", () => {
     });
 
     sendDeferred.resolve();
+  });
+
+  it("shows the optimistic new thread in the sidebar before the send request returns", async () => {
+    const user = userEvent.setup();
+    const sendDeferred = createDeferredPromise<void>(context.signal);
+    mockChatAPIs({ waitForSend: sendDeferred.promise });
+
+    try {
+      detachedSetupPage({
+        context,
+        path: "/agents/c0000000-0000-4000-a000-000000000001/chat",
+      });
+
+      const textarea = await waitFor(() => {
+        return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+      });
+      await fill(textarea, "Hello from sidebar");
+      await user.keyboard("{Enter}");
+
+      let threadId = "";
+      await waitFor(() => {
+        const match = pathname().match(/^\/chats\/([0-9a-f-]{36})$/);
+        expect(match).not.toBeNull();
+        threadId = match?.[1] ?? "";
+      });
+
+      await waitFor(() => {
+        const link = document.querySelector<HTMLAnchorElement>(
+          `[data-chat-thread-id="${threadId}"]`,
+        );
+        expect(link).not.toBeNull();
+        expect(link).toHaveAttribute("href", `/chats/${threadId}`);
+        expect(link).toHaveAttribute("aria-current", "page");
+      });
+    } finally {
+      if (!sendDeferred.settled()) {
+        sendDeferred.resolve();
+      }
+    }
   });
 
   it("should navigate to /agents/:id/chat after completing onboarding", async () => {

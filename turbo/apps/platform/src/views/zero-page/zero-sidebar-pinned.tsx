@@ -21,10 +21,10 @@ import {
 } from "../../signals/zero-page/zero-nav.ts";
 import { activeRoute$ } from "../../signals/active-route.ts";
 import {
-  currentChatThreadId$,
   currentChatAgentId$,
   currentChatAgentDisplayName$,
 } from "../../signals/agent-chat.ts";
+import { pathParams$ } from "../../signals/route.ts";
 import {
   chatListOpen$,
   setChatListOpen$,
@@ -128,7 +128,11 @@ function AgentListDialogContainer() {
 
 export function PinnedAgentListSection() {
   const activeRoute = useGet(activeRoute$);
-  const chatThreadId = useGet(currentChatThreadId$);
+  const pathParams = useGet(pathParams$);
+  const routeAgentId =
+    typeof pathParams?.agentId === "string" ? pathParams.agentId : null;
+  const routeThreadId =
+    typeof pathParams?.threadId === "string" ? pathParams.threadId : null;
   const sidebarAgentId = useLastResolved(currentChatAgentId$) ?? null;
   const pinnedAgentsLoadable = useLastLoadable(pinnedAgents$);
 
@@ -195,10 +199,10 @@ export function PinnedAgentListSection() {
           )}
           {pinnedAgentsLoadable.state === "hasData" &&
             pinnedAgentsLoadable.data.map((agent) => {
+              const selectedAgentId =
+                routeAgentId ?? (routeThreadId ? null : sidebarAgentId);
               const isPrimarySelected =
-                isChatRoute(activeRoute) &&
-                !chatThreadId &&
-                sidebarAgentId === agent.id;
+                isChatRoute(activeRoute) && selectedAgentId === agent.id;
               const isFromChat = sidebarAgentId === agent.id;
               return (
                 <div

@@ -40,8 +40,9 @@ import {
 } from "../../signals/chat-page/chat-message.ts";
 import {
   currentChatAgentId$,
-  currentChatThreadId$,
+  pendingOptimisticChatThreads$,
 } from "../../signals/agent-chat.ts";
+import { pathParams$ } from "../../signals/route.ts";
 import {
   navigateToChat$,
   setSidebarExpanded$,
@@ -85,6 +86,8 @@ function ChatThreadItem({
       <Link
         pathname="/chats/:threadId"
         options={{ pathParams: { threadId: session.id } }}
+        aria-current={isSelected ? "page" : undefined}
+        data-chat-thread-id={session.id}
         onClick={(e) => {
           if (e.metaKey || e.ctrlKey || e.shiftKey) {
             return;
@@ -146,7 +149,9 @@ function ChatThreadItem({
 }
 
 function ChatThreads() {
-  const currentChatThreadId = useGet(currentChatThreadId$);
+  const pathParams = useGet(pathParams$);
+  const selectedThreadId =
+    typeof pathParams?.threadId === "string" ? pathParams.threadId : null;
   const navigateToChat = useSet(navigateToChat$);
   const setSidebarExpanded = useSet(setSidebarExpanded$);
   const pendingDeleteThreadId = useGet(pendingDeleteThreadId$);
@@ -155,6 +160,8 @@ function ChatThreads() {
   const pageSignal = useGet(pageSignal$);
 
   const chatThreads = useLastResolved(chatThreads$) ?? [];
+  const optimisticChatThreads =
+    useLastResolved(pendingOptimisticChatThreads$) ?? [];
   const features = useLastResolved(featureSwitch$);
   const showReadIndicator =
     features?.[FeatureSwitchKey.ChatThreadReadIndicator] ?? false;
@@ -165,6 +172,11 @@ function ChatThreads() {
         return (s.title ?? "").toLowerCase().includes(trimmedTerm);
       })
     : chatThreads;
+  const filteredOptimisticChatThreads = trimmedTerm
+    ? optimisticChatThreads.filter((s) => {
+        return (s.title ?? "").toLowerCase().includes(trimmedTerm);
+      })
+    : optimisticChatThreads;
 
   const onRecentSelect = (chatThreadId: string) => {
     navigateToChat(chatThreadId);
@@ -180,7 +192,10 @@ function ChatThreads() {
     detach(deleteChatThread(threadId, pageSignal), Reason.DomCallback);
   }
 
-  if (filteredChatThreads.length === 0) {
+  if (
+    filteredOptimisticChatThreads.length === 0 &&
+    filteredChatThreads.length === 0
+  ) {
     return (
       <p className="px-2 py-2 text-xs text-muted-foreground/70 leading-relaxed">
         {trimmedTerm
@@ -191,12 +206,23 @@ function ChatThreads() {
   }
   return (
     <>
+      {filteredOptimisticChatThreads.map((session) => {
+        return (
+          <ChatThreadItem
+            key={session.id}
+            session={session}
+            isSelected={selectedThreadId === session.id}
+            onSelect={onRecentSelect}
+            showReadIndicator={showReadIndicator}
+          />
+        );
+      })}
       {filteredChatThreads.map((session) => {
         return (
           <ChatThreadItem
             key={session.id}
             session={session}
-            isSelected={currentChatThreadId === session.id}
+            isSelected={selectedThreadId === session.id}
             onSelect={onRecentSelect}
             showReadIndicator={showReadIndicator}
           />

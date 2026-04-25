@@ -16,6 +16,10 @@ import {
 import { createRestoredAttachment } from "../zero-page/chat-draft.ts";
 import { setupChatPageKeyboard$ } from "./chat-keyboard.ts";
 import { setAblyLoop$ } from "../realtime.ts";
+import {
+  optimisticThreadSends$,
+  setupOptimisticChatThreadPage$,
+} from "./optimistic-chat-thread-page.ts";
 
 export const setupChatPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -32,6 +36,12 @@ export const setupChatPage$ = command(
     set(setupChatPageKeyboard$, signal);
 
     if (await set(onboardGuard$, signal)) {
+      return;
+    }
+
+    const optimisticThread = get(optimisticThreadSends$).get(threadId);
+    if (optimisticThread) {
+      await set(setupOptimisticChatThreadPage$, optimisticThread, signal);
       return;
     }
 
