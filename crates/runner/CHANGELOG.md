@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.95.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.95.2...runner-rs-v0.95.3) (2026-04-25)
+
+
+### Bug Fixes
+
+* **runner:** unify error log for claimed-but-failed job ([#11093](https://github.com/vm0-ai/vm0/issues/11093)) ([30138c5](https://github.com/vm0-ai/vm0/commit/30138c5d231fe122cfd7180e98ed1d53a1fae76a))
+
+
+### Refactoring
+
+* split db and api contracts packages ([#11092](https://github.com/vm0-ai/vm0/issues/11092)) ([f4767d9](https://github.com/vm0-ai/vm0/commit/f4767d987af373d17d93d5ca8fb00864c18bc15b))
+
 ## [0.95.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.95.1...runner-rs-v0.95.2) (2026-04-25)
 
 ## [0.95.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.95.0...runner-rs-v0.95.1) (2026-04-25)
