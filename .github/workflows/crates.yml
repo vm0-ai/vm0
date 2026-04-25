@@ -261,7 +261,7 @@ jobs:
 
       # Needed for the classifier↔firewall consistency check in
       # tests/test_x_billing.py: the check reads
-      # `turbo/packages/core/src/firewalls/x.generated.ts`, which is
+      # `turbo/packages/api-contracts/src/firewalls/x.generated.ts`, which is
       # gitignored and materialized by the `postinstall` hook in
       # `turbo/package.json` (runs `@vm0/firewalls-generator generate`).
       - uses: pnpm/action-setup@v4
@@ -1641,4 +1641,3 @@ jobs:
 
           echo "::endgroup::"
           exit $FAILED
-
