@@ -4,6 +4,7 @@ import { animationFrame } from "signal-timers";
 import { ZeroChatThreadPage } from "../../views/zero-page/zero-chat-thread-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
+import { defaultAgentId$ } from "../agent.ts";
 import { setChatAgentId$, currentChatThreadId$ } from "../agent-chat.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
@@ -23,6 +24,7 @@ export const setupChatPage$ = command(
     if (!threadId) {
       throw new Error("threadId is required to load chat page");
     }
+    const initialSearchParams = new URLSearchParams(get(searchParams$));
 
     set(updateDocumentTitle$, "Chat");
 
@@ -60,10 +62,20 @@ export const setupChatPage$ = command(
       if (matchingOptimisticThread) {
         set(clearMatchingOptimisticChatThread$, matchingOptimisticThread);
       }
-      set(detachedNavigateTo$, "/", {
-        searchParams: get(searchParams$),
-        replace: true,
-      });
+      const defaultAgentId = await get(defaultAgentId$);
+      signal.throwIfAborted();
+      if (defaultAgentId) {
+        set(detachedNavigateTo$, "/agents/:agentId/chat", {
+          pathParams: { agentId: defaultAgentId },
+          searchParams: initialSearchParams,
+          replace: true,
+        });
+      } else {
+        set(detachedNavigateTo$, "/", {
+          searchParams: initialSearchParams,
+          replace: true,
+        });
+      }
       return;
     }
 
