@@ -31,7 +31,7 @@ import { apiBaseForNavigation$ } from "../../fetch.ts";
 import { zeroClient$ } from "../../api-client.ts";
 import { delay } from "signal-timers";
 import { jsonParseOr, raceUnderSignal } from "../../utils.ts";
-import { awaitRealtimeReady$, setAblyLoop$ } from "../../realtime.ts";
+import { setAblyLoop$ } from "../../realtime.ts";
 import { localStorageSignals } from "../../external/local-storage.ts";
 import { resetPermissionDialog$ } from "./permission-dialog.ts";
 
@@ -534,9 +534,6 @@ export const connectConnector$ = command(
         return false;
       },
     );
-
-    await set(awaitRealtimeReady$, signal);
-    signal.throwIfAborted();
 
     // Prime once so `initialUpdatedAt` snapshots the current server state.
     // `setAblyLoop$` no longer primes its subscribers, and without this the

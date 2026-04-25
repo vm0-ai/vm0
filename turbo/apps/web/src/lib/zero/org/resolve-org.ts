@@ -18,6 +18,7 @@ import type { OrgRole } from "@vm0/core/contracts/org-members";
 interface ResolvedOrg {
   orgId: string;
   tier: string;
+  defaultAgentId: string | null;
 }
 
 /**
@@ -86,9 +87,13 @@ export async function resolveOrg(
   } catch (error) {
     if (!isNotFound(error)) throw error;
     // Brand-new org: JWT proves existence, org_metadata row not yet created
-    orgMeta = { orgId, tier: "free", credits: 0 };
+    orgMeta = { orgId, tier: "free", credits: 0, defaultAgentId: null };
   }
-  const resolved: ResolvedOrg = { orgId: orgMeta.orgId, tier: orgMeta.tier };
+  const resolved: ResolvedOrg = {
+    orgId: orgMeta.orgId,
+    tier: orgMeta.tier,
+    defaultAgentId: orgMeta.defaultAgentId,
+  };
   const member = await verifyMembership(resolved, authCtx);
   return { org: resolved, member };
 }

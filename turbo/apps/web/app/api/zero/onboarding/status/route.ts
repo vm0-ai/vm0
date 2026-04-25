@@ -8,7 +8,6 @@ import { agentComposes } from "../../../../../src/db/schema/agent-compose";
 import { zeroAgents } from "../../../../../src/db/schema/zero-agent";
 import { eq, and } from "drizzle-orm";
 import { orgMembersMetadata } from "../../../../../src/db/schema/org-members-metadata";
-import { orgMetadata as orgTable } from "../../../../../src/db/schema/org-metadata";
 
 async function isMemberOnboardingDone(
   orgId: string,
@@ -39,6 +38,7 @@ interface DefaultAgentInfo {
 }
 
 async function resolveDefaultAgent(
+  orgId: string,
   composeId: string,
 ): Promise<DefaultAgentInfo | null> {
   // INNER JOIN: both agent_composes and zero_agents must exist.
@@ -53,7 +53,7 @@ async function resolveDefaultAgent(
     })
     .from(agentComposes)
     .innerJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
-    .where(eq(agentComposes.id, composeId))
+    .where(and(eq(agentComposes.id, composeId), eq(agentComposes.orgId, orgId)))
     .limit(1);
 
   if (!row) {
@@ -90,6 +90,7 @@ const router = tsr.router(onboardingStatusContract, {
     let resolvedOrgId: string | null = null;
     let defaultAgent: DefaultAgentInfo | null = null;
     let isAdmin = false;
+    let memberOnboardingDone: boolean | null = null;
 
     try {
       const { org: resolvedOrg, member } = await resolveOrg(authCtx);
@@ -97,17 +98,18 @@ const router = tsr.router(onboardingStatusContract, {
       resolvedOrgId = resolvedOrg.orgId;
       isAdmin = member.role === "admin";
 
-      // Read default agent ID (zero agent UUID) from org table
-      const [orgRow] = await globalThis.services.db
-        .select({ defaultAgentId: orgTable.defaultAgentId })
-        .from(orgTable)
-        .where(eq(orgTable.orgId, resolvedOrg.orgId))
-        .limit(1);
-      const defaultAgentId = orgRow?.defaultAgentId ?? null;
-
+      const defaultAgentId = resolvedOrg.defaultAgentId;
       if (defaultAgentId) {
-        // defaultAgentId IS the composeId (zero_agents.id = agent_composes.id)
-        defaultAgent = await resolveDefaultAgent(defaultAgentId);
+        // defaultAgentId IS the composeId (zero_agents.id = agent_composes.id).
+        [defaultAgent, memberOnboardingDone] = await Promise.all([
+          resolveDefaultAgent(resolvedOrg.orgId, defaultAgentId),
+          isMemberOnboardingDone(resolvedOrg.orgId, authCtx.userId),
+        ]);
+      } else if (!isAdmin) {
+        memberOnboardingDone = await isMemberOnboardingDone(
+          resolvedOrg.orgId,
+          authCtx.userId,
+        );
       }
     } catch (error) {
       if (!isNotFound(error) && !isBadRequest(error)) {
@@ -126,10 +128,9 @@ const router = tsr.router(onboardingStatusContract, {
       if (!resolvedOrgId) {
         throw new Error("resolvedOrgId is null despite hasOrg being true");
       }
-      const onboardingDone = await isMemberOnboardingDone(
-        resolvedOrgId,
-        authCtx.userId,
-      );
+      const onboardingDone =
+        memberOnboardingDone ??
+        (await isMemberOnboardingDone(resolvedOrgId, authCtx.userId));
       needsOnboarding = !onboardingDone;
     }
 

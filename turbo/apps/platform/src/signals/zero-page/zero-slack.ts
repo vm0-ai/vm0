@@ -3,7 +3,7 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import { zeroIntegrationsSlackContract } from "@vm0/core/contracts/zero-integrations-slack";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
-import { awaitRealtimeReady$, setAblyLoop$ } from "../realtime.ts";
+import { setAblyLoop$ } from "../realtime.ts";
 import { logger } from "../log.ts";
 
 const L = logger("ZeroSlack");
@@ -88,9 +88,6 @@ export const pollSlackConnection$ = command(
     if (current.isConnected) {
       return;
     }
-
-    await set(awaitRealtimeReady$, signal);
-    signal.throwIfAborted();
 
     const onSlackChanged$ = command(async ({ get, set }, sig: AbortSignal) => {
       set(reloadSlackOrg$);

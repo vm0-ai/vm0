@@ -11,6 +11,7 @@ export interface OrgMetadata {
   orgId: string;
   tier: string;
   credits: number;
+  defaultAgentId: string | null;
 }
 
 /**
@@ -23,7 +24,11 @@ export interface OrgMetadata {
 export async function getOrgMetadata(orgId: string): Promise<OrgMetadata> {
   const db = globalThis.services.db;
   const [row] = await db
-    .select({ tier: orgMetadata.tier, credits: orgMetadata.credits })
+    .select({
+      tier: orgMetadata.tier,
+      credits: orgMetadata.credits,
+      defaultAgentId: orgMetadata.defaultAgentId,
+    })
     .from(orgMetadata)
     .where(eq(orgMetadata.orgId, orgId))
     .limit(1);
@@ -34,6 +39,7 @@ export async function getOrgMetadata(orgId: string): Promise<OrgMetadata> {
     orgId,
     tier: row.tier,
     credits: row.credits,
+    defaultAgentId: row.defaultAgentId,
   };
 }
 

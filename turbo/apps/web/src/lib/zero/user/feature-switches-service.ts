@@ -13,7 +13,7 @@ export async function getUserFeatureSwitches(
   const db = globalThis.services.db;
 
   const [row] = await db
-    .select()
+    .select({ switches: userFeatureSwitches.switches })
     .from(userFeatureSwitches)
     .where(
       and(

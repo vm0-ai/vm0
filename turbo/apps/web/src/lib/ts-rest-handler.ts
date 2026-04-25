@@ -1,8 +1,8 @@
 /**
- * Unified ts-rest handler configuration with automatic log flushing.
+ * Unified ts-rest handler configuration with automatic post-response log flushing.
  *
- * Wraps createNextHandler to ensure logs flush to Axiom before the
- * serverless function terminates.
+ * Wraps createNextHandler to schedule telemetry flushes after the response
+ * has been returned, without adding telemetry latency to the API response.
  *
  * Usage:
  *   import { createHandler, tsr } from "@/lib/ts-rest-handler";
@@ -44,6 +44,7 @@ import { TsRestResponse } from "@ts-rest/serverless";
 import type { TsRestRequest } from "@ts-rest/serverless";
 import type { AppRoute, AppRouter } from "@ts-rest/core";
 import * as Sentry from "@sentry/nextjs";
+import { after } from "next/server";
 import { flushLogs, logger } from "./shared/logger";
 import { ingestRequestLog, flushAxiom } from "./shared/axiom";
 import { isApiError } from "./shared/errors";
@@ -232,10 +233,11 @@ interface CreateHandlerOptions {
 const requestStartTimes = new WeakMap<TsRestRequest, number>();
 
 /**
- * Create a Next.js route handler with automatic log flushing.
+ * Create a Next.js route handler with automatic post-response log flushing.
  *
- * This wrapper ensures all logs are flushed to Axiom before the
- * serverless function terminates, preventing log loss.
+ * This wrapper records request logs synchronously, then asks Next.js to flush
+ * telemetry after the response is returned. That keeps observability reliable
+ * without making user-facing API latency wait on Axiom or Sentry delivery.
  *
  * @param contract - The ts-rest contract definition
  * @param router - The ts-rest router implementation (from tsr.router)
@@ -296,7 +298,7 @@ export function createHandler<T extends AppRouter>(
       },
     ],
     responseHandlers: [
-      async (response, request) => {
+      (response, request) => {
         // Record request log (nginx-style)
         const startTime = requestStartTimes.get(request);
         if (startTime !== undefined) {
@@ -316,16 +318,19 @@ export function createHandler<T extends AppRouter>(
           requestStartTimes.delete(request);
         }
 
-        // Flush all pending logs and ingested events to Axiom, and any
-        // pending Sentry events. Sentry.flush is wrapped so delivery
-        // failures don't block the response.
-        await Promise.all([
-          flushLogs(),
-          flushAxiom(),
-          Sentry.flush(2000).catch(() => {
-            return false;
-          }),
-        ]);
+        // Callback form preserves the Next.js request context for work
+        // scheduled by the flush implementations.
+        after(() => {
+          return Promise.all([
+            flushLogs(),
+            flushAxiom(),
+            Sentry.flush(2000).catch(() => {
+              return false;
+            }),
+          ]).then(() => {
+            return undefined;
+          });
+        });
       },
     ],
   });

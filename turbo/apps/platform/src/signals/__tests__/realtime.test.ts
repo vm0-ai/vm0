@@ -33,12 +33,82 @@ function setupTestStore() {
   return { store, controller };
 }
 
+const neverDoneLoop$ = command((_store, _signal: AbortSignal) => {
+  return false;
+});
+
 afterEach(() => {
   resetAblySubscriptions();
   clearMockedAuth();
 });
 
 describe("setAblyLoop$ with mock Ably", () => {
+  it("queues subscriptions started before realtime connects", async () => {
+    const { store, controller } = setupTestStore();
+
+    let calls = 0;
+    const loopCommand$ = command((_store, _signal: AbortSignal) => {
+      calls++;
+      return false;
+    });
+
+    const loopPromise = store.set(
+      setAblyLoop$,
+      "pending-topic",
+      loopCommand$,
+      controller.signal,
+    );
+
+    expect(hasSubscription("pending-topic")).toBeFalsy();
+
+    await store.set(setupRealtime$, controller.signal);
+
+    await vi.waitFor(() => {
+      expect(hasSubscription("pending-topic")).toBeTruthy();
+    });
+    expect(calls).toBe(0);
+
+    triggerAblyEvent("pending-topic");
+    await vi.waitFor(() => {
+      expect(calls).toBe(1);
+    });
+
+    controller.abort();
+    await expect(loopPromise).rejects.toThrow();
+  });
+
+  it("rejects queued subscriptions when realtime connection fails", async () => {
+    const { store, controller } = setupTestStore();
+
+    server.use(
+      mockApi(platformRealtimeTokenContract.create, ({ respond }) => {
+        return respond(500, {
+          error: {
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Realtime service unavailable",
+          },
+        });
+      }),
+    );
+
+    const loopPromise = store.set(
+      setAblyLoop$,
+      "pending-topic",
+      neverDoneLoop$,
+      controller.signal,
+    );
+
+    const setupPromise = store.set(setupRealtime$, controller.signal);
+
+    await expect(setupPromise).rejects.toThrow(
+      "Ably connection failed: Realtime service unavailable",
+    );
+    await expect(loopPromise).rejects.toThrow(
+      "Ably connection failed: Realtime service unavailable",
+    );
+    expect(hasSubscription("pending-topic")).toBeFalsy();
+  });
+
   it("does not invoke loopCommand$ before the first ably event", async () => {
     const { store, controller } = setupTestStore();
 

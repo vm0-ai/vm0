@@ -314,7 +314,7 @@ export const bootstrap$ = command(
     set(handleBillingRedirect$);
     set(handleSlackRedirect$);
 
-    const bootstrapSetupPromise = Promise.all([
+    await Promise.all([
       set(startSkeletonCycling$, signal),
       set(setupRealtime$, signal),
       set(setupGlobalMethod$, signal),
@@ -322,13 +322,11 @@ export const bootstrap$ = command(
       set(setupNotificationListener$, signal),
       set(setupPwaEdgeSwipe$, signal),
       set(setupSidebarShortcut$, signal),
-      (async () => {
-        await set(setupClerk$, signal);
-        await set(watchOrgSwitch$, signal);
-      })(),
+      set(setupClerk$, signal),
+      set(watchOrgSwitch$, signal),
+      set(setupRoutes$, signal),
     ]);
 
-    await Promise.all([bootstrapSetupPromise, set(setupRoutes$, signal)]);
     signal.throwIfAborted();
   },
 );

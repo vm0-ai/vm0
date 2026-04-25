@@ -2,6 +2,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as Sentry from "@sentry/nextjs";
 import type { TsRestRequest } from "@ts-rest/serverless";
 import type { AppRouter } from "@ts-rest/core";
+import {
+  nextAfterArgForms,
+  nextAfterCallbacks,
+  resetNextAfterHooks,
+} from "../../__tests__/next-after-hooks";
 
 vi.mock("@sentry/nextjs", () => {
   return {
@@ -21,6 +26,9 @@ type ResolvedErrorHandler = (
   | void
   | Promise<InstanceType<typeof TsRestResponse> | void>;
 let capturedErrorHandler: ResolvedErrorHandler | undefined;
+let capturedResponseHandlers:
+  | Array<(response: Response, request: TsRestRequest) => unknown>
+  | undefined;
 
 vi.mock("@ts-rest/serverless/next", async (importOriginal) => {
   const original =
@@ -30,9 +38,15 @@ vi.mock("@ts-rest/serverless/next", async (importOriginal) => {
     createNextHandler: (
       _contract: AppRouter,
       _router: unknown,
-      options: { errorHandler?: ResolvedErrorHandler },
+      options: {
+        errorHandler?: ResolvedErrorHandler;
+        responseHandlers?: Array<
+          (response: Response, request: TsRestRequest) => unknown
+        >;
+      },
     ) => {
       capturedErrorHandler = options.errorHandler;
+      capturedResponseHandlers = options.responseHandlers;
       // Return a no-op handler — tests only exercise the errorHandler
       return () => {
         return Promise.resolve(new Response());
@@ -170,6 +184,8 @@ describe("createHandler per-operation dispatch", () => {
 
   beforeEach(() => {
     capturedErrorHandler = undefined;
+    capturedResponseHandlers = undefined;
+    resetNextAfterHooks();
   });
 
   it("routes GET errors to the list operation handler", async () => {
@@ -235,6 +251,25 @@ describe("createHandler per-operation dispatch", () => {
     expect(customHandler).toHaveBeenCalledWith(err);
     expect(response).toBe(fakeResponse);
     expect(vi.mocked(Sentry.captureException)).not.toHaveBeenCalled();
+  });
+
+  it("schedules telemetry flushes in after() instead of awaiting them inline", () => {
+    createHandler(twoOpContract, router, { routeName: "test" });
+    expect(capturedResponseHandlers).toHaveLength(1);
+
+    const fakeReq = {
+      method: "GET",
+      route: "/api/test",
+      url: "https://example.com/api/test",
+      headers: new Headers(),
+    } as TsRestRequest;
+
+    const result = capturedResponseHandlers![0]!(new Response(null), fakeReq);
+
+    expect(result).toBeUndefined();
+    expect(nextAfterArgForms).toEqual(["fn"]);
+    expect(nextAfterCallbacks).toHaveLength(1);
+    expect(vi.mocked(Sentry.flush)).not.toHaveBeenCalled();
   });
 });
 
