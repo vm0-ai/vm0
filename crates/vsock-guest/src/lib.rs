@@ -1433,7 +1433,7 @@ mod tests {
         host_stream.write_all(&fast_msg).unwrap();
 
         // Read responses — we need to find seq=2 (the fast one) within 3 seconds.
-        // Before the fix, this would block until sleep 30 finished.
+        // Before the fix, this would block on the slow exec.
         host_stream
             .set_read_timeout(Some(Duration::from_secs(3)))
             .unwrap();
