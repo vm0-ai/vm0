@@ -42,7 +42,7 @@ export const setupChatPage$ = command(
 
     set(
       updatePage$,
-      createElement(ZeroChatThreadPage, { key: threadId, thread }),
+      createElement(ZeroChatThreadPage, { key: threadId }),
       "sidebar",
     );
     await set(hideAppSkeleton$, signal);
