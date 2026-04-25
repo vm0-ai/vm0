@@ -51,6 +51,7 @@ export const setupChatPage$ = command(
       signal.throwIfAborted();
 
       set(thread.hideSkeleton$);
+
       set(
         updatePage$,
         createElement(ZeroChatThreadPage, {
