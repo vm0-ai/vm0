@@ -61,10 +61,6 @@ function setupPage() {
   });
 }
 
-afterEach(() => {
-  vi.restoreAllMocks();
-});
-
 describe("zero chat list page - header and title", () => {
   it("should render the page with unified 'Chats' title (CHAT-LIST-001)", async () => {
     mockChatThreads(createMockThreads());
@@ -108,7 +104,18 @@ describe("zero chat list page - chat list rendering", () => {
   });
 
   it("should render 'New chat' as default title when title is null (CHAT-LIST-005)", async () => {
-    mockChatThreads(createMockThreads({ id: "thread-null", title: null }));
+    mockChatThreads([
+      {
+        id: "thread-null",
+        title: null,
+        agent: { id: "c0000000-0000-4000-a000-000000000001", avatarUrl: null },
+        createdAt: "2026-03-01T00:00:00Z",
+        updatedAt: "2026-03-01T00:00:00Z",
+        isRead: true,
+        isArchived: false,
+        running: false,
+      },
+    ]);
     setupPage();
 
     await waitFor(() => {
@@ -127,25 +134,10 @@ describe("zero chat list page - loading skeleton", () => {
     consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
-  afterEach(() => {
-    consoleSpy.mockRestore();
-    // Re-apply the setup.ts console.error spy so subsequent tests still
-    // get their intended protection.
-    vi.spyOn(console, "error").mockImplementation((...message: unknown[]) => {
-      const str = message.map(String).join(" ");
-      if (str.includes("NotSupportedError") || str.includes("AbortError")) {
-        return;
-      }
-      if (str.includes("not wrapped in act(")) {
-        return;
-      }
-      if (str.includes("Detached promise rejected")) {
-        return;
-      }
-      const err = message[0];
-      throw err instanceof Error ? err : new Error(err as unknown as string);
-    });
-  });
+  // No afterEach needed — setup.ts's beforeEach re-establishes the
+  // throwing console.error spy for every subsequent test. Keeping the
+  // no-op spy active through cleanup prevents React ErrorBoundary errors
+  // during clearAllDetached() from becoming unhandled Vitest errors.
 
   it("should show loading skeleton when threads are loading", async () => {
     const hangDeferred = createDeferredPromise<void>(context.signal);
