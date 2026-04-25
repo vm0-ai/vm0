@@ -6,7 +6,7 @@
  * and thread items).
  */
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
@@ -115,6 +115,37 @@ describe("zero chat list page - chat list rendering", () => {
       expect(screen.getAllByText("New chat")[0]).toBeInTheDocument();
     });
   });
+});
+
+describe("zero chat list page - loading skeleton", () => {
+  let consoleSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    // Suppress console.error during the loading→empty transition, which
+    // triggers React's ErrorBoundary.componentDidCatch. The setup.ts spy
+    // throws on console.error, which would cause unhandled errors.
+    consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    consoleSpy.mockRestore();
+    // Re-apply the setup.ts console.error spy so subsequent tests still
+    // get their intended protection.
+    vi.spyOn(console, "error").mockImplementation((...message: unknown[]) => {
+      const str = message.map(String).join(" ");
+      if (str.includes("NotSupportedError") || str.includes("AbortError")) {
+        return;
+      }
+      if (str.includes("not wrapped in act(")) {
+        return;
+      }
+      if (str.includes("Detached promise rejected")) {
+        return;
+      }
+      const err = message[0];
+      throw err instanceof Error ? err : new Error(err as unknown as string);
+    });
+  });
 
   it("should show loading skeleton when threads are loading", async () => {
     const hangDeferred = createDeferredPromise<void>(context.signal);
@@ -128,7 +159,6 @@ describe("zero chat list page - chat list rendering", () => {
     setupPage();
 
     await waitFor(() => {
-      // Skeleton lines should appear
       const skeletons = screen.getAllByTestId("sidebar-skeleton");
       expect(skeletons.length).toBeGreaterThan(0);
     });
@@ -141,7 +171,9 @@ describe("zero chat list page - chat list rendering", () => {
       expect(screen.queryByTestId("sidebar-skeleton")).not.toBeInTheDocument();
     });
   });
+});
 
+describe("zero chat list page - chat list rendering (continued)", () => {
   it("should show error message when API fails", async () => {
     server.use(
       mockApi(chatThreadsContract.list, ({ respond }) => {
