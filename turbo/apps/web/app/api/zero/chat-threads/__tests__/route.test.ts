@@ -72,6 +72,26 @@ describe("POST /api/zero/chat-threads - Create Thread", () => {
     expect(data.createdAt).toBeDefined();
   });
 
+  it("should create a chat thread with the provided clientThreadId", async () => {
+    const clientThreadId = "00000000-0000-4000-8000-000000000123";
+    const request = createTestRequest(
+      "http://localhost:3000/api/zero/chat-threads",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentId: testComposeId,
+          clientThreadId,
+        }),
+      },
+    );
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(data.id).toBe(clientThreadId);
+  });
+
   it("should return 404 for compose from a different org", async () => {
     // Create compose in a different org
     const otherOrg = await context.createAgentCompose(user.userId);

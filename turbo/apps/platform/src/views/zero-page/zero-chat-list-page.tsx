@@ -6,7 +6,6 @@ import {
   useLastLoadable,
   useLastResolved,
 } from "ccstate-react";
-import { useLoadableSet } from "ccstate-react/experimental";
 import { IconPlus, IconSearch, IconX, IconTrash } from "@tabler/icons-react";
 import {
   Button,
@@ -22,8 +21,11 @@ import type { ChatThreadListItem } from "@vm0/core/contracts/chat-threads";
 import {
   chatThreads$,
   deleteChatThread$,
-  createNewChatThread$,
 } from "../../signals/chat-page/chat-message.ts";
+import {
+  createNewChatThreadOptimistically$,
+  optimisticChatThread$,
+} from "../../signals/chat-page/optimistic-chat-thread-page.ts";
 import { navigateToChat$ } from "../../signals/zero-page/zero-nav.ts";
 import {
   currentChatThreadId$,
@@ -37,6 +39,7 @@ import {
   setChatListQuery$,
 } from "../../signals/zero-page/zero-sidebar-state.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
+import { rootSignal$ } from "../../signals/root-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
 
@@ -59,10 +62,9 @@ export function ZeroChatListPage() {
 
   const selectedRecentId = useGet(currentChatThreadId$);
   const navigateToChat = useSet(navigateToChat$);
-  const [creatingLoadable, createNewChat] =
-    useLoadableSet(createNewChatThread$);
-  const creating = creatingLoadable.state === "loading";
-  const pageSignal = useGet(pageSignal$);
+  const createNewChat = useSet(createNewChatThreadOptimistically$);
+  const creating = useGet(optimisticChatThread$) !== null;
+  const { signal: rootSignal } = useGet(rootSignal$);
 
   const searchTerm = useGet(chatListQuery$);
   const setSearchTerm = useSet(setChatListQuery$);
@@ -76,11 +78,7 @@ export function ZeroChatListPage() {
 
   const onNewChat = () => {
     detach(
-      createNewChat(currentChatAgentId ?? null, pageSignal).then((threadId) => {
-        if (threadId) {
-          navigateToChat(threadId);
-        }
-      }),
+      createNewChat(currentChatAgentId ?? null, rootSignal),
       Reason.DomCallback,
     );
   };

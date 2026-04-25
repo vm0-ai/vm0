@@ -6,7 +6,6 @@ import {
   useLastResolved,
   useResolved,
 } from "ccstate-react";
-import { useLoadableSet } from "ccstate-react/experimental";
 import {
   IconMenu2,
   IconPlus,
@@ -22,7 +21,10 @@ import {
   currentChatAgentId$,
   earliestUnreadEndedThread$,
 } from "../../signals/agent-chat.ts";
-import { createNewChatThread$ } from "../../signals/chat-page/chat-message.ts";
+import {
+  createNewChatThreadOptimistically$,
+  optimisticChatThread$,
+} from "../../signals/chat-page/optimistic-chat-thread-page.ts";
 import { AvatarFromUrl } from "./zero-sidebar-shared.tsx";
 import { QueueDrawer } from "../queue-page/queue-drawer.tsx";
 import {
@@ -48,6 +50,7 @@ import {
   setOrgManageDialogOpen$,
 } from "../../signals/zero-page/settings/org-manage-dialog.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
+import { rootSignal$ } from "../../signals/root-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
   autoReadEnabled$,
@@ -126,11 +129,10 @@ function InviteButtonLeaf() {
 
 function NewOrUnreadChatButtonLeaf() {
   const currentChatAgentId = useResolved(currentChatAgentId$);
-  const [creatingLoadable, createNewChat] =
-    useLoadableSet(createNewChatThread$);
+  const createNewChat = useSet(createNewChatThreadOptimistically$);
   const navigateToChatFn = useSet(navigateToChat$);
-  const pageSignal = useGet(pageSignal$);
-  const creating = creatingLoadable.state === "loading";
+  const { signal: rootSignal } = useGet(rootSignal$);
+  const creating = useGet(optimisticChatThread$) !== null;
   const unreadThread = useLastResolved(earliestUnreadEndedThread$);
 
   if (unreadThread) {
@@ -153,11 +155,7 @@ function NewOrUnreadChatButtonLeaf() {
 
   const handleNewChat = () => {
     detach(
-      createNewChat(currentChatAgentId ?? null, pageSignal).then((threadId) => {
-        if (threadId) {
-          navigateToChatFn(threadId);
-        }
-      }),
+      createNewChat(currentChatAgentId ?? null, rootSignal),
       Reason.DomCallback,
     );
   };

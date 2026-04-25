@@ -9,6 +9,7 @@ import {
   chatThreadsContract,
   chatThreadByIdContract,
 } from "@vm0/core/contracts/chat-threads";
+import { createNewChatThreadOptimistically$ } from "../../../signals/chat-page/optimistic-chat-thread-page.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -17,11 +18,11 @@ const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 
 function makeThread(
   id: string,
-  title: string,
+  title: string | null,
   createdAt: string,
 ): {
   id: string;
-  title: string;
+  title: string | null;
   agent: { id: string; avatarUrl: string | null };
   createdAt: string;
   updatedAt: string;
@@ -49,10 +50,34 @@ function mockAPIs() {
   ];
 
   let lastDeletedId: string | null = null;
+  let lastCreatedId: string | null = null;
 
   server.use(
     mockApi(chatThreadsContract.list, ({ respond }) => {
       return respond(200, { threads });
+    }),
+    mockApi(chatThreadsContract.create, ({ body, respond }) => {
+      const now = "2026-03-11T00:00:00Z";
+      const id = body.clientThreadId ?? "created-thread";
+      lastCreatedId = id;
+      threads = [
+        {
+          id,
+          title: body.title ?? null,
+          agent: { id: body.agentId, avatarUrl: null },
+          createdAt: now,
+          updatedAt: now,
+          isRead: true,
+          isArchived: false,
+          running: false,
+        },
+        ...threads,
+      ];
+      return respond(201, {
+        id,
+        title: body.title ?? null,
+        createdAt: now,
+      });
     }),
     mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
       const thread = threads.find((t) => {
@@ -87,6 +112,9 @@ function mockAPIs() {
     },
     getThreads: () => {
       return threads;
+    },
+    getLastCreatedId: () => {
+      return lastCreatedId;
     },
   };
 }
@@ -158,6 +186,41 @@ describe("sidebar chat delete", () => {
 
     expect(screen.getByText("Second chat")).toBeInTheDocument();
     expect(screen.getByText("Third chat")).toBeInTheDocument();
+  });
+
+  it("should not resurrect a deleted optimistic-created thread", async () => {
+    const { getLastCreatedId } = mockAPIs();
+
+    detachedSetupPage({ context, path: "/chats/thread-2" });
+
+    await waitFor(() => {
+      expect(screen.getByText("First chat")).toBeInTheDocument();
+    });
+
+    await context.store.set(
+      createNewChatThreadOptimistically$,
+      AGENT_ID,
+      context.signal,
+    );
+    const createdId = getLastCreatedId();
+    expect(createdId).not.toBeNull();
+    if (!createdId) {
+      throw new Error("Expected optimistic-created thread id");
+    }
+
+    await waitFor(() => {
+      expect(
+        document.querySelector(`a[href="/chats/${createdId}"]`),
+      ).toBeInTheDocument();
+    });
+
+    await deleteThread(1);
+
+    await waitFor(() => {
+      expect(
+        document.querySelector(`a[href="/chats/${createdId}"]`),
+      ).not.toBeInTheDocument();
+    });
   });
 
   it("should navigate to the next thread after deleting the current one", async () => {

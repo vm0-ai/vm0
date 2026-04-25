@@ -12,7 +12,10 @@ import { createChatThreadSignals, ensureDraft$ } from "./create-chat-thread.ts";
 import { createRestoredAttachment } from "../zero-page/chat-draft.ts";
 import { setupChatPageKeyboard$ } from "./chat-keyboard.ts";
 import { setAblyLoop$ } from "../realtime.ts";
-import { optimisticThreadSend$ } from "./optimistic-chat-thread-page.ts";
+import {
+  clearMatchingOptimisticChatThread$,
+  optimisticChatThread$,
+} from "./optimistic-chat-thread-page.ts";
 
 export const setupChatPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -31,7 +34,7 @@ export const setupChatPage$ = command(
     const thread = createChatThreadSignals(threadId, draft);
     set(setupChatPageKeyboard$, thread, signal);
 
-    const optimisticThread = get(optimisticThreadSend$);
+    const optimisticThread = get(optimisticChatThread$);
     const matchingOptimisticThread =
       optimisticThread?.threadId === threadId ? optimisticThread : null;
 
@@ -47,23 +50,16 @@ export const setupChatPage$ = command(
 
     if (matchingOptimisticThread) {
       set(updateDocumentTitle$, "New chat");
-      await matchingOptimisticThread.sendResult;
+      await matchingOptimisticThread.settleResult;
       signal.throwIfAborted();
-
-      set(thread.hideSkeleton$);
-      set(
-        updatePage$,
-        createElement(ZeroChatThreadPage, {
-          key: threadId,
-          thread,
-        }),
-        "sidebar",
-      );
     }
 
     const threadData = await get(thread.threadData$);
     signal.throwIfAborted();
     if (!threadData) {
+      if (matchingOptimisticThread) {
+        set(clearMatchingOptimisticChatThread$, matchingOptimisticThread);
+      }
       set(detachedNavigateTo$, "/", {
         replace: true,
       });
@@ -93,6 +89,19 @@ export const setupChatPage$ = command(
 
     await get(thread.groupedChatMessages$);
     signal.throwIfAborted();
+
+    if (matchingOptimisticThread) {
+      set(thread.hideSkeleton$);
+      set(
+        updatePage$,
+        createElement(ZeroChatThreadPage, {
+          key: threadId,
+          thread,
+        }),
+        "sidebar",
+      );
+      set(clearMatchingOptimisticChatThread$, matchingOptimisticThread);
+    }
 
     animationFrame(
       () => {

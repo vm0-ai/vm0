@@ -50,7 +50,12 @@ const router = tsr.router(chatThreadsContract, {
       };
     }
 
-    const thread = await createChatThread(userId, body.agentId, body.title);
+    const thread = await createChatThread(
+      userId,
+      body.agentId,
+      body.title,
+      body.clientThreadId,
+    );
     await publishThreadListChanged(userId);
 
     return {

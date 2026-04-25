@@ -154,6 +154,7 @@ export const chatThreadsContract = c.router({
     headers: authHeadersSchema,
     body: z.object({
       agentId: z.string().min(1),
+      clientThreadId: z.string().uuid().optional(),
       title: z.string().optional(),
     }),
     responses: {

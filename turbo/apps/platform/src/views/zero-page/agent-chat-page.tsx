@@ -65,9 +65,11 @@ import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { activeRoute$ } from "../../signals/active-route.ts";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
-import { createNewChatThread$ } from "../../signals/chat-page/chat-message.ts";
-import { sendNewThreadOptimistically$ } from "../../signals/chat-page/optimistic-chat-thread-page.ts";
-import { navigateToChat$ } from "../../signals/zero-page/zero-nav.ts";
+import {
+  createNewChatThreadOptimistically$,
+  optimisticChatThread$,
+  sendNewThreadOptimistically$,
+} from "../../signals/chat-page/optimistic-chat-thread-page.ts";
 import { voiceChatStatus$ } from "../../signals/voice-chat/voice-chat-session.ts";
 
 function getTagline(
@@ -191,20 +193,15 @@ function InviteButton({ pageSignal }: { pageSignal: AbortSignal }) {
   );
 }
 
-function NewChatButton({ pageSignal }: { pageSignal: AbortSignal }) {
+function NewChatButton() {
   const currentChatAgentId = useResolved(currentChatAgentId$);
-  const [creatingLoadable, createNewChat] =
-    useLoadableSet(createNewChatThread$);
-  const navigateToChatFn = useSet(navigateToChat$);
-  const creating = creatingLoadable.state === "loading";
+  const createNewChat = useSet(createNewChatThreadOptimistically$);
+  const creating = useGet(optimisticChatThread$) !== null;
+  const { signal: rootSignal } = useGet(rootSignal$);
 
   const handleNewChat = () => {
     detach(
-      createNewChat(currentChatAgentId ?? null, pageSignal).then((threadId) => {
-        if (threadId) {
-          navigateToChatFn(threadId);
-        }
-      }),
+      createNewChat(currentChatAgentId ?? null, rootSignal),
       Reason.DomCallback,
     );
   };
@@ -229,7 +226,7 @@ export function ChatHeaderAction({ pageSignal }: { pageSignal: AbortSignal }) {
   const newButtonEnabled =
     features?.[FeatureSwitchKey.ChatHeaderNewButton] ?? false;
   return newButtonEnabled ? (
-    <NewChatButton pageSignal={pageSignal} />
+    <NewChatButton />
   ) : (
     <InviteButton pageSignal={pageSignal} />
   );
