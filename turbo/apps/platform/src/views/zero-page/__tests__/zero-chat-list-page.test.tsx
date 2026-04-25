@@ -134,6 +134,12 @@ describe("zero chat list page - chat list rendering", () => {
     });
 
     hangDeferred.resolve();
+
+    // Wait for the loading state to resolve before the test ends to prevent
+    // async re-renders from triggering ErrorBoundary during afterEach cleanup.
+    await waitFor(() => {
+      expect(screen.queryByTestId(/skeleton/i)).not.toBeInTheDocument();
+    });
   });
 
   it("should show error message when API fails", async () => {

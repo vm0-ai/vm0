@@ -205,5 +205,13 @@ describe("zero schedule page - display after refactor", () => {
     });
 
     hangDeferred.resolve();
+
+    // Wait for the loading state to resolve before the test ends to prevent
+    // async re-renders from triggering ErrorBoundary during afterEach cleanup.
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("schedule-list-skeleton"),
+      ).not.toBeInTheDocument();
+    });
   });
 });
