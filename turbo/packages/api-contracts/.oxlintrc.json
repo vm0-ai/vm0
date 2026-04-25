@@ -1,6 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/oxc-project/oxlint/main/npm/oxlint/configuration_schema.json",
   "extends": ["../../.oxlintrc.json"],
+  "ignorePatterns": ["src/firewalls/*.generated.ts"],
   "overrides": [
     {
       "files": ["eslint.config.mjs", "vitest.config.ts"],

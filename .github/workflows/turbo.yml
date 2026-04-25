@@ -148,7 +148,7 @@ jobs:
         id: detect-migration
         run: |
           BASE_REF="${{ steps.detect.outputs.base-ref }}"
-          if git diff --name-only "$BASE_REF" HEAD | grep -qE "^turbo/apps/web/src/db/(migrations|schema)/"; then
+          if git diff --name-only "$BASE_REF" HEAD | grep -qE "^turbo/apps/web/src/db/(migrations|schema)/|^turbo/packages/db/src/schema/"; then
             echo "Migration or schema changes detected"
             echo "migration-changed=true" >> "$GITHUB_OUTPUT"
           else
@@ -301,13 +301,15 @@ jobs:
       - uses: actions/checkout@v6
       - name: Ensure no generated firewall files are tracked
         run: |
-          MATCHES=$(git ls-files 'turbo/packages/core/src/firewalls/*.generated.ts')
+          MATCHES=$(git ls-files \
+            'turbo/packages/core/src/firewalls/*.generated.ts' \
+            'turbo/packages/api-contracts/src/firewalls/*.generated.ts')
           if [ -n "$MATCHES" ]; then
             echo "::error::Generated firewall files must not be committed:"
             echo "$MATCHES"
             echo ""
             echo "These files are produced by @vm0/firewalls-generator on postinstall"
-            echo "(see turbo/packages/core/.gitignore). Fix: git rm --cached <files>"
+            echo "(see package .gitignore files). Fix: git rm --cached <files>"
             exit 1
           fi
 
@@ -579,7 +581,7 @@ jobs:
       - uses: ./.github/actions/toolchain-init
       - name: Test Other Packages
         working-directory: turbo
-        run: pnpm vitest run --project=@vm0/core --project=@vm0/ui --project=@vm0/firewalls-generator --coverage.enabled --coverage.reporter=json
+        run: pnpm vitest run --project=@vm0/core --project=@vm0/ui --project=@vm0/firewalls-generator --project=@vm0/api-contracts --project=@vm0/db --coverage.enabled --coverage.reporter=json
       - name: Upload coverage to Codecov
         if: success() || failure()
         uses: codecov/codecov-action@v6
