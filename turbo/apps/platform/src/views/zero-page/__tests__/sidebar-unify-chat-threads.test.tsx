@@ -5,9 +5,9 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import {
-  chatThreadsContract,
   chatThreadByIdContract,
   chatThreadMessagesContract,
+  chatThreadsContract,
 } from "@vm0/core/contracts/chat-threads";
 import { zeroAgentsByIdContract } from "@vm0/core/contracts/zero-agents";
 import { server } from "../../../mocks/server.ts";
@@ -26,7 +26,7 @@ interface ListQuery {
   agentId?: string;
 }
 
-function mockUnifiedThreads(observedQueries: ListQuery[]) {
+function mockThreads(observedQueries: ListQuery[]) {
   setMockTeam([
     {
       id: DEFAULT_AGENT_ID,
@@ -58,16 +58,6 @@ function mockUnifiedThreads(observedQueries: ListQuery[]) {
             agent: { id: DEFAULT_AGENT_ID, avatarUrl: null },
             createdAt: "2026-03-10T00:00:00Z",
             updatedAt: "2026-03-10T00:00:00Z",
-            isRead: true,
-            isArchived: false,
-            running: false,
-          },
-          {
-            id: "thread-sub",
-            title: "Sub thread",
-            agent: { id: SUB_AGENT_ID, avatarUrl: null },
-            createdAt: "2026-03-09T00:00:00Z",
-            updatedAt: "2026-03-09T00:00:00Z",
             isRead: true,
             isArchived: false,
             running: false,
@@ -141,9 +131,32 @@ function getSidebar(): HTMLElement {
 }
 
 describe("sidebar chat threads (#10162)", () => {
+  it("always requests threads scoped to the current agent", async () => {
+    const observed: ListQuery[] = [];
+    mockThreads(observed);
+    detachedSetupPage({ context, path: "/" });
+
+    await waitFor(() => {
+      expect(
+        within(getSidebar()).getByText("Default thread"),
+      ).toBeInTheDocument();
+    });
+
+    expect(
+      observed.some((q) => {
+        return q.agentId === DEFAULT_AGENT_ID;
+      }),
+    ).toBeTruthy();
+    expect(
+      observed.some((q) => {
+        return q.agentId === undefined;
+      }),
+    ).toBeFalsy();
+  });
+
   it("renders the unified title 'Chats'", async () => {
     const observed: ListQuery[] = [];
-    mockUnifiedThreads(observed);
+    mockThreads(observed);
     detachedSetupPage({ context, path: "/" });
 
     await waitFor(() => {

@@ -1,5 +1,14 @@
 # Changelog
 
+## [9.132.5](https://github.com/vm0-ai/vm0/compare/cli-v9.132.4...cli-v9.132.5) (2026-04-24)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.234.1
+
 ## [9.132.4](https://github.com/vm0-ai/vm0/compare/cli-v9.132.3...cli-v9.132.4) (2026-04-24)
 
 

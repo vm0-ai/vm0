@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.24.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.24.1...guest-agent-v0.24.2) (2026-04-24)
+
+
+### Refactoring
+
+* **guest-agent:** replace telemetry bool flag with an upload-mode enum ([#11030](https://github.com/vm0-ai/vm0/issues/11030)) ([93bbb5f](https://github.com/vm0-ai/vm0/commit/93bbb5fdf5c90d8b4fa04b986a4ae4d25143abfc))
+
 ## [0.24.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.24.0...guest-agent-v0.24.1) (2026-04-24)
 
 

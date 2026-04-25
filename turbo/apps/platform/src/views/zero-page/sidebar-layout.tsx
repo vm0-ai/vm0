@@ -77,13 +77,8 @@ function AgentAvatarInTopBar() {
 }
 
 function AutoReadToggleLeaf() {
-  const features = useLastResolved(featureSwitch$);
-  const audioOutputEnabled = features?.[FeatureSwitchKey.AudioOutput] ?? false;
   const autoRead = useGet(autoReadEnabled$);
   const toggleAutoReadFn = useSet(toggleAutoRead$);
-  if (!audioOutputEnabled) {
-    return null;
-  }
   return (
     <button
       type="button"

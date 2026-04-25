@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.234.1](https://github.com/vm0-ai/vm0/compare/core-v8.234.0...core-v8.234.1) (2026-04-24)
+
+
+### Performance Improvements
+
+* **chat:** avoid redundant startup requests ([#11039](https://github.com/vm0-ai/vm0/issues/11039)) ([549f656](https://github.com/vm0-ai/vm0/commit/549f656df8a35fc90b962d71ca1764e12d44975e))
+
 ## [8.234.0](https://github.com/vm0-ai/vm0/compare/core-v8.233.0...core-v8.234.0) (2026-04-24)
 
 

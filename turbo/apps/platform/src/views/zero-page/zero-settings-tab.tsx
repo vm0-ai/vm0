@@ -52,9 +52,7 @@ import {
   settingsModelSelection$,
   setSettingsModelSelection$,
 } from "../../signals/zero-page/settings/settings-tab.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { orgModelProviders$ } from "../../signals/external/org-model-providers.ts";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   ModelProviderPicker,
   type ModelProviderSelection,
@@ -130,9 +128,6 @@ export function ZeroSettingsTab({
   const resetForm = useSet(resetSettingsForm$);
   const markSaved = useSet(markSettingsSaved$);
 
-  const features = useLastResolved(featureSwitch$);
-  const showModelPicker =
-    features?.[FeatureSwitchKey.ModelProviderSelection] ?? false;
   const orgProviders = useLastResolved(orgModelProviders$);
 
   const [deleteLoadable, deleteAgentFn] = useLoadableSet(deleteAgent$);
@@ -323,20 +318,18 @@ export function ZeroSettingsTab({
                 </div>
               </div>
             </InlineSettingsRow>
-            {showModelPicker &&
-              orgProviders &&
-              orgProviders.modelProviders.length > 0 && (
-                <InlineSettingsRow
-                  label="Model"
-                  description="The model used by this agent. Defaults to the workspace setting."
-                >
-                  <ModelProviderPicker
-                    providers={orgProviders.modelProviders}
-                    value={modelSelection}
-                    onChange={setModelSelection}
-                  />
-                </InlineSettingsRow>
-              )}
+            {orgProviders && orgProviders.modelProviders.length > 0 && (
+              <InlineSettingsRow
+                label="Model"
+                description="The model used by this agent. Defaults to the workspace setting."
+              >
+                <ModelProviderPicker
+                  providers={orgProviders.modelProviders}
+                  value={modelSelection}
+                  onChange={setModelSelection}
+                />
+              </InlineSettingsRow>
+            )}
           </CardContent>
         </Card>
 

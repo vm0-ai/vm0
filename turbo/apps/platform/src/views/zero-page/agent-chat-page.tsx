@@ -388,10 +388,6 @@ export function AgentChatPage() {
   const navigateToChatFn = useSet(navigateToChat$);
   const { signal: rootSignal } = useGet(rootSignal$);
 
-  const modelFeatureEnabled =
-    useLastResolved(featureSwitch$)?.[
-      FeatureSwitchKey.ModelProviderSelection
-    ] ?? false;
   const orgProviders = useLastResolved(orgModelProviders$);
   const modelSelection = useLastResolved(chatPageModelSelection$) ?? null;
   const setModelSelection = useSet(setChatPageModelSelection$);
@@ -484,9 +480,7 @@ export function AgentChatPage() {
             displayName={currentChatAgentDisplayName ?? ""}
             autoFocus
             modelPicker={
-              modelFeatureEnabled &&
-              orgProviders &&
-              orgProviders.modelProviders.length > 0
+              orgProviders && orgProviders.modelProviders.length > 0
                 ? {
                     providers: orgProviders.modelProviders,
                     value: modelSelection,

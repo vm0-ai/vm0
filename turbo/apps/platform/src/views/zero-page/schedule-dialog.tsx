@@ -33,9 +33,7 @@ import {
   setShowConfirm$,
   dialogAgentModelDefault$,
 } from "../../signals/schedule-page/schedule-form.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { orgModelProviders$ } from "../../signals/external/org-model-providers.ts";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   ModelProviderPicker,
   type ModelProviderSelection,
@@ -563,9 +561,6 @@ function ScheduleFormDialogInner({
   const showConfirmVal = useGet(showConfirm$);
   const setShowConfirmVal = useSet(setShowConfirm$);
 
-  const features = useLastResolved(featureSwitch$);
-  const showModelPicker =
-    features?.[FeatureSwitchKey.ModelProviderSelection] ?? false;
   const orgProviders = useLastResolved(orgModelProviders$);
 
   const agentModelDefault = useLastResolved(dialogAgentModelDefault$) ?? null;
@@ -753,37 +748,35 @@ function ScheduleFormDialogInner({
             }}
           />
 
-          {showModelPicker &&
-            orgProviders &&
-            orgProviders.modelProviders.length > 0 && (
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium text-foreground">
-                  Model
-                  <span className="text-muted-foreground font-normal ml-1">
-                    (optional)
-                  </span>
-                </label>
-                <ModelProviderPicker
-                  providers={orgProviders.modelProviders}
-                  value={
-                    form.modelProviderId && form.selectedModel
-                      ? {
-                          modelProviderId: form.modelProviderId,
-                          selectedModel: form.selectedModel,
-                        }
-                      : null
-                  }
-                  onChange={(sel: ModelProviderSelection | null) => {
-                    updateForm({
-                      modelProviderId: sel?.modelProviderId ?? null,
-                      selectedModel: sel?.selectedModel ?? null,
-                    });
-                  }}
-                  agentDefault={agentModelDefault}
-                  inheritLabel="agent"
-                />
-              </div>
-            )}
+          {orgProviders && orgProviders.modelProviders.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-medium text-foreground">
+                Model
+                <span className="text-muted-foreground font-normal ml-1">
+                  (optional)
+                </span>
+              </label>
+              <ModelProviderPicker
+                providers={orgProviders.modelProviders}
+                value={
+                  form.modelProviderId && form.selectedModel
+                    ? {
+                        modelProviderId: form.modelProviderId,
+                        selectedModel: form.selectedModel,
+                      }
+                    : null
+                }
+                onChange={(sel: ModelProviderSelection | null) => {
+                  updateForm({
+                    modelProviderId: sel?.modelProviderId ?? null,
+                    selectedModel: sel?.selectedModel ?? null,
+                  });
+                }}
+                agentDefault={agentModelDefault}
+                inheritLabel="agent"
+              />
+            </div>
+          )}
         </div>
 
         <DialogFooter>

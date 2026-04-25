@@ -160,11 +160,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show admin-only daily credits chart and per-run records on Usage page",
     enabled: false,
   },
-  [FeatureSwitchKey.ModelDetail]: {
-    maintainer: "ethan@vm0.ai",
-    description: "Show the selected model name in activity details",
-    enabled: false,
-  },
   [FeatureSwitchKey.ZeroDebug]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -198,6 +193,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable audio output in chat (TTS read-aloud + auto-read) — gates the volume/read buttons and the /api/zero/voice-io/tts route",
     enabled: false,
   },
+  [FeatureSwitchKey.AutoSkill]: {
+    maintainer: "lancy@vm0.ai",
+    description: "Enable automatic skill creation in agent prompts",
+    enabled: false,
+  },
   [FeatureSwitchKey.TestOauthConnector]: {
     maintainer: "liangyou@vm0.ai",
     description:
@@ -220,12 +220,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "linghan@vm0.ai",
     description:
       "Enable manual chat history loading from a Load history button at the top of a thread. When off, chat stays in the latest-50/no-history mode.",
-    enabled: false,
-  },
-  [FeatureSwitchKey.InlineThinkingDot]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Show an inline streaming cursor on the last assistant message while the agent run is still active, so users see the agent is still working even after it has produced output",
     enabled: false,
   },
   [FeatureSwitchKey.FreshdeskConnector]: {

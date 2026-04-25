@@ -352,7 +352,7 @@ function prepareRenderData(
   const messages = visibleMessages.filter((m) => {
     return groupedMessageMatchesSearch(m, stepSearch.trim());
   });
-  const showModelDetail = features?.[FeatureSwitchKey.ModelDetail] ?? false;
+  const showModelDetail = true;
   const prompt = detail.prompt ?? "";
   const appendSystemPrompt = detail.appendSystemPrompt ?? "";
   const showSystemPrompt =

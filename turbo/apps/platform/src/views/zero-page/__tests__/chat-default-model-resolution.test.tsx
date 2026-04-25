@@ -23,7 +23,6 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   chatMessagesContract,
   chatThreadByIdContract,
@@ -249,9 +248,7 @@ describe("chat composer — default model resolution", () => {
     resetMockOrgModelProviders();
     resetMockFeatureSwitches();
     resetMockOnboardingStatus();
-    setMockFeatureSwitches({
-      [FeatureSwitchKey.ModelProviderSelection]: true,
-    });
+    setMockFeatureSwitches({});
     // Align onboarding default with the test agent so currentChatAgentId$
     // resolves deterministically to AGENT_ID on the /agents/:id/chat route.
     setMockOnboardingStatus({ defaultAgentId: AGENT_ID });
