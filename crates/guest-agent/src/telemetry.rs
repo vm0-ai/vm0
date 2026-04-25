@@ -1,8 +1,14 @@
-//! Telemetry uploader — incremental file reads with position tracking.
+//! Telemetry uploader — single-writer ownership of position files.
 //!
-//! Periodically reads new data from log files and uploads to the
-//! telemetry endpoint. Position files track how far we've read so
-//! we don't re-upload on the next tick.
+//! All reads of the log files and writes to the `*_pos.txt` files happen
+//! on one tokio task ([`run`]). The periodic tick and any caller-driven
+//! flushes both flow through the same `tokio::select!`, so uploads are
+//! serialized — eliminating the tick-vs-final race that used to regress
+//! the position file (#11008).
+//!
+//! Callers interact via [`Telemetry`]: spawn the task with
+//! [`Telemetry::spawn`], request uploads with [`Telemetry::flush`], and
+//! release with [`Telemetry::shutdown`].
 
 use crate::constants;
 use crate::env;
@@ -11,39 +17,50 @@ use crate::http;
 use crate::masker::SecretMasker;
 use crate::paths;
 use crate::urls;
-use guest_common::{log_info, log_warn};
+use guest_common::log_warn;
 use serde_json::{Value, json};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::sync::Arc;
 use std::time::Duration;
-use tokio_util::sync::CancellationToken;
+use tokio::sync::{mpsc, oneshot};
+use tokio::task::JoinHandle;
+use tokio::time::MissedTickBehavior;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
 
-/// Whether an upload pass should defer a trailing fragment to the next tick,
-/// or consume it as-is because no next tick is coming.
+/// Buffer size for the command channel. Only one flush is in flight at a
+/// time during cleanup, so a small bounded queue is plenty.
+const COMMAND_CHANNEL_CAPACITY: usize = 8;
+
+/// Whether an upload pass should defer a trailing fragment to the next
+/// pass, or consume it as-is because no next pass is coming.
 ///
-/// `Tick` is used by the periodic uploader and the silent pre-checkpoint
-/// pass. `Final` is reserved for the very last upload before agent exit.
+/// `Live` is used while the producer is still actively writing the log
+/// files — both periodic ticks and the pre-checkpoint flush. The trailing
+/// bytes after the last newline are left in place so the next pass can
+/// pick them up once the producer completes the line.
+///
+/// `Final` is the very last upload before agent exit. There is no next
+/// pass, so the EOF tail is consumed verbatim.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum UploadMode {
-    Tick,
+pub enum UploadMode {
+    Live,
     Final,
 }
 
 /// Read new bytes from `file_path` starting at the position stored in `pos_path`.
 /// Returns the new content and the updated position.
 ///
-/// In `Tick` mode, the read is aligned to the last newline: any trailing
+/// In `Live` mode, the read is aligned to the last newline: any trailing
 /// bytes after the last `\n` are treated as an in-progress write by the
-/// producer and left for the next tick. This prevents the producer-consumer
+/// producer and left for the next pass. This prevents the producer-consumer
 /// race from splitting a log line mid-write, which would corrupt UTF-8
 /// multibyte characters via `from_utf8_lossy` (the broken byte is replaced
 /// by U+FFFD and permanently lost, since the position has already advanced
 /// past it).
 ///
 /// In `Final` mode, the tail is consumed as-is — there will be no subsequent
-/// tick to pick it up. Any trailing fragment without a newline is uploaded
+/// pass to pick it up. Any trailing fragment without a newline is uploaded
 /// verbatim.
 fn read_file_delta(file_path: &str, pos_path: &str, mode: UploadMode) -> (String, u64) {
     let last_pos: u64 = std::fs::read_to_string(pos_path)
@@ -120,7 +137,7 @@ fn save_position(pos_path: &str, pos: u64) {
 /// the agent exits — any trailing fragment after the last newline is then
 /// consumed as-is, accepting a small mid-write race window in exchange for
 /// not losing the tail. Every earlier upload (periodic tick and the silent
-/// pre-checkpoint pass) must use `UploadMode::Tick` so a later pass can
+/// pre-checkpoint pass) must use `UploadMode::Live` so a later pass can
 /// safely pick up the tail once the producer completes the line.
 async fn upload_telemetry(masker: &SecretMasker, mode: UploadMode) -> Result<(), AgentError> {
     // Read deltas
@@ -174,57 +191,114 @@ async fn upload_telemetry(masker: &SecretMasker, mode: UploadMode) -> Result<(),
     }
 }
 
-/// Background loop uploading telemetry every `TELEMETRY_INTERVAL_SECS`.
-pub async fn telemetry_loop(shutdown: CancellationToken, masker: Arc<SecretMasker>) {
+/// Commands accepted by the uploader task.
+enum Cmd {
+    /// Flush new telemetry now and report the result back via `reply`.
+    /// `mode` is propagated to [`upload_telemetry`]; see [`UploadMode`].
+    Flush {
+        mode: UploadMode,
+        reply: oneshot::Sender<Result<(), AgentError>>,
+    },
+    /// Stop the loop. Any in-flight upload completes first.
+    Shutdown,
+}
+
+/// Owning handle to the uploader task.
+///
+/// Holds both the command channel and the spawned task's [`JoinHandle`],
+/// so callers see one lifecycle object rather than juggling two.
+/// Construct with [`Self::spawn`]; release with [`Self::shutdown`].
+pub struct Telemetry {
+    tx: mpsc::Sender<Cmd>,
+    handle: JoinHandle<()>,
+}
+
+impl Telemetry {
+    /// Spawn the uploader task and return an owning handle.
+    ///
+    /// Spawn **at most one instance per process.** The pos files
+    /// (`paths::telemetry_*_pos_file`) are process-global; two uploader
+    /// tasks would each call [`upload_telemetry`] on the same files,
+    /// reintroducing the multi-writer race that the channel was built
+    /// to eliminate (#11008). The type system can't enforce this — the
+    /// constraint is the shared pos paths, not the channel.
+    pub fn spawn(masker: Arc<SecretMasker>) -> Self {
+        let (tx, rx) = mpsc::channel(COMMAND_CHANNEL_CAPACITY);
+        let handle = tokio::spawn(run(rx, masker));
+        Self { tx, handle }
+    }
+
+    /// Trigger a telemetry upload and await completion.
+    ///
+    /// Use [`UploadMode::Live`] for any flush while the agent is still
+    /// running (the producer continues writing). Use [`UploadMode::Final`]
+    /// for the very last flush before exit, which consumes the EOF tail.
+    pub async fn flush(&self, mode: UploadMode) -> Result<(), AgentError> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.tx
+            .send(Cmd::Flush {
+                mode,
+                reply: reply_tx,
+            })
+            .await
+            .map_err(|_| AgentError::TelemetryUnavailable)?;
+        reply_rx
+            .await
+            .map_err(|_| AgentError::TelemetryUnavailable)?
+    }
+
+    /// Stop the uploader and await graceful task termination.
+    ///
+    /// Consumes `self`, so no further commands can be sent after this
+    /// call. Any commands queued before `shutdown` are processed first
+    /// (the loop is FIFO); the task exits when it dequeues the
+    /// `Shutdown` command.
+    pub async fn shutdown(self) {
+        let _ = self.tx.send(Cmd::Shutdown).await;
+        let _ = self.handle.await;
+    }
+}
+
+/// Single-writer task. Owns all pos-file mutations.
+///
+/// `biased` select ensures a queued Flush wins over a ready tick at any
+/// select boundary, so a caller-driven flush is never blocked behind a
+/// tick that hasn't started yet. (A tick already in its `await` cannot
+/// be preempted; the worst-case wait for a flush is one in-flight tick.)
+async fn run(mut rx: mpsc::Receiver<Cmd>, masker: Arc<SecretMasker>) {
     if !env::has_api() {
-        shutdown.cancelled().await;
+        // Drain commands so callers don't block on `reply_rx`. Flushes
+        // are a no-op (no API to upload to); Shutdown ends the loop.
+        while let Some(cmd) = rx.recv().await {
+            match cmd {
+                Cmd::Flush { reply, .. } => {
+                    let _ = reply.send(Ok(()));
+                }
+                Cmd::Shutdown => break,
+            }
+        }
         return;
     }
 
     let mut interval =
         tokio::time::interval(Duration::from_secs(constants::TELEMETRY_INTERVAL_SECS));
+    interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
+
     loop {
         tokio::select! {
-            _ = shutdown.cancelled() => break,
+            biased;
+            cmd = rx.recv() => match cmd {
+                Some(Cmd::Flush { mode, reply }) => {
+                    let result = upload_telemetry(&masker, mode).await;
+                    let _ = reply.send(result);
+                }
+                Some(Cmd::Shutdown) | None => break,
+            },
             _ = interval.tick() => {
-                let _ = upload_telemetry(&masker, UploadMode::Tick).await;
+                let _ = upload_telemetry(&masker, UploadMode::Live).await;
             }
         }
     }
-}
-
-/// Final telemetry upload before agent completion.
-///
-/// Uses `UploadMode::Final` to consume the EOF tail: there is no subsequent
-/// upload that could pick up an otherwise-deferred fragment. A small mid-
-/// write race remains — vsock-guest may still be writing a chunk of
-/// system_log when we snapshot — but one potentially-split final line is a
-/// better tradeoff than silently dropping the whole tail.
-pub async fn final_upload(masker: &SecretMasker) -> Result<(), AgentError> {
-    if !env::has_api() {
-        return Ok(());
-    }
-    log_info!(LOG_TAG, "Performing final telemetry upload...");
-    upload_telemetry(masker, UploadMode::Final).await
-}
-
-/// Same as [`final_upload`] but without the log banner or error log.
-/// Used by the parallel-with-checkpoint first pass in `main.rs` so the
-/// operator-visible log output stays identical to the pre-parallelization
-/// sequence: only the post-`▷ Cleanup` catch-up emits the banner, and
-/// a first-pass failure is silently deferred to the catch-up (which reads
-/// the same unchanged file position and re-uploads the delta).
-///
-/// Uses `UploadMode::Tick` because more log data is still being written
-/// during `▷ Cleanup` after this returns — the real end-of-life flush is
-/// [`final_upload`]. If this pass ate the EOF tail mid-write, it could
-/// split a UTF-8 multibyte character and the catch-up would skip past the
-/// broken byte, losing the character permanently.
-pub async fn final_upload_silent(masker: &SecretMasker) -> Result<(), AgentError> {
-    if !env::has_api() {
-        return Ok(());
-    }
-    upload_telemetry(masker, UploadMode::Tick).await
 }
 
 #[cfg(test)]
@@ -242,7 +316,7 @@ mod tests {
         let (content, new_pos) = read_file_delta(
             file.to_str().unwrap(),
             pos.to_str().unwrap(),
-            UploadMode::Tick,
+            UploadMode::Live,
         );
         assert_eq!(content, "hello world\n");
         assert_eq!(new_pos, 12);
@@ -260,7 +334,7 @@ mod tests {
         let (content, new_pos) = read_file_delta(
             file.to_str().unwrap(),
             pos.to_str().unwrap(),
-            UploadMode::Tick,
+            UploadMode::Live,
         );
         assert_eq!(content, "world\n");
         assert_eq!(new_pos, 12);
@@ -277,7 +351,7 @@ mod tests {
         let (content, new_pos) = read_file_delta(
             file.to_str().unwrap(),
             pos.to_str().unwrap(),
-            UploadMode::Tick,
+            UploadMode::Live,
         );
         assert!(content.is_empty());
         assert_eq!(new_pos, 4);
@@ -292,7 +366,7 @@ mod tests {
         let (content, new_pos) = read_file_delta(
             file.to_str().unwrap(),
             pos.to_str().unwrap(),
-            UploadMode::Tick,
+            UploadMode::Live,
         );
         assert!(content.is_empty());
         assert_eq!(new_pos, 0);
@@ -308,7 +382,7 @@ mod tests {
         let (entries, new_pos) = read_jsonl_delta(
             file.to_str().unwrap(),
             pos.to_str().unwrap(),
-            UploadMode::Tick,
+            UploadMode::Live,
         );
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0]["a"], 1);
@@ -337,7 +411,7 @@ mod tests {
         let (content, new_pos) = read_file_delta(
             file.to_str().unwrap(),
             pos.to_str().unwrap(),
-            UploadMode::Tick,
+            UploadMode::Live,
         );
         assert!(content.is_empty());
         assert_eq!(new_pos, 100);
@@ -355,7 +429,7 @@ mod tests {
         let (content, new_pos) = read_file_delta(
             file.to_str().unwrap(),
             pos.to_str().unwrap(),
-            UploadMode::Tick,
+            UploadMode::Live,
         );
         assert_eq!(content, "data\n");
         assert_eq!(new_pos, 5);
@@ -371,7 +445,7 @@ mod tests {
         let (entries, new_pos) = read_jsonl_delta(
             file.to_str().unwrap(),
             pos.to_str().unwrap(),
-            UploadMode::Tick,
+            UploadMode::Live,
         );
         assert!(entries.is_empty());
         assert_eq!(new_pos, 0);
@@ -387,14 +461,14 @@ mod tests {
         let (entries, new_pos) = read_jsonl_delta(
             file.to_str().unwrap(),
             pos.to_str().unwrap(),
-            UploadMode::Tick,
+            UploadMode::Live,
         );
         assert!(entries.is_empty());
         assert!(new_pos > 0);
     }
 
-    /// Tick mode: an in-progress line (no trailing \n) must be deferred
-    /// to the next tick instead of being uploaded half-written.
+    /// Live mode: an in-progress line (no trailing \n) must be deferred
+    /// to the next pass instead of being uploaded half-written.
     #[test]
     fn read_file_delta_defers_trailing_fragment() {
         let dir = tempfile::tempdir().unwrap();
@@ -403,11 +477,11 @@ mod tests {
         // Two complete lines followed by a partial write.
         fs::write(&file, "line1\nline2\npartial").unwrap();
 
-        // First tick: read up to the last newline, leave "partial" behind.
+        // First pass: read up to the last newline, leave "partial" behind.
         let (content, new_pos) = read_file_delta(
             file.to_str().unwrap(),
             pos.to_str().unwrap(),
-            UploadMode::Tick,
+            UploadMode::Live,
         );
         assert_eq!(content, "line1\nline2\n");
         assert_eq!(new_pos, 12);
@@ -416,18 +490,18 @@ mod tests {
         fs::write(&file, "line1\nline2\npartial done\n").unwrap();
         fs::write(&pos, "12").unwrap();
 
-        // Second tick: now "partial done\n" is complete.
+        // Second pass: now "partial done\n" is complete.
         let (content2, new_pos2) = read_file_delta(
             file.to_str().unwrap(),
             pos.to_str().unwrap(),
-            UploadMode::Tick,
+            UploadMode::Live,
         );
         assert_eq!(content2, "partial done\n");
         assert_eq!(new_pos2, 25);
     }
 
     /// Final pass: trailing fragment without a newline must be consumed,
-    /// since there will be no subsequent tick to pick it up.
+    /// since there will be no subsequent pass to pick it up.
     #[test]
     fn read_file_delta_final_pass_consumes_fragment() {
         let dir = tempfile::tempdir().unwrap();
@@ -444,10 +518,10 @@ mod tests {
         assert_eq!(new_pos, 13);
     }
 
-    /// Regression: a multibyte UTF-8 character split across two ticks must
-    /// survive intact. Before the fix, `from_utf8_lossy` replaced each
-    /// split byte with U+FFFD and the broken char was permanently lost
-    /// because `save_position` had advanced past it.
+    /// Regression: a multibyte UTF-8 character split across two passes
+    /// must survive intact. Before the fix, `from_utf8_lossy` replaced
+    /// each split byte with U+FFFD and the broken char was permanently
+    /// lost because `save_position` had advanced past it.
     #[test]
     fn read_file_delta_utf8_multibyte_survives_split() {
         let dir = tempfile::tempdir().unwrap();
@@ -459,11 +533,11 @@ mod tests {
         partial.push(0xE4);
         fs::write(&file, &partial).unwrap();
 
-        // First tick: stops at the newline, leaves the orphan 0xE4 behind.
+        // First pass: stops at the newline, leaves the orphan 0xE4 behind.
         let (content, new_pos) = read_file_delta(
             file.to_str().unwrap(),
             pos.to_str().unwrap(),
-            UploadMode::Tick,
+            UploadMode::Live,
         );
         assert_eq!(content, "prefix\n");
         assert_eq!(new_pos, 7);
@@ -475,11 +549,11 @@ mod tests {
         complete.extend_from_slice(b"\n");
         fs::write(&file, &complete).unwrap();
 
-        // Second tick: reads the complete multibyte character.
+        // Second pass: reads the complete multibyte character.
         let (content2, new_pos2) = read_file_delta(
             file.to_str().unwrap(),
             pos.to_str().unwrap(),
-            UploadMode::Tick,
+            UploadMode::Live,
         );
         assert_eq!(content2, "中\n");
         assert_eq!(new_pos2, complete.len() as u64);
@@ -489,7 +563,7 @@ mod tests {
 
     /// A JSONL file with a partially-written trailing record must not have
     /// that record silently dropped. The half line is deferred to the next
-    /// tick, and once the producer completes it, the entry is uploaded.
+    /// pass, and once the producer completes it, the entry is uploaded.
     #[test]
     fn read_jsonl_delta_defers_partial_line() {
         let dir = tempfile::tempdir().unwrap();
@@ -497,11 +571,11 @@ mod tests {
         let pos = dir.path().join("data.pos");
         fs::write(&file, "{\"a\":1}\n{\"b\":2").unwrap();
 
-        // First tick: only {"a":1} is complete.
+        // First pass: only {"a":1} is complete.
         let (entries, new_pos) = read_jsonl_delta(
             file.to_str().unwrap(),
             pos.to_str().unwrap(),
-            UploadMode::Tick,
+            UploadMode::Live,
         );
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0]["a"], 1);
@@ -513,18 +587,18 @@ mod tests {
         let (entries2, new_pos2) = read_jsonl_delta(
             file.to_str().unwrap(),
             pos.to_str().unwrap(),
-            UploadMode::Tick,
+            UploadMode::Live,
         );
         assert_eq!(entries2.len(), 1);
         assert_eq!(entries2[0]["b"], 2);
         assert_eq!(new_pos2, 16);
     }
 
-    /// Tick mode, first tick, delta contains no newline at all. Must
+    /// Live mode, first pass, delta contains no newline at all. Must
     /// return empty without advancing the position so the data is
     /// picked up intact once the producer writes the terminating \n.
     #[test]
-    fn read_file_delta_tick_no_newline_at_all() {
+    fn read_file_delta_live_no_newline_at_all() {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("log.txt");
         let pos = dir.path().join("log.pos");
@@ -533,17 +607,17 @@ mod tests {
         let (content, new_pos) = read_file_delta(
             file.to_str().unwrap(),
             pos.to_str().unwrap(),
-            UploadMode::Tick,
+            UploadMode::Live,
         );
         assert!(content.is_empty());
         assert_eq!(new_pos, 0);
 
-        // Producer completes the line — the next tick picks up everything.
+        // Producer completes the line — the next pass picks up everything.
         fs::write(&file, "partial done\n").unwrap();
         let (content2, new_pos2) = read_file_delta(
             file.to_str().unwrap(),
             pos.to_str().unwrap(),
-            UploadMode::Tick,
+            UploadMode::Live,
         );
         assert_eq!(content2, "partial done\n");
         assert_eq!(new_pos2, 13);
@@ -581,11 +655,11 @@ mod tests {
         partial.extend_from_slice(&[0xF0, 0x9F]);
         fs::write(&file, &partial).unwrap();
 
-        // First tick stops at \n, defers the orphan bytes.
+        // First pass stops at \n, defers the orphan bytes.
         let (content, new_pos) = read_file_delta(
             file.to_str().unwrap(),
             pos.to_str().unwrap(),
-            UploadMode::Tick,
+            UploadMode::Live,
         );
         assert_eq!(content, "prefix\n");
         assert_eq!(new_pos, 7);
@@ -600,19 +674,19 @@ mod tests {
         let (content2, new_pos2) = read_file_delta(
             file.to_str().unwrap(),
             pos.to_str().unwrap(),
-            UploadMode::Tick,
+            UploadMode::Live,
         );
         assert_eq!(content2, "😀\n");
         assert_eq!(new_pos2, complete.len() as u64);
         assert!(!content2.contains('\u{FFFD}'));
     }
 
-    /// Documents the final_pass behavior under the residual mid-chunk
+    /// Documents the `Final` mode behavior under the residual mid-chunk
     /// race tracked in #11010: if vsock-guest's chunk boundary split a
-    /// UTF-8 character, final_upload sees invalid bytes. The code must
-    /// replace them with U+FFFD and advance the position — not panic,
-    /// not truncate the tail. Guards against accidental replacement of
-    /// `from_utf8_lossy` with the stricter `from_utf8`.
+    /// UTF-8 character, the final flush sees invalid bytes. The code
+    /// must replace them with U+FFFD and advance the position — not
+    /// panic, not truncate the tail. Guards against accidental
+    /// replacement of `from_utf8_lossy` with the stricter `from_utf8`.
     #[test]
     fn read_file_delta_final_pass_invalid_utf8_replaces_with_fffd() {
         let dir = tempfile::tempdir().unwrap();
@@ -633,26 +707,27 @@ mod tests {
         assert_eq!(new_pos, 5);
     }
 
-    /// Regression for the `final_upload_silent` bug: the pre-checkpoint
-    /// pass must not consume an in-flight UTF-8 byte sequence. Simulates
-    /// the real call sequence — `final_upload_silent` (newline-aligned),
-    /// producer continues writing, `final_upload` catch-up (consumes EOF).
+    /// Regression for the pre-checkpoint flush UTF-8 bug: the
+    /// pre-checkpoint flush (`UploadMode::Live`) must not consume an
+    /// in-flight UTF-8 byte sequence. Simulates the real sequence — Live
+    /// flush (newline-aligned), producer continues writing, Final
+    /// catch-up flush (consumes EOF).
     #[test]
-    fn silent_pass_then_final_catch_up_preserves_utf8() {
+    fn live_pass_then_final_catch_up_preserves_utf8() {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("log.txt");
         let pos = dir.path().join("log.pos");
-        // Producer state at the moment the silent pass fires: "log\n" plus
-        // the first byte of "中" (0xE4).
+        // Producer state at the moment the Live flush fires: "log\n"
+        // plus the first byte of "中" (0xE4).
         let mut partial = Vec::from("log\n");
         partial.push(0xE4);
         fs::write(&file, &partial).unwrap();
 
-        // Silent pre-checkpoint pass: newline-aligned, defers the orphan byte.
+        // Pre-checkpoint Live flush: newline-aligned, defers the orphan byte.
         let (content, new_pos) = read_file_delta(
             file.to_str().unwrap(),
             pos.to_str().unwrap(),
-            UploadMode::Tick,
+            UploadMode::Live,
         );
         assert_eq!(content, "log\n");
         assert_eq!(new_pos, 4);

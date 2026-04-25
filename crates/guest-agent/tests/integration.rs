@@ -859,20 +859,20 @@ async fn send_event_failure_writes_error_flag() {
 }
 
 // =========================================================================
-// Group 8: final_upload delta semantics
+// Group 8: telemetry flush delta semantics
 //
-// These back the parallel-checkpoint-with-catch-up pattern in `main.rs`:
-// on the happy path, the first `final_upload` runs concurrently with
+// Backs the parallel-checkpoint-with-catch-up pattern in `main.rs`: the
+// first `flush(UploadMode::Live)` runs concurrently with
 // `checkpoint::create_checkpoint` and reads the `sandbox_ops` log before
-// checkpoint's sub-op records are written; a second `final_upload` after
-// the join picks up the delta. If `final_upload` ever stopped being
-// incremental — re-reading from offset 0 — that pattern would duplicate
-// records; if position-tracking broke in the other direction, checkpoint
-// sub-ops would be lost entirely.
+// checkpoint's sub-op records are written; a second
+// `flush(UploadMode::Final)` after the join picks up the delta. If the
+// uploader ever stopped being incremental — re-reading from offset 0 —
+// that pattern would duplicate records; if position-tracking broke in
+// the other direction, checkpoint sub-ops would be lost entirely.
 // =========================================================================
 
 #[tokio::test]
-async fn final_upload_is_incremental_between_calls() {
+async fn flush_is_incremental_between_calls() {
     let _guard = TEST_MUTEX.lock().unwrap();
     let server = &*MOCK_SERVER;
 
@@ -898,20 +898,25 @@ async fn final_upload_is_incremental_between_calls() {
         then.status(200);
     });
 
-    let masker = SecretMasker::from_raw("");
+    let masker = std::sync::Arc::new(SecretMasker::from_raw(""));
+    let telemetry = guest_agent::telemetry::Telemetry::spawn(masker);
 
-    // Pre-checkpoint record → parallel-pass upload captures it.
+    // Pre-checkpoint record → first flush captures it.
     guest_common::telemetry::record_sandbox_op("first_op", Duration::from_millis(10), true, None);
-    guest_agent::telemetry::final_upload(&masker)
+    telemetry
+        .flush(guest_agent::telemetry::UploadMode::Live)
         .await
-        .expect("first upload should succeed");
+        .expect("first flush should succeed");
 
     // Simulates a checkpoint sub-op written AFTER the parallel pass read
-    // the sandbox_ops file. The catch-up must pick it up.
+    // the sandbox_ops file. The catch-up flush must pick it up.
     guest_common::telemetry::record_sandbox_op("second_op", Duration::from_millis(20), true, None);
-    guest_agent::telemetry::final_upload(&masker)
+    telemetry
+        .flush(guest_agent::telemetry::UploadMode::Final)
         .await
-        .expect("catch-up upload should succeed");
+        .expect("catch-up flush should succeed");
+
+    telemetry.shutdown().await;
 
     // The first upload carried `first_op` and matched `first_op_mock`.
     // The catch-up MUST NOT have carried `first_op` (position tracking
@@ -922,6 +927,132 @@ async fn final_upload_is_incremental_between_calls() {
 
     first_op_mock.delete_async().await;
     catchup_mock.delete_async().await;
+    let _ = std::fs::remove_file(ops_file);
+    let _ = std::fs::remove_file(pos_file);
+}
+
+/// Regression for #11008: every flush goes through the same select arm,
+/// so `save_position` is single-writer. Even when many concurrent
+/// `flush(UploadMode::Live)` calls race on `tokio::join!`, the pos file
+/// ends at exactly one byte advance (the first flush sees the delta,
+/// every subsequent flush sees an empty file) — never regresses, never
+/// duplicates the upload past the first.
+#[tokio::test]
+async fn concurrent_flushes_do_not_regress_pos_file() {
+    let _guard = TEST_MUTEX.lock().unwrap();
+    let server = &*MOCK_SERVER;
+
+    let ops_file = guest_common::telemetry::sandbox_ops_log();
+    let pos_file = guest_agent::paths::telemetry_sandbox_ops_pos_file();
+    let _ = std::fs::remove_file(ops_file);
+    let _ = std::fs::remove_file(pos_file);
+
+    let upload_mock = server.mock(|when, then| {
+        when.method(POST).path("/api/webhooks/agent/telemetry");
+        then.status(200);
+    });
+
+    let masker = std::sync::Arc::new(SecretMasker::from_raw(""));
+    let telemetry = guest_agent::telemetry::Telemetry::spawn(masker);
+
+    // Record one op, then fire several concurrent flushes. Pre-refactor a
+    // tick + final could both read the same pos and race on save_position;
+    // post-refactor the select serialises them, so only the first sees a
+    // non-empty delta and only one HTTP POST happens.
+    guest_common::telemetry::record_sandbox_op("only_op", Duration::from_millis(5), true, None);
+
+    let (r1, r2, r3) = tokio::join!(
+        telemetry.flush(guest_agent::telemetry::UploadMode::Live),
+        telemetry.flush(guest_agent::telemetry::UploadMode::Live),
+        telemetry.flush(guest_agent::telemetry::UploadMode::Live),
+    );
+    r1.expect("flush 1 ok");
+    r2.expect("flush 2 ok");
+    r3.expect("flush 3 ok");
+
+    telemetry.shutdown().await;
+
+    // Pos file points at end of the file — no regression.
+    let pos: u64 = std::fs::read_to_string(pos_file)
+        .unwrap()
+        .trim()
+        .parse()
+        .unwrap();
+    let file_len = std::fs::metadata(ops_file).unwrap().len();
+    assert_eq!(pos, file_len, "pos must match file length, no regression");
+
+    // Exactly one upload carried the delta — the others saw empty files.
+    upload_mock.assert_calls_async(1).await;
+
+    upload_mock.delete_async().await;
+    let _ = std::fs::remove_file(ops_file);
+    let _ = std::fs::remove_file(pos_file);
+}
+
+/// Pins three invariants that have no other test coverage:
+/// 1. `flush` propagates the upload's `Err` to the caller (rather than
+///    swallowing it via `let _ = reply.send(...)`).
+/// 2. The uploader loop **keeps running** after a failed upload — a
+///    subsequent `flush` must succeed, not return `TelemetryUnavailable`.
+/// 3. A failed upload does **not** advance the pos file, so the deferred
+///    delta is re-included in the next attempt (and uploaded once
+///    HTTP recovers).
+#[tokio::test]
+async fn flush_propagates_error_then_loop_recovers() {
+    let _guard = TEST_MUTEX.lock().unwrap();
+    let server = &*MOCK_SERVER;
+
+    let ops_file = guest_common::telemetry::sandbox_ops_log();
+    let pos_file = guest_agent::paths::telemetry_sandbox_ops_pos_file();
+    let _ = std::fs::remove_file(ops_file);
+    let _ = std::fs::remove_file(pos_file);
+
+    let masker = std::sync::Arc::new(SecretMasker::from_raw(""));
+    let telemetry = guest_agent::telemetry::Telemetry::spawn(masker);
+
+    // Force upload_telemetry to fire HTTP by writing a delta.
+    guest_common::telemetry::record_sandbox_op(
+        "first_attempt_op",
+        Duration::from_millis(5),
+        true,
+        None,
+    );
+
+    // First attempt: server returns 500.
+    let fail_mock = server.mock(|when, then| {
+        when.method(POST).path("/api/webhooks/agent/telemetry");
+        then.status(500);
+    });
+
+    let r1 = telemetry
+        .flush(guest_agent::telemetry::UploadMode::Live)
+        .await;
+    assert!(r1.is_err(), "flush must propagate the HTTP 500 to caller");
+    fail_mock.assert_calls_async(1).await;
+    fail_mock.delete_async().await;
+
+    // Second attempt: server returns 200, AND must still see
+    // `first_attempt_op` in the body because the failed first upload
+    // did not advance the pos file.
+    let success_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/telemetry")
+            .body_includes("first_attempt_op");
+        then.status(200);
+    });
+
+    let r2 = telemetry
+        .flush(guest_agent::telemetry::UploadMode::Live)
+        .await;
+    assert!(
+        r2.is_ok(),
+        "loop must keep accepting flushes after a failed upload, got {r2:?}",
+    );
+    success_mock.assert_calls_async(1).await;
+
+    telemetry.shutdown().await;
+
+    success_mock.delete_async().await;
     let _ = std::fs::remove_file(ops_file);
     let _ = std::fs::remove_file(pos_file);
 }

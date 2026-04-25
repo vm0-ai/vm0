@@ -17,4 +17,7 @@ pub enum AgentError {
 
     #[error("checkpoint: {0}")]
     Checkpoint(String),
+
+    #[error("telemetry uploader unavailable")]
+    TelemetryUnavailable,
 }
