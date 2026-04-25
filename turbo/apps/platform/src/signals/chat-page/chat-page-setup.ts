@@ -7,7 +7,7 @@ import { updatePage$ } from "../react-router.ts";
 import { setChatAgentId$, currentChatThreadId$ } from "../agent-chat.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
-import { detachedNavigateTo$ } from "../route.ts";
+import { detachedNavigateTo$, searchParams$ } from "../route.ts";
 import { createChatThreadSignals, ensureDraft$ } from "./create-chat-thread.ts";
 import { createRestoredAttachment } from "../zero-page/chat-draft.ts";
 import { setupChatPageKeyboard$ } from "./chat-keyboard.ts";
@@ -66,6 +66,7 @@ export const setupChatPage$ = command(
     signal.throwIfAborted();
     if (!threadData) {
       set(detachedNavigateTo$, "/", {
+        searchParams: get(searchParams$),
         replace: true,
       });
       return;
