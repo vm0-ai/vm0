@@ -70,6 +70,11 @@ async function setupTaskWithCallback(options: { agentIdOnRun?: string }) {
   const taskId = taskBody.task.id;
   const runId = taskBody.task.runId;
 
+  // Task creation schedules createZeroRun() dispatch via waitUntil() and a
+  // post-response reasoner tick via after(). Drain setup-owned async work so
+  // it cannot outlive the test that uses this helper.
+  await context.mocks.flushAfter();
+
   // Set vars.ZERO_AGENT_ID so the callback's readRunAgentId can resolve it.
   // Defaults to the session's agent (happy path); tests override for mismatch.
   await setTestRunVars(runId, {
@@ -190,6 +195,8 @@ describe("POST /api/internal/callbacks/voice-chat-candidate", () => {
       return i.role === "task_result";
     });
     expect(resultItem!.content).toContain("runner crashed");
+
+    await context.mocks.flushAfter();
   });
 
   it("returns 401 on invalid signature", async () => {
@@ -270,6 +277,8 @@ describe("POST /api/internal/callbacks/voice-chat-candidate", () => {
       return i.role === "system_note";
     });
     expect(note).toBeDefined();
+
+    await context.mocks.flushAfter();
   });
 
   it("dispatches cancel side effects for in-flight runs on agent mismatch (#10762)", async () => {
