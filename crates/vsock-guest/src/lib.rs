@@ -957,7 +957,7 @@ fn spawn_streaming_monitor(
             log(
                 "WARN",
                 &format!(
-                    "spawn_watch: pid={pid} stdout drain deadline reached after \
+                    "spawn_watch: pid={pid} drain deadline reached after \
                      {DRAIN_DEADLINE_SECS}s, possible orphaned child process",
                 ),
             );
