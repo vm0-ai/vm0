@@ -66,6 +66,36 @@ export const setMetric$ = command(({ set }, metric: InsightMetric) => {
   set(internalMetric$, metric);
 });
 
+// --- Hover state (shared dim-on-hover behavior across breakdown lists) ---
+
+const internalHoveredCategory$ = state<string | null>(null);
+const internalHoveredScheduleId$ = state<string | null>(null);
+const internalHoveredChatId$ = state<string | null>(null);
+
+export const hoveredCategory$ = computed((get) => {
+  return get(internalHoveredCategory$);
+});
+
+export const hoveredScheduleId$ = computed((get) => {
+  return get(internalHoveredScheduleId$);
+});
+
+export const hoveredChatId$ = computed((get) => {
+  return get(internalHoveredChatId$);
+});
+
+export const setHoveredCategory$ = command(({ set }, key: string | null) => {
+  set(internalHoveredCategory$, key);
+});
+
+export const setHoveredScheduleId$ = command(({ set }, id: string | null) => {
+  set(internalHoveredScheduleId$, id);
+});
+
+export const setHoveredChatId$ = command(({ set }, id: string | null) => {
+  set(internalHoveredChatId$, id);
+});
+
 const tz$ = computed(async (get) => {
   const prefs = await get(userPreferences$);
   return prefs.timezone ?? "UTC";

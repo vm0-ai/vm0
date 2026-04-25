@@ -70,8 +70,7 @@ export type SidebarNavId =
   | "works"
   | "settings"
   | "queues"
-  | "lab"
-  | "usage";
+  | "lab";
 
 export function isChatRoute(key: RouteKey | null): boolean {
   return (
@@ -96,7 +95,6 @@ export const handleZeroNavSelect$ = command(({ set }, id: SidebarNavId) => {
       works: ROUTES.works,
       settings: ROUTES.settings,
       lab: ROUTES.lab,
-      usage: ROUTES.usage,
     } satisfies Record<
       Exclude<SidebarNavId, "queues">,
       (typeof ROUTES)[keyof typeof ROUTES]
@@ -110,6 +108,7 @@ export type ZeroAccountAction =
   | "preferences"
   | "manage"
   | "apiKeys"
+  | "usage"
   | "signout";
 
 export const handleZeroAccountAction$ = command(
@@ -123,6 +122,10 @@ export const handleZeroAccountAction$ = command(
     }
     if (action === "apiKeys") {
       set(detachedNavigateTo$, ROUTES.settingsApiKeys);
+      return;
+    }
+    if (action === "usage") {
+      set(detachedNavigateTo$, ROUTES.usage);
     }
   },
 );

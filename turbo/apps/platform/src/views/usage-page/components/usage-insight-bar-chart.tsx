@@ -1,35 +1,54 @@
 import { useGet, useSet } from "ccstate-react";
-import {
-  SOURCE_BUCKET_COLORS,
-  type SourceBucket,
-} from "@vm0/core/usage-source-bucket";
-import type { UsageInsightBucket } from "@vm0/api-contracts/contracts/zero-usage-insight";
+import type {
+  UsageInsightBucket,
+  UsageInsightResponse,
+} from "@vm0/api-contracts/contracts/zero-usage-insight";
 import {
   chartTooltip$,
   chartWidth$,
+  hoveredCategory$,
   setChartTooltip$,
   setChartWidth$,
+  setHoveredCategory$,
   type ChartTooltipData,
   type InsightMetric,
-  type InsightGroupBy,
+  type InsightRange,
 } from "../../../signals/usage-page/usage-insight-signals.ts";
 import { getCardPalette } from "../../../lib/card-palette.ts";
 
 // --- Constants ---
 
-const CHART_PADDING = { top: 20, right: 16, bottom: 32, left: 60 } as const;
+const CHART_PADDING = { top: 20, right: 16, bottom: 32, left: 28 } as const;
 const CHART_HEIGHT = 220;
 
-const AGENT_COLORS = [
-  "hsl(var(--primary))",
-  "#f59e0b",
-  "#10b981",
-  "#8b5cf6",
-  "#ec4899",
-  "#06b6d4",
-  "#f97316",
-  "#84cc16",
-] as const;
+// Rose-family shades from base to lightest. Largest category gets the base
+// accent; subsequent categories step toward lighter tints so each line stays
+// readable while sharing one hue.
+const CATEGORY_SHADES: readonly string[] = [
+  "#E24B6A", // base rose (card accent)
+  "#EB7C95",
+  "#F0A0B3",
+  "#F4BFCB",
+  "#F7D7DF",
+];
+
+function colorFor(idx: number): string {
+  return CATEGORY_SHADES[idx % CATEGORY_SHADES.length]!;
+}
+
+function formatCategoryLabel(key: string): string {
+  if (key.length === 0) {
+    return key;
+  }
+  return key.charAt(0).toUpperCase() + key.slice(1);
+}
+
+const RANGE_LABELS = {
+  today: "Today",
+  yesterday: "Yesterday",
+  "7d": "Last 7 days",
+  "28d": "Last 28 days",
+} as const satisfies Record<InsightRange, string>;
 
 // --- Helpers ---
 
@@ -43,8 +62,17 @@ function formatValue(n: number): string {
   return String(n);
 }
 
+function formatTotal(n: number): string {
+  if (n >= 1_000_000) {
+    return `${(n / 1_000_000).toFixed(2)}M`;
+  }
+  if (n >= 1000) {
+    return `${(n / 1000).toFixed(1)}K`;
+  }
+  return n.toLocaleString();
+}
+
 function formatBucketLabel(ts: string, range: string): string {
-  // Parse the ts string (format: "2026-04-19 00:00:00" or "2026-04-19T00:00:00.000Z")
   const d = new Date(ts.includes("T") ? ts : ts.replace(" ", "T") + "Z");
   if (Number.isNaN(d.getTime())) {
     return ts;
@@ -80,28 +108,53 @@ function generateYTicks(max: number): number[] {
   return ticks;
 }
 
-// --- Color assignment ---
+function valueAt(
+  bucket: UsageInsightBucket,
+  metric: InsightMetric,
+  key: string,
+): number {
+  const entries = metric === "credits" ? bucket.series : bucket.tokens;
+  return entries[key] ?? 0;
+}
 
-function assignColors(
-  keys: string[],
-  groupBy: InsightGroupBy,
-): Map<string, string> {
-  const colorMap = new Map<string, string>();
-  if (groupBy === "source") {
-    for (const key of keys) {
-      colorMap.set(
-        key,
-        SOURCE_BUCKET_COLORS[key as SourceBucket] ??
-          "hsl(var(--muted-foreground))",
-      );
-    }
-  } else {
-    for (let i = 0; i < keys.length; i++) {
-      colorMap.set(keys[i]!, AGENT_COLORS[i % AGENT_COLORS.length]!);
+function buildStackOrder(
+  buckets: UsageInsightBucket[],
+  metric: InsightMetric,
+): { stackOrder: string[]; keyTotals: Map<string, number> } {
+  const allKeys = new Set<string>();
+  for (const bucket of buckets) {
+    for (const key of Object.keys(
+      metric === "credits" ? bucket.series : bucket.tokens,
+    )) {
+      allKeys.add(key);
     }
   }
-  return colorMap;
+  const keyTotals = new Map<string, number>();
+  for (const key of allKeys) {
+    let sum = 0;
+    for (const bucket of buckets) {
+      sum += valueAt(bucket, metric, key);
+    }
+    keyTotals.set(key, sum);
+  }
+  // Stack order: largest first (most prominent), "others" forced to last.
+  const stackOrder = [...allKeys]
+    .filter((k) => {
+      return (keyTotals.get(k) ?? 0) > 0;
+    })
+    .sort((a, b) => {
+      if (a === "others") {
+        return 1;
+      }
+      if (b === "others") {
+        return -1;
+      }
+      return (keyTotals.get(b) ?? 0) - (keyTotals.get(a) ?? 0);
+    });
+  return { stackOrder, keyTotals };
 }
+
+const HOVER_DIM_OPACITY = 0.15;
 
 // --- Resize observer ---
 
@@ -124,9 +177,10 @@ function useChartResizeRef(setWidth: (w: number) => void) {
   };
 }
 
-// --- Tooltip component ---
+// --- Tooltip ---
 
 const TOOLTIP_ESTIMATED_WIDTH = 200;
+const TOOLTIP_ESTIMATED_HEIGHT = 90;
 
 function ChartTooltip({
   data,
@@ -138,35 +192,53 @@ function ChartTooltip({
   range: string;
 }) {
   const flipLeft = data.x + 12 + TOOLTIP_ESTIMATED_WIDTH > containerWidth;
+  const flipTop = data.y < TOOLTIP_ESTIMATED_HEIGHT;
   const left = flipLeft ? data.x - 12 : data.x + 12;
+  const top = flipTop ? data.y + 12 : data.y - 8;
   const translateX = flipLeft ? "-100%" : "0";
+  const translateY = flipTop ? "0" : "-100%";
+  const total = data.values.reduce((s, v) => {
+    return s + v.value;
+  }, 0);
+  const breakdown = data.values.filter((v) => {
+    return v.value > 0;
+  });
 
   return (
     <div
       className="pointer-events-none absolute z-10 rounded-md border border-border bg-popover px-3 py-2 text-xs shadow-md"
       style={{
         left,
-        top: data.y - 8,
-        transform: `translate(${translateX}, -100%)`,
+        top,
+        transform: `translate(${translateX}, ${translateY})`,
       }}
     >
       <div className="font-medium text-foreground mb-1">
         {formatBucketLabel(data.ts, range)}
       </div>
-      {data.values.map((v) => {
-        return (
-          <div key={v.label} className="flex items-center gap-2">
-            <span
-              className="inline-block h-2 w-2 rounded-full"
-              style={{ backgroundColor: v.color }}
-            />
-            <span className="text-muted-foreground">{v.label}:</span>
-            <span className="font-medium tabular-nums text-foreground">
-              {v.value.toLocaleString()}
-            </span>
-          </div>
-        );
-      })}
+      <div className="flex items-center gap-2">
+        <span className="text-muted-foreground">Total:</span>
+        <span className="font-medium tabular-nums text-foreground">
+          {total.toLocaleString()}
+        </span>
+      </div>
+      {breakdown.length > 1 &&
+        breakdown.map((v) => {
+          return (
+            <div key={v.label} className="flex items-center gap-2">
+              <span
+                className="inline-block h-2 w-2 rounded-full shrink-0"
+                style={{ backgroundColor: v.color }}
+              />
+              <span className="text-muted-foreground">
+                {formatCategoryLabel(v.label)}:
+              </span>
+              <span className="font-medium tabular-nums text-foreground">
+                {v.value.toLocaleString()}
+              </span>
+            </div>
+          );
+        })}
     </div>
   );
 }
@@ -178,24 +250,26 @@ interface ChartScales {
   yScale: (v: number) => number;
   drawH: number;
   yTicks: number[];
-  barWidth: number;
   labelInterval: number;
 }
 
 function buildScales(
   buckets: UsageInsightBucket[],
+  stackOrder: readonly string[],
   metric: InsightMetric,
   width: number,
 ): ChartScales {
-  const perBucketTotals = buckets.map((b) => {
-    return Object.values(metric === "credits" ? b.series : b.tokens).reduce(
-      (s, v) => {
-        return s + v;
-      },
-      0,
-    );
-  });
-  const maxValue = Math.max(...perBucketTotals, 1);
+  // Y-axis fits the largest single-category value so each line is readable
+  // even when other categories swamp the cumulative total.
+  let maxValue = 1;
+  for (const bucket of buckets) {
+    for (const key of stackOrder) {
+      const v = valueAt(bucket, metric, key);
+      if (v > maxValue) {
+        maxValue = v;
+      }
+    }
+  }
   const yTicks = generateYTicks(maxValue);
   const yMax = yTicks[yTicks.length - 1] ?? maxValue;
   const drawW = width - CHART_PADDING.left - CHART_PADDING.right;
@@ -210,7 +284,6 @@ function buildScales(
     },
     drawH,
     yTicks,
-    barWidth: Math.max(2, slotWidth * 0.7),
     labelInterval: Math.max(
       1,
       Math.ceil(buckets.length / Math.floor(drawW / 50)),
@@ -218,38 +291,21 @@ function buildScales(
   };
 }
 
-function ChartSvg({
+function ChartGrid({
   buckets,
-  metric,
-  sortedKeys,
-  colorMap,
   width,
   range,
-  tooltip,
-  onMouseMove,
-  onMouseLeave,
+  scales,
 }: {
   buckets: UsageInsightBucket[];
-  metric: InsightMetric;
-  sortedKeys: string[];
-  colorMap: Map<string, string>;
   width: number;
   range: string;
-  tooltip: ChartTooltipData | null;
-  onMouseMove: (e: React.MouseEvent<SVGSVGElement>) => void;
-  onMouseLeave: () => void;
+  scales: ChartScales;
 }) {
-  const { xScale, yScale, drawH, yTicks, barWidth, labelInterval } =
-    buildScales(buckets, metric, width);
-
+  const { xScale, yScale, yTicks, labelInterval } = scales;
+  const lastIdx = buckets.length - 1;
   return (
-    <svg
-      width={width}
-      height={CHART_HEIGHT}
-      className="select-none"
-      onMouseMove={onMouseMove}
-      onMouseLeave={onMouseLeave}
-    >
+    <>
       {yTicks.map((tick) => {
         return (
           <g key={tick}>
@@ -263,9 +319,9 @@ function ChartSvg({
               strokeWidth={tick === 0 ? 1 : 0.5}
             />
             <text
-              x={CHART_PADDING.left - 8}
+              x={0}
               y={yScale(tick)}
-              textAnchor="end"
+              textAnchor="start"
               dominantBaseline="middle"
               className="fill-muted-foreground"
               fontSize={11}
@@ -276,7 +332,7 @@ function ChartSvg({
         );
       })}
       {buckets.map((bucket, i) => {
-        if (i % labelInterval !== 0 && i !== buckets.length - 1) {
+        if (i % labelInterval !== 0 && i !== lastIdx) {
           return null;
         }
         return (
@@ -292,98 +348,174 @@ function ChartSvg({
           </text>
         );
       })}
+    </>
+  );
+}
+
+function ChartLayers({
+  buckets,
+  metric,
+  stackOrder,
+  scales,
+  hoveredKey,
+}: {
+  buckets: UsageInsightBucket[];
+  metric: InsightMetric;
+  stackOrder: readonly string[];
+  scales: ChartScales;
+  hoveredKey: string | null;
+}) {
+  const { xScale, yScale, drawH } = scales;
+  const baselineY = CHART_PADDING.top + drawH;
+  const lastIdx = buckets.length - 1;
+  const renderPaths = buckets.length > 1;
+
+  return (
+    <>
+      {stackOrder.map((key, i) => {
+        const hue = colorFor(i);
+        const isHovered = hoveredKey === key;
+        const dimmed = hoveredKey !== null && !isHovered;
+        const fillOpacity = isHovered ? 0.32 : dimmed ? 0.04 : 0.18;
+        const lineOpacity = isHovered ? 1 : dimmed ? HOVER_DIM_OPACITY : 0.85;
+        const points = buckets
+          .map((b, t) => {
+            return `${xScale(t)},${yScale(valueAt(b, metric, key))}`;
+          })
+          .join(" L");
+        return (
+          <g key={key}>
+            {renderPaths && (
+              <path
+                d={`M${xScale(0)},${baselineY} L${points} L${xScale(lastIdx)},${baselineY} Z`}
+                fill={hue}
+                fillOpacity={fillOpacity}
+                className="transition-opacity duration-150"
+              />
+            )}
+            {renderPaths && (
+              <path
+                d={`M${points}`}
+                fill="none"
+                stroke={hue}
+                strokeWidth={isHovered ? 2.5 : 1.75}
+                strokeLinejoin="round"
+                strokeLinecap="round"
+                opacity={lineOpacity}
+                className="transition-opacity duration-150"
+              />
+            )}
+            {buckets.map((bucket, t) => {
+              const v = valueAt(bucket, metric, key);
+              if (v === 0) {
+                return null;
+              }
+              return (
+                <circle
+                  key={bucket.ts}
+                  cx={xScale(t)}
+                  cy={yScale(v)}
+                  r={isHovered ? 4 : buckets.length === 1 ? 5 : 3}
+                  fill={hue}
+                  opacity={lineOpacity}
+                  className="transition-opacity duration-150"
+                />
+              );
+            })}
+          </g>
+        );
+      })}
+    </>
+  );
+}
+
+function ChartSvg({
+  buckets,
+  metric,
+  stackOrder,
+  width,
+  range,
+  hoveredKey,
+  tooltip,
+  onMouseMove,
+  onMouseLeave,
+}: {
+  buckets: UsageInsightBucket[];
+  metric: InsightMetric;
+  stackOrder: readonly string[];
+  width: number;
+  range: string;
+  hoveredKey: string | null;
+  tooltip: ChartTooltipData | null;
+  onMouseMove: (e: React.MouseEvent<SVGSVGElement>) => void;
+  onMouseLeave: () => void;
+}) {
+  const scales = buildScales(buckets, stackOrder, metric, width);
+  return (
+    <svg
+      width={width}
+      height={CHART_HEIGHT}
+      className="select-none"
+      onMouseMove={onMouseMove}
+      onMouseLeave={onMouseLeave}
+    >
+      <ChartGrid
+        buckets={buckets}
+        width={width}
+        range={range}
+        scales={scales}
+      />
       {tooltip && (
         <line
           x1={tooltip.x}
           y1={CHART_PADDING.top}
           x2={tooltip.x}
-          y2={CHART_PADDING.top + drawH}
+          y2={CHART_PADDING.top + scales.drawH}
           stroke="hsl(var(--muted-foreground))"
           strokeWidth={1}
           strokeDasharray="3,3"
           opacity={0.5}
         />
       )}
-      {buckets.flatMap((bucket, bucketIdx) => {
-        let cumulative = 0;
-        return sortedKeys.map((key) => {
-          const value =
-            metric === "credits"
-              ? (bucket.series[key] ?? 0)
-              : (bucket.tokens[key] ?? 0);
-          if (value <= 0) {
-            return null;
-          }
-          const yBottom = yScale(cumulative);
-          cumulative += value;
-          const yTop = yScale(cumulative);
-          const cx = xScale(bucketIdx);
-          return (
-            <rect
-              key={`${key}-${bucket.ts}`}
-              x={cx - barWidth / 2}
-              y={yTop}
-              width={barWidth}
-              height={Math.max(0, yBottom - yTop)}
-              fill={colorMap.get(key) ?? "#888"}
-            />
-          );
-        });
-      })}
+      <ChartLayers
+        buckets={buckets}
+        metric={metric}
+        stackOrder={stackOrder}
+        scales={scales}
+        hoveredKey={hoveredKey}
+      />
     </svg>
   );
 }
 
-// --- Main chart component ---
+// --- Main component ---
 
 export function UsageInsightBarChart({
-  buckets,
+  data,
   metric,
-  groupBy,
   range,
 }: {
-  buckets: UsageInsightBucket[];
+  data: UsageInsightResponse;
   metric: InsightMetric;
-  groupBy: InsightGroupBy;
-  range: string;
+  range: InsightRange;
 }) {
   const width = useGet(chartWidth$);
   const setWidth = useSet(setChartWidth$);
   const tooltip = useGet(chartTooltip$);
   const setTooltip = useSet(setChartTooltip$);
+  const hoveredKey = useGet(hoveredCategory$);
+  const setHoveredKey = useSet(setHoveredCategory$);
 
   const containerRef = useChartResizeRef(setWidth);
 
-  if (buckets.length === 0) {
-    return (
-      <div className="flex items-center justify-center h-[220px] text-sm text-muted-foreground">
-        No data for the selected period
-      </div>
-    );
-  }
+  const { accent } = getCardPalette(1);
+  const { buckets } = data;
+  const total =
+    metric === "credits" ? data.grandTotalCredits : data.grandTotalTokens;
+  const totalLabel = metric === "credits" ? "credits" : "tokens";
+  const rangeLabel = RANGE_LABELS[range];
 
-  // Collect all unique series keys across all buckets
-  const allKeys = new Set<string>();
-  for (const bucket of buckets) {
-    for (const key of Object.keys(
-      metric === "credits" ? bucket.series : bucket.tokens,
-    )) {
-      allKeys.add(key);
-    }
-  }
-
-  // Sort keys: "others" last
-  const sortedKeys = [...allKeys].sort((a, b) => {
-    if (a === "others") {
-      return 1;
-    }
-    if (b === "others") {
-      return -1;
-    }
-    return a.localeCompare(b);
-  });
-
-  const colorMap = assignColors(sortedKeys, groupBy);
+  const { stackOrder, keyTotals } = buildStackOrder(buckets, metric);
 
   const drawW = width - CHART_PADDING.left - CHART_PADDING.right;
   const slotWidth = buckets.length > 0 ? drawW / buckets.length : drawW;
@@ -397,7 +529,6 @@ export function UsageInsightBarChart({
     const mx = e.clientX - rect.left;
     const my = e.clientY - rect.top;
 
-    // Find closest bucket
     let closestIdx = 0;
     let closestDist = Infinity;
     for (let i = 0; i < buckets.length; i++) {
@@ -413,12 +544,12 @@ export function UsageInsightBarChart({
       return;
     }
 
-    const values = sortedKeys.map((key) => {
-      const val =
-        metric === "credits"
-          ? (bucket.series[key] ?? 0)
-          : (bucket.tokens[key] ?? 0);
-      return { label: key, value: val, color: colorMap.get(key) ?? "#888" };
+    const values = stackOrder.map((key, i) => {
+      return {
+        label: key,
+        value: valueAt(bucket, metric, key),
+        color: colorFor(i),
+      };
     });
 
     setTooltip({ x: xScale(closestIdx), y: my, ts: bucket.ts, values });
@@ -428,52 +559,101 @@ export function UsageInsightBarChart({
     setTooltip(null);
   };
 
-  const { bg, accent } = getCardPalette(1);
-
   return (
-    <section
-      className={`${bg} rounded-[20px] p-6 border border-border/40 break-inside-avoid`}
-    >
+    <section className="bg-gray-50 rounded-[20px] p-6 border border-border/40 break-inside-avoid">
       <p
         className="text-xs font-semibold uppercase tracking-widest mb-3"
         style={{ color: accent }}
       >
-        Trend
+        {totalLabel}
       </p>
-      <div ref={containerRef} className="w-full overflow-hidden">
-        <div className="relative">
-          <ChartSvg
-            buckets={buckets}
-            metric={metric}
-            sortedKeys={sortedKeys}
-            colorMap={colorMap}
-            width={width}
-            range={range}
-            tooltip={tooltip}
-            onMouseMove={handleMouseMove}
-            onMouseLeave={handleMouseLeave}
-          />
+      <p className="text-5xl font-black leading-none tabular-nums font-serif">
+        {formatTotal(total)}
+      </p>
+      <p className="text-sm opacity-60 mt-2">{rangeLabel}</p>
+
+      {buckets.length > 0 && (
+        <div className="relative mt-5">
+          <div ref={containerRef} className="w-full overflow-hidden">
+            <ChartSvg
+              buckets={buckets}
+              metric={metric}
+              stackOrder={stackOrder}
+              width={width}
+              range={range}
+              hoveredKey={hoveredKey}
+              tooltip={tooltip}
+              onMouseMove={handleMouseMove}
+              onMouseLeave={handleMouseLeave}
+            />
+          </div>
           {tooltip && (
             <ChartTooltip data={tooltip} containerWidth={width} range={range} />
           )}
         </div>
+      )}
 
-        {sortedKeys.length > 1 && (
-          <div className="flex flex-wrap gap-x-4 gap-y-1 px-1 pt-2 text-xs text-muted-foreground">
-            {sortedKeys.map((key) => {
-              return (
-                <div key={key} className="flex items-center gap-1.5">
-                  <span
-                    className="inline-block h-2 w-2 rounded-full"
-                    style={{ backgroundColor: colorMap.get(key) }}
-                  />
-                  <span className="truncate max-w-[120px]">{key}</span>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+      {stackOrder.length > 1 && total > 0 && (
+        <BreakdownList
+          stackOrder={stackOrder}
+          keyTotals={keyTotals}
+          total={total}
+          hoveredKey={hoveredKey}
+          setHoveredKey={setHoveredKey}
+        />
+      )}
     </section>
+  );
+}
+
+function BreakdownList({
+  stackOrder,
+  keyTotals,
+  total,
+  hoveredKey,
+  setHoveredKey,
+}: {
+  stackOrder: readonly string[];
+  keyTotals: Map<string, number>;
+  total: number;
+  hoveredKey: string | null;
+  setHoveredKey: (key: string | null) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-2.5 mt-4">
+      {stackOrder.map((key, i) => {
+        const value = keyTotals.get(key) ?? 0;
+        const pct = total > 0 ? (value / total) * 100 : 0;
+        const isActive = hoveredKey === null || hoveredKey === key;
+        const hue = colorFor(i);
+        return (
+          <div
+            key={key}
+            className={`flex items-center gap-3 rounded-md px-1.5 py-0.5 -mx-1.5 cursor-default transition-all duration-150 ${
+              hoveredKey === key ? "bg-foreground/5" : ""
+            } ${isActive ? "opacity-100" : "opacity-30"}`}
+            onMouseEnter={() => {
+              setHoveredKey(key);
+            }}
+            onMouseLeave={() => {
+              setHoveredKey(null);
+            }}
+          >
+            <span className="text-sm font-medium flex-1 truncate decoration-dotted underline decoration-foreground/40 decoration-[1px] underline-offset-2">
+              {formatCategoryLabel(key)}
+            </span>
+            <div className="w-[400px] h-1.5 rounded-full bg-foreground/10 overflow-hidden shrink-0">
+              <div
+                className="h-full rounded-full"
+                style={{ width: `${pct}%`, backgroundColor: hue }}
+              />
+            </div>
+            <span className="text-xs tabular-nums opacity-70 shrink-0 w-12 text-right">
+              {formatValue(value)}
+            </span>
+          </div>
+        );
+      })}
+    </div>
   );
 }

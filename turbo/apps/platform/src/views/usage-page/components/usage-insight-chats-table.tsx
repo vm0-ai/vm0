@@ -1,5 +1,10 @@
+import { useGet, useSet } from "ccstate-react";
 import type { UsageInsightResponse } from "@vm0/api-contracts/contracts/zero-usage-insight";
-import type { InsightMetric } from "../../../signals/usage-page/usage-insight-signals.ts";
+import {
+  hoveredChatId$,
+  setHoveredChatId$,
+  type InsightMetric,
+} from "../../../signals/usage-page/usage-insight-signals.ts";
 import { Link } from "../../router/link.tsx";
 import { getCardPalette } from "../../../lib/card-palette.ts";
 
@@ -21,18 +26,18 @@ export function UsageInsightChatsTable({
   metric: InsightMetric;
 }) {
   const { chats, chatOtherCount, chatOtherCredits } = data;
-  const { bg, accent } = getCardPalette(5);
+  const { accent } = getCardPalette(5);
+  const hoveredId = useGet(hoveredChatId$);
+  const setHoveredId = useSet(setHoveredChatId$);
 
   if (chats.length === 0 && chatOtherCount === 0) {
     return (
-      <section
-        className={`${bg} rounded-[20px] p-6 border border-border/40 break-inside-avoid`}
-      >
+      <section className="bg-gray-50 rounded-[20px] p-6 border border-border/40 break-inside-avoid">
         <p
           className="text-xs font-semibold uppercase tracking-widest mb-3"
           style={{ color: accent }}
         >
-          Top Chats
+          Chats
         </p>
         <p className="text-sm text-muted-foreground">No chats in this period</p>
       </section>
@@ -46,36 +51,39 @@ export function UsageInsightChatsTable({
       return metric === "credits" ? c.credits : c.tokens;
     }),
   );
-  const valueLabel = metric === "credits" ? "Credits" : "Tokens";
 
   return (
-    <section
-      className={`${bg} rounded-[20px] p-6 border border-border/40 break-inside-avoid`}
-    >
+    <section className="bg-gray-50 rounded-[20px] p-6 border border-border/40 break-inside-avoid">
       <p
         className="text-xs font-semibold uppercase tracking-widest mb-3"
         style={{ color: accent }}
       >
-        Top Chats
+        Chats
       </p>
       <p className="text-5xl font-black leading-none tabular-nums font-serif">
         {totalCount}
-      </p>
-      <p className="text-sm opacity-60 mt-2">
-        {totalCount === 1 ? "chat thread" : "chat threads"} · {valueLabel}
       </p>
       <ul className="flex flex-col gap-2.5 mt-4">
         {chats.map((row) => {
           const value = metric === "credits" ? row.credits : row.tokens;
           const pct = (value / maxValue) * 100;
+          const isActive = hoveredId === null || hoveredId === row.threadId;
           return (
             <li key={row.threadId}>
               <Link
                 pathname="/chats/:threadId"
                 options={{ pathParams: { threadId: row.threadId } }}
-                className="flex items-center gap-3 -mx-1.5 px-1.5 py-1 rounded-md transition-colors hover:bg-foreground/5"
+                className={`flex items-center gap-3 -mx-1.5 px-1.5 py-1 rounded-md transition-all duration-150 ${
+                  hoveredId === row.threadId ? "bg-foreground/5" : ""
+                } ${isActive ? "opacity-100" : "opacity-30"}`}
+                onMouseEnter={() => {
+                  setHoveredId(row.threadId);
+                }}
+                onMouseLeave={() => {
+                  setHoveredId(null);
+                }}
               >
-                <span className="text-sm font-medium flex-1 truncate">
+                <span className="text-sm font-medium flex-1 truncate decoration-dotted underline decoration-foreground/40 decoration-[1px] underline-offset-2">
                   {row.threadTitle ?? "(untitled)"}
                 </span>
                 <div className="w-20 h-1.5 rounded-full bg-foreground/10 overflow-hidden shrink-0">
@@ -92,7 +100,11 @@ export function UsageInsightChatsTable({
           );
         })}
         {chatOtherCount > 0 && (
-          <li className="flex items-center gap-3 -mx-1.5 px-1.5 py-1">
+          <li
+            className={`flex items-center gap-3 -mx-1.5 px-1.5 py-1 transition-opacity duration-150 ${
+              hoveredId === null ? "opacity-100" : "opacity-30"
+            }`}
+          >
             <span className="text-sm text-muted-foreground flex-1 truncate">
               +{chatOtherCount} more {chatOtherCount === 1 ? "chat" : "chats"}
             </span>

@@ -40,9 +40,7 @@ describe("/_/usage page - selector interactions", () => {
 
     // Wait for initial fetch to complete
     await waitFor(() => {
-      expect(
-        screen.getByRole("img", { name: /Total credits breakdown/ }),
-      ).toBeInTheDocument();
+      expect(screen.getByText("credits")).toBeInTheDocument();
     });
 
     // Reset captured value and click the range selector
@@ -80,9 +78,7 @@ describe("/_/usage page - selector interactions", () => {
 
     // Wait for initial fetch to complete
     await waitFor(() => {
-      expect(
-        screen.getByRole("img", { name: /Total credits breakdown/ }),
-      ).toBeInTheDocument();
+      expect(screen.getByText("credits")).toBeInTheDocument();
     });
 
     // Reset captured value and click the groupBy selector
@@ -161,16 +157,13 @@ describe("/_/usage page - empty state", () => {
       ).toBeInTheDocument();
     });
 
-    // Empty state illustration replaces the totals bar when there's no usage
+    // Totals card should still show 0 credits with zero grand total
     await waitFor(() => {
-      expect(screen.getByText("No usage data yet")).toBeInTheDocument();
+      expect(screen.getByText("credits")).toBeInTheDocument();
     });
 
-    expect(
-      screen.getByText(
-        "Start a chat or run a schedule to see your insights here.",
-      ),
-    ).toBeInTheDocument();
+    expect(screen.getByText("0")).toBeInTheDocument();
+    expect(screen.getByText("credits")).toBeInTheDocument();
   });
 });
 

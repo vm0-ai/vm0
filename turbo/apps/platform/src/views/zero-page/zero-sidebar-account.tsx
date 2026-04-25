@@ -10,6 +10,7 @@ import {
   IconSwitchHorizontal,
   IconDatabaseExport,
   IconKey,
+  IconChartBar,
 } from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
@@ -321,6 +322,19 @@ export function AccountDropdown({
             <span>API Keys</span>
           </DropdownMenuItem>
         )}
+        <DropdownMenuItem
+          onClick={() => {
+            return handleAccountAction("usage");
+          }}
+          className="gap-3 px-3 py-2.5 rounded-lg"
+        >
+          <IconChartBar
+            size={18}
+            stroke={1.5}
+            className="text-muted-foreground"
+          />
+          <span>Usage</span>
+        </DropdownMenuItem>
         {showExportData && (
           <DropdownMenuItem
             onClick={() => {

@@ -11,7 +11,6 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   IconChartLine,
-  IconChartBar,
   IconLayoutGrid,
   IconCalendar,
   IconUsers,
@@ -145,15 +144,6 @@ const FOOTER_NAV = [
     icon: IconFlask as NavIcon,
     iconImg: undefined,
     featureGate: FeatureSwitchKey.Lab,
-  },
-  {
-    id: "usage",
-    activeKeys: ["usage"],
-    pathname: "/_/usage",
-    label: "Usage",
-    icon: IconChartBar as NavIcon,
-    iconImg: undefined,
-    featureGate: FeatureSwitchKey.UsageAnalytics,
   },
 ] as const satisfies readonly FooterNavItem[];
 

@@ -1,5 +1,10 @@
+import { useGet, useSet } from "ccstate-react";
 import type { UsageInsightResponse } from "@vm0/api-contracts/contracts/zero-usage-insight";
-import type { InsightMetric } from "../../../signals/usage-page/usage-insight-signals.ts";
+import {
+  hoveredScheduleId$,
+  setHoveredScheduleId$,
+  type InsightMetric,
+} from "../../../signals/usage-page/usage-insight-signals.ts";
 import { Link } from "../../router/link.tsx";
 import { getCardPalette } from "../../../lib/card-palette.ts";
 
@@ -21,18 +26,18 @@ export function UsageInsightSchedulesTable({
   metric: InsightMetric;
 }) {
   const { schedules, scheduleOtherCount, scheduleOtherCredits } = data;
-  const { bg, accent } = getCardPalette(2);
+  const { accent } = getCardPalette(2);
+  const hoveredId = useGet(hoveredScheduleId$);
+  const setHoveredId = useSet(setHoveredScheduleId$);
 
   if (schedules.length === 0 && scheduleOtherCount === 0) {
     return (
-      <section
-        className={`${bg} rounded-[20px] p-6 border border-border/40 break-inside-avoid`}
-      >
+      <section className="bg-gray-50 rounded-[20px] p-6 border border-border/40 break-inside-avoid">
         <p
           className="text-xs font-semibold uppercase tracking-widest mb-3"
           style={{ color: accent }}
         >
-          Top Schedules
+          Schedules
         </p>
         <p className="text-sm text-muted-foreground">
           No schedules used in this period
@@ -48,36 +53,39 @@ export function UsageInsightSchedulesTable({
       return metric === "credits" ? s.credits : s.tokens;
     }),
   );
-  const valueLabel = metric === "credits" ? "Credits" : "Tokens";
 
   return (
-    <section
-      className={`${bg} rounded-[20px] p-6 border border-border/40 break-inside-avoid`}
-    >
+    <section className="bg-gray-50 rounded-[20px] p-6 border border-border/40 break-inside-avoid">
       <p
         className="text-xs font-semibold uppercase tracking-widest mb-3"
         style={{ color: accent }}
       >
-        Top Schedules
+        Schedules
       </p>
       <p className="text-5xl font-black leading-none tabular-nums font-serif">
         {totalCount}
-      </p>
-      <p className="text-sm opacity-60 mt-2">
-        {totalCount === 1 ? "schedule used" : "schedules used"} · {valueLabel}
       </p>
       <ul className="flex flex-col gap-2.5 mt-4">
         {schedules.map((row) => {
           const value = metric === "credits" ? row.credits : row.tokens;
           const pct = (value / maxValue) * 100;
+          const isActive = hoveredId === null || hoveredId === row.scheduleId;
           return (
             <li key={row.scheduleId}>
               <Link
                 pathname="/schedules/:scheduleId"
                 options={{ pathParams: { scheduleId: row.scheduleId } }}
-                className="flex items-center gap-3 -mx-1.5 px-1.5 py-1 rounded-md transition-colors hover:bg-foreground/5"
+                className={`flex items-center gap-3 -mx-1.5 px-1.5 py-1 rounded-md transition-all duration-150 ${
+                  hoveredId === row.scheduleId ? "bg-foreground/5" : ""
+                } ${isActive ? "opacity-100" : "opacity-30"}`}
+                onMouseEnter={() => {
+                  setHoveredId(row.scheduleId);
+                }}
+                onMouseLeave={() => {
+                  setHoveredId(null);
+                }}
               >
-                <span className="text-sm font-medium flex-1 truncate">
+                <span className="text-sm font-medium flex-1 truncate decoration-dotted underline decoration-foreground/40 decoration-[1px] underline-offset-2">
                   {row.scheduleName}
                 </span>
                 <div className="w-20 h-1.5 rounded-full bg-foreground/10 overflow-hidden shrink-0">
@@ -94,7 +102,11 @@ export function UsageInsightSchedulesTable({
           );
         })}
         {scheduleOtherCount > 0 && (
-          <li className="flex items-center gap-3 -mx-1.5 px-1.5 py-1">
+          <li
+            className={`flex items-center gap-3 -mx-1.5 px-1.5 py-1 transition-opacity duration-150 ${
+              hoveredId === null ? "opacity-100" : "opacity-30"
+            }`}
+          >
             <span className="text-sm text-muted-foreground flex-1 truncate">
               +{scheduleOtherCount} more{" "}
               {scheduleOtherCount === 1 ? "schedule" : "schedules"}

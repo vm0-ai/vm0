@@ -30,12 +30,8 @@ describe("/_/usage page", () => {
       ).toBeInTheDocument();
     });
 
-    expect(screen.getByText("Usage Insights")).toBeInTheDocument();
-
     await waitFor(() => {
-      expect(
-        screen.getByRole("img", { name: /Total credits breakdown/ }),
-      ).toBeInTheDocument();
+      expect(screen.getByText("credits")).toBeInTheDocument();
     });
 
     await waitFor(() => {
