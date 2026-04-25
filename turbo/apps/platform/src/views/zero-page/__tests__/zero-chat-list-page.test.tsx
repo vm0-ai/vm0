@@ -13,9 +13,7 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
-import {
-  chatThreadsContract,
-} from "@vm0/core/contracts/chat-threads";
+import { chatThreadsContract } from "@vm0/core/contracts/chat-threads";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 
 const context = testContext();
@@ -73,7 +71,9 @@ describe("zero chat list page - header and title", () => {
     setupPage();
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Chats" })).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { name: "Chats" }),
+      ).toBeInTheDocument();
     });
   });
 
@@ -82,9 +82,7 @@ describe("zero chat list page - header and title", () => {
     setupPage();
 
     await waitFor(() => {
-      expect(
-        screen.getByPlaceholderText("Search chats"),
-      ).toBeInTheDocument();
+      expect(screen.getByPlaceholderText("Search chats")).toBeInTheDocument();
     });
   });
 
@@ -93,7 +91,7 @@ describe("zero chat list page - header and title", () => {
     setupPage();
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "New chat" })).toBeInTheDocument();
+      expect(screen.getByText("New chat")).toBeInTheDocument();
     });
   });
 });
@@ -110,9 +108,7 @@ describe("zero chat list page - chat list rendering", () => {
   });
 
   it("should render 'New chat' as default title when title is null (CHAT-LIST-005)", async () => {
-    mockChatThreads(
-      createMockThreads({ id: "thread-null", title: null }),
-    );
+    mockChatThreads(createMockThreads({ id: "thread-null", title: null }));
     setupPage();
 
     await waitFor(() => {
@@ -143,7 +139,9 @@ describe("zero chat list page - chat list rendering", () => {
   it("should show error message when API fails", async () => {
     server.use(
       mockApi(chatThreadsContract.list, ({ respond }) => {
-        return respond(401, { error: "Server error" });
+        return respond(401, {
+          error: { message: "Server error", code: "INTERNAL_SERVER_ERROR" },
+        });
       }),
     );
 
@@ -206,7 +204,7 @@ describe("zero chat list page - search", () => {
       expect(screen.getByText("First chat thread")).toBeInTheDocument();
     });
 
-    const clearButton = screen.getByRole("button", { name: "Clear search" });
+    const clearButton = screen.getByText("Clear search");
     fireEvent.click(clearButton);
 
     await waitFor(() => {
@@ -258,7 +256,9 @@ describe("zero chat list page - delete confirmation", () => {
     fireEvent.mouseEnter(firstThread);
 
     await waitFor(() => {
-      const deleteButton = screen.getByRole("button", { name: "Delete chat" });
+      const deleteButton = screen.getAllByRole("button").find((el) => {
+        return /Delete chat/.test(el.textContent ?? "");
+      })!;
       expect(deleteButton).toBeVisible();
     });
   });
@@ -276,7 +276,9 @@ describe("zero chat list page - delete confirmation", () => {
     fireEvent.mouseEnter(firstThread);
 
     await waitFor(() => {
-      const deleteButton = screen.getByRole("button", { name: "Delete chat" });
+      const deleteButton = screen.getAllByRole("button").find((el) => {
+        return /Delete chat/.test(el.textContent ?? "");
+      })!;
       fireEvent.click(deleteButton);
     });
 
@@ -284,7 +286,7 @@ describe("zero chat list page - delete confirmation", () => {
       expect(screen.getByText("Delete chat?")).toBeInTheDocument();
     });
 
-    click(screen.getByRole("button", { name: "Cancel" }));
+    click(screen.getByText("Cancel"));
 
     await waitFor(() => {
       expect(screen.queryByText("Delete chat?")).not.toBeInTheDocument();

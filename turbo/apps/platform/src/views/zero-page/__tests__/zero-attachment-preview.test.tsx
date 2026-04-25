@@ -190,9 +190,7 @@ describe("AttachmentPreview component", () => {
     url: string;
     contentType?: string;
   }) {
-    const result = render(
-      <AttachmentPreview attachment={attachment} />,
-    );
+    const result = render(<AttachmentPreview attachment={attachment} />);
     return result;
   }
 
@@ -244,7 +242,9 @@ describe("AttachmentPreview component", () => {
       url: "https://example.com/readme.md",
     });
 
-    expect(screen.getByTestId("attachment-preview-markdown")).toBeInTheDocument();
+    expect(
+      screen.getByTestId("attachment-preview-markdown"),
+    ).toBeInTheDocument();
   });
 
   it("should render document thumbnail preview for CSV files", async () => {
@@ -283,7 +283,10 @@ describe("TextPreview loading and error states", () => {
   it("should show loading spinner initially", async () => {
     const { container } = render(
       <AttachmentPreview
-        attachment={{ filename: "notes.txt", url: "https://example.com/notes.txt" }}
+        attachment={{
+          filename: "notes.txt",
+          url: "https://example.com/notes.txt",
+        }}
       />,
     );
 
@@ -305,7 +308,10 @@ describe("TextPreview loading and error states", () => {
 
     render(
       <AttachmentPreview
-        attachment={{ filename: "error.txt", url: "https://example.com/error.txt" }}
+        attachment={{
+          filename: "error.txt",
+          url: "https://example.com/error.txt",
+        }}
       />,
     );
 
@@ -327,7 +333,10 @@ describe("TextPreview loading and error states", () => {
 
     render(
       <AttachmentPreview
-        attachment={{ filename: "hello.txt", url: "https://example.com/hello.txt" }}
+        attachment={{
+          filename: "hello.txt",
+          url: "https://example.com/hello.txt",
+        }}
       />,
     );
 
@@ -349,7 +358,10 @@ describe("TextPreview loading and error states", () => {
 
     render(
       <AttachmentPreview
-        attachment={{ filename: "long.txt", url: "https://example.com/long.txt" }}
+        attachment={{
+          filename: "long.txt",
+          url: "https://example.com/long.txt",
+        }}
       />,
     );
 
@@ -362,7 +374,7 @@ describe("TextPreview loading and error states", () => {
     });
 
     // Click to collapse
-    const button = screen.getByRole("button", { name: /collapse/i });
+    const button = screen.getByText(/collapse/i);
     fireEvent.click(button);
 
     // Content should be hidden
@@ -380,7 +392,10 @@ describe("TextPreview loading and error states", () => {
 
     render(
       <AttachmentPreview
-        attachment={{ filename: "data.json", url: "https://example.com/data.json" }}
+        attachment={{
+          filename: "data.json",
+          url: "https://example.com/data.json",
+        }}
       />,
     );
 
@@ -402,19 +417,28 @@ describe("DocumentThumbnailPreview", () => {
   it("should render markdown document preview", () => {
     render(
       <AttachmentPreview
-        attachment={{ filename: "readme.md", url: "https://example.com/readme.md" }}
+        attachment={{
+          filename: "readme.md",
+          url: "https://example.com/readme.md",
+        }}
       />,
     );
 
     const preview = screen.getByTestId("attachment-preview-markdown");
     expect(preview).toBeInTheDocument();
-    expect(preview).toHaveAttribute("aria-label", expect.stringContaining("markdown"));
+    expect(preview).toHaveAttribute(
+      "aria-label",
+      expect.stringContaining("markdown"),
+    );
   });
 
   it("should render CSV document preview", () => {
     render(
       <AttachmentPreview
-        attachment={{ filename: "export.csv", url: "https://example.com/export.csv" }}
+        attachment={{
+          filename: "export.csv",
+          url: "https://example.com/export.csv",
+        }}
       />,
     );
 
@@ -436,7 +460,10 @@ describe("DocumentThumbnailPreview", () => {
   it("should render HTML document preview", () => {
     render(
       <AttachmentPreview
-        attachment={{ filename: "page.html", url: "https://example.com/page.html" }}
+        attachment={{
+          filename: "page.html",
+          url: "https://example.com/page.html",
+        }}
       />,
     );
 

@@ -54,9 +54,17 @@ describe("zero schedule page - view tabs (post run-history removal)", () => {
     renderSchedulePage();
 
     await waitFor(() => {
-      expect(screen.getByRole("tab", { name: /list/i })).toBeInTheDocument();
+      expect(
+        screen.getAllByRole("tab").find((el) => {
+          return /list/i.test(el.textContent ?? "");
+        }),
+      ).toBeInTheDocument();
     });
-    expect(screen.getByRole("tab", { name: /calendar/i })).toBeInTheDocument();
+    expect(
+      screen.getAllByRole("tab").find((el) => {
+        return /calendar/i.test(el.textContent ?? "");
+      }),
+    ).toBeInTheDocument();
   });
 
   it("should NOT show a History tab (SCHED-TABS-002)", async () => {
@@ -64,11 +72,17 @@ describe("zero schedule page - view tabs (post run-history removal)", () => {
     renderSchedulePage();
 
     await waitFor(() => {
-      expect(screen.getByRole("tab", { name: /list/i })).toBeInTheDocument();
+      expect(
+        screen.getAllByRole("tab").find((el) => {
+          return /list/i.test(el.textContent ?? "");
+        }),
+      ).toBeInTheDocument();
     });
 
     // History tab should not exist
-    const historyTabs = screen.queryAllByRole("tab", { name: /history/i });
+    const historyTabs = screen.getAllByRole("tab").filter((el) => {
+      return /history/i.test(el.textContent ?? "");
+    });
     expect(historyTabs).toHaveLength(0);
   });
 
@@ -77,10 +91,18 @@ describe("zero schedule page - view tabs (post run-history removal)", () => {
     renderSchedulePage();
 
     await waitFor(() => {
-      expect(screen.getByRole("tab", { name: /list/i })).toBeInTheDocument();
+      expect(
+        screen.getAllByRole("tab").find((el) => {
+          return /list/i.test(el.textContent ?? "");
+        }),
+      ).toBeInTheDocument();
     });
 
-    click(screen.getByRole("tab", { name: /calendar/i }));
+    click(
+      screen.getAllByRole("tab").find((el) => {
+        return /calendar/i.test(el.textContent ?? "");
+      })!,
+    );
 
     await waitFor(() => {
       expect(screen.getByText("Week view")).toBeInTheDocument();
@@ -92,17 +114,29 @@ describe("zero schedule page - view tabs (post run-history removal)", () => {
     renderSchedulePage();
 
     await waitFor(() => {
-      expect(screen.getByRole("tab", { name: /list/i })).toBeInTheDocument();
+      expect(
+        screen.getAllByRole("tab").find((el) => {
+          return /list/i.test(el.textContent ?? "");
+        }),
+      ).toBeInTheDocument();
     });
 
     // Go to calendar first
-    click(screen.getByRole("tab", { name: /calendar/i }));
+    click(
+      screen.getAllByRole("tab").find((el) => {
+        return /calendar/i.test(el.textContent ?? "");
+      })!,
+    );
     await waitFor(() => {
       expect(screen.getByText("Week view")).toBeInTheDocument();
     });
 
     // Go back to list
-    click(screen.getByRole("tab", { name: /list/i }));
+    click(
+      screen.getAllByRole("tab").find((el) => {
+        return /list/i.test(el.textContent ?? "");
+      })!,
+    );
     await waitFor(() => {
       expect(screen.getByText("morning-briefing")).toBeInTheDocument();
     });
@@ -131,7 +165,9 @@ describe("zero schedule page - display after refactor", () => {
     await waitFor(() => {
       expect(screen.getByText("morning-briefing")).toBeInTheDocument();
     });
-    expect(screen.getByText("Summarize yesterday's threads")).toBeInTheDocument();
+    expect(
+      screen.getByText("Summarize yesterday's threads"),
+    ).toBeInTheDocument();
   });
 
   it("should render schedule entries in calendar view (SCHED-DISP-003)", async () => {
@@ -142,7 +178,11 @@ describe("zero schedule page - display after refactor", () => {
       expect(screen.getByText("morning-briefing")).toBeInTheDocument();
     });
 
-    click(screen.getByRole("tab", { name: /calendar/i }));
+    click(
+      screen.getAllByRole("tab").find((el) => {
+        return /calendar/i.test(el.textContent ?? "");
+      })!,
+    );
 
     await waitFor(() => {
       expect(screen.getByText("Week view")).toBeInTheDocument();

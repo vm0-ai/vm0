@@ -6,12 +6,17 @@
 
 import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { ConnectorIcon, CONNECTOR_ICONS } from "../components/settings/connector-icons.tsx";
+import {
+  ConnectorIcon,
+  CONNECTOR_ICONS,
+} from "../components/settings/connector-icons.tsx";
 import { CONNECTOR_TYPES } from "@vm0/core/contracts/connectors";
 
 describe("CONNECTOR_ICONS", () => {
   it("should have an entry for every connector type", () => {
-    const connectorTypes = Object.keys(CONNECTOR_TYPES) as (keyof typeof CONNECTOR_TYPES)[];
+    const connectorTypes = Object.keys(
+      CONNECTOR_TYPES,
+    ) as (keyof typeof CONNECTOR_TYPES)[];
     for (const type of connectorTypes) {
       expect(CONNECTOR_ICONS[type]).toBeDefined();
       expect(typeof CONNECTOR_ICONS[type]).toBe("string");
@@ -20,7 +25,9 @@ describe("CONNECTOR_ICONS", () => {
   });
 
   it("should contain url strings for each icon", () => {
-    const connectorTypes = Object.keys(CONNECTOR_TYPES) as (keyof typeof CONNECTOR_TYPES)[];
+    const connectorTypes = Object.keys(
+      CONNECTOR_TYPES,
+    ) as (keyof typeof CONNECTOR_TYPES)[];
     for (const type of connectorTypes) {
       const icon = CONNECTOR_ICONS[type];
       expect(icon).toMatch(/^https?:\/\//);
