@@ -1239,9 +1239,14 @@ pub async fn cleanup_namespaces_by_index(index: u32) {
 async fn reconcile_orphan_namespaces(locks: &LockPaths, own_index: u32, _own_lock: &Flock<File>) {
     // Own index: critical-path cleanup. Warm-up immediately afterwards
     // starts at ns_index 0 and will collide with any surviving orphan.
-    // `cleanup_namespaces_by_index` currently swallows failures — if it
-    // fails here, the caller will hit EEXIST during warm-up. Tracked in
-    // #10826 (return `Result` and fail-fast from `create()`).
+    // `cleanup_namespaces_by_index` swallows failures by design — its
+    // only fallible step (`ip netns list`) is near-infallible on a
+    // working runner, and the inner deletes go through
+    // `exec_ignore_errors` so a per-namespace `Result` would carry no
+    // signal. If reconcile silently fails here, the EEXIST that
+    // warm-up's `ip netns add` produces is the diagnostic — chronologically
+    // paired with the `error!` at the cleanup site. See #10826 for the
+    // full analysis (closed as won't-fix).
     cleanup_namespaces_by_index(own_index).await;
 
     // Other indexes: advisory cleanup for arbitrary prior runners. Failures
