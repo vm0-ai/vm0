@@ -194,6 +194,7 @@ export async function getChatThread(
   draftAttachments: PersistedAttachment[] | null;
   modelProviderId: string | null;
   selectedModel: string | null;
+  lastReadMessageId: string | null;
   createdAt: Date;
   updatedAt: Date;
 }> {
@@ -218,6 +219,7 @@ export async function getChatThread(
       .parse(thread.draftAttachments ?? null),
     modelProviderId: thread.modelProviderId ?? null,
     selectedModel: thread.selectedModel ?? null,
+    lastReadMessageId: thread.lastReadMessageId ?? null,
     createdAt: thread.createdAt,
     updatedAt: thread.updatedAt,
   };

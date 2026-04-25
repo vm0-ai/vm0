@@ -133,6 +133,7 @@ const createNewChatThread$ = command(
         title: null,
         agentId: resolvedComposeId,
         latestSessionId: null,
+        lastReadMessageId: null,
         latestSessionProviderType: null,
         activeRunIds: [],
         activeRuns: [],
@@ -168,7 +169,6 @@ const createNewChatThread$ = command(
           replace: true,
         });
       }
-      set(reloadChatThreads$);
     })();
 
     return {
@@ -267,6 +267,7 @@ const sendNewThreadMessage$ = command(
         title: null,
         agentId,
         latestSessionId: null,
+        lastReadMessageId: null,
         latestSessionProviderType: null,
         activeRunIds: [`pending-${threadId}`],
         activeRuns: [{ id: `pending-${threadId}`, status: "pending" }],

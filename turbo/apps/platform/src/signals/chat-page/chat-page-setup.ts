@@ -4,8 +4,11 @@ import { animationFrame } from "signal-timers";
 import { ZeroChatThreadPage } from "../../views/zero-page/zero-chat-thread-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
-import { defaultAgentId$ } from "../agent.ts";
-import { setChatAgentId$, currentChatThreadId$ } from "../agent-chat.ts";
+import {
+  currentChatAgentId$,
+  setChatAgentId$,
+  currentChatThreadId$,
+} from "../agent-chat.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { detachedNavigateTo$, searchParams$ } from "../route.ts";
@@ -62,24 +65,20 @@ export const setupChatPage$ = command(
       if (matchingOptimisticThread) {
         set(clearMatchingOptimisticChatThread$, matchingOptimisticThread);
       }
-      const defaultAgentId = await get(defaultAgentId$);
-      signal.throwIfAborted();
-      if (defaultAgentId) {
-        set(detachedNavigateTo$, "/agents/:agentId/chat", {
-          pathParams: { agentId: defaultAgentId },
-          searchParams: initialSearchParams,
-          replace: true,
-        });
-      } else {
-        set(detachedNavigateTo$, "/", {
-          searchParams: initialSearchParams,
-          replace: true,
-        });
-      }
+
+      set(detachedNavigateTo$, "/", {
+        searchParams: initialSearchParams,
+        replace: true,
+      });
+
       return;
     }
 
-    set(setChatAgentId$, threadData.agentId);
+    const currentChatAgentId = await get(currentChatAgentId$);
+    signal.throwIfAborted();
+    if (currentChatAgentId !== threadData.agentId) {
+      set(setChatAgentId$, threadData.agentId);
+    }
 
     const sessionTitle = threadData.title ?? "New chat";
     set(updateDocumentTitle$, sessionTitle);
