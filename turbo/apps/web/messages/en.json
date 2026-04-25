@@ -201,7 +201,7 @@
       "runOutOfCredits": "What happens when I run out of credits?",
       "runOutOfCreditsAnswer": "When your credits are depleted, your agents will stop running. You can purchase additional credits via auto-recharge, or upgrade to a higher plan for more monthly credits.",
       "doCreditsRollOver": "Do unused credits roll over?",
-      "doCreditsRollOverAnswer": "On the Free plan, starter credits expire 1 month after signup and don't replenish. On Pro, unused credits roll over for 1 month. On Team, credits roll over for 1 month.",
+      "doCreditsRollOverAnswer": "Free starter credits (10,000) expire 1 month after signup and aren't replenished. Pro and Team monthly credits expire 1 month after the end of the billing cycle in which they were granted, so each grant is usable for the current cycle plus a 1-month grace period. Auto-recharge and top-up credits never expire. The soonest-expiring credits are always consumed first.",
       "bringOwnModel": "Can I bring my own model provider?",
       "bringOwnModelAnswer": "Yes! All plans support bringing your own LLM API keys (Anthropic, etc.). When using your own keys, no VM0 credits are consumed for model usage.",
       "howSecure": "How secure is VM0?",
@@ -209,7 +209,7 @@
       "annualBilling": "Do you offer annual billing or discounts?",
       "annualBillingAnswer": "Contact us to discuss volume pricing, annual billing discounts, and custom arrangements for your team.",
       "upgradeCredits": "What happens to my credits if I upgrade?",
-      "upgradeCreditsAnswer": "When you upgrade, your remaining credits carry over and you immediately receive the new plan's monthly credit allocation. You only pay the prorated difference for the rest of the billing cycle."
+      "upgradeCreditsAnswer": "Your tier changes immediately, so you get the new plan's higher concurrency, agent limits, and features right away. Existing credits stay in your account, keep their original expiration date, and are used first. The new plan's monthly credit allocation is granted at your next billing cycle, and Stripe automatically prorates the charge for the remainder of the current cycle."
     },
     "perMonth": "/month"
   },
