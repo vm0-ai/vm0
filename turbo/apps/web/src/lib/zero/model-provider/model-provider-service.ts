@@ -890,6 +890,7 @@ async function getDefaultModelProvider(
   const defaultProvider = allProviders.find((p) => {
     return (
       p.isDefault &&
+      p.type in MODEL_PROVIDER_TYPES &&
       getFrameworkForType(p.type as ModelProviderType) === framework
     );
   });

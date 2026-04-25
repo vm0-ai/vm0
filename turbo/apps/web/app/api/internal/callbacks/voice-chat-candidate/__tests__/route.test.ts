@@ -281,7 +281,7 @@ describe("POST /api/internal/callbacks/voice-chat-candidate", () => {
       taskId: triggerTaskId,
       session,
       secret,
-      callbackId,
+      callbackId: triggerCallbackId,
     } = await setupTaskWithCallback({
       agentIdOnRun: "00000000-0000-0000-0000-000000000000",
     });
@@ -302,10 +302,12 @@ describe("POST /api/internal/callbacks/voice-chat-candidate", () => {
       task: { id: string; runId: string };
     };
 
-    // With waitUntil(), dispatchZeroRun starts immediately and may set the
-    // run status before we override it. Flush first so our status override
-    // (running) takes effect after dispatch completes.
+    // Drain the waitUntil() dispatch so the secondary run's deferred
+    // dispatch runs to completion (or failure) before we override status.
+    // Without this, dispatchZeroRun races with setTestRunStatus and may
+    // leave the run in "failed" instead of the expected "running".
     await context.mocks.flushAfter();
+
     await setTestRunStatus(secondary.runId, "running");
     await setTestRunRunnerGroup(secondary.runId, "test-group");
 
@@ -316,7 +318,7 @@ describe("POST /api/internal/callbacks/voice-chat-candidate", () => {
       createSignedCallbackRequest(
         CALLBACK_URL,
         {
-          callbackId,
+          callbackId: triggerCallbackId,
           runId: triggerRunId,
           status: "completed",
           payload: { taskId: triggerTaskId },

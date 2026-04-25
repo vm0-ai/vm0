@@ -659,7 +659,7 @@ export function getVm0ApiModel(model: string): string {
 export function getFrameworkForType(
   type: ModelProviderType,
 ): ModelProviderFramework {
-  return MODEL_PROVIDER_TYPES[type].framework;
+  return MODEL_PROVIDER_TYPES[type]?.framework ?? "claude-code";
 }
 
 /**
@@ -670,6 +670,7 @@ export function getSecretNameForType(
   type: ModelProviderType,
 ): string | undefined {
   const config = MODEL_PROVIDER_TYPES[type];
+  if (!config) return undefined;
   return "secretName" in config ? config.secretName : undefined;
 }
 
@@ -678,6 +679,7 @@ export function getSecretNameForType(
  */
 export function hasAuthMethods(type: ModelProviderType): boolean {
   const config = MODEL_PROVIDER_TYPES[type];
+  if (!config) return false;
   return "authMethods" in config;
 }
 
@@ -689,6 +691,7 @@ export function getAuthMethodsForType(
   type: ModelProviderType,
 ): Record<string, AuthMethodConfig> | undefined {
   const config = MODEL_PROVIDER_TYPES[type];
+  if (!config) return undefined;
   return "authMethods" in config ? config.authMethods : undefined;
 }
 
