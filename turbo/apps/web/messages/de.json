@@ -201,7 +201,7 @@
       "runOutOfCredits": "Was passiert, wenn meine Credits aufgebraucht sind?",
       "runOutOfCreditsAnswer": "Wenn Ihre Credits aufgebraucht sind, stoppen Ihre Agenten. Sie können zusätzliche Credits per automatischem Aufladen kaufen oder auf einen höheren Plan upgraden.",
       "doCreditsRollOver": "Werden ungenutzte Credits übertragen?",
-      "doCreditsRollOverAnswer": "Beim Free-Plan verfallen Starter-Credits 1 Monat nach Registrierung und werden nicht aufgefüllt. Bei Pro werden ungenutzte Credits 1 Monat übertragen. Bei Team werden Credits 1 Monat übertragen.",
+      "doCreditsRollOverAnswer": "Free-Starter-Credits (10.000) verfallen 1 Monat nach der Registrierung und werden nicht aufgefüllt. Monatliche Pro- und Team-Credits verfallen 1 Monat nach Ende des Abrechnungszeitraums, in dem sie gewährt wurden — jede Zuweisung kann also im laufenden Zeitraum plus einer Karenzfrist von 1 Monat genutzt werden. Auto-Recharge- und Top-up-Credits verfallen nie. Es werden stets die zuerst verfallenden Credits zuerst verbraucht.",
       "bringOwnModel": "Kann ich meinen eigenen Modellanbieter verwenden?",
       "bringOwnModelAnswer": "Ja! Alle Pläne unterstützen eigene LLM-API-Schlüssel (Anthropic usw.). Bei Verwendung eigener Schlüssel werden keine VM0-Credits für die Modellnutzung verbraucht.",
       "howSecure": "Wie sicher ist VM0?",
@@ -209,7 +209,7 @@
       "annualBilling": "Bieten Sie Jahresabrechnung oder Rabatte an?",
       "annualBillingAnswer": "Kontaktieren Sie uns, um Mengenpreise, Jahresabrechnungsrabatte und individuelle Vereinbarungen für Ihr Team zu besprechen.",
       "upgradeCredits": "Was passiert mit meinen Credits bei einem Upgrade?",
-      "upgradeCreditsAnswer": "Bei einem Upgrade werden Ihre verbleibenden Credits übernommen und Sie erhalten sofort das monatliche Credit-Kontingent des neuen Plans. Sie zahlen nur die anteilige Differenz für den Rest des Abrechnungszeitraums."
+      "upgradeCreditsAnswer": "Ihre Stufe wird sofort gewechselt, sodass Sie umgehend die höhere Parallelität, die Agenten-Limits und die Funktionen des neuen Plans erhalten. Bestehende Credits bleiben in Ihrem Konto, behalten ihr ursprüngliches Ablaufdatum und werden zuerst verbraucht. Das monatliche Credit-Kontingent des neuen Plans wird zu Ihrem nächsten Abrechnungszeitraum gewährt, und Stripe berechnet die Kosten für den Rest des laufenden Zeitraums automatisch anteilig."
     },
     "perMonth": "/Monat"
   },
