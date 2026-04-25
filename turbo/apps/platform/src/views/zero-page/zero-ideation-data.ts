@@ -1,5 +1,5 @@
-import type { ConnectorType } from "@vm0/core/contracts/connectors";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import type { ConnectorType } from "@vm0/api-contracts/contracts/connectors";
+import { FeatureSwitchKey } from "@vm0/api-contracts/feature-switch-key";
 
 interface UseCase {
   readonly title: string;

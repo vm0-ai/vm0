@@ -3,11 +3,11 @@ import chalk from "chalk";
 import {
   CONNECTOR_TYPES,
   connectorTypeSchema,
-} from "@vm0/core/contracts/connectors";
+} from "@vm0/api-contracts/contracts/connectors";
 import {
   getScopeDiff,
   hasRequiredScopes,
-} from "@vm0/core/contracts/connector-utils";
+} from "@vm0/api-contracts/contracts/connector-utils";
 import { getZeroConnector } from "../../../lib/api";
 import { formatDateTime } from "../../../lib/domain/schedule-utils";
 import { withErrorHandler } from "../../../lib/command";

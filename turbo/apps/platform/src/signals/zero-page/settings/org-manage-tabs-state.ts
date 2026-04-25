@@ -4,13 +4,13 @@ import {
   zeroOrgInviteContract,
   zeroOrgMembersContract,
   zeroOrgMembershipRequestsContract,
-} from "@vm0/core/contracts/zero-org-members";
-import { zeroOrgDomainsContract } from "@vm0/core/contracts/zero-org-domains";
+} from "@vm0/api-contracts/contracts/zero-org-members";
+import { zeroOrgDomainsContract } from "@vm0/api-contracts/contracts/zero-org-domains";
 import type {
   OrgEnrollmentMode,
   OrgRole,
-} from "@vm0/core/contracts/org-members";
-import type { MemberUsage } from "@vm0/core/contracts/zero-usage";
+} from "@vm0/api-contracts/contracts/org-members";
+import type { MemberUsage } from "@vm0/api-contracts/contracts/zero-usage";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { org$, refreshOrg$ } from "../../org.ts";
 import { zeroClient$ } from "../../api-client.ts";

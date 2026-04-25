@@ -4,8 +4,8 @@
  * Mock handlers for /api/zero/variables endpoints.
  */
 
-import { zeroVariablesContract } from "@vm0/core/contracts/zero-secrets";
-import type { VariableResponse } from "@vm0/core/contracts/variables";
+import { zeroVariablesContract } from "@vm0/api-contracts/contracts/zero-secrets";
+import type { VariableResponse } from "@vm0/api-contracts/contracts/variables";
 import { mockApi } from "../msw-contract.ts";
 
 let mockVariables: VariableResponse[] = [];

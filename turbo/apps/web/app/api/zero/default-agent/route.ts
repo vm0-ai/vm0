@@ -1,10 +1,10 @@
 import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
-import { orgDefaultAgentContract } from "@vm0/core/contracts/orgs";
+import { orgDefaultAgentContract } from "@vm0/api-contracts/contracts/orgs";
 import { initServices } from "../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../src/lib/zero/org/resolve-org";
-import { zeroAgents } from "../../../../src/db/schema/zero-agent";
-import { orgMetadata as orgTable } from "../../../../src/db/schema/org-metadata";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { orgMetadata as orgTable } from "@vm0/db/schema/org-metadata";
 import { eq, and } from "drizzle-orm";
 
 const router = tsr.router(orgDefaultAgentContract, {

@@ -3,12 +3,12 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../../src/lib/ts-rest-handler";
-import { cliAuthTokenContract } from "@vm0/core/contracts/cli-auth";
+import { cliAuthTokenContract } from "@vm0/api-contracts/contracts/cli-auth";
 import crypto from "crypto";
 import { eq } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
-import { deviceCodes } from "../../../../../src/db/schema/device-codes";
-import { cliTokens } from "../../../../../src/db/schema/cli-tokens";
+import { deviceCodes } from "@vm0/db/schema/device-codes";
+import { cliTokens } from "@vm0/db/schema/cli-tokens";
 import { generateCliToken } from "../../../../../src/lib/auth/sandbox-token";
 
 const router = tsr.router(cliAuthTokenContract, {

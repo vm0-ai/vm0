@@ -7,7 +7,7 @@ import {
   ALL_RUN_STATUSES,
   type RunListItem,
   type RunStatus,
-} from "@vm0/core/contracts/runs";
+} from "@vm0/api-contracts/contracts/runs";
 import { withErrorHandler } from "../../lib/command";
 
 /** Standard UUID string length (with hyphens) */

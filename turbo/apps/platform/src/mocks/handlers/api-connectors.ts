@@ -1,13 +1,13 @@
 import {
   CONNECTOR_TYPES,
   type ConnectorType,
-} from "@vm0/core/contracts/connectors";
-import type { ConnectorResponse } from "@vm0/core/contracts/connector-schemas";
+} from "@vm0/api-contracts/contracts/connectors";
+import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import {
   zeroConnectorsByTypeContract,
   zeroConnectorScopeDiffContract,
   zeroConnectorsMainContract,
-} from "@vm0/core/contracts/zero-connectors";
+} from "@vm0/api-contracts/contracts/zero-connectors";
 import { mockApi } from "../msw-contract.ts";
 
 const ALL_CONNECTOR_TYPES = Object.keys(CONNECTOR_TYPES) as ConnectorType[];

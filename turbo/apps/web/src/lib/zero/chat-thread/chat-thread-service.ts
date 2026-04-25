@@ -1,9 +1,9 @@
 import { eq, and, desc, inArray, isNull, sql } from "drizzle-orm";
-import { chatThreads } from "../../../db/schema/chat-thread";
-import { chatMessages } from "../../../db/schema/chat-message";
-import { zeroRuns } from "../../../db/schema/zero-run";
-import { agentRuns } from "../../../db/schema/agent-run";
-import { zeroAgents } from "../../../db/schema/zero-agent";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { chatMessages } from "@vm0/db/schema/chat-message";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { notFound } from "../../shared/errors";
 import {
   getMessagesByThreadId,
@@ -15,7 +15,7 @@ import {
   type PersistedAttachment,
   type ResolvedAttachFile,
   persistedAttachmentSchema,
-} from "@vm0/core/contracts/chat-threads";
+} from "@vm0/api-contracts/contracts/chat-threads";
 import { listS3Objects } from "../../infra/s3/s3-client";
 import { env } from "../../../env";
 import { EXT_MIMETYPE_MAP } from "../../shared/mimetype";

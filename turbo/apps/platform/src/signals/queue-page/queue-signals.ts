@@ -2,7 +2,7 @@ import { command, state, computed } from "ccstate";
 import {
   zeroRunsQueueContract,
   zeroRunsCancelContract,
-} from "@vm0/core/contracts/zero-runs";
+} from "@vm0/api-contracts/contracts/zero-runs";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 import { setAblyLoop$ } from "../realtime.ts";

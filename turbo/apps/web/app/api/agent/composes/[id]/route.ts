@@ -3,7 +3,7 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../../src/lib/ts-rest-handler";
-import { composesByIdContract } from "@vm0/core/contracts/composes";
+import { composesByIdContract } from "@vm0/api-contracts/contracts/composes";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
   requireAuth,

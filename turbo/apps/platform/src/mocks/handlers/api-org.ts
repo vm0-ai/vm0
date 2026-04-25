@@ -2,8 +2,8 @@ import {
   zeroOrgContract,
   zeroOrgLeaveContract,
   zeroOrgDeleteContract,
-} from "@vm0/core/contracts/zero-org";
-import type { OrgResponse } from "@vm0/core/contracts/orgs";
+} from "@vm0/api-contracts/contracts/zero-org";
+import type { OrgResponse } from "@vm0/api-contracts/contracts/orgs";
 import { http, HttpResponse } from "msw";
 import { mockApi } from "../msw-contract.ts";
 

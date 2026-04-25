@@ -14,8 +14,8 @@ import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import {
   CONNECTOR_TYPES,
   type ConnectorType,
-} from "@vm0/core/contracts/connectors";
-import { zeroUserConnectorsContract } from "@vm0/core/contracts/user-connectors";
+} from "@vm0/api-contracts/contracts/connectors";
+import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";

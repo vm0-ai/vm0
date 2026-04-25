@@ -1,8 +1,8 @@
 import { eq, and, inArray, sum, lte, gte } from "drizzle-orm";
-import { creditUsage } from "../../../db/schema/credit-usage";
-import { clientCreditUsage } from "../../../db/schema/client-credit-usage";
-import { agentRuns } from "../../../db/schema/agent-run";
-import { zeroRuns } from "../../../db/schema/zero-run";
+import { creditUsage } from "@vm0/db/schema/credit-usage";
+import { clientCreditUsage } from "@vm0/db/schema/client-credit-usage";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { logger } from "../../shared/logger";
 
 const log = logger("service:proxy-usage-comparison");

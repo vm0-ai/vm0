@@ -1,6 +1,6 @@
 import { eq, and, sql } from "drizzle-orm";
-import { usageEvent } from "../../../db/schema/usage-event";
-import { usagePricing } from "../../../db/schema/usage-pricing";
+import { usageEvent } from "@vm0/db/schema/usage-event";
+import { usagePricing } from "@vm0/db/schema/usage-pricing";
 import { deductOrgCredits } from "../org/org-service";
 import {
   deductFromExpiresRecords,

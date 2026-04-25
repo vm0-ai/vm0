@@ -5,7 +5,7 @@ import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
 import {
   chatMessagesContract,
   type AttachFile,
-} from "@vm0/core/contracts/chat-threads";
+} from "@vm0/api-contracts/contracts/chat-threads";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
   requireAuth,
@@ -17,8 +17,8 @@ import {
   fetchZeroAgentForRun,
 } from "../../../../../src/lib/zero/zero-run-service";
 import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
-import { modelProviders } from "../../../../../src/db/schema/model-provider";
-import { chatThreads } from "../../../../../src/db/schema/chat-thread";
+import { modelProviders } from "@vm0/db/schema/model-provider";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
 import {
   buildWebChatPrompt,
   buildWebAttachFilesPrompt,

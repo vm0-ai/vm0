@@ -1,13 +1,13 @@
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
-import { onboardingStatusContract } from "@vm0/core/contracts/onboarding";
+import { onboardingStatusContract } from "@vm0/api-contracts/contracts/onboarding";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
 import { isBadRequest, isNotFound } from "../../../../../src/lib/shared/errors";
-import { agentComposes } from "../../../../../src/db/schema/agent-compose";
-import { zeroAgents } from "../../../../../src/db/schema/zero-agent";
+import { agentComposes } from "@vm0/db/schema/agent-compose";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { eq, and } from "drizzle-orm";
-import { orgMembersMetadata } from "../../../../../src/db/schema/org-members-metadata";
+import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 
 async function isMemberOnboardingDone(
   orgId: string,

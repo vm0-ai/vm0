@@ -16,21 +16,9 @@
       "import": "./src/contracts/index.ts",
       "types": "./src/contracts/index.ts"
     },
-    "./contracts/*": {
-      "import": "./src/contracts/*.ts",
-      "types": "./src/contracts/*.ts"
-    },
-    "./contracts/connectors/*": {
-      "import": "./src/contracts/connectors/*.ts",
-      "types": "./src/contracts/connectors/*.ts"
-    },
     "./firewalls": {
       "import": "./src/firewalls/index.ts",
       "types": "./src/firewalls/index.ts"
-    },
-    "./firewalls/*": {
-      "import": "./src/firewalls/*.ts",
-      "types": "./src/firewalls/*.ts"
     }
   },
   "scripts": {
@@ -49,8 +37,7 @@
     "vitest": "^4.1.4"
   },
   "dependencies": {
-    "@ts-rest/core": "3.53.0-rc.1",
-    "yaml": "^2.8.1",
-    "zod": "^4.3.6"
+    "@vm0/api-contracts": "workspace:*",
+    "yaml": "^2.8.1"
   }
 }

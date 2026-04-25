@@ -1,7 +1,7 @@
 import { gzipSync } from "node:zlib";
 import { eq, and } from "drizzle-orm";
 import { VOLUME_ORG_USER_ID } from "@vm0/core/storage-names";
-import { storages, storageVersions } from "../../../db/schema/storage";
+import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { putS3Object, verifyS3FilesExist } from "../s3/s3-client";
 import type { S3StorageManifest } from "../s3/types";
 import { computeContentHashFromHashes, hashFileContent } from "./content-hash";

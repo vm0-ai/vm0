@@ -1,5 +1,5 @@
-import { getConnectorProvidedSecretNames } from "@vm0/core/contracts/connector-utils";
-import type { ConnectorType } from "@vm0/core/contracts/connectors";
+import { getConnectorProvidedSecretNames } from "@vm0/api-contracts/contracts/connector-utils";
+import type { ConnectorType } from "@vm0/api-contracts/contracts/connectors";
 import { extractAndGroupVariables } from "@vm0/core/variable-expander";
 import { logger } from "../../shared/logger";
 import { getSecretValues } from "../secret/secret-service";

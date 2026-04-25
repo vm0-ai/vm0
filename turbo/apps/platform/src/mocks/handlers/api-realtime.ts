@@ -1,4 +1,4 @@
-import { platformRealtimeTokenContract } from "@vm0/core/contracts/realtime";
+import { platformRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
 import { mockApi } from "../msw-contract.ts";
 
 export const apiRealtimeHandlers = [

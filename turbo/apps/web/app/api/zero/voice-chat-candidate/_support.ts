@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/api-contracts/feature-switch-key";
 import { z } from "zod";
 import {
   voiceChatItems,
   voiceChatSessions,
   voiceChatTasks,
-} from "../../../../src/db/schema/voice-chat";
+} from "@vm0/db/schema/voice-chat";
 import type { AuthContext } from "../../../../src/lib/auth/get-auth-context";
 import { loadFeatureSwitchOverrides } from "../../../../src/lib/zero/user/feature-switches-service";
 

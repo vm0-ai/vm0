@@ -1,5 +1,5 @@
 import { createHandler, tsr } from "../../../../../../src/lib/ts-rest-handler";
-import { runsCancelContract } from "@vm0/core/contracts/runs";
+import { runsCancelContract } from "@vm0/api-contracts/contracts/runs";
 import { initServices } from "../../../../../../src/lib/init-services";
 import {
   requireAuth,
@@ -7,7 +7,7 @@ import {
 } from "../../../../../../src/lib/auth/require-auth";
 import { isSandboxAuth } from "../../../../../../src/lib/auth/capability-check";
 import { resolveOrg } from "../../../../../../src/lib/zero/org/resolve-org";
-import { agentRuns } from "../../../../../../src/db/schema/agent-run";
+import { agentRuns } from "@vm0/db/schema/agent-run";
 import { eq, and } from "drizzle-orm";
 import { cancelRun } from "../../../../../../src/lib/zero/zero-run-cancel";
 import { dispatchCancelSideEffects } from "../../../../../../src/lib/infra/run/run-service";

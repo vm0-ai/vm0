@@ -4,8 +4,8 @@ import { z } from "zod";
 import { initServices } from "../../../../src/lib/init-services";
 import { env } from "../../../../src/env";
 import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
-import { telegramInstallations } from "../../../../src/db/schema/telegram-installation";
-import { agentComposes } from "../../../../src/db/schema/agent-compose";
+import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
+import { agentComposes } from "@vm0/db/schema/agent-compose";
 import {
   getMe,
   setWebhook,

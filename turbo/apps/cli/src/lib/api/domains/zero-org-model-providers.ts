@@ -4,13 +4,13 @@ import {
   zeroModelProvidersDefaultContract,
   zeroModelProvidersMainContract,
   zeroModelProvidersUpdateModelContract,
-} from "@vm0/core/contracts/zero-model-providers";
+} from "@vm0/api-contracts/contracts/zero-model-providers";
 import type {
   ModelProviderListResponse,
   ModelProviderResponse,
   ModelProviderType,
   UpsertModelProviderResponse,
-} from "@vm0/core/contracts/model-providers";
+} from "@vm0/api-contracts/contracts/model-providers";
 import { getClientConfig, handleError } from "../core/client-factory";
 
 /**

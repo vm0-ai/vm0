@@ -18,8 +18,8 @@ import {
 import {
   type UsageInsightResponse,
   type UsageInsightBucket,
-} from "@vm0/core/contracts/zero-usage-insight";
-import { triggerSourceSchema } from "@vm0/core/contracts/logs";
+} from "@vm0/api-contracts/contracts/zero-usage-insight";
+import { triggerSourceSchema } from "@vm0/api-contracts/contracts/logs";
 
 import { GET } from "../route";
 

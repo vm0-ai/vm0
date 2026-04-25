@@ -1,5 +1,5 @@
 import { command, computed, state } from "ccstate";
-import type { SendMode } from "@vm0/core/contracts/zero-user-preferences";
+import type { SendMode } from "@vm0/api-contracts/contracts/zero-user-preferences";
 import { updateUserPreference$, userPreferences$ } from "./user-preferences.ts";
 import { sendMode$ } from "../../send-mode.ts";
 

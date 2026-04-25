@@ -1,14 +1,14 @@
 import { createHandler, tsr } from "../../../../../../src/lib/ts-rest-handler";
-import { zeroAgentCustomConnectorsContract } from "@vm0/core/contracts/zero-agent-custom-connectors";
+import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import { initServices } from "../../../../../../src/lib/init-services";
 import {
   requireAuth,
   isAuthError,
 } from "../../../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../../../src/lib/zero/org/resolve-org";
-import { zeroAgents } from "../../../../../../src/db/schema/zero-agent";
-import { orgCustomConnectors } from "../../../../../../src/db/schema/org-custom-connector";
-import { userCustomConnectors } from "../../../../../../src/db/schema/user-custom-connector";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
+import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
 import { eq, and, inArray } from "drizzle-orm";
 
 const router = tsr.router(zeroAgentCustomConnectorsContract, {

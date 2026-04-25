@@ -1,9 +1,9 @@
-import type { RunEvent } from "@vm0/core/contracts/runs";
+import type { RunEvent } from "@vm0/api-contracts/contracts/runs";
 import {
   agentComposes,
   agentComposeVersions,
-} from "../../../db/schema/agent-compose";
-import { agentRuns } from "../../../db/schema/agent-run";
+} from "@vm0/db/schema/agent-compose";
+import { agentRuns } from "@vm0/db/schema/agent-run";
 import { and, eq, inArray, gte } from "drizzle-orm";
 import { queryAxiom, getDatasetName, DATASETS } from "../../shared/axiom";
 

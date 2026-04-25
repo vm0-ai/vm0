@@ -2,7 +2,7 @@ import type { Pool } from "pg";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { NeonDatabase } from "drizzle-orm/neon-serverless";
 import type Stripe from "stripe";
-import type { schema } from "../db/db";
+import type { schema } from "@vm0/db";
 import type { Env } from "../env";
 
 // Support both node-postgres (local) and neon-serverless (Vercel serverless) modes

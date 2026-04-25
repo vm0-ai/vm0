@@ -1,11 +1,11 @@
 import "server-only";
 import { after } from "next/server";
 import { and, eq } from "drizzle-orm";
-import { voiceChatSessions } from "../../../db/schema/voice-chat";
+import { voiceChatSessions } from "@vm0/db/schema/voice-chat";
 import {
   agentComposes,
   agentComposeVersions,
-} from "../../../db/schema/agent-compose";
+} from "@vm0/db/schema/agent-compose";
 import {
   appendVoiceChatCandidateItem,
   readVoiceChatCandidateItems,

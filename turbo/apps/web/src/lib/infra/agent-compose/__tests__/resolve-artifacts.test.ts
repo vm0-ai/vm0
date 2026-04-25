@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { MOUNT_PATH_TEMPLATE } from "@vm0/core/contracts/composes";
+import { MOUNT_PATH_TEMPLATE } from "@vm0/api-contracts/contracts/composes";
 import { resolveComposeArtifacts } from "../resolve-artifacts";
 import type { AgentComposeYaml } from "../types";
 

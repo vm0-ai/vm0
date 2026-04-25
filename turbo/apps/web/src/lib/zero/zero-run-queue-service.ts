@@ -12,16 +12,16 @@ import {
   avg,
   inArray,
 } from "drizzle-orm";
-import { agentRuns } from "../../db/schema/agent-run";
-import { agentRunQueue } from "../../db/schema/agent-run-queue";
-import { agentSessions } from "../../db/schema/agent-session";
-import { zeroRuns } from "../../db/schema/zero-run";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
+import { agentSessions } from "@vm0/db/schema/agent-session";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
   agentComposeVersions,
   agentComposes,
-} from "../../db/schema/agent-compose";
-import { zeroAgents } from "../../db/schema/zero-agent";
-import { orgMetadata } from "../../db/schema/org-metadata";
+} from "@vm0/db/schema/agent-compose";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { env } from "../../env";
 import { getCachedUser } from "../auth/user-cache-service";
 import { transitionRunStatus } from "../infra/run/run-status";
@@ -55,9 +55,9 @@ import { isConcurrentRunLimit, isInsufficientCredits } from "../shared/errors";
 import { logger } from "../shared/logger";
 import { publishOrgSignal } from "./realtime";
 import { publishChatThreadRunUpdated } from "./chat-thread/chat-message-service";
-import type { TriggerSource } from "@vm0/core/contracts/logs";
-import type { OrgTier } from "@vm0/core/contracts/orgs";
-import type { QueueResponse } from "@vm0/core/contracts/runs";
+import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
+import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
+import type { QueueResponse } from "@vm0/api-contracts/contracts/runs";
 import { recordSandboxOperation } from "../infra/metrics";
 
 const log = logger("zero:run-queue-service");

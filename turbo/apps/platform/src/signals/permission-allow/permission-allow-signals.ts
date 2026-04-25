@@ -4,15 +4,15 @@ import {
   permissionAccessRequestsListContract,
   permissionAccessRequestsResolveContract,
   zeroAgentPermissionPoliciesContract,
-} from "@vm0/core/contracts/zero-agents";
+} from "@vm0/api-contracts/contracts/zero-agents";
 import type {
   FirewallPolicies,
   FirewallPolicyValue,
-} from "@vm0/core/contracts/firewalls";
+} from "@vm0/api-contracts/contracts/firewalls";
 import {
   getConnectorFirewall,
   isFirewallConnectorType,
-} from "@vm0/core/firewalls";
+} from "@vm0/api-contracts/firewalls";
 import { delay } from "signal-timers";
 import { zeroClient$ } from "../api-client.ts";
 import { pathParams$, searchParams$, replaceSearchParams$ } from "../route.ts";

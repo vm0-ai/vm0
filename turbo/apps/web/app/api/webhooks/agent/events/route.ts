@@ -3,10 +3,10 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../../src/lib/ts-rest-handler";
-import { webhookEventsContract } from "@vm0/core/contracts/webhooks";
+import { webhookEventsContract } from "@vm0/api-contracts/contracts/webhooks";
 import { initServices } from "../../../../../src/lib/init-services";
-import { agentRuns } from "../../../../../src/db/schema/agent-run";
-import { zeroRuns } from "../../../../../src/db/schema/zero-run";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { eq, and } from "drizzle-orm";
 import { getSandboxAuthForRun } from "../../../../../src/lib/auth/get-sandbox-auth";
 import { logger } from "../../../../../src/lib/shared/logger";

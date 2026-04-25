@@ -20,7 +20,7 @@ import {
   zeroOrgMembersContract,
   zeroOrgInviteContract,
   zeroOrgMembershipRequestsContract,
-} from "@vm0/core/contracts/zero-org-members";
+} from "@vm0/api-contracts/contracts/zero-org-members";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();

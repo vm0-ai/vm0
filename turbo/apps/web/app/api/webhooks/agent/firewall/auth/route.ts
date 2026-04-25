@@ -6,14 +6,14 @@ import { verifySandboxToken } from "../../../../../../src/lib/auth/sandbox-token
 import type { SandboxAuth } from "../../../../../../src/lib/auth/sandbox-token";
 import { decryptSecretsMap } from "../../../../../../src/lib/shared/crypto/secrets-encryption";
 import { logger } from "../../../../../../src/lib/shared/logger";
-import { agentRuns } from "../../../../../../src/db/schema/agent-run";
+import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
   refreshConnectorAccessToken,
   getConnectorExpiry,
   getConnectorAccessToken,
   getConnectorRefreshToken,
 } from "../../../../../../src/lib/zero/connector/connector-service";
-import { basicAuthTemplateRe } from "@vm0/core/contracts/firewalls";
+import { basicAuthTemplateRe } from "@vm0/api-contracts/contracts/firewalls";
 
 const bodySchema = z.object({
   encryptedSecrets: z.string().min(1),

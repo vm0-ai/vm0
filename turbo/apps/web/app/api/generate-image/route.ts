@@ -3,7 +3,7 @@ import { getVercelOidcToken } from "@vercel/oidc";
 import { randomUUID } from "crypto";
 import { ExternalAccountClient } from "google-auth-library";
 import { after, NextRequest, NextResponse } from "next/server";
-import { usageEvent } from "../../../src/db/schema/usage-event";
+import { usageEvent } from "@vm0/db/schema/usage-event";
 import { env } from "../../../src/env";
 import { getAuthContext } from "../../../src/lib/auth/get-auth-context";
 import { initServices } from "../../../src/lib/init-services";

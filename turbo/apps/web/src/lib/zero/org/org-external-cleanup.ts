@@ -1,15 +1,15 @@
 import { eq } from "drizzle-orm";
-import { connectorTypeSchema } from "@vm0/core/contracts/connectors";
+import { connectorTypeSchema } from "@vm0/api-contracts/contracts/connectors";
 import { logger } from "../../shared/logger";
 import { getStripe } from "../stripe";
 import { deleteWebhook } from "../telegram/client";
 import { decryptSecretValue } from "../../shared/crypto/secrets-encryption";
 import { revokeConnectorToken } from "../connector/connector-service";
 import { cleanupWorkspaceInstallation } from "../slack-org/connect-service";
-import { orgMetadata } from "../../../db/schema/org-metadata";
-import { telegramInstallations } from "../../../db/schema/telegram-installation";
-import { connectors } from "../../../db/schema/connector";
-import { slackOrgInstallations } from "../../../db/schema/slack-org-installation";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
+import { connectors } from "@vm0/db/schema/connector";
+import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
 
 const log = logger("service:org-external-cleanup");
 

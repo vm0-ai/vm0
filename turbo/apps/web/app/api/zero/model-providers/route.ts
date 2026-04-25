@@ -1,7 +1,7 @@
 import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
-import { zeroModelProvidersMainContract } from "@vm0/core/contracts/zero-model-providers";
-import { hasAuthMethods } from "@vm0/core/contracts/model-providers";
-import { createErrorResponse } from "@vm0/core/contracts/errors";
+import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
+import { hasAuthMethods } from "@vm0/api-contracts/contracts/model-providers";
+import { createErrorResponse } from "@vm0/api-contracts/contracts/errors";
 import { initServices } from "../../../../src/lib/init-services";
 import {
   requireAuth,

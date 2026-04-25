@@ -1,6 +1,6 @@
 import { eq, and } from "drizzle-orm";
-import { agentRuns } from "../../db/schema/agent-run";
-import { agentRunQueue } from "../../db/schema/agent-run-queue";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
 import { transitionRunStatus } from "../infra/run/run-status";
 import { notFound, runNotCancellable } from "../shared/errors";
 import { publishOrgSignal } from "./realtime";

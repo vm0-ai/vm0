@@ -12,7 +12,7 @@ import {
 } from "../../../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../../../src/__tests__/clerk-mock";
 import { randomUUID } from "crypto";
-import type { AxiomNetworkEvent } from "@vm0/core/contracts/runs";
+import type { AxiomNetworkEvent } from "@vm0/api-contracts/contracts/runs";
 
 const context = testContext();
 

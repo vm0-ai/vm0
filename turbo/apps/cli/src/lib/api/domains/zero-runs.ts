@@ -4,13 +4,13 @@ import {
   zeroRunsByIdContract,
   zeroRunAgentEventsContract,
   zeroRunContextContract,
-} from "@vm0/core/contracts/zero-runs";
+} from "@vm0/api-contracts/contracts/zero-runs";
 import type {
   AgentEventsResponse,
   CreateRunResponse,
   GetRunResponse,
-} from "@vm0/core/contracts/runs";
-import type { RunContextResponse } from "@vm0/core/contracts/zero-runs";
+} from "@vm0/api-contracts/contracts/runs";
+import type { RunContextResponse } from "@vm0/api-contracts/contracts/zero-runs";
 import { getClientConfig, handleError } from "../core/client-factory";
 
 export async function createZeroRun(body: {

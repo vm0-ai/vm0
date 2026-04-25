@@ -17,7 +17,7 @@ export interface VolumeConfig {
 
 /**
  * Artifact entry declared in compose. Mirrors the zod
- * `artifactConfigSchema` in @vm0/core/contracts/composes.
+ * `artifactConfigSchema` in @vm0/api-contracts/contracts/composes.
  */
 export interface ArtifactConfig {
   name: string;

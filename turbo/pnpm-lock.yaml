@@ -89,6 +89,9 @@ importers:
       '@types/tar':
         specifier: ^6.1.13
         version: 6.1.13
+      '@vm0/api-contracts':
+        specifier: workspace:*
+        version: link:../../packages/api-contracts
       '@vm0/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -194,6 +197,9 @@ importers:
       '@uiw/react-markdown-preview':
         specifier: ^5.1.5
         version: 5.2.0(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      '@vm0/api-contracts':
+        specifier: workspace:*
+        version: link:../../packages/api-contracts
       '@vm0/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -366,9 +372,15 @@ importers:
       '@vercel/oidc':
         specifier: ^3.2.1
         version: 3.2.1
+      '@vm0/api-contracts':
+        specifier: workspace:*
+        version: link:../../packages/api-contracts
       '@vm0/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@vm0/db':
+        specifier: workspace:*
+        version: link:../../packages/db
       '@vm0/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -536,7 +548,7 @@ importers:
         specifier: ^4.1.4
         version: 4.1.4(@emnapi/runtime@1.9.1)(@opentelemetry/api@1.9.1)(@types/node@24.3.0)(@vitest/browser-playwright@4.1.4)(@vitest/coverage-v8@4.1.4)(@vitest/ui@4.1.4)(esbuild@0.27.4)(happy-dom@20.9.0)(jiti@2.6.1)(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(tsx@4.21.0)(yaml@2.8.3)
 
-  packages/core:
+  packages/api-contracts:
     dependencies:
       '@ts-rest/core':
         specifier: 3.53.0-rc.1
@@ -548,6 +560,71 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
+      '@vm0/eslint-config':
+        specifier: workspace:*
+        version: link:../eslint-config
+      '@vm0/typescript-config':
+        specifier: workspace:*
+        version: link:../typescript-config
+      eslint:
+        specifier: ^9.34.0
+        version: 9.39.4(jiti@2.6.1)
+      oxlint:
+        specifier: ^1.57.0
+        version: 1.57.0(oxlint-tsgolint@0.21.1)
+      oxlint-tsgolint:
+        specifier: 0.21.1
+        version: 0.21.1
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.1.4
+        version: 4.1.4(@emnapi/runtime@1.9.1)(@opentelemetry/api@1.9.1)(@types/node@24.3.0)(@vitest/browser-playwright@4.1.4)(@vitest/coverage-v8@4.1.4)(@vitest/ui@4.1.4)(esbuild@0.27.4)(happy-dom@20.9.0)(jiti@2.6.1)(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(tsx@4.21.0)(yaml@2.8.3)
+
+  packages/core:
+    dependencies:
+      '@vm0/api-contracts':
+        specifier: workspace:*
+        version: link:../api-contracts
+      yaml:
+        specifier: '>=2.8.3'
+        version: 2.8.3
+    devDependencies:
+      '@vm0/eslint-config':
+        specifier: workspace:*
+        version: link:../eslint-config
+      '@vm0/typescript-config':
+        specifier: workspace:*
+        version: link:../typescript-config
+      eslint:
+        specifier: ^9.34.0
+        version: 9.39.4(jiti@2.6.1)
+      oxlint:
+        specifier: ^1.57.0
+        version: 1.57.0(oxlint-tsgolint@0.21.1)
+      oxlint-tsgolint:
+        specifier: 0.21.1
+        version: 0.21.1
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.1.4
+        version: 4.1.4(@emnapi/runtime@1.9.1)(@opentelemetry/api@1.9.1)(@types/node@24.3.0)(@vitest/browser-playwright@4.1.4)(@vitest/coverage-v8@4.1.4)(@vitest/ui@4.1.4)(esbuild@0.27.4)(happy-dom@20.9.0)(jiti@2.6.1)(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(tsx@4.21.0)(yaml@2.8.3)
+
+  packages/db:
+    dependencies:
+      '@vm0/api-contracts':
+        specifier: workspace:*
+        version: link:../api-contracts
+      drizzle-orm:
+        specifier: ^0.45.2
+        version: 0.45.2(@neondatabase/serverless@1.0.2)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(pg@8.20.0)(postgres@3.4.9)
+    devDependencies:
+      '@types/node':
+        specifier: ^24.3.0
+        version: 24.3.0
       '@vm0/eslint-config':
         specifier: workspace:*
         version: link:../eslint-config

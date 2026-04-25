@@ -2,8 +2,8 @@ import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import {
   CONNECTOR_TYPES,
   type ConnectorType,
-} from "@vm0/core/contracts/connectors";
-import { isGoogleOAuthConnector } from "@vm0/core/contracts/connector-utils";
+} from "@vm0/api-contracts/contracts/connectors";
+import { isGoogleOAuthConnector } from "@vm0/api-contracts/contracts/connector-utils";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {
   allConnectorTypes$,

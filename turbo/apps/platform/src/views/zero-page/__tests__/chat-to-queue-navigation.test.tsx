@@ -8,8 +8,8 @@ import { mockApi } from "../../../mocks/msw-contract.ts";
 import {
   chatThreadMessagesContract,
   chatThreadByIdContract,
-} from "@vm0/core/contracts/chat-threads";
-import { zeroRunsQueueContract } from "@vm0/core/contracts/zero-runs";
+} from "@vm0/api-contracts/contracts/chat-threads";
+import { zeroRunsQueueContract } from "@vm0/api-contracts/contracts/zero-runs";
 
 const context = testContext();
 

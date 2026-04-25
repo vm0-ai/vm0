@@ -7,8 +7,8 @@ import {
   type RunsListResponse,
   type CancelRunResponse,
   type QueueResponse,
-} from "@vm0/core/contracts/runs";
-import type { FirewallPolicies } from "@vm0/core/contracts/firewalls";
+} from "@vm0/api-contracts/contracts/runs";
+import type { FirewallPolicies } from "@vm0/api-contracts/contracts/firewalls";
 import { getClientConfig, handleError } from "../core/client-factory";
 import type { CreateRunResponse, GetEventsResponse } from "../core/types";
 

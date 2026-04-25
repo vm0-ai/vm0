@@ -8,7 +8,7 @@ import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
   chatThreadsContract,
   chatThreadByIdContract,
-} from "@vm0/core/contracts/chat-threads";
+} from "@vm0/api-contracts/contracts/chat-threads";
 import { createNewChatThreadOptimistically$ } from "../../../signals/chat-page/optimistic-chat-thread-page.ts";
 
 const context = testContext();

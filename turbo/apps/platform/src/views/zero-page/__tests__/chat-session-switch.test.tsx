@@ -8,13 +8,13 @@ import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
   chatThreadMessagesContract,
   chatThreadByIdContract,
-} from "@vm0/core/contracts/chat-threads";
-import { logsByIdContract } from "@vm0/core/contracts/logs";
+} from "@vm0/api-contracts/contracts/chat-threads";
+import { logsByIdContract } from "@vm0/api-contracts/contracts/logs";
 import {
   zeroRunAgentEventsContract,
   zeroRunsByIdContract,
-} from "@vm0/core/contracts/zero-runs";
-import { zeroQueuePositionContract } from "@vm0/core/contracts/zero-queue-position";
+} from "@vm0/api-contracts/contracts/zero-runs";
+import { zeroQueuePositionContract } from "@vm0/api-contracts/contracts/zero-queue-position";
 
 const context = testContext();
 const mockApi = createMockApi(context);

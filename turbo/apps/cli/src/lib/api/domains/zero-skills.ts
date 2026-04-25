@@ -5,7 +5,7 @@ import {
   type ZeroAgentCustomSkill,
   type ZeroAgentSkillContentResponse,
   type SkillFileEntry,
-} from "@vm0/core/contracts/zero-agents";
+} from "@vm0/api-contracts/contracts/zero-agents";
 import { getClientConfig, handleError } from "../core/client-factory";
 
 export async function listSkills(): Promise<ZeroAgentCustomSkill[]> {

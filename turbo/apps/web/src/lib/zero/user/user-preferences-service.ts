@@ -1,5 +1,5 @@
 import { eq, and, gt, sql } from "drizzle-orm";
-import { orgMembersMetadata } from "../../../db/schema/org-members-metadata";
+import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { badRequest } from "../../shared/errors";
 import { logger } from "../../shared/logger";
 

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
-import { deviceCodes } from "../../../../../src/db/schema/device-codes";
+import { deviceCodes } from "@vm0/db/schema/device-codes";
 import {
   resolveTestUserId,
   DEFAULT_TEST_EMAIL,

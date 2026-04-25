@@ -56,16 +56,16 @@ import {
   composerFileInput$ as singletonComposerFileInput$,
   setComposerFileInput$ as singletonSetComposerFileInput$,
 } from "../../signals/chat-page/chat-message.ts";
-import type { PersistedAttachment } from "@vm0/core/contracts/chat-threads";
+import type { PersistedAttachment } from "@vm0/api-contracts/contracts/chat-threads";
 import { AttachmentChips } from "./zero-attachment-chips.tsx";
 import {
   CONNECTOR_TYPES,
   type ConnectorType,
-} from "@vm0/core/contracts/connectors";
+} from "@vm0/api-contracts/contracts/connectors";
 import type {
   ModelProviderResponse,
   ModelProviderType,
-} from "@vm0/core/contracts/model-providers";
+} from "@vm0/api-contracts/contracts/model-providers";
 import {
   ModelProviderPicker,
   type ModelProviderSelection,

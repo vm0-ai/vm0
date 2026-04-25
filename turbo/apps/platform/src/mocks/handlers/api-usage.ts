@@ -1,8 +1,8 @@
 import {
   zeroUsageMembersContract,
   type UsageMembersResponse,
-} from "@vm0/core/contracts/zero-usage";
-import { zeroMemberCreditCapContract } from "@vm0/core/contracts/zero-member-credit-cap";
+} from "@vm0/api-contracts/contracts/zero-usage";
+import { zeroMemberCreditCapContract } from "@vm0/api-contracts/contracts/zero-member-credit-cap";
 import { mockApi } from "../msw-contract.ts";
 
 let mockUsageMembersResponse: UsageMembersResponse = {

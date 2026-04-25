@@ -2,17 +2,17 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { and, eq } from "drizzle-orm";
 import { extractAndGroupVariables } from "@vm0/core/variable-expander";
-import { getConnectorProvidedSecretNames } from "@vm0/core/contracts/connector-utils";
+import { getConnectorProvidedSecretNames } from "@vm0/api-contracts/contracts/connector-utils";
 import { initServices } from "../../../../src/lib/init-services";
 import { env } from "../../../../src/env";
 import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
 import { getApiUrl } from "../../../../src/lib/infra/callback";
-import { githubInstallations } from "../../../../src/db/schema/github-installation";
-import { githubUserLinks } from "../../../../src/db/schema/github-user-link";
+import { githubInstallations } from "@vm0/db/schema/github-installation";
+import { githubUserLinks } from "@vm0/db/schema/github-user-link";
 import {
   agentComposes,
   agentComposeVersions,
-} from "../../../../src/db/schema/agent-compose";
+} from "@vm0/db/schema/agent-compose";
 import { listSecrets } from "../../../../src/lib/zero/secret/secret-service";
 import { listVariables } from "../../../../src/lib/zero/variable/variable-service";
 import { listConnectors } from "../../../../src/lib/zero/connector/connector-service";

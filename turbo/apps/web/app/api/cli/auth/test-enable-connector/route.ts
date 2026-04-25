@@ -1,16 +1,16 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
-import { connectorTypeSchema } from "@vm0/core/contracts/connectors";
+import { connectorTypeSchema } from "@vm0/api-contracts/contracts/connectors";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
   resolveTestUserId,
   resolveTestUserOrg,
   DEFAULT_TEST_EMAIL,
 } from "../../../../../src/lib/auth/test-user";
-import { agentComposes } from "../../../../../src/db/schema/agent-compose";
-import { zeroAgents } from "../../../../../src/db/schema/zero-agent";
-import { userConnectors } from "../../../../../src/db/schema/user-connector";
+import { agentComposes } from "@vm0/db/schema/agent-compose";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { userConnectors } from "@vm0/db/schema/user-connector";
 import { isTestEndpointAllowed } from "../../../../../src/lib/auth/test-endpoint-guard";
 
 const bodySchema = z.object({

@@ -17,7 +17,7 @@ import {
   DialogTitle,
   Skeleton,
 } from "@vm0/ui";
-import type { ChatThreadListItem } from "@vm0/core/contracts/chat-threads";
+import type { ChatThreadListItem } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   chatThreads$,
   deleteChatThread$,

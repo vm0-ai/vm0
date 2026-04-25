@@ -12,9 +12,9 @@ import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
   chatThreadsContract,
   chatThreadByIdContract,
-} from "@vm0/core/contracts/chat-threads";
-import { zeroTeamContract } from "@vm0/core/contracts/zero-team";
-import { zeroAgentsByIdContract } from "@vm0/core/contracts/zero-agents";
+} from "@vm0/api-contracts/contracts/chat-threads";
+import { zeroTeamContract } from "@vm0/api-contracts/contracts/zero-team";
+import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
 
 const context = testContext();
 const mockApi = createMockApi(context);

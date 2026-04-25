@@ -1,6 +1,6 @@
 import { eq, and, or, lt, sql } from "drizzle-orm";
-import { emailOutbox } from "../../../db/schema/email-outbox";
-import { emailSuppressions } from "../../../db/schema/email-suppression";
+import { emailOutbox } from "@vm0/db/schema/email-outbox";
+import { emailSuppressions } from "@vm0/db/schema/email-suppression";
 import { resolveTemplate } from "./template-registry";
 import { sendEmailDirect, getMessageId } from "./client";
 import {

@@ -13,7 +13,7 @@ import {
   type ManifestArtifact,
 } from "./types";
 import type { ContextArtifact } from "../run/types";
-import { storages, storageVersions } from "../../../db/schema/storage";
+import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { eq, and, isNull, sql } from "drizzle-orm";
 import { env } from "../../../env";
 import { resolveVersionByPrefix, isResolutionError } from "./version-resolver";

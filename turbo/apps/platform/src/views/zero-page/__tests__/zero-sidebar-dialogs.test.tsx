@@ -9,11 +9,11 @@ import { createDeferredPromise } from "../../../signals/utils.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
-import { zeroUserPreferencesContract } from "@vm0/core/contracts/zero-user-preferences";
+import { zeroUserPreferencesContract } from "@vm0/api-contracts/contracts/zero-user-preferences";
 import {
   chatThreadsContract,
   chatThreadByIdContract,
-} from "@vm0/core/contracts/chat-threads";
+} from "@vm0/api-contracts/contracts/chat-threads";
 import {
   setManagePinnedDialogOpen$,
   setDraftPinnedIds$,

@@ -1,5 +1,5 @@
 import { computed } from "ccstate";
-import type { FirewallPolicies } from "@vm0/core/contracts/firewalls";
+import type { FirewallPolicies } from "@vm0/api-contracts/contracts/firewalls";
 import { zeroJobDetail$ } from "./detail.ts";
 
 // ---------------------------------------------------------------------------

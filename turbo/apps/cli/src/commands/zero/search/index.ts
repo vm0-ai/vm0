@@ -6,7 +6,7 @@ import { searchZeroChat } from "../../../lib/api";
 import type {
   ChatSearchMessage,
   ChatSearchResponse,
-} from "@vm0/core/contracts/chat-threads";
+} from "@vm0/api-contracts/contracts/chat-threads";
 import { parseTime } from "../../../lib/utils/time-parser";
 
 const SUPPORTED_SOURCES = ["logs", "chat", "slack"] as const;

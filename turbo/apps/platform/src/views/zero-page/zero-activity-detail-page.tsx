@@ -26,10 +26,10 @@ import {
 import {
   MODEL_PROVIDER_TYPES,
   type ModelProviderType,
-} from "@vm0/core/contracts/model-providers";
-import { RUN_ERROR_GUIDANCE } from "@vm0/core/contracts/errors";
-import type { SandboxReuseResult } from "@vm0/core/contracts/webhooks";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+} from "@vm0/api-contracts/contracts/model-providers";
+import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
+import type { SandboxReuseResult } from "@vm0/api-contracts/contracts/webhooks";
+import { FeatureSwitchKey } from "@vm0/api-contracts/feature-switch-key";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { fetchDownloadExtra$ } from "../../signals/activity-page/activity-download.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";

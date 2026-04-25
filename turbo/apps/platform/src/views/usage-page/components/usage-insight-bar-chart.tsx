@@ -3,7 +3,7 @@ import {
   SOURCE_BUCKET_COLORS,
   type SourceBucket,
 } from "@vm0/core/usage-source-bucket";
-import type { UsageInsightBucket } from "@vm0/core/contracts/zero-usage-insight";
+import type { UsageInsightBucket } from "@vm0/api-contracts/contracts/zero-usage-insight";
 import {
   chartTooltip$,
   chartWidth$,

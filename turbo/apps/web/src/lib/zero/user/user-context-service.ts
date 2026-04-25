@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/api-contracts/feature-switch-key";
 
 /**
  * Round-2 fused read of per-user context: timezone + capture quota from

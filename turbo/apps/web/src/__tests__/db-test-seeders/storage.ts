@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { VOLUME_ORG_USER_ID } from "@vm0/core/storage-names";
 import { initServices } from "../../lib/init-services";
-import { storages, storageVersions } from "../../db/schema/storage";
+import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { hashFileContent } from "../../lib/infra/storage/content-hash";
 import { uniqueId } from "../test-helpers";
 

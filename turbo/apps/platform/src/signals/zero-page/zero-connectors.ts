@@ -1,5 +1,5 @@
 import { command, computed, state } from "ccstate";
-import { zeroUserConnectorsContract } from "@vm0/core/contracts/user-connectors";
+import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { reloadOnboardingStatus$ } from "./zero-onboarding.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { currentChatAgent$ } from "../agent-chat.ts";

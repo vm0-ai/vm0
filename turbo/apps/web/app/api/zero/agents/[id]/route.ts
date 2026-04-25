@@ -1,6 +1,6 @@
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
-import { zeroAgentsByIdContract } from "@vm0/core/contracts/zero-agents";
-import { toFirewallPolicies } from "@vm0/core/contracts/firewalls";
+import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
+import { toFirewallPolicies } from "@vm0/api-contracts/contracts/firewalls";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
   requireAuth,
@@ -8,8 +8,8 @@ import {
 } from "../../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
 import { serverSideCompose } from "../../../../../src/lib/infra/compose/server-side-compose";
-import { zeroAgents } from "../../../../../src/db/schema/zero-agent";
-import { agentComposes } from "../../../../../src/db/schema/agent-compose";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { eq, and } from "drizzle-orm";
 import { buildComposeContent } from "../../../../../src/lib/zero/build-compose-content";
 import { validateCustomSkills } from "../../../../../src/lib/zero/validate-custom-skills";

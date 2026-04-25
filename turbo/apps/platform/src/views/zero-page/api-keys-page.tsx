@@ -1,7 +1,7 @@
 import { useGet, useSet, useLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { IconKey, IconTrash, IconLoader2, IconPlus } from "@tabler/icons-react";
-import type { ApiKeyItem } from "@vm0/core/contracts/api-keys";
+import type { ApiKeyItem } from "@vm0/api-contracts/contracts/api-keys";
 import { Button } from "@vm0/ui/components/ui/button";
 import { Input } from "@vm0/ui/components/ui/input";
 import {

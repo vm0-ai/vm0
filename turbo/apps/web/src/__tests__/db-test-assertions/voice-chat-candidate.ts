@@ -1,11 +1,11 @@
 import { eq } from "drizzle-orm";
-import type { VoiceChatTaskResultEntry } from "@vm0/core/contracts/zero-voice-chat";
+import type { VoiceChatTaskResultEntry } from "@vm0/api-contracts/contracts/zero-voice-chat";
 import { initServices } from "../../lib/init-services";
 import {
   voiceChatItems,
   voiceChatSessions,
   voiceChatTasks,
-} from "../../db/schema/voice-chat";
+} from "@vm0/db/schema/voice-chat";
 
 /**
  * Read the full reasoning-related mutable state of a voice-chat-candidate

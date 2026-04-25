@@ -1,7 +1,7 @@
 import { eq, and } from "drizzle-orm";
-import { CONNECTOR_TYPES } from "@vm0/core/contracts/connectors";
-import { slackOrgInstallations } from "../../db/schema/slack-org-installation";
-import { slackOrgConnections } from "../../db/schema/slack-org-connection";
+import { CONNECTOR_TYPES } from "@vm0/api-contracts/contracts/connectors";
+import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
+import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { env } from "../../env";
 import { decryptSecretValue } from "../shared/crypto/secrets-encryption";
 import { createSlackClient, postMessage } from "./slack/client";

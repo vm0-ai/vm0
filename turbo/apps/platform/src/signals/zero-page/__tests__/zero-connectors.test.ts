@@ -2,8 +2,8 @@ import { describe, it, expect } from "vitest";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { allConnectorTypes$ } from "../settings/connectors.ts";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import type { ConnectorType } from "@vm0/core/contracts/connectors";
+import { FeatureSwitchKey } from "@vm0/api-contracts/feature-switch-key";
+import type { ConnectorType } from "@vm0/api-contracts/contracts/connectors";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
 
 const context = testContext();

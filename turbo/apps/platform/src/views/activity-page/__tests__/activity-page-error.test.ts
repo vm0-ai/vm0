@@ -4,7 +4,7 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
-import { logsListContract } from "@vm0/core/contracts/logs";
+import { logsListContract } from "@vm0/api-contracts/contracts/logs";
 import { setMockComposesList } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();

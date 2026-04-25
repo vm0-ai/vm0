@@ -1,5 +1,5 @@
 import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
-import { authContract } from "@vm0/core/contracts/auth";
+import { authContract } from "@vm0/api-contracts/contracts/auth";
 import {
   requireAuth,
   isAuthError,

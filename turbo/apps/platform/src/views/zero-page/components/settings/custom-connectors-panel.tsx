@@ -7,7 +7,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@vm0/ui";
-import type { CustomConnectorResponse } from "@vm0/core/contracts/zero-custom-connectors";
+import type { CustomConnectorResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import {
   clearCustomConnectorSecret$,
   customConnectorDialog$,

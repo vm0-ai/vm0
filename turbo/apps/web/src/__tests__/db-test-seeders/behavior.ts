@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import { userBehaviorCount } from "../../db/schema/user-behavior-count";
+import { userBehaviorCount } from "@vm0/db/schema/user-behavior-count";
 
 /**
  * Seed a user behavior count row for testing.

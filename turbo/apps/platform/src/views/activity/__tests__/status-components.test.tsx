@@ -9,8 +9,8 @@ import type {
   AgentEvent,
 } from "../../../signals/zero-page/log-types.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
-import { logsByIdContract } from "@vm0/core/contracts/logs";
-import { zeroRunAgentEventsContract } from "@vm0/core/contracts/zero-runs";
+import { logsByIdContract } from "@vm0/api-contracts/contracts/logs";
+import { zeroRunAgentEventsContract } from "@vm0/api-contracts/contracts/zero-runs";
 
 const context = testContext();
 const mockApi = createMockApi(context);

@@ -1,9 +1,9 @@
 import { eq, and, desc } from "drizzle-orm";
-import { agentComposes } from "../../db/schema/agent-compose";
-import { zeroAgents } from "../../db/schema/zero-agent";
+import { agentComposes } from "@vm0/db/schema/agent-compose";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { notFound } from "../shared/errors";
 import { canAccessCompose } from "../infra/agent/compose-access";
-import type { ComposeListItem } from "@vm0/core/contracts/composes";
+import type { ComposeListItem } from "@vm0/api-contracts/contracts/composes";
 
 /**
  * Resolve zero_agents.id by org + compose name.

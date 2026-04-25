@@ -1,21 +1,21 @@
 import { eq } from "drizzle-orm";
 import { randomBytes, randomUUID } from "crypto";
 import { initServices } from "../../lib/init-services";
-import { orgMetadata } from "../../db/schema/org-metadata";
-import { creditPricing } from "../../db/schema/credit-pricing";
-import { creditExpiresRecord } from "../../db/schema/credit-expires-record";
-import { creditUsage } from "../../db/schema/credit-usage";
-import { clientCreditUsage } from "../../db/schema/client-credit-usage";
-import { usageEvent } from "../../db/schema/usage-event";
-import { usagePricing } from "../../db/schema/usage-pricing";
-import { insightsDaily } from "../../db/schema/insights-daily";
-import { orgPromoRedemption } from "../../db/schema/org-promo-redemption";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { creditPricing } from "@vm0/db/schema/credit-pricing";
+import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
+import { creditUsage } from "@vm0/db/schema/credit-usage";
+import { clientCreditUsage } from "@vm0/db/schema/client-credit-usage";
+import { usageEvent } from "@vm0/db/schema/usage-event";
+import { usagePricing } from "@vm0/db/schema/usage-pricing";
+import { insightsDaily } from "@vm0/db/schema/insights-daily";
+import { orgPromoRedemption } from "@vm0/db/schema/org-promo-redemption";
 import {
   agentComposes,
   agentComposeVersions,
-} from "../../db/schema/agent-compose";
-import { agentRuns } from "../../db/schema/agent-run";
-import { zeroRuns } from "../../db/schema/zero-run";
+} from "@vm0/db/schema/agent-compose";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { ensureTestAgentSession } from "./runs";
 import { grantOrgCredits } from "../../lib/zero/org/org-service";
 import {

@@ -2,11 +2,11 @@ import { initClient } from "@ts-rest/core";
 import {
   zeroSecretsContract,
   zeroSecretsByNameContract,
-} from "@vm0/core/contracts/zero-secrets";
+} from "@vm0/api-contracts/contracts/zero-secrets";
 import type {
   SecretListResponse,
   SecretResponse,
-} from "@vm0/core/contracts/secrets";
+} from "@vm0/api-contracts/contracts/secrets";
 import { getClientConfig, handleError } from "../core/client-factory";
 
 /**

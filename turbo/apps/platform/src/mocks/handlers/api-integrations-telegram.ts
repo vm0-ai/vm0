@@ -2,7 +2,7 @@ import {
   zeroIntegrationsTelegramContract,
   type TelegramLinkStatusResponse,
   type TelegramStatusResponse,
-} from "@vm0/core/contracts/zero-integrations-telegram";
+} from "@vm0/api-contracts/contracts/zero-integrations-telegram";
 import { mockApi } from "../msw-contract.ts";
 
 const defaultTelegramData: TelegramStatusResponse = {

@@ -1,5 +1,5 @@
 import { createHandler, tsr } from "../../../../../../src/lib/ts-rest-handler";
-import { chatThreadMarkReadContract } from "@vm0/core/contracts/chat-threads";
+import { chatThreadMarkReadContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { getUserId } from "../../../../../../src/lib/auth/get-auth-context";
 import { markThreadRead } from "../../../../../../src/lib/zero/chat-thread";

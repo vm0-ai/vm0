@@ -16,7 +16,7 @@ import { screen, waitFor } from "@testing-library/react";
 import {
   zeroAgentsByIdContract,
   zeroAgentInstructionsContract,
-} from "@vm0/core/contracts/zero-agents";
+} from "@vm0/api-contracts/contracts/zero-agents";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";

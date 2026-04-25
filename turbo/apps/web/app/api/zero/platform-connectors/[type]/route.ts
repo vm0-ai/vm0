@@ -1,9 +1,9 @@
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
-import { zeroPlatformConnectorContract } from "@vm0/core/contracts/zero-connectors";
-import { CONNECTOR_TYPES } from "@vm0/core/contracts/connectors";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { zeroPlatformConnectorContract } from "@vm0/api-contracts/contracts/zero-connectors";
+import { CONNECTOR_TYPES } from "@vm0/api-contracts/contracts/connectors";
+import { FeatureSwitchKey } from "@vm0/api-contracts/feature-switch-key";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { createErrorResponse } from "@vm0/core/contracts/errors";
+import { createErrorResponse } from "@vm0/api-contracts/contracts/errors";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
   requireAuth,

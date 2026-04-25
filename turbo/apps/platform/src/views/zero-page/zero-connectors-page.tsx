@@ -17,9 +17,9 @@ import {
 import {
   CONNECTOR_TYPES,
   type ConnectorType,
-} from "@vm0/core/contracts/connectors";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { isGoogleOAuthConnector } from "@vm0/core/contracts/connector-utils";
+} from "@vm0/api-contracts/contracts/connectors";
+import { FeatureSwitchKey } from "@vm0/api-contracts/feature-switch-key";
+import { isGoogleOAuthConnector } from "@vm0/api-contracts/contracts/connector-utils";
 import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
 import {
   connectorsPageTab$,

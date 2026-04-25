@@ -1,13 +1,13 @@
 import { eq, and, or } from "drizzle-orm";
 import { env } from "../../../env";
-import { agentRuns } from "../../../db/schema/agent-run";
-import { agentSessions } from "../../../db/schema/agent-session";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { agentSessions } from "@vm0/db/schema/agent-session";
 import { transitionRunStatus, dispatchTerminalSideEffects } from "./run-status";
 import {
   agentComposeVersions,
   agentComposes,
-} from "../../../db/schema/agent-compose";
-import { agentRunCallbacks } from "../../../db/schema/agent-run-callback";
+} from "@vm0/db/schema/agent-compose";
+import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { notFound } from "../../shared/errors";
 
 import { logger } from "../../shared/logger";
@@ -24,11 +24,14 @@ import type {
 import { recordSandboxOperation } from "../metrics";
 
 import { encryptSecretValue } from "../../shared/crypto/secrets-encryption";
-import { type RunStatus, type GetRunResponse } from "@vm0/core/contracts/runs";
-import type { OrgTier } from "@vm0/core/contracts/orgs";
-import type { FirewallPolicies } from "@vm0/core/contracts/firewalls";
-import type { ConnectorType } from "@vm0/core/contracts/connectors";
-import type { TriggerSource } from "@vm0/core/contracts/logs";
+import {
+  type RunStatus,
+  type GetRunResponse,
+} from "@vm0/api-contracts/contracts/runs";
+import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
+import type { FirewallPolicies } from "@vm0/api-contracts/contracts/firewalls";
+import type { ConnectorType } from "@vm0/api-contracts/contracts/connectors";
+import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import { publishCancelNotification } from "../realtime/client";
 import type { CancelRunResult } from "../../zero/zero-run-cancel";
 

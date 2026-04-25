@@ -1,10 +1,10 @@
 import { and, eq, inArray } from "drizzle-orm";
-import { agentRuns } from "../../../db/schema/agent-run";
+import { agentRuns } from "@vm0/db/schema/agent-run";
 import { dispatchCallbacks } from "../callback";
 import { logger } from "../../shared/logger";
 import type { RunResult, RunStatus } from "./types";
 import type { Database } from "../../../types/global";
-import type { SandboxReuseResult } from "@vm0/core/contracts/webhooks";
+import type { SandboxReuseResult } from "@vm0/api-contracts/contracts/webhooks";
 
 const log = logger("service:run-status");
 

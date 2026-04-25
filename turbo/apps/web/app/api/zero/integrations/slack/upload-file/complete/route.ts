@@ -2,7 +2,7 @@ import {
   createHandler,
   tsr,
 } from "../../../../../../../src/lib/ts-rest-handler";
-import { integrationsSlackUploadCompleteContract } from "@vm0/core/contracts/integrations";
+import { integrationsSlackUploadCompleteContract } from "@vm0/api-contracts/contracts/integrations";
 import { initServices } from "../../../../../../../src/lib/init-services";
 import { isSlackPlatformError } from "../../../../../../../src/lib/zero/slack/client";
 import {

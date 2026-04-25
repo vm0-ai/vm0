@@ -3,10 +3,10 @@ import { initServices } from "../../lib/init-services";
 import {
   agentComposes,
   agentComposeVersions,
-} from "../../db/schema/agent-compose";
-import { agentSessions } from "../../db/schema/agent-session";
-import { chatThreads } from "../../db/schema/chat-thread";
-import { zeroAgents } from "../../db/schema/zero-agent";
+} from "@vm0/db/schema/agent-compose";
+import { agentSessions } from "@vm0/db/schema/agent-session";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
 
 /**
  * Read the headVersionId and updatedAt of a compose record.

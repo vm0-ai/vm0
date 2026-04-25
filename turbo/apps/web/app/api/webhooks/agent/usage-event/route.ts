@@ -3,9 +3,9 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../../src/lib/ts-rest-handler";
-import { webhookUsageEventContract } from "@vm0/core/contracts/webhooks";
+import { webhookUsageEventContract } from "@vm0/api-contracts/contracts/webhooks";
 import { initServices } from "../../../../../src/lib/init-services";
-import { usageEvent } from "../../../../../src/db/schema/usage-event";
+import { usageEvent } from "@vm0/db/schema/usage-event";
 import { getSandboxAuthForRun } from "../../../../../src/lib/auth/get-sandbox-auth";
 import { isForeignKeyViolation } from "../../../../../src/lib/shared/pg-errors";
 import { logger } from "../../../../../src/lib/shared/logger";

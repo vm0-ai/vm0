@@ -5,7 +5,7 @@ import { initServices } from "../../../../../../src/lib/init-services";
 import { getVoiceChatCandidateSession } from "../../../../../../src/lib/zero/voice-chat-candidate/session-service";
 import { appendVoiceChatCandidateItem } from "../../../../../../src/lib/zero/voice-chat-candidate/item-service";
 import { triggerReasoning } from "../../../../../../src/lib/zero/voice-chat-candidate/trigger-reasoning";
-import { voiceChatItems } from "../../../../../../src/db/schema/voice-chat";
+import { voiceChatItems } from "@vm0/db/schema/voice-chat";
 import { isBadRequest } from "../../../../../../src/lib/shared/errors";
 import {
   appendVoiceChatItemBodySchema,

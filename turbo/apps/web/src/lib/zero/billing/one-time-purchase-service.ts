@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import Stripe from "stripe";
-import { orgPromoRedemption } from "../../../db/schema/org-promo-redemption";
-import { creditExpiresRecord } from "../../../db/schema/credit-expires-record";
+import { orgPromoRedemption } from "@vm0/db/schema/org-promo-redemption";
+import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { createOneTimeCheckoutSession } from "./billing-service";
 import { getCampaign } from "./one-time-products";
 import { getStripe } from "../stripe";

@@ -5,14 +5,14 @@ import {
   createSafeErrorHandler,
   tsr,
 } from "../../../../src/lib/ts-rest-handler";
-import { apiKeysContract } from "@vm0/core/contracts/api-keys";
+import { apiKeysContract } from "@vm0/api-contracts/contracts/api-keys";
 import { initServices } from "../../../../src/lib/init-services";
 import {
   requireAuth,
   isAuthError,
 } from "../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../src/lib/zero/org/resolve-org";
-import { cliTokens } from "../../../../src/db/schema/cli-tokens";
+import { cliTokens } from "@vm0/db/schema/cli-tokens";
 import { generateCliToken } from "../../../../src/lib/auth/sandbox-token";
 import { isApiError } from "../../../../src/lib/shared/errors";
 

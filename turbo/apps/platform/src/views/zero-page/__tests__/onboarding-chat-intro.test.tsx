@@ -15,7 +15,7 @@ import {
   onboardingStatusContract,
   onboardingSetupContract,
   onboardingCompleteContract,
-} from "@vm0/core/contracts/onboarding";
+} from "@vm0/api-contracts/contracts/onboarding";
 
 const context = testContext();
 const mockApi = createMockApi(context);

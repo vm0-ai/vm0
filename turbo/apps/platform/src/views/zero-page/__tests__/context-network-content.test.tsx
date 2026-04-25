@@ -3,15 +3,15 @@ import { screen, waitFor } from "@testing-library/react";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/api-contracts/feature-switch-key";
 import {
   type RunContextResponse,
   zeroRunAgentEventsContract,
   zeroRunContextContract,
   zeroRunNetworkLogsContract,
-} from "@vm0/core/contracts/zero-runs";
-import type { NetworkLogEntry } from "@vm0/core/contracts/runs";
-import { logsByIdContract } from "@vm0/core/contracts/logs";
+} from "@vm0/api-contracts/contracts/zero-runs";
+import type { NetworkLogEntry } from "@vm0/api-contracts/contracts/runs";
+import { logsByIdContract } from "@vm0/api-contracts/contracts/logs";
 import type {
   LogDetail,
   AgentEventsResponse,

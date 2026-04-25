@@ -1,5 +1,5 @@
 import { eq, and, gte, desc } from "drizzle-orm";
-import { agentSessions } from "../../../db/schema/agent-session";
+import { agentSessions } from "@vm0/db/schema/agent-session";
 
 export async function findNewSessionId(
   userId: string,

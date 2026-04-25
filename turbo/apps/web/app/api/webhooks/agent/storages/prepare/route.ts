@@ -1,13 +1,10 @@
 import { createHandler, tsr } from "../../../../../../src/lib/ts-rest-handler";
-import { webhookStoragesPrepareContract } from "@vm0/core/contracts/webhooks";
-import { MAX_FILE_SIZE_BYTES } from "@vm0/core/contracts/storages";
+import { webhookStoragesPrepareContract } from "@vm0/api-contracts/contracts/webhooks";
+import { MAX_FILE_SIZE_BYTES } from "@vm0/api-contracts/contracts/storages";
 import { VOLUME_ORG_USER_ID } from "@vm0/core/storage-names";
 import { initServices } from "../../../../../../src/lib/init-services";
-import { agentRuns } from "../../../../../../src/db/schema/agent-run";
-import {
-  storages,
-  storageVersions,
-} from "../../../../../../src/db/schema/storage";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { eq, and } from "drizzle-orm";
 import { getSandboxAuthForRun } from "../../../../../../src/lib/auth/get-sandbox-auth";
 import {

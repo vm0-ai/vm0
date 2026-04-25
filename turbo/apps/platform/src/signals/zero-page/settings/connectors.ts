@@ -5,22 +5,22 @@ import {
   CONNECTOR_TYPES,
   type ConnectorType,
   type ConnectorDisplayCategory,
-} from "@vm0/core/contracts/connectors";
-import { hasRequiredScopes } from "@vm0/core/contracts/connector-utils";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+} from "@vm0/api-contracts/contracts/connectors";
+import { hasRequiredScopes } from "@vm0/api-contracts/contracts/connector-utils";
+import { FeatureSwitchKey } from "@vm0/api-contracts/feature-switch-key";
 import {
   zeroConnectorScopeDiffContract,
   zeroConnectorsMainContract,
   zeroPlatformConnectorContract,
-} from "@vm0/core/contracts/zero-connectors";
+} from "@vm0/api-contracts/contracts/zero-connectors";
 import {
   zeroSecretsContract,
   zeroVariablesContract,
-} from "@vm0/core/contracts/zero-secrets";
+} from "@vm0/api-contracts/contracts/zero-secrets";
 import type {
   ConnectorListResponse,
   ConnectorResponse,
-} from "@vm0/core/contracts/connector-schemas";
+} from "@vm0/api-contracts/contracts/connector-schemas";
 import { featureSwitch$ } from "../../external/feature-switch.ts";
 import {
   connectors$,

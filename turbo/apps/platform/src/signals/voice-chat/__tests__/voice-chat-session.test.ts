@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { http, HttpResponse } from "msw";
-import { zeroVoiceChatContract } from "@vm0/core/contracts/zero-voice-chat";
+import { zeroVoiceChatContract } from "@vm0/api-contracts/contracts/zero-voice-chat";
 import { server } from "../../../mocks/server.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";

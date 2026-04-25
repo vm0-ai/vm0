@@ -3,7 +3,7 @@ import { sql, desc, eq, and, gte } from "drizzle-orm";
 import { initServices } from "../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../src/lib/zero/org/resolve-org";
-import { insightsDaily } from "../../../../src/db/schema/insights-daily";
+import { insightsDaily } from "@vm0/db/schema/insights-daily";
 
 /**
  * GET /api/zero/insights

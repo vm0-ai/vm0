@@ -1,19 +1,19 @@
 import { and, eq, or, sql } from "drizzle-orm";
-import type { SandboxReuseResult } from "@vm0/core/contracts/webhooks";
+import type { SandboxReuseResult } from "@vm0/api-contracts/contracts/webhooks";
 import type { ContextArtifact } from "../../lib/infra/run/types";
-import { agentRuns } from "../../db/schema/agent-run";
-import { agentSessions } from "../../db/schema/agent-session";
-import { zeroRuns } from "../../db/schema/zero-run";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { agentSessions } from "@vm0/db/schema/agent-session";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
   agentComposes,
   agentComposeVersions,
-} from "../../db/schema/agent-compose";
-import { agentRunCallbacks } from "../../db/schema/agent-run-callback";
-import { agentRunQueue } from "../../db/schema/agent-run-queue";
-import { checkpoints } from "../../db/schema/checkpoint";
-import { conversations } from "../../db/schema/conversation";
-import { sandboxTelemetry } from "../../db/schema/sandbox-telemetry";
-import { usageDaily } from "../../db/schema/usage-daily";
+} from "@vm0/db/schema/agent-compose";
+import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
+import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
+import { checkpoints } from "@vm0/db/schema/checkpoint";
+import { conversations } from "@vm0/db/schema/conversation";
+import { sandboxTelemetry } from "@vm0/db/schema/sandbox-telemetry";
+import { usageDaily } from "@vm0/db/schema/usage-daily";
 import { initServices } from "../../lib/init-services";
 import { enqueueRun } from "../../lib/zero/zero-run-queue-service";
 import { uniqueId } from "../test-helpers";

@@ -40,7 +40,7 @@ import { formatCredits } from "../../lib/format-credits.ts";
 import {
   CONNECTOR_TYPES,
   type ConnectorType,
-} from "@vm0/core/contracts/connectors";
+} from "@vm0/api-contracts/contracts/connectors";
 
 // ---------------------------------------------------------------------------
 // Date range filter

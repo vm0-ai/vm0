@@ -1,6 +1,6 @@
-import { connectorTypeSchema } from "@vm0/core/contracts/connectors";
+import { connectorTypeSchema } from "@vm0/api-contracts/contracts/connectors";
 import { eq, and, inArray } from "drizzle-orm";
-import { zeroSkills } from "../../db/schema/zero-skill";
+import { zeroSkills } from "@vm0/db/schema/zero-skill";
 
 type ValidationSuccess = { valid: true };
 type ValidationFailure = {

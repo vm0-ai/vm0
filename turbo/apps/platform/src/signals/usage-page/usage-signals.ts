@@ -1,5 +1,5 @@
 import { computed } from "ccstate";
-import { zeroUsageMembersContract } from "@vm0/core/contracts/zero-usage";
+import { zeroUsageMembersContract } from "@vm0/api-contracts/contracts/zero-usage";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 

@@ -1,5 +1,5 @@
 import { resolveSkillRef } from "@vm0/core/github-url";
-import type { skills } from "../../db/schema/skill";
+import type { skills } from "@vm0/db/schema/skill";
 
 /**
  * Default skills always included in zero agent composes.

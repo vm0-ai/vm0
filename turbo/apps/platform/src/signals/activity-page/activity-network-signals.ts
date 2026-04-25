@@ -1,6 +1,6 @@
 import { state, computed, command } from "ccstate";
-import { zeroRunNetworkLogsContract } from "@vm0/core/contracts/zero-runs";
-import type { NetworkLogEntry } from "@vm0/core/contracts/runs";
+import { zeroRunNetworkLogsContract } from "@vm0/api-contracts/contracts/zero-runs";
+import type { NetworkLogEntry } from "@vm0/api-contracts/contracts/runs";
 import type { InitClientArgs, InitClientReturn } from "@ts-rest/core";
 import { zeroClient$ } from "../api-client.ts";
 import { currentRunId$ } from "./activity-signals.ts";

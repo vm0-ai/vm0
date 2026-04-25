@@ -1,11 +1,11 @@
 import { and, eq } from "drizzle-orm";
 import { initServices } from "../../lib/init-services";
-import { orgMetadata } from "../../db/schema/org-metadata";
-import { orgCache } from "../../db/schema/org-cache";
-import { orgMembersMetadata } from "../../db/schema/org-members-metadata";
-import { zeroAgents } from "../../db/schema/zero-agent";
-import { agentComposes } from "../../db/schema/agent-compose";
-import { modelProviders } from "../../db/schema/model-provider";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { orgCache } from "@vm0/db/schema/org-cache";
+import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { agentComposes } from "@vm0/db/schema/agent-compose";
+import { modelProviders } from "@vm0/db/schema/model-provider";
 import { ORG_SENTINEL_USER_ID } from "../../lib/zero/org/org-sentinel";
 import { getTestAuthContext } from "../api-test-helpers/core";
 import { ensureOrgRow } from "../test-helpers";

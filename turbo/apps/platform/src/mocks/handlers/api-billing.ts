@@ -9,7 +9,7 @@ import {
   type BillingStatusResponse,
   type BillingInvoice,
   type RedeemResponse,
-} from "@vm0/core/contracts/zero-billing";
+} from "@vm0/api-contracts/contracts/zero-billing";
 import { mockApi } from "../msw-contract.ts";
 
 let mockBillingInvoices: BillingInvoice[] = [];

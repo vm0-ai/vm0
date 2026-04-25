@@ -8,12 +8,12 @@ import {
   click,
 } from "../../../__tests__/page-helper.ts";
 import { permissionDialogType$ } from "../../../signals/zero-page/settings/connectors.ts";
-import type { ConnectorListResponse } from "@vm0/core/contracts/connector-schemas";
-import { zeroConnectorsMainContract } from "@vm0/core/contracts/zero-connectors";
+import type { ConnectorListResponse } from "@vm0/api-contracts/contracts/connector-schemas";
+import { zeroConnectorsMainContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import {
   onboardingStatusContract,
   onboardingSetupContract,
-} from "@vm0/core/contracts/onboarding";
+} from "@vm0/api-contracts/contracts/onboarding";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { triggerAblyEvent, hasSubscription } from "../../../mocks/ably.ts";
 

@@ -24,11 +24,11 @@ import { nextAfterCallbacks, nextWaitUntilPromises } from "./next-after-hooks";
 import { initServices } from "../lib/init-services";
 import * as s3Client from "../lib/infra/s3/s3-client";
 import * as axiomClient from "../lib/shared/axiom/client";
-import { agentComposes } from "../db/schema/agent-compose";
-import { connectors } from "../db/schema/connector";
-import { orgCache } from "../db/schema/org-cache";
-import { orgMetadata } from "../db/schema/org-metadata";
-import { userCache } from "../db/schema/user-cache";
+import { agentComposes } from "@vm0/db/schema/agent-compose";
+import { connectors } from "@vm0/db/schema/connector";
+import { orgCache } from "@vm0/db/schema/org-cache";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { userCache } from "@vm0/db/schema/user-cache";
 
 /**
  * Generate a unique 8-character suffix for test isolation.

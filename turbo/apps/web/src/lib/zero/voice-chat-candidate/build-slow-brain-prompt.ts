@@ -1,8 +1,5 @@
 import "server-only";
-import type {
-  voiceChatItems,
-  voiceChatTasks,
-} from "../../../db/schema/voice-chat";
+import type { voiceChatItems, voiceChatTasks } from "@vm0/db/schema/voice-chat";
 
 type ItemRow = typeof voiceChatItems.$inferSelect;
 type TaskRow = typeof voiceChatTasks.$inferSelect;

@@ -9,7 +9,7 @@ import type { OrgMetadata } from "./org-metadata-service";
 import { getMemberRole } from "../../auth/org-membership-cache";
 import type { AuthContext } from "../../auth/get-auth-context";
 
-import type { OrgRole } from "@vm0/core/contracts/org-members";
+import type { OrgRole } from "@vm0/api-contracts/contracts/org-members";
 
 /**
  * Lightweight org type based on org_metadata data.

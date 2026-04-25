@@ -11,8 +11,8 @@ import {
   IconChevronRight,
   IconTrash,
 } from "@tabler/icons-react";
-import type { ChatThreadListItem } from "@vm0/core/contracts/chat-threads";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import type { ChatThreadListItem } from "@vm0/api-contracts/contracts/chat-threads";
+import { FeatureSwitchKey } from "@vm0/api-contracts/feature-switch-key";
 import { useChatThreadsTitleLabels } from "./zero-sidebar-shared.tsx";
 import {
   Tooltip,

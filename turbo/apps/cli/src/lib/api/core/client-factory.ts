@@ -1,5 +1,5 @@
 import { getApiUrl, getActiveToken } from "../config";
-import type { ApiErrorResponse } from "@vm0/core/contracts/errors";
+import type { ApiErrorResponse } from "@vm0/api-contracts/contracts/errors";
 
 /**
  * Custom API request error with code and HTTP status

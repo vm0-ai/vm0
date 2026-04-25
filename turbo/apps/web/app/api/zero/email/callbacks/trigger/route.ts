@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { verifyCallback } from "../../../../../../src/lib/infra/callback";
-import { agentRuns } from "../../../../../../src/db/schema/agent-run";
-import { zeroAgents } from "../../../../../../src/db/schema/zero-agent";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { getRunOutputText } from "../../../../../../src/lib/infra/run/extract-run-output";
 import { enqueueEmail } from "../../../../../../src/lib/zero/email/outbox-service";
 import {

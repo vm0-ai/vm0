@@ -2,8 +2,8 @@ import { eq } from "drizzle-orm";
 import {
   agentComposes,
   agentComposeVersions,
-} from "../../../../db/schema/agent-compose";
-import { agentRuns } from "../../../../db/schema/agent-run";
+} from "@vm0/db/schema/agent-compose";
+import { agentRuns } from "@vm0/db/schema/agent-run";
 import { notFound, unauthorized, badRequest } from "../../../shared/errors";
 import { logger } from "../../../shared/logger";
 import { getAgentSessionWithConversation } from "../../agent-session";

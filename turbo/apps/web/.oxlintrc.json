@@ -53,12 +53,6 @@
       }
     },
     {
-      "files": ["src/db/schema/**"],
-      "rules": {
-        "import/no-cycle": "off"
-      }
-    },
-    {
       "files": [
         "src/__tests__/setup.ts",
         "__tests__/proxy.legal-pages.test.ts",

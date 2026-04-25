@@ -30,7 +30,7 @@ import {
 import { createZeroRun } from "../zero-run-service";
 import { AUTO_MEMORY_ARTIFACT_NAME, AUTO_MEMORY_MOUNT_PATH } from "../memory";
 import { reloadEnv } from "../../../env";
-import type { TriggerSource } from "@vm0/core/contracts/logs";
+import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 
 // ---------------------------------------------------------------------------
 // Tests for createZeroRun parameters NOT exposed by the POST /api/zero/runs

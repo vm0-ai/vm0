@@ -24,7 +24,7 @@ import {
   VM0_MODEL_TO_PROVIDER,
   type ModelProviderResponse,
   type ModelProviderType,
-} from "@vm0/core/contracts/model-providers";
+} from "@vm0/api-contracts/contracts/model-providers";
 import { getModelDisplayName } from "@vm0/core/model-display-name";
 import {
   getUILabel,

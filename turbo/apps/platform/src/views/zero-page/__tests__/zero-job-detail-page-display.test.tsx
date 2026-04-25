@@ -4,8 +4,8 @@ import userEvent from "@testing-library/user-event";
 import {
   zeroAgentsByIdContract,
   zeroAgentInstructionsContract,
-} from "@vm0/core/contracts/zero-agents";
-import { zeroUserConnectorsContract } from "@vm0/core/contracts/user-connectors";
+} from "@vm0/api-contracts/contracts/zero-agents";
+import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";

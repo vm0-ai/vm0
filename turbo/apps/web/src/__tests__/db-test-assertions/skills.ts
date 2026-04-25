@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { initServices } from "../../lib/init-services";
-import { skills } from "../../db/schema/skill";
-import { zeroAgents } from "../../db/schema/zero-agent";
+import { skills } from "@vm0/db/schema/skill";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
 
 // ---------------------------------------------------------------------------
 // Read-only assertion helpers for skill test verification.

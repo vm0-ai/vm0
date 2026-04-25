@@ -3,8 +3,8 @@ import {
   onboardingStatusContract,
   onboardingCompleteContract,
   onboardingSetupContract,
-} from "@vm0/core/contracts/onboarding";
-import type { ConnectorType } from "@vm0/core/contracts/connectors";
+} from "@vm0/api-contracts/contracts/onboarding";
+import type { ConnectorType } from "@vm0/api-contracts/contracts/connectors";
 import { clerk$ } from "../auth.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { logger } from "../log.ts";

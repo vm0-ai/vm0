@@ -12,7 +12,7 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
-import { chatThreadsContract } from "@vm0/core/contracts/chat-threads";
+import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 
 const context = testContext();

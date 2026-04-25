@@ -16,8 +16,8 @@ import {
   isFirewallConnectorType,
   getConnectorFirewall,
   resolveFirewallPolicies,
-} from "@vm0/core/firewalls";
-import type { FirewallPolicies } from "@vm0/core/contracts/firewalls";
+} from "@vm0/api-contracts/firewalls";
+import type { FirewallPolicies } from "@vm0/api-contracts/contracts/firewalls";
 import { policyIcon } from "../../lib/utils/format-utils";
 
 /**

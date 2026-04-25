@@ -6,7 +6,7 @@ import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import {
   CONNECTOR_TYPES,
   type ConnectorType,
-} from "@vm0/core/contracts/connectors";
+} from "@vm0/api-contracts/contracts/connectors";
 
 const context = testContext();
 

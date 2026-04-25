@@ -8,7 +8,7 @@ import { handleInboundEmailReply } from "../../../../../src/lib/zero/email/handl
 import { handleInboundEmailTrigger } from "../../../../../src/lib/zero/email/handlers/inbound-trigger";
 import { isReplyAddress } from "../../../../../src/lib/zero/email/handlers/shared";
 import { sendInboundErrorReply } from "../../../../../src/lib/zero/email/handlers/inbound-error-reply";
-import { emailSuppressions } from "../../../../../src/db/schema/email-suppression";
+import { emailSuppressions } from "@vm0/db/schema/email-suppression";
 import { getCachedUserIdByEmail } from "../../../../../src/lib/auth/user-cache-service";
 import { unsubscribeUser } from "../../../../../src/lib/zero/email/unsubscribe-service";
 import { logger } from "../../../../../src/lib/shared/logger";

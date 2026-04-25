@@ -6,7 +6,7 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
-import { chatMessagesContract } from "@vm0/core/contracts/chat-threads";
+import { chatMessagesContract } from "@vm0/api-contracts/contracts/chat-threads";
 
 const context = testContext();
 const mockApi = createMockApi(context);

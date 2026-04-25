@@ -1,6 +1,6 @@
 import { command, computed, state } from "ccstate";
-import type { RunContextResponse } from "@vm0/core/contracts/zero-runs";
-import type { NetworkLogEntry } from "@vm0/core/contracts/runs";
+import type { RunContextResponse } from "@vm0/api-contracts/contracts/zero-runs";
+import type { NetworkLogEntry } from "@vm0/api-contracts/contracts/runs";
 import type { AgentEvent } from "../zero-page/log-types.ts";
 import { parseInspectLog, type InspectLogMeta } from "./inspect-log-parser.ts";
 import { logger } from "../log.ts";

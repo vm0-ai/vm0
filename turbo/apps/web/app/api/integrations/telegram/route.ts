@@ -2,16 +2,16 @@ import { NextResponse } from "next/server";
 import { and, eq, desc } from "drizzle-orm";
 import { z } from "zod";
 import { extractAndGroupVariables } from "@vm0/core/variable-expander";
-import { getConnectorProvidedSecretNames } from "@vm0/core/contracts/connector-utils";
+import { getConnectorProvidedSecretNames } from "@vm0/api-contracts/contracts/connector-utils";
 import { initServices } from "../../../../src/lib/init-services";
 import { env } from "../../../../src/env";
 import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
-import { telegramUserLinks } from "../../../../src/db/schema/telegram-user-link";
-import { telegramInstallations } from "../../../../src/db/schema/telegram-installation";
+import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
+import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
 import {
   agentComposes,
   agentComposeVersions,
-} from "../../../../src/db/schema/agent-compose";
+} from "@vm0/db/schema/agent-compose";
 import { listSecrets } from "../../../../src/lib/zero/secret/secret-service";
 import { listVariables } from "../../../../src/lib/zero/variable/variable-service";
 import { listConnectors } from "../../../../src/lib/zero/connector/connector-service";

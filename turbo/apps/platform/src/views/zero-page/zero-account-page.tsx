@@ -13,8 +13,8 @@ import {
 import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
 import { Switch } from "@vm0/ui/components/ui/switch";
 import { cn } from "@vm0/ui";
-import type { SendMode } from "@vm0/core/contracts/zero-user-preferences";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import type { SendMode } from "@vm0/api-contracts/contracts/zero-user-preferences";
+import { FeatureSwitchKey } from "@vm0/api-contracts/feature-switch-key";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { TimezoneSettings } from "./components/settings/timezone-settings.tsx";
 import {

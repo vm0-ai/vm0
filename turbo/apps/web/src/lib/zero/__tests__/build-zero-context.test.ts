@@ -32,7 +32,7 @@ import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
 import { isNoModelProvider } from "../../shared/errors";
 import { reloadEnv } from "../../../env";
 import { AUTO_MEMORY_ARTIFACT_NAME, AUTO_MEMORY_MOUNT_PATH } from "../memory";
-import type { TriggerSource } from "@vm0/core/contracts/logs";
+import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 
 const context = testContext();
 

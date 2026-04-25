@@ -3,10 +3,10 @@ import { eq, and, gte, desc } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
 import { verifyCallback } from "../../../../../src/lib/infra/callback";
 import { decryptSecretValue } from "../../../../../src/lib/shared/crypto/secrets-encryption";
-import { telegramInstallations } from "../../../../../src/db/schema/telegram-installation";
-import { agentSessions } from "../../../../../src/db/schema/agent-session";
-import { agentRuns } from "../../../../../src/db/schema/agent-run";
-import { zeroAgents } from "../../../../../src/db/schema/zero-agent";
+import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
+import { agentSessions } from "@vm0/db/schema/agent-session";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import {
   createTelegramClient,
   sendMessage,

@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import { eq, and } from "drizzle-orm";
 import { extractAndGroupVariables } from "@vm0/core/variable-expander";
-import { getConnectorProvidedSecretNames } from "@vm0/core/contracts/connector-utils";
+import { getConnectorProvidedSecretNames } from "@vm0/api-contracts/contracts/connector-utils";
 import { initServices } from "../../../../../src/lib/init-services";
 import { env } from "../../../../../src/env";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
-import { slackOrgInstallations } from "../../../../../src/db/schema/slack-org-installation";
-import { slackOrgConnections } from "../../../../../src/db/schema/slack-org-connection";
+import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
+import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import {
   resolveDefaultComposeId,
   getWorkspaceAgent,
@@ -15,7 +15,7 @@ import {
 import {
   agentComposes,
   agentComposeVersions,
-} from "../../../../../src/db/schema/agent-compose";
+} from "@vm0/db/schema/agent-compose";
 import { listSecrets } from "../../../../../src/lib/zero/secret/secret-service";
 import { listVariables } from "../../../../../src/lib/zero/variable/variable-service";
 import { listConnectors } from "../../../../../src/lib/zero/connector/connector-service";

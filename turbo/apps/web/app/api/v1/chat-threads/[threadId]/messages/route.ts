@@ -1,5 +1,5 @@
 import { createHandler, tsr } from "../../../../../../src/lib/ts-rest-handler";
-import { chatThreadV1MessagesContract } from "@vm0/core/contracts/chat-threads-v1";
+import { chatThreadV1MessagesContract } from "@vm0/api-contracts/contracts/chat-threads-v1";
 import { z } from "zod";
 import { initServices } from "../../../../../../src/lib/init-services";
 import {

@@ -1,7 +1,7 @@
 import { eq, and } from "drizzle-orm";
-import { conversations } from "../../../../db/schema/conversation";
-import { agentRuns } from "../../../../db/schema/agent-run";
-import { agentComposeVersions } from "../../../../db/schema/agent-compose";
+import { conversations } from "@vm0/db/schema/conversation";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { agentComposeVersions } from "@vm0/db/schema/agent-compose";
 import { notFound, unauthorized } from "../../../shared/errors";
 import { logger } from "../../../shared/logger";
 import type { ConversationResolution } from "./types";

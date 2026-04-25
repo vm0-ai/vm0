@@ -1,8 +1,8 @@
 import { eq, and } from "drizzle-orm";
-import { telegramThreadSessions } from "../../../../db/schema/telegram-thread-session";
-import { telegramMessages } from "../../../../db/schema/telegram-message";
-import { telegramUserLinks } from "../../../../db/schema/telegram-user-link";
-import { agentComposes } from "../../../../db/schema/agent-compose";
+import { telegramThreadSessions } from "@vm0/db/schema/telegram-thread-session";
+import { telegramMessages } from "@vm0/db/schema/telegram-message";
+import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
+import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { getAppUrl } from "../../url";
 import { resolveAgentId } from "../../zero-compose-service";
 import { validateAgentSession } from "../../zero-run-validation";

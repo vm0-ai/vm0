@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import { orgMembersCache } from "../../db/schema/org-members-cache";
+import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { publishUserSignal } from "../infra/realtime/client";
 
 /**

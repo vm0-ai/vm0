@@ -1,4 +1,4 @@
-import type { ZeroCapability } from "@vm0/core/contracts/composes";
+import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { getAuthContext, type AuthContext } from "./get-auth-context";
 import {
   isPatToken,

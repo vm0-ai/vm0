@@ -1,7 +1,7 @@
-import { RUN_ERROR_GUIDANCE } from "@vm0/core/contracts/errors";
+import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
 import { asc, eq } from "drizzle-orm";
-import { agentRuns } from "../../../db/schema/agent-run";
-import { zeroRuns } from "../../../db/schema/zero-run";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
 
 const REPORT_ERROR_STREAK_THRESHOLD = 2;
 

@@ -1,6 +1,6 @@
 import { eq, and } from "drizzle-orm";
-import { agentRuns } from "../../../db/schema/agent-run";
-import { agentComposeVersions } from "../../../db/schema/agent-compose";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { agentComposeVersions } from "@vm0/db/schema/agent-compose";
 import { queryAxiom, getDatasetName, DATASETS } from "../../shared/axiom";
 import { notFound } from "../../shared/errors";
 

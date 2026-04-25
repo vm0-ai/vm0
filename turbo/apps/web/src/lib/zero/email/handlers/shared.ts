@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import { eq } from "drizzle-orm";
-import { emailThreadSessions } from "../../../../db/schema/email-thread-session";
+import { emailThreadSessions } from "@vm0/db/schema/email-thread-session";
 import { resolveDefaultAgentId } from "../../resolve-default-agent";
 import { env } from "../../../../env";
 import { getAppUrl } from "../../url";

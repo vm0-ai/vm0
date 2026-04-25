@@ -1,7 +1,7 @@
 import { command, computed, state } from "ccstate";
 import type { AgentEvent } from "../zero-page/log-types.ts";
-import { zeroComposesListContract } from "@vm0/core/contracts/zero-composes";
-import type { ComposeListItem } from "@vm0/core/contracts/composes";
+import { zeroComposesListContract } from "@vm0/api-contracts/contracts/zero-composes";
+import type { ComposeListItem } from "@vm0/api-contracts/contracts/composes";
 import { pathParams$, searchParams$, updateSearchParams$ } from "../route.ts";
 import { createCursorPagination } from "../cursor-pagination.ts";
 import { zeroOnboardingStatus$ } from "../zero-page/zero-onboarding.ts";

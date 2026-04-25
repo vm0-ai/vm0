@@ -14,7 +14,7 @@ import {
   getVm0Vendor,
   getVm0ApiModel,
   VM0_MODEL_TO_PROVIDER,
-} from "@vm0/core/contracts/model-providers";
+} from "@vm0/api-contracts/contracts/model-providers";
 import { resolveModelProviderSecrets } from "../lib/zero/context/resolve-model-provider";
 
 const context = testContext();

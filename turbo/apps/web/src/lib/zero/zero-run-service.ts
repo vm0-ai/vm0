@@ -5,21 +5,21 @@ import {
   getCustomSkillStorageName,
   getSkillStorageName,
 } from "@vm0/core/storage-names";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { orgTierSchema } from "@vm0/core/contracts/orgs";
-import { resolveFirewallPolicies } from "@vm0/core/firewalls";
+import { FeatureSwitchKey } from "@vm0/api-contracts/feature-switch-key";
+import { orgTierSchema } from "@vm0/api-contracts/contracts/orgs";
+import { resolveFirewallPolicies } from "@vm0/api-contracts/firewalls";
 import {
   toFirewallPolicies,
   type FirewallPolicies,
   type RawPermissionPolicies,
   type FirewallPolicyValue,
-} from "@vm0/core/contracts/firewalls";
+} from "@vm0/api-contracts/contracts/firewalls";
 import {
   connectorTypeSchema,
   type ConnectorType,
-} from "@vm0/core/contracts/connectors";
-import type { TriggerSource } from "@vm0/core/contracts/logs";
-import type { RunStatus } from "@vm0/core/contracts/runs";
+} from "@vm0/api-contracts/contracts/connectors";
+import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
+import type { RunStatus } from "@vm0/api-contracts/contracts/runs";
 import {
   insertRunRecord,
   buildAndDispatchRun,
@@ -47,10 +47,10 @@ import { buildAutoMemoryArtifact } from "./memory";
 import { getOrgMetadata, type OrgMetadata } from "./org/org-metadata-service";
 import { isConcurrentRunLimit } from "../shared/errors";
 import { DISALLOWED_TOOLS, buildAgentPrompt } from "./agent-prompt";
-import { zeroAgents } from "../../db/schema/zero-agent";
-import { zeroRuns } from "../../db/schema/zero-run";
-import { userConnectors } from "../../db/schema/user-connector";
-import { userCustomConnectors } from "../../db/schema/user-custom-connector";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { userConnectors } from "@vm0/db/schema/user-connector";
+import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
 import { consumeCaptureNetworkBodies } from "./user/user-preferences-service";
 import { loadRunUserContext } from "./user/user-context-service";
 import { getCachedUser } from "../auth/user-cache-service";

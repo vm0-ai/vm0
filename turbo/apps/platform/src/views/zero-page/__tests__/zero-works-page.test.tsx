@@ -17,7 +17,7 @@ import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import {
   zeroIntegrationsSlackContract,
   type SlackOrgStatus,
-} from "@vm0/core/contracts/zero-integrations-slack";
+} from "@vm0/api-contracts/contracts/zero-integrations-slack";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();

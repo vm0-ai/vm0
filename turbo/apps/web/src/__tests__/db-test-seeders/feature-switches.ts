@@ -1,4 +1,4 @@
-import { userFeatureSwitches } from "../../db/schema/user-feature-switches";
+import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 
 /**
  * Seed user feature switch overrides for testing.

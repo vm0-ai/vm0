@@ -1,10 +1,10 @@
 import { eq, and, lte, inArray, desc } from "drizzle-orm";
 import { Cron } from "croner";
-import { zeroAgentSchedules } from "../../../db/schema/zero-agent-schedule";
-import { agentComposes } from "../../../db/schema/agent-compose";
-import { zeroAgents } from "../../../db/schema/zero-agent";
-import { agentRuns } from "../../../db/schema/agent-run";
-import { zeroRuns } from "../../../db/schema/zero-run";
+import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
+import { agentComposes } from "@vm0/db/schema/agent-compose";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { decryptSecretsMap } from "../../shared/crypto";
 import { notFound, badRequest, schedulePast } from "../../shared/errors";
 import { logger } from "../../shared/logger";

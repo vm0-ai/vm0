@@ -1,12 +1,12 @@
 import { eq, and, lt, sql } from "drizzle-orm";
 import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
-import { pushSubscriptionsContract } from "@vm0/core/contracts/push-subscriptions";
+import { pushSubscriptionsContract } from "@vm0/api-contracts/contracts/push-subscriptions";
 import { initServices } from "../../../../src/lib/init-services";
 import {
   requireAuth,
   isAuthError,
 } from "../../../../src/lib/auth/require-auth";
-import { pushSubscriptions } from "../../../../src/db/schema/push-subscription";
+import { pushSubscriptions } from "@vm0/db/schema/push-subscription";
 import { logger } from "../../../../src/lib/shared/logger";
 
 const log = logger("zero:push-subscriptions");

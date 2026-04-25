@@ -21,7 +21,7 @@ import { resetMockBilling } from "../../../mocks/handlers/api-billing.ts";
 import { pathname } from "../../../signals/location.ts";
 import { setIsScrolled$ } from "../../../signals/zero-page/zero-sidebar-state.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
-import { chatThreadsContract } from "@vm0/core/contracts/chat-threads";
+import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 import { setChatAgentId$ } from "../../../signals/agent-chat.ts";
 

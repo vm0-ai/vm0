@@ -1,6 +1,6 @@
 import "server-only";
 import { and, eq, inArray } from "drizzle-orm";
-import { voiceChatTasks } from "../../../db/schema/voice-chat";
+import { voiceChatTasks } from "@vm0/db/schema/voice-chat";
 import { env } from "../../../env";
 import { publishUserSignal } from "../../infra/realtime/client";
 import { logger } from "../../shared/logger";

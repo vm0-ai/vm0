@@ -9,12 +9,12 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { pathname, search } from "../../../signals/location.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
-import { zeroIntegrationsSlackContract } from "@vm0/core/contracts/zero-integrations-slack";
+import { zeroIntegrationsSlackContract } from "@vm0/api-contracts/contracts/zero-integrations-slack";
 import {
   onboardingStatusContract,
   onboardingSetupContract,
   onboardingCompleteContract,
-} from "@vm0/core/contracts/onboarding";
+} from "@vm0/api-contracts/contracts/onboarding";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 

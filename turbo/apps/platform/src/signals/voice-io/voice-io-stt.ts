@@ -2,8 +2,8 @@ import { command, computed, state } from "ccstate";
 import {
   zeroVoiceIoQuotaContract,
   type AudioInputQuotaResponse,
-} from "@vm0/core/contracts/zero-voice-io-quota";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+} from "@vm0/api-contracts/contracts/zero-voice-io-quota";
+import { FeatureSwitchKey } from "@vm0/api-contracts/feature-switch-key";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import { fetch$ } from "../fetch.ts";
 import { zeroClient$ } from "../api-client.ts";

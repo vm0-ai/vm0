@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import { readFileSync } from "node:fs";
 import chalk from "chalk";
-import { zeroAgentCustomSkillNameSchema } from "@vm0/core/contracts/zero-agents";
+import { zeroAgentCustomSkillNameSchema } from "@vm0/api-contracts/contracts/zero-agents";
 import {
   getZeroAgent,
   updateZeroAgent,

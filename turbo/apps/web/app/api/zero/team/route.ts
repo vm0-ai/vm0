@@ -8,8 +8,8 @@
 import { NextResponse } from "next/server";
 import { eq, desc } from "drizzle-orm";
 import { initServices } from "../../../../src/lib/init-services";
-import { agentComposes } from "../../../../src/db/schema/agent-compose";
-import { zeroAgents } from "../../../../src/db/schema/zero-agent";
+import { agentComposes } from "@vm0/db/schema/agent-compose";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../src/lib/zero/org/resolve-org";
 import { isNotFound, isForbidden } from "../../../../src/lib/shared/errors";

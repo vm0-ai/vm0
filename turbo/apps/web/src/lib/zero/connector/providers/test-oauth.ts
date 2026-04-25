@@ -9,7 +9,7 @@
  * the provider routes themselves 404 in production via isTestEndpointAllowed().
  */
 
-import { getConnectorOAuthConfig } from "@vm0/core/contracts/connector-utils";
+import { getConnectorOAuthConfig } from "@vm0/api-contracts/contracts/connector-utils";
 import { z } from "zod";
 import { POST as tokenRouteHandler } from "../../../../../app/api/test/oauth-provider/token/route";
 import { GET as userinfoRouteHandler } from "../../../../../app/api/test/oauth-provider/userinfo/route";

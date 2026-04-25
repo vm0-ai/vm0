@@ -1,13 +1,13 @@
 import { initClient } from "@ts-rest/core";
-import { type ConnectorType } from "@vm0/core/contracts/connectors";
+import { type ConnectorType } from "@vm0/api-contracts/contracts/connectors";
 import {
   zeroConnectorsByTypeContract,
   zeroConnectorsMainContract,
-} from "@vm0/core/contracts/zero-connectors";
+} from "@vm0/api-contracts/contracts/zero-connectors";
 import type {
   ConnectorListResponse,
   ConnectorResponse,
-} from "@vm0/core/contracts/connector-schemas";
+} from "@vm0/api-contracts/contracts/connector-schemas";
 import { getClientConfig, handleError } from "../core/client-factory";
 
 /**

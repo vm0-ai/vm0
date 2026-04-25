@@ -10,7 +10,7 @@ import {
   ConnectorIcon,
   CONNECTOR_ICONS,
 } from "../components/settings/connector-icons.tsx";
-import { CONNECTOR_TYPES } from "@vm0/core/contracts/connectors";
+import { CONNECTOR_TYPES } from "@vm0/api-contracts/contracts/connectors";
 
 describe("connector icons", () => {
   it("should have an entry for every connector type", () => {

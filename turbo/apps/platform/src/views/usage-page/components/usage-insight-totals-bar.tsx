@@ -5,7 +5,7 @@ import {
 import type {
   UsageInsightBucket,
   UsageInsightResponse,
-} from "@vm0/core/contracts/zero-usage-insight";
+} from "@vm0/api-contracts/contracts/zero-usage-insight";
 import type {
   InsightGroupBy,
   InsightMetric,

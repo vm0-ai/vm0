@@ -10,7 +10,7 @@ import {
   PLACEHOLDER,
 } from "./chat-test-helpers.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
-import { chatThreadsContract } from "@vm0/core/contracts/chat-threads";
+import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
 
 const context = testContext();
 const mockApi = createMockApi(context);

@@ -1,6 +1,9 @@
 import type { StorageManifest } from "../../../infra/storage/types";
 import type { ResumeSession } from "../types";
-import type { Firewalls, NetworkPolicies } from "@vm0/core/contracts/firewalls";
+import type {
+  Firewalls,
+  NetworkPolicies,
+} from "@vm0/api-contracts/contracts/firewalls";
 
 /**
  * Prepared execution context for executors

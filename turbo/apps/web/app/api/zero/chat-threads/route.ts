@@ -1,5 +1,5 @@
 import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
-import { chatThreadsContract } from "@vm0/core/contracts/chat-threads";
+import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { initServices } from "../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
 import {
@@ -7,7 +7,7 @@ import {
   listChatThreads,
 } from "../../../../src/lib/zero/chat-thread";
 import { publishThreadListChanged } from "../../../../src/lib/zero/chat-thread/chat-message-service";
-import { agentComposes } from "../../../../src/db/schema/agent-compose";
+import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { eq } from "drizzle-orm";
 
 const router = tsr.router(chatThreadsContract, {

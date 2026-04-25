@@ -6,7 +6,7 @@ import {
   zeroBillingAutoRechargeContract,
   zeroBillingInvoicesContract,
   zeroBillingDowngradeContract,
-} from "@vm0/core/contracts/zero-billing";
+} from "@vm0/api-contracts/contracts/zero-billing";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";

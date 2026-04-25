@@ -1,6 +1,6 @@
 import { eq, and, count, gt, or } from "drizzle-orm";
 import { env } from "../../env";
-import { agentRuns } from "../../db/schema/agent-run";
+import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
   concurrentRunLimit,
   forbidden,
@@ -8,12 +8,12 @@ import {
 } from "../shared/errors";
 import { canAccessCompose } from "../infra/agent/compose-access";
 import { logger } from "../shared/logger";
-import { modelProviders } from "../../db/schema/model-provider";
+import { modelProviders } from "@vm0/db/schema/model-provider";
 import { ORG_SENTINEL_USER_ID } from "./org/org-sentinel";
 import { MODEL_PROVIDER_ENV_VARS } from "./context/resolve-model-provider";
 import { checkOrgCredits } from "./credit/check-org-credits";
 import type { Database } from "../../types/global";
-import type { OrgTier } from "@vm0/core/contracts/orgs";
+import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
 import type { AgentComposeYaml } from "../infra/agent-compose/types";
 
 const log = logger("zero:run-policy");

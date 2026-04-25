@@ -9,7 +9,7 @@ import { state, computed, command, type Computed, type State } from "ccstate";
 import {
   logsListContract,
   type LogsListResponse,
-} from "@vm0/core/contracts/logs";
+} from "@vm0/api-contracts/contracts/logs";
 import { zeroClient$ } from "./api-client.ts";
 import { searchParams$, updateSearchParams$ } from "./route.ts";
 import { accept } from "../lib/accept.ts";

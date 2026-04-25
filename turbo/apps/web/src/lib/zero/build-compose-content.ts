@@ -1,8 +1,8 @@
-import { connectorTypeSchema } from "@vm0/core/contracts/connectors";
+import { connectorTypeSchema } from "@vm0/api-contracts/contracts/connectors";
 import {
   getConnectorEnvironmentMapping,
   getEligibleConnectorTypes,
-} from "@vm0/core/contracts/connector-utils";
+} from "@vm0/api-contracts/contracts/connector-utils";
 import { getInstructionsFilename } from "@vm0/core/frameworks";
 
 /**

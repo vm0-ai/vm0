@@ -3,14 +3,14 @@ import { sql, and, eq, gte, lt, inArray, isNotNull } from "drizzle-orm";
 import { initServices } from "../../../../src/lib/init-services";
 import { env } from "../../../../src/env";
 import { logger } from "../../../../src/lib/shared/logger";
-import { agentRuns } from "../../../../src/db/schema/agent-run";
-import { agentComposeVersions } from "../../../../src/db/schema/agent-compose";
-import { zeroAgents } from "../../../../src/db/schema/zero-agent";
-import { creditUsage } from "../../../../src/db/schema/credit-usage";
-import { orgMetadata } from "../../../../src/db/schema/org-metadata";
-import { orgMembersMetadata } from "../../../../src/db/schema/org-members-metadata";
-import { userCache } from "../../../../src/db/schema/user-cache";
-import { insightsDaily } from "../../../../src/db/schema/insights-daily";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { agentComposeVersions } from "@vm0/db/schema/agent-compose";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { creditUsage } from "@vm0/db/schema/credit-usage";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
+import { userCache } from "@vm0/db/schema/user-cache";
+import { insightsDaily } from "@vm0/db/schema/insights-daily";
 import {
   queryAxiom,
   getDatasetName,
@@ -19,7 +19,7 @@ import {
 import {
   getConnectorFirewall,
   isFirewallConnectorType,
-} from "@vm0/core/firewalls";
+} from "@vm0/api-contracts/firewalls";
 import { clerkClient } from "@clerk/nextjs/server";
 
 const log = logger("cron:aggregate-insights");

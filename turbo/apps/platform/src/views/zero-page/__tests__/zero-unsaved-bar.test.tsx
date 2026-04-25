@@ -19,7 +19,7 @@ import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
   zeroSchedulesMainContract,
   type ScheduleResponse,
-} from "@vm0/core/contracts/zero-schedules";
+} from "@vm0/api-contracts/contracts/zero-schedules";
 
 const context = testContext();
 const mockApi = createMockApi(context);

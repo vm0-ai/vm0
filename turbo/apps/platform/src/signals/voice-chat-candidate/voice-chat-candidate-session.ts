@@ -3,7 +3,7 @@ import {
   zeroVoiceChatContract,
   type VoiceChatItemRole,
   type VoiceChatTask,
-} from "@vm0/core/contracts/zero-voice-chat";
+} from "@vm0/api-contracts/contracts/zero-voice-chat";
 import {
   jsonParseOr,
   resetSignal,

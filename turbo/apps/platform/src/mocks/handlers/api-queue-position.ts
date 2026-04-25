@@ -5,7 +5,7 @@
  * Default behavior: position 0, total 0.
  */
 
-import { zeroQueuePositionContract } from "@vm0/core/contracts/zero-queue-position";
+import { zeroQueuePositionContract } from "@vm0/api-contracts/contracts/zero-queue-position";
 import { mockApi } from "../msw-contract.ts";
 
 export const apiQueuePositionHandlers = [

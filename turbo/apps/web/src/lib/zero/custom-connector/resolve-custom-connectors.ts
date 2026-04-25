@@ -1,7 +1,7 @@
 import { eq, and, inArray } from "drizzle-orm";
-import type { ExpandedFirewallConfig } from "@vm0/core/contracts/firewalls";
-import { orgCustomConnectors } from "../../../db/schema/org-custom-connector";
-import { orgCustomConnectorSecrets } from "../../../db/schema/org-custom-connector-secret";
+import type { ExpandedFirewallConfig } from "@vm0/api-contracts/contracts/firewalls";
+import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
+import { orgCustomConnectorSecrets } from "@vm0/db/schema/org-custom-connector-secret";
 import { decryptSecretValue } from "../../shared/crypto";
 import { SECRET_PLACEHOLDER } from "./custom-connector-service";
 

@@ -9,7 +9,7 @@ import {
   click,
 } from "../../../__tests__/page-helper.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
-import { onboardingStatusContract } from "@vm0/core/contracts/onboarding";
+import { onboardingStatusContract } from "@vm0/api-contracts/contracts/onboarding";
 
 const context = testContext();
 const mockApi = createMockApi(context);

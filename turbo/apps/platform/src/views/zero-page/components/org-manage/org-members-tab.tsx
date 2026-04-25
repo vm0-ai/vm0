@@ -33,7 +33,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@vm0/ui";
-import { orgRoleSchema, type OrgRole } from "@vm0/core/contracts/org-members";
+import {
+  orgRoleSchema,
+  type OrgRole,
+} from "@vm0/api-contracts/contracts/org-members";
 import {
   orgMembers$,
   orgPendingInvitations$,

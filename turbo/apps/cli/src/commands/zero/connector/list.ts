@@ -3,7 +3,7 @@ import chalk from "chalk";
 import {
   CONNECTOR_TYPES,
   type ConnectorType,
-} from "@vm0/core/contracts/connectors";
+} from "@vm0/api-contracts/contracts/connectors";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { listZeroConnectors } from "../../../lib/api";
 import { getActiveOrg } from "../../../lib/api/config";

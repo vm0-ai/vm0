@@ -1,6 +1,6 @@
 import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
-import { zeroUserPreferencesContract } from "@vm0/core/contracts/zero-user-preferences";
-import { createErrorResponse } from "@vm0/core/contracts/errors";
+import { zeroUserPreferencesContract } from "@vm0/api-contracts/contracts/zero-user-preferences";
+import { createErrorResponse } from "@vm0/api-contracts/contracts/errors";
 import { initServices } from "../../../../src/lib/init-services";
 import {
   requireAuth,

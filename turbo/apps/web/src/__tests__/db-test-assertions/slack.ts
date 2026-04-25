@@ -1,8 +1,8 @@
 import { and, eq, count } from "drizzle-orm";
 import { initServices } from "../../lib/init-services";
-import { slackOrgInstallations } from "../../db/schema/slack-org-installation";
-import { slackOrgConnections } from "../../db/schema/slack-org-connection";
-import { slackUserAgentPreferences } from "../../db/schema/slack-user-agent-preference";
+import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
+import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
+import { slackUserAgentPreferences } from "@vm0/db/schema/slack-user-agent-preference";
 
 export async function findTestSlackOrgInstallation(workspaceId: string) {
   initServices();

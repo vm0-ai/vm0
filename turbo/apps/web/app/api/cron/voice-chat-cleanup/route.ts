@@ -3,7 +3,7 @@ import { inArray, and, lt, eq } from "drizzle-orm";
 import { initServices } from "../../../../src/lib/init-services";
 import { logger } from "../../../../src/lib/shared/logger";
 import { env } from "../../../../src/env";
-import { voiceChatSessions } from "../../../../src/db/schema/voice-chat";
+import { voiceChatSessions } from "@vm0/db/schema/voice-chat";
 import { triggerReasoning } from "../../../../src/lib/zero/voice-chat/trigger-reasoning";
 
 export const maxDuration = 60;

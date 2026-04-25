@@ -1,21 +1,21 @@
 import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
-import { zeroAgentPermissionPoliciesContract } from "@vm0/core/contracts/zero-agents";
-import type { FirewallPolicies } from "@vm0/core/contracts/firewalls";
+import { zeroAgentPermissionPoliciesContract } from "@vm0/api-contracts/contracts/zero-agents";
+import type { FirewallPolicies } from "@vm0/api-contracts/contracts/firewalls";
 import {
   fromFirewallPolicies,
   toFirewallPolicies,
-} from "@vm0/core/contracts/firewalls";
+} from "@vm0/api-contracts/contracts/firewalls";
 import {
   getConnectorFirewall,
   isFirewallConnectorType,
-} from "@vm0/core/firewalls";
+} from "@vm0/api-contracts/firewalls";
 import { initServices } from "../../../../src/lib/init-services";
 import {
   requireAuth,
   isAuthError,
 } from "../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../src/lib/zero/org/resolve-org";
-import { zeroAgents } from "../../../../src/db/schema/zero-agent";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { eq, and } from "drizzle-orm";
 import { requireAgentPermission } from "../../../../src/lib/zero/require-agent-permission";
 import { logger } from "../../../../src/lib/shared/logger";

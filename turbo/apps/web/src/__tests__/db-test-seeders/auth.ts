@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
 import { eq } from "drizzle-orm";
-import { cliTokens } from "../../db/schema/cli-tokens";
-import { deviceCodes } from "../../db/schema/device-codes";
+import { cliTokens } from "@vm0/db/schema/cli-tokens";
+import { deviceCodes } from "@vm0/db/schema/device-codes";
 import { generateCliToken } from "../../lib/auth/sandbox-token";
 
 /**

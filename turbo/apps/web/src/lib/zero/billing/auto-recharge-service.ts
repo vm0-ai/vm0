@@ -1,6 +1,6 @@
 import { eq, sql } from "drizzle-orm";
 import type Stripe from "stripe";
-import { orgMetadata } from "../../../db/schema/org-metadata";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { grantOrgCredits } from "../org/org-service";
 import { createExpiresRecord } from "../credit/credit-expires-service";
 import { getStripe } from "../stripe";

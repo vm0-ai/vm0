@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { waitFor } from "@testing-library/react";
-import { onboardingCompleteContract } from "@vm0/core/contracts/onboarding";
-import { zeroAgentsByIdContract } from "@vm0/core/contracts/zero-agents";
+import { onboardingCompleteContract } from "@vm0/api-contracts/contracts/onboarding";
+import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
 import { server } from "../../mocks/server.ts";
 import { createMockApi } from "../../mocks/msw-contract.ts";
 import { setMockOnboardingStatus } from "../../mocks/handlers/api-onboarding.ts";

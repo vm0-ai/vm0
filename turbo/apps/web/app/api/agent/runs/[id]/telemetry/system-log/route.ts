@@ -3,9 +3,9 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../../../../src/lib/ts-rest-handler";
-import { runSystemLogContract } from "@vm0/core/contracts/runs";
+import { runSystemLogContract } from "@vm0/api-contracts/contracts/runs";
 import { initServices } from "../../../../../../../src/lib/init-services";
-import { agentRuns } from "../../../../../../../src/db/schema/agent-run";
+import { agentRuns } from "@vm0/db/schema/agent-run";
 import { eq, and } from "drizzle-orm";
 import { getAuthContext } from "../../../../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../../../../src/lib/zero/org/resolve-org";

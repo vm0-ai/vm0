@@ -3,7 +3,7 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { IconSearch, IconChartLine, IconUpload } from "@tabler/icons-react";
 import { Button, Input, Tabs, TabsList, TabsTrigger } from "@vm0/ui";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/api-contracts/feature-switch-key";
 import type {
   LogStatus,
   TriggerSource,

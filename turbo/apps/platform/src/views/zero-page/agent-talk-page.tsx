@@ -1,5 +1,5 @@
 import { useGet, useLastResolved } from "ccstate-react";
-import type { VoiceChatTask } from "@vm0/core/contracts/zero-voice-chat";
+import type { VoiceChatTask } from "@vm0/api-contracts/contracts/zero-voice-chat";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   currentChatAgentId$,

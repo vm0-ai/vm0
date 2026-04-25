@@ -16,17 +16,17 @@ import {
   chatThreadMessagesContract,
   chatThreadsContract,
   chatMessagesContract,
-} from "@vm0/core/contracts/chat-threads";
+} from "@vm0/api-contracts/contracts/chat-threads";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 import {
   zeroRunAgentEventsContract,
   zeroRunsByIdContract,
-} from "@vm0/core/contracts/zero-runs";
-import { logsByIdContract } from "@vm0/core/contracts/logs";
+} from "@vm0/api-contracts/contracts/zero-runs";
+import { logsByIdContract } from "@vm0/api-contracts/contracts/logs";
 import {
   onboardingStatusContract,
   onboardingSetupContract,
-} from "@vm0/core/contracts/onboarding";
+} from "@vm0/api-contracts/contracts/onboarding";
 
 const context = testContext();
 const mockApi = createMockApi(context);

@@ -1,6 +1,6 @@
 import { eq, and } from "drizzle-orm";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { userFeatureSwitches } from "../../../db/schema/user-feature-switches";
+import { FeatureSwitchKey } from "@vm0/api-contracts/feature-switch-key";
+import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 
 /**
  * Get user feature switch overrides for the given org + user.

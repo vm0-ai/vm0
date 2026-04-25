@@ -7,7 +7,7 @@ import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
   zeroAgentsByIdContract,
   zeroAgentInstructionsContract,
-} from "@vm0/core/contracts/zero-agents";
+} from "@vm0/api-contracts/contracts/zero-agents";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();

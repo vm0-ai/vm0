@@ -19,8 +19,8 @@ import {
   zeroOrgContract,
   zeroOrgLeaveContract,
   zeroOrgDeleteContract,
-} from "@vm0/core/contracts/zero-org";
-import type { OrgResponse } from "@vm0/core/contracts/orgs";
+} from "@vm0/api-contracts/contracts/zero-org";
+import type { OrgResponse } from "@vm0/api-contracts/contracts/orgs";
 import { org$, isOrgAdmin$, refreshOrg$ } from "../../../../signals/org.ts";
 import { clerk$, resolveWebOrigin } from "../../../../signals/auth.ts";
 import { zeroClient$ } from "../../../../signals/api-client.ts";

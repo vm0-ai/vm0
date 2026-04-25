@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { initServices } from "../../lib/init-services";
-import { zeroAgentSchedules } from "../../db/schema/zero-agent-schedule";
+import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
 
 // ============================================================================
 // Schedule Assertions

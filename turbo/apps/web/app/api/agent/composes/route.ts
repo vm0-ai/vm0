@@ -6,7 +6,7 @@ import {
 import {
   composesMainContract,
   AGENT_NAME_REGEX,
-} from "@vm0/core/contracts/composes";
+} from "@vm0/api-contracts/contracts/composes";
 import {
   SUPPORTED_FRAMEWORKS,
   isSupportedFramework,
@@ -15,7 +15,7 @@ import { initServices } from "../../../../src/lib/init-services";
 import {
   agentComposes,
   agentComposeVersions,
-} from "../../../../src/db/schema/agent-compose";
+} from "@vm0/db/schema/agent-compose";
 import {
   requireAuth,
   isAuthError,

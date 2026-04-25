@@ -1,7 +1,7 @@
 import {
   permissionAccessRequestsListContract,
   type PermissionAccessRequestResponse,
-} from "@vm0/core/contracts/zero-agents";
+} from "@vm0/api-contracts/contracts/zero-agents";
 import { mockApi } from "../msw-contract.ts";
 
 let mockPermissionRequests: PermissionAccessRequestResponse[] = [];

@@ -1,6 +1,6 @@
 import "server-only";
 import { and, desc, eq, gte } from "drizzle-orm";
-import { voiceChatTasks } from "../../../db/schema/voice-chat";
+import { voiceChatTasks } from "@vm0/db/schema/voice-chat";
 
 const WINDOW_MS = 3 * 60 * 1000;
 const MAX_EVENTS_PER_TASK = 10;

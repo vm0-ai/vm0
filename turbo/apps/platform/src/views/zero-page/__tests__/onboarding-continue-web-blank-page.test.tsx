@@ -10,7 +10,7 @@ import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 import {
   onboardingStatusContract,
   onboardingCompleteContract,
-} from "@vm0/core/contracts/onboarding";
+} from "@vm0/api-contracts/contracts/onboarding";
 
 const context = testContext();
 const mockApi = createMockApi(context);

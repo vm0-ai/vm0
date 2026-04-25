@@ -3,8 +3,8 @@ import {
   chatThreadsContract,
   type ChatThreadListItem,
   type PersistedAttachment,
-} from "@vm0/core/contracts/chat-threads";
-import type { ModelProviderType } from "@vm0/core/contracts/model-providers";
+} from "@vm0/api-contracts/contracts/chat-threads";
+import type { ModelProviderType } from "@vm0/api-contracts/contracts/model-providers";
 import { agentById, defaultAgentId$ } from "./agent.ts";
 import { zeroClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";

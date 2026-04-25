@@ -11,7 +11,7 @@ import { getTimezoneLabel } from "../../../signals/zero-page/cron.ts";
 import {
   type UserPreferencesResponse,
   zeroUserPreferencesContract,
-} from "@vm0/core/contracts/zero-user-preferences";
+} from "@vm0/api-contracts/contracts/zero-user-preferences";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 

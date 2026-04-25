@@ -1,8 +1,8 @@
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
-import { zeroComputerUseRegisterContract } from "@vm0/core/contracts/zero-computer-use";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { zeroComputerUseRegisterContract } from "@vm0/api-contracts/contracts/zero-computer-use";
+import { FeatureSwitchKey } from "@vm0/api-contracts/feature-switch-key";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { createErrorResponse } from "@vm0/core/contracts/errors";
+import { createErrorResponse } from "@vm0/api-contracts/contracts/errors";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
   requireAuth,

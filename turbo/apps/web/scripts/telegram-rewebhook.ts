@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 
-import { telegramInstallations } from "../src/db/schema/telegram-installation";
+import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
 import { initServices } from "../src/lib/init-services";
 import { decryptSecretValue } from "../src/lib/shared/crypto/secrets-encryption";
 import { setWebhook } from "../src/lib/zero/telegram/client";

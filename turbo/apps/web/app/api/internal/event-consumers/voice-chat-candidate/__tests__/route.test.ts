@@ -15,7 +15,7 @@ import { createVoiceChatCandidateSession } from "../../../../../../src/lib/zero/
 // eslint-disable-next-line web/no-direct-db-in-tests -- verify DB side-effects directly
 import { createVoiceChatCandidateTask } from "../../../../../../src/lib/zero/voice-chat-candidate/task-service";
 // eslint-disable-next-line web/no-direct-db-in-tests -- verify DB side-effects directly
-import { voiceChatTasks } from "../../../../../../src/db/schema/voice-chat";
+import { voiceChatTasks } from "@vm0/db/schema/voice-chat";
 
 const SECRETS_ENCRYPTION_KEY =
   "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";

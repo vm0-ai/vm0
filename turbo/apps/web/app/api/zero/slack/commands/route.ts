@@ -6,8 +6,8 @@ import {
   verifySlackSignature,
   getSlackSignatureHeaders,
 } from "../../../../../src/lib/zero/slack/verify";
-import { slackOrgInstallations } from "../../../../../src/db/schema/slack-org-installation";
-import { slackOrgConnections } from "../../../../../src/db/schema/slack-org-connection";
+import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
+import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { decryptSecretValue } from "../../../../../src/lib/shared/crypto/secrets-encryption";
 import {
   createSlackClient,

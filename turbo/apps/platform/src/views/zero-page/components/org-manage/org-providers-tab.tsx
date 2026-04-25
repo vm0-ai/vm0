@@ -5,7 +5,7 @@ import { IconPlus, IconDotsVertical } from "@tabler/icons-react";
 import {
   MODEL_PROVIDER_TYPES,
   type ModelProviderType,
-} from "@vm0/core/contracts/model-providers";
+} from "@vm0/api-contracts/contracts/model-providers";
 import {
   cn,
   Button,

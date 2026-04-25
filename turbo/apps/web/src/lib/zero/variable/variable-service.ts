@@ -1,5 +1,5 @@
 import { eq, and } from "drizzle-orm";
-import { variables } from "../../../db/schema/variable";
+import { variables } from "@vm0/db/schema/variable";
 import { badRequest, notFound } from "../../shared/errors";
 import { logger } from "../../shared/logger";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";

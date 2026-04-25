@@ -5,7 +5,7 @@
  * Default behavior: empty insights.
  */
 
-import { zeroInsightsContract } from "@vm0/core/contracts/zero-insights";
+import { zeroInsightsContract } from "@vm0/api-contracts/contracts/zero-insights";
 import { mockApi } from "../msw-contract.ts";
 
 export const apiInsightsHandlers = [

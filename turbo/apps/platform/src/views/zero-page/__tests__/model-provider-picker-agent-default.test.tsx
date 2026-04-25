@@ -21,7 +21,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { zeroAgentsByIdContract } from "@vm0/core/contracts/zero-agents";
+import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";

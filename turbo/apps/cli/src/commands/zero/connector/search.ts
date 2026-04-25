@@ -3,8 +3,8 @@ import chalk from "chalk";
 import {
   CONNECTOR_TYPES,
   type ConnectorType,
-} from "@vm0/core/contracts/connectors";
-import { searchConnectors } from "@vm0/core/contracts/connector-utils";
+} from "@vm0/api-contracts/contracts/connectors";
+import { searchConnectors } from "@vm0/api-contracts/contracts/connector-utils";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { listZeroConnectors } from "../../../lib/api";
 import { getActiveOrg } from "../../../lib/api/config";

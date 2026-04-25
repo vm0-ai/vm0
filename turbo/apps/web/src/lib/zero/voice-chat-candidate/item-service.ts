@@ -1,8 +1,5 @@
 import { and, asc, eq, gt } from "drizzle-orm";
-import {
-  voiceChatItems,
-  voiceChatSessions,
-} from "../../../db/schema/voice-chat";
+import { voiceChatItems, voiceChatSessions } from "@vm0/db/schema/voice-chat";
 import { notFound } from "../../shared/errors";
 
 type ItemRow = typeof voiceChatItems.$inferSelect;

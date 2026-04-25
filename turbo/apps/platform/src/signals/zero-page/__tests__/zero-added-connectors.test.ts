@@ -7,8 +7,8 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { zeroAddedConnectors$, addZeroConnector$ } from "../zero-connectors.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
-import { zeroAgentsByIdContract } from "@vm0/core/contracts/zero-agents";
-import { zeroUserConnectorsContract } from "@vm0/core/contracts/user-connectors";
+import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
+import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();

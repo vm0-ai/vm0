@@ -1,5 +1,5 @@
 import { and, desc, eq } from "drizzle-orm";
-import { voiceChatSessions } from "../../../db/schema/voice-chat";
+import { voiceChatSessions } from "@vm0/db/schema/voice-chat";
 
 type SessionRow = typeof voiceChatSessions.$inferSelect;
 

@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
-import { zeroRunsMainContract } from "@vm0/core/contracts/zero-runs";
+import { zeroRunsMainContract } from "@vm0/api-contracts/contracts/zero-runs";
 import { initServices } from "../../../../src/lib/init-services";
 import {
   requireAuth,
@@ -12,10 +12,10 @@ import {
   generateCallbackSecret,
   getApiUrl,
 } from "../../../../src/lib/infra/callback";
-import { zeroAgents } from "../../../../src/db/schema/zero-agent";
-import { agentRuns } from "../../../../src/db/schema/agent-run";
-import { agentComposeVersions } from "../../../../src/db/schema/agent-compose";
-import { agentSessions } from "../../../../src/db/schema/agent-session";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { agentComposeVersions } from "@vm0/db/schema/agent-compose";
+import { agentSessions } from "@vm0/db/schema/agent-session";
 import { logger } from "../../../../src/lib/shared/logger";
 
 const log = logger("api:zero-runs:trigger");

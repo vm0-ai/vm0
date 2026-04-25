@@ -13,7 +13,7 @@ import { createHandler, tsr } from "../../../../../../src/lib/ts-rest-handler";
 import {
   composesInstructionsContract,
   agentComposeApiContentSchema,
-} from "@vm0/core/contracts/composes";
+} from "@vm0/api-contracts/contracts/composes";
 import { getInstructionsStorageName } from "@vm0/core/storage-names";
 import { getInstructionsFilename } from "@vm0/core/frameworks";
 import { stripMetadataFrontmatter } from "@vm0/core/instructions-frontmatter";
@@ -22,11 +22,8 @@ import { eq, and } from "drizzle-orm";
 import {
   agentComposes,
   agentComposeVersions,
-} from "../../../../../../src/db/schema/agent-compose";
-import {
-  storages,
-  storageVersions,
-} from "../../../../../../src/db/schema/storage";
+} from "@vm0/db/schema/agent-compose";
+import { storages, storageVersions } from "@vm0/db/schema/storage";
 import {
   requireAuth,
   isAuthError,

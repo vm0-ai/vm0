@@ -1,5 +1,5 @@
 import { createHandler, tsr } from "../../../../../../src/lib/ts-rest-handler";
-import { integrationsChatMessageContract } from "@vm0/core/contracts/integrations";
+import { integrationsChatMessageContract } from "@vm0/api-contracts/contracts/integrations";
 import { initServices } from "../../../../../../src/lib/init-services";
 import {
   requireAuth,
@@ -10,7 +10,7 @@ import {
   createChatThread,
 } from "../../../../../../src/lib/zero/chat-thread/chat-thread-service";
 import { insertChatMessage } from "../../../../../../src/lib/zero/chat-thread/chat-message-service";
-import { agentComposes } from "../../../../../../src/db/schema/agent-compose";
+import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { eq, and } from "drizzle-orm";
 import { badRequest, notFound } from "../../../../../../src/lib/shared/errors";
 

@@ -9,8 +9,8 @@ import { eq, and, lte } from "drizzle-orm";
 import { initServices } from "../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
 import { resolveOrgOrNull } from "../../../../src/lib/zero/org/resolve-org";
-import { agentRunQueue } from "../../../../src/db/schema/agent-run-queue";
-import { agentRuns } from "../../../../src/db/schema/agent-run";
+import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
+import { agentRuns } from "@vm0/db/schema/agent-run";
 
 export async function GET(request: Request) {
   initServices();

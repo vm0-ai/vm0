@@ -1,9 +1,9 @@
 import { and, eq, sql } from "drizzle-orm";
 import { initServices } from "../../lib/init-services";
-import { telegramInstallations } from "../../db/schema/telegram-installation";
-import { telegramMessages } from "../../db/schema/telegram-message";
-import { telegramUserLinks } from "../../db/schema/telegram-user-link";
-import { telegramThreadSessions } from "../../db/schema/telegram-thread-session";
+import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
+import { telegramMessages } from "@vm0/db/schema/telegram-message";
+import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
+import { telegramThreadSessions } from "@vm0/db/schema/telegram-thread-session";
 
 /**
  * Count telegram messages for a specific installation.

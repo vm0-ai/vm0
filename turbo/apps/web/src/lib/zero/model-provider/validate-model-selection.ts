@@ -4,8 +4,8 @@ import {
   allowsCustomModel,
   getModels,
   type ModelProviderType,
-} from "@vm0/core/contracts/model-providers";
-import { modelProviders } from "../../../db/schema/model-provider";
+} from "@vm0/api-contracts/contracts/model-providers";
+import { modelProviders } from "@vm0/db/schema/model-provider";
 import { badRequest } from "../../shared/errors";
 
 interface ModelSelectionInput {

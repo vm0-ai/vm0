@@ -9,7 +9,7 @@ import {
   toggleZeroConnector$,
 } from "../zero-onboarding.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
-import { onboardingSetupContract } from "@vm0/core/contracts/onboarding";
+import { onboardingSetupContract } from "@vm0/api-contracts/contracts/onboarding";
 
 const context = testContext();
 const mockApi = createMockApi(context);

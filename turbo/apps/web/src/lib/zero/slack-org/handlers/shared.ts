@@ -1,10 +1,10 @@
 import { eq, and } from "drizzle-orm";
-import { slackOrgInstallations } from "../../../../db/schema/slack-org-installation";
-import { slackOrgConnections } from "../../../../db/schema/slack-org-connection";
-import { slackOrgThreadSessions } from "../../../../db/schema/slack-org-thread-session";
-import { slackUserAgentPreferences } from "../../../../db/schema/slack-user-agent-preference";
-import { zeroAgents } from "../../../../db/schema/zero-agent";
-import { orgMetadata as orgTable } from "../../../../db/schema/org-metadata";
+import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
+import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
+import { slackOrgThreadSessions } from "@vm0/db/schema/slack-org-thread-session";
+import { slackUserAgentPreferences } from "@vm0/db/schema/slack-user-agent-preference";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { orgMetadata as orgTable } from "@vm0/db/schema/org-metadata";
 import { getAppUrl } from "../../url";
 import { resolveDefaultAgentComposeId } from "../../../infra/agent-compose/resolve-default";
 import { ensureStorageExists } from "../../../infra/storage/storage-service";

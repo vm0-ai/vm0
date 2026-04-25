@@ -1,5 +1,5 @@
 import { command, computed, state } from "ccstate";
-import { zeroOrgContract } from "@vm0/core/contracts/zero-org";
+import { zeroOrgContract } from "@vm0/api-contracts/contracts/zero-org";
 import { user$ } from "./auth.ts";
 import { zeroClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";

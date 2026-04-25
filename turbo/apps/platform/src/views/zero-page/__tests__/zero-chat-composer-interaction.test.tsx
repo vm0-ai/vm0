@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { zeroConnectorsMainContract } from "@vm0/core/contracts/zero-connectors";
-import { zeroUserConnectorsContract } from "@vm0/core/contracts/user-connectors";
+import { zeroConnectorsMainContract } from "@vm0/api-contracts/contracts/zero-connectors";
+import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {

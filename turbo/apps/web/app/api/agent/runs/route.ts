@@ -7,14 +7,14 @@ import {
   runsMainContract,
   ALL_RUN_STATUSES,
   type RunStatus,
-} from "@vm0/core/contracts/runs";
-import { orgTierSchema } from "@vm0/core/contracts/orgs";
+} from "@vm0/api-contracts/contracts/runs";
+import { orgTierSchema } from "@vm0/api-contracts/contracts/orgs";
 import { initServices } from "../../../../src/lib/init-services";
 import {
   agentComposes,
   agentComposeVersions,
-} from "../../../../src/db/schema/agent-compose";
-import { agentRuns } from "../../../../src/db/schema/agent-run";
+} from "@vm0/db/schema/agent-compose";
+import { agentRuns } from "@vm0/db/schema/agent-run";
 import type { AdditionalVolume } from "../../../../src/lib/infra/storage/types";
 import { and, eq, inArray, desc, gte, lte, sql } from "drizzle-orm";
 import {

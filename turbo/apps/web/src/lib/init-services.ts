@@ -4,7 +4,7 @@ import Stripe from "stripe";
 import { attachDatabasePool } from "@vercel/functions";
 import { drizzle as drizzleNodePg } from "drizzle-orm/node-postgres";
 import { drizzle as drizzleNeonServerless } from "drizzle-orm/neon-serverless";
-import { schema } from "../db/db";
+import { schema } from "@vm0/db";
 import { env } from "../env";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { NeonDatabase } from "drizzle-orm/neon-serverless";

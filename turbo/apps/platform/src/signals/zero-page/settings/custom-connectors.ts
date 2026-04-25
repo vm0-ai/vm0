@@ -5,7 +5,7 @@ import {
   zeroCustomConnectorSecretContract,
   zeroCustomConnectorsContract,
   type CustomConnectorResponse,
-} from "@vm0/core/contracts/zero-custom-connectors";
+} from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import { accept } from "../../../lib/accept.ts";
 import { zeroClient$ } from "../../api-client.ts";
 

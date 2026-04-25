@@ -5,7 +5,7 @@ import {
   chatThreadsContract,
   type ChatThreadListItem,
   type ModelSelectionRequest,
-} from "@vm0/core/contracts/chat-threads";
+} from "@vm0/api-contracts/contracts/chat-threads";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
 import {

@@ -5,7 +5,7 @@ import {
   type ApiKeyItem,
   type ApiKeyListResponse,
   type CreateApiKeyResponse,
-} from "@vm0/core/contracts/api-keys";
+} from "@vm0/api-contracts/contracts/api-keys";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 

@@ -1,5 +1,5 @@
-import type { RunContextResponse } from "@vm0/core/contracts/zero-runs";
-import type { NetworkLogEntry } from "@vm0/core/contracts/runs";
+import type { RunContextResponse } from "@vm0/api-contracts/contracts/zero-runs";
+import type { NetworkLogEntry } from "@vm0/api-contracts/contracts/runs";
 import type { AgentEvent, LogDetail } from "../zero-page/log-types.ts";
 
 export type InspectLogMeta = Partial<LogDetail>;

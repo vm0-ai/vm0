@@ -2,10 +2,10 @@ import { eq, asc, desc, and, sql, inArray, isNotNull } from "drizzle-orm";
 import {
   chatMessages,
   type ChatMessageAttachFiles,
-} from "../../../db/schema/chat-message";
-import { chatThreads } from "../../../db/schema/chat-thread";
-import { agentRuns } from "../../../db/schema/agent-run";
-import { zeroRuns } from "../../../db/schema/zero-run";
+} from "@vm0/db/schema/chat-message";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { publishUserSignal } from "../../infra/realtime/client";
 import { hasAgentSessionId } from "../run-result";
 import { recordChatSpan, type ChatSpanDimensions } from "../../infra/metrics";

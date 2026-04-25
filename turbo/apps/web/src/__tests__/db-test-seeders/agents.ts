@@ -1,18 +1,18 @@
 import { and, eq } from "drizzle-orm";
-import type { RawPermissionPolicies } from "@vm0/core/contracts/firewalls";
+import type { RawPermissionPolicies } from "@vm0/api-contracts/contracts/firewalls";
 import { initServices } from "../../lib/init-services";
 import {
   agentComposes,
   agentComposeVersions,
-} from "../../db/schema/agent-compose";
-import { agentRuns } from "../../db/schema/agent-run";
-import { agentSessions } from "../../db/schema/agent-session";
-import { chatMessages } from "../../db/schema/chat-message";
-import { chatThreads } from "../../db/schema/chat-thread";
-import { conversations } from "../../db/schema/conversation";
-import { zeroAgents } from "../../db/schema/zero-agent";
-import { zeroRuns } from "../../db/schema/zero-run";
-import { composeJobs } from "../../db/schema/compose-job";
+} from "@vm0/db/schema/agent-compose";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { agentSessions } from "@vm0/db/schema/agent-session";
+import { chatMessages } from "@vm0/db/schema/chat-message";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { conversations } from "@vm0/db/schema/conversation";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { composeJobs } from "@vm0/db/schema/compose-job";
 import { uniqueId } from "../test-helpers";
 import { getMessagesByThreadId } from "../../lib/zero/chat-thread/chat-message-service";
 import type { ContextArtifact } from "../../lib/infra/run/types";

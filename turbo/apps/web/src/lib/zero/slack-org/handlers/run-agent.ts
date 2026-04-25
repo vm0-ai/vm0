@@ -1,4 +1,4 @@
-import { RUN_ERROR_GUIDANCE } from "@vm0/core/contracts/errors";
+import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
 import { isRunDispatchError } from "../../../infra/run";
 import type { SlackOrgCallbackPayload } from "../../../infra/callback/callback-payloads";
 import { isApiError } from "../../../shared/errors";

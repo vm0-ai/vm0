@@ -14,18 +14,18 @@ import {
 import {
   CONNECTOR_TYPES,
   type ConnectorType,
-} from "@vm0/core/contracts/connectors";
+} from "@vm0/api-contracts/contracts/connectors";
 import {
   getConnectorFirewall,
   groupPermissionsByCategory,
   isFirewallConnectorType,
   resolveFirewallPolicies,
-} from "@vm0/core/firewalls";
+} from "@vm0/api-contracts/firewalls";
 import type {
   FirewallConfig,
   FirewallPolicies,
   FirewallPolicyValue,
-} from "@vm0/core/contracts/firewalls";
+} from "@vm0/api-contracts/contracts/firewalls";
 import { ConnectorIcon } from "./connector-icons.tsx";
 import type { PermissionPolicy } from "../../../../signals/zero-page/settings/permissions.ts";
 import {

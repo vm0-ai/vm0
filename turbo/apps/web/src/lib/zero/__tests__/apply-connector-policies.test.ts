@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ExpandedFirewallConfig } from "@vm0/core/contracts/firewalls";
+import type { ExpandedFirewallConfig } from "@vm0/api-contracts/contracts/firewalls";
 import { applyConnectorPolicies } from "../build-zero-context";
 
 function makeFirewall(

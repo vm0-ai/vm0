@@ -1,8 +1,8 @@
 import { and, eq } from "drizzle-orm";
 import { VOLUME_ORG_USER_ID, SYSTEM_ORG_ID } from "@vm0/core/storage-names";
 import { initServices } from "../../lib/init-services";
-import { storages } from "../../db/schema/storage";
-import { storageVersionLineage } from "../../db/schema/storage-version-lineage";
+import { storages } from "@vm0/db/schema/storage";
+import { storageVersionLineage } from "@vm0/db/schema/storage-version-lineage";
 
 /**
  * Find a storage volume by clerk org and name.

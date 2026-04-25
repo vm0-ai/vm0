@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { ConnectorType } from "@vm0/core/contracts/connectors";
-import { zeroUserConnectorsContract } from "@vm0/core/contracts/user-connectors";
+import type { ConnectorType } from "@vm0/api-contracts/contracts/connectors";
+import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { server } from "../../../mocks/server.ts";
 import { mockUploadSuccess } from "../../../mocks/upload-helpers.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";

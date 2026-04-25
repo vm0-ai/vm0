@@ -3,19 +3,19 @@ import {
   BILLABLE_CONNECTORS,
   getConnectorFirewall,
   isFirewallConnectorType,
-} from "@vm0/core/firewalls";
-import type { ConnectorType } from "@vm0/core/contracts/connectors";
+} from "@vm0/api-contracts/firewalls";
+import type { ConnectorType } from "@vm0/api-contracts/contracts/connectors";
 import type {
   ExpandedFirewallConfig,
   FirewallPolicies,
   Firewalls,
   NetworkPolicies,
-} from "@vm0/core/contracts/firewalls";
+} from "@vm0/api-contracts/contracts/firewalls";
 import {
   getModelProviderFirewall,
   type ModelProviderType,
-} from "@vm0/core/contracts/model-providers";
-import { zeroRuns } from "../../db/schema/zero-run";
+} from "@vm0/api-contracts/contracts/model-providers";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { badRequest, notFound } from "../shared/errors";
 import { logger } from "../shared/logger";
 import type {

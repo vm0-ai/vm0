@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
-import { emailThreadSessions } from "../../db/schema/email-thread-session";
-import { emailOutbox } from "../../db/schema/email-outbox";
+import { emailThreadSessions } from "@vm0/db/schema/email-thread-session";
+import { emailOutbox } from "@vm0/db/schema/email-outbox";
 import { initServices } from "../../lib/init-services";
 
 // ============================================================================

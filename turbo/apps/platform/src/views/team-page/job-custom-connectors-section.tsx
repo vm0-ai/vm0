@@ -6,7 +6,7 @@ import {
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { toast } from "@vm0/ui/components/ui/sonner";
-import type { CustomConnectorResponse } from "@vm0/core/contracts/zero-custom-connectors";
+import type { CustomConnectorResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { customConnectors$ } from "../../signals/zero-page/settings/custom-connectors.ts";
 import {

@@ -1,4 +1,4 @@
-import type { UsageInsightResponse } from "@vm0/core/contracts/zero-usage-insight";
+import type { UsageInsightResponse } from "@vm0/api-contracts/contracts/zero-usage-insight";
 import type { InsightMetric } from "../../../signals/usage-page/usage-insight-signals.ts";
 import { Link } from "../../router/link.tsx";
 

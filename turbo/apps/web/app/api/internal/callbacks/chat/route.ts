@@ -2,8 +2,8 @@ import { NextRequest, NextResponse, after } from "next/server";
 import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
 import { verifyCallback } from "../../../../../src/lib/infra/callback";
-import { agentRuns } from "../../../../../src/db/schema/agent-run";
-import { chatMessages } from "../../../../../src/db/schema/chat-message";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { chatMessages } from "@vm0/db/schema/chat-message";
 import { recordSandboxOperation } from "../../../../../src/lib/infra/metrics/instruments";
 import {
   insertChatMessage,

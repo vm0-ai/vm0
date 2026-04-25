@@ -1,12 +1,12 @@
 import { createHmac, hkdfSync } from "crypto";
 import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
-import { zeroDeveloperSupportContract } from "@vm0/core/contracts/zero-developer-support";
+import { zeroDeveloperSupportContract } from "@vm0/api-contracts/contracts/zero-developer-support";
 import { initServices } from "../../../../src/lib/init-services";
 import {
   requireAuth,
   isAuthError,
 } from "../../../../src/lib/auth/require-auth";
-import { agentRuns } from "../../../../src/db/schema/agent-run";
+import { agentRuns } from "@vm0/db/schema/agent-run";
 import { eq } from "drizzle-orm";
 import { env } from "../../../../src/env";
 import { submitDiagnosticBundle } from "../../../../src/lib/zero/support/diagnostic-bundle-service";

@@ -1,13 +1,13 @@
 import { and, eq } from "drizzle-orm";
 import { initServices } from "../../lib/init-services";
-import { orgMetadata } from "../../db/schema/org-metadata";
-import { creditExpiresRecord } from "../../db/schema/credit-expires-record";
-import { creditUsage } from "../../db/schema/credit-usage";
-import { clientCreditUsage } from "../../db/schema/client-credit-usage";
-import { usageEvent } from "../../db/schema/usage-event";
-import { usageDaily } from "../../db/schema/usage-daily";
-import { insightsDaily } from "../../db/schema/insights-daily";
-import { orgPromoRedemption } from "../../db/schema/org-promo-redemption";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
+import { creditUsage } from "@vm0/db/schema/credit-usage";
+import { clientCreditUsage } from "@vm0/db/schema/client-credit-usage";
+import { usageEvent } from "@vm0/db/schema/usage-event";
+import { usageDaily } from "@vm0/db/schema/usage-daily";
+import { insightsDaily } from "@vm0/db/schema/insights-daily";
+import { orgPromoRedemption } from "@vm0/db/schema/org-promo-redemption";
 
 // ---------------------------------------------------------------------------
 // Read-only assertion helpers for billing / credit test verification.

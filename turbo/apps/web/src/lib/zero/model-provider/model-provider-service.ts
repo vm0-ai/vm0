@@ -9,9 +9,9 @@ import {
   getSecretNamesForAuthMethod,
   type ModelProviderType,
   type ModelProviderFramework,
-} from "@vm0/core/contracts/model-providers";
-import { modelProviders } from "../../../db/schema/model-provider";
-import { secrets } from "../../../db/schema/secret";
+} from "@vm0/api-contracts/contracts/model-providers";
+import { modelProviders } from "@vm0/db/schema/model-provider";
+import { secrets } from "@vm0/db/schema/secret";
 import { encryptSecretValue } from "../../shared/crypto";
 import { badRequest, notFound } from "../../shared/errors";
 import { logger } from "../../shared/logger";

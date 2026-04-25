@@ -7,7 +7,7 @@
 import {
   zeroUsageInsightContract,
   type UsageInsightResponse,
-} from "@vm0/core/contracts/zero-usage-insight";
+} from "@vm0/api-contracts/contracts/zero-usage-insight";
 import { mockApi } from "../msw-contract.ts";
 
 const defaultResponse: UsageInsightResponse = {

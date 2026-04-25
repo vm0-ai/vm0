@@ -1,6 +1,6 @@
 import chalk from "chalk";
-import { hasRequiredScopes } from "@vm0/core/contracts/connector-utils";
-import type { ConnectorListResponse } from "@vm0/core/contracts/connector-schemas";
+import { hasRequiredScopes } from "@vm0/api-contracts/contracts/connector-utils";
+import type { ConnectorListResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 
 type Connector = ConnectorListResponse["connectors"][number];
 

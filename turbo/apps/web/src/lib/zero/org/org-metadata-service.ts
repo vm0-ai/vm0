@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
-import { orgTierSchema, type OrgTier } from "@vm0/core/contracts/orgs";
-import { orgMetadata } from "../../../db/schema/org-metadata";
+import { orgTierSchema, type OrgTier } from "@vm0/api-contracts/contracts/orgs";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { isNotFound, notFound } from "../../shared/errors";
 import { logger } from "../../shared/logger";
 import { getStripe } from "../stripe";

@@ -1,9 +1,9 @@
 import { Command, Option } from "commander";
-import { CONNECTOR_TYPES } from "@vm0/core/contracts/connectors";
+import { CONNECTOR_TYPES } from "@vm0/api-contracts/contracts/connectors";
 import {
   getConnectorFirewall,
   isFirewallConnectorType,
-} from "@vm0/core/firewalls";
+} from "@vm0/api-contracts/firewalls";
 import { withErrorHandler } from "../../../lib/command";
 import { getPlatformOrigin } from "./platform-url";
 import { resolveAgentRole } from "./resolve-role";

@@ -3,14 +3,14 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../../src/lib/ts-rest-handler";
-import { cliAuthOrgContract } from "@vm0/core/contracts/cli-auth";
+import { cliAuthOrgContract } from "@vm0/api-contracts/contracts/cli-auth";
 import crypto from "crypto";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
 import { getOrgIdBySlug } from "../../../../../src/lib/auth/org-cache";
 import { getMemberRole } from "../../../../../src/lib/auth/org-membership-cache";
 import { generateCliToken } from "../../../../../src/lib/auth/sandbox-token";
-import { cliTokens } from "../../../../../src/db/schema/cli-tokens";
+import { cliTokens } from "@vm0/db/schema/cli-tokens";
 
 /**
  * Switch active organization and get a new CLI JWT.

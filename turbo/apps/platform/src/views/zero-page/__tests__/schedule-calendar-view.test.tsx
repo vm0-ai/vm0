@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { ScheduleResponse } from "@vm0/core/contracts/zero-schedules";
+import type { ScheduleResponse } from "@vm0/api-contracts/contracts/zero-schedules";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";

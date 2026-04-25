@@ -1,7 +1,7 @@
 import { after } from "next/server";
 import { eq } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
-import { telegramInstallations } from "../../../../../src/db/schema/telegram-installation";
+import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
 import { verifyTelegramWebhook } from "../../../../../src/lib/zero/telegram/verify";
 import { handleTelegramMention } from "../../../../../src/lib/zero/telegram/handlers/mention";
 import { handleTelegramDirectMessage } from "../../../../../src/lib/zero/telegram/handlers/direct-message";

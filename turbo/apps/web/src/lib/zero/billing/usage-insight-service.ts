@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import type { UsageInsightResponse } from "@vm0/core/contracts/zero-usage-insight";
+import type { UsageInsightResponse } from "@vm0/api-contracts/contracts/zero-usage-insight";
 
 interface UsageInsightOptions {
   range: "today" | "yesterday" | "7d" | "28d";

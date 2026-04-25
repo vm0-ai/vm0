@@ -3,11 +3,11 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../../src/lib/ts-rest-handler";
-import { webhookCompleteContract } from "@vm0/core/contracts/webhooks";
+import { webhookCompleteContract } from "@vm0/api-contracts/contracts/webhooks";
 import { initServices } from "../../../../../src/lib/init-services";
-import { agentRuns } from "../../../../../src/db/schema/agent-run";
-import { checkpoints } from "../../../../../src/db/schema/checkpoint";
-import { agentSessions } from "../../../../../src/db/schema/agent-session";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { checkpoints } from "@vm0/db/schema/checkpoint";
+import { agentSessions } from "@vm0/db/schema/agent-session";
 import { eq, and } from "drizzle-orm";
 import {
   transitionRunStatus,

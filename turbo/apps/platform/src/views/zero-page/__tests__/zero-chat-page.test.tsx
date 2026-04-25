@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
-import { zeroAgentsByIdContract } from "@vm0/core/contracts/zero-agents";
-import { zeroUserConnectorsContract } from "@vm0/core/contracts/user-connectors";
+import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
+import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { server } from "../../../mocks/server.ts";
 import { setMockOrg } from "../../../mocks/handlers/api-org.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";

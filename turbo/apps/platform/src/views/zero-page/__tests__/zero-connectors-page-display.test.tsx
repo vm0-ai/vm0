@@ -14,8 +14,8 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { mockConnectors } from "./zero-connectors-page-test-helpers.ts";
-import { zeroConnectorsMainContract } from "@vm0/core/contracts/zero-connectors";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { zeroConnectorsMainContract } from "@vm0/api-contracts/contracts/zero-connectors";
+import { FeatureSwitchKey } from "@vm0/api-contracts/feature-switch-key";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();

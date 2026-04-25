@@ -3,17 +3,17 @@ import {
   permissionAccessRequestsCreateContract,
   permissionAccessRequestsListContract,
   permissionAccessRequestsResolveContract,
-} from "@vm0/core/contracts/zero-agents";
-import type { RawPermissionPolicies } from "@vm0/core/contracts/firewalls";
-import { isFirewallConnectorType } from "@vm0/core/firewalls";
+} from "@vm0/api-contracts/contracts/zero-agents";
+import type { RawPermissionPolicies } from "@vm0/api-contracts/contracts/firewalls";
+import { isFirewallConnectorType } from "@vm0/api-contracts/firewalls";
 import { initServices } from "../../../../src/lib/init-services";
 import {
   requireAuth,
   isAuthError,
 } from "../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../src/lib/zero/org/resolve-org";
-import { zeroAgents } from "../../../../src/db/schema/zero-agent";
-import { permissionAccessRequests } from "../../../../src/db/schema/permission-access-request";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { permissionAccessRequests } from "@vm0/db/schema/permission-access-request";
 import { eq, and } from "drizzle-orm";
 import { clerkClient } from "@clerk/nextjs/server";
 import { requireAgentPermission } from "../../../../src/lib/zero/require-agent-permission";

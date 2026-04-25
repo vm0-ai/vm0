@@ -1,11 +1,11 @@
 import {
   DEFAULT_PROFILE,
   type StoredExecutionContext,
-} from "@vm0/core/contracts/runners";
-import type { Firewalls } from "@vm0/core/contracts/firewalls";
+} from "@vm0/api-contracts/contracts/runners";
+import type { Firewalls } from "@vm0/api-contracts/contracts/firewalls";
 import { eq } from "drizzle-orm";
-import { agentRuns } from "../../../../db/schema/agent-run";
-import { runnerJobQueue } from "../../../../db/schema/runner-job-queue";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import {
   ingestRunContext,
   type RunContextSnapshot,

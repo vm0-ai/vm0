@@ -2,19 +2,19 @@ import { sql, and, eq, gte, lt, inArray, desc, count } from "drizzle-orm";
 import {
   type MemberUsage,
   type UsageMembersResponse,
-} from "@vm0/core/contracts/zero-usage";
-import type { UsageRunsResponse } from "@vm0/core/contracts/zero-usage-daily";
+} from "@vm0/api-contracts/contracts/zero-usage";
+import type { UsageRunsResponse } from "@vm0/api-contracts/contracts/zero-usage-daily";
 import { getOrgBillingPeriod } from "../org/org-metadata-service";
-import { creditUsage } from "../../../db/schema/credit-usage";
-import { agentRuns } from "../../../db/schema/agent-run";
-import { zeroRuns } from "../../../db/schema/zero-run";
+import { creditUsage } from "@vm0/db/schema/credit-usage";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
   agentComposes,
   agentComposeVersions,
-} from "../../../db/schema/agent-compose";
-import { zeroAgents } from "../../../db/schema/zero-agent";
-import { userCache } from "../../../db/schema/user-cache";
-import { orgMembersMetadata } from "../../../db/schema/org-members-metadata";
+} from "@vm0/db/schema/agent-compose";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { userCache } from "@vm0/db/schema/user-cache";
+import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { clerkClient } from "@clerk/nextjs/server";
 
 /**

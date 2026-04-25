@@ -2,8 +2,8 @@ import { command, computed, state } from "ccstate";
 import {
   CONNECTOR_TYPES,
   type ConnectorType,
-} from "@vm0/core/contracts/connectors";
-import { zeroUserConnectorsContract } from "@vm0/core/contracts/user-connectors";
+} from "@vm0/api-contracts/contracts/connectors";
+import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { zeroClient$ } from "../../api-client.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { accept } from "../../../lib/accept.ts";

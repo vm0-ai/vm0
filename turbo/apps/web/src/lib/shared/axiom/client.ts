@@ -1,7 +1,7 @@
 import "server-only";
 import type { Axiom } from "@axiomhq/js";
 import { Entry } from "@axiomhq/js";
-import type { RunContextResponse } from "@vm0/core/contracts/zero-runs";
+import type { RunContextResponse } from "@vm0/api-contracts/contracts/zero-runs";
 import { env } from "../../../env";
 import { logger } from "../logger";
 import { getDatasetName, DATASETS, isSessionsDataset } from "./datasets";

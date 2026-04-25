@@ -3,12 +3,12 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../../src/lib/ts-rest-handler";
-import { composesVersionsContract } from "@vm0/core/contracts/composes";
+import { composesVersionsContract } from "@vm0/api-contracts/contracts/composes";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
   agentComposes,
   agentComposeVersions,
-} from "../../../../../src/db/schema/agent-compose";
+} from "@vm0/db/schema/agent-compose";
 import {
   requireAuth,
   isAuthError,

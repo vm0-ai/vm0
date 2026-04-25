@@ -9,8 +9,8 @@ import { command, computed, type Computed, state } from "ccstate";
 import {
   zeroAgentsByIdContract,
   type ZeroAgentResponse,
-} from "@vm0/core/contracts/zero-agents";
-import { zeroTeamContract } from "@vm0/core/contracts/zero-team";
+} from "@vm0/api-contracts/contracts/zero-agents";
+import { zeroTeamContract } from "@vm0/api-contracts/contracts/zero-team";
 import { pathParams$ } from "./route.ts";
 import { activeRoute$ } from "./active-route.ts";
 import { zeroOnboardingStatus$ } from "./zero-page/zero-onboarding.ts";

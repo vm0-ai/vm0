@@ -7,7 +7,7 @@ import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
   zeroRunsQueueContract,
   zeroRunsCancelContract,
-} from "@vm0/core/contracts/zero-runs";
+} from "@vm0/api-contracts/contracts/zero-runs";
 
 const context = testContext();
 const mockApi = createMockApi(context);

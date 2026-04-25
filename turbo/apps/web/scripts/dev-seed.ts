@@ -3,13 +3,13 @@
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { eq, sql } from "drizzle-orm";
-import { getEligibleConnectorTypes } from "@vm0/core/contracts/connector-utils";
-import { VM0_MODEL_TO_PROVIDER } from "@vm0/core/contracts/model-providers";
-import { schema } from "../src/db/db";
-import { creditPricing } from "../src/db/schema/credit-pricing";
-import { usagePricing } from "../src/db/schema/usage-pricing";
-import { vm0ApiKeys } from "../src/db/schema/vm0-api-key";
-import { skills } from "../src/db/schema/skill";
+import { getEligibleConnectorTypes } from "@vm0/api-contracts/contracts/connector-utils";
+import { VM0_MODEL_TO_PROVIDER } from "@vm0/api-contracts/contracts/model-providers";
+import { schema } from "@vm0/db";
+import { creditPricing } from "@vm0/db/schema/credit-pricing";
+import { usagePricing } from "@vm0/db/schema/usage-pricing";
+import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
+import { skills } from "@vm0/db/schema/skill";
 import { SEED_SKILLS, buildSeedSkillValues } from "../src/lib/zero/seed-skills";
 
 /**

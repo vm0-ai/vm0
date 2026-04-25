@@ -1,5 +1,5 @@
-import type { ConnectorType } from "@vm0/core/contracts/connectors";
-import { getConnectorDefaultAuthMethod } from "@vm0/core/contracts/connector-utils";
+import type { ConnectorType } from "@vm0/api-contracts/contracts/connectors";
+import { getConnectorDefaultAuthMethod } from "@vm0/api-contracts/contracts/connector-utils";
 import { type Env } from "../../../env";
 import {
   type AuthUrlResult,

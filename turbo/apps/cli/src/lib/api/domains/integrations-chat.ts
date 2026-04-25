@@ -3,7 +3,7 @@ import {
   integrationsChatMessageContract,
   type SendChatMessageBody,
   type SendChatMessageResponse,
-} from "@vm0/core/contracts/integrations";
+} from "@vm0/api-contracts/contracts/integrations";
 import { getClientConfig, handleError } from "../core/client-factory";
 
 export async function sendChatMessage(

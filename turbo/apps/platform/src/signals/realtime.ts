@@ -1,5 +1,5 @@
 import { command, state, type Command } from "ccstate";
-import { platformRealtimeTokenContract } from "@vm0/core/contracts/realtime";
+import { platformRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
 import { Realtime, type RealtimeChannel, type InboundMessage } from "ably";
 import { zeroClient$ } from "./api-client.ts";
 import { createAblyAuthCallback } from "../lib/ably-auth.ts";

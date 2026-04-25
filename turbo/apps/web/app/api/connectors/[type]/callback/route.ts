@@ -3,14 +3,14 @@ import { eq } from "drizzle-orm";
 import {
   type ConnectorType,
   connectorTypeSchema,
-} from "@vm0/core/contracts/connectors";
-import { getConnectorOAuthConfig } from "@vm0/core/contracts/connector-utils";
+} from "@vm0/api-contracts/contracts/connectors";
+import { getConnectorOAuthConfig } from "@vm0/api-contracts/contracts/connector-utils";
 import { env } from "../../../../../src/env";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
 import { upsertOAuthConnector } from "../../../../../src/lib/zero/connector/connector-service";
-import { connectorSessions } from "../../../../../src/db/schema/connector-session";
+import { connectorSessions } from "@vm0/db/schema/connector-session";
 import { logger } from "../../../../../src/lib/shared/logger";
 import { getOrigin } from "../../../../../src/lib/shared/request/get-origin";
 import {
