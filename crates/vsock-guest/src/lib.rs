@@ -1460,6 +1460,7 @@ mod tests {
                         break;
                     }
                 }
+                Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
                 Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
                 Err(e) => panic!("read error: {e}"),
             }
@@ -1687,6 +1688,18 @@ mod tests {
         stream.read_exact(&mut body).unwrap();
     }
 
+    /// Like `Read::read`, but retries on EINTR. `read_exact` retries
+    /// internally; bare `read()` does not, and llvm-cov / profilers
+    /// occasionally send signals that surface as EINTR on blocking reads.
+    fn read_retry_eintr(stream: &mut impl std::io::Read, buf: &mut [u8]) -> std::io::Result<usize> {
+        loop {
+            match stream.read(buf) {
+                Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+                other => return other,
+            }
+        }
+    }
+
     /// Send a MSG_SPAWN_WATCH message with streaming enabled.
     fn send_spawn_watch(
         stream: &mut impl std::io::Write,
@@ -1715,7 +1728,7 @@ mod tests {
         let mut pid: Option<u32> = None;
         let mut stdout_data = Vec::new();
         loop {
-            let n = stream.read(&mut buf).unwrap();
+            let n = read_retry_eintr(stream, &mut buf).unwrap();
             assert!(n > 0, "unexpected EOF waiting for streaming result");
             for msg in decoder.decode(buf.get(..n).unwrap_or_default()).unwrap() {
                 // Pick up the PID from spawn_watch_result
@@ -1907,7 +1920,7 @@ mod tests {
         let mut buf = [0u8; 4096];
         let mut pid: Option<u32> = None;
         loop {
-            let n = stream.read(&mut buf).unwrap();
+            let n = read_retry_eintr(stream, &mut buf).unwrap();
             assert!(
                 n > 0,
                 "unexpected EOF waiting for buffered spawn_watch result"
@@ -2043,7 +2056,7 @@ mod tests {
                 Instant::now() < stream_deadline,
                 "did not see spawn_watch_result + stdout chunk in time (pid={pid:?}, chunk={got_chunk})",
             );
-            let n = host_stream.read(&mut buf).unwrap();
+            let n = read_retry_eintr(&mut host_stream, &mut buf).unwrap();
             for msg in decoder.decode(buf.get(..n).unwrap_or_default()).unwrap() {
                 if msg.msg_type == MSG_SPAWN_WATCH_RESULT && msg.seq == 1 {
                     pid = vsock_proto::decode_spawn_watch_result(&msg.payload).ok();
