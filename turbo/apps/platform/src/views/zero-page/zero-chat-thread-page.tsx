@@ -191,6 +191,9 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
   const displayName = useLastResolved(thread.agentDisplayName$);
   const autoRead = useGet(autoReadEnabled$);
   const toggleAutoReadFn = useSet(toggleAutoRead$);
+  const features = useLastResolved(featureSwitch$);
+  const audioOutputEnabled =
+    features?.[FeatureSwitchKey.AudioOutput] ?? false;
 
   return (
     <header className="hidden sm:flex shrink-0 bg-transparent px-6 py-3 items-center justify-between">
@@ -206,31 +209,33 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
         )}
       </div>
       <div className="hidden sm:flex items-center gap-0.5">
-        <TooltipProvider delayDuration={300}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                onClick={() => {
-                  toggleAutoReadFn();
-                }}
-                className={cn(
-                  "p-1.5 rounded-md transition-colors duration-150",
-                  autoRead
-                    ? "text-primary bg-primary/10"
-                    : "text-muted-foreground/60 hover:text-foreground hover:bg-accent",
-                )}
-                aria-label="Toggle auto-read"
-                aria-pressed={autoRead}
-              >
-                <IconVolume2 size={18} stroke={1.5} />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              {autoRead ? "Auto-read on" : "Auto-read off"}
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+        {audioOutputEnabled && (
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={() => {
+                    toggleAutoReadFn();
+                  }}
+                  className={cn(
+                    "p-1.5 rounded-md transition-colors duration-150",
+                    autoRead
+                      ? "text-primary bg-primary/10"
+                      : "text-muted-foreground/60 hover:text-foreground hover:bg-accent",
+                  )}
+                  aria-label="Toggle auto-read"
+                  aria-pressed={autoRead}
+                >
+                  <IconVolume2 size={18} stroke={1.5} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                {autoRead ? "Auto-read on" : "Auto-read off"}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
       </div>
     </header>
   );
@@ -1377,6 +1382,9 @@ function PagedGroupActions({
   const copied = copiedId === group.beginMessageId;
   const copyMessage = useSet(thread.copyMessage$);
 
+  const features = useLastResolved(featureSwitch$);
+  const audioOutputEnabled =
+    features?.[FeatureSwitchKey.AudioOutput] ?? false;
   const playingRunId = useGet(ttsPlayingRunId$);
   const firstRunId = group.messages.find((m) => {
     return m.runId;
@@ -1460,7 +1468,7 @@ function PagedGroupActions({
             </Tooltip>
           </TooltipProvider>
         )}
-        {content && firstRunId && (
+        {content && firstRunId && audioOutputEnabled && (
           <TooltipProvider delayDuration={300}>
             <Tooltip>
               <TooltipTrigger asChild>
