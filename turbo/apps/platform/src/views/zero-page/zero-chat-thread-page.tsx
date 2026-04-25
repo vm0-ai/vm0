@@ -192,8 +192,7 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
   const autoRead = useGet(autoReadEnabled$);
   const toggleAutoReadFn = useSet(toggleAutoRead$);
   const features = useLastResolved(featureSwitch$);
-  const audioOutputEnabled =
-    features?.[FeatureSwitchKey.AudioOutput] ?? false;
+  const audioOutputEnabled = features?.[FeatureSwitchKey.AudioOutput] ?? false;
 
   return (
     <header className="hidden sm:flex shrink-0 bg-transparent px-6 py-3 items-center justify-between">
@@ -1383,8 +1382,7 @@ function PagedGroupActions({
   const copyMessage = useSet(thread.copyMessage$);
 
   const features = useLastResolved(featureSwitch$);
-  const audioOutputEnabled =
-    features?.[FeatureSwitchKey.AudioOutput] ?? false;
+  const audioOutputEnabled = features?.[FeatureSwitchKey.AudioOutput] ?? false;
   const playingRunId = useGet(ttsPlayingRunId$);
   const firstRunId = group.messages.find((m) => {
     return m.runId;
