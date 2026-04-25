@@ -103,7 +103,6 @@ pub async fn execute_job(
         },
     };
 
-    info!(run_id = %run_id, exit_code = outcome.exit_code, "job finished");
     (outcome, telemetry)
 }
 
@@ -144,7 +143,6 @@ pub async fn execute_job_reuse(
     )
     .await;
 
-    info!(run_id = %run_id, exit_code = outcome.exit_code, reused = true, "job finished");
     (outcome, telemetry)
 }
 
