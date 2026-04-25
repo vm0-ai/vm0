@@ -702,20 +702,19 @@ fn handle_shutdown(seq: u32) -> io::Result<Vec<u8>> {
     vsock_proto::encode(MSG_SHUTDOWN_ACK, seq, &[]).map_err(to_io_error)
 }
 
-/// Handle spawn_watch message - spawn process and monitor in background.
-///
-/// Returns immediate acknowledgment with PID, then sends process_exit when done.
+/// Handle spawn_watch: spawn the child, write `MSG_SPAWN_WATCH_RESULT` over
+/// the wire, THEN start the background monitor. Returns immediately; exit is
+/// later reported via `MSG_PROCESS_EXIT`.
 ///
 /// When `stdout_log_path` is `Some`, stdout is streamed to the host via
-/// `MSG_STDOUT_CHUNK` messages AND teed to the specified file path inside the VM.
-/// Handle spawn_watch: spawn the child, write the response over the wire,
-/// THEN start the background monitor. This ordering is critical — the
-/// streaming monitor thread also writes to the same socket (via the shared
-/// `writer` mutex), and `MSG_STDOUT_CHUNK` messages must not arrive at the
-/// host before the `MSG_SPAWN_WATCH_RESULT` for this pid. If the monitor
-/// thread were spawned first, it could race the main thread for the mutex
-/// and send chunks before the result, causing the host to drop them (the
-/// host only registers the stdout channel when it processes the result).
+/// `MSG_STDOUT_CHUNK` messages AND teed to the file path inside the VM.
+///
+/// The result-before-monitor ordering is critical: the streaming monitor
+/// thread also writes to the same socket (via the shared `writer` mutex),
+/// and `MSG_STDOUT_CHUNK` messages must not arrive at the host before the
+/// `MSG_SPAWN_WATCH_RESULT` for this pid — the host only registers the
+/// stdout channel when it processes the result, so earlier chunks would
+/// be dropped.
 fn handle_spawn_watch(
     timeout_ms: u32,
     command: &str,
@@ -846,10 +845,13 @@ fn spawn_streaming_monitor(
         let cancel = Arc::new(AtomicBool::new(false));
         let (drain_done_tx, drain_done_rx) = std::sync::mpsc::channel::<()>();
 
-        // Drain stderr in a background thread BEFORE the stdout reader.
-        // If we waited until after, a child producing >64KB of stderr could
-        // fill the pipe buffer and block — preventing further stdout writes
-        // and causing our stdout read loop to hang (deadlock).
+        // Spawn both drain threads BEFORE `child.wait()`. They run
+        // concurrently with the child, so neither pipe (~64 KB) can fill
+        // and block the child. If we instead waited on the child first
+        // and drained after, a chatty child would deadlock on its next
+        // write to a full pipe and never exit. Order between the two
+        // spawn calls is irrelevant — both happen before wait, and they
+        // run in parallel.
         let stderr_handle = if let Some(stderr) = child.stderr.take() {
             let cancel = cancel.clone();
             let tx = drain_done_tx.clone();
