@@ -6,6 +6,7 @@ import { setChatAgentId$ } from "../agent-chat.ts";
 import { pushState } from "../location.ts";
 import { updatePage$ } from "../react-router.ts";
 import {
+  activateNewChatThreadPageLoops$,
   sendNewThreadMessage$,
   type SendNewThreadMessagePending,
   type SendNewThreadMessageRequest,
@@ -16,11 +17,9 @@ import {
   type ChatThreadSignals,
 } from "./create-chat-thread.ts";
 
-export const renderChatThreadPage$ = command(
-  ({ set }, thread: ChatThreadSignals) => {
-    set(updatePage$, createElement(ZeroChatThreadPage, { thread }), "sidebar");
-  },
-);
+const renderChatThreadPage$ = command(({ set }, thread: ChatThreadSignals) => {
+  set(updatePage$, createElement(ZeroChatThreadPage, { thread }), "sidebar");
+});
 
 export const sendNewThreadOptimistically$ = command(
   async (
@@ -41,11 +40,7 @@ export const sendNewThreadOptimistically$ = command(
 );
 
 export const settleThreadSignals$ = command(
-  async (
-    { get, set },
-    threadId: string,
-    signal: AbortSignal,
-  ): Promise<ChatThreadSignals> => {
+  async ({ get, set }, threadId: string, signal: AbortSignal) => {
     const { draft: threadDraft } = set(ensureDraft$, threadId);
     const realThread = createChatThreadSignals(threadId, threadDraft);
     const threadData = await get(realThread.threadData$);
@@ -63,8 +58,9 @@ export const settleThreadSignals$ = command(
       },
       { signal },
     );
-
     signal.throwIfAborted();
-    return realThread;
+
+    set(renderChatThreadPage$, realThread);
+    await set(activateNewChatThreadPageLoops$, realThread, threadId, signal);
   },
 );
