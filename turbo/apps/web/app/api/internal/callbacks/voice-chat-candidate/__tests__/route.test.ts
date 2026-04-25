@@ -302,6 +302,10 @@ describe("POST /api/internal/callbacks/voice-chat-candidate", () => {
       task: { id: string; runId: string };
     };
 
+    // With waitUntil(), dispatchZeroRun starts immediately and may set the
+    // run status before we override it. Flush first so our status override
+    // (running) takes effect after dispatch completes.
+    await context.mocks.flushAfter();
     await setTestRunStatus(secondary.runId, "running");
     await setTestRunRunnerGroup(secondary.runId, "test-group");
 
