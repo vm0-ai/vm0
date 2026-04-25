@@ -93,7 +93,9 @@ describe("POST /api/internal/callbacks/voice-chat-candidate", () => {
   });
 
   it("returns 200 for progress status without touching the task", async () => {
-    const { runId, taskId, secret, callbackId } = await setupTaskWithCallback({});
+    const { runId, taskId, secret, callbackId } = await setupTaskWithCallback(
+      {},
+    );
 
     const response = await POST(
       createSignedCallbackRequest(
@@ -160,7 +162,8 @@ describe("POST /api/internal/callbacks/voice-chat-candidate", () => {
   });
 
   it("marks the task failed and records the error text on failed", async () => {
-    const { runId, taskId, session, secret, callbackId } = await setupTaskWithCallback({});
+    const { runId, taskId, session, secret, callbackId } =
+      await setupTaskWithCallback({});
 
     const response = await POST(
       createSignedCallbackRequest(
@@ -190,7 +193,9 @@ describe("POST /api/internal/callbacks/voice-chat-candidate", () => {
   });
 
   it("returns 401 on invalid signature", async () => {
-    const { runId, taskId, secret, callbackId } = await setupTaskWithCallback({});
+    const { runId, taskId, secret, callbackId } = await setupTaskWithCallback(
+      {},
+    );
 
     const response = await POST(
       createSignedCallbackRequest(
@@ -231,9 +236,10 @@ describe("POST /api/internal/callbacks/voice-chat-candidate", () => {
   });
 
   it("ends the session on agent mismatch (vars.ZERO_AGENT_ID differs from session.agentId)", async () => {
-    const { runId, taskId, session, secret, callbackId } = await setupTaskWithCallback({
-      agentIdOnRun: "00000000-0000-0000-0000-000000000000",
-    });
+    const { runId, taskId, session, secret, callbackId } =
+      await setupTaskWithCallback({
+        agentIdOnRun: "00000000-0000-0000-0000-000000000000",
+      });
 
     context.mocks.axiom.queryAxiom.mockResolvedValueOnce([]);
 
