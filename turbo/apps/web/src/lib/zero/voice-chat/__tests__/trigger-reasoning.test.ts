@@ -279,7 +279,7 @@ describe("triggerReasoning", () => {
   });
 
   it("H7 — creates task rows and system_notes for each missing task the reasoner detects", async () => {
-    context.setupMocks();
+    const mocks = context.setupMocks();
     vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key");
     reloadEnv();
 
@@ -320,6 +320,9 @@ describe("triggerReasoning", () => {
     server.use(handler.handler);
 
     await triggerReasoning(sessionId);
+    // Missing-task creation schedules createZeroRun() dispatch via waitUntil().
+    // Drain it here so its runner "job" Ably publish cannot leak into H6.
+    await mocks.flushAfter();
 
     // The reasoner summary write should succeed
     const row = await getTestVoiceChatSessionReasoningState(sessionId);
