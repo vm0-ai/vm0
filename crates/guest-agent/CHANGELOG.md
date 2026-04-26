@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.24.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.24.2...guest-agent-v0.24.3) (2026-04-25)
+
+
+### Refactoring
+
+* **guest-agent:** serialize telemetry uploads via single-writer actor ([#11100](https://github.com/vm0-ai/vm0/issues/11100)) ([1a0a747](https://github.com/vm0-ai/vm0/commit/1a0a747d479e73676a87bb1cdeffaf844ebde3f4))
+
 ## [0.24.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.24.1...guest-agent-v0.24.2) (2026-04-24)
 
 
