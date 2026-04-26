@@ -1010,7 +1010,7 @@ class TestMatchBaseUrl:
 
 # =========================================================================
 # Mixed {param}{literal} segments — #10078
-# Mirrored against turbo/packages/core/src/contracts/__tests__/
+# Mirrored against turbo/packages/connectors/src/__tests__/
 #   firewall-mixed-segments.test.ts. Any change must land in both.
 # =========================================================================
 

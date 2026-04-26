@@ -8,11 +8,11 @@ import {
 import type {
   FirewallPolicies,
   FirewallPolicyValue,
-} from "@vm0/api-contracts/contracts/firewalls";
+} from "@vm0/connectors/firewall-types";
 import {
   getConnectorFirewall,
   isFirewallConnectorType,
-} from "@vm0/api-contracts/firewalls";
+} from "@vm0/connectors/firewalls";
 import { delay } from "signal-timers";
 import { zeroClient$ } from "../api-client.ts";
 import { pathParams$, searchParams$, replaceSearchParams$ } from "../route.ts";

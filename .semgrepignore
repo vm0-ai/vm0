@@ -7,7 +7,7 @@ docker/toolchain/Dockerfile
 
 # Firewall configs — placeholder tokens intentionally mimic real formats for proxy replacement
 turbo/packages/firewalls-generator/src/
-turbo/packages/core/src/firewalls/*.generated.ts
+turbo/packages/connectors/src/firewalls/*.generated.ts
 
 # Vendored third-party packages — byte-identical to upstream (see VENDOR.md
 # alongside each). The non-literal imports and globals() usage that semgrep

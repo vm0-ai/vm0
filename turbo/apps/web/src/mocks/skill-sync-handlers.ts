@@ -19,7 +19,7 @@ import {
   DEFAULT_SKILLS_REPO,
   DEFAULT_SKILLS_BRANCH,
 } from "@vm0/core/github-url";
-import { getEligibleConnectorTypes } from "@vm0/api-contracts/contracts/connector-utils";
+import { getEligibleConnectorTypes } from "@vm0/connectors/connector-utils";
 import { SEED_SKILLS } from "../lib/zero/seed-skills";
 
 /** All skill names that buildComposeContent would reference. */

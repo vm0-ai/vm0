@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { connectorTypeSchema } from "./connectors";
+import { connectorTypeSchema } from "@vm0/connectors/connectors";
 
 /**
  * Connector response schema

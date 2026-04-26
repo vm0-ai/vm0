@@ -310,8 +310,7 @@ jobs:
       - name: Ensure no generated firewall files are tracked
         run: |
           MATCHES=$(git ls-files \
-            'turbo/packages/core/src/firewalls/*.generated.ts' \
-            'turbo/packages/api-contracts/src/firewalls/*.generated.ts')
+            'turbo/packages/connectors/src/firewalls/*.generated.ts')
           if [ -n "$MATCHES" ]; then
             echo "::error::Generated firewall files must not be committed:"
             echo "$MATCHES"

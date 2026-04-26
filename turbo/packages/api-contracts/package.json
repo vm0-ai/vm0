@@ -16,26 +16,16 @@
       "import": "./src/contracts/*.ts",
       "types": "./src/contracts/*.ts"
     },
-    "./contracts/connectors/*": {
-      "import": "./src/contracts/connectors/*.ts",
-      "types": "./src/contracts/connectors/*.ts"
-    },
-    "./feature-switch-key": {
-      "import": "./src/feature-switch-key.ts",
-      "types": "./src/feature-switch-key.ts"
-    },
-    "./firewall-loader": {
-      "import": "./src/firewall-loader.ts",
-      "types": "./src/firewall-loader.ts"
-    },
-    "./firewalls": {
-      "import": "./src/firewalls/index.ts",
-      "types": "./src/firewalls/index.ts"
-    },
-    "./firewalls/*": {
-      "import": "./src/firewalls/*.ts",
-      "types": "./src/firewalls/*.ts"
-    }
+    "./contracts/connectors": null,
+    "./contracts/connectors/*": null,
+    "./contracts/connector-utils": null,
+    "./contracts/firewall-expander": null,
+    "./contracts/firewall-rule-matcher": null,
+    "./contracts/firewalls": null,
+    "./feature-switch-key": null,
+    "./firewall-loader": null,
+    "./firewalls": null,
+    "./firewalls/*": null
   },
   "scripts": {
     "test": "vitest run",
@@ -45,7 +35,7 @@
   },
   "dependencies": {
     "@ts-rest/core": "3.53.0-rc.1",
-    "yaml": "^2.8.1",
+    "@vm0/connectors": "workspace:*",
     "zod": "^4.3.6"
   },
   "devDependencies": {

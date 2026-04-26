@@ -2,7 +2,7 @@ import { command, computed, state } from "ccstate";
 import {
   CONNECTOR_TYPES,
   type ConnectorType,
-} from "@vm0/api-contracts/contracts/connectors";
+} from "@vm0/connectors/connectors";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { zeroClient$ } from "../../api-client.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";

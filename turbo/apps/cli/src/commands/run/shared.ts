@@ -8,7 +8,7 @@ import { extractAndGroupVariables } from "@vm0/core/variable-expander";
 import {
   firewallPoliciesSchema,
   type FirewallPolicies,
-} from "@vm0/api-contracts/contracts/firewalls";
+} from "@vm0/connectors/firewall-types";
 /**
  * Collector for --secrets and --vars flags
  * Format: KEY=value

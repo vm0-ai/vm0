@@ -2,7 +2,7 @@ import { gunzipSync } from "node:zlib";
 import { createHandler, tsr } from "../../../../../../src/lib/ts-rest-handler";
 import { zeroAgentInstructionsContract } from "@vm0/api-contracts/contracts/zero-agents";
 import { agentComposeApiContentSchema } from "@vm0/api-contracts/contracts/composes";
-import { toFirewallPolicies } from "@vm0/api-contracts/contracts/firewalls";
+import { toFirewallPolicies } from "@vm0/connectors/firewall-types";
 import { getInstructionsStorageName } from "@vm0/core/storage-names";
 import { getInstructionsFilename } from "@vm0/core/frameworks";
 import { stripMetadataFrontmatter } from "@vm0/core/instructions-frontmatter";

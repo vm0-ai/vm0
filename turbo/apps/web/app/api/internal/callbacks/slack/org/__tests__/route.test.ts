@@ -21,7 +21,7 @@ import { updateOrgDefaultAgent } from "../../../../../../../src/__tests__/db-tes
 import { POST } from "../route";
 import { seedTestRun } from "../../../../../../../src/__tests__/db-test-seeders/runs";
 import { seedUserFeatureSwitches } from "../../../../../../../src/__tests__/db-test-seeders/feature-switches";
-import { FeatureSwitchKey } from "@vm0/api-contracts/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 const context = testContext();
 

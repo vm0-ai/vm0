@@ -1,7 +1,7 @@
 import {
   CONNECTOR_TYPES,
   type ConnectorType,
-} from "@vm0/api-contracts/contracts/connectors";
+} from "@vm0/connectors/connectors";
 import { cn } from "@vm0/ui";
 
 const CONNECTOR_ICON_ALIASES = {

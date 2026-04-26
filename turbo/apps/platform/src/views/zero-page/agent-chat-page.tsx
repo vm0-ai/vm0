@@ -17,7 +17,7 @@ import {
   IconPlus,
   IconUserPlus,
 } from "@tabler/icons-react";
-import type { ConnectorType } from "@vm0/api-contracts/contracts/connectors";
+import type { ConnectorType } from "@vm0/connectors/connectors";
 import {
   Button,
   Tooltip,
@@ -25,7 +25,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@vm0/ui";
-import { FeatureSwitchKey } from "@vm0/api-contracts/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   featureSwitch$,
   trinityEnabled$,

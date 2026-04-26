@@ -1,6 +1,6 @@
 import { createHandler, tsr } from "../../../../../../src/lib/ts-rest-handler";
 import { zeroConnectorScopeDiffContract } from "@vm0/api-contracts/contracts/zero-connectors";
-import { getScopeDiff } from "@vm0/api-contracts/contracts/connector-utils";
+import { getScopeDiff } from "@vm0/connectors/connector-utils";
 import { createErrorResponse } from "@vm0/api-contracts/contracts/errors";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../../../src/lib/auth/get-auth-context";

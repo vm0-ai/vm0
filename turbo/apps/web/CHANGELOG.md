@@ -1,5 +1,24 @@
 # Changelog
 
+## [12.300.6](https://github.com/vm0-ai/vm0/compare/web-v12.300.5...web-v12.300.6) (2026-04-26)
+
+
+### Bug Fixes
+
+* isolate web async test cleanup ([#11123](https://github.com/vm0-ai/vm0/issues/11123)) ([1bbc7c9](https://github.com/vm0-ai/vm0/commit/1bbc7c9ad458d8dd8ed57d9106830ae0685fd832))
+
+
+### Refactoring
+
+* extract shared errors to @vm0/api-services package ([#11129](https://github.com/vm0-ai/vm0/issues/11129)) ([e687aef](https://github.com/vm0-ai/vm0/commit/e687aefe4bd65efbfc83b7e5167e7b5f5a6197d2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.236.1
+
 ## [12.300.5](https://github.com/vm0-ai/vm0/compare/web-v12.300.4...web-v12.300.5) (2026-04-25)
 
 

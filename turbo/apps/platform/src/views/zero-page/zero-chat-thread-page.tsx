@@ -28,7 +28,7 @@ import {
   TooltipTrigger,
 } from "@vm0/ui";
 import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
-import { FeatureSwitchKey } from "@vm0/api-contracts/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
   ttsPlayingRunId$,

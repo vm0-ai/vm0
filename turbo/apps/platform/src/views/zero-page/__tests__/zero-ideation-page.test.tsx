@@ -8,7 +8,7 @@ import {
   click,
 } from "../../../__tests__/page-helper.ts";
 import { getCategories } from "../zero-ideation-data.ts";
-import { FeatureSwitchKey } from "@vm0/api-contracts/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { pathname } from "../../../signals/location.ts";
 import {
   setMockComposesList,

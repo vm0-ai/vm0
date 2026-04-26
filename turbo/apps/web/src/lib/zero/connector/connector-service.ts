@@ -2,15 +2,15 @@ import { eq, and, inArray } from "drizzle-orm";
 import {
   deriveApiTokenConnectedTypes,
   getApiTokenFieldsByType,
-} from "@vm0/api-contracts/contracts/connector-utils";
+} from "@vm0/connectors/connector-utils";
 import type {
   ConnectorAuthMethodType,
   ConnectorType,
-} from "@vm0/api-contracts/contracts/connectors";
+} from "@vm0/connectors/connectors";
 import {
   CONNECTOR_TYPES,
   connectorTypeSchema,
-} from "@vm0/api-contracts/contracts/connectors";
+} from "@vm0/connectors/connectors";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import { connectors } from "@vm0/db/schema/connector";
 import { userPlatformConnectors } from "@vm0/db/schema/user-platform-connector";

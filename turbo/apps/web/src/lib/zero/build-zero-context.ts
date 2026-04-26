@@ -3,14 +3,14 @@ import {
   BILLABLE_CONNECTORS,
   getConnectorFirewall,
   isFirewallConnectorType,
-} from "@vm0/api-contracts/firewalls";
-import type { ConnectorType } from "@vm0/api-contracts/contracts/connectors";
+} from "@vm0/connectors/firewalls";
+import type { ConnectorType } from "@vm0/connectors/connectors";
 import type {
   ExpandedFirewallConfig,
   FirewallPolicies,
   Firewalls,
   NetworkPolicies,
-} from "@vm0/api-contracts/contracts/firewalls";
+} from "@vm0/connectors/firewall-types";
 import {
   getModelProviderFirewall,
   type ModelProviderType,

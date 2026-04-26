@@ -1,5 +1,5 @@
 import { command, computed, state } from "ccstate";
-import type { ConnectorType } from "@vm0/api-contracts/contracts/connectors";
+import type { ConnectorType } from "@vm0/connectors/connectors";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { accept } from "../../lib/accept.ts";
 import { pathParams$, searchParams$ } from "../route.ts";

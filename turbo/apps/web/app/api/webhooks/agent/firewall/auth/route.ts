@@ -13,7 +13,7 @@ import {
   getConnectorAccessToken,
   getConnectorRefreshToken,
 } from "../../../../../../src/lib/zero/connector/connector-service";
-import { basicAuthTemplateRe } from "@vm0/api-contracts/contracts/firewalls";
+import { basicAuthTemplateRe } from "@vm0/connectors/firewall-types";
 
 const bodySchema = z.object({
   encryptedSecrets: z.string().min(1),

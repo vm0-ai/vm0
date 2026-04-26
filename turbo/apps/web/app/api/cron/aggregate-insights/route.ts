@@ -19,7 +19,7 @@ import {
 import {
   getConnectorFirewall,
   isFirewallConnectorType,
-} from "@vm0/api-contracts/firewalls";
+} from "@vm0/connectors/firewalls";
 import { clerkClient } from "@clerk/nextjs/server";
 
 const log = logger("cron:aggregate-insights");
