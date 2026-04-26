@@ -255,11 +255,29 @@ def classify_includes_bucket(key: str) -> str | None:
     return _INCLUDES_TO_BUCKET.get(key)
 
 
-# URL detector for tweet body refinement.  Matches any http(s) scheme,
-# covering the common case; we stay on the expensive ``with_url`` bucket
-# when the text can't be inspected or when quote/media are attached
-# (both render as link previews and may be billed as "with URL" by X).
-_URL_RE = re.compile(r"https?://")
+# URL detector for tweet body refinement.  This is intentionally
+# twitter-text-inspired without vendoring twitter-text's full TLD table
+# and Unicode parser: billing needs a conservative "could X auto-link
+# this?" boolean, not link indices.  Keep protocol matching
+# case-insensitive and allow scheme-less domains, but retain the
+# important boundary guards so emails, mentions, hashtags and cashtags
+# do not look like URLs.
+_URL_PRECEDING_CHARS = r"A-Za-z0-9@\uFF20$#\uFF03"
+_URL_WITH_PROTOCOL_RE = re.compile(rf"(?<![{_URL_PRECEDING_CHARS}])https?://", re.IGNORECASE)
+_DOMAIN_LABEL = r"[a-z0-9](?:[a-z0-9_-]{0,61}[a-z0-9])?"
+_TLD = r"(?:[a-z]{2,63}|xn--[a-z0-9-]{2,59})"
+_BARE_DOMAIN_RE = re.compile(
+    rf"(?<![{_URL_PRECEDING_CHARS}._/-])"
+    rf"(?:{_DOMAIN_LABEL}\.)+{_TLD}"
+    r"(?=$|[^a-z0-9@+.-]|\.(?:$|[^a-z0-9]))",
+    re.IGNORECASE,
+)
+
+
+def _tweet_text_likely_contains_url(text: str) -> bool:
+    return (
+        _URL_WITH_PROTOCOL_RE.search(text) is not None or _BARE_DOMAIN_RE.search(text) is not None
+    )
 
 
 def refine_bucket_with_body(bucket: str, method: str, path: str, body: bytes | None) -> str:
@@ -299,6 +317,6 @@ def refine_bucket_with_body(bucket: str, method: str, path: str, body: bytes | N
     text = obj.get("text")
     if not isinstance(text, str):
         return bucket
-    if _URL_RE.search(text):
+    if _tweet_text_likely_contains_url(text):
         return bucket
     return "content.create"

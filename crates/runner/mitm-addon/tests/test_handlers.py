@@ -2332,7 +2332,20 @@ class TestReportConnectorUsage:
         assert p["category"] == "content.create"
         assert p["quantity"] == 1
 
-    def test_tweet_create_with_url_stays_on_with_url_bucket(self, tmp_path, real_flow):
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "check https://example.com",
+            "check HTTPS://example.com",
+            "check HtTp://www.ExaMPLE.COM/index.html",
+            "Visit vm0.ai for details",
+            "Visit vm0.ai.",
+            "(vm0.ai)",
+            "Open example.com/path/to/resource?search=foo&lang=en",
+            "Open xn--r8jz45g.xn--zckzah",
+        ],
+    )
+    def test_tweet_create_with_url_stays_on_with_url_bucket(self, tmp_path, real_flow, text):
         """POST /2/tweets whose text contains a URL stays on the
         Content: Create (with URL) bucket."""
         flow = self._make_x_flow(
@@ -2345,9 +2358,41 @@ class TestReportConnectorUsage:
             rule="POST /2/tweets",
         )
         flow.request.method = "POST"
-        flow.request.content = json.dumps({"text": "check https://example.com"}).encode()
+        flow.request.content = json.dumps({"text": text}).encode()
         p = self._call_and_get_single_billing(flow)
         assert p["category"] == "content.create_with_url"
+        assert p["quantity"] == 1
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "Email support@example.com",
+            "Mention @twitter.com",
+            "Tag #twitter.com",
+            "Cash $twitter.com",
+            "Path /twitter.com",
+            "Archive long.test.tar.bz2",
+            "Word abcHTTPS://example.com",
+        ],
+    )
+    def test_tweet_create_url_like_non_links_downgrade_to_content_create(
+        self, tmp_path, real_flow, text
+    ):
+        """twitter-text-style boundary guards avoid obvious non-link
+        domains while still allowing plain text to downgrade."""
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            path="/2/tweets",
+            body=json.dumps({"data": {"id": "1"}}).encode(),
+            status=201,
+            permission="tweet.write",
+            rule="POST /2/tweets",
+        )
+        flow.request.method = "POST"
+        flow.request.content = json.dumps({"text": text}).encode()
+        p = self._call_and_get_single_billing(flow)
+        assert p["category"] == "content.create"
         assert p["quantity"] == 1
 
     def test_tweet_create_quote_or_media_stays_on_with_url_bucket(self, tmp_path, real_flow):
@@ -2358,6 +2403,8 @@ class TestReportConnectorUsage:
             json.dumps({"text": "nice", "quote_tweet_id": "abc"}).encode(),
             # attached media
             json.dumps({"text": "pic", "media": {"media_ids": ["42"]}}).encode(),
+            # attached card
+            json.dumps({"text": "card", "card_uri": "card://123"}).encode(),
         ]:
             flow = self._make_x_flow(
                 real_flow,
