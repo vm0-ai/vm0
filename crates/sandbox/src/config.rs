@@ -81,7 +81,11 @@ pub struct FactoryConfig {
     pub snapshot: Option<SnapshotRef>,
 }
 
-/// Configuration for the sandbox runtime (shared resources).
+/// Runtime-wide configuration used to initialize shared backend resources.
+///
+/// These values are discovered before a runtime is created and apply to every
+/// factory produced by that runtime. Per-profile and per-sandbox settings
+/// belong in [`FactoryConfig`] and [`SandboxConfig`].
 pub struct RuntimeConfig {
     /// Proxy port for network traffic interception. Shared across all factories.
     pub proxy_port: Option<u16>,

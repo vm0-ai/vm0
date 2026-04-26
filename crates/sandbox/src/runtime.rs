@@ -29,5 +29,23 @@ pub trait SandboxRuntime: Send + Sync {
 /// which backend is in use.
 #[async_trait]
 pub trait RuntimeProvider: Send + Sync {
+    /// Create a runtime from runtime-wide configuration.
+    ///
+    /// `config` contains inputs discovered before backend initialization, such
+    /// as proxy ports shared by every factory created from the returned runtime.
+    /// Implementations may validate these values and initialize
+    /// backend-specific shared resources while creating the runtime.
+    ///
+    /// On success, the returned runtime is ready for
+    /// [`SandboxRuntime::create_factory`] calls. This does not create, start, or
+    /// initialize any factory; factory startup remains part of
+    /// [`SandboxRuntime::create_factory`].
+    ///
+    /// The caller owns the returned runtime and is responsible for eventually
+    /// calling [`SandboxRuntime::shutdown`] after all factories created from it
+    /// have been shut down.
+    ///
+    /// Returns an error if the backend cannot initialize the runtime. The trait
+    /// does not guarantee retry semantics after an error.
     async fn create_runtime(&self, config: RuntimeConfig) -> Result<Box<dyn SandboxRuntime>>;
 }
