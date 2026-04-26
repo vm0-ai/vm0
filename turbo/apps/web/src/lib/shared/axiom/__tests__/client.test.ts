@@ -91,6 +91,27 @@ describe("flushAxiom", () => {
 
     expect(mockFlush).toHaveBeenCalled();
   });
+
+  it("throws flush failures when requested", async () => {
+    mockFlush.mockRejectedValue(new Error("flush down"));
+
+    ingestToAxiom("vm0-sandbox-telemetry-system-dev", [{ a: 1 }]);
+
+    await expect(flushAxiom({ throwOnError: true })).rejects.toThrow(
+      "Axiom flush failed",
+    );
+  });
+
+  it("can flush only the sessions client", async () => {
+    mockFlush.mockResolvedValue(undefined);
+
+    ingestToAxiom("vm0-agent-run-events-dev", [{ a: 1 }]);
+    ingestToAxiom("vm0-sandbox-telemetry-system-dev", [{ b: 2 }]);
+
+    await flushAxiom({ client: "sessions" });
+
+    expect(mockFlush).toHaveBeenCalledTimes(1);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -179,6 +200,15 @@ describe("queryAxiom", () => {
     mockQuery.mockRejectedValue(new Error("network timeout"));
 
     await expect(queryAxiom(apl)).rejects.toThrow("network timeout");
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it("supports disabling rate-limit retries", async () => {
+    mockQuery.mockRejectedValue(new Error("429 rate limit"));
+
+    await expect(queryAxiom(apl, { maxRetries: 0 })).rejects.toThrow(
+      "429 rate limit",
+    );
     expect(mockQuery).toHaveBeenCalledTimes(1);
   });
 });

@@ -5,6 +5,10 @@ import { parseEvent } from "../../../lib/events/event-parser-factory";
 import { EventRenderer } from "../../../lib/events/event-renderer";
 import type { PollResult, EventRenderingOptions } from "../../run/shared";
 
+interface SequencedEvent {
+  sequenceNumber: number;
+}
+
 /**
  * Safely narrow GetRunResponse.result to RunResult.
  * GetRunResponse.result has all fields optional (due to .passthrough()),
@@ -23,6 +27,27 @@ function toRunResult(result: {
     return undefined;
   }
   return { checkpointId, agentSessionId, conversationId };
+}
+
+function filterContiguousEvents<T extends SequencedEvent>(
+  events: T[],
+  lastSequence: number,
+): T[] {
+  const contiguousEvents: T[] = [];
+  let expectedSequence = lastSequence + 1;
+
+  for (const event of events) {
+    if (event.sequenceNumber < expectedSequence) {
+      continue;
+    }
+    if (event.sequenceNumber !== expectedSequence) {
+      break;
+    }
+    contiguousEvents.push(event);
+    expectedSequence++;
+  }
+
+  return contiguousEvents;
 }
 
 /**
@@ -48,8 +73,13 @@ export async function pollZeroEvents(
       order: "asc",
     });
 
+    const contiguousEvents = filterContiguousEvents(
+      eventsResponse.events,
+      lastSequence,
+    );
+
     // 2. Parse and render each event
-    for (const event of eventsResponse.events) {
+    for (const event of contiguousEvents) {
       const eventData = event.eventData as Record<string, unknown>;
       const parsed = parseEvent(eventData);
       if (parsed) {
@@ -58,12 +88,21 @@ export async function pollZeroEvents(
     }
 
     // 3. Track last sequence number for pagination
-    if (eventsResponse.events.length > 0) {
-      lastSequence = Math.max(
-        ...eventsResponse.events.map((e) => {
-          return e.sequenceNumber;
-        }),
-      );
+    if (contiguousEvents.length > 0) {
+      lastSequence =
+        contiguousEvents[contiguousEvents.length - 1]!.sequenceNumber;
+    }
+
+    // If this page is fully contiguous and the server says more are already
+    // queryable, drain the next page before checking terminal status. Otherwise
+    // a completed run with >100 unseen events would render only the final page's
+    // first batch and then exit.
+    if (
+      eventsResponse.hasMore &&
+      contiguousEvents.length > 0 &&
+      contiguousEvents.length === eventsResponse.events.length
+    ) {
+      continue;
     }
 
     // 4. Fetch run status separately

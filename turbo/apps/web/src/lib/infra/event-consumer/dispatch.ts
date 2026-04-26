@@ -6,6 +6,14 @@ import { logger } from "../../shared/logger";
 
 const log = logger("event-consumer:dispatch");
 
+function requiredEventConsumerDispatchError(failures: string[]): Error {
+  const error = new Error(
+    `Required event consumer dispatch failed: ${failures.join(", ")}`,
+  );
+  error.name = "RequiredEventConsumerDispatchError";
+  return error;
+}
+
 /**
  * In local dev, rewrite self-referencing tunnel URLs to localhost.
  */
@@ -20,8 +28,9 @@ function resolveBaseUrl(baseUrl: string): string {
  * Dispatch agent events to all registered consumers whose eventTypes filter
  * matches at least one event in the batch.
  *
- * Uses `Promise.allSettled` — one consumer's failure does not affect others.
- * Failures are logged but not propagated to the caller.
+ * Uses `Promise.allSettled` so all matching consumers get a chance to run.
+ * Optional consumer failures are logged; required consumer failures are
+ * propagated to the caller after every consumer has settled.
  */
 export async function dispatchToEventConsumers(
   runId: string,
@@ -32,7 +41,7 @@ export async function dispatchToEventConsumers(
   const baseUrl = resolveBaseUrl(VM0_API_URL ?? "http://localhost:3000");
 
   const results = await Promise.allSettled(
-    eventConsumers.map((consumer) => {
+    eventConsumers.map(async (consumer) => {
       const matchingEvents = consumer.eventTypes
         ? events.filter((e) => {
             return consumer.eventTypes!.includes(e.type);
@@ -56,7 +65,7 @@ export async function dispatchToEventConsumers(
         timestamp,
       );
 
-      return fetch(baseUrl + consumer.path, {
+      const response = await fetch(baseUrl + consumer.path, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -65,16 +74,36 @@ export async function dispatchToEventConsumers(
         },
         body,
       });
+      if (!response.ok) {
+        const responseBody = await response.text().catch(() => {
+          return "";
+        });
+        throw new Error(
+          `HTTP ${response.status}${responseBody ? `: ${responseBody}` : ""}`,
+        );
+      }
+      await response.arrayBuffer().catch(() => {
+        return undefined;
+      });
     }),
   );
 
+  const requiredFailures: string[] = [];
   for (let i = 0; i < results.length; i++) {
     const result = results[i];
     if (result && result.status === "rejected") {
+      const consumer = eventConsumers[i];
       log.error(`Event consumer "${eventConsumers[i]?.name}" failed`, {
         runId,
         error: result.reason,
       });
+      if (consumer?.required) {
+        requiredFailures.push(consumer.name);
+      }
     }
+  }
+
+  if (requiredFailures.length > 0) {
+    throw requiredEventConsumerDispatchError(requiredFailures);
   }
 }

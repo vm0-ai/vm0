@@ -1090,6 +1090,7 @@ async fn complete_report_success_posts_full_payload_when_metadata_present() {
             .json_body(json!({
                 "runId": "test-run-001",
                 "exitCode": 0,
+                "lastEventSequence": 7,
                 "sandboxId": "00000000-0000-4000-8000-000000000abc",
                 "sandboxReuseResult": "reused",
             }));
@@ -1102,6 +1103,7 @@ async fn complete_report_success_posts_full_payload_when_metadata_present() {
     guest_agent::complete::report_success(
         guest_agent::env::sandbox_id(),
         guest_agent::env::sandbox_reuse_result(),
+        Some(7),
     )
     .await;
 
@@ -1129,7 +1131,7 @@ async fn complete_report_success_omits_metadata_when_env_absent() {
         then.status(200).json_body(json!({"success": true}));
     });
 
-    guest_agent::complete::report_success("", "").await;
+    guest_agent::complete::report_success("", "", None).await;
 
     mock.assert_calls_async(1).await;
     mock.delete_async().await;
@@ -1150,6 +1152,7 @@ async fn complete_report_success_swallows_server_error() {
     guest_agent::complete::report_success(
         guest_agent::env::sandbox_id(),
         guest_agent::env::sandbox_reuse_result(),
+        None,
     )
     .await;
 
@@ -1177,6 +1180,7 @@ async fn complete_report_success_swallows_4xx_auth_error() {
     guest_agent::complete::report_success(
         guest_agent::env::sandbox_id(),
         guest_agent::env::sandbox_reuse_result(),
+        None,
     )
     .await;
 

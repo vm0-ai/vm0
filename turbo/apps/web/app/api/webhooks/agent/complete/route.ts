@@ -23,6 +23,7 @@ import {
 } from "../../../../../src/lib/zero/zero-run-queue-service";
 import { processOrgCredits } from "../../../../../src/lib/zero/credit/credit-service";
 import { processOrgUsageEvents } from "../../../../../src/lib/zero/credit/usage-event-service";
+import { waitForAgentEventPrefixVisible } from "../../../../../src/lib/infra/run/agent-event-visibility";
 import { after } from "next/server";
 import { env } from "../../../../../src/env";
 
@@ -186,6 +187,25 @@ const router = tsr.router(webhookCompleteContract, {
         .limit(1);
 
       const result = buildRunResult(checkpoint, session?.id);
+
+      if (body.lastEventSequence !== undefined) {
+        const visibility = await waitForAgentEventPrefixVisible(
+          body.runId,
+          body.lastEventSequence,
+        );
+
+        if (!visibility.visible) {
+          log.warn("Completing run before all agent events are Axiom-visible", {
+            runId: body.runId,
+            targetSequence: visibility.targetSequence,
+            visibleThrough: visibility.visibleThrough,
+            attempts: visibility.attempts,
+            elapsedMs: visibility.elapsedMs,
+            reason: visibility.reason,
+            error: visibility.error,
+          });
+        }
+      }
 
       // Atomically transition to "completed". Also accept "timeout" so a
       // sandbox that eventually reports success after a heartbeat-timeout

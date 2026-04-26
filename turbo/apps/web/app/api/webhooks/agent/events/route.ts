@@ -73,7 +73,8 @@ const router = tsr.router(webhookEventsContract, {
     // /api/agent/runs/:id/events — including the CLI — can see events as soon as the
     // webhook returns. With `after()`, fast mock-claude runs completed before Axiom
     // ingestion finished, leaving the CLI with no `● Bash(...)` rendering.
-    // Per-consumer failures are swallowed inside the dispatcher (Promise.allSettled).
+    // Optional consumer failures are isolated inside the dispatcher. Required
+    // consumers (currently Axiom, used by CLI event polling) propagate failure.
     const dispatchStart = Date.now();
     await dispatchToEventConsumers(body.runId, body.events, {
       userId,

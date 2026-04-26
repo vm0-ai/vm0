@@ -141,14 +141,21 @@ async fn execute(
     // Execution phase
     log_info!(LOG_TAG, "▷ Execution");
     let cli_start = Instant::now();
+    let mut last_event_sequence = None;
     let (mut exit_code, error_message) = match cli::execute_cli(masker, heartbeat_handle).await {
-        Ok((code, stderr_lines)) => {
+        Ok(cli_result) => {
+            last_event_sequence = cli_result.last_event_sequence;
+            let code = cli_result.exit_code;
             if code != 0 {
-                let msg = if stderr_lines.is_empty() {
+                let msg = if cli_result.stderr_lines.is_empty() {
                     format!("Agent exited with code {code}")
                 } else {
-                    log_info!(LOG_TAG, "Captured {} stderr lines", stderr_lines.len());
-                    stderr_lines.join(" ")
+                    log_info!(
+                        LOG_TAG,
+                        "Captured {} stderr lines",
+                        cli_result.stderr_lines.len()
+                    );
+                    cli_result.stderr_lines.join(" ")
                 };
                 (code, msg)
             } else {
@@ -225,7 +232,12 @@ async fn execute(
                 // status transition already happened the moment /complete
                 // returned.
                 log_info!(LOG_TAG, "▷ Cleanup");
-                complete::report_success(env::sandbox_id(), env::sandbox_reuse_result()).await;
+                complete::report_success(
+                    env::sandbox_id(),
+                    env::sandbox_reuse_result(),
+                    last_event_sequence,
+                )
+                .await;
                 final_telemetry(telemetry).await;
             }
             Err(e) => {

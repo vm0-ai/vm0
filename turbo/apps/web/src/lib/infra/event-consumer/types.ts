@@ -35,6 +35,8 @@ export interface EventConsumerConfig {
   name: string;
   /** Route path relative to the API base URL. */
   path: string;
+  /** When true, dispatch failure makes the events webhook fail. */
+  required?: boolean;
   /**
    * When set, only events whose `type` is in this list are forwarded.
    * When omitted/empty, ALL events are forwarded.

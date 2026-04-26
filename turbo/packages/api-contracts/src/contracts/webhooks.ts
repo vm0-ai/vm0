@@ -112,6 +112,7 @@ export const webhookCompleteContract = c.router({
       runId: z.string().min(1, "runId is required"),
       exitCode: z.number(),
       error: z.string().optional(),
+      lastEventSequence: z.number().int().nonnegative().optional(),
       // Sandbox id the run executed against. Optional because a run that fails
       // before VM creation has no sandbox. Persisted to agent_runs.sandbox_id;
       // the 255-char cap matches the DB column (defense in depth).

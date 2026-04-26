@@ -31,6 +31,8 @@ struct CompletePayload<'a> {
     run_id: &'a str,
     exit_code: i32,
     #[serde(skip_serializing_if = "Option::is_none")]
+    last_event_sequence: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     sandbox_id: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     sandbox_reuse_result: Option<&'a str>,
@@ -48,9 +50,17 @@ fn as_optional(value: &str) -> Option<&str> {
 /// empty strings are serialized as absent so an unset env var is equivalent
 /// to omitting the field.
 ///
+/// `last_event_sequence` is the highest contiguous agent event sequence whose
+/// events webhook POST succeeded. The host uses it as a best-effort Axiom
+/// visibility watermark before marking the run completed.
+///
 /// Fire-and-forget. Returns `()` and never propagates errors — the runner's
 /// fallback call covers any failure here.
-pub async fn report_success(sandbox_id: &str, sandbox_reuse_result: &str) {
+pub async fn report_success(
+    sandbox_id: &str,
+    sandbox_reuse_result: &str,
+    last_event_sequence: Option<u32>,
+) {
     if !env::has_api() {
         return;
     }
@@ -58,6 +68,7 @@ pub async fn report_success(sandbox_id: &str, sandbox_reuse_result: &str) {
     let payload = CompletePayload {
         run_id: env::run_id(),
         exit_code: 0,
+        last_event_sequence,
         sandbox_id: as_optional(sandbox_id),
         sandbox_reuse_result: as_optional(sandbox_reuse_result),
     };
@@ -79,6 +90,7 @@ mod tests {
         let payload = CompletePayload {
             run_id: "run-123",
             exit_code: 0,
+            last_event_sequence: None,
             sandbox_id: None,
             sandbox_reuse_result: None,
         };
@@ -91,6 +103,7 @@ mod tests {
         let payload = CompletePayload {
             run_id: "run-123",
             exit_code: 0,
+            last_event_sequence: None,
             sandbox_id: Some("abc"),
             sandbox_reuse_result: Some("reused"),
         };
@@ -108,6 +121,7 @@ mod tests {
         let payload = CompletePayload {
             run_id: "run-123",
             exit_code: 0,
+            last_event_sequence: None,
             sandbox_id: None,
             sandbox_reuse_result: Some("poolMiss"),
         };
@@ -121,6 +135,7 @@ mod tests {
         let payload = CompletePayload {
             run_id: "run-123",
             exit_code: 0,
+            last_event_sequence: None,
             sandbox_id: Some("sid"),
             sandbox_reuse_result: None,
         };
@@ -133,5 +148,21 @@ mod tests {
     fn as_optional_treats_empty_as_none() {
         assert_eq!(as_optional(""), None);
         assert_eq!(as_optional("value"), Some("value"));
+    }
+
+    #[test]
+    fn payload_includes_last_event_sequence_when_present() {
+        let payload = CompletePayload {
+            run_id: "run-123",
+            exit_code: 0,
+            last_event_sequence: Some(7),
+            sandbox_id: None,
+            sandbox_reuse_result: None,
+        };
+        let json = serde_json::to_string(&payload).unwrap();
+        assert_eq!(
+            json,
+            r#"{"runId":"run-123","exitCode":0,"lastEventSequence":7}"#
+        );
     }
 }

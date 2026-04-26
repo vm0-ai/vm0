@@ -34,7 +34,8 @@ async fn post_result_reap_escalates_to_sigkill_when_sigterm_ignored()
     .await
     .expect("execute_cli did not return within 15s — sigkill escalation likely broken");
 
-    let (exit_code, _stderr) = result.expect("execute_cli returned Err");
+    let result = result.expect("execute_cli returned Err");
+    let exit_code = result.exit_code;
 
     // SIGKILL (9) → 128 + 9 = 137. SIGTERM is SIG_IGN'd in the mock,
     // so 143 here would mean our SIGTERM somehow won a race it can't

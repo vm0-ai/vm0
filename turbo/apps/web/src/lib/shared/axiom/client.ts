@@ -25,6 +25,12 @@ function getClientForDataset(dataset: string): Axiom | null {
     : getTelemetryInstance(env().AXIOM_TOKEN_TELEMETRY);
 }
 
+export function isAxiomDatasetConfigured(dataset: string): boolean {
+  return isSessionsDataset(dataset)
+    ? Boolean(env().AXIOM_TOKEN_SESSIONS)
+    : Boolean(env().AXIOM_TOKEN_TELEMETRY);
+}
+
 /**
  * Extract the dataset name from an APL query string.
  * APL queries always start with ['dataset-name'].
@@ -63,18 +69,44 @@ export function ingestToAxiom(
  * Call at request/response boundaries to ensure buffered events are sent
  * before the serverless function terminates.
  *
- * Errors are logged but not propagated — telemetry data is non-critical
- * and a flush failure must not break the request/response cycle.
+ * Errors are logged by default. Callers that need durability for a specific
+ * request path can opt into propagation with `throwOnError`.
  */
-export async function flushAxiom(): Promise<void> {
-  const results = await Promise.allSettled([
-    getSessionsClient()?.flush(),
-    getTelemetryClient()?.flush(),
-  ]);
-  for (const r of results) {
+interface FlushAxiomOptions {
+  throwOnError?: boolean;
+  client?: "all" | "sessions" | "telemetry";
+}
+
+export async function flushAxiom(
+  options: FlushAxiomOptions = {},
+): Promise<void> {
+  const client = options.client ?? "all";
+  const flushes: Array<{ name: string; promise: Promise<void> | undefined }> =
+    [];
+  if (client === "all" || client === "sessions") {
+    flushes.push({ name: "sessions", promise: getSessionsClient()?.flush() });
+  }
+  if (client === "all" || client === "telemetry") {
+    flushes.push({ name: "telemetry", promise: getTelemetryClient()?.flush() });
+  }
+
+  const results = await Promise.allSettled(
+    flushes.map((flush) => {
+      return flush.promise;
+    }),
+  );
+  const errors: unknown[] = [];
+  for (const [i, r] of results.entries()) {
     if (r.status === "rejected") {
-      log.error("Axiom flush failed:", r.reason);
+      errors.push(r.reason);
+      log.error(
+        `Axiom ${flushes[i]?.name ?? "unknown"} flush failed:`,
+        r.reason,
+      );
     }
+  }
+  if (options.throwOnError && errors.length > 0) {
+    throw new AggregateError(errors, "Axiom flush failed");
   }
 }
 
@@ -82,6 +114,10 @@ export async function flushAxiom(): Promise<void> {
 
 const MAX_QUERY_RETRIES = 3;
 const QUERY_BACKOFF_BASE_MS = 2000;
+
+export interface QueryAxiomOptions {
+  maxRetries?: number;
+}
 
 function isRateLimitError(error: unknown): boolean {
   if (error instanceof Error) {
@@ -113,6 +149,7 @@ function extractRetryAfterMs(error: unknown): number | null {
  */
 export async function queryAxiom<T = Record<string, unknown>>(
   apl: string,
+  options: QueryAxiomOptions = {},
 ): Promise<T[]> {
   const dataset = extractDatasetFromApl(apl);
   // If we can't determine the dataset, default to telemetry client (broader scope)
@@ -124,7 +161,9 @@ export async function queryAxiom<T = Record<string, unknown>>(
     return [];
   }
 
-  for (let attempt = 0; attempt <= MAX_QUERY_RETRIES; attempt++) {
+  const maxRetries = options.maxRetries ?? MAX_QUERY_RETRIES;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       const result = await client.query(apl);
       // Axiom stores _time separately from data, merge them for the response
@@ -134,12 +173,12 @@ export async function queryAxiom<T = Record<string, unknown>>(
         }) ?? []
       );
     } catch (error) {
-      if (attempt < MAX_QUERY_RETRIES && isRateLimitError(error)) {
+      if (attempt < maxRetries && isRateLimitError(error)) {
         const waitMs =
           extractRetryAfterMs(error) ??
           QUERY_BACKOFF_BASE_MS * Math.pow(2, attempt);
         log.warn(
-          `Axiom query rate limited, retrying in ${waitMs}ms (attempt ${attempt + 1}/${MAX_QUERY_RETRIES})`,
+          `Axiom query rate limited, retrying in ${waitMs}ms (attempt ${attempt + 1}/${maxRetries})`,
         );
         await new Promise((r) => {
           return setTimeout(r, waitMs);

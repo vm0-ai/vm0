@@ -30,7 +30,8 @@ async fn post_result_reap_sigterm_kills_hung_cli() -> Result<(), Box<dyn std::er
     .await
     .expect("execute_cli did not return within 15s — reap likely broken");
 
-    let (exit_code, _stderr) = result.expect("execute_cli returned Err");
+    let result = result.expect("execute_cli returned Err");
+    let exit_code = result.exit_code;
 
     // On pathologically slow runners the sigkill escalation may fire
     // before SIGTERM actually terminates the mock; accept either.
