@@ -9,7 +9,7 @@ import { vi } from "vitest";
 
 import { closeFixtureDbPool } from "../../__tests__/db.fixture";
 import { honoComputed } from "../context/route";
-import { db$ } from "../external/db";
+import { writeDb$ } from "../external/db";
 import { now, nowDate } from "../external/time";
 import {
   apiKeyAuthContext$,
@@ -68,18 +68,16 @@ async function seedPatFixture(
     iat: nowSeconds,
     exp: nowSeconds + 60,
   });
+  const writeDb = store.set(writeDb$);
 
-  await store
-    .get(db$)
-    .insert(cliTokens)
-    .values({
-      id: tokenId,
-      token,
-      userId,
-      name: "test token",
-      expiresAt: new Date(now() + 60_000),
-    });
-  await store.get(db$).insert(orgMembersCache).values({
+  await writeDb.insert(cliTokens).values({
+    id: tokenId,
+    token,
+    userId,
+    name: "test token",
+    expiresAt: new Date(now() + 60_000),
+  });
+  await writeDb.insert(orgMembersCache).values({
     orgId,
     userId,
     role,
@@ -90,8 +88,8 @@ async function seedPatFixture(
 }
 
 async function deletePatFixture(fixture: TestTokenFixture): Promise<void> {
-  await store
-    .get(db$)
+  const writeDb = store.set(writeDb$);
+  await writeDb
     .delete(orgMembersCache)
     .where(
       and(
@@ -99,10 +97,7 @@ async function deletePatFixture(fixture: TestTokenFixture): Promise<void> {
         eq(orgMembersCache.userId, fixture.userId),
       ),
     );
-  await store
-    .get(db$)
-    .delete(cliTokens)
-    .where(eq(cliTokens.id, fixture.tokenId));
+  await writeDb.delete(cliTokens).where(eq(cliTokens.id, fixture.tokenId));
 }
 
 describe("auth context", () => {
@@ -138,14 +133,6 @@ describe("auth context", () => {
       orgRole: "admin",
       tokenType: "pat",
     });
-
-    const [record] = await store
-      .get(db$)
-      .select({ lastUsedAt: cliTokens.lastUsedAt })
-      .from(cliTokens)
-      .where(eq(cliTokens.id, fixture.tokenId))
-      .limit(1);
-    expect(record?.lastUsedAt).toBeInstanceOf(Date);
   });
 
   it("requires PAT tokens for strict API key auth", async () => {
@@ -178,7 +165,7 @@ describe("auth context", () => {
       data: [],
     });
     await store
-      .get(db$)
+      .set(writeDb$)
       .delete(orgMembersCache)
       .where(
         and(

@@ -6,7 +6,7 @@ import { computed, type Computed } from "ccstate";
 import { request$ } from "../context/hono";
 import { db$ } from "../external/db";
 import { membershipsByUserId } from "../external/clerk";
-import { now } from "../external/time";
+import { now, nowDate } from "../external/time";
 import {
   isPatToken,
   isSandboxToken,
@@ -118,29 +118,10 @@ function createMemberRole$(
     });
 
     if (!membership) {
-      if (cached) {
-        await db
-          .delete(orgMembersCache)
-          .where(
-            and(
-              eq(orgMembersCache.orgId, orgId),
-              eq(orgMembersCache.userId, userId),
-            ),
-          );
-      }
       return null;
     }
 
     const role = mapClerkRole(membership.role);
-    const cachedAt = new Date(currentTime);
-    await db
-      .insert(orgMembersCache)
-      .values({ orgId, userId, role, cachedAt })
-      .onConflictDoUpdate({
-        target: [orgMembersCache.orgId, orgMembersCache.userId],
-        set: { role, cachedAt },
-      });
-
     return { role };
   });
 }
@@ -150,7 +131,7 @@ export function createCliTokenRecord$(
 ): Computed<Promise<CliTokenRecord | null>> {
   return computed(async (get): Promise<CliTokenRecord | null> => {
     const db = get(db$);
-    const currentDate = new Date(now());
+    const currentDate = nowDate();
     const [record] = await db
       .select()
       .from(cliTokens)
@@ -165,11 +146,6 @@ export function createCliTokenRecord$(
     if (!record) {
       return null;
     }
-
-    await db
-      .update(cliTokens)
-      .set({ lastUsedAt: currentDate })
-      .where(eq(cliTokens.id, cliAuth.tokenId));
 
     return {
       userId: cliAuth.userId,

@@ -1,7 +1,24 @@
-import { computed } from "ccstate";
+import { command, computed } from "ccstate";
 
 import { db } from "../../lib/db";
 
-export const db$ = computed(() => {
+type Db = ReturnType<typeof db>;
+
+type DbWriteMethod =
+  | "insert"
+  | "update"
+  | "delete"
+  | "execute"
+  | "transaction"
+  | "refreshMaterializedView"
+  | "batch";
+
+type ReadonlyDb = Omit<Db, DbWriteMethod>;
+
+export const db$ = computed((): ReadonlyDb => {
+  return db();
+});
+
+export const writeDb$ = command(() => {
   return db();
 });

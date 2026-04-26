@@ -7,7 +7,7 @@ import { Hono } from "hono";
 
 import { closeFixtureDbPool } from "../../__tests__/db.fixture";
 import { honoComputed } from "../context/route";
-import { db$ } from "../external/db";
+import { writeDb$ } from "../external/db";
 import { now } from "../external/time";
 import { runnerAuth$ } from "./runner-auth";
 import { signPatJwtForTests, signSandboxJwtForTests } from "./tokens";
@@ -31,7 +31,10 @@ describe("runnerAuth$", () => {
     while (tokenIds.length > 0) {
       const tokenId = tokenIds.pop();
       if (tokenId) {
-        await store.get(db$).delete(cliTokens).where(eq(cliTokens.id, tokenId));
+        await store
+          .set(writeDb$)
+          .delete(cliTokens)
+          .where(eq(cliTokens.id, tokenId));
       }
     }
   });
@@ -67,7 +70,7 @@ describe("runnerAuth$", () => {
     });
 
     await store
-      .get(db$)
+      .set(writeDb$)
       .insert(cliTokens)
       .values({
         id: tokenId,
