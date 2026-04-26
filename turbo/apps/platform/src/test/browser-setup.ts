@@ -54,7 +54,6 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
-  vi.clearAllMocks();
   vi.spyOn(console, "error").mockImplementation((...message: unknown[]) => {
     const str = message.map(String).join(" ");
     if (str.includes("AbortError")) {

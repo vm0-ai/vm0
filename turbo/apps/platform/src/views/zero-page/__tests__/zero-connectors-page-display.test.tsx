@@ -7,7 +7,7 @@
  * - Real (internal): All signals, components, rendering
  */
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
@@ -20,10 +20,6 @@ import { createMockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
-
-afterEach(() => {
-  vi.restoreAllMocks();
-});
 
 describe("connectors page - count display", () => {
   it("ai categories render before non-ai categories (CONN-D-001)", async () => {

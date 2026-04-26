@@ -8,7 +8,7 @@
  * - Real (internal): All signals, components, rendering
  */
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -22,10 +22,6 @@ import { createMockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
-
-beforeEach(() => {
-  vi.clearAllMocks();
-});
 
 function mockSlackAPI(overrides: Partial<SlackOrgStatus> = {}) {
   const defaults: SlackOrgStatus = {

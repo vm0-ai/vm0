@@ -76,6 +76,7 @@ export default [
     files: ["**/__tests__/**/*.{ts,tsx}"],
     rules: {
       "ccstate/no-test-delay": "error",
+      "ccstate/no-manual-mock-cleanup": "error",
       "ccstate/no-get-by-role-name": "error",
       "ccstate/no-user-clear-tab": "error",
       "ccstate/no-raw-msw-http": "error",

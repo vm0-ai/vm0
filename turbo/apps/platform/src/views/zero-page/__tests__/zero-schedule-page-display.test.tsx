@@ -5,7 +5,7 @@
  * Verifies that only list and calendar tabs are available (no history tab).
  */
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -43,10 +43,6 @@ function mockScheduleAPI(schedules = createMockSchedules()) {
 function renderSchedulePage() {
   detachedSetupPage({ context, path: "/schedules" });
 }
-
-afterEach(() => {
-  vi.restoreAllMocks();
-});
 
 describe("zero schedule page - view tabs (post run-history removal)", () => {
   it("should only show List and Calendar tabs (SCHED-TABS-001)", async () => {

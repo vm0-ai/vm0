@@ -5,7 +5,7 @@
  *
  * Entry point: setupPage({ context, path: "/agents/my-agent?tab=instructions" })
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -21,10 +21,6 @@ import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
-
-beforeEach(() => {
-  vi.clearAllMocks();
-});
 
 function mockAPIs(instructionsContent: string | null = null) {
   setMockTeam([

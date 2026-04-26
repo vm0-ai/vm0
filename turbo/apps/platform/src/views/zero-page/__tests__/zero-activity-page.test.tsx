@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -13,10 +13,6 @@ import { setMockComposesList } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
-
-beforeEach(() => {
-  vi.clearAllMocks();
-});
 
 function makeLog(overrides: Partial<LogEntry> = {}): LogEntry {
   return {

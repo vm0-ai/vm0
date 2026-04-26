@@ -7,7 +7,7 @@ import { setPageSignal$ } from "./page-signal.ts";
 import { rootSignal$ } from "./root-signal.ts";
 import { onDomEventFn, resetSignal } from "./utils.ts";
 import { logger } from "./log.ts";
-import { markNavigationPushState$ } from "../lib/posthog.ts";
+import { capturePageView, markNavigationPushState$ } from "../lib/posthog.ts";
 
 const L = logger("Route");
 
@@ -95,6 +95,8 @@ const loadRoute$ = command(async ({ get, set }, signal: AbortSignal) => {
   L.debug("loading route", currentRoute.path);
 
   await set(currentRoute.setup, routeSignal);
+  signal.throwIfAborted();
+  capturePageView();
 });
 
 const navigateToDefaultWhenInvalid$ = command(({ get, set }) => {

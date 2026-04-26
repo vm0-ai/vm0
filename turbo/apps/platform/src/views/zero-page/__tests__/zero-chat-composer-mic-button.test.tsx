@@ -213,7 +213,6 @@ describe("chat-i-033: mic button recording interaction", () => {
 
   afterEach(() => {
     clearMediaDevices();
-    vi.unstubAllGlobals();
   });
 
   it("should show stop recording button after clicking voice input", async () => {
@@ -245,7 +244,6 @@ describe("chat-i-034: mic button transcription appends to draft", () => {
 
   afterEach(() => {
     clearMediaDevices();
-    vi.unstubAllGlobals();
   });
 
   it("should populate composer input with transcribed text without sending", async () => {
@@ -330,7 +328,6 @@ describe("chat-i-035: mic button gates on audio input quota", () => {
 
   afterEach(() => {
     clearMediaDevices();
-    vi.unstubAllGlobals();
   });
 
   it("should start recording when quota is available", async () => {

@@ -5,7 +5,7 @@
  * chat attachment previews (text, json, markdown, csv, pdf, html).
  */
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { StoreProvider } from "ccstate-react";
 import { server } from "../../../mocks/server.ts";
@@ -18,10 +18,6 @@ import {
 } from "../zero-attachment-preview.tsx";
 
 const context = testContext();
-
-afterEach(() => {
-  vi.restoreAllMocks();
-});
 
 // =============================================================================
 // classifyChatAttachment unit tests

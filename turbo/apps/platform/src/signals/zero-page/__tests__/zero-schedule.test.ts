@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
@@ -34,10 +34,6 @@ import {
 
 const context = testContext();
 const mockApi = createMockApi(context);
-
-afterEach(() => {
-  vi.restoreAllMocks();
-});
 
 function mockScheduleResponse(): ScheduleResponse {
   return createMockScheduleResponse({

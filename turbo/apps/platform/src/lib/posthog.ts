@@ -26,11 +26,17 @@ export function initPostHog(): void {
   });
 }
 
-export function setPostHogUser(userId: string): void {
+interface PostHogUser {
+  id: string;
+  email: string | undefined;
+  name: string | undefined;
+}
+
+export function setPostHogUser(user: PostHogUser): void {
   if (!POSTHOG_KEY) {
     return;
   }
-  posthog.identify(userId);
+  posthog.identify(user.id, { email: user.email, name: user.name });
 }
 
 export function clearPostHogUser(): void {
@@ -72,3 +78,32 @@ export const markRouteSetupBegin$ = command(({ get, set }) => {
   }
   set(navigationSetupTime$, performance.now());
 });
+
+export const captureNavigationTiming$ = command(({ get, set }) => {
+  const enterTime = get(navigationEnterTime$);
+  if (!POSTHOG_KEY || enterTime === null) {
+    return;
+  }
+  const now = performance.now();
+  const pushStateTime = get(navigationPushStateTime$);
+  const setupTime = get(navigationSetupTime$);
+  posthog.capture("chat_navigation_timing", {
+    total_ms: Math.round(now - enterTime),
+    push_state_ms:
+      pushStateTime !== null
+        ? Math.round(pushStateTime - enterTime)
+        : undefined,
+    setup_begin_ms:
+      setupTime !== null ? Math.round(setupTime - enterTime) : undefined,
+  });
+  set(navigationEnterTime$, null);
+  set(navigationPushStateTime$, null);
+  set(navigationSetupTime$, null);
+});
+
+export function capturePageView(): void {
+  if (!POSTHOG_KEY) {
+    return;
+  }
+  posthog.capture("$pageview");
+}

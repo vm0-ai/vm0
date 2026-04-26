@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
@@ -97,10 +97,6 @@ function mockAPIsWithConnectors() {
 }
 
 describe("zero job detail page - display", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
   it("should render agent header elements (AGENT-D-016, AGENT-D-017)", async () => {
     mockAPIs();
     detachedSetupPage({ context, path: "/agents/my-agent" });
@@ -192,10 +188,6 @@ describe("zero job detail page - display", () => {
 describe("zero job detail page - connector display", () => {
   const user = userEvent.setup();
 
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
   it("should show connector enabled and disabled states in permission list (AGENT-D-021)", async () => {
     mockAPIsWithConnectors();
     detachedSetupPage({ context, path: "/agents/my-agent" });
@@ -249,10 +241,6 @@ describe("zero job detail page - connector display", () => {
 });
 
 describe("zero job detail page - tab visibility", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
   function findTab(label: RegExp) {
     return screen.getAllByRole("tab").find((el) => {
       return label.test(el.textContent ?? "");
@@ -339,10 +327,6 @@ describe("zero job detail page - tab visibility", () => {
 });
 
 describe("zero job detail page - delete dialog", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
   it("should open delete confirmation dialog (AGENT-D-026)", async () => {
     mockAPIs();
     detachedSetupPage({ context, path: "/agents/my-agent" });

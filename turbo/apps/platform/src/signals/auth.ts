@@ -62,7 +62,11 @@ export const setupClerk$ = command(
     // Set initial Sentry user context
     if (clerk.user) {
       setSentryUser(clerk.user.id);
-      setPostHogUser(clerk.user.id);
+      setPostHogUser({
+        id: clerk.user.id,
+        email: clerk.user.primaryEmailAddress?.emailAddress,
+        name: clerk.user.fullName ?? undefined,
+      });
     }
 
     // Track the user ID so we only trigger a reload on actual auth state
@@ -73,7 +77,11 @@ export const setupClerk$ = command(
       // Update Sentry user context on auth state change
       if (clerk.user) {
         setSentryUser(clerk.user.id);
-        setPostHogUser(clerk.user.id);
+        setPostHogUser({
+          id: clerk.user.id,
+          email: clerk.user.primaryEmailAddress?.emailAddress,
+          name: clerk.user.fullName ?? undefined,
+        });
       } else {
         clearSentryUser();
         clearPostHogUser();

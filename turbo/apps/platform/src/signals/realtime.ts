@@ -184,6 +184,7 @@ export const setAblyLoop$ = command(
             return;
           }
         } catch (error) {
+          signal.throwIfAborted();
           throwIfAbort(error);
           L.warn(`transient error in ably notification`, error);
         }

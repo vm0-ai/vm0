@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { testContext } from "./test-helpers.ts";
 import {
   installBannerVisible$,
@@ -9,10 +9,6 @@ import {
 } from "../pwa-install.ts";
 
 const context = testContext();
-
-afterEach(() => {
-  vi.restoreAllMocks();
-});
 
 function mockMatchMedia(standalone: boolean) {
   vi.spyOn(window, "matchMedia").mockReturnValue({
