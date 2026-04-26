@@ -57,6 +57,10 @@ inputs:
     description: "Build locally and deploy prebuilt artifacts (skips remote build on Vercel)"
     required: false
     default: "false"
+  prebuilt-build-command:
+    description: "Optional command that produces .vercel/output for prebuilt deployments. Defaults to vercel build."
+    required: false
+    default: ""
   skip-domain:
     description: "Produce a Staged production deployment that is prod-eligible but not yet serving traffic (requires prebuilt=true and environment=production). Promote later via vercel-promote."
     required: false
@@ -90,6 +94,7 @@ runs:
         INPUT_ENV_VARS: ${{ inputs.environment-variables }}
         INPUT_ENV_FILE: ${{ inputs.environment-file }}
         INPUT_PREBUILT: ${{ inputs.prebuilt }}
+        INPUT_PREBUILT_BUILD_COMMAND: ${{ inputs.prebuilt-build-command }}
         INPUT_SKIP_DOMAIN: ${{ inputs.skip-domain }}
         INPUT_ENVIRONMENT: ${{ inputs.environment }}
         INPUT_VERCEL_TOKEN: ${{ inputs.vercel-token }}
@@ -134,13 +139,23 @@ runs:
             done < <(env_lines)
           fi
 
-          # Build locally using Vercel CLI
-          echo "Building locally with vercel build..."
-          BUILD_ARGS=(build "--token=$INPUT_VERCEL_TOKEN")
-          if [ "$INPUT_ENVIRONMENT" == "production" ]; then
-            BUILD_ARGS+=(--prod)
+          if [ -n "$INPUT_PREBUILT_BUILD_COMMAND" ]; then
+            echo "Building prebuilt output with custom command..."
+            bash -euo pipefail -c "$INPUT_PREBUILT_BUILD_COMMAND"
+          else
+            # Build locally using Vercel CLI
+            echo "Building locally with vercel build..."
+            BUILD_ARGS=(build "--token=$INPUT_VERCEL_TOKEN")
+            if [ "$INPUT_ENVIRONMENT" == "production" ]; then
+              BUILD_ARGS+=(--prod)
+            fi
+            vercel "${BUILD_ARGS[@]}"
           fi
-          vercel "${BUILD_ARGS[@]}"
+
+          if [ ! -f .vercel/output/config.json ]; then
+            echo "::error::prebuilt deployment requires .vercel/output/config.json"
+            exit 1
+          fi
 
           # Deploy prebuilt artifacts (no remote build)
           echo "Deploying prebuilt artifacts..."

@@ -888,10 +888,30 @@ jobs:
           environment: preview
           deployment-env: api
           prebuilt: "true"
+          prebuilt-build-command: |
+            pnpm --dir turbo/apps/api build
+            rm -rf .vercel/output
+            cp -R turbo/apps/api/.vercel/output .vercel/output
           environment-file: ${{ steps.api-deploy-env.outputs.file }}
           meta-branch: ${{ github.head_ref || github.ref_name }}
           meta-pr: ${{ needs.prepare.outputs.job-ref }}
           skip-finish: ${{ github.event_name == 'pull_request' && vars.PREVIEW_DOMAIN != '' }}
+
+      - name: Check API health
+        if: needs.prepare.outputs.api-changed == 'true' || needs.prepare.outputs.ci-changed == 'true'
+        run: |
+          set -euo pipefail
+          vercel curl /health --deployment "$API_DEPLOYMENT_URL" --token "$VERCEL_TOKEN" -- \
+            --fail \
+            --show-error \
+            --silent \
+            --max-time 20 \
+            --retry 3 \
+            --retry-delay 2 \
+            --retry-all-errors
+        env:
+          API_DEPLOYMENT_URL: ${{ steps.api-deploy.outputs.url }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
 
       - name: Create API Vercel Alias
         id: api-alias
