@@ -6,14 +6,13 @@ const SCHEMA = {
   CLERK_SECRET_KEY: z.string().min(1),
   CLERK_PUBLISHABLE_KEY: z.string().min(1),
   SECRETS_ENCRYPTION_KEY: z.string().length(64),
-  OFFICIAL_RUNNER_SECRET: z.string().length(64).optional(),
-  OTEL_SERVICE_NAME: z.string().min(1).default("vm0-api"),
+  OFFICIAL_RUNNER_SECRET: z.string().length(64),
   SENTRY_DSN: z.url().optional(),
   VERCEL_GIT_COMMIT_SHA: z.string().optional(),
   VERCEL_ENV: z.enum(["production", "preview", "development"]).optional(),
   VITEST: z.enum(["true", "false"]).optional(),
   VM0_DEBUG: z.string().optional(),
-} as const;
+};
 
 const baseEnv = createEnv({
   server: SCHEMA,

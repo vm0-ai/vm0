@@ -5,10 +5,11 @@ import { registerOTel } from "@vercel/otel";
 
 import { env } from "./lib/env";
 
+const OTEL_SERVICE_NAME = "vm0-api";
+
 function setupOpenTelemetry() {
   const serviceVersion = env("VERCEL_GIT_COMMIT_SHA");
-  const serviceName = env("OTEL_SERVICE_NAME");
-  if (!serviceVersion || !serviceName) {
+  if (!serviceVersion) {
     return;
   }
 
@@ -18,7 +19,7 @@ function setupOpenTelemetry() {
   });
 
   registerOTel({
-    serviceName: serviceName,
+    serviceName: OTEL_SERVICE_NAME,
     attributes: { [ATTR_SERVICE_VERSION]: serviceVersion },
     instrumentations: [pgInstrumentation],
     traceExporter: "auto",

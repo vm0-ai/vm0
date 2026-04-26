@@ -17,9 +17,6 @@ type RunnerAuthContext =
 
 function validateOfficialRunnerSecret(providedSecret: string): boolean {
   const expectedSecret = env("OFFICIAL_RUNNER_SECRET");
-  if (!expectedSecret) {
-    return false;
-  }
 
   const providedBuffer = Buffer.from(providedSecret, "utf8");
   const expectedBuffer = Buffer.from(expectedSecret, "utf8");
