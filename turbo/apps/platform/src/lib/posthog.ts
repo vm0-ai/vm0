@@ -67,14 +67,14 @@ export const startChatNavigationTiming$ = command(({ set }) => {
 });
 
 export const markNavigationPushState$ = command(({ get, set }) => {
-  if (!enabled || get(navigationEnterTime$) == null) {
+  if (!enabled || get(navigationEnterTime$) === null) {
     return;
   }
   set(navigationPushStateTime$, performance.now());
 });
 
 export const markRouteSetupBegin$ = command(({ get, set }) => {
-  if (!enabled || get(navigationEnterTime$) == null) {
+  if (!enabled || get(navigationEnterTime$) === null) {
     return;
   }
   set(navigationSetupTime$, performance.now());
