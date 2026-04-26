@@ -225,8 +225,12 @@ impl http_body::Body for SizedBody {
             Poll::Ready(Ok(())) => {
                 let n = read_buf.filled().len();
                 if n == 0 {
+                    let missing = *this.remaining;
                     *this.remaining = 0;
-                    return Poll::Ready(None);
+                    return Poll::Ready(Some(Err(std::io::Error::new(
+                        std::io::ErrorKind::UnexpectedEof,
+                        format!("streaming upload source ended {missing} bytes early"),
+                    ))));
                 }
                 // SAFETY: `poll_read` initialized exactly `n` bytes in the spare
                 // capacity exposed to `ReadBuf` above.
@@ -234,7 +238,8 @@ impl http_body::Body for SizedBody {
                     this.buffer.set_len(buffer_len + n);
                 }
                 let frame_data = this.buffer.split_to(n).freeze();
-                *this.remaining = this.remaining.saturating_sub(n as u64);
+                debug_assert!((n as u64) <= *this.remaining);
+                *this.remaining -= n as u64;
                 Poll::Ready(Some(Ok(Frame::data(frame_data))))
             }
             Poll::Ready(Err(e)) => Poll::Ready(Some(Err(e))),
@@ -394,5 +399,27 @@ mod tests {
         assert_eq!(&chunk[..], b"initial");
         assert_eq!(body.size_hint().exact(), Some(0));
         assert!(next_data(&mut body).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn sized_body_errors_when_file_is_shorter_than_metadata() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("body.bin");
+        tokio::fs::write(&path, b"initial-extra").await.unwrap();
+        let file = tokio::fs::File::open(&path).await.unwrap();
+        let file_len = file.metadata().await.unwrap().len();
+        let mut body = SizedBody::new(file, file_len);
+
+        tokio::fs::write(&path, b"initial").await.unwrap();
+
+        let chunk = next_data(&mut body).await.unwrap();
+        assert_eq!(&chunk[..], b"initial");
+        let error = poll_fn(|cx| Pin::new(&mut body).poll_frame(cx))
+            .await
+            .expect("expected a frame")
+            .expect_err("expected early EOF error");
+
+        assert_eq!(error.kind(), std::io::ErrorKind::UnexpectedEof);
+        assert_eq!(body.size_hint().exact(), Some(0));
     }
 }
