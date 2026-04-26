@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.1...guest-common-v0.2.2) (2026-04-26)
+
+
+### Documentation
+
+* **guest-common:** update crate overview ([#11166](https://github.com/vm0-ai/vm0/issues/11166)) ([31444fa](https://github.com/vm0-ai/vm0/commit/31444fac59a4fe5d63291d6ee8a9a29d44779cbe))
+
 ## [0.2.1](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.0...guest-common-v0.2.1) (2026-04-22)
 
 

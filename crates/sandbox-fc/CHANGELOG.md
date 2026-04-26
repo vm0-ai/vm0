@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.26.9](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.26.8...sandbox-fc-v0.26.9) (2026-04-26)
+
+
+### Refactoring
+
+* **sandbox-fc:** remove unused prerequisite config ([#11173](https://github.com/vm0-ai/vm0/issues/11173)) ([e2acce9](https://github.com/vm0-ai/vm0/commit/e2acce90cc2d9c0d1021d7a0156c6a3d7e755218))
+
 ## [0.26.8](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.26.7...sandbox-fc-v0.26.8) (2026-04-25)
 
 

@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.132.10](https://github.com/vm0-ai/vm0/compare/cli-v9.132.9...cli-v9.132.10) (2026-04-26)
+
+
+### Bug Fixes
+
+* stabilize run stdout event visibility ([#11149](https://github.com/vm0-ai/vm0/issues/11149)) ([479c57e](https://github.com/vm0-ai/vm0/commit/479c57e06f22ef706e3be087a21c4a7588bbea38))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.237.0
+
 ## [9.132.9](https://github.com/vm0-ai/vm0/compare/cli-v9.132.8...cli-v9.132.9) (2026-04-26)
 
 

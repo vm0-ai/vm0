@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.237.0](https://github.com/vm0-ai/vm0/compare/core-v8.236.1...core-v8.237.0) (2026-04-26)
+
+
+### Features
+
+* **platform:** add PWA offline caching and fallback page ([#11151](https://github.com/vm0-ai/vm0/issues/11151)) ([ed86f3c](https://github.com/vm0-ai/vm0/commit/ed86f3c452ae4d2034a584fb0503e7518f3b0a38))
+
 ## [8.236.1](https://github.com/vm0-ai/vm0/compare/core-v8.236.0...core-v8.236.1) (2026-04-26)
 
 

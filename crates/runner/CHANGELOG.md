@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.95.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.95.4...runner-rs-v0.95.5) (2026-04-26)
+
+
+### Bug Fixes
+
+* **mitm-addon:** detect x tweet urls conservatively ([#11176](https://github.com/vm0-ai/vm0/issues/11176)) ([cf8fb08](https://github.com/vm0-ai/vm0/commit/cf8fb08a270e1f887f78272dd8bb5b34f6adfe5e))
+* **runner:** reap completed jobs while running ([#11167](https://github.com/vm0-ai/vm0/issues/11167)) ([1355c20](https://github.com/vm0-ai/vm0/commit/1355c206bc638b7e5c65764992f57df9990b6a36))
+* **runner:** reclaim expired idle VMs under pressure ([#11172](https://github.com/vm0-ai/vm0/issues/11172)) ([28855b9](https://github.com/vm0-ai/vm0/commit/28855b980d66b77d869ba5b37d6055b29676ca43))
+
+
+### Refactoring
+
+* **runner:** consolidate flock acquisition ([#11155](https://github.com/vm0-ai/vm0/issues/11155)) ([cd013fc](https://github.com/vm0-ai/vm0/commit/cd013fcc037efd50001c0525c9c11202e5c959f1))
+* **runner:** consolidate gc read dir handling ([#11153](https://github.com/vm0-ai/vm0/issues/11153)) ([c07593c](https://github.com/vm0-ai/vm0/commit/c07593ce164289f102ec050594a2ba62570d9b60))
+* **runner:** split start leaf modules ([#11136](https://github.com/vm0-ai/vm0/issues/11136)) ([9bc7995](https://github.com/vm0-ai/vm0/commit/9bc7995a0ef28c05e7eea326d0233325221d2016))
+* **runner:** unify start loop reactor ([#11159](https://github.com/vm0-ai/vm0/issues/11159)) ([aa85eb6](https://github.com/vm0-ai/vm0/commit/aa85eb61e06c82f36a594c4852c4f0dbcd5b84e5))
+
 ## [0.95.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.95.3...runner-rs-v0.95.4) (2026-04-26)
 
 

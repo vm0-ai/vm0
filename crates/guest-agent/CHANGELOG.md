@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.24.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.24.3...guest-agent-v0.24.4) (2026-04-26)
+
+
+### Bug Fixes
+
+* **guest-agent:** reduce streaming upload allocations ([#11156](https://github.com/vm0-ai/vm0/issues/11156)) ([53cc666](https://github.com/vm0-ai/vm0/commit/53cc6663c89c41a50a754e34237ccf3eb61b0f27))
+* stabilize run stdout event visibility ([#11149](https://github.com/vm0-ai/vm0/issues/11149)) ([479c57e](https://github.com/vm0-ai/vm0/commit/479c57e06f22ef706e3be087a21c4a7588bbea38))
+
 ## [0.24.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.24.2...guest-agent-v0.24.3) (2026-04-25)
 
 

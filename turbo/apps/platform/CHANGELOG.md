@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.295.0](https://github.com/vm0-ai/vm0/compare/app-v0.294.1...app-v0.295.0) (2026-04-26)
+
+
+### Features
+
+* **platform:** add PWA offline caching and fallback page ([#11151](https://github.com/vm0-ai/vm0/issues/11151)) ([ed86f3c](https://github.com/vm0-ai/vm0/commit/ed86f3c452ae4d2034a584fb0503e7518f3b0a38))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.237.0
+
 ## [0.294.1](https://github.com/vm0-ai/vm0/compare/app-v0.294.0...app-v0.294.1) (2026-04-26)
 
 

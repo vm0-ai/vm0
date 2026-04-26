@@ -1,5 +1,20 @@
 # Changelog
 
+## [12.300.8](https://github.com/vm0-ai/vm0/compare/web-v12.300.7...web-v12.300.8) (2026-04-26)
+
+
+### Bug Fixes
+
+* **schedule:** demote insufficient-credits skip from error to warn ([#11135](https://github.com/vm0-ai/vm0/issues/11135)) ([db8f6b7](https://github.com/vm0-ai/vm0/commit/db8f6b7a981d87c67c05ca3fd9ae288ebfcfbdca))
+* stabilize run stdout event visibility ([#11149](https://github.com/vm0-ai/vm0/issues/11149)) ([479c57e](https://github.com/vm0-ai/vm0/commit/479c57e06f22ef706e3be087a21c4a7588bbea38))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.237.0
+
 ## [12.300.7](https://github.com/vm0-ai/vm0/compare/web-v12.300.6...web-v12.300.7) (2026-04-26)
 
 
