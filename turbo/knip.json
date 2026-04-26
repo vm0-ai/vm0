@@ -45,7 +45,13 @@
       }
     },
     "apps/api": {
-      "entry": ["src/index.ts", "src/**/*.{test,spec}.ts"],
+      "entry": [
+        "src/app.ts",
+        "src/server.ts",
+        "src/signals/context/hono.ts",
+        "src/signals/context/wait-until.ts",
+        "src/**/*.{test,spec}.ts"
+      ],
       "project": ["src/**/*.ts"]
     },
     "apps/platform": {

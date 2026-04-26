@@ -1,0 +1,59 @@
+export enum Mechanism {
+  WaitUntil = "wait_until",
+}
+
+const IN_VITEST = process.env.VITEST === "true";
+
+class PromiseTracker {
+  collected = new Set<Promise<unknown>>();
+  mechanisms = new Map<Promise<unknown>, Mechanism>();
+  descriptions = new Map<Promise<unknown>, string>();
+}
+
+const tracker = new PromiseTracker();
+
+function isAbortError(error: unknown): boolean {
+  return (
+    (error instanceof Error || error instanceof DOMException) &&
+    error.name === "AbortError"
+  );
+}
+
+export function detach(
+  promise: Promise<unknown>,
+  mechanism: Mechanism,
+  description?: string,
+): void {
+  const silenced = promise.then(
+    () => {},
+    (error: unknown) => {
+      if (!isAbortError(error)) {
+        console.error(`Detached promise rejected [${mechanism}]`, error);
+      }
+    },
+  );
+
+  if (IN_VITEST) {
+    tracker.collected.add(silenced);
+    tracker.mechanisms.set(silenced, mechanism);
+    if (description) {
+      tracker.descriptions.set(silenced, description);
+    }
+  }
+}
+
+export async function clearAllDetached(): Promise<void> {
+  if (!IN_VITEST) {
+    tracker.collected.clear();
+    tracker.mechanisms.clear();
+    tracker.descriptions.clear();
+    return;
+  }
+
+  for (const promise of tracker.collected) {
+    await promise;
+  }
+  tracker.collected.clear();
+  tracker.mechanisms.clear();
+  tracker.descriptions.clear();
+}
