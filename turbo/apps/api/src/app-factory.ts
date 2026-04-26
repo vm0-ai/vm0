@@ -1,5 +1,5 @@
 import * as Sentry from "@sentry/node";
-import { Hono, type Context } from "hono";
+import { type Context, type Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 
 import { logger } from "./lib/log";
@@ -29,7 +29,7 @@ function handleError(error: Error, context: Context): Response {
   return context.json({ error: "Internal server error" }, 500);
 }
 
-export function createApp(signal: AbortSignal, app = new Hono()): Hono {
+export function createApp(signal: AbortSignal, app: Hono): Hono {
   app.onError(handleError);
 
   ROUTES.forEach((route: RouteDefinition<unknown>) => {

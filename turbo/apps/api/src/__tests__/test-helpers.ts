@@ -1,4 +1,4 @@
-import type { Hono } from "hono";
+import { Hono } from "hono";
 import { afterEach } from "vitest";
 
 import { createApp } from "../app-factory";
@@ -16,7 +16,7 @@ export function testContext(): TestContext {
 
   const context: TestContext = {
     get app(): Hono {
-      app ??= createApp(context.signal);
+      app ??= createApp(context.signal, new Hono());
       return app;
     },
     get signal(): AbortSignal {
