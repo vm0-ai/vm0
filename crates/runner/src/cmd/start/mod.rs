@@ -3769,6 +3769,94 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
+    async fn budget_exhausted_evicts_oldest_when_expired_reclaim_insufficient() {
+        let (config, env) = mock_run_config(two_profiles(), 7, 13312, 3);
+        let idle_pool = Arc::clone(&config.idle_pool);
+        let budget = Arc::clone(&config.budget);
+        let status_path = env._temp_dir.path().join("status.json");
+        let now = std::time::Instant::now();
+
+        seed_idle_pool_with_timing(
+            &idle_pool,
+            &budget,
+            TestIdleEntrySpec {
+                session_id: "sess-old-active",
+                profile_name: "vm0/large",
+                vcpu: 4,
+                memory_mb: 8192,
+                parked_at: now - Duration::from_secs(100),
+                idle_timeout: Duration::from_secs(300),
+            },
+        )
+        .await;
+        seed_idle_pool_with_timing(
+            &idle_pool,
+            &budget,
+            TestIdleEntrySpec {
+                session_id: "sess-new-active",
+                profile_name: "vm0/default",
+                vcpu: 2,
+                memory_mb: 4096,
+                parked_at: now - Duration::from_secs(50),
+                idle_timeout: Duration::from_secs(300),
+            },
+        )
+        .await;
+        seed_idle_pool_with_timing(
+            &idle_pool,
+            &budget,
+            TestIdleEntrySpec {
+                session_id: "sess-expired-small",
+                profile_name: "vm0/default",
+                // Intentionally smaller than the current min profile. With
+                // only profile-sized entries, releasing one expired VM is
+                // already enough to admit the min profile; this pins the
+                // fallback loop for stale/non-current idle footprints.
+                vcpu: 1,
+                memory_mb: 1024,
+                parked_at: now - Duration::from_secs(10),
+                idle_timeout: Duration::from_secs(1),
+            },
+        )
+        .await;
+        assert!(
+            !budget.can_afford(2, 4096),
+            "seeded idle entries should exhaust budget"
+        );
+
+        let run_handle = tokio::spawn(run(config));
+
+        let run_id = RunId::new_v4();
+        push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
+
+        let completion = env
+            .handle
+            .wait_completion(run_id, Duration::from_secs(5))
+            .await;
+        assert!(
+            completion.is_some(),
+            "job should complete after expired reclaim plus oldest eviction"
+        );
+        assert_eq!(completion.unwrap().exit_code, 0);
+
+        wait_budget_count(&budget, 1, Duration::from_secs(5)).await;
+
+        let sessions = idle_pool.lock().await.held_sessions();
+        assert_eq!(
+            sessions,
+            vec!["sess-new-active".to_string()],
+            "expired entry and oldest active entry should be reclaimed"
+        );
+        assert_eq!(
+            status_idle_sessions(&status_path).await,
+            vec!["sess-new-active".to_string()],
+            "status.json should reflect only the remaining idle VM"
+        );
+
+        shutdown(&env, run_handle).await;
+    }
+
+    #[tokio::test(start_paused = true)]
     async fn budget_pressure_eviction_clears_status_json_idle_vms() {
         let (config, env) = mock_run_config(test_profiles(), 2, 4096, 2);
         let idle_pool = Arc::clone(&config.idle_pool);
