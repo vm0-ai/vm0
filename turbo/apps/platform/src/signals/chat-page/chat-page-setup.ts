@@ -20,7 +20,10 @@ import {
   clearMatchingOptimisticChatThread$,
   optimisticChatThread$,
 } from "./optimistic-chat-thread-page.ts";
-import { markRouteSetupBegin$ } from "../../lib/posthog.ts";
+import {
+  captureNavigationTiming$,
+  markRouteSetupBegin$,
+} from "../../lib/posthog.ts";
 
 export const setupChatPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -54,6 +57,7 @@ export const setupChatPage$ = command(
       "sidebar",
     );
     await set(hideAppSkeleton$, signal);
+    set(captureNavigationTiming$);
 
     if (matchingOptimisticThread) {
       set(updateDocumentTitle$, "New chat");
