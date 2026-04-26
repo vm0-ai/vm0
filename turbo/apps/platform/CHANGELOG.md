@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.294.1](https://github.com/vm0-ai/vm0/compare/app-v0.294.0...app-v0.294.1) (2026-04-26)
+
+
+### Bug Fixes
+
+* complete posthog instrumentation ([#11147](https://github.com/vm0-ai/vm0/issues/11147)) ([5aa09dc](https://github.com/vm0-ai/vm0/commit/5aa09dc22ecd41e3949a497c375b9968804fbdbf))
+
 ## [0.294.0](https://github.com/vm0-ai/vm0/compare/app-v0.293.6...app-v0.294.0) (2026-04-26)
 
 
