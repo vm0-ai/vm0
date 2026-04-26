@@ -15,7 +15,7 @@ import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/
 const context = testContext();
 const mockApi = createMockApi(context);
 
-describe("JobCustomConnectorsSection", () => {
+describe("jobCustomConnectorsSection", () => {
   function mockAPIs() {
     setMockTeam([
       {
@@ -64,16 +64,17 @@ describe("JobCustomConnectorsSection", () => {
     mockAPIs();
     detachedSetupPage({ context, path: "/agents/my-agent" });
 
-    await waitFor(
-      () => {
-        expect(
-          screen.getByRole("heading", { name: "My Agent" }),
-        ).toBeInTheDocument();
-      },
-      { timeout: 10000 },
-    );
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "My Agent" }),
+      ).toBeInTheDocument();
+    });
 
     // Verify the Authorization tab is visible (the tab where custom connectors section lives)
-    expect(screen.getByRole("tab", { name: "Authorization" })).toBeInTheDocument();
+    expect(
+      screen.getAllByRole("tab").find((el) => {
+        return /Authorization/.test(el.textContent ?? "");
+      }),
+    ).toBeInTheDocument();
   });
 });
