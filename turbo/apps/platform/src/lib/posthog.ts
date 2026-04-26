@@ -1,5 +1,5 @@
 import { posthog } from "posthog-js";
-import { timeout } from "signal-timers";
+import { delay } from "signal-timers";
 
 let enabled = false;
 
@@ -72,15 +72,11 @@ export function startChatNavigationTiming(): void {
     enterTime,
     timeoutController,
   };
-  timeout(
-    () => {
-      if (active?.enterTime === enterTime) {
-        active = null;
-      }
-    },
-    30_000,
-    { signal: timeoutController.signal },
-  );
+  delay(30_000, { signal: timeoutController.signal }).then(() => {
+    if (active?.enterTime === enterTime) {
+      active = null;
+    }
+  });
 }
 
 export function markNavigationPushState(): void {
