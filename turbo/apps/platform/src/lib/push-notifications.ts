@@ -27,7 +27,7 @@ export const registerServiceWorker$ = command(
     // notifications are a non-critical enhancement, so swallow the
     // rejection to avoid aborting bootstrap or spamming Sentry.
     const registration = await navigator.serviceWorker
-      .register("/sw.js")
+      .register("/sw.js", { updateViaCache: "none" })
       .catch(() => {
         return null;
       });
