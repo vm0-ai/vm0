@@ -1,5 +1,5 @@
 import { NextResponse, after } from "next/server";
-import { inArray, and, lt, eq } from "drizzle-orm";
+import { inArray, and, lt, eq, desc } from "drizzle-orm";
 import { initServices } from "../../../../src/lib/init-services";
 import { logger } from "../../../../src/lib/shared/logger";
 import { env } from "../../../../src/env";
@@ -42,6 +42,10 @@ export async function GET(request: Request): Promise<Response> {
         eq(voiceChatSessions.reasoningStatus, "running"),
         lt(voiceChatSessions.lastSummaryAt, reasonerStuckThreshold),
       ),
+    )
+    .orderBy(
+      desc(voiceChatSessions.lastSummaryAt),
+      desc(voiceChatSessions.createdAt),
     )
     .limit(BATCH_LIMIT);
 

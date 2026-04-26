@@ -5,6 +5,7 @@ import {
   nextAfterArgForms,
   nextAfterCallbacks,
   nextWaitUntilPromises,
+  flushNextAsyncHooks,
   resetNextAfterHooks,
 } from "./next-after-hooks";
 
@@ -96,7 +97,9 @@ vi.mock("next/server", async (importOriginal) => {
   const original = await importOriginal<typeof import("next/server")>();
   return {
     ...original,
-    after: (fnOrPromise: (() => Promise<unknown>) | Promise<unknown>) => {
+    after: (
+      fnOrPromise: (() => unknown | Promise<unknown>) | Promise<unknown>,
+    ) => {
       if (typeof fnOrPromise === "function") {
         nextAfterArgForms.push("fn");
         nextAfterCallbacks.push(fnOrPromise);
@@ -320,7 +323,9 @@ beforeEach(() => {
   resetNextAfterHooks();
 });
 
-afterEach(() => {
+afterEach(async () => {
+  await flushNextAsyncHooks();
+  resetNextAfterHooks();
   server.resetHandlers();
 });
 

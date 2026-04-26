@@ -1,4 +1,4 @@
-import { randomUUID } from "crypto";
+import { randomUUID } from "node:crypto";
 import { describe, it, expect, beforeEach } from "vitest";
 import { GET, POST } from "../route";
 import {
