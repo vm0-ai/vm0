@@ -2,7 +2,7 @@
   "extends": "@vm0/typescript-config/base.json",
   "compilerOptions": {
     "allowImportingTsExtensions": true,
-    "lib": ["ES2022"],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "noEmit": true,
     "types": ["node", "vitest/globals"],
     "outDir": "./dist"
