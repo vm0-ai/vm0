@@ -1240,7 +1240,7 @@ checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
 name = "guest-agent"
-version = "0.24.2"
+version = "0.24.3"
 dependencies = [
  "aho-corasick",
  "base64",
@@ -1286,7 +1286,7 @@ dependencies = [
 
 [[package]]
 name = "guest-init"
-version = "0.16.10"
+version = "0.16.11"
 dependencies = [
  "libc",
  "nix",
@@ -2503,7 +2503,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.95.2"
+version = "0.95.3"
 dependencies = [
  "ably-subscriber",
  "async-trait",
@@ -3571,7 +3571,7 @@ checksum = "5c3082ca00d5a5ef149bb8b555a72ae84c9c59f7250f013ac822ac2e49b19c64"
 
 [[package]]
 name = "vsock-guest"
-version = "0.10.4"
+version = "0.10.5"
 dependencies = [
  "libc",
  "vsock-proto",
@@ -3592,7 +3592,7 @@ version = "0.9.2"
 
 [[package]]
 name = "vsock-test"
-version = "0.9.5"
+version = "0.9.6"
 dependencies = [
  "tokio",
  "vsock-guest",

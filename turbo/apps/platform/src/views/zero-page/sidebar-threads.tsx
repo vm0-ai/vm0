@@ -44,10 +44,7 @@ import {
 } from "../../signals/chat-page/optimistic-chat-thread-page.ts";
 import { currentChatAgentId$ } from "../../signals/agent-chat.ts";
 import { pathParams$ } from "../../signals/route.ts";
-import {
-  navigateToChat$,
-  setSidebarExpanded$,
-} from "../../signals/zero-page/zero-nav.ts";
+import { setSidebarExpanded$ } from "../../signals/zero-page/zero-nav.ts";
 import {
   threadSearchOpen$,
   sidebarSearchTerm$,
@@ -69,7 +66,7 @@ function ChatThreadItem({
 }: {
   session: ChatThreadListItem;
   isSelected: boolean;
-  onSelect?: (id: string) => void;
+  onSelect?: () => void;
   showReadIndicator: boolean;
 }) {
   const setPendingDeleteThreadId = useSet(setPendingDeleteThreadId$);
@@ -93,8 +90,7 @@ function ChatThreadItem({
           if (e.metaKey || e.ctrlKey || e.shiftKey) {
             return;
           }
-          e.preventDefault();
-          onSelect?.(session.id);
+          onSelect?.();
         }}
         className={`flex h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors ${
           isSelected
@@ -151,7 +147,6 @@ function ChatThreads() {
   const pathParams = useGet(pathParams$);
   const selectedThreadId =
     typeof pathParams?.threadId === "string" ? pathParams.threadId : null;
-  const navigateToChat = useSet(navigateToChat$);
   const setSidebarExpanded = useSet(setSidebarExpanded$);
   const pendingDeleteThreadId = useGet(pendingDeleteThreadId$);
   const setPendingDeleteThreadId = useSet(setPendingDeleteThreadId$);
@@ -177,8 +172,7 @@ function ChatThreads() {
       })
     : optimisticChatThreads;
 
-  const onRecentSelect = (chatThreadId: string) => {
-    navigateToChat(chatThreadId);
+  const onRecentSelect = () => {
     setSidebarExpanded(false);
   };
 

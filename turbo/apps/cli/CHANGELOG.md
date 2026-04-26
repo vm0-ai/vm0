@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.132.8](https://github.com/vm0-ai/vm0/compare/cli-v9.132.7...cli-v9.132.8) (2026-04-25)
+
+
+### Refactoring
+
+* split db and api contracts packages ([#11092](https://github.com/vm0-ai/vm0/issues/11092)) ([f4767d9](https://github.com/vm0-ai/vm0/commit/f4767d987af373d17d93d5ca8fb00864c18bc15b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.236.0
+
 ## [9.132.7](https://github.com/vm0-ai/vm0/compare/cli-v9.132.6...cli-v9.132.7) (2026-04-25)
 
 
