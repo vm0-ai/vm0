@@ -6,7 +6,12 @@ import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { decryptSecretsMap } from "../../shared/crypto";
-import { notFound, badRequest, schedulePast } from "@vm0/api-services/errors";
+import {
+  notFound,
+  badRequest,
+  schedulePast,
+  isInsufficientCredits,
+} from "@vm0/api-services/errors";
 import { logger } from "../../shared/logger";
 import { createZeroRun } from "../zero-run-service";
 import { buildSchedulePrompt } from "../integration-prompt";
@@ -793,7 +798,27 @@ export async function executeDueSchedules(): Promise<{
       await executeSchedule(schedule, Date.now());
       executed++;
     } catch (error) {
-      log.error(`Failed to execute schedule ${schedule.name}:`, error);
+      // InsufficientCredits is an expected user-state rejection (HTTP 402),
+      // not a system bug — log it at `warn` so it doesn't trip Axiom's
+      // error-level alerts. All other failures stay at `error`. Both paths
+      // share the consecutive-failures + auto-disable book-keeping below,
+      // which eventually stops the per-tick log on a persistently empty org.
+      const isCreditError = isInsufficientCredits(error);
+      const failureContext = {
+        scheduleId: schedule.id,
+        scheduleName: schedule.name,
+        orgId: schedule.orgId,
+        userId: schedule.userId,
+        error: error instanceof Error ? error.message : String(error),
+      };
+      if (isCreditError) {
+        log.warn("Schedule skipped: insufficient credits", failureContext);
+      } else {
+        log.error(
+          `Failed to execute schedule ${schedule.name}:`,
+          failureContext,
+        );
+      }
 
       // Pre-run failure: increment consecutive failures and schedule next attempt
       // (mirrors callback failure handling from #8430)
@@ -831,7 +856,10 @@ export async function executeDueSchedules(): Promise<{
         log.warn("Schedule auto-disabled after consecutive pre-run failures", {
           scheduleId: schedule.id,
           scheduleName: schedule.name,
+          orgId: schedule.orgId,
+          userId: schedule.userId,
           consecutiveFailures: newFailureCount,
+          reason: isCreditError ? "insufficient_credits" : "pre_run_failure",
         });
       }
 
