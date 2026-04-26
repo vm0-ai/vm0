@@ -614,25 +614,36 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         maybe_spawn_mitm_restart(&mut mitm, &mut mitm_crash_rx, &mut mitm_retry).await;
 
         let can_discover = if matches!(mode, RunnerMode::Running) {
-            // If budget is exhausted for all profiles, try evicting an idle VM
-            // before parking discovery. NOTE: evict_oldest is session-blind —
-            // it may destroy the VM the next job wants to reuse. A proper fix
-            // requires knowing session_id before claim, tracked separately.
-            if !budget.can_afford(min_vcpu, min_memory_mb)
-                && let Some(evicted) = idle_pool.lock().await.evict_oldest()
-            {
-                info!(
-                    session_id = %evicted.session_id,
-                    profile = %evicted.profile_name,
-                    "evicting idle VM for resource pressure"
-                );
-                // Inline destroy so budget.release() happens synchronously
-                // before the loop re-checks can_afford().
-                let vcpu = evicted.vcpu;
-                let memory_mb = evicted.memory_mb;
-                evicted.stop_and_destroy().await;
-                budget.release(vcpu, memory_mb);
-                continue;
+            if !budget.can_afford(min_vcpu, min_memory_mb) {
+                let expired = evict_expired_idle_entries(&idle_pool, &status).await;
+                if !expired.is_empty() {
+                    info!(
+                        count = expired.len(),
+                        "reclaiming expired idle VMs for resource pressure"
+                    );
+                    destroy_idle_entries_and_wait(expired, &budget, "budget_pressure_expired")
+                        .await;
+                    continue;
+                }
+
+                // If budget is still exhausted, try evicting an idle VM before
+                // parking discovery. NOTE: evict_oldest is session-blind — it
+                // may destroy the VM the next job wants to reuse. A proper fix
+                // requires knowing session_id before claim, tracked separately.
+                if let Some(evicted) = evict_oldest_idle_entry(&idle_pool, &status).await {
+                    info!(
+                        session_id = %evicted.session_id,
+                        profile = %evicted.profile_name,
+                        "evicting idle VM for resource pressure"
+                    );
+                    // Inline destroy so budget.release() happens synchronously
+                    // before the loop re-checks can_afford().
+                    let vcpu = evicted.vcpu;
+                    let memory_mb = evicted.memory_mb;
+                    evicted.stop_and_destroy().await;
+                    budget.release(vcpu, memory_mb);
+                    continue;
+                }
             }
             budget.can_afford(min_vcpu, min_memory_mb)
         } else {
@@ -1341,10 +1352,48 @@ async fn drain_idle_pool(
         return;
     }
     info!(count = entries.len(), context, "destroying idle VMs");
+    destroy_idle_entries_and_wait(entries, budget, context).await;
+    status.set_idle_info(Vec::new()).await;
+}
+
+/// Remove expired idle entries and update status to match the new pool state.
+async fn evict_expired_idle_entries(
+    idle_pool: &SharedIdlePool,
+    status: &StatusTracker,
+) -> Vec<IdleEntry> {
+    let mut pool = idle_pool.lock().await;
+    let expired = pool.evict_expired();
+    if expired.is_empty() {
+        return expired;
+    }
+    let idle_vms = pool.held_snapshot();
+    drop(pool);
+    status.set_idle_info(idle_vms).await;
+    expired
+}
+
+/// Remove the oldest idle entry and update status to match the new pool state.
+async fn evict_oldest_idle_entry(
+    idle_pool: &SharedIdlePool,
+    status: &StatusTracker,
+) -> Option<IdleEntry> {
+    let mut pool = idle_pool.lock().await;
+    let evicted = pool.evict_oldest()?;
+    let idle_vms = pool.held_snapshot();
+    drop(pool);
+    status.set_idle_info(idle_vms).await;
+    Some(evicted)
+}
+
+/// Destroy idle entries in parallel and wait until their budgets are released.
+async fn destroy_idle_entries_and_wait(
+    entries: Vec<IdleEntry>,
+    budget: &Arc<ResourceBudget>,
+    context: &'static str,
+) {
     // Destroy in parallel — each `stop_and_destroy` is ~1–3s (FC shutdown +
-    // cgroup/NBD/netns teardown), and teardown-path callers sit between the
-    // last job finishing and the runner process exiting. Serial destroy
-    // blows past the CI `wait_for_exit` budget on multi-VM drains.
+    // cgroup/NBD/netns teardown). Serial destroy blows past shutdown and
+    // budget-pressure recovery budgets on multi-VM cleanup.
     let mut set = tokio::task::JoinSet::new();
     for entry in entries {
         set.spawn(destroy_idle_entry(entry, Arc::clone(budget)));
@@ -1354,7 +1403,6 @@ async fn drain_idle_pool(
             warn!(context, error = %e, "idle entry destroy task panicked");
         }
     }
-    status.set_idle_info(Vec::new()).await;
 }
 
 /// Destroy an idle sandbox entry and release its budget.
@@ -1929,9 +1977,9 @@ mod tests {
         let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
         let run_handle = tokio::spawn(run(config));
 
+        env.handle.discover_entered.notified().await;
         let run_id = RunId::new_v4();
         push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
-        let _token = wait_cancel_token(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
 
         let completion = env
             .handle
@@ -3257,6 +3305,55 @@ mod tests {
         assert!(matches!(result, ParkResult::Parked));
     }
 
+    struct TestIdleEntrySpec<'a> {
+        session_id: &'a str,
+        profile_name: &'a str,
+        vcpu: u32,
+        memory_mb: u32,
+        parked_at: std::time::Instant,
+        idle_timeout: Duration,
+    }
+
+    async fn seed_idle_pool_with_timing(
+        pool: &SharedIdlePool,
+        budget: &ResourceBudget,
+        spec: TestIdleEntrySpec<'_>,
+    ) {
+        assert!(budget.try_reserve(spec.vcpu, spec.memory_mb));
+        let entry = make_test_idle_entry(
+            spec.session_id,
+            spec.profile_name,
+            spec.vcpu,
+            spec.memory_mb,
+            spec.parked_at,
+            spec.idle_timeout,
+        );
+        let mut guard = pool.lock().await;
+        let result = guard.park(spec.session_id.into(), entry);
+        assert!(matches!(result, ParkResult::Parked));
+    }
+
+    async fn status_idle_sessions(status_path: &std::path::Path) -> Vec<String> {
+        let raw = tokio::fs::read_to_string(status_path).await.unwrap();
+        let status: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        let mut sessions: Vec<String> = status
+            .get("idle_vms")
+            .and_then(|v| v.as_array())
+            .map(|idle_vms| {
+                idle_vms
+                    .iter()
+                    .filter_map(|vm| {
+                        vm.get("session_id")
+                            .and_then(|session| session.as_str())
+                            .map(str::to_string)
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        sessions.sort_unstable();
+        sessions
+    }
+
     // -----------------------------------------------------------------------
     // Test 10: Successful job parks VM in idle pool
     // -----------------------------------------------------------------------
@@ -3596,6 +3693,111 @@ mod tests {
             "job should complete after idle VM eviction frees budget"
         );
         assert_eq!(completion.unwrap().exit_code, 0);
+
+        shutdown(&env, run_handle).await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn budget_exhausted_reclaims_expired_before_oldest_idle() {
+        let (config, env) = mock_run_config(two_profiles(), 6, 12288, 3);
+        let idle_pool = Arc::clone(&config.idle_pool);
+        let budget = Arc::clone(&config.budget);
+        let status_path = env._temp_dir.path().join("status.json");
+        let now = std::time::Instant::now();
+
+        seed_idle_pool_with_timing(
+            &idle_pool,
+            &budget,
+            TestIdleEntrySpec {
+                session_id: "sess-old-active",
+                profile_name: "vm0/default",
+                vcpu: 2,
+                memory_mb: 4096,
+                parked_at: now - Duration::from_secs(100),
+                idle_timeout: Duration::from_secs(300),
+            },
+        )
+        .await;
+        seed_idle_pool_with_timing(
+            &idle_pool,
+            &budget,
+            TestIdleEntrySpec {
+                session_id: "sess-expired-newer",
+                profile_name: "vm0/large",
+                vcpu: 4,
+                memory_mb: 8192,
+                parked_at: now - Duration::from_secs(10),
+                idle_timeout: Duration::from_secs(1),
+            },
+        )
+        .await;
+        assert!(
+            !budget.can_afford(2, 4096),
+            "seeded idle entries should exhaust budget"
+        );
+
+        let run_handle = tokio::spawn(run(config));
+
+        let run_id = RunId::new_v4();
+        push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
+
+        let completion = env
+            .handle
+            .wait_completion(run_id, Duration::from_secs(5))
+            .await;
+        assert!(
+            completion.is_some(),
+            "job should complete after expired idle reclaim frees budget"
+        );
+        assert_eq!(completion.unwrap().exit_code, 0);
+
+        wait_budget_count(&budget, 1, Duration::from_secs(5)).await;
+
+        let sessions = idle_pool.lock().await.held_sessions();
+        assert_eq!(
+            sessions,
+            vec!["sess-old-active".to_string()],
+            "expired idle entry should be reclaimed before oldest active entry"
+        );
+        assert_eq!(
+            status_idle_sessions(&status_path).await,
+            vec!["sess-old-active".to_string()],
+            "status.json should reflect the remaining idle VM"
+        );
+
+        shutdown(&env, run_handle).await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn budget_pressure_eviction_clears_status_json_idle_vms() {
+        let (config, env) = mock_run_config(test_profiles(), 2, 4096, 2);
+        let idle_pool = Arc::clone(&config.idle_pool);
+        let budget = Arc::clone(&config.budget);
+        let status_path = env._temp_dir.path().join("status.json");
+        let run_handle = tokio::spawn(run(config));
+
+        let run_id = RunId::new_v4();
+        push_job(
+            &env,
+            run_id,
+            "vm0/default",
+            Some(context_with_session(run_id, "sess-pressure-status")),
+        );
+        let completion = env
+            .handle
+            .wait_completion(run_id, Duration::from_secs(5))
+            .await;
+        assert!(completion.is_some(), "job should complete and park");
+        assert_eq!(completion.unwrap().exit_code, 0);
+
+        // The single parked VM fills the whole budget, so the Running loop's
+        // pressure path evicts it even without another pending job.
+        wait_budget_count(&budget, 0, Duration::from_secs(5)).await;
+        assert_eq!(idle_pool.lock().await.len(), 0, "idle pool should be empty");
+        assert!(
+            status_idle_sessions(&status_path).await.is_empty(),
+            "status.json should clear the pressure-evicted idle VM"
+        );
 
         shutdown(&env, run_handle).await;
     }
