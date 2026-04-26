@@ -15,7 +15,7 @@ use std::pin::Pin;
 use std::sync::LazyLock;
 use std::task::{Context, Poll};
 use std::time::Duration;
-use tokio::io::{AsyncRead, ReadBuf};
+use tokio::io::{AsyncRead, AsyncSeekExt, ReadBuf};
 
 const LOG_TAG: &str = "sandbox:guest-agent";
 const HTTP_TOO_MANY_REQUESTS: u16 = 429;
@@ -261,23 +261,20 @@ impl http_body::Body for SizedBody {
 /// Unlike [`put_presigned`], this avoids loading the entire file into memory.
 /// A [`SizedBody`] streams bounded chunks and reports the file size via
 /// `size_hint`, so hyper sets `Content-Length` automatically.
-/// On each retry the file is re-opened, producing a fresh body with the
-/// original observed length.
+/// On each retry the original file handle is cloned, producing a fresh body
+/// with stable file identity and length.
 pub async fn put_presigned_file(
     url: &str,
     path: &Path,
     content_type: &str,
 ) -> Result<(), AgentError> {
     let max_retries = constants::HTTP_MAX_RETRIES;
-    let first_file = tokio::fs::File::open(path).await?;
-    let file_len = first_file.metadata().await?.len();
-    let mut next_file = Some(first_file);
+    let source_file = tokio::fs::File::open(path).await?;
+    let file_len = source_file.metadata().await?.len();
 
     for attempt in 1..=max_retries {
-        let file = match next_file.take() {
-            Some(file) => file,
-            None => tokio::fs::File::open(path).await?,
-        };
+        let mut file = source_file.try_clone().await?;
+        file.seek(std::io::SeekFrom::Start(0)).await?;
         let body = reqwest::Body::wrap(SizedBody::new(file, file_len));
 
         match HTTP_CLIENT
