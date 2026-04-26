@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.236.1](https://github.com/vm0-ai/vm0/compare/core-v8.236.0...core-v8.236.1) (2026-04-26)
+
+
+### Bug Fixes
+
+* add missing display names for OpenRouter-format model IDs ([#11130](https://github.com/vm0-ai/vm0/issues/11130)) ([2ab8dd0](https://github.com/vm0-ai/vm0/commit/2ab8dd0dd3441159b7de3303b15f2a4458a52cee))
+
 ## [8.236.0](https://github.com/vm0-ai/vm0/compare/core-v8.235.1...core-v8.236.0) (2026-04-25)
 
 

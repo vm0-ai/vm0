@@ -18,7 +18,7 @@ import { schema } from "@vm0/db";
 import { skills } from "@vm0/db/schema/skill";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { SEED_SKILLS, buildSeedSkillValues } from "../lib/zero/seed-skills";
-import { getEligibleConnectorTypes } from "@vm0/api-contracts/contracts/connector-utils";
+import { getEligibleConnectorTypes } from "@vm0/connectors/connector-utils";
 import { SYSTEM_ORG_ID, VOLUME_ORG_USER_ID } from "@vm0/core/storage-names";
 
 export async function setup() {

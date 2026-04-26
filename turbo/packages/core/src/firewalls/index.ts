@@ -1,1 +1,1 @@
-export * from "@vm0/api-contracts/firewalls";
+export * from "@vm0/connectors/firewalls";

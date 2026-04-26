@@ -2,21 +2,21 @@ import { Command, Option } from "commander";
 import {
   CONNECTOR_TYPES,
   type ConnectorType,
-} from "@vm0/api-contracts/contracts/connectors";
+} from "@vm0/connectors/connectors";
 import {
   getConnectorEnvironmentMapping,
   getConnectorTypeForSecretName,
-} from "@vm0/api-contracts/contracts/connector-utils";
-import { findMatchingPermissions } from "@vm0/api-contracts/contracts/firewall-rule-matcher";
-import { extractSecretNamesFromApis } from "@vm0/api-contracts/contracts/firewalls";
+} from "@vm0/connectors/connector-utils";
+import { findMatchingPermissions } from "@vm0/connectors/firewall-rule-matcher";
+import { extractSecretNamesFromApis } from "@vm0/connectors/firewall-types";
 import {
   getConnectorFirewall,
   isFirewallConnectorType,
-} from "@vm0/api-contracts/firewalls";
+} from "@vm0/connectors/firewalls";
 import type {
   FirewallConfig,
   NetworkPolicies,
-} from "@vm0/api-contracts/contracts/firewalls";
+} from "@vm0/connectors/firewall-types";
 import type { RunContextResponse } from "@vm0/api-contracts/contracts/zero-runs";
 import { getApiUrl } from "../../../lib/api/config";
 import { getZeroConnector } from "../../../lib/api/domains/zero-connectors";

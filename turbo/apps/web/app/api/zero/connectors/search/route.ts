@@ -6,8 +6,8 @@ import {
 import {
   type ConnectorType,
   CONNECTOR_TYPES,
-} from "@vm0/api-contracts/contracts/connectors";
-import { FeatureSwitchKey } from "@vm0/api-contracts/feature-switch-key";
+} from "@vm0/connectors/connectors";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { getAllFeatureStates } from "@vm0/core/feature-switch";
 import { createErrorResponse } from "@vm0/api-contracts/contracts/errors";
 import { initServices } from "../../../../../src/lib/init-services";

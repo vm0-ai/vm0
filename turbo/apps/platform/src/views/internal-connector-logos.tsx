@@ -1,7 +1,7 @@
 import {
   CONNECTOR_TYPES,
   type ConnectorType,
-} from "@vm0/api-contracts/contracts/connectors";
+} from "@vm0/connectors/connectors";
 import { useGet, useSet } from "ccstate-react";
 import { CONNECTOR_ICONS } from "./zero-page/components/settings/connector-icons.tsx";
 import {

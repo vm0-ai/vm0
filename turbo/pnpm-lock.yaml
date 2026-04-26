@@ -129,6 +129,9 @@ importers:
       '@vm0/api-contracts':
         specifier: workspace:*
         version: link:../../packages/api-contracts
+      '@vm0/connectors':
+        specifier: workspace:*
+        version: link:../../packages/connectors
       '@vm0/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -237,6 +240,9 @@ importers:
       '@vm0/api-contracts':
         specifier: workspace:*
         version: link:../../packages/api-contracts
+      '@vm0/connectors':
+        specifier: workspace:*
+        version: link:../../packages/connectors
       '@vm0/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -415,6 +421,9 @@ importers:
       '@vm0/api-services':
         specifier: workspace:*
         version: link:../../packages/api-services
+      '@vm0/connectors':
+        specifier: workspace:*
+        version: link:../../packages/connectors
       '@vm0/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -593,6 +602,37 @@ importers:
       '@ts-rest/core':
         specifier: 3.53.0-rc.1
         version: 3.53.0-rc.1(@types/node@24.3.0)
+      '@vm0/connectors':
+        specifier: workspace:*
+        version: link:../connectors
+      zod:
+        specifier: 4.3.6
+        version: 4.3.6
+    devDependencies:
+      '@vm0/eslint-config':
+        specifier: workspace:*
+        version: link:../eslint-config
+      '@vm0/typescript-config':
+        specifier: workspace:*
+        version: link:../typescript-config
+      eslint:
+        specifier: ^9.34.0
+        version: 9.39.4(jiti@2.6.1)
+      oxlint:
+        specifier: ^1.57.0
+        version: 1.57.0(oxlint-tsgolint@0.21.1)
+      oxlint-tsgolint:
+        specifier: 0.21.1
+        version: 0.21.1
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.1.5
+        version: 4.1.5(@opentelemetry/api@1.9.1)(@types/node@24.3.0)(@vitest/browser-playwright@4.1.5)(@vitest/coverage-v8@4.1.5)(@vitest/ui@4.1.5)(esbuild@0.27.4)(happy-dom@20.9.0)(jiti@2.6.1)(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(tsx@4.21.0)(yaml@2.8.3)
+
+  packages/connectors:
+    dependencies:
       yaml:
         specifier: '>=2.8.3'
         version: 2.8.3
@@ -651,6 +691,9 @@ importers:
       '@vm0/api-contracts':
         specifier: workspace:*
         version: link:../api-contracts
+      '@vm0/connectors':
+        specifier: workspace:*
+        version: link:../connectors
       yaml:
         specifier: '>=2.8.3'
         version: 2.8.3
@@ -682,6 +725,9 @@ importers:
       '@vm0/api-contracts':
         specifier: workspace:*
         version: link:../api-contracts
+      '@vm0/connectors':
+        specifier: workspace:*
+        version: link:../connectors
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(@neondatabase/serverless@1.0.2)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(pg@8.20.0)(postgres@3.4.9)

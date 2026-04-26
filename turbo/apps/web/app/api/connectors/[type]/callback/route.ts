@@ -3,8 +3,8 @@ import { eq } from "drizzle-orm";
 import {
   type ConnectorType,
   connectorTypeSchema,
-} from "@vm0/api-contracts/contracts/connectors";
-import { getConnectorOAuthConfig } from "@vm0/api-contracts/contracts/connector-utils";
+} from "@vm0/connectors/connectors";
+import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { env } from "../../../../../src/env";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";

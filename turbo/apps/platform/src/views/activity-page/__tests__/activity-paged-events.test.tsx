@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import { server } from "../../../mocks/server.ts";
-import { FeatureSwitchKey } from "@vm0/api-contracts/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   logsListContract,
   logsByIdContract,

@@ -16,8 +16,8 @@ import { Button, Input } from "@vm0/ui";
 import {
   CONNECTOR_TYPES,
   type ConnectorType,
-} from "@vm0/api-contracts/contracts/connectors";
-import { isGoogleOAuthConnector } from "@vm0/api-contracts/contracts/connector-utils";
+} from "@vm0/connectors/connectors";
+import { isGoogleOAuthConnector } from "@vm0/connectors/connector-utils";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {
   zeroWorkspaceName$,

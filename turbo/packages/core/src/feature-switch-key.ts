@@ -1,1 +1,1 @@
-export { FeatureSwitchKey } from "@vm0/api-contracts/feature-switch-key";
+export { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";

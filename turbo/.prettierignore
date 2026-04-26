@@ -2,8 +2,7 @@ node_modules
 .pnpm-store/
 dist
 packages/sandbox-scripts/src/dist/bundled.ts
-packages/core/src/firewalls/*.generated.ts
-packages/api-contracts/src/firewalls/*.generated.ts
+packages/connectors/src/firewalls/*.generated.ts
 pnpm-lock.yaml
 coverage
 .claude

@@ -1,5 +1,5 @@
 import { initClient } from "@ts-rest/core";
-import { type ConnectorType } from "@vm0/api-contracts/contracts/connectors";
+import { type ConnectorType } from "@vm0/connectors/connectors";
 import {
   zeroConnectorsByTypeContract,
   zeroConnectorsMainContract,

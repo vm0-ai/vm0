@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
-import { networkPoliciesSchema } from "./firewalls";
+import { networkPoliciesSchema } from "@vm0/connectors/firewall-types";
 import {
   createRunResponseSchema,
   getRunResponseSchema,
