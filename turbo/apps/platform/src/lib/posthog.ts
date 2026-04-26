@@ -1,10 +1,13 @@
-import posthog from "posthog-js";
+import { posthog } from "posthog-js";
+import { timeout } from "signal-timers";
 
 let enabled = false;
 
 export function initPostHog(): void {
   const key = import.meta.env.VITE_POSTHOG_KEY as string | undefined;
-  if (!key) return;
+  if (!key) {
+    return;
+  }
 
   try {
     posthog.init(key, {
@@ -30,17 +33,17 @@ export function initPostHog(): void {
   }
 }
 
-export function isPostHogEnabled(): boolean {
-  return enabled;
-}
-
 export function setPostHogUser(userId: string): void {
-  if (!enabled) return;
+  if (!enabled) {
+    return;
+  }
   posthog.identify(userId);
 }
 
 export function clearPostHogUser(): void {
-  if (!enabled) return;
+  if (!enabled) {
+    return;
+  }
   posthog.reset();
 }
 
@@ -54,60 +57,42 @@ interface NavigationTiming {
   enterTime: number;
   pushStateTime?: number;
   routeSetupTime?: number;
-  renderTime?: number;
-  timeoutId: ReturnType<typeof setTimeout>;
+  timeoutController: AbortController;
 }
 
 let active: NavigationTiming | null = null;
 
 export function startChatNavigationTiming(): void {
-  if (!enabled) return;
+  if (!enabled) {
+    return;
+  }
   const enterTime = performance.now();
+  const timeoutController = new AbortController();
   active = {
     enterTime,
-    timeoutId: setTimeout(() => {
+    timeoutController,
+  };
+  timeout(
+    () => {
       if (active?.enterTime === enterTime) {
         active = null;
       }
-    }, 30_000),
-  };
+    },
+    30_000,
+    { signal: timeoutController.signal },
+  );
 }
 
 export function markNavigationPushState(): void {
-  if (!enabled || !active) return;
+  if (!enabled || !active) {
+    return;
+  }
   active.pushStateTime = performance.now();
 }
 
 export function markRouteSetupBegin(): void {
-  if (!enabled || !active) return;
+  if (!enabled || !active) {
+    return;
+  }
   active.routeSetupTime = performance.now();
 }
-
-export function markRenderComplete(): void {
-  if (!enabled || !active) return;
-
-  // React StrictMode fires effects twice in development. After the first
-  // capture we null the slot so the second invocation is a no-op.
-  const t = active;
-  active = null;
-  clearTimeout(t.timeoutId);
-
-  t.renderTime = performance.now();
-
-  posthog.capture("chat_navigation_performance", {
-    total_ms: t.renderTime - t.enterTime,
-    enter_to_pushstate_ms: t.pushStateTime
-      ? t.pushStateTime - t.enterTime
-      : null,
-    pushstate_to_setup_ms:
-      t.pushStateTime && t.routeSetupTime
-        ? t.routeSetupTime - t.pushStateTime
-        : null,
-    setup_to_render_ms: t.routeSetupTime
-      ? t.renderTime - t.routeSetupTime
-      : null,
-    is_new_thread: true,
-  });
-}
-
-export { posthog };
