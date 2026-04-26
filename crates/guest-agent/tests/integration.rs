@@ -416,6 +416,89 @@ async fn put_presigned_file_retry_then_succeed() {
 }
 
 #[tokio::test]
+async fn put_presigned_file_retry_fails_if_source_shrinks() {
+    let _guard = TEST_MUTEX.lock().unwrap();
+    let server = &*MOCK_SERVER;
+
+    let dir = tempfile::tempdir().unwrap();
+    let file_path = dir.path().join("retry-shrunk.bin");
+    std::fs::write(&file_path, b"retry file data").unwrap();
+
+    let fail_mock = server.mock(|when, then| {
+        when.method(PUT).path("/test/put-file-retry-shrunk");
+        then.status(500);
+    });
+    let success_mock = server.mock(|when, then| {
+        when.method(PUT)
+            .path("/test/put-file-retry-shrunk")
+            .body("short");
+        then.status(200);
+    });
+
+    let url = format!("{}/test/put-file-retry-shrunk", server.base_url());
+    let path = file_path.clone();
+    let handle = tokio::spawn(async move {
+        guest_agent::http::put_presigned_file(&url, &path, "application/gzip").await
+    });
+
+    loop {
+        if fail_mock.calls_async().await >= 1 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    std::fs::write(&file_path, b"short").unwrap();
+    fail_mock.delete_async().await;
+
+    let result = handle.await.unwrap();
+    assert!(result.is_err());
+    success_mock.assert_calls_async(0).await;
+    success_mock.delete_async().await;
+}
+
+#[tokio::test]
+async fn put_presigned_file_retry_uses_original_length_if_source_grows() {
+    let _guard = TEST_MUTEX.lock().unwrap();
+    let server = &*MOCK_SERVER;
+
+    let dir = tempfile::tempdir().unwrap();
+    let file_path = dir.path().join("retry-grown.bin");
+    std::fs::write(&file_path, b"retry file data").unwrap();
+
+    let fail_mock = server.mock(|when, then| {
+        when.method(PUT).path("/test/put-file-retry-grown");
+        then.status(500);
+    });
+    let success_mock = server.mock(|when, then| {
+        when.method(PUT)
+            .path("/test/put-file-retry-grown")
+            .header("Content-Length", "15")
+            .body("retry file data");
+        then.status(200);
+    });
+
+    let url = format!("{}/test/put-file-retry-grown", server.base_url());
+    let path = file_path.clone();
+    let handle = tokio::spawn(async move {
+        guest_agent::http::put_presigned_file(&url, &path, "application/gzip").await
+    });
+
+    loop {
+        if fail_mock.calls_async().await >= 1 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    std::fs::write(&file_path, b"retry file data plus extra").unwrap();
+    fail_mock.delete_async().await;
+
+    let result = handle.await.unwrap();
+    assert!(result.is_ok());
+    success_mock.assert_calls_async(1).await;
+    success_mock.delete_async().await;
+}
+
+#[tokio::test]
 async fn put_presigned_file_large_multi_chunk() {
     let _guard = TEST_MUTEX.lock().unwrap();
     let server = &*MOCK_SERVER;
