@@ -5,7 +5,8 @@ const CACHE_VERSION = "1";
 const STATIC_CACHE = `static-v${CACHE_VERSION}`;
 const PAGES_CACHE = `pages-v${CACHE_VERSION}`;
 
-const STATIC_RE = /\.(?:js|css|png|svg|jpe?g|gif|ico|woff2?|ttf|eot|webp|avif|json|wasm|map)$/i;
+const STATIC_RE =
+  /\.(?:js|css|png|svg|jpe?g|gif|ico|woff2?|ttf|eot|webp|avif|json|wasm|map)$/i;
 
 function isNavigation(r) {
   return r.mode === "navigate";
@@ -16,11 +17,15 @@ function isStaticAsset(url) {
 }
 
 function isApiRequest(url) {
-  return url.origin === self.location.origin && url.pathname.startsWith("/api/");
+  return (
+    url.origin === self.location.origin && url.pathname.startsWith("/api/")
+  );
 }
 
 function timeout(ms) {
-  return new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), ms));
+  return new Promise((_resolve, reject) =>
+    self.setTimeout(() => reject(new Error("timeout")), ms),
+  );
 }
 
 // Install: precache offline page for navigation fallback
@@ -47,7 +52,9 @@ self.addEventListener("activate", (event) => {
 
 // Fetch: layered caching strategy
 self.addEventListener("fetch", (event) => {
-  if (event.request.method !== "GET") return;
+  if (event.request.method !== "GET") {
+    return;
+  }
 
   const url = new URL(event.request.url);
 
@@ -65,11 +72,17 @@ self.addEventListener("fetch", (event) => {
   if (isStaticAsset(url)) {
     // Cache-First: Vite content-hashed filenames are immutable.
     event.respondWith(
-      caches.match(event.request).then((cached) => cached || fetch(event.request).then((r) => {
+      (async () => {
+        const cached = await caches.match(event.request);
+        if (cached) {
+          return cached;
+        }
+        const r = await fetch(event.request);
         const clone = r.clone();
-        caches.open(STATIC_CACHE).then((c) => c.put(event.request, clone));
+        const cache = await caches.open(STATIC_CACHE);
+        await cache.put(event.request, clone);
         return r;
-      })),
+      })(),
     );
     return;
   }
