@@ -12,7 +12,7 @@ const SCHEMA = {
   VERCEL_ENV: z.enum(["production", "preview", "development"]).optional(),
   VITEST: z.enum(["true", "false"]).optional(),
   VM0_DEBUG: z.string().optional(),
-};
+} as const;
 
 const baseEnv = createEnv({
   server: SCHEMA,
