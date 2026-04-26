@@ -1976,8 +1976,34 @@ mod tests {
     // Sandbox-interacting function tests (using sandbox-mock)
     // -----------------------------------------------------------------------
 
-    use sandbox::{ExecResult, SandboxError};
+    use sandbox::{
+        ExecResult, SandboxError, SandboxInitializationPhase, SandboxOperation,
+        SandboxOperationReason,
+    };
     use sandbox_mock::MockSandbox;
+
+    fn sandbox_exec_error(message: impl Into<String>) -> SandboxError {
+        SandboxError::Operation {
+            operation: SandboxOperation::Exec,
+            reason: SandboxOperationReason::Guest,
+            message: message.into(),
+        }
+    }
+
+    fn sandbox_write_file_error(message: impl Into<String>) -> SandboxError {
+        SandboxError::Operation {
+            operation: SandboxOperation::WriteFile,
+            reason: SandboxOperationReason::Guest,
+            message: message.into(),
+        }
+    }
+
+    fn sandbox_create_error(message: impl Into<String>) -> SandboxError {
+        SandboxError::Initialization {
+            phase: SandboxInitializationPhase::SandboxAllocation,
+            message: message.into(),
+        }
+    }
 
     #[tokio::test]
     async fn fix_guest_clock_calls_date_command() {
@@ -1989,7 +2015,7 @@ mod tests {
     #[tokio::test]
     async fn fix_guest_clock_propagates_exec_error() {
         let sandbox = MockSandbox::new("test");
-        sandbox.push_exec_result(Err(SandboxError::ExecFailed("timeout".into())));
+        sandbox.push_exec_result(Err(sandbox_exec_error("timeout")));
         let result = fix_guest_clock(&sandbox).await;
         assert!(result.is_err());
     }
@@ -2005,7 +2031,7 @@ mod tests {
     async fn reseed_guest_entropy_propagates_exec_error() {
         let sandbox = MockSandbox::new("test");
         // Sandbox-level failure (vsock connection issue).
-        sandbox.push_exec_result(Err(SandboxError::ExecFailed("reseed failed".into())));
+        sandbox.push_exec_result(Err(sandbox_exec_error("reseed failed")));
         let result = reseed_guest_entropy(&sandbox).await;
         assert!(result.is_err());
     }
@@ -2040,7 +2066,7 @@ mod tests {
         let ctx = minimal_context();
         // No timezone — should skip without calling exec.
         // Push an error to detect if exec is called unexpectedly.
-        sandbox.push_exec_result(Err(SandboxError::ExecFailed("should not be called".into())));
+        sandbox.push_exec_result(Err(sandbox_exec_error("should not be called")));
         sync_guest_timezone(&sandbox, &ctx).await;
     }
 
@@ -2050,7 +2076,7 @@ mod tests {
         let mut ctx = minimal_context();
         ctx.user_timezone = Some("$(rm -rf /)".into());
         // Push an error to detect if exec is called — it should NOT be.
-        sandbox.push_exec_result(Err(SandboxError::ExecFailed("should not be called".into())));
+        sandbox.push_exec_result(Err(sandbox_exec_error("should not be called")));
         sync_guest_timezone(&sandbox, &ctx).await;
     }
 
@@ -2059,7 +2085,7 @@ mod tests {
         let sandbox = MockSandbox::new("test");
         let mut ctx = minimal_context();
         ctx.user_timezone = Some(String::new());
-        sandbox.push_exec_result(Err(SandboxError::ExecFailed("should not be called".into())));
+        sandbox.push_exec_result(Err(sandbox_exec_error("should not be called")));
         sync_guest_timezone(&sandbox, &ctx).await;
     }
 
@@ -2102,7 +2128,7 @@ mod tests {
     #[tokio::test]
     async fn read_guest_error_file_returns_none_on_exec_error() {
         let sandbox = MockSandbox::new("test");
-        sandbox.push_exec_result(Err(SandboxError::ExecFailed("vsock timeout".into())));
+        sandbox.push_exec_result(Err(sandbox_exec_error("vsock timeout")));
         let msg = read_guest_error_file(&sandbox, RunId::nil()).await;
         assert!(msg.is_none());
     }
@@ -2185,7 +2211,7 @@ mod tests {
         };
         // Should return Ok without calling exec or write_file.
         // Push an error to detect unexpected calls.
-        sandbox.push_exec_result(Err(SandboxError::ExecFailed("should not be called".into())));
+        sandbox.push_exec_result(Err(sandbox_exec_error("should not be called")));
         restore_session(&sandbox, &ctx, &session).await.unwrap();
     }
 
@@ -2298,8 +2324,8 @@ mod tests {
         let sandbox = MockSandbox::new("test");
         let ctx = minimal_context();
 
-        sandbox.push_exec_result(Err(SandboxError::ExecFailed("vsock down".into())));
-        sandbox.push_exec_result(Err(SandboxError::ExecFailed("vsock down".into())));
+        sandbox.push_exec_result(Err(sandbox_exec_error("vsock down")));
+        sandbox.push_exec_result(Err(sandbox_exec_error("vsock down")));
 
         copy_guest_logs(&sandbox, &ctx, &log_paths).await;
 
@@ -2356,7 +2382,7 @@ mod tests {
     #[tokio::test]
     async fn download_storages_fails_on_write_file_error() {
         let sandbox = MockSandbox::new("test");
-        sandbox.push_write_file_result(Err(SandboxError::ExecFailed("vsock write failed".into())));
+        sandbox.push_write_file_result(Err(sandbox_write_file_error("vsock write failed")));
         let ctx = minimal_context();
         let manifest = StorageManifest {
             storages: vec![],
@@ -2378,7 +2404,7 @@ mod tests {
             session_history: r#"{"type":"init"}"#.into(),
         };
         // First exec (mkdir) succeeds by default, write_file fails.
-        sandbox.push_write_file_result(Err(SandboxError::ExecFailed("disk full".into())));
+        sandbox.push_write_file_result(Err(sandbox_write_file_error("disk full")));
         let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
         assert!(err.to_string().contains("disk full"), "got: {err}");
     }
@@ -2392,7 +2418,7 @@ mod tests {
             session_history: "data".into(),
         };
         // mkdir exec fails
-        sandbox.push_exec_result(Err(SandboxError::ExecFailed("vsock down".into())));
+        sandbox.push_exec_result(Err(sandbox_exec_error("vsock down")));
         let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
         assert!(err.to_string().contains("vsock down"), "got: {err}");
     }
@@ -2542,7 +2568,7 @@ mod tests {
         let config = test_executor_config(dir.path()).await;
         let mut factory = MockSandboxFactory::new();
         factory.startup().await.unwrap();
-        factory.push_create_result(Err(SandboxError::CreationFailed("no free devices".into())));
+        factory.push_create_result(Err(sandbox_create_error("no free devices")));
 
         let err = run_execute_inner(&factory, &minimal_context(), &config, &default_params())
             .await
@@ -2604,7 +2630,7 @@ mod tests {
         let config = test_executor_config(dir.path()).await;
         let mut factory = MockSandboxFactory::new();
         factory.startup().await.unwrap();
-        factory.push_create_result(Err(SandboxError::CreationFailed("boom".into())));
+        factory.push_create_result(Err(sandbox_create_error("boom")));
 
         let cancel = tokio_util::sync::CancellationToken::new();
         let (outcome, _telemetry) = execute_job(
@@ -2851,7 +2877,7 @@ mod tests {
 
         // Build a MockSandbox that fails on the first exec (fix_guest_clock)
         let sandbox = MockSandbox::new("reuse-clock-fail");
-        sandbox.push_exec_result(Err(SandboxError::ExecFailed("vsock broken".into())));
+        sandbox.push_exec_result(Err(sandbox_exec_error("vsock broken")));
 
         let idle_entry = crate::idle_pool::IdleEntry {
             sandbox: Box::new(sandbox),
@@ -2894,7 +2920,7 @@ mod tests {
             stdout: Vec::new(),
             stderr: Vec::new(),
         }));
-        sandbox.push_exec_result(Err(SandboxError::ExecFailed("reseed timeout".into())));
+        sandbox.push_exec_result(Err(sandbox_exec_error("reseed timeout")));
 
         let idle_entry = crate::idle_pool::IdleEntry {
             sandbox: Box::new(sandbox),
@@ -2933,7 +2959,7 @@ mod tests {
         let sandbox = MockSandbox::new("reuse-session-fail");
         // clock fix and reseed succeed (default), then mkdir exec succeeds,
         // but write_file for session history fails.
-        sandbox.push_write_file_result(Err(SandboxError::ExecFailed("disk full".into())));
+        sandbox.push_write_file_result(Err(sandbox_write_file_error("disk full")));
 
         let mut ctx = minimal_context();
         ctx.resume_session = Some(ResumeSession {

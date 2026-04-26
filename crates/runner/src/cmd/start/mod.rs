@@ -1977,7 +1977,13 @@ mod tests {
         let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
         let run_handle = tokio::spawn(run(config));
 
-        env.handle.discover_entered.notified().await;
+        tokio::time::timeout(
+            Duration::from_secs(2),
+            env.handle.discover_entered.notified(),
+        )
+        .await
+        .expect("run() did not enter discover_fut select! within 2s");
+
         let run_id = RunId::new_v4();
         push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
 
@@ -4412,9 +4418,10 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn park_failure_destroys_sandbox_and_skips_pool() {
         let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
-        overrides.push_park_result(Err(sandbox::SandboxError::IdleTransition(
-            "simulated balloon failure".into(),
-        )));
+        overrides.push_park_result(Err(sandbox::SandboxError::IdleTransition {
+            transition: sandbox::SandboxIdleTransition::Park,
+            message: "simulated balloon failure".into(),
+        }));
         let counter = Arc::clone(&overrides);
         let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 16384, 4, overrides);
         let budget = Arc::clone(&config.budget);
@@ -4463,9 +4470,10 @@ mod tests {
         // path's call against the pre-seeded sandbox.
         let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
         let counter = Arc::clone(&overrides);
-        overrides.push_unpark_result(Err(sandbox::SandboxError::IdleTransition(
-            "simulated unpark failure".into(),
-        )));
+        overrides.push_unpark_result(Err(sandbox::SandboxError::IdleTransition {
+            transition: sandbox::SandboxIdleTransition::Unpark,
+            message: "simulated unpark failure".into(),
+        }));
         let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 16384, 4, overrides);
         let budget = Arc::clone(&config.budget);
         let idle_pool = Arc::clone(&config.idle_pool);

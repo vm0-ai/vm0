@@ -20,7 +20,7 @@ pub(crate) struct PrerequisiteConfig<'a> {
 /// Verify that all required system prerequisites are present.
 ///
 /// Checks firecracker binary, kernel, rootfs, `/dev/kvm`, and network commands.
-/// Collects all failures and returns them in a single `BackendNotAvailable` error.
+/// Collects all failures and returns them in a single `BackendUnavailable` error.
 pub(crate) async fn check_prerequisites(
     config: &PrerequisiteConfig<'_>,
 ) -> Result<(), SandboxError> {
@@ -42,7 +42,9 @@ pub(crate) async fn check_prerequisites(
     if errors.is_empty() {
         Ok(())
     } else {
-        Err(SandboxError::BackendNotAvailable(errors.join("; ")))
+        Err(SandboxError::BackendUnavailable {
+            message: errors.join("; "),
+        })
     }
 }
 

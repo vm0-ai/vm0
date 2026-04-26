@@ -64,9 +64,9 @@ pub struct MockSandboxOverrides {
     /// When set, `wait_exit` awaits this [`tokio::sync::Notify`] before
     /// returning — giving the test a window to cancel the job.
     wait_exit_gate: Option<Arc<tokio::sync::Notify>>,
-    /// When `Some`, `wait_exit` returns `Err(SandboxError::ExecFailed(msg))`
-    /// to simulate timeout or crash. The stdout channel sender is also kept
-    /// alive in `MockSandbox` so the drain task would block without the fix.
+    /// When `Some`, `wait_exit` returns a wait-exit operation error to
+    /// simulate timeout or crash. The stdout channel sender is also kept alive
+    /// in `MockSandbox` so the drain task would block without the fix.
     wait_exit_error: Option<String>,
     /// FIFO queue of park results consumed by every sandbox built with
     /// these overrides. Empty queue → default Ok(()).
@@ -337,7 +337,11 @@ impl Sandbox for MockSandbox {
             }
             // Return error when configured (simulates timeout or crash).
             if let Some(ref msg) = overrides.wait_exit_error {
-                return Err(SandboxError::ExecFailed(msg.clone()));
+                return Err(SandboxError::Operation {
+                    operation: SandboxOperation::WaitExit,
+                    reason: SandboxOperationReason::Timeout,
+                    message: msg.clone(),
+                });
             }
             // Return override exit code when configured.
             if let Some(code) = overrides.wait_exit_code {
@@ -610,7 +614,11 @@ mod tests {
             stdout: b"out".to_vec(),
             stderr: b"err".to_vec(),
         }));
-        sandbox.push_exec_result(Err(SandboxError::ExecFailed("boom".into())));
+        sandbox.push_exec_result(Err(SandboxError::Operation {
+            operation: SandboxOperation::Exec,
+            reason: SandboxOperationReason::Guest,
+            message: "boom".into(),
+        }));
 
         let req = ExecRequest {
             cmd: "test",
@@ -711,7 +719,11 @@ mod tests {
     #[tokio::test]
     async fn sandbox_write_file_queued_error() {
         let sandbox = MockSandbox::new("test-1");
-        sandbox.push_write_file_result(Err(SandboxError::ExecFailed("disk full".into())));
+        sandbox.push_write_file_result(Err(SandboxError::Operation {
+            operation: SandboxOperation::WriteFile,
+            reason: SandboxOperationReason::Guest,
+            message: "disk full".into(),
+        }));
 
         let result = sandbox.write_file("/tmp/test.txt", b"data").await;
         assert!(result.is_err());
@@ -724,7 +736,10 @@ mod tests {
     async fn factory_create_queued_error() {
         let mut factory = MockSandboxFactory::new();
         factory.startup().await.unwrap();
-        factory.push_create_result(Err(SandboxError::CreationFailed("out of resources".into())));
+        factory.push_create_result(Err(SandboxError::Initialization {
+            phase: SandboxInitializationPhase::SandboxAllocation,
+            message: "out of resources".into(),
+        }));
 
         let config = SandboxConfig {
             id: sandbox::SandboxId::new_v4(),
