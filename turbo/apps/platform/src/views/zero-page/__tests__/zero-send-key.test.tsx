@@ -130,7 +130,6 @@ describe("send-key behavior — IME composition", () => {
 
 describe("send-key behavior — mobile (pointer: coarse)", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
     vi.spyOn(window, "matchMedia").mockImplementation((query: string) => {
       return {
         matches: query === "(pointer: coarse)",

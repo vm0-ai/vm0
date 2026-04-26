@@ -10,7 +10,7 @@
  * - Real (internal): All signals, components, rendering
  */
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import {
   sidebarExpanded$,
@@ -164,7 +164,6 @@ function mockBaseAPIs(options?: {
 
 beforeEach(() => {
   setMockUserPreferences({ pinnedAgentIds: [] });
-  vi.clearAllMocks();
 });
 
 describe("zero sidebar - account dropdown opens (SIDEBAR-D-013)", () => {

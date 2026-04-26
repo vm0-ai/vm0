@@ -413,7 +413,6 @@ describe("voice-chat session", () => {
     audioRef.current = null;
     pcRef.current = null;
     micTrackRef.current = null;
-    vi.unstubAllGlobals();
   }
 
   async function startSuccessfully() {

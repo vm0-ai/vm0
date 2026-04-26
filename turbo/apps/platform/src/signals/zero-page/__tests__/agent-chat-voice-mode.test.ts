@@ -260,7 +260,6 @@ describe("agent-chat-voice-mode", () => {
       writable: true,
       configurable: true,
     });
-    vi.unstubAllGlobals();
   });
 
   describe("trinityEnabled$ gating", () => {
