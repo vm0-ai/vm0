@@ -1,5 +1,17 @@
 # Changelog
 
+## [8.236.0](https://github.com/vm0-ai/vm0/compare/core-v8.235.1...core-v8.236.0) (2026-04-25)
+
+
+### Features
+
+* **chat:** add message start scroll button ([#11089](https://github.com/vm0-ai/vm0/issues/11089)) ([d3ea28d](https://github.com/vm0-ai/vm0/commit/d3ea28da71e767ad6c53d415f9e7a12e669efb14))
+
+
+### Refactoring
+
+* split db and api contracts packages ([#11092](https://github.com/vm0-ai/vm0/issues/11092)) ([f4767d9](https://github.com/vm0-ai/vm0/commit/f4767d987af373d17d93d5ca8fb00864c18bc15b))
+
 ## [8.235.1](https://github.com/vm0-ai/vm0/compare/core-v8.235.0...core-v8.235.1) (2026-04-25)
 
 

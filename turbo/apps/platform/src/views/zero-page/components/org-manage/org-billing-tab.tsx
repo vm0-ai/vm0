@@ -170,7 +170,7 @@ function PlanCard({
           src={plan.image}
           alt={plan.name}
           loading="lazy"
-          className="h-28 w-28 object-contain -mb-1"
+          className="h-20 w-20 object-contain mb-2"
         />
       )}
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.5](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.10.4...vsock-guest-v0.10.5) (2026-04-25)
+
+
+### Documentation
+
+* **vsock-guest:** fix stale 'sleep 30' reference in slow_exec test ([#11090](https://github.com/vm0-ai/vm0/issues/11090)) ([5b94af0](https://github.com/vm0-ai/vm0/commit/5b94af041c87b56829b6665c3e0b32967f569090)), closes [#11067](https://github.com/vm0-ai/vm0/issues/11067)
+
 ## [0.10.4](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.10.3...vsock-guest-v0.10.4) (2026-04-25)
 
 

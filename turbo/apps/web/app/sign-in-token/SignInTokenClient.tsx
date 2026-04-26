@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { useSignIn } from "@clerk/nextjs";
+import { useSignIn } from "@clerk/nextjs/legacy";
 
 function SignInTokenContent() {
   const searchParams = useSearchParams();
