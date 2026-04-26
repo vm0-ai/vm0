@@ -134,6 +134,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the PostHog analytics connector",
     enabled: false,
   },
+  [FeatureSwitchKey.PwaOfflineCache]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Enable PWA offline caching (static asset cache-first, offline fallback page, and service worker updateViaCache: none)",
+    enabled: false,
+  },
   [FeatureSwitchKey.MailchimpConnector]: {
     maintainer: "ethan@vm0.ai",
     description: "Enable the Mailchimp email marketing connector",

@@ -90,7 +90,10 @@
 
     async function tryReconnect() {
       try {
-        await fetch("/favicon.ico", { cache: "no-store" });
+        // Use a timestamped URL to bypass the service worker cache,
+        // since cached paths like /favicon.ico would falsely signal
+        // connectivity even when offline.
+        await fetch("/?_t=" + Date.now(), { cache: "no-store" });
         location.reload();
       } catch (_) {
         // still offline

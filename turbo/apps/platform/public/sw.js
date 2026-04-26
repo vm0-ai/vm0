@@ -1,9 +1,12 @@
 // Service worker for Web Push Notifications and offline caching.
 // Push handling based on https://github.com/pirminrehm/service-worker-web-push-example
 
-const CACHE_VERSION = "1";
-const STATIC_CACHE = `static-v${CACHE_VERSION}`;
-const PAGES_CACHE = `pages-v${CACHE_VERSION}`;
+// Per-deployment cache names: each SW update creates new caches, and the
+// activate handler deletes old ones, preventing unbounded growth from
+// content-hashed assets piling up across deploys.
+const CACHE_VERSION = String(Date.now());
+const STATIC_CACHE = `static-${CACHE_VERSION}`;
+const PAGES_CACHE = `pages-${CACHE_VERSION}`;
 
 const STATIC_RE =
   /\.(?:js|css|png|svg|jpe?g|gif|ico|woff2?|ttf|eot|webp|avif|json|wasm|map)$/i;
@@ -122,6 +125,8 @@ self.addEventListener("notificationclick", (event) => {
     clients
       .matchAll({ type: "window", includeUncontrolled: true })
       .then((windowClients) => {
+        // Reuse an existing same-origin tab: postMessage lets the SPA
+        // router navigate without a full page reload.
         for (const client of windowClients) {
           if ("focus" in client) {
             client.postMessage({ type: "NOTIFICATION_CLICK", url });

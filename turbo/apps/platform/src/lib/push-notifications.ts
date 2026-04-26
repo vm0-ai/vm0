@@ -6,6 +6,8 @@
  */
 
 import { command, state } from "ccstate";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { clerk$ } from "../signals/auth.ts";
 import { apiBase$ } from "../signals/fetch.ts";
 
@@ -26,8 +28,14 @@ export const registerServiceWorker$ = command(
     // browsing, enterprise/browser policy, user-disabled SW, etc. Push
     // notifications are a non-critical enhancement, so swallow the
     // rejection to avoid aborting bootstrap or spamming Sentry.
+    const pwaOfflineEnabled = isFeatureEnabled(
+      FeatureSwitchKey.PwaOfflineCache,
+    );
     const registration = await navigator.serviceWorker
-      .register("/sw.js", { updateViaCache: "none" })
+      .register(
+        "/sw.js",
+        pwaOfflineEnabled ? { updateViaCache: "none" } : undefined,
+      )
       .catch(() => {
         return null;
       });
