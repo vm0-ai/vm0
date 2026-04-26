@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
-import type { ConnectorType } from "@vm0/api-contracts/contracts/connectors";
-import type { FirewallPolicies } from "@vm0/api-contracts/contracts/firewalls";
+import type { ConnectorType } from "@vm0/connectors/connectors";
+import type { FirewallPolicies } from "@vm0/connectors/firewall-types";
 import {
   zeroAgentsByIdContract,
   zeroAgentInstructionsContract,

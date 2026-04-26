@@ -7,7 +7,7 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { screen, waitFor } from "@testing-library/react";
 import { featureSwitch$ } from "../../../signals/external/feature-switch";
-import { FeatureSwitchKey } from "@vm0/api-contracts/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
 import { zeroTeamContract } from "@vm0/api-contracts/contracts/zero-team";

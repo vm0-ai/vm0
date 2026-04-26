@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.293.6](https://github.com/vm0-ai/vm0/compare/app-v0.293.5...app-v0.293.6) (2026-04-26)
+
+
+### Bug Fixes
+
+* stabilize repeated chat thread navigation ([#11098](https://github.com/vm0-ai/vm0/issues/11098)) ([6614ae4](https://github.com/vm0-ai/vm0/commit/6614ae4ed778a2c16656366892f9ec4f06973f45))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.236.1
+
 ## [0.293.5](https://github.com/vm0-ai/vm0/compare/app-v0.293.4...app-v0.293.5) (2026-04-25)
 
 

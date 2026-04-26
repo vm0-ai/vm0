@@ -20,7 +20,7 @@ _RULE_TOKEN_COUNT = 2
 def parse_segment(seg: str) -> dict:
     """Parse a single host or path segment into literal / param / error.
 
-    Grammar mirrors turbo/packages/core/src/contracts/segment-parser.ts —
+    Grammar mirrors turbo/packages/connectors/src/segment-parser.ts —
     keep both implementations in lockstep. Any change to accepted or
     rejected forms must land in both languages at once.
 

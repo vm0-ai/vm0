@@ -3,7 +3,7 @@ import {
   zeroVoiceIoQuotaContract,
   type AudioInputQuotaResponse,
 } from "@vm0/api-contracts/contracts/zero-voice-io-quota";
-import { FeatureSwitchKey } from "@vm0/api-contracts/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import { fetch$ } from "../fetch.ts";
 import { zeroClient$ } from "../api-client.ts";

@@ -403,7 +403,7 @@ export {
   type ConnectorAuthMethodConfig,
   type ConnectorAuthMethodType,
   type ConnectorOAuthConfig,
-} from "./connectors";
+} from "@vm0/connectors/connectors";
 export {
   getConnectorAuthMethods,
   getConnectorDefaultAuthMethod,
@@ -426,7 +426,7 @@ export {
   searchConnectors,
   type ConnectorSearchResult,
   type ConnectorSearchOutput,
-} from "./connector-utils";
+} from "@vm0/connectors/connector-utils";
 export {
   connectorSessionStatusSchema,
   connectorResponseSchema,
@@ -472,19 +472,19 @@ export {
   hasBaseUrlVars,
   resolveFirewallBaseUrlVars,
   validateBaseUrl,
-} from "./firewalls";
+} from "@vm0/connectors/firewall-types";
 
 export {
   resolveFirewallSelections,
   collectAndValidatePermissions,
   validateRule,
   type FirewallSelection,
-} from "./firewall-expander";
+} from "@vm0/connectors/firewall-expander";
 
 export {
   matchFirewallPath,
   findMatchingPermissions,
-} from "./firewall-rule-matcher";
+} from "@vm0/connectors/firewall-rule-matcher";
 
 export {
   userPreferencesResponseSchema,

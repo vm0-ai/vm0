@@ -8,7 +8,7 @@ import {
 import {
   CONNECTOR_TYPES,
   type ConnectorType,
-} from "@vm0/api-contracts/contracts/connectors";
+} from "@vm0/connectors/connectors";
 import { ConnectorIcon } from "./connector-icons.tsx";
 import { scopeDiff$ } from "../../../../signals/zero-page/settings/connectors.ts";
 

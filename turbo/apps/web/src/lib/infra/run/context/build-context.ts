@@ -8,7 +8,7 @@ import type { AdditionalVolume } from "../../storage/types";
 import type {
   Firewalls,
   NetworkPolicies,
-} from "@vm0/api-contracts/contracts/firewalls";
+} from "@vm0/connectors/firewall-types";
 
 interface BuildInfraContextParams {
   runId: string;

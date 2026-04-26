@@ -4,7 +4,7 @@ import {
   onboardingCompleteContract,
   onboardingSetupContract,
 } from "@vm0/api-contracts/contracts/onboarding";
-import type { ConnectorType } from "@vm0/api-contracts/contracts/connectors";
+import type { ConnectorType } from "@vm0/connectors/connectors";
 import { clerk$ } from "../auth.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { logger } from "../log.ts";

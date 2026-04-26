@@ -15,9 +15,9 @@ import {
 import {
   isFirewallConnectorType,
   resolveFirewallPolicies,
-} from "@vm0/api-contracts/firewalls";
-import { CONNECTOR_TYPES } from "@vm0/api-contracts/contracts/connectors";
-import type { FirewallPolicies } from "@vm0/api-contracts/contracts/firewalls";
+} from "@vm0/connectors/firewalls";
+import { CONNECTOR_TYPES } from "@vm0/connectors/connectors";
+import type { FirewallPolicies } from "@vm0/connectors/firewall-types";
 import { user$ } from "../../signals/auth.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import {

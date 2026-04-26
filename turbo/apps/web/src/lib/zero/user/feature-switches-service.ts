@@ -1,5 +1,5 @@
 import { eq, and } from "drizzle-orm";
-import { FeatureSwitchKey } from "@vm0/api-contracts/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 
 /**

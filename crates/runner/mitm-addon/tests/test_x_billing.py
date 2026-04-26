@@ -43,7 +43,7 @@ class TestFirewallConsistency:
             pathlib.Path(__file__).resolve().parent.parent.parent.parent.parent
             / "turbo"
             / "packages"
-            / "api-contracts"
+            / "connectors"
             / "src"
             / "firewalls"
             / "x.generated.ts"

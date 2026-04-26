@@ -2,7 +2,7 @@ import { command } from "ccstate";
 import {
   CONNECTOR_TYPES,
   type ConnectorType,
-} from "@vm0/api-contracts/contracts/connectors";
+} from "@vm0/connectors/connectors";
 import { createElement } from "react";
 import { OnboardingPage } from "../../views/onboarding-page/onboarding-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";

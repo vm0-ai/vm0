@@ -7,7 +7,7 @@ import {
   setFeatureSwitch$,
   resetFeatureSwitches$,
 } from "../feature-switch";
-import { FeatureSwitchKey } from "@vm0/api-contracts/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import {
   getMockFeatureSwitches,

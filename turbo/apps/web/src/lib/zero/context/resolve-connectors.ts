@@ -1,8 +1,8 @@
-import { getConnectorEnvironmentMapping } from "@vm0/api-contracts/contracts/connector-utils";
+import { getConnectorEnvironmentMapping } from "@vm0/connectors/connector-utils";
 import {
   connectorTypeSchema,
   type ConnectorType,
-} from "@vm0/api-contracts/contracts/connectors";
+} from "@vm0/connectors/connectors";
 import { and, eq } from "drizzle-orm";
 import { logger } from "../../shared/logger";
 import { connectors } from "@vm0/db/schema/connector";

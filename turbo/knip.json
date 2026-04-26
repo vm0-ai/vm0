@@ -72,6 +72,14 @@
       ],
       "project": ["src/**/*.ts"]
     },
+    "packages/connectors": {
+      "entry": [
+        "src/**/__tests__/**/*.{test,spec}.ts",
+        "src/**/*.{test,spec}.ts"
+      ],
+      "project": ["src/**/*.ts"],
+      "ignore": ["src/firewalls/*.generated.ts"]
+    },
     "packages/ui": {
       "entry": [
         "src/**/__tests__/**/*.{test,spec}.{ts,tsx}",

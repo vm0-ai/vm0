@@ -3,7 +3,7 @@ import type { ResumeSession } from "../types";
 import type {
   Firewalls,
   NetworkPolicies,
-} from "@vm0/api-contracts/contracts/firewalls";
+} from "@vm0/connectors/firewall-types";
 
 /**
  * Prepared execution context for executors

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
-import { firewallPoliciesSchema } from "./firewalls";
+import { firewallPoliciesSchema } from "@vm0/connectors/firewall-types";
 import { triggerSourceSchema } from "./logs";
 import { orgTierSchema } from "./orgs";
 

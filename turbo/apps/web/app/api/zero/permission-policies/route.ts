@@ -1,14 +1,14 @@
 import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
 import { zeroAgentPermissionPoliciesContract } from "@vm0/api-contracts/contracts/zero-agents";
-import type { FirewallPolicies } from "@vm0/api-contracts/contracts/firewalls";
+import type { FirewallPolicies } from "@vm0/connectors/firewall-types";
 import {
   fromFirewallPolicies,
   toFirewallPolicies,
-} from "@vm0/api-contracts/contracts/firewalls";
+} from "@vm0/connectors/firewall-types";
 import {
   getConnectorFirewall,
   isFirewallConnectorType,
-} from "@vm0/api-contracts/firewalls";
+} from "@vm0/connectors/firewalls";
 import { initServices } from "../../../../src/lib/init-services";
 import {
   requireAuth,

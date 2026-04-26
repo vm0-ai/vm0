@@ -5,9 +5,9 @@ import {
   CONNECTOR_TYPES,
   type ConnectorType,
   type ConnectorDisplayCategory,
-} from "@vm0/api-contracts/contracts/connectors";
-import { hasRequiredScopes } from "@vm0/api-contracts/contracts/connector-utils";
-import { FeatureSwitchKey } from "@vm0/api-contracts/feature-switch-key";
+} from "@vm0/connectors/connectors";
+import { hasRequiredScopes } from "@vm0/connectors/connector-utils";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   zeroConnectorScopeDiffContract,
   zeroConnectorsMainContract,

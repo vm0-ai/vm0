@@ -1,6 +1,9 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
-import { firewallsSchema, networkPoliciesSchema } from "./firewalls";
+import {
+  firewallsSchema,
+  networkPoliciesSchema,
+} from "@vm0/connectors/firewall-types";
 import { apiErrorSchema } from "./errors";
 
 const c = initContract();

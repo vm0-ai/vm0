@@ -1,5 +1,5 @@
 import { eq, and, inArray } from "drizzle-orm";
-import type { ExpandedFirewallConfig } from "@vm0/api-contracts/contracts/firewalls";
+import type { ExpandedFirewallConfig } from "@vm0/connectors/firewall-types";
 import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { orgCustomConnectorSecrets } from "@vm0/db/schema/org-custom-connector-secret";
 import { decryptSecretValue } from "../../shared/crypto";

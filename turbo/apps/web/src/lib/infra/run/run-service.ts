@@ -29,8 +29,8 @@ import {
   type GetRunResponse,
 } from "@vm0/api-contracts/contracts/runs";
 import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
-import type { FirewallPolicies } from "@vm0/api-contracts/contracts/firewalls";
-import type { ConnectorType } from "@vm0/api-contracts/contracts/connectors";
+import type { FirewallPolicies } from "@vm0/connectors/firewall-types";
+import type { ConnectorType } from "@vm0/connectors/connectors";
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import { publishCancelNotification } from "../realtime/client";
 import type { CancelRunResult } from "../../zero/zero-run-cancel";
