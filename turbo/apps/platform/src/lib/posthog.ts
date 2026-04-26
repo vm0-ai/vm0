@@ -6,12 +6,9 @@ export function initPostHog(): void {
   const key = import.meta.env.VITE_POSTHOG_KEY as string | undefined;
   if (!key) return;
 
-  const host =
-    (import.meta.env.VITE_POSTHOG_HOST as string) || "https://us.posthog.com";
-
   try {
     posthog.init(key, {
-      api_host: host,
+      api_host: "https://us.posthog.com",
       autocapture: false,
       capture_pageview: false,
       disable_session_recording: true,

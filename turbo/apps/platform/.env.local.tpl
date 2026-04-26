@@ -9,7 +9,6 @@ VITE_VAPID_PUBLIC_KEY=op://Development/vapid/VAPID_PUBLIC_KEY
 # Analytics
 VITE_PLAUSIBLE_SCRIPT_URL=
 VITE_POSTHOG_KEY=
-VITE_POSTHOG_HOST=https://us.posthog.com
 
 # Optional: Error Tracking (Sentry)
 VITE_SENTRY_DSN=
