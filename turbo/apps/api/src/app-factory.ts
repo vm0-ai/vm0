@@ -29,9 +29,7 @@ function handleError(error: Error, context: Context): Response {
   return context.json({ error: "Internal server error" }, 500);
 }
 
-export function createApp(signal: AbortSignal): Hono {
-  const app = new Hono();
-
+export function createApp(signal: AbortSignal, app = new Hono()): Hono {
   app.onError(handleError);
 
   ROUTES.forEach((route: RouteDefinition<unknown>) => {
