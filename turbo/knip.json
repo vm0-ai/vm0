@@ -46,7 +46,7 @@
     },
     "apps/api": {
       "entry": [
-        "src/app.ts",
+        "src/index.ts",
         "src/server.ts",
         "src/signals/context/hono.ts",
         "src/signals/context/wait-until.ts",

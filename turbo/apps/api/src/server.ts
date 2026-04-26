@@ -1,5 +1,5 @@
 import { serve } from "@hono/node-server";
-import app from "./app";
+import app from "./index";
 import { logger } from "./lib/log";
 
 const L = logger("Server");

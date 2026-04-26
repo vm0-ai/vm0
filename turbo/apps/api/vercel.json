@@ -1,4 +1,3 @@
 {
-  "buildCommand": "cd ../.. && pnpm run build --filter=api",
   "installCommand": "cd ../.. && pnpm install"
 }
