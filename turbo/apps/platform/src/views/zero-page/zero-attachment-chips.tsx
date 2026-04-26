@@ -11,7 +11,8 @@ import {
 } from "@tabler/icons-react";
 import type { ZeroChatAttachment } from "../../signals/chat-page/chat-message.ts";
 import { logger } from "../../signals/log.ts";
-import { jsonParseOr } from "../../signals/utils.ts";
+import { detach, jsonParseOr, Reason } from "../../signals/utils.ts";
+import { pageSignal$ } from "../../signals/page-signal.ts";
 import { Markdown } from "../components/markdown.tsx";
 import {
   lightboxUrl$,
@@ -161,9 +162,10 @@ async function readLimitedText(response: Response): Promise<string> {
   return new TextDecoder().decode(bytes);
 }
 
-function fetchPreviewText(url: string): Promise<string> {
+function fetchPreviewText(url: string, signal: AbortSignal): Promise<string> {
   return fetch(toRawUrl(url), {
     headers: { Range: `bytes=0-${String(TEXT_PREVIEW_MAX_BYTES - 1)}` },
+    signal,
   }).then(async (res) => {
     if (!res.ok) {
       throw new Error(`HTTP ${String(res.status)}`);
@@ -180,6 +182,7 @@ type TextLoadState = {
 class TextPreviewLoader extends Component<
   {
     url: string;
+    signal: AbortSignal;
     children: (state: TextLoadState) => ReactNode;
   },
   TextLoadState
@@ -196,8 +199,13 @@ class TextPreviewLoader extends Component<
     this.loadText();
   }
 
-  componentDidUpdate(previousProps: Readonly<{ url: string }>) {
-    if (previousProps.url !== this.props.url) {
+  componentDidUpdate(
+    previousProps: Readonly<{ url: string; signal: AbortSignal }>,
+  ) {
+    if (
+      previousProps.url !== this.props.url ||
+      previousProps.signal !== this.props.signal
+    ) {
       this.loadText();
     }
   }
@@ -208,15 +216,16 @@ class TextPreviewLoader extends Component<
 
   loadText() {
     this.setState({ status: "loading", text: "" });
+    const { signal, url } = this.props;
 
-    fetchPreviewText(this.props.url)
+    fetchPreviewText(url, signal)
       .then((text) => {
-        if (this.#active) {
+        if (this.#active && this.props.url === url && !signal.aborted) {
           this.setState({ status: "loaded", text });
         }
       })
       .catch(() => {
-        if (this.#active) {
+        if (this.#active && this.props.url === url && !signal.aborted) {
           this.setState({ status: "error", text: "" });
         }
       });
@@ -272,8 +281,11 @@ function triggerBlobDownload(blob: Blob, filename: string): void {
 // a successful fetch is a real bug and propagates to the caller. The
 // fallback keeps the user on the same page and lets the app's `/f/...`
 // route force `Content-Disposition: attachment` via `?download=1`.
-function fetchBlobOrOpen(url: string): Promise<Blob | null> {
-  return fetch(getAttachmentDownloadUrl(url), { mode: "cors" })
+function fetchBlobOrOpen(
+  url: string,
+  signal: AbortSignal,
+): Promise<Blob | null> {
+  return fetch(getAttachmentDownloadUrl(url), { mode: "cors", signal })
     .then((res) => {
       if (!res.ok) {
         throw new Error(`fetch failed: ${String(res.status)}`);
@@ -281,6 +293,7 @@ function fetchBlobOrOpen(url: string): Promise<Blob | null> {
       return res.blob();
     })
     .catch((error: unknown) => {
+      signal.throwIfAborted();
       log.warn(
         "downloadUrl: fetch failed, falling back to direct download",
         error,
@@ -290,9 +303,12 @@ function fetchBlobOrOpen(url: string): Promise<Blob | null> {
     });
 }
 
-function downloadAttachmentUrl(url: string): Promise<void> {
+function downloadAttachmentUrl(
+  url: string,
+  signal: AbortSignal,
+): Promise<void> {
   const filename = filenameFromUrl(url);
-  return fetchBlobOrOpen(url).then((blob) => {
+  return fetchBlobOrOpen(url, signal).then((blob) => {
     if (blob !== null) {
       triggerBlobDownload(blob, filename);
     }
@@ -302,6 +318,7 @@ function downloadAttachmentUrl(url: string): Promise<void> {
 function ImageLightbox({ url }: { url: string }) {
   const dialogRef = useSet(lightboxDialogRef$);
   const closeLightbox = useSet(closeLightbox$);
+  const pageSignal = useGet(pageSignal$);
 
   const handleBackdropClick = (e: MouseEvent<HTMLDivElement>) => {
     if (e.target === e.currentTarget) {
@@ -323,9 +340,11 @@ function ImageLightbox({ url }: { url: string }) {
         <button
           type="button"
           onClick={() => {
-            downloadAttachmentUrl(url).catch((error: unknown) => {
-              log.error("downloadUrl: unexpected failure", error);
-            });
+            detach(
+              downloadAttachmentUrl(url, pageSignal),
+              Reason.DomCallback,
+              "attachment download",
+            );
           }}
           className="p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors cursor-pointer"
           aria-label="Download"
@@ -357,6 +376,7 @@ export function AttachmentLightbox() {
   const preview = useGet(lightboxUrl$);
   const dialogRef = useSet(lightboxDialogRef$);
   const closeLightbox = useSet(closeLightbox$);
+  const pageSignal = useGet(pageSignal$);
 
   if (!preview) {
     return null;
@@ -388,9 +408,11 @@ export function AttachmentLightbox() {
         <button
           type="button"
           onClick={() => {
-            downloadAttachmentUrl(preview.url).catch((error: unknown) => {
-              log.error("downloadUrl: unexpected failure", error);
-            });
+            detach(
+              downloadAttachmentUrl(preview.url, pageSignal),
+              Reason.DomCallback,
+              "attachment download",
+            );
           }}
           className="p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors cursor-pointer"
           aria-label="Download"
@@ -436,11 +458,15 @@ export function AttachmentLightbox() {
           </div>
         </div>
         {preview.kind === "markdown" ? (
-          <MarkdownLightboxBody url={preview.url} />
+          <MarkdownLightboxBody url={preview.url} signal={pageSignal} />
         ) : preview.kind === "text" || preview.kind === "json" ? (
-          <PlainTextLightboxBody url={preview.url} kind={preview.kind} />
+          <PlainTextLightboxBody
+            url={preview.url}
+            kind={preview.kind}
+            signal={pageSignal}
+          />
         ) : preview.kind === "csv" ? (
-          <CsvLightboxBody url={preview.url} />
+          <CsvLightboxBody url={preview.url} signal={pageSignal} />
         ) : (
           <iframe
             src={preview.url}
@@ -455,9 +481,15 @@ export function AttachmentLightbox() {
   );
 }
 
-function MarkdownLightboxBody({ url }: { url: string }) {
+function MarkdownLightboxBody({
+  url,
+  signal,
+}: {
+  url: string;
+  signal: AbortSignal;
+}) {
   return (
-    <TextPreviewLoader url={url}>
+    <TextPreviewLoader url={url} signal={signal}>
       {({ status, text }) => {
         if (status === "loading") {
           return (
@@ -487,13 +519,15 @@ function MarkdownLightboxBody({ url }: { url: string }) {
 
 function PlainTextLightboxBody({
   kind,
+  signal,
   url,
 }: {
   kind: "text" | "json" | "csv";
+  signal: AbortSignal;
   url: string;
 }) {
   return (
-    <TextPreviewLoader url={url}>
+    <TextPreviewLoader url={url} signal={signal}>
       {({ status, text }) => {
         if (status === "loading") {
           return (
@@ -530,9 +564,15 @@ function PlainTextLightboxBody({
   );
 }
 
-function CsvLightboxBody({ url }: { url: string }) {
+function CsvLightboxBody({
+  url,
+  signal,
+}: {
+  url: string;
+  signal: AbortSignal;
+}) {
   return (
-    <TextPreviewLoader url={url}>
+    <TextPreviewLoader url={url} signal={signal}>
       {({ status, text }) => {
         if (status === "loading") {
           return (

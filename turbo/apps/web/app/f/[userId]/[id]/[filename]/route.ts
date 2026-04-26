@@ -101,6 +101,7 @@ export async function GET(
     const range = request.headers.get("Range");
     const upstream = await fetch(signed, {
       headers: range ? { Range: range } : undefined,
+      signal: request.signal,
     });
     const upstreamContentType = upstream.headers.get("Content-Type");
     const headers: Record<string, string> = {

@@ -201,9 +201,9 @@ describe("POST /api/agent/runs/:id/cancel - Cancel Run", () => {
 
   describe("Error Handling", () => {
     it("should return 401 for unauthenticated request", async () => {
-      mockClerk({ userId: null });
-
       const run = await createTestRun(testComposeId, "Run to cancel");
+
+      mockClerk({ userId: null });
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${run.runId}/cancel`,

@@ -259,7 +259,7 @@ export const runsByIdContract = c.router({
     path: "/api/agent/runs/:id",
     headers: authHeadersSchema,
     pathParams: z.object({
-      id: z.string().min(1, "Run ID is required"),
+      id: z.uuid("Run ID must be a valid UUID"),
     }),
     responses: {
       200: getRunResponseSchema,
@@ -293,7 +293,7 @@ export const runsCancelContract = c.router({
     path: "/api/agent/runs/:id/cancel",
     headers: authHeadersSchema,
     pathParams: z.object({
-      id: z.string().min(1, "Run ID is required"),
+      id: z.uuid("Run ID must be a valid UUID"),
     }),
     body: z.undefined(),
     responses: {
@@ -320,7 +320,7 @@ export const runEventsContract = c.router({
     path: "/api/agent/runs/:id/events",
     headers: authHeadersSchema,
     pathParams: z.object({
-      id: z.string().min(1, "Run ID is required"),
+      id: z.uuid("Run ID must be a valid UUID"),
     }),
     query: z.object({
       since: z.coerce.number().default(-1),
@@ -442,7 +442,7 @@ export const runTelemetryContract = c.router({
     path: "/api/agent/runs/:id/telemetry",
     headers: authHeadersSchema,
     pathParams: z.object({
-      id: z.string().min(1, "Run ID is required"),
+      id: z.uuid("Run ID must be a valid UUID"),
     }),
     responses: {
       200: telemetryResponseSchema,
@@ -466,7 +466,7 @@ export const runSystemLogContract = c.router({
     path: "/api/agent/runs/:id/telemetry/system-log",
     headers: authHeadersSchema,
     pathParams: z.object({
-      id: z.string().min(1, "Run ID is required"),
+      id: z.uuid("Run ID must be a valid UUID"),
     }),
     query: z.object({
       since: z.coerce.number().optional(),
@@ -495,7 +495,7 @@ export const runMetricsContract = c.router({
     path: "/api/agent/runs/:id/telemetry/metrics",
     headers: authHeadersSchema,
     pathParams: z.object({
-      id: z.string().min(1, "Run ID is required"),
+      id: z.uuid("Run ID must be a valid UUID"),
     }),
     query: z.object({
       since: z.coerce.number().optional(),
@@ -524,7 +524,7 @@ export const runAgentEventsContract = c.router({
     path: "/api/agent/runs/:id/telemetry/agent",
     headers: authHeadersSchema,
     pathParams: z.object({
-      id: z.string().min(1, "Run ID is required"),
+      id: z.uuid("Run ID must be a valid UUID"),
     }),
     query: z.object({
       since: z.coerce.number().optional(),
@@ -553,7 +553,7 @@ export const runNetworkLogsContract = c.router({
     path: "/api/agent/runs/:id/telemetry/network",
     headers: authHeadersSchema,
     pathParams: z.object({
-      id: z.string().min(1, "Run ID is required"),
+      id: z.uuid("Run ID must be a valid UUID"),
     }),
     query: z.object({
       since: z.coerce.number().optional(),

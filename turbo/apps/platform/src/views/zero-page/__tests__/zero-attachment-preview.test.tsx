@@ -11,6 +11,7 @@ import { StoreProvider } from "ccstate-react";
 import { server } from "../../../mocks/server.ts";
 import { http, HttpResponse } from "msw";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { createDeferredPromise } from "../../../signals/utils.ts";
 import {
   classifyChatAttachment,
   AttachmentPreview,
@@ -196,7 +197,7 @@ describe("attachment preview component", () => {
   }) {
     const result = render(
       <StoreProvider value={context.store}>
-        <AttachmentPreview attachment={attachment} />
+        <AttachmentPreview attachment={attachment} signal={context.signal} />
       </StoreProvider>,
     );
     return result;
@@ -289,6 +290,14 @@ describe("attachment preview component", () => {
 
 describe("text preview loading and error states", () => {
   it("should show loading spinner initially", async () => {
+    const gate = createDeferredPromise<void>(context.signal);
+    server.use(
+      http.get("https://example.com/notes.txt", async () => {
+        await gate.promise;
+        return HttpResponse.text("Loaded");
+      }),
+    );
+
     const { container } = render(
       <StoreProvider value={context.store}>
         <AttachmentPreview
@@ -296,6 +305,7 @@ describe("text preview loading and error states", () => {
             filename: "notes.txt",
             url: "https://example.com/notes.txt",
           }}
+          signal={context.signal}
         />
       </StoreProvider>,
     );
@@ -307,6 +317,12 @@ describe("text preview loading and error states", () => {
     // Loading spinner should be present
     const spinner = container.querySelector(".animate-spin");
     expect(spinner).toBeInTheDocument();
+
+    gate.resolve();
+
+    await waitFor(() => {
+      expect(screen.getByText("Loaded")).toBeInTheDocument();
+    });
   });
 
   it("should show error state when fetch fails", async () => {
@@ -323,6 +339,7 @@ describe("text preview loading and error states", () => {
             filename: "error.txt",
             url: "https://example.com/error.txt",
           }}
+          signal={context.signal}
         />
       </StoreProvider>,
     );
@@ -350,6 +367,7 @@ describe("text preview loading and error states", () => {
             filename: "hello.txt",
             url: "https://example.com/hello.txt",
           }}
+          signal={context.signal}
         />
       </StoreProvider>,
     );
@@ -377,6 +395,7 @@ describe("text preview loading and error states", () => {
             filename: "long.txt",
             url: "https://example.com/long.txt",
           }}
+          signal={context.signal}
         />
       </StoreProvider>,
     );
@@ -415,6 +434,7 @@ describe("text preview loading and error states", () => {
             filename: "data.json",
             url: "https://example.com/data.json",
           }}
+          signal={context.signal}
         />
       </StoreProvider>,
     );
@@ -442,6 +462,7 @@ describe("document thumbnail preview", () => {
             filename: "readme.md",
             url: "https://example.com/readme.md",
           }}
+          signal={context.signal}
         />
       </StoreProvider>,
     );
@@ -462,6 +483,7 @@ describe("document thumbnail preview", () => {
             filename: "export.csv",
             url: "https://example.com/export.csv",
           }}
+          signal={context.signal}
         />
       </StoreProvider>,
     );
@@ -478,6 +500,7 @@ describe("document thumbnail preview", () => {
             filename: "doc.pdf",
             url: "https://example.com/doc.pdf",
           }}
+          signal={context.signal}
         />
       </StoreProvider>,
     );
@@ -494,6 +517,7 @@ describe("document thumbnail preview", () => {
             filename: "page.html",
             url: "https://example.com/page.html",
           }}
+          signal={context.signal}
         />
       </StoreProvider>,
     );

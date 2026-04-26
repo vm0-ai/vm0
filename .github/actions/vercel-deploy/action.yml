@@ -30,6 +30,10 @@ inputs:
     description: "Environment variables for deployment (key=value pairs, one per line)"
     required: false
     default: ""
+  environment-file:
+    description: "Path to a file containing environment variables (key=value pairs, one per line)"
+    required: false
+    default: ""
   meta-branch:
     description: "Branch name for metadata"
     required: false
@@ -84,6 +88,7 @@ runs:
       shell: bash
       env:
         INPUT_ENV_VARS: ${{ inputs.environment-variables }}
+        INPUT_ENV_FILE: ${{ inputs.environment-file }}
         INPUT_PREBUILT: ${{ inputs.prebuilt }}
         INPUT_SKIP_DOMAIN: ${{ inputs.skip-domain }}
         INPUT_ENVIRONMENT: ${{ inputs.environment }}
@@ -91,6 +96,15 @@ runs:
         INPUT_META_BRANCH: ${{ inputs.meta-branch }}
         INPUT_META_PR: ${{ inputs.meta-pr }}
       run: |
+        env_lines() {
+          if [ -n "$INPUT_ENV_FILE" ]; then
+            cat "$INPUT_ENV_FILE"
+          fi
+          if [ -n "$INPUT_ENV_VARS" ]; then
+            printf '%s\n' "$INPUT_ENV_VARS"
+          fi
+        }
+
         if [ "$INPUT_SKIP_DOMAIN" == "true" ]; then
           if [ "$INPUT_PREBUILT" != "true" ] || [ "$INPUT_ENVIRONMENT" != "production" ]; then
             echo "::error::skip-domain=true requires prebuilt=true and environment=production (got prebuilt=$INPUT_PREBUILT, environment=$INPUT_ENVIRONMENT)"
@@ -98,11 +112,16 @@ runs:
           fi
         fi
 
+        if [ -n "$INPUT_ENV_FILE" ] && [ ! -f "$INPUT_ENV_FILE" ]; then
+          echo "::error::environment-file does not exist: $INPUT_ENV_FILE"
+          exit 1
+        fi
+
         if [ "$INPUT_PREBUILT" == "true" ]; then
           # === Prebuilt mode: build locally, deploy artifacts only ===
 
           # Export environment variables for local build
-          if [ -n "$INPUT_ENV_VARS" ]; then
+          if [ -n "$INPUT_ENV_FILE" ] || [ -n "$INPUT_ENV_VARS" ]; then
             echo "Exporting environment variables for local build..."
             while IFS= read -r line; do
               line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
@@ -112,7 +131,7 @@ runs:
                 echo "Exporting env: $KEY"
                 export "$KEY=$VALUE"
               fi
-            done <<< "$INPUT_ENV_VARS"
+            done < <(env_lines)
           fi
 
           # Build locally using Vercel CLI
@@ -140,7 +159,7 @@ runs:
           # without it `vercel deploy --prebuilt` does not register these vars in the
           # deployment's runtime env, leaving `process.env.CRON_SECRET` (and every
           # other secret) undefined. This mirrors the standard-mode branch below.
-          if [ -n "$INPUT_ENV_VARS" ]; then
+          if [ -n "$INPUT_ENV_FILE" ] || [ -n "$INPUT_ENV_VARS" ]; then
             echo "Adding runtime environment variables..."
             while IFS= read -r line; do
               line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
@@ -150,7 +169,7 @@ runs:
                 echo "Adding runtime env: $KEY"
                 DEPLOY_ARGS+=(--build-env "$KEY=$VALUE" --env "$KEY=$VALUE")
               fi
-            done <<< "$INPUT_ENV_VARS"
+            done < <(env_lines)
           fi
         else
           # === Standard mode: remote build on Vercel ===
@@ -161,7 +180,7 @@ runs:
           fi
 
           # Add environment variables for both build-time and runtime
-          if [ -n "$INPUT_ENV_VARS" ]; then
+          if [ -n "$INPUT_ENV_FILE" ] || [ -n "$INPUT_ENV_VARS" ]; then
             echo "Adding environment variables for build and runtime..."
             while IFS= read -r line; do
               line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
@@ -171,7 +190,7 @@ runs:
                 echo "Adding env: $KEY"
                 DEPLOY_ARGS+=(--build-env "$KEY=$VALUE" --env "$KEY=$VALUE")
               fi
-            done <<< "$INPUT_ENV_VARS"
+            done < <(env_lines)
           fi
         fi
 

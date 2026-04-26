@@ -70,7 +70,7 @@ export const zeroRunsByIdContract = c.router({
     path: "/api/zero/runs/:id",
     headers: authHeadersSchema,
     pathParams: z.object({
-      id: z.string().min(1, "Run ID is required"),
+      id: z.uuid("Run ID must be a valid UUID"),
     }),
     responses: {
       200: getRunResponseSchema,
@@ -92,7 +92,7 @@ export const zeroRunsCancelContract = c.router({
     path: "/api/zero/runs/:id/cancel",
     headers: authHeadersSchema,
     pathParams: z.object({
-      id: z.string().min(1, "Run ID is required"),
+      id: z.uuid("Run ID must be a valid UUID"),
     }),
     body: z.undefined(),
     responses: {
@@ -134,7 +134,7 @@ export const zeroRunAgentEventsContract = c.router({
     path: "/api/zero/runs/:id/telemetry/agent",
     headers: authHeadersSchema,
     pathParams: z.object({
-      id: z.string().min(1, "Run ID is required"),
+      id: z.uuid("Run ID must be a valid UUID"),
     }),
     query: z.object({
       since: z.coerce.number().optional(),
@@ -211,7 +211,7 @@ export const zeroRunContextContract = c.router({
     path: "/api/zero/runs/:id/context",
     headers: authHeadersSchema,
     pathParams: z.object({
-      id: z.string().min(1, "Run ID is required"),
+      id: z.uuid("Run ID must be a valid UUID"),
     }),
     responses: {
       200: runContextResponseSchema,
@@ -233,7 +233,7 @@ export const zeroRunNetworkLogsContract = c.router({
     path: "/api/zero/runs/:id/network",
     headers: authHeadersSchema,
     pathParams: z.object({
-      id: z.string().min(1, "Run ID is required"),
+      id: z.uuid("Run ID must be a valid UUID"),
     }),
     query: z.object({
       since: z.coerce.number().optional(),
@@ -267,7 +267,7 @@ export const zeroRunRunnerContract = c.router({
     path: "/api/zero/runs/:id/runner",
     headers: authHeadersSchema,
     pathParams: z.object({
-      id: z.string().min(1, "Run ID is required"),
+      id: z.uuid("Run ID must be a valid UUID"),
     }),
     responses: {
       200: runRunnerResponseSchema,

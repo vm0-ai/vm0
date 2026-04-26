@@ -508,6 +508,7 @@ const setupWebRTC$ = command(
           "Content-Type": "application/sdp",
         },
         body: offer.sdp,
+        signal,
       },
     );
     signal.throwIfAborted();

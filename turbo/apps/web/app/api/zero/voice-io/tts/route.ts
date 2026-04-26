@@ -91,6 +91,7 @@ export async function POST(request: Request): Promise<Response> {
       input: text,
       response_format: "pcm",
     }),
+    signal: request.signal,
   });
 
   if (!response.ok) {

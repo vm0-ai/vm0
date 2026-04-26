@@ -130,6 +130,7 @@ export async function POST(request: Request): Promise<Response> {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}` },
       body: openaiForm,
+      signal: request.signal,
     },
   );
 

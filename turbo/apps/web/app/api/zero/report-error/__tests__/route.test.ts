@@ -94,6 +94,20 @@ describe("POST /api/zero/report-error", () => {
     expect(data.error.code).toBe("RUN_NOT_FOUND");
   });
 
+  // Regression for #11126: short non-UUID runId used to flow into drizzle and
+  // surface as a postgres `22P02 invalid input syntax for type uuid` 500.
+  it("should return 400 when runId is not a valid UUID", async () => {
+    const response = await postReportError({
+      runId: "2b9b2303",
+      title: "Bug",
+      description: "Desc",
+    });
+    expect(response.status).toBe(400);
+
+    const data = await response.json();
+    expect(data.error.code).toBe("BAD_REQUEST");
+  });
+
   it("should return 400 for non-failed run", async () => {
     const compose = await createTestCompose(`agent-${uniqueId("rpt")}`);
     const { runId } = await seedTestRun(userId, compose.composeId, {

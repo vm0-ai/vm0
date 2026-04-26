@@ -189,9 +189,10 @@ async function readLimitedText(response: Response): Promise<string> {
   return new TextDecoder().decode(bytes);
 }
 
-function fetchPreviewText(url: string): Promise<string> {
+function fetchPreviewText(url: string, signal: AbortSignal): Promise<string> {
   return fetch(toRawUrl(url), {
     headers: { Range: `bytes=0-${String(TEXT_PREVIEW_MAX_BYTES - 1)}` },
+    signal,
   }).then(async (response) => {
     if (!response.ok) {
       throw new Error(`HTTP ${String(response.status)}`);
@@ -210,6 +211,7 @@ function formatPreviewText(kind: "text" | "json", text: string): string {
 
 type TextPreviewProps = {
   filename: string;
+  signal: AbortSignal;
   url: string;
   kind: "text" | "json";
 };
@@ -235,7 +237,10 @@ class TextPreview extends Component<TextPreviewProps, TextPreviewState> {
   }
 
   componentDidUpdate(previousProps: Readonly<TextPreviewProps>) {
-    if (previousProps.url !== this.props.url) {
+    if (
+      previousProps.url !== this.props.url ||
+      previousProps.signal !== this.props.signal
+    ) {
       this.#loadText();
     }
   }
@@ -246,15 +251,16 @@ class TextPreview extends Component<TextPreviewProps, TextPreviewState> {
 
   #loadText() {
     this.setState({ status: "loading", text: "" });
+    const { signal, url } = this.props;
 
-    fetchPreviewText(this.props.url)
+    fetchPreviewText(url, signal)
       .then((text) => {
-        if (this.#active) {
+        if (this.#active && this.props.url === url && !signal.aborted) {
           this.setState({ status: "loaded", text });
         }
       })
       .catch(() => {
-        if (this.#active) {
+        if (this.#active && this.props.url === url && !signal.aborted) {
           this.setState({ status: "error", text: "" });
         }
       });
@@ -399,8 +405,10 @@ function DocumentThumbnailPreview({
 
 export function AttachmentPreview({
   attachment,
+  signal,
 }: {
   attachment: ChatAttachmentDescriptor;
+  signal: AbortSignal;
 }) {
   const kind = classifyChatAttachment(attachment);
 
@@ -418,6 +426,7 @@ export function AttachmentPreview({
       return (
         <TextPreview
           filename={attachment.filename}
+          signal={signal}
           url={attachment.url}
           kind="text"
         />
@@ -427,6 +436,7 @@ export function AttachmentPreview({
       return (
         <TextPreview
           filename={attachment.filename}
+          signal={signal}
           url={attachment.url}
           kind="json"
         />

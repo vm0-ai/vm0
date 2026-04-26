@@ -437,6 +437,11 @@ export function testContext(): TestContext {
 
     // Restore any stubbed globals (e.g. Date from setSystemTime) so the
     // next test's beforeEach runs with the real clock.
+    // Also restore the Date.now spy — vi.unstubAllGlobals only restores
+    // the global Date constructor, leaving Date.now() stuck at the mocked
+    // time. This breaks any code that runs in afterEach hooks (e.g.
+    // flushNextAsyncHooks calling after()-queued triggerReasoning).
+    if (mockHelpers) mockHelpers.dateNow.mockRestore();
     vi.unstubAllGlobals();
 
     // Reset mocks, cached user, and tracked IDs for next test
