@@ -1187,7 +1187,8 @@ jobs:
 
           # Submit a long-running job in background (keeps sandbox alive during tests)
           echo "--- Submitting long-running job ---"
-          sudo "$BIN_DIR/runner" local submit --group "$GROUP" --prompt 'sleep 120 && echo done' &
+          sudo "$BIN_DIR/runner" local submit --group "$GROUP" --prompt 'sleep 360 && echo done' &
+          SUBMIT_PID=$!
 
           # Wait for sandbox control socket. Socket and api.sock paths use
           # sandbox_id (distinct from run_id after #9552). `runner exec`
@@ -1214,12 +1215,14 @@ jobs:
             echo "${val:-0}"
           }
 
-          # Helper: read guest MemAvailable in kB (returns 0 if exec fails)
+          # Helper: read guest MemAvailable in kB.
           guest_avail_kb() {
+            local output
             local val
-            val=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- grep MemAvailable /proc/meminfo 2>/dev/null \
-              | tr -s ' ' | cut -d' ' -f2)
-            echo "${val:-0}"
+            output=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- grep MemAvailable /proc/meminfo 2>/dev/null) || return 1
+            val=$(printf '%s\n' "$output" | tr -s ' ' | cut -d' ' -f2)
+            [ -n "$val" ] || return 1
+            echo "$val"
           }
 
           # Helper: check if VM is still alive
@@ -1227,11 +1230,22 @@ jobs:
             sudo curl -sf --unix-socket "$API_SOCK" http://localhost/ >/dev/null 2>&1
           }
 
+          # Helper: fail fast if the keepalive job exits before the balloon
+          # assertions finish. Otherwise a dead sandbox can look like
+          # actual_mib=0 and produce misleading follow-on failures.
+          ensure_submit_running() {
+            if ! kill -0 "$SUBMIT_PID" 2>/dev/null; then
+              wait "$SUBMIT_PID" 2>/dev/null || true
+              fail "keepalive submit exited before balloon test completed"
+            fi
+          }
+
           # Test 1: idle inflate — balloon controller gradually reclaims idle guest memory
           # With per-tick cap (256 MiB), balloon inflates over multiple ticks.
           echo "--- Test 1: balloon idle inflate ---"
           ACTUAL=0
           for i in $(seq 1 30); do
+            ensure_submit_running
             ACTUAL=$(balloon_mib)
             [ "${ACTUAL:-0}" -gt 0 ] && break
             sleep 1
@@ -1244,6 +1258,8 @@ jobs:
           PREV=0
           STABLE_COUNT=0
           for i in $(seq 1 30); do
+            ensure_submit_running
+            vm_alive || fail "VM exited during balloon stabilization"
             ACTUAL=$(balloon_mib)
             if [ "$ACTUAL" -eq "$PREV" ] && [ "$ACTUAL" -gt 0 ]; then
               STABLE_COUNT=$((STABLE_COUNT + 1))
@@ -1255,10 +1271,13 @@ jobs:
             sleep 3
           done
           INFLATE_MIB=$ACTUAL
+          [ "$INFLATE_MIB" -gt 0 ] || fail "balloon stabilized at zero; VM may have exited"
           echo "Balloon stabilized at ${INFLATE_MIB} MiB"
 
           # Verify guest-side: MemAvailable decreased
-          AVAIL=$(guest_avail_kb)
+          ensure_submit_running
+          AVAIL=$(guest_avail_kb) || fail "failed to read guest MemAvailable"
+          [ "$AVAIL" -gt 0 ] || fail "guest MemAvailable unavailable"
           [ "$AVAIL" -lt 1536000 ] || fail "MemAvailable too high after balloon: ${AVAIL}kB (expected < 1536000kB)"
           echo "PASS: guest MemAvailable reduced (${AVAIL}kB)"
 
@@ -1275,6 +1294,8 @@ jobs:
           # Wait for balloon to deflate (actual_mib decreases)
           DEFLATED=0
           for i in $(seq 1 30); do
+            ensure_submit_running
+            vm_alive || fail "VM exited during balloon deflate test"
             ACTUAL=$(balloon_mib)
             if [ "$ACTUAL" -lt "$INFLATE_MIB" ]; then
               DEFLATED=1
@@ -1305,6 +1326,8 @@ jobs:
           MIDPOINT=$(( (INFLATE_MIB + DEFLATE_MIB) / 2 ))
           REINFLATED=0
           for i in $(seq 1 30); do
+            ensure_submit_running
+            vm_alive || fail "VM exited during balloon re-inflate test"
             ACTUAL=$(balloon_mib)
             if [ "$ACTUAL" -gt "$MIDPOINT" ]; then
               REINFLATED=1
@@ -1317,6 +1340,8 @@ jobs:
 
           # Stop transient service
           sudo "$BIN_DIR/runner" service stop --name "$SVC" --force
+          kill "$SUBMIT_PID" 2>/dev/null || true
+          wait "$SUBMIT_PID" 2>/dev/null || true
           trap - EXIT
 
           echo "=== Balloon test passed ==="
