@@ -14,7 +14,7 @@ const SCHEMA = {
   VM0_DEBUG: z.string().optional(),
 } as const;
 
-const baseEnv = createEnv({
+const baseEnv = createEnv<undefined, typeof SCHEMA>({
   server: SCHEMA,
   runtimeEnv: process.env,
   emptyStringAsUndefined: true,
