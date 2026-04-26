@@ -24,7 +24,6 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
 
   beforeEach(async () => {
     context.setupMocks();
-    context.mocks.date.setSystemTime(new Date("1990-01-02T12:00:00.000Z"));
     user = await context.setupUser();
 
     // Set CRON_SECRET for tests

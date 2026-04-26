@@ -56,7 +56,6 @@ describe("GET /api/cron/aggregate-insights", () => {
 
   beforeEach(async () => {
     context.setupMocks();
-    context.mocks.date.setSystemTime(new Date("2040-01-02T12:00:00.000Z"));
     vi.stubEnv("CRON_SECRET", "test-cron-secret");
     reloadEnv();
     const user = await context.setupUser();

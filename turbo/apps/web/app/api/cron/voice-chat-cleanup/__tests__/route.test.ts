@@ -28,7 +28,6 @@ function cronRequest(secret?: string) {
 describe("GET /api/cron/voice-chat-cleanup", () => {
   beforeEach(() => {
     context.setupMocks();
-    context.mocks.date.setSystemTime(new Date("1990-01-02T12:00:00.000Z"));
     vi.stubEnv("CRON_SECRET", "test-cron-secret");
     reloadEnv();
   });
