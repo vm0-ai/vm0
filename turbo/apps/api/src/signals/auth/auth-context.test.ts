@@ -5,6 +5,7 @@ import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { createStore, type Computed } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
+import { vi } from "vitest";
 
 import { closeFixtureDbPool } from "../../__tests__/db.fixture";
 import { honoComputed } from "../context/route";
@@ -16,6 +17,22 @@ import {
   createRequiredAuthContext$,
 } from "./auth-context";
 import { signPatJwtForTests, signSandboxJwtForTests } from "./tokens";
+
+const clerkClient = vi.hoisted(() => {
+  return {
+    users: {
+      getOrganizationMembershipList: vi.fn(),
+    },
+  };
+});
+
+vi.mock("@clerk/backend", () => {
+  return {
+    createClerkClient: () => {
+      return clerkClient;
+    },
+  };
+});
 
 interface TestTokenFixture {
   readonly token: string;
@@ -92,6 +109,8 @@ describe("auth context", () => {
   const fixtures: TestTokenFixture[] = [];
 
   afterEach(async () => {
+    clerkClient.users.getOrganizationMembershipList.mockReset();
+
     while (fixtures.length > 0) {
       const fixture = fixtures.pop();
       if (fixture) {
@@ -149,6 +168,55 @@ describe("auth context", () => {
       body: {
         error: { message: "API key required", code: "UNAUTHORIZED" },
       },
+    });
+  });
+
+  it("rejects PAT bearer tokens when org membership is missing", async () => {
+    const fixture = await seedPatFixture("member");
+    fixtures.push(fixture);
+    clerkClient.users.getOrganizationMembershipList.mockResolvedValue({
+      data: [],
+    });
+    await store
+      .get(db$)
+      .delete(orgMembersCache)
+      .where(
+        and(
+          eq(orgMembersCache.orgId, fixture.orgId),
+          eq(orgMembersCache.userId, fixture.userId),
+        ),
+      );
+
+    const response = await createAuthApp(createAuthContext$()).request("/", {
+      headers: { authorization: `Bearer ${fixture.token}` },
+    });
+    const payload: unknown = await response.json();
+
+    expect(payload).toBeNull();
+  });
+
+  it("authenticates sandbox tokens only when explicitly allowed", async () => {
+    const token = signSandboxJwtForTests({
+      scope: "sandbox",
+      userId: "user_sandbox",
+      orgId: "org_sandbox",
+      runId: "run_sandbox",
+      iat: currentSecond(),
+      exp: currentSecond() + 60,
+    });
+
+    const response = await createAuthApp(
+      createAuthContext$({ acceptAnySandboxCapability: true }),
+    ).request("/", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const payload: unknown = await response.json();
+
+    expect(payload).toEqual({
+      tokenType: "sandbox",
+      userId: "user_sandbox",
+      orgId: "org_sandbox",
+      runId: "run_sandbox",
     });
   });
 

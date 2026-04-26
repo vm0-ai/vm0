@@ -8,7 +8,7 @@ import { z } from "zod";
 
 import { env } from "../external/env";
 import { now } from "../external/time";
-import { throwIfAbort } from "../utils";
+import { safeJsonParse } from "../utils";
 
 export type { ZeroCapability };
 
@@ -141,11 +141,8 @@ function verifyJwtPayload(rawJwt: string): unknown {
     return null;
   }
 
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(base64UrlDecode(payloadEncoded).toString());
-  } catch (error) {
-    throwIfAbort(error);
+  const parsed = safeJsonParse(base64UrlDecode(payloadEncoded).toString());
+  if (parsed === undefined) {
     return null;
   }
 

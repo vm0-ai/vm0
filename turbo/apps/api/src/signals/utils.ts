@@ -23,9 +23,18 @@ function isAbortError(error: unknown): boolean {
   );
 }
 
-export function throwIfAbort(error: unknown): void {
+function throwIfAbort(error: unknown): void {
   if (isAbortError(error)) {
     throw error;
+  }
+}
+
+export function safeJsonParse(input: string): unknown {
+  try {
+    return JSON.parse(input);
+  } catch (error) {
+    throwIfAbort(error);
+    return undefined;
   }
 }
 

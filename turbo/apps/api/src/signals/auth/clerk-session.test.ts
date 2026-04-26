@@ -30,8 +30,6 @@ describe("clerkSessionAuth$", () => {
   });
 
   it("projects authenticated Clerk sessions into API auth context", async () => {
-    const sessionClaims = { email: "dev@vm0.ai", first_name: "Dev" };
-
     clerkClient.authenticateRequest.mockResolvedValue({
       isAuthenticated: true,
       toAuth: () => {
@@ -39,7 +37,6 @@ describe("clerkSessionAuth$", () => {
           userId: "user_123",
           orgId: "org_123",
           orgRole: "org:admin",
-          sessionClaims,
         };
       },
     });
@@ -50,11 +47,10 @@ describe("clerkSessionAuth$", () => {
     const payload: unknown = await response.json();
 
     expect(payload).toEqual({
+      tokenType: "session",
       userId: "user_123",
       orgId: "org_123",
       orgRole: "admin",
-      sessionClaims,
-      tokenType: "session",
     });
     expect(clerkClient.authenticateRequest).toHaveBeenCalledTimes(1);
     expect(clerkClient.authenticateRequest.mock.calls[0]?.[0]).toBeInstanceOf(

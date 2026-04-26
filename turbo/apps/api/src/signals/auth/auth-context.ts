@@ -16,23 +16,50 @@ import {
   type CliAuth,
   type ZeroCapability,
 } from "./tokens";
-import {
-  clerkSessionAuth$,
-  type ApiOrgRole,
-  type SessionClaims,
-} from "./clerk-session";
+import { clerkSessionAuth$, type ApiOrgRole } from "./clerk-session";
 
-type AuthTokenType = "session" | "pat" | "sandbox" | "zero";
+type SessionAuthContext =
+  | {
+      readonly tokenType: "session";
+      readonly userId: string;
+      readonly orgId: string;
+      readonly orgRole: ApiOrgRole;
+    }
+  | {
+      readonly tokenType: "session";
+      readonly userId: string;
+      readonly orgId?: undefined;
+      readonly orgRole?: undefined;
+    };
 
-interface AuthContext {
+interface PatAuthContext {
+  readonly tokenType: "pat";
   readonly userId: string;
-  readonly orgId?: string;
-  readonly orgRole?: ApiOrgRole;
-  readonly sessionClaims?: SessionClaims;
-  readonly capabilities?: readonly ZeroCapability[];
-  readonly runId?: string;
-  readonly tokenType?: AuthTokenType;
+  readonly orgId: string;
+  readonly orgRole: ApiOrgRole;
 }
+
+interface SandboxAuthContext {
+  readonly tokenType: "sandbox";
+  readonly userId: string;
+  readonly orgId: string;
+  readonly runId: string;
+}
+
+interface ZeroAuthContext {
+  readonly tokenType: "zero";
+  readonly userId: string;
+  readonly orgId: string;
+  readonly orgRole?: ApiOrgRole;
+  readonly runId: string;
+  readonly capabilities: readonly ZeroCapability[];
+}
+
+type AuthContext =
+  | SessionAuthContext
+  | PatAuthContext
+  | SandboxAuthContext
+  | ZeroAuthContext;
 
 interface AuthOptions {
   readonly requiredCapability?: ZeroCapability;
@@ -164,14 +191,14 @@ function createCliAuth$(
       createMemberRole$(resolved.orgId, resolved.userId),
     );
     if (!membership) {
-      return { userId: resolved.userId, tokenType: "pat" };
+      return null;
     }
 
     return {
+      tokenType: "pat",
       userId: resolved.userId,
       orgId: resolved.orgId,
       orgRole: membership.role,
-      tokenType: "pat",
     };
   });
 }
@@ -187,9 +214,10 @@ function resolveSandboxAuth(
 
   if (options.acceptAnySandboxCapability) {
     return {
-      userId: sandboxAuth.userId,
-      runId: sandboxAuth.runId,
       tokenType: "sandbox",
+      userId: sandboxAuth.userId,
+      orgId: sandboxAuth.orgId,
+      runId: sandboxAuth.runId,
     };
   }
 
@@ -215,23 +243,19 @@ function createZeroAuth$(
       }
     }
 
-    const result: AuthContext = {
-      userId: zeroAuth.userId,
-      runId: zeroAuth.runId,
-      orgId: zeroAuth.orgId,
-      capabilities: [...zeroAuth.capabilities],
+    const result: ZeroAuthContext = {
       tokenType: "zero",
+      userId: zeroAuth.userId,
+      orgId: zeroAuth.orgId,
+      runId: zeroAuth.runId,
+      capabilities: [...zeroAuth.capabilities],
     };
 
     const membership = await get(
       createMemberRole$(zeroAuth.orgId, zeroAuth.userId),
     );
     if (!membership) {
-      return {
-        userId: result.userId,
-        runId: result.runId,
-        tokenType: "zero",
-      };
+      return result;
     }
 
     return { ...result, orgRole: membership.role };
@@ -379,7 +403,7 @@ export const apiKeyAuthContext$: Computed<
   }
 
   const authContext = await get(createResolvedAuthContext$(authHeader, {}));
-  if (!authContext || authContext.tokenType !== "pat" || !authContext.orgId) {
+  if (!authContext || authContext.tokenType !== "pat") {
     return unauthorized;
   }
 

@@ -9,17 +9,21 @@ type SignedInSessionAuthObject = Extract<
   { isAuthenticated: true }
 >;
 
-export type SessionClaims = Record<string, unknown>;
-
 export type ApiOrgRole = "admin" | "member";
 
-interface ClerkSessionAuthContext {
-  readonly userId: string;
-  readonly orgId?: string;
-  readonly orgRole?: ApiOrgRole;
-  readonly sessionClaims?: SessionClaims;
-  readonly tokenType: "session";
-}
+type ClerkSessionAuthContext =
+  | {
+      readonly tokenType: "session";
+      readonly userId: string;
+      readonly orgId: string;
+      readonly orgRole: ApiOrgRole;
+    }
+  | {
+      readonly tokenType: "session";
+      readonly userId: string;
+      readonly orgId?: undefined;
+      readonly orgRole?: undefined;
+    };
 
 function mapClerkOrgRole(
   orgRole: SignedInSessionAuthObject["orgRole"],
@@ -49,12 +53,19 @@ export const clerkSessionAuth$: Computed<
   }
 
   const auth = requestState.toAuth();
+  const orgRole = mapClerkOrgRole(auth.orgRole);
+
+  if (auth.orgId && orgRole) {
+    return {
+      tokenType: "session",
+      userId: auth.userId,
+      orgId: auth.orgId,
+      orgRole,
+    };
+  }
 
   return {
-    userId: auth.userId,
-    orgId: auth.orgId ?? undefined,
-    orgRole: mapClerkOrgRole(auth.orgRole),
-    sessionClaims: auth.sessionClaims ? { ...auth.sessionClaims } : undefined,
     tokenType: "session",
+    userId: auth.userId,
   };
 });
