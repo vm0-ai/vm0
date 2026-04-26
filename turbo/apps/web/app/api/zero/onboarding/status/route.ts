@@ -3,7 +3,7 @@ import { onboardingStatusContract } from "@vm0/api-contracts/contracts/onboardin
 import { initServices } from "../../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
-import { isBadRequest, isNotFound } from "../../../../../src/lib/shared/errors";
+import { isBadRequest, isNotFound } from "@vm0/api-services/errors";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { eq, and } from "drizzle-orm";

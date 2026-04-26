@@ -21,7 +21,7 @@ import {
   isNotFound,
   isBadRequest,
   isRunNotCancellable,
-} from "../../../../../../src/lib/shared/errors";
+} from "@vm0/api-services/errors";
 import { logger } from "../../../../../../src/lib/shared/logger";
 import { after } from "next/server";
 

@@ -1,4 +1,4 @@
-import { badRequest } from "../../shared/errors";
+import { badRequest } from "@vm0/api-services/errors";
 import type { ContextArtifact } from "../run/types";
 
 /**

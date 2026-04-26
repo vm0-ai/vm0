@@ -6,7 +6,7 @@ import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { decryptSecretsMap } from "../../shared/crypto";
-import { notFound, badRequest, schedulePast } from "../../shared/errors";
+import { notFound, badRequest, schedulePast } from "@vm0/api-services/errors";
 import { logger } from "../../shared/logger";
 import { createZeroRun } from "../zero-run-service";
 import { buildSchedulePrompt } from "../integration-prompt";

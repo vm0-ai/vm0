@@ -15,7 +15,7 @@ import {
   badRequest,
   notFound,
   providerIncompatible,
-} from "../../shared/errors";
+} from "@vm0/api-services/errors";
 import { logger } from "../../shared/logger";
 import type { ContextArtifact, ResumeSession } from "../../infra/run/types";
 import type { AdditionalVolume } from "../../infra/storage/types";

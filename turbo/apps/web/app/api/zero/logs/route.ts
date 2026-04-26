@@ -30,7 +30,7 @@ import {
   isAuthError,
 } from "../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../src/lib/zero/org/resolve-org";
-import { isNotFound, isForbidden } from "../../../../src/lib/shared/errors";
+import { isNotFound, isForbidden } from "@vm0/api-services/errors";
 import {
   eq,
   and,

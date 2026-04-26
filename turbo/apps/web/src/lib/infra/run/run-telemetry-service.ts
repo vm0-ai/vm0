@@ -2,7 +2,7 @@ import { eq, and } from "drizzle-orm";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentComposeVersions } from "@vm0/db/schema/agent-compose";
 import { queryAxiom, getDatasetName, DATASETS } from "../../shared/axiom";
-import { notFound } from "../../shared/errors";
+import { notFound } from "@vm0/api-services/errors";
 
 interface AxiomAgentEvent {
   _time: string;

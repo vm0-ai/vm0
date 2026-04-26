@@ -16,7 +16,7 @@ import { connectors } from "@vm0/db/schema/connector";
 import { userPlatformConnectors } from "@vm0/db/schema/user-platform-connector";
 import { secrets } from "@vm0/db/schema/secret";
 import { variables } from "@vm0/db/schema/variable";
-import { notFound, badRequest } from "../../shared/errors";
+import { notFound, badRequest } from "@vm0/api-services/errors";
 import { logger } from "../../shared/logger";
 import { getSecretValue, upsertSecretByOrg } from "../secret/secret-service";
 import { PROVIDER_HANDLERS } from "./provider-registry";

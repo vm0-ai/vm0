@@ -16,7 +16,7 @@ import {
   getComposeOrgId,
   deleteCompose,
 } from "../../../../../src/lib/infra/agent-compose/compose-service";
-import { isNotFound, isConflict } from "../../../../../src/lib/shared/errors";
+import { isNotFound, isConflict } from "@vm0/api-services/errors";
 
 const router = tsr.router(composesByIdContract, {
   getById: async ({ params, headers }) => {

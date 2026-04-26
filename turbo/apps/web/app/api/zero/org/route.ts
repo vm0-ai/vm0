@@ -13,7 +13,7 @@ import {
   isBadRequest,
   isForbidden,
   isNotFound,
-} from "../../../../src/lib/shared/errors";
+} from "@vm0/api-services/errors";
 
 const router = tsr.router(zeroOrgContract, {
   get: async ({ headers }) => {
