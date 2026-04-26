@@ -211,7 +211,11 @@ impl IdlePool {
     }
 
     /// Re-enable parking after a resumable soft drain returns to Running.
-    pub fn resume_parking(&mut self) {
+    ///
+    /// This is only valid for SIGUSR1 -> SIGUSR2 soft-drain resume. Hard
+    /// shutdown paths must leave the pool drained so stale job tasks cannot
+    /// park new entries while teardown is in progress.
+    pub(crate) fn resume_after_soft_drain(&mut self) {
         self.drained = false;
     }
 

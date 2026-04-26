@@ -604,7 +604,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             }
             RunnerMode::Running => {
                 if draining_idle_pool_drained {
-                    idle_pool.lock().await.resume_parking();
+                    idle_pool.lock().await.resume_after_soft_drain();
                 }
                 draining_idle_pool_drained = false;
             }
@@ -2180,11 +2180,11 @@ mod tests {
         let _token = wait_cancel_token(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
 
         env.drain();
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        wait_idle_pool_drained(&idle_pool, true, Duration::from_secs(5)).await;
         assert_eq!(*env.mode_tx.borrow(), RunnerMode::Draining);
 
         env.resume();
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        wait_idle_pool_drained(&idle_pool, false, Duration::from_secs(5)).await;
         assert_eq!(*env.mode_tx.borrow(), RunnerMode::Running);
 
         gate.notify_one();
@@ -3021,7 +3021,7 @@ mod tests {
     /// Budget-exhausted mode must not poll discovery. A queued job should
     /// remain undiscovered until a running job frees budget, otherwise the
     /// runner may claim work it cannot admit.
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn budget_exhausted_buffers_discovery_until_budget_frees() {
         let gate = Arc::new(tokio::sync::Notify::new());
         let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_exit_gate(
@@ -3030,6 +3030,7 @@ mod tests {
         let (config, env) = mock_run_config_with_overrides(test_profiles(), 2, 4096, 1, overrides);
         let budget = Arc::clone(&config.budget);
         let run_handle = tokio::spawn(run(config));
+        env.handle.discover_entered.notified().await;
 
         let id1 = RunId::new_v4();
         push_job(&env, id1, "vm0/default", Some(minimal_context(id1)));
@@ -3038,7 +3039,12 @@ mod tests {
 
         let id2 = RunId::new_v4();
         push_job(&env, id2, "vm0/default", Some(minimal_context(id2)));
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        tokio::time::timeout(
+            Duration::from_millis(100),
+            env.handle.discover_entered.notified(),
+        )
+        .await
+        .expect_err("discovery must not be polled while budget is exhausted");
         assert!(
             !env.cancel_tokens.lock().await.contains_key(&id2),
             "queued job must not be claimed while budget is exhausted",
@@ -3185,6 +3191,22 @@ mod tests {
                 tokio::time::Instant::now() < deadline,
                 "budget count did not reach {expected} within {timeout:?} (actual: {})",
                 budget.allocated().2,
+            );
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    }
+
+    /// Poll until the idle pool drain flag reaches `expected`.
+    async fn wait_idle_pool_drained(pool: &SharedIdlePool, expected: bool, timeout: Duration) {
+        let deadline = tokio::time::Instant::now() + timeout;
+        loop {
+            let actual = pool.lock().await.is_drained();
+            if actual == expected {
+                return;
+            }
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "idle pool drained flag did not reach {expected} within {timeout:?} (actual: {actual})",
             );
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
