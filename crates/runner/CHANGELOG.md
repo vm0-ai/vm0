@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.95.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.95.3...runner-rs-v0.95.4) (2026-04-26)
+
+
+### Refactoring
+
+* extract connectors package ([#11132](https://github.com/vm0-ai/vm0/issues/11132)) ([15bf0fa](https://github.com/vm0-ai/vm0/commit/15bf0faa80ccd294fcfd0a1ce51fac9ea6285449))
+
 ## [0.95.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.95.2...runner-rs-v0.95.3) (2026-04-25)
 
 

@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.294.0](https://github.com/vm0-ai/vm0/compare/app-v0.293.6...app-v0.294.0) (2026-04-26)
+
+
+### Features
+
+* add PostHog frontend navigation timing ([#11131](https://github.com/vm0-ai/vm0/issues/11131)) ([5b0a9c6](https://github.com/vm0-ai/vm0/commit/5b0a9c63757caa72379bf6234dfd4d4c1b96d337))
+
+
+### CI
+
+* share web api vercel env config ([#11124](https://github.com/vm0-ai/vm0/issues/11124)) ([3aecc05](https://github.com/vm0-ai/vm0/commit/3aecc0557d3f24fb1c4bc2c0f2c33aef08a2c802))
+
 ## [0.293.6](https://github.com/vm0-ai/vm0/compare/app-v0.293.5...app-v0.293.6) (2026-04-26)
 
 

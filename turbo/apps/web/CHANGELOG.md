@@ -1,5 +1,17 @@
 # Changelog
 
+## [12.300.7](https://github.com/vm0-ai/vm0/compare/web-v12.300.6...web-v12.300.7) (2026-04-26)
+
+
+### Bug Fixes
+
+* **api-contracts:** validate run id path/body params as uuid ([#11137](https://github.com/vm0-ai/vm0/issues/11137)) ([0436e6f](https://github.com/vm0-ai/vm0/commit/0436e6f1a16cd2ffb5e5f1a945e735c4c48e4146))
+
+
+### CI
+
+* share web api vercel env config ([#11124](https://github.com/vm0-ai/vm0/issues/11124)) ([3aecc05](https://github.com/vm0-ai/vm0/commit/3aecc0557d3f24fb1c4bc2c0f2c33aef08a2c802))
+
 ## [12.300.6](https://github.com/vm0-ai/vm0/compare/web-v12.300.5...web-v12.300.6) (2026-04-26)
 
 
