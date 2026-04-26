@@ -11,7 +11,7 @@ import {
 import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
 import { unregisterHost } from "../../../../../src/lib/zero/computer-use/computer-use-service";
 import { loadFeatureSwitchOverrides } from "../../../../../src/lib/zero/user/feature-switches-service";
-import { isNotFound } from "../../../../../src/lib/shared/errors";
+import { isNotFound } from "@vm0/api-services/errors";
 
 const router = tsr.router(zeroComputerUseUnregisterContract, {
   unregister: async ({ headers }) => {

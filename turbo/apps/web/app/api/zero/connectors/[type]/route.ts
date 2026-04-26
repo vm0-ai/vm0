@@ -11,7 +11,7 @@ import {
   getConnector,
   deleteConnector,
 } from "../../../../../src/lib/zero/connector/connector-service";
-import { isNotFound } from "../../../../../src/lib/shared/errors";
+import { isNotFound } from "@vm0/api-services/errors";
 
 const router = tsr.router(zeroConnectorsByTypeContract, {
   get: async ({ params, headers }) => {

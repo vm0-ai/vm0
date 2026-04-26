@@ -14,7 +14,7 @@ import {
 import { resolveOrg } from "../../../../src/lib/zero/org/resolve-org";
 import { cliTokens } from "@vm0/db/schema/cli-tokens";
 import { generateCliToken } from "../../../../src/lib/auth/sandbox-token";
-import { isApiError } from "../../../../src/lib/shared/errors";
+import { isApiError } from "@vm0/api-services/errors";
 
 const PREFIX_LENGTH = 12;
 

@@ -25,7 +25,7 @@ import {
   buildWebChatIncompleteContext,
   type WebChatIncompleteRound,
 } from "../../../../../src/lib/zero/integration-prompt";
-import { isApiError } from "../../../../../src/lib/shared/errors";
+import { isApiError } from "@vm0/api-services/errors";
 import {
   createChatThread,
   getChatThread,

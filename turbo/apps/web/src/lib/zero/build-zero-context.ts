@@ -16,7 +16,7 @@ import {
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { badRequest, notFound } from "../shared/errors";
+import { badRequest, notFound } from "@vm0/api-services/errors";
 import { logger } from "../shared/logger";
 import type {
   ContextArtifact,

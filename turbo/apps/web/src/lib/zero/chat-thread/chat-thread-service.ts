@@ -4,7 +4,7 @@ import { chatMessages } from "@vm0/db/schema/chat-message";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { notFound } from "../../shared/errors";
+import { notFound } from "@vm0/api-services/errors";
 import {
   getMessagesByThreadId,
   getLatestSessionIdForThread,

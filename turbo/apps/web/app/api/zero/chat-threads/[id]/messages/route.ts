@@ -8,7 +8,7 @@ import {
   resolveAttachFileUrls,
 } from "../../../../../../src/lib/zero/chat-thread";
 import { formatChatRunErrorMessage } from "../../../../../../src/lib/zero/chat-thread/chat-run-error-message";
-import { isNotFound } from "../../../../../../src/lib/shared/errors";
+import { isNotFound } from "@vm0/api-services/errors";
 
 const router = tsr.router(chatThreadMessagesContract, {
   list: async ({ params, query, headers }) => {

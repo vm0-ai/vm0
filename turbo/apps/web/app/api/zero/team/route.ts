@@ -12,7 +12,7 @@ import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../src/lib/zero/org/resolve-org";
-import { isNotFound, isForbidden } from "../../../../src/lib/shared/errors";
+import { isNotFound, isForbidden } from "@vm0/api-services/errors";
 
 export async function GET() {
   initServices();

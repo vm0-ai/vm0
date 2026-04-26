@@ -18,7 +18,7 @@ import {
   requireAdminPermission,
 } from "../../../../../src/lib/zero/require-agent-permission";
 import { deleteComposeById } from "../../../../../src/lib/infra/agent-compose/compose-service";
-import { isBadRequest, isConflict } from "../../../../../src/lib/shared/errors";
+import { isBadRequest, isConflict } from "@vm0/api-services/errors";
 import { validateModelSelection } from "../../../../../src/lib/zero/model-provider/validate-model-selection";
 import { logger } from "../../../../../src/lib/shared/logger";
 

@@ -3,7 +3,7 @@ import {
   insufficientCredits,
   noModelProvider,
   isApiError,
-} from "../../shared/errors";
+} from "@vm0/api-services/errors";
 
 // NOTE: Model provider pre-run check tests have been moved to
 // zero/__tests__/build-zero-context.test.ts because model provider

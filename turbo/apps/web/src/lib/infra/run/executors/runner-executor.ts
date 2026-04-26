@@ -12,7 +12,7 @@ import {
 } from "../../../shared/axiom/client";
 import { encryptSecretsMap } from "../../../shared/crypto/secrets-encryption";
 import { isOfficialRunnerGroup } from "../runner-group";
-import { forbidden } from "../../../shared/errors";
+import { forbidden } from "@vm0/api-services/errors";
 import { publishJobNotification } from "../../realtime/client";
 import { findBestRunner } from "../scheduling";
 import { logger } from "../../../shared/logger";
