@@ -638,9 +638,6 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         } else {
             false
         };
-        let should_reap_jobs = matches!(mode, RunnerMode::Draining)
-            || matches!(mode, RunnerMode::Running) && !can_discover;
-
         tokio::select! {
             // Job discovery via provider (Ably push + poll).
             // The future is pinned outside the loop so heartbeat/cleanup
@@ -667,8 +664,10 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             }
             // Mode changes (signals)
             _ = mode_rx.changed() => {}
-            // Reap completed jobs while draining or waiting for budget.
-            result = jobs.join_next(), if should_reap_jobs && !jobs.is_empty() => {
+            // Reap completed jobs promptly in all live modes. Without this,
+            // normal Running mode can retain completed JoinSet entries and
+            // stale cancel tokens until drain, budget exhaustion, or shutdown.
+            result = jobs.join_next(), if !jobs.is_empty() => {
                 handle_job_result(result, &cancel_tokens).await;
             }
             // Reap completed destroy tasks
@@ -1918,6 +1917,29 @@ mod tests {
         let c = completion.unwrap();
         assert_eq!(c.exit_code, 0);
         assert!(c.error.is_none());
+
+        shutdown(&env, run_handle).await;
+    }
+
+    /// Regression for #11157: normal Running mode with available budget must
+    /// still reap completed job tasks so their cancel tokens do not remain
+    /// until a later drain, shutdown, or budget-exhausted wait.
+    #[tokio::test(start_paused = true)]
+    async fn running_reaps_completed_jobs_without_budget_exhaustion() {
+        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
+        let run_handle = tokio::spawn(run(config));
+
+        let run_id = RunId::new_v4();
+        push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
+        let _token = wait_cancel_token(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
+
+        let completion = env
+            .handle
+            .wait_completion(run_id, Duration::from_secs(5))
+            .await;
+        assert!(completion.is_some(), "job should complete");
+
+        wait_cancel_token_removed(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
 
         shutdown(&env, run_handle).await;
     }
@@ -3829,6 +3851,24 @@ mod tests {
             assert!(
                 tokio::time::Instant::now() < deadline,
                 "cancel token for {run_id} not found within {timeout:?}",
+            );
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    }
+
+    async fn wait_cancel_token_removed(
+        tokens: &Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
+        run_id: RunId,
+        timeout: Duration,
+    ) {
+        let deadline = tokio::time::Instant::now() + timeout;
+        loop {
+            if !tokens.lock().await.contains_key(&run_id) {
+                return;
+            }
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "cancel token for {run_id} still present after {timeout:?}",
             );
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
