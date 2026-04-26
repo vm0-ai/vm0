@@ -29,7 +29,7 @@
     "@ngrok/ngrok": "^1.6.0"
   },
   "devDependencies": {
-    "@sentry/node": "^10.38.0",
+    "@sentry/node": "^10.50.0",
     "@ts-rest/core": "3.53.0-rc.1",
     "@types/node": "^24.3.0",
     "@types/prompts": "^2.4.9",
@@ -51,7 +51,7 @@
     "tsup": "^8.5.1",
     "typescript": "5.9.3",
     "undici": "^6.24.0",
-    "vitest": "^4.1.4",
+    "vitest": "^4.1.5",
     "yaml": "^2.3.4",
     "zod": "^4.3.6"
   }

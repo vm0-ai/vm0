@@ -34,7 +34,7 @@
     "oxlint": "^1.57.0",
     "oxlint-tsgolint": "0.21.1",
     "typescript": "5.9.3",
-    "vitest": "^4.1.4"
+    "vitest": "^4.1.5"
   },
   "dependencies": {
     "@vm0/api-contracts": "workspace:*",
