@@ -1151,9 +1151,9 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
-      - name: Build API
+      - name: Check API types
         working-directory: turbo
-        run: pnpm --filter api build
+        run: pnpm --filter api check-types
 
   # Build CLI once and share via artifact — e2e jobs download instead of rebuilding
   build-cli:

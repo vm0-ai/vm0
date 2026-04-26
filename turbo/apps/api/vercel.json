@@ -1,4 +1,6 @@
 {
-  "buildCommand": "pnpm build",
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": null,
+  "framework": "hono",
   "installCommand": "cd ../.. && pnpm install"
 }
