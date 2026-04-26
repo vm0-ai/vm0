@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import { useEffect, type CSSProperties } from "react";
 import {
   useGet,
   useSet,
@@ -80,6 +80,7 @@ import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
 import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
 import { setActiveOrgManageTab$ } from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
+import { markRenderComplete } from "../../lib/posthog.ts";
 
 const CHAT_SHORTCUT_SECTIONS = [
   {
@@ -245,6 +246,10 @@ interface ZeroChatThreadPageProps {
 export function ZeroChatThreadPage({ thread }: ZeroChatThreadPageProps) {
   const shortcutHelpOpen = useGet(chatShortcutHelpOpen$);
   const setShortcutHelpOpen = useSet(setChatShortcutHelpOpen$);
+
+  useEffect(() => {
+    markRenderComplete();
+  }, []);
 
   return (
     <>

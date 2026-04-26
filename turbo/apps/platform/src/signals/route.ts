@@ -7,6 +7,7 @@ import { setPageSignal$ } from "./page-signal.ts";
 import { rootSignal$ } from "./root-signal.ts";
 import { onDomEventFn, resetSignal } from "./utils.ts";
 import { logger } from "./log.ts";
+import { markNavigationPushState } from "../lib/posthog.ts";
 
 const L = logger("Route");
 
@@ -151,6 +152,7 @@ export const navigate$ = command(
       replaceState({}, "", newPath);
     } else {
       pushState({}, "", newPath);
+      markNavigationPushState();
     }
     set(reloadPathname$, (x) => {
       return x + 1;

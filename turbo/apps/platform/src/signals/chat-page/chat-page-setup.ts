@@ -20,9 +20,11 @@ import {
   clearMatchingOptimisticChatThread$,
   optimisticChatThread$,
 } from "./optimistic-chat-thread-page.ts";
+import { markRouteSetupBegin } from "../../lib/posthog.ts";
 
 export const setupChatPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
+    markRouteSetupBegin();
     const threadId = get(currentChatThreadId$);
     if (!threadId) {
       throw new Error("threadId is required to load chat page");
