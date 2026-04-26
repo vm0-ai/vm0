@@ -11,12 +11,16 @@ const MODEL_DISPLAY_NAMES = Object.freeze<Record<string, string>>({
   // Anthropic via OpenRouter / Vercel AI Gateway
   "anthropic/claude-sonnet-4.6": "Claude Sonnet 4.6",
   "anthropic/claude-opus-4.6": "Claude Opus 4.6",
+  "anthropic/claude-opus-4.7": "Claude Opus 4.7",
   "anthropic/claude-sonnet-4.5": "Claude Sonnet 4.5",
   "anthropic/claude-opus-4.5": "Claude Opus 4.5",
   "anthropic/claude-haiku-4.5": "Claude Haiku 4.5",
-  // DeepSeek
+  // DeepSeek (native)
   "deepseek-v4-pro": "DeepSeek V4 Pro",
   "deepseek-v4-flash": "DeepSeek V4 Flash",
+  // DeepSeek via OpenRouter
+  "deepseek/deepseek-v4-pro": "DeepSeek V4 Pro",
+  "deepseek/deepseek-v4-flash": "DeepSeek V4 Flash",
   // MiniMax
   "MiniMax-M2.7": "MiniMax M2.7",
   "MiniMax-M2.1": "MiniMax M2.1",
@@ -34,6 +38,7 @@ const MODEL_DISPLAY_NAMES = Object.freeze<Record<string, string>>({
   "glm-4.7": "GLM-4.7",
   "glm-4.5-air": "GLM-4.5 Air",
   "zai/glm-5-turbo": "GLM-5 Turbo",
+  "z-ai/glm-5.1": "GLM-5.1",
 });
 
 /**
