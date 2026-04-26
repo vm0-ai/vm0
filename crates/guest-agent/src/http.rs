@@ -376,6 +376,21 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn sized_body_streams_exact_chunk_once() {
+        let data = vec![0x5Au8; STREAM_CHUNK_SIZE];
+        let (_dir, mut body) = sized_body_from_bytes(&data).await;
+
+        assert_eq!(body.size_hint().exact(), Some(STREAM_CHUNK_SIZE as u64));
+        let chunk = next_data(&mut body).await.unwrap();
+
+        assert_eq!(chunk.len(), STREAM_CHUNK_SIZE);
+        assert_eq!(&chunk[..], &data[..]);
+        assert_eq!(body.size_hint().exact(), Some(0));
+        assert!(body.is_end_stream());
+        assert!(next_data(&mut body).await.is_none());
+    }
+
+    #[tokio::test]
     async fn sized_body_empty_file_has_no_frames() {
         let (_dir, mut body) = sized_body_from_bytes(&[]).await;
 
@@ -421,5 +436,26 @@ mod tests {
 
         assert_eq!(error.kind(), std::io::ErrorKind::UnexpectedEof);
         assert_eq!(body.size_hint().exact(), Some(0));
+    }
+
+    #[tokio::test]
+    async fn sized_body_errors_when_file_is_truncated_before_first_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("body.bin");
+        tokio::fs::write(&path, b"initial").await.unwrap();
+        let file = tokio::fs::File::open(&path).await.unwrap();
+        let file_len = file.metadata().await.unwrap().len();
+        let mut body = SizedBody::new(file, file_len);
+
+        tokio::fs::write(&path, &[]).await.unwrap();
+
+        let error = poll_fn(|cx| Pin::new(&mut body).poll_frame(cx))
+            .await
+            .expect("expected a frame")
+            .expect_err("expected early EOF error");
+
+        assert_eq!(error.kind(), std::io::ErrorKind::UnexpectedEof);
+        assert_eq!(body.size_hint().exact(), Some(0));
+        assert!(body.is_end_stream());
     }
 }
