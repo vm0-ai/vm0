@@ -25,6 +25,7 @@ import { CustomConnectorCreateDialog } from "./custom-connector-create-dialog.ts
 import { CustomConnectorRenameDialog } from "./custom-connector-rename-dialog.tsx";
 import { CustomConnectorConnectDialog } from "./custom-connector-connect-dialog.tsx";
 import { CustomConnectorDeleteConfirm } from "./custom-connector-delete-confirm.tsx";
+import noConnectorImg from "../../assets/no-connector.webp";
 
 function CustomConnectorRow({
   connector,
@@ -140,8 +141,13 @@ export function CustomConnectorsPanel() {
   return (
     <section className="flex flex-col gap-3">
       {connectors && connectors.length === 0 && (
-        <div className="zero-card py-12 text-center">
-          <p className="text-sm text-muted-foreground">
+        <div className="zero-card py-12 flex flex-col items-center gap-3">
+          <img
+            src={noConnectorImg}
+            alt="No connectors"
+            className="h-20 w-20 object-contain opacity-80"
+          />
+          <p className="text-sm text-muted-foreground text-center">
             {isAdmin
               ? "No custom connectors yet. Create one to register an API for every member to use."
               : "Your org hasn't registered any custom connectors yet."}
