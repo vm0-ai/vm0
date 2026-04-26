@@ -1,3 +1,26 @@
+//! In-process NBD copy-on-write block devices.
+//!
+//! This crate exposes a Linux NBD device backed by a read-only base image and a
+//! sparse copy-on-write (COW) file. [`NbdCowDevice::create`] connects the device,
+//! starts the request dispatch tasks, and serves reads from pending writes, the
+//! COW file, then the base image. Writes are buffered in memory and flushed to
+//! the sparse COW file according to [`DEFAULT_FLUSH_THRESHOLD`].
+//!
+//! Important defaults are exposed as [`BLOCK_SIZE`], [`NUM_CONNECTIONS`], and
+//! [`DEFAULT_FLUSH_THRESHOLD`].
+//!
+//! The layered implementation is split across:
+//! - [`cow`] for COW storage and dirty bitmap persistence.
+//! - [`pool`] for pre-validated `/dev/nbdN` device allocation.
+//! - [`netlink`] for Linux NBD generic netlink setup and disconnect.
+//! - [`server`] for the in-process NBD dispatch loop.
+//! - [`protocol`] for NBD transmission protocol parsing and serialization.
+//! - [`error`] for crate error and result types.
+//!
+//! Call [`NbdCowDevice::destroy`] or [`NbdCowDevice::destroy_keep_cow`] when the
+//! device should be shut down cleanly. Dropping a device only performs
+//! best-effort cleanup and may discard buffered writes that were not flushed.
+
 pub mod cow;
 pub mod error;
 pub mod netlink;
