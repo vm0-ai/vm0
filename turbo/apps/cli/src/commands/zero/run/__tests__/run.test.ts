@@ -150,21 +150,29 @@ describe("zero run command", () => {
               });
             }
 
-            return HttpResponse.json({
-              events: [
-                {
-                  sequenceNumber: 1,
-                  eventType: "assistant",
-                  eventData: {
-                    type: "assistant",
-                    message: {
-                      role: "assistant",
-                      content: [{ type: "text", text: "second page" }],
+            if (eventPolls === 2) {
+              return HttpResponse.json({
+                events: [
+                  {
+                    sequenceNumber: 1,
+                    eventType: "assistant",
+                    eventData: {
+                      type: "assistant",
+                      message: {
+                        role: "assistant",
+                        content: [{ type: "text", text: "second page" }],
+                      },
                     },
+                    createdAt: "2025-01-01T00:00:00Z",
                   },
-                  createdAt: "2025-01-01T00:00:00Z",
-                },
-              ],
+                ],
+                hasMore: false,
+                framework: "claude-code",
+              });
+            }
+
+            return HttpResponse.json({
+              events: [],
               hasMore: false,
               framework: "claude-code",
             });
@@ -179,17 +187,134 @@ describe("zero run command", () => {
         "test prompt",
       ]);
 
-      expect(eventPolls).toBe(2);
+      expect(eventPolls).toBeGreaterThanOrEqual(2);
       expect(console.log).toHaveBeenCalledWith(
         expect.stringContaining("second page"),
       );
     });
 
-    it("should not render events past a sequence gap", async () => {
+    it("should drain terminal events that appear after completion", async () => {
+      let eventPolls = 0;
+
       server.use(
         http.get(
           "http://localhost:3000/api/zero/runs/:id/telemetry/agent",
           () => {
+            eventPolls++;
+            if (eventPolls === 1) {
+              return HttpResponse.json({
+                events: [
+                  {
+                    sequenceNumber: 0,
+                    eventType: "assistant",
+                    eventData: {
+                      type: "assistant",
+                      message: {
+                        role: "assistant",
+                        content: [{ type: "text", text: "before completion" }],
+                      },
+                    },
+                    createdAt: "2025-01-01T00:00:00Z",
+                  },
+                ],
+                hasMore: false,
+                framework: "claude-code",
+              });
+            }
+
+            if (eventPolls === 2) {
+              return HttpResponse.json({
+                events: [
+                  {
+                    sequenceNumber: 1,
+                    eventType: "assistant",
+                    eventData: {
+                      type: "assistant",
+                      message: {
+                        role: "assistant",
+                        content: [{ type: "text", text: "after completion" }],
+                      },
+                    },
+                    createdAt: "2025-01-01T00:00:00Z",
+                  },
+                ],
+                hasMore: false,
+                framework: "claude-code",
+              });
+            }
+
+            return HttpResponse.json({
+              events: [],
+              hasMore: false,
+              framework: "claude-code",
+            });
+          },
+        ),
+      );
+
+      await mainRunCommand.parseAsync([
+        "node",
+        "cli",
+        testAgentId,
+        "test prompt",
+      ]);
+
+      expect(console.log).toHaveBeenCalledWith(
+        expect.stringContaining("before completion"),
+      );
+      expect(console.log).toHaveBeenCalledWith(
+        expect.stringContaining("after completion"),
+      );
+    });
+
+    it("should render the latest terminal status after drain", async () => {
+      let runPolls = 0;
+
+      server.use(
+        http.get("http://localhost:3000/api/zero/runs/:id", () => {
+          runPolls++;
+          if (runPolls === 1) {
+            return HttpResponse.json({
+              ...defaultGetRunResponse,
+              status: "timeout",
+              result: undefined,
+            });
+          }
+
+          return HttpResponse.json(defaultGetRunResponse);
+        }),
+      );
+
+      await mainRunCommand.parseAsync([
+        "node",
+        "cli",
+        testAgentId,
+        "test prompt",
+      ]);
+
+      expect(console.log).toHaveBeenCalledWith(
+        expect.stringContaining("Run completed successfully"),
+      );
+      expect(mockConsoleError).not.toHaveBeenCalledWith(
+        expect.stringContaining("Run timed out"),
+      );
+    });
+
+    it("should not render events past a sequence gap", async () => {
+      let eventPolls = 0;
+      server.use(
+        http.get(
+          "http://localhost:3000/api/zero/runs/:id/telemetry/agent",
+          () => {
+            eventPolls++;
+            if (eventPolls > 1) {
+              return HttpResponse.json({
+                events: [],
+                hasMore: false,
+                framework: "claude-code",
+              });
+            }
+
             return HttpResponse.json({
               events: [
                 {
