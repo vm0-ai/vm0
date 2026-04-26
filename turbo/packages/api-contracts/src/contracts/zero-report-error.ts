@@ -5,7 +5,7 @@ import { apiErrorSchema } from "./errors";
 const c = initContract();
 
 const reportErrorBodySchema = z.object({
-  runId: z.string().min(1, "Run ID is required"),
+  runId: z.uuid("Run ID must be a valid UUID"),
   title: z.string().min(1, "Title is required"),
   description: z.string().optional(),
 });

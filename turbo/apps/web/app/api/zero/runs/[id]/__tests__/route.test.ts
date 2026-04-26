@@ -63,7 +63,9 @@ describe("GET /api/zero/runs/:id", () => {
     mockClerk({ userId: null });
 
     const response = await GET(
-      createTestRequest("http://localhost:3000/api/zero/runs/some-id"),
+      createTestRequest(
+        "http://localhost:3000/api/zero/runs/00000000-0000-0000-0000-000000000000",
+      ),
     );
     expect(response.status).toBe(401);
   });
@@ -73,9 +75,12 @@ describe("GET /api/zero/runs/:id", () => {
     const token = await generateSandboxToken("user-1", "run-1", "org-test");
 
     const response = await GET(
-      createTestRequest("http://localhost:3000/api/zero/runs/some-id", {
-        headers: { Authorization: `Bearer ${token}` },
-      }),
+      createTestRequest(
+        "http://localhost:3000/api/zero/runs/00000000-0000-0000-0000-000000000000",
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      ),
     );
     expect(response.status).toBe(403);
 

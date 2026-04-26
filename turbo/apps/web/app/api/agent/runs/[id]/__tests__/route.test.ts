@@ -77,9 +77,9 @@ describe("GET /api/agent/runs/:id - Get Run By ID", () => {
 
   describe("Error Handling", () => {
     it("should return 401 for unauthenticated request", async () => {
-      mockClerk({ userId: null });
-
       const run = await createTestRun(testComposeId, "Test run");
+
+      mockClerk({ userId: null });
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${run.runId}`,
