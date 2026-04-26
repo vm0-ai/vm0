@@ -632,16 +632,9 @@ importers:
         version: 5.9.3
       vitest:
         specifier: ^4.1.5
-        version: 4.1.5(@opentelemetry/api@1.9.1)(@types/node@24.3.0)(@vitest/browser-playwright@4.1.5)(@vitest/coverage-v8@4.1.5)(@vitest/ui@4.1.5)(esbuild@0.27.4)(happy-dom@20.9.0)(jiti@2.6.1)(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(tsx@4.21.0)(yaml@2.8.3)
+        version: 4.1.5(@emnapi/runtime@1.10.0)(@opentelemetry/api@1.9.1)(@types/node@24.3.0)(@vitest/browser-playwright@4.1.5)(@vitest/coverage-v8@4.1.5)(@vitest/ui@4.1.5)(esbuild@0.27.4)(happy-dom@20.9.0)(jiti@2.6.1)(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(tsx@4.21.0)(yaml@2.8.3)
 
-  packages/connectors:
-    dependencies:
-      yaml:
-        specifier: '>=2.8.3'
-        version: 2.8.3
-      zod:
-        specifier: 4.3.6
-        version: 4.3.6
+  packages/api-services:
     devDependencies:
       '@vm0/eslint-config':
         specifier: workspace:*
@@ -665,7 +658,14 @@ importers:
         specifier: ^4.1.5
         version: 4.1.5(@emnapi/runtime@1.10.0)(@opentelemetry/api@1.9.1)(@types/node@24.3.0)(@vitest/browser-playwright@4.1.5)(@vitest/coverage-v8@4.1.5)(@vitest/ui@4.1.5)(esbuild@0.27.4)(happy-dom@20.9.0)(jiti@2.6.1)(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(tsx@4.21.0)(yaml@2.8.3)
 
-  packages/api-services:
+  packages/connectors:
+    dependencies:
+      yaml:
+        specifier: '>=2.8.3'
+        version: 2.8.3
+      zod:
+        specifier: 4.3.6
+        version: 4.3.6
     devDependencies:
       '@vm0/eslint-config':
         specifier: workspace:*
