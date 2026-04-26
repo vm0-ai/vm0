@@ -1,7 +1,7 @@
 import { computed } from "ccstate";
 
-import { getDb } from "../../lib/db";
+import { db } from "../../lib/db";
 
 export const db$ = computed(() => {
-  return getDb();
+  return db();
 });

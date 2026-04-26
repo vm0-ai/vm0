@@ -1,10 +1,10 @@
-import app from "../app";
 import {
   closeFixtureDbPool,
   createBuiltInModelsFixture,
   deleteBuiltInModelsFixture,
   seedBuiltInModelsFixture,
 } from "./db.fixture";
+import { testContext } from "./test-helpers";
 
 interface ApiRootResponse {
   message: string;
@@ -12,6 +12,7 @@ interface ApiRootResponse {
 }
 
 const builtInModelsFixture = createBuiltInModelsFixture();
+const context = testContext();
 
 function assertApiRootResponse(
   value: unknown,
@@ -46,7 +47,7 @@ describe("api app", () => {
   });
 
   it("lists built-in models without exposing vendors", async () => {
-    const response = await app.request("/");
+    const response = await context.app.request("/");
     const payload: unknown = await response.json();
 
     expect(response.status).toBe(200);

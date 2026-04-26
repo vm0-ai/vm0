@@ -50,6 +50,8 @@
         "src/server.ts",
         "src/signals/context/hono.ts",
         "src/signals/context/wait-until.ts",
+        "src/signals/external/clerk.ts",
+        "src/signals/external/env.ts",
         "src/**/*.{test,spec}.ts"
       ],
       "project": ["src/**/*.ts"]

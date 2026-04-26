@@ -1,10 +1,12 @@
 {
   "extends": "@vm0/typescript-config/base.json",
   "compilerOptions": {
+    "allowImportingTsExtensions": true,
     "lib": ["ES2022"],
+    "noEmit": true,
     "types": ["node", "vitest/globals"],
     "outDir": "./dist"
   },
-  "include": ["src/**/*", "vitest.config.ts"],
+  "include": ["src/**/*", "custom-eslint/**/*", "vitest.config.ts"],
   "exclude": ["node_modules", "dist"]
 }

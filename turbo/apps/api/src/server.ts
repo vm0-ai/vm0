@@ -1,5 +1,8 @@
 import { serve } from "@hono/node-server";
 import app from "./app";
+import { logger } from "./lib/log";
+
+const L = logger("Server");
 
 serve(
   {
@@ -7,6 +10,6 @@ serve(
     port: 3001,
   },
   (info) => {
-    console.log(`Server is running on http://localhost:${info.port}`);
+    L.debug(`Server is running on http://localhost:${info.port}`);
   },
 );

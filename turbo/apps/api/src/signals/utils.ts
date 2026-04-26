@@ -1,8 +1,12 @@
+import { env } from "./external/env";
+import { logger } from "./external/log";
+
 export enum Mechanism {
   WaitUntil = "wait_until",
 }
 
-const IN_VITEST = process.env.VITEST === "true";
+const IN_VITEST = env("VITEST") === "true";
+const L = logger("Promise");
 
 class PromiseTracker {
   collected = new Set<Promise<unknown>>();
@@ -28,7 +32,7 @@ export function detach(
     () => {},
     (error: unknown) => {
       if (!isAbortError(error)) {
-        console.error(`Detached promise rejected [${mechanism}]`, error);
+        L.error(`Detached promise rejected [${mechanism}]`, error);
       }
     },
   );

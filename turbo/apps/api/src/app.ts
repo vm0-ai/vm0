@@ -1,15 +1,15 @@
-import { Hono } from "hono";
+import "./instrument";
+import { createApp } from "./app-factory";
 
-import "./lib/observability";
-import { honoComputed } from "./signals/context/route";
-import { type RouteDefinition, ROUTES } from "./signals/route";
+const instanceAbortController = new AbortController();
 
-const app = new Hono();
-
-ROUTES.forEach((route: RouteDefinition<unknown>) => {
-  if (route.method === "GET") {
-    app.get(route.path, honoComputed(route.handler));
-  }
+process.once("SIGTERM", () => {
+  const error = new Error("Aborted due to terminated function instance");
+  error.name = "AbortError";
+  instanceAbortController.abort(error);
 });
 
+const instanceSignal = instanceAbortController.signal;
+
+const app = createApp(instanceSignal);
 export default app;

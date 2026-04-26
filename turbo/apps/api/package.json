@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/server.ts",
+    "dev": "VM0_DEBUG=* tsx watch src/server.ts",
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/server.js",
     "test": "vitest run",
@@ -13,17 +13,20 @@
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
+    "@clerk/backend": "^3.4.1",
     "@hono/node-server": "^1.19.14",
-    "@opentelemetry/exporter-trace-otlp-http": "^0.215.0",
     "@opentelemetry/instrumentation-pg": "^0.67.0",
     "@opentelemetry/semantic-conventions": "^1.40.0",
+    "@sentry/node": "^10.50.0",
+    "@t3-oss/env-core": "^0.13.11",
     "@vercel/functions": "^3.4.4",
     "@vercel/otel": "^2.1.2",
     "@vm0/db": "workspace:*",
     "ccstate": "^5.3.0",
     "drizzle-orm": "^0.45.2",
     "hono": "^4.12.15",
-    "pg": "^8.20.0"
+    "pg": "^8.20.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",

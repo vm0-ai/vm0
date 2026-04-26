@@ -2,35 +2,28 @@ import { schema } from "@vm0/db";
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 
-let pool: Pool | undefined;
-let db: NodePgDatabase<typeof schema> | undefined;
+import { env } from "./env";
 
-function getDatabaseUrl(): string {
-  const databaseUrl = process.env.DATABASE_URL;
-  if (!databaseUrl) {
-    throw new Error("DATABASE_URL environment variable is not set");
-  }
+let _pool: Pool | undefined;
+let _db: NodePgDatabase<typeof schema> | undefined;
 
-  return databaseUrl;
-}
-
-function getPool(): Pool {
-  pool ??= new Pool({
+function pool(): Pool {
+  _pool ??= new Pool({
     allowExitOnIdle: true,
-    connectionString: getDatabaseUrl(),
+    connectionString: env("DATABASE_URL"),
     max: 5,
   });
 
-  return pool;
+  return _pool;
 }
 
-export function getDb(): NodePgDatabase<typeof schema> {
-  db ??= drizzle(getPool(), { schema });
-  return db;
+export function db(): NodePgDatabase<typeof schema> {
+  _db ??= drizzle(pool(), { schema });
+  return _db;
 }
 
 export async function closeDbPool(): Promise<void> {
-  await pool?.end();
-  pool = undefined;
-  db = undefined;
+  await _pool?.end();
+  _pool = undefined;
+  _db = undefined;
 }

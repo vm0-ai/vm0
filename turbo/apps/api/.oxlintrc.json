@@ -3,10 +3,19 @@
   "extends": ["../../.oxlintrc.json"],
   "overrides": [
     {
+      "files": ["src/lib/log.ts"],
+      "rules": {
+        "no-console": "allow"
+      }
+    },
+    {
       "files": ["eslint.config.mjs", "src/app.ts", "vitest.config.ts"],
       "rules": {
         "import/no-default-export": "off"
       }
     }
-  ]
+  ],
+  "rules": {
+    "no-console": "deny"
+  }
 }

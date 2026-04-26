@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { eq } from "drizzle-orm";
 
-import { closeDbPool, getDb } from "../lib/db";
+import { closeDbPool, db } from "../lib/db";
 
 interface BuiltInModelsFixture {
   label: string;
@@ -25,7 +25,7 @@ export function createBuiltInModelsFixture(): BuiltInModelsFixture {
 export async function seedBuiltInModelsFixture(
   fixture: BuiltInModelsFixture,
 ): Promise<void> {
-  await getDb()
+  await db()
     .insert(vm0ApiKeys)
     .values(
       fixture.models.map((model) => {
@@ -42,7 +42,7 @@ export async function seedBuiltInModelsFixture(
 export async function deleteBuiltInModelsFixture(
   fixture: BuiltInModelsFixture,
 ): Promise<void> {
-  await getDb().delete(vm0ApiKeys).where(eq(vm0ApiKeys.label, fixture.label));
+  await db().delete(vm0ApiKeys).where(eq(vm0ApiKeys.label, fixture.label));
 }
 
 export async function closeFixtureDbPool(): Promise<void> {
