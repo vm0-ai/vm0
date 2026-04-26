@@ -93,4 +93,86 @@ describe("chat skeleton on switch", () => {
       expect(document.querySelector("[data-chat-skeleton]")).toBeNull();
     });
   });
+
+  it("hides the skeleton after re-running setup for the same chat", async () => {
+    const secondInitialFetchDeferred = createDeferredPromise<void>(
+      context.signal,
+    );
+    let initialFetchCount = 0;
+
+    server.use(
+      mockApi(
+        chatThreadMessagesContract.list,
+        async ({ params, query, respond }) => {
+          if (query.sinceId) {
+            return respond(200, { messages: [] });
+          }
+          initialFetchCount++;
+          if (initialFetchCount === 2) {
+            await secondInitialFetchDeferred.promise;
+          }
+          return respond(200, {
+            messages: [
+              {
+                id: `msg-${params.threadId}-1`,
+                role: "user" as const,
+                content: `Question for ${params.threadId}`,
+                createdAt: "2026-03-10T00:00:00Z",
+              },
+              {
+                id: `msg-${params.threadId}-2`,
+                role: "assistant" as const,
+                content: `Answer for ${params.threadId}`,
+                createdAt: "2026-03-10T00:00:01Z",
+              },
+            ],
+          });
+        },
+      ),
+      mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
+        return respond(200, {
+          id: params.id,
+          title: null,
+          agentId: "c0000000-0000-4000-a000-000000000001",
+          chatMessages: [],
+          latestSessionId: null,
+          activeRunIds: [],
+          draftContent: null,
+          draftAttachments: null,
+          createdAt: "2026-03-10T00:00:00Z",
+          updatedAt: "2026-03-10T00:00:00Z",
+        });
+      }),
+    );
+
+    detachedSetupPage({ context, path: "/chats/thread-a" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Answer for thread-a")).toBeInTheDocument();
+      expect(document.querySelector("[data-chat-skeleton]")).toBeNull();
+    });
+
+    context.store.set(detachedNavigateTo$, "/chats/:threadId", {
+      pathParams: { threadId: "thread-a" },
+    });
+
+    await waitFor(() => {
+      expect(initialFetchCount).toBe(2);
+    });
+
+    expect(document.querySelector("[data-chat-skeleton]")).not.toBeNull();
+    const messageContainer = document.querySelector<HTMLElement>(
+      "[data-message-container]",
+    );
+    expect(messageContainer).not.toBeNull();
+    expect(messageContainer!.style.visibility).toBe("hidden");
+    expect(screen.getByText("Answer for thread-a")).not.toBeVisible();
+
+    secondInitialFetchDeferred.resolve();
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-chat-skeleton]")).toBeNull();
+      expect(screen.getByText("Answer for thread-a")).toBeInTheDocument();
+    });
+  });
 });
