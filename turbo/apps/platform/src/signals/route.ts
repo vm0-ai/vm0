@@ -95,6 +95,7 @@ const loadRoute$ = command(async ({ get, set }, signal: AbortSignal) => {
   L.debug("loading route", currentRoute.path);
 
   await set(currentRoute.setup, routeSignal);
+  signal.throwIfAborted();
   capturePageView();
 });
 
