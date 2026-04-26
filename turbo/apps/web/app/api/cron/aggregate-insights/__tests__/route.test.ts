@@ -35,7 +35,7 @@ function cronRequest(secret?: string) {
  */
 function recentDate(): { date: Date; dateStr: string } {
   const now = new Date();
-  const date = new Date(now.getTime() - 60_000); // 1 minute ago
+  const date = new Date(now.getTime() - 120_000);
   return { date, dateStr: todayDateStr() };
 }
 
@@ -56,6 +56,7 @@ describe("GET /api/cron/aggregate-insights", () => {
 
   beforeEach(async () => {
     context.setupMocks();
+    context.mocks.date.setSystemTime(new Date("2040-01-02T12:00:00.000Z"));
     vi.stubEnv("CRON_SECRET", "test-cron-secret");
     reloadEnv();
     const user = await context.setupUser();

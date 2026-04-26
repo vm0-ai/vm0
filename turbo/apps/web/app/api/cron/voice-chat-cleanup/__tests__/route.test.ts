@@ -1,6 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { GET } from "../route";
-import { testContext } from "../../../../../src/__tests__/test-helpers";
+import {
+  testContext,
+  uniqueId,
+} from "../../../../../src/__tests__/test-helpers";
 import {
   insertTestVoiceChatSession,
   getTestVoiceChatSession,
@@ -25,6 +28,7 @@ function cronRequest(secret?: string) {
 describe("GET /api/cron/voice-chat-cleanup", () => {
   beforeEach(() => {
     context.setupMocks();
+    context.mocks.date.setSystemTime(new Date("1990-01-02T12:00:00.000Z"));
     vi.stubEnv("CRON_SECRET", "test-cron-secret");
     reloadEnv();
   });
@@ -85,7 +89,7 @@ describe("GET /api/cron/voice-chat-cleanup", () => {
     });
 
     it("T9 — caps reasoner stuck-recovery at 50 per tick (LIMIT 50)", async () => {
-      const orgId = `org_t9_${Date.now()}`;
+      const orgId = uniqueId("org-t9");
       const staleReasoningAt = new Date(Date.now() - 6 * 60 * 1000);
       for (let i = 0; i < 60; i++) {
         await insertTestVoiceChatSession({

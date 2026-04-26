@@ -62,7 +62,7 @@ export const ensurePushSubscription$ = command(
     const apiBase = get(apiBase$);
     // eslint-disable-next-line no-restricted-syntax -- finally needed to reset `subscribing$` on success, failure, or abort so the next call can proceed
     try {
-      await doSubscribe(registration, clerkPromise, apiBase);
+      await doSubscribe(registration, clerkPromise, apiBase, signal);
       signal.throwIfAborted();
     } finally {
       set(subscribing$, false);
@@ -76,6 +76,7 @@ async function doSubscribe(
     session?: { getToken(): Promise<string | null> } | null;
   }>,
   apiBase: string,
+  signal: AbortSignal,
 ): Promise<void> {
   const vapidPublicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY as
     | string
@@ -87,6 +88,7 @@ async function doSubscribe(
   // Only prompt if user hasn't decided yet
   if (Notification.permission === "default") {
     const result = await Notification.requestPermission();
+    signal.throwIfAborted();
     if (result !== "granted") {
       return;
     }
@@ -98,6 +100,7 @@ async function doSubscribe(
 
   // Check if already subscribed
   const existingSub = await registration.pushManager.getSubscription();
+  signal.throwIfAborted();
   if (existingSub) {
     return;
   }
@@ -108,10 +111,13 @@ async function doSubscribe(
     applicationServerKey: urlBase64ToUint8Array(vapidPublicKey)
       .buffer as ArrayBuffer,
   });
+  signal.throwIfAborted();
 
   // Send subscription to backend
   const clerk = await clerkPromise;
+  signal.throwIfAborted();
   const token = await clerk.session?.getToken();
+  signal.throwIfAborted();
 
   await fetch(`${apiBase}/api/zero/push-subscriptions`, {
     method: "POST",
@@ -126,6 +132,7 @@ async function doSubscribe(
         auth: arrayBufferToBase64(subscription.getKey("auth")),
       },
     }),
+    signal,
   });
 }
 

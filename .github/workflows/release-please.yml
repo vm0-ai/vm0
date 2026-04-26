@@ -215,6 +215,20 @@ jobs:
         env:
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
 
+      - name: Resolve Web production environment
+        id: web-production-env
+        uses: ./.github/actions/web-api-env
+        with:
+          app: web
+          environment: production
+          database-url: ${{ steps.get-db-url.outputs.database-url }}
+          web-url: https://www.vm0.ai
+          app-url: https://app.vm0.ai
+          api-url: ${{ vars.VM0_API_URL }}
+        env:
+          REPO_VARS_JSON: ${{ toJSON(vars) }}
+          REPO_SECRETS_JSON: ${{ toJSON(secrets) }}
+
       - name: Build Web Staged Production Deployment
         id: deploy
         uses: ./.github/actions/vercel-deploy
@@ -228,132 +242,7 @@ jobs:
           skip-domain: "true"
           skip-start: "true"
           skip-finish: "true"
-          environment-variables: |
-            DATABASE_URL=${{ steps.get-db-url.outputs.database-url }}
-            VM0_API_URL=${{ vars.VM0_API_URL }}
-            BLOG_BASE_URL=https://www.vm0.ai
-            STRAPI_URL=${{ vars.STRAPI_URL }}
-            CLERK_PUBLISHABLE_KEY=${{ vars.CLERK_PUBLISHABLE_KEY }}
-            CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}
-            E2B_API_KEY=${{ secrets.E2B_API_KEY }}
-            R2_ACCOUNT_ID=${{ vars.R2_ACCOUNT_ID }}
-            R2_ACCESS_KEY_ID=${{ secrets.R2_ACCESS_KEY_ID }}
-            R2_SECRET_ACCESS_KEY=${{ secrets.R2_SECRET_ACCESS_KEY }}
-            R2_USER_STORAGES_BUCKET_NAME=${{ vars.R2_USER_STORAGES_BUCKET_NAME }}
-            SECRETS_ENCRYPTION_KEY=${{ secrets.SECRETS_ENCRYPTION_KEY }}
-            AXIOM_TOKEN_SESSIONS=${{ secrets.AXIOM_TOKEN_SESSIONS }}
-            AXIOM_TOKEN_TELEMETRY=${{ secrets.AXIOM_TOKEN_TELEMETRY }}
-            AXIOM_DATASET_SUFFIX=prod
-            CRON_SECRET=${{ secrets.CRON_SECRET }}
-            OFFICIAL_RUNNER_SECRET=${{ secrets.OFFICIAL_RUNNER_SECRET }}
-            RUNNER_DEFAULT_GROUP=vm0/production
-            ABLY_API_KEY=${{ secrets.ABLY_API_KEY }}
-            OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}
-            VAPID_PUBLIC_KEY=${{ vars.VAPID_PUBLIC_KEY }}
-            VAPID_PRIVATE_KEY=${{ secrets.VAPID_PRIVATE_KEY }}
-            CONCURRENT_RUN_LIMIT_CAP=10
-            CLAUDE_CODE_VERSION_URL=${{ vars.CLAUDE_CODE_VERSION_URL }}
-            SLACK_CLIENT_ID=${{ vars.SLACK_CLIENT_ID }}
-            SLACK_CLIENT_SECRET=${{ secrets.SLACK_CLIENT_SECRET }}
-            SLACK_SIGNING_SECRET=${{ secrets.SLACK_SIGNING_SECRET }}
-            SLACK_REDIRECT_BASE_URL=${{ vars.SLACK_REDIRECT_BASE_URL }}
-            PLAUSIBLE_SCRIPT_URL=${{ vars.PLAUSIBLE_SCRIPT_URL_PROD }}
-            SENTRY_DSN_WEB=${{ secrets.SENTRY_DSN_WEB }}
-            SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
-            SENTRY_ORG=${{ vars.SENTRY_ORG }}
-            SENTRY_PROJECT=${{ vars.SENTRY_PROJECT_WEB }}
-            GH_OAUTH_CLIENT_ID=${{ vars.GH_OAUTH_CLIENT_ID }}
-            GH_OAUTH_CLIENT_SECRET=${{ secrets.GH_OAUTH_CLIENT_SECRET }}
-            NOTION_OAUTH_CLIENT_ID=${{ vars.NOTION_OAUTH_CLIENT_ID }}
-            NOTION_OAUTH_CLIENT_SECRET=${{ secrets.NOTION_OAUTH_CLIENT_SECRET }}
-            GOOGLE_OAUTH_CLIENT_ID=${{ vars.GOOGLE_OAUTH_CLIENT_ID }}
-            GOOGLE_OAUTH_CLIENT_SECRET=${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
-            MICROSOFT_OAUTH_CLIENT_ID=${{ vars.MICROSOFT_OAUTH_CLIENT_ID }}
-            MICROSOFT_OAUTH_CLIENT_SECRET=${{ secrets.MICROSOFT_OAUTH_CLIENT_SECRET }}
-            LINEAR_OAUTH_CLIENT_ID=${{ vars.LINEAR_OAUTH_CLIENT_ID }}
-            LINEAR_OAUTH_CLIENT_SECRET=${{ secrets.LINEAR_OAUTH_CLIENT_SECRET }}
-            FIGMA_OAUTH_CLIENT_ID=${{ vars.FIGMA_OAUTH_CLIENT_ID }}
-            FIGMA_OAUTH_CLIENT_SECRET=${{ secrets.FIGMA_OAUTH_CLIENT_SECRET }}
-            DEEL_OAUTH_CLIENT_ID=${{ vars.DEEL_OAUTH_CLIENT_ID }}
-            DEEL_OAUTH_CLIENT_SECRET=${{ secrets.DEEL_OAUTH_CLIENT_SECRET }}
-            DOCUSIGN_OAUTH_CLIENT_ID=${{ vars.DOCUSIGN_OAUTH_CLIENT_ID }}
-            DOCUSIGN_OAUTH_CLIENT_SECRET=${{ secrets.DOCUSIGN_OAUTH_CLIENT_SECRET }}
-            DROPBOX_OAUTH_CLIENT_ID=${{ vars.DROPBOX_OAUTH_CLIENT_ID }}
-            DROPBOX_OAUTH_CLIENT_SECRET=${{ secrets.DROPBOX_OAUTH_CLIENT_SECRET }}
-            NEON_OAUTH_CLIENT_ID=${{ vars.NEON_OAUTH_CLIENT_ID }}
-            NEON_OAUTH_CLIENT_SECRET=${{ secrets.NEON_OAUTH_CLIENT_SECRET }}
-            REDDIT_OAUTH_CLIENT_ID=${{ vars.REDDIT_OAUTH_CLIENT_ID }}
-            REDDIT_OAUTH_CLIENT_SECRET=${{ secrets.REDDIT_OAUTH_CLIENT_SECRET }}
-            STRAVA_OAUTH_CLIENT_ID=${{ vars.STRAVA_OAUTH_CLIENT_ID }}
-            STRAVA_OAUTH_CLIENT_SECRET=${{ secrets.STRAVA_OAUTH_CLIENT_SECRET }}
-            X_OAUTH_CLIENT_ID=${{ vars.X_OAUTH_CLIENT_ID }}
-            X_OAUTH_CLIENT_SECRET=${{ secrets.X_OAUTH_CLIENT_SECRET }}
-            VERCEL_OAUTH_CLIENT_ID=${{ vars.VERCEL_OAUTH_CLIENT_ID }}
-            VERCEL_OAUTH_CLIENT_SECRET=${{ secrets.VERCEL_OAUTH_CLIENT_SECRET }}
-            VERCEL_INTEGRATION_SLUG=${{ vars.VERCEL_INTEGRATION_SLUG }}
-            SENTRY_OAUTH_CLIENT_ID=${{ vars.SENTRY_OAUTH_CLIENT_ID }}
-            SENTRY_OAUTH_CLIENT_SECRET=${{ secrets.SENTRY_OAUTH_CLIENT_SECRET }}
-            INTERVALS_ICU_OAUTH_CLIENT_ID=${{ vars.INTERVALS_ICU_OAUTH_CLIENT_ID }}
-            INTERVALS_ICU_OAUTH_CLIENT_SECRET=${{ secrets.INTERVALS_ICU_OAUTH_CLIENT_SECRET }}
-            SUPABASE_OAUTH_CLIENT_ID=${{ vars.SUPABASE_OAUTH_CLIENT_ID }}
-            SUPABASE_OAUTH_CLIENT_SECRET=${{ secrets.SUPABASE_OAUTH_CLIENT_SECRET }}
-            XERO_OAUTH_CLIENT_ID=${{ vars.XERO_OAUTH_CLIENT_ID }}
-            MONDAY_OAUTH_CLIENT_ID=${{ vars.MONDAY_OAUTH_CLIENT_ID }}
-            MONDAY_OAUTH_APP_ID=${{ vars.MONDAY_OAUTH_APP_ID }}
-            XERO_OAUTH_CLIENT_SECRET=${{ secrets.XERO_OAUTH_CLIENT_SECRET }}
-            MONDAY_OAUTH_CLIENT_SECRET=${{ secrets.MONDAY_OAUTH_CLIENT_SECRET }}
-            WEBFLOW_OAUTH_CLIENT_ID=${{ vars.WEBFLOW_OAUTH_CLIENT_ID }}
-            WEBFLOW_OAUTH_CLIENT_SECRET=${{ secrets.WEBFLOW_OAUTH_CLIENT_SECRET }}
-            CANVA_OAUTH_CLIENT_ID=${{ vars.CANVA_OAUTH_CLIENT_ID }}
-            CANVA_OAUTH_CLIENT_SECRET=${{ secrets.CANVA_OAUTH_CLIENT_SECRET }}
-            HUBSPOT_OAUTH_CLIENT_ID=${{ vars.HUBSPOT_OAUTH_CLIENT_ID }}
-            HUBSPOT_OAUTH_CLIENT_SECRET=${{ secrets.HUBSPOT_OAUTH_CLIENT_SECRET }}
-            CLOSE_OAUTH_CLIENT_ID=${{ vars.CLOSE_OAUTH_CLIENT_ID }}
-            CLOSE_OAUTH_CLIENT_SECRET=${{ secrets.CLOSE_OAUTH_CLIENT_SECRET }}
-            META_ADS_OAUTH_CLIENT_ID=${{ vars.META_ADS_OAUTH_CLIENT_ID }}
-            META_ADS_OAUTH_CLIENT_SECRET=${{ secrets.META_ADS_OAUTH_CLIENT_SECRET }}
-            AHREFS_OAUTH_CLIENT_ID=${{ vars.AHREFS_OAUTH_CLIENT_ID }}
-            AHREFS_OAUTH_CLIENT_SECRET=${{ secrets.AHREFS_OAUTH_CLIENT_SECRET }}
-            AIRTABLE_OAUTH_CLIENT_ID=${{ vars.AIRTABLE_OAUTH_CLIENT_ID }}
-            AIRTABLE_OAUTH_CLIENT_SECRET=${{ secrets.AIRTABLE_OAUTH_CLIENT_SECRET }}
-            TODOIST_OAUTH_CLIENT_ID=${{ vars.TODOIST_OAUTH_CLIENT_ID }}
-            TODOIST_OAUTH_CLIENT_SECRET=${{ secrets.TODOIST_OAUTH_CLIENT_SECRET }}
-            ASANA_OAUTH_CLIENT_ID=${{ vars.ASANA_OAUTH_CLIENT_ID }}
-            ASANA_OAUTH_CLIENT_SECRET=${{ secrets.ASANA_OAUTH_CLIENT_SECRET }}
-            POSTHOG_OAUTH_CLIENT_ID=${{ vars.POSTHOG_OAUTH_CLIENT_ID }}
-            POSTHOG_OAUTH_CLIENT_SECRET=${{ secrets.POSTHOG_OAUTH_CLIENT_SECRET }}
-            MERCURY_OAUTH_CLIENT_ID=${{ vars.MERCURY_OAUTH_CLIENT_ID }}
-            MERCURY_OAUTH_CLIENT_SECRET=${{ secrets.MERCURY_OAUTH_CLIENT_SECRET }}
-            SPOTIFY_OAUTH_CLIENT_ID=${{ vars.SPOTIFY_OAUTH_CLIENT_ID }}
-            SPOTIFY_OAUTH_CLIENT_SECRET=${{ secrets.SPOTIFY_OAUTH_CLIENT_SECRET }}
-            STRIPE_OAUTH_CLIENT_ID=${{ vars.STRIPE_OAUTH_CLIENT_ID }}
-            STRIPE_OAUTH_CLIENT_SECRET=${{ secrets.STRIPE_OAUTH_CLIENT_SECRET }}
-            STRIPE_SECRET_KEY=${{ secrets.STRIPE_SECRET_KEY }}
-            STRIPE_WEBHOOK_SECRET=${{ secrets.STRIPE_WEBHOOK_SECRET }}
-            CLERK_WEBHOOK_SIGNING_SECRET=${{ secrets.CLERK_WEBHOOK_SIGNING_SECRET }}
-            ZERO_PRICE=${{ secrets.ZERO_PRICE }}
-            ZERO_ONE_TIME_CAMPAIGN=${{ vars.ZERO_ONE_TIME_CAMPAIGN }}
-            AGENTPHONE_API_KEY=${{ secrets.AGENTPHONE_API_KEY }}
-            PLAIN_API_KEY=${{ secrets.PLAIN_API_KEY }}
-            NGROK_API_KEY=${{ secrets.NGROK_API_KEY }}
-            NGROK_COMPUTER_CONNECTOR_DOMAIN=${{ vars.NGROK_COMPUTER_CONNECTOR_DOMAIN }}
-            APP_URL=https://app.vm0.ai
-            RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
-            RESEND_WEBHOOK_SECRET=${{ secrets.RESEND_WEBHOOK_SECRET }}
-            RESEND_FROM_DOMAIN=${{ vars.RESEND_FROM_DOMAIN }}
-            VM0_DEFAULT_AGENT=${{ vars.VM0_DEFAULT_AGENT }}
-            OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
-            GITHUB_APP_SLUG=${{ vars.VM0_GITHUB_APP_SLUG }}
-            GITHUB_APP_ID=${{ vars.VM0_GITHUB_APP_ID }}
-            GITHUB_APP_CLIENT_ID=${{ vars.VM0_GITHUB_APP_CLIENT_ID }}
-            GITHUB_APP_CLIENT_SECRET=${{ secrets.VM0_GITHUB_APP_CLIENT_SECRET }}
-            GITHUB_APP_WEBHOOK_SECRET=${{ secrets.VM0_GITHUB_APP_WEBHOOK_SECRET }}
-            GITHUB_APP_PRIVATE_KEY=${{ secrets.VM0_GITHUB_APP_PRIVATE_KEY }}
-            GCP_PROJECT_ID=${{ vars.GCP_PROJECT_ID }}
-            GCP_PROJECT_NUMBER=${{ vars.GCP_PROJECT_NUMBER }}
-            GCP_SERVICE_ACCOUNT_EMAIL=${{ vars.GCP_SERVICE_ACCOUNT_EMAIL }}
-            GCP_WORKLOAD_IDENTITY_POOL_ID=${{ vars.GCP_WORKLOAD_IDENTITY_POOL_ID }}
-            GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID=${{ vars.GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID }}
+          environment-file: ${{ steps.web-production-env.outputs.file }}
 
       - name: Calculate duration
         id: duration
@@ -445,6 +334,20 @@ jobs:
         env:
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
 
+      - name: Resolve API production environment
+        id: api-production-env
+        uses: ./.github/actions/web-api-env
+        with:
+          app: api
+          environment: production
+          database-url: ${{ steps.get-db-url.outputs.database-url }}
+          web-url: https://www.vm0.ai
+          app-url: https://app.vm0.ai
+          api-url: ${{ vars.VM0_API_URL }}
+        env:
+          REPO_VARS_JSON: ${{ toJSON(vars) }}
+          REPO_SECRETS_JSON: ${{ toJSON(secrets) }}
+
       - name: Build API Staged Production Deployment
         id: deploy
         uses: ./.github/actions/vercel-deploy
@@ -458,14 +361,7 @@ jobs:
           skip-domain: "true"
           skip-start: "true"
           skip-finish: "true"
-          environment-variables: |
-            DATABASE_URL=${{ steps.get-db-url.outputs.database-url }}
-            CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}
-            SECRETS_ENCRYPTION_KEY=${{ secrets.SECRETS_ENCRYPTION_KEY }}
-            SENTRY_DSN=${{ secrets.SENTRY_DSN }}
-            SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
-            SENTRY_ORG=${{ vars.SENTRY_ORG }}
-            SENTRY_PROJECT=${{ vars.SENTRY_PROJECT_API || vars.SENTRY_PROJECT_WEB }}
+          environment-file: ${{ steps.api-production-env.outputs.file }}
 
       - name: Calculate duration
         id: duration
@@ -552,7 +448,13 @@ jobs:
           echo "✅ All build-phase jobs succeeded or were skipped."
 
   promote-web-production:
-    needs: [release-please, builds-complete, build-web-production, migrate-production]
+    needs:
+      [
+        release-please,
+        builds-complete,
+        build-web-production,
+        migrate-production,
+      ]
     if: >-
       !failure() && !cancelled() &&
       needs.release-please.outputs.web_release_created == 'true'
@@ -900,7 +802,14 @@ jobs:
 
   # Promote app staged deployment to production (traffic switch)
   promote-app-production:
-    needs: [release-please, builds-complete, build-app-production, promote-web-production, migrate-production]
+    needs:
+      [
+        release-please,
+        builds-complete,
+        build-app-production,
+        promote-web-production,
+        migrate-production,
+      ]
     if: >-
       !failure() && !cancelled() &&
       needs.release-please.outputs.app_release_created == 'true'
@@ -1020,7 +929,14 @@ jobs:
 
   # Update rollback dashboard issue after deployments
   update-rollback-dashboard:
-    needs: [release-please, promote-web-production, promote-api-production, promote-app-production, promote-runner-production]
+    needs:
+      [
+        release-please,
+        promote-web-production,
+        promote-api-production,
+        promote-app-production,
+        promote-runner-production,
+      ]
     if: >-
       always() &&
       (needs.promote-web-production.result == 'success' ||
@@ -1306,7 +1222,7 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: lts/*
-          registry-url: 'https://registry.npmjs.org'
+          registry-url: "https://registry.npmjs.org"
 
       - name: Install pnpm
         run: npm install -g pnpm@latest
@@ -1632,7 +1548,15 @@ jobs:
   # the schema and API it targets are live. Host-level prep
   # (provision-runner, provision-monitoring) already ran in build.
   promote-runner-production:
-    needs: [release-please, builds-complete, promote-web-production, resolve-image-cache, build-runner-production, migrate-production]
+    needs:
+      [
+        release-please,
+        builds-complete,
+        promote-web-production,
+        resolve-image-cache,
+        build-runner-production,
+        migrate-production,
+      ]
     if: >-
       !failure() && !cancelled() &&
       needs.release-please.outputs.runner_rs_release_created == 'true'

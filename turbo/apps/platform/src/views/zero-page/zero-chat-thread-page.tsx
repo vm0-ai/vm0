@@ -793,10 +793,12 @@ function BodyContentBlocks({
   blocks,
   openLightbox,
   hardBreaks,
+  signal,
 }: {
   blocks: BodyRenderBlock[];
   openLightbox: (url: string) => void;
   hardBreaks: boolean;
+  signal: AbortSignal;
 }) {
   return (
     <div className="flex flex-col gap-3">
@@ -835,6 +837,7 @@ function BodyContentBlocks({
                           ? "application/pdf"
                           : "text/html",
             }}
+            signal={signal}
           />
         );
       })}
@@ -1223,6 +1226,7 @@ function PagedUserMessage({
                   blocks={bodyBlocks}
                   openLightbox={openLightbox}
                   hardBreaks
+                  signal={pageSignal}
                 />
               </div>
             )}
@@ -1299,6 +1303,7 @@ function PagedAssistantGroup({
 
 function PagedAssistantMessageItem({ message }: { message: PagedChatMessage }) {
   const openImageLightbox = useSet(openAttachmentImageLightbox$);
+  const pageSignal = useGet(pageSignal$);
   const openLightbox = (url: string) => {
     openImageLightbox(url);
   };
@@ -1320,6 +1325,7 @@ function PagedAssistantMessageItem({ message }: { message: PagedChatMessage }) {
             blocks={blocks}
             openLightbox={openLightbox}
             hardBreaks={false}
+            signal={pageSignal}
           />
         ) : null}
       </div>
