@@ -1,3 +1,4 @@
+import { resetApiTestMocks } from "./mocks";
 import { afterEach } from "vitest";
 
 import { clearMockedEnv } from "../lib/env";
@@ -8,4 +9,5 @@ afterEach(async () => {
   await clearAllDetached();
   clearMockNow();
   clearMockedEnv();
+  resetApiTestMocks();
 });

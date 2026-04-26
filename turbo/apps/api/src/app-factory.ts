@@ -1,9 +1,9 @@
 import * as Sentry from "@sentry/node";
-import { type Context, type Hono } from "hono";
+import { type Context, Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 
 import { logger } from "./lib/log";
-import { honoComputed } from "./signals/context/route";
+import { honoSignalHandler } from "./signals/context/route";
 import { type RouteDefinition, ROUTES } from "./signals/route";
 
 const L = logger("App");
@@ -29,13 +29,21 @@ function handleError(error: Error, context: Context): Response {
   return context.json({ error: "Internal server error" }, 500);
 }
 
-export function createApp(signal: AbortSignal, app: Hono): Hono {
+interface CreateAppOptions {
+  readonly signal: AbortSignal;
+  readonly routes?: ReadonlyArray<RouteDefinition<unknown>>;
+}
+
+export function createApp({ routes = ROUTES, signal }: CreateAppOptions): Hono {
+  const app = new Hono();
   app.onError(handleError);
 
-  ROUTES.forEach((route: RouteDefinition<unknown>) => {
-    if (route.method === "GET") {
-      app.get(route.path, honoComputed(route.handler, signal));
-    }
+  routes.forEach((route: RouteDefinition<unknown>) => {
+    app.on(
+      route.contract.method,
+      route.contract.path,
+      honoSignalHandler(route.handler, route.contract, signal),
+    );
   });
 
   return app;

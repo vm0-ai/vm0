@@ -187,8 +187,9 @@ export default [
   },
   {
     files: ["src/**/__tests__/**/*.ts", "src/**/*.test.ts"],
-    ignores: ["src/__tests__/env-stub.ts"],
+    ignores: ["src/__tests__/env-stub.ts", "src/__tests__/mocks.ts"],
     rules: {
+      "api/no-test-vi-mocks": "error",
       "no-restricted-syntax": [
         "error",
         {

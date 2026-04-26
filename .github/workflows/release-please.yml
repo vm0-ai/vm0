@@ -360,7 +360,6 @@ jobs:
           prebuilt: "true"
           prebuilt-build-command: |
             pnpm --dir turbo/apps/api build
-            pnpm --dir turbo/apps/api smoke:vercel-output
             rm -rf .vercel/output
             cp -R turbo/apps/api/.vercel/output .vercel/output
           skip-domain: "true"

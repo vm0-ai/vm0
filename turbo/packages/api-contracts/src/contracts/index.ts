@@ -13,6 +13,16 @@
  */
 export { initContract } from "./base";
 export {
+  healthAuthContract,
+  healthContract,
+  healthResponseSchema,
+  type HealthAuthContract,
+  type HealthAuthRouteResponse,
+  type HealthContract,
+  type HealthResponse,
+  type HealthRouteResponse,
+} from "./health";
+export {
   apiErrorSchema,
   ApiError,
   createErrorResponse,

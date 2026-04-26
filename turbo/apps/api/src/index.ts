@@ -1,5 +1,4 @@
 import "./instrument";
-import { Hono } from "hono";
 import { createApp } from "./app-factory";
 
 const instanceAbortController = new AbortController();
@@ -10,7 +9,5 @@ process.once("SIGTERM", () => {
   instanceAbortController.abort(error);
 });
 
-const instanceSignal = instanceAbortController.signal;
-
-const app = createApp(instanceSignal, new Hono());
+const app = createApp({ signal: instanceAbortController.signal });
 export default app;

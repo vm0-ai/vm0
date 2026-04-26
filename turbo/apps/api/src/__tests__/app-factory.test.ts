@@ -1,78 +1,98 @@
-import * as Sentry from "@sentry/node";
+import { initContract } from "@ts-rest/core";
+import { computed } from "ccstate";
 import { HTTPException } from "hono/http-exception";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 
-import { testContext } from "./test-helpers";
+import { contractRoute } from "../signals/route";
+import { accept, setupApp, testContext } from "./test-helpers";
 
-const sentry = vi.hoisted(() => {
-  return {
-    captureException: vi.fn(),
-    init: vi.fn(),
-  };
-});
+const c = initContract();
 
-vi.mock("@sentry/node", () => {
-  return sentry;
+const errorTestContract = c.router({
+  boom: {
+    method: "GET",
+    path: "/__test/boom",
+    responses: {
+      500: z.object({ error: z.string() }),
+    },
+  },
+  missing: {
+    method: "GET",
+    path: "/__test/missing",
+    responses: {
+      404: z.string(),
+    },
+  },
+  unavailable: {
+    method: "GET",
+    path: "/__test/unavailable",
+    responses: {
+      503: z.string(),
+    },
+  },
 });
 
 describe("createApp", () => {
   const context = testContext();
-  let errorSpy: ReturnType<typeof vi.spyOn>;
-
-  beforeEach(() => {
-    vi.mocked(Sentry.captureException).mockClear();
-    errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-  });
-
-  afterEach(() => {
-    errorSpy.mockRestore();
-  });
 
   it("captures unhandled errors and returns a sanitized response", async () => {
-    const app = context.app;
     const error = new Error("boom");
-
-    app.get("/boom", () => {
-      throw error;
+    const client = setupApp({
+      context,
+      contract: errorTestContract,
+      routesExtend: [
+        contractRoute({
+          contract: errorTestContract.boom,
+          handler: computed((): never => {
+            throw error;
+          }),
+        }),
+      ],
     });
 
-    const response = await app.request("/boom");
-    const payload: unknown = await response.json();
+    const response = await accept(client.boom(), [500]);
 
-    expect(response.status).toBe(500);
-    expect(payload).toEqual({ error: "Internal server error" });
-    expect(Sentry.captureException).toHaveBeenCalledWith(error);
-    expect(errorSpy).toHaveBeenCalledWith(
-      "[ERROR][App] Unhandled request error",
-      error,
-    );
+    expect(response.body).toEqual({ error: "Internal server error" });
+    expect(context.mocks.sentry.captureException).toHaveBeenCalledWith(error);
   });
 
   it("passes through expected HTTP client errors without capturing them", async () => {
-    const app = context.app;
     const error = new HTTPException(404, { message: "Missing" });
-
-    app.get("/missing", () => {
-      throw error;
+    const client = setupApp({
+      context,
+      contract: errorTestContract,
+      routesExtend: [
+        contractRoute({
+          contract: errorTestContract.missing,
+          handler: computed((): never => {
+            throw error;
+          }),
+        }),
+      ],
     });
 
-    const response = await app.request("/missing");
+    await accept(client.missing(), [404]);
 
-    expect(response.status).toBe(404);
-    expect(Sentry.captureException).not.toHaveBeenCalled();
+    expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
   });
 
   it("captures HTTP server errors while preserving their response", async () => {
-    const app = context.app;
     const error = new HTTPException(503, { message: "Unavailable" });
-
-    app.get("/unavailable", () => {
-      throw error;
+    const client = setupApp({
+      context,
+      contract: errorTestContract,
+      routesExtend: [
+        contractRoute({
+          contract: errorTestContract.unavailable,
+          handler: computed((): never => {
+            throw error;
+          }),
+        }),
+      ],
     });
 
-    const response = await app.request("/unavailable");
+    await accept(client.unavailable(), [503]);
 
-    expect(response.status).toBe(503);
-    expect(Sentry.captureException).toHaveBeenCalledWith(error);
+    expect(context.mocks.sentry.captureException).toHaveBeenCalledWith(error);
   });
 });

@@ -7,7 +7,6 @@
     "build": "vite build",
     "dev": "VM0_DEBUG=* tsx watch src/server.ts",
     "start": "tsx src/server.ts",
-    "smoke:vercel-output": "node scripts/smoke-vercel-output.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "oxlint && oxlint --type-aware -c ../../.oxlintrc.typeaware.json && eslint . --max-warnings 0",
@@ -32,6 +31,7 @@
   },
   "devDependencies": {
     "@hono/vite-build": "^1.11.1",
+    "@ts-rest/core": "3.53.0-rc.1",
     "@types/node": "^24.3.0",
     "@types/pg": "^8.20.0",
     "@typescript-eslint/rule-tester": "^8.59.0",

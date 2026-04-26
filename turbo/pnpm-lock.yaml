@@ -119,6 +119,9 @@ importers:
       '@hono/vite-build':
         specifier: ^1.11.1
         version: 1.11.1(hono@4.12.15)
+      '@ts-rest/core':
+        specifier: 3.53.0-rc.1
+        version: 3.53.0-rc.1(@types/node@24.3.0)
       '@types/node':
         specifier: ^24.3.0
         version: 24.3.0
