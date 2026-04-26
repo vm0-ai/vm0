@@ -264,7 +264,7 @@ jobs:
       # `turbo/packages/api-contracts/src/firewalls/x.generated.ts`, which is
       # gitignored and materialized by the `postinstall` hook in
       # `turbo/package.json` (runs `@vm0/firewalls-generator generate`).
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 10
       - uses: actions/setup-node@v6
