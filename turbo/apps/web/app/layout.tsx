@@ -138,7 +138,6 @@ export default async function RootLayout({
   return (
     <ClerkProvider
       publishableKey={getClerkPublishableKey()}
-      clerkJSVersion="5.125.9"
       signInUrl="/sign-in"
       signUpUrl="/sign-up"
       signInFallbackRedirectUrl={getAppUrl()}
