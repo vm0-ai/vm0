@@ -583,11 +583,28 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260419
+    services:
+      postgres:
+        image: postgres:17-alpine
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
+      - name: Run Database Migrations
+        working-directory: turbo
+        env:
+          DATABASE_URL: postgresql://postgres@postgres:5432/postgres
+        run: pnpm --filter web db:migrate
       - name: Test API
         working-directory: turbo
+        env:
+          DATABASE_URL: postgresql://postgres@postgres:5432/postgres
         run: pnpm vitest run --project=api --coverage.enabled --coverage.reporter=json
       - name: Upload coverage to Codecov
         if: success() || failure()
