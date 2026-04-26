@@ -998,50 +998,85 @@ async fn unpark_inner(
 mod tests {
     use super::*;
 
-    /// Simulate the `monitor_process` crash detection flow:
-    /// swap state from Running → Stopped, then fire crash_notify.
-    /// Verify that a waiter on `crash_notify.notified()` resolves.
+    fn monitored_cat_process() -> tokio::process::Child {
+        tokio::process::Command::new("cat")
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap()
+    }
+
+    async fn wait_for_state(state: &AtomicU8, expected: SandboxState) {
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while SandboxState::from_u8(state.load(Ordering::Acquire)) != expected {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+    }
+
+    /// Exercise the `monitor_process` crash detection flow through the real
+    /// stdout EOF path. A running process exit should mark the sandbox stopped
+    /// and notify waiters.
     #[tokio::test]
     async fn crash_notify_fires_on_unexpected_exit() {
         let state = Arc::new(AtomicU8::new(SandboxState::Running as u8));
         let crash_notify = Arc::new(Notify::new());
+        let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
+        let mut child = monitored_cat_process();
 
-        let notify_clone = Arc::clone(&crash_notify);
-        let state_clone = Arc::clone(&state);
-        tokio::spawn(async move {
-            // Simulate monitor_process detecting unexpected exit.
-            let prev = SandboxState::from_u8(
-                state_clone.swap(SandboxState::Stopped as u8, Ordering::AcqRel),
-            );
-            assert_eq!(prev, SandboxState::Running);
-            notify_clone.notify_waiters();
-        });
+        monitor_process(
+            "test-sandbox",
+            &mut child,
+            Arc::clone(&state),
+            guest,
+            Arc::clone(&crash_notify),
+        );
 
-        // Waiter should resolve promptly.
-        tokio::time::timeout(std::time::Duration::from_secs(1), crash_notify.notified())
+        let notified = crash_notify.notified();
+        drop(child.stdin.take());
+
+        tokio::time::timeout(Duration::from_secs(1), notified)
             .await
             .unwrap();
+        assert_eq!(
+            SandboxState::from_u8(state.load(Ordering::Acquire)),
+            SandboxState::Stopped
+        );
+
+        let status = child.wait().await.unwrap();
+        assert!(status.success());
     }
 
     /// When the process is stopped gracefully (state transitions to Stopping
-    /// before pipe close), crash_notify should NOT fire.
+    /// before pipe close), the real `monitor_process` stdout EOF path should
+    /// not fire crash_notify.
     #[tokio::test]
     async fn crash_notify_does_not_fire_on_graceful_stop() {
         let state = Arc::new(AtomicU8::new(SandboxState::Stopping as u8));
         let crash_notify = Arc::new(Notify::new());
+        let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
+        let mut child = monitored_cat_process();
 
-        // Simulate pipe close after graceful stop — state is Stopping, not Running.
-        let prev = SandboxState::from_u8(state.swap(SandboxState::Stopped as u8, Ordering::AcqRel));
-        assert_eq!(prev, SandboxState::Stopping);
-        // crash_notify is NOT fired (prev != Running).
+        monitor_process(
+            "test-sandbox",
+            &mut child,
+            Arc::clone(&state),
+            guest,
+            Arc::clone(&crash_notify),
+        );
 
-        // Verify notify does NOT resolve.
-        let result = tokio::time::timeout(
-            std::time::Duration::from_millis(50),
-            crash_notify.notified(),
-        )
-        .await;
+        let notified = crash_notify.notified();
+        drop(child.stdin.take());
+        wait_for_state(&state, SandboxState::Stopped).await;
+
+        let result = tokio::time::timeout(Duration::from_millis(50), notified).await;
         assert!(result.is_err(), "notify should have timed out");
+
+        let status = child.wait().await.unwrap();
+        assert!(status.success());
     }
 
     /// Verify that `killpg` kills the entire process group spawned with
