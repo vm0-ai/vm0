@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CONNECTOR_TYPES } from "@vm0/api-contracts/contracts/connectors";
+import { CONNECTOR_TYPES } from "@vm0/connectors/connectors";
 import { USE_CASES, buildPromptHref } from "../../app/[locale]/use-cases/data";
 import { locales, type Locale } from "../../i18n";
 import deMessages from "../../messages/de.json";

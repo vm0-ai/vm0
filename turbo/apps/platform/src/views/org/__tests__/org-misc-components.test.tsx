@@ -17,7 +17,7 @@ import { screen, waitFor } from "@testing-library/react";
 import {
   CONNECTOR_TYPES,
   type ConnectorType,
-} from "@vm0/api-contracts/contracts/connectors";
+} from "@vm0/connectors/connectors";
 import {
   type ScheduleResponse,
   zeroSchedulesMainContract,

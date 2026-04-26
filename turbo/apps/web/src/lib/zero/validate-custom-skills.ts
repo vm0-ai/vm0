@@ -1,4 +1,4 @@
-import { connectorTypeSchema } from "@vm0/api-contracts/contracts/connectors";
+import { connectorTypeSchema } from "@vm0/connectors/connectors";
 import { eq, and, inArray } from "drizzle-orm";
 import { zeroSkills } from "@vm0/db/schema/zero-skill";
 

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { and, eq } from "drizzle-orm";
 import { extractAndGroupVariables } from "@vm0/core/variable-expander";
-import { getConnectorProvidedSecretNames } from "@vm0/api-contracts/contracts/connector-utils";
+import { getConnectorProvidedSecretNames } from "@vm0/connectors/connector-utils";
 import { initServices } from "../../../../src/lib/init-services";
 import { env } from "../../../../src/env";
 import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";

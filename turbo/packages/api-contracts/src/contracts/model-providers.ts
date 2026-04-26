@@ -1,7 +1,7 @@
 import { z } from "zod";
 
-import { FeatureSwitchKey } from "../feature-switch-key";
-import type { ExpandedFirewallConfig } from "./firewalls";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import type { ExpandedFirewallConfig } from "@vm0/connectors/firewall-types";
 
 /**
  * Secret field configuration for multi-secret providers

@@ -1,4 +1,4 @@
-import type { ConnectorType } from "@vm0/api-contracts/contracts/connectors";
+import type { ConnectorType } from "@vm0/connectors/connectors";
 import { initServices } from "../../lib/init-services";
 import { userConnectors } from "@vm0/db/schema/user-connector";
 import { userPlatformConnectors } from "@vm0/db/schema/user-platform-connector";

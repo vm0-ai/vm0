@@ -30,6 +30,7 @@
     "@ts-rest/core": "3.53.0-rc.1",
     "@uiw/react-markdown-preview": "^5.1.5",
     "@vm0/api-contracts": "workspace:*",
+    "@vm0/connectors": "workspace:*",
     "@vm0/core": "workspace:*",
     "@vm0/ui": "workspace:*",
     "ably": "^2.21.0",

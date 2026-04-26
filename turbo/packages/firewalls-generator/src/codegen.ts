@@ -273,7 +273,7 @@ export function writeOutput(
 ): void {
   const outPath = path.resolve(
     dirname,
-    `../../api-contracts/src/firewalls/${serviceName}.generated.ts`,
+    `../../connectors/src/firewalls/${serviceName}.generated.ts`,
   );
   fs.mkdirSync(path.dirname(outPath), { recursive: true });
   fs.writeFileSync(outPath, content);

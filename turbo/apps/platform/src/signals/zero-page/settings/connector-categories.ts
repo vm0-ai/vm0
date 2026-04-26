@@ -5,7 +5,7 @@ import {
   CONNECTOR_DISPLAY_CATEGORY_ORDER,
   type ConnectorDisplayCategory,
   type ConnectorDisplayCategoryGroup,
-} from "@vm0/api-contracts/contracts/connectors";
+} from "@vm0/connectors/connectors";
 
 export interface ConnectorCategorySection<T> {
   category: ConnectorDisplayCategory;

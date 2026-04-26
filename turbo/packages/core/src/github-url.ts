@@ -150,12 +150,12 @@ export const DEFAULT_SKILLS_REPO = "vm0-skills";
 /** Default branch for bare skill name resolution */
 export const DEFAULT_SKILLS_BRANCH = "main";
 
-/** Default owner for bare firewall config name resolution */
-export const DEFAULT_FIREWALLS_OWNER = "vm0-ai";
-/** Default repository for bare firewall config name resolution */
-export const DEFAULT_FIREWALLS_REPO = "vm0-firewalls";
-/** Default branch for bare firewall config name resolution */
-export const DEFAULT_FIREWALLS_BRANCH = "main";
+export {
+  DEFAULT_FIREWALLS_OWNER,
+  DEFAULT_FIREWALLS_REPO,
+  DEFAULT_FIREWALLS_BRANCH,
+  resolveFirewallRef,
+} from "@vm0/connectors/github-url";
 
 /**
  * Resolve a skill reference to a full GitHub tree URL.
@@ -192,54 +192,6 @@ export function resolveSkillRef(input: string): string {
   // Plain repo URL (no branch): normalize to tree URL with default branch
   if (!parsed.branch) {
     return `https://github.com/${parsed.owner}/${parsed.repo}/tree/${DEFAULT_SKILLS_BRANCH}`;
-  }
-
-  return trimmed;
-}
-
-/**
- * Resolve a firewall config reference to a full GitHub tree URL.
- *
- * Supports two formats:
- * - **Bare name** (no `/` and no `https://`): e.g. `"custom-api"` →
- *   `https://github.com/vm0-ai/vm0-firewalls/tree/main/custom-api`
- * - **Full GitHub URL**: validated by `parseGitHubUrl()` and returned as-is.
- *
- * @param input - Bare firewall name or full GitHub URL
- * @returns Canonical full GitHub URL
- * @throws Error if input is empty or not a valid GitHub URL
- */
-/** Bare firewall name: alphanumeric, hyphens, dots, underscores. At least 1 char. */
-const FIREWALL_NAME_PATTERN = /^[a-zA-Z0-9]([a-zA-Z0-9\-_.]*[a-zA-Z0-9])?$/;
-
-export function resolveFirewallRef(input: string): string {
-  const trimmed = input.trim();
-
-  if (!trimmed) {
-    throw new Error("Firewall reference cannot be empty");
-  }
-
-  // Bare name: no "/" and no "https://"
-  if (!trimmed.includes("/") && !trimmed.startsWith("https://")) {
-    if (!FIREWALL_NAME_PATTERN.test(trimmed)) {
-      throw new Error(
-        `Invalid firewall name "${trimmed}": must be alphanumeric with hyphens, dots, or underscores`,
-      );
-    }
-    return `https://github.com/${DEFAULT_FIREWALLS_OWNER}/${DEFAULT_FIREWALLS_REPO}/tree/${DEFAULT_FIREWALLS_BRANCH}/${trimmed}`;
-  }
-
-  // Full GitHub URL: validate with flexible parser
-  const parsed = parseGitHubUrl(trimmed);
-  if (!parsed) {
-    throw new Error(
-      `Invalid firewall URL: ${trimmed}. Expected a bare firewall name (e.g. "custom-api") or a GitHub URL (https://github.com/{owner}/{repo}[/tree/{branch}[/path]])`,
-    );
-  }
-
-  // Plain repo URL (no branch): normalize to tree URL with default branch
-  if (!parsed.branch) {
-    return `https://github.com/${parsed.owner}/${parsed.repo}/tree/${DEFAULT_FIREWALLS_BRANCH}`;
   }
 
   return trimmed;

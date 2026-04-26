@@ -1,6 +1,6 @@
 # Firewalls Generator
 
-Generates firewall configs for connector integrations. Each generator produces a `.generated.ts` file in `packages/api-contracts/src/firewalls/`.
+Generates firewall configs for connector integrations. Each generator produces a `.generated.ts` file in `packages/connectors/src/firewalls/`.
 
 ## Usage
 

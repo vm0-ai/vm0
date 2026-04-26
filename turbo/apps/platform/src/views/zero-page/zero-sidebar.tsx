@@ -23,7 +23,7 @@ import {
   IconSparkles,
   IconMenu2,
 } from "@tabler/icons-react";
-import { FeatureSwitchKey } from "@vm0/api-contracts/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   Tooltip,
   TooltipContent,

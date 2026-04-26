@@ -5,19 +5,19 @@ import {
   getCustomSkillStorageName,
   getSkillStorageName,
 } from "@vm0/core/storage-names";
-import { FeatureSwitchKey } from "@vm0/api-contracts/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { orgTierSchema } from "@vm0/api-contracts/contracts/orgs";
-import { resolveFirewallPolicies } from "@vm0/api-contracts/firewalls";
+import { resolveFirewallPolicies } from "@vm0/connectors/firewalls";
 import {
   toFirewallPolicies,
   type FirewallPolicies,
   type RawPermissionPolicies,
   type FirewallPolicyValue,
-} from "@vm0/api-contracts/contracts/firewalls";
+} from "@vm0/connectors/firewall-types";
 import {
   connectorTypeSchema,
   type ConnectorType,
-} from "@vm0/api-contracts/contracts/connectors";
+} from "@vm0/connectors/connectors";
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import type { RunStatus } from "@vm0/api-contracts/contracts/runs";
 import {

@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
-import { FeatureSwitchKey } from "@vm0/api-contracts/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { logsByIdContract } from "@vm0/api-contracts/contracts/logs";
 import { zeroRunAgentEventsContract } from "@vm0/api-contracts/contracts/zero-runs";
 import type {

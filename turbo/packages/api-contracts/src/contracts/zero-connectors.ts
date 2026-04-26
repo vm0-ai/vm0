@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
-import { connectorTypeSchema } from "./connectors";
+import { connectorTypeSchema } from "@vm0/connectors/connectors";
 import {
   computerConnectorCreateResponseSchema,
   connectorListResponseSchema,

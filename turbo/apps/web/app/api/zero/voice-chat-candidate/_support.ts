@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/api-contracts/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { z } from "zod";
 import {
   voiceChatItems,

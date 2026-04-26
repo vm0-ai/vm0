@@ -35,6 +35,7 @@
     "@types/prompts": "^2.4.9",
     "@types/tar": "^6.1.13",
     "@vm0/api-contracts": "workspace:*",
+    "@vm0/connectors": "workspace:*",
     "@vm0/core": "workspace:*",
     "@vm0/eslint-config": "workspace:*",
     "@vm0/typescript-config": "workspace:*",
