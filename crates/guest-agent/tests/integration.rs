@@ -422,14 +422,14 @@ async fn put_presigned_file_large_multi_chunk() {
 
     let dir = tempfile::tempdir().unwrap();
     let file_path = dir.path().join("large.bin");
-    // 40000 bytes — 2 full 16384-byte chunks + 1 short 7232-byte chunk
-    let data = vec![0x42u8; 40000];
+    // 600000 bytes — spans multiple 256 KiB streaming chunks.
+    let data = vec![0x42u8; 600000];
     std::fs::write(&file_path, &data).unwrap();
 
     let mock = server.mock(|when, then| {
         when.method(PUT)
             .path("/test/put-file-large")
-            .header("Content-Length", "40000");
+            .header("Content-Length", "600000");
         then.status(200);
     });
 
