@@ -238,7 +238,7 @@ export default [
     },
   },
   {
-    ignores: ["**/dist/**"],
+    ignores: ["**/dist/**", ".vercel/**"],
   },
   ...oxlint.buildFromOxlintConfigFile("./.oxlintrc.json"),
 ];

@@ -207,6 +207,7 @@
       "outputs": [
         ".next/**",
         "!.next/cache/**",
+        ".vercel/output/**",
         "dist/**",
         "src/dist/**",
         ".source/**"
