@@ -58,4 +58,12 @@ describe("api app", () => {
     );
     expect(JSON.stringify(payload)).not.toContain(builtInModelsFixture.vendor);
   });
+
+  it("serves a lightweight health check", async () => {
+    const response = await context.app.request("/health");
+    const payload: unknown = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload).toEqual({ status: "ok" });
+  });
 });
