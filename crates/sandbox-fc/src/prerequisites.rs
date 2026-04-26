@@ -36,7 +36,7 @@ pub(crate) async fn check_prerequisites(
         check_file_exists(&snapshot.cow_path, "snapshot cow", &mut errors);
     }
     check_kvm(&mut errors);
-    check_required_commands(config, &mut errors);
+    check_required_commands(&mut errors);
     ensure_runtime_dir(&mut errors);
 
     if errors.is_empty() {
@@ -69,7 +69,7 @@ fn check_kvm(errors: &mut Vec<String>) {
     }
 }
 
-fn check_required_commands(_config: &PrerequisiteConfig<'_>, errors: &mut Vec<String>) {
+fn check_required_commands(errors: &mut Vec<String>) {
     let commands = [
         "ip",
         "iptables",
