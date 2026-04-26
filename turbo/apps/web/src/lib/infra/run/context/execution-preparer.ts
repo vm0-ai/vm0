@@ -9,7 +9,7 @@ import {
 import type { StorageManifest } from "../../../infra/storage/types";
 import { getAllFeatureStates } from "@vm0/core/feature-switch";
 import { DEFAULT_PROFILE } from "@vm0/api-contracts/contracts/runners";
-import { badRequest } from "../../../shared/errors";
+import { badRequest } from "@vm0/api-services/errors";
 import { logger } from "../../../shared/logger";
 import { extractWorkingDir } from "../utils/extract-working-dir";
 import {

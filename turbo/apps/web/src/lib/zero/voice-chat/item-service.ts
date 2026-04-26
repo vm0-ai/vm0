@@ -1,6 +1,6 @@
 import { and, asc, eq, gt } from "drizzle-orm";
 import { voiceChatItems, voiceChatSessions } from "@vm0/db/schema/voice-chat";
-import { notFound } from "../../shared/errors";
+import { notFound } from "@vm0/api-services/errors";
 
 type ItemRow = typeof voiceChatItems.$inferSelect;
 type ItemRole = "user" | "assistant" | "task_result" | "system_note";

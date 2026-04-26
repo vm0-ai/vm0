@@ -15,7 +15,7 @@ import {
   upsertOrgNoSecretModelProvider,
 } from "../../../../src/lib/zero/model-provider/model-provider-service";
 import { logger } from "../../../../src/lib/shared/logger";
-import { isBadRequest } from "../../../../src/lib/shared/errors";
+import { isBadRequest } from "@vm0/api-services/errors";
 
 const log = logger("api:zero-model-providers");
 

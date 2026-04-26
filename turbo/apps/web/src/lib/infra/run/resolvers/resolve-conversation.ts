@@ -2,7 +2,7 @@ import { eq, and } from "drizzle-orm";
 import { conversations } from "@vm0/db/schema/conversation";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentComposeVersions } from "@vm0/db/schema/agent-compose";
-import { notFound, unauthorized } from "../../../shared/errors";
+import { notFound, unauthorized } from "@vm0/api-services/errors";
 import { logger } from "../../../shared/logger";
 import type { ConversationResolution } from "./types";
 import { extractWorkingDir } from "../utils";

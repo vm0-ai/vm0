@@ -63,6 +63,7 @@ import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import { ScopeReviewModal } from "./components/settings/scope-review-modal.tsx";
 import { ConnectorPermissionDialog } from "./components/settings/connector-permission-dialog.tsx";
 import { toast } from "@vm0/ui/components/ui/sonner";
+import noConnectorImg from "./assets/no-connector.webp";
 import { detach, Reason, throwIfAbort } from "../../signals/utils.ts";
 import {
   Button,
@@ -559,9 +560,16 @@ function renderBuiltinList({
 
   if (filtered.length === 0 && search) {
     return (
-      <p className="py-12 text-center text-sm text-muted-foreground">
-        No connectors matching &ldquo;{search}&rdquo;
-      </p>
+      <div className="flex flex-col items-center gap-3 py-12">
+        <img
+          src={noConnectorImg}
+          alt="No connectors"
+          className="h-20 w-20 object-contain opacity-80"
+        />
+        <p className="text-center text-sm text-muted-foreground">
+          No connectors matching &ldquo;{search}&rdquo;
+        </p>
+      </div>
     );
   }
 

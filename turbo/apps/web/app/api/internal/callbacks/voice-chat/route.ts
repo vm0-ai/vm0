@@ -7,7 +7,7 @@ import { getRunOutputText } from "../../../../../src/lib/infra/run/extract-run-o
 import { completeVoiceChatTask } from "../../../../../src/lib/zero/voice-chat/task-service";
 import { triggerReasoning } from "../../../../../src/lib/zero/voice-chat/trigger-reasoning";
 import { publishUserSignal } from "../../../../../src/lib/infra/realtime/client";
-import { isNotFound } from "../../../../../src/lib/shared/errors";
+import { isNotFound } from "@vm0/api-services/errors";
 import type { VoiceChatCallbackPayload } from "../../../../../src/lib/infra/callback/callback-payloads";
 import { logger } from "../../../../../src/lib/shared/logger";
 

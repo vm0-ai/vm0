@@ -7,7 +7,7 @@ import { usageEvent } from "@vm0/db/schema/usage-event";
 import { env } from "../../../src/env";
 import { getAuthContext } from "../../../src/lib/auth/get-auth-context";
 import { initServices } from "../../../src/lib/init-services";
-import { isApiError } from "../../../src/lib/shared/errors";
+import { isApiError } from "@vm0/api-services/errors";
 import { processOrgUsageEvents } from "../../../src/lib/zero/credit/usage-event-service";
 import { resolveOrg } from "../../../src/lib/zero/org/resolve-org";
 import { checkOrgCredits } from "../../../src/lib/zero/credit/check-org-credits";

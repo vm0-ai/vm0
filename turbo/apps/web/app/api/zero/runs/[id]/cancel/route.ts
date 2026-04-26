@@ -19,7 +19,7 @@ import {
   isNotFound,
   isBadRequest,
   isRunNotCancellable,
-} from "../../../../../../src/lib/shared/errors";
+} from "@vm0/api-services/errors";
 import { after } from "next/server";
 
 const router = tsr.router(zeroRunsCancelContract, {

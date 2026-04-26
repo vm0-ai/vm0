@@ -202,3 +202,4 @@ junit.xml
 e2e/results/
 .codex
 .agents/
+AGENTS.md

@@ -1,4 +1,4 @@
-import { app } from "./app.ts";
+import app from "./app";
 
 describe("api app", () => {
   it("responds from the Hono app", async () => {

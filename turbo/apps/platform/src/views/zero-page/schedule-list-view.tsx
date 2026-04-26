@@ -358,7 +358,7 @@ export function ScheduleListView<T extends ScheduleEntry>({
         <img
           src={emptyScheduleImg}
           alt="No schedules"
-          className="h-20 w-20 object-contain opacity-80"
+          className="h-24 w-24 object-contain opacity-80"
         />
         <div className="text-center">
           <p className="text-sm font-medium text-foreground">

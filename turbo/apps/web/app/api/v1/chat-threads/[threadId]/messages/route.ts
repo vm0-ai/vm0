@@ -10,7 +10,7 @@ import {
   getChatThread,
   getPagedMessages,
 } from "../../../../../../src/lib/zero/chat-thread";
-import { isNotFound } from "../../../../../../src/lib/shared/errors";
+import { isNotFound } from "@vm0/api-services/errors";
 
 const messageRoleSchema = z.enum(["user", "assistant"]);
 

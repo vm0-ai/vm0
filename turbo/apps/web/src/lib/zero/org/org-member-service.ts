@@ -1,7 +1,7 @@
 import { eq, and, inArray } from "drizzle-orm";
 import { clerkClient } from "@clerk/nextjs/server";
 import { z } from "zod";
-import { badRequest, forbidden, notFound } from "../../shared/errors";
+import { badRequest, forbidden, notFound } from "@vm0/api-services/errors";
 import { logger } from "../../shared/logger";
 import type {
   OrgEnrollmentMode,

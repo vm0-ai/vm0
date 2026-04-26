@@ -5,7 +5,7 @@ import {
   concurrentRunLimit,
   forbidden,
   noModelProvider,
-} from "../shared/errors";
+} from "@vm0/api-services/errors";
 import { canAccessCompose } from "../infra/agent/compose-access";
 import { logger } from "../shared/logger";
 import { modelProviders } from "@vm0/db/schema/model-provider";

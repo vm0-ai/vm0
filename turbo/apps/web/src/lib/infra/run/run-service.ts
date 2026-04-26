@@ -8,7 +8,7 @@ import {
   agentComposes,
 } from "@vm0/db/schema/agent-compose";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
-import { notFound } from "../../shared/errors";
+import { notFound } from "@vm0/api-services/errors";
 
 import { logger } from "../../shared/logger";
 import type { Database } from "../../../types/global";

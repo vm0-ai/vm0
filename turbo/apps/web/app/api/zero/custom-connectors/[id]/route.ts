@@ -12,7 +12,7 @@ import {
   deleteCustomConnector,
   patchCustomConnectorDisplayName,
 } from "../../../../../src/lib/zero/custom-connector/custom-connector-service";
-import { isBadRequest, isNotFound } from "../../../../../src/lib/shared/errors";
+import { isBadRequest, isNotFound } from "@vm0/api-services/errors";
 
 const router = tsr.router(zeroCustomConnectorByIdContract, {
   delete: async ({ params, headers }) => {

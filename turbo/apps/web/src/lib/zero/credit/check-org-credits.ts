@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { insufficientCredits } from "../../shared/errors";
+import { insufficientCredits } from "@vm0/api-services/errors";
 import type { Database } from "../../../types/global";
 
 /**

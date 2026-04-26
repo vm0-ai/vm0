@@ -1,6 +1,6 @@
 import { eq, and, gt, sql } from "drizzle-orm";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
-import { badRequest } from "../../shared/errors";
+import { badRequest } from "@vm0/api-services/errors";
 import { logger } from "../../shared/logger";
 
 const log = logger("service:user-preferences");

@@ -1,6 +1,6 @@
 import { isRunDispatchError } from "../../../infra/run";
 import { createZeroRun } from "../../zero-run-service";
-import { isApiError } from "../../../shared/errors";
+import { isApiError } from "@vm0/api-services/errors";
 import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
 import { logger } from "../../../shared/logger";
 import type { TelegramCallbackPayload } from "../../../infra/callback/callback-payloads";

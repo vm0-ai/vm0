@@ -28,7 +28,7 @@ import {
   isNotFound,
   isForbidden,
   isBadRequest,
-} from "../../../../src/lib/shared/errors";
+} from "@vm0/api-services/errors";
 
 const router = tsr.router(composesMainContract, {
   getByName: async ({ query, headers }) => {

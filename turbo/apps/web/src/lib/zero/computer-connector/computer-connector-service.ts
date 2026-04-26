@@ -10,7 +10,7 @@ import type { ComputerConnectorCreateResponse } from "@vm0/api-contracts/contrac
 import { connectors } from "@vm0/db/schema/connector";
 import { secrets } from "@vm0/db/schema/secret";
 import { decryptSecretValue } from "../../shared/crypto";
-import { badRequest, conflict, notFound } from "../../shared/errors";
+import { badRequest, conflict, notFound } from "@vm0/api-services/errors";
 import { logger } from "../../shared/logger";
 import { upsertSecretByOrg } from "../secret/secret-service";
 import {

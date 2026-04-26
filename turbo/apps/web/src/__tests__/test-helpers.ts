@@ -20,7 +20,7 @@ import { randomUUID } from "crypto";
 import { inArray } from "drizzle-orm";
 import { Axiom } from "@axiomhq/js";
 import { mockClerk, clearClerkMock } from "./clerk-mock";
-import { nextAfterCallbacks, nextWaitUntilPromises } from "./next-after-hooks";
+import { flushNextAsyncHooks } from "./next-after-hooks";
 import { initServices } from "../lib/init-services";
 import * as s3Client from "../lib/infra/s3/s3-client";
 import * as axiomClient from "../lib/shared/axiom/client";
@@ -403,24 +403,7 @@ export function testContext(): TestContext {
       dateNow: dateNowMock,
       date: dateMocks,
       async flushAfter() {
-        // Drain iteratively so callbacks that schedule more after() calls
-        // (e.g. createZeroRun's deferred dispatch) are also executed.
-        while (nextAfterCallbacks.length > 0) {
-          const callbacks = [...nextAfterCallbacks];
-          nextAfterCallbacks.length = 0;
-          await Promise.all(
-            callbacks.map((fn) => {
-              return fn();
-            }),
-          );
-        }
-        // Drain waitUntil() promises. waitUntil() receives already-started
-        // Promises — the mock stores the reference so we can await completion.
-        if (nextWaitUntilPromises.length > 0) {
-          const promises = [...nextWaitUntilPromises];
-          nextWaitUntilPromises.length = 0;
-          await Promise.all(promises);
-        }
+        await flushNextAsyncHooks();
       },
     };
     mockHelpers = helpers;

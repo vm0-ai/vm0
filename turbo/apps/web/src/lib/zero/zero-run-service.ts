@@ -45,7 +45,7 @@ import { generateZeroToken, generateSandboxToken } from "../auth/sandbox-token";
 import { buildZeroExecutionContext } from "./build-zero-context";
 import { buildAutoMemoryArtifact } from "./memory";
 import { getOrgMetadata, type OrgMetadata } from "./org/org-metadata-service";
-import { isConcurrentRunLimit } from "../shared/errors";
+import { isConcurrentRunLimit } from "@vm0/api-services/errors";
 import { DISALLOWED_TOOLS, buildAgentPrompt } from "./agent-prompt";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
