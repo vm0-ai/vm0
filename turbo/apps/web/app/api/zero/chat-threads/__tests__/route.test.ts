@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { describe, it, expect, beforeEach } from "vitest";
 import { GET, POST } from "../route";
 import {
@@ -73,7 +74,7 @@ describe("POST /api/zero/chat-threads - Create Thread", () => {
   });
 
   it("should create a chat thread with the provided clientThreadId", async () => {
-    const clientThreadId = "00000000-0000-4000-8000-000000000123";
+    const clientThreadId = randomUUID();
     const request = createTestRequest(
       "http://localhost:3000/api/zero/chat-threads",
       {
