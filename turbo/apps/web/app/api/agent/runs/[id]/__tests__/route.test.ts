@@ -105,6 +105,20 @@ describe("GET /api/agent/runs/:id - Get Run By ID", () => {
       expect(data.error.message).toContain("not found");
     });
 
+    // Regression for #11126: short non-UUID id used to flow into drizzle and
+    // surface as a postgres `22P02 invalid input syntax for type uuid` 500.
+    it("should return 400 when id is not a valid UUID", async () => {
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/runs/2b9b2303",
+      );
+
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.error.code).toBe("BAD_REQUEST");
+    });
+
     it("should return 404 for run belonging to another user", async () => {
       // Create another user and their run
       const otherUser = await context.setupUser({ prefix: "other" });
