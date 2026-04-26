@@ -71,7 +71,7 @@ import {
   sendNewThreadOptimistically$,
 } from "../../signals/chat-page/optimistic-chat-thread-page.ts";
 import { voiceChatStatus$ } from "../../signals/voice-chat/voice-chat-session.ts";
-import { startChatNavigationTiming } from "../../lib/posthog.ts";
+import { startChatNavigationTiming$ } from "../../lib/posthog.ts";
 
 function getTagline(
   agentName: string,
@@ -522,6 +522,7 @@ export function AgentChatPage() {
 
   const input = useGet(chatPageInput$);
   const setInput = useSet(setChatPageInput$);
+  const startTiming = useSet(startChatNavigationTiming$);
   const taglineIndex = useGet(chatPageTaglineIndex$);
   const tagline =
     currentChatAgentDisplayName !== undefined
@@ -535,7 +536,7 @@ export function AgentChatPage() {
   const lightboxUrl = useGet(attachmentLightboxUrl$);
 
   const handleSend = (text: string) => {
-    startChatNavigationTiming();
+    startTiming();
     setInput("");
     handleSendMessage(text);
   };

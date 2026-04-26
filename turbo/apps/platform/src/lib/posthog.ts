@@ -1,5 +1,5 @@
+import { command, state } from "ccstate";
 import { posthog } from "posthog-js";
-import { delay } from "signal-timers";
 
 let enabled = false;
 
@@ -47,48 +47,35 @@ export function clearPostHogUser(): void {
   posthog.reset();
 }
 
-// ── Navigation timing API ────────────────────────────────────────────
+// ── Navigation timing (ccstate-based) ──────────────────────────────
 //
-// A single module-level slot avoids threading timing state through the
-// signal graph. Only one user-initiated navigation can be in-flight at
-// a time, so a plain variable suffices.
+// Timing marks are ccstate signals so they compose naturally with the
+// existing signal graph. A new startChatNavigationTiming$ call
+// overwrites the previous timing — no AbortController or timeout needed.
 
-interface NavigationTiming {
-  enterTime: number;
-  pushStateTime?: number;
-  routeSetupTime?: number;
-  timeoutController: AbortController;
-}
+const navigationEnterTime$ = state<number | null>(null);
+const navigationPushStateTime$ = state<number | null>(null);
+const navigationSetupTime$ = state<number | null>(null);
 
-let active: NavigationTiming | null = null;
-
-export function startChatNavigationTiming(): void {
+export const startChatNavigationTiming$ = command(({ set }) => {
   if (!enabled) {
     return;
   }
-  const enterTime = performance.now();
-  const timeoutController = new AbortController();
-  active = {
-    enterTime,
-    timeoutController,
-  };
-  delay(30_000, { signal: timeoutController.signal }).then(() => {
-    if (active?.enterTime === enterTime) {
-      active = null;
-    }
-  });
-}
+  set(navigationEnterTime$, performance.now());
+  set(navigationPushStateTime$, null);
+  set(navigationSetupTime$, null);
+});
 
-export function markNavigationPushState(): void {
-  if (!enabled || !active) {
+export const markNavigationPushState$ = command(({ get, set }) => {
+  if (!enabled || get(navigationEnterTime$) == null) {
     return;
   }
-  active.pushStateTime = performance.now();
-}
+  set(navigationPushStateTime$, performance.now());
+});
 
-export function markRouteSetupBegin(): void {
-  if (!enabled || !active) {
+export const markRouteSetupBegin$ = command(({ get, set }) => {
+  if (!enabled || get(navigationEnterTime$) == null) {
     return;
   }
-  active.routeSetupTime = performance.now();
-}
+  set(navigationSetupTime$, performance.now());
+});
