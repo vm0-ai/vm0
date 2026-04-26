@@ -810,14 +810,15 @@ export async function executeDueSchedules(): Promise<{
         orgId: schedule.orgId,
         userId: schedule.userId,
         error: error instanceof Error ? error.message : String(error),
+        // Include stack on the error path so Axiom retains it for diagnosis
+        // of real system failures. Credit rejections don't need a stack —
+        // they're a deterministic user state, not a bug.
+        stack: error instanceof Error ? error.stack : undefined,
       };
       if (isCreditError) {
         log.warn("Schedule skipped: insufficient credits", failureContext);
       } else {
-        log.error(
-          `Failed to execute schedule ${schedule.name}:`,
-          failureContext,
-        );
+        log.error("Schedule pre-run failed", failureContext);
       }
 
       // Pre-run failure: increment consecutive failures and schedule next attempt
