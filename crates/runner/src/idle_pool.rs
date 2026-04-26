@@ -210,6 +210,11 @@ impl IdlePool {
         self.drained
     }
 
+    /// Re-enable parking after a resumable soft drain returns to Running.
+    pub fn resume_parking(&mut self) {
+        self.drained = false;
+    }
+
     /// The default idle timeout.
     pub fn default_timeout(&self) -> Duration {
         self.config.default_timeout

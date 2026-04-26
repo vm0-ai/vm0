@@ -603,6 +603,9 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                 }
             }
             RunnerMode::Running => {
+                if draining_idle_pool_drained {
+                    idle_pool.lock().await.resume_parking();
+                }
                 draining_idle_pool_drained = false;
             }
         }
@@ -2150,6 +2153,73 @@ mod tests {
         assert!(result.is_ok());
     }
 
+    /// Regression guard for the unified reactor's Draining-entry state.
+    ///
+    /// The first SIGUSR1 drains the idle pool, then SIGUSR2 resumes Running.
+    /// A later job completion parks a VM, and the second SIGUSR1 must drain
+    /// that newly parked VM. If `draining_idle_pool_drained` is not reset on
+    /// Running, the second drain skips idle-pool cleanup and leaks budget.
+    #[tokio::test]
+    async fn drain_resume_then_second_drain_drains_idle_pool() {
+        let gate = Arc::new(tokio::sync::Notify::new());
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_exit_gate(
+            Arc::clone(&gate),
+        ));
+        let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 32768, 4, overrides);
+        let idle_pool = Arc::clone(&config.idle_pool);
+        let budget = Arc::clone(&config.budget);
+        let run_handle = tokio::spawn(run(config));
+
+        let run_id = RunId::new_v4();
+        push_job(
+            &env,
+            run_id,
+            "vm0/default",
+            Some(context_with_session(run_id, "sess-second-drain")),
+        );
+        let _token = wait_cancel_token(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
+
+        env.drain();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert_eq!(*env.mode_tx.borrow(), RunnerMode::Draining);
+
+        env.resume();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert_eq!(*env.mode_tx.borrow(), RunnerMode::Running);
+
+        gate.notify_one();
+        let completion = env
+            .handle
+            .wait_completion(run_id, Duration::from_secs(5))
+            .await;
+        assert!(completion.is_some(), "job should complete after resume");
+        assert_eq!(idle_pool.lock().await.len(), 1, "job should park a VM");
+        assert_eq!(
+            budget.allocated().2,
+            1,
+            "parked VM should hold a budget slot"
+        );
+
+        env.drain();
+        match tokio::time::timeout(Duration::from_secs(5), run_handle).await {
+            Ok(Ok(Ok(()))) => {}
+            Ok(Ok(Err(e))) => panic!("run() returned error: {e}"),
+            Ok(Err(e)) => panic!("task panicked: {e}"),
+            Err(_) => panic!("second drain should exit within 5s"),
+        }
+
+        assert_eq!(
+            idle_pool.lock().await.len(),
+            0,
+            "second drain must clear the idle pool",
+        );
+        assert_eq!(
+            budget.allocated().2,
+            0,
+            "second drain must release the parked VM budget",
+        );
+    }
+
     /// Invariant: heartbeat ticks must fire while the unified reactor is
     /// parked in Draining mode. Silently dropping its `heartbeat_tick` branch
     /// would leave a draining runner looking dead to the server until it exits.
@@ -2750,6 +2820,7 @@ mod tests {
         // Budget for 2 jobs — enough for the duplicate to pass the budget
         // check and reach the cancel_tokens dedup logic.
         let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
+        let budget = Arc::clone(&config.budget);
         let run_handle = tokio::spawn(run(config));
 
         let run_id = RunId::new_v4();
@@ -2782,6 +2853,7 @@ mod tests {
                 "duplicate discovery should not produce a second completion"
             );
         }
+        wait_budget_count(&budget, 0, Duration::from_secs(5)).await;
 
         shutdown(&env, run_handle).await;
     }
@@ -2942,6 +3014,63 @@ mod tests {
             c2.is_some(),
             "second job should complete after budget is freed"
         );
+
+        shutdown(&env, run_handle).await;
+    }
+
+    /// Budget-exhausted mode must not poll discovery. A queued job should
+    /// remain undiscovered until a running job frees budget, otherwise the
+    /// runner may claim work it cannot admit.
+    #[tokio::test]
+    async fn budget_exhausted_buffers_discovery_until_budget_frees() {
+        let gate = Arc::new(tokio::sync::Notify::new());
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_exit_gate(
+            Arc::clone(&gate),
+        ));
+        let (config, env) = mock_run_config_with_overrides(test_profiles(), 2, 4096, 1, overrides);
+        let budget = Arc::clone(&config.budget);
+        let run_handle = tokio::spawn(run(config));
+
+        let id1 = RunId::new_v4();
+        push_job(&env, id1, "vm0/default", Some(minimal_context(id1)));
+        let _token_1 = wait_cancel_token(&env.cancel_tokens, id1, Duration::from_secs(5)).await;
+        wait_budget_count(&budget, 1, Duration::from_secs(5)).await;
+
+        let id2 = RunId::new_v4();
+        push_job(&env, id2, "vm0/default", Some(minimal_context(id2)));
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(
+            !env.cancel_tokens.lock().await.contains_key(&id2),
+            "queued job must not be claimed while budget is exhausted",
+        );
+        assert!(
+            env.handle
+                .completions
+                .lock()
+                .unwrap()
+                .iter()
+                .all(|c| c.run_id != id2),
+            "queued job must not complete before budget frees",
+        );
+
+        gate.notify_one();
+        let c1 = env
+            .handle
+            .wait_completion(id1, Duration::from_secs(5))
+            .await;
+        assert!(c1.is_some(), "first job should complete");
+
+        let _token_2 = wait_cancel_token(&env.cancel_tokens, id2, Duration::from_secs(5)).await;
+        gate.notify_one();
+        let c2 = env
+            .handle
+            .wait_completion(id2, Duration::from_secs(5))
+            .await;
+        assert!(
+            c2.is_some(),
+            "queued job should complete after budget is freed",
+        );
+        wait_budget_count(&budget, 0, Duration::from_secs(5)).await;
 
         shutdown(&env, run_handle).await;
     }
