@@ -27,7 +27,7 @@ import {
 } from "../zero-run-queue-service";
 import { checkOrgCreditsForRun } from "../zero-run-policy";
 import { checkOrgCredits } from "../credit/check-org-credits";
-import { isInsufficientCredits } from "../../shared/errors";
+import { isInsufficientCredits } from "@vm0/api-services/errors";
 import { seedTestRun } from "../../../__tests__/db-test-seeders/runs";
 
 const context = testContext();

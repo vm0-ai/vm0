@@ -6,7 +6,7 @@ import {
   isAuthError,
 } from "../../../../../src/lib/auth/require-auth";
 import { getChatThread } from "../../../../../src/lib/zero/chat-thread";
-import { isNotFound } from "../../../../../src/lib/shared/errors";
+import { isNotFound } from "@vm0/api-services/errors";
 
 const router = tsr.router(chatThreadV1GetContract, {
   get: async ({ params, headers }) => {

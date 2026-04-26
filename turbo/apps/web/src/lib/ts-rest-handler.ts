@@ -47,7 +47,7 @@ import * as Sentry from "@sentry/nextjs";
 import { after } from "next/server";
 import { flushLogs, logger } from "./shared/logger";
 import { ingestRequestLog, flushAxiom } from "./shared/axiom";
-import { isApiError } from "./shared/errors";
+import { isApiError } from "@vm0/api-services/errors";
 
 // Re-export tsr and TsRestResponse for convenience
 export { tsr, TsRestResponse };

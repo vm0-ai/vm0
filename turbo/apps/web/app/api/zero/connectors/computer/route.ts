@@ -16,7 +16,7 @@ import {
   isBadRequest,
   isConflict,
   isNotFound,
-} from "../../../../../src/lib/shared/errors";
+} from "@vm0/api-services/errors";
 
 const router = tsr.router(zeroComputerConnectorContract, {
   create: async ({ headers }) => {

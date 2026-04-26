@@ -6,7 +6,7 @@ import { getVoiceChatCandidateSession } from "../../../../../../src/lib/zero/voi
 import { appendVoiceChatCandidateItem } from "../../../../../../src/lib/zero/voice-chat-candidate/item-service";
 import { triggerReasoning } from "../../../../../../src/lib/zero/voice-chat-candidate/trigger-reasoning";
 import { voiceChatItems } from "@vm0/db/schema/voice-chat";
-import { isBadRequest } from "../../../../../../src/lib/shared/errors";
+import { isBadRequest } from "@vm0/api-services/errors";
 import {
   appendVoiceChatItemBodySchema,
   badRequestResponse,

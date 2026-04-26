@@ -1,7 +1,7 @@
 import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
 import { isRunDispatchError } from "../../../infra/run";
 import type { SlackOrgCallbackPayload } from "../../../infra/callback/callback-payloads";
-import { isApiError } from "../../../shared/errors";
+import { isApiError } from "@vm0/api-services/errors";
 import { logger } from "../../../shared/logger";
 import type { UserInfoOptions } from "../../integration-prompt";
 import { createZeroRun } from "../../zero-run-service";

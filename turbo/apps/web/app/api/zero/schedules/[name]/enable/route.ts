@@ -9,7 +9,7 @@ import { enableSchedule } from "../../../../../../src/lib/zero/schedule";
 import {
   isNotFound,
   isSchedulePast,
-} from "../../../../../../src/lib/shared/errors";
+} from "@vm0/api-services/errors";
 
 const bodySchema = z.object({
   agentId: z.string(),

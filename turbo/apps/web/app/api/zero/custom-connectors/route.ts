@@ -12,7 +12,7 @@ import {
   createCustomConnector,
   listCustomConnectorsWithSecretStatus,
 } from "../../../../src/lib/zero/custom-connector/custom-connector-service";
-import { isBadRequest } from "../../../../src/lib/shared/errors";
+import { isBadRequest } from "@vm0/api-services/errors";
 
 const router = tsr.router(zeroCustomConnectorsContract, {
   list: async ({ headers }) => {

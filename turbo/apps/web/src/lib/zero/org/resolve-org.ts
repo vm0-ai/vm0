@@ -3,7 +3,7 @@ import {
   badRequest,
   isBadRequest,
   isNotFound,
-} from "../../shared/errors";
+} from "@vm0/api-services/errors";
 import { getOrgMetadata } from "./org-metadata-service";
 import type { OrgMetadata } from "./org-metadata-service";
 import { getMemberRole } from "../../auth/org-membership-cache";

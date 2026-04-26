@@ -68,7 +68,7 @@ import {
   notFound,
   forbidden,
   providerIncompatible,
-} from "../shared/errors";
+} from "@vm0/api-services/errors";
 
 describe("createSafeErrorHandler", () => {
   const handler = createSafeErrorHandler("test-route");

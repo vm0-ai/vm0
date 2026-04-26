@@ -7,7 +7,7 @@ import {
   isBadRequest,
   isForbidden,
   isNotFound,
-} from "../../../../../src/lib/shared/errors";
+} from "@vm0/api-services/errors";
 
 const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2 MB
 const ALLOWED_TYPES = new Set([

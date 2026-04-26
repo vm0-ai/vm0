@@ -14,7 +14,7 @@ import {
 import {
   isBadRequest,
   isForbidden,
-} from "../../../../../src/lib/shared/errors";
+} from "@vm0/api-services/errors";
 
 const router = tsr.router(zeroOrgMembershipRequestsContract, {
   accept: async ({ headers, body }) => {

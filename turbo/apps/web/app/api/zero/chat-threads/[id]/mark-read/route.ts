@@ -4,7 +4,7 @@ import { initServices } from "../../../../../../src/lib/init-services";
 import { getUserId } from "../../../../../../src/lib/auth/get-auth-context";
 import { markThreadRead } from "../../../../../../src/lib/zero/chat-thread";
 import { publishThreadListChanged } from "../../../../../../src/lib/zero/chat-thread/chat-message-service";
-import { isNotFound } from "../../../../../../src/lib/shared/errors";
+import { isNotFound } from "@vm0/api-services/errors";
 import { publishUserSignal } from "../../../../../../src/lib/infra/realtime/client";
 
 const router = tsr.router(chatThreadMarkReadContract, {

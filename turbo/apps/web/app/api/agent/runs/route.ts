@@ -35,7 +35,7 @@ import {
   notFound,
   badRequest,
   forbidden,
-} from "../../../../src/lib/shared/errors";
+} from "@vm0/api-services/errors";
 import { resolveOrg } from "../../../../src/lib/zero/org/resolve-org";
 import { resolveCliRunContext } from "../../../../src/lib/zero/build-zero-context";
 import { resolveStartRunCompose } from "../../../../src/lib/zero/zero-run-validation";
