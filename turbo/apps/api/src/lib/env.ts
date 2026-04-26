@@ -5,6 +5,8 @@ const SCHEMA = {
   DATABASE_URL: z.string().min(1),
   CLERK_SECRET_KEY: z.string().min(1),
   CLERK_PUBLISHABLE_KEY: z.string().min(1),
+  SECRETS_ENCRYPTION_KEY: z.string().length(64),
+  OFFICIAL_RUNNER_SECRET: z.string().length(64).optional(),
   OTEL_SERVICE_NAME: z.string().min(1).default("vm0-api"),
   SENTRY_DSN: z.url().optional(),
   VERCEL_GIT_COMMIT_SHA: z.string().optional(),

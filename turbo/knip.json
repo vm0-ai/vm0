@@ -52,9 +52,11 @@
         "src/signals/context/wait-until.ts",
         "src/signals/external/clerk.ts",
         "src/signals/external/env.ts",
+        "custom-eslint/index.ts",
+        "custom-eslint/**/*.{test,spec}.ts",
         "src/**/*.{test,spec}.ts"
       ],
-      "project": ["src/**/*.ts"]
+      "project": ["src/**/*.ts", "custom-eslint/**/*.ts"]
     },
     "apps/platform": {
       "entry": ["src/main.ts", "**/*.{test,spec}.ts?(x)"],

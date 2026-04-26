@@ -23,6 +23,12 @@ function isAbortError(error: unknown): boolean {
   );
 }
 
+export function throwIfAbort(error: unknown): void {
+  if (isAbortError(error)) {
+    throw error;
+  }
+}
+
 export function detach(
   promise: Promise<unknown>,
   mechanism: Mechanism,
