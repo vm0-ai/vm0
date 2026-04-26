@@ -4,7 +4,6 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { contractRoute } from "../../route";
 
 const context = testContext();
 const c = initContract();
@@ -49,12 +48,7 @@ describe("honoSignalHandler", () => {
     const client = setupApp({
       context,
       contract: routeTestContract,
-      routesExtend: [
-        contractRoute({
-          contract: routeTestContract.computed,
-          handler: handler$,
-        }),
-      ],
+      handlers: { computed: handler$ },
     });
 
     const response = await accept(client.computed(), [200]);
@@ -75,12 +69,7 @@ describe("honoSignalHandler", () => {
     const client = setupApp({
       context,
       contract: routeTestContract,
-      routesExtend: [
-        contractRoute({
-          contract: routeTestContract.command,
-          handler: handler$,
-        }),
-      ],
+      handlers: { command: handler$ },
     });
 
     const response = await accept(client.command(), [200]);
@@ -95,12 +84,7 @@ describe("honoSignalHandler", () => {
     const client = setupApp({
       context,
       contract: routeTestContract,
-      routesExtend: [
-        contractRoute({
-          contract: routeTestContract.post,
-          handler: handler$,
-        }),
-      ],
+      handlers: { post: handler$ },
     });
 
     const response = await accept(

@@ -3,7 +3,6 @@ import { computed } from "ccstate";
 import { z } from "zod";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { contractRoute } from "../../route";
 import { clerkSessionAuth$ } from "../clerk-session";
 
 const context = testContext();
@@ -30,23 +29,6 @@ const clerkSessionTestContract = c.router({
   },
 });
 
-function createAuthClient() {
-  const handler$ = computed(async (get) => {
-    return { status: 200 as const, body: await get(clerkSessionAuth$) };
-  });
-
-  return setupApp({
-    context,
-    contract: clerkSessionTestContract,
-    routesExtend: [
-      contractRoute({
-        contract: clerkSessionTestContract.get,
-        handler: handler$,
-      }),
-    ],
-  });
-}
-
 describe("clerkSessionAuth$", () => {
   it("projects authenticated Clerk sessions into API auth context", async () => {
     context.mocks.clerk.authenticateRequest.mockResolvedValue({
@@ -60,7 +42,15 @@ describe("clerkSessionAuth$", () => {
       },
     });
 
-    const client = createAuthClient();
+    const client = setupApp({
+      context,
+      contract: clerkSessionTestContract,
+      handlers: {
+        get: computed(async (get) => {
+          return { status: 200 as const, body: await get(clerkSessionAuth$) };
+        }),
+      },
+    });
     const response = await accept(
       client.get({
         headers: { authorization: "Bearer clerk-session" },
@@ -88,7 +78,15 @@ describe("clerkSessionAuth$", () => {
       isAuthenticated: false,
     });
 
-    const client = createAuthClient();
+    const client = setupApp({
+      context,
+      contract: clerkSessionTestContract,
+      handlers: {
+        get: computed(async (get) => {
+          return { status: 200 as const, body: await get(clerkSessionAuth$) };
+        }),
+      },
+    });
     const response = await accept(client.get(), [200]);
 
     expect(response.body).toBeNull();

@@ -10,7 +10,6 @@ import { closeFixtureDbPool } from "../../../__tests__/db.fixture";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { writeDb$ } from "../../external/db";
 import { now } from "../../external/time";
-import { contractRoute } from "../../route";
 import { runnerAuth$ } from "../runner-auth";
 import { signPatJwtForTests, signSandboxJwtForTests } from "../tokens";
 
@@ -35,25 +34,20 @@ const runnerAuthTestContract = c.router({
   },
 });
 
-function createRunnerAuthClient() {
-  const handler$ = computed(async (get) => {
-    return { status: 200 as const, body: await get(runnerAuth$) };
-  });
+function currentSecond(): number {
+  return Math.floor(now() / 1000);
+}
 
+function createClient() {
   return setupApp({
     context,
     contract: runnerAuthTestContract,
-    routesExtend: [
-      contractRoute({
-        contract: runnerAuthTestContract.get,
-        handler: handler$,
+    handlers: {
+      get: computed(async (get) => {
+        return { status: 200 as const, body: await get(runnerAuth$) };
       }),
-    ],
+    },
   });
-}
-
-function currentSecond(): number {
-  return Math.floor(now() / 1000);
 }
 
 describe("runnerAuth$", () => {
@@ -76,7 +70,7 @@ describe("runnerAuth$", () => {
   });
 
   it("authenticates official runner tokens", async () => {
-    const client = createRunnerAuthClient();
+    const client = createClient();
     const response = await accept(
       client.get({
         headers: {
@@ -115,7 +109,7 @@ describe("runnerAuth$", () => {
         expiresAt: new Date(now() + 60_000),
       });
 
-    const client = createRunnerAuthClient();
+    const client = createClient();
     const response = await accept(
       client.get({
         headers: { authorization: `Bearer ${token}` },
@@ -137,7 +131,7 @@ describe("runnerAuth$", () => {
       exp: nowSeconds + 60,
     });
 
-    const client = createRunnerAuthClient();
+    const client = createClient();
     const response = await accept(
       client.get({
         headers: { authorization: `Bearer ${token}` },

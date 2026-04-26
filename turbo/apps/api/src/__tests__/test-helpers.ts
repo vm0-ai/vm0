@@ -10,7 +10,12 @@ import { afterEach, expect } from "vitest";
 
 import { createApp } from "../app-factory";
 import { clearMockedEnv } from "../lib/env";
-import { ROUTES, type RouteDefinition } from "../signals/route";
+import {
+  ROUTES,
+  contractRoute,
+  type RouteDefinition,
+  type SignalRouteHandler,
+} from "../signals/route";
 import { clearAllDetached } from "../signals/utils";
 import { getApiTestMocks, type ApiTestMocks } from "./mocks";
 
@@ -22,7 +27,9 @@ interface TestContext {
 interface SetupAppOptions<TContract extends AppRouter> {
   readonly context: TestContext;
   readonly contract: TContract;
-  readonly routesExtend?: ReadonlyArray<RouteDefinition<unknown>>;
+  readonly handlers?: {
+    readonly [K in keyof TContract & string]?: SignalRouteHandler<unknown>;
+  };
 }
 
 function formatBody(body: unknown): string {
@@ -88,6 +95,19 @@ async function requestApp(
   };
 }
 
+function buildRoutesExtend(
+  handlers: Record<string, SignalRouteHandler<unknown>>,
+  contract: Record<string, AppRouter[string]>,
+): RouteDefinition<unknown>[] {
+  return Object.entries(handlers)
+    .filter(([_key, handler]) => {
+      return handler !== undefined;
+    })
+    .map(([key, handler]) => {
+      return contractRoute({ contract: contract[key]!, handler: handler! });
+    });
+}
+
 function createAppFetcher(
   context: TestContext,
   routesExtend: ReadonlyArray<RouteDefinition<unknown>>,
@@ -105,8 +125,13 @@ function createAppFetcher(
 export function setupApp<TContract extends AppRouter>({
   context,
   contract,
-  routesExtend = [],
+  handlers = {},
 }: SetupAppOptions<TContract>): InitClientReturn<TContract, InitClientArgs> {
+  const routesExtend = buildRoutesExtend(
+    handlers as Record<string, SignalRouteHandler<unknown>>,
+    contract as Record<string, AppRouter[string]>,
+  );
+
   return initClient(contract, {
     baseUrl: "http://api.test",
     jsonQuery: false,

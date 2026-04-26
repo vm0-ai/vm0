@@ -11,7 +11,6 @@ import { closeFixtureDbPool } from "../../../__tests__/db.fixture";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { writeDb$ } from "../../external/db";
 import { now, nowDate } from "../../external/time";
-import { contractRoute } from "../../route";
 import {
   apiKeyAuthContext$,
   createAuthContext$,
@@ -95,24 +94,19 @@ function currentSecond(): number {
 }
 
 function createAuthClient(result$: Computed<unknown>) {
-  const handler$ = computed(
-    async (get): Promise<AuthContextTestRouteResponse> => {
-      const result = await get(result$);
-      return isAuthErrorResponse(result)
-        ? result
-        : { status: 200 as const, body: result };
-    },
-  );
-
   return setupApp({
     context,
     contract: authContextTestContract,
-    routesExtend: [
-      contractRoute({
-        contract: authContextTestContract.get,
-        handler: handler$,
-      }),
-    ],
+    handlers: {
+      get: computed(
+        async (get): Promise<AuthContextTestRouteResponse> => {
+          const result = await get(result$);
+          return isAuthErrorResponse(result)
+            ? result
+            : { status: 200 as const, body: result };
+        },
+      ),
+    },
   });
 }
 

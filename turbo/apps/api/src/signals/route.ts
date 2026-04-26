@@ -11,6 +11,8 @@ import {
 import { type MaybePromise, type SignalRouteHandler } from "./context/route";
 import { apiHealth$, apiHealthAuth$ } from "./routes/health";
 
+export type { SignalRouteHandler };
+
 export type RouteDefinition<T> = {
   contract: AppRoute;
   handler: SignalRouteHandler<T>;

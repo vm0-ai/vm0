@@ -3,7 +3,6 @@ import { computed } from "ccstate";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 
-import { contractRoute } from "../signals/route";
 import { accept, setupApp, testContext } from "./test-helpers";
 
 const c = initContract();
@@ -40,14 +39,11 @@ describe("createApp", () => {
     const client = setupApp({
       context,
       contract: errorTestContract,
-      routesExtend: [
-        contractRoute({
-          contract: errorTestContract.boom,
-          handler: computed((): never => {
-            throw error;
-          }),
+      handlers: {
+        boom: computed((): never => {
+          throw error;
         }),
-      ],
+      },
     });
 
     const response = await accept(client.boom(), [500]);
@@ -61,14 +57,11 @@ describe("createApp", () => {
     const client = setupApp({
       context,
       contract: errorTestContract,
-      routesExtend: [
-        contractRoute({
-          contract: errorTestContract.missing,
-          handler: computed((): never => {
-            throw error;
-          }),
+      handlers: {
+        missing: computed((): never => {
+          throw error;
         }),
-      ],
+      },
     });
 
     await accept(client.missing(), [404]);
@@ -81,14 +74,11 @@ describe("createApp", () => {
     const client = setupApp({
       context,
       contract: errorTestContract,
-      routesExtend: [
-        contractRoute({
-          contract: errorTestContract.unavailable,
-          handler: computed((): never => {
-            throw error;
-          }),
+      handlers: {
+        unavailable: computed((): never => {
+          throw error;
         }),
-      ],
+      },
     });
 
     await accept(client.unavailable(), [503]);
