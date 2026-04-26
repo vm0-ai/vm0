@@ -12,7 +12,7 @@ import {
 import { insertChatMessage } from "../../../../../../src/lib/zero/chat-thread/chat-message-service";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { eq, and } from "drizzle-orm";
-import { badRequest, notFound } from "../../../../../../src/lib/shared/errors";
+import { badRequest, notFound } from "@vm0/api-services/errors";
 
 const router = tsr.router(integrationsChatMessageContract, {
   sendMessage: async ({ body, headers }) => {

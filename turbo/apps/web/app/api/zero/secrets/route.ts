@@ -12,7 +12,7 @@ import {
   setSecret,
 } from "../../../../src/lib/zero/secret/secret-service";
 import { logger } from "../../../../src/lib/shared/logger";
-import { isBadRequest } from "../../../../src/lib/shared/errors";
+import { isBadRequest } from "@vm0/api-services/errors";
 
 const log = logger("api:zero-secrets");
 

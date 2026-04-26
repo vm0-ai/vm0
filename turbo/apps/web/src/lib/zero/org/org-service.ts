@@ -7,7 +7,7 @@ import {
   invalidateOrgCache,
 } from "../../auth/org-cache";
 import { getOrgMetadata } from "./org-metadata-service";
-import { badRequest, isNotFound } from "../../shared/errors";
+import { badRequest, isNotFound } from "@vm0/api-services/errors";
 import { logger } from "../../shared/logger";
 
 interface OrgData {

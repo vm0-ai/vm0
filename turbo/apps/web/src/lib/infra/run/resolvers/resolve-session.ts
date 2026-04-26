@@ -4,7 +4,7 @@ import {
   agentComposeVersions,
 } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import { notFound, unauthorized, badRequest } from "../../../shared/errors";
+import { notFound, unauthorized, badRequest } from "@vm0/api-services/errors";
 import { logger } from "../../../shared/logger";
 import { getAgentSessionWithConversation } from "../../agent-session";
 import type { ConversationResolution } from "./types";

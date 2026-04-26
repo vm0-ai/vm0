@@ -2,7 +2,7 @@ import { eq, and } from "drizzle-orm";
 import { type SecretType } from "@vm0/api-contracts/contracts/secrets";
 import { secrets } from "@vm0/db/schema/secret";
 import { encryptSecretValue, decryptSecretValue } from "../../shared/crypto";
-import { badRequest, notFound } from "../../shared/errors";
+import { badRequest, notFound } from "@vm0/api-services/errors";
 import { logger } from "../../shared/logger";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
 

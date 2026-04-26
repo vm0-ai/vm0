@@ -29,7 +29,7 @@ import { upsertSecretByOrg } from "../secret/secret-service";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route
 import { setVariable } from "../variable/variable-service";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
-import { isNoModelProvider } from "../../shared/errors";
+import { isNoModelProvider } from "@vm0/api-services/errors";
 import { reloadEnv } from "../../../env";
 import { AUTO_MEMORY_ARTIFACT_NAME, AUTO_MEMORY_MOUNT_PATH } from "../memory";
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";

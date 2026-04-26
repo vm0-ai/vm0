@@ -51,7 +51,10 @@ import {
   encryptSecretsMap,
   decryptSecretsMap,
 } from "../shared/crypto/secrets-encryption";
-import { isConcurrentRunLimit, isInsufficientCredits } from "../shared/errors";
+import {
+  isConcurrentRunLimit,
+  isInsufficientCredits,
+} from "@vm0/api-services/errors";
 import { logger } from "../shared/logger";
 import { publishOrgSignal } from "./realtime";
 import { publishChatThreadRunUpdated } from "./chat-thread/chat-message-service";

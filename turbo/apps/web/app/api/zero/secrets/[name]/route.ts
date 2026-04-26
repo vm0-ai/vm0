@@ -9,7 +9,7 @@ import {
 import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
 import { deleteSecret } from "../../../../../src/lib/zero/secret/secret-service";
 import { logger } from "../../../../../src/lib/shared/logger";
-import { isNotFound } from "../../../../../src/lib/shared/errors";
+import { isNotFound } from "@vm0/api-services/errors";
 
 const log = logger("api:zero-secrets");
 

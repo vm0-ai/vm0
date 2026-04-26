@@ -15,7 +15,7 @@ import {
   getLatestRunProviderTypeForThread,
   publishThreadListChanged,
 } from "../../../../../src/lib/zero/chat-thread/chat-message-service";
-import { isNotFound } from "../../../../../src/lib/shared/errors";
+import { isNotFound } from "@vm0/api-services/errors";
 
 const chatThreadIdParamSchema = z.string().uuid();
 

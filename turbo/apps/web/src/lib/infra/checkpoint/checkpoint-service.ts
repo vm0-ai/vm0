@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { conversations } from "@vm0/db/schema/conversation";
 import { checkpoints } from "@vm0/db/schema/checkpoint";
-import { notFound } from "../../shared/errors";
+import { notFound } from "@vm0/api-services/errors";
 import { updateAgentSession } from "../agent-session";
 import { registerSessionHistoryBlob } from "../session-history";
 import { logger } from "../../shared/logger";

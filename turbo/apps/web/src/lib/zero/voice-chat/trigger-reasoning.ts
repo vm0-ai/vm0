@@ -14,7 +14,7 @@ import { buildSlowBrainAppendSystemPrompt } from "./build-slow-brain-prompt";
 import { adaptVoiceChatTaskTrigger } from "./adapt-task-trigger";
 import { createZeroRun } from "../zero-run-service";
 import { publishUserSignal } from "../../infra/realtime/client";
-import { isBadRequest } from "../../shared/errors";
+import { isBadRequest } from "@vm0/api-services/errors";
 import { logger } from "../../shared/logger";
 
 const log = logger("zero:voice-chat:trigger-reasoning");
