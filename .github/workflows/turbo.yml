@@ -704,6 +704,7 @@ jobs:
           job-ref: ${{ needs.prepare.outputs.job-ref }}
           web-url: ${{ needs.prepare.outputs.web-preview-url }}
           app-url: ${{ needs.prepare.outputs.app-preview-url }}
+          api-url: ${{ needs.prepare.outputs.web-preview-url }}
         env:
           REPO_VARS_JSON: ${{ toJSON(vars) }}
           REPO_SECRETS_JSON: ${{ toJSON(secrets) }}
@@ -793,6 +794,7 @@ jobs:
           job-ref: ${{ needs.prepare.outputs.job-ref }}
           web-url: ${{ needs.prepare.outputs.web-preview-url }}
           app-url: ${{ needs.prepare.outputs.app-preview-url }}
+          api-url: ${{ needs.prepare.outputs.web-preview-url }}
         env:
           REPO_VARS_JSON: ${{ toJSON(vars) }}
           REPO_SECRETS_JSON: ${{ toJSON(secrets) }}
@@ -963,6 +965,7 @@ jobs:
           job-ref: ${{ needs.prepare.outputs.job-ref }}
           web-url: ${{ needs.prepare.outputs.web-preview-url }}
           app-url: ${{ needs.prepare.outputs.app-preview-url }}
+          api-url: ${{ needs.prepare.outputs.web-preview-url }}
         env:
           REPO_VARS_JSON: ${{ toJSON(vars) }}
           REPO_SECRETS_JSON: ${{ toJSON(secrets) }}
