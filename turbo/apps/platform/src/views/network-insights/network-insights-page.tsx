@@ -1091,30 +1091,33 @@ function InsightsContent({ data }: { data: NetworkInsightsData }) {
     <div className="h-full overflow-auto">
       <div className="mx-auto w-full max-w-[960px] px-4 sm:px-8 py-8 flex flex-col gap-10">
         {/* Header */}
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <div className="flex items-baseline gap-2">
+        <div>
+          <div className="flex items-start justify-between gap-4">
+            <div>
               <h1 className="text-xl font-semibold">Insights</h1>
-              {data.lastUpdated && (
-                <span className="text-xs text-muted-foreground">
-                  Last updated {formatAbsoluteTime(data.lastUpdated)}
-                </span>
-              )}
+              <p className="text-sm text-muted-foreground mt-1">
+                Monitor what your agents access, which permissions they use,
+                and spot anything unusual.
+              </p>
             </div>
-            <p className="text-sm text-muted-foreground mt-1">
-              Monitor what your agents access, which permissions they use, and
-              spot anything unusual.
-            </p>
+            {data.days.length > 0 && (
+              <DateRangeFilter
+                value={dateRange}
+                onChange={setRange}
+                availableDates={data.days.map((d) => {
+                  return d.date;
+                })}
+                timezone={timezone}
+              />
+            )}
           </div>
-          {data.days.length > 0 && (
-            <DateRangeFilter
-              value={dateRange}
-              onChange={setRange}
-              availableDates={data.days.map((d) => {
-                return d.date;
-              })}
-              timezone={timezone}
-            />
+          {data.lastUpdated && (
+            <div className="mt-6 flex items-center gap-4">
+              <span className="text-xs italic text-muted-foreground whitespace-nowrap">
+                Last updated — {formatAbsoluteTime(data.lastUpdated)}
+              </span>
+              <span className="flex-1 h-px bg-border" />
+            </div>
           )}
         </div>
 
