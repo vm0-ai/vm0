@@ -1,5 +1,6 @@
 "use client";
 
+import { Link } from "../../../navigation";
 import { Footer } from "../../components/Footer";
 import { Particles } from "../../components/Particles";
 import { MODELS, type ModelEntry } from "./data";
@@ -19,7 +20,12 @@ function ModelCard({ model }: { model: ModelEntry }) {
     >
       <header className="flex flex-wrap items-center gap-3">
         <h2 className="text-[22px] font-medium leading-tight tracking-[-0.3px] text-[hsl(var(--foreground))] sm:text-[24px]">
-          {model.name}
+          <Link
+            href={`/models/${model.slug}`}
+            className="text-[hsl(var(--foreground))] hover:text-[#ed4e01]"
+          >
+            {model.name}
+          </Link>
         </h2>
         <span className="inline-flex items-center rounded-md bg-[hsl(var(--gray-100))] px-2 py-0.5 text-[12px] font-medium text-[hsl(var(--muted-foreground))]">
           {formatMultiplier(model.multiplier)}
@@ -79,6 +85,16 @@ function ModelCard({ model }: { model: ModelEntry }) {
             </ul>
           </div>
         )}
+      </div>
+
+      <div className="mt-6">
+        <Link
+          href={`/models/${model.slug}`}
+          className="inline-flex items-center gap-1 text-[14px] font-medium text-[#ed4e01] transition-all hover:gap-2"
+        >
+          Read more about {model.name}
+          <span aria-hidden="true">→</span>
+        </Link>
       </div>
     </article>
   );
