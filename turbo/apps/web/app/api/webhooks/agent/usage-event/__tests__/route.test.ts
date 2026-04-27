@@ -36,14 +36,20 @@ describe("POST /api/webhooks/agent/usage-event", () => {
     });
   }
 
-  const validBody = () => {
+  const validEvent = () => {
     return {
-      runId: testRunId,
       idempotencyKey: randomUUID(),
       kind: "connector",
       provider: "x",
       category: "tweet.read",
       quantity: 5,
+    };
+  };
+
+  const validBody = (event: Record<string, unknown> = validEvent()) => {
+    return {
+      runId: testRunId,
+      events: [event],
     };
   };
 
@@ -82,30 +88,7 @@ describe("POST /api/webhooks/agent/usage-event", () => {
       const missingRunId = randomUUID();
       const token = await createTestSandboxToken(user.userId, missingRunId);
       const response = await POST(
-        makeRequest({ ...validBody(), runId: missingRunId }, token),
-      );
-      expect(response.status).toBe(404);
-    });
-
-    it("returns 404 for a batch when the run does not exist", async () => {
-      const missingRunId = randomUUID();
-      const token = await createTestSandboxToken(user.userId, missingRunId);
-      const response = await POST(
-        makeRequest(
-          {
-            runId: missingRunId,
-            events: [
-              {
-                idempotencyKey: randomUUID(),
-                kind: "connector",
-                provider: "x",
-                category: "tweet.read",
-                quantity: 1,
-              },
-            ],
-          },
-          token,
-        ),
+        makeRequest({ runId: missingRunId, events: [validEvent()] }, token),
       );
       expect(response.status).toBe(404);
     });
@@ -138,8 +121,16 @@ describe("POST /api/webhooks/agent/usage-event", () => {
 
     it("keeps first value when duplicate arrives with different quantity", async () => {
       const sharedKey = randomUUID();
-      const body1 = { ...validBody(), idempotencyKey: sharedKey, quantity: 5 };
-      const body2 = { ...validBody(), idempotencyKey: sharedKey, quantity: 99 };
+      const body1 = validBody({
+        ...validEvent(),
+        idempotencyKey: sharedKey,
+        quantity: 5,
+      });
+      const body2 = validBody({
+        ...validEvent(),
+        idempotencyKey: sharedKey,
+        quantity: 99,
+      });
 
       expect((await POST(makeRequest(body1, testToken))).status).toBe(200);
       expect((await POST(makeRequest(body2, testToken))).status).toBe(200);
@@ -150,18 +141,18 @@ describe("POST /api/webhooks/agent/usage-event", () => {
     });
 
     it("writes separate rows for different categories", async () => {
-      const body1 = {
-        ...validBody(),
+      const body1 = validBody({
+        ...validEvent(),
         idempotencyKey: randomUUID(),
         category: "tweet.read",
         quantity: 3,
-      };
-      const body2 = {
-        ...validBody(),
+      });
+      const body2 = validBody({
+        ...validEvent(),
         idempotencyKey: randomUUID(),
         category: "users.read",
         quantity: 2,
-      };
+      });
 
       expect((await POST(makeRequest(body1, testToken))).status).toBe(200);
       expect((await POST(makeRequest(body2, testToken))).status).toBe(200);
@@ -178,7 +169,7 @@ describe("POST /api/webhooks/agent/usage-event", () => {
     });
 
     it("accepts quantity=0", async () => {
-      const body = { ...validBody(), quantity: 0 };
+      const body = validBody({ ...validEvent(), quantity: 0 });
       const response = await POST(makeRequest(body, testToken));
       expect(response.status).toBe(200);
 
@@ -370,31 +361,35 @@ describe("POST /api/webhooks/agent/usage-event", () => {
 
   describe("Validation", () => {
     it("rejects negative quantity", async () => {
-      const body = { ...validBody(), quantity: -1 };
+      const body = validBody({ ...validEvent(), quantity: -1 });
       const response = await POST(makeRequest(body, testToken));
       expect(response.status).toBe(400);
     });
 
     it("rejects empty provider", async () => {
-      const body = { ...validBody(), provider: "" };
+      const body = validBody({ ...validEvent(), provider: "" });
       const response = await POST(makeRequest(body, testToken));
       expect(response.status).toBe(400);
     });
 
     it("rejects empty category", async () => {
-      const body = { ...validBody(), category: "" };
+      const body = validBody({ ...validEvent(), category: "" });
       const response = await POST(makeRequest(body, testToken));
       expect(response.status).toBe(400);
     });
 
     it("rejects missing runId", async () => {
-      const { runId: _, ...body } = validBody();
-      const response = await POST(makeRequest(body, testToken));
+      const response = await POST(
+        makeRequest({ events: [validEvent()] }, testToken),
+      );
       expect(response.status).toBe(400);
     });
 
     it("rejects non-UUID idempotencyKey", async () => {
-      const body = { ...validBody(), idempotencyKey: "not-a-uuid" };
+      const body = validBody({
+        ...validEvent(),
+        idempotencyKey: "not-a-uuid",
+      });
       const response = await POST(makeRequest(body, testToken));
       expect(response.status).toBe(400);
     });
@@ -406,12 +401,12 @@ describe("POST /api/webhooks/agent/usage-event", () => {
       expect(response.status).toBe(400);
     });
 
-    it("rejects a mixed legacy and invalid batch body", async () => {
+    it("rejects the legacy single-event body", async () => {
       const response = await POST(
         makeRequest(
           {
-            ...validBody(),
-            events: [],
+            runId: testRunId,
+            ...validEvent(),
           },
           testToken,
         ),

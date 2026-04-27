@@ -529,8 +529,7 @@ export type WebhookUsageContract = typeof webhookUsageContract;
  * Webhook usage event contract for /api/webhooks/agent/usage-event
  *
  * Receives billable usage records from the sandbox for persistence in the
- * `usage_event` table. The legacy single-event body remains supported for
- * connector billing; new reporters should send `{ runId, events }` batches.
+ * `usage_event` table. Reporters send `{ runId, events }` batches.
  */
 const webhookUsageEventItemSchema = z
   .object({
@@ -547,19 +546,12 @@ export const webhookUsageEventContract = c.router({
     method: "POST",
     path: "/api/webhooks/agent/usage-event",
     headers: authHeadersSchema,
-    body: z.union([
-      z
-        .object({
-          runId: z.string().min(1, "runId is required"),
-          events: z.array(webhookUsageEventItemSchema).min(1).max(100),
-        })
-        .strict(),
-      webhookUsageEventItemSchema
-        .extend({
-          runId: z.string().min(1, "runId is required"),
-        })
-        .strict(),
-    ]),
+    body: z
+      .object({
+        runId: z.string().min(1, "runId is required"),
+        events: z.array(webhookUsageEventItemSchema).min(1).max(100),
+      })
+      .strict(),
     responses: {
       200: z.object({
         success: z.boolean(),

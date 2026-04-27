@@ -16,7 +16,7 @@ const router = tsr.router(webhookUsageEventContract, {
   send: async ({ body, headers }) => {
     initServices();
 
-    const events = "events" in body ? body.events : [body];
+    const { events } = body;
     const auth = getSandboxAuthForRun(body.runId, headers.authorization);
     if (!auth) {
       return {
