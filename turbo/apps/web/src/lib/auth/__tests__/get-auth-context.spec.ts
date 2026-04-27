@@ -130,6 +130,7 @@ describe("getAuthContext with acceptAnySandboxCapability", () => {
     expect(result).not.toBeNull();
     expect(result?.userId).toBe("user-123");
     expect(result?.runId).toBe("run-456");
+    expect(result?.orgId).toBe("org-test");
   });
 
   it("should accept sandbox token without capabilities via acceptAnySandboxCapability", async () => {
@@ -217,14 +218,14 @@ describe("getAuthContext org fields from Clerk session", () => {
     expect(result?.sessionClaims?.custom_field).toBeUndefined();
   });
 
-  it("should not populate org fields for sandbox tokens", async () => {
+  it("should populate orgId from sandbox token but leave orgRole/sessionClaims unset", async () => {
     const token = await generateSandboxToken("user-123", "run-456", "org-test");
     const result = await getAuthContext(`Bearer ${token}`, {
       acceptAnySandboxCapability: true,
     });
 
     expect(result?.userId).toBe("user-123");
-    expect(result?.orgId).toBeUndefined();
+    expect(result?.orgId).toBe("org-test");
     expect(result?.orgRole).toBeUndefined();
     expect(result?.sessionClaims).toBeUndefined();
   });

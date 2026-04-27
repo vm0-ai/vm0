@@ -176,6 +176,7 @@ async function authenticateSandboxToken(
 function resolveSandboxAuth(
   sandboxAuth: {
     userId: string;
+    orgId: string;
     runId: string;
   },
   options: {
@@ -186,6 +187,7 @@ function resolveSandboxAuth(
   if (options.acceptAnySandboxCapability) {
     return {
       userId: sandboxAuth.userId,
+      orgId: sandboxAuth.orgId,
       runId: sandboxAuth.runId,
       tokenType: "sandbox",
     };
