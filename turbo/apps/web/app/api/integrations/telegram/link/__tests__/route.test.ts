@@ -10,6 +10,7 @@ import {
   createTestTelegramInstallation,
   signTestConnectParams,
 } from "../../../../../../src/__tests__/api-test-helpers";
+import { signConnectParams } from "../../../../../../src/lib/zero/telegram/connect-token";
 
 const TEST_BOT_TOKEN = "test-bot-token";
 
@@ -374,6 +375,38 @@ describe("/api/integrations/telegram/link", () => {
 
       expect(response.status).toBe(400);
       expect(data.error.code).toBe("BAD_REQUEST");
+    });
+
+    it("returns 400 for expired connectSignature", async () => {
+      const user = await context.setupUser();
+      const telegramBotId = uniqueId("bot");
+      const installationId = await createTestTelegramInstallation({
+        telegramBotId,
+        orgId: user.orgId,
+      });
+      const telegramUserId = "99005";
+      const timestamp = Math.floor(Date.now() / 1000) - 601;
+      const signature = signConnectParams(
+        installationId,
+        telegramUserId,
+        timestamp,
+        TEST_BOT_TOKEN,
+      );
+
+      const response = await POST(
+        linkRequest("POST", {
+          telegramBotId: installationId,
+          connectSignature: {
+            telegramUserId,
+            timestamp,
+            signature,
+          },
+        }),
+      );
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.error.message).toContain("Invalid or expired connect link");
     });
   });
 });
