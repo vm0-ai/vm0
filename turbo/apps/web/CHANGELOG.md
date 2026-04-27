@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.303.0](https://github.com/vm0-ai/vm0/compare/web-v12.302.0...web-v12.303.0) (2026-04-27)
+
+
+### Features
+
+* add chat artifacts drawer ([#11229](https://github.com/vm0-ai/vm0/issues/11229)) ([97483c5](https://github.com/vm0-ai/vm0/commit/97483c5793965372b3a5ae82ab532059e6579a98))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.239.0
+
 ## [12.302.0](https://github.com/vm0-ai/vm0/compare/web-v12.301.0...web-v12.302.0) (2026-04-27)
 
 
