@@ -3,7 +3,10 @@
 import { useAuth } from "@clerk/nextjs";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { http } from "../../../../src/__tests__/msw";
+import { server } from "../../../../src/mocks/server";
 import { TelegramConnectClient } from "../TelegramConnectClient";
 import {
   parseTelegramConnectParams,
@@ -92,8 +95,10 @@ describe("/telegram/connect", () => {
   });
 
   it("requires sign-in before confirmation", () => {
-    const fetchMock = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
+    const handler = http.post("/api/integrations/telegram/link", () => {
+      return HttpResponse.json({});
+    });
+    server.use(handler.handler);
     mockAuth({ isSignedIn: false });
 
     renderConnectClient();
@@ -104,20 +109,24 @@ describe("/telegram/connect", () => {
       "href",
       expect.stringContaining("/sign-in?redirect_url="),
     );
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(handler.mocked).not.toHaveBeenCalled();
   });
 
   it("posts telegramBotId and connectSignature on confirmation", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(
-        JSON.stringify({
+    let requestBody: unknown;
+    let authorizationHeader: string | null = null;
+    const handler = http.post(
+      "/api/integrations/telegram/link",
+      async ({ request }) => {
+        authorizationHeader = request.headers.get("Authorization");
+        requestBody = await request.json();
+        return HttpResponse.json({
           botUsername: "vm0_test_bot",
           telegramUserId: "99002",
-        }),
-        { status: 200, headers: { "Content-Type": "application/json" } },
-      ),
+        });
+      },
     );
-    vi.stubGlobal("fetch", fetchMock);
+    server.use(handler.handler);
     mockAuth({ token: "clerk-token" });
 
     renderConnectClient();
@@ -126,46 +135,35 @@ describe("/telegram/connect", () => {
     );
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(handler.mocked).toHaveBeenCalledTimes(1);
     });
-    expect(fetchMock).toHaveBeenCalledWith(
-      "/api/integrations/telegram/link",
-      expect.objectContaining({
-        method: "POST",
-        headers: {
-          Authorization: "Bearer clerk-token",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          telegramBotId: "bot-123",
-          connectSignature: {
-            telegramUserId: "99002",
-            timestamp: 1777200000,
-            signature: "a".repeat(64),
-          },
-        }),
-      }),
-    );
+    expect(authorizationHeader).toBe("Bearer clerk-token");
+    expect(requestBody).toEqual({
+      telegramBotId: "bot-123",
+      connectSignature: {
+        telegramUserId: "99002",
+        timestamp: 1777200000,
+        signature: "a".repeat(64),
+      },
+    });
     expect(
       await screen.findByText(/telegram user 99002 is now linked/i),
     ).toBeInTheDocument();
   });
 
   it("surfaces invalid or expired signature errors from the backend", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(
-        new Response(
-          JSON.stringify({
-            error: {
-              message:
-                "Invalid or expired connect link. Please use /connect again in Telegram.",
-            },
-          }),
-          { status: 400, headers: { "Content-Type": "application/json" } },
-        ),
-      ),
-    );
+    const handler = http.post("/api/integrations/telegram/link", () => {
+      return HttpResponse.json(
+        {
+          error: {
+            message:
+              "Invalid or expired connect link. Please use /connect again in Telegram.",
+          },
+        },
+        { status: 400 },
+      );
+    });
+    server.use(handler.handler);
     mockAuth({ token: "clerk-token" });
 
     renderConnectClient();
