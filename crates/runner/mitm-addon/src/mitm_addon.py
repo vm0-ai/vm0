@@ -226,100 +226,102 @@ async def request(flow: http.HTTPFlow) -> None:
     # Track request start time (after early returns to avoid leaking entries)
     _request_start_times[flow.id] = time.time()
 
-    original_url = get_original_url(flow)
+    try:
+        original_url = get_original_url(flow)
 
-    # Store info for response handler
-    flow.metadata["original_url"] = original_url
-    flow.metadata["vm_run_id"] = run_id
-    flow.metadata["vm_client_ip"] = client_ip
-    flow.metadata["vm_network_log_path"] = vm_info.get("networkLogPath", "")
-    flow.metadata["vm_proxy_log_path"] = vm_info.get("proxyLogPath", "")
-    flow.metadata["capture_body"] = vm_info.get("captureNetworkBodies", False)
-    flow.metadata["vm_sandbox_token"] = vm_info.get("sandboxToken", "")
+        # Store info for response handler
+        flow.metadata["original_url"] = original_url
+        flow.metadata["vm_run_id"] = run_id
+        flow.metadata["vm_client_ip"] = client_ip
+        flow.metadata["vm_network_log_path"] = vm_info.get("networkLogPath", "")
+        flow.metadata["vm_proxy_log_path"] = vm_info.get("proxyLogPath", "")
+        flow.metadata["capture_body"] = vm_info.get("captureNetworkBodies", False)
+        flow.metadata["vm_sandbox_token"] = vm_info.get("sandboxToken", "")
 
-    # Get target hostname
-    hostname = flow.request.pretty_host.lower()
+        # Get target hostname
+        hostname = flow.request.pretty_host.lower()
 
-    # --- Step 1: Auto-allow VM0 API requests ---
-    # The agent MUST be able to communicate with the platform (heartbeat,
-    # logs, CLI auth, etc.). Exception: `/api/test/*` routes exist only to
-    # exercise the firewall pipeline itself (e.g. the test-oauth provider),
-    # so they must go through Step 2 and get their auth injected by the
-    # matching firewall — otherwise the E2E tests that back them would
-    # auto-allow past the thing they're supposed to exercise.
-    api_url = get_api_url()
-    if api_url:
-        parsed_api = urllib.parse.urlparse(api_url)
-        api_hostname = parsed_api.hostname.lower() if parsed_api.hostname else ""
-        if (
-            api_hostname
-            and (hostname == api_hostname or hostname.endswith(f".{api_hostname}"))
-            and not flow.request.path.startswith("/api/test/")
-        ):
-            flow.metadata["firewall_action"] = "ALLOW"
-            return
+        # --- Step 1: Auto-allow VM0 API requests ---
+        # The agent MUST be able to communicate with the platform (heartbeat,
+        # logs, CLI auth, etc.). Exception: `/api/test/*` routes exist only to
+        # exercise the firewall pipeline itself (e.g. the test-oauth provider),
+        # so they must go through Step 2 and get their auth injected by the
+        # matching firewall — otherwise the E2E tests that back them would
+        # auto-allow past the thing they're supposed to exercise.
+        api_url = get_api_url()
+        if api_url:
+            parsed_api = urllib.parse.urlparse(api_url)
+            api_hostname = parsed_api.hostname.lower() if parsed_api.hostname else ""
+            if (
+                api_hostname
+                and (hostname == api_hostname or hostname.endswith(f".{api_hostname}"))
+                and not flow.request.path.startswith("/api/test/")
+            ):
+                flow.metadata["firewall_action"] = "ALLOW"
+                return
 
-    # --- Step 2: Firewall match with permission check ---
-    # Match base URL, then check permission rules before injecting auth headers.
-    vm_firewalls = vm_info.get("firewalls")
-    if vm_firewalls:
-        network_policies = vm_info.get("networkPolicies") or {}
-        result = match_firewall_request(
-            original_url,
-            flow.request.method,
-            vm_firewalls,
-            network_policies,
-        )
-        if isinstance(result, FirewallBlock):
-            proxy_log_path = flow.metadata.get("vm_proxy_log_path", "")
-            log_proxy_entry(
-                proxy_log_path,
-                "warn",
-                f"Firewall {result.name}: no matching permission for {result.method} {result.path}",
-                type="firewall_block",
-                name=result.name,
+        # --- Step 2: Firewall match with permission check ---
+        # Match base URL, then check permission rules before injecting auth headers.
+        vm_firewalls = vm_info.get("firewalls")
+        if vm_firewalls:
+            network_policies = vm_info.get("networkPolicies") or {}
+            result = match_firewall_request(
+                original_url,
+                flow.request.method,
+                vm_firewalls,
+                network_policies,
             )
-            flow.metadata["firewall_action"] = "DENY"
-            flow.metadata["firewall_base"] = result.base
-            flow.metadata["firewall_name"] = result.name
-            error_body = json.dumps(
-                {
-                    "error": "permission_denied",
-                    "message": "Request blocked: no matching permission rule",
-                    "method": result.method,
-                    "path": result.path,
-                    "name": result.name,
-                    "permissions": list(result.permissions),
-                    "base": result.base,
-                }
-            )
-            flow.response = http.Response.make(
-                403,
-                error_body.encode(),
-                {"Content-Type": "application/json"},
-            )
-            return
-        if isinstance(result, FirewallAllow):
-            flow.metadata["firewall_billable"] = result.match_info.get("name", "") in (
-                vm_info.get("billableFirewalls") or []
-            )
-            _maybe_track_usage_flow(flow)
-            try:
-                await handle_firewall_request(flow, result.api_entry, vm_info, result.match_info)
-            except Exception:
-                _release_tracked_usage_flow(flow)
-                raise
-            if flow.response is not None and not flow.metadata.get("auth_url_rewrite"):
-                # Local firewall/auth errors never reach a provider. They only
-                # need pre-tracking to keep shutdown from racing while auth is
-                # resolving, so release as soon as the local response exists.
-                _release_tracked_usage_flow(flow)
-            else:
+            if isinstance(result, FirewallBlock):
+                proxy_log_path = flow.metadata.get("vm_proxy_log_path", "")
+                log_proxy_entry(
+                    proxy_log_path,
+                    "warn",
+                    "Firewall "
+                    f"{result.name}: no matching permission for {result.method} {result.path}",
+                    type="firewall_block",
+                    name=result.name,
+                )
+                flow.metadata["firewall_action"] = "DENY"
+                flow.metadata["firewall_base"] = result.base
+                flow.metadata["firewall_name"] = result.name
+                error_body = json.dumps(
+                    {
+                        "error": "permission_denied",
+                        "message": "Request blocked: no matching permission rule",
+                        "method": result.method,
+                        "path": result.path,
+                        "name": result.name,
+                        "permissions": list(result.permissions),
+                        "base": result.base,
+                    }
+                )
+                flow.response = http.Response.make(
+                    403,
+                    error_body.encode(),
+                    {"Content-Type": "application/json"},
+                )
+                return
+            if isinstance(result, FirewallAllow):
+                flow.metadata["firewall_billable"] = result.match_info.get("name", "") in (
+                    vm_info.get("billableFirewalls") or []
+                )
                 _maybe_track_usage_flow(flow)
-            return
+                await handle_firewall_request(flow, result.api_entry, vm_info, result.match_info)
+                if flow.response is not None and not flow.metadata.get("auth_url_rewrite"):
+                    # Local firewall/auth errors never reach a provider. They only
+                    # need pre-tracking to keep shutdown from racing while auth is
+                    # resolving, so release as soon as the local response exists.
+                    _release_tracked_usage_flow(flow)
+                else:
+                    _maybe_track_usage_flow(flow)
+                return
 
-    # No firewall match — pass through directly
-    flow.metadata["firewall_action"] = "ALLOW"
+        # No firewall match — pass through directly
+        flow.metadata["firewall_action"] = "ALLOW"
+    except Exception:
+        _request_start_times.pop(flow.id, None)
+        _release_tracked_usage_flow(flow)
+        raise
 
 
 def _maybe_track_usage_flow(flow: http.HTTPFlow) -> None:

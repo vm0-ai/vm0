@@ -531,6 +531,73 @@ class TestRequestHandler:
         finally:
             usage.set_pending_path("")
 
+    async def test_unexpected_request_exception_releases_tracking(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        """Unexpected request-hook failures must not leak start-time or usage counters."""
+        pending_path = tmp_path / "usage-pending"
+        usage.counters._in_flight_flows = 0
+        usage.counters._pending_reports = 0
+        usage.set_pending_path(str(pending_path), usage_state_id="test-usage-state-id")
+
+        registry = {
+            "vms": {
+                "10.200.0.5": {
+                    "runId": "run-conn-1",
+                    "billableFirewalls": ["x"],
+                    "sandboxToken": "tok-conn",
+                    "networkLogPath": str(tmp_path / "net.jsonl"),
+                    "proxyLogPath": str(tmp_path / "proxy.jsonl"),
+                    "firewalls": [
+                        {
+                            "name": "x",
+                            "apis": [
+                                {
+                                    "base": "https://api.x.com",
+                                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                                    "permissions": [
+                                        {"name": "read-posts", "rules": ["GET /2/users/by"]}
+                                    ],
+                                },
+                            ],
+                        },
+                    ],
+                    "networkPolicies": {
+                        "x": {
+                            "allow": ["read-posts"],
+                            "deny": [],
+                            "ask": [],
+                            "unknownPolicy": "deny",
+                        },
+                    },
+                    "encryptedSecrets": "iv:tag:data",
+                }
+            }
+        }
+        reg_path = tmp_path / "registry.json"
+        reg_path.write_text(json.dumps(registry))
+
+        flow = real_flow(
+            with_response=False, client_ip="10.200.0.5", host="api.x.com", path="/2/users/by"
+        )
+
+        try:
+            with (
+                mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+                patch.object(auth, "get_firewall_headers", AsyncMock(return_value={})),
+                pytest.raises(KeyError),
+            ):
+                await mitm_addon.request(flow)
+
+            assert flow.id not in mitm_addon._request_start_times
+            assert "_usage_flow_tracked" not in flow.metadata
+            assert usage.counters._in_flight_flows == 0
+            _assert_pending(pending_path, flows=0, reports=0)
+        finally:
+            if usage.counters._in_flight_flows:
+                usage.decrement_flows()
+            usage.set_pending_path("")
+
     async def test_non_billable_model_provider_is_not_tracked_before_responseheaders(
         self, tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
     ):
