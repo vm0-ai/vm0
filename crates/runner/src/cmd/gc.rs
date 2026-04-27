@@ -2967,6 +2967,27 @@ mod tests {
         assert!(tmp.exists(), "locked .tmp staging dir must survive");
     }
 
+    #[tokio::test]
+    async fn gc_storage_cache_dry_run_reports_stale_tmp_without_deleting() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        std::fs::create_dir_all(home.locks_dir()).unwrap();
+
+        let t_old = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        let tmp = make_storage_staging_entry(&home, "foo", "v1", &[0u8; 128], t_old);
+        let (tmp_size, _) = dir_stats(&tmp).await;
+
+        let freed = gc_storage_cache_with_cap(&home, 1 << 20, true)
+            .await
+            .unwrap();
+
+        assert_eq!(freed, tmp_size);
+        assert!(
+            tmp.exists(),
+            "dry-run must not delete stale .tmp staging dir"
+        );
+    }
+
     #[test]
     fn discover_dead_runner_base_dirs_skips_whitespace_only() {
         let dir = tempfile::tempdir().unwrap();

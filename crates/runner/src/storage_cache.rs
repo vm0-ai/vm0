@@ -1200,6 +1200,44 @@ mod tests {
         assert_eq!(result, Some(advertised_size));
     }
 
+    #[tokio::test]
+    async fn probe_206_uses_content_range_without_reading_body() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let (release_tx, release_rx) = tokio::sync::oneshot::channel::<()>();
+        let total_size = CACHE_MAX_SIZE;
+
+        let server_task = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await?;
+            let mut request = [0u8; 1024];
+            let _ = tokio::io::AsyncReadExt::read(&mut socket, &mut request).await?;
+            socket
+                .write_all(
+                    format!(
+                        "HTTP/1.1 206 Partial Content\r\nContent-Range: bytes 0-0/{total_size}\r\nContent-Length: {}\r\n\r\n",
+                        CACHE_MAX_SIZE + 1
+                    )
+                    .as_bytes(),
+                )
+                .await?;
+            let _ = release_rx.await;
+            Ok::<(), std::io::Error>(())
+        });
+
+        let http = Client::builder().build().unwrap();
+        let result = tokio::time::timeout(
+            HEAD_TIMEOUT + Duration::from_secs(1),
+            probe_size(&http, &format!("http://{addr}/partial.tar.gz")),
+        )
+        .await
+        .expect("probe must return after Content-Range without waiting for the body")
+        .unwrap();
+
+        let _ = release_tx.send(());
+        server_task.await.unwrap().unwrap();
+        assert_eq!(result, Some(total_size));
+    }
+
     #[test]
     fn staging_dir_is_sibling() {
         let d = PathBuf::from("/var/lib/vm0-runner/storages/foo/v1");
