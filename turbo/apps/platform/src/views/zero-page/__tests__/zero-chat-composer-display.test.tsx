@@ -205,7 +205,7 @@ describe("chat-d-020: connectors popover after load", () => {
 });
 
 describe("chat-d-021: send button state changes", () => {
-  it("should show Stop button while sending and restore Send button after completion", async () => {
+  it("should keep Send available while sending and remove Stop after completion", async () => {
     const user = userEvent.setup();
     const ctrl = mockChatLifecycle();
 
@@ -224,7 +224,7 @@ describe("chat-d-021: send button state changes", () => {
 
     await waitFor(() => {
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
-      expect(screen.queryByLabelText("Send")).not.toBeInTheDocument();
+      expect(screen.getByLabelText("Send")).toBeInTheDocument();
     });
 
     ctrl.completeRun("Done");

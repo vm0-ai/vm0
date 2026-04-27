@@ -206,6 +206,8 @@ export function mockChatLifecycle(options?: {
   }[];
   threadTitle?: string | null;
   onRunCreate?: () => void;
+  onSend?: (prompt: string) => void;
+  waitForSendResponse?: Promise<void>;
 }): MockLifecycleControl {
   let threadId = options?.threadId ?? "thread-test-1";
   const historyMessages = options?.historyMessages ?? [];
@@ -366,11 +368,13 @@ export function mockChatLifecycle(options?: {
       });
     }),
     // Unified chat message endpoint (creates thread + run + association)
-    mockApi(chatMessagesContract.send, ({ body, respond }) => {
+    mockApi(chatMessagesContract.send, async ({ body, respond }) => {
       threadId = body.clientThreadId ?? threadId;
       if (body.prompt) {
         runPrompt = body.prompt;
+        options?.onSend?.(body.prompt);
       }
+      await options?.waitForSendResponse;
       options?.onRunCreate?.();
       runAssociated = true;
       createChatRun(threadId);

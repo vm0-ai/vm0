@@ -17,6 +17,7 @@ import {
   IconPlayerStop,
   IconPlug,
   IconPlus,
+  IconX,
 } from "@tabler/icons-react";
 import {
   Dialog,
@@ -142,7 +143,7 @@ interface ZeroChatComposerProps {
   onInputChange: (value: string) => void;
   onSend: (message: string) => void;
   sending?: boolean;
-  /** Cancel the active run. When provided, a stop button replaces the send button while sending. */
+  /** Cancel the active run. When provided, a stop button is shown while sending. */
   onCancel?: () => void;
   displayName: string;
   className?: string;
@@ -189,6 +190,8 @@ interface ZeroChatComposerProps {
     /** The agent-level default model, shown as a "Default" tag in the dropdown. */
     agentDefault?: ModelProviderSelection | null;
   };
+  queuedItems?: QueuedComposerItem[];
+  onRemoveQueuedItem?: (index: number) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -202,6 +205,11 @@ interface ComposerConnectorItem {
   tags: readonly string[];
   connected: boolean;
   added: boolean;
+}
+
+interface QueuedComposerItem {
+  id?: string;
+  text: string;
 }
 
 function resolveConnectorLabel(
@@ -699,6 +707,49 @@ function toPersistedAttachments(
     });
 }
 
+function QueuedMessagesStrip({
+  items,
+  onRemove,
+}: {
+  items: QueuedComposerItem[];
+  onRemove?: (index: number) => void;
+}) {
+  if (items.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="border-b border-border/60 px-4 py-2">
+      <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground/75">
+        <span className="h-1.5 w-1.5 rounded-full bg-primary/70" />
+        <span>Queued {items.length}</span>
+      </div>
+      <div className="mt-1 max-h-24 overflow-y-auto divide-y divide-border/40">
+        {items.map((item, i) => {
+          return (
+            <div
+              key={item.id ?? item.text}
+              className="flex min-h-7 items-center gap-2 py-1 text-sm text-muted-foreground"
+            >
+              <span className="min-w-0 flex-1 truncate">{item.text}</span>
+              <button
+                type="button"
+                className="shrink-0 rounded p-1 text-muted-foreground/45 transition-colors hover:bg-muted hover:text-foreground focus-visible:bg-muted focus-visible:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                onClick={() => {
+                  onRemove?.(i);
+                }}
+                aria-label="Remove queued message"
+              >
+                <IconX size={14} stroke={1.5} />
+              </button>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Main composer
 // ---------------------------------------------------------------------------
@@ -719,6 +770,8 @@ export function ZeroChatComposer({
   onDraftChange,
   actionsLoading = false,
   modelPicker,
+  queuedItems = [],
+  onRemoveQueuedItem,
 }: ZeroChatComposerProps) {
   const showAddDialog = useGet(showAddDialog$);
   const setShowAddDialog = useSet(setShowAddDialog$);
@@ -912,7 +965,7 @@ export function ZeroChatComposer({
   };
 
   const handleSend = () => {
-    if (!canSend || sending) {
+    if (!canSend) {
       return;
     }
     // Fire-and-forget: request push permission on first send, never blocks
@@ -1002,6 +1055,10 @@ export function ZeroChatComposer({
                 }}
               />
             )}
+            <QueuedMessagesStrip
+              items={queuedItems}
+              onRemove={onRemoveQueuedItem}
+            />
             <textarea
               ref={(el) => {
                 if (el && autoFocus && !isIOSDevice()) {
@@ -1094,7 +1151,7 @@ export function ZeroChatComposer({
                         onDraftChange?.();
                       }}
                     />
-                    {sending && onCancel ? (
+                    {sending && onCancel && (
                       <Button
                         size="sm"
                         variant="destructive"
@@ -1104,17 +1161,16 @@ export function ZeroChatComposer({
                       >
                         <IconPlayerStop size={16} />
                       </Button>
-                    ) : (
-                      <Button
-                        size="sm"
-                        className="rounded-lg h-9 w-9 p-0 shrink-0"
-                        onClick={handleSend}
-                        disabled={!canSend || !!sending}
-                        aria-label="Send"
-                      >
-                        <IconArrowUp size={18} stroke={2} />
-                      </Button>
                     )}
+                    <Button
+                      size="sm"
+                      className="rounded-lg h-9 w-9 p-0 shrink-0"
+                      onClick={handleSend}
+                      disabled={!canSend}
+                      aria-label="Send"
+                    >
+                      <IconArrowUp size={18} stroke={2} />
+                    </Button>
                   </>
                 )}
               </div>

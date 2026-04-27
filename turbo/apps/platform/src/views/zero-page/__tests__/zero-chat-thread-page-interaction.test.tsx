@@ -33,7 +33,7 @@ beforeEach(() => {
 
 // CHAT-S-044: Sending state affects ChatThreadComposer button display
 describe("zero chat thread page - sending state affects composer button display", () => {
-  it("shows Stop button while sending and Send button after run completes (CHAT-S-044)", async () => {
+  it("shows Stop and keeps Send available while sending (CHAT-S-044)", async () => {
     const user = userEvent.setup();
     const ctrl = mockChatLifecycle();
 
@@ -47,7 +47,7 @@ describe("zero chat thread page - sending state affects composer button display"
 
     await waitFor(() => {
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
-      expect(screen.queryByLabelText("Send")).not.toBeInTheDocument();
+      expect(screen.getByLabelText("Send")).toBeInTheDocument();
     });
 
     // Wait for loadPagedMessages$ to subscribe before completing

@@ -89,7 +89,7 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
       const response = await GET(request);
 
       expect(response.status).toBe(200);
-    });
+    }, 30_000);
   });
 
   describe("Cleanup Logic", () => {

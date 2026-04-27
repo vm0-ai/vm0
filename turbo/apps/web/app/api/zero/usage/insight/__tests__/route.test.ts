@@ -32,6 +32,22 @@ function makeRequest(params: Record<string, string>) {
   );
 }
 
+function dateInTimeZone(date: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const value = (type: string) => {
+    return parts.find((part) => {
+      return part.type === type;
+    })!.value;
+  };
+
+  return `${value("year")}-${value("month")}-${value("day")}`;
+}
+
 describe("GET /api/zero/usage/insight", () => {
   beforeEach(async () => {
     context.setupMocks();
@@ -386,10 +402,13 @@ describe("GET /api/zero/usage/insight", () => {
       creditsCharged: 42,
       status: "processed",
     });
-    // Row at 2026-04-20T00:30:00Z
-    // In UTC → day 2026-04-20
-    // In America/Los_Angeles (UTC-7) → 2026-04-19T17:30:00 → day 2026-04-19
-    const rowTime = new Date("2026-04-20T00:30:00Z");
+    const now = new Date();
+    const todayStart = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+    );
+    const rowTime = new Date(todayStart.getTime() - 2 * 86400000 + 30 * 60000);
+    const expectedUtcDate = dateInTimeZone(rowTime, "UTC");
+    const expectedLaDate = dateInTimeZone(rowTime, "America/Los_Angeles");
     await setTestCreditUsageCreatedAt(cuId, rowTime);
 
     const responseUtc = await GET(
@@ -426,12 +445,10 @@ describe("GET /api/zero/usage/insight", () => {
     expect(utcBucket ?? laBucket).toBeDefined();
 
     if (utcBucket) {
-      // UTC bucket ts should start with 2026-04-20
-      expect(utcBucket.ts).toContain("2026-04-20");
+      expect(utcBucket.ts).toContain(expectedUtcDate);
     }
     if (laBucket) {
-      // LA bucket ts should start with 2026-04-19
-      expect(laBucket.ts).toContain("2026-04-19");
+      expect(laBucket.ts).toContain(expectedLaDate);
     }
   });
 

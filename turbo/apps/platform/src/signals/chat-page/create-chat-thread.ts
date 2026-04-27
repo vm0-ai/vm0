@@ -49,6 +49,11 @@ export type { DraftSignals } from "../zero-page/chat-draft.ts";
 
 const L = logger("ChatThread");
 
+export interface ChatThreadQueueItem {
+  id: string;
+  text: string;
+}
+
 // ---------------------------------------------------------------------------
 // Thinking-indicator constants and helpers
 // ---------------------------------------------------------------------------
@@ -142,7 +147,12 @@ export interface ChatThreadSignals {
   setModelSelection$: Command<void, [ModelProviderSelection | null]>;
   sendMessage$: Command<
     Promise<void>,
-    [string, ModelSelectionRequest | null, AbortSignal]
+    [
+      string,
+      ModelSelectionRequest | null,
+      SendMessageOptions | undefined,
+      AbortSignal,
+    ]
   >;
   cancelRun$: Command<Promise<void>, [AbortSignal]>;
   setScrollContainer$: Command<(() => void) | undefined, [HTMLElement | null]>;
@@ -195,10 +205,10 @@ export interface ChatThreadSignals {
   donePhrase$: Computed<string>;
   runPhraseLoop$: Command<Promise<void>, [AbortSignal]>;
   // ── Message queue ────────────────────────────────────────────────────────
-  queueItems$: Computed<{ text: string }[]>;
+  queueItems$: Computed<ChatThreadQueueItem[]>;
   enqueueMessage$: Command<void, [string]>;
   removeQueueItem$: Command<void, [number]>;
-  seedQueue$: Command<Promise<void>, []>;
+  seedQueue$: Command<Promise<void>, [AbortSignal]>;
   dequeueLoop$: Command<Promise<void>, [AbortSignal]>;
 }
 
@@ -488,6 +498,15 @@ export const setDraftSyncDebounceMs$ = command(({ set }, ms: number) => {
   set(internalDraftSyncDebounceMs$, ms);
 });
 
+function toPersistedQueue(queue: readonly { text: string }[]) {
+  if (queue.length === 0) {
+    return null;
+  }
+  return queue.map((item) => {
+    return { text: item.text };
+  });
+}
+
 function createDraftSync(
   threadId: string,
   draft: DraftSignals,
@@ -503,7 +522,7 @@ function createDraftSync(
       { get },
       content: string | null,
       attachments: PersistedAttachment[] | null,
-      queue: QueueItem[] | null,
+      queue: { text: string }[] | null,
       signal: AbortSignal,
     ) => {
       const client = get(zeroClient$)(chatThreadByIdContract);
@@ -522,11 +541,8 @@ function createDraftSync(
     },
   );
 
-  const debouncedSyncDraft$ = command(
+  const syncCurrentDraft$ = command(
     async ({ get, set }, signal: AbortSignal) => {
-      await delay(get(internalDraftSyncDebounceMs$), { signal });
-      signal.throwIfAborted();
-
       const input = get(draft.input$);
       const content = input.trim() || null;
       const attachments = get(draft.attachments$);
@@ -567,9 +583,17 @@ function createDraftSync(
         syncWithContent$,
         content,
         persisted.length > 0 ? persisted : null,
-        queue.length > 0 ? queue : null,
+        toPersistedQueue(queue),
         signal,
       );
+    },
+  );
+
+  const debouncedSyncDraft$ = command(
+    async ({ get, set }, signal: AbortSignal) => {
+      await delay(get(internalDraftSyncDebounceMs$), { signal });
+      signal.throwIfAborted();
+      await set(syncCurrentDraft$, signal);
     },
   );
 
@@ -581,26 +605,35 @@ function createDraftSync(
     await set(debouncedSyncDraft$, debouncedSignal);
   });
 
-  const cancelDraftSync$ = command(({ set }) => {
-    set(draftSyncReset$);
-  });
-
-  const flushDraftClear$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const flushDraftSync$ = command(async ({ set }, signal: AbortSignal) => {
     if (options.localSnapshot) {
       return;
     }
     set(draftSyncReset$);
-    const queue = get(queueItems$);
-    await set(
-      syncWithContent$,
-      null,
-      null,
-      queue.length > 0 ? queue : null,
-      signal,
-    );
+    await set(syncCurrentDraft$, signal);
   });
 
-  return { scheduleDraftSync$, cancelDraftSync$, flushDraftClear$ };
+  const cancelDraftSync$ = command(({ set }) => {
+    set(draftSyncReset$);
+  });
+
+  const flushDraftClear$ = command(
+    async ({ get, set }, signal: AbortSignal) => {
+      if (options.localSnapshot) {
+        return;
+      }
+      set(draftSyncReset$);
+      const queue = get(queueItems$);
+      await set(syncWithContent$, null, null, toPersistedQueue(queue), signal);
+    },
+  );
+
+  return {
+    scheduleDraftSync$,
+    flushDraftSync$,
+    cancelDraftSync$,
+    flushDraftClear$,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -953,6 +986,12 @@ interface RunTrackingDeps {
   options: ChatThreadSignalOptions;
 }
 
+const setLocalRunStartPending$ = command(
+  ({ set }, localRunStartPending$: State<boolean>, pending: boolean) => {
+    set(localRunStartPending$, pending);
+  },
+);
+
 interface MarkThreadReadDeps {
   threadId: string;
   threadData$: Computed<Promise<ChatThread | null>>;
@@ -1000,6 +1039,29 @@ function createMarkThreadReadIfNeeded({
   });
 }
 
+function createAllFinished(
+  threadData$: Computed<Promise<ChatThread | null>>,
+  localRunStartPending$: State<boolean>,
+  options: ChatThreadSignalOptions,
+) {
+  return computed(async (get) => {
+    const cancelRequested = options.localSnapshot
+      ? get(options.localSnapshot.cancelRequested$)
+      : false;
+    if (cancelRequested) {
+      return true;
+    }
+    if (get(localRunStartPending$)) {
+      return false;
+    }
+    const thread = await get(threadData$);
+    if (!thread) {
+      return false;
+    }
+    return thread.activeRunIds.length === 0;
+  });
+}
+
 function createRunTracking({
   threadId,
   reloadThread$,
@@ -1010,20 +1072,12 @@ function createRunTracking({
   options,
 }: RunTrackingDeps) {
   const locallyMarkedReadMessageId$ = state<string | undefined>(undefined);
-
-  const allFinished$ = computed(async (get) => {
-    const cancelRequested = options.localSnapshot
-      ? get(options.localSnapshot.cancelRequested$)
-      : false;
-    if (cancelRequested) {
-      return true;
-    }
-    const thread = await get(threadData$);
-    if (!thread) {
-      return false;
-    }
-    return thread.activeRunIds.length === 0;
-  });
+  const localRunStartPending$ = state(false);
+  const allFinished$ = createAllFinished(
+    threadData$,
+    localRunStartPending$,
+    options,
+  );
 
   const markThreadReadIfNeeded$ = createMarkThreadReadIfNeeded({
     threadId,
@@ -1139,15 +1193,22 @@ function createRunTracking({
     signal.throwIfAborted();
   });
 
-  return { allFinished$, loadPagedMessages$, cancelRun$ };
+  return {
+    allFinished$,
+    loadPagedMessages$,
+    cancelRun$,
+    localRunStartPending$,
+  };
 }
 
 // ---------------------------------------------------------------------------
 // Sub-factory: message queue
 // ---------------------------------------------------------------------------
 
-interface QueueItem {
-  text: string;
+type QueueItem = ChatThreadQueueItem;
+
+interface SendMessageOptions {
+  bypassQueueGate?: boolean;
 }
 
 function createMessageQueue(threadData$: Computed<Promise<ChatThread | null>>) {
@@ -1157,43 +1218,53 @@ function createMessageQueue(threadData$: Computed<Promise<ChatThread | null>>) {
     return get(internalQueue$);
   });
 
-  const enqueueMessage$ = command(
-    ({ set }, text: string) => {
-      const trimmed = text.trim();
-      if (!trimmed) {
-        return;
-      }
-      set(internalQueue$, (prev) => {
-        return [...prev, { text: trimmed }];
-      });
-    },
-  );
+  const enqueueMessage$ = command(({ set }, text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) {
+      return;
+    }
+    set(internalQueue$, (prev) => {
+      return [...prev, { id: crypto.randomUUID(), text: trimmed }];
+    });
+  });
 
-  const removeQueueItem$ = command(
-    ({ set }, index: number) => {
-      set(internalQueue$, (prev) => {
-        if (index < 0 || index >= prev.length) {
-          return prev;
-        }
-        const next = [...prev];
-        next.splice(index, 1);
-        return next;
-      });
-    },
-  );
+  const removeQueueItem$ = command(({ set }, index: number) => {
+    set(internalQueue$, (prev) => {
+      if (index < 0 || index >= prev.length) {
+        return prev;
+      }
+      const next = [...prev];
+      next.splice(index, 1);
+      return next;
+    });
+  });
+
+  const clearQueue$ = command(({ set }) => {
+    set(internalQueue$, []);
+  });
 
   /** Seed queue from server data on first visit. */
-  const seedQueue$ = command(
-    async ({ get, set }) => {
-      const thread = await get(threadData$);
-      if (!thread?.draftQueue || thread.draftQueue.length === 0) {
-        return;
-      }
-      set(internalQueue$, thread.draftQueue);
-    },
-  );
+  const seedQueue$ = command(async ({ get, set }, signal: AbortSignal) => {
+    const thread = await get(threadData$);
+    signal.throwIfAborted();
+    if (!thread?.draftQueue || thread.draftQueue.length === 0) {
+      return;
+    }
+    set(
+      internalQueue$,
+      thread.draftQueue.map((item) => {
+        return { id: crypto.randomUUID(), text: item.text };
+      }),
+    );
+  });
 
-  return { queueItems$, enqueueMessage$, removeQueueItem$, seedQueue$ };
+  return {
+    queueItems$,
+    enqueueMessage$,
+    removeQueueItem$,
+    clearQueue$,
+    seedQueue$,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -1203,34 +1274,39 @@ function createMessageQueue(threadData$: Computed<Promise<ChatThread | null>>) {
 interface SendMessageDeps {
   threadId: string;
   threadData$: Computed<Promise<ChatThread | null>>;
+  reloadThread$: Command<void, []>;
   draft: DraftSignals;
   cancelDraftSync$: Command<void, []>;
   flushDraftClear$: Command<Promise<void>, [AbortSignal]>;
   insertOptimisticMessage$: Command<void, [PagedChatMessage]>;
   scrollToBottom$: Command<void, []>;
   allFinished$: Computed<Promise<boolean>>;
+  localRunStartPending$: State<boolean>;
   enqueueMessage$: Command<void, [string]>;
-  scheduleDraftSync$: Command<Promise<void>, [AbortSignal]>;
+  flushDraftSync$: Command<Promise<void>, [AbortSignal]>;
 }
 
 function createSendMessage(deps: SendMessageDeps) {
   const {
     threadId,
     threadData$,
+    reloadThread$,
     draft,
     cancelDraftSync$,
     flushDraftClear$,
     insertOptimisticMessage$,
     scrollToBottom$,
     allFinished$,
+    localRunStartPending$,
     enqueueMessage$,
-    scheduleDraftSync$,
+    flushDraftSync$,
   } = deps;
   const sendMessage$ = command(
     async (
       { get, set },
       prompt: string,
       modelSelection: ModelSelectionRequest | null,
+      options: SendMessageOptions | undefined,
       signal: AbortSignal,
     ) => {
       L.debug("sendMessage$ start", { threadId, promptLen: prompt.length });
@@ -1256,12 +1332,13 @@ function createSendMessage(deps: SendMessageDeps) {
 
       // If the AI is still running, enqueue instead of sending.
       const allFinished = await get(allFinished$);
-      if (!allFinished) {
+      signal.throwIfAborted();
+      if (!options?.bypassQueueGate && !allFinished) {
         L.debug("sendMessage$ AI running, enqueueing", { threadId });
         set(cancelDraftSync$);
         set(draft.clear$);
         set(enqueueMessage$, result.prompt);
-        set(scheduleDraftSync$, signal);
+        await set(flushDraftSync$, signal);
         animationFrame(
           () => {
             set(scrollToBottom$);
@@ -1290,6 +1367,7 @@ function createSendMessage(deps: SendMessageDeps) {
       );
 
       const client = get(zeroClient$)(chatMessagesContract);
+      set(setLocalRunStartPending$, localRunStartPending$, true);
       const [, sendResult] = await Promise.all([
         set(flushDraftClear$, signal),
         accept(
@@ -1307,13 +1385,19 @@ function createSendMessage(deps: SendMessageDeps) {
           }),
           [201],
         ),
-      ]);
+      ]).finally(() => {
+        set(setLocalRunStartPending$, localRunStartPending$, false);
+      });
       signal.throwIfAborted();
 
       L.debug("sendMessage$ POST accepted", {
         threadId,
         runId: sendResult.body.runId,
       });
+
+      set(reloadThread$);
+      await get(threadData$);
+      signal.throwIfAborted();
 
       set(reloadChatThreads$);
       L.debug("sendMessage$ done", {
@@ -1329,17 +1413,31 @@ function createSendMessage(deps: SendMessageDeps) {
 // Sub-factory: auto-dequeue
 // ---------------------------------------------------------------------------
 
-function createAutoDequeue(
+interface AutoDequeueDeps {
   sendMessage$: Command<
     Promise<void>,
-    [string, ModelSelectionRequest | null, AbortSignal]
-  >,
-  allFinished$: Computed<Promise<boolean>>,
-  queueItems$: Computed<QueueItem[]>,
-  removeQueueItem$: Command<void, [number]>,
-  scheduleDraftSync$: Command<Promise<void>, [AbortSignal]>,
-  threadData$: Computed<Promise<ChatThread | null>>,
-) {
+    [
+      string,
+      ModelSelectionRequest | null,
+      SendMessageOptions | undefined,
+      AbortSignal,
+    ]
+  >;
+  allFinished$: Computed<Promise<boolean>>;
+  queueItems$: Computed<QueueItem[]>;
+  clearQueue$: Command<void, []>;
+  flushDraftSync$: Command<Promise<void>, [AbortSignal]>;
+  threadData$: Computed<Promise<ChatThread | null>>;
+}
+
+function createAutoDequeue({
+  sendMessage$,
+  allFinished$,
+  queueItems$,
+  clearQueue$,
+  flushDraftSync$,
+  threadData$,
+}: AutoDequeueDeps) {
   const dequeueLoop$ = command(
     async ({ get, set }, signal: AbortSignal): Promise<void> => {
       await setLoop(
@@ -1353,10 +1451,10 @@ function createAutoDequeue(
           if (queue.length === 0) {
             return false;
           }
-          // Dequeue and send the next message.
-          const next = queue[0]!;
-          set(removeQueueItem$, 0);
-          set(scheduleDraftSync$, sig);
+          // Drain the queue snapshot as a single follow-up message once the
+          // current run finishes.
+          set(clearQueue$);
+          await set(flushDraftSync$, sig);
           const thread = await get(threadData$);
           sig.throwIfAborted();
           const modelSelection: ModelSelectionRequest | null =
@@ -1366,7 +1464,21 @@ function createAutoDequeue(
                   selectedModel: thread.selectedModel,
                 }
               : null;
-          await set(sendMessage$, next.text, modelSelection, sig);
+          const queuedPrompt = queue
+            .map((item) => {
+              return item.text;
+            })
+            .join("\n")
+            .trim();
+          if (queuedPrompt) {
+            await set(
+              sendMessage$,
+              queuedPrompt,
+              modelSelection,
+              { bypassQueueGate: true },
+              sig,
+            );
+          }
           return false;
         },
         500,
@@ -1375,6 +1487,99 @@ function createAutoDequeue(
     },
   );
   return { dequeueLoop$ };
+}
+
+interface ChatThreadWorkflowDeps {
+  threadId: string;
+  draft: DraftSignals;
+  options: ChatThreadSignalOptions;
+  threadData$: Computed<Promise<ChatThread | null>>;
+  reloadThread$: Command<void, []>;
+  latestChatMessageId$: Computed<Promise<string | undefined>>;
+  fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>;
+  autoScroll$: Command<void, []>;
+  insertOptimisticMessage$: Command<void, [PagedChatMessage]>;
+  scrollToBottom$: Command<void, []>;
+}
+
+function createChatThreadWorkflowSignals({
+  threadId,
+  draft,
+  options,
+  threadData$,
+  reloadThread$,
+  latestChatMessageId$,
+  fetchNextPage$,
+  autoScroll$,
+  insertOptimisticMessage$,
+  scrollToBottom$,
+}: ChatThreadWorkflowDeps) {
+  const {
+    queueItems$,
+    enqueueMessage$,
+    removeQueueItem$,
+    clearQueue$,
+    seedQueue$,
+  } = createMessageQueue(threadData$);
+
+  const {
+    scheduleDraftSync$,
+    flushDraftSync$,
+    cancelDraftSync$,
+    flushDraftClear$,
+  } = createDraftSync(threadId, draft, queueItems$, options);
+
+  const {
+    allFinished$,
+    loadPagedMessages$,
+    cancelRun$,
+    localRunStartPending$,
+  } = createRunTracking({
+    threadId,
+    reloadThread$,
+    threadData$,
+    latestChatMessageId$,
+    fetchNextPage$,
+    autoScroll$,
+    options,
+  });
+
+  const { sendMessage$ } = createSendMessage({
+    threadId,
+    threadData$,
+    reloadThread$,
+    draft,
+    cancelDraftSync$,
+    flushDraftClear$,
+    insertOptimisticMessage$,
+    scrollToBottom$,
+    allFinished$,
+    localRunStartPending$,
+    enqueueMessage$,
+    flushDraftSync$,
+  });
+
+  const { dequeueLoop$ } = createAutoDequeue({
+    sendMessage$,
+    allFinished$,
+    queueItems$,
+    clearQueue$,
+    flushDraftSync$,
+    threadData$,
+  });
+
+  return {
+    sendMessage$,
+    cancelRun$,
+    scheduleDraftSync$,
+    allFinished$,
+    loadPagedMessages$,
+    queueItems$,
+    enqueueMessage$,
+    removeQueueItem$,
+    seedQueue$,
+    dequeueLoop$,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -1486,46 +1691,22 @@ export function createChatThreadSignals(
     },
   );
 
-  const { queueItems$, enqueueMessage$, removeQueueItem$, seedQueue$ } =
-    createMessageQueue(threadData$);
-
-  const { scheduleDraftSync$, cancelDraftSync$, flushDraftClear$ } =
-    createDraftSync(threadId, draft, queueItems$, options);
-  const { allFinished$, loadPagedMessages$, cancelRun$ } = createRunTracking({
+  const workflow = createChatThreadWorkflowSignals({
     threadId,
+    draft,
+    options,
     reloadThread$,
     threadData$,
     latestChatMessageId$,
     fetchNextPage$,
     autoScroll$,
-    options,
-  });
-
-  const { sendMessage$ } = createSendMessage({
-    threadId,
-    threadData$,
-    draft,
-    cancelDraftSync$,
-    flushDraftClear$,
     insertOptimisticMessage$,
     scrollToBottom$,
-    allFinished$,
-    enqueueMessage$,
-    scheduleDraftSync$,
   });
-
-  const { dequeueLoop$ } = createAutoDequeue(
-    sendMessage$,
-    allFinished$,
-    queueItems$,
-    removeQueueItem$,
-    scheduleDraftSync$,
-    threadData$,
-  );
 
   const { setInputRef$, focusInput$ } = createInputRef();
   const { blockColors$, rotatingPhrase$, donePhrase$, runPhraseLoop$ } =
-    createPhraseLoop(groupedChatMessages$, allFinished$);
+    createPhraseLoop(groupedChatMessages$, workflow.allFinished$);
 
   // Status of the currently-active run, sourced from threadData$.activeRuns.
   // `chatThreadRunUpdated` Ably events trigger reloadThread$, so this signal
@@ -1540,8 +1721,8 @@ export function createChatThreadSignals(
     threadData$,
     modelSelection$,
     setModelSelection$,
-    sendMessage$,
-    cancelRun$,
+    sendMessage$: workflow.sendMessage$,
+    cancelRun$: workflow.cancelRun$,
     setScrollContainer$,
     autoScroll$,
     scrollToBottom$,
@@ -1561,24 +1742,24 @@ export function createChatThreadSignals(
     copyMessage$,
     setInputRef$,
     focusInput$,
-    scheduleDraftSync$,
+    scheduleDraftSync$: workflow.scheduleDraftSync$,
     earliestChatMessageId$,
     latestChatMessageId$,
     groupedChatMessages$,
     hasOlderHistory$,
     latestRunStatus$,
-    allFinished$,
+    allFinished$: workflow.allFinished$,
     fetchNextPage$,
     loadHistory$,
-    loadPagedMessages$,
+    loadPagedMessages$: workflow.loadPagedMessages$,
     blockColors$,
     rotatingPhrase$,
     donePhrase$,
     runPhraseLoop$,
-    queueItems$,
-    enqueueMessage$,
-    removeQueueItem$,
-    seedQueue$,
-    dequeueLoop$,
+    queueItems$: workflow.queueItems$,
+    enqueueMessage$: workflow.enqueueMessage$,
+    removeQueueItem$: workflow.removeQueueItem$,
+    seedQueue$: workflow.seedQueue$,
+    dequeueLoop$: workflow.dequeueLoop$,
   };
 }

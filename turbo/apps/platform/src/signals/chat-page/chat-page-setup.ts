@@ -8,6 +8,7 @@ import {
   currentChatAgentId$,
   setChatAgentId$,
   currentChatThreadId$,
+  type ChatThread,
 } from "../agent-chat.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
@@ -24,6 +25,28 @@ import {
   captureNavigationTiming$,
   markRouteSetupBegin$,
 } from "../../lib/posthog.ts";
+
+function resolveDraftSeed(isNew: boolean, threadData: ChatThread) {
+  if (
+    !isNew ||
+    (threadData.draftContent === null &&
+      (threadData.draftAttachments === null ||
+        threadData.draftAttachments.length === 0))
+  ) {
+    return null;
+  }
+
+  return {
+    content: threadData.draftContent ?? "",
+    attachments: (threadData.draftAttachments ?? []).map(
+      createRestoredAttachment,
+    ),
+  };
+}
+
+function shouldSeedQueue(isNew: boolean, threadData: ChatThread) {
+  return isNew && (threadData.draftQueue?.length ?? 0) > 0;
+}
 
 export const setupChatPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -89,25 +112,14 @@ export const setupChatPage$ = command(
     const sessionTitle = threadData.title ?? "New chat";
     set(updateDocumentTitle$, sessionTitle);
 
-    if (
-      isNew &&
-      (threadData.draftContent !== null ||
-        (threadData.draftAttachments !== null &&
-          threadData.draftAttachments.length > 0))
-    ) {
-      const restoredAttachments = (threadData.draftAttachments ?? []).map(
-        createRestoredAttachment,
-      );
-      set(
-        thread.draft.seed$,
-        threadData.draftContent ?? "",
-        restoredAttachments,
-      );
+    const draftSeed = resolveDraftSeed(isNew, threadData);
+    if (draftSeed) {
+      set(thread.draft.seed$, draftSeed.content, draftSeed.attachments);
     }
 
     // Seed message queue from server data on first visit.
-    if (isNew && threadData.draftQueue && threadData.draftQueue.length > 0) {
-      set(thread.seedQueue$);
+    if (shouldSeedQueue(isNew, threadData)) {
+      await set(thread.seedQueue$, signal);
     }
 
     await get(thread.groupedChatMessages$);

@@ -18,7 +18,6 @@ import {
   IconPin,
   IconVolume2,
   IconArrowBarToUp,
-  IconX,
 } from "@tabler/icons-react";
 import {
   cn,
@@ -451,7 +450,10 @@ function ChatThreadComposer({
     setInput("");
     // Use rootSignal so in-run page navigation (e.g. IPA internal nav) doesn't
     // cancel the pending send.
-    detach(send(text, modelSelection, rootSignal), Reason.DomCallback);
+    detach(
+      send(text, modelSelection, undefined, rootSignal),
+      Reason.DomCallback,
+    );
   };
 
   const queueItems = useGet(thread.queueItems$);
@@ -465,35 +467,7 @@ function ChatThreadComposer({
     >
       <div className="pointer-events-none absolute inset-x-0 -top-5 h-5 bg-gradient-to-t from-[hsl(var(--background))] to-transparent" />
       <div className="overflow-y-auto [scrollbar-gutter:stable] px-4 sm:px-6 pt-3 pb-2">
-        <div className="mx-auto max-w-[900px] flex flex-col gap-2">
-          {queueItems.length > 0 && (
-            <div className="flex flex-col gap-1">
-              {queueItems.map((item, i) => {
-                return (
-                  <div
-                    key={`${i}-${item.text.slice(0, 20)}`}
-                    className="flex items-center gap-2 rounded-lg border border-border/60 bg-accent/30 px-3 py-1.5 text-sm text-muted-foreground"
-                  >
-                    <span className="flex-1 truncate">{item.text}</span>
-                    <button
-                      type="button"
-                      className="shrink-0 rounded p-0.5 text-muted-foreground/50 hover:bg-accent hover:text-foreground transition-colors"
-                      onClick={() => {
-                        removeQueueItem(i);
-                        detach(
-                          scheduleDraftSync(pageSignal),
-                          Reason.DomCallback,
-                        );
-                      }}
-                      aria-label="Remove queued message"
-                    >
-                      <IconX size={14} stroke={1.5} />
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+        <div className="mx-auto max-w-[900px]">
           <ZeroChatComposer
             className="w-full min-w-0"
             input={input}
@@ -515,6 +489,11 @@ function ChatThreadComposer({
             setComposerFileInput$={thread.setComposerFileInput$}
             setInputRef={setInputRef}
             actionsLoading={skeletonVisible}
+            queuedItems={queueItems}
+            onRemoveQueuedItem={(index) => {
+              removeQueueItem(index);
+              detach(scheduleDraftSync(pageSignal), Reason.DomCallback);
+            }}
             modelPicker={
               orgProviders && orgProviders.modelProviders.length > 0
                 ? {

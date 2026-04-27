@@ -18,6 +18,7 @@ import {
   PLACEHOLDER,
 } from "./chat-test-helpers.ts";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
+import { createDeferredPromise } from "../../../signals/utils.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -414,6 +415,108 @@ describe("zero chat composer - send and stop actions", () => {
     });
   });
 
+  it("queues a follow-up message while a run is active", async () => {
+    const user = userEvent.setup();
+    mockChatLifecycle();
+
+    detachedSetupPage({ context, path: CHAT_PATH });
+
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
+    await sendMessageInUI(user, textarea, "Hello");
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+      expect(screen.getByLabelText("Send")).toBeInTheDocument();
+    });
+
+    await fill(textarea, "Follow up");
+    click(screen.getByLabelText("Send"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Follow up")).toBeInTheDocument();
+    });
+  });
+
+  it("queues a follow-up message while the first send is still starting", async () => {
+    const sendGate = createDeferredPromise<void>(context.signal);
+    const sentPrompts: string[] = [];
+    mockChatLifecycle({
+      waitForSendResponse: sendGate.promise,
+      onSend: (prompt) => {
+        sentPrompts.push(prompt);
+      },
+    });
+
+    detachedSetupPage({ context, path: CHAT_PATH });
+
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
+
+    await fill(textarea, "hi");
+    click(screen.getByLabelText("Send"));
+
+    await waitFor(() => {
+      expect(sentPrompts).toStrictEqual(["hi"]);
+    });
+
+    await fill(textarea, "hi");
+    click(screen.getByLabelText("Send"));
+
+    await waitFor(() => {
+      expect(screen.getAllByLabelText("Remove queued message")).toHaveLength(1);
+      expect(sentPrompts).toStrictEqual(["hi"]);
+    });
+
+    sendGate.resolve();
+  });
+
+  it("drains queued follow-up messages as one newline-joined message when the active run completes", async () => {
+    const user = userEvent.setup();
+    const sentPrompts: string[] = [];
+    const ctrl = mockChatLifecycle({
+      onSend: (prompt) => {
+        sentPrompts.push(prompt);
+      },
+    });
+
+    detachedSetupPage({ context, path: CHAT_PATH });
+
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
+    await sendMessageInUI(user, textarea, "Hello");
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+      expect(screen.getByLabelText("Send")).toBeInTheDocument();
+    });
+
+    await fill(textarea, "Follow up 1");
+    click(screen.getByLabelText("Send"));
+    await fill(textarea, "Follow up 2");
+    click(screen.getByLabelText("Send"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Follow up 1")).toBeInTheDocument();
+      expect(screen.getByText("Follow up 2")).toBeInTheDocument();
+      expect(screen.getAllByLabelText("Remove queued message")).toHaveLength(2);
+    });
+
+    ctrl.completeRun("Done");
+
+    await waitFor(() => {
+      expect(screen.queryAllByLabelText("Remove queued message")).toHaveLength(
+        0,
+      );
+    });
+    await waitFor(() => {
+      expect(sentPrompts).toStrictEqual(["Hello", "Follow up 1\nFollow up 2"]);
+    });
+  });
+
   // CHAT-C-031
   it("shows Stop button only during an active sending operation", async () => {
     const user = userEvent.setup();
@@ -432,10 +535,10 @@ describe("zero chat composer - send and stop actions", () => {
     });
     await sendMessageInUI(user, textarea, "Hello");
 
-    // While sending: Stop button visible, Send hidden
+    // While sending: Stop button visible, Send still available for queueing.
     await waitFor(() => {
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
-      expect(screen.queryByLabelText("Send")).not.toBeInTheDocument();
+      expect(screen.getByLabelText("Send")).toBeInTheDocument();
     });
 
     ctrl.completeRun("Done");
