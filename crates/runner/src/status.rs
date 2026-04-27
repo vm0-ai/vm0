@@ -92,6 +92,12 @@ struct MutableState {
     /// BTreeMap (not HashMap) for deterministic iteration order — status.json
     /// output should be stable across runs for readability and diffing.
     active_runs: BTreeMap<RunId, SandboxId>,
+    /// Monotonic idle pool mutation revision last reflected in `idle_vms`.
+    ///
+    /// Idle pool callers snapshot under the pool lock, drop it, then write
+    /// status asynchronously. The revision prevents an older delayed snapshot
+    /// from overwriting a newer drain/evict state.
+    idle_revision: u64,
     idle_vms: Vec<IdleVm>,
 }
 
@@ -119,6 +125,7 @@ impl StatusTracker {
             state: Mutex::new(MutableState {
                 mode: RunnerMode::Running,
                 active_runs: BTreeMap::new(),
+                idle_revision: 0,
                 idle_vms: Vec::new(),
             }),
         }
@@ -149,10 +156,27 @@ impl StatusTracker {
     }
 
     /// Replace the idle VM list in the status file with `idle_vms`.
+    #[cfg(test)]
     pub async fn set_idle_info(&self, idle_vms: Vec<IdleVm>) {
         let mut state = self.state.lock().await;
         state.idle_vms = idle_vms;
         self.write_status(&state).await;
+    }
+
+    /// Replace the idle VM list only if the snapshot is at least as new as the
+    /// last applied idle-pool mutation revision.
+    ///
+    /// Returns `false` when a stale async writer lost the race to a newer
+    /// snapshot and was intentionally ignored.
+    pub async fn set_idle_info_at_revision(&self, revision: u64, idle_vms: Vec<IdleVm>) -> bool {
+        let mut state = self.state.lock().await;
+        if revision < state.idle_revision {
+            return false;
+        }
+        state.idle_revision = revision;
+        state.idle_vms = idle_vms;
+        self.write_status(&state).await;
+        true
     }
 
     /// Write the initial status file.
@@ -358,6 +382,45 @@ mod tests {
         assert_eq!(vms[0]["sandbox_id"], sb1.to_string());
         assert_eq!(vms[1]["session_id"], "sess-2");
         assert_eq!(vms[1]["sandbox_id"], sb2.to_string());
+    }
+
+    #[tokio::test]
+    async fn stale_idle_info_revision_does_not_overwrite_newer_snapshot() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("status.json");
+        let tracker = StatusTracker::new(path.clone(), 4, None, None);
+        let stale_id = SandboxId::new_v4();
+        let fresh_id = SandboxId::new_v4();
+
+        tracker.write_initial().await;
+        assert!(
+            tracker
+                .set_idle_info_at_revision(
+                    2,
+                    vec![IdleVm {
+                        session_id: "fresh".into(),
+                        sandbox_id: fresh_id,
+                    }],
+                )
+                .await
+        );
+        assert!(
+            !tracker
+                .set_idle_info_at_revision(
+                    1,
+                    vec![IdleVm {
+                        session_id: "stale".into(),
+                        sandbox_id: stale_id,
+                    }],
+                )
+                .await
+        );
+
+        let status = read_status(&path);
+        let vms = status["idle_vms"].as_array().unwrap();
+        assert_eq!(vms.len(), 1);
+        assert_eq!(vms[0]["session_id"], "fresh");
+        assert_eq!(vms[0]["sandbox_id"], fresh_id.to_string());
     }
 
     #[tokio::test]

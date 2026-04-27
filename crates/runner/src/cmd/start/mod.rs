@@ -21,8 +21,8 @@ use crate::executor::{self, ExecutorConfig};
 use crate::host;
 use crate::http::HttpClient;
 use crate::idle_pool::{
-    IdleDestroyPayload, IdleEntry, IdlePool, IdlePoolConfig, ParkResult, ParkingGate,
-    ReusableIdleSandbox,
+    IdleDestroyPayload, IdleEntry, IdlePool, IdlePoolConfig, IdlePoolSnapshot, ParkResult,
+    ParkingGate, ReusableIdleSandbox,
 };
 use crate::kmsg_log;
 use crate::lock;
@@ -711,9 +711,9 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                     );
                 }
                 // Update status with current idle pool state
-                let idle_vms = pool.held_snapshot();
+                let snapshot = pool.status_snapshot();
                 drop(pool);
-                status.set_idle_info(idle_vms).await;
+                set_idle_status_snapshot(&status, snapshot).await;
                 for entry in expired {
                     spawn_destroy_idle_entry(&mut destroy_tasks, entry, "idle_expired");
                 }
@@ -968,10 +968,15 @@ async fn try_reuse_from_pool(
 
     // Take the entry under the pool lock, then drop the lock before any awaits
     // so unpark does not block other take/park operations.
-    let taken = {
+    let (taken, snapshot) = {
         let mut pool = ctx.idle_pool.lock().await;
-        pool.take(session_id)
+        let taken = pool.take(session_id);
+        let snapshot = taken.as_ref().map(|_| pool.status_snapshot());
+        (taken, snapshot)
     };
+    if let Some(snapshot) = snapshot {
+        set_idle_status_snapshot(ctx.status, snapshot).await;
+    }
     match taken {
         Some(mut entry) if entry.profile_name == profile_name => {
             match unpark_sandbox_panic_safe(entry.sandbox.as_mut()).await {
@@ -1260,17 +1265,17 @@ fn spawn_job(
                                     // nor idle) until the next idle_cleanup tick
                                     // (~10s), producing transient false-positive
                                     // FirecrackerNotInStatus warnings.
-                                    let idle_vms = pool.held_snapshot();
+                                    let snapshot = pool.status_snapshot();
                                     drop(pool);
-                                    status.set_idle_info(idle_vms).await;
+                                    set_idle_status_snapshot(&status, snapshot).await;
                                     park_notify.notify_one();
                                     true
                                 }
                                 ParkResult::Evicted(evicted) => {
                                     info!(run_id = %run_id, session_id, "VM parked, evicting previous");
-                                    let idle_vms = pool.held_snapshot();
+                                    let snapshot = pool.status_snapshot();
                                     drop(pool);
-                                    status.set_idle_info(idle_vms).await;
+                                    set_idle_status_snapshot(&status, snapshot).await;
                                     // Notify immediately — session is already in pool.
                                     // Don't wait for stop_and_destroy which can be slow.
                                     park_notify.notify_one();
@@ -1435,13 +1440,12 @@ async fn drain_idle_pool(
     context: &'static str,
 ) {
     let entries = idle_pool.lock().await.drain();
-    if entries.is_empty() {
-        return;
+    if !entries.is_empty() {
+        info!(count = entries.len(), context, "destroying idle VMs");
+        destroy_idle_entries_and_wait(entries, context).await;
     }
-    info!(count = entries.len(), context, "destroying idle VMs");
-    destroy_idle_entries_and_wait(entries, context).await;
-    let idle_vms = idle_pool.lock().await.held_snapshot();
-    status.set_idle_info(idle_vms).await;
+    let snapshot = idle_pool.lock().await.status_snapshot();
+    set_idle_status_snapshot(status, snapshot).await;
 }
 
 /// Remove expired idle entries and update status to match the new pool state.
@@ -1454,9 +1458,9 @@ async fn evict_expired_idle_entries(
     if expired.is_empty() {
         return expired;
     }
-    let idle_vms = pool.held_snapshot();
+    let snapshot = pool.status_snapshot();
     drop(pool);
-    status.set_idle_info(idle_vms).await;
+    set_idle_status_snapshot(status, snapshot).await;
     expired
 }
 
@@ -1467,10 +1471,22 @@ async fn evict_oldest_idle_entry(
 ) -> Option<IdleEntry> {
     let mut pool = idle_pool.lock().await;
     let evicted = pool.evict_oldest()?;
-    let idle_vms = pool.held_snapshot();
+    let snapshot = pool.status_snapshot();
     drop(pool);
-    status.set_idle_info(idle_vms).await;
+    set_idle_status_snapshot(status, snapshot).await;
     Some(evicted)
+}
+
+async fn set_idle_status_snapshot(status: &StatusTracker, snapshot: IdlePoolSnapshot) {
+    let applied = status
+        .set_idle_info_at_revision(snapshot.revision, snapshot.idle_vms)
+        .await;
+    if !applied {
+        debug!(
+            revision = snapshot.revision,
+            "ignored stale idle pool status snapshot"
+        );
+    }
 }
 
 fn spawn_destroy_idle_entry(
@@ -3696,6 +3712,21 @@ mod tests {
         }
     }
 
+    async fn wait_idle_pool_len(pool: &SharedIdlePool, expected: usize, timeout: Duration) {
+        let deadline = tokio::time::Instant::now() + timeout;
+        loop {
+            let actual = pool.lock().await.len();
+            if actual == expected {
+                return;
+            }
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "idle pool length did not reach {expected} within {timeout:?} (actual: {actual})",
+            );
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    }
+
     /// Poll until the idle pool parking state reaches `expected`.
     async fn wait_parking_state(pool: &SharedIdlePool, expected: ParkingState, timeout: Duration) {
         let deadline = tokio::time::Instant::now() + timeout;
@@ -3989,6 +4020,70 @@ mod tests {
             budget.allocated().2,
             1,
             "budget should remain at 1 (reused, not additive)"
+        );
+
+        shutdown(&env, run_handle).await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn reuse_take_clears_idle_status_while_job_is_active() {
+        let gate = Arc::new(tokio::sync::Notify::new());
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_exit_gate(
+            Arc::clone(&gate),
+        ));
+        let (config, env) =
+            mock_run_config_with_overrides(test_profiles(), 8, 32768, 4, Arc::clone(&overrides));
+        let idle_pool = Arc::clone(&config.idle_pool);
+        let budget = Arc::clone(&config.budget);
+        let status = Arc::clone(&config.status);
+        let status_path = env._temp_dir.path().join("status.json");
+
+        let _seeded_sandbox_id = seed_idle_pool_with_overrides(
+            &idle_pool,
+            &budget,
+            &overrides,
+            "sess-reuse-status",
+            "vm0/default",
+            2,
+            4096,
+        )
+        .await;
+        let snapshot = idle_pool.lock().await.status_snapshot();
+        assert!(
+            status
+                .set_idle_info_at_revision(snapshot.revision, snapshot.idle_vms)
+                .await
+        );
+        assert_eq!(
+            status_idle_sessions(&status_path).await,
+            vec!["sess-reuse-status".to_string()],
+            "pre-run status should list the seeded idle VM",
+        );
+
+        let run_handle = tokio::spawn(run(config));
+        let run_id = RunId::new_v4();
+        push_job(
+            &env,
+            run_id,
+            "vm0/default",
+            Some(context_with_session(run_id, "sess-reuse-status")),
+        );
+
+        wait_idle_pool_len(&idle_pool, 0, Duration::from_secs(5)).await;
+        assert!(
+            status_idle_sessions(&status_path).await.is_empty(),
+            "taking an idle VM for reuse must remove it from status.json before the job completes",
+        );
+
+        gate.notify_one();
+        let completion = env
+            .handle
+            .wait_completion(run_id, Duration::from_secs(5))
+            .await;
+        assert!(completion.is_some(), "reused job should complete");
+        assert_eq!(
+            completion.unwrap().reuse_result,
+            Some(SandboxReuseResult::Reused),
         );
 
         shutdown(&env, run_handle).await;

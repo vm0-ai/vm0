@@ -168,6 +168,17 @@ pub struct IdleEntry {
     pub storage_fingerprints: StorageFingerprints,
 }
 
+/// Idle pool status snapshot paired with a monotonic mutation revision.
+///
+/// Status writes happen after dropping the pool lock, so an older snapshot can
+/// otherwise complete after a newer drain/evict write and reintroduce stale
+/// `idle_vms` in status.json.
+#[derive(Clone, Debug)]
+pub struct IdlePoolSnapshot {
+    pub revision: u64,
+    pub idle_vms: Vec<IdleVm>,
+}
+
 /// Reusable sandbox state handed to the executor after a successful unpark.
 ///
 /// The budget lease is intentionally not part of this payload. The outer job
@@ -253,6 +264,7 @@ impl IdleEntry {
 pub struct IdlePool {
     entries: HashMap<String, IdleEntry>,
     config: IdlePoolConfig,
+    revision: u64,
     /// Shared lifecycle gate. The signal/main-loop lifecycle controller updates
     /// this before publishing externally visible mode transitions.
     parking_gate: ParkingGate,
@@ -268,6 +280,7 @@ impl IdlePool {
         Self {
             entries: HashMap::new(),
             config,
+            revision: 0,
             parking_gate,
         }
     }
@@ -286,16 +299,22 @@ impl IdlePool {
                 return ParkResult::PoolFull(entry);
             }
         }
-        match self.entries.insert(session_id, entry) {
+        let result = match self.entries.insert(session_id, entry) {
             Some(evicted) => ParkResult::Evicted(evicted),
             None => ParkResult::Parked,
-        }
+        };
+        self.bump_revision();
+        result
     }
 
     /// Take a sandbox from the pool for reuse. Returns `None` if no
     /// sandbox is parked for this session.
     pub fn take(&mut self, session_id: &str) -> Option<IdleEntry> {
-        self.entries.remove(session_id)
+        let entry = self.entries.remove(session_id);
+        if entry.is_some() {
+            self.bump_revision();
+        }
+        entry
     }
 
     /// Remove and return all entries that have exceeded their idle timeout.
@@ -308,10 +327,14 @@ impl IdlePool {
             .map(|(k, _)| k.clone())
             .collect();
 
-        expired_keys
+        let expired: Vec<IdleEntry> = expired_keys
             .into_iter()
             .filter_map(|k| self.entries.remove(&k))
-            .collect()
+            .collect();
+        if !expired.is_empty() {
+            self.bump_revision();
+        }
+        expired
     }
 
     /// Evict the oldest idle entry (by park time). Used for resource
@@ -322,13 +345,18 @@ impl IdlePool {
             .iter()
             .min_by_key(|(_, e)| e.parked_at)
             .map(|(k, _)| k.clone())?;
-        self.entries.remove(&oldest_key)
+        let entry = self.entries.remove(&oldest_key);
+        if entry.is_some() {
+            self.bump_revision();
+        }
+        entry
     }
 
-    /// Return a sorted-by-session_id snapshot of the idle pool suitable
-    /// for status.json. Produced in a single iteration so `session_id` and
-    /// `sandbox_id` can never drift out of pairing.
-    pub fn held_snapshot(&self) -> Vec<IdleVm> {
+    /// Return a revisioned sorted-by-session_id snapshot suitable for status.json.
+    ///
+    /// Produced in a single iteration so `session_id` and `sandbox_id` can never
+    /// drift out of pairing.
+    pub fn status_snapshot(&self) -> IdlePoolSnapshot {
         let mut vms: Vec<IdleVm> = self
             .entries
             .iter()
@@ -338,13 +366,24 @@ impl IdlePool {
             })
             .collect();
         vms.sort_unstable_by(|a, b| a.session_id.cmp(&b.session_id));
-        vms
+        IdlePoolSnapshot {
+            revision: self.revision,
+            idle_vms: vms,
+        }
+    }
+
+    /// Return a sorted-by-session_id snapshot of the idle pool suitable
+    /// for status.json. Produced in a single iteration so `session_id` and
+    /// `sandbox_id` can never drift out of pairing.
+    #[cfg(test)]
+    pub fn held_snapshot(&self) -> Vec<IdleVm> {
+        self.status_snapshot().idle_vms
     }
 
     /// Return the list of session IDs currently held in the pool, sorted
     /// lexicographically for deterministic heartbeat output.
     ///
-    /// Prefer [`held_snapshot`](Self::held_snapshot) when pairing with
+    /// Prefer [`status_snapshot`](Self::status_snapshot) when pairing with
     /// sandbox IDs — it produces both views from a single iteration.
     pub fn held_sessions(&self) -> Vec<String> {
         let mut sessions: Vec<String> = self.entries.keys().cloned().collect();
@@ -378,7 +417,15 @@ impl IdlePool {
     /// [`ParkingGate`] so soft-drain resume can reopen parking before
     /// `RunnerMode::Running` becomes visible.
     pub fn drain(&mut self) -> Vec<IdleEntry> {
-        self.entries.drain().map(|(_, v)| v).collect()
+        let entries: Vec<IdleEntry> = self.entries.drain().map(|(_, v)| v).collect();
+        if !entries.is_empty() {
+            self.bump_revision();
+        }
+        entries
+    }
+
+    fn bump_revision(&mut self) {
+        self.revision = self.revision.saturating_add(1);
     }
 }
 
@@ -600,6 +647,33 @@ mod tests {
     fn held_snapshot_empty_pool() {
         let pool = IdlePool::new(pool_config(0));
         assert!(pool.held_snapshot().is_empty());
+    }
+
+    #[test]
+    fn status_snapshot_revision_tracks_idle_vm_mutations() {
+        let mut pool = IdlePool::new(pool_config(0));
+        assert_eq!(pool.status_snapshot().revision, 0);
+
+        let _ = pool.park("s1".into(), make_entry(2, 2048));
+        assert_eq!(pool.status_snapshot().revision, 1);
+
+        assert!(pool.take("s1").is_some());
+        assert_eq!(pool.status_snapshot().revision, 2);
+
+        let drained = pool.drain();
+        assert!(drained.is_empty());
+        assert_eq!(
+            pool.status_snapshot().revision,
+            2,
+            "empty drain must not create a fake idle_vms mutation",
+        );
+
+        let _ = pool.park("s2".into(), make_entry(2, 2048));
+        assert_eq!(pool.status_snapshot().revision, 3);
+
+        let drained = pool.drain();
+        assert_eq!(drained.len(), 1);
+        assert_eq!(pool.status_snapshot().revision, 4);
     }
 
     #[test]
