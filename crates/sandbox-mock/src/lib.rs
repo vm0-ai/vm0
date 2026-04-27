@@ -73,6 +73,9 @@ pub struct MockSandboxOverrides {
     /// simulate timeout or crash. The stdout channel sender is also kept alive
     /// in `MockSandbox` so the drain task would block without the fix.
     wait_exit_error: Option<String>,
+    /// FIFO queue of start results consumed by every sandbox built with
+    /// these overrides. Empty queue → default Ok(()).
+    start_results: Mutex<VecDeque<Result<()>>>,
     /// FIFO queue of stop behaviours consumed by every sandbox built with
     /// these overrides. Empty queue → default Ok(()).
     stop_behaviors: Mutex<VecDeque<StopBehavior>>,
@@ -95,6 +98,7 @@ impl MockSandboxOverrides {
             wait_exit_code: None,
             wait_exit_gate: None,
             wait_exit_error: None,
+            start_results: Mutex::new(VecDeque::new()),
             stop_behaviors: Mutex::new(VecDeque::new()),
             park_results: Mutex::new(VecDeque::new()),
             unpark_results: Mutex::new(VecDeque::new()),
@@ -132,6 +136,12 @@ impl MockSandboxOverrides {
     /// Register a pattern matcher consumed on first match.
     pub fn add_exec_matcher(&self, matcher: ExecMatcher) {
         self.exec_matchers.lock_ignoring_poison().push(matcher);
+    }
+
+    /// Queue a `start()` result applied to the next factory-created sandbox.
+    /// Consumed FIFO across all sandboxes; empty queue → default Ok(()).
+    pub fn push_start_result(&self, result: Result<()>) {
+        self.start_results.lock_ignoring_poison().push_back(result);
     }
 
     /// Queue a `stop()` result applied to the next factory-created sandbox.
@@ -261,7 +271,13 @@ impl Sandbox for MockSandbox {
     }
 
     async fn start(&mut self) -> Result<()> {
-        Ok(())
+        let Some(o) = &self.overrides else {
+            return Ok(());
+        };
+        o.start_results
+            .lock_ignoring_poison()
+            .pop_front()
+            .unwrap_or(Ok(()))
     }
 
     async fn stop(&mut self) -> Result<()> {

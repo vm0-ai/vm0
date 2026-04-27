@@ -476,9 +476,6 @@ impl SandboxFactory for FirecrackerFactory {
             }
         };
 
-        // Mark as destroyed so Drop doesn't send to leak cleanup channel.
-        sandbox.destroyed = true;
-
         // Ensure the sandbox is killed before releasing pool resources.
         // After kill(), `sandbox.process` is `None`, so the Drop impl's
         // killpg becomes a no-op when `sandbox` is dropped below.
@@ -519,8 +516,6 @@ impl SandboxFactory for FirecrackerFactory {
                 }
             }
         }
-        drop(sandbox);
-
         // Release device index back to pool with cooldown.
         self.device_pool.lock().await.release(device_index);
 
@@ -542,6 +537,12 @@ impl SandboxFactory for FirecrackerFactory {
         if cow_destroyed && let Err(e) = tokio::fs::remove_dir_all(&workspace).await {
             warn!(id = %sandbox_id, error = %e, "failed to delete workspace");
         }
+
+        // Mark as destroyed only after all explicit cleanup steps complete.
+        // Until this point, `FirecrackerSandbox::Drop` remains armed as a
+        // panic fallback and sends pool resources to the leak-cleanup task.
+        sandbox.destroyed = true;
+        drop(sandbox);
 
         info!(id = %sandbox_id, "sandbox destroyed");
     }
