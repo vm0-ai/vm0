@@ -673,9 +673,9 @@ def error(flow: http.HTTPFlow) -> None:
 def done():
     """Flush pending usage reports before mitmproxy exits.
 
-    The runner sends SIGTERM then waits 15 seconds before SIGKILL.
-    ``shutdown(wait=True)`` blocks until all submitted futures complete;
-    SIGKILL is the hard stop if any report takes too long.
+    The runner waits for pending flow/report counters before stopping the
+    proxy. ``shutdown(wait=True)`` is the final mitmproxy-side drain for
+    already-submitted futures during graceful stop.
     """
     usage.webhook.usage_executor.shutdown(wait=True)
 

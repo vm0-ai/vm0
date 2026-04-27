@@ -21,14 +21,14 @@ _in_flight_flows = 0
 _pending_reports = 0
 _pending_path = ""
 _usage_state_id = str(uuid.uuid4())
-# One-shot guard: the symptom of sustained ``_write_pending`` failure is
-# the runner always hitting its 15s SIGKILL on graceful shutdown without
-# any local signal pointing at FS trouble.  Emit one warn per addon
-# process on first failure — enough to seed the operator investigation
-# without spamming logs under persistent FS pressure.  Deliberately goes
-# through mitmproxy's own stderr logger (not ``log_proxy_entry``) because
-# the per-job proxy log shares the same filesystem we just failed to
-# write and is likely affected by the same root cause.
+# One-shot guard: sustained ``_write_pending`` failure makes the runner
+# hit the bounded usage-drain timeout without any local signal pointing at
+# filesystem trouble.  Emit one warn per addon process on first failure —
+# enough to seed the operator investigation without spamming logs under
+# persistent FS pressure.  Deliberately goes through mitmproxy's own
+# stderr logger (not ``log_proxy_entry``) because the per-job proxy log
+# shares the same filesystem we just failed to write and is likely
+# affected by the same root cause.
 _pending_write_error_logged = False
 
 
