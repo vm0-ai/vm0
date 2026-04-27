@@ -6,7 +6,6 @@ import {
   createTestRun,
   createTestSandboxToken,
   findTestCreditUsagesByRunId,
-  findTestClientCreditUsagesByRunId,
   setTestRunModelProvider,
   setTestRunSelectedModel,
 } from "../../../../../../src/__tests__/api-test-helpers";
@@ -143,31 +142,6 @@ describe("POST /api/webhooks/agent/usage", () => {
       expect(row.cacheReadInputTokens).toBe(300);
       expect(row.cacheCreationInputTokens).toBe(200);
       expect(row.webSearchRequests).toBe(1);
-    });
-
-    it("does NOT write to client_credit_usage (audit table stays empty)", async () => {
-      const request = createTestRequest(
-        "http://localhost:3000/api/webhooks/agent/usage",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${testToken}`,
-          },
-          body: JSON.stringify({
-            runId: testRunId,
-            usage: {
-              model: "claude-sonnet-4-6",
-              message_id: "msg_isolated",
-              input_tokens: 10,
-            },
-          }),
-        },
-      );
-      await POST(request);
-
-      const clientRows = await findTestClientCreditUsagesByRunId(testRunId);
-      expect(clientRows).toHaveLength(0);
     });
 
     it("deduplicates by (runId, messageId) on retry", async () => {

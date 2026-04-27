@@ -3,7 +3,6 @@ import { initServices } from "../../lib/init-services";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { creditUsage } from "@vm0/db/schema/credit-usage";
-import { clientCreditUsage } from "@vm0/db/schema/client-credit-usage";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 import { usageDaily } from "@vm0/db/schema/usage-daily";
 import { insightsDaily } from "@vm0/db/schema/insights-daily";
@@ -184,47 +183,6 @@ export async function findTestCreditUsagesByRunId(runId: string): Promise<
     })
     .from(creditUsage)
     .where(eq(creditUsage.runId, runId));
-}
-
-/**
- * Find client_credit_usage records by runId.
- */
-export async function findTestClientCreditUsagesByRunId(runId: string): Promise<
-  Array<{
-    id: string;
-    runId: string | null;
-    resultUuid: string | null;
-    orgId: string;
-    userId: string;
-    model: string;
-    modelProvider: string;
-    inputTokens: number;
-    outputTokens: number;
-    cacheReadInputTokens: number;
-    cacheCreationInputTokens: number;
-    webSearchRequests: number;
-    costUsd: string | null;
-  }>
-> {
-  initServices();
-  return globalThis.services.db
-    .select({
-      id: clientCreditUsage.id,
-      runId: clientCreditUsage.runId,
-      resultUuid: clientCreditUsage.resultUuid,
-      orgId: clientCreditUsage.orgId,
-      userId: clientCreditUsage.userId,
-      model: clientCreditUsage.model,
-      modelProvider: clientCreditUsage.modelProvider,
-      inputTokens: clientCreditUsage.inputTokens,
-      outputTokens: clientCreditUsage.outputTokens,
-      cacheReadInputTokens: clientCreditUsage.cacheReadInputTokens,
-      cacheCreationInputTokens: clientCreditUsage.cacheCreationInputTokens,
-      webSearchRequests: clientCreditUsage.webSearchRequests,
-      costUsd: clientCreditUsage.costUsd,
-    })
-    .from(clientCreditUsage)
-    .where(eq(clientCreditUsage.runId, runId));
 }
 
 /**

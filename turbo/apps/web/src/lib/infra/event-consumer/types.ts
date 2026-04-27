@@ -14,8 +14,6 @@ export interface AgentEvent {
 export interface RunEventContext {
   userId: string;
   orgId: string;
-  modelProvider?: string;
-  selectedModel?: string;
 }
 
 /**

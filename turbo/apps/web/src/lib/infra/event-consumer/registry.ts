@@ -13,10 +13,6 @@ export const eventConsumers: EventConsumerConfig[] = [
     required: true,
   },
   {
-    name: "credit",
-    path: "/api/internal/event-consumers/credit",
-  },
-  {
     name: "chat-assistant",
     path: "/api/internal/event-consumers/chat-assistant",
     eventTypes: ["assistant"],

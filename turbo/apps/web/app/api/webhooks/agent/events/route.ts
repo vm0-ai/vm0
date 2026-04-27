@@ -6,7 +6,6 @@ import {
 import { webhookEventsContract } from "@vm0/api-contracts/contracts/webhooks";
 import { initServices } from "../../../../../src/lib/init-services";
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { eq, and } from "drizzle-orm";
 import { getSandboxAuthForRun } from "../../../../../src/lib/auth/get-sandbox-auth";
 import { logger } from "../../../../../src/lib/shared/logger";
@@ -42,11 +41,8 @@ const router = tsr.router(webhookEventsContract, {
     const [run] = await globalThis.services.db
       .select({
         orgId: agentRuns.orgId,
-        modelProvider: zeroRuns.modelProvider,
-        selectedModel: zeroRuns.selectedModel,
       })
       .from(agentRuns)
-      .leftJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))
       .where(and(eq(agentRuns.id, body.runId), eq(agentRuns.userId, userId)))
       .limit(1);
 
@@ -68,7 +64,7 @@ const router = tsr.router(webhookEventsContract, {
       `Dispatching events ${firstSequence}-${lastSequence} to consumers for run ${body.runId}`,
     );
 
-    // Dispatch to all registered event consumers (Axiom, credit, chat-assistant, etc.).
+    // Dispatch to all registered event consumers (Axiom, chat-assistant, etc.).
     // Awaited (not deferred via next/server `after`) so that downstream pollers of
     // /api/agent/runs/:id/events — including the CLI — can see events as soon as the
     // webhook returns. With `after()`, fast mock-claude runs completed before Axiom
@@ -79,8 +75,6 @@ const router = tsr.router(webhookEventsContract, {
     await dispatchToEventConsumers(body.runId, body.events, {
       userId,
       orgId: run.orgId,
-      modelProvider: run.modelProvider ?? undefined,
-      selectedModel: run.selectedModel ?? undefined,
     });
     log.debug(
       `Events ${firstSequence}-${lastSequence} dispatched for run ${body.runId} (${Date.now() - dispatchStart}ms)`,
