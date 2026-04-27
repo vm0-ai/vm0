@@ -187,6 +187,7 @@ pub async fn create_snapshot(
 /// failures via `child.try_wait()` instead of an opaque API-ready timeout.
 const SPAWN_INNER_CMD: &str =
     r#"mount --bind "$1" "$2" && exec ip netns exec "$3" "$4" --api-sock "$5""#;
+const UNSHARE_MOUNT_ARGS: &[&str] = &["--mount", "--propagation", "private"];
 
 /// Number of recent stderr lines retained from the spawn chain, used to
 /// surface the underlying cause when the chain (`unshare → bash → ip netns
@@ -308,7 +309,8 @@ async fn run_snapshot_workflow(
     // Inner command is [`SPAWN_INNER_CMD`].
     let cow_device_path = cow_device.device_path().to_path_buf();
     let spawn_result = tokio::process::Command::new("unshare")
-        .args(["--mount", "bash", "-c", SPAWN_INNER_CMD, "_"])
+        .args(UNSHARE_MOUNT_ARGS)
+        .args(["bash", "-c", SPAWN_INNER_CMD, "_"])
         .arg(&cow_device_path) // $1
         .arg(&drive_bind) // $2
         .arg(&network.name) // $3
@@ -891,5 +893,10 @@ mod tests {
             SPAWN_INNER_CMD.contains("&& exec ip netns exec"),
             "inner_cmd must exec ip netns exec firecracker: {SPAWN_INNER_CMD}"
         );
+    }
+
+    #[test]
+    fn snapshot_create_unshare_uses_private_mount_propagation() {
+        assert_eq!(UNSHARE_MOUNT_ARGS, ["--mount", "--propagation", "private"]);
     }
 }

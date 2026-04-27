@@ -39,6 +39,7 @@ const API_READY_TIMEOUT: Duration = Duration::from_secs(5);
 /// Bash command run inside `unshare --mount` for snapshot restore.
 /// Positional args are documented at the spawn site.
 const SNAPSHOT_RESTORE_INNER_CMD: &str = r#"umount "$4" 2>/dev/null; mount --bind "$1" "$2" && mount --bind "$3" "$4" && exec ip netns exec "$5" "$6" --api-sock "$7""#;
+const UNSHARE_MOUNT_ARGS: &[&str] = &["--mount", "--propagation", "private"];
 
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -401,7 +402,8 @@ impl FirecrackerSandbox {
         // `umount` clears any stale mount inherited from the parent
         // namespace (e.g. from a crashed snapshot creation).
         let mut child = tokio::process::Command::new("unshare")
-            .args(["--mount", "bash", "-c", SNAPSHOT_RESTORE_INNER_CMD, "_"])
+            .args(UNSHARE_MOUNT_ARGS)
+            .args(["bash", "-c", SNAPSHOT_RESTORE_INNER_CMD, "_"])
             .arg(self.sock_paths.vsock_dir()) // $1
             .arg(&snapshot.vsock_bind_dir) // $2
             .arg(cow_device_path) // $3
@@ -1297,6 +1299,11 @@ mod tests {
         );
     }
 
+    #[test]
+    fn snapshot_restore_unshare_uses_private_mount_propagation() {
+        assert_eq!(UNSHARE_MOUNT_ARGS, ["--mount", "--propagation", "private"]);
+    }
+
     #[tokio::test]
     async fn snapshot_drive_bind_target_rejects_existing_directory() {
         let dir = tempfile::tempdir().unwrap();
@@ -1334,6 +1341,24 @@ mod tests {
             .await
             .unwrap();
 
+        let meta = tokio::fs::symlink_metadata(&bind_target).await.unwrap();
+        assert!(meta.file_type().is_file());
+    }
+
+    #[tokio::test]
+    async fn snapshot_drive_bind_target_allows_concurrent_first_use() {
+        let dir = tempfile::tempdir().unwrap();
+        let bind_target = dir.path().join("snapshot-work").join("cow-device-bind");
+        let left = bind_target.clone();
+        let right = bind_target.clone();
+
+        let (left_result, right_result) = tokio::join!(
+            ensure_snapshot_drive_bind_target(&left),
+            ensure_snapshot_drive_bind_target(&right),
+        );
+
+        left_result.unwrap();
+        right_result.unwrap();
         let meta = tokio::fs::symlink_metadata(&bind_target).await.unwrap();
         assert!(meta.file_type().is_file());
     }
