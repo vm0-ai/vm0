@@ -264,11 +264,13 @@ def classify_includes_bucket(key: str) -> str | None:
 # scheme-less URLs.
 _URL_PRECEDING_CHARS = r"A-Za-z0-9@\uFF20$#\uFF03"
 _URL_WITH_PROTOCOL_RE = re.compile(rf"(?<![{_URL_PRECEDING_CHARS}])https?://", re.IGNORECASE)
+_URL_FOLLOWING_CHARS = r"A-Za-z0-9@+.-"
 _DOMAIN_CODEPOINT = r"[^\W_]"
 _DOMAIN_CANDIDATE_CHAR = rf"(?:{_DOMAIN_CODEPOINT}|-)"
 _BARE_DOMAIN_CANDIDATE_RE = re.compile(
     rf"(?<![{_URL_PRECEDING_CHARS}._/-])"
-    rf"({_DOMAIN_CANDIDATE_CHAR}+(?:\.{_DOMAIN_CANDIDATE_CHAR}+)+)",
+    rf"({_DOMAIN_CANDIDATE_CHAR}+(?:\.{_DOMAIN_CANDIDATE_CHAR}+)+)"
+    rf"(?=$|[^{_URL_FOLLOWING_CHARS}]|\.(?:$|[^A-Za-z0-9]))",
     re.IGNORECASE,
 )
 _DOMAIN_LABEL_RE = re.compile(r"^[a-z0-9-]{1,63}$")
