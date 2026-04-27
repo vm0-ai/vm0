@@ -529,7 +529,7 @@ def response(flow: http.HTTPFlow) -> None:
 
     # Report proxy-extracted usage for model provider responses.
     # For non-streaming responses, fall back to extracting usage from the
-    # buffered JSON body (buffer is never truncated for model providers).
+    # buffered JSON body (buffer is never truncated for billable model providers).
     if not flow.metadata.get("model_provider_usage") and stream_buf:
         firewall_name = flow.metadata.get("firewall_name", "")
         if firewall_name.startswith("model-provider:") and flow.metadata.get(

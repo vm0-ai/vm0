@@ -797,6 +797,7 @@ fn send_sigterm(child: &tokio::process::Child) {
 mod tests {
     use super::*;
     use crate::types::{FirewallApi, FirewallAuth, FirewallPermission};
+    use std::os::unix::fs::PermissionsExt;
 
     #[test]
     fn find_port_returns_nonzero() {
@@ -1384,6 +1385,70 @@ mod tests {
         let port = find_available_port().unwrap();
         let result = wait_for_ready(&mut child, port, Duration::from_secs(5)).await;
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn spawn_mitmdump_passes_usage_state_id_option() {
+        let dir = tempfile::tempdir().unwrap();
+        let fake_mitmdump = dir.path().join("fake-mitmdump");
+        std::fs::write(
+            &fake_mitmdump,
+            r#"#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$@" > "$0.args"
+port=""
+prev=""
+for arg in "$@"; do
+  if [ "$prev" = "--listen-port" ]; then
+    port="$arg"
+    break
+  fi
+  prev="$arg"
+done
+python3 - "$port" <<'PY'
+import socket
+import sys
+
+port = int(sys.argv[1])
+sock = socket.socket()
+sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+sock.bind(("127.0.0.1", port))
+sock.listen(1)
+while True:
+    conn, _ = sock.accept()
+    conn.close()
+PY
+"#,
+        )
+        .unwrap();
+        let mut perms = std::fs::metadata(&fake_mitmdump).unwrap().permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&fake_mitmdump, perms).unwrap();
+
+        let config = ProxyConfig {
+            mitmdump_bin: fake_mitmdump.clone(),
+            ca_dir: dir.path().join("ca"),
+            addon_dir: dir.path().join("addon"),
+            registry_path: dir.path().join("proxy-registry.json"),
+            registry_lock_path: dir.path().join("proxy-registry.json.lock"),
+            api_url: None,
+        };
+        let (crash_tx, _crash_rx) = mpsc::channel(1);
+        let stopping = Arc::new(AtomicBool::new(false));
+        let port = find_available_port().unwrap();
+
+        let mut child = spawn_mitmdump(&config, port, &crash_tx, &stopping, "usage-state-test")
+            .await
+            .unwrap();
+        stopping.store(true, Ordering::Release);
+        let _ = child.kill().await;
+
+        let args = std::fs::read_to_string(fake_mitmdump.with_extension("args")).unwrap();
+        assert!(
+            args.lines()
+                .any(|arg| arg == "vm0_usage_state_id=usage-state-test"),
+            "mitmdump args should include vm0_usage_state_id option; got:\n{args}",
+        );
     }
 
     fn usage_target() -> UsageFlushTarget {
