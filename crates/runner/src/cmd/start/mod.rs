@@ -1,9 +1,11 @@
 use std::collections::{BTreeMap, HashMap};
+use std::panic::AssertUnwindSafe;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
 use clap::Args;
+use futures_util::FutureExt;
 use sandbox::{RuntimeProvider, Sandbox, SandboxFactory, SandboxId, SandboxRuntime};
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
@@ -1430,10 +1432,18 @@ async fn destroy_idle_payload_and_wait(payload: IdleDestroyPayload, context: &'s
 
 /// Stop a sandbox and destroy it via its factory.
 async fn stop_and_destroy_sandbox(mut sandbox: Box<dyn Sandbox>, factory: &dyn SandboxFactory) {
-    if let Err(e) = sandbox.stop().await {
-        warn!(error = %e, "sandbox stop failed");
+    match AssertUnwindSafe(sandbox.stop()).catch_unwind().await {
+        Ok(Ok(())) => {}
+        Ok(Err(e)) => warn!(error = %e, "sandbox stop failed"),
+        Err(_) => warn!("sandbox stop panicked"),
     }
-    factory.destroy(sandbox).await;
+    if AssertUnwindSafe(factory.destroy(sandbox))
+        .catch_unwind()
+        .await
+        .is_err()
+    {
+        warn!("sandbox destroy panicked");
+    }
 }
 
 /// Handle a completed job from the JoinSet, cleaning up cancel tokens.
@@ -1541,6 +1551,7 @@ fn collect_heartbeat_state(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     // -----------------------------------------------------------------------
     // collect_heartbeat_state: running_count excludes idle VMs
@@ -1599,15 +1610,128 @@ mod tests {
 
         async fn create(
             &self,
-            _config: sandbox::SandboxConfig,
+            config: sandbox::SandboxConfig,
         ) -> sandbox::Result<Box<dyn Sandbox>> {
-            Err(sandbox::SandboxError::CreationFailed(
-                "test factory is only used for destroy".into(),
-            ))
+            Ok(Box::new(MockSandbox::new(config.id.to_string())))
         }
 
         async fn destroy(&self, _sandbox: Box<dyn Sandbox>) {
             panic!("simulated destroy panic");
+        }
+
+        async fn shutdown(&mut self) {}
+    }
+
+    struct PanickingDestroyRuntime;
+
+    #[async_trait]
+    impl SandboxRuntime for PanickingDestroyRuntime {
+        async fn create_factory(
+            &self,
+            _config: sandbox::FactoryConfig,
+        ) -> sandbox::Result<Box<dyn SandboxFactory>> {
+            Ok(Box::new(PanickingDestroyFactory))
+        }
+
+        async fn shutdown(&mut self) {}
+    }
+
+    struct RecordingDestroyFactory {
+        destroy_count: Arc<AtomicUsize>,
+    }
+
+    #[async_trait]
+    impl SandboxFactory for RecordingDestroyFactory {
+        fn name(&self) -> &str {
+            "recording-destroy"
+        }
+
+        fn config_hash(&self) -> String {
+            "recording-destroy".into()
+        }
+
+        async fn startup(&mut self) -> sandbox::Result<()> {
+            Ok(())
+        }
+
+        async fn create(
+            &self,
+            config: sandbox::SandboxConfig,
+        ) -> sandbox::Result<Box<dyn Sandbox>> {
+            Ok(Box::new(MockSandbox::new(config.id.to_string())))
+        }
+
+        async fn destroy(&self, _sandbox: Box<dyn Sandbox>) {
+            self.destroy_count.fetch_add(1, Ordering::SeqCst);
+        }
+
+        async fn shutdown(&mut self) {}
+    }
+
+    #[derive(Clone)]
+    struct BlockingDestroyHooks {
+        entered: Arc<tokio::sync::Notify>,
+        release: Arc<tokio::sync::Notify>,
+        destroy_count: Arc<AtomicUsize>,
+    }
+
+    impl BlockingDestroyHooks {
+        fn new() -> Self {
+            Self {
+                entered: Arc::new(tokio::sync::Notify::new()),
+                release: Arc::new(tokio::sync::Notify::new()),
+                destroy_count: Arc::new(AtomicUsize::new(0)),
+            }
+        }
+    }
+
+    struct BlockingDestroyRuntime {
+        hooks: BlockingDestroyHooks,
+    }
+
+    #[async_trait]
+    impl SandboxRuntime for BlockingDestroyRuntime {
+        async fn create_factory(
+            &self,
+            _config: sandbox::FactoryConfig,
+        ) -> sandbox::Result<Box<dyn SandboxFactory>> {
+            Ok(Box::new(BlockingDestroyFactory {
+                hooks: self.hooks.clone(),
+            }))
+        }
+
+        async fn shutdown(&mut self) {}
+    }
+
+    struct BlockingDestroyFactory {
+        hooks: BlockingDestroyHooks,
+    }
+
+    #[async_trait]
+    impl SandboxFactory for BlockingDestroyFactory {
+        fn name(&self) -> &str {
+            "blocking-destroy"
+        }
+
+        fn config_hash(&self) -> String {
+            "blocking-destroy".into()
+        }
+
+        async fn startup(&mut self) -> sandbox::Result<()> {
+            Ok(())
+        }
+
+        async fn create(
+            &self,
+            config: sandbox::SandboxConfig,
+        ) -> sandbox::Result<Box<dyn Sandbox>> {
+            Ok(Box::new(MockSandbox::new(config.id.to_string())))
+        }
+
+        async fn destroy(&self, _sandbox: Box<dyn Sandbox>) {
+            self.hooks.destroy_count.fetch_add(1, Ordering::SeqCst);
+            self.hooks.entered.notify_waiters();
+            self.hooks.release.notified().await;
         }
 
         async fn shutdown(&mut self) {}
@@ -1739,6 +1863,46 @@ mod tests {
 
         destroy_idle_entries_and_wait(vec![entry], "test_destroy_panic").await;
 
+        assert_eq!(budget.allocated(), (0, 0, 0));
+    }
+
+    #[tokio::test]
+    async fn idle_stop_panic_still_attempts_destroy_and_releases_budget_lease() {
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        overrides.push_stop_panic("simulated idle stop panic");
+        let sandbox_factory = MockSandboxFactory::with_overrides(overrides);
+        let sandbox = sandbox_factory
+            .create(sandbox::SandboxConfig {
+                id: SandboxId::new_v4(),
+                resources: sandbox::ResourceLimits {
+                    cpu_count: 2,
+                    memory_mb: 4096,
+                },
+            })
+            .await
+            .expect("create sandbox");
+
+        let budget = Arc::new(ResourceBudget::new(2, 4096, 1.0, 0));
+        let lease = ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap();
+        let destroy_count = Arc::new(AtomicUsize::new(0));
+        let entry = IdleEntry {
+            sandbox,
+            factory: Arc::new(Box::new(RecordingDestroyFactory {
+                destroy_count: Arc::clone(&destroy_count),
+            }) as Box<dyn SandboxFactory>),
+            session_id: "sess-stop-panic".into(),
+            sandbox_id: SandboxId::new_v4(),
+            profile_name: "vm0/default".into(),
+            budget_lease: lease,
+            source_ip: "10.0.0.1".into(),
+            parked_at: std::time::Instant::now(),
+            idle_timeout: Duration::from_secs(300),
+            storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
+        };
+
+        entry.stop_and_destroy().await;
+
+        assert_eq!(destroy_count.load(Ordering::SeqCst), 1);
         assert_eq!(budget.allocated(), (0, 0, 0));
     }
 
@@ -3505,6 +3669,38 @@ mod tests {
         shutdown(&env, run_handle).await;
     }
 
+    #[tokio::test(start_paused = true)]
+    async fn active_destroy_panic_still_reports_completion_and_releases_budget() {
+        let (config, env) = build_mock_run_config_with_runtime(
+            test_profiles(),
+            8,
+            32768,
+            4,
+            MockJobProvider::new,
+            Box::new(PanickingDestroyRuntime),
+            "http://localhost:0",
+        );
+        let budget = Arc::clone(&config.budget);
+        let run_handle = tokio::spawn(run(config));
+
+        let run_id = RunId::new_v4();
+        push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
+
+        let completion = env
+            .handle
+            .wait_completion(run_id, Duration::from_secs(5))
+            .await;
+        assert!(
+            completion.is_some(),
+            "destroy panic must not skip provider.complete"
+        );
+        assert_eq!(completion.unwrap().exit_code, 0);
+
+        wait_budget_count(&budget, 0, Duration::from_secs(5)).await;
+
+        shutdown(&env, run_handle).await;
+    }
+
     // -----------------------------------------------------------------------
     // Test 12: Park notification triggers immediate heartbeat
     // -----------------------------------------------------------------------
@@ -4523,6 +4719,83 @@ mod tests {
             1,
             "park() should have been attempted exactly once"
         );
+
+        shutdown(&env, run_handle).await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn pool_full_rejected_vm_keeps_budget_until_destroy_and_completion() {
+        let hooks = BlockingDestroyHooks::new();
+        let (config, env) = build_mock_run_config_with_runtime(
+            test_profiles(),
+            8,
+            16384,
+            4,
+            MockJobProvider::new,
+            Box::new(BlockingDestroyRuntime {
+                hooks: hooks.clone(),
+            }),
+            "http://localhost:0",
+        );
+        let budget = Arc::clone(&config.budget);
+        let idle_pool = Arc::clone(&config.idle_pool);
+        {
+            let mut pool = idle_pool.lock().await;
+            *pool = IdlePool::new(IdlePoolConfig {
+                default_timeout: Duration::from_secs(300),
+                max_idle: 1,
+            });
+        }
+        seed_idle_pool(&idle_pool, &budget, "sess-existing", "vm0/default", 2, 4096).await;
+        assert_eq!(budget.allocated().2, 1, "seeded idle entry holds budget");
+
+        let destroy_entered = hooks.entered.notified();
+        tokio::pin!(destroy_entered);
+        destroy_entered.as_mut().enable();
+        let run_handle = tokio::spawn(run(config));
+
+        let run_id = RunId::new_v4();
+        push_job(
+            &env,
+            run_id,
+            "vm0/default",
+            Some(context_with_session(run_id, "sess-rejected")),
+        );
+
+        tokio::time::timeout(Duration::from_secs(5), destroy_entered)
+            .await
+            .expect("pool-full destroy should start");
+        assert_eq!(
+            hooks.destroy_count.load(Ordering::SeqCst),
+            1,
+            "rejected VM should be sent to destroy"
+        );
+        assert_eq!(
+            budget.allocated().2,
+            2,
+            "rejected active VM must retain its budget while destroy is in-flight"
+        );
+        {
+            let completions = env.handle.completions.lock().unwrap();
+            assert!(
+                !completions.iter().any(|c| c.run_id == run_id),
+                "provider.complete must wait until rejected VM destroy finishes"
+            );
+        }
+
+        hooks.release.notify_waiters();
+        let c = env
+            .handle
+            .wait_completion(run_id, Duration::from_secs(5))
+            .await;
+        assert!(c.is_some(), "job should complete after rejected VM destroy");
+        assert_eq!(c.unwrap().exit_code, 0);
+
+        wait_budget_count(&budget, 1, Duration::from_secs(2)).await;
+        let pool = idle_pool.lock().await;
+        assert_eq!(pool.len(), 1);
+        assert_eq!(pool.held_sessions(), vec!["sess-existing"]);
+        drop(pool);
 
         shutdown(&env, run_handle).await;
     }

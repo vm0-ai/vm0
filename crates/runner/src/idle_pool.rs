@@ -1,7 +1,9 @@
 use std::collections::HashMap;
+use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use futures_util::FutureExt;
 use sandbox::{Sandbox, SandboxFactory, SandboxId};
 
 use crate::resource_budget::BudgetLease;
@@ -109,10 +111,18 @@ impl IdleDestroyPayload {
     /// Stop the sandbox and destroy it via its factory.
     pub async fn stop_and_destroy(self) {
         let mut sandbox = self.sandbox;
-        if let Err(e) = sandbox.stop().await {
-            tracing::warn!(error = %e, "failed to stop idle sandbox");
+        match AssertUnwindSafe(sandbox.stop()).catch_unwind().await {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => tracing::warn!(error = %e, "failed to stop idle sandbox"),
+            Err(_) => tracing::warn!("idle sandbox stop panicked"),
         }
-        self.factory.destroy(sandbox).await;
+        if AssertUnwindSafe(self.factory.destroy(sandbox))
+            .catch_unwind()
+            .await
+            .is_err()
+        {
+            tracing::warn!("idle sandbox destroy panicked");
+        }
     }
 }
 
