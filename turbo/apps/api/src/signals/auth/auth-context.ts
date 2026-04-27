@@ -183,7 +183,10 @@ const resolvedAuthContext$ = command(
     if (isPatToken(token)) {
       const cliAuth = verifyCliToken(token);
       if (cliAuth) {
-        return await set(cliAuth$, cliAuth, signal);
+        const result = await set(cliAuth$, cliAuth, signal);
+        if (result) {
+          return result;
+        }
       }
     } else if (isSandboxToken(token)) {
       const cliAuth = verifyCliToken(token);
@@ -193,7 +196,10 @@ const resolvedAuthContext$ = command(
           return result;
         }
       } else {
-        return await set(cliAuth$, cliAuth, signal);
+        const result = await set(cliAuth$, cliAuth, signal);
+        if (result) {
+          return result;
+        }
       }
     }
 
