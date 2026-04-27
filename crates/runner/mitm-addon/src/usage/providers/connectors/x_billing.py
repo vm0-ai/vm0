@@ -264,7 +264,7 @@ def classify_includes_bucket(key: str) -> str | None:
 # scheme-less URLs.
 _URL_PRECEDING_CHARS = r"A-Za-z0-9@\uFF20$#\uFF03"
 _URL_WITH_PROTOCOL_RE = re.compile(rf"(?<![{_URL_PRECEDING_CHARS}])https?://", re.IGNORECASE)
-_BARE_DOMAIN_DELIMITERS = r"\s<>()\[\]{}\"'`,;!?#@$_"
+_BARE_DOMAIN_DELIMITERS = r"\s<>()\[\]{}\"'`,;:!?#@$_"
 _BARE_DOMAIN_CANDIDATE_RE = re.compile(
     rf"(?<![{_URL_PRECEDING_CHARS}._/-])"
     rf"([^{_BARE_DOMAIN_DELIMITERS}]*\.[^{_BARE_DOMAIN_DELIMITERS}]+)",
@@ -287,12 +287,6 @@ def _host_from_bare_domain_candidate(candidate: str) -> str | None:
     host = host.rstrip(_URL_TRAILING_PUNCTUATION)
     if not host:
         return None
-
-    if ":" in host:
-        maybe_host, maybe_port = host.rsplit(":", maxsplit=1)
-        if not maybe_host or not maybe_port.isdecimal():
-            return None
-        host = maybe_host
 
     return host.rstrip(".")
 

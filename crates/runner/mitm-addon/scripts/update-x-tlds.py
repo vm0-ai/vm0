@@ -5,14 +5,17 @@ from __future__ import annotations
 
 import argparse
 import difflib
+import http.client
 import importlib.util
 import re
 import sys
-import urllib.request
+from http import HTTPStatus
 from pathlib import Path
 from types import ModuleType
 
-SOURCE_URL = "https://data.iana.org/TLD/tlds-alpha-by-domain.txt"
+SOURCE_HOST = "data.iana.org"
+SOURCE_PATH = "/TLD/tlds-alpha-by-domain.txt"
+SOURCE_URL = f"https://{SOURCE_HOST}{SOURCE_PATH}"
 FETCH_TIMEOUT_SECONDS = 30
 ADDON_ROOT = Path(__file__).resolve().parents[1]
 OUTPUT_PATH = ADDON_ROOT / "src/usage/providers/connectors/x_tlds.py"
@@ -21,9 +24,15 @@ TLD_RE = re.compile(r"^[a-z0-9-]+$")
 
 
 def fetch_source() -> str:
-    # Fixed upstream HTTPS URL; callers cannot provide an arbitrary scheme.
-    with urllib.request.urlopen(SOURCE_URL, timeout=FETCH_TIMEOUT_SECONDS) as response:  # noqa: S310
+    connection = http.client.HTTPSConnection(SOURCE_HOST, timeout=FETCH_TIMEOUT_SECONDS)
+    try:
+        connection.request("GET", SOURCE_PATH, headers={"User-Agent": "vm0-mitm-addon-tld-updater"})
+        response = connection.getresponse()
+        if response.status != HTTPStatus.OK:
+            raise RuntimeError(f"failed to fetch {SOURCE_URL}: HTTP {response.status}")
         return response.read().decode("utf-8")
+    finally:
+        connection.close()
 
 
 def parse_source(source: str) -> tuple[str, tuple[str, ...]]:
