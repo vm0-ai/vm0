@@ -143,8 +143,8 @@ def write_generated_module(contents: str) -> None:
             delete=False,
             encoding="utf-8",
         ) as tmp_file:
-            tmp_file.write(contents)
             tmp_path = Path(tmp_file.name)
+            tmp_file.write(contents)
         tmp_path.replace(OUTPUT_PATH)
     finally:
         if tmp_path is not None and tmp_path.exists():
