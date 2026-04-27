@@ -148,6 +148,47 @@ pub(crate) async fn create_snapshot(
             LOG_TAG,
             "Version already exists (deduplicated), updating HEAD"
         );
+        log_info!(LOG_TAG, "Validating deduplicated artifact inputs...");
+        let validate_start = std::time::Instant::now();
+        let validate_mount = mount_path.to_string();
+        let validate_files = files.clone();
+        let validate_result = match tokio::task::spawn_blocking(move || {
+            validate_archive_inputs(&validate_mount, &validate_files)
+        })
+        .await
+        {
+            Ok(result) => result,
+            Err(e) => {
+                record_sandbox_op(
+                    "artifact_archive_validate",
+                    validate_start.elapsed(),
+                    false,
+                    None,
+                );
+                return Err(AgentError::Execution(format!(
+                    "archive validation task panicked: {e}"
+                )));
+            }
+        };
+        if let Err(e) = validate_result {
+            log_error!(LOG_TAG, "Failed to validate deduplicated archive: {e}");
+            record_sandbox_op(
+                "artifact_archive_validate",
+                validate_start.elapsed(),
+                false,
+                None,
+            );
+            return Err(AgentError::Checkpoint(
+                "Failed to validate archive inputs".into(),
+            ));
+        }
+        record_sandbox_op(
+            "artifact_archive_validate",
+            validate_start.elapsed(),
+            true,
+            None,
+        );
+
         let mut commit_payload = json!({
             "storageName": storage_name,
             "storageType": storage_type,
@@ -298,14 +339,32 @@ pub(crate) async fn create_snapshot(
 }
 
 /// Walk directory and compute SHA-256 for each file, skipping `.git` and `.vm0`.
+#[cfg(unix)]
 pub(crate) fn collect_file_metadata(dir_path: &str) -> Vec<FileEntry> {
     let mut files = Vec::new();
-    walk_dir(dir_path, "", &mut files);
+    let root = match open_archive_dir(Path::new(dir_path)) {
+        Ok(root) => root,
+        Err(e) => {
+            log_warn!(LOG_TAG, "Could not read artifact root {dir_path}: {e}");
+            return files;
+        }
+    };
+    walk_dir(&root, "", &mut files);
     files
 }
 
-fn walk_dir(current: &str, relative: &str, out: &mut Vec<FileEntry>) {
-    let entries = match std::fs::read_dir(current) {
+#[cfg(not(unix))]
+pub(crate) fn collect_file_metadata(dir_path: &str) -> Vec<FileEntry> {
+    log_warn!(
+        LOG_TAG,
+        "Artifact metadata collection requires Unix no-follow path opening: {dir_path}"
+    );
+    Vec::new()
+}
+
+#[cfg(unix)]
+fn walk_dir(current: &File, relative: &str, out: &mut Vec<FileEntry>) {
+    let entries = match read_dir_fd(current) {
         Ok(e) => e,
         Err(_) => return,
     };
@@ -316,50 +375,50 @@ fn walk_dir(current: &str, relative: &str, out: &mut Vec<FileEntry>) {
             continue;
         }
 
-        // Use file_type() which does NOT follow symlinks (uses d_type from getdents64
-        // on Linux, no extra syscall). This avoids the manifest/archive mismatch where
-        // is_file()/is_dir() follow symlinks but tar stores them as symlink entries.
-        let ft = match entry.file_type() {
-            Ok(ft) => ft,
-            Err(_) => continue,
-        };
-        if ft.is_symlink() {
-            continue; // Skip symlinks — v1 manifest cannot represent them
-        }
-
-        let full = entry.path();
         let rel = if relative.is_empty() {
             name_str.to_string()
         } else {
             format!("{relative}/{name_str}")
         };
 
-        if ft.is_dir() {
-            if let Some(s) = full.to_str() {
-                walk_dir(s, &rel, out);
-            }
-        } else if ft.is_file() {
-            match compute_file_hash(&full) {
-                Ok((hash, size)) => out.push(FileEntry {
-                    path: rel,
-                    hash,
-                    size,
-                }),
-                Err(e) => {
-                    log_warn!(LOG_TAG, "Could not process file {rel}: {e}");
-                }
+        if let Ok(dir) = open_archive_child_dir(current, &name) {
+            walk_dir(&dir, &rel, out);
+            continue;
+        }
+
+        let Ok(file) = open_archive_child_file(current, &name) else {
+            continue;
+        };
+        let Ok(metadata) = file.metadata() else {
+            continue;
+        };
+        if !metadata.is_file() {
+            continue;
+        }
+        match compute_file_hash_from_reader(file) {
+            Ok((hash, size)) => out.push(FileEntry {
+                path: rel,
+                hash,
+                size,
+            }),
+            Err(e) => {
+                log_warn!(LOG_TAG, "Could not process file {rel}: {e}");
             }
         }
     }
 }
 
+#[cfg(test)]
 fn compute_file_hash(path: &Path) -> Result<(String, u64), std::io::Error> {
-    let mut file = std::fs::File::open(path)?;
+    compute_file_hash_from_reader(std::fs::File::open(path)?)
+}
+
+fn compute_file_hash_from_reader(mut reader: impl Read) -> Result<(String, u64), std::io::Error> {
     let mut hasher = Sha256::new();
     let mut buf = [0u8; 8192];
     let mut total = 0u64;
     loop {
-        let n = file.read(&mut buf)?;
+        let n = reader.read(&mut buf)?;
         if n == 0 {
             break;
         }
@@ -401,6 +460,8 @@ enum ArchiveError {
     Open { path: String, source: io::Error },
     #[error("failed to append {path:?} to archive: {source}")]
     Append { path: String, source: io::Error },
+    #[error("failed to verify archived content for {path:?}: {source}")]
+    Verify { path: String, source: io::Error },
     #[error("failed to finish tar archive: {source}")]
     FinishTar { source: io::Error },
     #[error("failed to finish gzip stream: {source}")]
@@ -439,11 +500,74 @@ fn create_archive(
     Ok(())
 }
 
+fn validate_archive_inputs(dir_path: &str, files: &[FileEntry]) -> Result<(), ArchiveError> {
+    let root = Path::new(dir_path);
+    for file in files {
+        validate_archive_file(root, file)?;
+    }
+    Ok(())
+}
+
+fn validate_archive_file(root: &Path, entry: &FileEntry) -> Result<(), ArchiveError> {
+    let (file, _) = open_manifest_file(root, entry)?;
+    let mut reader = ArchiveFileReader::new(file, entry.size);
+    io::copy(&mut reader, &mut io::sink()).map_err(|source| ArchiveError::Verify {
+        path: entry.path.clone(),
+        source,
+    })?;
+    let actual_hash = reader
+        .finish_hash()
+        .map_err(|source| ArchiveError::Verify {
+            path: entry.path.clone(),
+            source,
+        })?;
+    if actual_hash != entry.hash {
+        return Err(ArchiveError::HashMismatch {
+            path: entry.path.clone(),
+            expected: entry.hash.clone(),
+            actual: actual_hash,
+        });
+    }
+    Ok(())
+}
+
 fn append_archive_file<W: io::Write>(
     root: &Path,
     builder: &mut tar::Builder<W>,
     entry: &FileEntry,
 ) -> Result<(), ArchiveError> {
+    let (file, metadata) = open_manifest_file(root, entry)?;
+
+    let mut header = tar::Header::new_gnu();
+    header.set_metadata(&metadata);
+    header.set_entry_type(tar::EntryType::Regular);
+    header.set_mode(archive_mode(&metadata));
+    header.set_size(entry.size);
+    header.set_cksum();
+    let mut reader = ArchiveFileReader::new(file, entry.size);
+    builder
+        .append_data(&mut header, Path::new(entry.path.as_str()), &mut reader)
+        .map_err(|source| ArchiveError::Append {
+            path: entry.path.clone(),
+            source,
+        })?;
+    let actual_hash = reader
+        .finish_hash()
+        .map_err(|source| ArchiveError::Verify {
+            path: entry.path.clone(),
+            source,
+        })?;
+    if actual_hash != entry.hash {
+        return Err(ArchiveError::HashMismatch {
+            path: entry.path.clone(),
+            expected: entry.hash.clone(),
+            actual: actual_hash,
+        });
+    }
+    Ok(())
+}
+
+fn open_manifest_file(root: &Path, entry: &FileEntry) -> Result<(File, Metadata), ArchiveError> {
     let file_path = entry.path.as_str();
     let rel_path = archive_relative_path(file_path)?;
     let full_path = root.join(rel_path);
@@ -479,28 +603,7 @@ fn append_archive_file<W: io::Write>(
         });
     }
 
-    let mut header = tar::Header::new_gnu();
-    header.set_metadata(&metadata);
-    header.set_entry_type(tar::EntryType::Regular);
-    header.set_mode(archive_mode(&metadata));
-    header.set_size(entry.size);
-    header.set_cksum();
-    let mut reader = ArchiveFileReader::new(file, entry.size);
-    builder
-        .append_data(&mut header, rel_path, &mut reader)
-        .map_err(|source| ArchiveError::Append {
-            path: file_path.to_string(),
-            source,
-        })?;
-    let actual_hash = reader.finish_hash();
-    if actual_hash != entry.hash {
-        return Err(ArchiveError::HashMismatch {
-            path: file_path.to_string(),
-            expected: entry.hash.clone(),
-            actual: actual_hash,
-        });
-    }
-    Ok(())
+    Ok((file, metadata))
 }
 
 fn archive_relative_path(path: &str) -> Result<&Path, ArchiveError> {
@@ -545,8 +648,26 @@ impl<R> ArchiveFileReader<R> {
         }
     }
 
-    fn finish_hash(self) -> String {
-        hex::encode(self.hasher.finalize())
+    fn finish_hash(mut self) -> io::Result<String>
+    where
+        R: Read,
+    {
+        if self.remaining != 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "file ended before manifest size was fully archived",
+            ));
+        }
+
+        let mut extra = [0u8; 1];
+        if self.inner.read(&mut extra)? != 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "file grew after manifest size was verified",
+            ));
+        }
+
+        Ok(hex::encode(self.hasher.finalize()))
     }
 }
 
@@ -586,17 +707,59 @@ fn archive_mode(metadata: &Metadata) -> u32 {
 }
 
 #[cfg(unix)]
-fn open_archive_file(root: &Path, rel_path: &Path) -> io::Result<File> {
-    use std::ffi::CString;
+fn read_dir_fd(dir: &File) -> io::Result<fs::ReadDir> {
+    use std::os::fd::AsRawFd;
+
+    fs::read_dir(PathBuf::from(format!("/proc/self/fd/{}", dir.as_raw_fd())))
+}
+
+#[cfg(unix)]
+fn open_archive_dir(path: &Path) -> io::Result<File> {
     use std::fs::OpenOptions;
-    use std::os::fd::{AsRawFd, FromRawFd};
-    use std::os::unix::ffi::OsStrExt;
     use std::os::unix::fs::OpenOptionsExt;
 
-    let mut dir = OpenOptions::new()
+    OpenOptions::new()
         .read(true)
         .custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC)
-        .open(root)?;
+        .open(path)
+}
+
+#[cfg(unix)]
+fn open_archive_child_dir(parent: &File, name: &std::ffi::OsStr) -> io::Result<File> {
+    open_archive_child(
+        parent,
+        name,
+        libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+    )
+}
+
+#[cfg(unix)]
+fn open_archive_child_file(parent: &File, name: &std::ffi::OsStr) -> io::Result<File> {
+    open_archive_child(
+        parent,
+        name,
+        libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_CLOEXEC | libc::O_NONBLOCK,
+    )
+}
+
+#[cfg(unix)]
+fn open_archive_child(parent: &File, name: &std::ffi::OsStr, flags: i32) -> io::Result<File> {
+    use std::ffi::CString;
+    use std::os::fd::{AsRawFd, FromRawFd};
+    use std::os::unix::ffi::OsStrExt;
+
+    let name = CString::new(name.as_bytes())
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+    let fd = unsafe { libc::openat(parent.as_raw_fd(), name.as_ptr(), flags) };
+    if fd < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(unsafe { File::from_raw_fd(fd) })
+}
+
+#[cfg(unix)]
+fn open_archive_file(root: &Path, rel_path: &Path) -> io::Result<File> {
+    let mut dir = open_archive_dir(root)?;
     let mut components = rel_path.components().peekable();
 
     while let Some(component) = components.next() {
@@ -606,23 +769,12 @@ fn open_archive_file(root: &Path, rel_path: &Path) -> io::Result<File> {
                 "archive path contains non-normal component",
             ));
         };
-        let name = CString::new(name.as_bytes())
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
         let is_last = components.peek().is_none();
-        let flags = if is_last {
-            libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_CLOEXEC
-        } else {
-            libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC
-        };
-        let fd = unsafe { libc::openat(dir.as_raw_fd(), name.as_ptr(), flags) };
-        if fd < 0 {
-            return Err(io::Error::last_os_error());
-        }
-        let file = unsafe { File::from_raw_fd(fd) };
         if is_last {
-            return Ok(file);
+            return open_archive_child_file(&dir, name);
+        } else {
+            dir = open_archive_child_dir(&dir, name)?;
         }
-        dir = file;
     }
 
     Err(io::Error::new(
@@ -642,6 +794,9 @@ fn open_archive_file(_root: &Path, _rel_path: &Path) -> io::Result<File> {
 #[cfg(all(test, unix))]
 mod tests {
     use super::*;
+    use std::ffi::CString;
+    use std::io::Cursor;
+    use std::os::unix::ffi::OsStrExt;
     use std::os::unix::fs as unix_fs;
     use std::os::unix::fs::{MetadataExt, PermissionsExt};
 
@@ -650,6 +805,17 @@ mod tests {
         let decoder = flate2::read::GzDecoder::new(file);
         let mut archive = tar::Archive::new(decoder);
         archive.unpack(extract_dir)
+    }
+
+    fn make_fifo(path: &Path) -> io::Result<()> {
+        let path = CString::new(path.as_os_str().as_bytes())
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+        let rc = unsafe { libc::mkfifo(path.as_ptr(), 0o644) };
+        if rc == 0 {
+            Ok(())
+        } else {
+            Err(io::Error::last_os_error())
+        }
     }
 
     #[test]
@@ -685,6 +851,21 @@ mod tests {
 
         // link_dir contents should NOT appear (symlink dir skipped, not followed)
         assert!(!paths.iter().any(|p| p.starts_with("link_dir/")));
+    }
+
+    #[test]
+    fn walk_dir_skips_fifo() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        std::fs::write(root.join("real.txt"), "hello").unwrap();
+        make_fifo(&root.join("pipe")).unwrap();
+
+        let files = collect_file_metadata(root.to_str().unwrap());
+        let paths: Vec<&str> = files.iter().map(|f| f.path.as_str()).collect();
+
+        assert!(paths.contains(&"real.txt"));
+        assert!(!paths.contains(&"pipe"));
     }
 
     #[test]
@@ -869,6 +1050,18 @@ mod tests {
     }
 
     #[test]
+    fn archive_reader_rejects_extra_bytes_after_declared_size() {
+        let mut reader = ArchiveFileReader::new(Cursor::new(b"abcdef".as_slice()), 3);
+        let mut archived = Vec::new();
+
+        io::copy(&mut reader, &mut archived).unwrap();
+        let err = reader.finish_hash().unwrap_err();
+
+        assert_eq!(archived, b"abc");
+        assert!(err.to_string().contains("file grew"), "got: {err}");
+    }
+
+    #[test]
     fn archive_fails_if_listed_file_becomes_symlink() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
@@ -886,6 +1079,31 @@ mod tests {
 
         std::fs::remove_file(root.join("target.txt")).unwrap();
         unix_fs::symlink(root.join("outside.txt"), root.join("target.txt")).unwrap();
+
+        let tar_path = dir.path().join("archive.tar.gz");
+        let err = create_archive(root.to_str().unwrap(), &tar_path, &archive_files).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("target.txt"), "got: {msg}");
+        assert!(msg.contains("not a regular file"), "got: {msg}");
+    }
+
+    #[test]
+    fn archive_fails_if_listed_file_becomes_fifo() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        std::fs::write(root.join("target.txt"), "before").unwrap();
+        let files = collect_file_metadata(root.to_str().unwrap());
+        let archive_files: Vec<FileEntry> = files
+            .iter()
+            .filter(|f| f.path == "target.txt")
+            .cloned()
+            .collect();
+        let paths: Vec<&str> = archive_files.iter().map(|f| f.path.as_str()).collect();
+        assert_eq!(paths, vec!["target.txt"]);
+
+        std::fs::remove_file(root.join("target.txt")).unwrap();
+        make_fifo(&root.join("target.txt")).unwrap();
 
         let tar_path = dir.path().join("archive.tar.gz");
         let err = create_archive(root.to_str().unwrap(), &tar_path, &archive_files).unwrap_err();
