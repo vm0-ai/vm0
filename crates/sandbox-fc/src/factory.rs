@@ -158,18 +158,19 @@ async fn drain_leaked_resources_with_cleanup<C, Fut>(
 {
     loop {
         tokio::select! {
-            maybe_leaked = rx.recv() => {
-                let Some(leaked) = maybe_leaked else {
-                    break;
-                };
-                cleanup(leaked).await;
-            }
+            biased;
             _ = &mut shutdown_rx => {
                 rx.close();
                 while let Some(leaked) = rx.recv().await {
                     cleanup(leaked).await;
                 }
                 break;
+            }
+            maybe_leaked = rx.recv() => {
+                let Some(leaked) = maybe_leaked else {
+                    break;
+                };
+                cleanup(leaked).await;
             }
         }
     }
