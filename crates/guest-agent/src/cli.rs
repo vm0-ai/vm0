@@ -579,6 +579,34 @@ pub async fn execute_cli(
 mod tests {
     use super::*;
 
+    fn disable_system_log() {
+        guest_common::log::clear_system_log_file();
+    }
+
+    fn build_claude_args_for_test(
+        resume_id: &str,
+        append_system_prompt: &str,
+        disallowed_tools: &str,
+        tools: &str,
+        settings: &str,
+        prompt: &str,
+    ) -> Vec<String> {
+        disable_system_log();
+        build_claude_args(
+            resume_id,
+            append_system_prompt,
+            disallowed_tools,
+            tools,
+            settings,
+            prompt,
+        )
+    }
+
+    fn build_claude_command_for_test(use_mock: bool) -> Vec<String> {
+        disable_system_log();
+        build_claude_command(use_mock)
+    }
+
     /// Assert prompt is last and preceded by "--" separator.
     fn assert_prompt_with_separator(args: &[String], expected_prompt: &str) {
         let len = args.len();
@@ -593,7 +621,7 @@ mod tests {
 
     #[test]
     fn build_claude_args_basic() {
-        let args = build_claude_args("", "", "", "", "", "hello world");
+        let args = build_claude_args_for_test("", "", "", "", "", "hello world");
         assert!(args.contains(&"--print".to_string()));
         assert!(args.contains(&"--dangerously-skip-permissions".to_string()));
         assert_prompt_with_separator(&args, "hello world");
@@ -603,7 +631,7 @@ mod tests {
 
     #[test]
     fn build_claude_args_with_append_system_prompt() {
-        let args = build_claude_args("", "Your name is Aria.", "", "", "", "analyze this");
+        let args = build_claude_args_for_test("", "Your name is Aria.", "", "", "", "analyze this");
         let asp_idx = args
             .iter()
             .position(|a| a == "--append-system-prompt")
@@ -614,13 +642,13 @@ mod tests {
 
     #[test]
     fn build_claude_args_empty_append_system_prompt_omitted() {
-        let args = build_claude_args("", "", "", "", "", "test");
+        let args = build_claude_args_for_test("", "", "", "", "", "test");
         assert!(!args.contains(&"--append-system-prompt".to_string()));
     }
 
     #[test]
     fn build_claude_args_with_resume_and_append() {
-        let args = build_claude_args("sess-123", "Be helpful.", "", "", "", "prompt");
+        let args = build_claude_args_for_test("sess-123", "Be helpful.", "", "", "", "prompt");
         assert!(args.contains(&"--resume".to_string()));
         assert!(args.contains(&"--append-system-prompt".to_string()));
         assert_prompt_with_separator(&args, "prompt");
@@ -628,7 +656,7 @@ mod tests {
 
     #[test]
     fn build_claude_command_uses_claude_binary() {
-        let cmd = build_claude_command(false);
+        let cmd = build_claude_command_for_test(false);
         assert_eq!(cmd[0], "claude");
     }
 
@@ -640,13 +668,14 @@ mod tests {
         // against the const (not the accessor) catches regressions in
         // the default path itself — the previous form compared the
         // accessor against itself and was tautological.
-        let cmd = build_claude_command(true);
+        let cmd = build_claude_command_for_test(true);
         assert_eq!(cmd[0], env::DEFAULT_MOCK_CLAUDE_PATH);
     }
 
     #[test]
     fn build_claude_args_with_disallowed_tools() {
-        let args = build_claude_args("", "", "CronCreate,CronDelete,CronList", "", "", "hello");
+        let args =
+            build_claude_args_for_test("", "", "CronCreate,CronDelete,CronList", "", "", "hello");
         let dt_idx = args.iter().position(|a| a == "--disallowed-tools").unwrap();
         assert_eq!(args[dt_idx + 1], "CronCreate");
         assert_eq!(args[dt_idx + 2], "CronDelete");
@@ -657,13 +686,13 @@ mod tests {
 
     #[test]
     fn build_claude_args_empty_disallowed_tools_omitted() {
-        let args = build_claude_args("", "", "", "", "", "test");
+        let args = build_claude_args_for_test("", "", "", "", "", "test");
         assert!(!args.contains(&"--disallowed-tools".to_string()));
     }
 
     #[test]
     fn build_claude_args_with_tools() {
-        let args = build_claude_args("", "", "", "Bash,Edit,Read", "", "hello");
+        let args = build_claude_args_for_test("", "", "", "Bash,Edit,Read", "", "hello");
         let t_idx = args.iter().position(|a| a == "--tools").unwrap();
         assert_eq!(args[t_idx + 1], "Bash");
         assert_eq!(args[t_idx + 2], "Edit");
@@ -674,13 +703,13 @@ mod tests {
 
     #[test]
     fn build_claude_args_empty_tools_omitted() {
-        let args = build_claude_args("", "", "", "", "", "test");
+        let args = build_claude_args_for_test("", "", "", "", "", "test");
         assert!(!args.contains(&"--tools".to_string()));
     }
 
     #[test]
     fn build_claude_args_with_settings() {
-        let args = build_claude_args("", "", "", "", r#"{"hooks":{}}"#, "hello");
+        let args = build_claude_args_for_test("", "", "", "", r#"{"hooks":{}}"#, "hello");
         let s_idx = args.iter().position(|a| a == "--settings").unwrap();
         assert_eq!(args[s_idx + 1], r#"{"hooks":{}}"#);
         assert_prompt_with_separator(&args, "hello");
@@ -688,13 +717,13 @@ mod tests {
 
     #[test]
     fn build_claude_args_empty_settings_omitted() {
-        let args = build_claude_args("", "", "", "", "", "test");
+        let args = build_claude_args_for_test("", "", "", "", "", "test");
         assert!(!args.contains(&"--settings".to_string()));
     }
 
     #[test]
     fn build_claude_args_all_options_combined() {
-        let args = build_claude_args(
+        let args = build_claude_args_for_test(
             "sess-abc",
             "Be concise.",
             "CronCreate,CronDelete",
@@ -723,7 +752,7 @@ mod tests {
 
     #[test]
     fn build_claude_args_disallowed_tools_whitespace_trimmed() {
-        let args = build_claude_args("", "", " CronCreate , CronDelete ", "", "", "test");
+        let args = build_claude_args_for_test("", "", " CronCreate , CronDelete ", "", "", "test");
         let dt_idx = args.iter().position(|a| a == "--disallowed-tools").unwrap();
         assert_eq!(args[dt_idx + 1], "CronCreate");
         assert_eq!(args[dt_idx + 2], "CronDelete");
@@ -731,7 +760,7 @@ mod tests {
 
     #[test]
     fn build_claude_args_tools_whitespace_trimmed() {
-        let args = build_claude_args("", "", "", " Bash , Read ", "", "test");
+        let args = build_claude_args_for_test("", "", "", " Bash , Read ", "", "test");
         let t_idx = args.iter().position(|a| a == "--tools").unwrap();
         assert_eq!(args[t_idx + 1], "Bash");
         assert_eq!(args[t_idx + 2], "Read");
@@ -740,7 +769,7 @@ mod tests {
     #[test]
     fn build_claude_args_disallowed_tools_empty_items_skipped() {
         // Trailing comma produces an empty token that should be skipped
-        let args = build_claude_args("", "", "CronCreate,,CronDelete,", "", "", "test");
+        let args = build_claude_args_for_test("", "", "CronCreate,,CronDelete,", "", "", "test");
         let dt_idx = args.iter().position(|a| a == "--disallowed-tools").unwrap();
         // Only non-empty tools should be present
         let tool_args: Vec<&str> = args[dt_idx + 1..]
@@ -753,7 +782,7 @@ mod tests {
 
     #[test]
     fn build_claude_args_prompt_always_last() {
-        let args = build_claude_args("", "", "", "", "", "my prompt");
+        let args = build_claude_args_for_test("", "", "", "", "", "my prompt");
         assert_eq!(args.last().unwrap(), "my prompt");
     }
 

@@ -827,6 +827,10 @@ mod tests {
         server
     });
 
+    fn disable_system_log() {
+        guest_common::log::clear_system_log_file();
+    }
+
     #[test]
     fn walk_dir_skips_symlinks() {
         let dir = tempfile::tempdir().unwrap();
@@ -1197,6 +1201,7 @@ mod tests {
 
     #[tokio::test]
     async fn dedup_snapshot_validation_failure_does_not_commit() {
+        disable_system_log();
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
         std::fs::write(root.join("target.txt"), "before").unwrap();
@@ -1412,6 +1417,7 @@ mod tests {
 
     #[test]
     fn collect_file_metadata_nonexistent_dir() {
+        disable_system_log();
         let files = collect_file_metadata("/nonexistent/path/that/does/not/exist");
         assert!(files.is_empty());
     }
