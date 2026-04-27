@@ -660,9 +660,10 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260419
     needs: [prepare]
-    # Deploy if job-ref is set (PR or main), not a release-please commit, not a merge queue run, and web, API, CLI, runner, or platform changed
+    # Deploy if job-ref is set (PR or main), not a release-please commit, and web, API, CLI, runner, or platform changed.
+    # Runs in merge queue too, but skips GitHub Deployment creation (the bobheadxi/deployments action
+    # cannot resolve the temporary `gh-readonly-queue/*` ref via the GitHub API).
     if: |
-      github.event_name != 'merge_group' &&
       (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
       needs.prepare.outputs.job-ref != '' && (
         needs.prepare.outputs.web-changed == 'true' ||
@@ -802,6 +803,7 @@ jobs:
       # Step 4: Deploy prebuilt artifacts with database URL
       - name: Start deployment
         id: deployment
+        if: github.event_name != 'merge_group'
         uses: bobheadxi/deployments@v1
         with:
           step: start
@@ -837,7 +839,7 @@ jobs:
 
       - name: Finish deployment
         uses: bobheadxi/deployments@v1
-        if: always() && !(github.event_name == 'pull_request' && vars.PREVIEW_DOMAIN != '')
+        if: always() && github.event_name != 'merge_group' && !(github.event_name == 'pull_request' && vars.PREVIEW_DOMAIN != '')
         with:
           step: finish
           token: ${{ github.token }}
@@ -895,7 +897,8 @@ jobs:
           environment-file: ${{ steps.api-deploy-env.outputs.file }}
           meta-branch: ${{ github.head_ref || github.ref_name }}
           meta-pr: ${{ needs.prepare.outputs.job-ref }}
-          skip-finish: ${{ github.event_name == 'pull_request' && vars.PREVIEW_DOMAIN != '' }}
+          skip-start: ${{ github.event_name == 'merge_group' }}
+          skip-finish: ${{ github.event_name == 'merge_group' || (github.event_name == 'pull_request' && vars.PREVIEW_DOMAIN != '') }}
 
       - name: Check API health
         if: needs.prepare.outputs.api-changed == 'true' || needs.prepare.outputs.ci-changed == 'true'
