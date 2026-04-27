@@ -965,7 +965,7 @@ async fn try_reuse_from_pool(
     };
     match taken {
         Some(mut entry) if entry.profile_name == profile_name => {
-            match entry.sandbox.unpark().await {
+            match unpark_sandbox_panic_safe(entry.sandbox.as_mut()).await {
                 Ok(()) => {
                     info!(
                         run_id = %run_id,
@@ -1211,7 +1211,7 @@ fn spawn_job(
                 // Inflate the guest balloon BEFORE acquiring the pool lock —
                 // the HTTP call to Firecracker can take milliseconds, and we
                 // must not block other take/park operations on it.
-                if let Err(e) = sandbox.park().await {
+                if let Err(e) = park_sandbox_panic_safe(sandbox.as_mut()).await {
                     warn!(
                         run_id = %run_id,
                         session_id,
@@ -1340,6 +1340,22 @@ fn spawn_job(
 
         Some(run_id)
     });
+}
+
+async fn park_sandbox_panic_safe(sandbox: &mut dyn Sandbox) -> Result<(), String> {
+    match AssertUnwindSafe(sandbox.park()).catch_unwind().await {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(e)) => Err(e.to_string()),
+        Err(_) => Err("sandbox park panicked".into()),
+    }
+}
+
+async fn unpark_sandbox_panic_safe(sandbox: &mut dyn Sandbox) -> Result<(), String> {
+    match AssertUnwindSafe(sandbox.unpark()).catch_unwind().await {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(e)) => Err(e.to_string()),
+        Err(_) => Err("sandbox unpark panicked".into()),
+    }
 }
 
 /// Drain the idle pool: destroy every entry in parallel and wait for all
@@ -3483,6 +3499,63 @@ mod tests {
         sandbox_id
     }
 
+    async fn seed_idle_pool_with_overrides(
+        pool: &SharedIdlePool,
+        budget: &Arc<ResourceBudget>,
+        overrides: &Arc<sandbox_mock::MockSandboxOverrides>,
+        session_id: &str,
+        profile_name: &str,
+        vcpu: u32,
+        memory_mb: u32,
+    ) -> SandboxId {
+        let runtime = sandbox_mock::MockSandboxRuntime::with_overrides(Arc::clone(overrides));
+        let mut factory = runtime
+            .create_factory(sandbox::FactoryConfig {
+                profile: profile_name.into(),
+                binary_path: PathBuf::new(),
+                kernel_path: PathBuf::new(),
+                rootfs_path: PathBuf::new(),
+                base_dir: PathBuf::new(),
+                snapshot: None,
+            })
+            .await
+            .expect("create factory");
+        factory.startup().await.expect("startup");
+        let factory_arc: Arc<Box<dyn sandbox::SandboxFactory>> = Arc::new(factory);
+        let sandbox_id = SandboxId::new_v4();
+        let sandbox = factory_arc
+            .create(sandbox::SandboxConfig {
+                id: sandbox_id,
+                resources: sandbox::ResourceLimits {
+                    cpu_count: vcpu,
+                    memory_mb,
+                },
+            })
+            .await
+            .expect("create sandbox");
+        let budget_lease =
+            ResourceBudget::try_reserve_lease(budget, vcpu, memory_mb).expect("reserve budget");
+
+        let mut guard = pool.lock().await;
+        let result = guard.park(
+            session_id.to_string(),
+            IdleEntry {
+                sandbox,
+                factory: factory_arc,
+                session_id: session_id.to_string(),
+                sandbox_id,
+                profile_name: profile_name.into(),
+                budget_lease,
+                source_ip: "10.0.0.1".into(),
+                parked_at: std::time::Instant::now(),
+                idle_timeout: Duration::from_secs(300),
+                storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
+            },
+        );
+        assert!(matches!(result, ParkResult::Parked));
+        sandbox_id
+    }
+
     /// Poll until `budget.allocated().2` (running_count) reaches `expected`.
     ///
     /// The active budget lease is dropped after `provider.complete()` in the
@@ -4724,6 +4797,38 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
+    async fn park_panic_destroys_sandbox_reports_completion_and_releases_budget() {
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        overrides.push_park_panic("simulated park panic");
+        let counter = Arc::clone(&overrides);
+        let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 16384, 4, overrides);
+        let budget = Arc::clone(&config.budget);
+        let idle_pool = Arc::clone(&config.idle_pool);
+        let run_handle = tokio::spawn(run(config));
+
+        let run_id = RunId::new_v4();
+        push_job(
+            &env,
+            run_id,
+            "vm0/default",
+            Some(context_with_session(run_id, "sess-park-panic")),
+        );
+
+        let c = env
+            .handle
+            .wait_completion(run_id, Duration::from_secs(5))
+            .await;
+        assert!(c.is_some(), "park panic must not skip provider.complete");
+        assert_eq!(c.unwrap().exit_code, 0);
+
+        wait_budget_count(&budget, 0, Duration::from_secs(2)).await;
+        assert_eq!(idle_pool.lock().await.len(), 0);
+        assert_eq!(counter.park_call_count(), 1);
+
+        shutdown(&env, run_handle).await;
+    }
+
+    #[tokio::test(start_paused = true)]
     async fn pool_full_rejected_vm_keeps_budget_until_destroy_and_completion() {
         let hooks = BlockingDestroyHooks::new();
         let (config, env) = build_mock_run_config_with_runtime(
@@ -4821,50 +4926,16 @@ mod tests {
 
         // Pre-seed via the factory so the seeded MockSandbox shares the
         // override set (and consumes the queued unpark error).
-        {
-            let mut pool = idle_pool.lock().await;
-            let runtime = sandbox_mock::MockSandboxRuntime::with_overrides(Arc::clone(&counter));
-            let mut factory = runtime
-                .create_factory(sandbox::FactoryConfig {
-                    profile: "vm0/default".into(),
-                    binary_path: PathBuf::new(),
-                    kernel_path: PathBuf::new(),
-                    rootfs_path: PathBuf::new(),
-                    base_dir: PathBuf::new(),
-                    snapshot: None,
-                })
-                .await
-                .expect("create factory");
-            factory.startup().await.expect("startup");
-            let factory_arc: Arc<Box<dyn sandbox::SandboxFactory>> = Arc::new(factory);
-            let sandbox = factory_arc
-                .create(sandbox::SandboxConfig {
-                    id: SandboxId::new_v4(),
-                    resources: sandbox::ResourceLimits {
-                        cpu_count: 2,
-                        memory_mb: 4096,
-                    },
-                })
-                .await
-                .expect("create sandbox");
-            let budget_lease =
-                ResourceBudget::try_reserve_lease(&budget, 2, 4096).expect("reserve seeded budget");
-            let _ = pool.park(
-                "sess-unpark-fail".to_string(),
-                IdleEntry {
-                    sandbox,
-                    factory: factory_arc,
-                    session_id: "sess-unpark-fail".to_string(),
-                    sandbox_id: SandboxId::new_v4(),
-                    profile_name: "vm0/default".into(),
-                    budget_lease,
-                    source_ip: "10.0.0.1".into(),
-                    parked_at: std::time::Instant::now(),
-                    idle_timeout: Duration::from_secs(300),
-                    storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
-                },
-            );
-        }
+        seed_idle_pool_with_overrides(
+            &idle_pool,
+            &budget,
+            &counter,
+            "sess-unpark-fail",
+            "vm0/default",
+            2,
+            4096,
+        )
+        .await;
         assert_eq!(idle_pool.lock().await.len(), 1, "pool seeded");
 
         let run_handle = tokio::spawn(run(config));
@@ -4905,6 +4976,52 @@ mod tests {
             1,
             "expected exactly one park (the fresh-create's)"
         );
+
+        shutdown(&env, run_handle).await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn unpark_panic_destroys_idle_entry_and_falls_through() {
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        let counter = Arc::clone(&overrides);
+        overrides.push_unpark_panic("simulated unpark panic");
+        let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 16384, 4, overrides);
+        let budget = Arc::clone(&config.budget);
+        let idle_pool = Arc::clone(&config.idle_pool);
+
+        seed_idle_pool_with_overrides(
+            &idle_pool,
+            &budget,
+            &counter,
+            "sess-unpark-panic",
+            "vm0/default",
+            2,
+            4096,
+        )
+        .await;
+
+        let run_handle = tokio::spawn(run(config));
+
+        let run_id = RunId::new_v4();
+        push_job(
+            &env,
+            run_id,
+            "vm0/default",
+            Some(context_with_session(run_id, "sess-unpark-panic")),
+        );
+
+        let c = env
+            .handle
+            .wait_completion(run_id, Duration::from_secs(5))
+            .await
+            .expect("fresh-create job should still complete");
+        assert_eq!(c.exit_code, 0);
+        assert_eq!(c.reuse_result, Some(SandboxReuseResult::UnparkFailed));
+
+        wait_budget_count(&budget, 1, Duration::from_secs(2)).await;
+        assert_eq!(counter.unpark_call_count(), 1);
+        assert_eq!(counter.park_call_count(), 1);
+        assert_eq!(idle_pool.lock().await.len(), 1);
 
         shutdown(&env, run_handle).await;
     }
