@@ -1,10 +1,10 @@
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import {
-  IconNetwork,
   IconChevronDown,
   IconChevronLeft,
   IconChevronRight,
 } from "@tabler/icons-react";
+import emptyInsightsImg from "../zero-page/assets/empty-insights.webp";
 import {
   Skeleton,
   Popover,
@@ -1120,13 +1120,11 @@ function InsightsContent({ data }: { data: NetworkInsightsData }) {
 
         {filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-3 py-20 text-center">
-            <div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center">
-              <IconNetwork
-                size={28}
-                stroke={1}
-                className="text-muted-foreground"
-              />
-            </div>
+            <img
+              src={emptyInsightsImg}
+              alt=""
+              className="h-20 w-20 object-contain opacity-80"
+            />
             <p className="text-sm text-muted-foreground max-w-xs">
               {data.days.length === 0
                 ? "Run an agent to see insights here."
