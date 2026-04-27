@@ -1096,8 +1096,8 @@ function InsightsContent({ data }: { data: NetworkInsightsData }) {
             <div>
               <h1 className="text-xl font-semibold">Insights</h1>
               <p className="text-sm text-muted-foreground mt-1">
-                Monitor what your agents access, which permissions they use,
-                and spot anything unusual.
+                Monitor what your agents access, which permissions they use, and
+                spot anything unusual.
               </p>
             </div>
             {data.days.length > 0 && (
