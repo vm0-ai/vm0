@@ -3,12 +3,6 @@ import {
   runUploadedFiles,
   type RunUploadedFileSource,
 } from "@vm0/db/schema/run-uploaded-file";
-import { logger } from "../../shared/logger";
-
-const log = logger("zero:uploads:run-uploaded-files");
-
-const UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 type RecordRunUploadedFileParams = {
   runId: string | undefined;
@@ -36,15 +30,6 @@ export async function recordRunUploadedFile({
   metadata,
 }: RecordRunUploadedFileParams): Promise<void> {
   if (!runId) return;
-
-  if (!UUID_PATTERN.test(runId)) {
-    log.warn("Skipping uploaded-file association for non-UUID run id", {
-      runId,
-      source,
-      externalId,
-    });
-    return;
-  }
 
   await globalThis.services.db
     .insert(runUploadedFiles)
