@@ -1,6 +1,5 @@
 import { env } from "../../env";
 import { logger } from "../shared/logger";
-import { DATASETS, getDatasetName, ingestToAxiom } from "../shared/axiom";
 
 import type { AuthContext } from "./get-auth-context";
 
@@ -217,7 +216,7 @@ function compare(
 
 /**
  * Shadow-call the new `/health/auth` probe with the same Bearer credential
- * the caller already presented and report any divergence to Axiom.
+ * the caller already presented and log a warning on any divergence.
  *
  * When a cookie is available, it is forwarded to the API so the probe can
  * fall through to Clerk session auth for requests where the Bearer token
@@ -235,7 +234,11 @@ export async function shadowCompareAuth(
     return;
   }
 
-  const apiResponse = await probeApi(apiUrl, options.authHeader, options.cookieHeader);
+  const apiResponse = await probeApi(
+    apiUrl,
+    options.authHeader,
+    options.cookieHeader,
+  );
   const event = compare(webResult, apiResponse, options.route);
 
   if (!event.consistent) {
@@ -244,8 +247,4 @@ export async function shadowCompareAuth(
       differences: event.differences,
     });
   }
-
-  ingestToAxiom(getDatasetName(DATASETS.AUTH_SHADOW), [
-    event as unknown as Record<string, unknown>,
-  ]);
 }
