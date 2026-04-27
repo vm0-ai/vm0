@@ -885,9 +885,9 @@ function createArtifacts(
     await get(groupedChatMessages$);
     get(internalArtifactsReload$);
     const client = get(zeroClient$)(chatThreadArtifactsContract);
-    const result = (await accept(client.list({ params: { threadId } }), [200], {
+    const result = await accept(client.list({ params: { threadId } }), [200], {
       toast: false,
-    })) as { body: { runs: ChatThreadArtifactRun[] } };
+    });
     return result.body.runs;
   });
 

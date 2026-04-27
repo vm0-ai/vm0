@@ -13,7 +13,7 @@ import {
 } from "../../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
 import { seedTestRun } from "../../../../../../../src/__tests__/db-test-seeders/runs";
-import { updateUserFeatureSwitches } from "../../../../../../../src/lib/zero/user/feature-switches-service";
+import { seedUserFeatureSwitches } from "../../../../../../../src/__tests__/db-test-seeders/feature-switches";
 import { recordRunUploadedFile } from "../../../../../../../src/lib/zero/uploads/run-uploaded-files";
 
 const context = testContext();
@@ -56,7 +56,7 @@ describe("GET /api/zero/chat-threads/:threadId/artifacts", () => {
   });
 
   it("returns run uploaded files grouped by run", async () => {
-    await updateUserFeatureSwitches(testOrgId, testUserId, {
+    await seedUserFeatureSwitches(testOrgId, testUserId, {
       [FeatureSwitchKey.ChatArtifactsDrawer]: true,
     });
 
@@ -106,7 +106,7 @@ describe("GET /api/zero/chat-threads/:threadId/artifacts", () => {
   });
 
   it("uses chat message run ownership when zero run chat thread is missing", async () => {
-    await updateUserFeatureSwitches(testOrgId, testUserId, {
+    await seedUserFeatureSwitches(testOrgId, testUserId, {
       [FeatureSwitchKey.ChatArtifactsDrawer]: true,
     });
 

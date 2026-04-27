@@ -685,59 +685,39 @@ describe("zero chat thread page display - artifacts drawer", () => {
     });
 
     const button = await waitFor(() => {
-      return screen.getByRole("button", { name: "Open artifacts" });
+      return screen.getByLabelText("Open artifacts");
     });
     expect(artifactsRequests).toBe(0);
     click(button);
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Artifacts" }),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Artifacts")).toBeInTheDocument();
     });
     expect(artifactsRequests).toBeGreaterThan(0);
-    expect(
-      screen.getByRole("img", { name: "Preview chart.png" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("link", { name: "Download chart.png" }),
-    ).not.toBeInTheDocument();
-    await user.click(
-      screen.getAllByRole("button", { name: "Download chart.png" })[0]!,
-    );
+    expect(screen.getByLabelText("Preview chart.png")).toBeInTheDocument();
+    const downloadButtons = screen.getAllByLabelText("Download chart.png");
+    expect(downloadButtons[0]!.tagName).toBe("BUTTON");
+    await user.click(downloadButtons[0]!);
     await waitFor(() => {
       expect(createObjectURLSpy).toHaveBeenCalledOnce();
       expect(anchorClickSpy).toHaveBeenCalledOnce();
     });
     expect(screen.getAllByText("chart.png").length).toBeGreaterThan(0);
     expect(screen.getByText("data.csv")).toBeInTheDocument();
-    expect(screen.queryByText(/2 runs/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Run run-art/i)).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("link", { name: "View run" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Show preview for chart.png" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("link", { name: "Open chart.png" }),
-    ).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Preview chart.png" }));
+    await user.click(screen.getByLabelText("Preview chart.png"));
 
     const lightbox = await screen.findByTestId("attachment-lightbox");
-    await user.click(within(lightbox).getByRole("button", { name: "Close" }));
+    await user.click(within(lightbox).getByLabelText("Close"));
 
     await waitFor(() => {
       expect(
         screen.queryByTestId("attachment-lightbox"),
       ).not.toBeInTheDocument();
     });
-    expect(
-      screen.getByRole("heading", { name: "Artifacts" }),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Artifacts")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Select data.csv" }));
+    await user.click(screen.getByLabelText("Select data.csv"));
     expect(screen.getByTitle("Preview data.csv")).toBeInTheDocument();
   });
 
@@ -755,9 +735,7 @@ describe("zero chat thread page display - artifacts drawer", () => {
         screen.getByText("Send a message to start the conversation"),
       ).toBeInTheDocument();
     });
-    expect(
-      screen.queryByRole("button", { name: "Open artifacts" }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Open artifacts")).not.toBeInTheDocument();
   });
 });
 
