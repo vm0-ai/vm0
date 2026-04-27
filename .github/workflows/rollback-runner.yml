@@ -126,6 +126,10 @@ jobs:
           # `curl -f` turns HTTP 404 on a missing tag into a non-zero exit
           # so set -e halts before grep runs.
           ASSETS=$(curl -sfL \
+            --retry 5 \
+            --retry-delay 2 \
+            --retry-max-time 60 \
+            --retry-all-errors \
             -H "Authorization: token ${GH_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}" \

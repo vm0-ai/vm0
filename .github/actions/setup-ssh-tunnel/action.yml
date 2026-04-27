@@ -24,7 +24,13 @@ runs:
       env:
         CLOUDFLARED_VERSION: ${{ inputs.cloudflared-version }}
       run: |
-        curl -sfL "https://github.com/cloudflare/cloudflared/releases/download/${CLOUDFLARED_VERSION}/cloudflared-linux-amd64.deb" -o /tmp/cloudflared.deb
+        curl -sfL \
+          --retry 5 \
+          --retry-delay 2 \
+          --retry-max-time 60 \
+          --retry-all-errors \
+          "https://github.com/cloudflare/cloudflared/releases/download/${CLOUDFLARED_VERSION}/cloudflared-linux-amd64.deb" \
+          -o /tmp/cloudflared.deb
         if command -v sudo &>/dev/null; then
           sudo dpkg -i /tmp/cloudflared.deb
         else

@@ -1404,6 +1404,10 @@ jobs:
 
           # Get the release ID from the tag
           RELEASE_ID=$(curl -sfL \
+            --retry 5 \
+            --retry-delay 2 \
+            --retry-max-time 60 \
+            --retry-all-errors \
             -H "Authorization: token ${GH_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}" \
@@ -1411,6 +1415,10 @@ jobs:
 
           # Delete existing asset with the same name (--clobber equivalent)
           EXISTING=$(curl -sfL \
+            --retry 5 \
+            --retry-delay 2 \
+            --retry-max-time 60 \
+            --retry-all-errors \
             -H "Authorization: token ${GH_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/assets" \

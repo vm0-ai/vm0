@@ -1867,7 +1867,7 @@ jobs:
           vm0 --help
           zero --help
       - name: Install GNU parallel for bats
-        run: sudo curl -sL https://raw.githubusercontent.com/martinda/gnu-parallel/master/src/parallel -o /usr/local/bin/parallel && sudo chmod +x /usr/local/bin/parallel
+        run: sudo curl -fsSL --retry 5 --retry-delay 2 --retry-max-time 60 --retry-all-errors https://raw.githubusercontent.com/martinda/gnu-parallel/master/src/parallel -o /usr/local/bin/parallel && sudo chmod +x /usr/local/bin/parallel
       - name: Download E2E test tokens
         uses: actions/download-artifact@v8
         with:
