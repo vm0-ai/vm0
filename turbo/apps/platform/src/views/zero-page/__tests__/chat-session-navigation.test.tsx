@@ -60,8 +60,8 @@ describe("chat session page wrapper navigation", () => {
       expect(screen.getByText("Task is running.")).toBeInTheDocument();
     });
 
-    // Click the avatar button in the session header
-    const avatarButton = screen.getByLabelText("View agent profile");
+    // Click the avatar button — both header and bubble avatars link to /agents/:agentId
+    const avatarButton = screen.getAllByLabelText("View agent profile")[0];
     click(avatarButton);
 
     // Verify navigation to /team/c0000000-0000-4000-a000-000000000001 (no tab param)
