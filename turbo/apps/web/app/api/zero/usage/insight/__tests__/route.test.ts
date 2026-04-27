@@ -369,6 +369,8 @@ describe("GET /api/zero/usage/insight", () => {
   });
 
   it("TZ shift — same row appears in different date buckets by timezone", async () => {
+    context.mocks.date.setSystemTime(new Date("2026-04-23T15:00:00Z"));
+
     const { userId, orgId } = await context.user;
     const { composeId } = await seedTestCompose({
       userId,
