@@ -86,7 +86,6 @@ const USAGE_PENDING_CLOCK_SKEW: Duration = Duration::from_secs(300);
 
 #[derive(Debug, Clone)]
 pub struct UsageFlushTarget {
-    expected_pid: u32,
     expected_usage_state_id: String,
     usage_state_started_at_ms: u64,
 }
@@ -259,7 +258,7 @@ impl MitmProxy {
         self.registry_handle().unregister_vm(source_ip).await
     }
 
-    /// Current mitmdump identity expected in the usage-pending state file.
+    /// Current mitmdump usage state expected in the usage-pending state file.
     pub fn usage_flush_target(&mut self) -> Option<UsageFlushTarget> {
         let child_exited = match self.child.as_mut()?.try_wait() {
             Ok(Some(status)) => {
@@ -277,9 +276,8 @@ impl MitmProxy {
             return None;
         }
 
-        let expected_pid = self.child.as_ref().and_then(|child| child.id())?;
+        let _child_pid = self.child.as_ref().and_then(|child| child.id())?;
         Some(UsageFlushTarget {
-            expected_pid,
             expected_usage_state_id: self.usage_state_id.clone(),
             usage_state_started_at_ms: self.usage_state_started_at_ms,
         })
@@ -387,12 +385,6 @@ fn validate_usage_pending_state(
             state.version, USAGE_PENDING_VERSION
         ));
     }
-    if state.pid != target.expected_pid {
-        return Err(format!(
-            "pid {} does not match current mitmdump pid {}",
-            state.pid, target.expected_pid
-        ));
-    }
     if state.usage_state_id != target.expected_usage_state_id {
         return Err("usage state id does not match current mitmdump process".to_string());
     }
@@ -418,10 +410,12 @@ fn validate_usage_pending_state(
 /// Wait for all pending proxy usage reports to be delivered.
 ///
 /// The Python addon writes JSON to `{addon_dir}/usage-pending` with the
-/// mitmdump process identity plus in-flight flow and report counters.
+/// mitmdump usage-state identity plus in-flight flow and report counters.
 /// A successful drain requires current valid state with `flows == 0` and
 /// `reports == 0`. Missing, unreadable, stale, wrong state id, or invalid
-/// state is treated as not ready and waits until timeout.
+/// state is treated as not ready and waits until timeout. The JSON `pid`
+/// is diagnostic only: mitmdump launchers can keep the runner's direct
+/// child as a wrapper while the Python addon runs in a child process.
 pub async fn wait_usage_flush(
     addon_dir: &Path,
     timeout: Duration,
@@ -1556,7 +1550,6 @@ PY
 
     fn usage_target() -> UsageFlushTarget {
         UsageFlushTarget {
-            expected_pid: 1234,
             expected_usage_state_id: "state-test".to_string(),
             usage_state_started_at_ms: 1_770_000_000_000,
         }
@@ -1714,7 +1707,7 @@ PY
     }
 
     #[tokio::test]
-    async fn wait_usage_flush_rejects_wrong_pid() {
+    async fn wait_usage_flush_allows_wrapper_pid_mismatch() {
         let dir = tempfile::tempdir().unwrap();
         let target = usage_target();
         let state = serde_json::json!({
@@ -1726,7 +1719,7 @@ PY
             "reports": 0,
         });
         std::fs::write(dir.path().join("usage-pending"), state.to_string()).unwrap();
-        assert!(!wait_usage_flush(dir.path(), Duration::from_millis(50), &target).await);
+        assert!(wait_usage_flush(dir.path(), Duration::from_millis(50), &target).await);
     }
 
     #[tokio::test]
