@@ -4,6 +4,7 @@ Pure functions with no module-level state or I/O.
 """
 
 from typing import NamedTuple
+from urllib.parse import urlsplit
 
 _SEGMENT_ERROR_HINT = 'use "{name}", "prefix{name}", "{name}suffix", or "prefix{name}suffix"'
 
@@ -34,31 +35,16 @@ def _split_base_match_url(
     excludes query and fragment so callers can apply base-path prefix semantics
     without accidentally comparing query strings.
     """
-    scheme_end = value.find("://")
-    if scheme_end == -1:
+    parts = urlsplit(value)
+    if not parts.scheme or not parts.netloc:
         return None
-
-    rest = value[scheme_end + 3 :]
-    authority_end = len(rest)
-    for sep in ("/", "?", "#"):
-        idx = rest.find(sep)
-        if idx != -1:
-            authority_end = min(authority_end, idx)
-
-    suffix = rest[authority_end:]
-    if not allow_query_fragment and ("?" in suffix or "#" in suffix):
+    if not allow_query_fragment and (parts.query or parts.fragment):
         return None
-
-    path_end = len(suffix)
-    for sep in ("?", "#"):
-        idx = suffix.find(sep)
-        if idx != -1:
-            path_end = min(path_end, idx)
 
     return _BaseUrlParts(
-        scheme=value[:scheme_end],
-        authority=rest[:authority_end],
-        path=suffix[:path_end],
+        scheme=parts.scheme,
+        authority=parts.netloc,
+        path=parts.path,
     )
 
 
