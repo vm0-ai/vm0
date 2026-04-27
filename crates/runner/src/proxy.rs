@@ -260,7 +260,23 @@ impl MitmProxy {
     }
 
     /// Current mitmdump identity expected in the usage-pending state file.
-    pub fn usage_flush_target(&self) -> Option<UsageFlushTarget> {
+    pub fn usage_flush_target(&mut self) -> Option<UsageFlushTarget> {
+        let child_exited = match self.child.as_mut()?.try_wait() {
+            Ok(Some(status)) => {
+                warn!(code = status.code(), "mitmdump exited before usage flush");
+                true
+            }
+            Ok(None) => false,
+            Err(e) => {
+                warn!(error = %e, "failed to query mitmdump status before usage flush");
+                false
+            }
+        };
+        if child_exited {
+            self.child = None;
+            return None;
+        }
+
         let expected_pid = self.child.as_ref().and_then(|child| child.id())?;
         Some(UsageFlushTarget {
             expected_pid,
@@ -1503,6 +1519,39 @@ PY
             wait_for_reaped_pid(pid).await,
             "dropping mitmdump Child should kill and reap the process"
         );
+    }
+
+    #[tokio::test]
+    async fn usage_flush_target_returns_target_for_running_child() {
+        let (mut proxy, _crash_rx) = MitmProxy::noop();
+        let child = tokio::process::Command::new("sleep")
+            .arg("60")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        proxy.child = Some(child);
+
+        assert!(proxy.usage_flush_target().is_some());
+
+        proxy.stop().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn usage_flush_target_skips_exited_child() {
+        let (mut proxy, _crash_rx) = MitmProxy::noop();
+        let mut child = tokio::process::Command::new("true")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        child.wait().await.unwrap();
+        proxy.child = Some(child);
+
+        assert!(proxy.usage_flush_target().is_none());
+        assert!(proxy.child.is_none());
     }
 
     fn usage_target() -> UsageFlushTarget {

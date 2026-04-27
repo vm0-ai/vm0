@@ -223,7 +223,8 @@ mod tests {
             Some(MITM_MAX_CONSECUTIVE_FAILURES),
         );
 
-        let child = tokio::process::Command::new("true")
+        let child = tokio::process::Command::new("sleep")
+            .arg("60")
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
