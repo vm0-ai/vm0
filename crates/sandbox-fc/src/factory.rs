@@ -132,6 +132,7 @@ impl Drop for LeakCleaner {
 
 #[async_trait]
 trait CreateRollbackCleanup {
+    async fn destroy_cow_device(&self, cow_device: NbdCowDevice) -> bool;
     async fn release_network(&self, network: PooledNetns);
     async fn remove_dir(&self, kind: &'static str, path: PathBuf);
     fn destroy_slot(&self, slot: crate::cow_pool::PrewarmedSlot);
@@ -139,11 +140,19 @@ trait CreateRollbackCleanup {
 
 struct FactoryCreateRollbackCleanup<'a> {
     id: &'a str,
+    device_pool: &'a std::sync::Arc<tokio::sync::Mutex<nbd_cow::pool::DevicePool>>,
     netns_pool: &'a std::sync::Arc<tokio::sync::Mutex<NetnsPool>>,
 }
 
 #[async_trait]
 impl CreateRollbackCleanup for FactoryCreateRollbackCleanup<'_> {
+    async fn destroy_cow_device(&self, mut cow_device: NbdCowDevice) -> bool {
+        let device_index = cow_device.device_index();
+        let cow_destroyed = destroy_cow_device_with_retries(self.id, &mut cow_device).await;
+        self.device_pool.lock().await.release(device_index);
+        cow_destroyed
+    }
+
     async fn release_network(&self, network: PooledNetns) {
         let mut netns_pool = self.netns_pool.lock().await;
         if let Err(e) = netns_pool.release(network).await {
@@ -176,6 +185,14 @@ struct SandboxCreateResources {
     sandbox_paths: SandboxPaths,
     sock_paths: SockPaths,
     network: PooledNetns,
+    cow_device: NbdCowDevice,
+}
+
+#[cfg(test)]
+struct SandboxCreateResourcesWithoutCow {
+    sandbox_paths: SandboxPaths,
+    sock_paths: SockPaths,
+    network: PooledNetns,
 }
 
 struct SandboxCreateTransaction {
@@ -184,6 +201,7 @@ struct SandboxCreateTransaction {
     workspace: Option<PathBuf>,
     sock_dir: Option<PathBuf>,
     network: Option<PooledNetns>,
+    cow_device: Option<NbdCowDevice>,
 }
 
 impl SandboxCreateTransaction {
@@ -194,6 +212,7 @@ impl SandboxCreateTransaction {
             workspace: None,
             sock_dir: None,
             network: None,
+            cow_device: None,
         }
     }
 
@@ -221,32 +240,91 @@ impl SandboxCreateTransaction {
         self.network = Some(network);
     }
 
+    fn track_cow_device(&mut self, cow_device: NbdCowDevice) {
+        self.cow_device = Some(cow_device);
+    }
+
     fn commit(&mut self) -> sandbox::Result<SandboxCreateResources> {
-        let workspace = self
-            .workspace
+        self.validate_base_resources("commit")?;
+        if self.cow_device.is_none() {
+            return Err(create_transaction_invalid_state(
+                "missing COW device at commit",
+            ));
+        }
+
+        let (workspace, sock_dir, network) = self.take_base_resources_after_validation()?;
+        let cow_device = self
+            .cow_device
             .take()
-            .ok_or_else(|| create_transaction_invalid_state("missing workspace at commit"))?;
-        let sock_dir = self
-            .sock_dir
-            .take()
-            .ok_or_else(|| create_transaction_invalid_state("missing sock dir at commit"))?;
-        let network = self
-            .network
-            .take()
-            .ok_or_else(|| create_transaction_invalid_state("missing netns at commit"))?;
+            .ok_or_else(|| create_transaction_invalid_state("missing COW device at commit"))?;
         self.slot.take();
 
         Ok(SandboxCreateResources {
             sandbox_paths: SandboxPaths::new(workspace),
             sock_paths: SockPaths::new(sock_dir),
             network,
+            cow_device,
         })
+    }
+
+    #[cfg(test)]
+    fn commit_without_cow_for_test(&mut self) -> sandbox::Result<SandboxCreateResourcesWithoutCow> {
+        self.validate_base_resources("test commit")?;
+        let (workspace, sock_dir, network) = self.take_base_resources_after_validation()?;
+        self.slot.take();
+
+        Ok(SandboxCreateResourcesWithoutCow {
+            sandbox_paths: SandboxPaths::new(workspace),
+            sock_paths: SockPaths::new(sock_dir),
+            network,
+        })
+    }
+
+    fn validate_base_resources(&self, context: &str) -> sandbox::Result<()> {
+        if self.workspace.is_none() {
+            return Err(create_transaction_invalid_state(&format!(
+                "missing workspace at {context}"
+            )));
+        }
+        if self.sock_dir.is_none() {
+            return Err(create_transaction_invalid_state(&format!(
+                "missing sock dir at {context}"
+            )));
+        }
+        if self.network.is_none() {
+            return Err(create_transaction_invalid_state(&format!(
+                "missing netns at {context}"
+            )));
+        }
+        Ok(())
+    }
+
+    fn take_base_resources_after_validation(
+        &mut self,
+    ) -> sandbox::Result<(PathBuf, PathBuf, PooledNetns)> {
+        let workspace = self.workspace.take().ok_or_else(|| {
+            create_transaction_invalid_state("missing workspace after validation")
+        })?;
+        let sock_dir = self
+            .sock_dir
+            .take()
+            .ok_or_else(|| create_transaction_invalid_state("missing sock dir after validation"))?;
+        let network = self
+            .network
+            .take()
+            .ok_or_else(|| create_transaction_invalid_state("missing netns after validation"))?;
+        Ok((workspace, sock_dir, network))
     }
 
     async fn rollback<C>(&mut self, cleanup: &C)
     where
         C: CreateRollbackCleanup + Sync,
     {
+        let keep_workspace = if let Some(cow_device) = self.cow_device.take() {
+            !cleanup.destroy_cow_device(cow_device).await
+        } else {
+            false
+        };
         if let Some(network) = self.network.take() {
             cleanup.release_network(network).await;
         }
@@ -254,7 +332,15 @@ impl SandboxCreateTransaction {
             cleanup.remove_dir("sock", sock_dir).await;
         }
         if let Some(workspace) = self.workspace.take() {
-            cleanup.remove_dir("workspace", workspace).await;
+            if keep_workspace {
+                warn!(
+                    id = %self.id,
+                    path = %workspace.display(),
+                    "keeping workspace after failed COW rollback"
+                );
+            } else {
+                cleanup.remove_dir("workspace", workspace).await;
+            }
         }
         if let Some(slot) = self.slot.take() {
             cleanup.destroy_slot(slot);
@@ -266,6 +352,7 @@ impl SandboxCreateTransaction {
             || self.workspace.is_some()
             || self.sock_dir.is_some()
             || self.network.is_some()
+            || self.cow_device.is_some()
     }
 }
 
@@ -281,6 +368,7 @@ impl Drop for SandboxCreateTransaction {
             has_workspace = self.workspace.is_some(),
             has_sock_dir = self.sock_dir.is_some(),
             has_network = self.network.is_some(),
+            has_cow_device = self.cow_device.is_some(),
             "sandbox create transaction dropped without explicit commit or rollback"
         );
 
@@ -292,6 +380,12 @@ impl Drop for SandboxCreateTransaction {
         }
         if let Some(workspace) = self.workspace.take() {
             let _ = std::fs::remove_dir_all(workspace);
+        }
+        if self.cow_device.is_some() {
+            warn!(
+                id = %self.id,
+                "COW device acquired during create requires async rollback and may need runner gc"
+            );
         }
         if self.network.is_some() {
             warn!(
@@ -308,6 +402,25 @@ fn create_transaction_invalid_state(message: &str) -> SandboxError {
         state: "create transaction invalid".into(),
         message: message.into(),
     }
+}
+
+async fn destroy_cow_device_with_retries(id: &str, cow_device: &mut NbdCowDevice) -> bool {
+    for attempt in 0..DESTROY_RETRIES {
+        match cow_device.destroy().await {
+            Ok(()) => return true,
+            Err(e) => {
+                if attempt + 1 < DESTROY_RETRIES {
+                    tokio::time::sleep(DESTROY_RETRY_DELAY).await;
+                } else {
+                    // Last resort: abandon the device. It persists in
+                    // the kernel until `runner gc` cleans it up.
+                    warn!(id = %id, error = %e, "destroy failed after retries — abandoning");
+                    cow_device.abandon();
+                }
+            }
+        }
+    }
+    false
 }
 
 /// Background task that receives leaked sandbox resources from `Drop`
@@ -659,11 +772,12 @@ impl SandboxFactory for FirecrackerFactory {
         let id = config.id.to_string();
         let rollback_cleanup = FactoryCreateRollbackCleanup {
             id: &id,
+            device_pool: &self.device_pool,
             netns_pool: self.netns_pool(),
         };
         let mut tx = SandboxCreateTransaction::new(id.clone());
 
-        let create_result: sandbox::Result<(SandboxCreateResources, NbdCowDevice)> = async {
+        let create_result: sandbox::Result<SandboxCreateResources> = async {
             // Acquire a pre-warmed COW slot from the pool.
             // The slot provides: workspace dir (already created) and cow file.
             let slot = self.cow_pool().lock().await.acquire().await.map_err(|e| {
@@ -742,13 +856,13 @@ impl SandboxFactory for FirecrackerFactory {
                 phase: SandboxInitializationPhase::SandboxAllocation,
                 message: format!("create NBD COW device: {e}"),
             })?;
+            tx.track_cow_device(cow_device);
 
-            let resources = tx.commit()?;
-            Ok((resources, cow_device))
+            tx.commit()
         }
         .await;
 
-        let (resources, cow_device) = match create_result {
+        let resources = match create_result {
             Ok(resources) => resources,
             Err(e) => {
                 tx.rollback(&rollback_cleanup).await;
@@ -759,6 +873,7 @@ impl SandboxFactory for FirecrackerFactory {
             sandbox_paths,
             sock_paths,
             network,
+            cow_device,
         } = resources;
 
         info!(id = %id, device = %cow_device.device_path().display(), "sandbox created");
@@ -807,25 +922,8 @@ impl SandboxFactory for FirecrackerFactory {
         // releasing file descriptors (particularly the NBD device fd).
         // Retry a few times to let it finish.
         let device_index = sandbox.cow_device.device_index();
-        let mut cow_destroyed = false;
-        for attempt in 0..DESTROY_RETRIES {
-            match sandbox.cow_device.destroy().await {
-                Ok(()) => {
-                    cow_destroyed = true;
-                    break;
-                }
-                Err(e) => {
-                    if attempt + 1 < DESTROY_RETRIES {
-                        tokio::time::sleep(DESTROY_RETRY_DELAY).await;
-                    } else {
-                        // Last resort: abandon the device. It persists in
-                        // the kernel until `runner gc` cleans it up.
-                        warn!(id = %sandbox_id, error = %e, "destroy failed after retries — abandoning");
-                        sandbox.cow_device.abandon();
-                    }
-                }
-            }
-        }
+        let cow_destroyed =
+            destroy_cow_device_with_retries(&sandbox_id, &mut sandbox.cow_device).await;
         // Release device index back to pool with cooldown.
         self.device_pool.lock().await.release(device_index);
 
@@ -971,6 +1069,10 @@ mod tests {
 
     #[async_trait]
     impl CreateRollbackCleanup for RecordingCreateRollbackCleanup {
+        async fn destroy_cow_device(&self, _cow_device: NbdCowDevice) -> bool {
+            panic!("test cleanup should not receive a real COW device");
+        }
+
         async fn release_network(&self, network: PooledNetns) {
             self.record(format!("release_network:{}", network.name));
         }
@@ -1198,7 +1300,7 @@ mod tests {
         tx.track_sock_dir(sock_dir.clone());
         tx.track_network(test_network());
 
-        let resources = tx.commit().unwrap();
+        let resources = tx.commit_without_cow_for_test().unwrap();
         drop(tx);
 
         assert_eq!(resources.sandbox_paths.workspace(), workspace.as_path());
