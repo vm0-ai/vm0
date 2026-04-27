@@ -25,8 +25,8 @@ pub(crate) const DESTROY_RETRIES: u32 = 5;
 pub(crate) const DESTROY_RETRY_DELAY: std::time::Duration = std::time::Duration::from_millis(500);
 
 /// Channel capacity for leaked sandbox resource cleanup.
-/// 32 is generous — the channel only receives messages when an executor task
-/// panics after sandbox creation, which is an exceptional path.
+/// 32 is generous — the channel only receives messages on exceptional paths
+/// such as executor panics or cancelled create transactions.
 const LEAK_CHANNEL_CAPACITY: usize = 32;
 
 /// Maximum time to wait for leaked-resource cleanup during normal shutdown.
@@ -37,14 +37,15 @@ const LEAK_CHANNEL_CAPACITY: usize = 32;
 const LEAK_CLEANUP_SHUTDOWN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
 
 /// Resources that require async cleanup when a sandbox is dropped without
-/// going through `factory.destroy()` (e.g. executor task panic).
+/// going through `factory.destroy()` or when create is dropped mid-allocation.
 ///
-/// The `FirecrackerSandbox::Drop` impl sends these to a cleanup channel
-/// owned by the factory, which drains them asynchronously.
+/// Drop impls send these to a cleanup channel owned by the factory, which
+/// drains them asynchronously.
 pub(crate) struct LeakedResources {
     pub(crate) sandbox_id: String,
-    pub(crate) device_index: u32,
-    pub(crate) network: PooledNetns,
+    pub(crate) device_index: Option<u32>,
+    pub(crate) cow_device: Option<NbdCowDevice>,
+    pub(crate) network: Option<PooledNetns>,
     pub(crate) sock_dir: PathBuf,
     pub(crate) workspace: PathBuf,
 }
@@ -202,10 +203,19 @@ struct SandboxCreateTransaction {
     sock_dir: Option<PathBuf>,
     network: Option<PooledNetns>,
     cow_device: Option<NbdCowDevice>,
+    leak_tx: Option<tokio::sync::mpsc::Sender<LeakedResources>>,
 }
 
 impl SandboxCreateTransaction {
+    #[cfg(test)]
     fn new(id: String) -> Self {
+        Self::new_with_leak_tx(id, None)
+    }
+
+    fn new_with_leak_tx(
+        id: String,
+        leak_tx: Option<tokio::sync::mpsc::Sender<LeakedResources>>,
+    ) -> Self {
         Self {
             id,
             slot: None,
@@ -213,6 +223,7 @@ impl SandboxCreateTransaction {
             sock_dir: None,
             network: None,
             cow_device: None,
+            leak_tx,
         }
     }
 
@@ -354,6 +365,44 @@ impl SandboxCreateTransaction {
             || self.network.is_some()
             || self.cow_device.is_some()
     }
+
+    fn try_send_async_leaked_resources(&mut self) -> bool {
+        if self.network.is_none() && self.cow_device.is_none() {
+            return false;
+        }
+
+        let Some(leak_tx) = self.leak_tx.as_ref() else {
+            return false;
+        };
+        let Some(sock_dir) = self.sock_dir.take() else {
+            return false;
+        };
+        let Some(workspace) = self.workspace.take() else {
+            self.sock_dir = Some(sock_dir);
+            return false;
+        };
+
+        let leaked = LeakedResources {
+            sandbox_id: self.id.clone(),
+            device_index: None,
+            cow_device: self.cow_device.take(),
+            network: self.network.take(),
+            sock_dir,
+            workspace,
+        };
+
+        match leak_tx.try_send(leaked) {
+            Ok(()) => true,
+            Err(tokio::sync::mpsc::error::TrySendError::Full(mut leaked))
+            | Err(tokio::sync::mpsc::error::TrySendError::Closed(mut leaked)) => {
+                self.cow_device = leaked.cow_device.take();
+                self.network = leaked.network.take();
+                self.sock_dir = Some(leaked.sock_dir);
+                self.workspace = Some(leaked.workspace);
+                false
+            }
+        }
+    }
 }
 
 impl Drop for SandboxCreateTransaction {
@@ -374,6 +423,9 @@ impl Drop for SandboxCreateTransaction {
 
         if let Some(slot) = self.slot.take() {
             crate::cow_pool::destroy_slot(slot);
+        }
+        if self.try_send_async_leaked_resources() {
+            return;
         }
         if let Some(sock_dir) = self.sock_dir.take() {
             let _ = std::fs::remove_dir_all(sock_dir);
@@ -494,20 +546,31 @@ async fn cleanup_leaked_resource(
 ) {
     warn!(
         id = %leaked.sandbox_id,
-        device_index = leaked.device_index,
+        device_index = ?leaked.device_index,
+        has_cow_device = leaked.cow_device.is_some(),
+        has_network = leaked.network.is_some(),
         "cleaning up leaked sandbox resources"
     );
-    device_pool.lock().await.release(leaked.device_index);
-    {
+
+    let mut cow_destroyed = true;
+    if let Some(mut cow_device) = leaked.cow_device {
+        let device_index = cow_device.device_index();
+        cow_destroyed = destroy_cow_device_with_retries(&leaked.sandbox_id, &mut cow_device).await;
+        device_pool.lock().await.release(device_index);
+    } else if let Some(device_index) = leaked.device_index {
+        device_pool.lock().await.release(device_index);
+    }
+
+    if let Some(network) = leaked.network {
         let mut pool = netns_pool.lock().await;
-        if let Err(e) = pool.release(leaked.network).await {
+        if let Err(e) = pool.release(network).await {
             warn!(id = %leaked.sandbox_id, error = %e, "failed to release leaked netns");
         }
     }
     if let Err(e) = tokio::fs::remove_dir_all(&leaked.sock_dir).await {
         warn!(id = %leaked.sandbox_id, error = %e, "failed to delete leaked sock dir");
     }
-    if let Err(e) = tokio::fs::remove_dir_all(&leaked.workspace).await {
+    if cow_destroyed && let Err(e) = tokio::fs::remove_dir_all(&leaked.workspace).await {
         warn!(id = %leaked.sandbox_id, error = %e, "failed to delete leaked workspace");
     }
     info!(id = %leaked.sandbox_id, "leaked sandbox resources cleaned up");
@@ -793,7 +856,10 @@ impl SandboxFactory for FirecrackerFactory {
             device_pool: std::sync::Arc::clone(&self.device_pool),
             netns_pool: std::sync::Arc::clone(self.netns_pool()),
         };
-        let mut tx = SandboxCreateTransaction::new(id.clone());
+        let mut tx = SandboxCreateTransaction::new_with_leak_tx(
+            id.clone(),
+            self.leak_cleaner.as_ref().and_then(LeakCleaner::sender),
+        );
 
         let create_result: sandbox::Result<SandboxCreateResources> = async {
             // Acquire a pre-warmed COW slot from the pool.
@@ -1208,8 +1274,9 @@ mod tests {
     fn test_leaked_resource(sandbox_id: &str, device_index: u32) -> LeakedResources {
         LeakedResources {
             sandbox_id: sandbox_id.into(),
-            device_index,
-            network: test_network(),
+            device_index: Some(device_index),
+            cow_device: None,
+            network: Some(test_network()),
             sock_dir: PathBuf::from("/nonexistent"),
             workspace: PathBuf::from("/nonexistent"),
         }
@@ -1417,6 +1484,31 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn create_transaction_drop_sends_async_resources_to_leak_cleaner() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().join("workspace");
+        let sock_dir = tmp.path().join("sock");
+        tokio::fs::create_dir_all(&workspace).await.unwrap();
+        tokio::fs::create_dir_all(&sock_dir).await.unwrap();
+        let (leak_tx, mut leak_rx) = tokio::sync::mpsc::channel(1);
+
+        let mut tx = SandboxCreateTransaction::new_with_leak_tx("sandbox".into(), Some(leak_tx));
+        tx.slot_renamed_to(workspace.clone());
+        tx.track_sock_dir(sock_dir.clone());
+        tx.track_network(test_network());
+
+        drop(tx);
+
+        let leaked = leak_rx.recv().await.unwrap();
+        assert_eq!(leaked.sandbox_id, "sandbox");
+        assert_eq!(leaked.device_index, None);
+        assert!(leaked.cow_device.is_none());
+        assert_eq!(leaked.network.unwrap().name, "test-ns");
+        assert_eq!(leaked.sock_dir, sock_dir);
+        assert_eq!(leaked.workspace, workspace);
+    }
+
+    #[tokio::test]
     async fn create_transaction_rollback_continues_after_waiter_abort() {
         let tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().join("workspace");
@@ -1456,8 +1548,9 @@ mod tests {
 
         tx.send(LeakedResources {
             sandbox_id: "test-sandbox".into(),
-            device_index: 42,
-            network: test_network(),
+            device_index: Some(42),
+            cow_device: None,
+            network: Some(test_network()),
             sock_dir: PathBuf::from("/tmp/nonexistent-sock"),
             workspace: PathBuf::from("/tmp/nonexistent-ws"),
         })
@@ -1466,7 +1559,7 @@ mod tests {
 
         let leaked = rx.recv().await.unwrap();
         assert_eq!(leaked.sandbox_id, "test-sandbox");
-        assert_eq!(leaked.device_index, 42);
+        assert_eq!(leaked.device_index, Some(42));
     }
 
     #[test]
@@ -1476,8 +1569,9 @@ mod tests {
 
         let resources = LeakedResources {
             sandbox_id: "test".into(),
-            device_index: 0,
-            network: test_network(),
+            device_index: Some(0),
+            cow_device: None,
+            network: Some(test_network()),
             sock_dir: PathBuf::from("/nonexistent"),
             workspace: PathBuf::from("/nonexistent"),
         };

@@ -716,8 +716,9 @@ impl Drop for FirecrackerSandbox {
         {
             let resources = crate::factory::LeakedResources {
                 sandbox_id: self.id.clone(),
-                device_index: self.cow_device.device_index(),
-                network: self.network.clone(),
+                device_index: Some(self.cow_device.device_index()),
+                cow_device: None,
+                network: Some(self.network.clone()),
                 sock_dir: self.sock_paths.dir().to_owned(),
                 workspace: self.sandbox_paths.workspace().to_owned(),
             };
