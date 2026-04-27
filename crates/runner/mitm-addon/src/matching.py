@@ -17,6 +17,51 @@ _MULTI_PARAM_BRACE_COUNT = 2
 _RULE_TOKEN_COUNT = 2
 
 
+class _BaseUrlParts(NamedTuple):
+    scheme: str
+    authority: str
+    path: str
+
+
+def _split_base_match_url(
+    value: str,
+    *,
+    allow_query_fragment: bool = True,
+) -> _BaseUrlParts | None:
+    """Split a URL-like string for firewall base matching.
+
+    Keeps the raw authority, including any explicit port. The returned path
+    excludes query and fragment so callers can apply base-path prefix semantics
+    without accidentally comparing query strings.
+    """
+    scheme_end = value.find("://")
+    if scheme_end == -1:
+        return None
+
+    rest = value[scheme_end + 3 :]
+    authority_end = len(rest)
+    for sep in ("/", "?", "#"):
+        idx = rest.find(sep)
+        if idx != -1:
+            authority_end = min(authority_end, idx)
+
+    suffix = rest[authority_end:]
+    if not allow_query_fragment and ("?" in suffix or "#" in suffix):
+        return None
+
+    path_end = len(suffix)
+    for sep in ("?", "#"):
+        idx = suffix.find(sep)
+        if idx != -1:
+            path_end = min(path_end, idx)
+
+    return _BaseUrlParts(
+        scheme=value[:scheme_end],
+        authority=rest[:authority_end],
+        path=suffix[:path_end],
+    )
+
+
 def parse_segment(seg: str) -> dict:
     """Parse a single host or path segment into literal / param / error.
 
@@ -233,52 +278,52 @@ def match_base_url(url: str, base: str) -> tuple[str, dict] | None:
     - rel_path: the path after the base (for permission rule matching)
     - params: extracted parameters from the base URL
     """
-    # Fast path: no parameters — use simple prefix matching
+    url_parts = _split_base_match_url(url)
+    if url_parts is None:
+        return None
+
+    # Fast path: no parameters - compare scheme/authority independently so
+    # host casing cannot bypass static firewall bases, while paths remain
+    # case-sensitive.
     if "{" not in base:
-        base_stripped = base.rstrip("/")
-        if not url.startswith(base_stripped):
+        base_parts = _split_base_match_url(base.rstrip("/"), allow_query_fragment=False)
+        if base_parts is None:
             return None
-        rest = url[len(base_stripped) :]
-        if rest and rest[0] not in ("/", "?", "#"):
+        if url_parts.scheme.lower() != base_parts.scheme.lower():
             return None
-        rel_path = rest.split("?")[0].split("#")[0] or "/"
+        if url_parts.authority.lower() != base_parts.authority.lower():
+            return None
+
+        base_path = base_parts.path
+        if base_path and not url_parts.path.startswith(base_path):
+            return None
+        rest = url_parts.path[len(base_path) :] if base_path else url_parts.path
+        if rest and rest[0] != "/":
+            return None
+        rel_path = rest or "/"
         return rel_path, {}
 
     # Parameterized base URL: parse into scheme, host pattern, path pattern
-    scheme_end = base.find("://")
-    if scheme_end == -1:
+    base_parts = _split_base_match_url(base, allow_query_fragment=False)
+    if base_parts is None:
         return None
-    scheme = base[: scheme_end + 3]  # e.g., "https://"
 
     # Request must start with same scheme
-    if not url.lower().startswith(scheme.lower()):
+    if url_parts.scheme.lower() != base_parts.scheme.lower():
         return None
-
-    base_rest = base[scheme_end + 3 :]  # after "://"
-    url_rest = url[scheme_end + 3 :]
-
-    # Split host from path
-    base_slash = base_rest.find("/")
-    base_host = base_rest if base_slash == -1 else base_rest[:base_slash]
-    base_path = "" if base_slash == -1 else base_rest[base_slash:]
-
-    url_slash = url_rest.find("/")
-    url_host_with_port = url_rest if url_slash == -1 else url_rest[:url_slash]
-    url_path = "" if url_slash == -1 else url_rest[url_slash:]
 
     # Match host directly — do NOT strip port. Non-standard ports (e.g., :8443)
     # are included in URLs by get_original_url() and must NOT match base patterns
     # without an explicit port, otherwise auth headers could leak to rogue servers.
     # Standard ports (443 for https, 80 for http) are omitted from URLs by
     # get_original_url(), so they match naturally.
-    host_params = match_host(url_host_with_port, base_host)
+    host_params = match_host(url_parts.authority, base_parts.authority)
     if host_params is None:
         return None
 
-    # Strip query/fragment from URL path
-    clean_url_path = url_path.split("?")[0].split("#")[0]
-
     # Match base path prefix
+    base_path = base_parts.path
+    clean_url_path = url_parts.path
     if base_path and base_path != "/":
         base_path_segs = [s for s in base_path.split("/") if s]
         url_path_segs = [s for s in clean_url_path.split("/") if s]

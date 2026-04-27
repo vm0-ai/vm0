@@ -923,12 +923,40 @@ class TestMatchBaseUrl:
         result = match_base_url("https://api.github.com/repos", "https://api.github.com")
         assert result == ("/repos", {})
 
+    def test_static_base_case_insensitive_authority(self):
+        result = match_base_url("https://API.GitHub.com/repos", "https://api.github.com")
+        assert result == ("/repos", {})
+
+    def test_static_base_preserves_path_case(self):
+        result = match_base_url("https://API.GitHub.com/REPOS", "https://api.github.com")
+        assert result == ("/REPOS", {})
+
+    def test_static_base_path_is_case_sensitive(self):
+        result = match_base_url("https://api.github.com/V1/repos", "https://api.github.com/v1")
+        assert result is None
+
     def test_static_base_exact(self):
         result = match_base_url("https://api.github.com", "https://api.github.com")
         assert result == ("/", {})
 
+    def test_static_base_query_only_case_insensitive_authority(self):
+        result = match_base_url("https://API.GitHub.com?tab=repos", "https://api.github.com")
+        assert result == ("/", {})
+
     def test_static_base_evil_domain(self):
         result = match_base_url("https://api.github.com.evil.com/steal", "https://api.github.com")
+        assert result is None
+
+    def test_static_base_case_mixed_evil_domain(self):
+        result = match_base_url("https://API.GitHub.com.evil.com/steal", "https://api.github.com")
+        assert result is None
+
+    def test_static_base_rejects_nonstandard_port(self):
+        result = match_base_url("https://API.GitHub.com:8443/repos", "https://api.github.com")
+        assert result is None
+
+    def test_static_base_with_query_is_rejected(self):
+        result = match_base_url("https://api.github.com/repos", "https://api.github.com?token=1")
         assert result is None
 
     def test_parameterized_host(self):
@@ -940,6 +968,13 @@ class TestMatchBaseUrl:
         rel_path, params = result
         assert rel_path == "/api/v2/tickets"
         assert params == {"subdomain": "acme"}
+
+    def test_parameterized_base_with_query_is_rejected(self):
+        result = match_base_url(
+            "https://acme.zendesk.com/api/v2/tickets",
+            "https://{subdomain}.zendesk.com?token=1",
+        )
+        assert result is None
 
     def test_parameterized_path(self):
         result = match_base_url(
@@ -2753,6 +2788,19 @@ class TestThreeLevelMatching:
             network_policies=policies,
         )
         assert isinstance(result, FirewallBlock)
+
+    def test_denied_permission_blocked_with_case_mixed_static_host(self):
+        policies = {
+            "github": {"allow": [], "deny": ["repo-read"], "ask": [], "unknownPolicy": "deny"}
+        }
+        result = matching.match_firewall_request(
+            "https://API.GitHub.COM/repos/org/repo",
+            "GET",
+            self._firewalls(),
+            network_policies=policies,
+        )
+        assert isinstance(result, FirewallBlock)
+        assert result.permissions == ("repo-read",)
 
     def test_uncategorized_permission_allowed(self):
         """Permission not in allow/deny/ask defaults to allowed."""
