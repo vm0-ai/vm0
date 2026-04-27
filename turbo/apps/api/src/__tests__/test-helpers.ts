@@ -2,7 +2,6 @@ import {
   initClient,
   type ApiFetcher,
   type ApiFetcherArgs,
-  type AppRoute,
   type AppRouter,
   type InitClientArgs,
   type InitClientReturn,
@@ -12,11 +11,7 @@ import { afterAll, afterEach, expect } from "vitest";
 import { createApp } from "../app-factory";
 import { closeDbPool } from "../lib/db";
 import { clearMockedEnv } from "../lib/env";
-import {
-  ROUTES,
-  type RouteEntry,
-  type SignalRouteHandler,
-} from "../signals/route";
+import { ROUTES, type RouteEntry } from "../signals/route";
 import { clearAllDetached } from "../signals/utils";
 import { getApiTestMocks, type ApiTestMocks } from "./mocks";
 
@@ -25,12 +20,9 @@ interface TestContext {
   readonly mocks: ApiTestMocks;
 }
 
-interface SetupAppOptions<TContract extends AppRouter> {
+interface SetupAppOptions {
   readonly context: TestContext;
-  readonly contract: TContract;
-  readonly handlers?: {
-    readonly [K in keyof TContract & string]?: SignalRouteHandler<unknown>;
-  };
+  readonly routes?: readonly RouteEntry[];
 }
 
 function formatBody(body: unknown): string {
@@ -96,24 +88,10 @@ async function requestApp(
   };
 }
 
-function buildRoutesExtend(
-  handlers: Record<string, SignalRouteHandler<unknown>>,
-  contract: Record<string, AppRoute>,
-): RouteEntry[] {
-  const entries: RouteEntry[] = [];
-  for (const [key, handler] of Object.entries(handlers)) {
-    if (handler !== undefined) {
-      entries.push({ route: contract[key]!, handler });
-    }
-  }
-  return entries;
-}
-
 function createAppFetcher(
   context: TestContext,
-  routesExtend: readonly RouteEntry[],
+  routes: readonly RouteEntry[],
 ): ApiFetcher {
-  const routes = [...ROUTES, ...routesExtend];
   const app = createApp({ signal: context.signal, routes });
 
   return (args) => {
@@ -121,23 +99,20 @@ function createAppFetcher(
   };
 }
 
-export function setupApp<TContract extends AppRouter>({
-  context,
-  contract,
-  handlers = {},
-}: SetupAppOptions<TContract>): InitClientReturn<TContract, InitClientArgs> {
-  const routesExtend = buildRoutesExtend(
-    handlers as Record<string, SignalRouteHandler<unknown>>,
-    contract as Record<string, AppRoute>,
-  );
+export function setupApp({ context, routes = ROUTES }: SetupAppOptions) {
+  const app = createAppFetcher(context, routes);
 
-  return initClient(contract, {
-    baseUrl: "http://api.test",
-    jsonQuery: false,
-    throwOnUnknownStatus: true,
-    validateResponse: false,
-    api: createAppFetcher(context, routesExtend),
-  });
+  return <TContract extends AppRouter>(
+    contract: TContract,
+  ): InitClientReturn<TContract, InitClientArgs> => {
+    return initClient(contract, {
+      baseUrl: "http://api.test",
+      jsonQuery: false,
+      throwOnUnknownStatus: true,
+      validateResponse: true,
+      api: app,
+    });
+  };
 }
 
 export function testContext(): TestContext {

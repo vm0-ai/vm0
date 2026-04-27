@@ -12,6 +12,8 @@ import {
   type CliTokenRecord,
 } from "../../types/auth";
 
+const MEMBER_ROLE_CACHE_TTL_MS = 60_000;
+
 function mapClerkRole(role: string): ApiOrgRole {
   return role === "org:admin" ? "admin" : "member";
 }
@@ -26,11 +28,51 @@ export const updateCliTokenLastUsedAt$ = command(
   },
 );
 
-export function memberRole(
-  orgId: string,
-  userId: string,
-): Computed<Promise<{ role: ApiOrgRole } | null>> {
-  return computed(async (get): Promise<{ role: ApiOrgRole } | null> => {
+const upsertMemberRoleCache$ = command(
+  async (
+    { set },
+    orgId: string,
+    userId: string,
+    role: ApiOrgRole,
+    _signal: AbortSignal,
+  ): Promise<void> => {
+    const writeDb = set(writeDb$);
+    await writeDb
+      .insert(orgMembersCache)
+      .values({ orgId, userId, role, cachedAt: nowDate() })
+      .onConflictDoUpdate({
+        target: [orgMembersCache.orgId, orgMembersCache.userId],
+        set: { role, cachedAt: nowDate() },
+      });
+  },
+);
+
+const deleteMemberRoleCache$ = command(
+  async (
+    { set },
+    orgId: string,
+    userId: string,
+    _signal: AbortSignal,
+  ): Promise<void> => {
+    const writeDb = set(writeDb$);
+    await writeDb
+      .delete(orgMembersCache)
+      .where(
+        and(
+          eq(orgMembersCache.orgId, orgId),
+          eq(orgMembersCache.userId, userId),
+        ),
+      );
+  },
+);
+
+export const getMemberRoleAndUpdateCache$ = command(
+  async (
+    { get, set },
+    orgId: string,
+    userId: string,
+    signal: AbortSignal,
+  ): Promise<{ role: ApiOrgRole } | null> => {
     const db = get(db$);
     const [cached] = await db
       .select({
@@ -47,7 +89,10 @@ export function memberRole(
       .limit(1);
 
     const currentTime = now();
-    if (cached && currentTime - cached.cachedAt.getTime() < 60_000) {
+    if (
+      cached &&
+      currentTime - cached.cachedAt.getTime() < MEMBER_ROLE_CACHE_TTL_MS
+    ) {
       const role: ApiOrgRole = cached.role === "admin" ? "admin" : "member";
       return { role };
     }
@@ -58,13 +103,19 @@ export function memberRole(
     });
 
     if (!membership) {
+      // Drop the stale row so the next call doesn't keep falling back to Clerk
+      // for a user that's no longer a member.
+      if (cached) {
+        await set(deleteMemberRoleCache$, orgId, userId, signal);
+      }
       return null;
     }
 
     const role = mapClerkRole(membership.role);
+    await set(upsertMemberRoleCache$, orgId, userId, role, signal);
     return { role };
-  });
-}
+  },
+);
 
 export function cliTokenRecord(
   cliAuth: CliAuth,

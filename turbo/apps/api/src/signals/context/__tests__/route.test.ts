@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { ROUTES } from "../../route";
 
 const context = testContext();
 const c = initContract();
@@ -47,9 +48,11 @@ describe("honoSignalHandler", () => {
     });
     const client = setupApp({
       context,
-      contract: routeTestContract,
-      handlers: { computed: handler$ },
-    });
+      routes: [
+        ...ROUTES,
+        { route: routeTestContract.computed, handler: handler$ },
+      ],
+    })(routeTestContract);
 
     const response = await accept(client.computed(), [200]);
 
@@ -68,9 +71,11 @@ describe("honoSignalHandler", () => {
     });
     const client = setupApp({
       context,
-      contract: routeTestContract,
-      handlers: { command: handler$ },
-    });
+      routes: [
+        ...ROUTES,
+        { route: routeTestContract.command, handler: handler$ },
+      ],
+    })(routeTestContract);
 
     const response = await accept(client.command(), [200]);
 
@@ -83,9 +88,8 @@ describe("honoSignalHandler", () => {
     });
     const client = setupApp({
       context,
-      contract: routeTestContract,
-      handlers: { post: handler$ },
-    });
+      routes: [...ROUTES, { route: routeTestContract.post, handler: handler$ }],
+    })(routeTestContract);
 
     const response = await accept(
       client.post({ body: { enabled: true } }),
