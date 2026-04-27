@@ -1065,8 +1065,8 @@ fn filter_unchanged_storages(
 }
 
 /// Download storage volumes into the guest.
-fn guest_download_command(manifest_path: &str) -> String {
-    format!("{} {}", guest::DOWNLOAD_BIN, manifest_path)
+fn guest_download_command() -> String {
+    format!("{} {}", guest::DOWNLOAD_BIN, guest::STORAGE_MANIFEST)
 }
 
 fn guest_download_env(run_id: &str) -> [(&'static str, &str); 1] {
@@ -1084,7 +1084,7 @@ async fn download_storages(
         .write_file(guest::STORAGE_MANIFEST, &manifest_json)
         .await?;
 
-    let download_cmd = guest_download_command(guest::STORAGE_MANIFEST);
+    let download_cmd = guest_download_command();
     let run_id = context.run_id.to_string();
     let download_env = guest_download_env(&run_id);
     info!(run_id = %context.run_id, "downloading storages");
@@ -2201,7 +2201,7 @@ mod tests {
 
     #[test]
     fn guest_download_command_uses_guest_common_system_log_without_shell_redirect() {
-        let cmd = guest_download_command("/tmp/storage-manifest.json");
+        let cmd = guest_download_command();
 
         assert_eq!(
             cmd,
