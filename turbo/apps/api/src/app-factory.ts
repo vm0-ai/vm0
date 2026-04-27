@@ -1,11 +1,11 @@
 import * as Sentry from "@sentry/node";
-import type { AppRoute } from "@ts-rest/core";
+// oxlint-disable-next-line no-restricted-imports -- app-factory owns the Hono instance, confirmed by ethan@vm0.ai
 import { type Context, Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 
 import { logger } from "./lib/log";
 import { honoSignalHandler } from "./signals/context/route";
-import { ROUTES, type SignalRouteHandler } from "./signals/route";
+import { ROUTES, type RouteEntry } from "./signals/route";
 import { isAbortError } from "./signals/utils";
 
 const L = logger("App");
@@ -37,19 +37,15 @@ function handleError(error: Error, context: Context): Response {
 
 interface CreateAppOptions {
   readonly signal: AbortSignal;
-  readonly routes?: ReadonlyMap<AppRoute, SignalRouteHandler<unknown>>;
+  readonly routes?: readonly RouteEntry[];
 }
 
 export function createApp({ routes = ROUTES, signal }: CreateAppOptions): Hono {
   const app = new Hono();
   app.onError(handleError);
 
-  for (const [contract, handler] of routes) {
-    app.on(
-      contract.method,
-      contract.path,
-      honoSignalHandler(handler, contract, signal),
-    );
+  for (const { route, handler } of routes) {
+    app.on(route.method, route.path, honoSignalHandler(handler, route, signal));
   }
 
   return app;

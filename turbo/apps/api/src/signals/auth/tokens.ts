@@ -2,15 +2,20 @@ import { createHmac, hkdfSync } from "node:crypto";
 
 import {
   ZERO_CAPABILITIES,
-  type ZeroCapability,
+  ZeroCapability,
 } from "@vm0/api-contracts/contracts/composes";
 import { z } from "zod";
 
 import { env } from "../external/env";
+import { lazySingleton } from "../external/lazy-singleton";
 import { now } from "../external/time";
 import { safeJsonParse } from "../utils";
-
-export type { ZeroCapability };
+import {
+  CliAuth,
+  ComposeJobAuth,
+  SandboxAuth,
+  ZeroAuth,
+} from "../../types/auth";
 
 const SANDBOX_TOKEN_PREFIX = "vm0_sandbox_";
 const PAT_TOKEN_PREFIX = "vm0_pat_";
@@ -61,30 +66,6 @@ type JwtPayload =
   | z.infer<typeof cliTokenPayloadSchema>
   | z.infer<typeof composeJobTokenPayloadSchema>;
 
-interface SandboxAuth {
-  readonly userId: string;
-  readonly runId: string;
-  readonly orgId: string;
-}
-
-interface ZeroAuth {
-  readonly userId: string;
-  readonly runId: string;
-  readonly orgId: string;
-  readonly capabilities: readonly ZeroCapability[];
-}
-
-export interface CliAuth {
-  readonly userId: string;
-  readonly orgId: string;
-  readonly tokenId: string;
-}
-
-interface ComposeJobAuth {
-  readonly userId: string;
-  readonly jobId: string;
-}
-
 function base64UrlEncode(data: Buffer | string): string {
   const buffer = typeof data === "string" ? Buffer.from(data) : data;
   return buffer.toString("base64url");
@@ -101,12 +82,9 @@ function deriveJwtKey(): Buffer {
   );
 }
 
-let cachedJwtKey: Buffer | undefined;
-
-function getJwtKey(): Buffer {
-  cachedJwtKey ??= deriveJwtKey();
-  return cachedJwtKey;
-}
+const getJwtKey = lazySingleton((): Buffer => {
+  return deriveJwtKey();
+});
 
 function signJwt(payload: JwtPayload): string {
   const header = { alg: "HS256", typ: "JWT" };

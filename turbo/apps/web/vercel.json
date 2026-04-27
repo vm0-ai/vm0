@@ -44,10 +44,6 @@
       "schedule": "* * * * *"
     },
     {
-      "path": "/api/cron/compare-proxy-usage",
-      "schedule": "*/5 * * * *"
-    },
-    {
       "path": "/api/cron/phone-cleanup",
       "schedule": "0 2 * * *"
     }

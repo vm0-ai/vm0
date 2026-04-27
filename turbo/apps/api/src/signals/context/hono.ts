@@ -17,15 +17,18 @@ function header(name: string) {
 }
 
 export const userAgent$ = header("User-Agent");
+export const authorization$ = header("authorization");
+export const cookie$ = header("cookie");
 
 // Response Headers
-export const resUserAgent$ = resHeader("User-Agent");
 function resHeader(name: string) {
   return computed((get) => {
     const context = get(innerHonoContext$);
     return context.res.headers.get(name);
   });
 }
+
+export const resUserAgent$ = resHeader("User-Agent");
 
 // Request
 export const request$ = computed((get) => {

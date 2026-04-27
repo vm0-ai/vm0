@@ -1,6 +1,8 @@
 import { createEnv } from "@t3-oss/env-core";
 import { z, type ZodType } from "zod";
 
+import { testOverride } from "./lazy-singleton";
+
 const SCHEMA = {
   DATABASE_URL: z.string().min(1),
   CLERK_SECRET_KEY: z.string().min(1),
@@ -23,9 +25,16 @@ const baseEnv = createEnv<undefined, typeof SCHEMA>({
 type EnvShape = typeof baseEnv;
 export type EnvKey = keyof EnvShape;
 
-const overrideEnv: Partial<EnvShape> = {};
+const {
+  get: getOverrideEnv,
+  set: setOverrideEnv,
+  clear: clearOverrideEnv,
+} = testOverride<Partial<EnvShape>>(() => {
+  return {};
+});
 
 export function env<K extends EnvKey>(name: K): EnvShape[K] {
+  const overrideEnv = getOverrideEnv();
   if (Object.prototype.hasOwnProperty.call(overrideEnv, name)) {
     return overrideEnv[name] as EnvShape[K];
   }
@@ -34,11 +43,12 @@ export function env<K extends EnvKey>(name: K): EnvShape[K] {
 
 export function mockEnv<K extends EnvKey>(name: K, value: EnvShape[K]): void {
   const schema = SCHEMA[name] as ZodType;
-  overrideEnv[name] = schema.parse(value) as EnvShape[K];
+  setOverrideEnv({
+    ...getOverrideEnv(),
+    [name]: schema.parse(value) as EnvShape[K],
+  });
 }
 
 export function clearMockedEnv(): void {
-  for (const key of Object.keys(overrideEnv)) {
-    delete (overrideEnv as Record<string, unknown>)[key];
-  }
+  clearOverrideEnv();
 }

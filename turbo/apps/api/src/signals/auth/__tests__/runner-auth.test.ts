@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { initContract } from "@ts-rest/core";
 import { cliTokens } from "@vm0/db/schema/cli-tokens";
-import { computed, createStore } from "ccstate";
+import { command, createStore } from "ccstate";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 
@@ -43,8 +43,8 @@ function createClient() {
     context,
     contract: runnerAuthTestContract,
     handlers: {
-      get: computed(async (get) => {
-        return { status: 200 as const, body: await get(runnerAuth$) };
+      get: command(async ({ set }, signal: AbortSignal) => {
+        return { status: 200 as const, body: await set(runnerAuth$, signal) };
       }),
     },
   });

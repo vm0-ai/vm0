@@ -1,4 +1,5 @@
 import { env } from "./external/env";
+import { lazySingleton } from "./external/lazy-singleton";
 import { logger } from "./external/log";
 
 export enum Mechanism {
@@ -14,7 +15,9 @@ class PromiseTracker {
   descriptions = new Map<Promise<unknown>, string>();
 }
 
-const tracker = new PromiseTracker();
+const tracker = lazySingleton(() => {
+  return new PromiseTracker();
+});
 
 export function isAbortError(error: unknown): boolean {
   return (
@@ -30,6 +33,7 @@ function throwIfAbort(error: unknown): void {
 }
 
 export function safeJsonParse(input: string): unknown {
+  // eslint-disable-next-line no-restricted-syntax -- this is the centralized guarded JSON.parse
   try {
     return JSON.parse(input);
   } catch (error) {
@@ -53,26 +57,26 @@ export function detach(
   );
 
   if (IN_VITEST) {
-    tracker.collected.add(silenced);
-    tracker.mechanisms.set(silenced, mechanism);
+    tracker().collected.add(silenced);
+    tracker().mechanisms.set(silenced, mechanism);
     if (description) {
-      tracker.descriptions.set(silenced, description);
+      tracker().descriptions.set(silenced, description);
     }
   }
 }
 
 export async function clearAllDetached(): Promise<void> {
   if (!IN_VITEST) {
-    tracker.collected.clear();
-    tracker.mechanisms.clear();
-    tracker.descriptions.clear();
+    tracker().collected.clear();
+    tracker().mechanisms.clear();
+    tracker().descriptions.clear();
     return;
   }
 
-  for (const promise of tracker.collected) {
+  for (const promise of tracker().collected) {
     await promise;
   }
-  tracker.collected.clear();
-  tracker.mechanisms.clear();
-  tracker.descriptions.clear();
+  tracker().collected.clear();
+  tracker().mechanisms.clear();
+  tracker().descriptions.clear();
 }

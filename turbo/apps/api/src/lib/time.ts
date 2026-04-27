@@ -1,7 +1,15 @@
-let mockedNow: number | undefined;
+import { testOverride } from "./lazy-singleton";
+
+const {
+  get: getMockedNow,
+  set: setMockedNow,
+  clear: clearMockedNow,
+} = testOverride<number | undefined>(() => {
+  return undefined;
+});
 
 export function now(): number {
-  return mockedNow ?? Date.now();
+  return getMockedNow() ?? Date.now();
 }
 
 export function nowDate(): Date {
@@ -9,9 +17,9 @@ export function nowDate(): Date {
 }
 
 export function mockNow(value: Date | number): void {
-  mockedNow = value instanceof Date ? value.getTime() : value;
+  setMockedNow(value instanceof Date ? value.getTime() : value);
 }
 
 export function clearMockNow(): void {
-  mockedNow = undefined;
+  clearMockedNow();
 }

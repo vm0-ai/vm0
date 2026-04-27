@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { initContract } from "@ts-rest/core";
 import { cliTokens } from "@vm0/db/schema/cli-tokens";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
-import { computed, createStore, type Computed } from "ccstate";
+import { command, createStore, type Command } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
@@ -14,7 +14,8 @@ import { now, nowDate } from "../../external/time";
 import {
   apiKeyAuthContext$,
   createAuthContext$,
-  createRequiredAuthContext$,
+  requiredAuthContext$,
+  type AuthOptions,
 } from "../auth-context";
 import { signPatJwtForTests, signSandboxJwtForTests } from "../tokens";
 
@@ -93,18 +94,39 @@ function currentSecond(): number {
   return Math.floor(now() / 1000);
 }
 
-function createAuthClient(result$: Computed<unknown>) {
+function createAuthClient(resolver$: Command<Promise<unknown>, [AbortSignal]>) {
   return setupApp({
     context,
     contract: authContextTestContract,
     handlers: {
-      get: computed(async (get): Promise<AuthContextTestRouteResponse> => {
-        const result = await get(result$);
-        return isAuthErrorResponse(result)
-          ? result
-          : { status: 200 as const, body: result };
-      }),
+      get: command(
+        async (
+          { set },
+          signal: AbortSignal,
+        ): Promise<AuthContextTestRouteResponse> => {
+          const result = await set(resolver$, signal);
+          return isAuthErrorResponse(result)
+            ? result
+            : { status: 200 as const, body: result };
+        },
+      ),
     },
+  });
+}
+
+function authContextResolver(
+  options: AuthOptions = {},
+): Command<Promise<unknown>, [AbortSignal]> {
+  return command(async ({ set }, signal: AbortSignal) => {
+    return set(createAuthContext$, options, signal);
+  });
+}
+
+function requiredAuthContextResolver(
+  options: AuthOptions,
+): Command<Promise<unknown>, [AbortSignal]> {
+  return command(async ({ set }, signal: AbortSignal) => {
+    return set(requiredAuthContext$, options, signal);
   });
 }
 
@@ -175,7 +197,7 @@ describe("auth context", () => {
     const fixture = await seedPatFixture("admin");
     fixtures.push(fixture);
 
-    const client = createAuthClient(createAuthContext$());
+    const client = createAuthClient(authContextResolver());
     const response = await accept(
       client.get({
         headers: { authorization: `Bearer ${fixture.token}` },
@@ -230,7 +252,7 @@ describe("auth context", () => {
         ),
       );
 
-    const client = createAuthClient(createAuthContext$());
+    const client = createAuthClient(authContextResolver());
     const response = await accept(
       client.get({
         headers: { authorization: `Bearer ${fixture.token}` },
@@ -252,7 +274,7 @@ describe("auth context", () => {
     });
 
     const client = createAuthClient(
-      createAuthContext$({ acceptAnySandboxCapability: true }),
+      authContextResolver({ acceptAnySandboxCapability: true }),
     );
     const response = await accept(
       client.get({
@@ -284,7 +306,7 @@ describe("auth context", () => {
     });
 
     const client = createAuthClient(
-      createAuthContext$({ requiredCapability: "file:read" }),
+      authContextResolver({ requiredCapability: "file:read" }),
     );
     const response = await accept(
       client.get({
@@ -316,7 +338,7 @@ describe("auth context", () => {
     });
 
     const client = createAuthClient(
-      createRequiredAuthContext$({ requiredCapability: "file:write" }),
+      requiredAuthContextResolver({ requiredCapability: "file:write" }),
     );
     const response = await accept(
       client.get({

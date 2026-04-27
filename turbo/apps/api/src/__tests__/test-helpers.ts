@@ -11,7 +11,11 @@ import { afterEach, expect } from "vitest";
 
 import { createApp } from "../app-factory";
 import { clearMockedEnv } from "../lib/env";
-import { ROUTES, type SignalRouteHandler } from "../signals/route";
+import {
+  ROUTES,
+  type RouteEntry,
+  type SignalRouteHandler,
+} from "../signals/route";
 import { clearAllDetached } from "../signals/utils";
 import { getApiTestMocks, type ApiTestMocks } from "./mocks";
 
@@ -94,22 +98,21 @@ async function requestApp(
 function buildRoutesExtend(
   handlers: Record<string, SignalRouteHandler<unknown>>,
   contract: Record<string, AppRoute>,
-): Map<AppRoute, SignalRouteHandler<unknown>> {
-  const map = new Map<AppRoute, SignalRouteHandler<unknown>>();
+): RouteEntry[] {
+  const entries: RouteEntry[] = [];
   for (const [key, handler] of Object.entries(handlers)) {
     if (handler !== undefined) {
-      map.set(contract[key]!, handler!);
+      entries.push({ route: contract[key]!, handler });
     }
   }
-
-  return map;
+  return entries;
 }
 
 function createAppFetcher(
   context: TestContext,
-  routesExtend: ReadonlyMap<AppRoute, SignalRouteHandler<unknown>>,
+  routesExtend: readonly RouteEntry[],
 ): ApiFetcher {
-  const routes = new Map([...ROUTES, ...routesExtend]);
+  const routes = [...ROUTES, ...routesExtend];
   const app = createApp({ signal: context.signal, routes });
 
   return (args) => {

@@ -1,171 +1,63 @@
-import { cliTokens } from "@vm0/db/schema/cli-tokens";
-import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
-import { and, eq, gt } from "drizzle-orm";
-import { computed, type Computed } from "ccstate";
+import { command, computed, state, type Computed } from "ccstate";
 
-import { request$ } from "../context/hono";
-import { db$ } from "../external/db";
-import { membershipsByUserId } from "../external/clerk";
-import { now, nowDate } from "../external/time";
+import { waitUntil } from "../context/wait-until";
 import {
   isPatToken,
   isSandboxToken,
   verifyCliToken,
   verifySandboxToken,
   verifyZeroToken,
-  type CliAuth,
-  type ZeroCapability,
 } from "./tokens";
-import { clerkSessionAuth$, type ApiOrgRole } from "./clerk-session";
+import { clerkSessionAuth$ } from "./clerk-session";
+import { ZeroCapability } from "@vm0/api-contracts";
+import { AuthContext, CliAuth, ZeroAuthContext } from "../../types/auth";
+import {
+  cliTokenRecord,
+  memberRole,
+  updateCliTokenLastUsedAt$,
+} from "../services/auth.service";
+import { authorization$, cookie$ } from "../context/hono";
 
-type SessionAuthContext =
-  | {
-      readonly tokenType: "session";
-      readonly userId: string;
-      readonly orgId: string;
-      readonly orgRole: ApiOrgRole;
-    }
-  | {
-      readonly tokenType: "session";
-      readonly userId: string;
-      readonly orgId?: undefined;
-      readonly orgRole?: undefined;
-    };
-
-interface PatAuthContext {
-  readonly tokenType: "pat";
-  readonly userId: string;
-  readonly orgId: string;
-  readonly orgRole: ApiOrgRole;
-}
-
-interface SandboxAuthContext {
-  readonly tokenType: "sandbox";
-  readonly userId: string;
-  readonly orgId: string;
-  readonly runId: string;
-}
-
-interface ZeroAuthContext {
-  readonly tokenType: "zero";
-  readonly userId: string;
-  readonly orgId: string;
-  readonly orgRole?: ApiOrgRole;
-  readonly runId: string;
-  readonly capabilities: readonly ZeroCapability[];
-}
-
-type AuthContext =
-  | SessionAuthContext
-  | PatAuthContext
-  | SandboxAuthContext
-  | ZeroAuthContext;
-
-interface AuthOptions {
+export interface AuthOptions {
   readonly requiredCapability?: ZeroCapability;
   readonly acceptAnySandboxCapability?: boolean;
 }
 
-type AuthErrorResponse = {
+export type AuthErrorResponse = {
   readonly status: 401 | 403;
   readonly body: {
     readonly error: { readonly message: string; readonly code: string };
   };
 };
 
-interface CliTokenRecord {
-  readonly userId: string;
-  readonly orgId: string;
-}
+const innerAuthContext$ = state<AuthContext | null>(null);
 
-export const authorizationHeader$ = computed((get) => {
-  return get(request$).header("authorization");
+export const authContext$: Computed<AuthContext> = computed((get) => {
+  const ctx = get(innerAuthContext$);
+  if (ctx === null) {
+    throw new Error("authContext$ accessed outside an authRoute scope");
+  }
+  return ctx;
 });
 
-function mapClerkRole(role: string): ApiOrgRole {
-  return role === "org:admin" ? "admin" : "member";
-}
+export const setAuthContext$ = command(({ set }, ctx: AuthContext): void => {
+  set(innerAuthContext$, ctx);
+});
 
-function createMemberRole$(
-  orgId: string,
-  userId: string,
-): Computed<Promise<{ role: ApiOrgRole } | null>> {
-  return computed(async (get): Promise<{ role: ApiOrgRole } | null> => {
-    const db = get(db$);
-    const [cached] = await db
-      .select({
-        role: orgMembersCache.role,
-        cachedAt: orgMembersCache.cachedAt,
-      })
-      .from(orgMembersCache)
-      .where(
-        and(
-          eq(orgMembersCache.orgId, orgId),
-          eq(orgMembersCache.userId, userId),
-        ),
-      )
-      .limit(1);
-
-    const currentTime = now();
-    if (cached && currentTime - cached.cachedAt.getTime() < 60_000) {
-      const role: ApiOrgRole = cached.role === "admin" ? "admin" : "member";
-      return { role };
-    }
-
-    const memberships = await get(membershipsByUserId(userId));
-    const membership = memberships.data.find((candidate) => {
-      return candidate.organization.id === orgId;
-    });
-
-    if (!membership) {
-      return null;
-    }
-
-    const role = mapClerkRole(membership.role);
-    return { role };
-  });
-}
-
-export function createCliTokenRecord$(
-  cliAuth: CliAuth,
-): Computed<Promise<CliTokenRecord | null>> {
-  return computed(async (get): Promise<CliTokenRecord | null> => {
-    const db = get(db$);
-    const currentDate = nowDate();
-    const [record] = await db
-      .select()
-      .from(cliTokens)
-      .where(
-        and(
-          eq(cliTokens.id, cliAuth.tokenId),
-          gt(cliTokens.expiresAt, currentDate),
-        ),
-      )
-      .limit(1);
-
-    if (!record) {
-      return null;
-    }
-
-    return {
-      userId: cliAuth.userId,
-      orgId: cliAuth.orgId,
-    };
-  });
-}
-
-function createCliAuth$(
-  cliAuth: CliAuth,
-): Computed<Promise<AuthContext | null>> {
-  return computed(async (get): Promise<AuthContext | null> => {
-    const resolved = await get(createCliTokenRecord$(cliAuth));
+const cliAuth$ = command(
+  async (
+    { get, set },
+    cliAuth: CliAuth,
+    signal: AbortSignal,
+  ): Promise<AuthContext | null> => {
+    const resolved = await get(cliTokenRecord(cliAuth));
     if (!resolved) {
       return null;
     }
 
-    const membership = await get(
-      createMemberRole$(resolved.orgId, resolved.userId),
-    );
+    waitUntil(set(updateCliTokenLastUsedAt$, cliAuth.tokenId, signal));
+
+    const membership = await get(memberRole(resolved.orgId, resolved.userId));
     if (!membership) {
       return null;
     }
@@ -176,8 +68,8 @@ function createCliAuth$(
       orgId: resolved.orgId,
       orgRole: membership.role,
     };
-  });
-}
+  },
+);
 
 function resolveSandboxAuth(
   token: string,
@@ -200,7 +92,7 @@ function resolveSandboxAuth(
   return null;
 }
 
-function createZeroAuth$(
+function zeroAuth(
   token: string,
   options: AuthOptions,
 ): Computed<Promise<AuthContext | null>> {
@@ -227,9 +119,7 @@ function createZeroAuth$(
       capabilities: [...zeroAuth.capabilities],
     };
 
-    const membership = await get(
-      createMemberRole$(zeroAuth.orgId, zeroAuth.userId),
-    );
+    const membership = await get(memberRole(zeroAuth.orgId, zeroAuth.userId));
     if (!membership) {
       return result;
     }
@@ -238,7 +128,7 @@ function createZeroAuth$(
   });
 }
 
-function createSandboxTokenAuth$(
+function sandboxTokenAuth(
   token: string,
   options: AuthOptions,
 ): Computed<Promise<AuthContext | null>> {
@@ -249,45 +139,59 @@ function createSandboxTokenAuth$(
 
     return (
       resolveSandboxAuth(token, options) ??
-      (await get(createZeroAuth$(token, options)))
+      (await get(zeroAuth(token, options)))
     );
   });
 }
 
-function createResolvedAuthContext$(
-  authHeader: string | undefined,
-  options: AuthOptions,
-): Computed<Promise<AuthContext | null>> {
-  return computed(async (get): Promise<AuthContext | null> => {
-    if (authHeader?.startsWith("Bearer ")) {
-      const token = authHeader.substring(7);
+const resolvedAuthContext$ = command(
+  async (
+    { get, set },
+    options: AuthOptions,
+    signal: AbortSignal,
+  ): Promise<AuthContext | null> => {
+    const authHeader = get(authorization$);
 
-      if (isPatToken(token)) {
-        const cliAuth = verifyCliToken(token);
-        return cliAuth ? get(createCliAuth$(cliAuth)) : null;
+    if (!authHeader?.startsWith("Bearer ")) {
+      if (!get(cookie$)) {
+        return null;
       }
-
-      if (isSandboxToken(token)) {
-        const cliAuth = verifyCliToken(token);
-        if (cliAuth) {
-          return get(createCliAuth$(cliAuth));
-        }
-
-        return get(createSandboxTokenAuth$(token, options));
-      }
+      return await get(clerkSessionAuth$);
     }
 
-    return get(clerkSessionAuth$);
-  });
-}
+    const token = authHeader.substring(7);
 
-export function createAuthContext$(
-  options: AuthOptions = {},
-): Computed<Promise<AuthContext | null>> {
-  return computed(async (get) => {
-    return get(createResolvedAuthContext$(get(authorizationHeader$), options));
-  });
-}
+    if (isPatToken(token)) {
+      const cliAuth = verifyCliToken(token);
+      if (!cliAuth) {
+        return null;
+      }
+
+      return await set(cliAuth$, cliAuth, signal);
+    }
+
+    if (isSandboxToken(token)) {
+      const cliAuth = verifyCliToken(token);
+      if (!cliAuth) {
+        return await get(sandboxTokenAuth(token, options));
+      }
+
+      return await set(cliAuth$, cliAuth, signal);
+    }
+
+    return null;
+  },
+);
+
+export const createAuthContext$ = command(
+  async (
+    { set },
+    options: AuthOptions,
+    signal: AbortSignal,
+  ): Promise<AuthContext | null> => {
+    return await set(resolvedAuthContext$, options, signal);
+  },
+);
 
 function missingCapabilityError(capability: ZeroCapability): AuthErrorResponse {
   return {
@@ -330,14 +234,14 @@ function sandboxTokenAuthError(
   };
 }
 
-export function createRequiredAuthContext$(
-  options: AuthOptions = {},
-): Computed<Promise<AuthContext | AuthErrorResponse>> {
-  return computed(async (get): Promise<AuthContext | AuthErrorResponse> => {
-    const authHeader = get(authorizationHeader$);
-    const authContext = await get(
-      createResolvedAuthContext$(authHeader, options),
-    );
+export const requiredAuthContext$ = command(
+  async (
+    { get, set },
+    options: AuthOptions,
+    signal: AbortSignal,
+  ): Promise<AuthContext | AuthErrorResponse> => {
+    const authHeader = get(authorization$);
+    const authContext = await set(resolvedAuthContext$, options, signal);
     if (authContext) {
       return authContext;
     }
@@ -355,33 +259,36 @@ export function createRequiredAuthContext$(
         error: { message: "Not authenticated", code: "UNAUTHORIZED" },
       },
     };
-  });
-}
+  },
+);
 
-export const apiKeyAuthContext$: Computed<
-  Promise<AuthContext | AuthErrorResponse>
-> = computed(async (get) => {
-  const unauthorized: AuthErrorResponse = {
-    status: 401,
-    body: {
-      error: { message: "API key required", code: "UNAUTHORIZED" },
-    },
-  };
+export const apiKeyAuthContext$ = command(
+  async (
+    { get, set },
+    signal: AbortSignal,
+  ): Promise<AuthContext | AuthErrorResponse> => {
+    const UNAUTHORIZED: AuthErrorResponse = {
+      status: 401,
+      body: {
+        error: { message: "API key required", code: "UNAUTHORIZED" },
+      },
+    };
 
-  const authHeader = get(authorizationHeader$);
-  if (!authHeader?.startsWith("Bearer ")) {
-    return unauthorized;
-  }
+    const authHeader = get(authorization$);
+    if (!authHeader?.startsWith("Bearer ")) {
+      return UNAUTHORIZED;
+    }
 
-  const token = authHeader.substring(7);
-  if (!isPatToken(token)) {
-    return unauthorized;
-  }
+    const token = authHeader.substring(7);
+    if (!isPatToken(token)) {
+      return UNAUTHORIZED;
+    }
 
-  const authContext = await get(createResolvedAuthContext$(authHeader, {}));
-  if (!authContext || authContext.tokenType !== "pat") {
-    return unauthorized;
-  }
+    const authContext = await set(resolvedAuthContext$, {}, signal);
+    if (!authContext || authContext.tokenType !== "pat") {
+      return UNAUTHORIZED;
+    }
 
-  return authContext;
-});
+    return authContext;
+  },
+);
