@@ -567,6 +567,7 @@ pub(crate) async fn spawn_mitmdump(
     cmd.stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
+    cmd.kill_on_drop(true);
 
     // SAFETY: `set_pdeathsig` calls `prctl(PR_SET_PDEATHSIG)` which is
     // async-signal-safe. This ensures the kernel sends SIGKILL to the
@@ -798,6 +799,60 @@ mod tests {
     use super::*;
     use crate::types::{FirewallApi, FirewallAuth, FirewallPermission};
     use std::os::unix::fs::PermissionsExt;
+
+    fn write_fake_listening_mitmdump(path: &Path) {
+        std::fs::write(
+            path,
+            r#"#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$@" > "$0.args"
+port=""
+prev=""
+for arg in "$@"; do
+  if [ "$prev" = "--listen-port" ]; then
+    port="$arg"
+    break
+  fi
+  prev="$arg"
+done
+exec python3 - "$port" <<'PY'
+import socket
+import sys
+
+port = int(sys.argv[1])
+sock = socket.socket()
+sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+sock.bind(("127.0.0.1", port))
+sock.listen(1)
+while True:
+    conn, _ = sock.accept()
+    conn.close()
+PY
+"#,
+        )
+        .unwrap();
+        let mut perms = std::fs::metadata(path).unwrap().permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(path, perms).unwrap();
+    }
+
+    async fn wait_for_reaped_pid(pid: nix::unistd::Pid) -> bool {
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+        loop {
+            match nix::sys::wait::waitpid(pid, Some(nix::sys::wait::WaitPidFlag::WNOHANG)) {
+                Ok(nix::sys::wait::WaitStatus::StillAlive) => {}
+                Ok(_) => return true,
+                Err(nix::errno::Errno::ECHILD) => {
+                    return nix::sys::signal::kill(pid, None).is_err();
+                }
+                Err(_) => {}
+            }
+            if tokio::time::Instant::now() >= deadline {
+                return false;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    }
 
     #[test]
     fn find_port_returns_nonzero() {
@@ -1391,39 +1446,7 @@ mod tests {
     async fn spawn_mitmdump_passes_usage_state_id_option() {
         let dir = tempfile::tempdir().unwrap();
         let fake_mitmdump = dir.path().join("fake-mitmdump");
-        std::fs::write(
-            &fake_mitmdump,
-            r#"#!/usr/bin/env bash
-set -euo pipefail
-printf '%s\n' "$@" > "$0.args"
-port=""
-prev=""
-for arg in "$@"; do
-  if [ "$prev" = "--listen-port" ]; then
-    port="$arg"
-    break
-  fi
-  prev="$arg"
-done
-python3 - "$port" <<'PY'
-import socket
-import sys
-
-port = int(sys.argv[1])
-sock = socket.socket()
-sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-sock.bind(("127.0.0.1", port))
-sock.listen(1)
-while True:
-    conn, _ = sock.accept()
-    conn.close()
-PY
-"#,
-        )
-        .unwrap();
-        let mut perms = std::fs::metadata(&fake_mitmdump).unwrap().permissions();
-        perms.set_mode(0o755);
-        std::fs::set_permissions(&fake_mitmdump, perms).unwrap();
+        write_fake_listening_mitmdump(&fake_mitmdump);
 
         let config = ProxyConfig {
             mitmdump_bin: fake_mitmdump.clone(),
@@ -1448,6 +1471,37 @@ PY
             args.lines()
                 .any(|arg| arg == "vm0_usage_state_id=usage-state-test"),
             "mitmdump args should include vm0_usage_state_id option; got:\n{args}",
+        );
+    }
+
+    #[tokio::test]
+    async fn spawn_mitmdump_kills_child_when_handle_is_dropped() {
+        let dir = tempfile::tempdir().unwrap();
+        let fake_mitmdump = dir.path().join("fake-mitmdump");
+        write_fake_listening_mitmdump(&fake_mitmdump);
+
+        let config = ProxyConfig {
+            mitmdump_bin: fake_mitmdump,
+            ca_dir: dir.path().join("ca"),
+            addon_dir: dir.path().join("addon"),
+            registry_path: dir.path().join("proxy-registry.json"),
+            registry_lock_path: dir.path().join("proxy-registry.json.lock"),
+            api_url: None,
+        };
+        let (crash_tx, _crash_rx) = mpsc::channel(1);
+        let stopping = Arc::new(AtomicBool::new(false));
+        let port = find_available_port().unwrap();
+
+        let child = spawn_mitmdump(&config, port, &crash_tx, &stopping, "usage-state-test")
+            .await
+            .unwrap();
+        let pid = nix::unistd::Pid::from_raw(child.id().unwrap() as i32);
+        stopping.store(true, Ordering::Release);
+        drop(child);
+
+        assert!(
+            wait_for_reaped_pid(pid).await,
+            "dropping mitmdump Child should kill and reap the process"
         );
     }
 
