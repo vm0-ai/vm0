@@ -12,8 +12,7 @@ export function ZeroUsagePage() {
                 Usage
               </h1>
               <p className="text-sm text-muted-foreground mt-1">
-                Your credit and token consumption across chats, schedules, and
-                channels.
+                Your credit consumption across chats, schedules, and channels.
               </p>
             </div>
             <UsageInsightSelectors />

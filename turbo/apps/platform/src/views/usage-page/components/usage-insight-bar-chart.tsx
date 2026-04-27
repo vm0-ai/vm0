@@ -76,14 +76,28 @@ function formatTotal(n: number): string {
 }
 
 function formatBucketLabel(ts: string, range: string): string {
-  const d = new Date(ts.includes("T") ? ts : ts.replace(" ", "T") + "Z");
+  const match = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}))?/.exec(ts);
+  const d = match
+    ? new Date(
+        Date.UTC(
+          Number(match[1]),
+          Number(match[2]) - 1,
+          Number(match[3]),
+          Number(match[4] ?? "0"),
+        ),
+      )
+    : new Date(ts.includes("T") ? ts : ts.replace(" ", "T") + "Z");
   if (Number.isNaN(d.getTime())) {
     return ts;
   }
   if (range === "today" || range === "yesterday") {
-    return d.toLocaleTimeString("en-US", { hour: "2-digit", hour12: false });
+    return String(d.getUTCHours()).padStart(2, "0");
   }
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return d.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
 }
 
 function niceStep(range: number, targetTicks: number): number {

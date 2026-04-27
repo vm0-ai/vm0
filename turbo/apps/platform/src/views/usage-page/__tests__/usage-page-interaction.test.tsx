@@ -3,7 +3,7 @@
  * Tests that selector changes (range, groupBy) trigger API re-fetch with
  * updated query parameters.
  */
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
@@ -12,12 +12,31 @@ import { server } from "../../../mocks/server.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 import { zeroUsageInsightContract } from "@vm0/core";
 import { usageInsightFixture } from "./test-fixtures.ts";
+import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 
 const context = testContext();
 
 beforeEach(() => {
   resetAllMockHandlers();
 });
+
+function emptyUsageInsight() {
+  return {
+    buckets: [],
+    schedules: [],
+    scheduleOtherCount: 0,
+    scheduleOtherCredits: 0,
+    chats: [],
+    chatOtherCount: 0,
+    chatOtherCredits: 0,
+    emailCredits: 0,
+    emailTokens: 0,
+    slackCredits: 0,
+    slackTokens: 0,
+    grandTotalCredits: 0,
+    grandTotalTokens: 0,
+  };
+}
 
 describe("/_/usage page - selector interactions", () => {
   it("re-fetches with range=7d when Last 7 days is selected", async () => {
@@ -89,6 +108,101 @@ describe("/_/usage page - selector interactions", () => {
     await waitFor(() => {
       expect(capturedGroupBy).toBe("agent");
     });
+  });
+});
+
+describe("/_/usage page - bucket densification", () => {
+  it("fills yesterday as the full local calendar day", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(
+      new Date("2026-04-27T05:30:00.000Z").getTime(),
+    );
+
+    server.use(
+      mockApi(zeroUsageInsightContract.get, ({ query, respond }) => {
+        if (query.range !== "yesterday") {
+          return respond(200, emptyUsageInsight());
+        }
+        return respond(200, {
+          ...emptyUsageInsight(),
+          buckets: [
+            {
+              ts: "2026-04-26T23:00:00.000Z",
+              series: { chat: 11 },
+              tokens: { chat: 22 },
+            },
+          ],
+          grandTotalCredits: 11,
+          grandTotalTokens: 22,
+        });
+      }),
+    );
+
+    detachedSetupPage({ context, path: "/_/usage" });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { level: 1, name: "Usage" }),
+      ).toBeInTheDocument();
+    });
+
+    const rangeSelect = await screen.findByRole("combobox", {
+      name: "Date range",
+    });
+    click(rangeSelect);
+    click(await screen.findByRole("option", { name: "Yesterday" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("23")).toBeInTheDocument();
+    });
+  });
+
+  it("uses the preference timezone when filling daily buckets", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(
+      new Date("2026-04-27T05:30:00.000Z").getTime(),
+    );
+    setMockUserPreferences({ timezone: "America/Los_Angeles" });
+    let capturedTz: string | undefined;
+
+    server.use(
+      mockApi(zeroUsageInsightContract.get, ({ query, respond }) => {
+        capturedTz = query.tz;
+        if (query.range !== "7d") {
+          return respond(200, emptyUsageInsight());
+        }
+        return respond(200, {
+          ...emptyUsageInsight(),
+          buckets: [
+            {
+              ts: "2026-04-20T00:00:00.000Z",
+              series: { chat: 42 },
+              tokens: { chat: 84 },
+            },
+          ],
+          grandTotalCredits: 42,
+          grandTotalTokens: 84,
+        });
+      }),
+    );
+
+    detachedSetupPage({ context, path: "/_/usage" });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { level: 1, name: "Usage" }),
+      ).toBeInTheDocument();
+    });
+
+    const rangeSelect = await screen.findByRole("combobox", {
+      name: "Date range",
+    });
+    click(rangeSelect);
+    click(await screen.findByRole("option", { name: "Last 7 days" }));
+
+    await waitFor(() => {
+      expect(capturedTz).toBe("America/Los_Angeles");
+      expect(screen.getByText("Apr 20")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Apr 27")).not.toBeInTheDocument();
   });
 });
 

@@ -107,7 +107,7 @@ export const usageInsightAsync$ = computed(async (get) => {
   );
   return {
     ...result.body,
-    buckets: densifyBuckets(result.body.buckets, range),
+    buckets: densifyBuckets(result.body.buckets, range, tz),
   };
 });
 
@@ -123,46 +123,124 @@ export const usageInsightAsync$ = computed(async (get) => {
 const HOUR_MS = 3_600_000;
 const DAY_MS = 86_400_000;
 
-function parseBucketTs(ts: string): number {
-  return new Date(ts.includes("T") ? ts : ts.replace(" ", "T") + "Z").getTime();
+interface BucketParts {
+  year: number;
+  month: number;
+  day: number;
+  hour: number;
 }
 
-function formatBucketTs(ms: number, isHourly: boolean): string {
-  const d = new Date(ms);
-  const yyyy = d.getUTCFullYear();
-  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
-  const dd = String(d.getUTCDate()).padStart(2, "0");
-  const hh = String(d.getUTCHours()).padStart(2, "0");
+const BUCKET_TS_RE = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}))?/;
+
+function bucketPartsFromString(ts: string): BucketParts | null {
+  const match = BUCKET_TS_RE.exec(ts);
+  if (match) {
+    return {
+      year: Number(match[1]),
+      month: Number(match[2]),
+      day: Number(match[3]),
+      hour: Number(match[4] ?? "00"),
+    };
+  }
+  const date = new Date(ts);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+  return {
+    year: date.getUTCFullYear(),
+    month: date.getUTCMonth() + 1,
+    day: date.getUTCDate(),
+    hour: date.getUTCHours(),
+  };
+}
+
+function bucketPartsInTz(ms: number, tz: string): BucketParts {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date(ms));
+  const value = (type: Intl.DateTimeFormatPartTypes) => {
+    return Number(
+      parts.find((part) => {
+        return part.type === type;
+      })?.value ?? 0,
+    );
+  };
+  return {
+    year: value("year"),
+    month: value("month"),
+    day: value("day"),
+    hour: value("hour"),
+  };
+}
+
+function formatBucketTsFromParts(
+  parts: BucketParts,
+  isHourly: boolean,
+): string {
+  const yyyy = String(parts.year).padStart(4, "0");
+  const mm = String(parts.month).padStart(2, "0");
+  const dd = String(parts.day).padStart(2, "0");
+  const hh = String(isHourly ? parts.hour : 0).padStart(2, "0");
   return isHourly
     ? `${yyyy}-${mm}-${dd}T${hh}:00:00.000Z`
     : `${yyyy}-${mm}-${dd}T00:00:00.000Z`;
 }
 
+function formatBucketTs(ms: number, isHourly: boolean): string {
+  const d = new Date(ms);
+  return formatBucketTsFromParts(
+    {
+      year: d.getUTCFullYear(),
+      month: d.getUTCMonth() + 1,
+      day: d.getUTCDate(),
+      hour: d.getUTCHours(),
+    },
+    isHourly,
+  );
+}
+
+function normalizeBucketTs(ts: string, isHourly: boolean): string | null {
+  const parts = bucketPartsFromString(ts);
+  return parts ? formatBucketTsFromParts(parts, isHourly) : null;
+}
+
 function densifyBuckets(
   buckets: UsageInsightResponse["buckets"],
   range: InsightRange,
+  tz: string,
 ): UsageInsightResponse["buckets"] {
   const isHourly = range === "today" || range === "yesterday";
   const count = isHourly ? 24 : range === "7d" ? 7 : 28;
   const stepMs = isHourly ? HOUR_MS : DAY_MS;
-
-  // Anchor the right edge on now (truncated to bucket boundary). For
-  // "yesterday" anchor on yesterday's last hour instead so today doesn't
-  // bleed in.
-  const nowMs = Date.now();
-  let endMs = Math.floor(nowMs / stepMs) * stepMs;
-  if (range === "yesterday") {
-    endMs -= 24 * HOUR_MS;
-  }
+  const nowParts = bucketPartsInTz(Date.now(), tz);
+  const todayStartMs = Date.UTC(
+    nowParts.year,
+    nowParts.month - 1,
+    nowParts.day,
+  );
+  const startMs =
+    range === "today"
+      ? todayStartMs
+      : range === "yesterday"
+        ? todayStartMs - DAY_MS
+        : todayStartMs - (count - 1) * DAY_MS;
 
   const byTs = new Map<string, UsageInsightResponse["buckets"][number]>();
   for (const b of buckets) {
-    byTs.set(formatBucketTs(parseBucketTs(b.ts), isHourly), b);
+    const key = normalizeBucketTs(b.ts, isHourly);
+    if (key) {
+      byTs.set(key, b);
+    }
   }
 
   const dense: UsageInsightResponse["buckets"] = [];
-  for (let i = count - 1; i >= 0; i--) {
-    const ts = formatBucketTs(endMs - i * stepMs, isHourly);
+  for (let i = 0; i < count; i++) {
+    const ts = formatBucketTs(startMs + i * stepMs, isHourly);
     dense.push(byTs.get(ts) ?? { ts, series: {}, tokens: {} });
   }
   return dense;
