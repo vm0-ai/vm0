@@ -51,8 +51,9 @@ pub(crate) struct LeakedResources {
 
 /// Owns the leaked-resource cleanup channel and its background drain task.
 ///
-/// Normal factory shutdown can wait for the drain task to finish. `Drop` cannot
-/// await, so it closes the sender and aborts as a best-effort fallback.
+/// Normal factory shutdown signals the drain task to close the receiver, drain
+/// already-queued resources, and finish. `Drop` cannot await, so it aborts as a
+/// best-effort fallback.
 struct LeakCleaner {
     tx: Option<tokio::sync::mpsc::Sender<LeakedResources>>,
     shutdown_tx: Option<tokio::sync::oneshot::Sender<()>>,
@@ -114,8 +115,7 @@ impl LeakCleaner {
     }
 
     fn abort(&mut self) {
-        // Close the sender first so the drain task can observe channel close;
-        // abort immediately as a synchronous Drop backstop.
+        // Drop handles first, then abort immediately as a synchronous Drop backstop.
         self.tx.take();
         self.shutdown_tx.take();
         if let Some(handle) = self.handle.take() {
@@ -133,23 +133,41 @@ impl Drop for LeakCleaner {
 /// Background task that receives leaked sandbox resources from `Drop`
 /// impls and releases them asynchronously (pool indices, namespaces, dirs).
 async fn drain_leaked_resources(
-    mut rx: tokio::sync::mpsc::Receiver<LeakedResources>,
-    mut shutdown_rx: tokio::sync::oneshot::Receiver<()>,
+    rx: tokio::sync::mpsc::Receiver<LeakedResources>,
+    shutdown_rx: tokio::sync::oneshot::Receiver<()>,
     device_pool: std::sync::Arc<tokio::sync::Mutex<nbd_cow::pool::DevicePool>>,
     netns_pool: std::sync::Arc<tokio::sync::Mutex<NetnsPool>>,
 ) {
+    drain_leaked_resources_with_cleanup(rx, shutdown_rx, move |leaked| {
+        let device_pool = std::sync::Arc::clone(&device_pool);
+        let netns_pool = std::sync::Arc::clone(&netns_pool);
+        async move {
+            cleanup_leaked_resource(leaked, &device_pool, &netns_pool).await;
+        }
+    })
+    .await;
+}
+
+async fn drain_leaked_resources_with_cleanup<C, Fut>(
+    mut rx: tokio::sync::mpsc::Receiver<LeakedResources>,
+    mut shutdown_rx: tokio::sync::oneshot::Receiver<()>,
+    mut cleanup: C,
+) where
+    C: FnMut(LeakedResources) -> Fut,
+    Fut: std::future::Future<Output = ()>,
+{
     loop {
         tokio::select! {
             maybe_leaked = rx.recv() => {
                 let Some(leaked) = maybe_leaked else {
                     break;
                 };
-                cleanup_leaked_resource(leaked, &device_pool, &netns_pool).await;
+                cleanup(leaked).await;
             }
             _ = &mut shutdown_rx => {
                 rx.close();
                 while let Some(leaked) = rx.recv().await {
-                    cleanup_leaked_resource(leaked, &device_pool, &netns_pool).await;
+                    cleanup(leaked).await;
                 }
                 break;
             }
@@ -748,6 +766,16 @@ mod tests {
         }
     }
 
+    fn test_leaked_resource(sandbox_id: &str, device_index: u32) -> LeakedResources {
+        LeakedResources {
+            sandbox_id: sandbox_id.into(),
+            device_index,
+            network: test_network(),
+            sock_dir: PathBuf::from("/nonexistent"),
+            workspace: PathBuf::from("/nonexistent"),
+        }
+    }
+
     fn test_config(base_dir: PathBuf) -> FirecrackerConfig {
         FirecrackerConfig {
             binary_path: PathBuf::from("/tmp/firecracker"),
@@ -866,24 +894,49 @@ mod tests {
         let (tx, _rx) = tokio::sync::mpsc::channel::<LeakedResources>(1);
 
         // Fill the channel.
-        tx.try_send(LeakedResources {
-            sandbox_id: "first".into(),
-            device_index: 0,
-            network: test_network(),
-            sock_dir: PathBuf::from("/nonexistent"),
-            workspace: PathBuf::from("/nonexistent"),
-        })
-        .unwrap();
+        tx.try_send(test_leaked_resource("first", 0)).unwrap();
 
         // Second send should fail gracefully.
-        let result = tx.try_send(LeakedResources {
-            sandbox_id: "second".into(),
-            device_index: 1,
-            network: test_network(),
-            sock_dir: PathBuf::from("/nonexistent"),
-            workspace: PathBuf::from("/nonexistent"),
-        });
+        let result = tx.try_send(test_leaked_resource("second", 1));
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn drain_leaked_resources_shutdown_closes_receiver_and_drains_buffer() {
+        let (tx, rx) = tokio::sync::mpsc::channel::<LeakedResources>(4);
+        let live_sender_clone = tx.clone();
+        let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
+
+        tx.send(test_leaked_resource("first", 0)).await.unwrap();
+        tx.send(test_leaked_resource("second", 1)).await.unwrap();
+
+        let cleaned = Arc::new(tokio::sync::Mutex::new(Vec::new()));
+        let cleaned_clone = Arc::clone(&cleaned);
+        let handle = tokio::spawn(drain_leaked_resources_with_cleanup(
+            rx,
+            shutdown_rx,
+            move |leaked| {
+                let cleaned = Arc::clone(&cleaned_clone);
+                async move {
+                    cleaned.lock().await.push(leaked.sandbox_id);
+                }
+            },
+        ));
+
+        shutdown_tx.send(()).unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(1), handle)
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(
+            *cleaned.lock().await,
+            vec!["first".to_string(), "second".to_string()]
+        );
+        assert!(matches!(
+            live_sender_clone.try_send(test_leaked_resource("late", 2)),
+            Err(tokio::sync::mpsc::error::TrySendError::Closed(_))
+        ));
     }
 
     #[tokio::test]
