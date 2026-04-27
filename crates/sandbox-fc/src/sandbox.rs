@@ -1311,6 +1311,34 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn snapshot_drive_bind_target_rejects_existing_symlink() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("target");
+        let bind_target = dir.path().join("cow-device-bind");
+        tokio::fs::write(&target, b"").await.unwrap();
+        std::os::unix::fs::symlink(&target, &bind_target).unwrap();
+
+        let result = ensure_snapshot_drive_bind_target(&bind_target).await;
+
+        assert!(
+            matches!(result, Err(SandboxError::StartFailed(message)) if message.contains("not a regular file"))
+        );
+    }
+
+    #[tokio::test]
+    async fn snapshot_drive_bind_target_creates_missing_file_and_parent() {
+        let dir = tempfile::tempdir().unwrap();
+        let bind_target = dir.path().join("snapshot-work").join("cow-device-bind");
+
+        ensure_snapshot_drive_bind_target(&bind_target)
+            .await
+            .unwrap();
+
+        let meta = tokio::fs::symlink_metadata(&bind_target).await.unwrap();
+        assert!(meta.file_type().is_file());
+    }
+
+    #[tokio::test]
     async fn snapshot_drive_bind_target_allows_existing_file() {
         let dir = tempfile::tempdir().unwrap();
         let bind_target = dir.path().join("cow-device-bind");
