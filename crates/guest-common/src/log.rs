@@ -120,6 +120,21 @@ mod tests {
 
     static LOG_TEST_MUTEX: Mutex<()> = Mutex::new(());
 
+    struct SystemLogFileGuard;
+
+    impl SystemLogFileGuard {
+        fn set(path: impl AsRef<Path>) -> Self {
+            set_system_log_file(path);
+            Self
+        }
+    }
+
+    impl Drop for SystemLogFileGuard {
+        fn drop(&mut self) {
+            clear_system_log_file();
+        }
+    }
+
     #[test]
     fn timestamp_is_rfc3339() {
         let ts = timestamp();
@@ -151,7 +166,7 @@ mod tests {
         let _guard = LOG_TEST_MUTEX.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("system.log");
-        set_system_log_file(&path);
+        let _system_log = SystemLogFileGuard::set(&path);
         clear_system_log_file();
 
         emit(
@@ -171,7 +186,7 @@ mod tests {
         let _guard = LOG_TEST_MUTEX.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("system.log");
-        set_system_log_file(&path);
+        let _system_log = SystemLogFileGuard::set(&path);
 
         emit(
             "WARN",
@@ -179,7 +194,6 @@ mod tests {
             format_args!("Tool timeout {}", "WebFetch"),
         );
 
-        clear_system_log_file();
         let content = std::fs::read_to_string(path).unwrap();
         assert!(
             content.contains("[WARN] [sandbox:guest-agent] Tool timeout WebFetch"),
@@ -193,7 +207,7 @@ mod tests {
         let _guard = LOG_TEST_MUTEX.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("missing-parent").join("system.log");
-        set_system_log_file(&path);
+        let _system_log = SystemLogFileGuard::set(&path);
 
         emit(
             "WARN",
@@ -201,7 +215,6 @@ mod tests {
             format_args!("system log path is not writable"),
         );
 
-        clear_system_log_file();
         assert!(
             !path.exists(),
             "test setup expected append to fail for missing parent dir",
@@ -213,7 +226,7 @@ mod tests {
         let _guard = LOG_TEST_MUTEX.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("system.log");
-        set_system_log_file(&path);
+        let _system_log = SystemLogFileGuard::set(&path);
 
         let handles: Vec<_> = (0..8)
             .map(|thread_id| {
@@ -231,7 +244,6 @@ mod tests {
         for handle in handles {
             handle.join().unwrap();
         }
-        clear_system_log_file();
 
         let content = std::fs::read_to_string(path).unwrap();
         let lines: Vec<_> = content.lines().collect();
