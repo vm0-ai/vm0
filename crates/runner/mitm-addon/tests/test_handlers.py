@@ -3,6 +3,7 @@
 import asyncio
 import gzip
 import json
+import os
 import time
 import urllib.error
 from pathlib import Path
@@ -28,6 +29,55 @@ def _usage_event_events_from_calls(call_args_list):
     return [
         event for body in _request_bodies_from_calls(call_args_list) for event in body["events"]
     ]
+
+
+def _pending_state(path: Path) -> dict:
+    return json.loads(path.read_text())
+
+
+def _assert_pending(path: Path, flows: int, reports: int) -> dict:
+    state = _pending_state(path)
+    assert set(state) == {
+        "version",
+        "pid",
+        "usageStateId",
+        "updatedAtMs",
+        "flows",
+        "reports",
+    }
+    assert state["version"] == 1
+    assert state["pid"] == os.getpid()
+    assert state["usageStateId"]
+    assert isinstance(state["updatedAtMs"], int)
+    assert state["flows"] == flows
+    assert state["reports"] == reports
+    return state
+
+
+class TestAddonConfiguration:
+    def test_load_registers_usage_state_id_without_pending_write(self):
+        loader = MagicMock()
+
+        with patch.object(usage, "set_pending_path") as set_pending_path:
+            mitm_addon.load(loader)
+
+        option_names = [call.kwargs["name"] for call in loader.add_option.call_args_list]
+        assert "vm0_usage_state_id" in option_names
+        set_pending_path.assert_not_called()
+
+    def test_configure_initializes_pending_path_with_usage_state_id(self):
+        options = MagicMock(vm0_usage_state_id="runner-usage-state-id")
+        pending_path = str(Path(mitm_addon.__file__).resolve().parent / "usage-pending")
+
+        with (
+            patch.object(mitm_addon.ctx, "options", options, create=True),
+            patch.object(usage, "set_pending_path") as set_pending_path,
+        ):
+            mitm_addon.configure({"vm0_usage_state_id"})
+
+        set_pending_path.assert_called_once_with(
+            pending_path, usage_state_id="runner-usage-state-id"
+        )
 
 
 class TestRequestHandler:
@@ -330,6 +380,202 @@ class TestRequestHandler:
         assert flow.metadata["firewall_permission"] == "read-repos"
         assert flow.metadata["firewall_rule_match"] == "GET /repos/{owner}/{repo}"
         assert flow.metadata["firewall_params"] == {"owner": "octocat", "repo": "hello"}
+
+    async def test_billable_flow_is_tracked_before_responseheaders(
+        self, tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+    ):
+        """Drain sees billable requests after request() even before responseheaders()."""
+        pending_path = tmp_path / "usage-pending"
+        usage.counters._in_flight_flows = 0
+        usage.counters._pending_reports = 0
+        usage.set_pending_path(str(pending_path), usage_state_id="test-usage-state-id")
+
+        registry = {
+            "vms": {
+                "10.200.0.5": {
+                    "runId": "run-conn-1",
+                    "billableFirewalls": ["x"],
+                    "sandboxToken": "tok-conn",
+                    "networkLogPath": str(tmp_path / "net.jsonl"),
+                    "proxyLogPath": str(tmp_path / "proxy.jsonl"),
+                    "firewalls": [
+                        {
+                            "name": "x",
+                            "apis": [
+                                {
+                                    "base": "https://api.x.com",
+                                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                                    "permissions": [
+                                        {"name": "read-posts", "rules": ["GET /2/users/by"]}
+                                    ],
+                                },
+                            ],
+                        },
+                    ],
+                    "networkPolicies": {
+                        "x": {
+                            "allow": ["read-posts"],
+                            "deny": [],
+                            "ask": [],
+                            "unknownPolicy": "deny",
+                        },
+                    },
+                    "encryptedSecrets": "iv:tag:data",
+                }
+            }
+        }
+        reg_path = tmp_path / "registry.json"
+        reg_path.write_text(json.dumps(registry))
+
+        flow = real_flow(
+            with_response=False, client_ip="10.200.0.5", host="api.x.com", path="/2/users/by"
+        )
+
+        try:
+            with (
+                mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+                fake_firewall_headers(),
+            ):
+                await mitm_addon.request(flow)
+
+            assert flow.metadata["_usage_flow_tracked"] is True
+            assert usage.counters._in_flight_flows == 1
+            _assert_pending(pending_path, flows=1, reports=0)
+        finally:
+            if usage.counters._in_flight_flows:
+                usage.decrement_flows()
+            usage.set_pending_path("")
+
+    async def test_local_firewall_error_does_not_track_usage_flow(
+        self, tmp_path, real_flow, mitm_ctx, headers
+    ):
+        """Local auth failures do not enqueue usage and must not leak drain counters."""
+        pending_path = tmp_path / "usage-pending"
+        usage.counters._in_flight_flows = 0
+        usage.counters._pending_reports = 0
+        usage.set_pending_path(str(pending_path), usage_state_id="test-usage-state-id")
+
+        registry = {
+            "vms": {
+                "10.200.0.5": {
+                    "runId": "run-conn-1",
+                    "billableFirewalls": ["x"],
+                    "sandboxToken": "tok-conn",
+                    "networkLogPath": str(tmp_path / "net.jsonl"),
+                    "proxyLogPath": str(tmp_path / "proxy.jsonl"),
+                    "firewalls": [
+                        {
+                            "name": "x",
+                            "apis": [
+                                {
+                                    "base": "https://api.x.com",
+                                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                                    "permissions": [
+                                        {"name": "read-posts", "rules": ["GET /2/users/by"]}
+                                    ],
+                                },
+                            ],
+                        },
+                    ],
+                    "networkPolicies": {
+                        "x": {
+                            "allow": ["read-posts"],
+                            "deny": [],
+                            "ask": [],
+                            "unknownPolicy": "deny",
+                        },
+                    },
+                }
+            }
+        }
+        reg_path = tmp_path / "registry.json"
+        reg_path.write_text(json.dumps(registry))
+
+        flow = real_flow(
+            with_response=False, client_ip="10.200.0.5", host="api.x.com", path="/2/users/by"
+        )
+
+        try:
+            with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+                await mitm_addon.request(flow)
+
+            assert flow.response is not None
+            assert flow.response.status_code == 502
+            assert flow.metadata["firewall_error"] == "auth_unavailable"
+            assert "_usage_flow_tracked" not in flow.metadata
+            assert usage.counters._in_flight_flows == 0
+            _assert_pending(pending_path, flows=0, reports=0)
+        finally:
+            usage.set_pending_path("")
+
+    async def test_non_billable_model_provider_is_not_tracked_before_responseheaders(
+        self, tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+    ):
+        """Model-provider usage only reports when the firewall is billable."""
+        pending_path = tmp_path / "usage-pending"
+        usage.counters._in_flight_flows = 0
+        usage.counters._pending_reports = 0
+        usage.set_pending_path(str(pending_path), usage_state_id="test-usage-state-id")
+
+        registry = {
+            "vms": {
+                "10.200.0.5": {
+                    "runId": "run-model-1",
+                    "billableFirewalls": [],
+                    "sandboxToken": "tok-model",
+                    "networkLogPath": str(tmp_path / "net.jsonl"),
+                    "proxyLogPath": str(tmp_path / "proxy.jsonl"),
+                    "firewalls": [
+                        {
+                            "name": "model-provider:anthropic-api-key",
+                            "apis": [
+                                {
+                                    "base": "https://api.anthropic.com",
+                                    "auth": {"headers": {"x-api-key": "test-key"}},
+                                    "permissions": [
+                                        {"name": "messages", "rules": ["POST /v1/messages"]}
+                                    ],
+                                },
+                            ],
+                        },
+                    ],
+                    "networkPolicies": {
+                        "model-provider:anthropic-api-key": {
+                            "allow": ["messages"],
+                            "deny": [],
+                            "ask": [],
+                            "unknownPolicy": "deny",
+                        },
+                    },
+                    "encryptedSecrets": "iv:tag:data",
+                }
+            }
+        }
+        reg_path = tmp_path / "registry.json"
+        reg_path.write_text(json.dumps(registry))
+
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="api.anthropic.com",
+            path="/v1/messages",
+            method="POST",
+        )
+
+        try:
+            with (
+                mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+                fake_firewall_headers(),
+            ):
+                await mitm_addon.request(flow)
+
+            assert flow.metadata["firewall_name"] == "model-provider:anthropic-api-key"
+            assert flow.metadata["firewall_billable"] is False
+            assert "_usage_flow_tracked" not in flow.metadata
+            assert usage.counters._in_flight_flows == 0
+            _assert_pending(pending_path, flows=0, reports=0)
+        finally:
+            usage.set_pending_path("")
 
     async def test_firewall_no_base_match_passes_through(
         self, tmp_path, real_flow, mitm_ctx, headers
@@ -1241,6 +1487,7 @@ class TestResponseHeadersSseParser:
             status_code=200, headers=http.Headers(**{"content-type": "text/event-stream"})
         )
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata["firewall_billable"] = True
 
         mitm_addon.responseheaders(flow)
 
@@ -1270,6 +1517,7 @@ class TestResponseHeadersSseParser:
             ),
         )
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata["firewall_billable"] = True
 
         mitm_addon.responseheaders(flow)
 
@@ -1311,6 +1559,18 @@ class TestResponseHeadersSseParser:
 
         assert "model_provider_usage" not in flow.metadata
 
+    def test_no_sse_parser_for_non_billable_model_provider(self, real_flow, headers):
+        flow = real_flow(with_response=False, host="api.anthropic.com")
+        flow.response = tutils.tresp(
+            status_code=200, headers=http.Headers(**{"content-type": "text/event-stream"})
+        )
+        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata["firewall_billable"] = False
+
+        mitm_addon.responseheaders(flow)
+
+        assert "model_provider_usage" not in flow.metadata
+
     def test_no_sse_parser_without_firewall_name(self, real_flow, headers):
         flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.response = tutils.tresp(
@@ -1338,6 +1598,7 @@ class TestResponseUsageReporting:
         flow.metadata["firewall_action"] = "ALLOW"
         flow.metadata["original_url"] = "https://api.anthropic.com/v1/messages"
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata["firewall_billable"] = True
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
         # No model_provider_usage set (no SSE parser) — JSON body in buffer
         body = json.dumps(
@@ -1375,12 +1636,13 @@ class TestResponseUsageReporting:
         assert extracted["output_tokens"] == 200
 
     def test_model_provider_buffer_not_truncated(self, real_flow, headers):
-        """Model provider responses should buffer without truncation."""
+        """Billable model provider responses should buffer without truncation."""
         flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.response = tutils.tresp(
             status_code=200, headers=http.Headers(**{"content-type": "application/json"})
         )
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata["firewall_billable"] = True
 
         mitm_addon.responseheaders(flow)
 
@@ -1393,6 +1655,26 @@ class TestResponseUsageReporting:
         state = flow.metadata["stream_buffer_state"]
         assert len(buf) == len(large_chunk)
         assert not state["truncated"]
+
+    def test_non_billable_model_provider_buffer_truncated(self, real_flow, headers):
+        """Non-billable model providers should use the normal bounded buffer."""
+        flow = real_flow(with_response=False, host="api.anthropic.com")
+        flow.response = tutils.tresp(
+            status_code=200, headers=http.Headers(**{"content-type": "application/json"})
+        )
+        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata["firewall_billable"] = False
+
+        mitm_addon.responseheaders(flow)
+
+        callback = flow.response.stream
+        large_chunk = b"x" * (body_utils.STREAM_BUFFER_LIMIT + 1000)
+        callback(large_chunk)
+
+        buf = flow.metadata["stream_buffer"]
+        state = flow.metadata["stream_buffer_state"]
+        assert len(buf) == body_utils.STREAM_BUFFER_LIMIT
+        assert state["truncated"]
 
     def test_non_model_provider_buffer_truncated(self, real_flow, headers):
         """Non-model-provider responses should truncate at 64KB."""
@@ -3328,33 +3610,38 @@ class TestUsagePendingCounter:
         usage.counters._in_flight_flows = 0
         usage.counters._pending_reports = 0
         usage.counters._pending_path = ""
+        usage.counters._usage_state_id = "test-usage-state-id"
+        usage.counters._pending_write_error_logged = False
 
     def test_increment_decrement_flows(self, tmp_path):
-        usage.set_pending_path(str(tmp_path / "usage-pending"))
+        pending_path = tmp_path / "usage-pending"
+        usage.set_pending_path(str(pending_path))
         usage.increment_flows()
         usage.increment_flows()
         assert usage.counters._in_flight_flows == 2
-        content = (tmp_path / "usage-pending").read_text()
-        assert content == "2:0"
+        _assert_pending(pending_path, flows=2, reports=0)
 
         usage.decrement_flows()
-        content = (tmp_path / "usage-pending").read_text()
-        assert content == "1:0"
+        _assert_pending(pending_path, flows=1, reports=0)
 
         usage.decrement_flows()
-        content = (tmp_path / "usage-pending").read_text()
-        assert content == "0:0"
+        _assert_pending(pending_path, flows=0, reports=0)
 
     def test_increment_decrement_reports(self, tmp_path):
-        usage.set_pending_path(str(tmp_path / "usage-pending"))
+        pending_path = tmp_path / "usage-pending"
+        usage.set_pending_path(str(pending_path))
         usage.counters._increment_reports()
         assert usage.counters._pending_reports == 1
-        content = (tmp_path / "usage-pending").read_text()
-        assert content == "0:1"
+        _assert_pending(pending_path, flows=0, reports=1)
 
         usage.counters._decrement_reports()
-        content = (tmp_path / "usage-pending").read_text()
-        assert content == "0:0"
+        _assert_pending(pending_path, flows=0, reports=0)
+
+    def test_set_pending_path_accepts_explicit_usage_state_id(self, tmp_path):
+        pending_path = tmp_path / "usage-pending"
+        usage.set_pending_path(str(pending_path), usage_state_id="explicit-usage-state-id")
+        state = _assert_pending(pending_path, flows=0, reports=0)
+        assert state["usageStateId"] == "explicit-usage-state-id"
 
     def test_decrement_does_not_go_negative(self, tmp_path):
         usage.set_pending_path(str(tmp_path / "usage-pending"))
@@ -3407,10 +3694,12 @@ class TestUsagePendingCounter:
 
     def test_report_decrements_after_completion(self, tmp_path, real_flow, fresh_usage_executor):
         """Retry exhaustion still runs the decrement finally-block."""
-        usage.set_pending_path(str(tmp_path / "usage-pending"))
+        pending_path = tmp_path / "usage-pending"
+        usage.set_pending_path(str(pending_path))
 
         flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata["firewall_billable"] = True
         flow.metadata["vm_sandbox_token"] = "tok"
         flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
         flow.metadata["model_provider_usage"] = {"input_tokens": 1}
@@ -3426,15 +3715,16 @@ class TestUsagePendingCounter:
             usage.webhook.usage_executor.shutdown(wait=True)
 
         assert usage.counters._pending_reports == 0
-        content = (tmp_path / "usage-pending").read_text()
-        assert content == "0:0"
+        _assert_pending(pending_path, flows=0, reports=0)
 
     def test_enqueue_increments_and_drains_reports(self, tmp_path, real_flow, fresh_usage_executor):
         """Public entry increments pending on enqueue; executor drain decrements to 0."""
-        usage.set_pending_path(str(tmp_path / "usage-pending"))
+        pending_path = tmp_path / "usage-pending"
+        usage.set_pending_path(str(pending_path))
 
         flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata["firewall_billable"] = True
         flow.metadata["vm_sandbox_token"] = "tok"
         flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
         flow.metadata["model_provider_usage"] = {"input_tokens": 1}
@@ -3450,8 +3740,7 @@ class TestUsagePendingCounter:
             usage.webhook.usage_executor.shutdown(wait=True)
 
         assert usage.counters._pending_reports == 0
-        content = (tmp_path / "usage-pending").read_text()
-        assert content == "0:0"
+        _assert_pending(pending_path, flows=0, reports=0)
 
     def test_decorator_pop_prevents_double_decrement(self, tmp_path, real_flow):
         """If both response() and error() fire for the same flow, decrement only once."""
@@ -3490,12 +3779,14 @@ class TestUsagePendingCounter:
 
     def test_sync_fallback_decrements_reports(self, tmp_path, real_flow, fresh_usage_executor):
         """When the executor is already shut down, the sync fallback still decrements."""
-        usage.set_pending_path(str(tmp_path / "usage-pending"))
+        pending_path = tmp_path / "usage-pending"
+        usage.set_pending_path(str(pending_path))
         # Shut down the executor so _enqueue_webhook takes the sync fallback.
         usage.webhook.usage_executor.shutdown(wait=True)
 
         flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata["firewall_billable"] = True
         flow.metadata["vm_sandbox_token"] = "tok"
         flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
         flow.metadata["model_provider_usage"] = {"input_tokens": 1}
@@ -3510,5 +3801,4 @@ class TestUsagePendingCounter:
             usage.report_model_provider_usage(flow, "run-1")
 
         assert usage.counters._pending_reports == 0
-        content = (tmp_path / "usage-pending").read_text()
-        assert content == "0:0"
+        _assert_pending(pending_path, flows=0, reports=0)

@@ -79,11 +79,22 @@ def load(loader: Loader) -> None:
         default=str(Path(tempfile.gettempdir()) / "proxy-registry.json"),
         help="Path to proxy registry file",
     )
+    loader.add_option(
+        name="vm0_usage_state_id",
+        typespec=str,
+        default="",
+        help="Runner-generated usage-pending state id",
+    )
 
-    # Initialize the usage pending-count file so the runner can poll it
-    # before sending SIGTERM.  The file lives next to the addon script,
-    # which is written to addon_dir by the runner.
-    usage.set_pending_path(str(Path(__file__).resolve().parent / "usage-pending"))
+
+def configure(updated: set[str]) -> None:
+    if "vm0_usage_state_id" in updated:
+        # Custom --set options are deferred until after load() registers them,
+        # so initialize this file here where ctx.options has the runner value.
+        usage.set_pending_path(
+            str(Path(__file__).resolve().parent / "usage-pending"),
+            usage_state_id=ctx.options.vm0_usage_state_id or None,
+        )
 
 
 def get_api_url() -> str:
@@ -290,10 +301,29 @@ async def request(flow: http.HTTPFlow) -> None:
             return
         if isinstance(result, FirewallAllow):
             await handle_firewall_request(flow, result.api_entry, vm_info, result.match_info)
+            _maybe_track_usage_flow(flow)
             return
 
     # No firewall match — pass through directly
     flow.metadata["firewall_action"] = "ALLOW"
+
+
+def _maybe_track_usage_flow(flow: http.HTTPFlow) -> None:
+    """Track billable flows before upstream response headers.
+
+    This closes the shutdown drain gap where the request has already been
+    sent upstream, but mitmproxy has not yet reached responseheaders().
+    The response/error decorator pops the metadata flag so decrement runs
+    exactly once.
+    """
+    if flow.metadata.get("_usage_flow_tracked"):
+        return
+    # Local firewall/auth errors synthesize a response but never enqueue usage.
+    if flow.response is not None and not flow.metadata.get("auth_url_rewrite"):
+        return
+    if flow.metadata.get("firewall_billable", False):
+        usage.increment_flows()
+        flow.metadata["_usage_flow_tracked"] = True
 
 
 # ============================================================================
@@ -317,9 +347,9 @@ def responseheaders(flow: http.HTTPFlow) -> None:
     buf = bytearray()
     state = {"truncated": False}
 
-    # Set up SSE usage extraction for model provider streaming responses.
-    # For non-SSE model provider responses, disable buffer truncation so the
-    # full JSON body is available for usage extraction in response().
+    # Set up usage extraction only for billable model-provider responses.
+    # For non-SSE billable model-provider responses, disable buffer truncation
+    # so the full JSON body is available for usage extraction in response().
     sse_parser = None
     sse_decompressor = None
     ndjson_parser = None
@@ -330,6 +360,7 @@ def responseheaders(flow: http.HTTPFlow) -> None:
     # via auth.handle_firewall_request.  Gates report_connector_usage (in response())
     # and the full-body response buffering that billing payload extraction needs.
     is_billable_flow = flow.metadata.get("firewall_billable", False)
+    is_billable_model_provider = is_model_provider and is_billable_flow
     # X-specific NDJSON stream classification — tied to the x firewall itself,
     # not to billing.  Kept separate so a future non-x billable connector
     # doesn't accidentally inherit X stream parsing.
@@ -356,13 +387,7 @@ def responseheaders(flow: http.HTTPFlow) -> None:
         stream_path = urllib.parse.urlparse(flow.metadata.get("original_url", "")).path
         is_x_stream = usage.x.is_stream_path(stream_path)
 
-    # Track flows that will generate webhook POSTs (usage or connector billing)
-    # so the runner can wait for them to reach response()/error() before stopping.
-    if is_model_provider or is_billable_flow:
-        usage.increment_flows()
-        flow.metadata["_usage_flow_tracked"] = True
-
-    if is_model_provider:
+    if is_billable_model_provider:
         content_type = flow.response.headers.get("content-type", "")
         if "text/event-stream" in content_type:
             parser_fn, usage_dict = usage.create_sse_usage_extractor()
@@ -378,18 +403,12 @@ def responseheaders(flow: http.HTTPFlow) -> None:
         flow.metadata["x_ndjson_state"] = ndjson_state
         ndjson_decompressor = body_utils.create_stream_decompressor(flow.response.headers)
 
-    # Buffer cap policy (coupled to billability by design — every billable
-    # connector today needs json.loads on the full body to build the webhook
-    # payload; if that ever diverges, add a separate flag):
-    # - Model providers: unbounded — need full body for non-SSE JSON usage extraction.
-    # - Billable non-stream connectors: unbounded — full body feeds json.loads.
-    # - X stream endpoints: STREAM_BUFFER_LIMIT (64 KB) — parser handles bytes
-    #   incrementally; the buffer is kept only for forensic network logging.
-    # - Everything else: STREAM_BUFFER_LIMIT (default 64 KB).
-    if is_model_provider or (is_billable_flow and not is_x_stream):
-        buf_limit = None
-    else:
-        buf_limit = body_utils.STREAM_BUFFER_LIMIT
+    # Buffer cap policy:
+    # - Billable flows keep the full body for billing extraction.
+    # - X stream endpoints are the exception: the incremental parser handles
+    #   bytes as they arrive, so the buffer is only for forensic logging.
+    # - Everything else uses STREAM_BUFFER_LIMIT (default 64 KB).
+    buf_limit = None if is_billable_flow and not is_x_stream else body_utils.STREAM_BUFFER_LIMIT
 
     def stream_and_buffer(chunk: bytes) -> bytes:
         if not state["truncated"]:
@@ -418,9 +437,9 @@ def responseheaders(flow: http.HTTPFlow) -> None:
 def _track_usage_flow(fn):
     """Decorator ensuring decrement_flows runs after response/error handlers.
 
-    Pairs with ``increment_flows()`` in ``responseheaders()``.  Uses
-    ``pop`` so that even if both ``response()`` and ``error()`` fire for
-    the same flow, the decrement only happens once.
+    Pairs with ``increment_flows()`` in ``request()``.  Uses ``pop`` so
+    that even if both ``response()`` and ``error()`` fire for the same
+    flow, the decrement only happens once.
     """
 
     @functools.wraps(fn)
@@ -513,7 +532,9 @@ def response(flow: http.HTTPFlow) -> None:
     # buffered JSON body (buffer is never truncated for model providers).
     if not flow.metadata.get("model_provider_usage") and stream_buf:
         firewall_name = flow.metadata.get("firewall_name", "")
-        if firewall_name.startswith("model-provider:"):
+        if firewall_name.startswith("model-provider:") and flow.metadata.get(
+            "firewall_billable", False
+        ):
             json_usage = usage.extract_usage_from_json(
                 bytes(stream_buf),
                 flow.response.headers if flow.response else None,
