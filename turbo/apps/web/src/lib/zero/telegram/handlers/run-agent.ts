@@ -4,6 +4,7 @@ import { isApiError } from "@vm0/api-services/errors";
 import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
 import { logger } from "../../../shared/logger";
 import type { TelegramCallbackPayload } from "../../../infra/callback/callback-payloads";
+import type { UserInfoOptions } from "../../integration-prompt";
 import { adaptTelegramTrigger } from "./adapt-telegram-trigger";
 
 const log = logger("telegram:run-agent");
@@ -15,6 +16,14 @@ interface RunAgentParams {
   sessionId: string | undefined;
   prompt: string;
   threadContext: string;
+  userInfoExtras?: UserInfoOptions;
+  botId?: string;
+  botUsername?: string | null;
+  chatId?: string;
+  chatType?: string;
+  messageId?: string;
+  rootMessageId?: string | null;
+  messageThreadId?: string | number | null;
   userId: string;
   callbackContext: TelegramCallbackPayload;
   apiStartTime: number;

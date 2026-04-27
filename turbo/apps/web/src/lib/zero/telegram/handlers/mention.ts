@@ -111,13 +111,14 @@ export async function handleTelegramMention(
   );
 
   // 6b. Enrich prompt with user info and current message's photo
-  let enrichedPrompt = enrichTelegramPrompt(messageText, message.from);
-  enrichedPrompt = await appendPhotoContext(
-    enrichedPrompt,
+  const { prompt: messageContent, userInfoExtras } = enrichTelegramPrompt(
+    messageText,
+    message.from,
+  );
+  let enrichedPrompt = appendPhotoContext(
+    messageContent,
     message,
-    client,
-    installationId,
-    chatId,
+    installation.telegramBotId,
   );
 
   // 6c. Prepend reply context if this message is a reply to another message
@@ -151,6 +152,14 @@ export async function handleTelegramMention(
     sessionId: existingSessionId,
     prompt: enrichedPrompt,
     threadContext: executionContext,
+    userInfoExtras,
+    botId: installation.telegramBotId,
+    botUsername: installation.botUsername,
+    chatId,
+    chatType: message.chat.type,
+    messageId: String(message.message_id),
+    rootMessageId: rootMessageId ?? null,
+    messageThreadId: message.message_thread_id,
     userId: userLink.vm0UserId,
     apiStartTime,
     callbackContext: {

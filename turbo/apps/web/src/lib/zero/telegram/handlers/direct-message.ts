@@ -124,30 +124,24 @@ export async function handleTelegramDirectMessage(
     }
   }
 
-  // 8. Fetch context (skip when continuing an existing session — it already has history)
-  let executionContext = "";
-  if (!existingSessionId) {
-    const ctx = await fetchTelegramContext(
-      installationId,
-      chatId,
-      lastProcessedMessageId,
-      client,
-      String(message.message_id),
-    );
-    executionContext = ctx.executionContext;
-  }
+  // 8. Fetch new conversation context; existing sessions already have older history.
+  const { executionContext } = await fetchTelegramContext(
+    installationId,
+    chatId,
+    lastProcessedMessageId,
+    client,
+    String(message.message_id),
+  );
 
   // 9. Enrich prompt with user info and current message's photo
-  let enrichedPrompt = enrichTelegramPrompt(
+  const { prompt: messageContent, userInfoExtras } = enrichTelegramPrompt(
     message.text ?? message.caption ?? "",
     message.from,
   );
-  enrichedPrompt = await appendPhotoContext(
-    enrichedPrompt,
+  let enrichedPrompt = appendPhotoContext(
+    messageContent,
     message,
-    client,
-    installationId,
-    chatId,
+    installation.telegramBotId,
   );
 
   // 9b. Prepend reply context if this message is a reply to another message
@@ -163,6 +157,14 @@ export async function handleTelegramDirectMessage(
     sessionId: existingSessionId,
     prompt: enrichedPrompt,
     threadContext: executionContext,
+    userInfoExtras,
+    botId: installation.telegramBotId,
+    botUsername: installation.botUsername,
+    chatId,
+    chatType: message.chat.type,
+    messageId: String(message.message_id),
+    rootMessageId,
+    messageThreadId: message.message_thread_id,
     userId: userLink.vm0UserId,
     apiStartTime,
     callbackContext: {

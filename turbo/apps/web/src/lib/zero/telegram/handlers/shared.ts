@@ -15,13 +15,10 @@ import {
 } from "../client";
 import { escapeHtml } from "../format";
 import { signConnectParams } from "../connect-token";
-import {
-  pickBestPhoto,
-  downloadAndUploadTelegramPhoto,
-  formatPhotoForContext,
-} from "../images";
+import { pickBestPhoto, formatTelegramFileForContext } from "../images";
 import { logger } from "../../../shared/logger";
 import type { TelegramHandlerUpdate } from "./types";
+import type { UserInfoOptions } from "../../integration-prompt";
 
 const log = logger("telegram:shared");
 
@@ -382,16 +379,13 @@ export function formatReplyQuote(
 }
 
 /**
- * Append photo context to the prompt if the message contains a photo.
- * Handles picking the best resolution, downloading, uploading, and formatting.
+ * Append an on-demand Telegram file reference if the message contains a photo.
  */
-export async function appendPhotoContext(
+export function appendPhotoContext(
   prompt: string,
   message: TelegramHandlerUpdate["message"],
-  client: TelegramClient,
-  installationId: string,
-  chatId: string,
-): Promise<string> {
+  botId: string,
+): string {
   if (!message.photo) {
     return prompt;
   }
@@ -399,46 +393,35 @@ export async function appendPhotoContext(
   if (!bestPhoto) {
     return prompt;
   }
-  const presignedUrl = await downloadAndUploadTelegramPhoto(
-    client,
-    bestPhoto.file_id,
-    `${installationId}-${chatId}`,
-  );
-  if (!presignedUrl) {
-    return prompt;
-  }
-  return `${prompt}\n\n${formatPhotoForContext(presignedUrl, bestPhoto)}`;
+  const fileContext = formatTelegramFileForContext(bestPhoto, { botId });
+  return prompt ? `${prompt}\n\n${fileContext}` : fileContext;
 }
 
 /**
- * Enrich a Telegram message prompt with user info, matching Slack's
- * `enrichMessageContent` pattern that prepends `[Slack User]\n...`.
+ * Enrich a Telegram message with user info while keeping metadata in the
+ * system-level Current User Info block.
  *
  * Telegram provides user info directly in the webhook payload (no API call needed).
  */
 export function enrichTelegramPrompt(
   prompt: string,
   from: TelegramHandlerUpdate["message"]["from"],
-): string {
+): { prompt: string; userInfoExtras: UserInfoOptions } {
   if (!from) {
-    return prompt;
+    return { prompt, userInfoExtras: {} };
   }
-
-  const parts: string[] = [];
-  parts.push(`Telegram User ID: ${from.id}`);
 
   const displayName = [from.first_name, from.last_name]
     .filter(Boolean)
     .join(" ");
-  if (displayName) {
-    parts.push(`Name: ${displayName}`);
-  }
-  if (from.username) {
-    parts.push(`Username: @${from.username}`);
-  }
-  if (from.language_code) {
-    parts.push(`Language: ${from.language_code}`);
-  }
 
-  return `[Telegram User]\n${parts.join("\n")}\n\n${prompt}`;
+  return {
+    prompt,
+    userInfoExtras: {
+      telegramDisplayName: displayName || undefined,
+      telegramUsername: from.username ? `@${from.username}` : undefined,
+      telegramUserId: String(from.id),
+      telegramLanguage: from.language_code,
+    },
+  };
 }

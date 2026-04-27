@@ -54,6 +54,10 @@ export interface UserInfoOptions {
   timezone?: string;
   slackDisplayName?: string;
   slackUserId?: string;
+  telegramDisplayName?: string;
+  telegramUsername?: string;
+  telegramUserId?: string;
+  telegramLanguage?: string;
 }
 
 /**
@@ -75,6 +79,18 @@ export function buildUserInfo(options: UserInfoOptions): string {
   }
   if (options.slackUserId) {
     lines.push(`Slack user ID: ${options.slackUserId}`);
+  }
+  if (options.telegramDisplayName) {
+    lines.push(`Telegram display name: ${options.telegramDisplayName}`);
+  }
+  if (options.telegramUsername) {
+    lines.push(`Telegram username: ${options.telegramUsername}`);
+  }
+  if (options.telegramUserId) {
+    lines.push(`Telegram user ID: ${options.telegramUserId}`);
+  }
+  if (options.telegramLanguage) {
+    lines.push(`Telegram language: ${options.telegramLanguage}`);
   }
   return `# Current User Info\n${lines.join("\n")}`;
 }
@@ -102,8 +118,42 @@ export function buildSlackPrompt(
 /**
  * Build the full appendSystemPrompt for Telegram integration.
  */
-export function buildTelegramPrompt(threadContext: string): string {
-  const header = buildIntegrationPrompt("Telegram");
+export function buildTelegramPrompt(
+  opts: {
+    botId?: string;
+    botUsername?: string | null;
+    chatId?: string;
+    chatType?: string;
+    messageId?: string;
+    rootMessageId?: string | null;
+    messageThreadId?: string | number | null;
+  },
+  threadContext: string,
+): string {
+  const headerParts = [buildIntegrationPrompt("Telegram")];
+  if (opts.botId) {
+    headerParts.push(`Bot ID: ${opts.botId}`);
+  }
+  if (opts.botUsername) {
+    headerParts.push(`Bot username: @${opts.botUsername}`);
+  }
+  if (opts.chatId) {
+    headerParts.push(`Chat ID: ${opts.chatId}`);
+  }
+  if (opts.chatType) {
+    headerParts.push(`Chat type: ${opts.chatType}`);
+  }
+  if (opts.messageId) {
+    headerParts.push(`Message ID: ${opts.messageId}`);
+  }
+  if (opts.rootMessageId) {
+    headerParts.push(`Root message ID: ${opts.rootMessageId}`);
+  }
+  if (opts.messageThreadId) {
+    headerParts.push(`Message thread ID: ${opts.messageThreadId}`);
+  }
+
+  const header = headerParts.join("\n");
   return [header, threadContext].filter(Boolean).join("\n\n");
 }
 

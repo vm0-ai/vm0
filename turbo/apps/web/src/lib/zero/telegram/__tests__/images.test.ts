@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { pickBestPhoto, formatPhotoForContext } from "../images";
+import { pickBestPhoto, formatTelegramFileForContext } from "../images";
 
 describe("pickBestPhoto", () => {
   it("should return undefined for empty array", () => {
@@ -75,42 +75,46 @@ describe("pickBestPhoto", () => {
   });
 });
 
-describe("formatPhotoForContext", () => {
+describe("formatTelegramFileForContext", () => {
   it("should include image type and dimensions", () => {
-    const result = formatPhotoForContext("https://example.com/photo.jpg", {
+    const result = formatTelegramFileForContext({
       file_id: "abc123",
       width: 800,
       height: 600,
     });
 
-    expect(result).toContain("[image]: photo (image/jpeg)");
-    expect(result).toContain("Dimensions: 800x600");
+    expect(result).toContain("[Telegram file] photo (image/jpeg)");
+    expect(result).toContain("[Dimensions] 800x600");
   });
 
-  it("should include presigned URL in curl command", () => {
-    const url = "https://r2.example.com/photo.jpg?token=abc";
-    const result = formatPhotoForContext(url, {
-      file_id: "file_1",
-      width: 400,
-      height: 300,
-    });
+  it("should include file id for zero telegram download-file", () => {
+    const result = formatTelegramFileForContext(
+      {
+        file_id: "file_1",
+        width: 400,
+        height: 300,
+      },
+      { botId: "bot_1" },
+    );
 
-    expect(result).toContain(`"${url}"`);
-    expect(result).toContain("curl -sS -o");
+    expect(result).toContain("[ID] file_1");
+    expect(result).toContain("[Bot ID] bot_1");
+    expect(result).not.toContain("curl -sS");
   });
 
-  it("should use file_id in output filename", () => {
-    const result = formatPhotoForContext("https://example.com/photo.jpg", {
+  it("should include file size when available", () => {
+    const result = formatTelegramFileForContext({
       file_id: "my_file_id",
       width: 100,
       height: 100,
+      file_size: 1234,
     });
 
-    expect(result).toContain("my_file_id.jpg");
+    expect(result).toContain("[Size] 1234 bytes");
   });
 
   it("should skip dimensions when width or height is 0", () => {
-    const result = formatPhotoForContext("https://example.com/photo.jpg", {
+    const result = formatTelegramFileForContext({
       file_id: "abc",
       width: 0,
       height: 0,

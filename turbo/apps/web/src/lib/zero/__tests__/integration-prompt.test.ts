@@ -101,14 +101,32 @@ describe("buildSlackPrompt", () => {
 
 describe("buildTelegramPrompt", () => {
   it("should combine integration header with thread context", () => {
-    const result = buildTelegramPrompt("Telegram thread here");
+    const result = buildTelegramPrompt(
+      {
+        botId: "123456789",
+        botUsername: "test_bot",
+        chatId: "chat-1",
+        chatType: "group",
+        messageId: "msg-1",
+        rootMessageId: "root-1",
+        messageThreadId: 123,
+      },
+      "Telegram thread here",
+    );
 
     expect(result).toContain("You are currently running inside: Telegram");
+    expect(result).toContain("Bot ID: 123456789");
+    expect(result).toContain("Bot username: @test_bot");
+    expect(result).toContain("Chat ID: chat-1");
+    expect(result).toContain("Chat type: group");
+    expect(result).toContain("Message ID: msg-1");
+    expect(result).toContain("Root message ID: root-1");
+    expect(result).toContain("Message thread ID: 123");
     expect(result).toContain("Telegram thread here");
   });
 
   it("should handle empty thread context", () => {
-    const result = buildTelegramPrompt("");
+    const result = buildTelegramPrompt({}, "");
 
     expect(result).toContain("You are currently running inside: Telegram");
   });

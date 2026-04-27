@@ -173,6 +173,10 @@ describe("createZeroRun() — service-only parameters", () => {
           userInfoExtras: {
             slackDisplayName: "alice.slack",
             slackUserId: "U12345",
+            telegramDisplayName: "Alice Telegram",
+            telegramUsername: "@alice",
+            telegramUserId: "4242",
+            telegramLanguage: "en",
           },
         }),
       );
@@ -183,6 +187,12 @@ describe("createZeroRun() — service-only parameters", () => {
         "Slack display name: alice.slack",
       );
       expect(run!.appendSystemPrompt).toContain("Slack user ID: U12345");
+      expect(run!.appendSystemPrompt).toContain(
+        "Telegram display name: Alice Telegram",
+      );
+      expect(run!.appendSystemPrompt).toContain("Telegram username: @alice");
+      expect(run!.appendSystemPrompt).toContain("Telegram user ID: 4242");
+      expect(run!.appendSystemPrompt).toContain("Telegram language: en");
     });
 
     it("should inject user info for all trigger sources", async () => {

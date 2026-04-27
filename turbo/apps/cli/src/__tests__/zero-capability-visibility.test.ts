@@ -22,6 +22,7 @@ function buildCommands(): Command[] {
     new Command("schedule"),
     new Command("secret"),
     new Command("slack"),
+    new Command("telegram"),
     new Command("variable"),
     new Command("whoami"),
     new Command("web"),
@@ -143,6 +144,7 @@ describe("registerZeroCommands", () => {
       "run",
       "secret",
       "slack",
+      "telegram",
       "variable",
     ]);
   });

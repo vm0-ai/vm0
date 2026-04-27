@@ -248,6 +248,7 @@ interface InsertMessageOptions {
   fromUserId: string;
   fromUsername?: string;
   text?: string;
+  fileId?: string;
   isBot?: boolean;
   createdAt?: Date;
 }
@@ -268,6 +269,7 @@ export async function insertTelegramMessage(
     fromUserId: options.fromUserId,
     fromUsername: options.fromUsername ?? null,
     text: options.text ?? null,
+    fileId: options.fileId ?? null,
     isBot: options.isBot ?? false,
     createdAt: options.createdAt ?? new Date(),
   });

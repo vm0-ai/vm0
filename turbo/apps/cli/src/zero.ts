@@ -13,6 +13,7 @@ import { zeroScheduleCommand } from "./commands/zero/schedule";
 import { zeroSecretCommand } from "./commands/zero/secret";
 import { zeroChatCommand } from "./commands/zero/chat";
 import { zeroSlackCommand } from "./commands/zero/slack";
+import { zeroTelegramCommand } from "./commands/zero/telegram";
 import { zeroVariableCommand } from "./commands/zero/variable";
 import { zeroWhoamiCommand } from "./commands/zero/whoami";
 import { zeroSkillCommand } from "./commands/zero/skill";
@@ -42,6 +43,7 @@ const COMMAND_CAPABILITY_MAP: Record<string, string | null> = {
   search: "chat-message:read",
   chat: "chat-message:write",
   slack: "slack:write",
+  telegram: "file:read",
   whoami: null,
   "developer-support": null,
   "computer-use": "computer-use:write",
@@ -59,6 +61,7 @@ const DEFAULT_COMMANDS: Command[] = [
   zeroSecretCommand,
   zeroChatCommand,
   zeroSlackCommand,
+  zeroTelegramCommand,
   zeroVariableCommand,
   zeroLogsCommand,
   zeroSearchCommand,
@@ -116,6 +119,7 @@ program
 Examples:
   Check a connector?     zero doctor check-connector --env-name <ENV_NAME>
   Send a Slack message?  zero slack message send --help
+  Download Telegram?     zero telegram download-file --help
   Set up a schedule?     zero schedule setup --help
   Update yourself?       zero agent --help
   Manage custom skills?  zero skill --help
