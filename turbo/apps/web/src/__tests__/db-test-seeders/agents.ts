@@ -406,6 +406,33 @@ export async function setTestChatThreadLastReadMessageId(
 }
 
 /**
+ * Set draft_content / draft_attachments on a chat thread directly.
+ *
+ * @why-db-direct The draft PATCH route is exercised in its own route test;
+ * list-route tests need to seed an arbitrary draft state to verify the
+ * `hasDraft` projection without round-tripping the auth/clerk-mocked PATCH.
+ */
+export async function setTestChatThreadDraft(
+  threadId: string,
+  draftContent: string | null,
+  draftAttachments:
+    | Array<{
+        id: string;
+        url: string;
+        filename: string;
+        contentType: string;
+        size: number;
+      }>
+    | null,
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .update(chatThreads)
+    .set({ draftContent, draftAttachments })
+    .where(eq(chatThreads.id, threadId));
+}
+
+/**
  * Insert a chat thread directly in the database.
  * Returns the thread ID.
  *

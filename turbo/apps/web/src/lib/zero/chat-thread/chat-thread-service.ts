@@ -83,6 +83,7 @@ export async function listChatThreads(
     isRead: boolean;
     lastMessageArchivedAt: Date | null;
     running: boolean;
+    hasDraft: boolean;
   }>
 > {
   const lastMessage = globalThis.services.db
@@ -126,6 +127,13 @@ export async function listChatThreads(
         INNER JOIN ${agentRuns} ON ${agentRuns.id} = ${zeroRuns.id}
         WHERE ${zeroRuns.chatThreadId} = ${chatThreads.id}
           AND ${agentRuns.status} IN ('queued', 'pending', 'running')
+      )`,
+      hasDraft: sql<boolean>`(
+        COALESCE(${chatThreads.draftContent}, '') <> ''
+        OR (
+          ${chatThreads.draftAttachments} IS NOT NULL
+          AND jsonb_array_length(${chatThreads.draftAttachments}) > 0
+        )
       )`,
     })
     .from(chatThreads)

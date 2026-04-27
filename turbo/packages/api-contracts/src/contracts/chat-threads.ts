@@ -78,6 +78,12 @@ const chatThreadListItemSchema = z.object({
    * `ChatThreadReadIndicator` feature switch gate.
    */
   running: z.boolean(),
+  /**
+   * True when the thread has draft composer content the user hasn't sent yet
+   * (non-empty `draftContent` or one+ `draftAttachments`). Drives the sidebar
+   * draft indicator. Optional for back-compat with fixtures predating the field.
+   */
+  hasDraft: z.boolean().optional(),
 });
 
 const toolSummaryEntrySchema = z.object({

@@ -31,6 +31,7 @@ export {
   setTestChatMessageContent,
   setTestChatThreadLastReadAt,
   setTestChatThreadLastReadMessageId,
+  setTestChatThreadDraft,
 } from "../db-test-seeders/agents";
 
 export {
