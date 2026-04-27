@@ -5,11 +5,13 @@ from __future__ import annotations
 
 import argparse
 import difflib
-import http.client
 import importlib.util
 import re
+import ssl
 import sys
 import tempfile
+import urllib.error
+import urllib.request
 from http import HTTPStatus
 from pathlib import Path
 from types import ModuleType
@@ -24,16 +26,32 @@ VERSION_RE = re.compile(r"^# Version (?P<version>\d+), Last Updated (?P<timestam
 TLD_RE = re.compile(r"^[a-z0-9-]+$")
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
 def fetch_source() -> str:
-    connection = http.client.HTTPSConnection(SOURCE_HOST, timeout=FETCH_TIMEOUT_SECONDS)
+    # S310 (suspicious-url-open-usage): SOURCE_URL is a fixed https:// IANA
+    # endpoint, not user input. The opener below uses the default CA-verifying
+    # SSL context and disables redirects so the fixed host cannot drift.
+    request = urllib.request.Request(  # noqa: S310
+        SOURCE_URL,
+        headers={"User-Agent": "vm0-mitm-addon-tld-updater"},
+        method="GET",
+    )
+    opener = urllib.request.build_opener(
+        urllib.request.HTTPSHandler(context=ssl.create_default_context()),
+        _NoRedirect,
+    )
     try:
-        connection.request("GET", SOURCE_PATH, headers={"User-Agent": "vm0-mitm-addon-tld-updater"})
-        response = connection.getresponse()
-        if response.status != HTTPStatus.OK:
-            raise RuntimeError(f"failed to fetch {SOURCE_URL}: HTTP {response.status}")
-        return response.read().decode("utf-8")
-    finally:
-        connection.close()
+        with opener.open(request, timeout=FETCH_TIMEOUT_SECONDS) as response:
+            if response.status != HTTPStatus.OK:
+                raise RuntimeError(f"failed to fetch {SOURCE_URL}: HTTP {response.status}")
+            return response.read().decode("utf-8")
+    except urllib.error.HTTPError as exc:
+        with exc:
+            raise RuntimeError(f"failed to fetch {SOURCE_URL}: HTTP {exc.code}") from exc
 
 
 def parse_source(source: str) -> tuple[str, tuple[str, ...]]:
