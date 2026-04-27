@@ -221,8 +221,26 @@ export function ModelDetailClient({ model, related }: Props) {
             </ul>
           </div>
 
-          {/* About */}
-          <Section title={`About ${model.name}`}>
+          {/* Overview */}
+          <Section title={`Overview: what is ${model.name}?`}>
+            <div className="mb-5 grid gap-3 sm:grid-cols-2">
+              <div className="rounded-[14px] border border-[hsl(var(--gray-200))] bg-white p-4">
+                <div className="text-[12px] font-medium uppercase tracking-[1.2px] text-[hsl(var(--muted-foreground))]">
+                  Release
+                </div>
+                <div className="mt-1 text-[15px] text-[hsl(var(--foreground))]">
+                  {model.releaseDate}
+                </div>
+              </div>
+              <div className="rounded-[14px] border border-[hsl(var(--gray-200))] bg-white p-4">
+                <div className="text-[12px] font-medium uppercase tracking-[1.2px] text-[hsl(var(--muted-foreground))]">
+                  Family position
+                </div>
+                <div className="mt-1 text-[15px] text-[hsl(var(--foreground))]">
+                  {model.familyPosition}
+                </div>
+              </div>
+            </div>
             <div className="flex flex-col gap-4">
               {model.background.map((para, i) => {
                 return (
@@ -236,6 +254,31 @@ export function ModelDetailClient({ model, related }: Props) {
               })}
             </div>
           </Section>
+
+          {/* What's new / Architecture */}
+          {model.architecture.length > 0 && (
+            <Section
+              title={`What's notable about ${model.name}`}
+              subtitle="Headline architecture and capability features."
+            >
+              <ul className="flex flex-col gap-2">
+                {model.architecture.map((item) => {
+                  return (
+                    <li
+                      key={item}
+                      className="flex items-start gap-3 text-[16px] font-light leading-relaxed text-[hsl(var(--foreground))]"
+                    >
+                      <span
+                        className="mt-2 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-[#ed4e01]"
+                        aria-hidden="true"
+                      />
+                      <span>{item}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </Section>
+          )}
 
           {/* Specs */}
           <Section title="Specs at a glance">
@@ -252,6 +295,40 @@ export function ModelDetailClient({ model, related }: Props) {
               })}
             </div>
           </Section>
+
+          {/* Benchmarks */}
+          {model.benchmarks.length > 0 && (
+            <Section
+              title={`${model.name} benchmarks`}
+              subtitle={model.benchmarksNote}
+            >
+              <div className="overflow-hidden rounded-[16px] border border-[hsl(var(--gray-200))] bg-white">
+                {model.benchmarks.map((b, i) => {
+                  const last = i === model.benchmarks.length - 1;
+                  return (
+                    <div
+                      key={b.name}
+                      className={`flex items-center justify-between gap-4 px-5 py-3 text-[15px]${last ? "" : " border-b border-[hsl(var(--gray-200))]"}`}
+                    >
+                      <div className="flex flex-col">
+                        <span className="text-[hsl(var(--foreground))]">
+                          {b.name}
+                        </span>
+                        {b.note && (
+                          <span className="mt-0.5 text-[12px] text-[hsl(var(--muted-foreground))]">
+                            {b.note}
+                          </span>
+                        )}
+                      </div>
+                      <span className="font-medium text-[hsl(var(--foreground))]">
+                        {b.score}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </Section>
+          )}
 
           {/* Pricing */}
           <Section
@@ -400,6 +477,17 @@ export function ModelDetailClient({ model, related }: Props) {
                     </div>
                   );
                 })}
+              </div>
+            </Section>
+          )}
+
+          {/* Verdict / bottom line */}
+          {model.verdict && (
+            <Section title={`Bottom line: should you use ${model.name}?`}>
+              <div className="rounded-[16px] border-l-4 border-[#ed4e01] bg-white p-6 sm:p-7">
+                <p className="text-[16px] font-light leading-relaxed text-[hsl(var(--foreground))]">
+                  {model.verdict}
+                </p>
               </div>
             </Section>
           )}
