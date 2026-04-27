@@ -124,7 +124,7 @@
       "description": "摩擦ゼロ、完全な柔軟性で素早くスケール。",
       "features": {
         "credits": "120,000クレジット / 月",
-        "concurrentRuns": "5同時実行",
+        "concurrentRuns": "10同時実行",
         "unlimitedAgents": "エージェント数無制限",
         "bringOwnLLM": "自分のLLMキーを使用",
         "voiceInput": "音声入力",

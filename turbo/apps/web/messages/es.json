@@ -124,7 +124,7 @@
       "description": "Escala rápido sin fricción y con total flexibilidad.",
       "features": {
         "credits": "120.000 créditos / mes",
-        "concurrentRuns": "5 ejecuciones simultáneas",
+        "concurrentRuns": "10 ejecuciones simultáneas",
         "unlimitedAgents": "Agentes totales ilimitados",
         "bringOwnLLM": "Usa tus propias claves de LLM",
         "voiceInput": "Entrada por voz",

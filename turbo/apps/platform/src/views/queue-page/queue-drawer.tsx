@@ -50,7 +50,7 @@ const UPGRADE_PATHS = {
   pro: {
     targetTier: "team",
     targetLabel: "Team",
-    concurrentRuns: 5,
+    concurrentRuns: 10,
     price: "$200",
     description: "Scale your team with 10 parallel runs and more credits.",
     features: [

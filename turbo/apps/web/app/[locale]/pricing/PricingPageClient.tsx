@@ -373,7 +373,7 @@ export function PricingPageClient() {
                     description={t("tableFeatures.concurrentRunsDesc")}
                     free="1"
                     pro="2"
-                    team="5"
+                    team="10"
                   />
                   <TableRow
                     feature={t("tableFeatures.totalAgents")}

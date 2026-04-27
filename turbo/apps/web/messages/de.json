@@ -124,7 +124,7 @@
       "description": "Skalieren Sie schnell, ohne Reibung und mit voller Flexibilität.",
       "features": {
         "credits": "120.000 Credits / Monat",
-        "concurrentRuns": "5 gleichzeitige Ausführungen",
+        "concurrentRuns": "10 gleichzeitige Ausführungen",
         "unlimitedAgents": "Unbegrenzte Agenten insgesamt",
         "bringOwnLLM": "Eigene LLM-Schlüssel verwenden",
         "voiceInput": "Spracheingabe",
