@@ -28,6 +28,7 @@ import {
   TooltipTrigger,
 } from "@vm0/ui";
 import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
+import emptyChatImg from "./assets/empty-chat.webp";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
@@ -352,7 +353,14 @@ function ZeroChatThreadPageInner({
                 groups.length === 0 &&
                 !messagesLoading &&
                 !skeletonVisible && (
-                  <div className="flex-1 flex items-center justify-center py-16">
+                  <div className="flex-1 flex flex-col items-center justify-center py-16 gap-3">
+                    <img
+                      src={emptyChatImg}
+                      alt=""
+                      role="presentation"
+                      loading="lazy"
+                      className="h-24 w-24 object-contain opacity-80"
+                    />
                     <p className="text-sm text-muted-foreground">
                       Send a message to start the conversation
                     </p>
