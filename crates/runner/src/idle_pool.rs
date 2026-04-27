@@ -4,6 +4,7 @@ use std::time::{Duration, Instant};
 
 use sandbox::{Sandbox, SandboxFactory, SandboxId};
 
+use crate::resource_budget::BudgetLease;
 use crate::status::IdleVm;
 use crate::types::StorageManifest;
 
@@ -77,8 +78,7 @@ pub struct IdleEntry {
     /// doctor / kill / workspace-dir naming.
     pub sandbox_id: SandboxId,
     pub profile_name: String,
-    pub vcpu: u32,
-    pub memory_mb: u32,
+    pub budget_lease: BudgetLease,
     pub source_ip: String,
     pub parked_at: Instant,
     pub idle_timeout: Duration,
@@ -87,7 +87,25 @@ pub struct IdleEntry {
     pub storage_fingerprints: StorageFingerprints,
 }
 
-impl IdleEntry {
+/// Reusable sandbox state handed to the executor after a successful unpark.
+///
+/// The budget lease is intentionally not part of this payload. The outer job
+/// task owns the active lease so executor panics cannot release capacity before
+/// provider completion and post-job cleanup finish.
+pub struct ReusableIdleSandbox {
+    pub sandbox: Box<dyn Sandbox>,
+    pub sandbox_id: SandboxId,
+    pub source_ip: String,
+    pub storage_fingerprints: StorageFingerprints,
+}
+
+/// Physical resources needed to destroy an idle VM, without its budget lease.
+pub struct IdleDestroyPayload {
+    sandbox: Box<dyn Sandbox>,
+    factory: Arc<Box<dyn SandboxFactory>>,
+}
+
+impl IdleDestroyPayload {
     /// Stop the sandbox and destroy it via its factory.
     pub async fn stop_and_destroy(self) {
         let mut sandbox = self.sandbox;
@@ -95,6 +113,46 @@ impl IdleEntry {
             tracing::warn!(error = %e, "failed to stop idle sandbox");
         }
         self.factory.destroy(sandbox).await;
+    }
+}
+
+impl IdleEntry {
+    /// Stop the sandbox and destroy it via its factory.
+    pub async fn stop_and_destroy(self) {
+        let (payload, _lease) = self.into_destroy_parts();
+        payload.stop_and_destroy().await;
+    }
+
+    pub fn into_reuse_parts(self) -> (ReusableIdleSandbox, BudgetLease) {
+        let Self {
+            sandbox,
+            sandbox_id,
+            source_ip,
+            storage_fingerprints,
+            budget_lease,
+            ..
+        } = self;
+
+        (
+            ReusableIdleSandbox {
+                sandbox,
+                sandbox_id,
+                source_ip,
+                storage_fingerprints,
+            },
+            budget_lease,
+        )
+    }
+
+    pub fn into_destroy_parts(self) -> (IdleDestroyPayload, BudgetLease) {
+        let Self {
+            sandbox,
+            factory,
+            budget_lease,
+            ..
+        } = self;
+
+        (IdleDestroyPayload { sandbox, factory }, budget_lease)
     }
 }
 
@@ -251,7 +309,14 @@ mod tests {
 
     use std::time::Duration;
 
+    use crate::resource_budget::ResourceBudget;
+
     use sandbox_mock::{MockSandbox, MockSandboxFactory};
+
+    fn make_budget_lease(vcpu: u32, memory_mb: u32) -> BudgetLease {
+        let budget = Arc::new(ResourceBudget::new(1, 1, 1.0, 0));
+        ResourceBudget::try_reserve_lease(&budget, vcpu, memory_mb).unwrap()
+    }
 
     fn make_entry(vcpu: u32, memory_mb: u32) -> IdleEntry {
         IdleEntry {
@@ -260,8 +325,7 @@ mod tests {
             session_id: "test-session".into(),
             sandbox_id: SandboxId::new_v4(),
             profile_name: "vm0/default".into(),
-            vcpu,
-            memory_mb,
+            budget_lease: make_budget_lease(vcpu, memory_mb),
             source_ip: "10.0.0.1".into(),
             parked_at: Instant::now(),
             idle_timeout: Duration::from_secs(300),
@@ -281,8 +345,7 @@ mod tests {
             session_id: "test-session".into(),
             sandbox_id: SandboxId::new_v4(),
             profile_name: "vm0/default".into(),
-            vcpu,
-            memory_mb,
+            budget_lease: make_budget_lease(vcpu, memory_mb),
             source_ip: "10.0.0.1".into(),
             parked_at,
             idle_timeout,
@@ -307,8 +370,8 @@ mod tests {
         assert_eq!(pool.len(), 1);
 
         let entry = pool.take("session-1").unwrap();
-        assert_eq!(entry.vcpu, 2);
-        assert_eq!(entry.memory_mb, 2048);
+        assert_eq!(entry.budget_lease.vcpu(), 2);
+        assert_eq!(entry.budget_lease.memory_mb(), 2048);
         assert_eq!(pool.len(), 0);
     }
 
@@ -327,15 +390,15 @@ mod tests {
 
         match result {
             ParkResult::Evicted(evicted) => {
-                assert_eq!(evicted.vcpu, 2);
-                assert_eq!(evicted.memory_mb, 2048);
+                assert_eq!(evicted.budget_lease.vcpu(), 2);
+                assert_eq!(evicted.budget_lease.memory_mb(), 2048);
             }
             _ => panic!("expected Evicted"),
         }
 
         assert_eq!(pool.len(), 1);
         let entry = pool.take("session-1").unwrap();
-        assert_eq!(entry.vcpu, 4);
+        assert_eq!(entry.budget_lease.vcpu(), 4);
     }
 
     #[test]
@@ -403,7 +466,7 @@ mod tests {
         );
 
         let evicted = pool.evict_oldest().unwrap();
-        assert_eq!(evicted.vcpu, 2); // the old one
+        assert_eq!(evicted.budget_lease.vcpu(), 2); // the old one
         assert_eq!(pool.len(), 1);
         assert!(pool.take("new").is_some());
     }
@@ -554,7 +617,7 @@ mod tests {
 
         let evicted = pool.evict_expired();
         assert_eq!(evicted.len(), 1);
-        assert_eq!(evicted[0].vcpu, 2); // only the short-timeout entry
+        assert_eq!(evicted[0].budget_lease.vcpu(), 2); // only the short-timeout entry
         assert_eq!(pool.len(), 1);
         assert!(pool.take("long").is_some());
     }
@@ -576,6 +639,6 @@ mod tests {
         assert!(matches!(result, ParkResult::Evicted(_)));
         assert_eq!(pool.len(), 1);
         let entry = pool.take("s1").unwrap();
-        assert_eq!(entry.vcpu, 8);
+        assert_eq!(entry.budget_lease.vcpu(), 8);
     }
 }
