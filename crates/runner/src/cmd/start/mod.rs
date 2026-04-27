@@ -923,7 +923,7 @@ async fn handle_discovered_job(job: DiscoveredJob, mut ctx: DiscoveredJobContext
     };
     info!(run_id = %run_id, profile = %profile_name, "job claimed, spawning executor");
 
-    let (reuse_entry, active_lease, reuse_result) =
+    let (reuse_entry, active_lease, reuse_result, idle_snapshot) =
         try_reuse_from_pool(run_id, &profile_name, &context, job_lease, &mut ctx).await;
 
     // Determine sandbox_id after the reuse decision. On reuse, the sandbox keeps
@@ -933,7 +933,11 @@ async fn handle_discovered_job(job: DiscoveredJob, mut ctx: DiscoveredJobContext
         Some(entry) => entry.sandbox_id,
         None => SandboxId::new_v4(),
     };
-    ctx.status.add_run(run_id, sandbox_id).await;
+    if let Some(snapshot) = idle_snapshot {
+        add_run_with_idle_status_snapshot(ctx.status, run_id, sandbox_id, snapshot).await;
+    } else {
+        ctx.status.add_run(run_id, sandbox_id).await;
+    }
 
     let job_profile = JobProfile {
         profile_name,
@@ -961,9 +965,14 @@ async fn try_reuse_from_pool(
     context: &ExecutionContext,
     job_lease: BudgetLease,
     ctx: &mut DiscoveredJobContext<'_>,
-) -> (Option<ReusableIdleSandbox>, BudgetLease, SandboxReuseResult) {
+) -> (
+    Option<ReusableIdleSandbox>,
+    BudgetLease,
+    SandboxReuseResult,
+    Option<IdlePoolSnapshot>,
+) {
     let Some(session_id) = context.session_id() else {
-        return (None, job_lease, SandboxReuseResult::NoSessionId);
+        return (None, job_lease, SandboxReuseResult::NoSessionId, None);
     };
 
     // Take the entry under the pool lock, then drop the lock before any awaits
@@ -974,9 +983,6 @@ async fn try_reuse_from_pool(
         let snapshot = taken.as_ref().map(|_| pool.status_snapshot());
         (taken, snapshot)
     };
-    if let Some(snapshot) = snapshot {
-        set_idle_status_snapshot(ctx.status, snapshot).await;
-    }
     match taken {
         Some(mut entry) if entry.profile_name == profile_name => {
             match unpark_sandbox_panic_safe(entry.sandbox.as_mut()).await {
@@ -991,7 +997,12 @@ async fn try_reuse_from_pool(
                     // task before handing the sandbox to the executor.
                     drop(job_lease);
                     let (idle_sandbox, idle_lease) = entry.into_reuse_parts();
-                    (Some(idle_sandbox), idle_lease, SandboxReuseResult::Reused)
+                    (
+                        Some(idle_sandbox),
+                        idle_lease,
+                        SandboxReuseResult::Reused,
+                        snapshot,
+                    )
                 }
                 Err(e) => {
                     warn!(
@@ -1001,7 +1012,7 @@ async fn try_reuse_from_pool(
                         "unpark failed, destroying idle VM and falling through to fresh create"
                     );
                     spawn_destroy_idle_entry(ctx.destroy_tasks, entry, "reuse_unpark_failed");
-                    (None, job_lease, SandboxReuseResult::UnparkFailed)
+                    (None, job_lease, SandboxReuseResult::UnparkFailed, snapshot)
                 }
             }
         }
@@ -1014,7 +1025,12 @@ async fn try_reuse_from_pool(
                 "idle VM profile mismatch, destroying"
             );
             spawn_destroy_idle_entry(ctx.destroy_tasks, stale, "reuse_profile_mismatch");
-            (None, job_lease, SandboxReuseResult::ProfileMismatch)
+            (
+                None,
+                job_lease,
+                SandboxReuseResult::ProfileMismatch,
+                snapshot,
+            )
         }
         None => {
             info!(
@@ -1022,7 +1038,7 @@ async fn try_reuse_from_pool(
                 session_id,
                 "no idle VM found for session"
             );
-            (None, job_lease, SandboxReuseResult::PoolMiss)
+            (None, job_lease, SandboxReuseResult::PoolMiss, None)
         }
     }
 }
@@ -1485,6 +1501,28 @@ async fn set_idle_status_snapshot(status: &StatusTracker, snapshot: IdlePoolSnap
         debug!(
             revision = snapshot.revision,
             "ignored stale idle pool status snapshot"
+        );
+    }
+}
+
+async fn add_run_with_idle_status_snapshot(
+    status: &StatusTracker,
+    run_id: RunId,
+    sandbox_id: SandboxId,
+    snapshot: IdlePoolSnapshot,
+) {
+    let applied = status
+        .add_run_with_idle_info_at_revision(
+            run_id,
+            sandbox_id,
+            snapshot.revision,
+            snapshot.idle_vms,
+        )
+        .await;
+    if !applied {
+        debug!(
+            revision = snapshot.revision,
+            "ignored stale idle pool status snapshot while adding active run"
         );
     }
 }
@@ -3814,6 +3852,25 @@ mod tests {
         sessions
     }
 
+    async fn wait_status_idle_sessions(
+        status_path: &std::path::Path,
+        expected: Vec<String>,
+        timeout: Duration,
+    ) {
+        let deadline = tokio::time::Instant::now() + timeout;
+        loop {
+            let actual = status_idle_sessions(status_path).await;
+            if actual == expected {
+                return;
+            }
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "status idle sessions did not reach {expected:?} within {timeout:?} (actual: {actual:?})",
+            );
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    }
+
     // -----------------------------------------------------------------------
     // Test 10: Successful job parks VM in idle pool
     // -----------------------------------------------------------------------
@@ -4070,9 +4127,16 @@ mod tests {
         );
 
         wait_idle_pool_len(&idle_pool, 0, Duration::from_secs(5)).await;
+        wait_status_idle_sessions(&status_path, Vec::new(), Duration::from_secs(5)).await;
+        let raw = tokio::fs::read_to_string(&status_path).await.unwrap();
+        let status: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        let active_runs = status["active_runs"].as_array().unwrap();
+        let run_id_text = run_id.to_string();
         assert!(
-            status_idle_sessions(&status_path).await.is_empty(),
-            "taking an idle VM for reuse must remove it from status.json before the job completes",
+            active_runs
+                .iter()
+                .any(|run| run["run_id"].as_str() == Some(run_id_text.as_str())),
+            "reuse status update must add active run in the same write that clears idle_vms",
         );
 
         gate.notify_one();
