@@ -4,7 +4,6 @@ import { isBlogEnabled } from "../src/env";
 import { getPosts, getPostAvailableLocales } from "./lib/blog/data-source";
 import { getBlogBaseUrl } from "./lib/blog/config";
 import { USE_CASES } from "./[locale]/use-cases/data";
-import { PROVIDER_SLUGS } from "./[locale]/model-providers/data";
 
 const baseUrl = "https://www.vm0.ai";
 
@@ -73,8 +72,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       lastModified: BUILD_DATE,
     },
     {
-      path: "/model-providers",
-      priority: 0.9,
+      path: "/models",
+      priority: 0.8,
       changeFrequency: "monthly" as const,
       lastModified: BUILD_DATE,
     },
@@ -133,20 +132,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     for (const locale of locales) {
       urls.push({
         url: `${baseUrl}/${locale}/use-cases/${useCase.slug}`,
-        lastModified: BUILD_DATE,
-        changeFrequency: "monthly",
-        priority: 0.7,
-        alternates: { languages: alternates },
-      });
-    }
-  }
-
-  // Localized model-provider detail pages
-  for (const slug of PROVIDER_SLUGS) {
-    const alternates = buildAlternates(`/model-providers/${slug}`);
-    for (const locale of locales) {
-      urls.push({
-        url: `${baseUrl}/${locale}/model-providers/${slug}`,
         lastModified: BUILD_DATE,
         changeFrequency: "monthly",
         priority: 0.7,
