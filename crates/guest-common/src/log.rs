@@ -10,13 +10,7 @@ static RUN_ID: LazyLock<String> = LazyLock::new(|| match std::env::var("VM0_RUN_
 });
 static DEFAULT_SYSTEM_LOG_FILE: LazyLock<String> =
     LazyLock::new(|| format!("/tmp/vm0-system-{}.log", &*RUN_ID));
-static SYSTEM_LOG_FILE: Mutex<SystemLogFile> = Mutex::new(SystemLogFile::Disabled);
-
-enum SystemLogFile {
-    Default,
-    Override(PathBuf),
-    Disabled,
-}
+static SYSTEM_LOG_FILE: Mutex<Option<PathBuf>> = Mutex::new(None);
 
 /// Get current timestamp in RFC3339 format with milliseconds.
 pub fn timestamp() -> String {
@@ -24,10 +18,13 @@ pub fn timestamp() -> String {
 }
 
 /// Enable writes to the guest-side system log file for the current run.
+///
+/// # Panics
+///
+/// Panics when `VM0_RUN_ID` is missing or empty. Guest binaries require a run
+/// ID before writing run-scoped logs.
 pub fn enable_system_log_file() {
-    default_system_log_file();
-    let mut guard = SYSTEM_LOG_FILE.lock().unwrap_or_else(|e| e.into_inner());
-    *guard = SystemLogFile::Default;
+    set_system_log_file(default_system_log_file());
 }
 
 fn default_system_log_file() -> &'static str {
@@ -41,26 +38,24 @@ fn default_system_log_file() -> &'static str {
 /// same file immediately after some fatal-path log lines are emitted.
 pub fn set_system_log_file(path: impl AsRef<Path>) {
     let mut guard = SYSTEM_LOG_FILE.lock().unwrap_or_else(|e| e.into_inner());
-    *guard = SystemLogFile::Override(path.as_ref().to_path_buf());
+    *guard = Some(path.as_ref().to_path_buf());
 }
 
 #[doc(hidden)]
 pub fn clear_system_log_file() {
     let mut guard = SYSTEM_LOG_FILE.lock().unwrap_or_else(|e| e.into_inner());
-    *guard = SystemLogFile::Disabled;
+    *guard = None;
 }
 
 fn append_system_log_line(line: &str) -> std::io::Result<()> {
     let guard = SYSTEM_LOG_FILE.lock().unwrap_or_else(|e| e.into_inner());
-    let path = match &*guard {
-        SystemLogFile::Default => PathBuf::from(default_system_log_file()),
-        SystemLogFile::Override(path) => path.clone(),
-        SystemLogFile::Disabled => return Ok(()),
+    let Some(path) = guard.as_ref() else {
+        return Ok(());
     };
     let mut file = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .open(&path)
+        .open(path)
         .map_err(|e| std::io::Error::new(e.kind(), format!("{}: {e}", path.display())))?;
     use std::io::Write;
     let mut line = line.as_bytes().to_vec();
