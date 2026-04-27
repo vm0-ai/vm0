@@ -35,7 +35,10 @@ def _split_base_match_url(
     excludes query and fragment so callers can apply base-path prefix semantics
     without accidentally comparing query strings.
     """
-    parts = urlsplit(value)
+    try:
+        parts = urlsplit(value)
+    except ValueError:
+        return None
     if not parts.scheme or not parts.netloc:
         return None
     if not allow_query_fragment and (parts.query or parts.fragment):

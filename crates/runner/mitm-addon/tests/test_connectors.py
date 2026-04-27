@@ -959,6 +959,10 @@ class TestMatchBaseUrl:
         result = match_base_url("https://api.github.com/repos", "https://api.github.com?token=1")
         assert result is None
 
+    def test_malformed_request_url_returns_none(self):
+        result = match_base_url("https://[::1", "https://api.github.com")
+        assert result is None
+
     def test_parameterized_host(self):
         result = match_base_url(
             "https://acme.zendesk.com/api/v2/tickets",
