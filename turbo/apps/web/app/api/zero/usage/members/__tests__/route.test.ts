@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
   createTestRequest,
   insertTestCreditUsage,
+  insertTestUsageEvent,
   updateOrgStripeFields,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
@@ -224,5 +225,181 @@ describe("GET /api/zero/usage/members", () => {
     expect(data.members).toHaveLength(1);
     expect(data.members[0].inputTokens).toBe(1000);
     expect(data.members[0].creditsCharged).toBe(50);
+  });
+
+  it("includes processed usage_event records in member totals", async () => {
+    const { userId, orgId } = await context.user;
+    const periodEnd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+    await updateOrgStripeFields(orgId, {
+      stripeCustomerId: uniqueId("cus"),
+      stripeSubscriptionId: uniqueId("sub"),
+      subscriptionStatus: "active",
+      currentPeriodEnd: periodEnd,
+      tier: "pro",
+    });
+
+    await insertTestCreditUsage(orgId, {
+      userId,
+      inputTokens: 1000,
+      outputTokens: 500,
+      cacheReadInputTokens: 200,
+      cacheCreationInputTokens: 100,
+      creditsCharged: 50,
+      status: "processed",
+    });
+
+    await insertTestUsageEvent(orgId, {
+      userId,
+      kind: "model",
+      provider: "claude-sonnet-4-6",
+      category: "tokens.input",
+      quantity: 300,
+      creditsCharged: 30,
+      status: "processed",
+    });
+    await insertTestUsageEvent(orgId, {
+      userId,
+      kind: "model",
+      provider: "claude-sonnet-4-6",
+      category: "tokens.output",
+      quantity: 120,
+      creditsCharged: 12,
+      status: "processed",
+    });
+    await insertTestUsageEvent(orgId, {
+      userId,
+      kind: "model",
+      provider: "claude-sonnet-4-6",
+      category: "tokens.cache_read",
+      quantity: 80,
+      creditsCharged: 8,
+      status: "processed",
+    });
+    await insertTestUsageEvent(orgId, {
+      userId,
+      kind: "model",
+      provider: "claude-sonnet-4-6",
+      category: "tokens.cache_creation",
+      quantity: 40,
+      creditsCharged: 4,
+      status: "processed",
+    });
+    await insertTestUsageEvent(orgId, {
+      userId,
+      kind: "connector",
+      provider: "x",
+      category: "tweet.read",
+      quantity: 1,
+      creditsCharged: 20,
+      status: "processed",
+    });
+    await insertTestUsageEvent(orgId, {
+      userId,
+      kind: "model",
+      provider: "claude-sonnet-4-6",
+      category: "tokens.input",
+      quantity: 9999,
+      creditsCharged: 999,
+      status: "pending",
+    });
+
+    const eventOnlyUserId = uniqueId("event-only-user");
+    await insertTestUsageEvent(orgId, {
+      userId: eventOnlyUserId,
+      kind: "connector",
+      provider: "x",
+      category: "tweet.read",
+      quantity: 1,
+      creditsCharged: 200,
+      status: "processed",
+    });
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/zero/usage/members",
+    );
+    const response = await GET(request);
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.members).toHaveLength(2);
+
+    const mixedMember = data.members.find((member: { userId: string }) => {
+      return member.userId === userId;
+    });
+    expect(mixedMember).toMatchObject({
+      inputTokens: 1300,
+      outputTokens: 620,
+      cacheReadInputTokens: 280,
+      cacheCreationInputTokens: 140,
+      creditsCharged: 124,
+    });
+
+    const eventOnlyMember = data.members.find((member: { userId: string }) => {
+      return member.userId === eventOnlyUserId;
+    });
+    expect(eventOnlyMember).toMatchObject({
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadInputTokens: 0,
+      cacheCreationInputTokens: 0,
+      creditsCharged: 200,
+    });
+  });
+
+  it("uses processedAt for billing-period membership", async () => {
+    const { userId, orgId } = await context.user;
+    const periodEnd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    const periodStart = new Date(periodEnd);
+    periodStart.setMonth(periodStart.getMonth() - 1);
+
+    await updateOrgStripeFields(orgId, {
+      stripeCustomerId: uniqueId("cus"),
+      stripeSubscriptionId: uniqueId("sub"),
+      subscriptionStatus: "active",
+      currentPeriodEnd: periodEnd,
+      tier: "pro",
+    });
+
+    await insertTestCreditUsage(orgId, {
+      userId,
+      inputTokens: 10,
+      outputTokens: 5,
+      creditsCharged: 10,
+      status: "processed",
+      processedAt: periodStart,
+    });
+    await insertTestCreditUsage(orgId, {
+      userId,
+      inputTokens: 999,
+      outputTokens: 999,
+      creditsCharged: 999,
+      status: "processed",
+      processedAt: periodEnd,
+    });
+    await insertTestUsageEvent(orgId, {
+      userId,
+      kind: "model",
+      provider: "claude-sonnet-4-6",
+      category: "tokens.input",
+      quantity: 999,
+      creditsCharged: 999,
+      status: "processed",
+      processedAt: periodEnd,
+    });
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/zero/usage/members",
+    );
+    const response = await GET(request);
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.members).toHaveLength(1);
+    expect(data.members[0]).toMatchObject({
+      inputTokens: 10,
+      outputTokens: 5,
+      creditsCharged: 10,
+    });
   });
 });

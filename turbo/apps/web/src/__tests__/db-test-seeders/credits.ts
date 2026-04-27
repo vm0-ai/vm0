@@ -256,6 +256,7 @@ export async function insertTestUsageEvent(
     quantity?: number;
     status?: string;
     creditsCharged?: number;
+    runId?: string | null;
     idempotencyKey?: string;
     processedAt?: Date | null;
   },
@@ -271,6 +272,7 @@ export async function insertTestUsageEvent(
   const [record] = await globalThis.services.db
     .insert(usageEvent)
     .values({
+      runId: options.runId ?? null,
       orgId,
       userId: options.userId ?? "test-user",
       kind: options.kind ?? "connector",

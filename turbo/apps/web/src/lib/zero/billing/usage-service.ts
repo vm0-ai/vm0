@@ -17,12 +17,19 @@ import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { clerkClient } from "@clerk/nextjs/server";
 import {
   buildLegacyRunUsageTotalsSubquery,
-  getLegacyMemberUsageTotals,
+  buildUsageEventRunUsageTotalsSubquery,
+  getMemberUsageTotals,
+  hasRunUsageTotals,
+  mergedRunCacheTokens,
+  mergedRunCreditsCharged,
+  mergedRunInputTokens,
+  mergedRunModel,
+  mergedRunOutputTokens,
 } from "./usage-reporting-ledger";
 
 /**
  * Get per-member token usage aggregation for the current billing period.
- * Only includes credit_usage records with status = 'processed'.
+ * Includes processed credit_usage and usage_event records.
  * Free tier orgs (no billing period) get { period: null, members: [] }.
  */
 export async function getUsageMembers(
@@ -36,7 +43,7 @@ export async function getUsageMembers(
 
   const db = globalThis.services.db;
 
-  const rows = await getLegacyMemberUsageTotals(db, orgId, billingPeriod);
+  const rows = await getMemberUsageTotals(db, orgId, billingPeriod);
 
   if (rows.length === 0) {
     return {
@@ -161,8 +168,8 @@ interface UsageRunsOptions {
 }
 
 /**
- * Get per-run credit usage records for an org with pagination and filtering.
- * Only includes runs that have processed credit_usage records.
+ * Get per-run usage records for an org with pagination and filtering.
+ * Includes runs with processed credit_usage or run-linked usage_event records.
  */
 export async function getUsageRuns(
   orgId: string,
@@ -170,7 +177,8 @@ export async function getUsageRuns(
 ): Promise<UsageRunsResponse> {
   const db = globalThis.services.db;
 
-  const creditSub = buildLegacyRunUsageTotalsSubquery(db, orgId);
+  const legacyUsage = buildLegacyRunUsageTotalsSubquery(db, orgId);
+  const eventUsage = buildUsageEventRunUsageTotalsSubquery(db, orgId);
 
   // Build filter conditions
   const conditions = [eq(agentRuns.orgId, orgId)];
@@ -192,7 +200,8 @@ export async function getUsageRuns(
   const [countResult] = await db
     .select({ total: count() })
     .from(agentRuns)
-    .innerJoin(creditSub, eq(agentRuns.id, creditSub.runId))
+    .leftJoin(legacyUsage, eq(agentRuns.id, legacyUsage.runId))
+    .leftJoin(eventUsage, eq(agentRuns.id, eventUsage.runId))
     .leftJoin(
       agentComposeVersions,
       eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
@@ -201,7 +210,7 @@ export async function getUsageRuns(
       agentComposes,
       eq(agentComposeVersions.composeId, agentComposes.id),
     )
-    .where(and(...conditions));
+    .where(and(...conditions, hasRunUsageTotals(legacyUsage, eventUsage)));
 
   const total = countResult?.total ?? 0;
 
@@ -219,14 +228,15 @@ export async function getUsageRuns(
       prompt: agentRuns.prompt,
       triggerSource: zeroRuns.triggerSource,
       agentName: zeroAgents.displayName,
-      inputTokens: creditSub.inputTokens,
-      outputTokens: creditSub.outputTokens,
-      cacheTokens: creditSub.cacheTokens,
-      creditsCharged: creditSub.creditsCharged,
-      model: creditSub.model,
+      inputTokens: mergedRunInputTokens(legacyUsage, eventUsage),
+      outputTokens: mergedRunOutputTokens(legacyUsage, eventUsage),
+      cacheTokens: mergedRunCacheTokens(legacyUsage, eventUsage),
+      creditsCharged: mergedRunCreditsCharged(legacyUsage, eventUsage),
+      model: mergedRunModel(legacyUsage, eventUsage),
     })
     .from(agentRuns)
-    .innerJoin(creditSub, eq(agentRuns.id, creditSub.runId))
+    .leftJoin(legacyUsage, eq(agentRuns.id, legacyUsage.runId))
+    .leftJoin(eventUsage, eq(agentRuns.id, eventUsage.runId))
     .leftJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))
     .leftJoin(
       agentComposeVersions,
@@ -237,7 +247,7 @@ export async function getUsageRuns(
       eq(agentComposeVersions.composeId, agentComposes.id),
     )
     .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
-    .where(and(...conditions))
+    .where(and(...conditions, hasRunUsageTotals(legacyUsage, eventUsage)))
     .orderBy(desc(agentRuns.createdAt))
     .limit(options.pageSize)
     .offset(offset);

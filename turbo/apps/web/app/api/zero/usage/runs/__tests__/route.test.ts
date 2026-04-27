@@ -1,7 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
+  createCompletedRun,
   createTestRequest,
   insertTestCreditUsage,
+  insertTestCreditUsageForRun,
+  insertTestUsageEvent,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -199,5 +202,142 @@ describe("GET /api/zero/usage/runs", () => {
     // Only the processed run should appear
     expect(data.runs).toHaveLength(1);
     expect(data.runs[0].creditsCharged).toBe(50);
+  });
+
+  it("returns run-linked usage_event records and excludes runless events", async () => {
+    const { userId, orgId } = await context.user;
+    const runId = await createCompletedRun(orgId, userId, new Date());
+
+    await insertTestUsageEvent(orgId, {
+      userId,
+      runId,
+      kind: "model",
+      provider: "claude-sonnet-4-6",
+      category: "tokens.input",
+      quantity: 300,
+      creditsCharged: 30,
+      status: "processed",
+    });
+    await insertTestUsageEvent(orgId, {
+      userId,
+      runId,
+      kind: "connector",
+      provider: "x",
+      category: "tweet.read",
+      quantity: 1,
+      creditsCharged: 20,
+      status: "processed",
+    });
+    await insertTestUsageEvent(orgId, {
+      userId,
+      kind: "connector",
+      provider: "x",
+      category: "tweet.read",
+      quantity: 1,
+      creditsCharged: 999,
+      status: "processed",
+    });
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/zero/usage/runs",
+    );
+    const response = await GET(request);
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.runs).toHaveLength(1);
+    expect(data.pagination.total).toBe(1);
+    expect(data.runs[0]).toMatchObject({
+      runId,
+      model: "claude-sonnet-4-6",
+      inputTokens: 300,
+      outputTokens: 0,
+      cacheTokens: 0,
+      creditsCharged: 50,
+    });
+  });
+
+  it("combines credit_usage and usage_event totals for the same run", async () => {
+    const { userId, orgId } = await context.user;
+    const runId = await createCompletedRun(orgId, userId, new Date());
+
+    await insertTestCreditUsageForRun({
+      runId,
+      orgId,
+      userId,
+      inputTokens: 100,
+      outputTokens: 50,
+      cacheReadInputTokens: 20,
+      cacheCreationInputTokens: 10,
+      creditsCharged: 40,
+      status: "processed",
+    });
+    await insertTestUsageEvent(orgId, {
+      userId,
+      runId,
+      kind: "model",
+      provider: "claude-sonnet-4-6",
+      category: "tokens.input",
+      quantity: 30,
+      creditsCharged: 3,
+      status: "processed",
+    });
+    await insertTestUsageEvent(orgId, {
+      userId,
+      runId,
+      kind: "model",
+      provider: "claude-sonnet-4-6",
+      category: "tokens.output",
+      quantity: 70,
+      creditsCharged: 7,
+      status: "processed",
+    });
+    await insertTestUsageEvent(orgId, {
+      userId,
+      runId,
+      kind: "model",
+      provider: "claude-sonnet-4-6",
+      category: "tokens.cache_read",
+      quantity: 11,
+      creditsCharged: 1,
+      status: "processed",
+    });
+    await insertTestUsageEvent(orgId, {
+      userId,
+      runId,
+      kind: "model",
+      provider: "claude-sonnet-4-6",
+      category: "tokens.cache_creation",
+      quantity: 13,
+      creditsCharged: 2,
+      status: "processed",
+    });
+    await insertTestUsageEvent(orgId, {
+      userId,
+      runId,
+      kind: "model",
+      provider: "claude-sonnet-4-6",
+      category: "tokens.input",
+      quantity: 9999,
+      creditsCharged: 999,
+      status: "pending",
+    });
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/zero/usage/runs",
+    );
+    const response = await GET(request);
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.runs).toHaveLength(1);
+    expect(data.pagination.total).toBe(1);
+    expect(data.runs[0]).toMatchObject({
+      runId,
+      inputTokens: 130,
+      outputTokens: 120,
+      cacheTokens: 54,
+      creditsCharged: 53,
+    });
   });
 });
