@@ -1,4 +1,6 @@
+use std::ffi::OsString;
 use std::io;
+use std::os::unix::ffi::OsStringExt;
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
@@ -82,35 +84,156 @@ async fn ensure_snapshot_drive_bind_target(path: &Path) -> Result<(), SandboxErr
             })?;
     }
 
+    if create_snapshot_drive_bind_target_file(path).await? {
+        return Ok(());
+    }
+
+    if snapshot_drive_bind_target_is_regular_file(path).await? {
+        return Ok(());
+    }
+
+    if snapshot_drive_bind_target_is_mount_point(path)? {
+        unmount_snapshot_drive_bind_target(path).await?;
+        if create_snapshot_drive_bind_target_file(path).await? {
+            return Ok(());
+        }
+        if snapshot_drive_bind_target_is_regular_file(path).await? {
+            return Ok(());
+        }
+    }
+
+    Err(SandboxError::Start {
+        message: format!(
+            "snapshot drive bind target is not a regular file: {}",
+            path.display()
+        ),
+    })
+}
+
+async fn create_snapshot_drive_bind_target_file(path: &Path) -> Result<bool, SandboxError> {
     match tokio::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
         .open(path)
         .await
     {
-        Ok(_) => Ok(()),
-        Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
-            let meta =
-                tokio::fs::symlink_metadata(path)
-                    .await
-                    .map_err(|e| SandboxError::Start {
-                        message: format!("stat snapshot drive bind target: {e}"),
-                    })?;
-            if meta.file_type().is_file() {
-                Ok(())
-            } else {
-                Err(SandboxError::Start {
-                    message: format!(
-                        "snapshot drive bind target is not a regular file: {}",
-                        path.display()
-                    ),
-                })
-            }
-        }
+        Ok(_) => Ok(true),
+        Err(e) if e.kind() == io::ErrorKind::AlreadyExists => Ok(false),
         Err(e) => Err(SandboxError::Start {
             message: format!("create snapshot drive bind target: {e}"),
         }),
     }
+}
+
+async fn snapshot_drive_bind_target_is_regular_file(path: &Path) -> Result<bool, SandboxError> {
+    let meta = tokio::fs::symlink_metadata(path)
+        .await
+        .map_err(|e| SandboxError::Start {
+            message: format!("stat snapshot drive bind target: {e}"),
+        })?;
+    Ok(meta.file_type().is_file())
+}
+
+fn snapshot_drive_bind_target_is_mount_point(path: &Path) -> Result<bool, SandboxError> {
+    let path =
+        absolute_path_without_following_final_symlink(path).map_err(|e| SandboxError::Start {
+            message: format!("resolve snapshot drive bind target path: {e}"),
+        })?;
+    let mountinfo =
+        std::fs::read_to_string("/proc/self/mountinfo").map_err(|e| SandboxError::Start {
+            message: format!("read /proc/self/mountinfo: {e}"),
+        })?;
+    Ok(mountinfo_contains_mount_point(&mountinfo, &path))
+}
+
+fn absolute_path_without_following_final_symlink(path: &Path) -> io::Result<std::path::PathBuf> {
+    if path.is_absolute() {
+        Ok(path.to_path_buf())
+    } else {
+        Ok(std::env::current_dir()?.join(path))
+    }
+}
+
+fn mountinfo_contains_mount_point(mountinfo: &str, path: &Path) -> bool {
+    mountinfo.lines().any(|line| {
+        let Some(encoded_mount_point) = line.split_whitespace().nth(4) else {
+            return false;
+        };
+        decode_mountinfo_path(encoded_mount_point) == path
+    })
+}
+
+fn decode_mountinfo_path(encoded: &str) -> std::path::PathBuf {
+    let bytes = encoded.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+
+    while i < bytes.len() {
+        let Some(&byte) = bytes.get(i) else {
+            break;
+        };
+        if byte == b'\\' {
+            let escape = (bytes.get(i + 1), bytes.get(i + 2), bytes.get(i + 3));
+            let (Some(&first), Some(&second), Some(&third)) = escape else {
+                decoded.push(byte);
+                i += 1;
+                continue;
+            };
+            if !is_octal_digit(first) || !is_octal_digit(second) || !is_octal_digit(third) {
+                decoded.push(byte);
+                i += 1;
+                continue;
+            }
+
+            let value =
+                ((first - b'0') as u16) * 64 + ((second - b'0') as u16) * 8 + (third - b'0') as u16;
+            if value <= u8::MAX as u16 {
+                decoded.push(value as u8);
+                i += 4;
+            } else {
+                decoded.push(byte);
+                i += 1;
+            }
+        } else {
+            decoded.push(byte);
+            i += 1;
+        }
+    }
+
+    std::path::PathBuf::from(OsString::from_vec(decoded))
+}
+
+fn is_octal_digit(byte: u8) -> bool {
+    (b'0'..=b'7').contains(&byte)
+}
+
+async fn unmount_snapshot_drive_bind_target(path: &Path) -> Result<(), SandboxError> {
+    let output = tokio::process::Command::new("umount")
+        .arg(path)
+        .output()
+        .await
+        .map_err(|e| SandboxError::Start {
+            message: format!("spawn umount for snapshot drive bind target: {e}"),
+        })?;
+
+    if output.status.success() || !snapshot_drive_bind_target_is_mount_point(path)? {
+        if output.status.success() {
+            info!(
+                path = %path.display(),
+                "cleared stale snapshot drive bind target mount"
+            );
+        }
+        return Ok(());
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    Err(SandboxError::Start {
+        message: format!(
+            "umount stale snapshot drive bind target {}: {}",
+            path.display(),
+            stderr.trim()
+        ),
+    })
 }
 
 pub struct FirecrackerSandbox {
@@ -1303,6 +1426,43 @@ mod tests {
     #[test]
     fn snapshot_restore_unshare_uses_private_mount_propagation() {
         assert_eq!(UNSHARE_MOUNT_ARGS, ["--mount", "--propagation", "private"]);
+    }
+
+    #[test]
+    fn mountinfo_contains_exact_snapshot_drive_bind_target() {
+        let mountinfo = "\
+36 25 0:32 / /tmp/snapshot-work/cow-device-bind rw,relatime - ext4 /dev/nbd0 rw
+37 25 0:33 / /tmp/snapshot-work rw,relatime - ext4 /dev/root rw
+";
+
+        assert!(mountinfo_contains_mount_point(
+            mountinfo,
+            std::path::Path::new("/tmp/snapshot-work/cow-device-bind"),
+        ));
+        assert!(!mountinfo_contains_mount_point(
+            mountinfo,
+            std::path::Path::new("/tmp/snapshot-work/cow"),
+        ));
+    }
+
+    #[test]
+    fn mountinfo_decodes_escaped_mount_point_path() {
+        let mountinfo =
+            r"36 25 0:32 / /tmp/vm0\040snapshot/cow-device-bind rw,relatime - ext4 /dev/nbd0 rw";
+
+        assert!(mountinfo_contains_mount_point(
+            mountinfo,
+            std::path::Path::new("/tmp/vm0 snapshot/cow-device-bind"),
+        ));
+    }
+
+    #[test]
+    fn normal_temp_bind_target_is_not_a_mount_point() {
+        let dir = tempfile::tempdir().unwrap();
+        let bind_target = dir.path().join("cow-device-bind");
+        std::fs::write(&bind_target, b"").unwrap();
+
+        assert!(!snapshot_drive_bind_target_is_mount_point(&bind_target).unwrap());
     }
 
     #[tokio::test]
