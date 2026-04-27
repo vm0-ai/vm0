@@ -1204,6 +1204,10 @@ const BALLOON_SETTLE_TIMEOUT: Duration = Duration::from_secs(10);
 /// Poll interval while waiting for balloon inflation.
 const BALLOON_SETTLE_POLL: Duration = Duration::from_millis(500);
 /// Accept small residual differences between requested and reported balloon size.
+/// This fixed tolerance is calibrated for the current 4 GiB production profile,
+/// where observed post-settle deficits were tens of MiB. If much smaller
+/// production profiles are introduced, revisit whether this should scale with
+/// `target_mib` so tiny balloon targets are not fully swallowed by tolerance.
 const BALLOON_SETTLE_TOLERANCE_MIB: u32 = 64;
 
 /// Wait until the guest balloon driver inflates close enough to `target_mib`.
