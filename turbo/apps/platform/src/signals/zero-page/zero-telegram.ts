@@ -11,6 +11,55 @@ import { featureSwitch$ } from "../external/feature-switch.ts";
 import { accept } from "../../lib/accept.ts";
 
 const internalReload$ = state(0);
+const internalTelegramBotTokenForm$ = state("");
+const internalTelegramBotAgentForm$ = state<string | null>(null);
+const internalTelegramSavingBotId$ = state<string | null>(null);
+const internalTelegramDisconnectingBotId$ = state<string | null>(null);
+
+export const telegramBotTokenForm$ = computed((get) => {
+  return get(internalTelegramBotTokenForm$);
+});
+
+export const telegramBotAgentForm$ = computed((get) => {
+  return get(internalTelegramBotAgentForm$);
+});
+
+export const telegramSavingBotId$ = computed((get) => {
+  return get(internalTelegramSavingBotId$);
+});
+
+export const telegramDisconnectingBotId$ = computed((get) => {
+  return get(internalTelegramDisconnectingBotId$);
+});
+
+export const setTelegramBotTokenForm$ = command(({ set }, value: string) => {
+  set(internalTelegramBotTokenForm$, value);
+});
+
+export const setTelegramBotAgentForm$ = command(
+  ({ set }, value: string | null) => {
+    set(internalTelegramBotAgentForm$, value);
+  },
+);
+
+export const setTelegramSavingBotId$ = command(
+  ({ set }, value: string | null) => {
+    set(internalTelegramSavingBotId$, value);
+  },
+);
+
+export const setTelegramDisconnectingBotId$ = command(
+  ({ set }, value: string | null) => {
+    set(internalTelegramDisconnectingBotId$, value);
+  },
+);
+
+export const resetTelegramSettingsUi$ = command(({ set }) => {
+  set(internalTelegramBotTokenForm$, "");
+  set(internalTelegramBotAgentForm$, null);
+  set(internalTelegramSavingBotId$, null);
+  set(internalTelegramDisconnectingBotId$, null);
+});
 
 export const isTelegramIntegrationEnabled$ = computed(async (get) => {
   const features = await get(featureSwitch$);

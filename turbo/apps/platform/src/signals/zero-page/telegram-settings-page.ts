@@ -1,6 +1,10 @@
 import { command } from "ccstate";
 import { createElement } from "react";
-import { isTelegramIntegrationEnabled$ } from "./zero-telegram.ts";
+import {
+  isTelegramIntegrationEnabled$,
+  resetTelegramSettingsUi$,
+} from "./zero-telegram.ts";
+import { ZeroTelegramSettingsPage } from "../../views/zero-page/zero-telegram-settings-page.tsx";
 import { detachedNavigateTo$ } from "../route.ts";
 import { ROUTES } from "../route-paths.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
@@ -18,14 +22,8 @@ export const setupTelegramSettingsPage$ = command(
       return;
     }
 
-    set(
-      updatePage$,
-      createElement("div", {
-        className: "flex flex-1 min-h-0",
-        "data-testid": "telegram-settings-route",
-      }),
-      "sidebar",
-    );
+    set(resetTelegramSettingsUi$);
+    set(updatePage$, createElement(ZeroTelegramSettingsPage), "sidebar");
     set(updateDocumentTitle$, "Telegram");
     await set(hideAppSkeleton$, signal);
 

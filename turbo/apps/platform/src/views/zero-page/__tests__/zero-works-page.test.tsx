@@ -14,11 +14,13 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   zeroIntegrationsSlackContract,
   type SlackOrgStatus,
 } from "@vm0/api-contracts/contracts/zero-integrations-slack";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
+import { pathname$ } from "../../../signals/route.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -50,6 +52,14 @@ function mockSlackAPI(overrides: Partial<SlackOrgStatus> = {}) {
 
 function renderWorksPage() {
   detachedSetupPage({ context, path: "/works" });
+}
+
+function renderWorksPageWithTelegram(enabled: boolean) {
+  detachedSetupPage({
+    context,
+    path: "/works",
+    featureSwitches: { [FeatureSwitchKey.TelegramIntegration]: enabled },
+  });
 }
 
 describe("works page - slack integration status display", () => {
@@ -87,6 +97,44 @@ describe("works page - slack integration status display", () => {
 
     await waitFor(() => {
       expect(screen.getByText(/update permissions/i)).toBeInTheDocument();
+    });
+  });
+});
+
+describe("works page - telegram integration card", () => {
+  it("renders Telegram below Slack when the Telegram feature is enabled", async () => {
+    mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
+    renderWorksPageWithTelegram(true);
+
+    await waitFor(() => {
+      expect(screen.getByText("Slack")).toBeInTheDocument();
+      expect(screen.getByText("Telegram")).toBeInTheDocument();
+    });
+  });
+
+  it("hides Telegram when the Telegram feature is disabled", async () => {
+    mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
+    renderWorksPageWithTelegram(false);
+
+    await waitFor(() => {
+      expect(screen.getByText("Slack")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Telegram")).not.toBeInTheDocument();
+  });
+
+  it("opens Telegram settings from the Telegram card", async () => {
+    mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
+    renderWorksPageWithTelegram(true);
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Open Telegram settings"),
+      ).toBeInTheDocument();
+    });
+    click(screen.getByLabelText("Open Telegram settings"));
+
+    await waitFor(() => {
+      expect(context.store.get(pathname$)).toBe("/settings/telegram");
     });
   });
 });
