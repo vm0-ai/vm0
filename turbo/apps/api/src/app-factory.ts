@@ -6,10 +6,14 @@ import { HTTPException } from "hono/http-exception";
 import { logger } from "./lib/log";
 import { honoSignalHandler } from "./signals/context/route";
 import { ROUTES, type SignalRouteHandler } from "./signals/route";
+import { isAbortError } from "./signals/utils";
 
 const L = logger("App");
 
 function shouldCaptureError(error: Error): boolean {
+  if (isAbortError(error)) {
+    return false;
+  }
   return !(error instanceof HTTPException) || error.status >= 500;
 }
 

@@ -29,6 +29,13 @@ const errorTestContract = c.router({
       503: z.string(),
     },
   },
+  aborted: {
+    method: "GET",
+    path: "/__test/aborted",
+    responses: {
+      500: z.object({ error: z.string() }),
+    },
+  },
 });
 
 describe("createApp", () => {
@@ -65,6 +72,24 @@ describe("createApp", () => {
     });
 
     await accept(client.missing(), [404]);
+
+    expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
+  });
+
+  it("does not capture AbortError", async () => {
+    const error = new Error("aborted");
+    error.name = "AbortError";
+    const client = setupApp({
+      context,
+      contract: errorTestContract,
+      handlers: {
+        aborted: computed((): never => {
+          throw error;
+        }),
+      },
+    });
+
+    await accept(client.aborted(), [500]);
 
     expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
   });
