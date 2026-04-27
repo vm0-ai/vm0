@@ -183,16 +183,6 @@ const resolvedAuthContext$ = command(
   },
 );
 
-export const createAuthContext$ = command(
-  async (
-    { set },
-    options: AuthOptions,
-    signal: AbortSignal,
-  ): Promise<AuthContext | null> => {
-    return await set(resolvedAuthContext$, options, signal);
-  },
-);
-
 function missingCapabilityError(capability: ZeroCapability): AuthErrorResponse {
   return {
     status: 403,
@@ -259,36 +249,5 @@ export const requiredAuthContext$ = command(
         error: { message: "Not authenticated", code: "UNAUTHORIZED" },
       },
     };
-  },
-);
-
-export const apiKeyAuthContext$ = command(
-  async (
-    { get, set },
-    signal: AbortSignal,
-  ): Promise<AuthContext | AuthErrorResponse> => {
-    const UNAUTHORIZED: AuthErrorResponse = {
-      status: 401,
-      body: {
-        error: { message: "API key required", code: "UNAUTHORIZED" },
-      },
-    };
-
-    const authHeader = get(authorization$);
-    if (!authHeader?.startsWith("Bearer ")) {
-      return UNAUTHORIZED;
-    }
-
-    const token = authHeader.substring(7);
-    if (!isPatToken(token)) {
-      return UNAUTHORIZED;
-    }
-
-    const authContext = await set(resolvedAuthContext$, {}, signal);
-    if (!authContext || authContext.tokenType !== "pat") {
-      return UNAUTHORIZED;
-    }
-
-    return authContext;
   },
 );
