@@ -106,13 +106,13 @@ pub struct NetnsPoolConfig {
 }
 
 /// Network pool config after host network prerequisites have been validated.
-pub struct CheckedNetnsPoolConfig {
+pub(crate) struct CheckedNetnsPoolConfig {
     inner: NetnsPoolConfig,
 }
 
 impl NetnsPoolConfig {
     /// Validate host tools required by [`NetnsPool::create`].
-    pub fn into_checked(self) -> std::result::Result<CheckedNetnsPoolConfig, SandboxError> {
+    pub(crate) fn into_checked(self) -> std::result::Result<CheckedNetnsPoolConfig, SandboxError> {
         crate::prerequisites::check_network_prerequisites()?;
         Ok(CheckedNetnsPoolConfig { inner: self })
     }
@@ -695,7 +695,14 @@ impl NetnsPool {
     /// Automatically acquires a unique pool index (0–63) via flock. Enables
     /// host IP forwarding and reconciles orphaned resources from any idle
     /// pool index before creating new namespaces.
-    pub async fn create(config: CheckedNetnsPoolConfig) -> Result<Self> {
+    pub async fn create(config: NetnsPoolConfig) -> Result<Self> {
+        let config = config
+            .into_checked()
+            .map_err(|e| NetworkError::Prerequisite(e.to_string()))?;
+        Self::create_checked(config).await
+    }
+
+    pub(crate) async fn create_checked(config: CheckedNetnsPoolConfig) -> Result<Self> {
         let config = config.inner;
         let lock_paths = LockPaths::new();
         let (index, lock) = acquire_pool_lock(&lock_paths)?;

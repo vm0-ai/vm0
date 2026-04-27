@@ -184,8 +184,6 @@ mod tests {
 
     use super::*;
 
-    const OPTIONAL_CLEANUP_COMMANDS: &[&str] = &["conntrack"];
-
     fn snapshot_config() -> SnapshotConfig {
         SnapshotConfig {
             snapshot_path: PathBuf::from("/tmp/snapshot.bin"),
@@ -283,8 +281,6 @@ mod tests {
 
     #[test]
     fn conntrack_is_optional_not_hard_required() {
-        assert_eq!(OPTIONAL_CLEANUP_COMMANDS, &["conntrack"]);
-
         let snapshot = snapshot_config();
         let modes = [
             PrerequisiteMode::FactoryFresh,

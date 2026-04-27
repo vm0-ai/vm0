@@ -1,4 +1,5 @@
 use std::io;
+use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::time::Duration;
@@ -35,6 +36,10 @@ const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 /// Timeout for Firecracker API socket readiness after process spawn.
 const API_READY_TIMEOUT: Duration = Duration::from_secs(5);
 
+/// Bash command run inside `unshare --mount` for snapshot restore.
+/// Positional args are documented at the spawn site.
+const SNAPSHOT_RESTORE_INNER_CMD: &str = r#"umount "$4" 2>/dev/null; mount --bind "$1" "$2" && mount --bind "$3" "$4" && exec ip netns exec "$5" "$6" --api-sock "$7""#;
+
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SandboxState {
@@ -64,6 +69,45 @@ impl std::fmt::Display for SandboxState {
             Self::Stopping => f.write_str("stopping"),
             Self::Stopped => f.write_str("stopped"),
         }
+    }
+}
+
+async fn ensure_snapshot_drive_bind_target(path: &Path) -> Result<(), SandboxError> {
+    if let Some(parent) = path.parent() {
+        tokio::fs::create_dir_all(parent)
+            .await
+            .map_err(|e| SandboxError::Start {
+                message: format!("mkdir snapshot drive: {e}"),
+            })?;
+    }
+
+    match tokio::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
+        .await
+    {
+        Ok(_) => Ok(()),
+        Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
+            let meta = tokio::fs::symlink_metadata(path).await.map_err(|e| {
+                SandboxError::Start {
+                    message: format!("stat snapshot drive bind target: {e}"),
+                }
+            })?;
+            if meta.file_type().is_file() {
+                Ok(())
+            } else {
+                Err(SandboxError::Start {
+                    message: format!(
+                        "snapshot drive bind target is not a regular file: {}",
+                        path.display()
+                    ),
+                })
+            }
+        }
+        Err(e) => Err(SandboxError::Start {
+            message: format!("create snapshot drive bind target: {e}"),
+        }),
     }
 }
 
@@ -318,28 +362,7 @@ impl FirecrackerSandbox {
                 message: format!("mkdir snapshot vsock: {e}"),
             })?;
 
-        if let Some(parent) = snapshot.drive_bind_path.parent() {
-            tokio::fs::create_dir_all(parent)
-                .await
-                .map_err(|e| SandboxError::Start {
-                    message: format!("mkdir snapshot drive: {e}"),
-                })?;
-        }
-
-        match tokio::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&snapshot.drive_bind_path)
-            .await
-        {
-            Ok(_) => {}
-            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
-            Err(e) => {
-                return Err(SandboxError::Start {
-                    message: format!("create snapshot drive bind target: {e}"),
-                });
-            }
-        }
+        ensure_snapshot_drive_bind_target(&snapshot.drive_bind_path).await?;
 
         // Verify sock dir exists before spawning — if this fails, we know
         // the directory was never created or was removed before spawn.
@@ -377,10 +400,8 @@ impl FirecrackerSandbox {
         //
         // `umount` clears any stale mount inherited from the parent
         // namespace (e.g. from a crashed snapshot creation).
-        let inner_cmd = r#"umount "$4" 2>/dev/null; mount --bind "$1" "$2" && mount --bind "$3" "$4" && exec ip netns exec "$5" "$6" --api-sock "$7""#;
-
         let mut child = tokio::process::Command::new("unshare")
-            .args(["--mount", "bash", "-c", inner_cmd, "_"])
+            .args(["--mount", "bash", "-c", SNAPSHOT_RESTORE_INNER_CMD, "_"])
             .arg(self.sock_paths.vsock_dir()) // $1
             .arg(&snapshot.vsock_bind_dir) // $2
             .arg(cow_device_path) // $3
@@ -1242,6 +1263,62 @@ mod tests {
         // Signal 0 checks existence — should fail with ESRCH.
         let exists = nix::sys::signal::kill(nix::unistd::Pid::from_raw(pid), None);
         assert!(exists.is_err(), "process group leader should be dead");
+    }
+
+    #[test]
+    fn snapshot_restore_inner_cmd_uses_positional_args_without_touch() {
+        assert!(!SNAPSHOT_RESTORE_INNER_CMD.contains("$0"));
+        for arg in ["$1", "$2", "$3", "$4", "$5", "$6", "$7"] {
+            let quoted = format!(r#""{arg}""#);
+            assert!(
+                SNAPSHOT_RESTORE_INNER_CMD.contains(&quoted),
+                "expected quoted positional {arg} in inner_cmd: {SNAPSHOT_RESTORE_INNER_CMD}"
+            );
+        }
+        for unexpected in ["$8", "$9"] {
+            assert!(
+                !SNAPSHOT_RESTORE_INNER_CMD.contains(unexpected),
+                "unexpected positional {unexpected} in inner_cmd: {SNAPSHOT_RESTORE_INNER_CMD}"
+            );
+        }
+
+        assert!(
+            SNAPSHOT_RESTORE_INNER_CMD.starts_with(r#"umount "$4" 2>/dev/null; mount --bind"#),
+            "inner_cmd must clear stale bind mount before binding: {SNAPSHOT_RESTORE_INNER_CMD}"
+        );
+        assert!(
+            SNAPSHOT_RESTORE_INNER_CMD
+                .contains(r#"&& mount --bind "$3" "$4" && exec ip netns exec"#),
+            "inner_cmd must bind COW device and exec firecracker: {SNAPSHOT_RESTORE_INNER_CMD}"
+        );
+        assert!(
+            !SNAPSHOT_RESTORE_INNER_CMD.contains("touch"),
+            "bind target creation must stay in Rust: {SNAPSHOT_RESTORE_INNER_CMD}"
+        );
+    }
+
+    #[tokio::test]
+    async fn snapshot_drive_bind_target_rejects_existing_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let bind_target = dir.path().join("cow-device-bind");
+        tokio::fs::create_dir(&bind_target).await.unwrap();
+
+        let result = ensure_snapshot_drive_bind_target(&bind_target).await;
+
+        assert!(
+            matches!(result, Err(SandboxError::Start { message }) if message.contains("not a regular file"))
+        );
+    }
+
+    #[tokio::test]
+    async fn snapshot_drive_bind_target_allows_existing_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let bind_target = dir.path().join("cow-device-bind");
+        tokio::fs::write(&bind_target, b"").await.unwrap();
+
+        ensure_snapshot_drive_bind_target(&bind_target)
+            .await
+            .unwrap();
     }
 
     // -- idle transition tests --

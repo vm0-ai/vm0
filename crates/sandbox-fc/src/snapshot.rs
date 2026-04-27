@@ -142,7 +142,7 @@ pub async fn create_snapshot(
     }
     .into_checked()
     .map_err(|e| SnapshotError::Setup(e.to_string()))?;
-    let mut netns_pool = NetnsPool::create(netns_config)
+    let mut netns_pool = NetnsPool::create_checked(netns_config)
         .await
         .map_err(|e| SnapshotError::Setup(format!("netns pool: {e}")))?;
 

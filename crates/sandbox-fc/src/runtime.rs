@@ -39,7 +39,7 @@ impl FirecrackerRuntime {
             dns_port: config.dns_port,
         }
         .into_checked()?;
-        let netns_pool = NetnsPool::create(netns_config)
+        let netns_pool = NetnsPool::create_checked(netns_config)
             .await
             .map_err(|e| SandboxError::Initialization {
                 phase: SandboxInitializationPhase::Runtime,
