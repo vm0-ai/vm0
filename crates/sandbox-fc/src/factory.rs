@@ -941,6 +941,31 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn drain_leaked_resources_exits_after_sender_close() {
+        let (tx, rx) = tokio::sync::mpsc::channel::<LeakedResources>(4);
+        let (_shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
+
+        tx.send(test_leaked_resource("first", 0)).await.unwrap();
+        tx.send(test_leaked_resource("second", 1)).await.unwrap();
+        drop(tx);
+
+        let cleaned = Arc::new(tokio::sync::Mutex::new(Vec::new()));
+        let cleaned_clone = Arc::clone(&cleaned);
+        drain_leaked_resources_with_cleanup(rx, shutdown_rx, move |leaked| {
+            let cleaned = Arc::clone(&cleaned_clone);
+            async move {
+                cleaned.lock().await.push(leaked.sandbox_id);
+            }
+        })
+        .await;
+
+        assert_eq!(
+            *cleaned.lock().await,
+            vec!["first".to_string(), "second".to_string()]
+        );
+    }
+
+    #[tokio::test]
     async fn leak_cleaner_shutdown_signals_drain_with_live_sender_clone() {
         let (tx, mut rx) = tokio::sync::mpsc::channel::<LeakedResources>(1);
         let _live_sender_clone = tx.clone();
@@ -968,6 +993,42 @@ mod tests {
         cleaner.shutdown().await;
 
         assert!(drained.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn leak_cleaner_shutdown_aborts_after_timeout() {
+        struct AbortFlag(Arc<AtomicBool>);
+
+        impl Drop for AbortFlag {
+            fn drop(&mut self) {
+                self.0.store(true, Ordering::SeqCst);
+            }
+        }
+
+        let (tx, _rx) = tokio::sync::mpsc::channel::<LeakedResources>(1);
+        let (shutdown_tx, _shutdown_rx) = tokio::sync::oneshot::channel();
+        let aborted = Arc::new(AtomicBool::new(false));
+        let aborted_clone = Arc::clone(&aborted);
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let handle = tokio::spawn(async move {
+            let _flag = AbortFlag(aborted_clone);
+            let _ = started_tx.send(());
+            std::future::pending::<()>().await;
+        });
+        let cleaner = LeakCleaner {
+            tx: Some(tx),
+            shutdown_tx: Some(shutdown_tx),
+            handle: Some(handle),
+        };
+
+        started_rx.await.unwrap();
+        let shutdown = cleaner.shutdown();
+        tokio::pin!(shutdown);
+        tokio::task::yield_now().await;
+        tokio::time::advance(LEAK_CLEANUP_SHUTDOWN_TIMEOUT).await;
+        shutdown.await;
+
+        assert!(aborted.load(Ordering::SeqCst));
     }
 
     #[tokio::test]
