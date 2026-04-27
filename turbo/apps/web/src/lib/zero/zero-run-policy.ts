@@ -27,7 +27,7 @@ export const PENDING_RUN_TTL_MS = 15 * 60 * 1000; // 15 minutes
 const TIER_CONCURRENCY_LIMITS: Record<OrgTier, number> = {
   free: 1,
   pro: 2,
-  team: 20,
+  team: 10,
 };
 
 function getConcurrencyLimitForTier(tier: OrgTier): number {

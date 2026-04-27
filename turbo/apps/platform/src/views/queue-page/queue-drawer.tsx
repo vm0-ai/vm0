@@ -52,11 +52,11 @@ const UPGRADE_PATHS = {
     targetLabel: "Team",
     concurrentRuns: 5,
     price: "$200",
-    description: "Scale your team with 20 parallel runs and more credits.",
+    description: "Scale your team with 10 parallel runs and more credits.",
     features: [
       "120,000 credits / month",
       "Pay as you go after that",
-      "20 concurrent runs",
+      "10 concurrent runs",
       "Unlimited total agents",
       "Bring your own LLM keys",
       "Priority support",
