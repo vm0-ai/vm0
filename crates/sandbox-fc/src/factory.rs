@@ -138,17 +138,17 @@ trait CreateRollbackCleanup {
     fn destroy_slot(&self, slot: crate::cow_pool::PrewarmedSlot);
 }
 
-struct FactoryCreateRollbackCleanup<'a> {
-    id: &'a str,
-    device_pool: &'a std::sync::Arc<tokio::sync::Mutex<nbd_cow::pool::DevicePool>>,
-    netns_pool: &'a std::sync::Arc<tokio::sync::Mutex<NetnsPool>>,
+struct FactoryCreateRollbackCleanup {
+    id: String,
+    device_pool: std::sync::Arc<tokio::sync::Mutex<nbd_cow::pool::DevicePool>>,
+    netns_pool: std::sync::Arc<tokio::sync::Mutex<NetnsPool>>,
 }
 
 #[async_trait]
-impl CreateRollbackCleanup for FactoryCreateRollbackCleanup<'_> {
+impl CreateRollbackCleanup for FactoryCreateRollbackCleanup {
     async fn destroy_cow_device(&self, mut cow_device: NbdCowDevice) -> bool {
         let device_index = cow_device.device_index();
-        let cow_destroyed = destroy_cow_device_with_retries(self.id, &mut cow_device).await;
+        let cow_destroyed = destroy_cow_device_with_retries(&self.id, &mut cow_device).await;
         self.device_pool.lock().await.release(device_index);
         cow_destroyed
     }
@@ -401,6 +401,24 @@ fn create_transaction_invalid_state(message: &str) -> SandboxError {
         context: SandboxInvalidStateContext::Factory,
         state: "create transaction invalid".into(),
         message: message.into(),
+    }
+}
+
+async fn rollback_create_transaction<C>(tx: SandboxCreateTransaction, cleanup: C)
+where
+    C: CreateRollbackCleanup + Send + Sync + 'static,
+{
+    let rollback_id = tx.id.clone();
+    let rollback_task = tokio::spawn(async move {
+        let mut tx = tx;
+        tx.rollback(&cleanup).await;
+    });
+    if let Err(rollback_err) = rollback_task.await {
+        warn!(
+            id = %rollback_id,
+            error = %rollback_err,
+            "sandbox create rollback task failed"
+        );
     }
 }
 
@@ -771,9 +789,9 @@ impl SandboxFactory for FirecrackerFactory {
 
         let id = config.id.to_string();
         let rollback_cleanup = FactoryCreateRollbackCleanup {
-            id: &id,
-            device_pool: &self.device_pool,
-            netns_pool: self.netns_pool(),
+            id: id.clone(),
+            device_pool: std::sync::Arc::clone(&self.device_pool),
+            netns_pool: std::sync::Arc::clone(self.netns_pool()),
         };
         let mut tx = SandboxCreateTransaction::new(id.clone());
 
@@ -865,7 +883,7 @@ impl SandboxFactory for FirecrackerFactory {
         let resources = match create_result {
             Ok(resources) => resources,
             Err(e) => {
-                tx.rollback(&rollback_cleanup).await;
+                rollback_create_transaction(tx, rollback_cleanup).await;
                 return Err(e);
             }
         };
@@ -996,7 +1014,7 @@ mod tests {
     use super::*;
     use std::sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     };
 
     #[test]
@@ -1064,6 +1082,94 @@ mod tests {
 
         fn record(&self, event: String) {
             self.events.lock().unwrap().push(event);
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct BlockingRemoveDirCleanup {
+        events: Arc<Mutex<Vec<String>>>,
+        entered: Arc<AtomicUsize>,
+        entered_notify: Arc<tokio::sync::Notify>,
+        removed: Arc<AtomicUsize>,
+        removed_notify: Arc<tokio::sync::Notify>,
+        release: Arc<AtomicBool>,
+        release_notify: Arc<tokio::sync::Notify>,
+    }
+
+    impl BlockingRemoveDirCleanup {
+        fn events(&self) -> Vec<String> {
+            self.events.lock().unwrap().clone()
+        }
+
+        fn record(&self, event: String) {
+            self.events.lock().unwrap().push(event);
+        }
+
+        async fn wait_entered(&self, expected: usize) {
+            loop {
+                let notified = self.entered_notify.notified();
+                if self.entered.load(Ordering::SeqCst) >= expected {
+                    return;
+                }
+                notified.await;
+            }
+        }
+
+        async fn wait_removed(&self, expected: usize) {
+            loop {
+                let notified = self.removed_notify.notified();
+                if self.removed.load(Ordering::SeqCst) >= expected {
+                    return;
+                }
+                notified.await;
+            }
+        }
+
+        fn release(&self) {
+            self.release.store(true, Ordering::SeqCst);
+            self.release_notify.notify_waiters();
+        }
+
+        async fn wait_until_released(&self) {
+            loop {
+                let notified = self.release_notify.notified();
+                if self.release.load(Ordering::SeqCst) {
+                    return;
+                }
+                notified.await;
+            }
+        }
+    }
+
+    #[async_trait]
+    impl CreateRollbackCleanup for BlockingRemoveDirCleanup {
+        async fn destroy_cow_device(&self, _cow_device: NbdCowDevice) -> bool {
+            panic!("test cleanup should not receive a real COW device");
+        }
+
+        async fn release_network(&self, network: PooledNetns) {
+            self.record(format!("release_network:{}", network.name));
+        }
+
+        async fn remove_dir(&self, kind: &'static str, path: PathBuf) {
+            let name = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("<unknown>");
+            self.record(format!("remove_dir:{kind}:{name}"));
+            self.entered.fetch_add(1, Ordering::SeqCst);
+            self.entered_notify.notify_waiters();
+
+            self.wait_until_released().await;
+
+            let _ = tokio::fs::remove_dir_all(path).await;
+            self.removed.fetch_add(1, Ordering::SeqCst);
+            self.removed_notify.notify_waiters();
+        }
+
+        fn destroy_slot(&self, slot: crate::cow_pool::PrewarmedSlot) {
+            self.record(format!("destroy_slot:{}", slot.id));
+            crate::cow_pool::destroy_slot(slot);
         }
     }
 
@@ -1308,6 +1414,40 @@ mod tests {
         assert_eq!(resources.network.name, "test-ns");
         assert!(workspace.exists());
         assert!(sock_dir.exists());
+    }
+
+    #[tokio::test]
+    async fn create_transaction_rollback_continues_after_waiter_abort() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().join("workspace");
+        let sock_dir = tmp.path().join("sock");
+        tokio::fs::create_dir_all(&workspace).await.unwrap();
+        tokio::fs::create_dir_all(&sock_dir).await.unwrap();
+
+        let mut tx = SandboxCreateTransaction::new("sandbox".into());
+        tx.slot_renamed_to(workspace.clone());
+        tx.track_sock_dir(sock_dir.clone());
+
+        let cleanup = BlockingRemoveDirCleanup::default();
+        let waiter = tokio::spawn(rollback_create_transaction(tx, cleanup.clone()));
+
+        tokio::time::timeout(std::time::Duration::from_secs(1), cleanup.wait_entered(1))
+            .await
+            .unwrap();
+        waiter.abort();
+        assert!(waiter.await.unwrap_err().is_cancelled());
+
+        cleanup.release();
+        tokio::time::timeout(std::time::Duration::from_secs(1), cleanup.wait_removed(2))
+            .await
+            .unwrap();
+
+        assert!(!sock_dir.exists());
+        assert!(!workspace.exists());
+        assert_eq!(
+            cleanup.events(),
+            vec!["remove_dir:sock:sock", "remove_dir:workspace:workspace"]
+        );
     }
 
     #[tokio::test]
