@@ -128,6 +128,50 @@ describe("GET /health/auth", () => {
     });
   });
 
+  it("resolves Clerk session auth from a cookie", async () => {
+    context.mocks.clerk.authenticateRequest.mockResolvedValue({
+      isAuthenticated: true,
+      toAuth: () => {
+        return {
+          userId: "user_session_123",
+          orgId: "org_session_123",
+          orgRole: "org:admin",
+        };
+      },
+    });
+
+    const client = setupApp({ context, contract: healthAuthProbeContract });
+    const response = await accept(
+      client.check({
+        headers: { cookie: "__session=opaque" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toEqual({
+      tokenType: "session",
+      userId: "user_session_123",
+      orgId: "org_session_123",
+      orgRole: "admin",
+    });
+  });
+
+  it("returns 401 for unauthenticated Clerk sessions", async () => {
+    context.mocks.clerk.authenticateRequest.mockResolvedValue({
+      isAuthenticated: false,
+    });
+
+    const client = setupApp({ context, contract: healthAuthProbeContract });
+    const response = await accept(
+      client.check({
+        headers: { cookie: "__session=opaque" },
+      }),
+      [401],
+    );
+
+    expect(response.body.error.code).toBe("UNAUTHORIZED");
+  });
+
   it("resolves zero bearer auth and includes capabilities", async () => {
     const fixture = await seedPatFixture("member");
     fixtures.push(fixture);
