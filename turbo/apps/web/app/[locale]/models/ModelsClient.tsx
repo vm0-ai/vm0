@@ -36,7 +36,7 @@ function ModelCard({ model }: { model: ModelEntry }) {
       </header>
 
       <p className="mt-4 text-[16px] font-light leading-relaxed text-[hsl(var(--muted-foreground))]">
-        {model.intro}
+        {model.cardIntro}
       </p>
 
       <div className="mt-6 grid gap-6 sm:grid-cols-2">
@@ -45,7 +45,7 @@ function ModelCard({ model }: { model: ModelEntry }) {
             Best for on VM0
           </h3>
           <ul className="mt-3 flex flex-col gap-2">
-            {model.bestFor.map((tip) => {
+            {model.cardBestFor.map((tip) => {
               return (
                 <li
                   key={tip}
@@ -62,13 +62,13 @@ function ModelCard({ model }: { model: ModelEntry }) {
           </ul>
         </div>
 
-        {model.avoidFor.length > 0 && (
+        {model.cardAvoidFor.length > 0 && (
           <div>
             <h3 className="text-[12px] font-semibold uppercase tracking-[1.5px] text-[hsl(var(--muted-foreground))]">
               Skip when
             </h3>
             <ul className="mt-3 flex flex-col gap-2">
-              {model.avoidFor.map((tip) => {
+              {model.cardAvoidFor.map((tip) => {
                 return (
                   <li
                     key={tip}

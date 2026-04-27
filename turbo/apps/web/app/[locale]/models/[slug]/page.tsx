@@ -22,7 +22,7 @@ export async function generateMetadata({
   }
 
   const url = `${BASE_URL}/${locale}/models/${slug}`;
-  const title = `${model.detailHeading} — VM0`;
+  const title = `${model.metaTitle} | VM0`;
 
   return {
     title,
@@ -38,7 +38,7 @@ export async function generateMetadata({
           url: "/og-image.png",
           width: 1200,
           height: 630,
-          alt: model.detailHeading,
+          alt: model.pageTitle,
         },
       ],
     },
@@ -112,6 +112,21 @@ export default async function ModelDetailPage({ params }: PageProps) {
     ],
   };
 
+  const faqJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: model.faqs.map((faq) => {
+      return {
+        "@type": "Question",
+        name: faq.q,
+        acceptedAnswer: {
+          "@type": "Answer",
+          text: faq.a,
+        },
+      };
+    }),
+  };
+
   return (
     <>
       <script type="application/ld+json" suppressHydrationWarning>
@@ -120,6 +135,11 @@ export default async function ModelDetailPage({ params }: PageProps) {
       <script type="application/ld+json" suppressHydrationWarning>
         {JSON.stringify(breadcrumbJsonLd)}
       </script>
+      {model.faqs.length > 0 && (
+        <script type="application/ld+json" suppressHydrationWarning>
+          {JSON.stringify(faqJsonLd)}
+        </script>
+      )}
       <ModelDetailClient model={model} related={related} />
     </>
   );

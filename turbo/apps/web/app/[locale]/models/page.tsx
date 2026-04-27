@@ -62,7 +62,7 @@ export default async function ModelsPage({ params }: PageProps) {
         "@type": "ListItem",
         position: i + 1,
         name: m.name,
-        description: m.intro,
+        description: m.cardIntro,
       };
     }),
   };
