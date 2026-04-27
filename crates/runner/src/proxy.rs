@@ -1541,6 +1541,23 @@ PY
     }
 
     #[tokio::test]
+    async fn wait_usage_flush_waits_for_state_file_to_appear() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = usage_target();
+        let path = dir.path().join("usage-pending");
+
+        let p = path.clone();
+        let handle = tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            std::fs::write(&p, usage_state(0, 0)).unwrap();
+        });
+
+        let d = dir.path().to_path_buf();
+        assert!(wait_usage_flush(&d, Duration::from_secs(5), &target).await);
+        handle.await.unwrap();
+    }
+
+    #[tokio::test]
     async fn wait_usage_flush_waits_until_zero() {
         let dir = tempfile::tempdir().unwrap();
         let target = usage_target();
@@ -1595,6 +1612,37 @@ PY
             "flows": 0,
             "reports": 0,
             "extraField": "unexpected",
+        });
+        std::fs::write(dir.path().join("usage-pending"), state.to_string()).unwrap();
+        assert!(!wait_usage_flush(dir.path(), Duration::from_millis(50), &target).await);
+    }
+
+    #[tokio::test]
+    async fn wait_usage_flush_rejects_unsupported_version() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = usage_target();
+        let state = serde_json::json!({
+            "version": 2,
+            "pid": 1234,
+            "usageStateId": "state-test",
+            "updatedAtMs": 1_770_000_000_001u64,
+            "flows": 0,
+            "reports": 0,
+        });
+        std::fs::write(dir.path().join("usage-pending"), state.to_string()).unwrap();
+        assert!(!wait_usage_flush(dir.path(), Duration::from_millis(50), &target).await);
+    }
+
+    #[tokio::test]
+    async fn wait_usage_flush_rejects_missing_required_field() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = usage_target();
+        let state = serde_json::json!({
+            "version": 1,
+            "pid": 1234,
+            "usageStateId": "state-test",
+            "updatedAtMs": 1_770_000_000_001u64,
+            "flows": 0,
         });
         std::fs::write(dir.path().join("usage-pending"), state.to_string()).unwrap();
         assert!(!wait_usage_flush(dir.path(), Duration::from_millis(50), &target).await);

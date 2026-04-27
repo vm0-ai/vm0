@@ -79,6 +79,29 @@ class TestAddonConfiguration:
             pending_path, usage_state_id="runner-usage-state-id"
         )
 
+    def test_configure_passes_none_when_usage_state_id_is_empty(self):
+        options = MagicMock(vm0_usage_state_id="")
+        pending_path = str(Path(mitm_addon.__file__).resolve().parent / "usage-pending")
+
+        with (
+            patch.object(mitm_addon.ctx, "options", options, create=True),
+            patch.object(usage, "set_pending_path") as set_pending_path,
+        ):
+            mitm_addon.configure({"vm0_usage_state_id"})
+
+        set_pending_path.assert_called_once_with(pending_path, usage_state_id=None)
+
+    def test_configure_ignores_unrelated_option_updates(self):
+        options = MagicMock(vm0_usage_state_id="runner-usage-state-id")
+
+        with (
+            patch.object(mitm_addon.ctx, "options", options, create=True),
+            patch.object(usage, "set_pending_path") as set_pending_path,
+        ):
+            mitm_addon.configure({"vm0_api_url"})
+
+        set_pending_path.assert_not_called()
+
 
 class TestRequestHandler:
     async def test_allowed_domain_passes_through(self, registry_file, real_flow, mitm_ctx):
