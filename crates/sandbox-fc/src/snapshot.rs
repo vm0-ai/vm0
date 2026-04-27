@@ -43,6 +43,19 @@ pub enum SnapshotError {
     Io(#[from] std::io::Error),
 }
 
+impl SnapshotError {
+    fn into_sandbox_error(self) -> sandbox::SnapshotError {
+        match self {
+            Self::Setup(msg) => sandbox::SnapshotError::Setup(msg),
+            Self::Process(msg) => sandbox::SnapshotError::Process(msg),
+            Self::Teardown(msg) => sandbox::SnapshotError::Teardown(msg),
+            Self::Api(api_err) => sandbox::SnapshotError::Api(api_err.to_string()),
+            Self::Vsock(msg) => sandbox::SnapshotError::Vsock(msg),
+            Self::Io(io_err) => sandbox::SnapshotError::Io(io_err),
+        }
+    }
+}
+
 /// Create a snapshot by booting a fresh VM, configuring it, and capturing state.
 ///
 /// This is the Rust equivalent of the TS `commands/snapshot.ts` workflow:
@@ -613,14 +626,9 @@ impl SnapshotProvider for FirecrackerSnapshotProvider {
         &self,
         config: SnapshotCreateConfig,
     ) -> Result<SnapshotOutput, sandbox::SnapshotError> {
-        let sc = create_snapshot(config).await.map_err(|e| match e {
-            SnapshotError::Setup(msg) => sandbox::SnapshotError::Setup(msg),
-            SnapshotError::Process(msg) => sandbox::SnapshotError::Process(msg),
-            SnapshotError::Teardown(msg) => sandbox::SnapshotError::Teardown(msg),
-            SnapshotError::Api(api_err) => sandbox::SnapshotError::Api(api_err.to_string()),
-            SnapshotError::Vsock(msg) => sandbox::SnapshotError::Vsock(msg),
-            SnapshotError::Io(io_err) => sandbox::SnapshotError::Io(io_err),
-        })?;
+        let sc = create_snapshot(config)
+            .await
+            .map_err(SnapshotError::into_sandbox_error)?;
         Ok(SnapshotOutput {
             snapshot_path: sc.snapshot_path,
             memory_path: sc.memory_path,
