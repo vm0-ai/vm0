@@ -16,12 +16,19 @@ type SessionAuthContext =
       readonly orgRole?: undefined;
     };
 
-interface PatAuthContext {
-  readonly tokenType: "pat";
-  readonly userId: string;
-  readonly orgId: string;
-  readonly orgRole: ApiOrgRole;
-}
+type PatAuthContext =
+  | {
+      readonly tokenType: "pat";
+      readonly userId: string;
+      readonly orgId: string;
+      readonly orgRole: ApiOrgRole;
+    }
+  | {
+      readonly tokenType: "pat";
+      readonly userId: string;
+      readonly orgId?: undefined;
+      readonly orgRole?: undefined;
+    };
 
 interface SandboxAuthContext {
   readonly tokenType: "sandbox";

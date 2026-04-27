@@ -19,10 +19,11 @@ type AuthErrorResponse = {
 function scheduleShadowCheck(
   result: AuthContext | AuthErrorResponse,
   authHeader: string | undefined,
+  cookieHeader?: string,
 ): void {
   try {
     after(async () => {
-      await shadowCompareAuth(result, { authHeader });
+      await shadowCompareAuth(result, { authHeader, cookieHeader });
     });
   } catch {
     // Outside a Next.js request scope (e.g. unit tests) — skip silently.
@@ -40,12 +41,14 @@ export async function requireAuth(
   options?: {
     requiredCapability?: ZeroCapability;
     acceptAnySandboxCapability?: boolean;
+    cookieHeader?: string;
   },
 ): Promise<AuthContext | AuthErrorResponse> {
+  const cookieHeader = options?.cookieHeader;
   const authCtx = await getAuthContext(authHeader, options);
 
   if (authCtx) {
-    scheduleShadowCheck(authCtx, authHeader);
+    scheduleShadowCheck(authCtx, authHeader, cookieHeader);
     return authCtx;
   }
 
@@ -73,7 +76,7 @@ export async function requireAuth(
                 },
               },
             };
-        scheduleShadowCheck(capabilityErr, authHeader);
+        scheduleShadowCheck(capabilityErr, authHeader, cookieHeader);
         return capabilityErr;
       }
     }
@@ -86,7 +89,7 @@ export async function requireAuth(
       error: { message: "Not authenticated", code: "UNAUTHORIZED" },
     },
   };
-  scheduleShadowCheck(unauthorized, authHeader);
+  scheduleShadowCheck(unauthorized, authHeader, cookieHeader);
   return unauthorized;
 }
 
@@ -116,6 +119,7 @@ export function isAuthError(
  */
 export async function requireApiKeyAuth(
   authHeader: string | undefined,
+  cookieHeader?: string,
 ): Promise<AuthContext | AuthErrorResponse> {
   const unauthorized: AuthErrorResponse = {
     status: 401 as const,
@@ -124,19 +128,19 @@ export async function requireApiKeyAuth(
     },
   };
   if (!authHeader?.startsWith("Bearer ")) {
-    scheduleShadowCheck(unauthorized, authHeader);
+    scheduleShadowCheck(unauthorized, authHeader, cookieHeader);
     return unauthorized;
   }
   const token = authHeader.substring(7);
   if (!isPatToken(token)) {
-    scheduleShadowCheck(unauthorized, authHeader);
+    scheduleShadowCheck(unauthorized, authHeader, cookieHeader);
     return unauthorized;
   }
   const authCtx = await getAuthContext(authHeader);
   if (!authCtx || authCtx.tokenType !== "pat" || !authCtx.orgId) {
-    scheduleShadowCheck(unauthorized, authHeader);
+    scheduleShadowCheck(unauthorized, authHeader, cookieHeader);
     return unauthorized;
   }
-  scheduleShadowCheck(authCtx, authHeader);
+  scheduleShadowCheck(authCtx, authHeader, cookieHeader);
   return authCtx;
 }

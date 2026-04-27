@@ -130,6 +130,15 @@ describe("GET /health/auth", () => {
     }
   });
 
+  beforeEach(() => {
+    // Default: Clerk session not authenticated, no org memberships
+    context.mocks.clerk.authenticateRequest.mockReset();
+    context.mocks.clerk.users.getOrganizationMembershipList.mockReset();
+    context.mocks.clerk.authenticateRequest.mockResolvedValue({
+      isAuthenticated: false,
+    });
+  });
+
   describe("Clerk session", () => {
     it("resolves admin Clerk session from a cookie", async () => {
       context.mocks.clerk.authenticateRequest.mockResolvedValue({
@@ -298,7 +307,7 @@ describe("GET /health/auth", () => {
       expect(response.body.error.code).toBe("UNAUTHORIZED");
     });
 
-    it("returns 401 when the PAT user is not a member of the org", async () => {
+    it("resolves PAT without orgRole when the user is not a member of the org", async () => {
       const fixture = await seedPatFixture({ seedMembership: false });
       fixtures.push(fixture);
       context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue(
@@ -310,10 +319,13 @@ describe("GET /health/auth", () => {
         client.check({
           headers: { authorization: `Bearer ${fixture.token}` },
         }),
-        [401],
+        [200],
       );
 
-      expect(response.body.error.code).toBe("UNAUTHORIZED");
+      expect(response.body).toEqual({
+        tokenType: "pat",
+        userId: fixture.userId,
+      });
     });
   });
 
@@ -401,7 +413,7 @@ describe("GET /health/auth", () => {
       expect(cached?.role).toBe("admin");
     });
 
-    it("removes a stale cache row when Clerk reports no membership", async () => {
+    it("removes a stale cache row when Clerk reports no membership and resolves without orgRole", async () => {
       const fixture = await seedPatFixture({
         role: "admin",
         cachedAtMs: now() - 5 * 60_000,
@@ -416,9 +428,12 @@ describe("GET /health/auth", () => {
         client.check({
           headers: { authorization: `Bearer ${fixture.token}` },
         }),
-        [401],
+        [200],
       );
-      expect(first.body.error.code).toBe("UNAUTHORIZED");
+      expect(first.body).toEqual({
+        tokenType: "pat",
+        userId: fixture.userId,
+      });
 
       const writeDb = store.set(writeDb$);
       const remaining = await writeDb
@@ -551,6 +566,108 @@ describe("GET /health/auth", () => {
         capabilities: ["file:read"],
         tokenType: "zero",
       });
+    });
+  });
+
+  describe("Clerk session fallback for Bearer requests", () => {
+    it("falls through to Clerk session when PAT tokenId is not in DB but cookie is present", async () => {
+      const tokenId = randomUUID();
+      const userId = `user_${randomUUID()}`;
+      const nowSeconds = currentSecond();
+      const token = signPatJwtForTests({
+        scope: "cli",
+        userId,
+        orgId: `org_${randomUUID()}`,
+        tokenId,
+        iat: nowSeconds,
+        exp: nowSeconds + 60,
+      });
+      context.mocks.clerk.authenticateRequest.mockResolvedValue({
+        isAuthenticated: true,
+        toAuth: () => {
+          return {
+            userId: "user_cookie_fallback",
+            orgId: "org_cookie_fallback",
+            orgRole: "org:admin",
+          };
+        },
+      });
+
+      const client = setupApp({ context })(healthAuthProbeContract);
+      const response = await accept(
+        client.check({
+          headers: {
+            authorization: `Bearer ${token}`,
+            cookie: "__session=valid-session",
+          },
+        }),
+        [200],
+      );
+
+      expect(response.body).toEqual({
+        tokenType: "session",
+        userId: "user_cookie_fallback",
+        orgId: "org_cookie_fallback",
+        orgRole: "admin",
+      });
+    });
+
+    it("falls through to Clerk session for unknown Bearer shapes when cookie is present", async () => {
+      context.mocks.clerk.authenticateRequest.mockResolvedValue({
+        isAuthenticated: true,
+        toAuth: () => {
+          return {
+            userId: "user_unknown_shape",
+            orgId: "org_unknown_shape",
+            orgRole: "org:member",
+          };
+        },
+      });
+
+      const client = setupApp({ context })(healthAuthProbeContract);
+      const response = await accept(
+        client.check({
+          headers: {
+            authorization: "Bearer some-unknown-token-format",
+            cookie: "__session=valid-session",
+          },
+        }),
+        [200],
+      );
+
+      expect(response.body).toEqual({
+        tokenType: "session",
+        userId: "user_unknown_shape",
+        orgId: "org_unknown_shape",
+        orgRole: "member",
+      });
+    });
+
+    it("returns 401 when invalid PAT and no cookie", async () => {
+      const tokenId = randomUUID();
+      const userId = `user_${randomUUID()}`;
+      const nowSeconds = currentSecond();
+      const token = signPatJwtForTests({
+        scope: "cli",
+        userId,
+        orgId: `org_${randomUUID()}`,
+        tokenId,
+        iat: nowSeconds,
+        exp: nowSeconds + 60,
+      });
+      context.mocks.clerk.authenticateRequest.mockResolvedValue({
+        isAuthenticated: false,
+      });
+
+      const client = setupApp({ context })(healthAuthProbeContract);
+      const response = await accept(
+        client.check({
+          headers: { authorization: `Bearer ${token}` },
+        }),
+        [401],
+      );
+
+      expect(response.body.error.code).toBe("UNAUTHORIZED");
     });
   });
 

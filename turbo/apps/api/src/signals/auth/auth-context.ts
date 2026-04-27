@@ -64,7 +64,10 @@ const cliAuth$ = command(
       signal,
     );
     if (!membership) {
-      return null;
+      return {
+        tokenType: "pat",
+        userId: resolved.userId,
+      };
     }
 
     return {
@@ -179,23 +182,23 @@ const resolvedAuthContext$ = command(
 
     if (isPatToken(token)) {
       const cliAuth = verifyCliToken(token);
-      if (!cliAuth) {
-        return null;
+      if (cliAuth) {
+        return await set(cliAuth$, cliAuth, signal);
       }
-
-      return await set(cliAuth$, cliAuth, signal);
-    }
-
-    if (isSandboxToken(token)) {
+    } else if (isSandboxToken(token)) {
       const cliAuth = verifyCliToken(token);
       if (!cliAuth) {
-        return await set(sandboxTokenAuth$, token, options, signal);
+        const result = await set(sandboxTokenAuth$, token, options, signal);
+        if (result) {
+          return result;
+        }
+      } else {
+        return await set(cliAuth$, cliAuth, signal);
       }
-
-      return await set(cliAuth$, cliAuth, signal);
     }
 
-    return null;
+    // Bearer token verification failed — fall through to Clerk session auth
+    return await get(clerkSessionAuth$);
   },
 );
 
