@@ -13,7 +13,7 @@ import { skills } from "@vm0/db/schema/skill";
 import { SEED_SKILLS, buildSeedSkillValues } from "../src/lib/zero/seed-skills";
 
 /**
- * Dev seed: populate credit_pricing, vm0_api_keys, and skills tables.
+ * Dev seed: populate credit_pricing, usage_pricing, vm0_api_keys, and skills tables.
  *
  * Pricing convention: 1 USD = 1000 credits.
  * Prices are per 1M tokens, stored as integer credits per 1M tokens.
@@ -125,6 +125,69 @@ function usageGroup(
 }
 
 const USAGE_PRICING: (typeof usagePricing.$inferInsert)[] = [
+  // Model usage — mirrors MODEL_PRICING for the unified usage_event ledger.
+  // credit_pricing stays seeded during the compatibility window.
+  ...usageGroup("model", "claude-sonnet-4-6", [
+    ["tokens.input", usd(3), 1_000_000],
+    ["tokens.output", usd(15), 1_000_000],
+    ["tokens.cache_read", usd(0.3), 1_000_000],
+    ["tokens.cache_creation", usd(3.75), 1_000_000],
+  ]),
+  ...usageGroup("model", "claude-opus-4-6", [
+    ["tokens.input", usd(15), 1_000_000],
+    ["tokens.output", usd(75), 1_000_000],
+    ["tokens.cache_read", usd(1.5), 1_000_000],
+    ["tokens.cache_creation", usd(18.75), 1_000_000],
+  ]),
+  ...usageGroup("model", "claude-opus-4-7", [
+    ["tokens.input", usd(5), 1_000_000],
+    ["tokens.output", usd(25), 1_000_000],
+    ["tokens.cache_read", usd(0.5), 1_000_000],
+    ["tokens.cache_creation", usd(6.25), 1_000_000],
+  ]),
+  ...usageGroup("model", "claude-haiku-4-5", [
+    ["tokens.input", usd(1), 1_000_000],
+    ["tokens.output", usd(5), 1_000_000],
+    ["tokens.cache_read", usd(0.1), 1_000_000],
+    ["tokens.cache_creation", usd(1.25), 1_000_000],
+  ]),
+  ...usageGroup("model", "kimi-k2.6", [
+    ["tokens.input", usd(0.6), 1_000_000],
+    ["tokens.output", usd(3), 1_000_000],
+    ["tokens.cache_read", usd(0.1), 1_000_000],
+    ["tokens.cache_creation", usd(0.6), 1_000_000],
+  ]),
+  ...usageGroup("model", "kimi-k2.5", [
+    ["tokens.input", usd(0.6), 1_000_000],
+    ["tokens.output", usd(3), 1_000_000],
+    ["tokens.cache_read", usd(0.1), 1_000_000],
+    ["tokens.cache_creation", usd(0.6), 1_000_000],
+  ]),
+  ...usageGroup("model", "glm-5.1", [
+    ["tokens.input", usd(1.4), 1_000_000],
+    ["tokens.output", usd(4.4), 1_000_000],
+    ["tokens.cache_read", usd(0.26), 1_000_000],
+    ["tokens.cache_creation", usd(1.4), 1_000_000],
+  ]),
+  ...usageGroup("model", "MiniMax-M2.7", [
+    ["tokens.input", usd(0.3), 1_000_000],
+    ["tokens.output", usd(1.2), 1_000_000],
+    ["tokens.cache_read", usd(0.06), 1_000_000],
+    ["tokens.cache_creation", usd(0.375), 1_000_000],
+  ]),
+  ...usageGroup("model", "deepseek-v4-pro", [
+    ["tokens.input", usd(1.74), 1_000_000],
+    ["tokens.output", usd(3.48), 1_000_000],
+    ["tokens.cache_read", usd(0.145), 1_000_000],
+    ["tokens.cache_creation", 0, 1_000_000],
+  ]),
+  ...usageGroup("model", "deepseek-v4-flash", [
+    ["tokens.input", usd(0.14), 1_000_000],
+    ["tokens.output", usd(0.28), 1_000_000],
+    ["tokens.cache_read", usd(0.028), 1_000_000],
+    ["tokens.cache_creation", 0, 1_000_000],
+  ]),
+
   // X connector — https://docs.x.com/x-api/getting-started/pricing
   ...usageGroup("connector", "x", [
     // Reads — $/resource
