@@ -2,6 +2,7 @@ import {
   initClient,
   type ApiFetcher,
   type ApiFetcherArgs,
+  type AppRoute,
   type AppRouter,
   type InitClientArgs,
   type InitClientReturn,
@@ -12,8 +13,6 @@ import { createApp } from "../app-factory";
 import { clearMockedEnv } from "../lib/env";
 import {
   ROUTES,
-  contractRoute,
-  type RouteDefinition,
   type SignalRouteHandler,
 } from "../signals/route";
 import { clearAllDetached } from "../signals/utils";
@@ -98,24 +97,23 @@ async function requestApp(
 function buildRoutesExtend(
   handlers: Record<string, SignalRouteHandler<unknown>>,
   contract: Record<string, AppRouter[string]>,
-): RouteDefinition<unknown>[] {
-  return Object.entries(handlers)
-    .filter(([_key, handler]) => {
-      return handler !== undefined;
-    })
-    .map(([key, handler]) => {
-      return contractRoute({ contract: contract[key]!, handler: handler! });
-    });
+): Map<AppRoute, SignalRouteHandler<unknown>> {
+  const map = new Map<AppRoute, SignalRouteHandler<unknown>>();
+  for (const [key, handler] of Object.entries(handlers)) {
+    if (handler !== undefined) {
+      map.set(contract[key]!, handler!);
+    }
+  }
+
+  return map;
 }
 
 function createAppFetcher(
   context: TestContext,
-  routesExtend: ReadonlyArray<RouteDefinition<unknown>>,
+  routesExtend: ReadonlyMap<AppRoute, SignalRouteHandler<unknown>>,
 ): ApiFetcher {
-  const app = createApp({
-    signal: context.signal,
-    routes: [...ROUTES, ...routesExtend],
-  });
+  const routes = new Map([...ROUTES, ...routesExtend]);
+  const app = createApp({ signal: context.signal, routes });
 
   return (args) => {
     return requestApp(app, args);
