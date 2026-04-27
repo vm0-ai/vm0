@@ -90,11 +90,12 @@ async fn ensure_snapshot_drive_bind_target(path: &Path) -> Result<(), SandboxErr
     {
         Ok(_) => Ok(()),
         Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
-            let meta = tokio::fs::symlink_metadata(path).await.map_err(|e| {
-                SandboxError::Start {
-                    message: format!("stat snapshot drive bind target: {e}"),
-                }
-            })?;
+            let meta =
+                tokio::fs::symlink_metadata(path)
+                    .await
+                    .map_err(|e| SandboxError::Start {
+                        message: format!("stat snapshot drive bind target: {e}"),
+                    })?;
             if meta.file_type().is_file() {
                 Ok(())
             } else {
@@ -1328,7 +1329,7 @@ mod tests {
         let result = ensure_snapshot_drive_bind_target(&bind_target).await;
 
         assert!(
-            matches!(result, Err(SandboxError::StartFailed(message)) if message.contains("not a regular file"))
+            matches!(result, Err(SandboxError::Start { message }) if message.contains("not a regular file"))
         );
     }
 
@@ -1365,13 +1366,30 @@ mod tests {
 
     #[tokio::test]
     async fn snapshot_drive_bind_target_allows_existing_file() {
+        use std::os::unix::fs::MetadataExt;
+
         let dir = tempfile::tempdir().unwrap();
         let bind_target = dir.path().join("cow-device-bind");
-        tokio::fs::write(&bind_target, b"").await.unwrap();
+        tokio::fs::write(&bind_target, b"existing target")
+            .await
+            .unwrap();
+        let before = tokio::fs::symlink_metadata(&bind_target).await.unwrap();
 
         ensure_snapshot_drive_bind_target(&bind_target)
             .await
             .unwrap();
+
+        let after = tokio::fs::symlink_metadata(&bind_target).await.unwrap();
+        assert_eq!(
+            before.ino(),
+            after.ino(),
+            "existing bind target must not be replaced"
+        );
+        assert_eq!(
+            tokio::fs::read(&bind_target).await.unwrap(),
+            b"existing target",
+            "existing bind target must not be truncated"
+        );
     }
 
     // -- idle transition tests --

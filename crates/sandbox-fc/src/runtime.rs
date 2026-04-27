@@ -39,12 +39,12 @@ impl FirecrackerRuntime {
             dns_port: config.dns_port,
         }
         .into_checked()?;
-        let netns_pool = NetnsPool::create_checked(netns_config)
-            .await
-            .map_err(|e| SandboxError::Initialization {
+        let netns_pool = NetnsPool::create_checked(netns_config).await.map_err(|e| {
+            SandboxError::Initialization {
                 phase: SandboxInitializationPhase::Runtime,
                 message: format!("netns pool: {e}"),
-            })?;
+            }
+        })?;
         info!(
             elapsed_ms = t.elapsed().as_millis() as u64,
             "runtime netns pool created"
