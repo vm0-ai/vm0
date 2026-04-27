@@ -2,8 +2,8 @@ use std::ffi::OsString;
 use std::io;
 use std::os::unix::ffi::OsStringExt;
 use std::path::Path;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -13,7 +13,7 @@ use sandbox::{
     SpawnHandle,
 };
 use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio::sync::Notify;
+use tokio::sync::{mpsc, watch};
 use tracing::{info, trace, warn};
 use vsock_host::VsockHost;
 
@@ -45,20 +45,23 @@ const UNSHARE_MOUNT_ARGS: &[&str] = &["--mount", "--propagation", "private"];
 
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SandboxState {
+pub(crate) enum SandboxState {
     Created = 0,
     Running = 1,
     Stopping = 2,
     Stopped = 3,
+    Crashed = 4,
 }
 
 impl SandboxState {
     fn from_u8(v: u8) -> Self {
-        debug_assert!(v <= 3, "invalid SandboxState: {v}");
+        debug_assert!(v <= 4, "invalid SandboxState: {v}");
         match v {
             0 => Self::Created,
             1 => Self::Running,
             2 => Self::Stopping,
+            3 => Self::Stopped,
+            4 => Self::Crashed,
             _ => Self::Stopped,
         }
     }
@@ -71,6 +74,7 @@ impl std::fmt::Display for SandboxState {
             Self::Running => f.write_str("running"),
             Self::Stopping => f.write_str("stopping"),
             Self::Stopped => f.write_str("stopped"),
+            Self::Crashed => f.write_str("crashed"),
         }
     }
 }
@@ -236,6 +240,21 @@ async fn unmount_snapshot_drive_bind_target(path: &Path) -> Result<(), SandboxEr
     })
 }
 
+struct ProcessMonitorHandle {
+    kill_tx: mpsc::UnboundedSender<()>,
+    task: tokio::task::JoinHandle<()>,
+}
+
+impl ProcessMonitorHandle {
+    fn kill(&self) {
+        let _ = self.kill_tx.send(());
+    }
+
+    async fn wait(self) {
+        let _ = self.task.await;
+    }
+}
+
 pub struct FirecrackerSandbox {
     pub(crate) config: SandboxConfig,
     factory_config: FirecrackerConfig,
@@ -249,20 +268,26 @@ pub struct FirecrackerSandbox {
     pub(crate) network: PooledNetns,
     /// NBD COW device (torn down on destroy).
     pub(crate) cow_device: NbdCowDevice,
-    process: Option<tokio::process::Child>,
-    /// Firecracker process PID, captured at spawn time before the process
-    /// could exit and be reaped.  Used for host-side OOM detection.
-    firecracker_pid: Option<u32>,
-    /// Lifecycle state, shared with background log tasks for crash detection.
+    process_monitor: Option<ProcessMonitorHandle>,
+    /// Process-group leader PID for the spawned Firecracker wrapper.
+    /// Captured at spawn time for cleanup and best-effort host-side OOM
+    /// correlation.
+    process_group_pid: Option<u32>,
+    /// Lifecycle state, shared with the process monitor for crash detection.
     state: Arc<AtomicU8>,
-    /// Vsock guest connection, shared with background log tasks so they can
+    /// Serializes updates to `state` and `state_tx` so the durable watch state
+    /// cannot be overwritten by an older lifecycle transition after the process
+    /// monitor publishes a terminal state.
+    state_publish_lock: Arc<Mutex<()>>,
+    /// Durable lifecycle state stream. Unlike `Notify`, late subscribers see
+    /// the latest value, which keeps crash/startup-exit classification
+    /// deterministic after the process monitor has already observed exit.
+    state_tx: watch::Sender<SandboxState>,
+    /// Vsock guest connection, shared with the process monitor so it can
     /// drop the connection immediately when the process exits unexpectedly.
     /// Wrapped in `Arc` so operations can clone the handle and release the
     /// mutex immediately, allowing concurrent vsock operations.
     guest: Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>,
-    /// Notified when the firecracker process exits unexpectedly.
-    /// Sandbox operations race against this to detect crashes promptly.
-    crash_notify: Arc<Notify>,
     /// Control socket server for `runner exec`.
     control_server: Option<tokio::task::JoinHandle<()>>,
     /// Balloon memory reclaim controller.
@@ -300,11 +325,12 @@ impl FirecrackerSandbox {
             sock_paths,
             network,
             cow_device,
-            process: None,
-            firecracker_pid: None,
+            process_monitor: None,
+            process_group_pid: None,
             state: Arc::new(AtomicU8::new(SandboxState::Created as u8)),
+            state_publish_lock: Arc::new(Mutex::new(())),
+            state_tx: watch::channel(SandboxState::Created).0,
             guest: Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>)),
-            crash_notify: Arc::new(Notify::new()),
             control_server: None,
             balloon_controller: None,
             leak_tx,
@@ -318,9 +344,20 @@ impl FirecrackerSandbox {
     }
 
     fn not_running_error(&self, operation: SandboxOperation) -> SandboxError {
+        Self::operation_unavailable_error(operation, self.current_state())
+    }
+
+    fn operation_unavailable_error(
+        operation: SandboxOperation,
+        state: SandboxState,
+    ) -> SandboxError {
+        if state == SandboxState::Crashed {
+            return Self::backend_crashed_error(operation);
+        }
+
         SandboxError::InvalidState {
             context: SandboxInvalidStateContext::Operation(operation),
-            state: self.current_state().to_string(),
+            state: state.to_string(),
             message: "sandbox not running".into(),
         }
     }
@@ -333,7 +370,14 @@ impl FirecrackerSandbox {
         }
     }
 
-    fn operation_error(operation: SandboxOperation, error: io::Error) -> SandboxError {
+    fn operation_error(
+        operation: SandboxOperation,
+        error: io::Error,
+        backend_crashed: bool,
+    ) -> SandboxError {
+        if backend_crashed {
+            return Self::backend_crashed_error(operation);
+        }
         let reason = if error.kind() == io::ErrorKind::TimedOut {
             SandboxOperationReason::Timeout
         } else {
@@ -346,12 +390,40 @@ impl FirecrackerSandbox {
         }
     }
 
+    fn has_backend_crashed(&self) -> bool {
+        self.current_state() == SandboxState::Crashed
+    }
+
+    fn publish_state(&self, state: SandboxState) {
+        publish_process_state(&self.state, &self.state_publish_lock, &self.state_tx, state);
+    }
+
+    async fn operation_guest(
+        &self,
+        operation: SandboxOperation,
+    ) -> sandbox::Result<Arc<VsockHost>> {
+        if self.has_backend_crashed() {
+            return Err(Self::backend_crashed_error(operation));
+        }
+
+        let guest = self.guest.lock().await.as_ref().cloned();
+        if self.has_backend_crashed() {
+            return Err(Self::backend_crashed_error(operation));
+        }
+
+        guest.ok_or_else(|| self.not_running_error(operation))
+    }
+
     /// Atomically transition between states using CAS. Returns `true` if the
     /// transition succeeded, `false` if the current state did not match `from`.
     fn transition(&self, from: SandboxState, to: SandboxState) -> bool {
-        self.state
-            .compare_exchange(from as u8, to as u8, Ordering::AcqRel, Ordering::Acquire)
-            .is_ok()
+        transition_process_state(
+            &self.state,
+            &self.state_publish_lock,
+            &self.state_tx,
+            from,
+            to,
+        )
     }
 
     /// Build the Firecracker JSON configuration for fresh boot.
@@ -413,7 +485,7 @@ impl FirecrackerSandbox {
 
         let api_sock = self.sock_paths.api_sock();
 
-        let mut child = tokio::process::Command::new("ip")
+        let child = tokio::process::Command::new("ip")
             .args(["netns", "exec"])
             .arg(&self.network.name)
             .arg(&self.factory_config.binary_path)
@@ -432,19 +504,18 @@ impl FirecrackerSandbox {
                 message: format!("spawn firecracker: {e}"),
             })?;
 
-        self.firecracker_pid = child.id();
-        monitor_process(
+        self.process_group_pid = child.id();
+        self.process_monitor = Some(monitor_process(
             &self.id,
-            &mut child,
+            child,
             Arc::clone(&self.state),
+            Arc::clone(&self.state_publish_lock),
+            self.state_tx.clone(),
             Arc::clone(&self.guest),
-            Arc::clone(&self.crash_notify),
-        );
-        self.process = Some(child);
+        ));
 
         // Wait for API socket readiness so the balloon controller can connect.
         let client = ApiClient::new(&api_sock);
-        let crash = Arc::clone(&self.crash_notify);
         tokio::select! {
             result = client.wait_for_ready(API_READY_TIMEOUT) => {
                 result.map_err(|e| {
@@ -456,10 +527,10 @@ impl FirecrackerSandbox {
                     }
                 })?;
             }
-            () = crash.notified() => {
+            state = wait_for_process_exit(self.state_tx.subscribe()) => {
                 return Err(SandboxError::Start {
                     message: format!(
-                        "firecracker process exited before API became ready (api_sock={})",
+                        "firecracker process exited before API became ready (state={state}, api_sock={})",
                         api_sock.display()
                     ),
                 });
@@ -525,7 +596,7 @@ impl FirecrackerSandbox {
         //
         // `umount` clears any stale mount inherited from the parent
         // namespace (e.g. from a crashed snapshot creation).
-        let mut child = tokio::process::Command::new("unshare")
+        let child = tokio::process::Command::new("unshare")
             .args(UNSHARE_MOUNT_ARGS)
             .args(["bash", "-c", SNAPSHOT_RESTORE_INNER_CMD, "_"])
             .arg(self.sock_paths.vsock_dir()) // $1
@@ -546,20 +617,19 @@ impl FirecrackerSandbox {
                 message: format!("spawn firecracker: {e}"),
             })?;
 
-        self.firecracker_pid = child.id();
-        monitor_process(
+        self.process_group_pid = child.id();
+        self.process_monitor = Some(monitor_process(
             &self.id,
-            &mut child,
+            child,
             Arc::clone(&self.state),
+            Arc::clone(&self.state_publish_lock),
+            self.state_tx.clone(),
             Arc::clone(&self.guest),
-            Arc::clone(&self.crash_notify),
-        );
-        self.process = Some(child);
+        ));
 
         // Wait for Firecracker API to be ready, but bail early if the
         // process crashes before the socket appears.
         let client = ApiClient::new(&api_sock);
-        let crash = Arc::clone(&self.crash_notify);
         tokio::select! {
             result = client.wait_for_ready(API_READY_TIMEOUT) => {
                 result.map_err(|e| {
@@ -572,10 +642,10 @@ impl FirecrackerSandbox {
                     }
                 })?;
             }
-            () = crash.notified() => {
+            state = wait_for_process_exit(self.state_tx.subscribe()) => {
                 return Err(SandboxError::Start {
                     message: format!(
-                        "firecracker process exited before API became ready (api_sock={})",
+                        "firecracker process exited before API became ready (state={state}, api_sock={})",
                         api_sock.display()
                     ),
                 });
@@ -596,21 +666,27 @@ impl FirecrackerSandbox {
         Ok(())
     }
 
-    /// Kill the process tree.
-    ///
-    /// The process chain is `unshare -> bash -> ip netns exec -> firecracker`.
-    /// We must kill the entire tree to avoid orphan processes.
+    /// Ask the process monitor to kill and reap the process tree.
     async fn kill_process(&mut self) {
-        let Some(ref mut child) = self.process else {
-            return;
-        };
-
-        kill_process_group(child);
-
-        // Reap the zombie process.
-        let _ = child.wait().await;
-        self.process = None;
+        if let Some(monitor) = self.process_monitor.take() {
+            monitor.kill();
+            monitor.wait().await;
+        }
     }
+
+    fn abort_runtime_tasks(&mut self) {
+        if let Some(h) = self.control_server.take() {
+            h.abort();
+        }
+        if let Some(h) = self.balloon_controller.take() {
+            h.abort();
+        }
+    }
+}
+
+async fn abort_and_join<T>(task: tokio::task::JoinHandle<T>) {
+    task.abort();
+    let _ = task.await;
 }
 
 impl Drop for FirecrackerSandbox {
@@ -622,14 +698,14 @@ impl Drop for FirecrackerSandbox {
             h.abort();
         }
         // If the process is still alive (e.g. owning task panicked before
-        // explicit cleanup), kill the entire process group synchronously.
-        // `kill_on_drop(true)` only sends SIGKILL to the direct child (`unshare`);
-        // `killpg` ensures the entire tree (including firecracker) is cleaned up.
-        if let Some(ref child) = self.process {
-            kill_process_group(child);
+        // explicit cleanup), ask the monitor to kill the process group before
+        // it reaps the child. This avoids signalling by a cached PID after the
+        // child could have exited and been reused by the OS.
+        if let Some(monitor) = self.process_monitor.take() {
+            monitor.kill();
         }
-        // Dropping `self.process` (Option<Child>) will trigger kill_on_drop as
-        // a secondary safety net.
+        // Dropping the task handle detaches it; the monitor still owns and
+        // reaps the `Child` while the runtime is alive.
 
         // If factory.destroy() was not called, send pool resources to the
         // async cleanup channel so they can be released without blocking.
@@ -655,19 +731,82 @@ impl Drop for FirecrackerSandbox {
     }
 }
 
-/// Monitor the child process for unexpected exit and forward logs.
+/// Wait until the durable lifecycle stream observes the backend process exit.
+async fn wait_for_process_exit(mut state_rx: watch::Receiver<SandboxState>) -> SandboxState {
+    loop {
+        let state = *state_rx.borrow_and_update();
+        if matches!(state, SandboxState::Stopped | SandboxState::Crashed) {
+            return state;
+        }
+        if state_rx.changed().await.is_err() {
+            return *state_rx.borrow();
+        }
+    }
+}
+
+/// Wait until the durable lifecycle stream observes an unexpected backend exit.
+async fn wait_for_backend_crash(mut state_rx: watch::Receiver<SandboxState>) {
+    loop {
+        if *state_rx.borrow_and_update() == SandboxState::Crashed {
+            return;
+        }
+        if state_rx.changed().await.is_err() {
+            return;
+        }
+    }
+}
+
+fn state_publish_guard(state_publish_lock: &Mutex<()>) -> MutexGuard<'_, ()> {
+    state_publish_lock
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+fn publish_watch_state(state_tx: &watch::Sender<SandboxState>, state: SandboxState) {
+    let _ = state_tx.send_replace(state);
+}
+
+fn publish_process_state(
+    state: &AtomicU8,
+    state_publish_lock: &Mutex<()>,
+    state_tx: &watch::Sender<SandboxState>,
+    next: SandboxState,
+) {
+    let _guard = state_publish_guard(state_publish_lock);
+    state.store(next as u8, Ordering::Release);
+    publish_watch_state(state_tx, next);
+}
+
+fn transition_process_state(
+    state: &AtomicU8,
+    state_publish_lock: &Mutex<()>,
+    state_tx: &watch::Sender<SandboxState>,
+    from: SandboxState,
+    to: SandboxState,
+) -> bool {
+    let _guard = state_publish_guard(state_publish_lock);
+    let transitioned = state
+        .compare_exchange(from as u8, to as u8, Ordering::AcqRel, Ordering::Acquire)
+        .is_ok();
+    if transitioned {
+        publish_watch_state(state_tx, to);
+    }
+    transitioned
+}
+
+/// Monitor the child process for exit and forward logs.
 ///
-/// Spawns background tasks that read stdout/stderr until the pipes close.
-/// When stdout closes, if the state is still `Running`, the process exited
-/// unexpectedly — the task updates state to `Stopped` and drops the guest
-/// connection.
+/// The process monitor owns the `Child`, so process exit is classified from
+/// `wait()` rather than from stdout/stderr pipe EOF. Stdout and stderr readers
+/// are only log forwarders.
 fn monitor_process(
     id: &str,
-    child: &mut tokio::process::Child,
+    mut child: tokio::process::Child,
     state: Arc<AtomicU8>,
+    state_publish_lock: Arc<Mutex<()>>,
+    state_tx: watch::Sender<SandboxState>,
     guest: Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>,
-    crash_notify: Arc<Notify>,
-) {
+) -> ProcessMonitorHandle {
     if let Some(stdout) = child.stdout.take() {
         let id = id.to_owned();
         tokio::spawn(async move {
@@ -676,18 +815,6 @@ fn monitor_process(
                 if !line.is_empty() {
                     info!(id = %id, "{line}");
                 }
-            }
-            // Pipe closed — process exited.
-            let prev =
-                SandboxState::from_u8(state.swap(SandboxState::Stopped as u8, Ordering::AcqRel));
-            if prev == SandboxState::Running {
-                warn!(id = %id, "process exited unexpectedly");
-                // Notify before acquiring the lock — operations holding the
-                // lock can detect the crash via select! immediately.
-                // Uses notify_waiters (not notify_one) because at most one
-                // operation is waiting and we don't need stored permits.
-                crash_notify.notify_waiters();
-                guest.lock().await.take();
             }
         });
     }
@@ -702,6 +829,64 @@ fn monitor_process(
             }
         });
     }
+
+    let id = id.to_owned();
+    let (kill_tx, mut kill_rx) = mpsc::unbounded_channel();
+    let task = tokio::spawn(async move {
+        let status = tokio::select! {
+            status = child.wait() => status,
+            request = kill_rx.recv() => {
+                if request.is_some() {
+                    kill_process_group(&child);
+                }
+                child.wait().await
+            }
+        };
+        match &status {
+            Ok(status) => trace!(id = %id, %status, "process monitor observed exit"),
+            Err(error) => warn!(id = %id, %error, "process monitor failed to wait for child"),
+        }
+
+        let prev = {
+            let _guard = state_publish_guard(&state_publish_lock);
+            match state.compare_exchange(
+                SandboxState::Running as u8,
+                SandboxState::Crashed as u8,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(v) => {
+                    publish_watch_state(&state_tx, SandboxState::Crashed);
+                    SandboxState::from_u8(v)
+                }
+                Err(v) => {
+                    let prev = SandboxState::from_u8(v);
+                    if matches!(
+                        prev,
+                        SandboxState::Created | SandboxState::Stopping | SandboxState::Stopped
+                    ) {
+                        state.store(SandboxState::Stopped as u8, Ordering::Release);
+                        publish_watch_state(&state_tx, SandboxState::Stopped);
+                    }
+                    prev
+                }
+            }
+        };
+
+        match prev {
+            SandboxState::Running => {
+                match status {
+                    Ok(status) => warn!(id = %id, %status, "process exited unexpectedly"),
+                    Err(error) => warn!(id = %id, %error, "process wait failed unexpectedly"),
+                }
+                guest.lock().await.take();
+            }
+            SandboxState::Created | SandboxState::Stopping | SandboxState::Stopped => {}
+            SandboxState::Crashed => {}
+        }
+    });
+
+    ProcessMonitorHandle { kill_tx, task }
 }
 
 #[async_trait]
@@ -717,7 +902,7 @@ impl Sandbox for FirecrackerSandbox {
     }
 
     fn process_pid(&self) -> Option<u32> {
-        self.firecracker_pid
+        self.process_group_pid
     }
 
     // -- lifecycle --
@@ -734,7 +919,7 @@ impl Sandbox for FirecrackerSandbox {
         // Start the vsock listener BEFORE launching Firecracker.
         // The UDS must be bound before the guest tries to connect.
         let vsock_path = self.sock_paths.vsock().display().to_string();
-        let vsock_task = tokio::spawn(async move {
+        let mut vsock_task = tokio::spawn(async move {
             VsockHost::wait_for_connection(&vsock_path, VSOCK_CONNECT_TIMEOUT).await
         });
 
@@ -745,24 +930,35 @@ impl Sandbox for FirecrackerSandbox {
         };
 
         if let Err(e) = start_result {
-            vsock_task.abort();
+            abort_and_join(vsock_task).await;
             self.kill_process().await;
             return Err(e);
         }
 
         // Wait for guest to connect via vsock.
-        let vsock_guest = match vsock_task.await {
-            Ok(Ok(g)) => g,
-            Ok(Err(e)) => {
-                self.kill_process().await;
-                return Err(SandboxError::Start {
-                    message: format!("vsock connection: {e}"),
-                });
+        let vsock_guest = tokio::select! {
+            result = &mut vsock_task => {
+                match result {
+                    Ok(Ok(g)) => g,
+                    Ok(Err(e)) => {
+                        self.kill_process().await;
+                        return Err(SandboxError::Start {
+                            message: format!("vsock connection: {e}"),
+                        });
+                    }
+                    Err(e) => {
+                        self.kill_process().await;
+                        return Err(SandboxError::Start {
+                            message: format!("vsock task: {e}"),
+                        });
+                    }
+                }
             }
-            Err(e) => {
+            state = wait_for_process_exit(self.state_tx.subscribe()) => {
+                abort_and_join(vsock_task).await;
                 self.kill_process().await;
                 return Err(SandboxError::Start {
-                    message: format!("vsock task: {e}"),
+                    message: format!("process exited before vsock connected (state={state})"),
                 });
             }
         };
@@ -770,8 +966,8 @@ impl Sandbox for FirecrackerSandbox {
         *self.guest.lock().await = Some(Arc::new(vsock_guest));
 
         // Use CAS to avoid overwriting Stopped if the process crashed between
-        // spawn and vsock connect (the background log task may have already
-        // swapped the state to Stopped).
+        // spawn and vsock connect (the process monitor may have already
+        // recorded process exit).
         if !self.transition(SandboxState::Created, SandboxState::Running) {
             self.guest.lock().await.take();
             self.kill_process().await;
@@ -790,7 +986,7 @@ impl Sandbox for FirecrackerSandbox {
         self.balloon_controller = Some(balloon::spawn(
             self.sock_paths.api_sock().to_owned(),
             self.config.resources.memory_mb,
-            Arc::clone(&self.crash_notify),
+            self.state_tx.subscribe(),
         ));
 
         info!(id = %self.id, "sandbox started");
@@ -799,20 +995,20 @@ impl Sandbox for FirecrackerSandbox {
 
     async fn stop(&mut self) -> sandbox::Result<()> {
         if !self.transition(SandboxState::Running, SandboxState::Stopping) {
+            if self.current_state() == SandboxState::Crashed {
+                self.abort_runtime_tasks();
+                self.guest.lock().await.take();
+                self.kill_process().await;
+            }
             return Ok(());
         }
 
-        if let Some(h) = self.control_server.take() {
-            h.abort();
-        }
+        self.abort_runtime_tasks();
         // abort() without await: unlike `park_inner` (which awaits to become
         // the sole writer to /balloon), stop() is about to kill the FC
         // process entirely, so any in-flight controller PATCHes against the
         // dying API socket are harmless — the subsequent kill_process call
         // tears down FC regardless of balloon state.
-        if let Some(h) = self.balloon_controller.take() {
-            h.abort();
-        }
 
         // Skip vsock graceful shutdown for parked sandboxes — vCPUs are
         // paused and cannot process the message. No in-flight user work
@@ -832,27 +1028,25 @@ impl Sandbox for FirecrackerSandbox {
         }
 
         self.kill_process().await;
-        self.state
-            .store(SandboxState::Stopped as u8, Ordering::Release);
+        self.publish_state(SandboxState::Stopped);
         info!(id = %self.id, "sandbox stopped");
         Ok(())
     }
 
     async fn kill(&mut self) -> sandbox::Result<()> {
         if !self.transition(SandboxState::Running, SandboxState::Stopping) {
+            if self.current_state() == SandboxState::Crashed {
+                self.abort_runtime_tasks();
+                self.guest.lock().await.take();
+                self.kill_process().await;
+            }
             return Ok(());
         }
-        if let Some(h) = self.control_server.take() {
-            h.abort();
-        }
+        self.abort_runtime_tasks();
         // abort() without await — same rationale as `stop()`.
-        if let Some(h) = self.balloon_controller.take() {
-            h.abort();
-        }
         self.guest.lock().await.take();
         self.kill_process().await;
-        self.state
-            .store(SandboxState::Stopped as u8, Ordering::Release);
+        self.publish_state(SandboxState::Stopped);
         info!(id = %self.id, "sandbox killed");
         Ok(())
     }
@@ -903,7 +1097,7 @@ impl Sandbox for FirecrackerSandbox {
             self.config.resources.memory_mb,
             &mut self.balloon_controller,
             &self.sock_paths.api_sock(),
-            &self.crash_notify,
+            self.state_tx.subscribe(),
             &self.id,
         )
         .await
@@ -911,52 +1105,40 @@ impl Sandbox for FirecrackerSandbox {
 
     // -- operations --
     //
-    // Each operation races the vsock call against `crash_notify` via select!.
-    // `notify_waiters()` only wakes current waiters — if the notification
-    // fires in the brief window before select! polls `notified()`, it is
-    // lost. This is acceptable: `monitor_process` subsequently drops the
-    // guest connection, so the vsock call fails with a connection error
-    // anyway — just with a less specific message.
+    // Each operation races the vsock call against the durable lifecycle stream.
+    // Late subscribers observe `Crashed` immediately, so crash classification
+    // does not depend on catching a one-shot notification while select! is
+    // already polling.
 
     async fn exec(&self, request: &ExecRequest<'_>) -> sandbox::Result<ExecResult> {
-        let guest = self
-            .guest
-            .lock()
-            .await
-            .as_ref()
-            .cloned()
-            .ok_or_else(|| self.not_running_error(SandboxOperation::Exec))?;
+        let operation = SandboxOperation::Exec;
+        let guest = self.operation_guest(operation).await?;
 
         tokio::select! {
             result = guest.exec(request.cmd, request.timeout_ms(), request.env, request.sudo) => {
-                let result = result.map_err(|e| Self::operation_error(SandboxOperation::Exec, e))?;
+                let result = result.map_err(|e| Self::operation_error(operation, e, self.has_backend_crashed()))?;
                 Ok(ExecResult {
                     exit_code: result.exit_code,
                     stdout: result.stdout,
                     stderr: result.stderr,
                 })
             }
-            _ = self.crash_notify.notified() => {
-                Err(Self::backend_crashed_error(SandboxOperation::Exec))
+            () = wait_for_backend_crash(self.state_tx.subscribe()) => {
+                Err(Self::backend_crashed_error(operation))
             }
         }
     }
 
     async fn write_file(&self, path: &str, content: &[u8]) -> sandbox::Result<()> {
-        let guest = self
-            .guest
-            .lock()
-            .await
-            .as_ref()
-            .cloned()
-            .ok_or_else(|| self.not_running_error(SandboxOperation::WriteFile))?;
+        let operation = SandboxOperation::WriteFile;
+        let guest = self.operation_guest(operation).await?;
 
         tokio::select! {
             result = guest.write_file(path, content, false) => {
-                result.map_err(|e| Self::operation_error(SandboxOperation::WriteFile, e))
+                result.map_err(|e| Self::operation_error(operation, e, self.has_backend_crashed()))
             }
-            _ = self.crash_notify.notified() => {
-                Err(Self::backend_crashed_error(SandboxOperation::WriteFile))
+            () = wait_for_backend_crash(self.state_tx.subscribe()) => {
+                Err(Self::backend_crashed_error(operation))
             }
         }
     }
@@ -966,21 +1148,16 @@ impl Sandbox for FirecrackerSandbox {
         request: &ExecRequest<'_>,
         stdout_log_path: Option<&str>,
     ) -> sandbox::Result<SpawnHandle> {
-        let guest = self
-            .guest
-            .lock()
-            .await
-            .as_ref()
-            .cloned()
-            .ok_or_else(|| self.not_running_error(SandboxOperation::SpawnWatch))?;
+        let operation = SandboxOperation::SpawnWatch;
+        let guest = self.operation_guest(operation).await?;
 
         tokio::select! {
             result = guest.spawn_watch(request.cmd, request.timeout_ms(), request.env, request.sudo, stdout_log_path) => {
-                let (pid, stdout_rx) = result.map_err(|e| Self::operation_error(SandboxOperation::SpawnWatch, e))?;
+                let (pid, stdout_rx) = result.map_err(|e| Self::operation_error(operation, e, self.has_backend_crashed()))?;
                 Ok(SpawnHandle { pid, stdout_rx: Some(stdout_rx) })
             }
-            _ = self.crash_notify.notified() => {
-                Err(Self::backend_crashed_error(SandboxOperation::SpawnWatch))
+            () = wait_for_backend_crash(self.state_tx.subscribe()) => {
+                Err(Self::backend_crashed_error(operation))
             }
         }
     }
@@ -990,17 +1167,12 @@ impl Sandbox for FirecrackerSandbox {
         handle: SpawnHandle,
         timeout: Duration,
     ) -> sandbox::Result<ProcessExit> {
-        let guest = self
-            .guest
-            .lock()
-            .await
-            .as_ref()
-            .cloned()
-            .ok_or_else(|| self.not_running_error(SandboxOperation::WaitExit))?;
+        let operation = SandboxOperation::WaitExit;
+        let guest = self.operation_guest(operation).await?;
 
         tokio::select! {
             result = guest.wait_for_exit(handle.pid, timeout) => {
-                let event = result.map_err(|e| Self::operation_error(SandboxOperation::WaitExit, e))?;
+                let event = result.map_err(|e| Self::operation_error(operation, e, self.has_backend_crashed()))?;
                 Ok(ProcessExit {
                     pid: event.pid,
                     exit_code: event.exit_code,
@@ -1008,8 +1180,8 @@ impl Sandbox for FirecrackerSandbox {
                     stderr: event.stderr,
                 })
             }
-            _ = self.crash_notify.notified() => {
-                Err(Self::backend_crashed_error(SandboxOperation::WaitExit))
+            () = wait_for_backend_crash(self.state_tx.subscribe()) => {
+                Err(Self::backend_crashed_error(operation))
             }
         }
     }
@@ -1166,7 +1338,7 @@ async fn unpark_inner(
     memory_mb: u32,
     balloon_controller: &mut Option<tokio::task::JoinHandle<()>>,
     api_sock: &std::path::Path,
-    crash_notify: &Arc<Notify>,
+    state_rx: watch::Receiver<SandboxState>,
     log_id: &str,
 ) -> sandbox::Result<()> {
     if !*is_parked {
@@ -1227,11 +1399,7 @@ async fn unpark_inner(
                 message: format!("balloon deflate: {e}"),
             })?;
 
-        *balloon_controller = Some(balloon::spawn(
-            api_sock.to_path_buf(),
-            memory_mb,
-            Arc::clone(crash_notify),
-        ));
+        *balloon_controller = Some(balloon::spawn(api_sock.to_path_buf(), memory_mb, state_rx));
     }
 
     *is_parked = false;
@@ -1252,6 +1420,17 @@ mod tests {
             .unwrap()
     }
 
+    fn stdout_closing_process() -> tokio::process::Child {
+        tokio::process::Command::new("bash")
+            .args(["-c", "exec 1>&-; sleep 60"])
+            .process_group(0)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap()
+    }
+
     async fn wait_for_state(state: &AtomicU8, expected: SandboxState) {
         tokio::time::timeout(Duration::from_secs(1), async {
             while SandboxState::from_u8(state.load(Ordering::Acquire)) != expected {
@@ -1260,6 +1439,47 @@ mod tests {
         })
         .await
         .unwrap();
+    }
+
+    #[test]
+    fn process_state_publish_updates_atomic_and_watch_together() {
+        let state = AtomicU8::new(SandboxState::Created as u8);
+        let state_publish_lock = Mutex::new(());
+        let (state_tx, state_rx) = watch::channel(SandboxState::Created);
+
+        publish_process_state(
+            &state,
+            &state_publish_lock,
+            &state_tx,
+            SandboxState::Stopped,
+        );
+
+        assert_eq!(
+            SandboxState::from_u8(state.load(Ordering::Acquire)),
+            SandboxState::Stopped
+        );
+        assert_eq!(*state_rx.borrow(), SandboxState::Stopped);
+    }
+
+    #[test]
+    fn failed_process_state_transition_does_not_regress_watch_state() {
+        let state = AtomicU8::new(SandboxState::Stopped as u8);
+        let state_publish_lock = Mutex::new(());
+        let (state_tx, state_rx) = watch::channel(SandboxState::Stopped);
+
+        assert!(!transition_process_state(
+            &state,
+            &state_publish_lock,
+            &state_tx,
+            SandboxState::Created,
+            SandboxState::Running,
+        ));
+
+        assert_eq!(
+            SandboxState::from_u8(state.load(Ordering::Acquire)),
+            SandboxState::Stopped
+        );
+        assert_eq!(*state_rx.borrow(), SandboxState::Stopped);
     }
 
     fn assert_idle_transition(result: sandbox::Result<()>, expected: SandboxIdleTransition) {
@@ -1283,6 +1503,7 @@ mod tests {
         let err = FirecrackerSandbox::operation_error(
             SandboxOperation::WaitExit,
             io::Error::new(io::ErrorKind::TimedOut, "wait timeout"),
+            false,
         );
 
         assert_operation_reason(err, SandboxOperationReason::Timeout);
@@ -1293,71 +1514,231 @@ mod tests {
         let err = FirecrackerSandbox::operation_error(
             SandboxOperation::Exec,
             io::Error::new(io::ErrorKind::BrokenPipe, "connection closed"),
+            false,
         );
 
         assert_operation_reason(err, SandboxOperationReason::Guest);
     }
 
-    /// Exercise the `monitor_process` crash detection flow through the real
-    /// stdout EOF path. A running process exit should mark the sandbox stopped
-    /// and notify waiters.
+    #[test]
+    fn operation_error_classifies_observed_backend_crash_for_all_operations() {
+        for operation in [
+            SandboxOperation::Exec,
+            SandboxOperation::WriteFile,
+            SandboxOperation::SpawnWatch,
+            SandboxOperation::WaitExit,
+        ] {
+            let err = FirecrackerSandbox::operation_error(
+                operation,
+                io::Error::new(io::ErrorKind::BrokenPipe, "connection closed"),
+                true,
+            );
+
+            assert_operation_reason(err, SandboxOperationReason::BackendCrashed);
+        }
+    }
+
+    #[test]
+    fn unavailable_guest_classifies_observed_backend_crash_for_all_operations() {
+        for operation in [
+            SandboxOperation::Exec,
+            SandboxOperation::WriteFile,
+            SandboxOperation::SpawnWatch,
+            SandboxOperation::WaitExit,
+        ] {
+            let err =
+                FirecrackerSandbox::operation_unavailable_error(operation, SandboxState::Crashed);
+
+            assert_operation_reason(err, SandboxOperationReason::BackendCrashed);
+        }
+    }
+
+    /// Exercise the `monitor_process` crash detection flow through real child
+    /// exit. A running process exit should mark the sandbox crashed and wake
+    /// current subscribers.
     #[tokio::test]
-    async fn crash_notify_fires_on_unexpected_exit() {
+    async fn process_monitor_reports_unexpected_exit() {
         let state = Arc::new(AtomicU8::new(SandboxState::Running as u8));
-        let crash_notify = Arc::new(Notify::new());
+        let state_publish_lock = Arc::new(Mutex::new(()));
+        let (state_tx, state_rx) = watch::channel(SandboxState::Running);
         let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
         let mut child = monitored_cat_process();
+        let stdin = child.stdin.take();
 
-        monitor_process(
+        let handle = monitor_process(
             "test-sandbox",
-            &mut child,
+            child,
             Arc::clone(&state),
+            Arc::clone(&state_publish_lock),
+            state_tx,
             guest,
-            Arc::clone(&crash_notify),
         );
 
-        let notified = crash_notify.notified();
-        drop(child.stdin.take());
+        drop(stdin);
 
-        tokio::time::timeout(Duration::from_secs(1), notified)
+        tokio::time::timeout(Duration::from_secs(1), wait_for_backend_crash(state_rx))
             .await
             .unwrap();
+        assert_eq!(
+            SandboxState::from_u8(state.load(Ordering::Acquire)),
+            SandboxState::Crashed
+        );
+
+        handle.wait().await;
+    }
+
+    /// The lifecycle stream stores the latest state, so late subscribers still
+    /// classify an already-observed backend crash deterministically.
+    #[tokio::test]
+    async fn backend_crash_state_is_visible_to_late_subscribers() {
+        let state = Arc::new(AtomicU8::new(SandboxState::Running as u8));
+        let state_publish_lock = Arc::new(Mutex::new(()));
+        let (state_tx, _state_rx) = watch::channel(SandboxState::Running);
+        let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
+        let mut child = monitored_cat_process();
+        let stdin = child.stdin.take();
+
+        let handle = monitor_process(
+            "test-sandbox",
+            child,
+            Arc::clone(&state),
+            Arc::clone(&state_publish_lock),
+            state_tx.clone(),
+            guest,
+        );
+
+        drop(stdin);
+        wait_for_state(&state, SandboxState::Crashed).await;
+
+        tokio::time::timeout(
+            Duration::from_millis(50),
+            wait_for_backend_crash(state_tx.subscribe()),
+        )
+        .await
+        .unwrap();
+
+        handle.wait().await;
+    }
+
+    /// When the process is stopped gracefully (state transitions to Stopping
+    /// before process exit), `monitor_process` records Stopped without marking
+    /// the backend crashed.
+    #[tokio::test]
+    async fn process_monitor_records_graceful_stop_without_crash() {
+        let state = Arc::new(AtomicU8::new(SandboxState::Stopping as u8));
+        let state_publish_lock = Arc::new(Mutex::new(()));
+        let (state_tx, _state_rx) = watch::channel(SandboxState::Stopping);
+        let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
+        let mut child = monitored_cat_process();
+        let stdin = child.stdin.take();
+
+        let handle = monitor_process(
+            "test-sandbox",
+            child,
+            Arc::clone(&state),
+            Arc::clone(&state_publish_lock),
+            state_tx.clone(),
+            guest,
+        );
+
+        drop(stdin);
+        wait_for_state(&state, SandboxState::Stopped).await;
+
+        let result = tokio::time::timeout(
+            Duration::from_millis(50),
+            wait_for_backend_crash(state_tx.subscribe()),
+        )
+        .await;
+        assert!(result.is_err(), "crash wait should have timed out");
+
+        handle.wait().await;
+    }
+
+    #[tokio::test]
+    async fn process_monitor_reports_startup_exit_as_stopped() {
+        let state = Arc::new(AtomicU8::new(SandboxState::Created as u8));
+        let state_publish_lock = Arc::new(Mutex::new(()));
+        let (state_tx, _state_rx) = watch::channel(SandboxState::Created);
+        let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
+        let mut child = monitored_cat_process();
+        let stdin = child.stdin.take();
+
+        let handle = monitor_process(
+            "test-sandbox",
+            child,
+            Arc::clone(&state),
+            Arc::clone(&state_publish_lock),
+            state_tx.clone(),
+            guest,
+        );
+
+        drop(stdin);
+        let exit_state = tokio::time::timeout(
+            Duration::from_secs(1),
+            wait_for_process_exit(state_tx.subscribe()),
+        )
+        .await
+        .unwrap();
+        assert_eq!(exit_state, SandboxState::Stopped);
         assert_eq!(
             SandboxState::from_u8(state.load(Ordering::Acquire)),
             SandboxState::Stopped
         );
 
-        let status = child.wait().await.unwrap();
-        assert!(status.success());
-    }
-
-    /// When the process is stopped gracefully (state transitions to Stopping
-    /// before pipe close), the real `monitor_process` stdout EOF path should
-    /// not fire crash_notify.
-    #[tokio::test]
-    async fn crash_notify_does_not_fire_on_graceful_stop() {
-        let state = Arc::new(AtomicU8::new(SandboxState::Stopping as u8));
-        let crash_notify = Arc::new(Notify::new());
-        let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
-        let mut child = monitored_cat_process();
-
-        monitor_process(
-            "test-sandbox",
-            &mut child,
-            Arc::clone(&state),
-            guest,
-            Arc::clone(&crash_notify),
+        let result = tokio::time::timeout(
+            Duration::from_millis(50),
+            wait_for_backend_crash(state_tx.subscribe()),
+        )
+        .await;
+        assert!(
+            result.is_err(),
+            "startup exit should not be classified as crash"
         );
 
-        let notified = crash_notify.notified();
-        drop(child.stdin.take());
-        wait_for_state(&state, SandboxState::Stopped).await;
+        handle.wait().await;
+    }
 
-        let result = tokio::time::timeout(Duration::from_millis(50), notified).await;
-        assert!(result.is_err(), "notify should have timed out");
+    #[tokio::test]
+    async fn stdout_eof_does_not_mark_running_process_crashed() {
+        let state = Arc::new(AtomicU8::new(SandboxState::Running as u8));
+        let state_publish_lock = Arc::new(Mutex::new(()));
+        let (state_tx, _state_rx) = watch::channel(SandboxState::Running);
+        let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
+        let child = stdout_closing_process();
 
-        let status = child.wait().await.unwrap();
-        assert!(status.success());
+        let handle = monitor_process(
+            "test-sandbox",
+            child,
+            Arc::clone(&state),
+            Arc::clone(&state_publish_lock),
+            state_tx.clone(),
+            guest,
+        );
+
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert_eq!(
+            SandboxState::from_u8(state.load(Ordering::Acquire)),
+            SandboxState::Running
+        );
+        let result = tokio::time::timeout(
+            Duration::from_millis(50),
+            wait_for_backend_crash(state_tx.subscribe()),
+        )
+        .await;
+        assert!(result.is_err(), "stdout EOF alone must not signal crash");
+
+        publish_process_state(
+            &state,
+            &state_publish_lock,
+            &state_tx,
+            SandboxState::Stopping,
+        );
+        handle.kill();
+        handle.wait().await;
+        assert_eq!(
+            SandboxState::from_u8(state.load(Ordering::Acquire)),
+            SandboxState::Stopped
+        );
     }
 
     /// Verify that `killpg` kills the entire process group spawned with
@@ -1782,14 +2163,14 @@ mod tests {
 
         let mut is_parked = true;
         let mut controller: Option<tokio::task::JoinHandle<()>> = None;
-        let crash_notify = Arc::new(Notify::new());
+        let (_state_tx, state_rx) = watch::channel(SandboxState::Running);
 
         unpark_inner(
             &mut is_parked,
             2048,
             &mut controller,
             &sock,
-            &crash_notify,
+            state_rx.clone(),
             "test-unpark",
         )
         .await
@@ -1824,14 +2205,14 @@ mod tests {
 
         let mut is_parked = true;
         let mut controller: Option<tokio::task::JoinHandle<()>> = None;
-        let crash_notify = Arc::new(Notify::new());
+        let (_state_tx, state_rx) = watch::channel(SandboxState::Running);
 
         let result = unpark_inner(
             &mut is_parked,
             2048,
             &mut controller,
             &sock,
-            &crash_notify,
+            state_rx.clone(),
             "test-unpark-err",
         )
         .await;
@@ -1860,14 +2241,14 @@ mod tests {
         let original_id = original_controller.id();
         let mut controller = Some(original_controller);
         let mut is_parked = true;
-        let crash_notify = Arc::new(Notify::new());
+        let (_state_tx, state_rx) = watch::channel(SandboxState::Running);
 
         unpark_inner(
             &mut is_parked,
             512,
             &mut controller,
             &sock,
-            &crash_notify,
+            state_rx.clone(),
             "test-unpark-small",
         )
         .await
@@ -1920,14 +2301,14 @@ mod tests {
 
         let mut is_parked = true;
         let mut controller: Option<tokio::task::JoinHandle<()>> = None;
-        let crash_notify = Arc::new(Notify::new());
+        let (_state_tx, state_rx) = watch::channel(SandboxState::Running);
 
         unpark_inner(
             &mut is_parked,
             2048,
             &mut controller,
             &sock,
-            &crash_notify,
+            state_rx.clone(),
             "du",
         )
         .await
@@ -1939,7 +2320,7 @@ mod tests {
             2048,
             &mut controller,
             &sock,
-            &crash_notify,
+            state_rx.clone(),
             "du",
         )
         .await
@@ -1970,14 +2351,14 @@ mod tests {
         let original_id = original_controller.id();
         let mut controller = Some(original_controller);
         let mut is_parked = false;
-        let crash_notify = Arc::new(Notify::new());
+        let (_state_tx, state_rx) = watch::channel(SandboxState::Running);
 
         unpark_inner(
             &mut is_parked,
             2048,
             &mut controller,
             &sock,
-            &crash_notify,
+            state_rx.clone(),
             "fresh",
         )
         .await
@@ -2000,7 +2381,7 @@ mod tests {
             tokio::spawn(async { tokio::time::sleep(Duration::from_secs(3600)).await });
         let mut controller = Some(initial);
         let mut is_parked = false;
-        let crash_notify = Arc::new(Notify::new());
+        let (_state_tx, state_rx) = watch::channel(SandboxState::Running);
 
         // Turn 1: park.
         park_inner(&mut is_parked, 2048, &mut controller, &sock, "cycle")
@@ -2015,7 +2396,7 @@ mod tests {
             2048,
             &mut controller,
             &sock,
-            &crash_notify,
+            state_rx.clone(),
             "cycle",
         )
         .await
@@ -2091,13 +2472,13 @@ mod tests {
 
         // A follow-up unpark must be a clean no-op because is_parked is false.
         drop(reqs);
-        let crash_notify = Arc::new(Notify::new());
+        let (_state_tx, state_rx) = watch::channel(SandboxState::Running);
         unpark_inner(
             &mut is_parked,
             2048,
             &mut controller,
             &sock,
-            &crash_notify,
+            state_rx.clone(),
             "test-park-fail",
         )
         .await
@@ -2146,14 +2527,14 @@ mod tests {
 
         let mut is_parked = true;
         let mut controller: Option<tokio::task::JoinHandle<()>> = None;
-        let crash_notify = Arc::new(Notify::new());
+        let (_state_tx, state_rx) = watch::channel(SandboxState::Running);
 
         let first = unpark_inner(
             &mut is_parked,
             2048,
             &mut controller,
             &sock,
-            &crash_notify,
+            state_rx.clone(),
             "retry",
         )
         .await;
@@ -2166,7 +2547,7 @@ mod tests {
             2048,
             &mut controller,
             &sock,
-            &crash_notify,
+            state_rx.clone(),
             "retry",
         )
         .await
@@ -2224,14 +2605,14 @@ mod tests {
 
         let mut is_parked = true;
         let mut controller: Option<tokio::task::JoinHandle<()>> = None;
-        let crash_notify = Arc::new(Notify::new());
+        let (_state_tx, state_rx) = watch::channel(SandboxState::Running);
 
         let result = unpark_inner(
             &mut is_parked,
             2048,
             &mut controller,
             &sock,
-            &crash_notify,
+            state_rx.clone(),
             "resume-fail",
         )
         .await;
@@ -2259,7 +2640,7 @@ mod tests {
 
         let mut is_parked = true;
         let mut controller: Option<tokio::task::JoinHandle<()>> = None;
-        let crash_notify = Arc::new(Notify::new());
+        let (_state_tx, state_rx) = watch::channel(SandboxState::Running);
 
         // First attempt: resume OK, deflate fails.
         let first = unpark_inner(
@@ -2267,7 +2648,7 @@ mod tests {
             2048,
             &mut controller,
             &sock,
-            &crash_notify,
+            state_rx.clone(),
             "idem",
         )
         .await;
@@ -2280,7 +2661,7 @@ mod tests {
             2048,
             &mut controller,
             &sock,
-            &crash_notify,
+            state_rx.clone(),
             "idem",
         )
         .await

@@ -107,6 +107,16 @@ struct Shared {
     exit_notify: Notify,
 }
 
+struct ListenerSocketGuard {
+    path: String,
+}
+
+impl Drop for ListenerSocketGuard {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
 impl Shared {
     /// Get next sequence number, skipping 0 (reserved for unsolicited messages).
     fn next_seq(&self) -> u32 {
@@ -313,13 +323,17 @@ impl VsockHost {
         let _ = std::fs::remove_file(&listener_path);
 
         let listener = UnixListener::bind(&listener_path)?;
+        let _listener_socket = ListenerSocketGuard {
+            path: listener_path.clone(),
+        };
         let deadline = Instant::now() + timeout;
 
         let accept_result = time::timeout_at(deadline, listener.accept()).await;
 
-        // Clean up listener socket regardless of outcome — only one connection expected
+        // Stop accepting before the accepted stream is handed off. The
+        // ListenerSocketGuard removes the path on normal return, error, or
+        // task cancellation.
         drop(listener);
-        let _ = std::fs::remove_file(&listener_path);
 
         let (stream, _) = accept_result.map_err(|_| {
             io::Error::new(
@@ -888,6 +902,39 @@ mod tests {
     async fn host_from_stream(stream: UnixStream) -> io::Result<VsockHost> {
         let deadline = Instant::now() + Duration::from_secs(5);
         VsockHost::from_stream(stream, deadline).await
+    }
+
+    #[tokio::test]
+    async fn wait_for_connection_removes_listener_socket_on_abort() {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let base =
+            std::env::temp_dir().join(format!("vsock-host-abort-{}-{unique}", std::process::id()));
+        let listener =
+            std::path::PathBuf::from(format!("{}_{}", base.display(), vsock_proto::VSOCK_PORT));
+        let base = base.display().to_string();
+
+        let handle = tokio::spawn(async move {
+            VsockHost::wait_for_connection(&base, Duration::from_secs(30)).await
+        });
+
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while !listener.exists() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+
+        handle.abort();
+        let _ = handle.await;
+
+        assert!(
+            !listener.exists(),
+            "aborted listener should remove its socket path"
+        );
     }
 
     #[tokio::test]
