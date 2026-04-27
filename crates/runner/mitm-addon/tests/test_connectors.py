@@ -927,6 +927,10 @@ class TestMatchBaseUrl:
         result = match_base_url("https://API.GitHub.com/repos", "https://api.github.com")
         assert result == ("/repos", {})
 
+    def test_static_base_case_insensitive_scheme(self):
+        result = match_base_url("HTTPS://API.GitHub.com/repos", "https://api.github.com")
+        assert result == ("/repos", {})
+
     def test_static_base_preserves_path_case(self):
         result = match_base_url("https://API.GitHub.com/REPOS", "https://api.github.com")
         assert result == ("/REPOS", {})
@@ -942,6 +946,13 @@ class TestMatchBaseUrl:
     def test_static_base_query_only_case_insensitive_authority(self):
         result = match_base_url("https://API.GitHub.com?tab=repos", "https://api.github.com")
         assert result == ("/", {})
+
+    def test_static_base_strips_query_and_fragment_from_rel_path(self):
+        result = match_base_url(
+            "https://API.GitHub.com/repos?tab=code#readme",
+            "https://api.github.com",
+        )
+        assert result == ("/repos", {})
 
     def test_static_base_evil_domain(self):
         result = match_base_url("https://api.github.com.evil.com/steal", "https://api.github.com")
@@ -959,8 +970,16 @@ class TestMatchBaseUrl:
         result = match_base_url("https://api.github.com/repos", "https://api.github.com?token=1")
         assert result is None
 
+    def test_static_base_with_fragment_is_rejected(self):
+        result = match_base_url("https://api.github.com/repos", "https://api.github.com#token")
+        assert result is None
+
     def test_malformed_request_url_returns_none(self):
         result = match_base_url("https://[::1", "https://api.github.com")
+        assert result is None
+
+    def test_malformed_base_url_returns_none(self):
+        result = match_base_url("https://api.github.com/repos", "https://[::1")
         assert result is None
 
     def test_parameterized_host(self):
@@ -977,6 +996,13 @@ class TestMatchBaseUrl:
         result = match_base_url(
             "https://acme.zendesk.com/api/v2/tickets",
             "https://{subdomain}.zendesk.com?token=1",
+        )
+        assert result is None
+
+    def test_parameterized_base_with_fragment_is_rejected(self):
+        result = match_base_url(
+            "https://acme.zendesk.com/api/v2/tickets",
+            "https://{subdomain}.zendesk.com#token",
         )
         assert result is None
 
