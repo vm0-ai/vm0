@@ -28,6 +28,7 @@ const defaultTelegramStatus: TelegramBotStatus = {
   },
 };
 
+let mockRegisterCounter = 0;
 let mockTelegramList: TelegramListResponse = {
   bots: structuredClone(defaultTelegramBots),
 };
@@ -40,12 +41,57 @@ let mockTelegramStatuses: Record<string, TelegramBotStatus> = {
 // override this handler via server.use(mockApi(zeroIntegrationsTelegramContract.getLinkStatus, ...)).
 let mockLinkStatus: TelegramLinkStatusResponse = { linked: false };
 
-export function resetMockTelegramIntegration(): void {
-  mockTelegramList = { bots: structuredClone(defaultTelegramBots) };
-  mockTelegramStatuses = {
-    [defaultTelegramStatus.id]: structuredClone(defaultTelegramStatus),
+function statusToBot(status: TelegramBotStatus): TelegramBot {
+  return {
+    id: status.id,
+    username: status.username,
+    agent: status.agent,
+    isOwner: status.isOwner,
+    isConnected: status.isConnected,
   };
+}
+
+function setMockTelegramStatuses(statuses: TelegramBotStatus[]): void {
+  mockTelegramStatuses = Object.fromEntries(
+    statuses.map((status) => {
+      return [status.id, structuredClone(status)];
+    }),
+  );
+  mockTelegramList = {
+    bots: statuses.map((status) => {
+      return structuredClone(statusToBot(status));
+    }),
+  };
+}
+
+export function resetMockTelegramIntegration(): void {
+  mockRegisterCounter = 0;
+  setMockTelegramStatuses([defaultTelegramStatus]);
   mockLinkStatus = { linked: false };
+}
+
+export function setMockTelegramIntegration(input: {
+  statuses?: TelegramBotStatus[];
+  linkStatus?: TelegramLinkStatusResponse;
+}): void {
+  if (input.statuses) {
+    setMockTelegramStatuses(input.statuses);
+  }
+  if (input.linkStatus) {
+    mockLinkStatus = structuredClone(input.linkStatus);
+  }
+}
+
+export function getMockTelegramIntegration(): {
+  list: TelegramListResponse;
+  statuses: Record<string, TelegramBotStatus>;
+  linkStatus: TelegramLinkStatusResponse;
+} {
+  return {
+    list: structuredClone(mockTelegramList),
+    statuses: structuredClone(mockTelegramStatuses),
+    linkStatus: structuredClone(mockLinkStatus),
+  };
 }
 
 export const apiIntegrationsTelegramHandlers = [
@@ -72,11 +118,12 @@ export const apiIntegrationsTelegramHandlers = [
           error: { message: "Telegram bot not found", code: "NOT_FOUND" },
         });
       }
-      status.agent = { id: body.defaultAgentId, name: "default-agent" };
+      const agent = { id: body.defaultAgentId, name: "default-agent" };
+      mockTelegramStatuses[status.id] = { ...status, agent };
       mockTelegramList.bots = mockTelegramList.bots.map((bot) => {
-        return bot.id === status.id ? { ...bot, agent: status.agent } : bot;
+        return bot.id === status.id ? { ...bot, agent } : bot;
       });
-      return respond(200, status);
+      return respond(200, mockTelegramStatuses[status.id]!);
     },
   ),
 
@@ -95,11 +142,20 @@ export const apiIntegrationsTelegramHandlers = [
     return respond(200, mockLinkStatus);
   }),
 
-  mockApi(zeroIntegrationsTelegramContract.register, ({ respond }) => {
+  mockApi(zeroIntegrationsTelegramContract.register, ({ body, respond }) => {
+    mockRegisterCounter += 1;
+    const id =
+      mockRegisterCounter === 1
+        ? "bot_registered"
+        : `bot_registered_${mockRegisterCounter}`;
+    const agentId = body.defaultAgentId ?? "compose_1";
     const status: TelegramBotStatus = {
-      id: "bot_registered",
-      username: "registered_bot",
-      agent: { id: "compose_1", name: "default-agent" },
+      id,
+      username:
+        mockRegisterCounter === 1
+          ? "registered_bot"
+          : `registered_bot_${mockRegisterCounter}`,
+      agent: { id: agentId, name: "default-agent" },
       isOwner: true,
       isConnected: false,
       domainConfigured: false,
@@ -111,7 +167,10 @@ export const apiIntegrationsTelegramHandlers = [
       },
     };
     mockTelegramStatuses[status.id] = structuredClone(status);
-    mockTelegramList.bots = [...mockTelegramList.bots, status];
+    mockTelegramList.bots = [
+      ...mockTelegramList.bots,
+      structuredClone(statusToBot(status)),
+    ];
     return respond(201, status);
   }),
 ];

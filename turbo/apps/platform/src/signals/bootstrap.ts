@@ -16,6 +16,7 @@ import { ROUTES, type RoutePath } from "./route-paths.ts";
 import { setupGlobalMethod$ } from "./bootstrap/global-method.ts";
 import { setupLoggers$ } from "./bootstrap/loggers.ts";
 import { setupSlackConnectPage$ } from "./zero-page/slack-connect-page.ts";
+import { setupTelegramSettingsPage$ } from "./zero-page/telegram-settings-page.ts";
 import { setupActivityPage$ } from "./activity-page/activity-page-setup.ts";
 import { setupActivityDetailPage$ } from "./activity-page/activity-detail-page-setup.ts";
 import { setupActivityInspectPage$ } from "./activity-page/activity-inspect-page-setup.ts";
@@ -148,6 +149,10 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.settingsSlack,
     setup: setupAuthPageWrapper(setupSlackConnectPage$),
+  },
+  {
+    path: ROUTES.settingsTelegram,
+    setup: setupAuthPageWrapper(setupTelegramSettingsPage$),
   },
   {
     path: ROUTES.activityInspect,
