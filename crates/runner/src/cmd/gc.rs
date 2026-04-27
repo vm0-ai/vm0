@@ -1182,7 +1182,7 @@ async fn gc_storage_cache_with_cap(
                 continue;
             }
 
-            let lock_path = home.storage_lock(name_str, version_str);
+            let lock_path = home.storage_lock_for_cache_key(name_str, version_str);
             let lock = match probe_lock(&lock_path) {
                 LockProbe::Free(l) => l,
                 LockProbe::Held => {
@@ -2670,14 +2670,7 @@ mod tests {
     // gc_storage_cache tests
     // -----------------------------------------------------------------------
 
-    fn make_storage_entry(
-        home: &HomePaths,
-        name: &str,
-        version: &str,
-        archive_bytes: &[u8],
-        mtime: SystemTime,
-    ) -> PathBuf {
-        let dir = home.storages_dir().join(name).join(version);
+    fn make_storage_entry_at(dir: PathBuf, archive_bytes: &[u8], mtime: SystemTime) -> PathBuf {
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("archive.tar.gz"), archive_bytes).unwrap();
         std::fs::File::open(&dir)
@@ -2685,6 +2678,16 @@ mod tests {
             .set_times(std::fs::FileTimes::new().set_modified(mtime))
             .unwrap();
         dir
+    }
+
+    fn make_storage_entry(
+        home: &HomePaths,
+        name: &str,
+        version: &str,
+        archive_bytes: &[u8],
+        mtime: SystemTime,
+    ) -> PathBuf {
+        make_storage_entry_at(home.storage_cache_dir(name, version), archive_bytes, mtime)
     }
 
     #[tokio::test]
@@ -2846,7 +2849,12 @@ mod tests {
         // not be counted toward `total_size`.
         let t_old = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
         let real = make_storage_entry(&home, "foo", "v1", &[0u8; 128], t_old);
-        let tmp = make_storage_entry(&home, "foo", "v1.tmp", &[0u8; 128], t_old);
+        let tmp_final_dir = home.storage_cache_dir("foo", "v2");
+        let tmp_name = format!(
+            "{}.tmp",
+            tmp_final_dir.file_name().and_then(|n| n.to_str()).unwrap()
+        );
+        let tmp = make_storage_entry_at(tmp_final_dir.with_file_name(tmp_name), &[0u8; 128], t_old);
 
         // Cap well above the real entry alone — if the walker counted the
         // `.tmp` sibling, total_size would exceed the cap and the real

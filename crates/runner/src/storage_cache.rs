@@ -32,6 +32,7 @@ use futures_util::stream::{self, StreamExt};
 use reqwest::Client;
 use sandbox::{ExecRequest, Sandbox};
 use tokio::fs;
+use tokio::io::AsyncReadExt as _;
 use tracing::{debug, warn};
 
 use crate::error::{RunnerError, RunnerResult};
@@ -43,7 +44,7 @@ use crate::types::StorageManifest;
 /// Archive sizes strictly larger than this are passthrough.
 const CACHE_MAX_SIZE: u64 = 8 * 1024 * 1024;
 
-/// Parallel (HEAD / GET / flock / vsock) operations per `populate_cache` call.
+/// Parallel (probe GET / full GET / flock / vsock) operations per `populate_cache` call.
 const CONCURRENCY: usize = 4;
 
 /// Guest stage directory for `file://` archives.
@@ -245,33 +246,23 @@ async fn process_one(
     let archive_path = cache_dir.join("archive.tar.gz");
 
     // 1. Fast path: disk hit. Read the bytes directly and skip the network.
-    //    This also makes the hit path resilient to transient HEAD failures.
+    //    This also makes the hit path resilient to transient probe failures.
     match fs::metadata(&archive_path).await {
         Ok(metadata) if metadata.len() <= CACHE_MAX_SIZE => {
-            let bytes = fs::read(&archive_path).await.map_err(|e| {
-                RunnerError::Internal(format!("read cached {}: {e}", archive_path.display()))
-            })?;
-            touch_mtime(&cache_dir);
-            let guest_path = guest_archive_path(&target.name, &target.version);
-            sandbox.write_file(&guest_path, &bytes).await?;
-            return Ok(TargetOutcome::Hit);
+            match read_cached_archive(&archive_path, CACHE_MAX_SIZE).await? {
+                DownloadBody::Complete(bytes) => {
+                    touch_mtime(&cache_dir);
+                    let guest_path = guest_archive_path(&target.name, &target.version);
+                    sandbox.write_file(&guest_path, &bytes).await?;
+                    return Ok(TargetOutcome::Hit);
+                }
+                DownloadBody::OverSize { observed_size } => {
+                    evict_oversized_cache(target, &cache_dir, observed_size).await?;
+                }
+            }
         }
         Ok(metadata) => {
-            warn!(
-                name = %target.name,
-                version = %target.version,
-                size = metadata.len(),
-                limit = CACHE_MAX_SIZE,
-                "storage_cache: cached archive exceeds size limit, evicting"
-            );
-            if let Err(e) = fs::remove_dir_all(&cache_dir).await
-                && e.kind() != io::ErrorKind::NotFound
-            {
-                return Err(RunnerError::Internal(format!(
-                    "remove oversized cache {}: {e}",
-                    cache_dir.display()
-                )));
-            }
+            evict_oversized_cache(target, &cache_dir, metadata.len()).await?;
         }
         Err(e) if e.kind() == io::ErrorKind::NotFound => {}
         Err(e) => {
@@ -369,8 +360,9 @@ async fn probe_size(http: &Client, url: &str) -> RunnerResult<Option<u64>> {
             .get(header::CONTENT_RANGE)
             .and_then(|v| v.to_str().ok())
             .and_then(parse_content_range_total);
-        // Consume the 1-byte body so the connection returns to the pool.
-        let _ = resp.bytes().await;
+        // Do not drain the body here. Some origins ignore Range while still
+        // returning large bodies, and probe safety matters more than reusing
+        // this connection.
         return Ok(total);
     }
     if status.is_success() {
@@ -380,7 +372,8 @@ async fn probe_size(http: &Client, url: &str) -> RunnerResult<Option<u64>> {
             .get(header::CONTENT_LENGTH)
             .and_then(|v| v.to_str().ok())
             .and_then(|s| s.parse::<u64>().ok());
-        let _ = resp.bytes().await;
+        // Drop the response after headers instead of buffering an ignored
+        // Range response into memory.
         return Ok(total);
     }
     // 4xx / 5xx / 416 / anything else — treat as probe failure.
@@ -439,6 +432,38 @@ async fn download_tarball(http: &Client, url: &str, max_size: u64) -> RunnerResu
     Ok(DownloadBody::Complete(Bytes::from(bytes)))
 }
 
+async fn read_cached_archive(path: &Path, max_size: u64) -> RunnerResult<DownloadBody> {
+    let mut file = fs::File::open(path)
+        .await
+        .map_err(|e| RunnerError::Internal(format!("open cached {}: {e}", path.display())))?;
+    let mut bytes = Vec::with_capacity(max_size.min(64 * 1024) as usize);
+    let mut downloaded = 0u64;
+    let mut buf = [0u8; 64 * 1024];
+
+    loop {
+        let n = file
+            .read(&mut buf)
+            .await
+            .map_err(|e| RunnerError::Internal(format!("read cached {}: {e}", path.display())))?;
+        if n == 0 {
+            break;
+        }
+        let chunk = buf.get(..n).ok_or_else(|| {
+            RunnerError::Internal(format!(
+                "read cached {} produced invalid chunk length {n}",
+                path.display()
+            ))
+        })?;
+        if let Some(observed_size) =
+            append_limited_chunk(&mut bytes, &mut downloaded, chunk, max_size)?
+        {
+            return Ok(DownloadBody::OverSize { observed_size });
+        }
+    }
+
+    Ok(DownloadBody::Complete(Bytes::from(bytes)))
+}
+
 fn append_limited_chunk(
     bytes: &mut Vec<u8>,
     downloaded: &mut u64,
@@ -456,6 +481,29 @@ fn append_limited_chunk(
     bytes.extend_from_slice(chunk);
     *downloaded = next_downloaded;
     Ok(None)
+}
+
+async fn evict_oversized_cache(
+    target: &CacheTarget,
+    cache_dir: &Path,
+    observed_size: u64,
+) -> RunnerResult<()> {
+    warn!(
+        name = %target.name,
+        version = %target.version,
+        size = observed_size,
+        limit = CACHE_MAX_SIZE,
+        "storage_cache: cached archive exceeds size limit, evicting"
+    );
+    if let Err(e) = fs::remove_dir_all(cache_dir).await
+        && e.kind() != io::ErrorKind::NotFound
+    {
+        return Err(RunnerError::Internal(format!(
+            "remove oversized cache {}: {e}",
+            cache_dir.display()
+        )));
+    }
+    Ok(())
 }
 
 async fn write_to_cache(cache_dir: &Path, bytes: &[u8]) -> RunnerResult<()> {
@@ -619,6 +667,8 @@ mod tests {
     use httpmock::prelude::*;
     use sandbox::{SandboxError, SandboxOperation, SandboxOperationReason};
     use sandbox_mock::MockSandbox;
+    use tokio::io::AsyncWriteExt as _;
+    use tokio::net::TcpListener;
 
     use crate::http::HttpClient;
     use crate::ids::RunId;
@@ -658,6 +708,21 @@ mod tests {
             reason: SandboxOperationReason::Guest,
             message: message.into(),
         }
+    }
+
+    async fn raw_http_url(
+        response: Vec<u8>,
+    ) -> (String, tokio::task::JoinHandle<std::io::Result<()>>) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let handle = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await?;
+            let mut request = [0u8; 1024];
+            let _ = tokio::io::AsyncReadExt::read(&mut socket, &mut request).await?;
+            socket.write_all(&response).await?;
+            Ok(())
+        });
+        (format!("http://{addr}/archive.tar.gz"), handle)
     }
 
     #[tokio::test]
@@ -1100,6 +1165,41 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn probe_200_ignored_range_uses_content_length_without_reading_body() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let (release_tx, release_rx) = tokio::sync::oneshot::channel::<()>();
+        let advertised_size = CACHE_MAX_SIZE + 1;
+
+        let server_task = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await?;
+            let mut request = [0u8; 1024];
+            let _ = tokio::io::AsyncReadExt::read(&mut socket, &mut request).await?;
+            socket
+                .write_all(
+                    format!("HTTP/1.1 200 OK\r\nContent-Length: {advertised_size}\r\n\r\n")
+                        .as_bytes(),
+                )
+                .await?;
+            let _ = release_rx.await;
+            Ok::<(), std::io::Error>(())
+        });
+
+        let http = Client::builder().build().unwrap();
+        let result = tokio::time::timeout(
+            HEAD_TIMEOUT + Duration::from_secs(1),
+            probe_size(&http, &format!("http://{addr}/range-ignored.tar.gz")),
+        )
+        .await
+        .expect("probe must return after headers without waiting for the body")
+        .unwrap();
+
+        let _ = release_tx.send(());
+        server_task.await.unwrap().unwrap();
+        assert_eq!(result, Some(advertised_size));
+    }
+
     #[test]
     fn staging_dir_is_sibling() {
         let d = PathBuf::from("/var/lib/vm0-runner/storages/foo/v1");
@@ -1160,6 +1260,48 @@ mod tests {
             DownloadBody::Complete(bytes) => {
                 panic!(
                     "content-length over limit should be rejected, read {} bytes",
+                    bytes.len()
+                )
+            }
+            DownloadBody::OverSize { observed_size } => assert_eq!(observed_size, 7),
+        }
+    }
+
+    #[tokio::test]
+    async fn download_rejects_stream_without_content_length_over_limit() {
+        let (url, server_task) = raw_http_url(
+            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n4\r\nabcd\r\n3\r\nefg\r\n0\r\n\r\n"
+                .to_vec(),
+        )
+        .await;
+        let http = Client::builder().build().unwrap();
+
+        let result = download_tarball(&http, &url, 6).await.unwrap();
+        server_task.await.unwrap().unwrap();
+
+        match result {
+            DownloadBody::Complete(bytes) => {
+                panic!(
+                    "stream over limit should be rejected, read {} bytes",
+                    bytes.len()
+                )
+            }
+            DownloadBody::OverSize { observed_size } => assert_eq!(observed_size, 7),
+        }
+    }
+
+    #[tokio::test]
+    async fn cached_archive_read_rejects_one_byte_over_limit() {
+        let temp = tempfile::tempdir().unwrap();
+        let archive_path = temp.path().join("archive.tar.gz");
+        fs::write(&archive_path, b"abcdefg").await.unwrap();
+
+        let result = read_cached_archive(&archive_path, 6).await.unwrap();
+
+        match result {
+            DownloadBody::Complete(bytes) => {
+                panic!(
+                    "cached file over limit should be rejected, read {} bytes",
                     bytes.len()
                 )
             }

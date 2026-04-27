@@ -190,6 +190,15 @@ impl HomePaths {
     /// be injective in `(name, version)` and safe to embed in a path segment.
     pub fn storage_lock(&self, name: &str, version: &str) -> PathBuf {
         let (name_hash, version_hash) = storage_key_hashes(name, version);
+        self.storage_lock_for_cache_key(&name_hash, &version_hash)
+    }
+
+    /// Per-version flock path from already-hashed cache directory components.
+    ///
+    /// This is for disk walkers such as `runner gc`, which discover
+    /// `<storages>/<name_hash>/<version_hash>/` and must use the exact same
+    /// lock as `storage_lock(name, version)`, not hash those components again.
+    pub fn storage_lock_for_cache_key(&self, name_hash: &str, version_hash: &str) -> PathBuf {
         self.locks_dir()
             .join(format!("storage-{name_hash}-{version_hash}.lock"))
     }
@@ -554,6 +563,16 @@ mod tests {
         assert!(a.starts_with(&locks));
         assert!(b.starts_with(&locks));
         assert!(a.to_string_lossy().ends_with(".lock"));
+
+        let cache_dir = home.storage_cache_dir("foo", "bar-v1");
+        let cache_tail: Vec<_> = cache_dir
+            .strip_prefix(home.storages_dir())
+            .unwrap()
+            .components()
+            .collect();
+        let name_hash = cache_tail[0].as_os_str().to_str().unwrap();
+        let version_hash = cache_tail[1].as_os_str().to_str().unwrap();
+        assert_eq!(a, home.storage_lock_for_cache_key(name_hash, version_hash));
     }
 
     #[test]
