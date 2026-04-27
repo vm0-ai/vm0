@@ -33,6 +33,8 @@ static EVENT_ERROR_FLAG: LazyLock<String> =
     LazyLock::new(|| format!("/tmp/vm0-event-error-{}", env::run_id()));
 static CHECKPOINT_ERROR_FILE: LazyLock<String> =
     LazyLock::new(|| format!("/tmp/vm0-checkpoint-error-{}", env::run_id()));
+static SYSTEM_LOG_FILE: LazyLock<String> =
+    LazyLock::new(|| format!("/tmp/vm0-system-{}.log", env::run_id()));
 static AGENT_LOG_FILE: LazyLock<String> =
     LazyLock::new(|| format!("/tmp/vm0-agent-{}.log", env::run_id()));
 static METRICS_LOG_FILE: LazyLock<String> =
@@ -45,7 +47,7 @@ pub fn checkpoint_error_file() -> &'static str {
     &CHECKPOINT_ERROR_FILE
 }
 pub fn system_log_file() -> &'static str {
-    guest_common::log::system_log_file()
+    &SYSTEM_LOG_FILE
 }
 pub fn agent_log_file() -> &'static str {
     &AGENT_LOG_FILE

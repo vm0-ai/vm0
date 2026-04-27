@@ -10,7 +10,7 @@ static RUN_ID: LazyLock<String> = LazyLock::new(|| match std::env::var("VM0_RUN_
 });
 static DEFAULT_SYSTEM_LOG_FILE: LazyLock<String> =
     LazyLock::new(|| format!("/tmp/vm0-system-{}.log", &*RUN_ID));
-static SYSTEM_LOG_FILE: Mutex<SystemLogFile> = Mutex::new(SystemLogFile::Default);
+static SYSTEM_LOG_FILE: Mutex<SystemLogFile> = Mutex::new(SystemLogFile::Disabled);
 
 enum SystemLogFile {
     Default,
@@ -23,8 +23,14 @@ pub fn timestamp() -> String {
     chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
 }
 
-/// Guest-side system log path for the current run.
-pub fn system_log_file() -> &'static str {
+/// Enable writes to the guest-side system log file for the current run.
+pub fn enable_system_log_file() {
+    default_system_log_file();
+    let mut guard = SYSTEM_LOG_FILE.lock().unwrap_or_else(|e| e.into_inner());
+    *guard = SystemLogFile::Default;
+}
+
+fn default_system_log_file() -> &'static str {
     &DEFAULT_SYSTEM_LOG_FILE
 }
 
@@ -47,7 +53,7 @@ pub fn clear_system_log_file() {
 fn append_system_log_line(line: &str) -> std::io::Result<()> {
     let guard = SYSTEM_LOG_FILE.lock().unwrap_or_else(|e| e.into_inner());
     let path = match &*guard {
-        SystemLogFile::Default => PathBuf::from(system_log_file()),
+        SystemLogFile::Default => PathBuf::from(default_system_log_file()),
         SystemLogFile::Override(path) => path.clone(),
         SystemLogFile::Disabled => return Ok(()),
     };
@@ -71,7 +77,8 @@ fn write_stderr_line(line: &str) {
     let _ = stderr.flush();
 }
 
-/// Emit one formatted log line to stderr and the guest-side system log file.
+/// Emit one formatted log line to stderr and, when enabled, the guest-side
+/// system log file.
 pub fn emit(level: &str, tag: &str, args: std::fmt::Arguments<'_>) {
     let line = format!("[{}] [{level}] [{tag}] {args}", timestamp());
     if let Err(e) = append_system_log_line(&line) {
@@ -124,6 +131,18 @@ mod tests {
         assert!(
             chrono::DateTime::parse_from_rfc3339(&ts).is_ok(),
             "not a valid RFC3339: {ts}"
+        );
+    }
+
+    #[test]
+    fn emit_does_not_require_system_log_when_file_logging_is_disabled() {
+        let _guard = LOG_TEST_MUTEX.lock().unwrap();
+        clear_system_log_file();
+
+        emit(
+            "INFO",
+            "sandbox:guest-agent",
+            format_args!("stderr-only log line"),
         );
     }
 
