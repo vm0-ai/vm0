@@ -161,6 +161,8 @@ export async function evaluateMemberCaps(
           and(
             eq(orgMembersMetadata.orgId, orgId),
             eq(orgMembersMetadata.userId, member.userId),
+            eq(orgMembersMetadata.creditEnabled, true),
+            eq(orgMembersMetadata.creditCap, cap),
           ),
         );
     }
