@@ -13,6 +13,7 @@
         {"type": "build", "hidden": true},
         {"type": "revert", "hidden": true}
     ],
+    "commit-batch-size": 100,
     "packages": {
         "turbo/packages/core": {
             "release-type": "node"
