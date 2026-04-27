@@ -9,6 +9,7 @@ import http.client
 import importlib.util
 import re
 import sys
+import tempfile
 from http import HTTPStatus
 from pathlib import Path
 from types import ModuleType
@@ -131,10 +132,29 @@ def check_generated() -> int:
     return 1
 
 
+def write_generated_module(contents: str) -> None:
+    tmp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            dir=OUTPUT_PATH.parent,
+            prefix=f".{OUTPUT_PATH.name}.",
+            suffix=".tmp",
+            delete=False,
+            encoding="utf-8",
+        ) as tmp_file:
+            tmp_file.write(contents)
+            tmp_path = Path(tmp_file.name)
+        tmp_path.replace(OUTPUT_PATH)
+    finally:
+        if tmp_path is not None and tmp_path.exists():
+            tmp_path.unlink()
+
+
 def update_generated(source_file: Path | None) -> int:
     source = source_file.read_text(encoding="utf-8") if source_file is not None else fetch_source()
     version, tlds = parse_source(source)
-    OUTPUT_PATH.write_text(render_module(version, tlds), encoding="utf-8")
+    write_generated_module(render_module(version, tlds))
     sys.stdout.write(f"wrote {OUTPUT_PATH} with {len(tlds)} TLDs from IANA version {version}\n")
     return 0
 
