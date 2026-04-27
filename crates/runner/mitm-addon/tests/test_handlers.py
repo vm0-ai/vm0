@@ -661,6 +661,12 @@ class TestRequestHandler:
             "cache_hit": False,
         }
 
+        async def forward_request(*_args):
+            assert flow.metadata["_usage_flow_tracked"] is True
+            assert usage.counters._in_flight_flows == 1
+            _assert_pending(pending_path, flows=1, reports=0)
+            return (200, b'{"delivered":true}', {"Content-Type": "application/json"})
+
         try:
             with (
                 mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
@@ -672,13 +678,7 @@ class TestRequestHandler:
                 patch.object(
                     auth,
                     "forward_request",
-                    AsyncMock(
-                        return_value=(
-                            200,
-                            b'{"delivered":true}',
-                            {"Content-Type": "application/json"},
-                        )
-                    ),
+                    AsyncMock(side_effect=forward_request),
                 ),
             ):
                 await mitm_addon.request(flow)

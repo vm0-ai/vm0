@@ -300,8 +300,22 @@ async def request(flow: http.HTTPFlow) -> None:
             )
             return
         if isinstance(result, FirewallAllow):
-            await handle_firewall_request(flow, result.api_entry, vm_info, result.match_info)
+            flow.metadata["firewall_billable"] = result.match_info.get("name", "") in (
+                vm_info.get("billableFirewalls") or []
+            )
             _maybe_track_usage_flow(flow)
+            try:
+                await handle_firewall_request(flow, result.api_entry, vm_info, result.match_info)
+            except Exception:
+                _release_tracked_usage_flow(flow)
+                raise
+            if flow.response is not None and not flow.metadata.get("auth_url_rewrite"):
+                # Local firewall/auth errors never reach a provider. They only
+                # need pre-tracking to keep shutdown from racing while auth is
+                # resolving, so release as soon as the local response exists.
+                _release_tracked_usage_flow(flow)
+            else:
+                _maybe_track_usage_flow(flow)
             return
 
     # No firewall match — pass through directly
@@ -309,21 +323,23 @@ async def request(flow: http.HTTPFlow) -> None:
 
 
 def _maybe_track_usage_flow(flow: http.HTTPFlow) -> None:
-    """Track billable flows before upstream response headers.
+    """Track billable flows before provider work can outlive shutdown.
 
-    This closes the shutdown drain gap where the request has already been
-    sent upstream, but mitmproxy has not yet reached responseheaders().
+    This closes the shutdown drain gap before standard upstream dispatch and
+    before auth.base URL rewrites, where the addon itself forwards upstream.
     The response/error decorator pops the metadata flag so decrement runs
     exactly once.
     """
     if flow.metadata.get("_usage_flow_tracked"):
         return
-    # Local firewall/auth errors synthesize a response but never enqueue usage.
-    if flow.response is not None and not flow.metadata.get("auth_url_rewrite"):
-        return
     if flow.metadata.get("firewall_billable", False):
         usage.increment_flows()
         flow.metadata["_usage_flow_tracked"] = True
+
+
+def _release_tracked_usage_flow(flow: http.HTTPFlow) -> None:
+    if flow.metadata.pop("_usage_flow_tracked", False):
+        usage.decrement_flows()
 
 
 # ============================================================================
@@ -444,12 +460,10 @@ def _track_usage_flow(fn):
 
     @functools.wraps(fn)
     def wrapper(flow: http.HTTPFlow, *args, **kwargs):
-        tracked = flow.metadata.pop("_usage_flow_tracked", False)
         try:
             return fn(flow, *args, **kwargs)
         finally:
-            if tracked:
-                usage.decrement_flows()
+            _release_tracked_usage_flow(flow)
 
     return wrapper
 
