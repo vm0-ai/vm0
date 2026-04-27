@@ -73,18 +73,15 @@ pub async fn run_benchmark(
 
     let home = HomePaths::new()?;
 
-    // Use the default profile for benchmark.
-    let default_profile = runner_config
-        .profiles
-        .get(&args.profile)
-        .ok_or_else(|| {
-            RunnerError::Config(format!("profile '{}' not found in config", args.profile))
-        })?
-        .clone();
+    // Look up the profile selected via --profile.
+    let profile_name = args.profile.as_str();
+    let profile_config = runner_config.profiles.get(profile_name).ok_or_else(|| {
+        RunnerError::Config(format!("profile '{profile_name}' not found in config"))
+    })?;
     // Block until memory.bin is in page cache so benchmark numbers are stable.
     {
-        let path = crate::paths::RootfsPaths::new(&home, &default_profile.rootfs_hash)
-            .snapshot(&default_profile.snapshot_hash)
+        let path = crate::paths::RootfsPaths::new(&home, &profile_config.rootfs_hash)
+            .snapshot(&profile_config.snapshot_hash)
             .memory_bin();
         let _ = tokio::task::spawn_blocking(move || prefetch::prefetch_memory(&path)).await;
     }
@@ -107,7 +104,7 @@ pub async fn run_benchmark(
     info!(proxy_ms, port = mitm.port(), "proxy ready");
 
     // 3. Factory init (with proxy port) via sandbox runtime
-    let factory_config = runner_config.factory_config(&args.profile, &default_profile, &home);
+    let factory_config = runner_config.factory_config(profile_name, profile_config, &home);
 
     let t = Instant::now();
     let mut runtime = runtime_provider
@@ -124,8 +121,8 @@ pub async fn run_benchmark(
     let sandbox_config = SandboxConfig {
         id: SandboxId::new_v4(),
         resources: sandbox::ResourceLimits {
-            cpu_count: default_profile.vcpu,
-            memory_mb: default_profile.memory_mb,
+            cpu_count: profile_config.vcpu,
+            memory_mb: profile_config.memory_mb,
         },
     };
     let (result, timing) = run_sandbox(&args, &env_pairs, &*factory, &mitm, sandbox_config).await;
