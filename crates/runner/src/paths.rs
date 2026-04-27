@@ -166,7 +166,7 @@ impl HomePaths {
 
     /// Root directory for the runner-side storage archive cache.
     ///
-    /// Layout: `<storages_dir>/<vasStorageName>/<vasVersionId>/archive.tar.gz`.
+    /// Layout: `<storages_dir>/<hash(vasStorageName)>/<hash(vasVersionId)>/archive.tar.gz`.
     /// Populated by the cache writer (#10808) and reaped by `gc_storage_cache`.
     pub fn storages_dir(&self) -> PathBuf {
         self.root.join("storages")

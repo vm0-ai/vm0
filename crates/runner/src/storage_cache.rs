@@ -350,7 +350,7 @@ async fn probe_size(http: &Client, url: &str) -> RunnerResult<Option<u64>> {
         .timeout(HEAD_TIMEOUT)
         .send()
         .await
-        .map_err(|e| RunnerError::Internal(format!("probe GET {url}: {e}")))?;
+        .map_err(|e| RunnerError::Internal(format!("probe GET: {}", reqwest_error(e))))?;
 
     let status = resp.status();
     if status == StatusCode::PARTIAL_CONTENT {
@@ -380,9 +380,13 @@ async fn probe_size(http: &Client, url: &str) -> RunnerResult<Option<u64>> {
     let err = resp
         .error_for_status()
         .err()
-        .map(|e| e.to_string())
+        .map(reqwest_error)
         .unwrap_or_else(|| format!("unexpected status {status}"));
-    Err(RunnerError::Internal(format!("probe GET {url}: {err}")))
+    Err(RunnerError::Internal(format!("probe GET: {err}")))
+}
+
+fn reqwest_error(e: reqwest::Error) -> String {
+    e.without_url().to_string()
 }
 
 /// Parse the total size out of a `Content-Range` header value such as
@@ -402,9 +406,9 @@ async fn download_tarball(http: &Client, url: &str, max_size: u64) -> RunnerResu
         .timeout(DOWNLOAD_TIMEOUT)
         .send()
         .await
-        .map_err(|e| RunnerError::Internal(format!("GET {url}: {e}")))?
+        .map_err(|e| RunnerError::Internal(format!("GET: {}", reqwest_error(e))))?
         .error_for_status()
-        .map_err(|e| RunnerError::Internal(format!("GET status {url}: {e}")))?;
+        .map_err(|e| RunnerError::Internal(format!("GET status: {}", reqwest_error(e))))?;
 
     if let Some(content_length) = resp.content_length()
         && content_length > max_size
@@ -420,7 +424,7 @@ async fn download_tarball(http: &Client, url: &str, max_size: u64) -> RunnerResu
     while let Some(chunk) = resp
         .chunk()
         .await
-        .map_err(|e| RunnerError::Internal(format!("read body {url}: {e}")))?
+        .map_err(|e| RunnerError::Internal(format!("read body: {}", reqwest_error(e))))?
     {
         if let Some(observed_size) =
             append_limited_chunk(&mut bytes, &mut downloaded, &chunk, max_size)?
@@ -1144,7 +1148,10 @@ mod tests {
             })
             .await;
 
-        let original = server.url("/broken.tar.gz");
+        let original = format!(
+            "{}?X-Amz-Signature=secret&X-Amz-Credential=credential",
+            server.url("/broken.tar.gz")
+        );
         let mut manifest = manifest_single_storage(original.clone(), "broken-skill", "v1");
 
         populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
@@ -1162,6 +1169,18 @@ mod tests {
         assert!(
             ops.iter()
                 .any(|(k, _, _)| k == "storage_cache_skipped_head_failed")
+        );
+        let (_, _, error) = ops
+            .iter()
+            .find(|(k, _, _)| k == "storage_cache_skipped_head_failed")
+            .expect("expected skipped head telemetry");
+        let error = error.as_deref().expect("expected telemetry error reason");
+        assert!(
+            !error.contains("X-Amz-Signature")
+                && !error.contains("secret")
+                && !error.contains("credential")
+                && !error.contains("/broken.tar.gz"),
+            "telemetry error must not include presigned URL details: {error}"
         );
     }
 
