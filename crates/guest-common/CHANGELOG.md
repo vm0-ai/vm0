@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.3](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.2...guest-common-v0.2.3) (2026-04-27)
+
+
+### Bug Fixes
+
+* make guest-agent own system log writes ([#11238](https://github.com/vm0-ai/vm0/issues/11238)) ([5041a49](https://github.com/vm0-ai/vm0/commit/5041a49416701955915962bc13aed07e5618db3e))
+
 ## [0.2.2](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.1...guest-common-v0.2.2) (2026-04-26)
 
 

@@ -1,5 +1,7 @@
 # Changelog
 
+## [0.20.3](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.2...guest-download-v0.20.3) (2026-04-27)
+
 ## [0.20.2](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.1...guest-download-v0.20.2) (2026-04-26)
 
 ## [0.20.1](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.0...guest-download-v0.20.1) (2026-04-23)

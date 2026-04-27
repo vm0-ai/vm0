@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.6](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.10.5...vsock-guest-v0.10.6) (2026-04-27)
+
+
+### Bug Fixes
+
+* make guest-agent own system log writes ([#11238](https://github.com/vm0-ai/vm0/issues/11238)) ([5041a49](https://github.com/vm0-ai/vm0/commit/5041a49416701955915962bc13aed07e5618db3e))
+
 ## [0.10.5](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.10.4...vsock-guest-v0.10.5) (2026-04-25)
 
 
