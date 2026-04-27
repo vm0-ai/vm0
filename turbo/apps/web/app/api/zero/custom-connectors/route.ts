@@ -1,5 +1,6 @@
 import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
-import { zeroCustomConnectorsContract, createErrorResponse } from "@vm0/core";
+import { zeroCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import { createErrorResponse } from "@vm0/api-contracts/contracts/errors";
 import { initServices } from "../../../../src/lib/init-services";
 import {
   requireAuth,
@@ -11,7 +12,7 @@ import {
   createCustomConnector,
   listCustomConnectorsWithSecretStatus,
 } from "../../../../src/lib/zero/custom-connector/custom-connector-service";
-import { isBadRequest } from "../../../../src/lib/shared/errors";
+import { isBadRequest } from "@vm0/api-services/errors";
 
 const router = tsr.router(zeroCustomConnectorsContract, {
   list: async ({ headers }) => {

@@ -24,10 +24,11 @@ import {
 import {
   zeroBillingAutoRechargeContract,
   zeroBillingCheckoutContract,
-} from "@vm0/core";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+} from "@vm0/api-contracts/contracts/zero-billing";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 beforeEach(() => {
   resetMockBilling();

@@ -1,9 +1,8 @@
 import { and, eq } from "drizzle-orm";
-import { agentRuns } from "../../../db/schema/agent-run";
-import { agentComposeVersions } from "../../../db/schema/agent-compose";
-import { conversations } from "../../../db/schema/conversation";
-import { checkpoints } from "../../../db/schema/checkpoint";
-import { notFound } from "../../shared/errors";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { conversations } from "@vm0/db/schema/conversation";
+import { checkpoints } from "@vm0/db/schema/checkpoint";
+import { notFound } from "@vm0/api-services/errors";
 import { updateAgentSession } from "../agent-session";
 import { registerSessionHistoryBlob } from "../session-history";
 import { logger } from "../../shared/logger";
@@ -13,6 +12,10 @@ import type {
   AgentComposeSnapshot,
   VolumeVersionsSnapshot,
 } from "./types";
+import {
+  decodeToContextArtifacts,
+  isEmptyArtifactPayload,
+} from "./decode-artifact-snapshots";
 
 const log = logger("checkpoint");
 
@@ -54,17 +57,6 @@ export async function createCheckpoint(
     throw notFound(
       "Agent compose version not found (agent may have been deleted)",
     );
-  }
-
-  // Fetch agent compose version to get composeId for session
-  const [version] = await globalThis.services.db
-    .select()
-    .from(agentComposeVersions)
-    .where(eq(agentComposeVersions.id, run.agentComposeVersionId))
-    .limit(1);
-
-  if (!version) {
-    throw notFound("Agent compose version not found");
   }
 
   log.debug(
@@ -143,10 +135,14 @@ export async function createCheckpoint(
       }
     : null;
 
-  const rawMap = request.artifactSnapshots ?? null;
-  const hasMap = rawMap !== null && Object.keys(rawMap).length > 0;
-  const artifactSnapshotsMap = hasMap ? rawMap : null;
-  const primaryArtifactName = hasMap ? Object.keys(rawMap)[0] : undefined;
+  // Normalise the artifactSnapshots payload before persisting. The webhook
+  // contract now only accepts the canonical Array<{name, version, mountPath}>
+  // shape; empty payloads (null, []) collapse to NULL so "no artifacts" has
+  // a single on-disk representation.
+  const rawPayload = request.artifactSnapshots ?? null;
+  const artifactSnapshotsForDb = isEmptyArtifactPayload(rawPayload)
+    ? null
+    : decodeToContextArtifacts(rawPayload);
 
   const snapshotFields = {
     conversationId: conversation.id,
@@ -154,7 +150,7 @@ export async function createCheckpoint(
       string,
       unknown
     >,
-    artifactSnapshots: artifactSnapshotsMap,
+    artifactSnapshots: artifactSnapshotsForDb,
     volumeVersionsSnapshot: enrichedVolumeSnapshot as unknown as Record<
       string,
       unknown
@@ -182,8 +178,7 @@ export async function createCheckpoint(
   // Bind the pre-created agent session (always populated since #10323 made
   // agent_runs.session_id NOT NULL) to this conversation and record per-run
   // snapshot fields that were not known when the session was created eagerly
-  // at run insertion. memoryName on agent_sessions is populated at run
-  // creation (see insertRunRecord); the complete webhook no longer updates it.
+  // at run insertion.
   const volumeSnapshot = request.volumeVersionsSnapshot as
     | VolumeVersionsSnapshot
     | undefined;
@@ -191,24 +186,34 @@ export async function createCheckpoint(
   if (!run.sessionId) {
     throw notFound("Agent run has no session_id");
   }
-  const agentSession = await updateAgentSession(
-    run.sessionId,
-    conversation.id,
-    {
-      artifactName: primaryArtifactName,
-    },
-  );
+  const agentSession = await updateAgentSession(run.sessionId, conversation.id);
 
   log.debug(`Agent session updated/created: ${agentSession.id}`);
 
   // Use volume versions from snapshot for return value
   const volumes = volumeSnapshot?.versions;
 
+  // Echo back the persisted canonical shape. The webhook contract requires
+  // `version` on every entry, so the undefined-branch assertion guards
+  // against a ContextArtifact leaking in from a non-webhook caller.
+  const responseArtifacts = artifactSnapshotsForDb?.map((entry) => {
+    if (entry.version === undefined) {
+      throw new Error(
+        `Invalid checkpoint: artifact "${entry.name}" missing version after normalisation`,
+      );
+    }
+    return {
+      name: entry.name,
+      version: entry.version,
+      mountPath: entry.mountPath,
+    };
+  });
+
   return {
     checkpointId: checkpoint.id,
     agentSessionId: agentSession.id,
     conversationId: conversation.id,
-    artifacts: artifactSnapshotsMap ?? undefined,
+    artifacts: responseArtifacts,
     volumes,
   };
 }

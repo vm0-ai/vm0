@@ -7,19 +7,15 @@ import {
   runsMainContract,
   ALL_RUN_STATUSES,
   type RunStatus,
-  orgTierSchema,
-} from "@vm0/core";
+} from "@vm0/api-contracts/contracts/runs";
+import { orgTierSchema } from "@vm0/api-contracts/contracts/orgs";
 import { initServices } from "../../../../src/lib/init-services";
 import {
   agentComposes,
   agentComposeVersions,
-} from "../../../../src/db/schema/agent-compose";
-import { agentRuns } from "../../../../src/db/schema/agent-run";
-import {
-  AUTO_MEMORY_MOUNT_PATH,
-  type AdditionalArtifact,
-  type AdditionalVolume,
-} from "../../../../src/lib/infra/storage/types";
+} from "@vm0/db/schema/agent-compose";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import type { AdditionalVolume } from "../../../../src/lib/infra/storage/types";
 import { and, eq, inArray, desc, gte, lte, sql } from "drizzle-orm";
 import {
   loadCompose,
@@ -28,6 +24,7 @@ import {
   markRunFailed,
   type RunDispatchError,
 } from "../../../../src/lib/infra/run";
+import type { ContextArtifact } from "../../../../src/lib/infra/run/types";
 import {
   requireAuth,
   isAuthError,
@@ -38,7 +35,7 @@ import {
   notFound,
   badRequest,
   forbidden,
-} from "../../../../src/lib/shared/errors";
+} from "@vm0/api-services/errors";
 import { resolveOrg } from "../../../../src/lib/zero/org/resolve-org";
 import { resolveCliRunContext } from "../../../../src/lib/zero/build-zero-context";
 import { resolveStartRunCompose } from "../../../../src/lib/zero/zero-run-validation";
@@ -68,37 +65,6 @@ function resolveRunAdditionalVolumes(params: {
   const merged =
     params.bodyAdditionalVolumes ?? params.resolvedAdditionalVolumes;
   return merged && merged.length > 0 ? merged : undefined;
-}
-
-/**
- * Consolidate body/resumed artifact inputs into one shape.
- *
- * When body.artifacts is non-empty, the CLI path uses the multi-mount shape
- * directly. Otherwise the route falls back to the session/checkpoint-resumed
- * singleton artifactName/Version (Zero-layer resume bookkeeping).
- */
-function consolidateArtifactInputs(
-  body: { artifacts?: AdditionalArtifact[] },
-  resolved: { artifactName?: string; artifactVersion?: string },
-): {
-  artifactName: string | undefined;
-  artifactVersion: string | undefined;
-  artifacts: AdditionalArtifact[] | undefined;
-} {
-  const useMultiArtifact =
-    Array.isArray(body.artifacts) && body.artifacts.length > 0;
-  if (useMultiArtifact) {
-    return {
-      artifactName: undefined,
-      artifactVersion: undefined,
-      artifacts: body.artifacts,
-    };
-  }
-  return {
-    artifactName: resolved.artifactName,
-    artifactVersion: resolved.artifactVersion,
-    artifacts: undefined,
-  };
 }
 
 /**
@@ -370,30 +336,15 @@ const router = tsr.router(runsMainContract, {
         resolvedAdditionalVolumes: resolved.additionalVolumes,
       });
 
-      // 6a. Route-handler shim: collapse legacy singleton + new multi-mount
-      // artifact fields into the unified shape the infra layer consumes.
-      const {
-        artifactName: effectiveArtifactName,
-        artifactVersion: effectiveArtifactVersion,
-        artifacts: effectiveArtifacts,
-      } = consolidateArtifactInputs(body, resolved);
+      // 7. Merge artifacts: resolved (checkpoint/session snapshot) first,
+      //    body.artifacts (CLI --artifact flag) second so per-run overrides
+      //    win dedup-by-name in prepareStorageManifest.
+      const mergedArtifacts: ContextArtifact[] = [
+        ...resolved.artifacts,
+        ...(body.artifacts ?? []),
+      ];
 
-      // 6b. Synthesize memory-as-artifact at the auto-memory mount path for
-      // session/checkpoint-resumed runs. Mirrors buildZeroExecutionContext's
-      // memoryArtifacts synthesis — the CLI path carries memory through the
-      // unified artifacts[] channel, not a dedicated memoryName field.
-      const effectiveArtifactsWithMemory: AdditionalArtifact[] | undefined =
-        resolved.memoryName
-          ? [
-              ...(effectiveArtifacts ?? []),
-              {
-                name: resolved.memoryName,
-                mountPath: AUTO_MEMORY_MOUNT_PATH,
-              },
-            ]
-          : effectiveArtifacts;
-
-      // 7. Concurrency check + INSERT (transaction with advisory lock)
+      // 8. Concurrency check + INSERT (transaction with advisory lock)
       const run = await globalThis.services.db.transaction(async (tx) => {
         await tx.execute(
           sql`SELECT pg_advisory_xact_lock(hashtext(${org.orgId}))`,
@@ -411,8 +362,12 @@ const router = tsr.router(runsMainContract, {
           additionalVolumes: finalAdditionalVolumes,
           resumedFromCheckpointId: body.checkpointId,
           sessionId: body.sessionId,
-          artifactName: effectiveArtifactName,
-          memoryName: resolved.memoryName,
+          // Seed agent_sessions.artifacts from the merged list so future
+          // continues can resolve the mount set. resolved.artifacts already
+          // carries any memory entry from the session/checkpoint snapshot;
+          // body.artifacts (CLI --artifact) is trusted as declared.
+          // For resumes, this is unused since the existing session row is reused.
+          artifacts: mergedArtifacts,
         });
       });
       const transactionTime = Date.now();
@@ -439,9 +394,7 @@ const router = tsr.router(runsMainContract, {
           vars: resolved.vars ?? body.vars,
           secrets: resolved.secrets ?? body.secrets,
           secretConnectorMap: resolved.secretConnectorMap,
-          artifactName: effectiveArtifactName,
-          artifactVersion: effectiveArtifactVersion,
-          artifacts: effectiveArtifactsWithMemory,
+          artifacts: mergedArtifacts,
           volumeVersions: resolved.volumeVersions ?? body.volumeVersions,
           additionalVolumes: finalAdditionalVolumes,
           environment: resolved.environment,
@@ -452,7 +405,6 @@ const router = tsr.router(runsMainContract, {
           tools: body.tools,
           settings: body.settings,
           resumeSession: resolved.resumeSession,
-          resumeArtifact: resolved.resumeArtifact,
           agentName: composeMeta.agentName,
           resumedFromCheckpointId: body.checkpointId,
           continuedFromSessionId: body.sessionId,

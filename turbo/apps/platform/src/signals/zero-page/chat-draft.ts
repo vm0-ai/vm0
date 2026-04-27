@@ -4,7 +4,8 @@ import { resetSignal, createDeferredPromise } from "../utils.ts";
 import { currentChatThreadId$ } from "../agent-chat.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
-import { zeroUploadsContract, type PersistedAttachment } from "@vm0/core";
+import type { PersistedAttachment } from "@vm0/api-contracts/contracts/chat-threads";
+import { zeroUploadsContract } from "@vm0/api-contracts/contracts/zero-uploads";
 
 // ---------------------------------------------------------------------------
 // Attachment types (moved from zero-chat.ts)
@@ -43,12 +44,12 @@ function createChatAttachment(file: File): ZeroChatAttachment {
     set(resetSignal$);
   });
 
-  const upload$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const upload$ = command(async ({ get, set }, parentSignal: AbortSignal) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroUploadsContract);
 
-    const uploadSignal = set(resetSignal$, signal);
-    const deferred = createDeferredPromise<FileInfo>(uploadSignal);
+    const signal = set(resetSignal$, parentSignal);
+    const deferred = createDeferredPromise<FileInfo>(signal);
     set(internalPromise$, deferred.promise);
 
     // Step 1: ask the server to sign a PUT URL for R2. The file body never
@@ -64,12 +65,12 @@ function createChatAttachment(file: File): ZeroChatAttachment {
           contentType: file.type,
           size: file.size,
         },
-        fetchOptions: { signal: uploadSignal },
+        fetchOptions: { signal },
       }),
       [200],
       { toast: false },
     );
-    signal.throwIfAborted();
+    parentSignal.throwIfAborted();
 
     // Step 2: PUT the file bytes straight to R2 using the presigned URL.
     // Do NOT forward auth headers or cookies — the URL's signature is the
@@ -78,9 +79,9 @@ function createChatAttachment(file: File): ZeroChatAttachment {
       method: "PUT",
       body: file,
       headers: { "content-type": file.type },
-      signal: uploadSignal,
+      signal,
     });
-    signal.throwIfAborted();
+    parentSignal.throwIfAborted();
 
     if (!putRes.ok) {
       throw new Error(`storage returned ${putRes.status} ${putRes.statusText}`);
@@ -108,6 +109,7 @@ export interface DraftSignals {
   setInput$: Command<void, [string]>;
   attachments$: Computed<ZeroChatAttachment[]>;
   uploadAttachment$: Command<Promise<void>, [File, AbortSignal]>;
+  restoreAttachments$: Command<void, [PersistedAttachment[]]>;
   removeAttachment$: Command<void, [ZeroChatAttachment]>;
   dragOver$: Computed<boolean>;
   setDragOver$: Command<void, [boolean]>;
@@ -197,6 +199,18 @@ export function createDraftSignals(): DraftSignals {
     },
   );
 
+  const restoreAttachments$ = command(
+    ({ set }, persisted: PersistedAttachment[]) => {
+      if (persisted.length === 0) {
+        return;
+      }
+      const restored = persisted.map(createRestoredAttachment);
+      set(internalAttachments$, (prev) => {
+        return [...prev, ...restored];
+      });
+    },
+  );
+
   const removeAttachment$ = command(
     ({ set }, attachment: ZeroChatAttachment) => {
       set(attachment.cancel$);
@@ -237,6 +251,7 @@ export function createDraftSignals(): DraftSignals {
     setInput$,
     attachments$,
     uploadAttachment$,
+    restoreAttachments$,
     removeAttachment$,
     dragOver$,
     setDragOver$,
@@ -285,6 +300,15 @@ export const uploadZeroAttachment$ = command(
     const draft = get(currentDraft$);
     if (draft) {
       await set(draft.uploadAttachment$, file, signal);
+    }
+  },
+);
+
+export const restoreZeroAttachments$ = command(
+  ({ get, set }, attachments: PersistedAttachment[]) => {
+    const draft = get(currentDraft$);
+    if (draft) {
+      set(draft.restoreAttachments$, attachments);
     }
   },
 );

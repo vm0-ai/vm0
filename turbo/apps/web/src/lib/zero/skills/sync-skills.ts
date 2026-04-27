@@ -36,8 +36,8 @@ import {
   listS3Objects,
   deleteS3Objects,
 } from "../../infra/s3/s3-client";
-import { skills } from "../../../db/schema/skill";
-import { storages, storageVersions } from "../../../db/schema/storage";
+import { skills } from "@vm0/db/schema/skill";
+import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { env } from "../../../env";
 import { logger } from "../../shared/logger";
 import { SEED_SKILLS } from "../seed-skills";

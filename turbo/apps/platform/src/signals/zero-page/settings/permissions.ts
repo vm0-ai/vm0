@@ -1,12 +1,14 @@
 import { command } from "ccstate";
+import type { ConnectorType } from "@vm0/connectors/connectors";
 import {
-  zeroAgentPermissionPoliciesContract,
-  isFirewallConnectorType,
   getConnectorFirewall,
-  type ConnectorType,
-  type FirewallPolicies,
-  type FirewallPolicyValue,
-} from "@vm0/core";
+  isFirewallConnectorType,
+} from "@vm0/connectors/firewalls";
+import type {
+  FirewallPolicies,
+  FirewallPolicyValue,
+} from "@vm0/connectors/firewall-types";
+import { zeroAgentPermissionPoliciesContract } from "@vm0/api-contracts/contracts/zero-agents";
 import { zeroClient$ } from "../../api-client.ts";
 import { accept } from "../../../lib/accept.ts";
 

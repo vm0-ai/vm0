@@ -1,5 +1,74 @@
 # Changelog
 
+## [0.24.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.24.3...guest-agent-v0.24.4) (2026-04-26)
+
+
+### Bug Fixes
+
+* **guest-agent:** reduce streaming upload allocations ([#11156](https://github.com/vm0-ai/vm0/issues/11156)) ([53cc666](https://github.com/vm0-ai/vm0/commit/53cc6663c89c41a50a754e34237ccf3eb61b0f27))
+* stabilize run stdout event visibility ([#11149](https://github.com/vm0-ai/vm0/issues/11149)) ([479c57e](https://github.com/vm0-ai/vm0/commit/479c57e06f22ef706e3be087a21c4a7588bbea38))
+
+## [0.24.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.24.2...guest-agent-v0.24.3) (2026-04-25)
+
+
+### Refactoring
+
+* **guest-agent:** serialize telemetry uploads via single-writer actor ([#11100](https://github.com/vm0-ai/vm0/issues/11100)) ([1a0a747](https://github.com/vm0-ai/vm0/commit/1a0a747d479e73676a87bb1cdeffaf844ebde3f4))
+
+## [0.24.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.24.1...guest-agent-v0.24.2) (2026-04-24)
+
+
+### Refactoring
+
+* **guest-agent:** replace telemetry bool flag with an upload-mode enum ([#11030](https://github.com/vm0-ai/vm0/issues/11030)) ([93bbb5f](https://github.com/vm0-ai/vm0/commit/93bbb5fdf5c90d8b4fa04b986a4ae4d25143abfc))
+
+## [0.24.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.24.0...guest-agent-v0.24.1) (2026-04-24)
+
+
+### Bug Fixes
+
+* **guest-agent:** align telemetry reads to newline boundary ([#11026](https://github.com/vm0-ai/vm0/issues/11026)) ([df5532c](https://github.com/vm0-ai/vm0/commit/df5532cadc03d52337bbccbba519f1ea20702e78))
+
+
+### Performance Improvements
+
+* **guest-agent:** skip vas snapshot for unchanged artifacts (part 2 of [#10967](https://github.com/vm0-ai/vm0/issues/10967)) ([#10989](https://github.com/vm0-ai/vm0/issues/10989)) ([4d4b18e](https://github.com/vm0-ai/vm0/commit/4d4b18ede0f7f13c767cb8d50726d9ea1e69c780))
+
+## [0.24.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.23.1...guest-agent-v0.24.0) (2026-04-24)
+
+
+### Features
+
+* thread storage id from web to guest-agent (part 1 of [#10967](https://github.com/vm0-ai/vm0/issues/10967)) ([#10978](https://github.com/vm0-ai/vm0/issues/10978)) ([85f2193](https://github.com/vm0-ai/vm0/commit/85f219383d3cf7b81ca6f41358276d5388acb8c0))
+
+## [0.23.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.23.0...guest-agent-v0.23.1) (2026-04-24)
+
+
+### Performance Improvements
+
+* **guest-agent:** parallelize session history upload and artifact snapshot ([#10962](https://github.com/vm0-ai/vm0/issues/10962)) ([27718e3](https://github.com/vm0-ai/vm0/commit/27718e39c2ff1870502dae16d72fc711c13a2cf0))
+
+## [0.23.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.22.3...guest-agent-v0.23.0) (2026-04-24)
+
+
+### Features
+
+* **guest-agent:** emit mount path in artifact snapshots ([#10924](https://github.com/vm0-ai/vm0/issues/10924)) ([0db3944](https://github.com/vm0-ai/vm0/commit/0db3944a3291367d1324eba0a9101036ec58927f)), closes [#10911](https://github.com/vm0-ai/vm0/issues/10911) [#10906](https://github.com/vm0-ai/vm0/issues/10906)
+
+## [0.22.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.22.2...guest-agent-v0.22.3) (2026-04-23)
+
+
+### Bug Fixes
+
+* **guest-agent:** reap cli process group after type=result ([#10879](https://github.com/vm0-ai/vm0/issues/10879)) ([#10897](https://github.com/vm0-ai/vm0/issues/10897)) ([1ac27f9](https://github.com/vm0-ai/vm0/commit/1ac27f9884d00d01ef072bef59c4b5389c053d1a))
+
+## [0.22.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.22.1...guest-agent-v0.22.2) (2026-04-23)
+
+
+### Performance Improvements
+
+* **runner:** post /complete from guest-agent after checkpoint lands ([#10787](https://github.com/vm0-ai/vm0/issues/10787)) ([69e00f0](https://github.com/vm0-ai/vm0/commit/69e00f0540348aaab547b13c7533bd97af88ad23))
+
 ## [0.22.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.22.0...guest-agent-v0.22.1) (2026-04-22)
 
 

@@ -17,14 +17,13 @@ import {
 import {
   isChatRoute,
   setSidebarExpanded$,
-  navigateToChat$,
 } from "../../signals/zero-page/zero-nav.ts";
 import { activeRoute$ } from "../../signals/active-route.ts";
 import {
-  currentChatThreadId$,
   currentChatAgentId$,
   currentChatAgentDisplayName$,
 } from "../../signals/agent-chat.ts";
+import { pathParams$ } from "../../signals/route.ts";
 import {
   chatListOpen$,
   setChatListOpen$,
@@ -41,8 +40,9 @@ import {
   updatePinnedAgentIds$,
   pinnedAgents$,
 } from "../../signals/zero-page/zero-pinned-agents.ts";
-import { createNewChatThread$ } from "../../signals/chat-page/chat-message.ts";
+import { createNewChatThreadOptimistically$ } from "../../signals/chat-page/optimistic-chat-thread-page.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
+import { rootSignal$ } from "../../signals/root-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
@@ -100,19 +100,11 @@ function AgentListDialogContainer() {
       ? (displayNameLoadable.data ?? "Zero")
       : "Zero";
   const subagents = useLastResolved(subagents$) ?? [];
-  const createNewChat = useSet(createNewChatThread$);
-  const navigateToChat = useSet(navigateToChat$);
+  const createNewChat = useSet(createNewChatThreadOptimistically$);
   const setExpanded = useSet(setSidebarExpanded$);
-  const pageSignal = useGet(pageSignal$);
+  const { signal: rootSignal } = useGet(rootSignal$);
   const onNewChat = (agentId: string | null) => {
-    detach(
-      createNewChat(agentId, pageSignal).then((threadId) => {
-        if (threadId) {
-          navigateToChat(threadId);
-        }
-      }),
-      Reason.DomCallback,
-    );
+    detach(createNewChat(agentId, rootSignal), Reason.DomCallback);
     setExpanded(false);
   };
   return (
@@ -128,7 +120,11 @@ function AgentListDialogContainer() {
 
 export function PinnedAgentListSection() {
   const activeRoute = useGet(activeRoute$);
-  const chatThreadId = useGet(currentChatThreadId$);
+  const pathParams = useGet(pathParams$);
+  const routeAgentId =
+    typeof pathParams?.agentId === "string" ? pathParams.agentId : null;
+  const routeThreadId =
+    typeof pathParams?.threadId === "string" ? pathParams.threadId : null;
   const sidebarAgentId = useLastResolved(currentChatAgentId$) ?? null;
   const pinnedAgentsLoadable = useLastLoadable(pinnedAgents$);
 
@@ -195,10 +191,10 @@ export function PinnedAgentListSection() {
           )}
           {pinnedAgentsLoadable.state === "hasData" &&
             pinnedAgentsLoadable.data.map((agent) => {
+              const selectedAgentId =
+                routeAgentId ?? (routeThreadId ? null : sidebarAgentId);
               const isPrimarySelected =
-                isChatRoute(activeRoute) &&
-                !chatThreadId &&
-                sidebarAgentId === agent.id;
+                isChatRoute(activeRoute) && selectedAgentId === agent.id;
               const isFromChat = sidebarAgentId === agent.id;
               return (
                 <div

@@ -314,6 +314,35 @@ mod tests {
 
     #[cfg(unix)]
     #[tokio::test]
+    async fn ensure_rejects_ca_dir_symlink_without_chmodding_target() {
+        use std::os::unix::fs::{PermissionsExt, symlink};
+
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("target");
+        std::fs::create_dir(&target).unwrap();
+        std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let home_root = dir.path().join("home");
+        std::fs::create_dir(&home_root).unwrap();
+        let home = HomePaths::with_root(home_root);
+        symlink(&target, home.ca_dir()).unwrap();
+
+        let err = ensure(&home).await.unwrap_err();
+
+        assert!(err.to_string().contains("not a directory"), "got {err:?}");
+        assert_eq!(
+            mode_of(&target),
+            0o755,
+            "target dir should not be chmodded through ca_dir symlink"
+        );
+        assert!(
+            !target.join(CA_CERT).exists(),
+            "CA files should not be generated through ca_dir symlink"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
     async fn ensure_rebuilds_combined_without_rotating_ca() {
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().to_path_buf());

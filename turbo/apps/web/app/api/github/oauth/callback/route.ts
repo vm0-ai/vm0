@@ -4,9 +4,9 @@ import { eq, and } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
 import { env } from "../../../../../src/env";
 import { encryptSecretValue } from "../../../../../src/lib/shared/crypto/secrets-encryption";
-import { githubInstallations } from "../../../../../src/db/schema/github-installation";
-import { githubUserLinks } from "../../../../../src/db/schema/github-user-link";
-import { connectors } from "../../../../../src/db/schema/connector";
+import { githubInstallations } from "@vm0/db/schema/github-installation";
+import { githubUserLinks } from "@vm0/db/schema/github-user-link";
+import { connectors } from "@vm0/db/schema/connector";
 import {
   getInstallationAccessToken,
   getInstallationInfo,

@@ -8,15 +8,16 @@ import {
   click,
 } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
   zeroAgentsMainContract,
   zeroAgentInstructionsContract,
-  zeroTeamContract,
-} from "@vm0/core";
+} from "@vm0/api-contracts/contracts/zero-agents";
+import { zeroTeamContract } from "@vm0/api-contracts/contracts/zero-team";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 const DEFAULT_AGENT = Object.freeze({
   id: "c0000000-0000-4000-a000-000000000001",

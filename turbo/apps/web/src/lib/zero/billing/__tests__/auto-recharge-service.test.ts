@@ -11,6 +11,7 @@ import {
   updateOrgAutoRecharge,
   getOrgAutoRechargeFields,
   setOrgCredits,
+  lockOrgAndSetCredits,
 } from "../../../../__tests__/api-test-helpers";
 
 // Stripe mock — must be defined before importing the service
@@ -261,6 +262,31 @@ describe("auto-recharge-service", () => {
 
       // Only one should have created an invoice
       expect(stripeMocks.invoicesCreate).toHaveBeenCalledTimes(1);
+    });
+
+    it("rechecks the latest balance before claiming a recharge slot", async () => {
+      const cusId = uniqueId("cus");
+      await updateOrgTier(user.orgId, "pro");
+      await updateOrgStripeFields(user.orgId, {
+        stripeCustomerId: cusId,
+      });
+      await updateOrgAutoRecharge(user.orgId, {
+        autoRechargeEnabled: true,
+        autoRechargeThreshold: 110_000,
+        autoRechargeAmount: 5000,
+      });
+
+      const blocker = await lockOrgAndSetCredits(user.orgId, 250_000);
+      await blocker.ready;
+
+      const triggerPromise = triggerAutoRecharge(user.orgId);
+      blocker.release();
+      await triggerPromise;
+      await blocker.done;
+
+      expect(stripeMocks.invoicesCreate).not.toHaveBeenCalled();
+      const fields = await getOrgAutoRechargeFields(user.orgId);
+      expect(fields?.autoRechargePendingAt).toBeNull();
     });
 
     it("skips when Stripe customer is deleted", async () => {

@@ -1,5 +1,6 @@
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
-import { zeroOrgDomainsContract, createErrorResponse } from "@vm0/core";
+import { zeroOrgDomainsContract } from "@vm0/api-contracts/contracts/zero-org-domains";
+import { createErrorResponse } from "@vm0/api-contracts/contracts/errors";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
   requireAuth,
@@ -12,7 +13,7 @@ import {
   removeOrgDomain,
   setOrgDomainVerified,
 } from "../../../../../src/lib/zero/org/org-member-service";
-import { isForbidden } from "../../../../../src/lib/shared/errors";
+import { isForbidden } from "@vm0/api-services/errors";
 
 const router = tsr.router(zeroOrgDomainsContract, {
   list: async ({ headers }) => {

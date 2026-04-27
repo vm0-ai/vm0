@@ -1,22 +1,23 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import { server } from "../../../mocks/server.ts";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
-  FeatureSwitchKey,
   logsListContract,
   logsByIdContract,
-  zeroRunAgentEventsContract,
-} from "@vm0/core";
+} from "@vm0/api-contracts/contracts/logs";
+import { zeroRunAgentEventsContract } from "@vm0/api-contracts/contracts/zero-runs";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import type {
   LogDetail,
   AgentEventsResponse,
 } from "../../../signals/zero-page/log-types.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { setMockComposesList } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 function makeLogDetail(overrides: Partial<LogDetail>): LogDetail {
   return {
@@ -183,11 +184,11 @@ describe("activity paged events", () => {
 
     // Start on the list page so setup can complete while the run is still
     // "running" (polling on the detail page would loop forever).
-    // Enable ActivityLogList so the breadcrumb link back to /activities is rendered.
+    // Enable ZeroDebug so the breadcrumb link back to /activities is rendered.
     detachedSetupPage({
       context,
       path: "/activities",
-      featureSwitches: { [FeatureSwitchKey.ActivityLogList]: true },
+      featureSwitches: { [FeatureSwitchKey.ZeroDebug]: true },
     });
 
     await waitFor(() => {

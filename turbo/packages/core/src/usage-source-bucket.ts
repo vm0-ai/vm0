@@ -1,4 +1,4 @@
-import type { TriggerSource } from "./contracts/logs";
+import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 
 /**
  * Source bucket for per-user usage insight grouping.

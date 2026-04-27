@@ -19,8 +19,8 @@ import {
   zeroOrgContract,
   zeroOrgLeaveContract,
   zeroOrgDeleteContract,
-  type OrgResponse,
-} from "@vm0/core";
+} from "@vm0/api-contracts/contracts/zero-org";
+import type { OrgResponse } from "@vm0/api-contracts/contracts/orgs";
 import { org$, isOrgAdmin$, refreshOrg$ } from "../../../../signals/org.ts";
 import { clerk$, resolveWebOrigin } from "../../../../signals/auth.ts";
 import { zeroClient$ } from "../../../../signals/api-client.ts";
@@ -52,6 +52,7 @@ import {
   saveError$,
   setSaveError$,
 } from "../../../../signals/zero-page/settings/org-manage-tabs-state.ts";
+import { readImageDimensions } from "./read-image-dimensions.ts";
 
 const sectionCardStyle = {
   border: "0.7px solid hsl(var(--gray-400))",
@@ -66,24 +67,6 @@ function extractErrorMessage(
 ): string {
   const body = result.body as { error?: { message?: string } } | undefined;
   return body?.error?.message ?? fallback;
-}
-
-function readImageDimensions(
-  file: File,
-): Promise<{ width: number; height: number } | null> {
-  const url = URL.createObjectURL(file);
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.addEventListener("load", () => {
-      URL.revokeObjectURL(url);
-      resolve({ width: img.naturalWidth, height: img.naturalHeight });
-    });
-    img.addEventListener("error", () => {
-      URL.revokeObjectURL(url);
-      resolve(null);
-    });
-    img.src = url;
-  });
 }
 
 async function uploadLogo(

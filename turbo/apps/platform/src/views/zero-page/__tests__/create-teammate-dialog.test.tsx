@@ -8,15 +8,16 @@ import {
   fill,
   click,
 } from "../../../__tests__/page-helper.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
   type ZeroAgentRequest,
   zeroAgentsMainContract,
   zeroAgentInstructionsContract,
-} from "@vm0/core";
+} from "@vm0/api-contracts/contracts/zero-agents";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 function mockTeamWithSubagent() {
   setMockTeam([

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { FeatureSwitchKey, isFeatureEnabled } from "@vm0/core";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
 import { initServices } from "../../../../../src/lib/init-services";
 import { loadFeatureSwitchOverrides } from "../../../../../src/lib/zero/user/feature-switches-service";
@@ -129,6 +130,7 @@ export async function POST(request: Request): Promise<Response> {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}` },
       body: openaiForm,
+      signal: request.signal,
     },
   );
 

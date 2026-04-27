@@ -1,7 +1,10 @@
 use std::path::PathBuf;
 
 use async_trait::async_trait;
-use sandbox::{Sandbox, SandboxConfig, SandboxError, SandboxFactory};
+use sandbox::{
+    Sandbox, SandboxConfig, SandboxError, SandboxFactory, SandboxInitializationPhase,
+    SandboxInvalidStateContext,
+};
 use sha2::{Digest, Sha256};
 use tracing::{info, warn};
 
@@ -166,11 +169,15 @@ impl FirecrackerFactory {
         device_pool: std::sync::Arc<tokio::sync::Mutex<nbd_cow::pool::DevicePool>>,
     ) -> Result<Self, SandboxError> {
         let t = std::time::Instant::now();
+        let mode = match config.snapshot.as_ref() {
+            Some(snapshot) => prerequisites::PrerequisiteMode::FactorySnapshotRestore { snapshot },
+            None => prerequisites::PrerequisiteMode::FactoryFresh,
+        };
         prerequisites::check_prerequisites(&prerequisites::PrerequisiteConfig {
             binary_path: &config.binary_path,
             kernel_path: &config.kernel_path,
             rootfs_path: &config.rootfs_path,
-            snapshot: config.snapshot.as_ref(),
+            mode,
         })
         .await?;
         info!(
@@ -258,20 +265,27 @@ impl SandboxFactory for FirecrackerFactory {
 
     async fn startup(&mut self) -> sandbox::Result<()> {
         if self.started {
-            return Err(SandboxError::CreationFailed(
-                "factory already started".into(),
-            ));
+            return Err(SandboxError::InvalidState {
+                context: SandboxInvalidStateContext::Factory,
+                state: "started".into(),
+                message: "factory already started".into(),
+            });
         }
 
         // Create netns pool only if not provided externally (shared pool case).
         if self.netns_pool.is_none() {
             let t = std::time::Instant::now();
-            let netns_pool = NetnsPool::create(NetnsPoolConfig {
+            let netns_config = NetnsPoolConfig {
                 proxy_port: self.config.proxy_port,
                 dns_port: self.config.dns_port,
-            })
-            .await
-            .map_err(|e| SandboxError::CreationFailed(format!("netns pool: {e}")))?;
+            }
+            .into_checked()?;
+            let netns_pool = NetnsPool::create_checked(netns_config).await.map_err(|e| {
+                SandboxError::Initialization {
+                    phase: SandboxInitializationPhase::Factory,
+                    message: format!("netns pool: {e}"),
+                }
+            })?;
             info!(
                 elapsed_ms = t.elapsed().as_millis() as u64,
                 "netns pool created"
@@ -283,7 +297,10 @@ impl SandboxFactory for FirecrackerFactory {
         let rootfs = &self.config.rootfs_path;
         let base_size = tokio::fs::metadata(rootfs)
             .await
-            .map_err(|e| SandboxError::CreationFailed(format!("base image metadata: {e}")))?
+            .map_err(|e| SandboxError::Initialization {
+                phase: SandboxInitializationPhase::Factory,
+                message: format!("base image metadata: {e}"),
+            })?
             .len();
 
         info!(
@@ -328,18 +345,25 @@ impl SandboxFactory for FirecrackerFactory {
     }
 
     async fn create(&self, config: SandboxConfig) -> sandbox::Result<Box<dyn Sandbox>> {
+        if !self.started {
+            return Err(SandboxError::InvalidState {
+                context: SandboxInvalidStateContext::Factory,
+                state: "not started".into(),
+                message: "factory not started".into(),
+            });
+        }
+
         let id = config.id.to_string();
         let sock_paths = SockPaths::new(self.runtime_paths.sock_dir(&id));
 
         // Acquire a pre-warmed COW slot from the pool.
         // The slot provides: workspace dir (already created) and cow file.
-        let slot = self
-            .cow_pool()
-            .lock()
-            .await
-            .acquire()
-            .await
-            .map_err(|e| SandboxError::CreationFailed(format!("acquire COW slot: {e}")))?;
+        let slot = self.cow_pool().lock().await.acquire().await.map_err(|e| {
+            SandboxError::Initialization {
+                phase: SandboxInitializationPhase::SandboxAllocation,
+                message: format!("acquire COW slot: {e}"),
+            }
+        })?;
 
         // The slot workspace is {workspaces_dir}/{slot_uuid}/.
         // Rename to {workspaces_dir}/{sandbox_id}/ for doctor correlation.
@@ -352,9 +376,10 @@ impl SandboxFactory for FirecrackerFactory {
         if let Err(e) = tokio::fs::rename(&slot.workspace, &target_workspace).await {
             // Rollback: remove the slot workspace and COW file.
             crate::cow_pool::destroy_slot(slot);
-            return Err(SandboxError::CreationFailed(format!(
-                "rename workspace: {e}"
-            )));
+            return Err(SandboxError::Initialization {
+                phase: SandboxInitializationPhase::SandboxAllocation,
+                message: format!("rename workspace: {e}"),
+            });
         }
 
         let sandbox_paths = SandboxPaths::new(target_workspace);
@@ -372,9 +397,10 @@ impl SandboxFactory for FirecrackerFactory {
             let sd = sock_paths.dir().to_owned();
             let _ = tokio::fs::remove_dir_all(&ws).await;
             let _ = tokio::fs::remove_dir_all(&sd).await;
-            return Err(SandboxError::CreationFailed(format!(
-                "mkdir vsock dir: {e}"
-            )));
+            return Err(SandboxError::Initialization {
+                phase: SandboxInitializationPhase::SandboxAllocation,
+                message: format!("mkdir vsock dir: {e}"),
+            });
         }
 
         // Acquire a network namespace from the pool.
@@ -385,15 +411,22 @@ impl SandboxFactory for FirecrackerFactory {
                 let sd = sock_paths.dir().to_owned();
                 let _ = tokio::fs::remove_dir_all(&ws).await;
                 let _ = tokio::fs::remove_dir_all(&sd).await;
-                return Err(SandboxError::CreationFailed(format!("acquire netns: {e}")));
+                return Err(SandboxError::Initialization {
+                    phase: SandboxInitializationPhase::SandboxAllocation,
+                    message: format!("acquire netns: {e}"),
+                });
             }
         };
 
         // Create NBD COW device (~15ms via netlink, no subprocess).
-        let base_image = self
-            .base_image_path
-            .as_ref()
-            .ok_or_else(|| SandboxError::CreationFailed("factory not started".into()))?;
+        let base_image =
+            self.base_image_path
+                .as_ref()
+                .ok_or_else(|| SandboxError::InvalidState {
+                    context: SandboxInvalidStateContext::Factory,
+                    state: "started without base image".into(),
+                    message: "factory base image path missing".into(),
+                })?;
         let cow_device = match NbdCowDevice::create(
             base_image,
             &cow_file,
@@ -411,9 +444,10 @@ impl SandboxFactory for FirecrackerFactory {
                 }
                 let _ = tokio::fs::remove_dir_all(sandbox_paths.workspace()).await;
                 let _ = tokio::fs::remove_dir_all(sock_paths.dir()).await;
-                return Err(SandboxError::CreationFailed(format!(
-                    "create NBD COW device: {e}"
-                )));
+                return Err(SandboxError::Initialization {
+                    phase: SandboxInitializationPhase::SandboxAllocation,
+                    message: format!("create NBD COW device: {e}"),
+                });
             }
         };
 
@@ -614,6 +648,84 @@ mod tests {
             host_device: "test-ve".into(),
             peer_ip: "10.200.0.2".into(),
         }
+    }
+
+    fn test_config(base_dir: PathBuf) -> FirecrackerConfig {
+        FirecrackerConfig {
+            binary_path: PathBuf::from("/tmp/firecracker"),
+            kernel_path: PathBuf::from("/tmp/vmlinux"),
+            rootfs_path: PathBuf::from("/tmp/rootfs.ext4"),
+            base_dir,
+            profile: "vm0/default".into(),
+            proxy_port: None,
+            dns_port: None,
+            snapshot: None,
+        }
+    }
+
+    fn test_factory(started: bool) -> FirecrackerFactory {
+        FirecrackerFactory {
+            config: test_config(PathBuf::from("/tmp/factory-test-base")),
+            factory_paths: FactoryPaths::new(PathBuf::from("/tmp/factory-test")),
+            runtime_paths: RuntimePaths::new(),
+            netns_pool: None,
+            device_pool: std::sync::Arc::new(tokio::sync::Mutex::new(
+                nbd_cow::pool::DevicePool::new(nbd_cow::pool::DevicePoolConfig::default()),
+            )),
+            base_image_path: None,
+            base_image_size: 0,
+            cow_pool: None,
+            started,
+            leak_tx: None,
+            leak_cleanup_handle: None,
+        }
+    }
+
+    fn assert_factory_invalid_state(
+        err: SandboxError,
+        expected_state: &str,
+        expected_message: &str,
+    ) {
+        match err {
+            SandboxError::InvalidState {
+                context,
+                state,
+                message,
+            } => {
+                assert_eq!(context, SandboxInvalidStateContext::Factory);
+                assert_eq!(state, expected_state);
+                assert_eq!(message, expected_message);
+            }
+            other => panic!("expected factory invalid-state error, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn startup_rejects_already_started_factory() {
+        let mut factory = test_factory(true);
+
+        let err = factory.startup().await.unwrap_err();
+
+        assert_factory_invalid_state(err, "started", "factory already started");
+    }
+
+    #[tokio::test]
+    async fn create_rejects_not_started_factory() {
+        let factory = test_factory(false);
+        let config = sandbox::SandboxConfig {
+            id: sandbox::SandboxId::new_v4(),
+            resources: sandbox::ResourceLimits {
+                cpu_count: 1,
+                memory_mb: 512,
+            },
+        };
+
+        let err = match factory.create(config).await {
+            Ok(_) => panic!("create should fail before startup"),
+            Err(err) => err,
+        };
+
+        assert_factory_invalid_state(err, "not started", "factory not started");
     }
 
     #[tokio::test]

@@ -1,4 +1,4 @@
-import { clientCreditUsage } from "../../../db/schema/client-credit-usage";
+import { clientCreditUsage } from "@vm0/db/schema/client-credit-usage";
 import { logger } from "../../shared/logger";
 
 const log = logger("service:credit-usage");

@@ -35,7 +35,7 @@ function cronRequest(secret?: string) {
  */
 function recentDate(): { date: Date; dateStr: string } {
   const now = new Date();
-  const date = new Date(now.getTime() - 60_000); // 1 minute ago
+  const date = new Date(now.getTime() - 120_000);
   return { date, dateStr: todayDateStr() };
 }
 

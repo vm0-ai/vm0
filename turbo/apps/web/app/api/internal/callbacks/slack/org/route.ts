@@ -3,16 +3,14 @@ import { and, eq, sql } from "drizzle-orm";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { verifyCallback } from "../../../../../../src/lib/infra/callback";
 import { decryptSecretValue } from "../../../../../../src/lib/shared/crypto/secrets-encryption";
-import { slackOrgInstallations } from "../../../../../../src/db/schema/slack-org-installation";
-import { slackOrgConnections } from "../../../../../../src/db/schema/slack-org-connection";
-import { slackOrgThreadSessions } from "../../../../../../src/db/schema/slack-org-thread-session";
-import { agentRuns } from "../../../../../../src/db/schema/agent-run";
-import { zeroRuns } from "../../../../../../src/db/schema/zero-run";
-import {
-  isFeatureEnabled,
-  FeatureSwitchKey,
-  getModelDisplayName,
-} from "@vm0/core";
+import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
+import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
+import { slackOrgThreadSessions } from "@vm0/db/schema/slack-org-thread-session";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { getModelDisplayName } from "@vm0/core/model-display-name";
 import { loadFeatureSwitchOverrides } from "../../../../../../src/lib/zero/user/feature-switches-service";
 import { findNewSessionId } from "../../../../../../src/lib/infra/session/find-new-session";
 import {
@@ -139,23 +137,18 @@ async function resolveRespondedByLabel(
 }
 
 /**
- * Return the model display name when the run used a non-default model, else
- * undefined. Comparison is against the org's default `claude-code` provider's
- * `selectedModel` — Slack agents are claude-code today, so a single framework
- * lookup covers all current callers. If the org has no default model
- * configured, any `selectedModel` counts as non-default.
+ * Return the model display name for the footer. Always resolves to a label
+ * so the footer always shows which model responded. Falls back to the org's
+ * default `claude-code` model when the run has no explicit `selectedModel`.
  */
-async function resolveModelIfNonDefault(
+async function resolveModel(
   orgId: string,
   selectedModel: string | undefined,
 ): Promise<string | undefined> {
-  if (!selectedModel) return undefined;
-  const defaultProvider = await getOrgDefaultModelProvider(
-    orgId,
-    "claude-code",
-  );
-  if (defaultProvider?.selectedModel === selectedModel) return undefined;
-  return getModelDisplayName(selectedModel);
+  const model =
+    selectedModel ??
+    (await getOrgDefaultModelProvider(orgId, "claude-code"))?.selectedModel;
+  return model ? getModelDisplayName(model) : undefined;
 }
 
 /**
@@ -175,12 +168,12 @@ async function resolveFooterText(
       payload.channelId,
       payload.threadTs,
     ),
-    resolveModelIfNonDefault(orgId, selectedModel),
+    resolveModel(orgId, selectedModel),
   ]);
 
   const parts: string[] = [];
   if (respondedBy) parts.push(respondedBy);
-  if (mentionerCount > 2) {
+  if (mentionerCount > 1) {
     const replyTo = await resolveReplyToMention(payload.connectionId);
     if (replyTo) parts.push(`Reply to ${replyTo}`);
   }

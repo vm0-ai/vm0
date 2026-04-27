@@ -8,10 +8,11 @@ import {
   fill,
   click,
 } from "../../../__tests__/page-helper.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
-import { onboardingStatusContract } from "@vm0/core";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
+import { onboardingStatusContract } from "@vm0/api-contracts/contracts/onboarding";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 function mockOnboardingNeeded() {
   server.use(

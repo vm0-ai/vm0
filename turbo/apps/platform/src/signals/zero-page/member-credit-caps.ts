@@ -1,5 +1,5 @@
 import { command, computed, state, type Command, type State } from "ccstate";
-import { zeroMemberCreditCapContract } from "@vm0/core";
+import { zeroMemberCreditCapContract } from "@vm0/api-contracts/contracts/zero-member-credit-cap";
 import { zeroClient$ } from "../api-client.ts";
 import { usageMembersAsync$ } from "../usage-page/usage-signals.ts";
 import { accept } from "../../lib/accept.ts";
@@ -59,7 +59,13 @@ export const setMemberCreditCap$ = command(
   ) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroMemberCreditCapContract);
-    await accept(client.set({ body: params }), [200]);
+    await accept(
+      client.set({
+        body: params,
+        fetchOptions: { signal: _signal },
+      }),
+      [200],
+    );
     set(memberCreditCapsReload$, (x) => {
       return x + 1;
     });

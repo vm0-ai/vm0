@@ -24,6 +24,8 @@ static MOCK_SERVER: LazyLock<MockServer> = LazyLock::new(|| {
         std::env::set_var("VM0_WORKING_DIR", "/tmp/test-workdir");
         std::env::set_var("VM0_PROMPT", "test prompt");
         std::env::set_var("VERCEL_PROTECTION_BYPASS", "test-bypass-value");
+        std::env::set_var("VM0_SANDBOX_ID", "00000000-0000-4000-8000-000000000abc");
+        std::env::set_var("VM0_SANDBOX_REUSE_RESULT", "reused");
     }
     server
 });
@@ -414,20 +416,147 @@ async fn put_presigned_file_retry_then_succeed() {
 }
 
 #[tokio::test]
+async fn put_presigned_file_retry_fails_if_source_shrinks() {
+    let _guard = TEST_MUTEX.lock().unwrap();
+    let server = &*MOCK_SERVER;
+
+    let dir = tempfile::tempdir().unwrap();
+    let file_path = dir.path().join("retry-shrunk.bin");
+    std::fs::write(&file_path, b"retry file data").unwrap();
+
+    let fail_mock = server.mock(|when, then| {
+        when.method(PUT).path("/test/put-file-retry-shrunk");
+        then.status(500);
+    });
+    let success_mock = server.mock(|when, then| {
+        when.method(PUT)
+            .path("/test/put-file-retry-shrunk")
+            .body("short");
+        then.status(200);
+    });
+
+    let url = format!("{}/test/put-file-retry-shrunk", server.base_url());
+    let path = file_path.clone();
+    let handle = tokio::spawn(async move {
+        guest_agent::http::put_presigned_file(&url, &path, "application/gzip").await
+    });
+
+    loop {
+        if fail_mock.calls_async().await >= 1 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    std::fs::write(&file_path, b"short").unwrap();
+    fail_mock.delete_async().await;
+
+    let result = handle.await.unwrap();
+    assert!(result.is_err());
+    success_mock.assert_calls_async(0).await;
+    success_mock.delete_async().await;
+}
+
+#[tokio::test]
+async fn put_presigned_file_retry_uses_original_length_if_source_grows() {
+    let _guard = TEST_MUTEX.lock().unwrap();
+    let server = &*MOCK_SERVER;
+
+    let dir = tempfile::tempdir().unwrap();
+    let file_path = dir.path().join("retry-grown.bin");
+    std::fs::write(&file_path, b"retry file data").unwrap();
+
+    let fail_mock = server.mock(|when, then| {
+        when.method(PUT).path("/test/put-file-retry-grown");
+        then.status(500);
+    });
+    let success_mock = server.mock(|when, then| {
+        when.method(PUT)
+            .path("/test/put-file-retry-grown")
+            .header("Content-Length", "15")
+            .body("retry file data");
+        then.status(200);
+    });
+
+    let url = format!("{}/test/put-file-retry-grown", server.base_url());
+    let path = file_path.clone();
+    let handle = tokio::spawn(async move {
+        guest_agent::http::put_presigned_file(&url, &path, "application/gzip").await
+    });
+
+    loop {
+        if fail_mock.calls_async().await >= 1 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    std::fs::write(&file_path, b"retry file data plus extra").unwrap();
+    fail_mock.delete_async().await;
+
+    let result = handle.await.unwrap();
+    assert!(result.is_ok());
+    success_mock.assert_calls_async(1).await;
+    success_mock.delete_async().await;
+}
+
+#[tokio::test]
+async fn put_presigned_file_retry_uses_original_handle_if_path_is_replaced() {
+    let _guard = TEST_MUTEX.lock().unwrap();
+    let server = &*MOCK_SERVER;
+
+    let dir = tempfile::tempdir().unwrap();
+    let file_path = dir.path().join("retry-replaced.bin");
+    let replacement_path = dir.path().join("replacement.bin");
+    std::fs::write(&file_path, b"retry file data").unwrap();
+    std::fs::write(&replacement_path, b"changed content").unwrap();
+
+    let fail_mock = server.mock(|when, then| {
+        when.method(PUT).path("/test/put-file-retry-replaced");
+        then.status(500);
+    });
+    let success_mock = server.mock(|when, then| {
+        when.method(PUT)
+            .path("/test/put-file-retry-replaced")
+            .header("Content-Length", "15")
+            .body("retry file data");
+        then.status(200);
+    });
+
+    let url = format!("{}/test/put-file-retry-replaced", server.base_url());
+    let path = file_path.clone();
+    let handle = tokio::spawn(async move {
+        guest_agent::http::put_presigned_file(&url, &path, "application/gzip").await
+    });
+
+    loop {
+        if fail_mock.calls_async().await >= 1 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    std::fs::rename(&replacement_path, &file_path).unwrap();
+    fail_mock.delete_async().await;
+
+    let result = handle.await.unwrap();
+    assert!(result.is_ok());
+    success_mock.assert_calls_async(1).await;
+    success_mock.delete_async().await;
+}
+
+#[tokio::test]
 async fn put_presigned_file_large_multi_chunk() {
     let _guard = TEST_MUTEX.lock().unwrap();
     let server = &*MOCK_SERVER;
 
     let dir = tempfile::tempdir().unwrap();
     let file_path = dir.path().join("large.bin");
-    // 40000 bytes — 2 full 16384-byte chunks + 1 short 7232-byte chunk
-    let data = vec![0x42u8; 40000];
+    // 600000 bytes — spans multiple 256 KiB streaming chunks.
+    let data = vec![0x42u8; 600000];
     std::fs::write(&file_path, &data).unwrap();
 
     let mock = server.mock(|when, then| {
         when.method(PUT)
             .path("/test/put-file-large")
-            .header("Content-Length", "40000");
+            .header("Content-Length", "600000");
         then.status(200);
     });
 
@@ -857,20 +986,20 @@ async fn send_event_failure_writes_error_flag() {
 }
 
 // =========================================================================
-// Group 8: final_upload delta semantics
+// Group 8: telemetry flush delta semantics
 //
-// These back the parallel-checkpoint-with-catch-up pattern in `main.rs`:
-// on the happy path, the first `final_upload` runs concurrently with
+// Backs the parallel-checkpoint-with-catch-up pattern in `main.rs`: the
+// first `flush(UploadMode::Live)` runs concurrently with
 // `checkpoint::create_checkpoint` and reads the `sandbox_ops` log before
-// checkpoint's sub-op records are written; a second `final_upload` after
-// the join picks up the delta. If `final_upload` ever stopped being
-// incremental — re-reading from offset 0 — that pattern would duplicate
-// records; if position-tracking broke in the other direction, checkpoint
-// sub-ops would be lost entirely.
+// checkpoint's sub-op records are written; a second
+// `flush(UploadMode::Final)` after the join picks up the delta. If the
+// uploader ever stopped being incremental — re-reading from offset 0 —
+// that pattern would duplicate records; if position-tracking broke in
+// the other direction, checkpoint sub-ops would be lost entirely.
 // =========================================================================
 
 #[tokio::test]
-async fn final_upload_is_incremental_between_calls() {
+async fn flush_is_incremental_between_calls() {
     let _guard = TEST_MUTEX.lock().unwrap();
     let server = &*MOCK_SERVER;
 
@@ -896,20 +1025,25 @@ async fn final_upload_is_incremental_between_calls() {
         then.status(200);
     });
 
-    let masker = SecretMasker::from_raw("");
+    let masker = std::sync::Arc::new(SecretMasker::from_raw(""));
+    let telemetry = guest_agent::telemetry::Telemetry::spawn(masker);
 
-    // Pre-checkpoint record → parallel-pass upload captures it.
+    // Pre-checkpoint record → first flush captures it.
     guest_common::telemetry::record_sandbox_op("first_op", Duration::from_millis(10), true, None);
-    guest_agent::telemetry::final_upload(&masker)
+    telemetry
+        .flush(guest_agent::telemetry::UploadMode::Live)
         .await
-        .expect("first upload should succeed");
+        .expect("first flush should succeed");
 
     // Simulates a checkpoint sub-op written AFTER the parallel pass read
-    // the sandbox_ops file. The catch-up must pick it up.
+    // the sandbox_ops file. The catch-up flush must pick it up.
     guest_common::telemetry::record_sandbox_op("second_op", Duration::from_millis(20), true, None);
-    guest_agent::telemetry::final_upload(&masker)
+    telemetry
+        .flush(guest_agent::telemetry::UploadMode::Final)
         .await
-        .expect("catch-up upload should succeed");
+        .expect("catch-up flush should succeed");
+
+    telemetry.shutdown().await;
 
     // The first upload carried `first_op` and matched `first_op_mock`.
     // The catch-up MUST NOT have carried `first_op` (position tracking
@@ -924,6 +1058,259 @@ async fn final_upload_is_incremental_between_calls() {
     let _ = std::fs::remove_file(pos_file);
 }
 
-// Group 9 (memory-unchanged checkpoint skip tests) removed in #10602. Memory
-// now rides in env::artifacts(); the artifact-loop path is covered by existing
-// artifact integration tests and the VAS-snapshot unit tests in artifact.rs.
+/// Regression for #11008. Combines two distinct guarantees that
+/// together produce the "exactly one HTTP POST" assertion:
+///
+/// 1. **Channel serialization**: every flush goes through the same
+///    `tokio::select!` arm in `run()`, so `upload_telemetry` calls are
+///    strictly sequential — `save_position` is single-writer.
+/// 2. **Empty-delta short-circuit**: the second and third flushes
+///    observe `pos == file_len` after the first flush advanced the
+///    position, hit the `system_log.is_empty() && metrics.is_empty()
+///    && sandbox_ops.is_empty()` early-return in `upload_telemetry`,
+///    and skip HTTP entirely.
+///
+/// Without (1), two flushes could read the same pos and post twice.
+/// Without (2), three flushes would all serialize but each would post
+/// (the second and third with empty bodies). Asserting `calls == 1`
+/// pins both: pos never regresses (1) and empty deltas don't generate
+/// HTTP traffic (2).
+#[tokio::test]
+async fn concurrent_flushes_do_not_regress_pos_file() {
+    let _guard = TEST_MUTEX.lock().unwrap();
+    let server = &*MOCK_SERVER;
+
+    let ops_file = guest_common::telemetry::sandbox_ops_log();
+    let pos_file = guest_agent::paths::telemetry_sandbox_ops_pos_file();
+    let _ = std::fs::remove_file(ops_file);
+    let _ = std::fs::remove_file(pos_file);
+
+    let upload_mock = server.mock(|when, then| {
+        when.method(POST).path("/api/webhooks/agent/telemetry");
+        then.status(200);
+    });
+
+    let masker = std::sync::Arc::new(SecretMasker::from_raw(""));
+    let telemetry = guest_agent::telemetry::Telemetry::spawn(masker);
+
+    // Record one op, then fire several concurrent flushes. Pre-refactor a
+    // tick + final could both read the same pos and race on save_position;
+    // post-refactor the select serialises them, so only the first sees a
+    // non-empty delta and only one HTTP POST happens.
+    guest_common::telemetry::record_sandbox_op("only_op", Duration::from_millis(5), true, None);
+
+    let (r1, r2, r3) = tokio::join!(
+        telemetry.flush(guest_agent::telemetry::UploadMode::Live),
+        telemetry.flush(guest_agent::telemetry::UploadMode::Live),
+        telemetry.flush(guest_agent::telemetry::UploadMode::Live),
+    );
+    r1.expect("flush 1 ok");
+    r2.expect("flush 2 ok");
+    r3.expect("flush 3 ok");
+
+    telemetry.shutdown().await;
+
+    // Pos file points at end of the file — no regression.
+    let pos: u64 = std::fs::read_to_string(pos_file)
+        .unwrap()
+        .trim()
+        .parse()
+        .unwrap();
+    let file_len = std::fs::metadata(ops_file).unwrap().len();
+    assert_eq!(pos, file_len, "pos must match file length, no regression");
+
+    // Exactly one upload carried the delta — the others saw empty files.
+    upload_mock.assert_calls_async(1).await;
+
+    upload_mock.delete_async().await;
+    let _ = std::fs::remove_file(ops_file);
+    let _ = std::fs::remove_file(pos_file);
+}
+
+/// Pins three invariants that have no other test coverage:
+/// 1. `flush` propagates the upload's `Err` to the caller (rather than
+///    swallowing it via `let _ = reply.send(...)`).
+/// 2. The uploader loop **keeps running** after a failed upload — a
+///    subsequent `flush` must succeed, not return `TelemetryUnavailable`.
+/// 3. A failed upload does **not** advance the pos file, so the deferred
+///    delta is re-included in the next attempt (and uploaded once
+///    HTTP recovers).
+#[tokio::test]
+async fn flush_propagates_error_then_loop_recovers() {
+    let _guard = TEST_MUTEX.lock().unwrap();
+    let server = &*MOCK_SERVER;
+
+    let ops_file = guest_common::telemetry::sandbox_ops_log();
+    let pos_file = guest_agent::paths::telemetry_sandbox_ops_pos_file();
+    let _ = std::fs::remove_file(ops_file);
+    let _ = std::fs::remove_file(pos_file);
+
+    let masker = std::sync::Arc::new(SecretMasker::from_raw(""));
+    let telemetry = guest_agent::telemetry::Telemetry::spawn(masker);
+
+    // Force upload_telemetry to fire HTTP by writing a delta.
+    guest_common::telemetry::record_sandbox_op(
+        "first_attempt_op",
+        Duration::from_millis(5),
+        true,
+        None,
+    );
+
+    // First attempt: server returns 500.
+    let fail_mock = server.mock(|when, then| {
+        when.method(POST).path("/api/webhooks/agent/telemetry");
+        then.status(500);
+    });
+
+    let r1 = telemetry
+        .flush(guest_agent::telemetry::UploadMode::Live)
+        .await;
+    assert!(r1.is_err(), "flush must propagate the HTTP 500 to caller");
+    fail_mock.assert_calls_async(1).await;
+    fail_mock.delete_async().await;
+
+    // Second attempt: server returns 200, AND must still see
+    // `first_attempt_op` in the body because the failed first upload
+    // did not advance the pos file.
+    let success_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/telemetry")
+            .body_includes("first_attempt_op");
+        then.status(200);
+    });
+
+    let r2 = telemetry
+        .flush(guest_agent::telemetry::UploadMode::Live)
+        .await;
+    assert!(
+        r2.is_ok(),
+        "loop must keep accepting flushes after a failed upload, got {r2:?}",
+    );
+    success_mock.assert_calls_async(1).await;
+
+    telemetry.shutdown().await;
+
+    success_mock.delete_async().await;
+    let _ = std::fs::remove_file(ops_file);
+    let _ = std::fs::remove_file(pos_file);
+}
+
+// =========================================================================
+// Group 9: Complete webhook
+//
+// The guest calls /complete right after the checkpoint row lands — the host
+// transitions the run to `completed` seconds earlier than waiting for the
+// runner's fallback after VM teardown. The runner's POST still fires on VM
+// exit and is absorbed by the route's idempotency check.
+// =========================================================================
+
+#[tokio::test]
+async fn complete_report_success_posts_full_payload_when_metadata_present() {
+    let _guard = TEST_MUTEX.lock().unwrap();
+    let server = &*MOCK_SERVER;
+
+    // VM0_SANDBOX_ID / VM0_SANDBOX_REUSE_RESULT come from MOCK_SERVER init.
+    let mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/complete")
+            .header("Authorization", "Bearer test-token-abc123")
+            .json_body(json!({
+                "runId": "test-run-001",
+                "exitCode": 0,
+                "lastEventSequence": 7,
+                "sandboxId": "00000000-0000-4000-8000-000000000abc",
+                "sandboxReuseResult": "reused",
+            }));
+        then.status(200).json_body(json!({
+            "success": true,
+            "status": "completed",
+        }));
+    });
+
+    guest_agent::complete::report_success(
+        guest_agent::env::sandbox_id(),
+        guest_agent::env::sandbox_reuse_result(),
+        Some(7),
+    )
+    .await;
+
+    mock.assert_calls_async(1).await;
+    mock.delete_async().await;
+}
+
+/// Unset runner metadata (guest launched without `VM0_SANDBOX_ID` /
+/// `VM0_SANDBOX_REUSE_RESULT`, e.g. a pre-#10787 runner): empty strings
+/// must serialize as absent so the payload carries only `runId` +
+/// `exitCode`. Matches the `skip_serializing_if = "Option::is_none"`
+/// contract end-to-end.
+#[tokio::test]
+async fn complete_report_success_omits_metadata_when_env_absent() {
+    let _guard = TEST_MUTEX.lock().unwrap();
+    let server = &*MOCK_SERVER;
+
+    let mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/complete")
+            .json_body(json!({
+                "runId": "test-run-001",
+                "exitCode": 0,
+            }));
+        then.status(200).json_body(json!({"success": true}));
+    });
+
+    guest_agent::complete::report_success("", "", None).await;
+
+    mock.assert_calls_async(1).await;
+    mock.delete_async().await;
+}
+
+#[tokio::test]
+async fn complete_report_success_swallows_server_error() {
+    let _guard = TEST_MUTEX.lock().unwrap();
+    let server = &*MOCK_SERVER;
+
+    let mock = server.mock(|when, then| {
+        when.method(POST).path("/api/webhooks/agent/complete");
+        then.status(500);
+    });
+
+    // 1 attempt — no retry, no panic. Fire-and-forget semantics mean the
+    // runner fallback is the correctness guarantee.
+    guest_agent::complete::report_success(
+        guest_agent::env::sandbox_id(),
+        guest_agent::env::sandbox_reuse_result(),
+        None,
+    )
+    .await;
+
+    mock.assert_calls_async(1).await;
+    mock.delete_async().await;
+}
+
+/// 4xx takes a different branch in `post_json` than 5xx: it returns Err
+/// immediately without retrying. Production is most likely to hit 401 when
+/// the sandbox token has expired by the time /complete fires. Verify the
+/// error still swallows cleanly and the runner fallback will be the only
+/// call that actually transitions the run.
+#[tokio::test]
+async fn complete_report_success_swallows_4xx_auth_error() {
+    let _guard = TEST_MUTEX.lock().unwrap();
+    let server = &*MOCK_SERVER;
+
+    let mock = server.mock(|when, then| {
+        when.method(POST).path("/api/webhooks/agent/complete");
+        then.status(401).json_body(json!({
+            "error": { "message": "Run expired", "code": "UNAUTHORIZED" }
+        }));
+    });
+
+    guest_agent::complete::report_success(
+        guest_agent::env::sandbox_id(),
+        guest_agent::env::sandbox_reuse_result(),
+        None,
+    )
+    .await;
+
+    mock.assert_calls_async(1).await;
+    mock.delete_async().await;
+}

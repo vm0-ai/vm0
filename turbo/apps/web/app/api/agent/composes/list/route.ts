@@ -1,5 +1,5 @@
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
-import { composesListContract } from "@vm0/core";
+import { composesListContract } from "@vm0/api-contracts/contracts/composes";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
   requireAuth,
@@ -7,7 +7,7 @@ import {
 } from "../../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
 import { listComposes } from "../../../../../src/lib/zero/zero-compose-service";
-import { isNotFound, isForbidden } from "../../../../../src/lib/shared/errors";
+import { isNotFound, isForbidden } from "@vm0/api-services/errors";
 
 const router = tsr.router(composesListContract, {
   list: async ({ headers }) => {

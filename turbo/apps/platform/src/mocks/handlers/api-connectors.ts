@@ -1,17 +1,13 @@
-/**
- * Connectors API Handlers
- *
- * Mock handlers for /api/zero/connectors endpoint (connectors via zero layer).
- */
-
 import {
   CONNECTOR_TYPES,
-  type ConnectorResponse,
   type ConnectorType,
+} from "@vm0/connectors/connectors";
+import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
+import {
   zeroConnectorsByTypeContract,
   zeroConnectorScopeDiffContract,
   zeroConnectorsMainContract,
-} from "@vm0/core";
+} from "@vm0/api-contracts/contracts/zero-connectors";
 import { mockApi } from "../msw-contract.ts";
 
 const ALL_CONNECTOR_TYPES = Object.keys(CONNECTOR_TYPES) as ConnectorType[];

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
@@ -10,14 +10,14 @@ import {
   setMockSchedules,
   createMockScheduleResponse,
 } from "../../../mocks/handlers/api-schedules.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
   zeroSchedulesMainContract,
   zeroSchedulesByNameContract,
   zeroSchedulesEnableContract,
   zeroScheduleRunContract,
   type ScheduleResponse,
-} from "@vm0/core";
+} from "@vm0/api-contracts/contracts/zero-schedules";
 import {
   fetchZeroSchedules$,
   zeroScheduleEntries$,
@@ -33,10 +33,7 @@ import {
 } from "../zero-schedule.ts";
 
 const context = testContext();
-
-afterEach(() => {
-  vi.restoreAllMocks();
-});
+const mockApi = createMockApi(context);
 
 function mockScheduleResponse(): ScheduleResponse {
   return createMockScheduleResponse({

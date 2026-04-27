@@ -33,7 +33,7 @@ describe("zero chat page display - tagline with userName via TypewriterText", ()
 // CHAT-D-008: suggested prompt connector icons render with the correct count
 describe("zero chat page display - suggested prompt connector icons", () => {
   it("renders the correct number of connector icon images for prompt cards that have connectors", async () => {
-    const allUseCases = getCategories().flatMap((c) => {
+    const allUseCases = getCategories(undefined).flatMap((c) => {
       return c.cases;
     });
 

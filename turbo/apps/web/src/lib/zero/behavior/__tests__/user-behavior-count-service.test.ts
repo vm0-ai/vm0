@@ -8,7 +8,7 @@ import {
   recordBehavior,
 } from "../user-behavior-count-service";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route
-import { userBehaviorCount } from "../../../../db/schema/user-behavior-count";
+import { userBehaviorCount } from "@vm0/db/schema/user-behavior-count";
 
 const BEHAVIOR_AUDIO_INPUT = "audio_input_attempt";
 const BEHAVIOR_OTHER = "other_behavior";

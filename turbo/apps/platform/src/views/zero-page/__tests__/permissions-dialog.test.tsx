@@ -1,20 +1,21 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
+import type { FirewallPolicies } from "@vm0/connectors/firewall-types";
 import {
-  type FirewallPolicies,
   zeroAgentsByIdContract,
   zeroAgentInstructionsContract,
   zeroAgentPermissionPoliciesContract,
-  zeroUserConnectorsContract,
-} from "@vm0/core";
+} from "@vm0/api-contracts/contracts/zero-agents";
+import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 function mockAPIs({
   permissionPolicies = null,
@@ -192,13 +193,12 @@ describe("permissions dialog - grouped connector (Slack)", () => {
     expect(allowBtn).toBeDefined();
     expect(denyBtn).toBeDefined();
 
-    // Neither should have the active "bg-muted" class (mixed state)
-    expect(allowBtn!.className).not.toContain("bg-muted text-foreground");
-    expect(denyBtn!.className).not.toContain("bg-muted text-foreground");
+    // Neither should have an active semantic color class (mixed state)
+    expect(allowBtn!.className).not.toContain("bg-emerald");
+    expect(denyBtn!.className).not.toContain("bg-rose");
   });
 
   it("should highlight Allow at group level when all permissions in group are allow", async () => {
-    // Default policies are all "allow" when not specified
     mockAPIs();
     detachedSetupPage({ context, path: "/agents/my-agent" });
     await openPermissionsDrawer();
@@ -213,8 +213,12 @@ describe("permissions dialog - grouped connector (Slack)", () => {
       return b.textContent?.includes("Allow") ?? false;
     });
 
-    // Should have active styling since all permissions default to "allow"
-    expect(allowBtn!.className).toContain("bg-muted");
+    // Click Allow to ensure the group is explicitly set to "allow"
+    click(allowBtn!);
+
+    await waitFor(() => {
+      expect(allowBtn!.className).toContain("bg-emerald");
+    });
   });
 
   it("should set all permissions in a group when group-level Allow/Deny is clicked", async () => {
@@ -250,7 +254,7 @@ describe("permissions dialog - grouped connector (Slack)", () => {
     const individualDeny = individualButtons.find((b) => {
       return b.textContent?.includes("Deny") ?? false;
     });
-    expect(individualDeny!.className).toContain("bg-muted");
+    expect(individualDeny!.className).toContain("bg-rose");
   });
 
   it("should show unknown endpoints toggle defaulting to Allow", async () => {
@@ -271,7 +275,7 @@ describe("permissions dialog - grouped connector (Slack)", () => {
     const allowBtn = pillButtons.find((b) => {
       return b.textContent?.includes("Allow") ?? false;
     });
-    expect(allowBtn!.className).toContain("bg-muted");
+    expect(allowBtn!.className).toContain("bg-emerald");
   });
 
   it("should show unknown endpoints as Allow when saved as allow", async () => {
@@ -288,6 +292,6 @@ describe("permissions dialog - grouped connector (Slack)", () => {
     const allowBtn = pillButtons.find((b) => {
       return b.textContent?.includes("Allow") ?? false;
     });
-    expect(allowBtn!.className).toContain("bg-muted");
+    expect(allowBtn!.className).toContain("bg-emerald");
   });
 });

@@ -4,15 +4,17 @@ import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
-import { type OrgDomain, zeroOrgDomainsContract } from "@vm0/core";
+import { zeroOrgDomainsContract } from "@vm0/api-contracts/contracts/zero-org-domains";
+import type { OrgDomain } from "@vm0/api-contracts/contracts/org-members";
 import { setMockOrg, resetMockOrg } from "../../../mocks/handlers/api-org.ts";
 import {
   setMockOrgDomains,
   resetMockOrgDomains,
 } from "../../../mocks/handlers/api-org-domains.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 const verifiedDomain = {
   id: "dom_1",
@@ -74,10 +76,9 @@ describe("org domains tab - display loading", () => {
     // ORG-D-076
     setMockOrg({ role: "admin" });
     server.use(
-      mockApi(zeroOrgDomainsContract.list, ({ respond: _ }) => {
-        return new Promise(() => {
-          // intentionally never resolves to keep loading state
-        });
+      mockApi(zeroOrgDomainsContract.list, ({ never }) => {
+        // Intentionally hangs until test teardown aborts the current signal.
+        return never();
       }),
     );
 

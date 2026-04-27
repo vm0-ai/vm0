@@ -53,6 +53,7 @@ vi.mock("stripe", () => {
 import { POST } from "../route";
 
 const context = testContext();
+const APP_ORIGIN = "http://app.localhost:3002";
 
 describe("POST /api/zero/billing/portal", () => {
   let user: UserContext;
@@ -62,6 +63,7 @@ describe("POST /api/zero/billing/portal", () => {
     user = await context.setupUser();
 
     vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_fake");
+    vi.stubEnv("NEXT_PUBLIC_APP_URL", APP_ORIGIN);
     reloadEnv();
 
     stripeMocks.billingPortalSessionsCreate.mockReset();
@@ -76,7 +78,7 @@ describe("POST /api/zero/billing/portal", () => {
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ returnUrl: "http://localhost/settings" }),
+        body: JSON.stringify({ returnUrl: `${APP_ORIGIN}/settings` }),
       },
     );
     const response = await POST(request);
@@ -92,7 +94,7 @@ describe("POST /api/zero/billing/portal", () => {
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ returnUrl: "http://localhost/settings" }),
+        body: JSON.stringify({ returnUrl: `${APP_ORIGIN}/settings` }),
       },
     );
     const response = await POST(request);
@@ -140,7 +142,7 @@ describe("POST /api/zero/billing/portal", () => {
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ returnUrl: "http://localhost/settings" }),
+        body: JSON.stringify({ returnUrl: `${APP_ORIGIN}/settings` }),
       },
     );
     const response = await POST(request);
@@ -163,7 +165,7 @@ describe("POST /api/zero/billing/portal", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          returnUrl: "http://localhost/settings/billing",
+          returnUrl: `${APP_ORIGIN}/settings/billing`,
         }),
       },
     );
@@ -172,5 +174,23 @@ describe("POST /api/zero/billing/portal", () => {
     expect(response.status).toBe(200);
     const data = await response.json();
     expect(data.url).toBe("https://billing.stripe.com/session/test");
+  });
+
+  it("returns 400 when returnUrl origin does not match NEXT_PUBLIC_APP_URL", async () => {
+    const request = createTestRequest(
+      "http://localhost:3000/api/zero/billing/portal",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          returnUrl: "https://evil.example.com/settings/billing",
+        }),
+      },
+    );
+    const response = await POST(request);
+
+    expect(response.status).toBe(400);
+    const data = await response.json();
+    expect(data.error.code).toBe("BAD_REQUEST");
   });
 });

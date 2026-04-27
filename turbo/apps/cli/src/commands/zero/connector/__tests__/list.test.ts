@@ -234,6 +234,35 @@ describe("zero connector list command", () => {
     });
   });
 
+  describe("strictFeatureFlag filtering", () => {
+    it("excludes zapier when ZapierConnector feature switch is disabled (default)", async () => {
+      server.use(
+        stubConnectors([connectedGithub]),
+        stubAgent(AGENT_UUID, "test"),
+        stubUserConnectors(AGENT_UUID, []),
+      );
+
+      await listCommand.parseAsync(["node", "cli", "--agent", AGENT_UUID]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).not.toContain("zapier");
+    });
+
+    it("includes connectors with api-token auth and no strictFeatureFlag even when their flag is disabled", async () => {
+      server.use(
+        stubConnectors([connectedGithub]),
+        stubAgent(AGENT_UUID, "test"),
+        stubUserConnectors(AGENT_UUID, []),
+      );
+
+      await listCommand.parseAsync(["node", "cli", "--agent", AGENT_UUID]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      // mercury has api-token auth and no strictFeatureFlag so it is always visible
+      expect(logCalls).toContain("mercury");
+    });
+  });
+
   describe("alias", () => {
     it("should have ls alias", () => {
       expect(listCommand.alias()).toBe("ls");

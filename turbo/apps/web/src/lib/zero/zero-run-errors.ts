@@ -1,4 +1,4 @@
-import { isApiError } from "../shared/errors";
+import { isApiError } from "@vm0/api-services/errors";
 import { isRunDispatchError } from "../infra/run";
 
 /**

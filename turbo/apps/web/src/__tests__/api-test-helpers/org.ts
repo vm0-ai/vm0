@@ -9,6 +9,7 @@ export {
   insertOrgMembersEntry,
   insertOrgDefaultModelProvider,
   setOrgCredits,
+  lockOrgAndSetCredits,
 } from "../db-test-seeders/org";
 
 // Re-exports: read-only assertions

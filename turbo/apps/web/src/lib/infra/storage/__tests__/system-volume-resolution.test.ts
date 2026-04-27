@@ -10,7 +10,7 @@ import {
   uniqueId,
   type UserContext,
 } from "../../../../__tests__/test-helpers";
-import { SYSTEM_ORG_ID } from "@vm0/core";
+import { SYSTEM_ORG_ID } from "@vm0/core/storage-names";
 import type { AgentVolumeConfig } from "../types";
 
 const context = testContext();
@@ -59,6 +59,7 @@ describe("System Volume Resolution (VolumeConfig.system)", () => {
       user.orgId,
       user.orgId,
       user.userId,
+      [],
     );
 
     expect(manifest.storages).toHaveLength(1);
@@ -77,6 +78,7 @@ describe("System Volume Resolution (VolumeConfig.system)", () => {
       user.orgId,
       user.orgId,
       user.userId,
+      [],
     );
 
     expect(manifest.storages).toHaveLength(1);
@@ -99,6 +101,7 @@ describe("System Volume Resolution (VolumeConfig.system)", () => {
       user.orgId,
       user.orgId,
       user.userId,
+      [],
     );
 
     expect(manifest.storages).toHaveLength(1);
@@ -118,6 +121,7 @@ describe("System Volume Resolution (VolumeConfig.system)", () => {
       user.orgId,
       user.orgId,
       user.userId,
+      [],
     );
 
     expect(manifest.storages).toHaveLength(0);
@@ -134,6 +138,7 @@ describe("System Volume Resolution (VolumeConfig.system)", () => {
       user.orgId,
       user.orgId,
       user.userId,
+      [],
     );
 
     expect(manifest.storages).toHaveLength(1);

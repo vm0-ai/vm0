@@ -1,11 +1,11 @@
+import { getConnectorEnvironmentMapping } from "@vm0/connectors/connector-utils";
 import {
   connectorTypeSchema,
-  getConnectorEnvironmentMapping,
   type ConnectorType,
-} from "@vm0/core";
+} from "@vm0/connectors/connectors";
 import { and, eq } from "drizzle-orm";
 import { logger } from "../../shared/logger";
-import { connectors } from "../../../db/schema/connector";
+import { connectors } from "@vm0/db/schema/connector";
 import { PROVIDER_HANDLERS } from "../connector/provider-registry";
 import { getSecretValues } from "../secret/secret-service";
 

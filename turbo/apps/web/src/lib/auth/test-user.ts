@@ -1,6 +1,6 @@
 import { clerkClient } from "@clerk/nextjs/server";
 import { desc, eq } from "drizzle-orm";
-import { orgMembersCache } from "../../db/schema/org-members-cache";
+import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import {
   getOrgMetadata,
   type OrgMetadata,

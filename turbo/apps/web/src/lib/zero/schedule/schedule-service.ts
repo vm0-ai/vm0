@@ -1,12 +1,17 @@
 import { eq, and, lte, inArray, desc } from "drizzle-orm";
 import { Cron } from "croner";
-import { zeroAgentSchedules } from "../../../db/schema/zero-agent-schedule";
-import { agentComposes } from "../../../db/schema/agent-compose";
-import { zeroAgents } from "../../../db/schema/zero-agent";
-import { agentRuns } from "../../../db/schema/agent-run";
-import { zeroRuns } from "../../../db/schema/zero-run";
+import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
+import { agentComposes } from "@vm0/db/schema/agent-compose";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { decryptSecretsMap } from "../../shared/crypto";
-import { notFound, badRequest, schedulePast } from "../../shared/errors";
+import {
+  notFound,
+  badRequest,
+  schedulePast,
+  isInsufficientCredits,
+} from "@vm0/api-services/errors";
 import { logger } from "../../shared/logger";
 import { createZeroRun } from "../zero-run-service";
 import { buildSchedulePrompt } from "../integration-prompt";
@@ -793,7 +798,28 @@ export async function executeDueSchedules(): Promise<{
       await executeSchedule(schedule, Date.now());
       executed++;
     } catch (error) {
-      log.error(`Failed to execute schedule ${schedule.name}:`, error);
+      // InsufficientCredits is an expected user-state rejection (HTTP 402),
+      // not a system bug — log it at `warn` so it doesn't trip Axiom's
+      // error-level alerts. All other failures stay at `error`. Both paths
+      // share the consecutive-failures + auto-disable book-keeping below,
+      // which eventually stops the per-tick log on a persistently empty org.
+      const isCreditError = isInsufficientCredits(error);
+      const failureContext = {
+        scheduleId: schedule.id,
+        scheduleName: schedule.name,
+        orgId: schedule.orgId,
+        userId: schedule.userId,
+        error: error instanceof Error ? error.message : String(error),
+        // Include stack on the error path so Axiom retains it for diagnosis
+        // of real system failures. Credit rejections don't need a stack —
+        // they're a deterministic user state, not a bug.
+        stack: error instanceof Error ? error.stack : undefined,
+      };
+      if (isCreditError) {
+        log.warn("Schedule skipped: insufficient credits", failureContext);
+      } else {
+        log.error("Schedule pre-run failed", failureContext);
+      }
 
       // Pre-run failure: increment consecutive failures and schedule next attempt
       // (mirrors callback failure handling from #8430)
@@ -831,7 +857,10 @@ export async function executeDueSchedules(): Promise<{
         log.warn("Schedule auto-disabled after consecutive pre-run failures", {
           scheduleId: schedule.id,
           scheduleName: schedule.name,
+          orgId: schedule.orgId,
+          userId: schedule.userId,
           consecutiveFailures: newFailureCount,
+          reason: isCreditError ? "insufficient_credits" : "pre_run_failure",
         });
       }
 

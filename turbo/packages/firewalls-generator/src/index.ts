@@ -7,7 +7,6 @@
  */
 
 import { generate as generateAgentmail } from "./agentmail";
-import { generate as generateAgentphone } from "./agentphone";
 import { generate as generateAmplitude } from "./amplitude";
 import { generate as generateAnthropicManagedAgents } from "./anthropic-managed-agents";
 import { generate as generateAhrefs } from "./ahrefs";
@@ -23,6 +22,7 @@ import { generate as generateBraveSearch } from "./brave-search";
 import { generate as generateBrevo } from "./brevo";
 import { generate as generateBrightData } from "./bright-data";
 import { generate as generateBrowserbase } from "./browserbase";
+import { generate as generateBrowserUse } from "./browser-use";
 import { generate as generateBrowserless } from "./browserless";
 import { generate as generateBuffer } from "./buffer";
 import { generate as generateCalCom } from "./cal-com";
@@ -175,7 +175,6 @@ import { createGoogleGenerator, googleServiceNames } from "./google";
 
 const GENERATORS: Record<string, () => Promise<void>> = {
   agentmail: generateAgentmail,
-  agentphone: generateAgentphone,
   amplitude: generateAmplitude,
   "anthropic-managed-agents": generateAnthropicManagedAgents,
   ahrefs: generateAhrefs,
@@ -191,6 +190,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   brevo: generateBrevo,
   "bright-data": generateBrightData,
   browserbase: generateBrowserbase,
+  "browser-use": generateBrowserUse,
   browserless: generateBrowserless,
   buffer: generateBuffer,
   "cal-com": generateCalCom,

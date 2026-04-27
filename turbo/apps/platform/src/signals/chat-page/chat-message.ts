@@ -1,8 +1,7 @@
 import { command, computed, state } from "ccstate";
-import { onRef, resetSignal } from "../utils.ts";
+import { onRef } from "../utils.ts";
 import { detachedNavigateTo$ } from "../route.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
-import { zeroOnboardingStatus$ } from "../zero-page/zero-onboarding.ts";
 import { navigateToChat$ } from "../zero-page/zero-nav.ts";
 import {
   currentChatThreadId$,
@@ -10,26 +9,18 @@ import {
   reloadChatThreads$,
 } from "../agent-chat.ts";
 import {
-  chatMessagesContract,
-  chatThreadsContract,
   chatThreadByIdContract,
-  type ModelSelectionRequest,
   type PagedChatMessage,
-} from "@vm0/core";
+} from "@vm0/api-contracts/contracts/chat-threads";
 import { accept } from "../../lib/accept.ts";
-import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
-import { talkDraft$ } from "../zero-page/chat-draft.ts";
-import { prepareUserMessageFromDraft$ } from "./resolve-draft-attachments.ts";
+import { zeroClient$ } from "../api-client.ts";
 
-export {
-  chatThreads$,
-  currentChatThread$,
-  reloadChatThreads$,
-} from "../agent-chat.ts";
+export { chatThreads$, reloadChatThreads$ } from "../agent-chat.ts";
 
 export {
   zeroChatAttachments$,
   uploadZeroAttachment$,
+  restoreZeroAttachments$,
   removeZeroAttachment$,
   zeroDragOver$,
   setZeroDragOver$,
@@ -41,7 +32,7 @@ export {
 // Re-export paged message types from @vm0/core
 // ---------------------------------------------------------------------------
 
-export type { PagedChatMessage } from "@vm0/core";
+export type { PagedChatMessage } from "@vm0/api-contracts/contracts/chat-threads";
 
 /** A group of consecutive messages with the same role. */
 export interface GroupedChatMessageGroup {
@@ -49,129 +40,6 @@ export interface GroupedChatMessageGroup {
   role: "user" | "assistant";
   messages: PagedChatMessage[];
 }
-
-// ---------------------------------------------------------------------------
-// Thread creation
-// ---------------------------------------------------------------------------
-
-async function createChatThread(
-  createClient: ZeroClientFactory,
-  agentId: string,
-  title?: string,
-): Promise<{ id: string; title: string | null }> {
-  const client = createClient(chatThreadsContract);
-  const result = await accept(
-    client.create({ body: { agentId, ...(title ? { title } : {}) } }),
-    [201],
-  );
-  return { id: result.body.id, title: result.body.title };
-}
-
-// ---------------------------------------------------------------------------
-// Talk-page send signal
-// ---------------------------------------------------------------------------
-
-/**
- * Signal for talk-page sends that must survive page navigation.
- *
- * The talk page navigates from `/agents/:id/chat` to `/chats/:id` on send,
- * which aborts the page-level signal.  This dedicated signal lets the
- * talk page pass a cancellable AbortSignal without coupling to the page
- * lifecycle.  It is reset each time `startNewZeroSession$` fires (which
- * is called before every talk-page send), so stale controllers are
- * cleaned up automatically.
- */
-export const resetTalkSendSignal$ = resetSignal();
-
-// ---------------------------------------------------------------------------
-// Session lifecycle
-// ---------------------------------------------------------------------------
-
-export const startNewZeroSession$ = command(({ set }) => {
-  set(resetTalkSendSignal$);
-});
-
-export const createNewChatThread$ = command(
-  async (
-    { get, set },
-    agentComposeId: string | null,
-    _signal: AbortSignal,
-  ): Promise<string | null> => {
-    const resolvedComposeId =
-      agentComposeId ?? (await get(zeroOnboardingStatus$)).defaultAgentId;
-
-    if (!resolvedComposeId) {
-      toast.error("No agent available for new chat session");
-      return null;
-    }
-
-    set(startNewZeroSession$);
-
-    const createClient = get(zeroClient$);
-    const thread = await createChatThread(createClient, resolvedComposeId);
-
-    set(reloadChatThreads$);
-    return thread.id;
-  },
-);
-
-// ---------------------------------------------------------------------------
-// Send new thread message (used by agent talk page)
-// ---------------------------------------------------------------------------
-
-/**
- * Send the first message in a new or threadless chat. Returns the threadId.
- * Used by the agent talk page which navigates to the thread after sending.
- *
- * `modelSelection` comes from the composer's per-run model picker and is
- * always provided — `null` stores "no override" (inherit agent/org default)
- * on the newly created thread; a non-null object sets the thread override.
- */
-export const sendNewThreadMessage$ = command(
-  async (
-    { get, set },
-    agentId: string,
-    prompt: string,
-    modelSelection: ModelSelectionRequest | null,
-    signal: AbortSignal,
-  ): Promise<string | null> => {
-    // Mirror the in-thread send path: resolve the talk-page draft's uploaded
-    // attachments so the first message carries structured `attachFiles` just
-    // like follow-ups do (fixes #10243 for the new-thread entry point).
-    const draft = get(talkDraft$);
-    const prepared = await set(
-      prepareUserMessageFromDraft$,
-      draft,
-      prompt,
-      signal,
-    );
-    if (!prepared) {
-      return null;
-    }
-
-    const client = get(zeroClient$)(chatMessagesContract);
-    const result = await accept(
-      client.send({
-        body: {
-          agentId,
-          prompt: prepared.prompt,
-          hasTextContent: prepared.hasTextContent,
-          clientMessageId: crypto.randomUUID(),
-          modelSelection,
-          attachFiles: prepared.attachFiles,
-        },
-        fetchOptions: { signal },
-      }),
-      [201],
-    );
-    signal.throwIfAborted();
-
-    // Drop the now-persisted attachments from the talk draft.
-    set(draft.clear$);
-    set(reloadChatThreads$);
-    return result.body.threadId;
-  },
-);
 
 // ---------------------------------------------------------------------------
 // Delete thread

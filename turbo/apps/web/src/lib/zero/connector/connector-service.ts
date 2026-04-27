@@ -1,18 +1,22 @@
 import { eq, and, inArray } from "drizzle-orm";
 import {
-  CONNECTOR_TYPES,
-  type ConnectorAuthMethodType,
-  type ConnectorType,
-  type ConnectorResponse,
-  connectorTypeSchema,
   deriveApiTokenConnectedTypes,
   getApiTokenFieldsByType,
-} from "@vm0/core";
-import { connectors } from "../../../db/schema/connector";
-import { userPlatformConnectors } from "../../../db/schema/user-platform-connector";
-import { secrets } from "../../../db/schema/secret";
-import { variables } from "../../../db/schema/variable";
-import { notFound, badRequest } from "../../shared/errors";
+} from "@vm0/connectors/connector-utils";
+import type {
+  ConnectorAuthMethodType,
+  ConnectorType,
+} from "@vm0/connectors/connectors";
+import {
+  CONNECTOR_TYPES,
+  connectorTypeSchema,
+} from "@vm0/connectors/connectors";
+import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
+import { connectors } from "@vm0/db/schema/connector";
+import { userPlatformConnectors } from "@vm0/db/schema/user-platform-connector";
+import { secrets } from "@vm0/db/schema/secret";
+import { variables } from "@vm0/db/schema/variable";
+import { notFound, badRequest } from "@vm0/api-services/errors";
 import { logger } from "../../shared/logger";
 import { getSecretValue, upsertSecretByOrg } from "../secret/secret-service";
 import { PROVIDER_HANDLERS } from "./provider-registry";

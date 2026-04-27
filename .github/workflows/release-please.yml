@@ -26,10 +26,12 @@ jobs:
       releases_created: ${{ steps.release.outputs.releases_created }}
       cli_release_created: ${{ steps.release.outputs['turbo/apps/cli--release_created'] }}
       web_release_created: ${{ steps.release.outputs['turbo/apps/web--release_created'] }}
+      api_release_created: ${{ steps.release.outputs['turbo/apps/api--release_created'] }}
       app_release_created: ${{ steps.release.outputs['turbo/apps/platform--release_created'] }}
       runner_rs_release_created: ${{ steps.release.outputs['crates/runner--release_created'] }}
       runner_rs_version: ${{ steps.release.outputs['crates/runner--version'] }}
       web_version: ${{ steps.release.outputs['turbo/apps/web--version'] }}
+      api_version: ${{ steps.release.outputs['turbo/apps/api--version'] }}
       app_version: ${{ steps.release.outputs['turbo/apps/platform--version'] }}
       cli_version: ${{ steps.release.outputs['turbo/apps/cli--version'] }}
     steps:
@@ -88,7 +90,7 @@ jobs:
       - name: Notify Slack - Starting
         id: slack-start
         if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
-        uses: slackapi/slack-github-action@v3.0.1
+        uses: slackapi/slack-github-action@v3.0.2
         with:
           method: chat.postMessage
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -135,7 +137,7 @@ jobs:
 
       - name: Notify Slack - Success
         if: ${{ success() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v3.0.1
+        uses: slackapi/slack-github-action@v3.0.2
         with:
           method: chat.update
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -151,7 +153,7 @@ jobs:
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v3.0.1
+        uses: slackapi/slack-github-action@v3.0.2
         with:
           method: chat.update
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -187,7 +189,7 @@ jobs:
       - name: Notify Slack - Starting
         id: slack-start
         if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
-        uses: slackapi/slack-github-action@v3.0.1
+        uses: slackapi/slack-github-action@v3.0.2
         with:
           method: chat.postMessage
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -213,6 +215,20 @@ jobs:
         env:
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
 
+      - name: Resolve Web production environment
+        id: web-production-env
+        uses: ./.github/actions/web-api-env
+        with:
+          app: web
+          environment: production
+          database-url: ${{ steps.get-db-url.outputs.database-url }}
+          web-url: https://www.vm0.ai
+          app-url: https://app.vm0.ai
+          api-url: ${{ vars.VM0_API_URL }}
+        env:
+          REPO_VARS_JSON: ${{ toJSON(vars) }}
+          REPO_SECRETS_JSON: ${{ toJSON(secrets) }}
+
       - name: Build Web Staged Production Deployment
         id: deploy
         uses: ./.github/actions/vercel-deploy
@@ -226,127 +242,7 @@ jobs:
           skip-domain: "true"
           skip-start: "true"
           skip-finish: "true"
-          environment-variables: |
-            DATABASE_URL=${{ steps.get-db-url.outputs.database-url }}
-            VM0_API_URL=${{ vars.VM0_API_URL }}
-            BLOG_BASE_URL=https://www.vm0.ai
-            STRAPI_URL=${{ vars.STRAPI_URL }}
-            CLERK_PUBLISHABLE_KEY=${{ vars.CLERK_PUBLISHABLE_KEY }}
-            CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}
-            E2B_API_KEY=${{ secrets.E2B_API_KEY }}
-            R2_ACCOUNT_ID=${{ vars.R2_ACCOUNT_ID }}
-            R2_ACCESS_KEY_ID=${{ secrets.R2_ACCESS_KEY_ID }}
-            R2_SECRET_ACCESS_KEY=${{ secrets.R2_SECRET_ACCESS_KEY }}
-            R2_USER_STORAGES_BUCKET_NAME=${{ vars.R2_USER_STORAGES_BUCKET_NAME }}
-            SECRETS_ENCRYPTION_KEY=${{ secrets.SECRETS_ENCRYPTION_KEY }}
-            AXIOM_TOKEN_SESSIONS=${{ secrets.AXIOM_TOKEN_SESSIONS }}
-            AXIOM_TOKEN_TELEMETRY=${{ secrets.AXIOM_TOKEN_TELEMETRY }}
-            AXIOM_DATASET_SUFFIX=prod
-            CRON_SECRET=${{ secrets.CRON_SECRET }}
-            OFFICIAL_RUNNER_SECRET=${{ secrets.OFFICIAL_RUNNER_SECRET }}
-            RUNNER_DEFAULT_GROUP=vm0/production
-            ABLY_API_KEY=${{ secrets.ABLY_API_KEY }}
-            OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}
-            VAPID_PUBLIC_KEY=${{ vars.VAPID_PUBLIC_KEY }}
-            VAPID_PRIVATE_KEY=${{ secrets.VAPID_PRIVATE_KEY }}
-            CONCURRENT_RUN_LIMIT_CAP=10
-            CLAUDE_CODE_VERSION_URL=${{ vars.CLAUDE_CODE_VERSION_URL }}
-            SLACK_CLIENT_ID=${{ vars.SLACK_CLIENT_ID }}
-            SLACK_CLIENT_SECRET=${{ secrets.SLACK_CLIENT_SECRET }}
-            SLACK_SIGNING_SECRET=${{ secrets.SLACK_SIGNING_SECRET }}
-            SLACK_REDIRECT_BASE_URL=${{ vars.SLACK_REDIRECT_BASE_URL }}
-            PLAUSIBLE_SCRIPT_URL=${{ vars.PLAUSIBLE_SCRIPT_URL_PROD }}
-            SENTRY_DSN_WEB=${{ secrets.SENTRY_DSN_WEB }}
-            SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
-            SENTRY_ORG=${{ vars.SENTRY_ORG }}
-            SENTRY_PROJECT=${{ vars.SENTRY_PROJECT_WEB }}
-            GH_OAUTH_CLIENT_ID=${{ vars.GH_OAUTH_CLIENT_ID }}
-            GH_OAUTH_CLIENT_SECRET=${{ secrets.GH_OAUTH_CLIENT_SECRET }}
-            NOTION_OAUTH_CLIENT_ID=${{ vars.NOTION_OAUTH_CLIENT_ID }}
-            NOTION_OAUTH_CLIENT_SECRET=${{ secrets.NOTION_OAUTH_CLIENT_SECRET }}
-            GOOGLE_OAUTH_CLIENT_ID=${{ vars.GOOGLE_OAUTH_CLIENT_ID }}
-            GOOGLE_OAUTH_CLIENT_SECRET=${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
-            MICROSOFT_OAUTH_CLIENT_ID=${{ vars.MICROSOFT_OAUTH_CLIENT_ID }}
-            MICROSOFT_OAUTH_CLIENT_SECRET=${{ secrets.MICROSOFT_OAUTH_CLIENT_SECRET }}
-            LINEAR_OAUTH_CLIENT_ID=${{ vars.LINEAR_OAUTH_CLIENT_ID }}
-            LINEAR_OAUTH_CLIENT_SECRET=${{ secrets.LINEAR_OAUTH_CLIENT_SECRET }}
-            FIGMA_OAUTH_CLIENT_ID=${{ vars.FIGMA_OAUTH_CLIENT_ID }}
-            FIGMA_OAUTH_CLIENT_SECRET=${{ secrets.FIGMA_OAUTH_CLIENT_SECRET }}
-            DEEL_OAUTH_CLIENT_ID=${{ vars.DEEL_OAUTH_CLIENT_ID }}
-            DEEL_OAUTH_CLIENT_SECRET=${{ secrets.DEEL_OAUTH_CLIENT_SECRET }}
-            DOCUSIGN_OAUTH_CLIENT_ID=${{ vars.DOCUSIGN_OAUTH_CLIENT_ID }}
-            DOCUSIGN_OAUTH_CLIENT_SECRET=${{ secrets.DOCUSIGN_OAUTH_CLIENT_SECRET }}
-            DROPBOX_OAUTH_CLIENT_ID=${{ vars.DROPBOX_OAUTH_CLIENT_ID }}
-            DROPBOX_OAUTH_CLIENT_SECRET=${{ secrets.DROPBOX_OAUTH_CLIENT_SECRET }}
-            NEON_OAUTH_CLIENT_ID=${{ vars.NEON_OAUTH_CLIENT_ID }}
-            NEON_OAUTH_CLIENT_SECRET=${{ secrets.NEON_OAUTH_CLIENT_SECRET }}
-            REDDIT_OAUTH_CLIENT_ID=${{ vars.REDDIT_OAUTH_CLIENT_ID }}
-            REDDIT_OAUTH_CLIENT_SECRET=${{ secrets.REDDIT_OAUTH_CLIENT_SECRET }}
-            STRAVA_OAUTH_CLIENT_ID=${{ vars.STRAVA_OAUTH_CLIENT_ID }}
-            STRAVA_OAUTH_CLIENT_SECRET=${{ secrets.STRAVA_OAUTH_CLIENT_SECRET }}
-            X_OAUTH_CLIENT_ID=${{ vars.X_OAUTH_CLIENT_ID }}
-            X_OAUTH_CLIENT_SECRET=${{ secrets.X_OAUTH_CLIENT_SECRET }}
-            VERCEL_OAUTH_CLIENT_ID=${{ vars.VERCEL_OAUTH_CLIENT_ID }}
-            VERCEL_OAUTH_CLIENT_SECRET=${{ secrets.VERCEL_OAUTH_CLIENT_SECRET }}
-            VERCEL_INTEGRATION_SLUG=${{ vars.VERCEL_INTEGRATION_SLUG }}
-            SENTRY_OAUTH_CLIENT_ID=${{ vars.SENTRY_OAUTH_CLIENT_ID }}
-            SENTRY_OAUTH_CLIENT_SECRET=${{ secrets.SENTRY_OAUTH_CLIENT_SECRET }}
-            INTERVALS_ICU_OAUTH_CLIENT_ID=${{ vars.INTERVALS_ICU_OAUTH_CLIENT_ID }}
-            INTERVALS_ICU_OAUTH_CLIENT_SECRET=${{ secrets.INTERVALS_ICU_OAUTH_CLIENT_SECRET }}
-            SUPABASE_OAUTH_CLIENT_ID=${{ vars.SUPABASE_OAUTH_CLIENT_ID }}
-            SUPABASE_OAUTH_CLIENT_SECRET=${{ secrets.SUPABASE_OAUTH_CLIENT_SECRET }}
-            XERO_OAUTH_CLIENT_ID=${{ vars.XERO_OAUTH_CLIENT_ID }}
-            MONDAY_OAUTH_CLIENT_ID=${{ vars.MONDAY_OAUTH_CLIENT_ID }}
-            MONDAY_OAUTH_APP_ID=${{ vars.MONDAY_OAUTH_APP_ID }}
-            XERO_OAUTH_CLIENT_SECRET=${{ secrets.XERO_OAUTH_CLIENT_SECRET }}
-            MONDAY_OAUTH_CLIENT_SECRET=${{ secrets.MONDAY_OAUTH_CLIENT_SECRET }}
-            WEBFLOW_OAUTH_CLIENT_ID=${{ vars.WEBFLOW_OAUTH_CLIENT_ID }}
-            WEBFLOW_OAUTH_CLIENT_SECRET=${{ secrets.WEBFLOW_OAUTH_CLIENT_SECRET }}
-            CANVA_OAUTH_CLIENT_ID=${{ vars.CANVA_OAUTH_CLIENT_ID }}
-            CANVA_OAUTH_CLIENT_SECRET=${{ secrets.CANVA_OAUTH_CLIENT_SECRET }}
-            HUBSPOT_OAUTH_CLIENT_ID=${{ vars.HUBSPOT_OAUTH_CLIENT_ID }}
-            HUBSPOT_OAUTH_CLIENT_SECRET=${{ secrets.HUBSPOT_OAUTH_CLIENT_SECRET }}
-            CLOSE_OAUTH_CLIENT_ID=${{ vars.CLOSE_OAUTH_CLIENT_ID }}
-            CLOSE_OAUTH_CLIENT_SECRET=${{ secrets.CLOSE_OAUTH_CLIENT_SECRET }}
-            META_ADS_OAUTH_CLIENT_ID=${{ vars.META_ADS_OAUTH_CLIENT_ID }}
-            META_ADS_OAUTH_CLIENT_SECRET=${{ secrets.META_ADS_OAUTH_CLIENT_SECRET }}
-            AHREFS_OAUTH_CLIENT_ID=${{ vars.AHREFS_OAUTH_CLIENT_ID }}
-            AHREFS_OAUTH_CLIENT_SECRET=${{ secrets.AHREFS_OAUTH_CLIENT_SECRET }}
-            AIRTABLE_OAUTH_CLIENT_ID=${{ vars.AIRTABLE_OAUTH_CLIENT_ID }}
-            AIRTABLE_OAUTH_CLIENT_SECRET=${{ secrets.AIRTABLE_OAUTH_CLIENT_SECRET }}
-            TODOIST_OAUTH_CLIENT_ID=${{ vars.TODOIST_OAUTH_CLIENT_ID }}
-            TODOIST_OAUTH_CLIENT_SECRET=${{ secrets.TODOIST_OAUTH_CLIENT_SECRET }}
-            ASANA_OAUTH_CLIENT_ID=${{ vars.ASANA_OAUTH_CLIENT_ID }}
-            ASANA_OAUTH_CLIENT_SECRET=${{ secrets.ASANA_OAUTH_CLIENT_SECRET }}
-            POSTHOG_OAUTH_CLIENT_ID=${{ vars.POSTHOG_OAUTH_CLIENT_ID }}
-            POSTHOG_OAUTH_CLIENT_SECRET=${{ secrets.POSTHOG_OAUTH_CLIENT_SECRET }}
-            MERCURY_OAUTH_CLIENT_ID=${{ vars.MERCURY_OAUTH_CLIENT_ID }}
-            MERCURY_OAUTH_CLIENT_SECRET=${{ secrets.MERCURY_OAUTH_CLIENT_SECRET }}
-            SPOTIFY_OAUTH_CLIENT_ID=${{ vars.SPOTIFY_OAUTH_CLIENT_ID }}
-            SPOTIFY_OAUTH_CLIENT_SECRET=${{ secrets.SPOTIFY_OAUTH_CLIENT_SECRET }}
-            STRIPE_OAUTH_CLIENT_ID=${{ vars.STRIPE_OAUTH_CLIENT_ID }}
-            STRIPE_OAUTH_CLIENT_SECRET=${{ secrets.STRIPE_OAUTH_CLIENT_SECRET }}
-            STRIPE_SECRET_KEY=${{ secrets.STRIPE_SECRET_KEY }}
-            STRIPE_WEBHOOK_SECRET=${{ secrets.STRIPE_WEBHOOK_SECRET }}
-            CLERK_WEBHOOK_SIGNING_SECRET=${{ secrets.CLERK_WEBHOOK_SIGNING_SECRET }}
-            ZERO_PRICE=${{ secrets.ZERO_PRICE }}
-            ZERO_ONE_TIME_CAMPAIGN=${{ vars.ZERO_ONE_TIME_CAMPAIGN }}
-            AGENTPHONE_API_KEY=${{ secrets.AGENTPHONE_API_KEY }}
-            PLAIN_API_KEY=${{ secrets.PLAIN_API_KEY }}
-            NGROK_API_KEY=${{ secrets.NGROK_API_KEY }}
-            NGROK_COMPUTER_CONNECTOR_DOMAIN=${{ vars.NGROK_COMPUTER_CONNECTOR_DOMAIN }}
-            APP_URL=https://app.vm0.ai
-            RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
-            RESEND_WEBHOOK_SECRET=${{ secrets.RESEND_WEBHOOK_SECRET }}
-            RESEND_FROM_DOMAIN=${{ vars.RESEND_FROM_DOMAIN }}
-            VM0_DEFAULT_AGENT=${{ vars.VM0_DEFAULT_AGENT }}
-            OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
-            GITHUB_APP_SLUG=${{ vars.VM0_GITHUB_APP_SLUG }}
-            GITHUB_APP_ID=${{ vars.VM0_GITHUB_APP_ID }}
-            GITHUB_APP_CLIENT_ID=${{ vars.VM0_GITHUB_APP_CLIENT_ID }}
-            GITHUB_APP_CLIENT_SECRET=${{ secrets.VM0_GITHUB_APP_CLIENT_SECRET }}
-            GITHUB_APP_WEBHOOK_SECRET=${{ secrets.VM0_GITHUB_APP_WEBHOOK_SECRET }}
-            GITHUB_APP_PRIVATE_KEY=${{ secrets.VM0_GITHUB_APP_PRIVATE_KEY }}
+          environment-file: ${{ steps.web-production-env.outputs.file }}
 
       - name: Calculate duration
         id: duration
@@ -361,7 +257,7 @@ jobs:
 
       - name: Notify Slack - Success
         if: ${{ success() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v3.0.1
+        uses: slackapi/slack-github-action@v3.0.2
         with:
           method: chat.update
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -377,7 +273,7 @@ jobs:
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v3.0.1
+        uses: slackapi/slack-github-action@v3.0.2
         with:
           method: chat.update
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -391,6 +287,129 @@ jobs:
                   type: mrkdwn
                   text: "*Web App* ❌ Staged build failed\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
+  # Build API production deployment (Staged - prod-eligible, not serving traffic)
+  build-api-production:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.api_release_created == 'true' }}
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
+    outputs:
+      deployment_url: ${{ steps.deploy.outputs.url }}
+    permissions:
+      contents: read
+    environment: production
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/toolchain-init
+
+      - name: Install neonctl
+        run: npm install -g neonctl@2.15.0
+
+      - name: Notify Slack - Starting
+        id: slack-start
+        if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
+        uses: slackapi/slack-github-action@v3.0.2
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            text: "*API* building staged production deployment..."
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*API* building staged production deployment...\n📦 Version: `${{ needs.release-please.outputs.api_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/api-v${{ needs.release-please.outputs.api_version }}|View Release>"
+
+      - name: Record start time
+        id: timer
+        run: echo "start=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      - name: Get Production Database URL
+        id: get-db-url
+        run: |
+          DATABASE_URL=$(neonctl connection-string production --project-id ${{ vars.NEON_PROJECT_ID }} --database-name neondb --pooled)
+          echo "database-url=$DATABASE_URL" >> "$GITHUB_OUTPUT"
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+
+      - name: Resolve API production environment
+        id: api-production-env
+        uses: ./.github/actions/web-api-env
+        with:
+          app: api
+          environment: production
+          database-url: ${{ steps.get-db-url.outputs.database-url }}
+          web-url: https://www.vm0.ai
+          app-url: https://app.vm0.ai
+          api-url: ${{ vars.VM0_API_URL }}
+        env:
+          REPO_VARS_JSON: ${{ toJSON(vars) }}
+          REPO_SECRETS_JSON: ${{ toJSON(secrets) }}
+
+      - name: Build API Staged Production Deployment
+        id: deploy
+        uses: ./.github/actions/vercel-deploy
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
+          vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_API }}
+          environment: production
+          deployment-env: api
+          prebuilt: "true"
+          prebuilt-build-command: |
+            pnpm --dir turbo/apps/api build
+            rm -rf .vercel/output
+            cp -R turbo/apps/api/.vercel/output .vercel/output
+          skip-domain: "true"
+          skip-start: "true"
+          skip-finish: "true"
+          environment-file: ${{ steps.api-production-env.outputs.file }}
+
+      - name: Calculate duration
+        id: duration
+        if: ${{ always() && steps.timer.outputs.start }}
+        run: |
+          elapsed=$(( $(date +%s) - ${{ steps.timer.outputs.start }} ))
+          h=$((elapsed / 3600)) m=$(( (elapsed % 3600) / 60 )) s=$((elapsed % 60))
+          if [ $h -gt 0 ]; then text="${h}h ${m}m ${s}s"
+          elif [ $m -gt 0 ]; then text="${m}m ${s}s"
+          else text="${s}s"; fi
+          echo "text=$text" >> "$GITHUB_OUTPUT"
+
+      - name: Notify Slack - Success
+        if: ${{ success() && steps.slack-start.outputs.ts }}
+        uses: slackapi/slack-github-action@v3.0.2
+        with:
+          method: chat.update
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*API* ✅ Staged build ready (not yet serving)"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*API* ✅ Staged build ready (not yet serving)\n📦 Version: `${{ needs.release-please.outputs.api_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/api-v${{ needs.release-please.outputs.api_version }}|View Release>"
+
+      - name: Notify Slack - Failure
+        if: ${{ failure() && steps.slack-start.outputs.ts }}
+        uses: slackapi/slack-github-action@v3.0.2
+        with:
+          method: chat.update
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*API* ❌ Staged build failed"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*API* ❌ Staged build failed\n📦 Version: `${{ needs.release-please.outputs.api_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/api-v${{ needs.release-please.outputs.api_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+
   # Promote web staged deployment to production (traffic switch)
   # Fan-in barrier: all build-phase jobs must finish (success or skipped) before
   # any promote-phase job starts. If any build fails, this job fails, which in
@@ -399,6 +418,7 @@ jobs:
     needs:
       - release-please
       - build-web-production
+      - build-api-production
       - build-app-production
       - build-runner-production
       - build-e2b-template-production
@@ -432,7 +452,13 @@ jobs:
           echo "✅ All build-phase jobs succeeded or were skipped."
 
   promote-web-production:
-    needs: [release-please, builds-complete, build-web-production, migrate-production]
+    needs:
+      [
+        release-please,
+        builds-complete,
+        build-web-production,
+        migrate-production,
+      ]
     if: >-
       !failure() && !cancelled() &&
       needs.release-please.outputs.web_release_created == 'true'
@@ -463,7 +489,7 @@ jobs:
       - name: Notify Slack - Starting
         id: slack-start
         if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
-        uses: slackapi/slack-github-action@v3.0.1
+        uses: slackapi/slack-github-action@v3.0.2
         with:
           method: chat.postMessage
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -520,7 +546,7 @@ jobs:
 
       - name: Notify Slack - Success
         if: ${{ success() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v3.0.1
+        uses: slackapi/slack-github-action@v3.0.2
         with:
           method: chat.update
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -536,7 +562,7 @@ jobs:
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v3.0.1
+        uses: slackapi/slack-github-action@v3.0.2
         with:
           method: chat.update
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -549,6 +575,132 @@ jobs:
                 text:
                   type: mrkdwn
                   text: "*Web App* ❌ Promote failed — DB at new schema, traffic on old code\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+
+  # Promote API staged deployment to production (vm0-api project only; no api.vm0.ai alias)
+  promote-api-production:
+    needs:
+      [
+        release-please,
+        builds-complete,
+        build-api-production,
+        migrate-production,
+      ]
+    if: >-
+      !failure() && !cancelled() &&
+      needs.release-please.outputs.api_release_created == 'true'
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
+    outputs:
+      deployment_url: ${{ needs.build-api-production.outputs.deployment_url }}
+      vercel_dashboard_url: ${{ steps.vercel-dashboard.outputs.url }}
+    permissions:
+      contents: read
+      deployments: write
+    environment: production
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/toolchain-init
+
+      - name: Start GitHub Deployment
+        id: deployment
+        uses: bobheadxi/deployments@v1
+        with:
+          step: start
+          token: ${{ github.token }}
+          env: api/production
+          ref: ${{ github.ref }}
+          desc: Promoting API staged deployment to production
+
+      - name: Notify Slack - Starting
+        id: slack-start
+        if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
+        uses: slackapi/slack-github-action@v3.0.2
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            text: "*API* promoting staged deployment to production..."
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*API* promoting staged deployment to production...\n📦 Version: `${{ needs.release-please.outputs.api_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/api-v${{ needs.release-please.outputs.api_version }}|View Release>"
+
+      - name: Record start time
+        id: timer
+        run: echo "start=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      - name: Promote API Deployment
+        uses: ./.github/actions/vercel-promote
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
+          vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_API }}
+          deployment-url: ${{ needs.build-api-production.outputs.deployment_url }}
+
+      - name: Resolve Vercel dashboard URL
+        id: vercel-dashboard
+        if: ${{ needs.build-api-production.outputs.deployment_url != '' }}
+        uses: ./.github/actions/vercel-dashboard-url
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          deployment-url: ${{ needs.build-api-production.outputs.deployment_url }}
+
+      - name: Finish GitHub Deployment
+        if: always()
+        uses: bobheadxi/deployments@v1
+        with:
+          step: finish
+          token: ${{ github.token }}
+          status: ${{ job.status }}
+          env: ${{ steps.deployment.outputs.env }}
+          env_url: ${{ steps.vercel-dashboard.outputs.url }}
+          deployment_id: ${{ steps.deployment.outputs.deployment_id }}
+
+      - name: Calculate duration
+        id: duration
+        if: ${{ always() && steps.timer.outputs.start }}
+        run: |
+          elapsed=$(( $(date +%s) - ${{ steps.timer.outputs.start }} ))
+          h=$((elapsed / 3600)) m=$(( (elapsed % 3600) / 60 )) s=$((elapsed % 60))
+          if [ $h -gt 0 ]; then text="${h}h ${m}m ${s}s"
+          elif [ $m -gt 0 ]; then text="${m}m ${s}s"
+          else text="${s}s"; fi
+          echo "text=$text" >> "$GITHUB_OUTPUT"
+
+      - name: Notify Slack - Success
+        if: ${{ success() && steps.slack-start.outputs.ts }}
+        uses: slackapi/slack-github-action@v3.0.2
+        with:
+          method: chat.update
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*API* ✅ Promoted to production"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*API* ✅ Promoted to production\n📦 Version: `${{ needs.release-please.outputs.api_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/api-v${{ needs.release-please.outputs.api_version }}|View Release>\n🔄 <${{ github.server_url }}/${{ github.repository }}/issues/${{ vars.ROLLBACK_ISSUE_NUMBER }}|Rollback Dashboard>"
+
+      - name: Notify Slack - Failure
+        if: ${{ failure() && steps.slack-start.outputs.ts }}
+        uses: slackapi/slack-github-action@v3.0.2
+        with:
+          method: chat.update
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*API* ❌ Promote failed"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*API* ❌ Promote failed\n📦 Version: `${{ needs.release-please.outputs.api_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/api-v${{ needs.release-please.outputs.api_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
   # Build app (Vite SPA) production deployment (Staged)
   build-app-production:
@@ -569,7 +721,7 @@ jobs:
       - name: Notify Slack - Starting
         id: slack-start
         if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
-        uses: slackapi/slack-github-action@v3.0.1
+        uses: slackapi/slack-github-action@v3.0.2
         with:
           method: chat.postMessage
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -604,6 +756,7 @@ jobs:
             VITE_API_URL=https://www.vm0.ai
             VITE_VAPID_PUBLIC_KEY=${{ vars.VAPID_PUBLIC_KEY }}
             VITE_PLAUSIBLE_SCRIPT_URL=${{ vars.PLAUSIBLE_SCRIPT_URL_PROD }}
+            VITE_POSTHOG_KEY=${{ vars.POSTHOG_KEY }}
             VITE_SENTRY_DSN=${{ secrets.SENTRY_DSN_APP }}
             SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
             SENTRY_ORG=${{ vars.SENTRY_ORG }}
@@ -622,7 +775,7 @@ jobs:
 
       - name: Notify Slack - Success
         if: ${{ success() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v3.0.1
+        uses: slackapi/slack-github-action@v3.0.2
         with:
           method: chat.update
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -638,7 +791,7 @@ jobs:
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v3.0.1
+        uses: slackapi/slack-github-action@v3.0.2
         with:
           method: chat.update
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -654,7 +807,14 @@ jobs:
 
   # Promote app staged deployment to production (traffic switch)
   promote-app-production:
-    needs: [release-please, builds-complete, build-app-production, promote-web-production, migrate-production]
+    needs:
+      [
+        release-please,
+        builds-complete,
+        build-app-production,
+        promote-web-production,
+        migrate-production,
+      ]
     if: >-
       !failure() && !cancelled() &&
       needs.release-please.outputs.app_release_created == 'true'
@@ -685,7 +845,7 @@ jobs:
       - name: Notify Slack - Starting
         id: slack-start
         if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
-        uses: slackapi/slack-github-action@v3.0.1
+        uses: slackapi/slack-github-action@v3.0.2
         with:
           method: chat.postMessage
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -742,7 +902,7 @@ jobs:
 
       - name: Notify Slack - Success
         if: ${{ success() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v3.0.1
+        uses: slackapi/slack-github-action@v3.0.2
         with:
           method: chat.update
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -758,7 +918,7 @@ jobs:
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v3.0.1
+        uses: slackapi/slack-github-action@v3.0.2
         with:
           method: chat.update
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -774,10 +934,18 @@ jobs:
 
   # Update rollback dashboard issue after deployments
   update-rollback-dashboard:
-    needs: [release-please, promote-web-production, promote-app-production, promote-runner-production]
+    needs:
+      [
+        release-please,
+        promote-web-production,
+        promote-api-production,
+        promote-app-production,
+        promote-runner-production,
+      ]
     if: >-
       always() &&
       (needs.promote-web-production.result == 'success' ||
+       needs.promote-api-production.result == 'success' ||
        needs.promote-app-production.result == 'success' ||
        needs.promote-runner-production.result == 'success')
     runs-on: ubuntu-latest
@@ -850,12 +1018,15 @@ jobs:
         id: entry
         env:
           WEB_VERSION: ${{ needs.release-please.outputs.web_version }}
+          API_VERSION: ${{ needs.release-please.outputs.api_version }}
           APP_VERSION: ${{ needs.release-please.outputs.app_version }}
           RUNNER_VERSION: ${{ needs.release-please.outputs.runner_rs_version }}
           WEB_RESULT: ${{ needs.promote-web-production.result }}
+          API_RESULT: ${{ needs.promote-api-production.result }}
           APP_RESULT: ${{ needs.promote-app-production.result }}
           RUNNER_RESULT: ${{ needs.promote-runner-production.result }}
           WEB_DASHBOARD_URL: ${{ needs.promote-web-production.outputs.vercel_dashboard_url }}
+          API_DASHBOARD_URL: ${{ needs.promote-api-production.outputs.vercel_dashboard_url }}
           APP_DASHBOARD_URL: ${{ needs.promote-app-production.outputs.vercel_dashboard_url }}
           SAFETY: ${{ steps.migration-safety.outputs.indicator }}
           MIGRATION_FILES: ${{ steps.migration-safety.outputs.details }}
@@ -868,6 +1039,9 @@ jobs:
           if [ "$WEB_RESULT" = "success" ] && [ -n "$WEB_VERSION" ]; then
             TITLE_PARTS="web v${WEB_VERSION}"
           fi
+          if [ "$API_RESULT" = "success" ] && [ -n "$API_VERSION" ]; then
+            TITLE_PARTS="${TITLE_PARTS:+$TITLE_PARTS / }api v${API_VERSION}"
+          fi
           if [ "$APP_RESULT" = "success" ] && [ -n "$APP_VERSION" ]; then
             TITLE_PARTS="${TITLE_PARTS:+$TITLE_PARTS / }app v${APP_VERSION}"
           fi
@@ -875,7 +1049,7 @@ jobs:
             TITLE_PARTS="${TITLE_PARTS:+$TITLE_PARTS / }runner v${RUNNER_VERSION}"
           fi
 
-          # Web/app migration-safety indicator (applies to web+app rollbacks)
+          # Web/API/app migration-safety indicator (applies to web/API/app rollbacks)
           case "$SAFETY" in
             destructive)
               INDICATOR="🔴 **Warning: destructive migration** ($MIGRATION_FILES)"
@@ -913,6 +1087,16 @@ jobs:
             fi
           fi
 
+          if [ -n "$API_VERSION" ]; then
+            if [ "$API_RESULT" = "success" ] && [ -n "$API_DASHBOARD_URL" ]; then
+              append_row "| api | v${API_VERSION} | [Rollback in Vercel](${API_DASHBOARD_URL}) |"
+            elif [ "$API_RESULT" = "success" ]; then
+              append_row "| api | v${API_VERSION} | _URL unavailable_ |"
+            else
+              append_row "| api | v${API_VERSION} | ❌ Deploy failed |"
+            fi
+          fi
+
           if [ -n "$APP_VERSION" ]; then
             if [ "$APP_RESULT" = "success" ] && [ -n "$APP_DASHBOARD_URL" ]; then
               append_row "| app | v${APP_VERSION} | [Rollback in Vercel](${APP_DASHBOARD_URL}) |"
@@ -936,9 +1120,9 @@ jobs:
           fi
 
           # Build full entry.
-          # - The migration-safety INDICATOR only describes web migrations
+          # - The migration-safety INDICATOR only describes web DB migrations
           #   (see Detect migration safety step), so suppress it for release
-          #   cycles with no web/app changes — otherwise a runner-only
+          #   cycles with no web/api/app changes — otherwise a runner-only
           #   release would print a misleading "🟢 Safe to rollback".
           # - Runner has no auto-computed compatibility indicator. We print
           #   a static advisory whenever the release includes runner so the
@@ -948,7 +1132,7 @@ jobs:
           #   checklist mindset and miss cases the list doesn't anticipate.
           {
             echo "### ${DATE} — ${TITLE_PARTS}"
-            if [ -n "$WEB_VERSION" ] || [ -n "$APP_VERSION" ]; then
+            if [ -n "$WEB_VERSION" ] || [ -n "$API_VERSION" ] || [ -n "$APP_VERSION" ]; then
               echo "${INDICATOR}"
             fi
             if [ -n "$RUNNER_VERSION" ]; then
@@ -1023,7 +1207,7 @@ jobs:
       - name: Notify Slack - Starting
         id: slack-start
         if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
-        uses: slackapi/slack-github-action@v3.0.1
+        uses: slackapi/slack-github-action@v3.0.2
         with:
           method: chat.postMessage
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -1043,7 +1227,7 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: lts/*
-          registry-url: 'https://registry.npmjs.org'
+          registry-url: "https://registry.npmjs.org"
 
       - name: Install pnpm
         run: npm install -g pnpm@latest
@@ -1075,7 +1259,7 @@ jobs:
 
       - name: Notify Slack - Success
         if: ${{ success() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v3.0.1
+        uses: slackapi/slack-github-action@v3.0.2
         with:
           method: chat.update
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -1091,7 +1275,7 @@ jobs:
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v3.0.1
+        uses: slackapi/slack-github-action@v3.0.2
         with:
           method: chat.update
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -1173,7 +1357,7 @@ jobs:
       - name: Notify Slack - Starting
         id: slack-start
         if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
-        uses: slackapi/slack-github-action@v3.0.1
+        uses: slackapi/slack-github-action@v3.0.2
         with:
           method: chat.postMessage
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -1332,7 +1516,7 @@ jobs:
 
       - name: Notify Slack - Success
         if: ${{ success() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v3.0.1
+        uses: slackapi/slack-github-action@v3.0.2
         with:
           method: chat.update
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -1348,7 +1532,7 @@ jobs:
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v3.0.1
+        uses: slackapi/slack-github-action@v3.0.2
         with:
           method: chat.update
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -1369,7 +1553,15 @@ jobs:
   # the schema and API it targets are live. Host-level prep
   # (provision-runner, provision-monitoring) already ran in build.
   promote-runner-production:
-    needs: [release-please, builds-complete, promote-web-production, resolve-image-cache, build-runner-production, migrate-production]
+    needs:
+      [
+        release-please,
+        builds-complete,
+        promote-web-production,
+        resolve-image-cache,
+        build-runner-production,
+        migrate-production,
+      ]
     if: >-
       !failure() && !cancelled() &&
       needs.release-please.outputs.runner_rs_release_created == 'true'
@@ -1385,7 +1577,7 @@ jobs:
       - name: Notify Slack - Starting
         id: slack-start
         if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
-        uses: slackapi/slack-github-action@v3.0.1
+        uses: slackapi/slack-github-action@v3.0.2
         with:
           method: chat.postMessage
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -1435,6 +1627,7 @@ jobs:
           AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
           AWS_METAL_RUNNER_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           SENTRY_DSN_RUNNER: ${{ secrets.SENTRY_DSN_RUNNER }}
+          AXIOM_TOKEN_TELEMETRY: ${{ secrets.AXIOM_TOKEN_TELEMETRY }}
           RUNNER_VERSION: ${{ needs.release-please.outputs.runner_rs_version }}
           R2_ACCOUNT_ID: ${{ needs.resolve-image-cache.outputs.r2-account-id }}
           R2_USER_STORAGES_BUCKET_NAME: ${{ needs.resolve-image-cache.outputs.r2-bucket }}
@@ -1445,6 +1638,8 @@ jobs:
             playbooks/promote-runner.yml \
             -e "ansible_user=${AWS_METAL_RUNNER_USER}" \
             -e "sentry_dsn=${SENTRY_DSN_RUNNER}" \
+            -e "axiom_token_telemetry=${AXIOM_TOKEN_TELEMETRY}" \
+            -e "axiom_dataset_suffix=prod" \
             -e "runner_version=${RUNNER_VERSION}" \
             -e "r2_account_id=${R2_ACCOUNT_ID:-}" \
             -e "r2_access_key_id=${R2_ACCESS_KEY_ID:-}" \
@@ -1485,7 +1680,7 @@ jobs:
 
       - name: Notify Slack - Success
         if: ${{ success() && steps.slack-start.outputs.ts && steps.global-doctor.outputs.has_warnings != 'true' }}
-        uses: slackapi/slack-github-action@v3.0.1
+        uses: slackapi/slack-github-action@v3.0.2
         with:
           method: chat.update
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -1501,7 +1696,7 @@ jobs:
 
       - name: Notify Slack - Success with warnings
         if: ${{ success() && steps.slack-start.outputs.ts && steps.global-doctor.outputs.has_warnings == 'true' }}
-        uses: slackapi/slack-github-action@v3.0.1
+        uses: slackapi/slack-github-action@v3.0.2
         with:
           method: chat.update
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -1517,7 +1712,7 @@ jobs:
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v3.0.1
+        uses: slackapi/slack-github-action@v3.0.2
         with:
           method: chat.update
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -1602,4 +1797,3 @@ jobs:
         with:
           name: sbom
           path: sbom.json
-

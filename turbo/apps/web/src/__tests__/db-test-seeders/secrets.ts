@@ -1,6 +1,6 @@
 import { initServices } from "../../lib/init-services";
-import { secrets } from "../../db/schema/secret";
-import { variables } from "../../db/schema/variable";
+import { secrets } from "@vm0/db/schema/secret";
+import { variables } from "@vm0/db/schema/variable";
 import { ORG_SENTINEL_USER_ID } from "../../lib/zero/org/org-sentinel";
 import { encryptSecretValue } from "../../lib/shared/crypto/secrets-encryption";
 

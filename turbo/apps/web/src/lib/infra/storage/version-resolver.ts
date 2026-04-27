@@ -3,7 +3,7 @@
  * Supports exact match and short prefix matching (like Git)
  */
 
-import { storageVersions } from "../../../db/schema/storage";
+import { storageVersions } from "@vm0/db/schema/storage";
 import { eq, and, like } from "drizzle-orm";
 import {
   isValidVersionPrefix,

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { expandEnvironmentFromCompose } from "../expand-environment";
-import type { ExpandedFirewallConfig } from "@vm0/core";
+import type { ExpandedFirewallConfig } from "@vm0/connectors/firewall-types";
 
 function makeCompose(environment: Record<string, string>) {
   return {

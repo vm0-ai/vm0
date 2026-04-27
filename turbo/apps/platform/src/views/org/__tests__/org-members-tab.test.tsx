@@ -20,10 +20,11 @@ import {
   zeroOrgMembersContract,
   zeroOrgInviteContract,
   zeroOrgMembershipRequestsContract,
-} from "@vm0/core";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+} from "@vm0/api-contracts/contracts/zero-org-members";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 const adminMember = {
   userId: "test-user-123",

@@ -2,22 +2,28 @@ import { NextRequest, NextResponse, after } from "next/server";
 import { eq } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
 import { verifyCallback } from "../../../../../src/lib/infra/callback";
-import { agentRuns } from "../../../../../src/db/schema/agent-run";
+import { agentRuns } from "@vm0/db/schema/agent-run";
 import { getRunOutputText } from "../../../../../src/lib/infra/run/extract-run-output";
 import { completeVoiceChatCandidateTask } from "../../../../../src/lib/zero/voice-chat-candidate/task-service";
 import { triggerReasoning } from "../../../../../src/lib/zero/voice-chat-candidate/trigger-reasoning";
 import { publishUserSignal } from "../../../../../src/lib/infra/realtime/client";
-import { isNotFound } from "../../../../../src/lib/shared/errors";
-import type { VoiceChatCandidateCallbackPayload } from "../../../../../src/lib/infra/callback/callback-payloads";
+import { dispatchCancelSideEffects } from "../../../../../src/lib/infra/run/run-service";
+import type { CancelRunResult } from "../../../../../src/lib/zero/zero-run-cancel";
+import {
+  dispatchQueuedZeroRun,
+  drainOrgQueue,
+} from "../../../../../src/lib/zero/zero-run-queue-service";
+import { processOrgCredits } from "../../../../../src/lib/zero/credit/credit-service";
+import { processOrgUsageEvents } from "../../../../../src/lib/zero/credit/usage-event-service";
+import { isNotFound } from "@vm0/api-services/errors";
+import type { VoiceChatCallbackPayload } from "../../../../../src/lib/infra/callback/callback-payloads";
 import { logger } from "../../../../../src/lib/shared/logger";
 
 const log = logger("callback:voice-chat-candidate");
 
 export const maxDuration = 60;
 
-function parsePayload(
-  payload: unknown,
-): VoiceChatCandidateCallbackPayload | null {
+function parsePayload(payload: unknown): VoiceChatCallbackPayload | null {
   if (!payload || typeof payload !== "object") return null;
   const p = payload as Record<string, unknown>;
   if (typeof p.taskId !== "string") return null;
@@ -57,10 +63,7 @@ async function readRunAgentId(runId: string): Promise<string> {
 export async function POST(request: NextRequest): Promise<NextResponse> {
   initServices();
 
-  const result = await verifyCallback<VoiceChatCandidateCallbackPayload>(
-    request,
-    log,
-  );
+  const result = await verifyCallback<VoiceChatCallbackPayload>(request, log);
   if (!result.ok) return result.response;
 
   const { runId, status, error } = result.data;
@@ -89,6 +92,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   let sessionId: string;
   let userId: string;
+  let cancelledRuns: CancelRunResult[];
   try {
     const outcome = await completeVoiceChatCandidateTask({
       taskId: payload.taskId,
@@ -98,6 +102,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     });
     sessionId = outcome.session.id;
     userId = outcome.session.userId;
+    cancelledRuns = outcome.cancelledRuns;
   } catch (err) {
     if (isNotFound(err)) {
       log.warn("voice-chat-candidate task not found — ignoring callback", {
@@ -119,6 +124,27 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   after(() => {
     return triggerReasoning(sessionId);
   });
+
+  // Mismatch path cancelled one or more pending/queued runs. Dispatch the
+  // side effects (Ably cancel, registered callbacks, queue drain) once per
+  // run, then process org credits + usage events once for the batch —
+  // all cancelled runs share the session's org.
+  if (cancelledRuns.length > 0) {
+    const orgId = cancelledRuns[0]!.orgId;
+    after(async () => {
+      let anyActive = false;
+      for (const result of cancelledRuns) {
+        const active = await dispatchCancelSideEffects(result, (oid) => {
+          return drainOrgQueue(oid, dispatchQueuedZeroRun);
+        });
+        if (active) anyActive = true;
+      }
+      if (anyActive) {
+        await processOrgCredits(orgId);
+        await processOrgUsageEvents(orgId);
+      }
+    });
+  }
 
   return NextResponse.json({ success: true });
 }

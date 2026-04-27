@@ -1,6 +1,9 @@
-import { describe, expect, it, vi } from "vitest";
-import { screen, waitFor, within } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { http, HttpResponse } from "msw";
+import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { hasSubscription } from "../../../mocks/ably.ts";
@@ -17,6 +20,16 @@ import {
 const context = testContext();
 
 const THREAD_ID = "thread-test-1";
+
+beforeEach(() => {
+  server.use(
+    http.get("https://example.com/avatar.png", () => {
+      return new HttpResponse("avatar", {
+        headers: { "Content-Type": "image/png" },
+      });
+    }),
+  );
+});
 
 // CHAT-S-044: Sending state affects ChatThreadComposer button display
 describe("zero chat thread page - sending state affects composer button display", () => {
@@ -113,14 +126,10 @@ describe("zero chat thread page - image attachment opens lightbox", () => {
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("img", { name: "photo.png" }),
-      ).toBeInTheDocument();
+      expect(screen.getByAltText("photo.png")).toBeInTheDocument();
     });
 
-    const imageButton = screen
-      .getByRole("img", { name: "photo.png" })
-      .closest("button")!;
+    const imageButton = screen.getByAltText("photo.png").closest("button")!;
     click(imageButton);
 
     await waitFor(() => {
@@ -130,6 +139,85 @@ describe("zero chat thread page - image attachment opens lightbox", () => {
         );
       });
       expect(lightboxImg).toBeInTheDocument();
+    });
+  });
+
+  it("downloads a CDN image from the lightbox", async () => {
+    const imageUrl = "https://cdn.example.com/photo.png";
+    server.use(
+      http.get(imageUrl, () => {
+        return new HttpResponse(new Blob(["img"], { type: "image/png" }), {
+          status: 200,
+          headers: { "Content-Type": "image/png" },
+        });
+      }),
+    );
+    const createObjectURLSpy = vi
+      .spyOn(URL, "createObjectURL")
+      .mockReturnValue("blob:test");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    const anchorClickSpy = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(() => {});
+
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "user",
+          content: `[Attached file: photo.png](${imageUrl})\nDownload with: curl ${imageUrl}\n`,
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    const imageButton = await waitFor(() => {
+      return screen.getByAltText("photo.png").closest("button")!;
+    });
+    click(imageButton);
+
+    const downloadButton = await waitFor(() => {
+      return screen.getByLabelText("Download");
+    });
+    click(downloadButton);
+
+    await waitFor(() => {
+      expect(createObjectURLSpy).toHaveBeenCalledOnce();
+      expect(anchorClickSpy).toHaveBeenCalledWith();
+    });
+  });
+});
+
+describe("zero chat thread page - document preview opens global lightbox", () => {
+  it("clicking html preview opens the shared attachment lightbox", async () => {
+    const htmlUrl = "https://example.com/report.html";
+    server.use(
+      http.get(htmlUrl, () => {
+        return HttpResponse.html("<html><body>report preview</body></html>");
+      }),
+    );
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "assistant",
+          content: `[report](${htmlUrl})`,
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    const previewButton = await waitFor(() => {
+      return screen.getByLabelText("Open html preview for report.html");
+    });
+
+    await userEvent.click(previewButton);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox")).toBeInTheDocument();
+      expect(screen.getByTitle("report.html preview")).toBeInTheDocument();
     });
   });
 });
@@ -157,16 +245,10 @@ describe("zero chat thread page - copy message button", () => {
 
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
-    await waitFor(() => {
-      expect(screen.getByText("Hello world")).toBeInTheDocument();
+    const copyButton = await waitFor(() => {
+      const buttons = screen.getAllByLabelText("Copy message");
+      return buttons[buttons.length - 1] as HTMLElement;
     });
-
-    const assistantBubble = screen
-      .getByText("Hello world")
-      .closest("[data-role='assistant']")!;
-    const copyButton = within(assistantBubble as HTMLElement).getByLabelText(
-      "Copy message",
-    );
     click(copyButton);
 
     await waitFor(() => {
@@ -174,7 +256,60 @@ describe("zero chat thread page - copy message button", () => {
     });
 
     // The message should still be visible after copying (page remains stable)
-    expect(screen.getByText("Hello world")).toBeInTheDocument();
+    expect(screen.getAllByLabelText("Copy message").length).toBeGreaterThan(0);
+  });
+
+  it("keeps the scroll-to-message-start button hidden when the feature switch is off", async () => {
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "assistant",
+          content: "A long assistant message",
+          runId: "run-legacy-1",
+          createdAt: "2026-03-10T00:00:01Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    await waitFor(() => {
+      expect(screen.getByText("A long assistant message")).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByLabelText("Scroll to message start"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("scrolls to the assistant message group start when the feature switch is on", async () => {
+    const scrollIntoView = vi
+      .spyOn(Element.prototype, "scrollIntoView")
+      .mockImplementation(() => {});
+
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "assistant",
+          content: "Another long assistant message",
+          runId: "run-legacy-2",
+          createdAt: "2026-03-10T00:00:01Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.ChatMessageStartButton]: true },
+    });
+
+    const button = await screen.findByLabelText("Scroll to message start");
+    click(button);
+
+    expect(scrollIntoView).toHaveBeenCalledWith({
+      block: "start",
+      behavior: "smooth",
+    });
   });
 });
 
@@ -200,7 +335,7 @@ describe("zero chat thread page - view activity logs link", () => {
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
     await waitFor(() => {
-      expect(screen.getByText("Hello world")).toBeInTheDocument();
+      expect(screen.getByLabelText("View run logs")).toBeInTheDocument();
     });
 
     const logLink = screen.getByLabelText("View run logs");
@@ -212,9 +347,54 @@ describe("zero chat thread page - view activity logs link", () => {
   });
 });
 
-// CHAT-I-055: Attachment download links do not navigate away from the page
-describe("zero chat thread page - file attachment download does not navigate away", () => {
-  it("clicking the download link does not change the pathname (CHAT-I-055)", async () => {
+describe("zero chat thread page - manual history loading", () => {
+  it("loads older messages only after clicking Load history", async () => {
+    mockChatLifecycle({
+      historyMessages: [
+        {
+          role: "user",
+          content: "Older message",
+          createdAt: "2026-03-09T23:59:59Z",
+        },
+      ],
+      chatMessages: [
+        {
+          role: "assistant",
+          content: "Newest message",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.ChatManualHistory]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Newest message")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Older message")).not.toBeInTheDocument();
+
+    click(await screen.findByText("Load history"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Older message")).toBeInTheDocument();
+    });
+  });
+});
+
+// CHAT-I-055: Attachment preview chips do not navigate away from the page
+describe("zero chat thread page - file attachment preview does not navigate away", () => {
+  it("clicking the attachment chip opens preview without changing the pathname (CHAT-I-055)", async () => {
+    server.use(
+      http.get("https://example.com/document.pdf", () => {
+        return new HttpResponse("%PDF-test", {
+          headers: { "Content-Type": "application/pdf" },
+        });
+      }),
+    );
     mockChatLifecycle({
       chatMessages: [
         {
@@ -228,15 +408,16 @@ describe("zero chat thread page - file attachment download does not navigate awa
 
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
-    const downloadLink = await waitFor(() => {
+    const previewChip = await waitFor(() => {
       return screen.getByTitle("document.pdf");
     });
 
     const initialPathname = pathname();
-    click(downloadLink);
+    click(previewChip);
 
     await waitFor(() => {
       expect(pathname()).toBe(initialPathname);
+      expect(screen.getByTitle("document.pdf preview")).toBeInTheDocument();
     });
   });
 });

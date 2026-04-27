@@ -1,10 +1,10 @@
 import { and, eq, sql } from "drizzle-orm";
 import { initServices } from "../../lib/init-services";
-import { orgMetadata } from "../../db/schema/org-metadata";
-import { orgCache } from "../../db/schema/org-cache";
-import { orgMembersMetadata } from "../../db/schema/org-members-metadata";
-import { modelProviders } from "../../db/schema/model-provider";
-import { chatThreads } from "../../db/schema/chat-thread";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { orgCache } from "@vm0/db/schema/org-cache";
+import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
+import { modelProviders } from "@vm0/db/schema/model-provider";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
 
 /**
  * Read the default agent ID (zero agent UUID) for an org from org_metadata.

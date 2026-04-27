@@ -6,8 +6,8 @@
  */
 import { createHash, randomUUID } from "crypto";
 import { eq, and, gt } from "drizzle-orm";
-import { computerUseHosts } from "../../../db/schema/computer-use-host";
-import { notFound } from "../../shared/errors";
+import { computerUseHosts } from "@vm0/db/schema/computer-use-host";
+import { notFound } from "@vm0/api-services/errors";
 import { logger } from "../../shared/logger";
 import {
   findOrCreateBotUser,

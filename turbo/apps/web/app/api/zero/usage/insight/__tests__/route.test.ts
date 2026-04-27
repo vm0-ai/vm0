@@ -16,10 +16,10 @@ import {
   insertTestChatThread,
 } from "../../../../../../src/__tests__/db-test-seeders/agents";
 import {
-  triggerSourceSchema,
   type UsageInsightResponse,
   type UsageInsightBucket,
-} from "@vm0/core";
+} from "@vm0/api-contracts/contracts/zero-usage-insight";
+import { triggerSourceSchema } from "@vm0/api-contracts/contracts/logs";
 
 import { GET } from "../route";
 
@@ -151,8 +151,8 @@ describe("GET /api/zero/usage/insight", () => {
     expect(totalByBucket["email"]).toBeGreaterThanOrEqual(50);
     // schedule <- schedule (50 credits)
     expect(totalByBucket["schedule"]).toBeGreaterThanOrEqual(50);
-    // others <- 7 other sources (350 credits)
-    expect(totalByBucket["others"]).toBeGreaterThanOrEqual(350);
+    // others <- 5 other sources (250 credits)
+    expect(totalByBucket["others"]).toBeGreaterThanOrEqual(250);
   });
 
   it("groupBy=agent with 9 agents produces top-7 + others series keys", async () => {
@@ -369,6 +369,8 @@ describe("GET /api/zero/usage/insight", () => {
   });
 
   it("TZ shift — same row appears in different date buckets by timezone", async () => {
+    context.mocks.date.setSystemTime(new Date("2026-04-23T15:00:00Z"));
+
     const { userId, orgId } = await context.user;
     const { composeId } = await seedTestCompose({
       userId,
@@ -386,10 +388,34 @@ describe("GET /api/zero/usage/insight", () => {
       creditsCharged: 42,
       status: "processed",
     });
-    // Row at 2026-04-20T00:30:00Z
-    // In UTC → day 2026-04-20
-    // In America/Los_Angeles (UTC-7) → 2026-04-19T17:30:00 → day 2026-04-19
-    const rowTime = new Date("2026-04-20T00:30:00Z");
+    // Pick a recent 00:30Z boundary row so it stays inside range=7d while
+    // landing on different calendar days in UTC vs America/Los_Angeles.
+    const now = new Date();
+    const rowTime = new Date(
+      Date.UTC(
+        now.getUTCFullYear(),
+        now.getUTCMonth(),
+        now.getUTCDate() - 3,
+        0,
+        30,
+      ),
+    );
+    const dateInTimeZone = (date: Date, timeZone: string) => {
+      const parts = new Intl.DateTimeFormat("en-US", {
+        timeZone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).formatToParts(date);
+      const value = (type: string) => {
+        return parts.find((part) => {
+          return part.type === type;
+        })!.value;
+      };
+      return `${value("year")}-${value("month")}-${value("day")}`;
+    };
+    const expectedUtcDate = dateInTimeZone(rowTime, "UTC");
+    const expectedLaDate = dateInTimeZone(rowTime, "America/Los_Angeles");
     await setTestCreditUsageCreatedAt(cuId, rowTime);
 
     const responseUtc = await GET(
@@ -422,17 +448,11 @@ describe("GET /api/zero/usage/insight", () => {
     const utcBucket = findBucketWith42Credits(dataUtc.buckets);
     const laBucket = findBucketWith42Credits(dataLa.buckets);
 
-    // At least one of the timezone results should have a bucket with our 42 credits
-    expect(utcBucket ?? laBucket).toBeDefined();
-
-    if (utcBucket) {
-      // UTC bucket ts should start with 2026-04-20
-      expect(utcBucket.ts).toContain("2026-04-20");
-    }
-    if (laBucket) {
-      // LA bucket ts should start with 2026-04-19
-      expect(laBucket.ts).toContain("2026-04-19");
-    }
+    expect(utcBucket).toBeDefined();
+    expect(laBucket).toBeDefined();
+    expect(utcBucket!.ts).toContain(expectedUtcDate);
+    expect(laBucket!.ts).toContain(expectedLaDate);
+    expect(expectedUtcDate).not.toBe(expectedLaDate);
   });
 
   it("top-100 truncation — 105 schedules → schedules.length === 100, otherCount === 5", async () => {

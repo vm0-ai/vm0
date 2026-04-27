@@ -5,7 +5,7 @@
  */
 
 import { downloadBlob } from "../blob/blob-service";
-import { blobs } from "../../../db/schema/blob";
+import { blobs } from "@vm0/db/schema/blob";
 import { sql } from "drizzle-orm";
 import { logger } from "../../shared/logger";
 

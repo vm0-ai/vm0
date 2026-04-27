@@ -51,6 +51,11 @@ ruleTester.run("no-direct-db-in-tests", rule, {
       // Non-service relative import is fine
       code: 'import { formatPath } from "../path-utils";',
     },
+    {
+      code: 'import { agentRuns } from "@vm0/db/schema/agent-run";',
+      filename:
+        "/workspaces/vm01/turbo/apps/web/src/db/migrations/__tests__/0292_agent_runs_session_id_not_null_fk.test.ts",
+    },
   ],
   invalid: [
     {
@@ -83,11 +88,11 @@ ruleTester.run("no-direct-db-in-tests", rule, {
       errors: [{ messageId: "noInitServices" }],
     },
     {
-      code: 'import { users } from "../../db/schema/user";',
+      code: 'import { users } from "@vm0/db/schema/user";',
       errors: [{ messageId: "noDbSchemaImport" }],
     },
     {
-      code: 'import { agentRuns } from "../../db/schema/agent-run";',
+      code: 'import { agentRuns } from "@vm0/db/schema/agent-run";',
       errors: [{ messageId: "noDbSchemaImport" }],
     },
     {

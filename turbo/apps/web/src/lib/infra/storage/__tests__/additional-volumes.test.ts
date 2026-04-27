@@ -11,7 +11,7 @@ import {
   type UserContext,
 } from "../../../../__tests__/test-helpers";
 import type { AdditionalVolume, AgentVolumeConfig } from "../types";
-import { SYSTEM_ORG_ID } from "@vm0/core";
+import { SYSTEM_ORG_ID } from "@vm0/core/storage-names";
 
 const context = testContext();
 
@@ -58,10 +58,7 @@ describe("Additional Volumes", () => {
       user.orgId,
       user.orgId,
       user.userId,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
+      [],
       undefined,
       additional,
     );
@@ -92,10 +89,7 @@ describe("Additional Volumes", () => {
       user.orgId,
       user.orgId,
       user.userId,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
+      [],
       undefined,
       additional,
     );
@@ -117,10 +111,7 @@ describe("Additional Volumes", () => {
       user.orgId,
       user.orgId,
       user.userId,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
+      [],
       undefined,
       additional,
     );
@@ -142,10 +133,7 @@ describe("Additional Volumes", () => {
       user.orgId,
       user.orgId,
       user.userId,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
+      [],
       undefined,
       additional,
     );
@@ -168,10 +156,7 @@ describe("Additional Volumes", () => {
       user.orgId,
       user.orgId,
       user.userId,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
+      [],
       undefined,
       additional,
     );
@@ -198,10 +183,7 @@ describe("Additional Volumes", () => {
       user.orgId,
       user.orgId,
       user.userId,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
+      [],
       undefined,
       additional,
     );
@@ -233,10 +215,7 @@ describe("Additional Volumes", () => {
       fakeAgentOrgId,
       user.orgId,
       user.userId,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
+      [],
       undefined,
       additional,
     );
@@ -264,10 +243,7 @@ describe("Additional Volumes", () => {
       user.orgId,
       user.orgId,
       user.userId,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
+      [],
       undefined,
       additional,
     );
@@ -298,10 +274,7 @@ describe("Additional Volumes", () => {
         user.orgId,
         user.orgId,
         user.userId,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
+        [],
         undefined,
         additional,
       );
@@ -325,10 +298,7 @@ describe("Additional Volumes", () => {
         user.orgId,
         user.orgId,
         user.userId,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
+        [],
         undefined,
         additional,
       );
@@ -357,10 +327,7 @@ describe("Additional Volumes", () => {
         user.orgId,
         user.orgId,
         user.userId,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
+        [],
         undefined,
         additional,
       );
@@ -385,10 +352,7 @@ describe("Additional Volumes", () => {
         user.orgId,
         user.orgId,
         user.userId,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
+        [],
         undefined,
         additional,
       );
@@ -410,10 +374,7 @@ describe("Additional Volumes", () => {
         user.orgId,
         user.orgId,
         user.userId,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
+        [],
         undefined,
         additional,
       );

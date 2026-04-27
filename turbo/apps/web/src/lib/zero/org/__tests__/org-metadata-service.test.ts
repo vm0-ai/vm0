@@ -74,6 +74,7 @@ describe("getOrgMetadata", () => {
       orgId,
       tier: "pro",
       credits: 100_000,
+      defaultAgentId: null,
     });
 
     // Clerk API should NOT have been called
@@ -107,6 +108,7 @@ describe("getOrgMetadata", () => {
       orgId,
       tier: "free",
       credits: 0,
+      defaultAgentId: null,
     });
   });
 });

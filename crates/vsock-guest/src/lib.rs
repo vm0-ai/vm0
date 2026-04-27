@@ -46,7 +46,7 @@ const STDOUT_CHUNK_SIZE: usize = 8 * 1024;
 /// many seconds. If EOF is not received within this deadline, proceed to
 /// `send_process_exit()` anyway to prevent indefinite hangs when orphaned
 /// child processes hold pipe fds open.
-const STDOUT_DRAIN_DEADLINE_SECS: u64 = 5;
+const DRAIN_DEADLINE_SECS: u64 = 5;
 
 /// Convert a ProtocolError to an io::Error
 fn to_io_error(e: ProtocolError) -> io::Error {
@@ -264,33 +264,41 @@ unsafe fn kill_process_tree(child_id: u32) -> bool {
     true
 }
 
-/// Run a child process with timeout. Returns (exit_code, stdout, stderr).
-/// Returns exit code 124 on timeout (same as bash timeout command).
+/// Outcome of [`wait_with_kill_timeout`].
+enum WaitOutcome {
+    /// Child exited with this status.
+    Exited(ExitStatus),
+    /// Child was killed by the timeout watchdog.
+    TimedOut,
+    /// `wait()` itself failed; carries the error message.
+    WaitFailed(String),
+}
+
+/// Wait for `child` to exit, optionally killing it after `timeout_ms`.
+/// `timeout_ms == 0` means "no timeout".
 ///
-/// `timeout_ms == 0` means "no timeout" — the command runs until it exits on
-/// its own. This matches the protocol-wide convention used by spawn_watch.
-fn wait_with_timeout(child: std::process::Child, timeout_ms: u32) -> (i32, Vec<u8>, Vec<u8>) {
+/// This **does not touch stdout/stderr** — caller must take them off the
+/// `Child` and drain them concurrently (see [`drain_until_eof_or_cancelled`]),
+/// otherwise a child producing more than the kernel pipe buffer (~64 KB) will
+/// deadlock on its next write while we wait.
+fn wait_with_kill_timeout(mut child: std::process::Child, timeout_ms: u32) -> WaitOutcome {
     use std::sync::mpsc;
 
     if timeout_ms == 0 {
-        return match child.wait_with_output() {
-            Ok(output) => (
-                extract_exit_code(output.status),
-                output.stdout,
-                output.stderr,
-            ),
-            Err(e) => (1, Vec::new(), format!("Failed to wait: {}", e).into_bytes()),
+        return match child.wait() {
+            Ok(s) => WaitOutcome::Exited(s),
+            Err(e) => WaitOutcome::WaitFailed(e.to_string()),
         };
     }
 
-    let timeout = Duration::from_millis(timeout_ms as u64);
+    let timeout = Duration::from_millis(u64::from(timeout_ms));
     let child_id = child.id();
 
-    // Channel to signal when process completes
+    // Channel to signal that the child has exited and the watchdog can stand down.
     let (tx, rx) = mpsc::channel::<()>();
 
-    // Spawn a thread that will kill the process after timeout.
-    // Returns true if it successfully killed the process tree.
+    // Watchdog: kills the process tree if `recv_timeout` expires before the
+    // child reports exit. Its return value *is* the "did we time out?" verdict.
     let timeout_handle = thread::spawn(move || -> bool {
         if rx.recv_timeout(timeout).is_err() {
             // SAFETY: child_id is a valid PID from Command::spawn.
@@ -299,30 +307,229 @@ fn wait_with_timeout(child: std::process::Child, timeout_ms: u32) -> (i32, Vec<u
         false
     });
 
-    // Wait for the process to complete
-    let output = child.wait_with_output();
-
-    // Signal that process completed (killer thread will exit)
+    let status = child.wait();
     let _ = tx.send(());
-
-    // Join the timeout thread to get its verdict. This eliminates the race
-    // between kill_process_tree returning and a flag being set — the thread's
-    // return value IS the result, and join() waits for it.
     let killed_by_timeout = timeout_handle.join().unwrap_or(false);
 
-    match output {
-        Ok(output) => {
-            if killed_by_timeout {
-                return (EXIT_CODE_TIMEOUT, output.stdout, b"Timeout".to_vec());
-            }
-            (
-                extract_exit_code(output.status),
-                output.stdout,
-                output.stderr,
-            )
-        }
-        Err(e) => (1, Vec::new(), format!("Failed to wait: {}", e).into_bytes()),
+    match status {
+        Ok(_) if killed_by_timeout => WaitOutcome::TimedOut,
+        Ok(s) => WaitOutcome::Exited(s),
+        Err(e) => WaitOutcome::WaitFailed(e.to_string()),
     }
+}
+
+/// Set `O_NONBLOCK` on `raw_fd`. Returns false on fcntl failure.
+///
+/// Used so a drain thread can `poll()` with a short timeout and break out on
+/// a cancel flag, instead of getting stuck in a blocking `read()` while a
+/// leaked grandchild holds the pipe write end open past child exit.
+fn set_nonblocking(raw_fd: std::os::unix::io::RawFd) -> bool {
+    // SAFETY: raw_fd is a valid fd taken from a `Child`'s pipe.
+    let flags = unsafe { libc::fcntl(raw_fd, libc::F_GETFL) };
+    if flags < 0 {
+        return false;
+    }
+    // SAFETY: raw_fd is valid; flags is the value just read from F_GETFL.
+    let r = unsafe { libc::fcntl(raw_fd, libc::F_SETFL, flags | libc::O_NONBLOCK) };
+    r >= 0
+}
+
+/// Drain `pipe` until EOF or `cancel` is set, calling `on_chunk` for each
+/// non-empty read.
+///
+/// Cancel mechanism: each iteration polls for input with a 100 ms timeout, so
+/// the cancel flag is observed at most ~100 ms after it's set. When the loop
+/// returns, the caller's drop of the underlying `ChildStdout` / `ChildStderr`
+/// closes the read end of the pipe — at which point any still-writing
+/// producer (e.g. an orphaned grandchild) gets EPIPE / SIGPIPE on its next
+/// write. That's the property a tempfile-based capture cannot offer: a
+/// regular file is always writable, so a leaked daemon would grow tmpfs
+/// memory indefinitely.
+fn drain_until_eof_or_cancelled<R>(
+    mut pipe: R,
+    cancel: &AtomicBool,
+    mut on_chunk: impl FnMut(&[u8]),
+) where
+    R: Read + std::os::unix::io::AsRawFd,
+{
+    let raw_fd = pipe.as_raw_fd();
+    // If we can't set non-blocking, fall back to a blocking read. We lose the
+    // cancel property (drain may hang past deadline) but produce correct data
+    // for the common case. fcntl never fails in practice on a valid pipe fd.
+    let nonblocking = set_nonblocking(raw_fd);
+
+    let mut chunk = [0u8; STDOUT_CHUNK_SIZE];
+    loop {
+        if cancel.load(Ordering::Acquire) {
+            break;
+        }
+        if nonblocking {
+            let mut pfd = libc::pollfd {
+                fd: raw_fd,
+                events: libc::POLLIN,
+                revents: 0,
+            };
+            // SAFETY: pfd is a valid pollfd; nfds=1 matches the array length.
+            let r = unsafe { libc::poll(&mut pfd, 1, 100) };
+            if r < 0 {
+                if io::Error::last_os_error().kind() == io::ErrorKind::Interrupted {
+                    continue;
+                }
+                break;
+            }
+            if r == 0 {
+                continue; // timeout — re-check cancel
+            }
+        }
+        match pipe.read(&mut chunk) {
+            Ok(0) => break, // EOF
+            Ok(n) => on_chunk(chunk.get(..n).unwrap_or_default()),
+            Err(e) if e.kind() == io::ErrorKind::WouldBlock => continue,
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
+            Err(_) => break,
+        }
+    }
+}
+
+/// Buffered variant of [`drain_until_eof_or_cancelled`]: accumulates
+/// everything read into a `Vec<u8>` and returns it.
+fn drain_into_vec_cancellable<R>(pipe: R, cancel: &AtomicBool) -> Vec<u8>
+where
+    R: Read + std::os::unix::io::AsRawFd,
+{
+    let mut buf = Vec::new();
+    drain_until_eof_or_cancelled(pipe, cancel, |chunk| buf.extend_from_slice(chunk));
+    buf
+}
+
+/// Spawn `command` with stdout/stderr piped — used by both buffered exec and
+/// streaming spawn-watch.
+fn spawn_with_pipes(command: &str, sudo: bool) -> io::Result<std::process::Child> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        build_exec_command(command, sudo)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .process_group(0)
+            .spawn()
+    }
+    #[cfg(not(unix))]
+    {
+        build_exec_command(command, sudo)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+    }
+}
+
+/// Coordinate child wait + concurrent stdout/stderr drain + timeout-driven kill.
+///
+/// Drain threads run in parallel with `wait()` so a chatty child cannot
+/// deadlock on a full pipe buffer. After the child exits we wait up to
+/// [`DRAIN_DEADLINE_SECS`] for both drain threads to finish naturally
+/// — that's the grace window for in-flight bytes. If the deadline elapses
+/// (typically because an orphaned grandchild still holds the pipe), we set
+/// the cancel flag; drain threads observe it within ~100 ms and return,
+/// which drops the read end of the pipe. The orphan's next write then sees
+/// EPIPE / SIGPIPE, so neither kernel pipe buffers nor our heap accumulate
+/// further bytes.
+fn wait_with_drain_and_timeout(
+    mut child: std::process::Child,
+    timeout_ms: u32,
+) -> (WaitOutcome, Vec<u8>, Vec<u8>) {
+    use std::sync::mpsc;
+
+    // Defensive: if either pipe is missing the caller broke the
+    // `spawn_with_pipes` invariant. Reap the child before returning so we
+    // don't leave a zombie — `Child`'s `Drop` doesn't wait.
+    let stdout = match child.stdout.take() {
+        Some(s) => s,
+        None => {
+            let _ = child.kill();
+            let _ = child.wait();
+            return (
+                WaitOutcome::WaitFailed("missing stdout pipe".to_string()),
+                Vec::new(),
+                Vec::new(),
+            );
+        }
+    };
+    let stderr = match child.stderr.take() {
+        Some(s) => s,
+        None => {
+            let _ = child.kill();
+            let _ = child.wait();
+            return (
+                WaitOutcome::WaitFailed("missing stderr pipe".to_string()),
+                Vec::new(),
+                Vec::new(),
+            );
+        }
+    };
+
+    let cancel = Arc::new(AtomicBool::new(false));
+    let (done_tx, done_rx) = mpsc::channel::<()>();
+
+    let stdout_handle = {
+        let cancel = cancel.clone();
+        let tx = done_tx.clone();
+        thread::spawn(move || {
+            let buf = drain_into_vec_cancellable(stdout, &cancel);
+            let _ = tx.send(());
+            buf
+        })
+    };
+    let stderr_handle = {
+        let cancel = cancel.clone();
+        let tx = done_tx.clone();
+        thread::spawn(move || {
+            let buf = drain_into_vec_cancellable(stderr, &cancel);
+            let _ = tx.send(());
+            buf
+        })
+    };
+    drop(done_tx); // so recv returns Disconnected if both drain threads die
+
+    let outcome = wait_with_kill_timeout(child, timeout_ms);
+
+    // Grace period for in-flight bytes — most clean exits finish drain within
+    // a few ms. We bound the wait at DRAIN_DEADLINE_SECS to defang
+    // orphaned grandchildren that still hold the pipe.
+    let deadline = std::time::Instant::now() + Duration::from_secs(DRAIN_DEADLINE_SECS);
+    let mut completed = 0;
+    while completed < 2 {
+        let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+        if remaining.is_zero() {
+            break;
+        }
+        match done_rx.recv_timeout(remaining) {
+            Ok(()) => completed += 1,
+            Err(_) => break,
+        }
+    }
+    cancel.store(true, Ordering::Release);
+
+    let stdout_buf = stdout_handle.join().unwrap_or_default();
+    let stderr_buf = stderr_handle.join().unwrap_or_default();
+
+    (outcome, stdout_buf, stderr_buf)
+}
+
+/// Resolve a [`WaitOutcome`] + drained bytes into the `(exit_code, stdout, stderr)`
+/// triple the protocol returns. Timeout overrides any drained stderr with the
+/// canonical "Timeout" body so callers can disambiguate from a real exit-1.
+fn finalize_buffered_result(
+    outcome: WaitOutcome,
+    stdout: Vec<u8>,
+    stderr_buf: Vec<u8>,
+) -> (i32, Vec<u8>, Vec<u8>) {
+    let (exit_code, stderr) = match outcome {
+        WaitOutcome::TimedOut => (EXIT_CODE_TIMEOUT, b"Timeout".to_vec()),
+        WaitOutcome::Exited(s) => (extract_exit_code(s), stderr_buf),
+        WaitOutcome::WaitFailed(msg) => (1, format!("Failed to wait: {msg}").into_bytes()),
+    };
+    (exit_code, stdout, stderr)
 }
 
 /// Handle exec message
@@ -344,42 +551,30 @@ fn handle_exec(
     );
     let command = prepend_env(command, env);
 
-    // Create new process group so we can kill the entire tree on timeout
-    #[cfg(unix)]
-    let child = {
-        use std::os::unix::process::CommandExt;
-        build_exec_command(&command, sudo)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .process_group(0)
-            .spawn()
-    };
-    #[cfg(not(unix))]
-    let child = build_exec_command(&command, sudo)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn();
-
-    match child {
-        Ok(child) => {
-            let result = wait_with_timeout(child, timeout_ms);
-            log(
-                "INFO",
-                &format!(
-                    "exec result: exit_code={}, stdout_len={}, stderr_len={}",
-                    result.0,
-                    result.1.len(),
-                    result.2.len()
-                ),
+    let child = match spawn_with_pipes(&command, sudo) {
+        Ok(c) => c,
+        Err(e) => {
+            return (
+                1,
+                Vec::new(),
+                format!("Failed to execute: {e}").into_bytes(),
             );
-            result
         }
-        Err(e) => (
-            1,
-            Vec::new(),
-            format!("Failed to execute: {}", e).into_bytes(),
+    };
+
+    let (outcome, stdout, stderr_buf) = wait_with_drain_and_timeout(child, timeout_ms);
+    let result = finalize_buffered_result(outcome, stdout, stderr_buf);
+
+    log(
+        "INFO",
+        &format!(
+            "exec result: exit_code={}, stdout_len={}, stderr_len={}",
+            result.0,
+            result.1.len(),
+            result.2.len()
         ),
-    }
+    );
+    result
 }
 
 /// Handle write_file message
@@ -432,7 +627,7 @@ fn handle_write_file(path: &str, content: &[u8], use_sudo: bool, append: bool) -
         .spawn()
     {
         Ok(c) => c,
-        Err(e) => return (false, format!("Failed to spawn write command: {}", e)),
+        Err(e) => return (false, format!("Failed to spawn write command: {e}")),
     };
 
     // Write content to stdin and close it
@@ -441,20 +636,57 @@ fn handle_write_file(path: &str, content: &[u8], use_sudo: bool, append: bool) -
     {
         let _ = child.kill();
         let _ = child.wait(); // Prevent zombie process
-        return (false, format!("Failed to write to stdin: {}", e));
+        return (false, format!("Failed to write to stdin: {e}"));
     }
     // stdin is dropped here, closing the pipe
 
-    // Wait with timeout
-    let (exit_code, _, stderr) = wait_with_timeout(child, WRITE_TIMEOUT_MS);
-    if exit_code == EXIT_CODE_TIMEOUT {
-        return (false, "write timed out".to_string());
+    // Drain stderr concurrently with wait via the cancellable helper. Stdout
+    // is `Stdio::null()` so there's no orphan-fd hazard there. After the
+    // child exits, the drain thread either reaches EOF naturally or — if a
+    // grandchild somehow still holds stderr — is cut at the deadline so its
+    // last write returns EPIPE.
+    // Defensive: same invariant as wait_with_drain_and_timeout — reap the
+    // child if its stderr is somehow already gone, so we don't leave a zombie.
+    let stderr_pipe = match child.stderr.take() {
+        Some(p) => p,
+        None => {
+            let _ = child.kill();
+            let _ = child.wait();
+            return (false, "missing stderr pipe".to_string());
+        }
+    };
+    let cancel = Arc::new(AtomicBool::new(false));
+    let (done_tx, done_rx) = std::sync::mpsc::channel::<()>();
+    let stderr_handle = {
+        let cancel = cancel.clone();
+        thread::spawn(move || {
+            let buf = drain_into_vec_cancellable(stderr_pipe, &cancel);
+            let _ = done_tx.send(());
+            buf
+        })
+    };
+
+    let outcome = wait_with_kill_timeout(child, WRITE_TIMEOUT_MS);
+
+    // Wait for drain to finish naturally up to the deadline; otherwise cancel
+    // so the drain thread drops its fd and a still-writing grandchild gets
+    // EPIPE on its next write.
+    let _ = done_rx.recv_timeout(Duration::from_secs(DRAIN_DEADLINE_SECS));
+    cancel.store(true, Ordering::Release);
+    let stderr = stderr_handle.join().unwrap_or_default();
+
+    match outcome {
+        WaitOutcome::TimedOut => (false, "write timed out".to_string()),
+        WaitOutcome::WaitFailed(msg) => (false, format!("write wait failed: {msg}")),
+        WaitOutcome::Exited(s) => {
+            let exit_code = extract_exit_code(s);
+            if exit_code != 0 {
+                let stderr_str = String::from_utf8_lossy(&stderr);
+                return (false, format!("write failed: {stderr_str}"));
+            }
+            (true, String::new())
+        }
     }
-    if exit_code != 0 {
-        let stderr_str = String::from_utf8_lossy(&stderr);
-        return (false, format!("write failed: {}", stderr_str));
-    }
-    (true, String::new())
 }
 
 /// Handle shutdown message — acknowledge and suppress reconnection.
@@ -470,20 +702,19 @@ fn handle_shutdown(seq: u32) -> io::Result<Vec<u8>> {
     vsock_proto::encode(MSG_SHUTDOWN_ACK, seq, &[]).map_err(to_io_error)
 }
 
-/// Handle spawn_watch message - spawn process and monitor in background.
-///
-/// Returns immediate acknowledgment with PID, then sends process_exit when done.
+/// Handle spawn_watch: spawn the child, write `MSG_SPAWN_WATCH_RESULT` over
+/// the wire, THEN start the background monitor. Returns immediately; exit is
+/// later reported via `MSG_PROCESS_EXIT`.
 ///
 /// When `stdout_log_path` is `Some`, stdout is streamed to the host via
-/// `MSG_STDOUT_CHUNK` messages AND teed to the specified file path inside the VM.
-/// Handle spawn_watch: spawn the child, write the response over the wire,
-/// THEN start the background monitor. This ordering is critical — the
-/// streaming monitor thread also writes to the same socket (via the shared
-/// `writer` mutex), and `MSG_STDOUT_CHUNK` messages must not arrive at the
-/// host before the `MSG_SPAWN_WATCH_RESULT` for this pid. If the monitor
-/// thread were spawned first, it could race the main thread for the mutex
-/// and send chunks before the result, causing the host to drop them (the
-/// host only registers the stdout channel when it processes the result).
+/// `MSG_STDOUT_CHUNK` messages AND teed to the file path inside the VM.
+///
+/// The result-before-monitor ordering is critical: the streaming monitor
+/// thread also writes to the same socket (via the shared `writer` mutex),
+/// and `MSG_STDOUT_CHUNK` messages must not arrive at the host before the
+/// `MSG_SPAWN_WATCH_RESULT` for this pid — the host only registers the
+/// stdout channel when it processes the result, so earlier chunks would
+/// be dropped.
 fn handle_spawn_watch(
     timeout_ms: u32,
     command: &str,
@@ -506,80 +737,84 @@ fn handle_spawn_watch(
     );
     let command = prepend_env(command, env);
 
-    // Create new process group so we can kill the entire tree on timeout
-    #[cfg(unix)]
-    let child = {
-        use std::os::unix::process::CommandExt;
-        build_exec_command(&command, sudo)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .process_group(0)
-            .spawn()
-    };
-    #[cfg(not(unix))]
-    let child = build_exec_command(&command, sudo)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn();
-
-    match child {
-        Ok(mut child) => {
-            let pid = child.id();
-            log("INFO", &format!("spawn_watch: started pid={}", pid));
-
-            // Write the response BEFORE spawning the monitor thread.
-            // The monitor thread contends for the same writer mutex to send
-            // stdout chunks / process_exit. Writing here guarantees the
-            // spawn_watch_result is on the wire first.
-            let payload = vsock_proto::encode_spawn_watch_result(pid);
-            let response =
-                vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, seq, &payload).map_err(to_io_error)?;
-            {
-                let mut w = writer.lock().unwrap_or_else(|e| e.into_inner());
-                w.write_all(&response)?;
-            }
-
-            if let Some(log_path) = stdout_log_path {
-                // Streaming mode: tee stdout to log file + vsock chunks.
-                // Take stdout from child so we can read it in a separate thread.
-                let stdout_pipe = child.stdout.take();
-                spawn_streaming_monitor(
-                    pid,
-                    child,
-                    timeout_ms,
-                    stdout_pipe,
-                    log_path.to_owned(),
-                    writer,
-                );
-            } else {
-                // Buffered mode: no streaming, collect stdout at exit.
-                spawn_buffered_monitor(pid, child, timeout_ms, writer);
-            }
-
-            Ok(())
-        }
+    let mut child = match spawn_with_pipes(&command, sudo) {
+        Ok(c) => c,
         Err(e) => {
-            let payload = vsock_proto::encode_error(&format!("Failed to spawn: {}", e));
+            let payload = vsock_proto::encode_error(&format!("Failed to spawn: {e}"));
             let response = vsock_proto::encode(MSG_ERROR, seq, &payload).map_err(to_io_error)?;
             let mut w = writer.lock().unwrap_or_else(|e| e.into_inner());
             w.write_all(&response)?;
-            Ok(())
+            return Ok(());
+        }
+    };
+
+    let pid = child.id();
+    log("INFO", &format!("spawn_watch: started pid={pid}"));
+
+    // Write the response BEFORE spawning the monitor thread.
+    // The monitor thread contends for the same writer mutex to send
+    // stdout chunks / process_exit. Writing here guarantees the
+    // spawn_watch_result is on the wire first.
+    //
+    // If encoding or writing fails after spawn but before either monitor
+    // takes ownership of `child`, we must reap here — `Child`'s `Drop`
+    // does not wait, so a `?`-propagated error would leak the child as an
+    // orphan/zombie inside the VM.
+    let payload = vsock_proto::encode_spawn_watch_result(pid);
+    let response = match vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, seq, &payload) {
+        Ok(r) => r,
+        Err(e) => {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(to_io_error(e));
+        }
+    };
+    {
+        let mut w = writer.lock().unwrap_or_else(|e| e.into_inner());
+        if let Err(e) = w.write_all(&response) {
+            drop(w);
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(e);
         }
     }
+
+    if let Some(log_path) = stdout_log_path {
+        // Streaming mode: tee stdout to log file + vsock chunks.
+        // Take stdout from child so we can read it in a separate thread.
+        let stdout_pipe = child.stdout.take();
+        spawn_streaming_monitor(
+            pid,
+            child,
+            timeout_ms,
+            stdout_pipe,
+            log_path.to_owned(),
+            writer,
+        );
+    } else {
+        // Buffered mode: stdout/stderr drained via cancellable helper, sent
+        // in a single MSG_PROCESS_EXIT after wait.
+        spawn_buffered_monitor(pid, child, timeout_ms, writer);
+    }
+
+    Ok(())
 }
 
-/// Streaming monitor: reads stdout in chunks (tees to file + vsock), races
-/// stdout/stderr reading against child exit, then sends process_exit.
+/// Streaming monitor: tees stdout chunks to a log file + vsock, drains stderr
+/// into a buffer, and races both against `child.wait()`.
 ///
 /// Architecture:
 /// - Timeout killer thread: kills process group after deadline
-/// - Stderr reader thread: drains stderr, sends result via channel
-/// - Stdout reader thread: streams chunks to log + vsock, signals via channel
+/// - Stderr reader thread: drains stderr into a `Vec<u8>` (cancellable)
+/// - Stdout reader thread: streams chunks to log + vsock (cancellable)
 /// - Monitor thread: waits for `child.wait()`, then applies drain deadline
 ///
-/// If the child exits but orphaned processes hold pipe fds open, stdout/stderr
-/// threads may block past the drain deadline. The monitor thread proceeds to
-/// `send_process_exit()` regardless after `STDOUT_DRAIN_DEADLINE_SECS`.
+/// If a grandchild keeps pipe fds open past child exit, the deadline fires
+/// the cancel flag — both reader threads exit promptly, dropping their fds
+/// and turning the next grandchild write into EPIPE / SIGPIPE. Without that,
+/// the readers would block on the inherited fds and continue forwarding
+/// `MSG_STDOUT_CHUNK` for an already-exited pid (or grow our stderr buffer
+/// indefinitely).
 fn spawn_streaming_monitor(
     pid: u32,
     mut child: std::process::Child,
@@ -593,7 +828,7 @@ fn spawn_streaming_monitor(
         // deadline it must be killed even while we are still reading output.
         let child_id = child.id();
         let (timeout_done_tx, timeout_handle) = if timeout_ms > 0 {
-            let timeout = Duration::from_millis(timeout_ms as u64);
+            let timeout = Duration::from_millis(u64::from(timeout_ms));
             let (tx, rx) = std::sync::mpsc::channel::<()>();
             let handle = thread::spawn(move || -> bool {
                 if rx.recv_timeout(timeout).is_err() {
@@ -607,29 +842,34 @@ fn spawn_streaming_monitor(
             (None, None)
         };
 
-        // Drain stderr in a background thread BEFORE the stdout reader.
-        // If we waited until after, a child producing >64KB of stderr could
-        // fill the pipe buffer and block — preventing further stdout writes
-        // and causing our stdout read loop to hang (deadlock).
-        // Uses a channel instead of JoinHandle::join() for timed drain.
-        let (stderr_tx, stderr_rx) = std::sync::mpsc::channel::<Vec<u8>>();
-        if let Some(stderr) = child.stderr.take() {
-            thread::spawn(move || {
-                let mut buf = Vec::new();
-                let _ = io::BufReader::new(stderr).read_to_end(&mut buf);
-                let _ = stderr_tx.send(buf);
-            });
+        let cancel = Arc::new(AtomicBool::new(false));
+        let (drain_done_tx, drain_done_rx) = std::sync::mpsc::channel::<()>();
+
+        // Spawn both drain threads BEFORE `child.wait()`. They run
+        // concurrently with the child, so neither pipe (~64 KB) can fill
+        // and block the child. If we instead waited on the child first
+        // and drained after, a chatty child would deadlock on its next
+        // write to a full pipe and never exit. Order between the two
+        // spawn calls is irrelevant — both happen before wait, and they
+        // run in parallel.
+        let stderr_handle = if let Some(stderr) = child.stderr.take() {
+            let cancel = cancel.clone();
+            let tx = drain_done_tx.clone();
+            Some(thread::spawn(move || {
+                let buf = drain_into_vec_cancellable(stderr, &cancel);
+                let _ = tx.send(());
+                buf
+            }))
         } else {
-            drop(stderr_tx);
-        }
+            None
+        };
 
         // Stream stdout to file + vsock in a dedicated thread.
-        // Previously this was an inline loop that blocked child.wait() —
-        // if orphaned processes held the stdout fd, the monitor hung forever.
-        let (stdout_tx, stdout_rx) = std::sync::mpsc::channel::<()>();
-        if let Some(mut stdout) = stdout_pipe {
+        let stdout_handle = if let Some(stdout) = stdout_pipe {
+            let cancel = cancel.clone();
+            let tx = drain_done_tx.clone();
             let stdout_writer = Arc::clone(&writer);
-            thread::spawn(move || {
+            Some(thread::spawn(move || {
                 let log_file = std::fs::OpenOptions::new()
                     .create(true)
                     .append(true)
@@ -639,50 +879,50 @@ fn spawn_streaming_monitor(
                     Err(e) => {
                         log(
                             "WARN",
-                            &format!("spawn_watch: failed to open log file {}: {}", log_path, e),
+                            &format!("spawn_watch: failed to open log file {log_path}: {e}"),
                         );
                         None
                     }
                 };
 
-                let mut buf = [0u8; STDOUT_CHUNK_SIZE];
-                loop {
-                    let n = match stdout.read(&mut buf) {
-                        Ok(0) => break, // EOF
-                        Ok(n) => n,
-                        Err(e) => {
-                            log("WARN", &format!("spawn_watch: stdout read error: {}", e));
-                            break;
-                        }
-                    };
-                    let chunk = match buf.get(..n) {
-                        Some(c) => c,
-                        None => break,
-                    };
-
+                drain_until_eof_or_cancelled(stdout, &cancel, |chunk| {
                     // Write to log file (best-effort)
                     if let Some(ref mut f) = log_file {
                         let _ = f.write_all(chunk);
                     }
-
-                    // Send chunk via vsock (best-effort)
+                    // Send chunk via vsock (best-effort). On write failure,
+                    // signal cancel so the helper exits at the top of the
+                    // next iteration: the drain thread drops its pipe fd,
+                    // the child gets EPIPE / SIGPIPE on its next stdout
+                    // write, and the long-running process terminates
+                    // promptly. Without this, a host-side disconnect would
+                    // leave the agent running until JOB_TIMEOUT while we
+                    // logged a WARN per chunk.
+                    //
+                    // Note: the cancel flag is shared with the stderr
+                    // drain, so this also stops stderr capture. That's
+                    // intentional — on host disconnect the
+                    // `MSG_PROCESS_EXIT` we'd send (carrying that stderr)
+                    // is itself unreachable, so retaining bytes we cannot
+                    // deliver buys nothing.
                     let payload = vsock_proto::encode_stdout_chunk(pid, chunk);
                     if let Ok(msg) = vsock_proto::encode(MSG_STDOUT_CHUNK, 0, &payload) {
                         let mut w = stdout_writer.lock().unwrap_or_else(|e| e.into_inner());
                         if let Err(e) = w.write_all(&msg) {
                             log(
                                 "WARN",
-                                &format!("spawn_watch: failed to send stdout chunk: {}", e),
+                                &format!("spawn_watch: failed to send stdout chunk: {e}"),
                             );
-                            break;
+                            cancel.store(true, Ordering::Release);
                         }
                     }
-                }
-                let _ = stdout_tx.send(());
-            });
+                });
+                let _ = tx.send(());
+            }))
         } else {
-            drop(stdout_tx);
-        }
+            None
+        };
+        drop(drain_done_tx); // so recv returns Disconnected when both threads die
 
         // child.wait() is now UNBLOCKED — no pipe fds held by this thread.
         let status = child.wait();
@@ -696,23 +936,39 @@ fn spawn_streaming_monitor(
 
         // Shared drain deadline: stdout + stderr share a single budget.
         // This matches guest-agent's 5s drain behavior.
-        let deadline = std::time::Instant::now() + Duration::from_secs(STDOUT_DRAIN_DEADLINE_SECS);
-
-        // Drain stdout — wait up to deadline
-        let remaining = deadline.saturating_duration_since(std::time::Instant::now());
-        if stdout_rx.recv_timeout(remaining).is_err() {
+        let expected = stdout_handle.is_some() as usize + stderr_handle.is_some() as usize;
+        let deadline = std::time::Instant::now() + Duration::from_secs(DRAIN_DEADLINE_SECS);
+        let mut completed = 0usize;
+        while completed < expected {
+            let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+            if remaining.is_zero() {
+                break;
+            }
+            match drain_done_rx.recv_timeout(remaining) {
+                Ok(()) => completed += 1,
+                Err(_) => break,
+            }
+        }
+        // Cancel either side that's still draining. The thread observes the
+        // flag within ~100 ms (poll cadence), drops its fd, and grandchild
+        // writes start failing with EPIPE.
+        cancel.store(true, Ordering::Release);
+        if completed < expected {
             log(
                 "WARN",
                 &format!(
-                    "spawn_watch: pid={pid} stdout drain deadline reached after \
-                     {STDOUT_DRAIN_DEADLINE_SECS}s, possible orphaned child process",
+                    "spawn_watch: pid={pid} drain deadline reached after \
+                     {DRAIN_DEADLINE_SECS}s, possible orphaned child process",
                 ),
             );
         }
 
-        // Drain stderr — use remaining time from same deadline
-        let remaining = deadline.saturating_duration_since(std::time::Instant::now());
-        let stderr = stderr_rx.recv_timeout(remaining).unwrap_or_default();
+        let stderr = stderr_handle
+            .map(|h| h.join().unwrap_or_default())
+            .unwrap_or_default();
+        if let Some(h) = stdout_handle {
+            let _ = h.join();
+        }
 
         let killed_by_timeout = timeout_handle
             .map(|h| h.join().unwrap_or(false))
@@ -722,7 +978,7 @@ fn spawn_streaming_monitor(
         } else {
             match status {
                 Ok(s) => (extract_exit_code(s), stderr),
-                Err(e) => (1, format!("Failed to wait: {}", e).into_bytes()),
+                Err(e) => (1, format!("Failed to wait: {e}").into_bytes()),
             }
         };
 
@@ -740,7 +996,8 @@ fn spawn_streaming_monitor(
     });
 }
 
-/// Buffered monitor: waits for process exit, collects stdout/stderr at once.
+/// Buffered monitor: waits for process exit while concurrently draining
+/// stdout/stderr via the cancellable helper, then sends `MSG_PROCESS_EXIT`.
 fn spawn_buffered_monitor(
     pid: u32,
     child: std::process::Child,
@@ -748,20 +1005,21 @@ fn spawn_buffered_monitor(
     writer: Arc<Mutex<UnixStream>>,
 ) {
     thread::spawn(move || {
-        let result = wait_with_timeout(child, timeout_ms);
+        let (outcome, stdout, stderr_buf) = wait_with_drain_and_timeout(child, timeout_ms);
+        let (exit_code, stdout, stderr) = finalize_buffered_result(outcome, stdout, stderr_buf);
 
         log(
             "INFO",
             &format!(
                 "spawn_watch: pid={} exited with code={}, stdout_len={}, stderr_len={}",
                 pid,
-                result.0,
-                result.1.len(),
-                result.2.len()
+                exit_code,
+                stdout.len(),
+                stderr.len()
             ),
         );
 
-        send_process_exit(pid, result.0, &result.1, &result.2, &writer);
+        send_process_exit(pid, exit_code, &stdout, &stderr, &writer);
     });
 }
 
@@ -1175,7 +1433,7 @@ mod tests {
         host_stream.write_all(&fast_msg).unwrap();
 
         // Read responses — we need to find seq=2 (the fast one) within 3 seconds.
-        // Before the fix, this would block until sleep 30 finished.
+        // Before the fix, this would block on the slow exec.
         host_stream
             .set_read_timeout(Some(Duration::from_secs(3)))
             .unwrap();
@@ -1202,6 +1460,7 @@ mod tests {
                         break;
                     }
                 }
+                Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
                 Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
                 Err(e) => panic!("read error: {e}"),
             }
@@ -1429,6 +1688,18 @@ mod tests {
         stream.read_exact(&mut body).unwrap();
     }
 
+    /// Like `Read::read`, but retries on EINTR. `read_exact` retries
+    /// internally; bare `read()` does not, and llvm-cov / profilers
+    /// occasionally send signals that surface as EINTR on blocking reads.
+    fn read_retry_eintr(stream: &mut impl std::io::Read, buf: &mut [u8]) -> std::io::Result<usize> {
+        loop {
+            match stream.read(buf) {
+                Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+                other => return other,
+            }
+        }
+    }
+
     /// Send a MSG_SPAWN_WATCH message with streaming enabled.
     fn send_spawn_watch(
         stream: &mut impl std::io::Write,
@@ -1457,7 +1728,7 @@ mod tests {
         let mut pid: Option<u32> = None;
         let mut stdout_data = Vec::new();
         loop {
-            let n = stream.read(&mut buf).unwrap();
+            let n = read_retry_eintr(stream, &mut buf).unwrap();
             assert!(n > 0, "unexpected EOF waiting for streaming result");
             for msg in decoder.decode(buf.get(..n).unwrap_or_default()).unwrap() {
                 // Pick up the PID from spawn_watch_result
@@ -1521,7 +1792,7 @@ mod tests {
 
     /// Regression test: if the main child exits but an orphaned background
     /// process holds the stdout fd open, `send_process_exit` must still arrive
-    /// within the drain deadline (STDOUT_DRAIN_DEADLINE_SECS).
+    /// within the drain deadline (DRAIN_DEADLINE_SECS).
     ///
     /// Before the fix, the monitor thread blocked forever on `stdout.read()`
     /// because the orphaned process kept the pipe write end open.
@@ -1619,6 +1890,314 @@ mod tests {
         );
 
         let _ = std::fs::remove_file(&log_path);
+        drop(host_stream);
+        let _ = handle.join();
+    }
+
+    // -----------------------------------------------------------------------
+    // Buffered (cancellable-drain) regression tests for #11077
+    // -----------------------------------------------------------------------
+
+    /// Send a `MSG_SPAWN_WATCH` with the buffered (no `stdout_log_path`) shape.
+    fn send_spawn_watch_buffered(
+        stream: &mut impl std::io::Write,
+        seq: u32,
+        command: &str,
+        timeout_ms: u32,
+    ) {
+        let payload = vsock_proto::encode_spawn_watch(timeout_ms, command, &[], false, None);
+        let msg = vsock_proto::encode(MSG_SPAWN_WATCH, seq, &payload).unwrap();
+        stream.write_all(&msg).unwrap();
+    }
+
+    /// Read `MSG_SPAWN_WATCH_RESULT` + `MSG_PROCESS_EXIT` for a buffered
+    /// spawn_watch and return `(pid, exit_code, stdout, stderr)`.
+    fn read_buffered_spawn_watch_result(
+        stream: &mut impl std::io::Read,
+        seq: u32,
+    ) -> (u32, i32, Vec<u8>, Vec<u8>) {
+        let mut decoder = vsock_proto::Decoder::new();
+        let mut buf = [0u8; 4096];
+        let mut pid: Option<u32> = None;
+        loop {
+            let n = read_retry_eintr(stream, &mut buf).unwrap();
+            assert!(
+                n > 0,
+                "unexpected EOF waiting for buffered spawn_watch result"
+            );
+            for msg in decoder.decode(buf.get(..n).unwrap_or_default()).unwrap() {
+                if msg.msg_type == MSG_SPAWN_WATCH_RESULT && msg.seq == seq {
+                    pid = Some(vsock_proto::decode_spawn_watch_result(&msg.payload).unwrap());
+                    continue;
+                }
+                let Some(p) = pid else { continue };
+                if msg.msg_type == MSG_PROCESS_EXIT
+                    && let Ok((exit_pid, code, stdout, stderr)) =
+                        vsock_proto::decode_process_exit(&msg.payload)
+                    && exit_pid == p
+                {
+                    return (p, code, stdout.to_vec(), stderr.to_vec());
+                }
+            }
+        }
+    }
+
+    /// Regression for #11077 (`MSG_EXEC` side): with `timeout_ms = 0`, a
+    /// backgrounded grandchild that inherits the stdout fd must NOT keep
+    /// `MSG_EXEC_RESULT` from arriving after the foreground shell exits.
+    /// Pre-fix, `wait_with_output` blocked on stdout EOF and waited the full
+    /// ~30 s for the orphaned `sleep` to release the fd. Post-fix, the
+    /// drain thread cancels at the deadline (well below 30 s) and we return.
+    #[test]
+    fn exec_returns_when_orphaned_grandchild_holds_stdout() {
+        use std::os::unix::net::UnixStream as StdUnixStream;
+        use std::time::Instant;
+
+        let (guest_stream, host_stream) = StdUnixStream::pair().unwrap();
+        let mut host_writer = host_stream.try_clone().unwrap();
+        let mut host_reader = host_stream;
+
+        let handle = thread::spawn(move || {
+            let _ = handle_connection(guest_stream);
+        });
+
+        read_and_discard_message(&mut host_reader); // MSG_READY
+
+        host_reader
+            .set_read_timeout(Some(Duration::from_secs(15)))
+            .unwrap();
+
+        let start = Instant::now();
+        let (code, stdout, _stderr) = send_exec_and_read_result(
+            &mut host_writer,
+            &mut host_reader,
+            1,
+            "echo orphan-exec; sleep 30 &",
+            0,
+        );
+        let elapsed = start.elapsed();
+
+        assert_eq!(code, 0);
+        assert!(
+            String::from_utf8_lossy(&stdout).contains("orphan-exec"),
+            "expected stdout to contain 'orphan-exec', got: {:?}",
+            String::from_utf8_lossy(&stdout),
+        );
+        assert!(
+            elapsed < Duration::from_secs(DRAIN_DEADLINE_SECS + 5),
+            "MSG_EXEC_RESULT should arrive within drain deadline, took {elapsed:?}",
+        );
+
+        // Cleanup: kill the orphaned sleep
+        let _ = std::process::Command::new("pkill")
+            .args(["-f", "sleep 30"])
+            .status();
+        drop(host_writer);
+        drop(host_reader);
+        let _ = handle.join();
+    }
+
+    /// Returns true iff `pid` is still a live (or zombie-but-unreaped) process
+    /// the test owner has permission to signal. Implemented via `kill(pid, 0)`,
+    /// the canonical existence check. After bash dies via SIGPIPE the kernel
+    /// reaps it (we're not its parent — it was reparented to PID 1 when its
+    /// process group died), so this transitions to false.
+    fn pid_alive(pid: u32) -> bool {
+        // SAFETY: `kill` with sig=0 is a no-op existence check.
+        unsafe { libc::kill(pid as i32, 0) == 0 }
+    }
+
+    /// Regression for #11077: when the host drops the vsock connection
+    /// mid-stream, the streaming monitor's stdout drain hits a write failure
+    /// on its next chunk forward, signals cancel, drops the pipe fd, and the
+    /// child receives SIGPIPE on its next stdout write — terminating well
+    /// inside the drain deadline rather than running until `JOB_TIMEOUT`.
+    ///
+    /// Pre-cancel-fix this loop was preserved by an explicit `break` on write
+    /// failure; the refactor moved chunk handling into a closure that has no
+    /// way to break the helper's loop, so we re-introduce the same fast-stop
+    /// behavior via the cancel flag. This test pins that behavior down.
+    #[test]
+    fn streaming_terminates_child_on_vsock_disconnect() {
+        use std::os::unix::net::UnixStream as StdUnixStream;
+        use std::time::Instant;
+
+        let (guest_stream, mut host_stream) = StdUnixStream::pair().unwrap();
+        let handle = thread::spawn(move || {
+            let _ = handle_connection(guest_stream);
+        });
+        read_and_discard_message(&mut host_stream); // MSG_READY
+
+        // Long-running command that writes stdout every ~50 ms — gives the
+        // streaming drain a chunk to forward at high frequency, so the post-
+        // disconnect write failure is observed promptly.
+        let log_path = format!("/tmp/vsock-test-disco-{}.log", std::process::id());
+        send_spawn_watch(
+            &mut host_stream,
+            1,
+            "while true; do echo tick; sleep 0.05; done",
+            &log_path,
+            0, // no timeout — we want SIGPIPE, not the kill watchdog, to terminate
+        );
+
+        host_stream
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+
+        // Read until we observe both `MSG_SPAWN_WATCH_RESULT` (for the pid)
+        // and at least one `MSG_STDOUT_CHUNK` (proving the drain is live).
+        let mut decoder = vsock_proto::Decoder::new();
+        let mut buf = [0u8; 4096];
+        let mut pid: Option<u32> = None;
+        let mut got_chunk = false;
+        let stream_deadline = Instant::now() + Duration::from_secs(3);
+        while pid.is_none() || !got_chunk {
+            assert!(
+                Instant::now() < stream_deadline,
+                "did not see spawn_watch_result + stdout chunk in time (pid={pid:?}, chunk={got_chunk})",
+            );
+            let n = read_retry_eintr(&mut host_stream, &mut buf).unwrap();
+            for msg in decoder.decode(buf.get(..n).unwrap_or_default()).unwrap() {
+                if msg.msg_type == MSG_SPAWN_WATCH_RESULT && msg.seq == 1 {
+                    pid = vsock_proto::decode_spawn_watch_result(&msg.payload).ok();
+                } else if msg.msg_type == MSG_STDOUT_CHUNK {
+                    got_chunk = true;
+                }
+            }
+        }
+        let pid = pid.unwrap();
+        assert!(
+            pid_alive(pid),
+            "child should still be running before disconnect"
+        );
+
+        // Disconnect: dropping host_stream closes the host end of the
+        // UnixStream pair. The next chunk-forward attempt in the guest
+        // returns BrokenPipe → on_chunk closure stores cancel → drain
+        // breaks → ChildStdout drops → bash gets SIGPIPE on its next echo.
+        drop(host_stream);
+        let _ = handle.join();
+
+        // Wait for the child to terminate. Timing budget: ≤100 ms drain
+        // poll + 50 ms next echo + tear-down. 5 s deadline is generous.
+        let kill_deadline = Instant::now() + Duration::from_secs(5);
+        while pid_alive(pid) {
+            if Instant::now() >= kill_deadline {
+                // Best-effort cleanup before failing
+                // SAFETY: pid was obtained from MSG_SPAWN_WATCH_RESULT.
+                unsafe {
+                    libc::kill(pid as i32, libc::SIGKILL);
+                }
+                let _ = std::fs::remove_file(&log_path);
+                panic!("pid {pid} did not terminate within 5s after vsock disconnect");
+            }
+            thread::sleep(Duration::from_millis(50));
+        }
+
+        let _ = std::fs::remove_file(&log_path);
+    }
+
+    /// Regression: a child producing > 64 KB on **both** stdout and stderr
+    /// concurrently must not deadlock. The kernel pipe buffer is ~64 KB; if
+    /// either drain were sequential (waiting for the other to finish first),
+    /// the second pipe would fill, the child would block on its next write,
+    /// and the test would hit the read timeout.
+    ///
+    /// Pins down the concurrent-drain invariant of `wait_with_drain_and_timeout`
+    /// shared by `MSG_EXEC` and buffered `MSG_SPAWN_WATCH`. The streaming
+    /// path in `spawn_streaming_monitor` follows the same
+    /// stderr-thread-before-stdout-thread structure for the same reason.
+    #[test]
+    fn buffered_spawn_watch_concurrent_large_stdout_stderr() {
+        use std::os::unix::net::UnixStream as StdUnixStream;
+
+        let (guest_stream, mut host_stream) = StdUnixStream::pair().unwrap();
+        let handle = thread::spawn(move || {
+            let _ = handle_connection(guest_stream);
+        });
+        read_and_discard_message(&mut host_stream); // MSG_READY
+
+        // Read timeout well above any reasonable runtime. If we deadlock on
+        // a full pipe, the child blocks on write(), drain returns nothing,
+        // and we hit this timeout — the failure mode this test guards.
+        host_stream
+            .set_read_timeout(Some(Duration::from_secs(15)))
+            .unwrap();
+
+        // Each pipeline produces exactly 100 KB; the two pipelines run
+        // concurrently so stdout and stderr are interleaved producers.
+        // 100 KB > the ~64 KB pipe buffer on Linux, so a single-threaded
+        // drainer would visibly stall.
+        send_spawn_watch_buffered(
+            &mut host_stream,
+            1,
+            "{ yes A | head -c 102400; } & { yes B | head -c 102400 >&2; } & wait",
+            10_000,
+        );
+        let (pid, code, stdout, stderr) = read_buffered_spawn_watch_result(&mut host_stream, 1);
+
+        assert!(pid > 0);
+        assert_eq!(code, 0);
+        assert_eq!(
+            stdout.len(),
+            102_400,
+            "stdout should be exactly 100 KB, got {} bytes",
+            stdout.len(),
+        );
+        assert_eq!(
+            stderr.len(),
+            102_400,
+            "stderr should be exactly 100 KB, got {} bytes",
+            stderr.len(),
+        );
+        assert!(stdout.iter().all(|&b| b == b'A' || b == b'\n'));
+        assert!(stderr.iter().all(|&b| b == b'B' || b == b'\n'));
+
+        drop(host_stream);
+        let _ = handle.join();
+    }
+
+    /// Regression for #11077 (`MSG_SPAWN_WATCH` buffered side): symmetric to
+    /// `streaming_monitor_drains_on_orphaned_stdout`. Pre-fix, the buffered
+    /// monitor used the same `wait_with_output` and hung on a leaked stdout
+    /// fd. Post-fix, drain threads observe the cancel flag at the deadline,
+    /// drop the pipe read end, and the orphan's next write returns EPIPE.
+    #[test]
+    fn buffered_spawn_watch_returns_when_orphaned_grandchild_holds_stdout() {
+        use std::os::unix::net::UnixStream as StdUnixStream;
+        use std::time::Instant;
+
+        let (guest_stream, mut host_stream) = StdUnixStream::pair().unwrap();
+        let handle = thread::spawn(move || {
+            let _ = handle_connection(guest_stream);
+        });
+
+        read_and_discard_message(&mut host_stream); // MSG_READY
+
+        host_stream
+            .set_read_timeout(Some(Duration::from_secs(15)))
+            .unwrap();
+
+        let start = Instant::now();
+        send_spawn_watch_buffered(&mut host_stream, 1, "echo orphan-buf; sleep 30 &", 0);
+        let (pid, code, stdout, _stderr) = read_buffered_spawn_watch_result(&mut host_stream, 1);
+        let elapsed = start.elapsed();
+
+        assert!(pid > 0);
+        assert_eq!(code, 0);
+        assert!(
+            String::from_utf8_lossy(&stdout).contains("orphan-buf"),
+            "expected stdout to contain 'orphan-buf', got: {:?}",
+            String::from_utf8_lossy(&stdout),
+        );
+        assert!(
+            elapsed < Duration::from_secs(DRAIN_DEADLINE_SECS + 5),
+            "MSG_PROCESS_EXIT should arrive within drain deadline, took {elapsed:?}",
+        );
+
+        let _ = std::process::Command::new("pkill")
+            .args(["-f", "sleep 30"])
+            .status();
         drop(host_stream);
         let _ = handle.join();
     }

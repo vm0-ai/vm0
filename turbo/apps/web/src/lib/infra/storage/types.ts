@@ -9,18 +9,6 @@ export type StorageDriver = "vas";
 // Re-export VolumeConfig from agent-config for convenience
 export type { VolumeConfig };
 
-// Derived from /home/user/workspace via Claude Code's project-name encoding:
-// strip leading "/", replace "/" with "-", prepend "-". Since zero always runs
-// with workingDir=/home/user/workspace, the encoded folder is always
-// "-home-user-workspace". Mounting memory directly here removes the need for
-// the guest-agent symlink bootstrap.
-//
-// The legacy DEFAULT_MEMORY_MOUNT_PATH (=/home/user/.vm0/memory) was removed
-// in #10602 — it had no remaining callers once memory started riding in
-// artifacts[] and is not part of any wire contract.
-export const AUTO_MEMORY_MOUNT_PATH =
-  "/home/user/.claude/projects/-home-user-workspace/memory";
-
 /**
  * Resolved volume with all template variables replaced
  */
@@ -41,7 +29,7 @@ export interface ResolvedVolume {
  */
 export interface ResolvedArtifact {
   driver: StorageDriver;
-  mountPath: string; // Resolved from framework config
+  mountPath: string; // Explicit mount path from ContextArtifact
   vasStorageName: string;
   vasVersion: string; // Version hash or "latest"
 }
@@ -51,7 +39,6 @@ export interface ResolvedArtifact {
  */
 export interface VolumeResolutionResult {
   volumes: ResolvedVolume[];
-  artifact: ResolvedArtifact | null;
   errors: VolumeError[];
 }
 
@@ -61,11 +48,7 @@ export interface VolumeResolutionResult {
 export interface VolumeError {
   volumeName: string;
   message: string;
-  type:
-    | "missing_definition"
-    | "missing_variable"
-    | "invalid_config"
-    | "missing_artifact_name";
+  type: "missing_definition" | "missing_variable" | "invalid_config";
 }
 
 /**
@@ -96,17 +79,6 @@ export interface AdditionalVolume {
 }
 
 /**
- * Additional artifact passed directly at run time, each with an explicit
- * mountPath. Extras beyond the primary artifact (whose mount path is derived
- * from compose's working_dir). Resolved against the runtime org.
- */
-export interface AdditionalArtifact {
-  name: string; // Artifact storage name
-  version?: string; // Version hash or "latest" (defaults to "latest")
-  mountPath: string; // Absolute path in sandbox
-}
-
-/**
  * Storage entry in manifest
  */
 export interface ManifestStorage {
@@ -124,6 +96,7 @@ export interface ManifestStorage {
 export interface ManifestArtifact {
   mountPath: string;
   vasStorageName: string;
+  vasStorageId: string;
   vasVersionId: string;
   /** Presigned URL for downloading archive.tar.gz */
   archiveUrl: string;

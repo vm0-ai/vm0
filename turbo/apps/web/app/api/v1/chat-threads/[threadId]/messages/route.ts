@@ -1,5 +1,5 @@
 import { createHandler, tsr } from "../../../../../../src/lib/ts-rest-handler";
-import { chatThreadV1MessagesContract } from "@vm0/core";
+import { chatThreadV1MessagesContract } from "@vm0/api-contracts/contracts/chat-threads-v1";
 import { z } from "zod";
 import { initServices } from "../../../../../../src/lib/init-services";
 import {
@@ -8,9 +8,9 @@ import {
 } from "../../../../../../src/lib/auth/require-auth";
 import {
   getChatThread,
-  getMessagesSince,
+  getPagedMessages,
 } from "../../../../../../src/lib/zero/chat-thread";
-import { isNotFound } from "../../../../../../src/lib/shared/errors";
+import { isNotFound } from "@vm0/api-services/errors";
 
 const messageRoleSchema = z.enum(["user", "assistant"]);
 
@@ -25,13 +25,14 @@ const router = tsr.router(chatThreadV1MessagesContract, {
       // Ownership check — throws notFound if the user does not own the thread
       await getChatThread(params.threadId, authCtx.userId);
 
-      const rows = await getMessagesSince(
+      const page = await getPagedMessages(
         params.threadId,
         query.sinceId,
+        query.beforeId,
         query.limit,
       );
 
-      const messages = rows.map((row) => {
+      const messages = page.messages.map((row) => {
         // Legacy placeholder rows (sequenceNumber IS NULL) fall back to runError;
         // event-backed rows and error rows use their own error field.
         const isLegacyPlaceholder =

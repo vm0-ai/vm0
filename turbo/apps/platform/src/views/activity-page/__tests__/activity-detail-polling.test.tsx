@@ -7,11 +7,13 @@ import type {
   LogDetail,
   AgentEventsResponse,
 } from "../../../signals/zero-page/log-types.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
-import { logsByIdContract, zeroRunAgentEventsContract } from "@vm0/core";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
+import { logsByIdContract } from "@vm0/api-contracts/contracts/logs";
+import { zeroRunAgentEventsContract } from "@vm0/api-contracts/contracts/zero-runs";
 import { setMockComposesList } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 function makeLogDetail(overrides: Partial<LogDetail>): LogDetail {
   return {

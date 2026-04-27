@@ -22,6 +22,7 @@
  * - no-direct-fetch: Disallow direct fetch$ usage — use zeroClient$ instead
  * - no-empty-promise-catch: Disallow .catch(() => {}) — use detach() for proper promise tracking
  * - no-test-delay: Disallow manual delays/timers in tests — use createDeferredPromise + waitFor
+ * - no-manual-mock-cleanup: Disallow manual vi.*AllMocks()/unstub cleanup — Vitest config owns it
  * - require-accept: Enforce that zeroClient$ calls are wrapped in accept()
  * - no-get-by-role-name: Avoid *ByRole(role, { name }) for text-content roles — causes ~300ms/call slowdown in happy-dom
  * - no-raw-msw-http: Disallow raw http.* MSW handlers for internal /api/zero/* paths — use mockApi(contract.route, ...)
@@ -43,6 +44,7 @@ import noNonZeroApi from "./rules/no-non-zero-api.ts";
 import commandAsyncSignal from "./rules/command-async-signal.ts";
 import noGetterSetterParams from "./rules/no-getter-setter-params.ts";
 import noNewAbortController from "./rules/no-new-abort-controller.ts";
+import noNewPromise from "./rules/no-new-promise.ts";
 import noDirectLocalStorage from "./rules/no-direct-local-storage.ts";
 import noDetachInSignals from "./rules/no-detach-in-signals.ts";
 import noDirectFetch from "./rules/no-direct-fetch.ts";
@@ -50,11 +52,14 @@ import noEmptyPromiseCatch from "./rules/no-empty-promise-catch.ts";
 import noVoidStatement from "./rules/no-void-statement.ts";
 import noAbortSwallower from "./rules/no-abort-swallower.ts";
 import noTestDelay from "./rules/no-test-delay.ts";
+import noManualMockCleanup from "./rules/no-manual-mock-cleanup.ts";
 import requireAccept from "./rules/require-accept.ts";
+import requireClientSignal from "./rules/require-client-signal.ts";
 import noGetByRoleName from "./rules/no-get-by-role-name.ts";
 import noUserClearTab from "./rules/no-user-clear-tab.ts";
 import noDuplicateRouteParam from "./rules/no-duplicate-route-param.ts";
 import noRawMswHttp from "./rules/no-raw-msw-http.ts";
+import noMockApiRawAsync from "./rules/no-mockapi-raw-async.ts";
 
 const plugin = {
   meta: {
@@ -78,6 +83,7 @@ const plugin = {
     "command-async-signal": commandAsyncSignal,
     "no-getter-setter-params": noGetterSetterParams,
     "no-new-abort-controller": noNewAbortController,
+    "no-new-promise": noNewPromise,
     "no-direct-local-storage": noDirectLocalStorage,
     "no-detach-in-signals": noDetachInSignals,
     "no-direct-fetch": noDirectFetch,
@@ -85,11 +91,14 @@ const plugin = {
     "no-void-statement": noVoidStatement,
     "no-abort-swallower": noAbortSwallower,
     "no-test-delay": noTestDelay,
+    "no-manual-mock-cleanup": noManualMockCleanup,
     "require-accept": requireAccept,
+    "require-client-signal": requireClientSignal,
     "no-get-by-role-name": noGetByRoleName,
     "no-user-clear-tab": noUserClearTab,
     "no-duplicate-route-param": noDuplicateRouteParam,
     "no-raw-msw-http": noRawMswHttp,
+    "no-mockapi-raw-async": noMockApiRawAsync,
   },
 };
 

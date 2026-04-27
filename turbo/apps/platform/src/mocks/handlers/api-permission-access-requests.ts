@@ -1,13 +1,7 @@
-/**
- * Permission Access Requests API Handlers
- *
- * Mock handlers for /api/zero/permission-access-requests endpoints.
- */
-
 import {
   permissionAccessRequestsListContract,
   type PermissionAccessRequestResponse,
-} from "@vm0/core";
+} from "@vm0/api-contracts/contracts/zero-agents";
 import { mockApi } from "../msw-contract.ts";
 
 let mockPermissionRequests: PermissionAccessRequestResponse[] = [];

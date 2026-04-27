@@ -15,11 +15,13 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { setPermissionDialogType$ } from "../../../signals/zero-page/settings/connectors.ts";
 import { permissionDialogSelected$ } from "../../../signals/zero-page/settings/permission-dialog.ts";
-import { type ConnectorType, zeroUserConnectorsContract } from "@vm0/core";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import type { ConnectorType } from "@vm0/connectors/connectors";
+import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 function mockAgents(
   agents: { id: string; displayName: string; avatarUrl?: string }[],

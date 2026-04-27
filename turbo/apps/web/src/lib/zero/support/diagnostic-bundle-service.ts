@@ -1,11 +1,11 @@
 import archiver from "archiver";
 import { eq, or, sql } from "drizzle-orm";
-import { agentRuns } from "../../../db/schema/agent-run";
+import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
   agentComposes,
   agentComposeVersions,
-} from "../../../db/schema/agent-compose";
-import { zeroAgents } from "../../../db/schema/zero-agent";
+} from "@vm0/db/schema/agent-compose";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { queryAxiom, getDatasetName, DATASETS } from "../../shared/axiom";
 import {
   assembleActivityLog,

@@ -1,5 +1,5 @@
 import { command, computed, state } from "ccstate";
-import type { FirewallPolicyValue } from "@vm0/core";
+import type { FirewallPolicyValue } from "@vm0/connectors/firewall-types";
 import type { PermissionPolicy } from "./permissions.ts";
 
 // ---------------------------------------------------------------------------

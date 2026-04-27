@@ -3,18 +3,18 @@ import { screen, waitFor } from "@testing-library/react";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
-import {
-  type ConnectorResponse,
-  type ConnectorType,
-  zeroAgentsByIdContract,
-  zeroUserConnectorsContract,
-} from "@vm0/core";
+import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
+import type { ConnectorType } from "@vm0/connectors/connectors";
+import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
+import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
 import { setMockOrg } from "../../../mocks/handlers/api-org.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { setMockOnboardingStatus } from "../../../mocks/handlers/api-onboarding.ts";
+import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 function connectorUuid(type: string): string {
   const map: Record<string, string> = {
@@ -196,9 +196,20 @@ function renderTeamPageAsMember(
   setMockOnboardingStatus({
     isAdmin: false,
     hasDefaultAgent: true,
-    defaultAgentId: "compose-1",
+    defaultAgentId: "zero",
     defaultAgentMetadata: { displayName: "Zero" },
   });
+  setMockTeam([
+    {
+      id: "zero",
+      displayName: "Zero",
+      description: null,
+      sound: null,
+      avatarUrl: null,
+      headVersionId: "version_1",
+      updatedAt: "2024-01-01T00:00:00Z",
+    },
+  ]);
   setMockOrg({ role: "member" });
   detachedSetupPage({ context, path: "/agents/zero" });
 }

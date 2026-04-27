@@ -15,7 +15,7 @@ import { createVoiceChatCandidateSession } from "../../../../../../src/lib/zero/
 // eslint-disable-next-line web/no-direct-db-in-tests -- verify DB side-effects directly
 import { createVoiceChatCandidateTask } from "../../../../../../src/lib/zero/voice-chat-candidate/task-service";
 // eslint-disable-next-line web/no-direct-db-in-tests -- verify DB side-effects directly
-import { featureCandidateVoiceChatTasks } from "../../../../../../src/db/schema/voice-chat-candidate";
+import { voiceChatTasks } from "@vm0/db/schema/voice-chat";
 
 const SECRETS_ENCRYPTION_KEY =
   "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
@@ -77,6 +77,9 @@ async function seedSessionWithQueuedTask() {
         status: "queued",
         createdAt: new Date(),
         sessionId: session.id,
+        markResponseReady: () => {
+          return undefined;
+        },
       };
     },
   });
@@ -148,8 +151,8 @@ describe("POST /api/internal/event-consumers/voice-chat-candidate", () => {
     const db = globalThis.services.db;
     const [row] = await db
       .select()
-      .from(featureCandidateVoiceChatTasks)
-      .where(eq(featureCandidateVoiceChatTasks.id, task.id));
+      .from(voiceChatTasks)
+      .where(eq(voiceChatTasks.id, task.id));
     expect(row!.status).toBe("running");
     expect(row!.startedAt).not.toBeNull();
     expect(row!.assistantMessages).toEqual([
@@ -181,8 +184,8 @@ describe("POST /api/internal/event-consumers/voice-chat-candidate", () => {
     const db = globalThis.services.db;
     const [row] = await db
       .select()
-      .from(featureCandidateVoiceChatTasks)
-      .where(eq(featureCandidateVoiceChatTasks.id, task.id));
+      .from(voiceChatTasks)
+      .where(eq(voiceChatTasks.id, task.id));
     expect(row!.status).toBe("running");
     expect(row!.assistantMessages).toHaveLength(2);
     expect(
@@ -208,8 +211,8 @@ describe("POST /api/internal/event-consumers/voice-chat-candidate", () => {
     const db = globalThis.services.db;
     const [row] = await db
       .select()
-      .from(featureCandidateVoiceChatTasks)
-      .where(eq(featureCandidateVoiceChatTasks.id, task.id));
+      .from(voiceChatTasks)
+      .where(eq(voiceChatTasks.id, task.id));
     expect(row!.status).toBe("running");
     expect(row!.assistantMessages).toEqual([]);
   });

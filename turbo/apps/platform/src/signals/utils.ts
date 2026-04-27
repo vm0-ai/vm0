@@ -201,9 +201,7 @@ export async function setLoop(
       // abandoned promiseFromSignal that rejects as an unhandled rejection
       // when the abort signal fires during afterEach cleanup.
       await (IN_VITEST
-        ? new Promise<void>((resolve) => {
-            window.setTimeout(resolve, 0);
-          })
+        ? delay(0, { signal: AbortSignal.any([]) })
         : delay(interval, { signal }));
     } catch (error) {
       throwIfAbort(error);
@@ -215,9 +213,7 @@ export async function setLoop(
       );
       fibIndex++;
       await (IN_VITEST
-        ? new Promise<void>((resolve) => {
-            window.setTimeout(resolve, 0);
-          })
+        ? delay(0, { signal: AbortSignal.any([]) })
         : delay(backoff, { signal }));
     }
   }
@@ -299,39 +295,37 @@ export function createDeferredPromise<T>(signal: AbortSignal): {
   reject: (reason?: unknown) => void;
   settled: () => boolean;
 } {
-  let _resolve: ((value: T) => void) | undefined;
-  let _reject: ((reason?: unknown) => void) | undefined;
+  const { promise, resolve, reject } = Promise.withResolvers<T>();
   let settled = false;
-
-  const promise = new Promise<T>((resolve, reject) => {
-    _resolve = (value: T) => {
-      if (settled) {
-        throw new Error("Deferred promise already settled");
-      }
-      settled = true;
-      resolve(value);
-    };
-    _reject = (reason?: unknown) => {
-      if (settled) {
-        throw new Error("Deferred promise already settled");
-      }
-      settled = true;
-      reject(reason);
-    };
-  });
 
   detach(promise, Reason.Deferred);
 
+  const guardedResolve = (value: T) => {
+    if (settled) {
+      throw new Error("Deferred promise already settled");
+    }
+    settled = true;
+    resolve(value);
+  };
+
+  const guardedReject = (reason?: unknown) => {
+    if (settled) {
+      throw new Error("Deferred promise already settled");
+    }
+    settled = true;
+    reject(reason);
+  };
+
   signal.addEventListener("abort", () => {
     if (!settled) {
-      _reject?.(signal.reason);
+      guardedReject(signal.reason);
     }
   });
 
   return {
     promise,
-    resolve: _resolve as unknown as (value: T) => void,
-    reject: _reject as unknown as (reason?: unknown) => void,
+    resolve: guardedResolve,
+    reject: guardedReject,
     settled: () => {
       return settled;
     },

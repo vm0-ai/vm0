@@ -12,15 +12,25 @@ import {
   findTestZeroRun,
   findTestRunCallbacks,
   createTestSessionWithConversation,
+  getTestUserPreferencesAll,
+  updateTestUserPreferencesAll,
 } from "../../../__tests__/api-test-helpers";
-import { createTestZeroAgent } from "../../../__tests__/db-test-seeders/agents";
+import {
+  clearComposeHeadVersion,
+  createTestZeroAgent,
+  deleteTestCompose,
+} from "../../../__tests__/db-test-seeders/agents";
 import { bindCustomSkillToAgent } from "../../../__tests__/db-test-seeders/skills";
 import { createTestUserConnector } from "../../../__tests__/db-test-seeders/connectors";
-import { getTestZeroAgentId } from "../../../__tests__/db-test-assertions/agents";
+import {
+  getTestZeroAgentId,
+  getTestAgentSessionArtifacts,
+} from "../../../__tests__/db-test-assertions/agents";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route
 import { createZeroRun } from "../zero-run-service";
+import { AUTO_MEMORY_ARTIFACT_NAME, AUTO_MEMORY_MOUNT_PATH } from "../memory";
 import { reloadEnv } from "../../../env";
-import type { TriggerSource } from "@vm0/core";
+import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 
 // ---------------------------------------------------------------------------
 // Tests for createZeroRun parameters NOT exposed by the POST /api/zero/runs
@@ -427,22 +437,171 @@ describe("createZeroRun() — service-only parameters", () => {
   });
 
   describe("deferred dispatch", () => {
-    it("returns after Phase 1; Phase 2 runs only once the after() queue flushes", async () => {
+    it("returns after Phase 1; Phase 2 dispatched via waitUntil completes", async () => {
       const result = await createZeroRun(baseParams());
 
       // Phase 1 is synchronous: run record exists immediately.
       const runBeforeFlush = await findTestRunRecord(result.runId);
       expect(runBeforeFlush).toBeDefined();
 
-      // Phase 2 is queued via after(): no runner job yet.
-      const jobBeforeFlush = await findTestRunnerJobEntry(result.runId);
-      expect(jobBeforeFlush).toBeUndefined();
+      // waitUntil() dispatches immediately, so the runner job may already exist.
+      // flushAfter() awaits the stored promise to guarantee completion.
+      await context.mocks.flushAfter();
+
+      // After flushing, dispatch has completed and the runner job is visible.
+      const jobAfterFlush = await findTestRunnerJobEntry(result.runId);
+      expect(jobAfterFlush).toBeDefined();
+    });
+  });
+
+  describe("compose resolution error paths (Round 1 JOIN)", () => {
+    it("throws notFound when composeId does not match any compose", async () => {
+      const missingComposeId = "00000000-0000-0000-0000-000000000000";
+
+      await expect(
+        createZeroRun(baseParams({ agentId: missingComposeId })),
+      ).rejects.toMatchObject({
+        message: expect.stringContaining("Agent compose not found"),
+      });
+    });
+
+    it("throws badRequest when compose has no head version", async () => {
+      const agentName = uniqueId("headless-agent");
+      const compose = await createTestCompose(agentName);
+      const headlessAgentId = await getTestZeroAgentId(user.orgId, agentName);
+      await clearComposeHeadVersion(compose.composeId);
+
+      await expect(
+        createZeroRun(baseParams({ agentId: headlessAgentId })),
+      ).rejects.toMatchObject({
+        message: expect.stringContaining(
+          "Agent compose has no versions. Run 'vm0 build' first.",
+        ),
+      });
+    });
+
+    it("throws notFound after compose row is deleted", async () => {
+      const agentName = uniqueId("deleted-agent");
+      const compose = await createTestCompose(agentName);
+      const deletedAgentId = await getTestZeroAgentId(user.orgId, agentName);
+      await deleteTestCompose(compose.composeId);
+
+      await expect(
+        createZeroRun(baseParams({ agentId: deletedAgentId })),
+      ).rejects.toMatchObject({
+        message: expect.stringContaining("Agent compose not found"),
+      });
+    });
+  });
+
+  describe("agent model fallback (resolveEffectiveModel)", () => {
+    it("should use agent defaults when callers do not provide model overrides", async () => {
+      const agentName = uniqueId("model-agent");
+      await createTestCompose(agentName);
+      await createTestZeroAgent(user.orgId, agentName, {
+        displayName: "ModelBot",
+        selectedModel: "test-model-from-agent",
+      });
+      const modelAgentId = await getTestZeroAgentId(user.orgId, agentName);
+
+      const result = await createZeroRun(
+        baseParams({
+          agentId: modelAgentId,
+          triggerSource: "slack",
+        }),
+      );
+      expect(result.runId).toBeDefined();
 
       await context.mocks.flushAfter();
 
-      // After flushing, dispatch has run and the runner job is visible.
-      const jobAfterFlush = await findTestRunnerJobEntry(result.runId);
-      expect(jobAfterFlush).toBeDefined();
+      const zeroRun = await findTestZeroRun(result.runId);
+      expect(zeroRun).toBeDefined();
+      expect(zeroRun!.selectedModel).toBe("test-model-from-agent");
+    });
+
+    it("should let caller overrides take priority over agent defaults", async () => {
+      const agentName = uniqueId("over-model-agent");
+      await createTestCompose(agentName);
+      await createTestZeroAgent(user.orgId, agentName, {
+        displayName: "OverrideModelBot",
+        selectedModel: "agent-default-model",
+      });
+      const overrideAgentId = await getTestZeroAgentId(user.orgId, agentName);
+
+      const result = await createZeroRun(
+        baseParams({
+          agentId: overrideAgentId,
+          selectedModelOverride: "caller-explicit-model",
+          triggerSource: "slack",
+        }),
+      );
+      expect(result.runId).toBeDefined();
+
+      await context.mocks.flushAfter();
+
+      const zeroRun = await findTestZeroRun(result.runId);
+      expect(zeroRun).toBeDefined();
+      expect(zeroRun!.selectedModel).toBe("caller-explicit-model");
+    });
+  });
+
+  describe("auto-memory artifact seeding", () => {
+    it("seeds agent_sessions.artifacts with memory on new session creation", async () => {
+      const result = await createZeroRun(baseParams());
+
+      const run = await findTestRunRecord(result.runId);
+      expect(run).toBeDefined();
+
+      const artifacts = await getTestAgentSessionArtifacts(run!.sessionId);
+      expect(artifacts).toEqual([
+        {
+          name: AUTO_MEMORY_ARTIFACT_NAME,
+          mountPath: AUTO_MEMORY_MOUNT_PATH,
+        },
+      ]);
+    });
+  });
+
+  describe("capture network bodies short-circuit", () => {
+    it("skips DB UPDATE and leaves captureNetworkBodies unset when quota is zero", async () => {
+      const before = await getTestUserPreferencesAll();
+      expect(before.captureNetworkBodiesRemaining).toBe(0);
+
+      const result = await createZeroRun(baseParams());
+      await context.mocks.flushAfter();
+
+      const after = await getTestUserPreferencesAll();
+      expect(after.captureNetworkBodiesRemaining).toBe(0);
+
+      const job = await findTestRunnerJobEntry(result.runId);
+      expect(job).toBeDefined();
+      expect(job!.executionContext.captureNetworkBodies).toBeFalsy();
+    });
+
+    it("decrements quota and enables captureNetworkBodies when quota is positive", async () => {
+      await updateTestUserPreferencesAll({ captureNetworkBodiesRemaining: 3 });
+
+      const result = await createZeroRun(baseParams());
+      await context.mocks.flushAfter();
+
+      const after = await getTestUserPreferencesAll();
+      expect(after.captureNetworkBodiesRemaining).toBe(2);
+
+      const job = await findTestRunnerJobEntry(result.runId);
+      expect(job).toBeDefined();
+      expect(job!.executionContext.captureNetworkBodies).toBe(true);
+    });
+
+    it("consumes the last quota slot and skips the UPDATE on subsequent runs", async () => {
+      await updateTestUserPreferencesAll({ captureNetworkBodiesRemaining: 1 });
+
+      await createZeroRun(baseParams());
+      const mid = await getTestUserPreferencesAll();
+      expect(mid.captureNetworkBodiesRemaining).toBe(0);
+
+      await createZeroRun(baseParams());
+      const end = await getTestUserPreferencesAll();
+      expect(end.captureNetworkBodiesRemaining).toBe(0);
     });
   });
 });

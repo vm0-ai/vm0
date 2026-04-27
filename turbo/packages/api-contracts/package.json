@@ -1,0 +1,50 @@
+{
+  "name": "@vm0/api-contracts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./src/contracts/index.ts",
+      "types": "./src/contracts/index.ts"
+    },
+    "./contracts": {
+      "import": "./src/contracts/index.ts",
+      "types": "./src/contracts/index.ts"
+    },
+    "./contracts/*": {
+      "import": "./src/contracts/*.ts",
+      "types": "./src/contracts/*.ts"
+    },
+    "./contracts/connectors": null,
+    "./contracts/connectors/*": null,
+    "./contracts/connector-utils": null,
+    "./contracts/firewall-expander": null,
+    "./contracts/firewall-rule-matcher": null,
+    "./contracts/firewalls": null,
+    "./feature-switch-key": null,
+    "./firewall-loader": null,
+    "./firewalls": null,
+    "./firewalls/*": null
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "oxlint && oxlint --type-aware -c ../../.oxlintrc.typeaware.json && eslint . --max-warnings 0",
+    "check-types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ts-rest/core": "3.53.0-rc.1",
+    "@vm0/connectors": "workspace:*",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@vm0/eslint-config": "workspace:*",
+    "@vm0/typescript-config": "workspace:*",
+    "eslint": "^9.34.0",
+    "oxlint": "^1.57.0",
+    "oxlint-tsgolint": "0.21.1",
+    "typescript": "5.9.3",
+    "vitest": "^4.1.5"
+  }
+}

@@ -1,9 +1,9 @@
 import { command, computed, state } from "ccstate";
 import {
   CONNECTOR_TYPES,
-  zeroUserConnectorsContract,
   type ConnectorType,
-} from "@vm0/core";
+} from "@vm0/connectors/connectors";
+import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { zeroClient$ } from "../../api-client.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { accept } from "../../../lib/accept.ts";
@@ -63,7 +63,10 @@ export const confirmPermissionDialog$ = command(
       [...selected].map(async (agentId) => {
         signal.throwIfAborted();
         const existing = await accept(
-          client.get({ params: { id: agentId } }),
+          client.get({
+            params: { id: agentId },
+            fetchOptions: { signal },
+          }),
           [200],
         );
         signal.throwIfAborted();
@@ -75,6 +78,7 @@ export const confirmPermissionDialog$ = command(
           client.update({
             params: { id: agentId },
             body: { enabledTypes: [...current, connectorType] },
+            fetchOptions: { signal },
           }),
           [200],
         );

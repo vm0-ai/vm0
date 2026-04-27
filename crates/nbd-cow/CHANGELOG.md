@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.8](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.7...nbd-cow-v0.4.8) (2026-04-26)
+
+
+### Documentation
+
+* **nbd-cow:** add crate module documentation ([#11164](https://github.com/vm0-ai/vm0/issues/11164)) ([845c276](https://github.com/vm0-ai/vm0/commit/845c276217fb4e76e289f98f48af1a4340759e06))
+
 ## [0.4.7](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.6...nbd-cow-v0.4.7) (2026-04-23)
 
 

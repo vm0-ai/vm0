@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { env } from "../../../../../../src/env";
 import { getApiUrl } from "../../../../../../src/lib/infra/callback";
-import { slackOrgInstallations } from "../../../../../../src/db/schema/slack-org-installation";
+import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
 
 /**
  * Org-aware Slack OAuth Connect Endpoint

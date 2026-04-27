@@ -1,5 +1,6 @@
 import { createHandler, tsr } from "../../../../../../src/lib/ts-rest-handler";
-import { zeroRunsCancelContract, createErrorResponse } from "@vm0/core";
+import { zeroRunsCancelContract } from "@vm0/api-contracts/contracts/zero-runs";
+import { createErrorResponse } from "@vm0/api-contracts/contracts/errors";
 import { initServices } from "../../../../../../src/lib/init-services";
 import {
   requireAuth,
@@ -13,11 +14,12 @@ import {
   drainOrgQueue,
 } from "../../../../../../src/lib/zero/zero-run-queue-service";
 import { processOrgCredits } from "../../../../../../src/lib/zero/credit/credit-service";
+import { processOrgUsageEvents } from "../../../../../../src/lib/zero/credit/usage-event-service";
 import {
   isNotFound,
   isBadRequest,
   isRunNotCancellable,
-} from "../../../../../../src/lib/shared/errors";
+} from "@vm0/api-services/errors";
 import { after } from "next/server";
 
 const router = tsr.router(zeroRunsCancelContract, {
@@ -45,6 +47,7 @@ const router = tsr.router(zeroRunsCancelContract, {
           );
           if (shouldProcessCredits) {
             await processOrgCredits(result.orgId);
+            await processOrgUsageEvents(result.orgId);
           }
         });
       }

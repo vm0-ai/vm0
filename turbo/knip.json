@@ -44,6 +44,20 @@
         "config": ["tsup.config.ts"]
       }
     },
+    "apps/api": {
+      "entry": [
+        "src/index.ts",
+        "src/server.ts",
+        "src/signals/context/hono.ts",
+        "src/signals/context/wait-until.ts",
+        "src/signals/external/clerk.ts",
+        "src/signals/external/env.ts",
+        "custom-eslint/index.ts",
+        "custom-eslint/**/*.{test,spec}.ts",
+        "src/**/*.{test,spec}.ts"
+      ],
+      "project": ["src/**/*.ts", "custom-eslint/**/*.ts"]
+    },
     "apps/platform": {
       "entry": ["src/main.ts", "**/*.{test,spec}.ts?(x)"],
       "project": ["**/*.{ts,tsx}"],
@@ -67,6 +81,14 @@
         "src/**/*.{test,spec}.ts"
       ],
       "project": ["src/**/*.ts"]
+    },
+    "packages/connectors": {
+      "entry": [
+        "src/**/__tests__/**/*.{test,spec}.ts",
+        "src/**/*.{test,spec}.ts"
+      ],
+      "project": ["src/**/*.ts"],
+      "ignore": ["src/firewalls/*.generated.ts"]
     },
     "packages/ui": {
       "entry": [

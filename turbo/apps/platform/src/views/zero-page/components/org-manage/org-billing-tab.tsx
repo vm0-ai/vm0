@@ -62,6 +62,7 @@ const PLANS = [
       "1 concurrent run",
       "Unlimited total agents",
       "Bring your own LLM keys",
+      "Voice input (10/month)",
       "Community support",
     ],
   },
@@ -81,6 +82,7 @@ const PLANS = [
       "2 concurrent runs",
       "Unlimited total agents",
       "Bring your own LLM keys",
+      "Voice input",
       "Email support",
     ],
   },
@@ -98,6 +100,7 @@ const PLANS = [
       "5 concurrent runs",
       "Unlimited total agents",
       "Bring your own LLM keys",
+      "Voice input",
       "Priority support",
     ],
   },
@@ -167,7 +170,7 @@ function PlanCard({
           src={plan.image}
           alt={plan.name}
           loading="lazy"
-          className="h-28 w-28 object-contain -mb-1"
+          className="h-20 w-20 object-contain mb-2"
         />
       )}
 

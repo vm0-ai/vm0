@@ -1,5 +1,5 @@
 import { eq, and, desc } from "drizzle-orm";
-import { telegramMessages } from "../../../db/schema/telegram-message";
+import { telegramMessages } from "@vm0/db/schema/telegram-message";
 import {
   downloadAndUploadTelegramPhoto,
   formatPhotoForContext,

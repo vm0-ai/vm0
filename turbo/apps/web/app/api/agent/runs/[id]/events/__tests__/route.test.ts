@@ -667,6 +667,37 @@ describe("GET /api/agent/runs/:id/events", () => {
       expect(result[0]!.sequenceNumber).toBe(0);
     });
 
+    it("should skip duplicate sequence numbers while preserving the prefix", () => {
+      const events = [
+        createAxiomAgentEvent({
+          runId: testRunId,
+          sequenceNumber: 0,
+          eventType: "event_0",
+          eventData: { type: "event_0" },
+        }),
+        createAxiomAgentEvent({
+          runId: testRunId,
+          sequenceNumber: 0,
+          eventType: "event_0_duplicate",
+          eventData: { type: "event_0_duplicate" },
+        }),
+        createAxiomAgentEvent({
+          runId: testRunId,
+          sequenceNumber: 1,
+          eventType: "event_1",
+          eventData: { type: "event_1" },
+        }),
+      ];
+
+      const result = filterConsecutiveEvents(events, -1);
+
+      expect(
+        result.map((e) => {
+          return e.sequenceNumber;
+        }),
+      ).toEqual([0, 1]);
+    });
+
     it("should handle single event with gap", () => {
       const events = [
         createAxiomAgentEvent({

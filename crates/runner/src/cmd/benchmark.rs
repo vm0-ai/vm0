@@ -14,10 +14,11 @@ use crate::paths::{HomePaths, RunnerPaths};
 use crate::prefetch;
 use crate::proxy;
 
+#[derive(Default)]
 struct Timing {
-    boot_ms: u128,
-    clock_ms: u128,
-    exec_ms: u128,
+    boot_ms: Option<u128>,
+    clock_ms: Option<u128>,
+    exec_ms: Option<u128>,
 }
 
 /// Reject entries missing `=` so typos like `--env FOO` fail loud instead of
@@ -147,16 +148,16 @@ pub async fn run_benchmark(
             info!(
                 proxy_ms,
                 factory_ms,
-                boot_ms,
-                clock_ms,
-                exec_ms,
+                boot_ms = ?boot_ms,
+                clock_ms = ?clock_ms,
+                exec_ms = ?exec_ms,
                 total_ms,
                 exit_code = exec_result.exit_code,
                 "benchmark complete"
             );
         }
         Err(e) => {
-            info!(proxy_ms, factory_ms, boot_ms, clock_ms, exec_ms, total_ms, error = %e, "benchmark failed");
+            info!(proxy_ms, factory_ms, boot_ms = ?boot_ms, clock_ms = ?clock_ms, exec_ms = ?exec_ms, total_ms, error = %e, "benchmark failed");
         }
     }
 
@@ -196,14 +197,9 @@ async fn run_sandbox(
     mitm: &proxy::MitmProxy,
     sandbox_config: SandboxConfig,
 ) -> (RunnerResult<ExecResult>, Timing) {
-    let zero = Timing {
-        boot_ms: 0,
-        clock_ms: 0,
-        exec_ms: 0,
-    };
     let mut sandbox = match factory.create(sandbox_config).await {
         Ok(s) => s,
-        Err(e) => return (Err(e.into()), zero),
+        Err(e) => return (Err(e.into()), Timing::default()),
     };
 
     let source_ip = sandbox.source_ip().to_string();
@@ -240,50 +236,41 @@ async fn run_sandbox(
     (result, timing)
 }
 
+/// Images always contain a snapshot — fix guest clock drift and reseed entropy.
+async fn setup_guest(sandbox: &dyn sandbox::Sandbox) -> RunnerResult<()> {
+    executor::fix_guest_clock(sandbox).await?;
+    executor::reseed_guest_entropy(sandbox).await?;
+    Ok(())
+}
+
 /// Start sandbox, fix clock, exec command. Returns result + timing.
 async fn run_in_sandbox(
     args: &BenchmarkArgs,
     env_pairs: &[(String, String)],
     sandbox: &mut dyn sandbox::Sandbox,
 ) -> (RunnerResult<ExecResult>, Timing) {
-    let t = Instant::now();
-    if let Err(e) = sandbox.start().await {
-        let timing = Timing {
-            boot_ms: t.elapsed().as_millis(),
-            clock_ms: 0,
-            exec_ms: 0,
-        };
+    let mut timing = Timing::default();
+
+    let t_boot = Instant::now();
+    let start_result = sandbox.start().await;
+    timing.boot_ms = Some(t_boot.elapsed().as_millis());
+    if let Err(e) = start_result {
         return (Err(e.into()), timing);
     }
-    let boot_ms = t.elapsed().as_millis();
-    info!(boot_ms, "sandbox started");
 
-    // Images always contain a snapshot — fix guest clock drift and reseed entropy.
-    let t = Instant::now();
-    if let Err(e) = executor::fix_guest_clock(sandbox).await {
-        let timing = Timing {
-            boot_ms,
-            clock_ms: t.elapsed().as_millis(),
-            exec_ms: 0,
-        };
+    let t_clock = Instant::now();
+    let clock_result = setup_guest(sandbox).await;
+    timing.clock_ms = Some(t_clock.elapsed().as_millis());
+    if let Err(e) = clock_result {
         return (Err(e), timing);
     }
-    if let Err(e) = executor::reseed_guest_entropy(sandbox).await {
-        let timing = Timing {
-            boot_ms,
-            clock_ms: t.elapsed().as_millis(),
-            exec_ms: 0,
-        };
-        return (Err(e), timing);
-    }
-    let clock_ms = t.elapsed().as_millis();
 
     let env_refs: Vec<(&str, &str)> = env_pairs
         .iter()
         .map(|(k, v)| (k.as_str(), v.as_str()))
         .collect();
 
-    let t = Instant::now();
+    let t_exec = Instant::now();
     let result = sandbox
         .exec(&ExecRequest {
             cmd: &args.command,
@@ -293,13 +280,8 @@ async fn run_in_sandbox(
         })
         .await
         .map_err(Into::into);
-    let exec_ms = t.elapsed().as_millis();
+    timing.exec_ms = Some(t_exec.elapsed().as_millis());
 
-    let timing = Timing {
-        boot_ms,
-        clock_ms,
-        exec_ms,
-    };
     (result, timing)
 }
 

@@ -2,13 +2,14 @@ import { describe, expect, it } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../mocks/server.ts";
 import { zeroClient$ } from "../api-client.ts";
-import { zeroOrgContract } from "@vm0/core";
+import { zeroOrgContract } from "@vm0/api-contracts/contracts/zero-org";
 import { testContext } from "./test-helpers.ts";
 import { detachedSetupPage } from "../../__tests__/page-helper.ts";
 import { mockedClerk } from "../../__tests__/mock-auth.ts";
-import { mockApi } from "../../mocks/msw-contract.ts";
+import { createMockApi } from "../../mocks/msw-contract.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 describe("zeroClient$ 401 redirect", () => {
   it("should redirect to sign-in when API returns 401", async () => {

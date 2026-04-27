@@ -9,14 +9,15 @@ import {
   setMockSchedules,
   createMockScheduleResponse,
 } from "../../../mocks/handlers/api-schedules.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
   zeroSchedulesEnableContract,
   zeroScheduleRunContract,
   type ScheduleResponse,
-} from "@vm0/core";
+} from "@vm0/api-contracts/contracts/zero-schedules";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 function createEnabledSchedule(): ScheduleResponse {
   return createMockScheduleResponse({

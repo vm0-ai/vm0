@@ -265,15 +265,8 @@ async fn gc_nested_images(
     dry_run: bool,
 ) -> RunnerResult<u64> {
     let images_dir = home.images_dir();
-    let mut rootfs_entries = match tokio::fs::read_dir(&images_dir).await {
-        Ok(rd) => rd,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
-        Err(e) => {
-            return Err(RunnerError::Internal(format!(
-                "read {}: {e}",
-                images_dir.display()
-            )));
-        }
+    let Some(mut rootfs_entries) = read_dir_or_missing(&images_dir).await? else {
+        return Ok(0);
     };
 
     let mut total_freed = 0u64;
@@ -513,6 +506,17 @@ async fn next_entry_warn(
     }
 }
 
+async fn read_dir_or_missing(path: &Path) -> RunnerResult<Option<tokio::fs::ReadDir>> {
+    match tokio::fs::read_dir(path).await {
+        Ok(rd) => Ok(Some(rd)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(RunnerError::Internal(format!(
+            "read {}: {e}",
+            path.display()
+        ))),
+    }
+}
+
 /// Remove cached debootstrap tarballs, keeping the `keep_latest` most recent.
 async fn gc_debootstrap(
     home: &HomePaths,
@@ -520,15 +524,8 @@ async fn gc_debootstrap(
     dry_run: bool,
 ) -> RunnerResult<u64> {
     let dir = home.debootstrap_dir();
-    let mut entries = match tokio::fs::read_dir(&dir).await {
-        Ok(e) => e,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
-        Err(e) => {
-            return Err(RunnerError::Internal(format!(
-                "read {}: {e}",
-                dir.display()
-            )));
-        }
+    let Some(mut entries) = read_dir_or_missing(&dir).await? else {
+        return Ok(0);
     };
 
     let mut files: Vec<(PathBuf, u64, SystemTime)> = Vec::new();
@@ -593,15 +590,8 @@ async fn gc_debootstrap(
 /// recreate it on next use, and the inode recheck in `lock.rs` prevents races.
 async fn gc_orphaned_locks(home: &HomePaths, dry_run: bool) -> RunnerResult<u64> {
     let locks_dir = home.locks_dir();
-    let mut entries = match tokio::fs::read_dir(&locks_dir).await {
-        Ok(rd) => rd,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
-        Err(e) => {
-            return Err(RunnerError::Internal(format!(
-                "read {}: {e}",
-                locks_dir.display()
-            )));
-        }
+    let Some(mut entries) = read_dir_or_missing(&locks_dir).await? else {
+        return Ok(0);
     };
 
     let mut removed = 0u64;
@@ -639,15 +629,8 @@ async fn gc_orphaned_locks(home: &HomePaths, dry_run: bool) -> RunnerResult<u64>
 /// and runner instance logs (`runner-*.log`). Returns `(files_removed, bytes_freed)`.
 async fn gc_job_logs(home: &HomePaths, dry_run: bool) -> RunnerResult<(u64, u64)> {
     let logs_dir = home.logs_dir();
-    let mut entries = match tokio::fs::read_dir(&logs_dir).await {
-        Ok(rd) => rd,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok((0, 0)),
-        Err(e) => {
-            return Err(RunnerError::Internal(format!(
-                "read {}: {e}",
-                logs_dir.display()
-            )));
-        }
+    let Some(mut entries) = read_dir_or_missing(&logs_dir).await? else {
+        return Ok((0, 0));
     };
 
     let now = SystemTime::now();
@@ -770,15 +753,8 @@ async fn gc_versions(
     keep_latest: Option<usize>,
 ) -> RunnerResult<Vec<String>> {
     let bin_dir = home.bin_dir();
-    let mut entries = match tokio::fs::read_dir(&bin_dir).await {
-        Ok(rd) => rd,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(e) => {
-            return Err(RunnerError::Internal(format!(
-                "read {}: {e}",
-                bin_dir.display()
-            )));
-        }
+    let Some(mut entries) = read_dir_or_missing(&bin_dir).await? else {
+        return Ok(Vec::new());
     };
 
     // First pass: collect all semver-named dirs. We need the full set to
@@ -1157,15 +1133,8 @@ async fn gc_storage_cache_with_cap(
     dry_run: bool,
 ) -> RunnerResult<u64> {
     let storages_dir = home.storages_dir();
-    let mut name_entries = match tokio::fs::read_dir(&storages_dir).await {
-        Ok(rd) => rd,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
-        Err(e) => {
-            return Err(RunnerError::Internal(format!(
-                "read {}: {e}",
-                storages_dir.display()
-            )));
-        }
+    let Some(mut name_entries) = read_dir_or_missing(&storages_dir).await? else {
+        return Ok(0);
     };
 
     let now = SystemTime::now();

@@ -3,13 +3,14 @@
 
 use guest_agent::checkpoint;
 use guest_agent::cli;
+use guest_agent::complete;
 use guest_agent::env;
 use guest_agent::error;
 use guest_agent::heartbeat;
 use guest_agent::masker;
 use guest_agent::metrics;
 use guest_agent::paths;
-use guest_agent::telemetry;
+use guest_agent::telemetry::{Telemetry, UploadMode};
 
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_error, log_info};
@@ -34,9 +35,11 @@ async fn run() -> i32 {
     // Validate required env vars
     if env::working_dir().is_empty() {
         log_error!(LOG_TAG, "Fatal: VM0_WORKING_DIR is required but not set");
-        let masker = masker::SecretMasker::from_env();
+        let masker = Arc::new(masker::SecretMasker::from_env());
+        let telemetry = Telemetry::spawn(masker);
         log_info!(LOG_TAG, "▷ Cleanup");
-        final_telemetry(&masker).await;
+        final_telemetry(&telemetry).await;
+        telemetry.shutdown().await;
         log_info!(LOG_TAG, "Background processes stopped");
         log_info!(LOG_TAG, "✗ Sandbox failed (exit code 1)");
         return 1;
@@ -71,11 +74,7 @@ async fn run() -> i32 {
     record_sandbox_op("metrics_collector_start", t.elapsed(), true, None);
 
     let t = Instant::now();
-    let telemetry_handle = tokio::spawn({
-        let shutdown = shutdown.clone();
-        let masker = masker.clone();
-        async move { telemetry::telemetry_loop(shutdown, masker).await }
-    });
+    let telemetry = Telemetry::spawn(masker.clone());
     log_info!(LOG_TAG, "Telemetry upload started");
     record_sandbox_op("telemetry_upload_start", t.elapsed(), true, None);
 
@@ -83,12 +82,13 @@ async fn run() -> i32 {
     // `execute` owns the final telemetry upload — on the success path it's run
     // in parallel with `checkpoint` so the ~1s upload doesn't serialize behind
     // the ~4s snapshot work.
-    let exit_code = execute(&masker, start, heartbeat_handle).await;
+    let exit_code = execute(&masker, start, heartbeat_handle, &telemetry).await;
 
-    // Stop all background processes (heartbeat, metrics, telemetry)
+    // Stop all background processes. Telemetry uses its own command
+    // channel; `shutdown` only covers heartbeat/metrics.
     shutdown.cancel();
     let _ = metrics_handle.await;
-    let _ = telemetry_handle.await;
+    telemetry.shutdown().await;
     log_info!(LOG_TAG, "Background processes stopped");
 
     if exit_code == 0 {
@@ -106,6 +106,7 @@ async fn execute(
     masker: &masker::SecretMasker,
     start: Instant,
     heartbeat_handle: tokio::task::JoinHandle<Result<(), error::AgentError>>,
+    telemetry: &Telemetry,
 ) -> i32 {
     // Pre-warm kernel DNS cache for the CLI's API endpoint.
     // Fire-and-forget: runs in background so the cache is populated by the
@@ -140,14 +141,21 @@ async fn execute(
     // Execution phase
     log_info!(LOG_TAG, "▷ Execution");
     let cli_start = Instant::now();
+    let mut last_event_sequence = None;
     let (mut exit_code, error_message) = match cli::execute_cli(masker, heartbeat_handle).await {
-        Ok((code, stderr_lines)) => {
+        Ok(cli_result) => {
+            last_event_sequence = cli_result.last_event_sequence;
+            let code = cli_result.exit_code;
             if code != 0 {
-                let msg = if stderr_lines.is_empty() {
+                let msg = if cli_result.stderr_lines.is_empty() {
                     format!("Agent exited with code {code}")
                 } else {
-                    log_info!(LOG_TAG, "Captured {} stderr lines", stderr_lines.len());
-                    stderr_lines.join(" ")
+                    log_info!(
+                        LOG_TAG,
+                        "Captured {} stderr lines",
+                        cli_result.stderr_lines.len()
+                    );
+                    cli_result.stderr_lines.join(" ")
                 };
                 (code, msg)
             } else {
@@ -185,25 +193,13 @@ async fn execute(
         log_info!(LOG_TAG, "✗ Execution failed ({}s)", cli_elapsed.as_secs());
     }
 
-    // Checkpoint on success (skip when no API — local/test mode). The final
-    // telemetry upload runs in two phases to keep the operator-visible log
-    // output identical to the pre-parallelization sequence while still
-    // overlapping the ~1s upload with checkpoint:
-    //   1. A silent first pass inside `tokio::join!` drains the pre-checkpoint
-    //      sandbox_ops under cover of `checkpoint::create_checkpoint` — no
-    //      log banner, no error log, no `record_sandbox_op`. On failure,
-    //      position tracking doesn't advance so the catch-up re-reads the
-    //      same delta.
-    //   2. After checkpoint completes, `final_telemetry` runs serially as
-    //      the pre-parallelization "cleanup" step — it emits the `▷ Cleanup`
-    //      lifecycle banner, the `"Performing final telemetry upload..."`
-    //      log inside `final_upload`, the failure log on error, and records
-    //      the `final_telemetry_upload` sandbox op.
-    // The catch-up step also captures records checkpoint wrote after the
-    // parallel pass snapshotted the file (`session_id_read`, VAS snapshot
-    // timings, `checkpoint_total`, etc) — `telemetry_loop` breaks on
-    // shutdown without a final flush, so without this serial pass those
-    // records would never reach the server.
+    // Checkpoint on success (skip when no API — local/test mode). The
+    // pre-checkpoint flush runs in `tokio::join!` with the snapshot work so
+    // its ~1s upload overlaps the ~4s checkpoint. The post-checkpoint flush
+    // catches records checkpoint itself wrote (`session_id_read`, VAS
+    // snapshot timings, `checkpoint_total`, etc.) and is the EOF-consuming
+    // final pass. Both go through the single-writer uploader, so the two
+    // flushes never race the periodic tick on the pos files.
     if cli_exit_code == 0 && exit_code == 0 && env::has_api() {
         log_info!(LOG_TAG, "claude-code completed successfully");
 
@@ -211,7 +207,7 @@ async fn execute(
         let cp_start = Instant::now();
         let (cp_result, _) = tokio::join!(
             checkpoint::create_checkpoint(),
-            telemetry::final_upload_silent(masker),
+            telemetry.flush(UploadMode::Live),
         );
         match cp_result {
             Ok(()) => {
@@ -220,6 +216,29 @@ async fn execute(
                     "✓ Checkpoint complete ({}s)",
                     cp_start.elapsed().as_secs()
                 );
+
+                // Checkpoint row is in the DB — the complete route's only
+                // hard dependency is satisfied. Fire /complete now so the
+                // host's `last_event_to_complete` timestamp isn't stretched
+                // by VM teardown + runner fallback (which used to be the
+                // only trigger). Runner still posts /complete after VM
+                // exit; its call is idempotency-short-circuited.
+                //
+                // Serialize /complete before final_telemetry so the ack log
+                // line lands in the file before the telemetry uploader
+                // snapshots its EOF — parallelizing the two hides the ack
+                // from `vm0 logs --system`. The ~hundreds-of-ms we pay for
+                // serialization is invisible to users because the host's
+                // status transition already happened the moment /complete
+                // returned.
+                log_info!(LOG_TAG, "▷ Cleanup");
+                complete::report_success(
+                    env::sandbox_id(),
+                    env::sandbox_reuse_result(),
+                    last_event_sequence,
+                )
+                .await;
+                final_telemetry(telemetry).await;
             }
             Err(e) => {
                 let msg = format!("Checkpoint failed: {e}");
@@ -231,11 +250,14 @@ async fn execute(
                 );
                 let _ = std::fs::write(paths::checkpoint_error_file(), &msg);
                 exit_code = 1;
+
+                // Failure path: don't call /complete from guest. The runner's
+                // provider.complete() fallback posts exitCode=1, triggering
+                // the route's "checkpoint not found → failed" branch.
+                log_info!(LOG_TAG, "▷ Cleanup");
+                final_telemetry(telemetry).await;
             }
         }
-
-        log_info!(LOG_TAG, "▷ Cleanup");
-        final_telemetry(masker).await;
     } else {
         if cli_exit_code == 0 && exit_code == 0 {
             log_info!(LOG_TAG, "claude-code completed successfully");
@@ -243,7 +265,7 @@ async fn execute(
             log_info!(LOG_TAG, "claude-code failed with exit code {cli_exit_code}");
         }
         log_info!(LOG_TAG, "▷ Cleanup");
-        final_telemetry(masker).await;
+        final_telemetry(telemetry).await;
     }
 
     exit_code
@@ -251,9 +273,10 @@ async fn execute(
 
 /// Final telemetry upload — records timing and logs on failure.
 /// The complete API is called by the runner after VM exits, not by guest-agent.
-async fn final_telemetry(masker: &masker::SecretMasker) {
+async fn final_telemetry(telemetry: &Telemetry) {
+    log_info!(LOG_TAG, "Performing final telemetry upload...");
     let telemetry_start = Instant::now();
-    let telemetry_ok = telemetry::final_upload(masker).await.is_ok();
+    let telemetry_ok = telemetry.flush(UploadMode::Final).await.is_ok();
     if !telemetry_ok {
         log_error!(LOG_TAG, "Final telemetry upload failed");
     }

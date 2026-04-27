@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
-import { telegramInstallations } from "../../../../db/schema/telegram-installation";
-import { telegramUserLinks } from "../../../../db/schema/telegram-user-link";
+import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
+import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
 import { decryptSecretValue } from "../../../shared/crypto/secrets-encryption";
 import { env } from "../../../../env";
 import { createTelegramClient, sendMessage } from "../client";
@@ -29,7 +29,7 @@ export async function handleConnectCommand(
   const [installation] = await globalThis.services.db
     .select()
     .from(telegramInstallations)
-    .where(eq(telegramInstallations.id, installationId))
+    .where(eq(telegramInstallations.telegramBotId, installationId))
     .limit(1);
 
   if (!installation) {
@@ -74,7 +74,6 @@ export async function handleConnectCommand(
   }
 
   const connectUrl = buildConnectUrl(
-    installationId,
     installation.telegramBotId,
     fromUserId,
     botToken,
@@ -103,7 +102,7 @@ export async function handleDisconnectCommand(
   const [installation] = await globalThis.services.db
     .select()
     .from(telegramInstallations)
-    .where(eq(telegramInstallations.id, installationId))
+    .where(eq(telegramInstallations.telegramBotId, installationId))
     .limit(1);
 
   if (!installation) {
@@ -164,7 +163,7 @@ export async function handleHelpCommand(
   const [installation] = await globalThis.services.db
     .select()
     .from(telegramInstallations)
-    .where(eq(telegramInstallations.id, installationId))
+    .where(eq(telegramInstallations.telegramBotId, installationId))
     .limit(1);
 
   if (!installation) {
@@ -178,7 +177,7 @@ export async function handleHelpCommand(
   const client = createTelegramClient(botToken);
 
   const userLink = await resolveUserLink(installationId, fromUserId);
-  const isAdmin = userLink?.vm0UserId === installation.adminUserId;
+  const isAdmin = userLink?.vm0UserId === installation.ownerUserId;
   const botUsername = installation.botUsername ?? "bot";
 
   const replyOptions =

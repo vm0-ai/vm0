@@ -1,11 +1,11 @@
 import { initClient } from "@ts-rest/core";
 import {
   logsListContract,
-  zeroLogsSearchContract,
   type LogsListResponse,
-  type LogsSearchResponse,
   type LogStatus,
-} from "@vm0/core";
+} from "@vm0/api-contracts/contracts/logs";
+import { type LogsSearchResponse } from "@vm0/api-contracts/contracts/runs";
+import { zeroLogsSearchContract } from "@vm0/api-contracts/contracts/zero-runs";
 import { getClientConfig, handleError } from "../core/client-factory";
 
 export async function listZeroLogs(options?: {

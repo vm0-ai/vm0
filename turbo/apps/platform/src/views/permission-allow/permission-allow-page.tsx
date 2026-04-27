@@ -14,10 +14,10 @@ import {
 } from "@tabler/icons-react";
 import {
   isFirewallConnectorType,
-  CONNECTOR_TYPES,
   resolveFirewallPolicies,
-  type FirewallPolicies,
-} from "@vm0/core";
+} from "@vm0/connectors/firewalls";
+import { CONNECTOR_TYPES } from "@vm0/connectors/connectors";
+import type { FirewallPolicies } from "@vm0/connectors/firewall-types";
 import { user$ } from "../../signals/auth.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import {

@@ -18,10 +18,10 @@ import { publishUserSignal } from "../../../../../../src/lib/infra/realtime/clie
 import { createZeroRun } from "../../../../../../src/lib/zero/zero-run-service";
 import {
   badRequestResponse,
-  createVoiceChatCandidateTaskBodySchema,
-  isVoiceChatCandidateEnabled,
+  createVoiceChatTaskBodySchema,
+  isVoiceChatEnabled,
   notFoundResponse,
-  serializeVoiceChatCandidateTask,
+  serializeVoiceChatTask,
   unauthorizedResponse,
 } from "../../_support";
 
@@ -40,7 +40,7 @@ export async function POST(
   if (!authCtx?.orgId) return unauthorizedResponse();
 
   // See [id]/route.ts for why this is 404 (not 403) on flag-off.
-  if (!(await isVoiceChatCandidateEnabled(authCtx))) {
+  if (!(await isVoiceChatEnabled(authCtx))) {
     return notFoundResponse("Voice-chat-candidate session not found");
   }
 
@@ -59,7 +59,7 @@ export async function POST(
     return badRequestResponse("Session has no agent; cannot spawn task");
   }
 
-  const parsed = createVoiceChatCandidateTaskBodySchema.safeParse(
+  const parsed = createVoiceChatTaskBodySchema.safeParse(
     await request.json().catch(() => {
       return undefined;
     }),
@@ -109,7 +109,7 @@ export async function POST(
   });
 
   return NextResponse.json({
-    task: serializeVoiceChatCandidateTask(task),
+    task: serializeVoiceChatTask(task),
   });
 }
 
@@ -124,7 +124,7 @@ export async function GET(
   );
   if (!authCtx?.orgId) return unauthorizedResponse();
 
-  if (!(await isVoiceChatCandidateEnabled(authCtx))) {
+  if (!(await isVoiceChatEnabled(authCtx))) {
     return notFoundResponse("Voice-chat-candidate session not found");
   }
 
@@ -140,6 +140,6 @@ export async function GET(
 
   const tasks = await listSessionTasksForCard(id);
   return NextResponse.json({
-    tasks: tasks.map(serializeVoiceChatCandidateTask),
+    tasks: tasks.map(serializeVoiceChatTask),
   });
 }

@@ -1,11 +1,11 @@
 import { and, eq } from "drizzle-orm";
 import { initServices } from "../../lib/init-services";
-import { orgMetadata } from "../../db/schema/org-metadata";
-import { orgCache } from "../../db/schema/org-cache";
-import { orgMembersMetadata } from "../../db/schema/org-members-metadata";
-import { zeroAgents } from "../../db/schema/zero-agent";
-import { agentComposes } from "../../db/schema/agent-compose";
-import { modelProviders } from "../../db/schema/model-provider";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { orgCache } from "@vm0/db/schema/org-cache";
+import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { agentComposes } from "@vm0/db/schema/agent-compose";
+import { modelProviders } from "@vm0/db/schema/model-provider";
 import { ORG_SENTINEL_USER_ID } from "../../lib/zero/org/org-sentinel";
 import { getTestAuthContext } from "../api-test-helpers/core";
 import { ensureOrgRow } from "../test-helpers";
@@ -240,4 +240,49 @@ export async function setOrgCredits(
       target: orgMetadata.orgId,
       set: { credits, updatedAt: new Date() },
     });
+}
+
+/**
+ * Hold a row lock on org_metadata, update credits, and keep the transaction
+ * open until the returned release function is called.
+ *
+ * @why-db-direct Exercises lock-ordering race conditions in service tests;
+ * no API route can hold a row lock open for coordinated concurrency.
+ */
+export async function lockOrgAndSetCredits(
+  orgId: string,
+  credits: number,
+): Promise<{
+  release: () => void;
+  ready: Promise<void>;
+  done: Promise<void>;
+}> {
+  initServices();
+
+  let release!: () => void;
+  const releaseSignal = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let markReady!: () => void;
+  const ready = new Promise<void>((resolve) => {
+    markReady = resolve;
+  });
+
+  const done = globalThis.services.db.transaction(async (tx) => {
+    await tx
+      .select({ orgId: orgMetadata.orgId })
+      .from(orgMetadata)
+      .where(eq(orgMetadata.orgId, orgId))
+      .for("update");
+
+    await tx
+      .update(orgMetadata)
+      .set({ credits, updatedAt: new Date() })
+      .where(eq(orgMetadata.orgId, orgId));
+
+    markReady();
+    await releaseSignal;
+  });
+
+  return { release, ready, done };
 }

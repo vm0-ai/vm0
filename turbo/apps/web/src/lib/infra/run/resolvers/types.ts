@@ -1,4 +1,5 @@
 import type { AdditionalVolume } from "../../storage/types";
+import type { ContextArtifact } from "../types";
 
 /**
  * Intermediate resolution result from checkpoint/session/conversation expansion
@@ -15,13 +16,15 @@ export interface ConversationResolution {
     cliAgentSessionId: string;
     cliAgentSessionHistory: string;
   };
-  artifactName?: string;
-  artifactVersion?: string;
-  memoryName?: string;
+  /**
+   * Unified artifact list with explicit mountPath per entry.
+   * Resume-from-session emits entries with version "latest"; resume-from-checkpoint
+   * emits concrete version IDs from checkpoints.artifactSnapshots.
+   */
+  artifacts: ContextArtifact[];
   vars?: Record<string, string>;
   volumeVersions?: Record<string, string>;
   additionalVolumes?: AdditionalVolume[];
-  buildResumeArtifact: boolean;
   /** Run ID from the previous conversation (used by zero layer for provider compatibility) */
   previousRunId?: string;
 }

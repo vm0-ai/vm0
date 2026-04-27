@@ -59,11 +59,26 @@ describe("GET /api/zero/runs/:id", () => {
     expect(response.status).toBe(404);
   });
 
+  // Regression for #11126: short non-UUID id used to flow into drizzle and
+  // surface as a postgres `22P02 invalid input syntax for type uuid` 500.
+  it("should return 400 when id is not a valid UUID", async () => {
+    const userId = uniqueId("zrun-bad");
+    await setupOrg(userId);
+
+    const response = await GET(createTestRequest(runUrl("2b9b2303")));
+    expect(response.status).toBe(400);
+
+    const data = await response.json();
+    expect(data.error.code).toBe("BAD_REQUEST");
+  });
+
   it("should return 401 when not authenticated", async () => {
     mockClerk({ userId: null });
 
     const response = await GET(
-      createTestRequest("http://localhost:3000/api/zero/runs/some-id"),
+      createTestRequest(
+        "http://localhost:3000/api/zero/runs/00000000-0000-0000-0000-000000000000",
+      ),
     );
     expect(response.status).toBe(401);
   });
@@ -73,9 +88,12 @@ describe("GET /api/zero/runs/:id", () => {
     const token = await generateSandboxToken("user-1", "run-1", "org-test");
 
     const response = await GET(
-      createTestRequest("http://localhost:3000/api/zero/runs/some-id", {
-        headers: { Authorization: `Bearer ${token}` },
-      }),
+      createTestRequest(
+        "http://localhost:3000/api/zero/runs/00000000-0000-0000-0000-000000000000",
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      ),
     );
     expect(response.status).toBe(403);
 

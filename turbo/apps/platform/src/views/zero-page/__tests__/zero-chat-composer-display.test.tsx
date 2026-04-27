@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { type ConnectorType, zeroUserConnectorsContract } from "@vm0/core";
+import type { ConnectorType } from "@vm0/connectors/connectors";
+import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { server } from "../../../mocks/server.ts";
 import { mockUploadSuccess } from "../../../mocks/upload-helpers.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -10,7 +11,7 @@ import {
   fill,
   click,
 } from "../../../__tests__/page-helper.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
   mockChatLifecycle,
   sendMessageInUI,
@@ -19,6 +20,7 @@ import {
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 function mockChatAPI() {
   server.use();

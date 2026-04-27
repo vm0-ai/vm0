@@ -27,6 +27,9 @@ export function filterConsecutiveEvents(
   let expectedSeq = since + 1;
 
   for (const event of events) {
+    if (event.sequenceNumber < expectedSeq) {
+      continue;
+    }
     if (event.sequenceNumber === expectedSeq) {
       consecutiveEvents.push(event);
       expectedSeq++;

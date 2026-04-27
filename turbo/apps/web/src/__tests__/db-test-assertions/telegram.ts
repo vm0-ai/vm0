@@ -1,8 +1,9 @@
 import { and, eq, sql } from "drizzle-orm";
 import { initServices } from "../../lib/init-services";
-import { telegramMessages } from "../../db/schema/telegram-message";
-import { telegramUserLinks } from "../../db/schema/telegram-user-link";
-import { telegramThreadSessions } from "../../db/schema/telegram-thread-session";
+import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
+import { telegramMessages } from "@vm0/db/schema/telegram-message";
+import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
+import { telegramThreadSessions } from "@vm0/db/schema/telegram-thread-session";
 
 /**
  * Count telegram messages for a specific installation.
@@ -34,6 +35,18 @@ export async function findTestTelegramUserLinksByVm0UserId(vm0UserId: string) {
     .select()
     .from(telegramUserLinks)
     .where(eq(telegramUserLinks.vm0UserId, vm0UserId));
+}
+
+/**
+ * Find telegram installations owned by a specific user.
+ */
+export async function findTestTelegramInstallationsByOwner(
+  ownerUserId: string,
+) {
+  return globalThis.services.db
+    .select()
+    .from(telegramInstallations)
+    .where(eq(telegramInstallations.ownerUserId, ownerUserId));
 }
 
 /**

@@ -1,5 +1,8 @@
 import { command } from "ccstate";
-import { zeroRunContextContract, zeroRunNetworkLogsContract } from "@vm0/core";
+import {
+  zeroRunContextContract,
+  zeroRunNetworkLogsContract,
+} from "@vm0/api-contracts/contracts/zero-runs";
 import { zeroClient$ } from "../api-client.ts";
 import { logger } from "../log.ts";
 import { accept } from "../../lib/accept.ts";
@@ -26,12 +29,17 @@ export const fetchDownloadExtra$ = command(
       accept(
         get(zeroClient$)(zeroRunContextContract).getContext({
           params: { id: runId },
+          fetchOptions: { signal: _signal },
         }),
         [200],
       ).then((r) => {
         return r.body;
       }),
-      fetchAllNetworkLogs(get(zeroClient$)(zeroRunNetworkLogsContract), runId),
+      fetchAllNetworkLogs(
+        get(zeroClient$)(zeroRunNetworkLogsContract),
+        runId,
+        _signal,
+      ),
     ]);
 
     if (contextResult.status === "fulfilled" && contextResult.value) {

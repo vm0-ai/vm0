@@ -200,5 +200,6 @@ tmp/
 *.sarif
 junit.xml
 e2e/results/
-.codex/
+.codex
 .agents/
+AGENTS.md

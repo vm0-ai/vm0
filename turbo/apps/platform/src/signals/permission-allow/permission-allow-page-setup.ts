@@ -3,6 +3,7 @@ import { createElement } from "react";
 import { PermissionAllowPage } from "../../views/permission-allow/permission-allow-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
+import { currentAgentId$, rememberLastUsedAgentId$ } from "../agent.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 import { reloadChatThreads$ } from "../chat-page/chat-message.ts";
 import { isOrgAdmin$ } from "../org.ts";
@@ -25,6 +26,11 @@ export const setupPermissionAllowPage$ = command(
     set(updateDocumentTitle$, "Permissions");
     set(resetFocusedState$);
 
+    const agentId = get(currentAgentId$);
+    if (agentId) {
+      set(rememberLastUsedAgentId$, agentId);
+    }
+
     await set(hideAppSkeleton$, signal);
 
     if (await set(onboardGuard$, signal)) {
@@ -40,11 +46,11 @@ export const setupPermissionAllowPage$ = command(
     }
 
     // Auto-redirect: member in doctor mode with existing request → request mode
-    const agentId = get(permissionAllowAgentId$);
+    const permissionAgentId = get(permissionAllowAgentId$);
     const ref = get(permissionAllowRef$);
     const requestId = get(permissionAllowRequestId$);
     const permission = get(permissionAllowPermission$);
-    if (!requestId && permission && agentId && ref) {
+    if (!requestId && permission && permissionAgentId && ref) {
       const isAdmin = await get(isOrgAdmin$);
       signal.throwIfAborted();
       if (!isAdmin) {

@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { initServices } from "../../lib/init-services";
-import { orgMembersCache } from "../../db/schema/org-members-cache";
+import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 
 /**
  * Insert an org_members_cache entry for testing cache behavior.

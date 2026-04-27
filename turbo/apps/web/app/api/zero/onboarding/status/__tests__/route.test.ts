@@ -8,6 +8,7 @@ import {
 import {
   createTestZeroAgent,
   seedOrphanCompose,
+  seedTestCompose,
 } from "../../../../../../src/__tests__/db-test-seeders/agents";
 import {
   testContext,
@@ -255,6 +256,29 @@ describe("GET /api/zero/onboarding/status", () => {
     expect(response.status).toBe(200);
     // The orphan compose should NOT be reported as a valid default agent,
     // so the admin re-enters full onboarding and creates a complete agent.
+    expect(data.hasDefaultAgent).toBe(false);
+    expect(data.defaultAgentId).toBeNull();
+    expect(data.needsOnboarding).toBe(true);
+  });
+
+  it("should ignore a default agent row from another org", async () => {
+    const user = await context.setupUser();
+
+    const otherCompose = await seedTestCompose({
+      userId: user.userId,
+      name: uniqueId("other-org-agent"),
+      orgId: uniqueId("other-org"),
+    });
+
+    await updateOrgDefaultAgent(user.orgId, otherCompose.composeId);
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/zero/onboarding/status",
+    );
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
     expect(data.hasDefaultAgent).toBe(false);
     expect(data.defaultAgentId).toBeNull();
     expect(data.needsOnboarding).toBe(true);

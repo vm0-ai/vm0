@@ -1,11 +1,14 @@
 import { expandEnvironmentFromCompose } from "../environment/expand-environment";
 import type {
+  ContextArtifact,
   ExecutionContext,
   ResumeSession,
-  ArtifactSnapshot,
 } from "../types";
-import type { AdditionalArtifact, AdditionalVolume } from "../../storage/types";
-import type { Firewalls, NetworkPolicies } from "@vm0/core";
+import type { AdditionalVolume } from "../../storage/types";
+import type {
+  Firewalls,
+  NetworkPolicies,
+} from "@vm0/connectors/firewall-types";
 
 interface BuildInfraContextParams {
   runId: string;
@@ -19,9 +22,7 @@ interface BuildInfraContextParams {
   vars?: Record<string, string>;
   secrets?: Record<string, string>;
   secretConnectorMap?: Record<string, string>;
-  artifactName?: string;
-  artifactVersion?: string;
-  artifacts?: AdditionalArtifact[];
+  artifacts?: ContextArtifact[];
   volumeVersions?: Record<string, string>;
   additionalVolumes?: AdditionalVolume[];
   environment?: Record<string, string>;
@@ -38,7 +39,6 @@ interface BuildInfraContextParams {
   continuedFromSessionId?: string;
   resumedFromCheckpointId?: string;
   resumeSession?: ResumeSession;
-  resumeArtifact?: ArtifactSnapshot;
   apiStartTime: number;
 }
 
@@ -77,8 +77,6 @@ export function buildInfraExecutionContext(
     secrets: params.secrets,
     secretConnectorMap: params.secretConnectorMap,
     sandboxToken: params.sandboxToken,
-    artifactName: params.artifactName,
-    artifactVersion: params.artifactVersion,
     artifacts: params.artifacts,
     volumeVersions: params.volumeVersions,
     additionalVolumes: params.additionalVolumes,
@@ -90,7 +88,6 @@ export function buildInfraExecutionContext(
     tools: params.tools,
     settings: params.settings,
     resumeSession: params.resumeSession,
-    resumeArtifact: params.resumeArtifact,
     agentName: params.agentName,
     resumedFromCheckpointId: params.resumedFromCheckpointId,
     continuedFromSessionId: params.continuedFromSessionId,

@@ -134,6 +134,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the PostHog analytics connector",
     enabled: false,
   },
+  [FeatureSwitchKey.PwaOfflineCache]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Enable PWA offline caching (static asset cache-first, offline fallback page, and service worker updateViaCache: none)",
+    enabled: false,
+  },
   [FeatureSwitchKey.MailchimpConnector]: {
     maintainer: "ethan@vm0.ai",
     description: "Enable the Mailchimp email marketing connector",
@@ -154,30 +160,16 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Show the data export option in account menu",
     enabled: false,
   },
-  [FeatureSwitchKey.ShowSystemPrompt]: {
-    maintainer: "ethan@vm0.ai",
-    description: "Show the appended system prompt in activity detail steps",
-    enabled: false,
-  },
   [FeatureSwitchKey.UsageAnalytics]: {
     maintainer: "ethan@vm0.ai",
     description:
       "Show admin-only daily credits chart and per-run records on Usage page",
     enabled: false,
   },
-  [FeatureSwitchKey.ModelDetail]: {
-    maintainer: "ethan@vm0.ai",
-    description: "Show the selected model name in activity details",
-    enabled: false,
-  },
-  [FeatureSwitchKey.ActivityLogList]: {
-    maintainer: "ethan@vm0.ai",
-    description: "Show the Activities list page and breadcrumb navigation",
-    enabled: false,
-  },
   [FeatureSwitchKey.ZeroDebug]: {
     maintainer: "ethan@vm0.ai",
-    description: "Reveal debug tabs in activity pages and Debug preferences",
+    description:
+      "Reveal activity debug surfaces, activity log navigation, appended system prompts, and Debug preferences",
     enabled: false,
   },
   [FeatureSwitchKey.ComputerUse]: {
@@ -195,16 +187,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Show audit log links in Slack messages",
     enabled: false,
   },
-  [FeatureSwitchKey.PhoneIntegration]: {
-    maintainer: "ethan@vm0.ai",
-    description: "Show the Phone page for voice call integration",
-    enabled: false,
-  },
   [FeatureSwitchKey.AudioInput]: {
     maintainer: "lancy@vm0.ai",
     description:
       "Enable voice input (microphone + STT) in chat — gates the mic button and the /api/zero/voice-io/stt route",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.AudioOutput]: {
     maintainer: "lancy@vm0.ai",
@@ -215,12 +202,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.AutoSkill]: {
     maintainer: "lancy@vm0.ai",
     description: "Enable automatic skill creation in agent prompts",
-    enabled: false,
-  },
-  [FeatureSwitchKey.ScheduleRunHistory]: {
-    maintainer: "linghan@vm0.ai",
-    description:
-      "Show Run History tab on schedules page and Chat-from-schedule button on activity detail",
     enabled: false,
   },
   [FeatureSwitchKey.TestOauthConnector]: {
@@ -241,10 +222,16 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show the unread watermark dot and bold title for chat threads with unread messages in the sidebar",
     enabled: false,
   },
-  [FeatureSwitchKey.InlineThinkingDot]: {
-    maintainer: "ethan@vm0.ai",
+  [FeatureSwitchKey.ChatManualHistory]: {
+    maintainer: "linghan@vm0.ai",
     description:
-      "Show an inline streaming cursor on the last assistant message while the agent run is still active, so users see the agent is still working even after it has produced output",
+      "Enable manual chat history loading from a Load history button at the top of a thread. When off, chat stays in the latest-50/no-history mode.",
+    enabled: false,
+  },
+  [FeatureSwitchKey.ChatMessageStartButton]: {
+    maintainer: "linghan@vm0.ai",
+    description:
+      "Show an icon button in assistant message group actions that scrolls back to the start of that message group.",
     enabled: false,
   },
   [FeatureSwitchKey.FreshdeskConnector]: {
@@ -270,47 +257,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Gate the custom /settings/api-keys UI for issuing personal access tokens used by the /api/v1 public surface. When disabled, the settings page redirects to / and the sidebar menu item is hidden. The backend /api/v1 verification does NOT consult this flag — previously issued PATs continue to work.",
     enabled: false,
   },
-  [FeatureSwitchKey.SlackAgentSwitch]: {
-    maintainer: "yuma@vm0.ai",
+  [FeatureSwitchKey.ConnectorCategories]: {
+    maintainer: "ethan@vm0.ai",
     description:
-      "Per-user agent override in the org-aware Slack app. When enabled for an org, " +
-      "members can choose which agent replies to their Slack mentions / DMs via " +
-      "`/zero switch` (opens an agent picker modal) or the Switch button on the " +
-      "App Home tab. The help text for `/zero help` also lists the switch subcommand. " +
-      "Selecting an alternate agent persists a row in `slack_user_agent_preferences` " +
-      "so the preference follows the user across every Slack workspace joined under " +
-      "the same org, and subsequent mention / DM replies from a non-default agent " +
-      "carry a `Sent via <agent>` footer so it's clear which agent produced the reply. " +
-      "When gated off, the modal, slash subcommand, App Home button, and help line " +
-      "are hidden AND any existing DB preferences are ignored at read time — every " +
-      "user falls back to the org default agent with no footer. Staff-only during the " +
-      "rollout window defined by `enabledOrgIdHashes`.",
+      "Show category sections and the hover-reveal outline menu on the Connectors settings page. " +
+      "Staff-only during rollout.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.ModelProviderSelection]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Show the model provider + model picker on the agent profile page and schedule dialog. " +
-      "Allows per-agent and per-schedule model selection, overriding the org default. " +
-      "Staff-only during initial rollout.",
-    enabled: true,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.UnifyChatThreads]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Replace the per-agent chat list with a unified Chats view that includes " +
-      "threads from every agent in the user's org (sub-agents included). " +
-      "Gates the sidebar + /chats title/placeholder/aria-label swaps, the per-row " +
-      "agent avatar render, and the unscoped request shape. New-chat creation " +
-      "still uses the current-agent fallback.",
-    enabled: false,
-  },
-  [FeatureSwitchKey.Vm0DeepseekModel]: {
-    maintainer: "ethan@vm0.ai",
-    description: "Enable the DeepSeek-V3.2 (deepseek-chat) VM0 managed model",
-    enabled: false,
   },
   [FeatureSwitchKey.PlatformConnectors]: {
     maintainer: "liangyou@vm0.ai",
@@ -322,10 +275,23 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.TelegramIntegration]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Show the Telegram integration settings UI. The backend Telegram routes do not consult this frontend rollout flag.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.Trinity]: {
     maintainer: "ethan@vm0.ai",
     description:
-      "Embed the candidate voice-chat mic toggle + voice-mode layout into the agent chat page. Gates the mic launcher, composer swap, and status/subtitle/task-card UI.",
+      "Embed the voice-chat mic toggle + voice-mode layout into the agent chat page. Gates the mic launcher, composer swap, and status/subtitle/task-card UI.",
+    enabled: false,
+  },
+  [FeatureSwitchKey.ZapierConnector]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Enable the Zapier connector. When disabled, Zapier is hidden from the connectors list and cannot be connected.",
     enabled: false,
   },
 };
@@ -387,7 +353,7 @@ export function getAllFeatureStates(
 
   if (ctx?.overrides) {
     for (const [key, value] of Object.entries(ctx.overrides)) {
-      if (value !== undefined) {
+      if (key in FEATURE_SWITCHES && value !== undefined) {
         result[key as FeatureSwitchKey] = value;
       }
     }

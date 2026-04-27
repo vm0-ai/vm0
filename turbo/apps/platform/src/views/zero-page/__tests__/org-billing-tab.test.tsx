@@ -9,16 +9,18 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { setMockBillingStatus } from "../../../mocks/handlers/api-billing.ts";
 import { reloadBillingStatus$ } from "../../../signals/zero-page/billing.ts";
+import { createDeferredPromise } from "../../../signals/utils.ts";
 import {
   zeroBillingStatusContract,
   zeroBillingAutoRechargeContract,
   zeroBillingCheckoutContract,
   zeroBillingPortalContract,
   zeroBillingDowngradeContract,
-} from "@vm0/core";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+} from "@vm0/api-contracts/contracts/zero-billing";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 async function openBillingTab() {
   detachedSetupPage({ context, path: "/?settings=billing" });
@@ -443,22 +445,16 @@ describe("org billing tab - auto-recharge section", () => {
     // refetch-complete is long enough to observe. Entering the gated branch
     // signals that the PATCH has resolved and the reload has been kicked off
     // — i.e. we are inside the bug's danger window.
-    let releaseRefetch = (): void => {};
-    const refetchStarted = new Promise<void>((resolve) => {
-      releaseRefetch = resolve;
-    });
-    let markRefetchEntered = (): void => {};
-    const refetchEntered = new Promise<void>((resolve) => {
-      markRefetchEntered = resolve;
-    });
+    const refetchStarted = createDeferredPromise<void>(context.signal);
+    const refetchEntered = createDeferredPromise<void>(context.signal);
     let refetchCount = 0;
     server.use(
       mockApi(zeroBillingStatusContract.get, async ({ respond }) => {
         refetchCount++;
         const enabled = refetchCount > 1;
         if (refetchCount > 1) {
-          markRefetchEntered();
-          await refetchStarted;
+          refetchEntered.resolve();
+          await refetchStarted.promise;
         }
         return respond(200, {
           tier: "pro",
@@ -494,7 +490,7 @@ describe("org billing tab - auto-recharge section", () => {
     // PATCH has resolved and billingReload$ has been bumped, so we are inside
     // the exact window where the regression would have cleared the optimistic
     // overrides. Flush microtasks so any regressed state update propagates.
-    await refetchEntered;
+    await refetchEntered.promise;
     await waitFor(() => {
       expect(toggle).toHaveAttribute("aria-checked", "true");
       expect(
@@ -503,7 +499,7 @@ describe("org billing tab - auto-recharge section", () => {
     });
 
     // Release the refetch and let the save finish.
-    releaseRefetch();
+    refetchStarted.resolve();
 
     await waitFor(() => {
       expect(
@@ -693,6 +689,45 @@ describe("org billing tab - plan card details", () => {
         return /Current plan/i.test(el.textContent ?? "");
       }),
     ).toBeDefined();
+  });
+
+  it("should show Voice input feature in all plan cards on pricing page", async () => {
+    setMockBillingStatus({ tier: "free", credits: 10_000 });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Free plan")).toBeInTheDocument();
+    });
+
+    click(screen.getByText("Compare all plans"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Compare plans")).toBeInTheDocument();
+    });
+
+    // Voice input appears in all three plan feature lists (one per plan: Free, Pro, Team)
+    // Free = "Voice input (10/month)", Pro and Team = "Voice input"
+    expect(screen.getAllByText(/Voice input/)).toHaveLength(3);
+  });
+
+  it("should show Voice input with limit in Free plan features", async () => {
+    setMockBillingStatus({ tier: "free", credits: 10_000 });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Free plan")).toBeInTheDocument();
+    });
+
+    click(screen.getByText("Compare all plans"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Compare plans")).toBeInTheDocument();
+    });
+
+    // Free plan shows "Voice input (10/month)" while Pro/Team show "Voice input"
+    expect(screen.getByText("Voice input (10/month)")).toBeInTheDocument();
   });
 });
 

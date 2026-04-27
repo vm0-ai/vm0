@@ -2,11 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { eq, and, gte, desc } from "drizzle-orm";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { verifyCallback } from "../../../../../../src/lib/infra/callback";
-import { githubInstallations } from "../../../../../../src/db/schema/github-installation";
-import { githubIssueSessions } from "../../../../../../src/db/schema/github-issue-session";
-import { agentSessions } from "../../../../../../src/db/schema/agent-session";
-import { agentRuns } from "../../../../../../src/db/schema/agent-run";
-import { zeroAgents } from "../../../../../../src/db/schema/zero-agent";
+import { githubInstallations } from "@vm0/db/schema/github-installation";
+import { githubIssueSessions } from "@vm0/db/schema/github-issue-session";
+import { agentSessions } from "@vm0/db/schema/agent-session";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { getInstallationAccessToken } from "../../../../../../src/lib/zero/github/github-app";
 import {
   postIssueComment,

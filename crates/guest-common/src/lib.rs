@@ -1,9 +1,8 @@
-//! Common utilities for VM scripts.
+//! Shared logging and telemetry utilities for guest-side VM tools.
 //!
-//! This crate provides shared functionality for VM-side tools:
-//! - Environment variable accessors
-//! - Telemetry recording
-//! - Logging macros
+//! This crate provides:
+//! - Structured stderr logging macros
+//! - Sandbox operation telemetry helpers
 
 pub mod log;
 pub mod telemetry;

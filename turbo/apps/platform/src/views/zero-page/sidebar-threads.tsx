@@ -4,7 +4,6 @@ import {
   useLastResolved,
   useLastLoadable,
 } from "ccstate-react";
-import { useLoadableSet } from "ccstate-react/experimental";
 import {
   IconSearch,
   IconX,
@@ -12,11 +11,9 @@ import {
   IconChevronRight,
   IconTrash,
 } from "@tabler/icons-react";
-import { FeatureSwitchKey, type ChatThreadListItem } from "@vm0/core";
-import {
-  AgentAvatarImg,
-  useChatThreadsTitleLabels,
-} from "./zero-sidebar-shared.tsx";
+import type { ChatThreadListItem } from "@vm0/api-contracts/contracts/chat-threads";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { useChatThreadsTitleLabels } from "./zero-sidebar-shared.tsx";
 import {
   Tooltip,
   TooltipContent,
@@ -34,20 +31,20 @@ import {
 } from "@vm0/ui/components/ui/dialog";
 import { Skeleton } from "@vm0/ui/components/ui/skeleton";
 import { pageSignal$ } from "../../signals/page-signal.ts";
+import { rootSignal$ } from "../../signals/root-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
   chatThreads$,
   deleteChatThread$,
-  createNewChatThread$,
 } from "../../signals/chat-page/chat-message.ts";
 import {
-  currentChatAgentId$,
-  currentChatThreadId$,
-} from "../../signals/agent-chat.ts";
-import {
-  navigateToChat$,
-  setSidebarExpanded$,
-} from "../../signals/zero-page/zero-nav.ts";
+  createNewChatThreadOptimistically$,
+  optimisticChatThread$,
+  pendingOptimisticChatThreads$,
+} from "../../signals/chat-page/optimistic-chat-thread-page.ts";
+import { currentChatAgentId$ } from "../../signals/agent-chat.ts";
+import { pathParams$ } from "../../signals/route.ts";
+import { setSidebarExpanded$ } from "../../signals/zero-page/zero-nav.ts";
 import {
   threadSearchOpen$,
   sidebarSearchTerm$,
@@ -66,13 +63,11 @@ function ChatThreadItem({
   isSelected,
   onSelect,
   showReadIndicator,
-  showAgentAvatar,
 }: {
   session: ChatThreadListItem;
   isSelected: boolean;
-  onSelect?: (id: string) => void;
+  onSelect?: () => void;
   showReadIndicator: boolean;
-  showAgentAvatar: boolean;
 }) {
   const setPendingDeleteThreadId = useSet(setPendingDeleteThreadId$);
   const isUnread = showReadIndicator && !session.isRead;
@@ -89,12 +84,13 @@ function ChatThreadItem({
       <Link
         pathname="/chats/:threadId"
         options={{ pathParams: { threadId: session.id } }}
+        aria-current={isSelected ? "page" : undefined}
+        data-chat-thread-id={session.id}
         onClick={(e) => {
           if (e.metaKey || e.ctrlKey || e.shiftKey) {
             return;
           }
-          e.preventDefault();
-          onSelect?.(session.id);
+          onSelect?.();
         }}
         className={`flex h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors ${
           isSelected
@@ -114,13 +110,6 @@ function ChatThreadItem({
           <span
             className="shrink-0 h-2 w-2 rounded-full bg-primary"
             aria-label="Unread"
-          />
-        )}
-        {showAgentAvatar && (
-          <AgentAvatarImg
-            name={session.agent?.id ?? session.agentId}
-            alt=""
-            className="h-4 w-4 shrink-0 rounded-full object-cover object-top"
           />
         )}
         <span className="truncate min-w-0 flex-1">
@@ -155,8 +144,9 @@ function ChatThreadItem({
 }
 
 function ChatThreads() {
-  const currentChatThreadId = useGet(currentChatThreadId$);
-  const navigateToChat = useSet(navigateToChat$);
+  const pathParams = useGet(pathParams$);
+  const selectedThreadId =
+    typeof pathParams?.threadId === "string" ? pathParams.threadId : null;
   const setSidebarExpanded = useSet(setSidebarExpanded$);
   const pendingDeleteThreadId = useGet(pendingDeleteThreadId$);
   const setPendingDeleteThreadId = useSet(setPendingDeleteThreadId$);
@@ -164,11 +154,11 @@ function ChatThreads() {
   const pageSignal = useGet(pageSignal$);
 
   const chatThreads = useLastResolved(chatThreads$) ?? [];
+  const optimisticChatThreads =
+    useLastResolved(pendingOptimisticChatThreads$) ?? [];
   const features = useLastResolved(featureSwitch$);
   const showReadIndicator =
     features?.[FeatureSwitchKey.ChatThreadReadIndicator] ?? false;
-  const unifyChatThreads =
-    features?.[FeatureSwitchKey.UnifyChatThreads] ?? false;
   const searchTerm = useGet(sidebarSearchTerm$);
   const trimmedTerm = searchTerm.trim().toLowerCase();
   const filteredChatThreads = trimmedTerm
@@ -176,9 +166,13 @@ function ChatThreads() {
         return (s.title ?? "").toLowerCase().includes(trimmedTerm);
       })
     : chatThreads;
+  const filteredOptimisticChatThreads = trimmedTerm
+    ? optimisticChatThreads.filter((s) => {
+        return (s.title ?? "").toLowerCase().includes(trimmedTerm);
+      })
+    : optimisticChatThreads;
 
-  const onRecentSelect = (chatThreadId: string) => {
-    navigateToChat(chatThreadId);
+  const onRecentSelect = () => {
     setSidebarExpanded(false);
   };
 
@@ -191,7 +185,10 @@ function ChatThreads() {
     detach(deleteChatThread(threadId, pageSignal), Reason.DomCallback);
   }
 
-  if (filteredChatThreads.length === 0) {
+  if (
+    filteredOptimisticChatThreads.length === 0 &&
+    filteredChatThreads.length === 0
+  ) {
     return (
       <p className="px-2 py-2 text-xs text-muted-foreground/70 leading-relaxed">
         {trimmedTerm
@@ -202,15 +199,25 @@ function ChatThreads() {
   }
   return (
     <>
+      {filteredOptimisticChatThreads.map((session) => {
+        return (
+          <ChatThreadItem
+            key={session.id}
+            session={session}
+            isSelected={selectedThreadId === session.id}
+            onSelect={onRecentSelect}
+            showReadIndicator={showReadIndicator}
+          />
+        );
+      })}
       {filteredChatThreads.map((session) => {
         return (
           <ChatThreadItem
             key={session.id}
             session={session}
-            isSelected={currentChatThreadId === session.id}
+            isSelected={selectedThreadId === session.id}
             onSelect={onRecentSelect}
             showReadIndicator={showReadIndicator}
-            showAgentAvatar={unifyChatThreads}
           />
         );
       })}
@@ -251,23 +258,14 @@ function ChatThreads() {
 
 function ChatThreadsTitle() {
   const currentChatAgentId = useLastResolved(currentChatAgentId$) ?? null;
-  const [creatingLoadable, createNewChat] =
-    useLoadableSet(createNewChatThread$);
+  const createNewChat = useSet(createNewChatThreadOptimistically$);
   const setExpanded = useSet(setSidebarExpanded$);
-  const pageSignal = useGet(pageSignal$);
+  const { signal: rootSignal } = useGet(rootSignal$);
   const { titleLabel, searchPlaceholder, newChatAriaLabel } =
     useChatThreadsTitleLabels();
-  const newChatDisabled = creatingLoadable.state === "loading";
-  const navigateToChat = useSet(navigateToChat$);
+  const newChatDisabled = useGet(optimisticChatThread$) !== null;
   const onNewChat = () => {
-    detach(
-      createNewChat(currentChatAgentId, pageSignal).then((threadId) => {
-        if (threadId) {
-          navigateToChat(threadId);
-        }
-      }),
-      Reason.DomCallback,
-    );
+    detach(createNewChat(currentChatAgentId, rootSignal), Reason.DomCallback);
     setExpanded(false);
   };
   const searchOpen = useGet(threadSearchOpen$);
@@ -357,7 +355,7 @@ function ChatThreadsTitle() {
                   onNewChat();
                 }}
                 disabled={newChatDisabled}
-                className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-[hsl(var(--gray-200))] transition-colors disabled:opacity-50 disabled:pointer-events-none"
+                className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-[hsl(var(--gray-200))] transition-colors disabled:opacity-50"
                 aria-label={newChatAriaLabel}
               >
                 <IconPlus size={15} stroke={2.5} />

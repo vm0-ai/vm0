@@ -32,6 +32,7 @@
         "custom-eslint/index.ts",
         "custom-eslint/rules/no-direct-db-in-tests.ts",
         "custom-eslint/rules/no-duplicate-migration-prefix.ts",
+        "custom-eslint/rules/no-global-assignment.ts",
         "custom-eslint/rules/no-relative-vi-mock.ts",
         "custom-eslint/rules/no-request-json-as.ts",
         "app/**/page.tsx",
@@ -49,12 +50,6 @@
       ],
       "rules": {
         "import/no-default-export": "off"
-      }
-    },
-    {
-      "files": ["src/db/schema/**"],
-      "rules": {
-        "import/no-cycle": "off"
       }
     },
     {

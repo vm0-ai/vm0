@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { telegramInstallations } from "../../../../db/schema/telegram-installation";
+import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
 import { decryptSecretValue } from "../../../shared/crypto/secrets-encryption";
 import { env } from "../../../../env";
 import { createTelegramClient, sendMessage, deleteMessage } from "../client";
@@ -47,7 +47,7 @@ export async function handleTelegramDirectMessage(
   const [installation] = await globalThis.services.db
     .select()
     .from(telegramInstallations)
-    .where(eq(telegramInstallations.id, installationId))
+    .where(eq(telegramInstallations.telegramBotId, installationId))
     .limit(1);
 
   if (!installation) {
@@ -66,7 +66,6 @@ export async function handleTelegramDirectMessage(
 
   if (!userLink) {
     const connectUrl = buildConnectUrl(
-      installationId,
       installation.telegramBotId,
       fromUserId,
       botToken,

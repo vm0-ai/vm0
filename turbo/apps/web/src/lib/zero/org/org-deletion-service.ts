@@ -1,36 +1,38 @@
 import { eq, and, inArray } from "drizzle-orm";
 import { logger } from "../../shared/logger";
-import { agentRuns } from "../../../db/schema/agent-run";
-import { agentRunQueue } from "../../../db/schema/agent-run-queue";
-import { agentComposes } from "../../../db/schema/agent-compose";
-import { storages } from "../../../db/schema/storage";
-import { secrets } from "../../../db/schema/secret";
-import { modelProviders } from "../../../db/schema/model-provider";
-import { connectors } from "../../../db/schema/connector";
-import { userPlatformConnectors } from "../../../db/schema/user-platform-connector";
-import { variables } from "../../../db/schema/variable";
-import { usageDaily } from "../../../db/schema/usage-daily";
-import { exportJobs } from "../../../db/schema/export-job";
-import { zeroAgents } from "../../../db/schema/zero-agent";
-import { zeroAgentSchedules } from "../../../db/schema/zero-agent-schedule";
-import { slackOrgInstallations } from "../../../db/schema/slack-org-installation";
-import { orgMembersCache } from "../../../db/schema/org-members-cache";
-import { orgMembersMetadata } from "../../../db/schema/org-members-metadata";
-import { orgCache } from "../../../db/schema/org-cache";
-import { orgMetadata } from "../../../db/schema/org-metadata";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
+import { agentComposes } from "@vm0/db/schema/agent-compose";
+import { storages } from "@vm0/db/schema/storage";
+import { secrets } from "@vm0/db/schema/secret";
+import { modelProviders } from "@vm0/db/schema/model-provider";
+import { connectors } from "@vm0/db/schema/connector";
+import { userPlatformConnectors } from "@vm0/db/schema/user-platform-connector";
+import { variables } from "@vm0/db/schema/variable";
+import { usageDaily } from "@vm0/db/schema/usage-daily";
+import { exportJobs } from "@vm0/db/schema/export-job";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
+import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
+import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
+import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
+import { orgCache } from "@vm0/db/schema/org-cache";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { cleanupWorkspaceInstallation } from "../slack-org/connect-service";
+import { publishCancelNotification } from "../../infra/realtime/client";
 
 const log = logger("service:org-deletion");
 
 /**
- * Cancel all pending/running/queued agent runs for an org.
- * Bulk cancel only updates status — no side effects needed since the
- * entire org is being deleted.
+ * Cancel all pending/running/queued agent runs for an org and notify
+ * runners so mitmproxy stops emitting webhooks before the rows are
+ * deleted. The Ably publish is best-effort — on failure, the runner
+ * continues to natural completion (see publishCancelNotification).
  */
 async function cancelOrgRuns(orgId: string): Promise<void> {
   const db = globalThis.services.db;
 
-  const result = await db
+  const cancelled = await db
     .update(agentRuns)
     .set({ status: "cancelled", completedAt: new Date() })
     .where(
@@ -38,11 +40,22 @@ async function cancelOrgRuns(orgId: string): Promise<void> {
         eq(agentRuns.orgId, orgId),
         inArray(agentRuns.status, ["queued", "pending", "running"]),
       ),
-    );
+    )
+    .returning({ id: agentRuns.id, runnerGroup: agentRuns.runnerGroup });
 
   await db.delete(agentRunQueue).where(eq(agentRunQueue.orgId, orgId));
 
-  log.info("org runs cancelled", { orgId, count: result.rowCount });
+  await Promise.allSettled(
+    cancelled
+      .filter((r) => {
+        return r.runnerGroup !== null;
+      })
+      .map((r) => {
+        return publishCancelNotification(r.runnerGroup!, r.id);
+      }),
+  );
+
+  log.info("org runs cancelled", { orgId, count: cancelled.length });
 }
 
 /**

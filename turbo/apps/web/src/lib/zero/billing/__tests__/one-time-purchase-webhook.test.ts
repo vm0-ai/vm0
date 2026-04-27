@@ -56,6 +56,7 @@ interface CheckoutInput {
   subscription: string | { id: string } | null;
   customer: string | { id: string } | null;
   metadata: Record<string, string> | null;
+  payment_status?: string | null;
 }
 
 function oneTimeSession(
@@ -67,6 +68,7 @@ function oneTimeSession(
     subscription: null,
     customer: "cus_one_time",
     metadata,
+    payment_status: "paid",
   };
 }
 
@@ -112,6 +114,37 @@ describe("handleCheckoutCompleted — one-time purchase dispatch", () => {
     const expiresMs = row!.expiresAt.getTime() - now;
     expect(expiresMs).toBeGreaterThan(29 * 24 * 60 * 60 * 1000);
     expect(expiresMs).toBeLessThan(31 * 24 * 60 * 60 * 1000);
+  });
+
+  it("does not grant credits until a one-time checkout is actually paid", async () => {
+    const sessionId = `cs_test_${user.userId}_awaiting_payment`;
+    await handleCheckoutCompleted(
+      oneTimeSession(sessionId, {
+        purpose: "one_time_purchase",
+        orgId: user.orgId,
+        campaignKey: KNOWN_CAMPAIGN,
+      }),
+    );
+
+    expect(await getOrgCredits(user.orgId)).toBe(baseCredits + KNOWN_CREDITS);
+
+    const unpaidSessionId = `cs_test_${user.userId}_unpaid`;
+    await handleCheckoutCompleted({
+      ...oneTimeSession(unpaidSessionId, {
+        purpose: "one_time_purchase",
+        orgId: user.orgId,
+        campaignKey: KNOWN_CAMPAIGN,
+      }),
+      payment_status: "unpaid",
+    });
+
+    expect(await getOrgCredits(user.orgId)).toBe(baseCredits + KNOWN_CREDITS);
+
+    const unpaidRow = await findCreditExpiresRecordByStripeInvoiceId(
+      user.orgId,
+      unpaidSessionId,
+    );
+    expect(unpaidRow).toBeUndefined();
   });
 
   it("is idempotent when the same session id is delivered twice", async () => {

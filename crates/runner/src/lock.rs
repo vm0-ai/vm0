@@ -36,16 +36,37 @@ fn is_current_inode(lock: &Flock<File>, path: &Path) -> bool {
     lock_meta.ino() == path_meta.ino()
 }
 
-/// Acquire an exclusive flock on the given path, blocking until available.
-///
-/// The returned guard holds the lock until dropped.
-pub async fn acquire(path: PathBuf) -> RunnerResult<Flock<File>> {
+#[derive(Clone, Copy)]
+enum LockMode {
+    Exclusive,
+    Shared,
+    TryExclusive,
+}
+
+impl LockMode {
+    fn arg(self) -> FlockArg {
+        match self {
+            Self::Exclusive => FlockArg::LockExclusive,
+            Self::Shared => FlockArg::LockShared,
+            Self::TryExclusive => FlockArg::LockExclusiveNonblock,
+        }
+    }
+
+    fn map_error(self, path: &Path, e: nix::errno::Errno) -> RunnerError {
+        if matches!(self, Self::TryExclusive) && e == nix::errno::Errno::EWOULDBLOCK {
+            RunnerError::Config("lock is already held by another process".into())
+        } else {
+            RunnerError::Internal(format!("flock {}: {e}", path.display()))
+        }
+    }
+}
+
+async fn acquire_with(path: PathBuf, mode: LockMode) -> RunnerResult<Flock<File>> {
     tokio::task::spawn_blocking(move || {
         loop {
             let file = open_lock_file(&path)?;
-            let lock = Flock::lock(file, FlockArg::LockExclusive).map_err(|(_file, e)| {
-                RunnerError::Internal(format!("flock {}: {e}", path.display()))
-            })?;
+            let lock =
+                Flock::lock(file, mode.arg()).map_err(|(_file, e)| mode.map_error(&path, e))?;
             if is_current_inode(&lock, &path) {
                 return Ok(lock);
             }
@@ -53,6 +74,13 @@ pub async fn acquire(path: PathBuf) -> RunnerResult<Flock<File>> {
     })
     .await
     .map_err(|e| RunnerError::Internal(format!("lock task: {e}")))?
+}
+
+/// Acquire an exclusive flock on the given path, blocking until available.
+///
+/// The returned guard holds the lock until dropped.
+pub async fn acquire(path: PathBuf) -> RunnerResult<Flock<File>> {
+    acquire_with(path, LockMode::Exclusive).await
 }
 
 /// Acquire a shared flock on the given path, blocking until available.
@@ -60,42 +88,14 @@ pub async fn acquire(path: PathBuf) -> RunnerResult<Flock<File>> {
 /// Multiple shared locks can coexist; only exclusive locks conflict.
 /// The returned guard holds the lock until dropped.
 pub async fn acquire_shared(path: PathBuf) -> RunnerResult<Flock<File>> {
-    tokio::task::spawn_blocking(move || {
-        loop {
-            let file = open_lock_file(&path)?;
-            let lock = Flock::lock(file, FlockArg::LockShared).map_err(|(_file, e)| {
-                RunnerError::Internal(format!("flock {}: {e}", path.display()))
-            })?;
-            if is_current_inode(&lock, &path) {
-                return Ok(lock);
-            }
-        }
-    })
-    .await
-    .map_err(|e| RunnerError::Internal(format!("lock task: {e}")))?
+    acquire_with(path, LockMode::Shared).await
 }
 
 /// Try to acquire an exclusive flock, returning an error immediately if held by another process.
 ///
 /// The returned guard holds the lock until dropped.
 pub async fn try_acquire(path: PathBuf) -> RunnerResult<Flock<File>> {
-    tokio::task::spawn_blocking(move || {
-        loop {
-            let file = open_lock_file(&path)?;
-            let lock = Flock::lock(file, FlockArg::LockExclusiveNonblock).map_err(|(_, e)| {
-                if e == nix::errno::Errno::EWOULDBLOCK {
-                    RunnerError::Config("lock is already held by another process".into())
-                } else {
-                    RunnerError::Internal(format!("flock {}: {e}", path.display()))
-                }
-            })?;
-            if is_current_inode(&lock, &path) {
-                return Ok(lock);
-            }
-        }
-    })
-    .await
-    .map_err(|e| RunnerError::Internal(format!("lock task: {e}")))?
+    acquire_with(path, LockMode::TryExclusive).await
 }
 
 #[cfg(test)]

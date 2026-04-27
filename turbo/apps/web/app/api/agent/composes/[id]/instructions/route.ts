@@ -12,21 +12,18 @@ import { gunzipSync } from "node:zlib";
 import { createHandler, tsr } from "../../../../../../src/lib/ts-rest-handler";
 import {
   composesInstructionsContract,
-  getInstructionsStorageName,
-  getInstructionsFilename,
-  stripMetadataFrontmatter,
   agentComposeApiContentSchema,
-} from "@vm0/core";
+} from "@vm0/api-contracts/contracts/composes";
+import { getInstructionsStorageName } from "@vm0/core/storage-names";
+import { getInstructionsFilename } from "@vm0/core/frameworks";
+import { stripMetadataFrontmatter } from "@vm0/core/instructions-frontmatter";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { eq, and } from "drizzle-orm";
 import {
   agentComposes,
   agentComposeVersions,
-} from "../../../../../../src/db/schema/agent-compose";
-import {
-  storages,
-  storageVersions,
-} from "../../../../../../src/db/schema/storage";
+} from "@vm0/db/schema/agent-compose";
+import { storages, storageVersions } from "@vm0/db/schema/storage";
 import {
   requireAuth,
   isAuthError,

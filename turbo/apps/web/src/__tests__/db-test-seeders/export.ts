@@ -1,5 +1,5 @@
 import { initServices } from "../../lib/init-services";
-import { exportJobs } from "../../db/schema/export-job";
+import { exportJobs } from "@vm0/db/schema/export-job";
 
 /**
  * Insert a test export job for a specific org.

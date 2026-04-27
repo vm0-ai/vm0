@@ -1,10 +1,11 @@
 // PWA-only left-edge swipe-in gesture for opening the mobile sidebar.
 //
-// Only active in standalone display mode. In a regular browser tab the
-// left-edge area is owned by the native back-navigation gesture (iOS Safari,
-// Android Chrome), which has priority over any JS handler — attaching there
-// would be a no-op at best and a user confusion at worst. Standalone PWAs
-// have no back gesture, so the edge is free.
+// Only active in standalone display mode. In browser tabs the left-edge
+// area is owned by the native back-navigation gesture, which cannot be
+// intercepted. In standalone PWA mode we call preventDefault() on edge
+// touchstart/touchmove so the iOS WKWebView back-swipe gesture recognizer
+// does NOT fire, because both the sidebar-open swipe and the native
+// back-swipe compete for the same left-edge rightward gesture.
 
 import { command } from "ccstate";
 import { setSidebarExpanded$ } from "./zero-nav.ts";
@@ -63,9 +64,30 @@ export const setupPwaEdgeSwipe$ = command(({ set }, signal: AbortSignal) => {
         start = null;
         return;
       }
+      // Claim the gesture to prevent iOS WKWebView native back-swipe.
+      event.preventDefault();
       start = { x: touch.clientX, y: touch.clientY, t: Date.now() };
     },
-    { passive: true, signal },
+    { signal },
+  );
+
+  document.addEventListener(
+    "touchmove",
+    (event: TouchEvent) => {
+      if (!start) {
+        return;
+      }
+      // Continue preventing the native back-swipe during the gesture.
+      // Avoid calling preventDefault() on vertical movements (> dy) to
+      // allow vertical scrolling even when the touch started at the edge.
+      const touch = event.touches[0];
+      const dx = touch.clientX - start.x;
+      const dy = Math.abs(touch.clientY - start.y);
+      if (dx > dy) {
+        event.preventDefault();
+      }
+    },
+    { signal },
   );
 
   document.addEventListener(
@@ -87,7 +109,7 @@ export const setupPwaEdgeSwipe$ = command(({ set }, signal: AbortSignal) => {
       }
       start = null;
     },
-    { passive: true, signal },
+    { signal },
   );
 
   document.addEventListener(
@@ -95,6 +117,6 @@ export const setupPwaEdgeSwipe$ = command(({ set }, signal: AbortSignal) => {
     () => {
       start = null;
     },
-    { passive: true, signal },
+    { signal },
   );
 });

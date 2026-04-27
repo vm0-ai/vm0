@@ -10,18 +10,32 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
-import { chatThreadsContract } from "@vm0/core";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
+import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   setMockComposesList,
   setMockTeam,
 } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 function mockAPIs() {
   setMockComposesList([]);
-  setMockTeam([]);
+  // Seed the team with the default agent so setupAgentChatPage$ (reached
+  // via the home redirect) does not treat the default agent as missing and
+  // trigger an unhandled detached navigation rejection after the test ends.
+  setMockTeam([
+    {
+      id: "c0000000-0000-4000-a000-000000000001",
+      displayName: null,
+      description: null,
+      sound: null,
+      avatarUrl: null,
+      headVersionId: "version_1",
+      updatedAt: "2024-01-01T00:00:00Z",
+    },
+  ]);
   server.use(
     mockApi(chatThreadsContract.list, ({ respond }) => {
       return respond(200, { threads: [] });

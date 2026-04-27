@@ -1,11 +1,11 @@
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
-import { VOLUME_ORG_USER_ID, SYSTEM_ORG_ID } from "@vm0/core";
+import { VOLUME_ORG_USER_ID, SYSTEM_ORG_ID } from "@vm0/core/storage-names";
 import { initServices } from "../../lib/init-services";
-import { skills } from "../../db/schema/skill";
-import { zeroAgents } from "../../db/schema/zero-agent";
-import { zeroSkills } from "../../db/schema/zero-skill";
-import { storages, storageVersions } from "../../db/schema/storage";
+import { skills } from "@vm0/db/schema/skill";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { zeroSkills } from "@vm0/db/schema/zero-skill";
+import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { buildSeedSkillValues } from "../../lib/zero/seed-skills";
 
 // ---------------------------------------------------------------------------
@@ -116,6 +116,20 @@ export async function reseedSkills(names: readonly string[]): Promise<void> {
         .where(eq(storages.id, nameToId.get(storageName)!));
     }
   });
+}
+
+/**
+ * Set the commit SHA for all seeded skill rows.
+ * Used by sync-skills route tests to force the freshness-check fast path.
+ *
+ * @why-db-direct The route's skip path depends on persisted skill metadata.
+ * No API exists to mutate commit SHA for system-seeded skills in tests.
+ */
+export async function setAllTestSkillsCommitSha(
+  commitSha: string,
+): Promise<void> {
+  initServices();
+  await globalThis.services.db.update(skills).set({ commitSha });
 }
 
 /**

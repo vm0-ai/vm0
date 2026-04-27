@@ -10,7 +10,7 @@
  * - Real (internal): All signals, components, rendering
  */
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import {
   sidebarExpanded$,
@@ -24,14 +24,15 @@ import { mockedClerk } from "../../../__tests__/mock-auth.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 import { pathname } from "../../../signals/location.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
   chatThreadsContract,
   chatThreadByIdContract,
-  zeroAgentsByIdContract,
-} from "@vm0/core";
+} from "@vm0/api-contracts/contracts/chat-threads";
+import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 const DEFAULT_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const PINNED_AGENT_ID = "agent-pinned-id";
@@ -43,7 +44,7 @@ function makeThread(
 ): {
   id: string;
   title: string;
-  agentId: string;
+  agent: { id: string; avatarUrl: string | null };
   createdAt: string;
   updatedAt: string;
   isRead: boolean;
@@ -53,7 +54,7 @@ function makeThread(
   return {
     id,
     title,
-    agentId: DEFAULT_AGENT_ID,
+    agent: { id: DEFAULT_AGENT_ID, avatarUrl: null },
     createdAt,
     updatedAt: createdAt,
     isRead: false,
@@ -90,7 +91,7 @@ function mockBaseAPIs(options?: {
   threads?: {
     id: string;
     title: string;
-    agentId: string;
+    agent: { id: string; avatarUrl: string | null };
     createdAt: string;
     updatedAt: string;
     isRead: boolean;
@@ -163,7 +164,6 @@ function mockBaseAPIs(options?: {
 
 beforeEach(() => {
   setMockUserPreferences({ pinnedAgentIds: [] });
-  vi.clearAllMocks();
 });
 
 describe("zero sidebar - account dropdown opens (SIDEBAR-D-013)", () => {
@@ -215,7 +215,10 @@ describe("zero sidebar - search input accepts text (SIDEBAR-D-015)", () => {
     mockBaseAPIs({
       threads: [makeThread("thread-1", "First chat", "2026-03-10T00:00:00Z")],
     });
-    detachedSetupPage({ context, path: "/" });
+    detachedSetupPage({
+      context,
+      path: "/",
+    });
 
     await waitFor(() => {
       expect(screen.getByText("First chat")).toBeInTheDocument();
@@ -224,7 +227,7 @@ describe("zero sidebar - search input accepts text (SIDEBAR-D-015)", () => {
     const searchChatsBtn1 = screen.getByLabelText("Search chats");
     click(searchChatsBtn1);
 
-    const searchInput = screen.getByPlaceholderText(/Search chat with/);
+    const searchInput = screen.getByPlaceholderText("Search chat with Zero");
     await user.type(searchInput, "hello");
 
     expect(searchInput).toHaveValue("hello");
@@ -240,7 +243,10 @@ describe("zero sidebar - clear search button resets search (SIDEBAR-D-016)", () 
         makeThread("thread-2", "Second chat", "2026-03-09T00:00:00Z"),
       ],
     });
-    detachedSetupPage({ context, path: "/" });
+    detachedSetupPage({
+      context,
+      path: "/",
+    });
 
     await waitFor(() => {
       expect(screen.getByText("First chat")).toBeInTheDocument();
@@ -250,7 +256,7 @@ describe("zero sidebar - clear search button resets search (SIDEBAR-D-016)", () 
     const searchChatsBtn2 = screen.getByLabelText("Search chats");
     click(searchChatsBtn2);
 
-    const searchInput = screen.getByPlaceholderText(/Search chat with/);
+    const searchInput = screen.getByPlaceholderText("Search chat with Zero");
     await user.type(searchInput, "First");
 
     expect(screen.queryByText("Second chat")).not.toBeInTheDocument();
@@ -293,10 +299,18 @@ describe("zero sidebar - new chat button creates session (SIDEBAR-D-017)", () =>
       }),
     );
 
-    // Start on /agents so the new chat button triggers thread creation (not route navigation)
-    detachedSetupPage({ context, path: "/agents" });
+    // Start on the default agent chat page so currentChatAgentId$ resolves before we click
+    detachedSetupPage({
+      context,
+      path: `/agents/${DEFAULT_AGENT_ID}/chat`,
+    });
 
+    // Wait for the sidebar to finish loading (empty state confirms threads loaded
+    // and the default agent id has resolved)
     const newChatButton = await waitFor(() => {
+      expect(
+        screen.getByText("Start a conversation and it'll show up here"),
+      ).toBeInTheDocument();
       return screen.getByLabelText("New chat with Zero");
     });
 

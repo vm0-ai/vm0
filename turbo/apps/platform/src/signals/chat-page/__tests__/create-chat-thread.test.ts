@@ -1,19 +1,21 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import {
-  currentChatThreadSignals$,
+  createChatThreadSignals,
+  ensureDraft$,
   setDraftSyncDebounceMs$,
 } from "../create-chat-thread.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
   chatThreadsContract,
   chatThreadByIdContract,
   chatThreadMessagesContract,
-} from "@vm0/core";
+} from "@vm0/api-contracts/contracts/chat-threads";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 /**
  * Base MSW handlers required for setupChatPage$ to complete:
@@ -46,6 +48,11 @@ function setupBaseHandlers(threadId: string) {
   );
 }
 
+function createThreadSignals(threadId: string) {
+  const { draft } = context.store.set(ensureDraft$, threadId);
+  return createChatThreadSignals(threadId, draft);
+}
+
 describe("createDraftSync — scheduleDraftSync$, cancelDraftSync$, flushDraftClear$", () => {
   beforeEach(() => {
     // Override debounce delay to 0 so tests resolve without fake timers.
@@ -71,11 +78,7 @@ describe("createDraftSync — scheduleDraftSync$, cancelDraftSync$, flushDraftCl
         withoutRender: true,
       });
 
-      await vi.waitFor(() => {
-        expect(context.store.get(currentChatThreadSignals$)).not.toBeNull();
-      });
-
-      const thread = context.store.get(currentChatThreadSignals$)!;
+      const thread = createThreadSignals(threadId);
 
       // Set draft input so the PATCH has content to sync
       context.store.set(thread.draft.setInput$, "hello world");
@@ -117,11 +120,7 @@ describe("createDraftSync — scheduleDraftSync$, cancelDraftSync$, flushDraftCl
         withoutRender: true,
       });
 
-      await vi.waitFor(() => {
-        expect(context.store.get(currentChatThreadSignals$)).not.toBeNull();
-      });
-
-      const thread = context.store.get(currentChatThreadSignals$)!;
+      const thread = createThreadSignals(threadId);
 
       // Schedule sync, then schedule again immediately to reset the timer.
       // The first signal is aborted synchronously before its setTimeout(0) fires.
@@ -171,11 +170,7 @@ describe("createDraftSync — scheduleDraftSync$, cancelDraftSync$, flushDraftCl
         withoutRender: true,
       });
 
-      await vi.waitFor(() => {
-        expect(context.store.get(currentChatThreadSignals$)).not.toBeNull();
-      });
-
-      const thread = context.store.get(currentChatThreadSignals$)!;
+      const thread = createThreadSignals(threadId);
 
       // Leave input empty — should send null draftContent
       await context.store.set(thread.scheduleDraftSync$, context.signal);

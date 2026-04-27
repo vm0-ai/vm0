@@ -435,19 +435,15 @@ fn download_and_extract(url: &str, target_path: &str) -> Result<(), DownloadErro
     // Obtain a reader for the archive bytes. HTTP is the production path today;
     // file:// is used by the runner-side storage cache (epic #10800) to feed
     // host-staged tarballs that were pushed into the guest over vsock.
-    let local_path: Option<PathBuf>;
     let reader: Box<dyn Read> = if let Some(path) = url.strip_prefix("file://") {
-        let path_buf = PathBuf::from(path);
         log_info!(LOG_TAG, "Reading local archive from {path}");
-        let file = fs::File::open(&path_buf).map_err(|e| DownloadError {
+        let file = fs::File::open(path).map_err(|e| DownloadError {
             message: format!("Failed to open local archive {path}: {e}"),
             retriable: false,
             status_code: None,
         })?;
-        local_path = Some(path_buf);
         Box::new(file)
     } else {
-        local_path = None;
         let response = HTTP_AGENT.get(url).call().map_err(|e| {
             let (retriable, status_code) = match &e {
                 // Retry on server errors (5xx) and rate limiting (429)
@@ -583,19 +579,6 @@ fn download_and_extract(url: &str, target_path: &str) -> Result<(), DownloadErro
             retriable: false,
             status_code: None,
         })?;
-    }
-
-    // For file:// URLs, drop the staged tarball now that extraction succeeded so it
-    // doesn't pin COW space for the lifetime of the sandbox. Failure is not fatal —
-    // the runner stages these under /tmp, which is wiped on VM teardown anyway.
-    if let Some(path) = local_path
-        && let Err(e) = fs::remove_file(&path)
-    {
-        log_warn!(
-            LOG_TAG,
-            "Failed to remove staged archive {}: {e}",
-            path.display()
-        );
     }
 
     Ok(())

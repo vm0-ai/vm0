@@ -39,6 +39,19 @@ pub const STUCK_TOOL_CHECK_INTERVAL_SECS: u64 = 5;
 /// hanging on orphaned child processes that inherited the stdout fd.
 pub const STDOUT_DRAIN_DEADLINE_SECS: u64 = 5;
 
+/// Grace period after observing a `type=result` event before SIGTERM-ing the
+/// CLI process group. In vm0's one-shot web-agent integration the turn is
+/// complete when the CLI emits its final `result`, but the CLI itself may
+/// still be blocked draining long-running backgrounded Bash tasks it spawned
+/// via its 2-minute auto-background timeout. Those tasks have been observed
+/// holding the sandbox alive for tens of minutes until external cancel.
+/// See: https://github.com/vm0-ai/vm0/issues/10879
+pub const POST_RESULT_SIGTERM_GRACE_SECS: u64 = 10;
+
+/// Follow-up window after SIGTERM before escalating to SIGKILL when the CLI
+/// process group ignores the graceful signal.
+pub const POST_RESULT_SIGKILL_GRACE_SECS: u64 = 5;
+
 /// Maximum consecutive heartbeat failures before terminating the run.
 /// Each heartbeat attempt already retries `HTTP_MAX_RETRIES` times internally,
 /// so 3 consecutive failures = 9 total HTTP attempts over ~3 minutes.

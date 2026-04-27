@@ -1,5 +1,5 @@
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
-import { zeroSchedulesByNameContract } from "@vm0/core";
+import { zeroSchedulesByNameContract } from "@vm0/api-contracts/contracts/zero-schedules";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
   requireAuth,
@@ -7,7 +7,7 @@ import {
 } from "../../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
 import { deleteSchedule } from "../../../../../src/lib/zero/schedule";
-import { isNotFound } from "../../../../../src/lib/shared/errors";
+import { isNotFound } from "@vm0/api-services/errors";
 
 const router = tsr.router(zeroSchedulesByNameContract, {
   delete: async ({ params, query, headers }) => {

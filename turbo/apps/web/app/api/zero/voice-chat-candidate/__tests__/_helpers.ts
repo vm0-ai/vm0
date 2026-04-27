@@ -25,7 +25,7 @@ export async function setupCandidateOrg(userId: string): Promise<{
   // model provider exists. Seeding here keeps per-test setup lean.
   await insertOrgDefaultModelProvider(
     orgId,
-    "anthropic",
+    "anthropic-api-key",
     "claude-3-5-sonnet-20241022",
   );
   return { orgId, slug };

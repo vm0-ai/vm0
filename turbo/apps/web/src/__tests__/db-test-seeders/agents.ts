@@ -1,20 +1,21 @@
 import { and, eq } from "drizzle-orm";
-import type { RawPermissionPolicies } from "@vm0/core";
+import type { RawPermissionPolicies } from "@vm0/connectors/firewall-types";
 import { initServices } from "../../lib/init-services";
 import {
   agentComposes,
   agentComposeVersions,
-} from "../../db/schema/agent-compose";
-import { agentRuns } from "../../db/schema/agent-run";
-import { agentSessions } from "../../db/schema/agent-session";
-import { chatMessages } from "../../db/schema/chat-message";
-import { chatThreads } from "../../db/schema/chat-thread";
-import { conversations } from "../../db/schema/conversation";
-import { zeroAgents } from "../../db/schema/zero-agent";
-import { zeroRuns } from "../../db/schema/zero-run";
-import { composeJobs } from "../../db/schema/compose-job";
+} from "@vm0/db/schema/agent-compose";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { agentSessions } from "@vm0/db/schema/agent-session";
+import { chatMessages } from "@vm0/db/schema/chat-message";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { conversations } from "@vm0/db/schema/conversation";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { composeJobs } from "@vm0/db/schema/compose-job";
 import { uniqueId } from "../test-helpers";
 import { getMessagesByThreadId } from "../../lib/zero/chat-thread/chat-message-service";
+import type { ContextArtifact } from "../../lib/infra/run/types";
 
 /**
  * @why-db-direct Creates compose + zero_agents WITHOUT a version — API always
@@ -156,6 +157,8 @@ export async function createTestZeroAgent(
     description?: string;
     sound?: string;
     permissionPolicies?: RawPermissionPolicies;
+    modelProviderId?: string | null;
+    selectedModel?: string | null;
   },
 ): Promise<void> {
   initServices();
@@ -182,6 +185,8 @@ export async function createTestZeroAgent(
       description: metadata.description ?? null,
       sound: metadata.sound ?? null,
       permissionPolicies: metadata.permissionPolicies ?? null,
+      modelProviderId: metadata.modelProviderId ?? null,
+      selectedModel: metadata.selectedModel ?? null,
     })
     .onConflictDoUpdate({
       target: [zeroAgents.orgId, zeroAgents.name],
@@ -190,6 +195,8 @@ export async function createTestZeroAgent(
         description: metadata.description ?? null,
         sound: metadata.sound ?? null,
         permissionPolicies: metadata.permissionPolicies ?? null,
+        modelProviderId: metadata.modelProviderId ?? null,
+        selectedModel: metadata.selectedModel ?? null,
       },
     });
 }
@@ -366,9 +373,9 @@ export async function createTestSessionWithConversation(
 /**
  * Set last_read_at on a chat thread directly in the database.
  *
- * @why-db-direct The mark-read API sets last_read_at via a forward-only
- * cursor (it never rewinds). Tests that need to seed a specific lastReadAt
- * value (including null) must bypass the API to avoid the forward-only guard.
+ * @why-db-direct Legacy tests may need to seed the compatibility timestamp
+ * field directly. The mark-read API now derives read state from
+ * last_read_message_id instead.
  */
 export async function setTestChatThreadLastReadAt(
   threadId: string,
@@ -378,6 +385,23 @@ export async function setTestChatThreadLastReadAt(
   await globalThis.services.db
     .update(chatThreads)
     .set({ lastReadAt })
+    .where(eq(chatThreads.id, threadId));
+}
+
+/**
+ * Set last_read_message_id on a chat thread directly in the database.
+ *
+ * @why-db-direct Tests need to seed exact read state without invoking the
+ * mark-read API, which derives the value from the current latest message.
+ */
+export async function setTestChatThreadLastReadMessageId(
+  threadId: string,
+  lastReadMessageId: string | null,
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .update(chatThreads)
+    .set({ lastReadMessageId })
     .where(eq(chatThreads.id, threadId));
 }
 
@@ -498,6 +522,53 @@ export async function setTestChatMessageAttachFiles(
     .update(chatMessages)
     .set({ attachFiles: ids })
     .where(eq(chatMessages.runId, runId));
+}
+
+/**
+ * Overwrite `agent_sessions.artifacts` for a session.
+ *
+ * @why-db-direct `agent_sessions.artifacts` is written by the run pipeline
+ * from the resolved artifact list. Resolver tests need to seed arbitrary
+ * artifact lists (including the auto-memory entry) to exercise downstream
+ * consumers.
+ */
+export async function setTestSessionArtifacts(
+  sessionId: string,
+  artifacts: ContextArtifact[],
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .update(agentSessions)
+    .set({ artifacts })
+    .where(eq(agentSessions.id, sessionId));
+}
+
+/**
+ * Update the cliAgentType on the conversation linked to a session.
+ *
+ * @why-db-direct Test checkpoint helpers seed conversations with
+ * cliAgentType "test-agent" while composes default to framework
+ * "claude-code". Resolver compatibility checks compare these, so
+ * resolveSession tests need to align the conversation framework before
+ * invoking the resolver.
+ */
+export async function setTestSessionFramework(
+  sessionId: string,
+  framework: string,
+): Promise<void> {
+  initServices();
+  const [session] = await globalThis.services.db
+    .select({ conversationId: agentSessions.conversationId })
+    .from(agentSessions)
+    .where(eq(agentSessions.id, sessionId))
+    .limit(1);
+  if (!session?.conversationId) {
+    throw new Error(`Session ${sessionId} has no conversation`);
+  }
+  await globalThis.services.db
+    .update(conversations)
+    .set({ cliAgentType: framework })
+    .where(eq(conversations.id, session.conversationId));
 }
 
 /**

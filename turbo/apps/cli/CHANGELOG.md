@@ -1,5 +1,133 @@
 # Changelog
 
+## [9.132.10](https://github.com/vm0-ai/vm0/compare/cli-v9.132.9...cli-v9.132.10) (2026-04-26)
+
+
+### Bug Fixes
+
+* stabilize run stdout event visibility ([#11149](https://github.com/vm0-ai/vm0/issues/11149)) ([479c57e](https://github.com/vm0-ai/vm0/commit/479c57e06f22ef706e3be087a21c4a7588bbea38))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.237.0
+
+## [9.132.9](https://github.com/vm0-ai/vm0/compare/cli-v9.132.8...cli-v9.132.9) (2026-04-26)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.236.1
+
+## [9.132.8](https://github.com/vm0-ai/vm0/compare/cli-v9.132.7...cli-v9.132.8) (2026-04-25)
+
+
+### Refactoring
+
+* split db and api contracts packages ([#11092](https://github.com/vm0-ai/vm0/issues/11092)) ([f4767d9](https://github.com/vm0-ai/vm0/commit/f4767d987af373d17d93d5ca8fb00864c18bc15b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.236.0
+
+## [9.132.7](https://github.com/vm0-ai/vm0/compare/cli-v9.132.6...cli-v9.132.7) (2026-04-25)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.235.1
+
+## [9.132.6](https://github.com/vm0-ai/vm0/compare/cli-v9.132.5...cli-v9.132.6) (2026-04-25)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.235.0
+
+## [9.132.5](https://github.com/vm0-ai/vm0/compare/cli-v9.132.4...cli-v9.132.5) (2026-04-24)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.234.1
+
+## [9.132.4](https://github.com/vm0-ai/vm0/compare/cli-v9.132.3...cli-v9.132.4) (2026-04-24)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.234.0
+
+## [9.132.3](https://github.com/vm0-ai/vm0/compare/cli-v9.132.2...cli-v9.132.3) (2026-04-24)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.233.0
+
+## [9.132.2](https://github.com/vm0-ai/vm0/compare/cli-v9.132.1...cli-v9.132.2) (2026-04-24)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.232.0
+
+## [9.132.1](https://github.com/vm0-ai/vm0/compare/cli-v9.132.0...cli-v9.132.1) (2026-04-24)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.231.0
+
+## [9.132.0](https://github.com/vm0-ai/vm0/compare/cli-v9.131.5...cli-v9.132.0) (2026-04-23)
+
+
+### Features
+
+* gate Zapier connector behind ZapierConnector feature switch ([#10871](https://github.com/vm0-ai/vm0/issues/10871)) ([fc602ff](https://github.com/vm0-ai/vm0/commit/fc602ffa85e3a8ec3fb10943e714c8264a80098f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.230.0
+
+## [9.131.5](https://github.com/vm0-ai/vm0/compare/cli-v9.131.4...cli-v9.131.5) (2026-04-23)
+
+
+### Refactoring
+
+* remove turbo core root imports ([#10820](https://github.com/vm0-ai/vm0/issues/10820)) ([ec85609](https://github.com/vm0-ai/vm0/commit/ec8560930db70e5c1f853961ff51606e601da875))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.229.4
+
 ## [9.131.4](https://github.com/vm0-ai/vm0/compare/cli-v9.131.3...cli-v9.131.4) (2026-04-23)
 
 

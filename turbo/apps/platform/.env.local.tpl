@@ -6,8 +6,9 @@ VITE_API_URL=http://localhost:3000
 # Web Push (VAPID public key for push subscription)
 VITE_VAPID_PUBLIC_KEY=op://Development/vapid/VAPID_PUBLIC_KEY
 
-# Analytics (Plausible)
+# Analytics
 VITE_PLAUSIBLE_SCRIPT_URL=
+VITE_POSTHOG_KEY=
 
 # Optional: Error Tracking (Sentry)
 VITE_SENTRY_DSN=

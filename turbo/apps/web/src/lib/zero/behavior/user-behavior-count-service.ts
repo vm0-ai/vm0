@@ -1,5 +1,5 @@
 import { and, eq, sql } from "drizzle-orm";
-import { userBehaviorCount } from "../../../db/schema/user-behavior-count";
+import { userBehaviorCount } from "@vm0/db/schema/user-behavior-count";
 
 export async function recordBehavior(
   orgId: string,

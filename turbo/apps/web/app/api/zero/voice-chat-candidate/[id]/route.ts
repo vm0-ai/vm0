@@ -4,9 +4,9 @@ import { initServices } from "../../../../../src/lib/init-services";
 import { getVoiceChatCandidateSession } from "../../../../../src/lib/zero/voice-chat-candidate/session-service";
 import { buildTalkerPayload } from "../../../../../src/lib/zero/voice-chat-candidate/talker-instructions";
 import {
-  isVoiceChatCandidateEnabled,
+  isVoiceChatEnabled,
   notFoundResponse,
-  serializeVoiceChatCandidateSession,
+  serializeVoiceChatSession,
   unauthorizedResponse,
 } from "../_support";
 
@@ -27,7 +27,7 @@ export async function GET(
   // while still satisfying the epic's "every route gates on the flag" rule.
   // A future reader: do NOT "fix" this to 403 — keep it 404 to preserve
   // contract compliance and non-disclosure.
-  if (!(await isVoiceChatCandidateEnabled(authCtx))) {
+  if (!(await isVoiceChatEnabled(authCtx))) {
     return notFoundResponse("Voice-chat-candidate session not found");
   }
 
@@ -44,7 +44,7 @@ export async function GET(
   const talker = await buildTalkerPayload(session);
 
   return NextResponse.json({
-    session: serializeVoiceChatCandidateSession(session),
+    session: serializeVoiceChatSession(session),
     ...talker,
   });
 }

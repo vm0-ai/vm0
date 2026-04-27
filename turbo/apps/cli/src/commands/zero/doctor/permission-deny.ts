@@ -1,10 +1,10 @@
 import { Command, Option } from "commander";
+import { CONNECTOR_TYPES } from "@vm0/connectors/connectors";
+import { findMatchingPermissions } from "@vm0/connectors/firewall-rule-matcher";
 import {
-  isFirewallConnectorType,
   getConnectorFirewall,
-  findMatchingPermissions,
-  CONNECTOR_TYPES,
-} from "@vm0/core";
+  isFirewallConnectorType,
+} from "@vm0/connectors/firewalls";
 import { withErrorHandler } from "../../../lib/command";
 
 export const permissionDenyCommand = new Command()

@@ -1,5 +1,6 @@
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
-import { zeroOrgDeleteContract, createErrorResponse } from "@vm0/core";
+import { zeroOrgDeleteContract } from "@vm0/api-contracts/contracts/zero-org";
+import { createErrorResponse } from "@vm0/api-contracts/contracts/errors";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
   requireAuth,
@@ -12,7 +13,7 @@ import {
   isBadRequest,
   isForbidden,
   isNotFound,
-} from "../../../../../src/lib/shared/errors";
+} from "@vm0/api-services/errors";
 
 const router = tsr.router(zeroOrgDeleteContract, {
   delete: async ({ headers, body }) => {

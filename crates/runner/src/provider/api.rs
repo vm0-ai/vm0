@@ -566,7 +566,10 @@ impl ApiClient {
     }
 
     /// Claim a job for execution. Returns [`RunnerError::AlreadyClaimed`] on
-    /// HTTP 409 so callers can continue gracefully.
+    /// HTTP 409 (job row still present, already claimed) and HTTP 404 (job
+    /// row already dequeued by the winner) so callers can continue gracefully.
+    /// Both outcomes are normal contention signals when multiple runners race
+    /// for the same job.
     async fn claim(&self, run_id: RunId) -> RunnerResult<ExecutionContext> {
         let path = format!("/api/runners/jobs/{run_id}/claim");
         let resp = self
@@ -577,7 +580,7 @@ impl ApiClient {
             .await
             .map_err(|e| RunnerError::Api(format!("claim: {e}")))?;
 
-        if resp.status() == StatusCode::CONFLICT {
+        if matches!(resp.status(), StatusCode::CONFLICT | StatusCode::NOT_FOUND) {
             return Err(RunnerError::AlreadyClaimed);
         }
 

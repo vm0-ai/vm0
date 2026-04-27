@@ -1,7 +1,8 @@
 import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
-import { cronCleanupSandboxesContract, createErrorResponse } from "@vm0/core";
+import { cronCleanupSandboxesContract } from "@vm0/api-contracts/contracts/cron";
+import { createErrorResponse } from "@vm0/api-contracts/contracts/errors";
 import { initServices } from "../../../../src/lib/init-services";
-import { agentRuns } from "../../../../src/db/schema/agent-run";
+import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
   transitionRunStatus,
   dispatchTerminalSideEffects,
@@ -9,9 +10,9 @@ import {
 import {
   agentComposeVersions,
   agentComposes,
-} from "../../../../src/db/schema/agent-compose";
+} from "@vm0/db/schema/agent-compose";
 import { and, eq, inArray, lt, isNotNull } from "drizzle-orm";
-import { exportJobs } from "../../../../src/db/schema/export-job";
+import { exportJobs } from "@vm0/db/schema/export-job";
 import { deleteS3Objects } from "../../../../src/lib/infra/s3/s3-client";
 import {
   cleanupExpiredQueueEntries,
@@ -20,6 +21,7 @@ import {
   dispatchQueuedZeroRun,
 } from "../../../../src/lib/zero/zero-run-queue-service";
 import { processOrgCredits } from "../../../../src/lib/zero/credit/credit-service";
+import { processOrgUsageEvents } from "../../../../src/lib/zero/credit/usage-event-service";
 import { logger } from "../../../../src/lib/shared/logger";
 import { env } from "../../../../src/env";
 
@@ -246,6 +248,7 @@ const router = tsr.router(cronCleanupSandboxesContract, {
           );
 
           await processOrgCredits(run.orgId);
+          await processOrgUsageEvents(run.orgId);
 
           const isDebug =
             run.composeName?.startsWith(DEBUG_COMPOSE_PREFIX) ?? false;

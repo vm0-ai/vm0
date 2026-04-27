@@ -3,16 +3,16 @@ import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { initServices } from "../../../../src/lib/init-services";
 import { env } from "../../../../src/env";
 import { isTestEndpointAllowed } from "../../../../src/lib/auth/test-endpoint-guard";
-import { slackOrgInstallations } from "../../../../src/db/schema/slack-org-installation";
-import { slackOrgConnections } from "../../../../src/db/schema/slack-org-connection";
-import { agentRuns } from "../../../../src/db/schema/agent-run";
-import { zeroRuns } from "../../../../src/db/schema/zero-run";
-import { orgMetadata } from "../../../../src/db/schema/org-metadata";
-import { zeroAgents } from "../../../../src/db/schema/zero-agent";
+import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
+import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import {
   agentComposes,
   agentComposeVersions,
-} from "../../../../src/db/schema/agent-compose";
+} from "@vm0/db/schema/agent-compose";
 import {
   DEFAULT_TEST_EMAIL,
   resolveTestOrgId,
@@ -24,7 +24,7 @@ import {
   upsertSlackInstallation,
 } from "../../../../src/lib/zero/slack/seed-install";
 import { seedDefaultAgent } from "../../../../src/lib/test-endpoints/seed-default-agent";
-import { e2eSlackMockCallLog } from "../../../../src/db/schema/e2e-slack-mock-call-log";
+import { e2eSlackMockCallLog } from "@vm0/db/schema/e2e-slack-mock-call-log";
 
 /**
  * GET /api/test/slack-state?team_id=...

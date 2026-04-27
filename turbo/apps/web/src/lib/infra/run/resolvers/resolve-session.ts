@@ -2,9 +2,9 @@ import { eq } from "drizzle-orm";
 import {
   agentComposes,
   agentComposeVersions,
-} from "../../../../db/schema/agent-compose";
-import { agentRuns } from "../../../../db/schema/agent-run";
-import { notFound, unauthorized, badRequest } from "../../../shared/errors";
+} from "@vm0/db/schema/agent-compose";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { notFound, unauthorized, badRequest } from "@vm0/api-services/errors";
 import { logger } from "../../../shared/logger";
 import { getAgentSessionWithConversation } from "../../agent-session";
 import type { ConversationResolution } from "./types";
@@ -120,22 +120,20 @@ export async function resolveSession(
   const [lastRun] = lastRunResult;
   const lastRunVars =
     (lastRun?.vars as Record<string, string> | null) ?? undefined;
+  const workingDir = extractWorkingDir(version.content);
 
   return {
     conversationId: session.conversationId,
     agentComposeVersionId: versionId,
     agentCompose: version.content,
-    workingDir: extractWorkingDir(version.content),
+    workingDir,
     conversationData: {
       cliAgentSessionId: conversation.cliAgentSessionId,
       cliAgentSessionHistory: sessionHistory,
     },
-    artifactName: session.artifactName ?? undefined,
-    artifactVersion: session.artifactName ? "latest" : undefined,
-    memoryName: session.memoryName ?? undefined,
+    artifacts: session.artifacts,
     vars: lastRunVars,
     volumeVersions: undefined,
-    buildResumeArtifact: !!session.artifactName,
     previousRunId: conversation.runId,
   };
 }

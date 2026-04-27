@@ -15,8 +15,9 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
-import { chatThreadsContract, zeroIntegrationsSlackContract } from "@vm0/core";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
+import { zeroIntegrationsSlackContract } from "@vm0/api-contracts/contracts/zero-integrations-slack";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
@@ -24,6 +25,7 @@ import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 const DEFAULT_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 
@@ -32,7 +34,7 @@ function mockBaseAPIs(
     threads?: {
       id: string;
       title: string;
-      agentId: string;
+      agent: { id: string; avatarUrl: string | null };
       createdAt: string;
       updatedAt: string;
       isRead: boolean;
@@ -86,7 +88,7 @@ describe("zero sidebar - chat thread list display (SIDEBAR-D-001)", () => {
         {
           id: "thread-1",
           title: "Deploy to production",
-          agentId: DEFAULT_AGENT_ID,
+          agent: { id: DEFAULT_AGENT_ID, avatarUrl: null },
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:00:00Z",
           isRead: false,
@@ -96,7 +98,7 @@ describe("zero sidebar - chat thread list display (SIDEBAR-D-001)", () => {
         {
           id: "thread-2",
           title: "Fix the bug",
-          agentId: DEFAULT_AGENT_ID,
+          agent: { id: DEFAULT_AGENT_ID, avatarUrl: null },
           createdAt: "2026-03-09T00:00:00Z",
           updatedAt: "2026-03-09T00:00:00Z",
           isRead: false,
@@ -149,7 +151,7 @@ describe("zero sidebar - search results filter (SIDEBAR-D-003)", () => {
         {
           id: "thread-1",
           title: "Deploy to production",
-          agentId: DEFAULT_AGENT_ID,
+          agent: { id: DEFAULT_AGENT_ID, avatarUrl: null },
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:00:00Z",
           isRead: false,
@@ -159,7 +161,7 @@ describe("zero sidebar - search results filter (SIDEBAR-D-003)", () => {
         {
           id: "thread-2",
           title: "Fix the bug",
-          agentId: DEFAULT_AGENT_ID,
+          agent: { id: DEFAULT_AGENT_ID, avatarUrl: null },
           createdAt: "2026-03-09T00:00:00Z",
           updatedAt: "2026-03-09T00:00:00Z",
           isRead: false,
@@ -169,7 +171,10 @@ describe("zero sidebar - search results filter (SIDEBAR-D-003)", () => {
       ],
     });
 
-    detachedSetupPage({ context, path: "/" });
+    detachedSetupPage({
+      context,
+      path: "/",
+    });
 
     await waitFor(() => {
       expect(
@@ -179,7 +184,7 @@ describe("zero sidebar - search results filter (SIDEBAR-D-003)", () => {
 
     const searchChatsBtn1 = screen.getByLabelText("Search chats");
     click(searchChatsBtn1);
-    const searchInput = screen.getByPlaceholderText(/Search chat with/);
+    const searchInput = screen.getByPlaceholderText("Search chat with Zero");
     await user.type(searchInput, "deploy");
 
     expect(
@@ -199,7 +204,7 @@ describe("zero sidebar - search term displays in input (SIDEBAR-D-004)", () => {
         {
           id: "thread-1",
           title: "Deploy to production",
-          agentId: DEFAULT_AGENT_ID,
+          agent: { id: DEFAULT_AGENT_ID, avatarUrl: null },
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:00:00Z",
           isRead: false,
@@ -209,7 +214,10 @@ describe("zero sidebar - search term displays in input (SIDEBAR-D-004)", () => {
       ],
     });
 
-    detachedSetupPage({ context, path: "/" });
+    detachedSetupPage({
+      context,
+      path: "/",
+    });
 
     await waitFor(() => {
       expect(
@@ -219,7 +227,7 @@ describe("zero sidebar - search term displays in input (SIDEBAR-D-004)", () => {
 
     const searchChatsBtn2 = screen.getByLabelText("Search chats");
     click(searchChatsBtn2);
-    const searchInput = screen.getByPlaceholderText(/Search chat with/);
+    const searchInput = screen.getByPlaceholderText("Search chat with Zero");
     await user.type(searchInput, "deploy");
 
     expect(searchInput).toHaveValue("deploy");
@@ -374,10 +382,13 @@ describe("zero sidebar - Slack scope mismatch indicator (SIDEBAR-D-009)", () => 
 describe("zero sidebar - new chat button enabled/disabled state (SIDEBAR-D-010)", () => {
   it("shows the new chat button as enabled when not creating a session", async () => {
     mockBaseAPIs();
-    detachedSetupPage({ context, path: "/" });
+    detachedSetupPage({
+      context,
+      path: "/",
+    });
 
     await waitFor(() => {
-      const newChatButton = screen.getByLabelText(/New chat with/i);
+      const newChatButton = screen.getByLabelText("New chat with Zero");
       expect(newChatButton).not.toBeDisabled();
     });
   });
@@ -397,19 +408,22 @@ describe("zero sidebar - new chat button enabled/disabled state (SIDEBAR-D-010)"
       }),
     );
 
-    detachedSetupPage({ context, path: "/" });
+    detachedSetupPage({
+      context,
+      path: "/",
+    });
 
     await waitFor(() => {
-      expect(screen.getByLabelText(/New chat with/i)).toBeDefined();
+      expect(screen.getByLabelText("New chat with Zero")).toBeDefined();
     });
 
     // Trigger new chat creation
-    const newChatBtn = screen.getByLabelText(/New chat with/i);
+    const newChatBtn = screen.getByLabelText("New chat with Zero");
     click(newChatBtn);
 
     // Button should become disabled while POST is in flight
     await waitFor(() => {
-      expect(screen.getByLabelText(/New chat with/i)).toBeDisabled();
+      expect(screen.getByLabelText("New chat with Zero")).toBeDisabled();
     });
 
     deferred.resolve();

@@ -2,10 +2,10 @@ import { Command } from "commander";
 import chalk from "chalk";
 import {
   CONNECTOR_TYPES,
-  isFeatureEnabled,
-  searchConnectors,
   type ConnectorType,
-} from "@vm0/core";
+} from "@vm0/connectors/connectors";
+import { searchConnectors } from "@vm0/connectors/connector-utils";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { listZeroConnectors } from "../../../lib/api";
 import { getActiveOrg } from "../../../lib/api/config";
 import { withErrorHandler } from "../../../lib/command";
@@ -57,7 +57,11 @@ export const searchCommand = new Command()
           const config = CONNECTOR_TYPES[type];
           const flag = config.featureFlag;
           const hasApiToken = "api-token" in config.authMethods;
-          return !flag || isFeatureEnabled(flag, { orgId }) || hasApiToken;
+          return (
+            !flag ||
+            isFeatureEnabled(flag, { orgId }) ||
+            (hasApiToken && !config.strictFeatureFlag)
+          );
         };
 
         const { results, total } = searchConnectors(

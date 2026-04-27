@@ -2,7 +2,10 @@ import { describe, it, expect, vi } from "vitest";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
-import { currentChatThreadSignals$ } from "../create-chat-thread.ts";
+import {
+  createChatThreadSignals,
+  ensureDraft$,
+} from "../create-chat-thread.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 import {
   chatThreadsContract,
@@ -11,6 +14,11 @@ import {
 } from "@vm0/core";
 
 const context = testContext();
+
+function createThreadSignals(threadId: string) {
+  const { draft } = context.store.set(ensureDraft$, threadId);
+  return createChatThreadSignals(threadId, draft);
+}
 
 /**
  * latestRunStatus$ sources run status from threadData$.activeRuns[0].status
@@ -56,10 +64,7 @@ describe("latestRunStatus$", () => {
       withoutRender: true,
     });
 
-    await vi.waitFor(() => {
-      expect(context.store.get(currentChatThreadSignals$)).not.toBeNull();
-    });
-    const thread = context.store.get(currentChatThreadSignals$)!;
+    const thread = createThreadSignals(threadId);
 
     await vi.waitFor(async () => {
       await expect(context.store.get(thread.latestRunStatus$)).resolves.toBe(
@@ -101,10 +106,7 @@ describe("latestRunStatus$", () => {
       withoutRender: true,
     });
 
-    await vi.waitFor(() => {
-      expect(context.store.get(currentChatThreadSignals$)).not.toBeNull();
-    });
-    const thread = context.store.get(currentChatThreadSignals$)!;
+    const thread = createThreadSignals(threadId);
 
     await vi.waitFor(async () => {
       await expect(
@@ -148,10 +150,7 @@ describe("latestRunStatus$", () => {
       withoutRender: true,
     });
 
-    await vi.waitFor(() => {
-      expect(context.store.get(currentChatThreadSignals$)).not.toBeNull();
-    });
-    const thread = context.store.get(currentChatThreadSignals$)!;
+    const thread = createThreadSignals(threadId);
 
     await expect(
       context.store.get(thread.latestRunStatus$),

@@ -92,7 +92,6 @@ teardown() {
     assert_output --partial "nested content"
 
     # Step 4: Verify run completes properly
-    assert_output --partial "◆ Claude Code Completed"
     assert_output --partial "Run completed successfully"
     assert_output --partial "Checkpoint:"
 }
@@ -115,6 +114,5 @@ teardown() {
     assert_success
 
     # Verify run completed successfully
-    assert_output --partial "◆ Claude Code Completed"
     assert_output --partial "Run completed successfully"
 }

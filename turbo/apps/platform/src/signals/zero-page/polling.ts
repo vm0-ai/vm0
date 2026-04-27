@@ -3,10 +3,10 @@ import type { AgentEvent } from "./log-types.ts";
 
 import {
   zeroRunAgentEventsContract,
-  logsByIdContract,
-  zeroQueuePositionContract,
   zeroRunsCancelContract,
-} from "@vm0/core";
+} from "@vm0/api-contracts/contracts/zero-runs";
+import { logsByIdContract } from "@vm0/api-contracts/contracts/logs";
+import { zeroQueuePositionContract } from "@vm0/api-contracts/contracts/zero-queue-position";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
 

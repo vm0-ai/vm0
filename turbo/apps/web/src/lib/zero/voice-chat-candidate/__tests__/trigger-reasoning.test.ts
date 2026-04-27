@@ -2,20 +2,19 @@ import { describe, it, expect, vi } from "vitest";
 import { HttpResponse } from "msw";
 import { testContext, uniqueId } from "../../../../__tests__/test-helpers";
 import { seedTestCompose } from "../../../../__tests__/db-test-seeders/agents";
-import { createTestCompose } from "../../../../__tests__/api-test-helpers";
 import {
   appendTestVoiceChatCandidateItem,
-  insertTestVoiceChatCandidateTask,
   insertTestVoiceChatCandidateSession,
+  insertTestVoiceChatCandidateTask,
   seedTestVoiceChatCandidateSession,
   simulateConcurrentVoiceChatCandidateSessionWrite,
 } from "../../../../__tests__/db-test-seeders/voice-chat-candidate";
 import {
-  getTestVoiceChatCandidateTask,
   getTestVoiceChatCandidateSessionReasoningState,
-  listTestVoiceChatCandidateTasks,
+  getTestVoiceChatCandidateTask,
   readTestVoiceChatCandidateItems,
 } from "../../../../__tests__/db-test-assertions/voice-chat-candidate";
+import { createTestCompose } from "../../../../__tests__/api-test-helpers";
 import { server } from "../../../../mocks/server";
 import { http } from "../../../../__tests__/msw";
 import { mockAblyPublish } from "../../../../__tests__/ably-mock";
@@ -278,16 +277,14 @@ describe("triggerReasoning", () => {
     expect(body.messages[1]!.content).toContain("Agent system prompt:\n(none)");
   });
 
-  it("H7 — creates task rows and system_notes for each missing task the reasoner detects", async () => {
+  it("H7 — missing task hints do not auto-create tasks", async () => {
     context.setupMocks();
     vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key");
     reloadEnv();
 
-    // createZeroRun requires a compose with a published version that has a
-    // model provider key. createTestCompose creates a version with ANTHROPIC_API_KEY.
     const { userId, orgId } = await context.setupUser();
     const { composeId } = await createTestCompose(
-      uniqueId("vcc-reasoner-tasks"),
+      uniqueId("vcc-reasoner-dedupe"),
     );
     const sessionId = await seedTestVoiceChatCandidateSession({
       userId,
@@ -321,29 +318,17 @@ describe("triggerReasoning", () => {
 
     await triggerReasoning(sessionId);
 
-    // The reasoner summary write should succeed
     const row = await getTestVoiceChatCandidateSessionReasoningState(sessionId);
     expect(row?.conversationSummary).toBe("Focus: flight research");
     expect(row?.summaryVersion).toBe(1);
     expect(row?.reasoningStatus).toBe("idle");
 
-    // A task row must have been created for the missing task
-    const tasks = await listTestVoiceChatCandidateTasks(sessionId);
-    expect(tasks).toHaveLength(1);
-    expect(tasks[0]!.prompt).toBe("Look up flight prices to Tokyo");
-    expect(tasks[0]!.callId).toMatch(/^reasoner-auto-/u);
-
-    // A system_note must have been appended for the auto-created task
     const items = await readTestVoiceChatCandidateItems(sessionId);
     const systemNotes = items.filter((i) => {
       return i.role === "system_note";
     });
-    expect(systemNotes).toHaveLength(1);
-    expect(systemNotes[0]!.content).toBe(
-      "Reasoner auto-created task: Look up flight prices to Tokyo",
-    );
+    expect(systemNotes).toHaveLength(0);
 
-    // Ably signal published (for both the summary write and the missing-tasks step)
     expect(mockAblyPublish).toHaveBeenCalledWith(
       `voice-chat-candidate:${sessionId}`,
       null,
@@ -377,7 +362,7 @@ describe("triggerReasoning", () => {
     expect(mockAblyPublish).not.toHaveBeenCalled();
   });
 
-  it("H7 — uses only the heard portion of an interrupted assistant turn", async () => {
+  it("H8 — uses only the heard portion of an interrupted assistant turn", async () => {
     context.setupMocks();
     vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key");
     reloadEnv();

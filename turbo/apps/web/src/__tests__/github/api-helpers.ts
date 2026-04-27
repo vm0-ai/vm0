@@ -11,15 +11,15 @@ import { uniqueId } from "../test-helpers";
 import { initServices } from "../../lib/init-services";
 import { env } from "../../env";
 import { encryptSecretValue } from "../../lib/shared/crypto/secrets-encryption";
-import { orgCache } from "../../db/schema/org-cache";
+import { orgCache } from "@vm0/db/schema/org-cache";
 import {
   agentComposes,
   agentComposeVersions,
-} from "../../db/schema/agent-compose";
-import { zeroAgents } from "../../db/schema/zero-agent";
-import { githubInstallations } from "../../db/schema/github-installation";
-import { githubUserLinks } from "../../db/schema/github-user-link";
-import { userCache } from "../../db/schema/user-cache";
+} from "@vm0/db/schema/agent-compose";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { githubInstallations } from "@vm0/db/schema/github-installation";
+import { githubUserLinks } from "@vm0/db/schema/github-user-link";
+import { userCache } from "@vm0/db/schema/user-cache";
 import { ensureStarterCreditGrant } from "../../lib/zero/credit/starter-grant-service";
 
 interface GitHubInstallationResult {

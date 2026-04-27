@@ -1,5 +1,7 @@
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
-import { chatThreadByIdContract, modelProviderTypeSchema } from "@vm0/core";
+import { chatThreadByIdContract } from "@vm0/api-contracts/contracts/chat-threads";
+import { modelProviderTypeSchema } from "@vm0/api-contracts/contracts/model-providers";
+import { z } from "zod";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getUserId } from "../../../../../src/lib/auth/get-auth-context";
 import {
@@ -13,7 +15,22 @@ import {
   getLatestRunProviderTypeForThread,
   publishThreadListChanged,
 } from "../../../../../src/lib/zero/chat-thread/chat-message-service";
-import { isNotFound } from "../../../../../src/lib/shared/errors";
+import { isNotFound } from "@vm0/api-services/errors";
+
+const chatThreadIdParamSchema = z.string().uuid();
+
+function isValidChatThreadId(id: string): boolean {
+  return chatThreadIdParamSchema.safeParse(id).success;
+}
+
+function chatThreadNotFoundResponse() {
+  return {
+    status: 404 as const,
+    body: {
+      error: { message: "Chat thread not found", code: "NOT_FOUND" },
+    },
+  };
+}
 
 const router = tsr.router(chatThreadByIdContract, {
   get: async ({ params, headers }) => {
@@ -27,6 +44,10 @@ const router = tsr.router(chatThreadByIdContract, {
           error: { message: "Not authenticated", code: "UNAUTHORIZED" },
         },
       };
+    }
+
+    if (!isValidChatThreadId(params.id)) {
+      return chatThreadNotFoundResponse();
     }
 
     try {
@@ -59,6 +80,7 @@ const router = tsr.router(chatThreadByIdContract, {
           agentId: thread.agentComposeId,
           chatMessages,
           latestSessionId,
+          lastReadMessageId: thread.lastReadMessageId,
           latestSessionProviderType,
           activeRunIds,
           activeRuns,
@@ -72,12 +94,7 @@ const router = tsr.router(chatThreadByIdContract, {
       };
     } catch (error) {
       if (isNotFound(error)) {
-        return {
-          status: 404 as const,
-          body: {
-            error: { message: "Chat thread not found", code: "NOT_FOUND" },
-          },
-        };
+        return chatThreadNotFoundResponse();
       }
       throw error;
     }
@@ -95,6 +112,10 @@ const router = tsr.router(chatThreadByIdContract, {
       };
     }
 
+    if (!isValidChatThreadId(params.id)) {
+      return chatThreadNotFoundResponse();
+    }
+
     try {
       await updateChatThreadDraft(
         params.id,
@@ -105,12 +126,7 @@ const router = tsr.router(chatThreadByIdContract, {
       return { status: 204 as const, body: undefined };
     } catch (error) {
       if (isNotFound(error)) {
-        return {
-          status: 404 as const,
-          body: {
-            error: { message: "Chat thread not found", code: "NOT_FOUND" },
-          },
-        };
+        return chatThreadNotFoundResponse();
       }
       throw error;
     }
@@ -128,18 +144,17 @@ const router = tsr.router(chatThreadByIdContract, {
       };
     }
 
+    if (!isValidChatThreadId(params.id)) {
+      return chatThreadNotFoundResponse();
+    }
+
     try {
       await deleteChatThread(params.id, userId);
       await publishThreadListChanged(userId);
       return { status: 204 as const, body: undefined };
     } catch (error) {
       if (isNotFound(error)) {
-        return {
-          status: 404 as const,
-          body: {
-            error: { message: "Chat thread not found", code: "NOT_FOUND" },
-          },
-        };
+        return chatThreadNotFoundResponse();
       }
       throw error;
     }

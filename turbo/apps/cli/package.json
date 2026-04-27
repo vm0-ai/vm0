@@ -1,6 +1,6 @@
 {
   "name": "@vm0/cli",
-  "version": "9.131.4",
+  "version": "9.132.10",
   "private": true,
   "description": "CLI application",
   "repository": {
@@ -29,11 +29,13 @@
     "@ngrok/ngrok": "^1.6.0"
   },
   "devDependencies": {
-    "@sentry/node": "^10.38.0",
+    "@sentry/node": "^10.50.0",
     "@ts-rest/core": "3.53.0-rc.1",
     "@types/node": "^24.3.0",
     "@types/prompts": "^2.4.9",
     "@types/tar": "^6.1.13",
+    "@vm0/api-contracts": "workspace:*",
+    "@vm0/connectors": "workspace:*",
     "@vm0/core": "workspace:*",
     "@vm0/eslint-config": "workspace:*",
     "@vm0/typescript-config": "workspace:*",
@@ -50,7 +52,7 @@
     "tsup": "^8.5.1",
     "typescript": "5.9.3",
     "undici": "^6.24.0",
-    "vitest": "^4.1.4",
+    "vitest": "^4.1.5",
     "yaml": "^2.3.4",
     "zod": "^4.3.6"
   }

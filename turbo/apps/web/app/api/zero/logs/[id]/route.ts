@@ -8,22 +8,25 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../../src/lib/ts-rest-handler";
-import { logsByIdContract, type TriggerSource } from "@vm0/core";
+import {
+  logsByIdContract,
+  type TriggerSource,
+} from "@vm0/api-contracts/contracts/logs";
 import { initServices } from "../../../../../src/lib/init-services";
-import { agentRuns } from "../../../../../src/db/schema/agent-run";
+import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
   agentComposes,
   agentComposeVersions,
-} from "../../../../../src/db/schema/agent-compose";
-import { zeroAgents } from "../../../../../src/db/schema/zero-agent";
-import { zeroRuns } from "../../../../../src/db/schema/zero-run";
+} from "@vm0/db/schema/agent-compose";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { alias } from "drizzle-orm/pg-core";
 import {
   requireAuth,
   isAuthError,
 } from "../../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
-import { isNotFound, isForbidden } from "../../../../../src/lib/shared/errors";
+import { isNotFound, isForbidden } from "@vm0/api-services/errors";
 import { eq, and } from "drizzle-orm";
 
 /** Alias for the zero_agents table to resolve the triggering agent's display name. */

@@ -6,6 +6,7 @@ import {
   findTestSkillByUrl,
   findTestSystemStorageByName,
   reseedSkills,
+  setAllTestSkillsCommitSha,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
 import { reloadEnv } from "../../../../../src/env";
@@ -109,11 +110,17 @@ function createFullTarball(
   return createMockTarball([...seedSkillEntries(), ...extras]);
 }
 
-function setupMswHandlers(commitSha: string, tarball: Buffer) {
+function setupGitRefsHandler(commitSha: string) {
   server.use(
     http.get("https://github.com/vm0-ai/vm0-skills.git/info/refs", () => {
       return new HttpResponse(createGitRefsResponse(commitSha));
     }),
+  );
+}
+
+function setupMswHandlers(commitSha: string, tarball: Buffer) {
+  setupGitRefsHandler(commitSha);
+  server.use(
     http.get(
       "https://codeload.github.com/vm0-ai/vm0-skills/tar.gz/refs/heads/main",
       () => {
@@ -147,40 +154,28 @@ describe("GET /api/cron/sync-skills", () => {
     });
 
     it("should accept request with valid cron secret", async () => {
-      const tarball = createFullTarball([
-        EXTRA_SKILLS.alphaSkill,
-        EXTRA_SKILLS.betaSkill,
-      ]);
-      setupMswHandlers(testSha, tarball);
+      await setAllTestSkillsCommitSha(testSha);
+      setupGitRefsHandler(testSha);
 
       const response = await GET(cronRequest(cronSecret));
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.success).toBe(true);
+      expect(data.total).toBe(0);
     });
   });
 
   describe("Freshness check", () => {
     it("should skip sync when commit SHA is unchanged", async () => {
-      const tarball = createFullTarball([
-        EXTRA_SKILLS.alphaSkill,
-        EXTRA_SKILLS.betaSkill,
-      ]);
-      setupMswHandlers(testSha, tarball);
+      await setAllTestSkillsCommitSha(testSha);
+      setupGitRefsHandler(testSha);
 
-      // First sync — updates commitSha on all skills
-      const response1 = await GET(cronRequest(cronSecret));
-      expect(response1.status).toBe(200);
-      const data1 = await response1.json();
-      expect(data1.success).toBe(true);
-
-      // Second sync with same commit SHA — should skip
-      const response2 = await GET(cronRequest(cronSecret));
-      expect(response2.status).toBe(200);
-      const data2 = await response2.json();
-      expect(data2.synced).toBe(0);
-      expect(data2.skipped).toBe(0);
-      expect(data2.total).toBe(0);
+      const response = await GET(cronRequest(cronSecret));
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.synced).toBe(0);
+      expect(data.skipped).toBe(0);
+      expect(data.total).toBe(0);
     });
   });
 

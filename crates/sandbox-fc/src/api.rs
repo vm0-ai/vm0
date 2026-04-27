@@ -612,12 +612,10 @@ mod tests {
 
     #[tokio::test]
     async fn wait_for_ready_succeeds_on_200() {
-        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
-        let sock_path = dir.path().join("test-ready.sock");
+        let dir = tempfile::tempdir().unwrap();
+        let sock_path = dir.path().join("fc.sock");
 
-        let listener = UnixListener::bind(&sock_path).unwrap_or_else(|e| {
-            panic!("bind {}: {e}", sock_path.display());
-        });
+        let listener = UnixListener::bind(&sock_path).unwrap();
 
         // Spawn a mock server that returns 200.
         let path = sock_path.clone();
@@ -651,12 +649,10 @@ mod tests {
 
     #[tokio::test]
     async fn load_snapshot_succeeds_on_204() {
-        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
-        let sock_path = dir.path().join("test-snapshot.sock");
+        let dir = tempfile::tempdir().unwrap();
+        let sock_path = dir.path().join("fc.sock");
 
-        let listener = UnixListener::bind(&sock_path).unwrap_or_else(|e| {
-            panic!("bind {}: {e}", sock_path.display());
-        });
+        let listener = UnixListener::bind(&sock_path).unwrap();
 
         tokio::spawn(async move {
             let Ok((mut stream, _)) = listener.accept().await else {
@@ -681,16 +677,14 @@ mod tests {
 
     #[tokio::test]
     async fn wait_for_ready_detects_delayed_socket_via_inotify() {
-        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
+        let dir = tempfile::tempdir().unwrap();
         let sock_path = dir.path().join("delayed.sock");
 
         // Socket doesn't exist yet — spawn a task that creates it after 50ms.
         let delayed_path = sock_path.clone();
         tokio::spawn(async move {
             tokio::time::sleep(Duration::from_millis(50)).await;
-            let listener = UnixListener::bind(&delayed_path).unwrap_or_else(|e| {
-                panic!("bind {}: {e}", delayed_path.display());
-            });
+            let listener = UnixListener::bind(&delayed_path).unwrap();
             loop {
                 let Ok((mut stream, _)) = listener.accept().await else {
                     break;
@@ -709,12 +703,10 @@ mod tests {
 
     #[tokio::test]
     async fn wait_for_ready_retries_until_success() {
-        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
-        let sock_path = dir.path().join("test-retry.sock");
+        let dir = tempfile::tempdir().unwrap();
+        let sock_path = dir.path().join("fc.sock");
 
-        let listener = UnixListener::bind(&sock_path).unwrap_or_else(|e| {
-            panic!("bind {}: {e}", sock_path.display());
-        });
+        let listener = UnixListener::bind(&sock_path).unwrap();
 
         // First 3 requests return 500, then 200.
         tokio::spawn(async move {
@@ -742,12 +734,10 @@ mod tests {
 
     #[tokio::test]
     async fn load_snapshot_error_falls_back_to_raw_body() {
-        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
-        let sock_path = dir.path().join("test-raw-err.sock");
+        let dir = tempfile::tempdir().unwrap();
+        let sock_path = dir.path().join("fc.sock");
 
-        let listener = UnixListener::bind(&sock_path).unwrap_or_else(|e| {
-            panic!("bind {}: {e}", sock_path.display());
-        });
+        let listener = UnixListener::bind(&sock_path).unwrap();
 
         // Return non-JSON error body.
         tokio::spawn(async move {
@@ -776,12 +766,10 @@ mod tests {
 
     #[tokio::test]
     async fn load_snapshot_returns_error_on_non_204() {
-        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
-        let sock_path = dir.path().join("test-snapshot-err.sock");
+        let dir = tempfile::tempdir().unwrap();
+        let sock_path = dir.path().join("fc.sock");
 
-        let listener = UnixListener::bind(&sock_path).unwrap_or_else(|e| {
-            panic!("bind {}: {e}", sock_path.display());
-        });
+        let listener = UnixListener::bind(&sock_path).unwrap();
 
         tokio::spawn(async move {
             let Ok((mut stream, _)) = listener.accept().await else {
@@ -810,12 +798,10 @@ mod tests {
 
     #[tokio::test]
     async fn pause_succeeds_on_204() {
-        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
-        let sock_path = dir.path().join("test-pause.sock");
+        let dir = tempfile::tempdir().unwrap();
+        let sock_path = dir.path().join("fc.sock");
 
-        let listener = UnixListener::bind(&sock_path).unwrap_or_else(|e| {
-            panic!("bind {}: {e}", sock_path.display());
-        });
+        let listener = UnixListener::bind(&sock_path).unwrap();
 
         tokio::spawn(async move {
             let Ok((mut stream, _)) = listener.accept().await else {
@@ -842,12 +828,10 @@ mod tests {
 
     #[tokio::test]
     async fn create_snapshot_succeeds_on_204() {
-        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
-        let sock_path = dir.path().join("test-create-snap.sock");
+        let dir = tempfile::tempdir().unwrap();
+        let sock_path = dir.path().join("fc.sock");
 
-        let listener = UnixListener::bind(&sock_path).unwrap_or_else(|e| {
-            panic!("bind {}: {e}", sock_path.display());
-        });
+        let listener = UnixListener::bind(&sock_path).unwrap();
 
         tokio::spawn(async move {
             let Ok((mut stream, _)) = listener.accept().await else {
@@ -878,12 +862,10 @@ mod tests {
 
     #[tokio::test]
     async fn pause_returns_error_on_failure() {
-        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
-        let sock_path = dir.path().join("test-pause-err.sock");
+        let dir = tempfile::tempdir().unwrap();
+        let sock_path = dir.path().join("fc.sock");
 
-        let listener = UnixListener::bind(&sock_path).unwrap_or_else(|e| {
-            panic!("bind {}: {e}", sock_path.display());
-        });
+        let listener = UnixListener::bind(&sock_path).unwrap();
 
         tokio::spawn(async move {
             let Ok((mut stream, _)) = listener.accept().await else {
@@ -910,12 +892,10 @@ mod tests {
 
     #[tokio::test]
     async fn configure_machine_succeeds_on_204() {
-        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
-        let sock_path = dir.path().join("test-machine.sock");
+        let dir = tempfile::tempdir().unwrap();
+        let sock_path = dir.path().join("fc.sock");
 
-        let listener = UnixListener::bind(&sock_path).unwrap_or_else(|e| {
-            panic!("bind {}: {e}", sock_path.display());
-        });
+        let listener = UnixListener::bind(&sock_path).unwrap();
 
         tokio::spawn(async move {
             let Ok((mut stream, _)) = listener.accept().await else {
@@ -943,12 +923,10 @@ mod tests {
 
     #[tokio::test]
     async fn configure_boot_source_succeeds_on_204() {
-        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
-        let sock_path = dir.path().join("test-boot.sock");
+        let dir = tempfile::tempdir().unwrap();
+        let sock_path = dir.path().join("fc.sock");
 
-        let listener = UnixListener::bind(&sock_path).unwrap_or_else(|e| {
-            panic!("bind {}: {e}", sock_path.display());
-        });
+        let listener = UnixListener::bind(&sock_path).unwrap();
 
         tokio::spawn(async move {
             let Ok((mut stream, _)) = listener.accept().await else {
@@ -978,12 +956,10 @@ mod tests {
 
     #[tokio::test]
     async fn configure_drive_succeeds_on_204() {
-        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
-        let sock_path = dir.path().join("test-drive.sock");
+        let dir = tempfile::tempdir().unwrap();
+        let sock_path = dir.path().join("fc.sock");
 
-        let listener = UnixListener::bind(&sock_path).unwrap_or_else(|e| {
-            panic!("bind {}: {e}", sock_path.display());
-        });
+        let listener = UnixListener::bind(&sock_path).unwrap();
 
         tokio::spawn(async move {
             let Ok((mut stream, _)) = listener.accept().await else {
@@ -1013,12 +989,10 @@ mod tests {
 
     #[tokio::test]
     async fn configure_network_interface_succeeds_on_204() {
-        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
-        let sock_path = dir.path().join("test-netif.sock");
+        let dir = tempfile::tempdir().unwrap();
+        let sock_path = dir.path().join("fc.sock");
 
-        let listener = UnixListener::bind(&sock_path).unwrap_or_else(|e| {
-            panic!("bind {}: {e}", sock_path.display());
-        });
+        let listener = UnixListener::bind(&sock_path).unwrap();
 
         tokio::spawn(async move {
             let Ok((mut stream, _)) = listener.accept().await else {
@@ -1051,12 +1025,10 @@ mod tests {
 
     #[tokio::test]
     async fn configure_vsock_succeeds_on_204() {
-        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
-        let sock_path = dir.path().join("test-vsock.sock");
+        let dir = tempfile::tempdir().unwrap();
+        let sock_path = dir.path().join("fc.sock");
 
-        let listener = UnixListener::bind(&sock_path).unwrap_or_else(|e| {
-            panic!("bind {}: {e}", sock_path.display());
-        });
+        let listener = UnixListener::bind(&sock_path).unwrap();
 
         tokio::spawn(async move {
             let Ok((mut stream, _)) = listener.accept().await else {
@@ -1081,12 +1053,10 @@ mod tests {
 
     #[tokio::test]
     async fn start_instance_succeeds_on_204() {
-        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
-        let sock_path = dir.path().join("test-start.sock");
+        let dir = tempfile::tempdir().unwrap();
+        let sock_path = dir.path().join("fc.sock");
 
-        let listener = UnixListener::bind(&sock_path).unwrap_or_else(|e| {
-            panic!("bind {}: {e}", sock_path.display());
-        });
+        let listener = UnixListener::bind(&sock_path).unwrap();
 
         tokio::spawn(async move {
             let Ok((mut stream, _)) = listener.accept().await else {
@@ -1113,12 +1083,10 @@ mod tests {
 
     #[tokio::test]
     async fn patch_balloon_succeeds_on_204() {
-        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
-        let sock_path = dir.path().join("test-patch-balloon.sock");
+        let dir = tempfile::tempdir().unwrap();
+        let sock_path = dir.path().join("fc.sock");
 
-        let listener = UnixListener::bind(&sock_path).unwrap_or_else(|e| {
-            panic!("bind {}: {e}", sock_path.display());
-        });
+        let listener = UnixListener::bind(&sock_path).unwrap();
 
         tokio::spawn(async move {
             let Ok((mut stream, _)) = listener.accept().await else {
@@ -1142,12 +1110,10 @@ mod tests {
 
     #[tokio::test]
     async fn get_balloon_statistics_parses_response() {
-        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
-        let sock_path = dir.path().join("test-balloon-stats.sock");
+        let dir = tempfile::tempdir().unwrap();
+        let sock_path = dir.path().join("fc.sock");
 
-        let listener = UnixListener::bind(&sock_path).unwrap_or_else(|e| {
-            panic!("bind {}: {e}", sock_path.display());
-        });
+        let listener = UnixListener::bind(&sock_path).unwrap();
 
         tokio::spawn(async move {
             let Ok((mut stream, _)) = listener.accept().await else {
@@ -1183,12 +1149,10 @@ mod tests {
 
     #[tokio::test]
     async fn get_balloon_statistics_handles_minimal_response() {
-        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
-        let sock_path = dir.path().join("test-balloon-stats-min.sock");
+        let dir = tempfile::tempdir().unwrap();
+        let sock_path = dir.path().join("fc.sock");
 
-        let listener = UnixListener::bind(&sock_path).unwrap_or_else(|e| {
-            panic!("bind {}: {e}", sock_path.display());
-        });
+        let listener = UnixListener::bind(&sock_path).unwrap();
 
         tokio::spawn(async move {
             let Ok((mut stream, _)) = listener.accept().await else {
@@ -1216,12 +1180,10 @@ mod tests {
 
     #[tokio::test]
     async fn configure_balloon_succeeds_on_204() {
-        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
-        let sock_path = dir.path().join("test-balloon.sock");
+        let dir = tempfile::tempdir().unwrap();
+        let sock_path = dir.path().join("fc.sock");
 
-        let listener = UnixListener::bind(&sock_path).unwrap_or_else(|e| {
-            panic!("bind {}: {e}", sock_path.display());
-        });
+        let listener = UnixListener::bind(&sock_path).unwrap();
 
         tokio::spawn(async move {
             let Ok((mut stream, _)) = listener.accept().await else {
@@ -1258,17 +1220,14 @@ mod tests {
             return;
         }
 
-        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
-        let sock_path = dir.path().join("test-perm.sock");
+        let dir = tempfile::tempdir().unwrap();
+        let sock_path = dir.path().join("fc.sock");
 
         // Create a socket then remove all permissions so connect gets PermissionDenied.
-        let _listener = UnixListener::bind(&sock_path).unwrap_or_else(|e| {
-            panic!("bind {}: {e}", sock_path.display());
-        });
+        let _listener = UnixListener::bind(&sock_path).unwrap();
 
         use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&sock_path, std::fs::Permissions::from_mode(0o000))
-            .unwrap_or_else(|e| panic!("set_permissions: {e}"));
+        std::fs::set_permissions(&sock_path, std::fs::Permissions::from_mode(0o000)).unwrap();
 
         let client = ApiClient::new(&sock_path);
         let start = std::time::Instant::now();

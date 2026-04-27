@@ -7,7 +7,7 @@ import {
   testContext,
   type UserContext,
 } from "../../../../../src/__tests__/test-helpers";
-import type { ModelProviderType } from "@vm0/core";
+import type { ModelProviderType } from "@vm0/api-contracts/contracts/model-providers";
 
 const context = testContext();
 

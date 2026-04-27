@@ -1,7 +1,8 @@
 import { eq, and, gt } from "drizzle-orm";
 import { auth } from "@clerk/nextjs/server";
-import type { OrgRole, ZeroCapability } from "@vm0/core";
-import { cliTokens } from "../../db/schema/cli-tokens";
+import type { OrgRole } from "@vm0/api-contracts/contracts/org-members";
+import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
+import { cliTokens } from "@vm0/db/schema/cli-tokens";
 import {
   isSandboxToken,
   isPatToken,

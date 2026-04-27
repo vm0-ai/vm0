@@ -1,6 +1,6 @@
 {
   "name": "@vm0/core",
-  "version": "8.229.3",
+  "version": "8.237.0",
   "private": true,
   "type": "module",
   "exports": {
@@ -16,17 +16,9 @@
       "import": "./src/contracts/index.ts",
       "types": "./src/contracts/index.ts"
     },
-    "./contracts/*": {
-      "import": "./src/contracts/*.ts",
-      "types": "./src/contracts/*.ts"
-    },
     "./firewalls": {
       "import": "./src/firewalls/index.ts",
       "types": "./src/firewalls/index.ts"
-    },
-    "./firewalls/*": {
-      "import": "./src/firewalls/*.ts",
-      "types": "./src/firewalls/*.ts"
     }
   },
   "scripts": {
@@ -42,11 +34,11 @@
     "oxlint": "^1.57.0",
     "oxlint-tsgolint": "0.21.1",
     "typescript": "5.9.3",
-    "vitest": "^4.1.4"
+    "vitest": "^4.1.5"
   },
   "dependencies": {
-    "@ts-rest/core": "3.53.0-rc.1",
-    "yaml": "^2.8.1",
-    "zod": "^4.3.6"
+    "@vm0/api-contracts": "workspace:*",
+    "@vm0/connectors": "workspace:*",
+    "yaml": "^2.8.1"
   }
 }

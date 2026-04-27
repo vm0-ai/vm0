@@ -12,19 +12,19 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { createDeferredPromise } from "../../../signals/utils.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import {
   orgOpenAddDialog$,
   orgOpenEditDialog$,
   setOrgAddProviderDialogOpen$,
 } from "../../../signals/zero-page/settings/org-model-providers.ts";
-import {
-  type ModelProviderResponse,
-  zeroModelProvidersMainContract,
-} from "@vm0/core";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
+import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 async function openProvidersPage() {
   detachedSetupPage({ context, path: "/?settings=providers" });
@@ -258,14 +258,11 @@ describe("org-provider-dialog - interaction", () => {
   it("shows loading state when add button is clicked with valid input", async () => {
     const user = userEvent.setup();
 
-    let resolvePost!: () => void;
-    const postPromise = new Promise<void>((resolve) => {
-      resolvePost = resolve;
-    });
+    const postDeferred = createDeferredPromise<void>(context.signal);
 
     server.use(
       mockApi(zeroModelProvidersMainContract.upsert, async ({ respond }) => {
-        await postPromise;
+        await postDeferred.promise;
         return respond(201, {
           provider: mockProviderResponse({ type: "anthropic-api-key" }),
           created: true,
@@ -290,8 +287,8 @@ describe("org-provider-dialog - interaction", () => {
     });
 
     // Resolve the deferred POST so nothing leaks into next tests
-    resolvePost();
-    await postPromise;
+    postDeferred.resolve();
+    await postDeferred.promise;
   });
 });
 

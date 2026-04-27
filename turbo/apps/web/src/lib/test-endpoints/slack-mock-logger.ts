@@ -1,5 +1,5 @@
 import { initServices } from "../init-services";
-import { e2eSlackMockCallLog } from "../../db/schema/e2e-slack-mock-call-log";
+import { e2eSlackMockCallLog } from "@vm0/db/schema/e2e-slack-mock-call-log";
 
 /**
  * Record a call to one of the `/api/test/slack-mock/*` endpoints so BATS

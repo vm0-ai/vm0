@@ -1,8 +1,6 @@
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
-import {
-  zeroCustomConnectorByIdContract,
-  createErrorResponse,
-} from "@vm0/core";
+import { zeroCustomConnectorByIdContract } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import { createErrorResponse } from "@vm0/api-contracts/contracts/errors";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
   requireAuth,
@@ -14,7 +12,7 @@ import {
   deleteCustomConnector,
   patchCustomConnectorDisplayName,
 } from "../../../../../src/lib/zero/custom-connector/custom-connector-service";
-import { isBadRequest, isNotFound } from "../../../../../src/lib/shared/errors";
+import { isBadRequest, isNotFound } from "@vm0/api-services/errors";
 
 const router = tsr.router(zeroCustomConnectorByIdContract, {
   delete: async ({ params, headers }) => {

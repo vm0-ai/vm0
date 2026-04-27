@@ -23,11 +23,11 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { chatMessagesContract, FeatureSwitchKey } from "@vm0/core";
+import { chatMessagesContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
   setMockOrgModelProviders,
   resetMockOrgModelProviders,
@@ -43,6 +43,7 @@ import {
 } from "./chat-test-helpers.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 const THREAD_ID = "thread-test-1";
 
 describe("chat composer — model picker display vs. send body", () => {
@@ -58,9 +59,7 @@ describe("chat composer — model picker display vs. send body", () => {
     const PROVIDER_ID = "00000000-0000-4000-a000-000000000001";
     const DEFAULT_MODEL = "claude-sonnet-4-6";
 
-    setMockFeatureSwitches({
-      [FeatureSwitchKey.ModelProviderSelection]: true,
-    });
+    setMockFeatureSwitches({});
     setMockOrgModelProviders([
       {
         id: PROVIDER_ID,

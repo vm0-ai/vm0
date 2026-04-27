@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import { HttpResponse } from "msw";
 import { GET } from "../route";
 import {
   createTestRequest,
@@ -11,6 +12,8 @@ import {
 } from "../../../../../src/__tests__/test-helpers";
 import { reloadEnv } from "../../../../../src/env";
 import { seedTestRun } from "../../../../../src/__tests__/db-test-seeders/runs";
+import { http } from "../../../../../src/__tests__/msw";
+import { server } from "../../../../../src/mocks/server";
 
 const context = testContext();
 
@@ -26,6 +29,19 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     // Set CRON_SECRET for tests
     vi.stubEnv("CRON_SECRET", cronSecret);
     reloadEnv();
+
+    // The cron is intentionally global and may sweep stale runs left by
+    // previously executed tests. Keep callback dispatch at the HTTP boundary
+    // mocked so suite stability does not depend on the whole test DB being
+    // pristine.
+    server.use(
+      http.post(/.*\/api\/internal\/callbacks\/.*/, () => {
+        return HttpResponse.json({ success: true });
+      }).handler,
+      http.post(/.*\/api\/zero\/email\/callbacks\/reply$/, () => {
+        return HttpResponse.json({ success: true });
+      }).handler,
+    );
 
     // Create test compose
     const { composeId } = await createTestCompose(uniqueId("cleanup"));
@@ -127,14 +143,11 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     });
 
     it("should cleanup expired sandbox after heartbeat timeout", async () => {
-      // Record the time when run is created
-      const runCreationTime = Date.now();
-
-      // Create a run directly in pending state
-      const { runId } = await seedTestRun(user.userId, testComposeId);
-
-      // Mock Date.now to return time 6 minutes in the future (past pending timeout of 5 minutes)
-      context.mocks.dateNow.mockReturnValue(runCreationTime + 6 * 60 * 1000);
+      // Create only this run as stale. Moving global Date.now forward causes
+      // the cron to sweep unrelated pending runs from other tests in the shard.
+      const { runId } = await seedTestRun(user.userId, testComposeId, {
+        createdAt: new Date(Date.now() - 6 * 60 * 1000),
+      });
 
       const request = createTestRequest(
         "http://localhost:3000/api/cron/cleanup-sandboxes",
@@ -159,16 +172,11 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     });
 
     it("should NOT cleanup completed runs even with old heartbeat", async () => {
-      // Record the time when run is created
-      const runCreationTime = Date.now();
-
-      // Create a run directly in completed state
+      // Create a completed run older than the timeout window.
       const { runId } = await seedTestRun(user.userId, testComposeId, {
         status: "completed",
+        createdAt: new Date(Date.now() - 10 * 60 * 1000),
       });
-
-      // Mock Date.now to return time 10 minutes in the future
-      context.mocks.dateNow.mockReturnValue(runCreationTime + 10 * 60 * 1000);
 
       const request = createTestRequest(
         "http://localhost:3000/api/cron/cleanup-sandboxes",
@@ -192,11 +200,12 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     });
 
     it("should cleanup multiple expired sandboxes from different users", async () => {
-      // Record start time
-      const runCreationTime = Date.now();
+      const staleCreatedAt = new Date(Date.now() - 6 * 60 * 1000);
 
       // Create run for first user directly in pending state
-      const { runId: runId1 } = await seedTestRun(user.userId, testComposeId);
+      const { runId: runId1 } = await seedTestRun(user.userId, testComposeId, {
+        createdAt: staleCreatedAt,
+      });
 
       // Create another user and their compose
       const otherUser = await context.setupUser({ prefix: "other" });
@@ -208,10 +217,8 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
       const { runId: runId2 } = await seedTestRun(
         otherUser.userId,
         otherComposeId,
+        { createdAt: staleCreatedAt },
       );
-
-      // Mock Date.now to return time 6 minutes in the future (past pending timeout of 5 minutes)
-      context.mocks.dateNow.mockReturnValue(runCreationTime + 6 * 60 * 1000);
 
       const request = createTestRequest(
         "http://localhost:3000/api/cron/cleanup-sandboxes",
@@ -236,14 +243,10 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     });
 
     it("should set run status to timeout with appropriate reason", async () => {
-      // Record the time when run is created
-      const runCreationTime = Date.now();
-
-      // Create a run directly in pending state
-      const { runId } = await seedTestRun(user.userId, testComposeId);
-
-      // Mock Date.now to return time 6 minutes in the future (past pending timeout of 5 minutes)
-      context.mocks.dateNow.mockReturnValue(runCreationTime + 6 * 60 * 1000);
+      // Create only this run as stale; keep the cron's global clock real.
+      const { runId } = await seedTestRun(user.userId, testComposeId, {
+        createdAt: new Date(Date.now() - 6 * 60 * 1000),
+      });
 
       const request = createTestRequest(
         "http://localhost:3000/api/cron/cleanup-sandboxes",

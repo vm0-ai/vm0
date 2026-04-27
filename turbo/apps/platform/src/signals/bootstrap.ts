@@ -10,12 +10,13 @@ import {
   pathParams$,
 } from "./route.ts";
 import { registerServiceWorker$ } from "../lib/push-notifications.ts";
-import { setupInstallPrompt$ } from "./pwa-install.ts";
+import "./pwa-install.ts";
 import { ROUTES, type RoutePath } from "./route-paths.ts";
 
 import { setupGlobalMethod$ } from "./bootstrap/global-method.ts";
 import { setupLoggers$ } from "./bootstrap/loggers.ts";
 import { setupSlackConnectPage$ } from "./zero-page/slack-connect-page.ts";
+import { setupTelegramSettingsPage$ } from "./zero-page/telegram-settings-page.ts";
 import { setupActivityPage$ } from "./activity-page/activity-page-setup.ts";
 import { setupActivityDetailPage$ } from "./activity-page/activity-detail-page-setup.ts";
 import { setupActivityInspectPage$ } from "./activity-page/activity-inspect-page-setup.ts";
@@ -41,7 +42,6 @@ import { setupPermissionAllowPage$ } from "./permission-allow/permission-allow-p
 import { setupReportErrorPage$ } from "./report-error/report-error-page-setup.ts";
 import { setupChatListPage$ } from "./zero-page/chat-list-page-setup.ts";
 import { setupLabPage$ } from "./lab-page/lab-page-setup.ts";
-import { setupPhonePage$ } from "./phone-page/phone-page-setup.ts";
 import { setupNetworkInsightsPage$ } from "./network-insights/network-insights-page-setup.ts";
 import { setupUsagePage$ } from "./usage-page/usage-page-setup.ts";
 import { initSlackOrg$ as handleSlackRedirect$ } from "./zero-page/zero-slack.ts";
@@ -151,6 +151,10 @@ const ROUTE_CONFIG = [
     setup: setupAuthPageWrapper(setupSlackConnectPage$),
   },
   {
+    path: ROUTES.settingsTelegram,
+    setup: setupAuthPageWrapper(setupTelegramSettingsPage$),
+  },
+  {
     path: ROUTES.activityInspect,
     setup: setupAuthPageWrapper(setupActivityInspectPage$),
   },
@@ -181,10 +185,6 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.schedules,
     setup: setupAuthPageWrapper(setupSchedulePage$),
-  },
-  {
-    path: ROUTES.phone,
-    setup: setupAuthPageWrapper(setupPhonePage$),
   },
   {
     path: ROUTES.lab,
@@ -318,20 +318,17 @@ export const bootstrap$ = command(
 
     set(handleBillingRedirect$);
     set(handleSlackRedirect$);
-    await set(setupRealtime$, signal);
 
     await Promise.all([
+      set(startSkeletonCycling$, signal),
+      set(setupRealtime$, signal),
       set(setupGlobalMethod$, signal),
       set(registerServiceWorker$, signal),
       set(setupNotificationListener$, signal),
-      set(setupInstallPrompt$, signal),
       set(setupPwaEdgeSwipe$, signal),
       set(setupSidebarShortcut$, signal),
-      set(startSkeletonCycling$, signal),
-      (async () => {
-        await set(setupClerk$, signal);
-        await set(watchOrgSwitch$, signal);
-      })(),
+      set(setupClerk$, signal),
+      set(watchOrgSwitch$, signal),
       set(setupRoutes$, signal),
     ]);
 

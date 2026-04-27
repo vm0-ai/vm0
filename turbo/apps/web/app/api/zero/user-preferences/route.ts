@@ -1,5 +1,6 @@
 import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
-import { zeroUserPreferencesContract, createErrorResponse } from "@vm0/core";
+import { zeroUserPreferencesContract } from "@vm0/api-contracts/contracts/zero-user-preferences";
+import { createErrorResponse } from "@vm0/api-contracts/contracts/errors";
 import { initServices } from "../../../../src/lib/init-services";
 import {
   requireAuth,
@@ -10,7 +11,7 @@ import {
   getUserPreferences,
   updateUserPreferences,
 } from "../../../../src/lib/zero/user/user-preferences-service";
-import { isBadRequest } from "../../../../src/lib/shared/errors";
+import { isBadRequest } from "@vm0/api-services/errors";
 
 const router = tsr.router(zeroUserPreferencesContract, {
   get: async ({ headers }) => {

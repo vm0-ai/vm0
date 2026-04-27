@@ -7,6 +7,7 @@ import {
   completeTestRun,
   getOrgCacheEntry,
 } from "../../../../../../src/__tests__/api-test-helpers";
+import { setTestCheckpointArtifactSnapshots } from "../../../../../../src/__tests__/db-test-seeders/runs";
 import {
   testContext,
   uniqueId,
@@ -135,6 +136,32 @@ describe("GET /api/agent/checkpoints/:id", () => {
 
     expect(response.status).toBe(404);
     expect(data.error.code).toBe("NOT_FOUND");
+  });
+
+  it("should project array-shape artifactSnapshots to Record on the response wire", async () => {
+    // Post-#10911 guest-agents persist Array<{name, version, mountPath}> in
+    // the JSONB column. The outbound wire stays Record-shaped for CLI
+    // consumers, so the GET handler must normalise.
+    const { runId } = await createTestRun(testComposeId, "Array snapshot");
+    const { checkpointId } = await completeTestRun(user.userId, runId);
+
+    await setTestCheckpointArtifactSnapshots(checkpointId, [
+      { name: "frontend", version: "v-fe-1", mountPath: "/workspace/fe" },
+      { name: "backend", version: "v-be-2", mountPath: "/workspace/be" },
+    ]);
+
+    const request = createTestRequest(
+      `http://localhost:3000/api/agent/checkpoints/${checkpointId}`,
+    );
+
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.artifactSnapshots).toEqual({
+      frontend: "v-fe-1",
+      backend: "v-be-2",
+    });
   });
 
   it("should return 401 when not authenticated", async () => {

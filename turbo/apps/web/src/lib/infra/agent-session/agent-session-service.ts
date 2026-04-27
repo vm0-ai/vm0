@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
-import { agentSessions } from "../../../db/schema/agent-session";
-import { conversations } from "../../../db/schema/conversation";
-import { notFound } from "../../shared/errors";
+import { agentSessions } from "@vm0/db/schema/agent-session";
+import { conversations } from "@vm0/db/schema/conversation";
+import { notFound } from "@vm0/api-services/errors";
 import type { AgentSessionData, AgentSessionWithConversation } from "./types";
 
 /**
@@ -48,24 +48,17 @@ export async function getAgentSessionWithConversation(
 }
 
 /**
- * Update an existing agent session's conversation reference. Optional
- * artifactName lets the checkpoint webhook record the per-run artifact name
- * on sessions that were created eagerly at run insertion (when the name
- * was not yet known). memoryName is set at run creation, not here.
+ * Update an existing agent session's conversation reference.
  */
 export async function updateAgentSession(
   id: string,
   conversationId: string,
-  options?: { artifactName?: string },
 ): Promise<AgentSessionData> {
   const [session] = await globalThis.services.db
     .update(agentSessions)
     .set({
       conversationId,
       updatedAt: new Date(),
-      ...(options?.artifactName !== undefined
-        ? { artifactName: options.artifactName }
-        : {}),
     })
     .where(eq(agentSessions.id, id))
     .returning();
@@ -86,8 +79,7 @@ function mapToAgentSessionData(
     orgId: session.orgId,
     agentComposeId: session.agentComposeId,
     conversationId: session.conversationId,
-    artifactName: session.artifactName,
-    memoryName: session.memoryName,
+    artifacts: session.artifacts,
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
   };

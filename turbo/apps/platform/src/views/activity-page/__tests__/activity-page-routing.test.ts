@@ -3,20 +3,21 @@ import { screen, waitFor } from "@testing-library/react";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
-  FeatureSwitchKey,
   logsListContract,
   logsByIdContract,
-  zeroRunAgentEventsContract,
-} from "@vm0/core";
+} from "@vm0/api-contracts/contracts/logs";
+import { zeroRunAgentEventsContract } from "@vm0/api-contracts/contracts/zero-runs";
 import type {
   LogDetail,
   AgentEventsResponse,
 } from "../../../signals/zero-page/log-types.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { setMockComposesList } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 function mockActivityAPIs() {
   const logs = [
@@ -142,7 +143,7 @@ describe("activity page routing", () => {
     detachedSetupPage({
       context,
       path: "/activities",
-      featureSwitches: { [FeatureSwitchKey.ActivityLogList]: true },
+      featureSwitches: { [FeatureSwitchKey.ZeroDebug]: true },
     });
 
     // Wait for list

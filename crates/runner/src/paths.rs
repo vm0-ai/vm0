@@ -217,6 +217,19 @@ impl RootfsPaths {
         self.dir.join("rootfs.ext4")
     }
 
+    /// Pre-commit staging path for the rootfs image.
+    ///
+    /// Any post-download processing (R2 path: CA injection) runs against
+    /// this path. Only after every post-processing step succeeds does
+    /// `build.rs` atomically rename `rootfs.ext4.staging → rootfs.ext4` —
+    /// so `rootfs()` exists on disk if and only if the full assembly
+    /// pipeline completed. A leftover `rootfs.ext4.staging` is always
+    /// a crash residue from a previous build and is safe to delete once
+    /// the rootfs flock is held.
+    pub fn rootfs_staging(&self) -> PathBuf {
+        self.dir.join("rootfs.ext4.staging")
+    }
+
     /// All files that must exist for the rootfs to be considered complete.
     pub fn expected_files(&self) -> [PathBuf; 1] {
         [self.rootfs()]
@@ -392,6 +405,15 @@ mod tests {
         let rp = RootfsPaths::new(&home, "aaa");
         assert_eq!(rp.dir(), Path::new("/test/images/aaa"));
         assert_eq!(rp.rootfs(), PathBuf::from("/test/images/aaa/rootfs.ext4"));
+        assert_eq!(
+            rp.rootfs_staging(),
+            PathBuf::from("/test/images/aaa/rootfs.ext4.staging")
+        );
+        assert_ne!(
+            rp.rootfs(),
+            rp.rootfs_staging(),
+            "staging and committed paths must differ"
+        );
         assert_eq!(
             rp.snapshots_dir(),
             PathBuf::from("/test/images/aaa/snapshots")

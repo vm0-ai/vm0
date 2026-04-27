@@ -8,14 +8,16 @@ import {
   click,
 } from "../../../__tests__/page-helper.ts";
 import { pathname, search } from "../../../signals/location.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
+import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 import {
   onboardingStatusContract,
   onboardingSetupContract,
   onboardingCompleteContract,
-} from "@vm0/core";
+} from "@vm0/api-contracts/contracts/onboarding";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 const MOCK_AGENT_ID = "d0000000-0000-4000-a000-000000000001";
 
@@ -122,6 +124,19 @@ describe("onboarding navigation", () => {
         });
       }),
     );
+    // Register the new default agent in the team so the subsequent chat page
+    // setup can find it instead of treating it as missing and looping back.
+    setMockTeam([
+      {
+        id: MOCK_AGENT_ID,
+        displayName: null,
+        description: null,
+        sound: null,
+        avatarUrl: null,
+        headVersionId: "version_1",
+        updatedAt: "2024-01-01T00:00:00Z",
+      },
+    ]);
 
     // Click "Continue in web" to trigger handleContinueWithWeb -> navigate("/")
     const continueButton = screen.getByText(/Continue in web/);

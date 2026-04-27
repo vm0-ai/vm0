@@ -1,10 +1,8 @@
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
-import {
-  zeroComputerUseUnregisterContract,
-  createErrorResponse,
-  FeatureSwitchKey,
-  isFeatureEnabled,
-} from "@vm0/core";
+import { zeroComputerUseUnregisterContract } from "@vm0/api-contracts/contracts/zero-computer-use";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import { createErrorResponse } from "@vm0/api-contracts/contracts/errors";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
   requireAuth,
@@ -13,7 +11,7 @@ import {
 import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
 import { unregisterHost } from "../../../../../src/lib/zero/computer-use/computer-use-service";
 import { loadFeatureSwitchOverrides } from "../../../../../src/lib/zero/user/feature-switches-service";
-import { isNotFound } from "../../../../../src/lib/shared/errors";
+import { isNotFound } from "@vm0/api-services/errors";
 
 const router = tsr.router(zeroComputerUseUnregisterContract, {
   unregister: async ({ headers }) => {

@@ -18,23 +18,24 @@ import {
   chatThreadsContract,
   chatThreadByIdContract,
   chatThreadMessagesContract,
-} from "@vm0/core";
+} from "@vm0/api-contracts/contracts/chat-threads";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-switches.ts";
 import { threadListChanged } from "../../../mocks/mock-helpers.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 const DEFAULT_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 
 interface ThreadFixture {
   id: string;
   title: string;
-  agentId: string;
+  agent: { id: string; avatarUrl: string | null };
   createdAt: string;
   updatedAt: string;
   isRead: boolean;
@@ -81,7 +82,7 @@ describe("sidebar running indicator", () => {
         {
           id: "thread-1",
           title: "Active work",
-          agentId: DEFAULT_AGENT_ID,
+          agent: { id: DEFAULT_AGENT_ID, avatarUrl: null },
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:00:00Z",
           isRead: true,
@@ -109,7 +110,7 @@ describe("sidebar running indicator", () => {
         {
           id: "thread-selected",
           title: "Selected running",
-          agentId: DEFAULT_AGENT_ID,
+          agent: { id: DEFAULT_AGENT_ID, avatarUrl: null },
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:00:00Z",
           isRead: false,
@@ -139,7 +140,7 @@ describe("sidebar running indicator", () => {
         {
           id: "thread-selected-unread",
           title: "Selected unread",
-          agentId: DEFAULT_AGENT_ID,
+          agent: { id: DEFAULT_AGENT_ID, avatarUrl: null },
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:00:00Z",
           isRead: false,
@@ -169,7 +170,7 @@ describe("sidebar running indicator", () => {
         {
           id: "thread-both",
           title: "Running and unread",
-          agentId: DEFAULT_AGENT_ID,
+          agent: { id: DEFAULT_AGENT_ID, avatarUrl: null },
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:00:00Z",
           isRead: false,
@@ -200,7 +201,7 @@ describe("sidebar running indicator", () => {
         {
           id: "thread-gated",
           title: "Running but gated",
-          agentId: DEFAULT_AGENT_ID,
+          agent: { id: DEFAULT_AGENT_ID, avatarUrl: null },
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:00:00Z",
           isRead: true,
@@ -227,7 +228,7 @@ describe("sidebar running indicator", () => {
         {
           id: "thread-flips",
           title: "Will flip to running",
-          agentId: DEFAULT_AGENT_ID,
+          agent: { id: DEFAULT_AGENT_ID, avatarUrl: null },
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:00:00Z",
           isRead: true,

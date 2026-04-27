@@ -3,9 +3,11 @@ import {
   zeroModelProvidersMainContract,
   zeroModelProvidersByTypeContract,
   zeroModelProvidersDefaultContract,
-  type UpsertModelProviderRequest,
-  type ModelProviderType,
-} from "@vm0/core";
+} from "@vm0/api-contracts/contracts/zero-model-providers";
+import type {
+  UpsertModelProviderRequest,
+  ModelProviderType,
+} from "@vm0/api-contracts/contracts/model-providers";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 
@@ -37,7 +39,13 @@ export const createOrgModelProvider$ = command(
   ) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroModelProvidersMainContract);
-    const result = await accept(client.upsert({ body: request }), [200, 201]);
+    const result = await accept(
+      client.upsert({
+        body: request,
+        fetchOptions: { signal: _signal },
+      }),
+      [200, 201],
+    );
 
     set(internalReloadOrgModelProviders$, (x) => {
       return x + 1;
@@ -54,7 +62,13 @@ export const setDefaultOrgModelProvider$ = command(
   async ({ get, set }, type: ModelProviderType, _signal: AbortSignal) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroModelProvidersDefaultContract);
-    await accept(client.setDefault({ params: { type } }), [200]);
+    await accept(
+      client.setDefault({
+        params: { type },
+        fetchOptions: { signal: _signal },
+      }),
+      [200],
+    );
 
     set(internalReloadOrgModelProviders$, (x) => {
       return x + 1;
@@ -69,7 +83,13 @@ export const deleteOrgModelProvider$ = command(
   async ({ get, set }, type: ModelProviderType, _signal: AbortSignal) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroModelProvidersByTypeContract);
-    await accept(client.delete({ params: { type } }), [204]);
+    await accept(
+      client.delete({
+        params: { type },
+        fetchOptions: { signal: _signal },
+      }),
+      [204],
+    );
 
     set(internalReloadOrgModelProviders$, (x) => {
       return x + 1;

@@ -194,6 +194,9 @@ pub struct ArtifactEntry {
     #[serde(default)]
     pub cached: bool,
     pub vas_storage_name: String,
+    /// Storage UUID, used guest-side to locally recompute the content hash
+    /// and skip VAS calls when an artifact is unchanged since mount.
+    pub vas_storage_id: String,
     pub vas_version_id: String,
 }
 
@@ -271,6 +274,20 @@ pub enum SandboxReuseResult {
     PoolMiss,
     ProfileMismatch,
     UnparkFailed,
+}
+
+impl SandboxReuseResult {
+    /// Wire-format string, kept lockstep with the `#[serde(rename_all =
+    /// "camelCase")]` derive via `as_wire_matches_serde_serialization`.
+    pub const fn as_wire(self) -> &'static str {
+        match self {
+            Self::Reused => "reused",
+            Self::NoSessionId => "noSessionId",
+            Self::PoolMiss => "poolMiss",
+            Self::ProfileMismatch => "profileMismatch",
+            Self::UnparkFailed => "unparkFailed",
+        }
+    }
 }
 
 #[cfg(test)]
@@ -511,6 +528,24 @@ mod tests {
         );
     }
 
+    /// `as_wire` is hand-written; pin it to the serde derive so adding a
+    /// variant forces both sides to stay in sync.
+    #[test]
+    fn as_wire_matches_serde_serialization() {
+        for variant in [
+            SandboxReuseResult::Reused,
+            SandboxReuseResult::NoSessionId,
+            SandboxReuseResult::PoolMiss,
+            SandboxReuseResult::ProfileMismatch,
+            SandboxReuseResult::UnparkFailed,
+        ] {
+            assert_eq!(
+                serde_json::to_value(variant).unwrap(),
+                serde_json::Value::String(variant.as_wire().to_string()),
+            );
+        }
+    }
+
     #[test]
     fn session_id_returns_none_without_resume() {
         let json = json!({
@@ -550,6 +585,7 @@ mod tests {
             "artifacts": [{
                 "mountPath": "/artifacts",
                 "vasStorageName": "my-artifact",
+                "vasStorageId": "sid-1",
                 "vasVersionId": "v1"
             }]
         });
@@ -567,11 +603,13 @@ mod tests {
                 {
                     "mountPath": "/workspace",
                     "vasStorageName": "art-a",
+                    "vasStorageId": "sid-a",
                     "vasVersionId": "v1"
                 },
                 {
                     "mountPath": "/data",
                     "vasStorageName": "art-b",
+                    "vasStorageId": "sid-b",
                     "vasVersionId": "v2"
                 }
             ]

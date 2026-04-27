@@ -1,40 +1,42 @@
 import { eq, and, inArray } from "drizzle-orm";
 import { logger } from "../../shared/logger";
-import { agentRuns } from "../../../db/schema/agent-run";
-import { agentRunQueue } from "../../../db/schema/agent-run-queue";
-import { agentComposes } from "../../../db/schema/agent-compose";
-import { storages } from "../../../db/schema/storage";
-import { secrets } from "../../../db/schema/secret";
-import { modelProviders } from "../../../db/schema/model-provider";
-import { connectors } from "../../../db/schema/connector";
-import { userPlatformConnectors } from "../../../db/schema/user-platform-connector";
-import { variables } from "../../../db/schema/variable";
-import { usageDaily } from "../../../db/schema/usage-daily";
-import { exportJobs } from "../../../db/schema/export-job";
-import { zeroAgentSchedules } from "../../../db/schema/zero-agent-schedule";
-import { slackOrgConnections } from "../../../db/schema/slack-org-connection";
-import { githubUserLinks } from "../../../db/schema/github-user-link";
-import { telegramUserLinks } from "../../../db/schema/telegram-user-link";
-import { cliTokens } from "../../../db/schema/cli-tokens";
-import { composeJobs } from "../../../db/schema/compose-job";
-import { connectorSessions } from "../../../db/schema/connector-session";
-import { deviceCodes } from "../../../db/schema/device-codes";
-import { orgMembersCache } from "../../../db/schema/org-members-cache";
-import { orgMembersMetadata } from "../../../db/schema/org-members-metadata";
-import { userCache } from "../../../db/schema/user-cache";
-import { users } from "../../../db/schema/user";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
+import { agentComposes } from "@vm0/db/schema/agent-compose";
+import { storages } from "@vm0/db/schema/storage";
+import { secrets } from "@vm0/db/schema/secret";
+import { modelProviders } from "@vm0/db/schema/model-provider";
+import { connectors } from "@vm0/db/schema/connector";
+import { userPlatformConnectors } from "@vm0/db/schema/user-platform-connector";
+import { variables } from "@vm0/db/schema/variable";
+import { usageDaily } from "@vm0/db/schema/usage-daily";
+import { exportJobs } from "@vm0/db/schema/export-job";
+import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
+import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
+import { githubUserLinks } from "@vm0/db/schema/github-user-link";
+import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
+import { cliTokens } from "@vm0/db/schema/cli-tokens";
+import { composeJobs } from "@vm0/db/schema/compose-job";
+import { connectorSessions } from "@vm0/db/schema/connector-session";
+import { deviceCodes } from "@vm0/db/schema/device-codes";
+import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
+import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
+import { userCache } from "@vm0/db/schema/user-cache";
+import { users } from "@vm0/db/schema/user";
+import { publishCancelNotification } from "../../infra/realtime/client";
 
 const log = logger("service:user-deletion");
 
 /**
- * Cancel all pending/running/queued agent runs for a user.
- * Bulk cancel only updates status — no side effects needed since the
- * entire user is being deleted.
+ * Cancel all pending/running/queued agent runs for a user and notify
+ * runners so mitmproxy stops emitting webhooks before the rows are
+ * deleted. The Ably publish is best-effort — on failure, the runner
+ * continues to natural completion (see publishCancelNotification).
  */
 async function cancelUserRuns(userId: string): Promise<void> {
   const db = globalThis.services.db;
 
-  const result = await db
+  const cancelled = await db
     .update(agentRuns)
     .set({ status: "cancelled", completedAt: new Date() })
     .where(
@@ -42,11 +44,22 @@ async function cancelUserRuns(userId: string): Promise<void> {
         eq(agentRuns.userId, userId),
         inArray(agentRuns.status, ["queued", "pending", "running"]),
       ),
-    );
+    )
+    .returning({ id: agentRuns.id, runnerGroup: agentRuns.runnerGroup });
 
   await db.delete(agentRunQueue).where(eq(agentRunQueue.userId, userId));
 
-  log.info("user runs cancelled", { userId, count: result.rowCount });
+  await Promise.allSettled(
+    cancelled
+      .filter((r) => {
+        return r.runnerGroup !== null;
+      })
+      .map((r) => {
+        return publishCancelNotification(r.runnerGroup!, r.id);
+      }),
+  );
+
+  log.info("user runs cancelled", { userId, count: cancelled.length });
 }
 
 /**

@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
-import { orgTierSchema, type OrgTier } from "@vm0/core";
-import { orgMetadata } from "../../../db/schema/org-metadata";
-import { isNotFound, notFound } from "../../shared/errors";
+import { orgTierSchema, type OrgTier } from "@vm0/api-contracts/contracts/orgs";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { isNotFound, notFound } from "@vm0/api-services/errors";
 import { logger } from "../../shared/logger";
 import { getStripe } from "../stripe";
 
@@ -11,6 +11,7 @@ export interface OrgMetadata {
   orgId: string;
   tier: string;
   credits: number;
+  defaultAgentId: string | null;
 }
 
 /**
@@ -23,7 +24,11 @@ export interface OrgMetadata {
 export async function getOrgMetadata(orgId: string): Promise<OrgMetadata> {
   const db = globalThis.services.db;
   const [row] = await db
-    .select({ tier: orgMetadata.tier, credits: orgMetadata.credits })
+    .select({
+      tier: orgMetadata.tier,
+      credits: orgMetadata.credits,
+      defaultAgentId: orgMetadata.defaultAgentId,
+    })
     .from(orgMetadata)
     .where(eq(orgMetadata.orgId, orgId))
     .limit(1);
@@ -34,6 +39,7 @@ export async function getOrgMetadata(orgId: string): Promise<OrgMetadata> {
     orgId,
     tier: row.tier,
     credits: row.credits,
+    defaultAgentId: row.defaultAgentId,
   };
 }
 

@@ -8,8 +8,8 @@ import {
 } from "../../../../../../src/lib/zero/slack";
 import { getApiUrl } from "../../../../../../src/lib/infra/callback";
 import { encryptSecretValue } from "../../../../../../src/lib/shared/crypto/secrets-encryption";
-import { slackOrgInstallations } from "../../../../../../src/db/schema/slack-org-installation";
-import { slackOrgConnections } from "../../../../../../src/db/schema/slack-org-connection";
+import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
+import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { requireOrgMember } from "../../../../../../src/lib/zero/org/org-member-service";
 import {
   adminConnect,

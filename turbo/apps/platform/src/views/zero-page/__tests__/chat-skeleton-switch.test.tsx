@@ -5,10 +5,14 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { detachedNavigateTo$ } from "../../../signals/route.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
-import { chatThreadMessagesContract, chatThreadByIdContract } from "@vm0/core";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
+import {
+  chatThreadMessagesContract,
+  chatThreadByIdContract,
+} from "@vm0/api-contracts/contracts/chat-threads";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 describe("chat skeleton on switch", () => {
   it("should show skeleton when switching between chats", async () => {
@@ -77,8 +81,7 @@ describe("chat skeleton on switch", () => {
 
     // Skeleton should be visible while thread-B loads
     await waitFor(() => {
-      const skeletons = document.querySelectorAll(".animate-pulse");
-      expect(skeletons.length).toBeGreaterThan(0);
+      expect(document.querySelector("[data-chat-skeleton]")).not.toBeNull();
     });
 
     // Release deferred so thread-B content loads
@@ -87,6 +90,89 @@ describe("chat skeleton on switch", () => {
     // Eventually thread-B content should load
     await waitFor(() => {
       expect(screen.getByText("Answer for thread-b")).toBeInTheDocument();
+      expect(document.querySelector("[data-chat-skeleton]")).toBeNull();
+    });
+  });
+
+  it("hides the skeleton after re-running setup for the same chat", async () => {
+    const secondInitialFetchDeferred = createDeferredPromise<void>(
+      context.signal,
+    );
+    let initialFetchCount = 0;
+
+    server.use(
+      mockApi(
+        chatThreadMessagesContract.list,
+        async ({ params, query, respond }) => {
+          if (query.sinceId) {
+            return respond(200, { messages: [] });
+          }
+          initialFetchCount++;
+          if (initialFetchCount === 2) {
+            await secondInitialFetchDeferred.promise;
+          }
+          return respond(200, {
+            messages: [
+              {
+                id: `msg-${params.threadId}-1`,
+                role: "user" as const,
+                content: `Question for ${params.threadId}`,
+                createdAt: "2026-03-10T00:00:00Z",
+              },
+              {
+                id: `msg-${params.threadId}-2`,
+                role: "assistant" as const,
+                content: `Answer for ${params.threadId}`,
+                createdAt: "2026-03-10T00:00:01Z",
+              },
+            ],
+          });
+        },
+      ),
+      mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
+        return respond(200, {
+          id: params.id,
+          title: null,
+          agentId: "c0000000-0000-4000-a000-000000000001",
+          chatMessages: [],
+          latestSessionId: null,
+          activeRunIds: [],
+          draftContent: null,
+          draftAttachments: null,
+          createdAt: "2026-03-10T00:00:00Z",
+          updatedAt: "2026-03-10T00:00:00Z",
+        });
+      }),
+    );
+
+    detachedSetupPage({ context, path: "/chats/thread-a" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Answer for thread-a")).toBeInTheDocument();
+      expect(document.querySelector("[data-chat-skeleton]")).toBeNull();
+    });
+
+    context.store.set(detachedNavigateTo$, "/chats/:threadId", {
+      pathParams: { threadId: "thread-a" },
+    });
+
+    await waitFor(() => {
+      expect(initialFetchCount).toBe(2);
+    });
+
+    expect(document.querySelector("[data-chat-skeleton]")).not.toBeNull();
+    const messageContainer = document.querySelector<HTMLElement>(
+      "[data-message-container]",
+    );
+    expect(messageContainer).not.toBeNull();
+    expect(messageContainer!.style.visibility).toBe("hidden");
+    expect(screen.getByText("Answer for thread-a")).not.toBeVisible();
+
+    secondInitialFetchDeferred.resolve();
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-chat-skeleton]")).toBeNull();
+      expect(screen.getByText("Answer for thread-a")).toBeInTheDocument();
     });
   });
 });

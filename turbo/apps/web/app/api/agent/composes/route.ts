@@ -6,14 +6,16 @@ import {
 import {
   composesMainContract,
   AGENT_NAME_REGEX,
+} from "@vm0/api-contracts/contracts/composes";
+import {
   SUPPORTED_FRAMEWORKS,
   isSupportedFramework,
-} from "@vm0/core";
+} from "@vm0/core/frameworks";
 import { initServices } from "../../../../src/lib/init-services";
 import {
   agentComposes,
   agentComposeVersions,
-} from "../../../../src/db/schema/agent-compose";
+} from "@vm0/db/schema/agent-compose";
 import {
   requireAuth,
   isAuthError,
@@ -26,7 +28,7 @@ import {
   isNotFound,
   isForbidden,
   isBadRequest,
-} from "../../../../src/lib/shared/errors";
+} from "@vm0/api-services/errors";
 
 const router = tsr.router(composesMainContract, {
   getByName: async ({ query, headers }) => {

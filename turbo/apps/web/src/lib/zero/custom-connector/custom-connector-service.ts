@@ -2,11 +2,11 @@ import { eq, and } from "drizzle-orm";
 import {
   getAllBuiltinConnectorHosts,
   getBuiltinConnectorDisplayName,
-} from "@vm0/core";
-import { orgCustomConnectors } from "../../../db/schema/org-custom-connector";
-import { orgCustomConnectorSecrets } from "../../../db/schema/org-custom-connector-secret";
+} from "@vm0/connectors/firewalls";
+import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
+import { orgCustomConnectorSecrets } from "@vm0/db/schema/org-custom-connector-secret";
 import { encryptSecretValue } from "../../shared/crypto";
-import { badRequest, notFound } from "../../shared/errors";
+import { badRequest, notFound } from "@vm0/api-services/errors";
 import { logger } from "../../shared/logger";
 
 const log = logger("service:custom-connector");

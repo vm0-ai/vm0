@@ -1,5 +1,5 @@
 import { command, computed, state } from "ccstate";
-import { awaitRealtimeReady$, setAblyLoop$ } from "./realtime.ts";
+import { setAblyLoop$ } from "./realtime.ts";
 
 const internalReloadChatThreads$ = state(0);
 
@@ -33,8 +33,6 @@ export const reloadChatThreads$ = command(({ set }) => {
  */
 export const subscribeThreadListChanged$ = command(
   async ({ set }, signal: AbortSignal) => {
-    await set(awaitRealtimeReady$, signal);
-    signal.throwIfAborted();
     const onChanged$ = command(({ set }) => {
       set(reloadChatThreads$);
       return false;

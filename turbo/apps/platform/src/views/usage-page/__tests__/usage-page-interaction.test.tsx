@@ -194,9 +194,18 @@ describe("/_/usage page - detail tabs", () => {
       expect(screen.getByText("My Schedule")).toBeInTheDocument();
     });
 
-    // Click on Chats tab
-    const chatsTab = await screen.findByText("Chats");
-    click(chatsTab);
+    // Click on Chats tab - use getAllByRole to avoid slow accessible name computation
+    await waitFor(() => {
+      expect(
+        screen.getAllByRole("tab").find((el) => {
+          return /^Chats$/.test(el.textContent ?? "");
+        }),
+      ).toBeDefined();
+    });
+    const chatsTab = screen.getAllByRole("tab").find((el) => {
+      return /^Chats$/.test(el.textContent ?? "");
+    });
+    click(chatsTab!);
 
     await waitFor(() => {
       expect(screen.getByText("Chat with Agent")).toBeInTheDocument();

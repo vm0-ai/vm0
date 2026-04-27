@@ -2,11 +2,12 @@ import { command, computed, state } from "ccstate";
 import {
   zeroConnectorsMainContract,
   zeroConnectorsByTypeContract,
-  type ConnectorListResponse,
-  type ConnectorType,
-} from "@vm0/core";
+} from "@vm0/api-contracts/contracts/zero-connectors";
+import type { ConnectorType } from "@vm0/connectors/connectors";
+import type { ConnectorListResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import { zeroClient$ } from "../api-client";
 import { accept } from "../../lib/accept.ts";
+import { maybePageSignal$ } from "../page-signal.ts";
 
 /**
  * Reload trigger for connector signals.
@@ -19,9 +20,13 @@ const internalReloadConnectors$ = state(0);
  */
 export const connectors$ = computed(async (get) => {
   get(internalReloadConnectors$);
+  const signal = get(maybePageSignal$);
   const createClient = get(zeroClient$);
   const client = createClient(zeroConnectorsMainContract);
-  const result = await accept(client.list(), [200]);
+  const result = await accept(
+    client.list({ fetchOptions: signal ? { signal } : undefined }),
+    [200],
+  );
   return result.body as ConnectorListResponse;
 });
 
@@ -41,7 +46,13 @@ export const deleteConnector$ = command(
   async ({ get, set }, type: ConnectorType, _signal: AbortSignal) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroConnectorsByTypeContract);
-    await accept(client.delete({ params: { type } }), [204]);
+    await accept(
+      client.delete({
+        params: { type },
+        fetchOptions: { signal: _signal },
+      }),
+      [204],
+    );
 
     set(internalReloadConnectors$, (x) => {
       return x + 1;

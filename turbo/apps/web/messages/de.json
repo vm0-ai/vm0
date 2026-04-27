@@ -102,6 +102,7 @@
         "concurrentRun": "1 gleichzeitige Ausführung",
         "unlimitedAgents": "Unbegrenzte Agenten insgesamt",
         "bringOwnLLM": "Eigene LLM-Schlüssel verwenden",
+        "voiceInput": "Spracheingabe (10/Monat)",
         "communitySupport": "Community-Support"
       },
       "buttonText": "Jetzt starten"
@@ -113,6 +114,7 @@
         "concurrentRuns": "2 gleichzeitige Ausführungen",
         "unlimitedAgents": "Unbegrenzte Agenten insgesamt",
         "bringOwnLLM": "Eigene LLM-Schlüssel verwenden",
+        "voiceInput": "Spracheingabe",
         "creditsRollover": "Credits-Übertrag (1 Monat)",
         "emailSupport": "E-Mail-Support"
       },
@@ -125,6 +127,7 @@
         "concurrentRuns": "5 gleichzeitige Ausführungen",
         "unlimitedAgents": "Unbegrenzte Agenten insgesamt",
         "bringOwnLLM": "Eigene LLM-Schlüssel verwenden",
+        "voiceInput": "Spracheingabe",
         "creditsRollover": "Credits-Übertrag (1 Monat)",
         "prioritySupport": "Prioritäts-Support"
       },
@@ -161,6 +164,8 @@
       "connectorsDesc": "Verbinden Sie Ihre Tools wie Slack, GitHub, Notion und mehr",
       "bringOwnLLM": "Eigenes LLM mitbringen",
       "bringOwnLLMDesc": "Verwenden Sie Ihre eigenen Modellanbieter-API-Schlüssel",
+      "voiceInput": "Spracheingabe",
+      "voiceInputDesc": "Sprechen Sie freihändig mit Ihren Agenten dank integrierter Sprache-zu-Text-Funktion",
       "sandboxedExecution": "Sandbox-Ausführung",
       "sandboxedExecutionDesc": "Firecracker-microVMs mit Hardware-Level-KVM-Isolation",
       "fullAuditTrail": "Vollständiger Audit-Trail",
@@ -184,7 +189,8 @@
       "120k": "120.000",
       "unlimited": "Unbegrenzt",
       "oneMonth": "1 Monat",
-      "allConnectors": "Alle Konnektoren"
+      "allConnectors": "Alle Konnektoren",
+      "tenPerMonth": "10/Monat"
     },
     "faq": {
       "title": "Häufig gestellte Fragen",
@@ -195,13 +201,15 @@
       "runOutOfCredits": "Was passiert, wenn meine Credits aufgebraucht sind?",
       "runOutOfCreditsAnswer": "Wenn Ihre Credits aufgebraucht sind, stoppen Ihre Agenten. Sie können zusätzliche Credits per automatischem Aufladen kaufen oder auf einen höheren Plan upgraden.",
       "doCreditsRollOver": "Werden ungenutzte Credits übertragen?",
-      "doCreditsRollOverAnswer": "Beim Free-Plan verfallen Starter-Credits 1 Monat nach Registrierung und werden nicht aufgefüllt. Bei Pro werden ungenutzte Credits 1 Monat übertragen. Bei Team werden Credits 1 Monat übertragen.",
+      "doCreditsRollOverAnswer": "Free-Starter-Credits (10.000) verfallen 1 Monat nach der Registrierung und werden nicht aufgefüllt. Monatliche Pro- und Team-Credits verfallen 1 Monat nach Ende des Abrechnungszeitraums, in dem sie gewährt wurden — jede Zuweisung kann also im laufenden Zeitraum plus einer Karenzfrist von 1 Monat genutzt werden. Auto-Recharge- und Top-up-Credits verfallen nie. Es werden stets die zuerst verfallenden Credits zuerst verbraucht.",
       "bringOwnModel": "Kann ich meinen eigenen Modellanbieter verwenden?",
       "bringOwnModelAnswer": "Ja! Alle Pläne unterstützen eigene LLM-API-Schlüssel (Anthropic usw.). Bei Verwendung eigener Schlüssel werden keine VM0-Credits für die Modellnutzung verbraucht.",
       "howSecure": "Wie sicher ist VM0?",
       "howSecureAnswer": "Jeder Agentenlauf wird in einer isolierten Firecracker-microVM mit Hardware-Level-KVM-Isolation ausgeführt. Credentials werden auf Netzwerkebene injiziert und nie dem Agenten-Code ausgesetzt. Sämtlicher Agent-HTTP/HTTPS-Verkehr wird pro Lauf mit SHA-256-Integrität protokolliert.",
       "annualBilling": "Bieten Sie Jahresabrechnung oder Rabatte an?",
-      "annualBillingAnswer": "Kontaktieren Sie uns, um Mengenpreise, Jahresabrechnungsrabatte und individuelle Vereinbarungen für Ihr Team zu besprechen."
+      "annualBillingAnswer": "Kontaktieren Sie uns, um Mengenpreise, Jahresabrechnungsrabatte und individuelle Vereinbarungen für Ihr Team zu besprechen.",
+      "upgradeCredits": "Was passiert mit meinen Credits bei einem Upgrade?",
+      "upgradeCreditsAnswer": "Ihre Stufe wird sofort gewechselt, sodass Sie umgehend die höhere Parallelität, die Agenten-Limits und die Funktionen des neuen Plans erhalten. Bestehende Credits bleiben in Ihrem Konto, behalten ihr ursprüngliches Ablaufdatum und werden zuerst verbraucht. Das monatliche Credit-Kontingent des neuen Plans wird zu Ihrem nächsten Abrechnungszeitraum gewährt, und Stripe berechnet die Kosten für den Rest des laufenden Zeitraums automatisch anteilig."
     },
     "perMonth": "/Monat"
   },
@@ -4352,6 +4360,91 @@
           "Schreibt Action Items im Meeting als vollständige Sätze. 'Casey entscheidet X bis Freitag' ist klarer als 'Casey: X entscheiden'. Zero kommt mit beidem klar, aber sauberer Input bedeutet sauberen Output.",
           "Trennt Entscheidungen von Action Items. Entscheidungen gehören zu Document Decisions; Action Items zu den Ownern. Beides zu mischen verwässert beides.",
           "Prüft die extrahierte Liste, bevor das Meeting endet. Dreißig Sekunden Review fangen Zuschreibungsfehler ab, die sonst eine Woche bestehen bleiben."
+        ]
+      },
+      "promo-video-from-recordings": {
+        "title": "Verwandeln Sie rohe Bildschirmaufnahmen in professionelle Promo-Videos",
+        "description": "Verweisen Sie Zero auf einen Google-Drive-Ordner mit stummen Bildschirmaufnahmen. Es schreibt das Narrationsskript, wählt Musik aus, fügt Übergänge hinzu und exportiert einen fertigen SaaS-Werbespot in 30–90 Sekunden.",
+        "timeSaved": "~2 Std. pro Video gespart",
+        "headings": {
+          "scenario": "Warum die Produktion von Promo-Videos aus Bildschirmaufnahmen so lange dauert",
+          "prompt": "So beauftragen Sie Zero mit der Produktion eines Promo-Videos aus Ihren Aufnahmen",
+          "steps": "Wie Zero Rohmaterial in einen professionellen Werbespot verwandelt",
+          "nextActions": "Schnitt anpassen, für andere Kanäle umfunktionieren oder Batch-Produktion starten",
+          "integrations": "Erforderliche Integrationen: Slack, Google Drive und Notion",
+          "tips": "Best Practices für die Promo-Video-Produktion mit Zero"
+        },
+        "scenario": "Sie haben gerade einen Feature-Walkthrough aufgenommen — drei stumme Bildschirmaufnahmen liegen in einem Google-Drive-Ordner. Jetzt kommt der schwierige Teil: Narrationsskript schreiben, Hintergrundmusik auswählen, Übergänge timen und alles zu einem straffen 60-Sekunden-Promo zusammenschneiden. Sie könnten den Nachmittag im Video-Editor verbringen, oder Sie verweisen Zero auf Ihren Google-Drive-Ordner. Sagen Sie Zero, was das Video kommunizieren soll, und es liefert einen professionellen SaaS-Werbespot — Narration, Musik, Übergänge und alles — bereit zum Veröffentlichen.",
+        "promptVariants": [
+          {
+            "label": "Volle Produktion",
+            "prompt": "@Zero hole die 3 Bildschirmaufnahmen aus dem Ordner ‘Dashboard Launch’ in Google Drive. Produziere ein 60-Sekunden-Promo-Video mit Narration, Hintergrundmusik und flüssigen Übergängen. Der Ton sollte professionell und dynamisch sein. Betone Geschwindigkeit und Benutzerfreundlichkeit."
+          },
+          {
+            "label": "Schneller Schnitt",
+            "prompt": "@Zero nimm die neueste Bildschirmaufnahme aus dem Ordner ‘Product Demos’ in Google Drive und verwandle sie in einen 30-Sekunden-Produkt-Teaser. Füge eine kurze Narration und Hintergrundmusik hinzu. Halte es prägnant."
+          },
+          {
+            "label": "Batch-Produktion",
+            "prompt": "@Zero prüfe jeden Freitag den Ordner ‘Raw Recordings’ in Google Drive auf neue Dateien, produziere für jede einen 60-Sekunden-Werbespot mit Narration und Musik und poste die fertigen Schnitte in #marketing-assets."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Ming",
+            "text": "@Zero hole die 3 Bildschirmaufnahmen aus dem Ordner ‘Permissions UI’ in Google Drive und mache daraus ein 60-Sekunden-Promo-Video. Ton: professionell, betone Sicherheit und Einfachheit."
+          },
+          {
+            "name": "Zero",
+            "text": "3 Aufnahmen aus Google Drive geladen. Promo-Video fertig — 58s Laufzeit.\n\nNarration: 6 Segmente zu Berechtigungseinrichtung, Rollenzuweisung und Audit-Logs\nMusik: Beschwingter Ambient-Track, auf Übergänge abgestimmt\nÜbergänge: Sanfte Überblendungen zwischen den Szenen\n\nFertiger Schnitt in Google Drive hochgeladen und hier gepostet. Bereit zur Überprüfung."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero lädt Aufnahmen aus Google Drive",
+            "description": "Zero verbindet sich mit Ihrem Google Drive, findet den angegebenen Ordner und nimmt die rohen Bildschirmaufnahmen auf. Es identifiziert Schlüsselmomente und UI-Interaktionen, um die optimale Reihenfolge und das Tempo zu bestimmen."
+          },
+          {
+            "title": "Zero schreibt die Narration und wählt Musik aus",
+            "description": "Basierend auf Ihrem Briefing erstellt Zero ein Narrationsskript, das die Wertversprechen des Produkts hervorhebt. Es wählt einen Hintergrundmusik-Track und ordnet Narrationssegmente den Video-Zeitstempeln zu."
+          },
+          {
+            "title": "Zero erstellt und exportiert den fertigen Schnitt",
+            "description": "Zero fügt Übergänge zwischen Szenen ein, legt Narration und Musik übereinander und exportiert einen professionellen Werbespot (30–90s). Das fertige Video wird in Google Drive gespeichert und in Slack geteilt."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Änderung anfordern",
+            "description": "Ton, Tempo oder Schwerpunkt anpassen",
+            "examplePrompt": "@Zero mache die Narration umgangssprachlicher und kürze 10 Sekunden aus dem Mittelteil."
+          },
+          {
+            "title": "Für einen anderen Kanal umfunktionieren",
+            "description": "Kürzere Version für Social Media erstellen",
+            "examplePrompt": "@Zero erstelle eine 15-Sekunden-Teaser-Version dieses Videos, optimiert für X/Twitter."
+          },
+          {
+            "title": "Zur Routine machen",
+            "description": "Promo-Video-Produktion für jedes Feature-Release automatisieren",
+            "examplePrompt": "@Zero prüfe jeden Freitag ‘Raw Recordings’ in Google Drive auf neue Dateien und produziere für jede einen 60-Sekunden-Werbespot. Poste in #marketing-assets."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Zero empfängt Ihr Briefing und liefert Fortschritts-Updates sowie den Link zum fertigen Video über Slack."
+          },
+          {
+            "description": "Zero liest rohe Bildschirmaufnahmen aus Google Drive und speichert das fertige Promo-Video zurück in denselben oder einen angegebenen Ordner."
+          },
+          {
+            "description": "Optional speichert Zero das Narrationsskript und das Video-Briefing in Notion für Ihr Content-Archiv und künftige Referenz."
+          }
+        ],
+        "tips": [
+          "Fügen Sie Ihrer Anfrage ein klares Briefing bei: Zielgruppe, Kernbotschaft und gewünschter Ton. Je spezifischer Sie sind, desto besser wird der erste Schnitt.",
+          "Organisieren Sie Aufnahmen in einem dedizierten Google-Drive-Ordner pro Projekt oder Feature. Zero arbeitet am besten, wenn der Quellordner sauber und fokussiert ist.",
+          "Fordern Sie eine Narrationsskript-Überprüfung vor dem vollständigen Rendering an, wenn Sie die Botschaft zuerst feinabstimmen möchten."
         ]
       },
       "seo-blog-writing": {

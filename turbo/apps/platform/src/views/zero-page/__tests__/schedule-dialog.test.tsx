@@ -11,13 +11,15 @@ import {
   click,
 } from "../../../__tests__/page-helper.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
   type ScheduleResponse,
+  zeroSchedulesMainContract,
+} from "@vm0/api-contracts/contracts/zero-schedules";
+import {
   zeroAgentsByIdContract,
   zeroAgentInstructionsContract,
-  zeroSchedulesMainContract,
-} from "@vm0/core";
+} from "@vm0/api-contracts/contracts/zero-agents";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 import {
   setMockSchedules,
@@ -25,6 +27,7 @@ import {
 } from "../../../mocks/handlers/api-schedules.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 const SCHEDULE_ID = "f0000001-0000-4000-a000-000000000001";
 

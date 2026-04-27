@@ -1,5 +1,5 @@
-import { slackOrgInstallations } from "../../../db/schema/slack-org-installation";
-import { slackOrgConnections } from "../../../db/schema/slack-org-connection";
+import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
+import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { encryptSecretValue } from "../../shared/crypto/secrets-encryption";
 
 interface Services {

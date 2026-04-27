@@ -5,14 +5,15 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
   chatThreadsContract,
   chatThreadMessagesContract,
   chatThreadByIdContract,
-} from "@vm0/core";
+} from "@vm0/api-contracts/contracts/chat-threads";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 const AGENT_ID = "agent-alpha";
 function mockThreadList(threads: { id: string; title: string }[]) {
@@ -23,7 +24,7 @@ function mockThreadList(threads: { id: string; title: string }[]) {
           return {
             id: t.id,
             title: t.title,
-            agentId: AGENT_ID,
+            agent: { id: AGENT_ID, avatarUrl: null },
             createdAt: "2026-03-10T00:00:00Z",
             updatedAt: "2026-03-10T00:00:00Z",
             isRead: true,

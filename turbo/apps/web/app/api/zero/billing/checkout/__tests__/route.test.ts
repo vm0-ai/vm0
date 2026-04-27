@@ -50,6 +50,7 @@ import { POST } from "../route";
 
 const TEST_PRICE_PRO = "price_test_pro";
 const TEST_PRICE_TEAM = "price_test_team";
+const APP_ORIGIN = "http://app.localhost:3002";
 
 const TEST_ZERO_PRICE = JSON.stringify({
   pro: [TEST_PRICE_PRO],
@@ -64,6 +65,7 @@ describe("POST /api/zero/billing/checkout", () => {
     await context.setupUser();
 
     vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_fake");
+    vi.stubEnv("NEXT_PUBLIC_APP_URL", APP_ORIGIN);
     vi.stubEnv("ZERO_PRICE", TEST_ZERO_PRICE);
     reloadEnv();
 
@@ -82,8 +84,8 @@ describe("POST /api/zero/billing/checkout", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           tier: "pro",
-          successUrl: "https://app.vm7.ai/billing?billing=success",
-          cancelUrl: "https://app.vm7.ai/billing?billing=canceled",
+          successUrl: `${APP_ORIGIN}/billing?billing=success`,
+          cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
         }),
       },
     );
@@ -102,8 +104,8 @@ describe("POST /api/zero/billing/checkout", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           tier: "pro",
-          successUrl: "https://app.vm7.ai/billing?billing=success",
-          cancelUrl: "https://app.vm7.ai/billing?billing=canceled",
+          successUrl: `${APP_ORIGIN}/billing?billing=success`,
+          cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
         }),
       },
     );
@@ -120,8 +122,8 @@ describe("POST /api/zero/billing/checkout", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           tier: "enterprise",
-          successUrl: "https://app.vm7.ai/?billing=success",
-          cancelUrl: "https://app.vm7.ai/?billing=canceled",
+          successUrl: `${APP_ORIGIN}/?billing=success`,
+          cancelUrl: `${APP_ORIGIN}/?billing=canceled`,
         }),
       },
     );
@@ -143,8 +145,8 @@ describe("POST /api/zero/billing/checkout", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           tier: "pro",
-          successUrl: "https://app.vm7.ai/billing?billing=success",
-          cancelUrl: "https://app.vm7.ai/billing?billing=canceled",
+          successUrl: `${APP_ORIGIN}/billing?billing=success`,
+          cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
         }),
       },
     );
@@ -168,8 +170,8 @@ describe("POST /api/zero/billing/checkout", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           tier: "pro",
-          successUrl: "https://app.vm7.ai/billing?billing=success",
-          cancelUrl: "https://app.vm7.ai/billing?billing=canceled",
+          successUrl: `${APP_ORIGIN}/billing?billing=success`,
+          cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
         }),
       },
     );
@@ -178,5 +180,25 @@ describe("POST /api/zero/billing/checkout", () => {
     expect(response.status).toBe(200);
     const data = await response.json();
     expect(data.url).toBe("https://checkout.stripe.com/session/test");
+  });
+
+  it("returns 400 when successUrl or cancelUrl origin does not match NEXT_PUBLIC_APP_URL", async () => {
+    const request = createTestRequest(
+      "http://localhost:3000/api/zero/billing/checkout",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tier: "pro",
+          successUrl: "https://evil.example.com/billing?billing=success",
+          cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
+        }),
+      },
+    );
+    const response = await POST(request);
+
+    expect(response.status).toBe(400);
+    const data = await response.json();
+    expect(data.error.code).toBe("BAD_REQUEST");
   });
 });

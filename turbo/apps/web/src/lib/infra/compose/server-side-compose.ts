@@ -1,16 +1,16 @@
 import { eq, and } from "drizzle-orm";
+import { AGENT_NAME_REGEX } from "@vm0/api-contracts/contracts/composes";
 import {
-  AGENT_NAME_REGEX,
   isSupportedFramework,
   type SupportedFramework,
-} from "@vm0/core";
+} from "@vm0/core/frameworks";
 import type { AgentComposeYaml } from "../agent-compose/types";
 import { uploadInstructionsServerSide } from "../storage/instruction-upload";
 import { computeComposeVersionId } from "../agent-compose/content-hash";
 import {
   agentComposes,
   agentComposeVersions,
-} from "../../../db/schema/agent-compose";
+} from "@vm0/db/schema/agent-compose";
 import { logger } from "../../shared/logger";
 
 const log = logger("compose:server-side");

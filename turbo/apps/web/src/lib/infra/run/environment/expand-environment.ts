@@ -1,9 +1,11 @@
 import {
-  expandVariables,
-  extractAndGroupVariables,
   extractSecretNamesFromApis,
   type ExpandedFirewallConfig,
-} from "@vm0/core";
+} from "@vm0/connectors/firewall-types";
+import {
+  expandVariables,
+  extractAndGroupVariables,
+} from "@vm0/core/variable-expander";
 import { logger } from "../../../shared/logger";
 import type { AgentComposeYaml } from "../../agent-compose/types";
 

@@ -1,8 +1,11 @@
 import { command, state, computed } from "ccstate";
-import { zeroRunsQueueContract, zeroRunsCancelContract } from "@vm0/core";
+import {
+  zeroRunsQueueContract,
+  zeroRunsCancelContract,
+} from "@vm0/api-contracts/contracts/zero-runs";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
-import { awaitRealtimeReady$, setAblyLoop$ } from "../realtime.ts";
+import { setAblyLoop$ } from "../realtime.ts";
 
 const queueReload$ = state(0);
 
@@ -28,9 +31,6 @@ const reloadQueueData$ = command(({ set }) => {
  */
 export const startQueuePolling$ = command(
   async ({ set }, signal: AbortSignal) => {
-    await set(awaitRealtimeReady$, signal);
-    signal.throwIfAborted();
-
     const onQueueChanged$ = command(({ set }) => {
       set(reloadQueueData$);
       return false;

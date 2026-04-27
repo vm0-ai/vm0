@@ -1,22 +1,19 @@
 import { eq, and, count, gt, or } from "drizzle-orm";
 import { env } from "../../env";
-import { agentRuns } from "../../db/schema/agent-run";
+import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
   concurrentRunLimit,
   forbidden,
-  insufficientCredits,
   noModelProvider,
-} from "../shared/errors";
+} from "@vm0/api-services/errors";
 import { canAccessCompose } from "../infra/agent/compose-access";
 import { logger } from "../shared/logger";
-import { modelProviders } from "../../db/schema/model-provider";
-import { orgMetadata } from "../../db/schema/org-metadata";
-import { orgMembersMetadata } from "../../db/schema/org-members-metadata";
-import { getUnsettledExpiredAmount } from "./credit/credit-expires-service";
+import { modelProviders } from "@vm0/db/schema/model-provider";
 import { ORG_SENTINEL_USER_ID } from "./org/org-sentinel";
 import { MODEL_PROVIDER_ENV_VARS } from "./context/resolve-model-provider";
+import { checkOrgCredits } from "./credit/check-org-credits";
 import type { Database } from "../../types/global";
-import type { OrgTier } from "@vm0/core";
+import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
 import type { AgentComposeYaml } from "../infra/agent-compose/types";
 
 const log = logger("zero:run-policy");
@@ -127,35 +124,28 @@ export async function validateComposeRequirements(
 }
 
 /**
- * Pre-flight check: ensure the org has sufficient credits for VM0 runs.
- * Skips for non-VM0 provider runs. Queries orgMetadata + orgMembersMetadata.
+ * LLM-run credit admission. Resolves vm0 vs. BYOK from `modelProvider`
+ * (or the org default when nullish) and delegates to `checkOrgCredits`
+ * for the vm0 case. Returns silently for BYOK — the user pays the
+ * provider, so no vm0 balance is touched.
  *
- * Accepts an optional `db` parameter so callers running inside a transaction
- * (e.g. dequeueNextAtomic with pg_advisory_xact_lock) can pass the transaction
- * object and keep all reads within the same isolation boundary.
- *
- * The spendable balance used for admission is
- *   org_metadata.credits − getUnsettledExpiredAmount(orgId)
- * — the same form `getBillingStatus` presents in the UI. Without this
- * subtraction a dormant non-subscription org whose credits have all expired
- * but haven't been settled yet (nothing triggers `expireCredits` until the
- * next `processOrgCredits` batch or subscription renewal) would be admitted
- * on its stale inflated balance, the run would burn real COGS, and only the
- * next settlement would notice.
+ * Accepts an optional `db` so callers inside a transaction (e.g.
+ * `drainOrgQueue` under `pg_advisory_xact_lock`) keep the read within
+ * the same boundary. Non-LLM callers use `checkOrgCredits` directly.
  */
-export async function checkOrgCredits(
+export async function checkOrgCreditsForRun(
   orgId: string,
   userId: string,
   modelProvider: string | null | undefined,
-  db: typeof globalThis.services.db = globalThis.services.db,
+  db: Database = globalThis.services.db,
 ): Promise<void> {
+  // Fast exit for explicit BYOK — no DB touch.
   if (modelProvider && modelProvider !== "vm0") {
     return;
   }
 
   let isVm0 = modelProvider === "vm0";
-
-  if (!isVm0 && !modelProvider) {
+  if (!isVm0) {
     const [defaultProvider] = await db
       .select({ type: modelProviders.type })
       .from(modelProviders)
@@ -170,44 +160,9 @@ export async function checkOrgCredits(
     isVm0 = defaultProvider?.type === "vm0";
   }
 
-  if (isVm0) {
-    const [memberRow] = await db
-      .select({ creditEnabled: orgMembersMetadata.creditEnabled })
-      .from(orgMembersMetadata)
-      .where(
-        and(
-          eq(orgMembersMetadata.orgId, orgId),
-          eq(orgMembersMetadata.userId, userId),
-        ),
-      )
-      .limit(1);
+  if (!isVm0) return;
 
-    if (memberRow?.creditEnabled === false) {
-      throw insufficientCredits();
-    }
-  }
-
-  const [orgRow] = await db
-    .select({ credits: orgMetadata.credits })
-    .from(orgMetadata)
-    .where(eq(orgMetadata.orgId, orgId))
-    .limit(1);
-
-  if (!orgRow) {
-    if (isVm0) {
-      throw insufficientCredits();
-    }
-    return;
-  }
-
-  const unsettledExpired = await getUnsettledExpiredAmount(orgId, db);
-  if (orgRow.credits - unsettledExpired > 0) {
-    return;
-  }
-
-  if (isVm0) {
-    throw insufficientCredits();
-  }
+  await checkOrgCredits(orgId, userId, db);
 }
 
 /**

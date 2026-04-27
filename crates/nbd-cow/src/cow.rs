@@ -1,3 +1,10 @@
+//! Copy-on-write storage layer for `nbd-cow`.
+//!
+//! [`CowLayer`] serves reads from pending writes, then dirty blocks in the COW
+//! file, then the read-only base image. Writes are collected in memory and
+//! flushed to a sparse COW file; a bitmap sidecar records which blocks have been
+//! materialized when snapshots are kept.
+
 use std::collections::BTreeMap;
 use std::fs::File;
 use std::os::unix::fs::FileExt;

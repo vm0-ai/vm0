@@ -1,13 +1,11 @@
 import { gunzipSync } from "node:zlib";
 import { createHandler, tsr } from "../../../../../../src/lib/ts-rest-handler";
-import {
-  zeroAgentInstructionsContract,
-  getInstructionsStorageName,
-  getInstructionsFilename,
-  agentComposeApiContentSchema,
-  stripMetadataFrontmatter,
-  toFirewallPolicies,
-} from "@vm0/core";
+import { zeroAgentInstructionsContract } from "@vm0/api-contracts/contracts/zero-agents";
+import { agentComposeApiContentSchema } from "@vm0/api-contracts/contracts/composes";
+import { toFirewallPolicies } from "@vm0/connectors/firewall-types";
+import { getInstructionsStorageName } from "@vm0/core/storage-names";
+import { getInstructionsFilename } from "@vm0/core/frameworks";
+import { stripMetadataFrontmatter } from "@vm0/core/instructions-frontmatter";
 import { initServices } from "../../../../../../src/lib/init-services";
 import {
   requireAuth,
@@ -18,12 +16,9 @@ import { serverSideCompose } from "../../../../../../src/lib/infra/compose/serve
 import {
   agentComposes,
   agentComposeVersions,
-} from "../../../../../../src/db/schema/agent-compose";
-import { zeroAgents } from "../../../../../../src/db/schema/zero-agent";
-import {
-  storages,
-  storageVersions,
-} from "../../../../../../src/db/schema/storage";
+} from "@vm0/db/schema/agent-compose";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { eq, and } from "drizzle-orm";
 import {
   downloadManifest,

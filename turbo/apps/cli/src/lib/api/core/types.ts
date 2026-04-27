@@ -2,10 +2,12 @@
 import type {
   RunResult as CoreRunResult,
   EventsResponse,
-  SessionResponse,
+} from "@vm0/api-contracts/contracts/runs";
+import type {
   CheckpointResponse,
-  ComposeResponse,
-} from "@vm0/core";
+  SessionResponse,
+} from "@vm0/api-contracts/contracts/sessions";
+import type { ComposeResponse } from "@vm0/api-contracts/contracts/composes";
 
 // Re-export types with CLI naming conventions for backward compatibility
 export type RunResult = CoreRunResult;

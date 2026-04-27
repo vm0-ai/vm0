@@ -19,10 +19,12 @@ import {
   setMockSchedules,
   createMockScheduleResponse,
 } from "../../../mocks/handlers/api-schedules.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
-import { logsListContract, type ScheduleResponse } from "@vm0/core";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
+import { logsListContract } from "@vm0/api-contracts/contracts/logs";
+import type { ScheduleResponse } from "@vm0/api-contracts/contracts/zero-schedules";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 // ---- Pagination helpers ----
 

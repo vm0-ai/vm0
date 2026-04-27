@@ -121,6 +121,249 @@ describe("zero run command", () => {
       );
     });
 
+    it("should drain visible event pages before rendering completion", async () => {
+      let eventPolls = 0;
+
+      server.use(
+        http.get(
+          "http://localhost:3000/api/zero/runs/:id/telemetry/agent",
+          () => {
+            eventPolls++;
+            if (eventPolls === 1) {
+              return HttpResponse.json({
+                events: [
+                  {
+                    sequenceNumber: 0,
+                    eventType: "assistant",
+                    eventData: {
+                      type: "assistant",
+                      message: {
+                        role: "assistant",
+                        content: [{ type: "text", text: "first page" }],
+                      },
+                    },
+                    createdAt: "2025-01-01T00:00:00Z",
+                  },
+                ],
+                hasMore: true,
+                framework: "claude-code",
+              });
+            }
+
+            if (eventPolls === 2) {
+              return HttpResponse.json({
+                events: [
+                  {
+                    sequenceNumber: 1,
+                    eventType: "assistant",
+                    eventData: {
+                      type: "assistant",
+                      message: {
+                        role: "assistant",
+                        content: [{ type: "text", text: "second page" }],
+                      },
+                    },
+                    createdAt: "2025-01-01T00:00:00Z",
+                  },
+                ],
+                hasMore: false,
+                framework: "claude-code",
+              });
+            }
+
+            return HttpResponse.json({
+              events: [],
+              hasMore: false,
+              framework: "claude-code",
+            });
+          },
+        ),
+      );
+
+      await mainRunCommand.parseAsync([
+        "node",
+        "cli",
+        testAgentId,
+        "test prompt",
+      ]);
+
+      expect(eventPolls).toBeGreaterThanOrEqual(2);
+      expect(console.log).toHaveBeenCalledWith(
+        expect.stringContaining("second page"),
+      );
+    });
+
+    it("should drain terminal events that appear after completion", async () => {
+      let eventPolls = 0;
+
+      server.use(
+        http.get(
+          "http://localhost:3000/api/zero/runs/:id/telemetry/agent",
+          () => {
+            eventPolls++;
+            if (eventPolls === 1) {
+              return HttpResponse.json({
+                events: [
+                  {
+                    sequenceNumber: 0,
+                    eventType: "assistant",
+                    eventData: {
+                      type: "assistant",
+                      message: {
+                        role: "assistant",
+                        content: [{ type: "text", text: "before completion" }],
+                      },
+                    },
+                    createdAt: "2025-01-01T00:00:00Z",
+                  },
+                ],
+                hasMore: false,
+                framework: "claude-code",
+              });
+            }
+
+            if (eventPolls === 2) {
+              return HttpResponse.json({
+                events: [
+                  {
+                    sequenceNumber: 1,
+                    eventType: "assistant",
+                    eventData: {
+                      type: "assistant",
+                      message: {
+                        role: "assistant",
+                        content: [{ type: "text", text: "after completion" }],
+                      },
+                    },
+                    createdAt: "2025-01-01T00:00:00Z",
+                  },
+                ],
+                hasMore: false,
+                framework: "claude-code",
+              });
+            }
+
+            return HttpResponse.json({
+              events: [],
+              hasMore: false,
+              framework: "claude-code",
+            });
+          },
+        ),
+      );
+
+      await mainRunCommand.parseAsync([
+        "node",
+        "cli",
+        testAgentId,
+        "test prompt",
+      ]);
+
+      expect(console.log).toHaveBeenCalledWith(
+        expect.stringContaining("before completion"),
+      );
+      expect(console.log).toHaveBeenCalledWith(
+        expect.stringContaining("after completion"),
+      );
+    });
+
+    it("should render the latest terminal status after drain", async () => {
+      let runPolls = 0;
+
+      server.use(
+        http.get("http://localhost:3000/api/zero/runs/:id", () => {
+          runPolls++;
+          if (runPolls === 1) {
+            return HttpResponse.json({
+              ...defaultGetRunResponse,
+              status: "timeout",
+              result: undefined,
+            });
+          }
+
+          return HttpResponse.json(defaultGetRunResponse);
+        }),
+      );
+
+      await mainRunCommand.parseAsync([
+        "node",
+        "cli",
+        testAgentId,
+        "test prompt",
+      ]);
+
+      expect(console.log).toHaveBeenCalledWith(
+        expect.stringContaining("Run completed successfully"),
+      );
+      expect(mockConsoleError).not.toHaveBeenCalledWith(
+        expect.stringContaining("Run timed out"),
+      );
+    });
+
+    it("should not render events past a sequence gap", async () => {
+      let eventPolls = 0;
+      server.use(
+        http.get(
+          "http://localhost:3000/api/zero/runs/:id/telemetry/agent",
+          () => {
+            eventPolls++;
+            if (eventPolls > 1) {
+              return HttpResponse.json({
+                events: [],
+                hasMore: false,
+                framework: "claude-code",
+              });
+            }
+
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 0,
+                  eventType: "assistant",
+                  eventData: {
+                    type: "assistant",
+                    message: {
+                      role: "assistant",
+                      content: [{ type: "text", text: "before gap" }],
+                    },
+                  },
+                  createdAt: "2025-01-01T00:00:00Z",
+                },
+                {
+                  sequenceNumber: 2,
+                  eventType: "assistant",
+                  eventData: {
+                    type: "assistant",
+                    message: {
+                      role: "assistant",
+                      content: [{ type: "text", text: "after gap" }],
+                    },
+                  },
+                  createdAt: "2025-01-01T00:00:00Z",
+                },
+              ],
+              hasMore: false,
+              framework: "claude-code",
+            });
+          },
+        ),
+      );
+
+      await mainRunCommand.parseAsync([
+        "node",
+        "cli",
+        testAgentId,
+        "test prompt",
+      ]);
+
+      expect(console.log).toHaveBeenCalledWith(
+        expect.stringContaining("before gap"),
+      );
+      expect(console.log).not.toHaveBeenCalledWith(
+        expect.stringContaining("after gap"),
+      );
+    });
+
     it("should pass model-provider option to API", async () => {
       let capturedBody: Record<string, unknown> | undefined;
 

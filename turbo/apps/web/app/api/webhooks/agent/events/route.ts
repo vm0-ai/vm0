@@ -3,10 +3,10 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../../src/lib/ts-rest-handler";
-import { webhookEventsContract } from "@vm0/core";
+import { webhookEventsContract } from "@vm0/api-contracts/contracts/webhooks";
 import { initServices } from "../../../../../src/lib/init-services";
-import { agentRuns } from "../../../../../src/db/schema/agent-run";
-import { zeroRuns } from "../../../../../src/db/schema/zero-run";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { eq, and } from "drizzle-orm";
 import { getSandboxAuthForRun } from "../../../../../src/lib/auth/get-sandbox-auth";
 import { logger } from "../../../../../src/lib/shared/logger";
@@ -73,7 +73,8 @@ const router = tsr.router(webhookEventsContract, {
     // /api/agent/runs/:id/events — including the CLI — can see events as soon as the
     // webhook returns. With `after()`, fast mock-claude runs completed before Axiom
     // ingestion finished, leaving the CLI with no `● Bash(...)` rendering.
-    // Per-consumer failures are swallowed inside the dispatcher (Promise.allSettled).
+    // Optional consumer failures are isolated inside the dispatcher. Required
+    // consumers (currently Axiom, used by CLI event polling) propagate failure.
     const dispatchStart = Date.now();
     await dispatchToEventConsumers(body.runId, body.events, {
       userId,

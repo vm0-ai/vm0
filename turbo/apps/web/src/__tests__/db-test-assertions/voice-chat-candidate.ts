@@ -1,11 +1,11 @@
-import { eq, and } from "drizzle-orm";
-import type { VoiceChatCandidateTaskResultEntry } from "@vm0/core";
+import { eq } from "drizzle-orm";
+import type { VoiceChatTaskResultEntry } from "@vm0/api-contracts/contracts/zero-voice-chat";
 import { initServices } from "../../lib/init-services";
 import {
-  featureCandidateVoiceChatItems,
-  featureCandidateVoiceChatSessions,
-  featureCandidateVoiceChatTasks,
-} from "../../db/schema/voice-chat-candidate";
+  voiceChatItems,
+  voiceChatSessions,
+  voiceChatTasks,
+} from "@vm0/db/schema/voice-chat";
 
 /**
  * Read the full reasoning-related mutable state of a voice-chat-candidate
@@ -31,66 +31,18 @@ export async function getTestVoiceChatCandidateSessionReasoningState(
   initServices();
   const [row] = await globalThis.services.db
     .select({
-      conversationSummary:
-        featureCandidateVoiceChatSessions.conversationSummary,
-      workingTasksSummary:
-        featureCandidateVoiceChatSessions.workingTasksSummary,
-      finishedTasksSummary:
-        featureCandidateVoiceChatSessions.finishedTasksSummary,
-      summarySeq: featureCandidateVoiceChatSessions.summarySeq,
-      summaryVersion: featureCandidateVoiceChatSessions.summaryVersion,
-      reasoningStatus: featureCandidateVoiceChatSessions.reasoningStatus,
-      reasoningPending: featureCandidateVoiceChatSessions.reasoningPending,
-      lastSummaryAt: featureCandidateVoiceChatSessions.lastSummaryAt,
+      conversationSummary: voiceChatSessions.conversationSummary,
+      workingTasksSummary: voiceChatSessions.workingTasksSummary,
+      finishedTasksSummary: voiceChatSessions.finishedTasksSummary,
+      summarySeq: voiceChatSessions.summarySeq,
+      summaryVersion: voiceChatSessions.summaryVersion,
+      reasoningStatus: voiceChatSessions.reasoningStatus,
+      reasoningPending: voiceChatSessions.reasoningPending,
+      lastSummaryAt: voiceChatSessions.lastSummaryAt,
     })
-    .from(featureCandidateVoiceChatSessions)
-    .where(eq(featureCandidateVoiceChatSessions.id, id));
+    .from(voiceChatSessions)
+    .where(eq(voiceChatSessions.id, id));
   return row;
-}
-
-/**
- * Read a candidate voice-chat session's mutable state.
- * @why-db-direct Cron tests verify the reasoner state transitions the route
- * handler writes; no read API exists for those internals.
- */
-export async function getTestVoiceChatCandidateSession(id: string): Promise<
-  | {
-      reasoningStatus: string;
-      lastSummaryAt: Date | null;
-    }
-  | undefined
-> {
-  initServices();
-  const [row] = await globalThis.services.db
-    .select({
-      reasoningStatus: featureCandidateVoiceChatSessions.reasoningStatus,
-      lastSummaryAt: featureCandidateVoiceChatSessions.lastSummaryAt,
-    })
-    .from(featureCandidateVoiceChatSessions)
-    .where(eq(featureCandidateVoiceChatSessions.id, id));
-  return row;
-}
-
-/**
- * Count candidate sessions by `reasoningStatus`, scoped to a single org
- * to keep large-batch assertions hermetic across a shared dev database.
- * @why-db-direct Aggregations across many seeded rows have no API surface.
- */
-export async function countTestVoiceChatCandidateSessionsByReasoningStatus(
-  orgId: string,
-  reasoningStatus: "idle" | "running",
-): Promise<number> {
-  initServices();
-  const rows = await globalThis.services.db
-    .select({ id: featureCandidateVoiceChatSessions.id })
-    .from(featureCandidateVoiceChatSessions)
-    .where(
-      and(
-        eq(featureCandidateVoiceChatSessions.orgId, orgId),
-        eq(featureCandidateVoiceChatSessions.reasoningStatus, reasoningStatus),
-      ),
-    );
-  return rows.length;
 }
 
 /**
@@ -111,12 +63,12 @@ export async function readTestVoiceChatCandidateItems(
   initServices();
   return globalThis.services.db
     .select({
-      role: featureCandidateVoiceChatItems.role,
-      content: featureCandidateVoiceChatItems.content,
-      seq: featureCandidateVoiceChatItems.seq,
+      role: voiceChatItems.role,
+      content: voiceChatItems.content,
+      seq: voiceChatItems.seq,
     })
-    .from(featureCandidateVoiceChatItems)
-    .where(eq(featureCandidateVoiceChatItems.sessionId, sessionId));
+    .from(voiceChatItems)
+    .where(eq(voiceChatItems.sessionId, sessionId));
 }
 
 /**
@@ -129,7 +81,7 @@ export async function getTestVoiceChatCandidateTask(id: string): Promise<
       result: string | null;
       resultUpdatedAt: Date | null;
       status: string;
-      assistantMessages: VoiceChatCandidateTaskResultEntry[];
+      assistantMessages: VoiceChatTaskResultEntry[];
       error: string | null;
     }
   | undefined
@@ -137,35 +89,15 @@ export async function getTestVoiceChatCandidateTask(id: string): Promise<
   initServices();
   const [row] = await globalThis.services.db
     .select({
-      result: featureCandidateVoiceChatTasks.result,
-      resultUpdatedAt: featureCandidateVoiceChatTasks.resultUpdatedAt,
-      status: featureCandidateVoiceChatTasks.status,
-      assistantMessages: featureCandidateVoiceChatTasks.assistantMessages,
-      error: featureCandidateVoiceChatTasks.error,
+      result: voiceChatTasks.result,
+      resultUpdatedAt: voiceChatTasks.resultUpdatedAt,
+      status: voiceChatTasks.status,
+      assistantMessages: voiceChatTasks.assistantMessages,
+      error: voiceChatTasks.error,
     })
-    .from(featureCandidateVoiceChatTasks)
-    .where(eq(featureCandidateVoiceChatTasks.id, id));
+    .from(voiceChatTasks)
+    .where(eq(voiceChatTasks.id, id));
   return row;
-}
-
-/**
- * List all task rows for a session for integration test assertions.
- * @why-db-direct The missingTasks Step 5c integration test needs to assert that
- * a task row was created; no public read API exposes individual task rows.
- */
-export async function listTestVoiceChatCandidateTasks(
-  sessionId: string,
-): Promise<{ id: string; prompt: string; status: string; callId: string }[]> {
-  initServices();
-  return globalThis.services.db
-    .select({
-      id: featureCandidateVoiceChatTasks.id,
-      prompt: featureCandidateVoiceChatTasks.prompt,
-      status: featureCandidateVoiceChatTasks.status,
-      callId: featureCandidateVoiceChatTasks.callId,
-    })
-    .from(featureCandidateVoiceChatTasks)
-    .where(eq(featureCandidateVoiceChatTasks.sessionId, sessionId));
 }
 
 /**
@@ -180,10 +112,10 @@ export async function listTestVoiceChatCandidateItems(
   initServices();
   return globalThis.services.db
     .select({
-      id: featureCandidateVoiceChatItems.id,
-      role: featureCandidateVoiceChatItems.role,
-      content: featureCandidateVoiceChatItems.content,
+      id: voiceChatItems.id,
+      role: voiceChatItems.role,
+      content: voiceChatItems.content,
     })
-    .from(featureCandidateVoiceChatItems)
-    .where(eq(featureCandidateVoiceChatItems.sessionId, sessionId));
+    .from(voiceChatItems)
+    .where(eq(voiceChatItems.sessionId, sessionId));
 }

@@ -1,15 +1,15 @@
 import { eq, and } from "drizzle-orm";
-import { checkpoints } from "../../../../db/schema/checkpoint";
-import { conversations } from "../../../../db/schema/conversation";
-import { agentRuns } from "../../../../db/schema/agent-run";
-import { agentSessions } from "../../../../db/schema/agent-session";
-import { agentComposeVersions } from "../../../../db/schema/agent-compose";
-import { notFound, unauthorized, badRequest } from "../../../shared/errors";
+import { checkpoints } from "@vm0/db/schema/checkpoint";
+import { conversations } from "@vm0/db/schema/conversation";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { agentComposeVersions } from "@vm0/db/schema/agent-compose";
+import { notFound, unauthorized, badRequest } from "@vm0/api-services/errors";
 import { logger } from "../../../shared/logger";
 import type {
   AgentComposeSnapshot,
   VolumeVersionsSnapshot,
 } from "../../checkpoint/types";
+import { decodeToContextArtifacts } from "../../checkpoint/decode-artifact-snapshots";
 import type { AgentComposeYaml } from "../../agent-compose/types";
 import type { ConversationResolution } from "./types";
 import { extractWorkingDir } from "../utils";
@@ -43,14 +43,13 @@ export async function resolveCheckpoint(
     throw notFound("Checkpoint not found");
   }
 
-  // Extract snapshots. The primary artifact name is sourced from
-  // agent_sessions.artifact_name (populated at run creation); the version is
-  // looked up in the artifactSnapshots map. memoryName is sourced from
-  // agent_sessions.memory_name, matching the resolveSession path.
+  // Extract snapshots. Artifact entries are stored directly in
+  // checkpoint.artifactSnapshots — no join to agent_sessions required.
   const agentComposeSnapshot =
     checkpoint.agentComposeSnapshot as unknown as AgentComposeSnapshot;
-  const artifactSnapshotsMap =
-    (checkpoint.artifactSnapshots as Record<string, string> | null) ?? null;
+  // artifactSnapshots is a Drizzle jsonb column (runtime type `unknown`).
+  // decodeToContextArtifacts does the runtime shape check; never cast here.
+  const rawArtifacts: unknown = checkpoint.artifactSnapshots;
   const checkpointVolumeVersions =
     checkpoint.volumeVersionsSnapshot as VolumeVersionsSnapshot | null;
 
@@ -70,17 +69,10 @@ export async function resolveCheckpoint(
     throw badRequest("Invalid checkpoint: missing agentComposeVersionId");
   }
 
-  // Verify checkpoint belongs to user and fetch session artifact/memory names
-  // in one query. Both live on agent_sessions (set eagerly at run creation),
-  // not on checkpoint snapshots.
+  // Verify checkpoint belongs to user
   const [originalRun] = await globalThis.services.db
-    .select({
-      runId: agentRuns.id,
-      sessionArtifactName: agentSessions.artifactName,
-      sessionMemoryName: agentSessions.memoryName,
-    })
+    .select({ runId: agentRuns.id })
     .from(agentRuns)
-    .innerJoin(agentSessions, eq(agentRuns.sessionId, agentSessions.id))
     .where(
       and(eq(agentRuns.id, checkpoint.runId), eq(agentRuns.userId, userId)),
     )
@@ -128,28 +120,21 @@ export async function resolveCheckpoint(
     throw notFound(`Agent compose version ${agentComposeVersionId} not found`);
   }
   const agentCompose = version.content as AgentComposeYaml;
-
-  const primaryArtifactName = originalRun.sessionArtifactName ?? undefined;
-  const primaryArtifactVersion =
-    primaryArtifactName && artifactSnapshotsMap
-      ? artifactSnapshotsMap[primaryArtifactName]
-      : undefined;
+  const workingDir = extractWorkingDir(agentCompose);
+  const artifacts = decodeToContextArtifacts(rawArtifacts);
 
   return {
     conversationId: checkpoint.conversationId,
     agentComposeVersionId,
     agentCompose,
-    workingDir: extractWorkingDir(agentCompose),
+    workingDir,
     conversationData: {
       cliAgentSessionId: conversation.cliAgentSessionId,
       cliAgentSessionHistory: sessionHistory,
     },
-    artifactName: primaryArtifactName,
-    artifactVersion: primaryArtifactVersion,
-    memoryName: originalRun.sessionMemoryName ?? undefined,
+    artifacts,
     vars: agentComposeSnapshot.vars || {},
     volumeVersions: checkpointVolumeVersions?.versions,
     additionalVolumes: checkpointAdditionalVolumes,
-    buildResumeArtifact: !!primaryArtifactName,
   };
 }

@@ -4,7 +4,8 @@
  * Mock handlers for /api/zero/secrets endpoints.
  */
 
-import { zeroSecretsContract, type SecretResponse } from "@vm0/core";
+import { zeroSecretsContract } from "@vm0/api-contracts/contracts/zero-secrets";
+import type { SecretResponse } from "@vm0/api-contracts/contracts/secrets";
 import { mockApi } from "../msw-contract.ts";
 
 let mockSecrets: SecretResponse[] = [];

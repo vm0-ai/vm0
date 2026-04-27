@@ -2,14 +2,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { FeatureSwitchKey, zeroVoiceIoQuotaContract } from "@vm0/core";
+import { zeroVoiceIoQuotaContract } from "@vm0/api-contracts/contracts/zero-voice-io-quota";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { server } from "../../../mocks/server.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { mockChatLifecycle, PLACEHOLDER } from "./chat-test-helpers.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const CHAT_PATH = `/agents/${AGENT_ID}/chat`;
@@ -211,7 +213,6 @@ describe("chat-i-033: mic button recording interaction", () => {
 
   afterEach(() => {
     clearMediaDevices();
-    vi.unstubAllGlobals();
   });
 
   it("should show stop recording button after clicking voice input", async () => {
@@ -243,7 +244,6 @@ describe("chat-i-034: mic button transcription appends to draft", () => {
 
   afterEach(() => {
     clearMediaDevices();
-    vi.unstubAllGlobals();
   });
 
   it("should populate composer input with transcribed text without sending", async () => {
@@ -328,7 +328,6 @@ describe("chat-i-035: mic button gates on audio input quota", () => {
 
   afterEach(() => {
     clearMediaDevices();
-    vi.unstubAllGlobals();
   });
 
   it("should start recording when quota is available", async () => {
@@ -351,7 +350,7 @@ describe("chat-i-035: mic button gates on audio input quota", () => {
     await waitFor(() => {
       expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
     });
-    expect(screen.queryByText("Choose your plan")).not.toBeInTheDocument();
+    expect(screen.queryByText("Compare plans")).not.toBeInTheDocument();
   });
 
   it("should open billing dialog without recording when quota is exhausted", async () => {
@@ -381,7 +380,7 @@ describe("chat-i-035: mic button gates on audio input quota", () => {
     click(micButton);
 
     await waitFor(() => {
-      expect(screen.getByText("Choose your plan")).toBeInTheDocument();
+      expect(screen.getByText("Compare plans")).toBeInTheDocument();
     });
 
     expect(screen.queryByLabelText("Stop recording")).not.toBeInTheDocument();
@@ -412,7 +411,7 @@ describe("chat-i-035: mic button gates on audio input quota", () => {
     click(stopButton);
 
     await waitFor(() => {
-      expect(screen.getByText("Choose your plan")).toBeInTheDocument();
+      expect(screen.getByText("Compare plans")).toBeInTheDocument();
     });
   });
 });

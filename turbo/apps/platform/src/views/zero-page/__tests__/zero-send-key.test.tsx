@@ -5,10 +5,11 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
-import { chatMessagesContract } from "@vm0/core";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
+import { chatMessagesContract } from "@vm0/api-contracts/contracts/chat-threads";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 const PLACEHOLDER = "Ask me to automate workflows, manage tasks...";
 
@@ -129,7 +130,6 @@ describe("send-key behavior — IME composition", () => {
 
 describe("send-key behavior — mobile (pointer: coarse)", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
     vi.spyOn(window, "matchMedia").mockImplementation((query: string) => {
       return {
         matches: query === "(pointer: coarse)",

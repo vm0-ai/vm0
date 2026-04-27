@@ -1,6 +1,7 @@
 import { command, computed, state } from "ccstate";
 import { talkDraft$ } from "./chat-draft.ts";
 import { getRandomPrompts } from "../../views/zero-page/zero-ideation-data.ts";
+import { featureSwitch$ } from "../external/feature-switch.ts";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import { orgModelProviders$ } from "../external/org-model-providers.ts";
 import { currentChatAgent$ } from "../agent-chat.ts";
@@ -26,12 +27,12 @@ export const chatPageTaglineIndex$ = computed((get) => {
 });
 
 // ---------------------------------------------------------------------------
-// Suggested prompts — initialized once at module load, never modified
+// Suggested prompts — filtered by active feature switches
 // ---------------------------------------------------------------------------
 
-const internalSuggestedPrompts$ = state(getRandomPrompts(2));
-export const suggestedPrompts$ = computed((get) => {
-  return get(internalSuggestedPrompts$);
+export const suggestedPrompts$ = computed(async (get) => {
+  const features = await get(featureSwitch$);
+  return getRandomPrompts(2, features);
 });
 
 // ---------------------------------------------------------------------------

@@ -11,10 +11,12 @@ import {
   isFirewallConnectorType,
   getConnectorFirewall,
   resolveFirewallPolicies,
-  type FirewallPolicies,
-  type FirewallPolicyValue,
-  type ConnectorResponse,
-} from "@vm0/core";
+} from "@vm0/connectors/firewalls";
+import type {
+  FirewallPolicies,
+  FirewallPolicyValue,
+} from "@vm0/connectors/firewall-types";
+import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import { policyIcon } from "../../../lib/utils/format-utils";
 import { formatAvatar } from "./avatar";
 

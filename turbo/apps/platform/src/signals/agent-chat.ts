@@ -1,22 +1,16 @@
 import { command, computed, state } from "ccstate";
 import {
-  chatThreadByIdContract,
   chatThreadsContract,
-  FeatureSwitchKey,
   type ChatThreadListItem,
-  type ModelProviderType,
   type PersistedAttachment,
-} from "@vm0/core";
+} from "@vm0/api-contracts/contracts/chat-threads";
+import type { ModelProviderType } from "@vm0/api-contracts/contracts/model-providers";
 import { agentById, defaultAgentId$ } from "./agent.ts";
 import { zeroClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";
 import { pathParams$ } from "./route.ts";
 import { activeRoute$ } from "./active-route.ts";
-import { featureSwitch$ } from "./external/feature-switch.ts";
-import {
-  reloadChatThreads$,
-  reloadChatThreadsCounter$,
-} from "./chat-thread-list-reload.ts";
+import { reloadChatThreadsCounter$ } from "./chat-thread-list-reload.ts";
 
 export { reloadChatThreads$ } from "./chat-thread-list-reload.ts";
 
@@ -57,9 +51,10 @@ export const currentChatThreadId$ = computed((get): string | null => {
 
 export interface ChatThread {
   id: string;
-  agentId?: string;
+  agentId: string;
   title: string | null;
   latestSessionId: string | null;
+  lastReadMessageId: string | null;
   /**
    * Provider type of the latest run in this thread. Null when the thread has
    * no runs yet. The composer picker uses this to disable options whose base
@@ -84,77 +79,41 @@ export interface ChatThread {
   selectedModel: string | null;
 }
 
-export const currentChatThread$ = computed(
-  async (get): Promise<ChatThread | null> => {
-    const threadId = get(currentChatThreadId$);
-    if (!threadId) {
-      return null;
-    }
-
-    const threadClient = get(zeroClient$)(chatThreadByIdContract);
-
-    const threadResult = await accept(
-      threadClient.get({ params: { id: threadId } }),
-      [200],
-    );
-
-    const body = threadResult.body;
-    return {
-      id: threadId,
-      title: body.title ?? null,
-      agentId: body.agentId,
-      latestSessionId: body.latestSessionId ?? null,
-      latestSessionProviderType: body.latestSessionProviderType ?? null,
-      activeRunIds: body.activeRunIds,
-      activeRuns: body.activeRuns ?? [],
-      isLegacySession: false,
-      draftContent: body.draftContent ?? null,
-      draftAttachments: body.draftAttachments ?? null,
-      modelProviderId: body.modelProviderId ?? null,
-      selectedModel: body.selectedModel ?? null,
-    };
-  },
-);
-
-/**
- * Mark a thread as read in the sidebar by triggering a full reload.
- * Uses reload (rather than in-place patch) so the server's authoritative
- * `last_read_at` value is reflected without client-side bookkeeping.
- */
-export const patchThreadRead$ = command(({ set }, _threadId: string) => {
-  set(reloadChatThreads$);
-});
-
 export const chatThreads$ = computed(async (get) => {
   get(reloadChatThreadsCounter$);
 
-  const features = await get(featureSwitch$);
-  const unifyChatThreads = features[FeatureSwitchKey.UnifyChatThreads] ?? false;
-
-  const client = get(zeroClient$)(chatThreadsContract);
-
-  let threads: ChatThreadListItem[];
-  if (unifyChatThreads) {
-    const result = await accept(client.list({ query: {} }), [200]);
-    threads = result.body.threads;
-  } else {
-    const agentId = await get(currentChatAgentId$);
-    if (!agentId) {
-      return [];
-    }
-    const result = await accept(
-      client.list({ query: { agentId: agentId } }),
-      [200],
-    );
-    threads = result.body.threads;
+  const agentId = await get(currentChatAgentId$);
+  if (!agentId) {
+    return [];
   }
 
-  const currentThread = await get(currentChatThread$);
-  return threads.map((t) => {
-    return {
-      ...t,
-      title:
-        t.id === currentThread?.id ? t.title || currentThread.title : t.title,
-    };
-  });
+  const client = get(zeroClient$)(chatThreadsContract);
+  const result = await accept(
+    client.list({ query: { agentId: agentId } }),
+    [200],
+  );
+  return result.body.threads;
 });
+
+/**
+ * The earliest ended-but-unread thread that is not the currently open thread.
+ * Used by the mobile header to prompt the user to check pending replies.
+ */
+export const earliestUnreadEndedThread$ = computed(
+  async (get): Promise<ChatThreadListItem | null> => {
+    const threads = await get(chatThreads$);
+    const currentThreadId = get(currentChatThreadId$);
+
+    const candidates = threads
+      .filter((t) => {
+        return !t.running && !t.isRead && t.id !== currentThreadId;
+      })
+      .sort((a, b) => {
+        return (
+          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+        );
+      });
+
+    return candidates[0] ?? null;
+  },
+);

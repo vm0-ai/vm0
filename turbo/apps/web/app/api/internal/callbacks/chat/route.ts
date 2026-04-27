@@ -2,8 +2,8 @@ import { NextRequest, NextResponse, after } from "next/server";
 import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
 import { verifyCallback } from "../../../../../src/lib/infra/callback";
-import { agentRuns } from "../../../../../src/db/schema/agent-run";
-import { chatMessages } from "../../../../../src/db/schema/chat-message";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { chatMessages } from "@vm0/db/schema/chat-message";
 import { recordSandboxOperation } from "../../../../../src/lib/infra/metrics/instruments";
 import {
   insertChatMessage,
@@ -12,6 +12,7 @@ import {
   getLatestMessagesByThreadId,
   PREVIOUS_CONTEXT_MESSAGES,
 } from "../../../../../src/lib/zero/chat-thread/chat-message-service";
+import { formatChatRunErrorMessage } from "../../../../../src/lib/zero/chat-thread/chat-run-error-message";
 import {
   generateChatTitle,
   generateChatNotificationSummary,
@@ -236,19 +237,25 @@ async function handleFailed(
   userId: string,
   errorMessage: string,
 ): Promise<void> {
+  const displayErrorMessage = await formatChatRunErrorMessage({
+    chatThreadId: threadId,
+    runId,
+    errorMessage,
+  });
+
   await insertChatMessage({
     chatThreadId: threadId,
     userId,
     role: "assistant",
-    content: errorMessage,
+    content: displayErrorMessage,
     runId,
-    error: errorMessage,
+    error: displayErrorMessage,
   });
 
   // Send push notification (best-effort)
   await sendUserPushNotifications(userId, {
     title: prompt.slice(0, 60),
-    body: `Task failed: ${errorMessage.slice(0, 80)}`,
+    body: `Task failed: ${displayErrorMessage.slice(0, 80)}`,
     url: `/chats/${threadId}`,
   });
 }

@@ -67,7 +67,7 @@ pub async fn create_snapshot(
         binary_path: &config.binary_path,
         kernel_path: &config.kernel_path,
         rootfs_path: &config.rootfs_path,
-        snapshot: None,
+        mode: prerequisites::PrerequisiteMode::SnapshotCreate,
     })
     .await
     .map_err(|e| SnapshotError::Setup(e.to_string()))?;
@@ -109,6 +109,17 @@ pub async fn create_snapshot(
 
     info!(work_dir = %paths.workspace().display(), "starting snapshot creation");
 
+    // Validate network prerequisites before allocating an NBD device. The
+    // actual namespace pool is still created after the device so the workflow
+    // order stays the same, but this keeps pure host-command failures from
+    // falling onto the NBD best-effort Drop path.
+    let netns_config = NetnsPoolConfig {
+        proxy_port: None,
+        dns_port: None,
+    }
+    .into_checked()
+    .map_err(|e| SnapshotError::Setup(e.to_string()))?;
+
     // 2. Create NBD COW device backed by the rootfs image.
     let cow_file = paths.workspace().join("cow.img");
     let base_size = tokio::fs::metadata(&config.rootfs_path)
@@ -136,12 +147,23 @@ pub async fn create_snapshot(
     info!(device = %cow_device.device_path().display(), "NBD COW device created");
 
     // 3. Create network namespace (pool of 1, index auto-allocated via flock).
-    let mut netns_pool = NetnsPool::create(NetnsPoolConfig {
-        proxy_port: None,
-        dns_port: None,
-    })
-    .await
-    .map_err(|e| SnapshotError::Setup(format!("netns pool: {e}")))?;
+    let mut netns_pool = match NetnsPool::create_checked(netns_config).await {
+        Ok(pool) => pool,
+        Err(e) => {
+            drop(cow_device);
+            let mut pool = device_pool.lock().await;
+            pool.release(device_index);
+            pool.cleanup().await;
+            drop(pool);
+            if let Err(cleanup_err) = tokio::fs::remove_dir_all(&sock_dir).await {
+                tracing::warn!(
+                    error = %cleanup_err,
+                    "failed to cleanup sock dir after netns pool failure"
+                );
+            }
+            return Err(SnapshotError::Setup(format!("netns pool: {e}")));
+        }
+    };
 
     // Guard: ensure netns cleanup on any exit path.
     let result = run_snapshot_workflow(
@@ -184,6 +206,7 @@ pub async fn create_snapshot(
 /// failures via `child.try_wait()` instead of an opaque API-ready timeout.
 const SPAWN_INNER_CMD: &str =
     r#"mount --bind "$1" "$2" && exec ip netns exec "$3" "$4" --api-sock "$5""#;
+const UNSHARE_MOUNT_ARGS: &[&str] = &["--mount", "--propagation", "private"];
 
 /// Number of recent stderr lines retained from the spawn chain, used to
 /// surface the underlying cause when the chain (`unshare → bash → ip netns
@@ -305,7 +328,8 @@ async fn run_snapshot_workflow(
     // Inner command is [`SPAWN_INNER_CMD`].
     let cow_device_path = cow_device.device_path().to_path_buf();
     let spawn_result = tokio::process::Command::new("unshare")
-        .args(["--mount", "bash", "-c", SPAWN_INNER_CMD, "_"])
+        .args(UNSHARE_MOUNT_ARGS)
+        .args(["bash", "-c", SPAWN_INNER_CMD, "_"])
         .arg(&cow_device_path) // $1
         .arg(&drive_bind) // $2
         .arg(&network.name) // $3
@@ -888,5 +912,10 @@ mod tests {
             SPAWN_INNER_CMD.contains("&& exec ip netns exec"),
             "inner_cmd must exec ip netns exec firecracker: {SPAWN_INNER_CMD}"
         );
+    }
+
+    #[test]
+    fn snapshot_create_unshare_uses_private_mount_propagation() {
+        assert_eq!(UNSHARE_MOUNT_ARGS, ["--mount", "--propagation", "private"]);
     }
 }

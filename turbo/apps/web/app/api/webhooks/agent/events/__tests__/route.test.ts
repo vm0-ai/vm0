@@ -88,7 +88,7 @@ describe("POST /api/webhooks/agent/events", () => {
     // Setup spy on ingestToAxiom - returns true by default
     ingestToAxiomSpy = vi
       .spyOn(axiomModule, "ingestToAxiom")
-      .mockResolvedValue(true);
+      .mockReturnValue(true);
 
     // Reset auth mock for webhook tests (which use token auth)
     mockClerk({ userId: null });
@@ -545,13 +545,13 @@ describe("POST /api/webhooks/agent/events", () => {
     });
   });
 
-  describe("DB fallback (Axiom not configured)", () => {
+  describe("Required Axiom dispatch", () => {
     beforeEach(() => {
       // Simulate Axiom not configured
-      ingestToAxiomSpy.mockResolvedValue(false);
+      ingestToAxiomSpy.mockReturnValue(false);
     });
 
-    it("should store events to DB when Axiom is not configured", async () => {
+    it("should reject events when Axiom is not configured", async () => {
       const request = createTestRequest(
         "http://localhost:3000/api/webhooks/agent/events",
         {
@@ -582,15 +582,124 @@ describe("POST /api/webhooks/agent/events", () => {
 
       const response = await postAndFlush(request);
 
-      expect(response.status).toBe(200);
-      const data = await response.json();
-      expect(data.received).toBe(2);
-      expect(data.firstSequence).toBe(0);
-      expect(data.lastSequence).toBe(1);
+      expect(response.status).toBe(500);
+      expect(ingestToAxiomSpy).toHaveBeenCalled();
     });
 
-    it("should not store to DB when Axiom ingest succeeds", async () => {
-      ingestToAxiomSpy.mockResolvedValue(true);
+    it("should not dispatch optional consumers when required Axiom fails", async () => {
+      let creditCalls = 0;
+      server.use(
+        http.post(
+          "http://localhost:3000/api/internal/event-consumers/credit",
+          () => {
+            creditCalls++;
+            return HttpResponse.json({ processed: 1 });
+          },
+        ),
+      );
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/events",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            events: [
+              {
+                type: "result",
+                sequenceNumber: 0,
+                timestamp: Date.now(),
+                uuid: randomUUID(),
+                total_cost_usd: 0.01,
+              },
+            ],
+          }),
+        },
+      );
+
+      const response = await postAndFlush(request);
+
+      expect(response.status).toBe(500);
+      expect(creditCalls).toBe(0);
+    });
+
+    it("should reject events when Axiom flush fails", async () => {
+      ingestToAxiomSpy.mockReturnValue(true);
+      context.mocks.axiom.flushAxiom.mockRejectedValueOnce(
+        new Error("flush failed"),
+      );
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/events",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            events: [
+              {
+                type: "test",
+                sequenceNumber: 0,
+                timestamp: Date.now(),
+                data: {},
+              },
+            ],
+          }),
+        },
+      );
+
+      const response = await postAndFlush(request);
+
+      expect(response.status).toBe(500);
+    });
+
+    it("should accept events when an optional consumer fails", async () => {
+      ingestToAxiomSpy.mockReturnValue(true);
+      server.use(
+        http.post(
+          "http://localhost:3000/api/internal/event-consumers/credit",
+          () => {
+            return HttpResponse.json({ error: "credit down" }, { status: 503 });
+          },
+        ),
+      );
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/events",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            events: [
+              {
+                type: "test",
+                sequenceNumber: 0,
+                timestamp: Date.now(),
+                data: {},
+              },
+            ],
+          }),
+        },
+      );
+
+      const response = await postAndFlush(request);
+
+      expect(response.status).toBe(200);
+    });
+
+    it("should accept events when Axiom ingest and flush succeeds", async () => {
+      ingestToAxiomSpy.mockReturnValue(true);
 
       const request = createTestRequest(
         "http://localhost:3000/api/webhooks/agent/events",
@@ -617,8 +726,11 @@ describe("POST /api/webhooks/agent/events", () => {
       const response = await postAndFlush(request);
       expect(response.status).toBe(200);
 
-      // Axiom ingest returned true, DB fallback should not run
       expect(ingestToAxiomSpy).toHaveBeenCalled();
+      expect(context.mocks.axiom.flushAxiom).toHaveBeenCalledWith({
+        throwOnError: true,
+        client: "sessions",
+      });
     });
   });
 

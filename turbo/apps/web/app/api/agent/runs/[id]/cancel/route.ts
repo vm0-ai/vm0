@@ -1,5 +1,5 @@
 import { createHandler, tsr } from "../../../../../../src/lib/ts-rest-handler";
-import { runsCancelContract } from "@vm0/core";
+import { runsCancelContract } from "@vm0/api-contracts/contracts/runs";
 import { initServices } from "../../../../../../src/lib/init-services";
 import {
   requireAuth,
@@ -7,7 +7,7 @@ import {
 } from "../../../../../../src/lib/auth/require-auth";
 import { isSandboxAuth } from "../../../../../../src/lib/auth/capability-check";
 import { resolveOrg } from "../../../../../../src/lib/zero/org/resolve-org";
-import { agentRuns } from "../../../../../../src/db/schema/agent-run";
+import { agentRuns } from "@vm0/db/schema/agent-run";
 import { eq, and } from "drizzle-orm";
 import { cancelRun } from "../../../../../../src/lib/zero/zero-run-cancel";
 import { dispatchCancelSideEffects } from "../../../../../../src/lib/infra/run/run-service";
@@ -16,11 +16,12 @@ import {
   drainOrgQueue,
 } from "../../../../../../src/lib/zero/zero-run-queue-service";
 import { processOrgCredits } from "../../../../../../src/lib/zero/credit/credit-service";
+import { processOrgUsageEvents } from "../../../../../../src/lib/zero/credit/usage-event-service";
 import {
   isNotFound,
   isBadRequest,
   isRunNotCancellable,
-} from "../../../../../../src/lib/shared/errors";
+} from "@vm0/api-services/errors";
 import { logger } from "../../../../../../src/lib/shared/logger";
 import { after } from "next/server";
 
@@ -75,6 +76,7 @@ const router = tsr.router(runsCancelContract, {
           );
           if (shouldProcessCredits) {
             await processOrgCredits(result.orgId);
+            await processOrgUsageEvents(result.orgId);
           }
         });
       }

@@ -82,6 +82,7 @@ import { user$ } from "../../signals/auth.ts";
 import { ZeroNoPermissionIllustration } from "../zero-page/components/zero-no-permission-illustration.tsx";
 import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.tsx";
 import { PermissionsDrawer } from "../zero-page/components/settings/permissions-dialog.tsx";
+import noConnectorImg from "../zero-page/assets/no-connector.webp";
 import { JobCustomConnectorsSection } from "./job-custom-connectors-section.tsx";
 import {
   hasConnectorPermissions,
@@ -506,8 +507,13 @@ function JobPermissionsTab({
     <div className="mx-auto max-w-[900px] flex flex-col gap-4">
       {connectedConnectors.length === 0 ? (
         <>
-          <div className="zero-card py-8 text-center">
-            <p className="text-sm text-muted-foreground">
+          <div className="zero-card py-8 flex flex-col items-center gap-3">
+            <img
+              src={noConnectorImg}
+              alt="No connectors"
+              className="h-20 w-20 object-contain opacity-80"
+            />
+            <p className="text-sm text-muted-foreground text-center">
               No connected services yet. Head to the{" "}
               <Link
                 pathname="/connectors"

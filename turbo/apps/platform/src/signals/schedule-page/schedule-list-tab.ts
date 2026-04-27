@@ -1,16 +1,16 @@
 /**
- * Top-level tab state for the /schedules page: List (default), Calendar, and
- * Run History. Persisted to the URL via `?tab=` so the view is linkable.
+ * Top-level tab state for the /schedules page: List (default) and Calendar.
+ * Persisted to the URL via `?tab=` so the view is linkable.
  */
 import { command, computed, state } from "ccstate";
 import { search, replaceState, pathname } from "../location.ts";
 
-type ScheduleListTab = "list" | "calendar" | "history";
+type ScheduleListTab = "list" | "calendar";
 
 const DEFAULT_TAB: ScheduleListTab = "list";
 
 function isValidTab(tab: string): tab is ScheduleListTab {
-  return tab === "list" || tab === "calendar" || tab === "history";
+  return tab === "list" || tab === "calendar";
 }
 
 function getInitialTab(): ScheduleListTab {

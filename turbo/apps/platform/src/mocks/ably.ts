@@ -104,18 +104,18 @@ export function triggerAblyReconnect(): void {
 const connectedListeners = new Set<ConnectionListener>();
 
 function invokeAuthCallback(cb: AuthCallback): Promise<AuthCallbackToken> {
-  return new Promise((resolve, reject) => {
-    cb({}, (error, token) => {
-      if (error) {
-        const message =
-          typeof error === "string" ? error : (error.message ?? "auth error");
-        reject(new Error(message));
-        return;
-      }
-      tokenBodies.push(token);
-      resolve(token);
-    });
+  const deferred = Promise.withResolvers<AuthCallbackToken>();
+  cb({}, (error, token) => {
+    if (error) {
+      const message =
+        typeof error === "string" ? error : (error.message ?? "auth error");
+      deferred.reject(new Error(message));
+      return;
+    }
+    tokenBodies.push(token);
+    deferred.resolve(token);
   });
+  return deferred.promise;
 }
 
 const fakeChannel = {

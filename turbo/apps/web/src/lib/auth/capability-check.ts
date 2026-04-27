@@ -1,4 +1,4 @@
-import type { ZeroCapability } from "@vm0/core";
+import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import type { AuthContext } from "./get-auth-context";
 
 /**

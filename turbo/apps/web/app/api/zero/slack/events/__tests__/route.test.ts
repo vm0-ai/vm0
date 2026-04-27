@@ -23,16 +23,18 @@ import {
   clearComposeHeadVersion,
 } from "../../../../../../src/__tests__/db-test-seeders/agents";
 import { reloadEnv } from "../../../../../../src/env";
+import { nextAfterArgForms } from "../../../../../../src/__tests__/next-after-hooks";
 
-vi.mock("@vm0/core", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@vm0/core")>();
+vi.mock("@vm0/core/feature-switch", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@vm0/core/feature-switch")>();
   return {
     ...actual,
     isFeatureEnabled: vi.fn().mockReturnValue(true),
   };
 });
 
-const { isFeatureEnabled } = await import("@vm0/core");
+const { isFeatureEnabled } = await import("@vm0/core/feature-switch");
 const mockIsFeatureEnabled = isFeatureEnabled as ReturnType<typeof vi.fn>;
 
 const { POST } = await import("../route");
@@ -1201,7 +1203,7 @@ describe("POST /api/zero/slack/events", () => {
 
       await POST(request);
 
-      expect(globalThis.nextAfterArgForms).toEqual(["fn"]);
+      expect(nextAfterArgForms).toEqual(["fn"]);
     });
 
     it("registers direct_message handler via callback form", async () => {
@@ -1226,7 +1228,7 @@ describe("POST /api/zero/slack/events", () => {
 
       await POST(request);
 
-      expect(globalThis.nextAfterArgForms).toEqual(["fn"]);
+      expect(nextAfterArgForms).toEqual(["fn"]);
     });
 
     it("registers app_home_opened (home) handler via callback form", async () => {
@@ -1248,7 +1250,7 @@ describe("POST /api/zero/slack/events", () => {
 
       await POST(request);
 
-      expect(globalThis.nextAfterArgForms).toEqual(["fn"]);
+      expect(nextAfterArgForms).toEqual(["fn"]);
     });
 
     it("registers app_home_opened (messages) handler via callback form", async () => {
@@ -1270,7 +1272,7 @@ describe("POST /api/zero/slack/events", () => {
 
       await POST(request);
 
-      expect(globalThis.nextAfterArgForms).toEqual(["fn"]);
+      expect(nextAfterArgForms).toEqual(["fn"]);
     });
 
     it("registers app_uninstalled cleanup via callback form", async () => {
@@ -1287,7 +1289,7 @@ describe("POST /api/zero/slack/events", () => {
 
       await POST(request);
 
-      expect(globalThis.nextAfterArgForms).toEqual(["fn"]);
+      expect(nextAfterArgForms).toEqual(["fn"]);
     });
 
     it("registers tokens_revoked cleanup via callback form", async () => {
@@ -1307,7 +1309,7 @@ describe("POST /api/zero/slack/events", () => {
 
       await POST(request);
 
-      expect(globalThis.nextAfterArgForms).toEqual(["fn"]);
+      expect(nextAfterArgForms).toEqual(["fn"]);
     });
   });
 
@@ -1339,7 +1341,7 @@ describe("POST /api/zero/slack/events", () => {
       clearAlternate: boolean;
       clearDefault: boolean;
     }) {
-      // Default agent — used when the user has no override or feature is off.
+      // Default agent — used when the user has no override.
       const defaultCompose = await createTestCompose(uniqueId("default"));
       await updateOrgDefaultAgent(user.orgId, defaultCompose.agentId);
       if (opts.clearDefault) {
@@ -1463,20 +1465,15 @@ describe("POST /api/zero/slack/events", () => {
       expect(serialized).not.toContain("Sent via");
     });
 
-    it("ignores the user's override and uses the default agent when the feature is gated off for the org", async () => {
-      // Scenario: the user already has a persisted override (e.g. set while
-      // the feature was enabled), but the feature switch has since been
-      // turned off for this org. `resolveEffectiveComposeId` must ignore the
-      // DB override and route through the org default. We verify this the
-      // same way as the no-override case: the error reply carries no footer.
+    it("honors the user's override even when unrelated feature switches return false", async () => {
       mockIsFeatureEnabled.mockReturnValue(false);
 
-      const { workspaceId, slackUserId } = await setupOrgWithOverride({
-        overrideToAlternate: true,
-        clearAlternate: false,
-        // Clear default to force the pre-dispatch error path we can assert on.
-        clearDefault: true,
-      });
+      const { workspaceId, slackUserId, alternate } =
+        await setupOrgWithOverride({
+          overrideToAlternate: true,
+          clearAlternate: true,
+          clearDefault: false,
+        });
 
       const request = createSlackEventRequest({
         type: "event_callback",
@@ -1499,16 +1496,13 @@ describe("POST /api/zero/slack/events", () => {
 
       const { WebClient } = await import("@slack/web-api");
       const mockClient = new WebClient();
-      // postMessage was called because the DEFAULT agent failed pre-dispatch.
-      // If the override were honored, the alternate (which is healthy here)
-      // would have taken the happy path and no error would be posted.
       expect(mockClient.chat.postMessage).toHaveBeenCalledOnce();
       const callArg = (mockClient.chat.postMessage as ReturnType<typeof vi.fn>)
         .mock.calls[0]?.[0] as {
         blocks?: unknown;
       };
       const serialized = JSON.stringify(callArg?.blocks ?? "");
-      expect(serialized).not.toContain("Sent via");
+      expect(serialized).toContain(`Sent via ${alternate.name}`);
     });
 
     it("falls back to the org default when the override points to a compose without a zero_agents row (stale override guard)", async () => {

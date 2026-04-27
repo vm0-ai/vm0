@@ -3,21 +3,21 @@ import {
   areProvidersCompatible,
   MODEL_PROVIDER_TYPES,
   type ModelProviderType,
-} from "@vm0/core";
+} from "@vm0/api-contracts/contracts/model-providers";
 import {
   agentComposeVersions,
   agentComposes,
-} from "../../../db/schema/agent-compose";
+} from "@vm0/db/schema/agent-compose";
 import { getAgentSessionWithConversation } from "../../infra/agent-session";
-import { checkpoints } from "../../../db/schema/checkpoint";
-import { agentRuns } from "../../../db/schema/agent-run";
+import { checkpoints } from "@vm0/db/schema/checkpoint";
+import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
   badRequest,
   notFound,
   providerIncompatible,
-} from "../../shared/errors";
+} from "@vm0/api-services/errors";
 import { logger } from "../../shared/logger";
-import type { ResumeSession, ArtifactSnapshot } from "../../infra/run/types";
+import type { ContextArtifact, ResumeSession } from "../../infra/run/types";
 import type { AdditionalVolume } from "../../infra/storage/types";
 import {
   resolveCheckpoint,
@@ -183,9 +183,6 @@ export function checkProviderCompatibility(
  */
 interface ApplyResolutionDefaultsParams {
   agentComposeVersionId?: string;
-  artifactName?: string;
-  artifactVersion?: string;
-  memoryName?: string;
   vars?: Record<string, string>;
   volumeVersions?: Record<string, string>;
   additionalVolumes?: AdditionalVolume[];
@@ -201,34 +198,21 @@ export function applyResolutionDefaults(
 ): {
   agentComposeVersionId: string;
   agentCompose: unknown;
-  artifactName: string | undefined;
-  artifactVersion: string | undefined;
-  memoryName: string | undefined;
+  artifacts: ContextArtifact[];
   vars: Record<string, string> | undefined;
   volumeVersions: Record<string, string> | undefined;
   additionalVolumes: AdditionalVolume[] | undefined;
   resumeSession: ResumeSession;
-  resumeArtifact: ArtifactSnapshot | undefined;
 } {
-  const artifactName = params.artifactName || resolution.artifactName;
-  const artifactVersion = params.artifactVersion || resolution.artifactVersion;
-
-  // Build resumeArtifact if applicable
-  let resumeArtifact: ArtifactSnapshot | undefined;
-  if (resolution.buildResumeArtifact && artifactName) {
-    resumeArtifact = {
-      artifactName,
-      artifactVersion: artifactVersion || "latest",
-    };
-  }
-
   return {
     agentComposeVersionId:
       params.agentComposeVersionId || resolution.agentComposeVersionId,
     agentCompose: resolution.agentCompose,
-    artifactName,
-    artifactVersion,
-    memoryName: params.memoryName || resolution.memoryName,
+    // Artifacts are resolution-only on purpose — when resuming a session the
+    // artifact list is dictated by the checkpoint/session snapshot and must
+    // not be overridden by incoming run params, which don't carry artifacts
+    // at this entry point.
+    artifacts: resolution.artifacts,
     vars: params.vars || resolution.vars,
     volumeVersions: params.volumeVersions || resolution.volumeVersions,
     additionalVolumes: params.additionalVolumes || resolution.additionalVolumes,
@@ -237,6 +221,5 @@ export function applyResolutionDefaults(
       sessionHistory: resolution.conversationData.cliAgentSessionHistory,
       workingDir: resolution.workingDir,
     },
-    resumeArtifact,
   };
 }

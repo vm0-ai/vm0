@@ -1,19 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
-import {
-  detachedSetupPage,
-  setupPage,
-  updateTestPathname$,
-} from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { allConnectorTypes$ } from "../settings/connectors.ts";
-import { zeroAddedConnectors$ } from "../zero-connectors.ts";
-import {
-  type ConnectorType,
-  zeroAgentsByIdContract,
-  zeroUserConnectorsContract,
-} from "@vm0/core";
-import { mockApi } from "../../../mocks/msw-contract.ts";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import type { ConnectorType } from "@vm0/connectors/connectors";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
 
 const context = testContext();
@@ -97,57 +87,54 @@ describe("connectors", () => {
   });
 });
 
-describe("zero connectors — agent switch", () => {
-  it("should return seeded connectors for new agent after switching", async () => {
-    // Mock two agents with different user-connector permissions
-    server.use(
-      mockApi(zeroAgentsByIdContract.get, ({ params, respond }) => {
-        if (params.id === "agent-a") {
-          return respond(200, {
-            agentId: "uuid-a",
-            ownerId: "test-owner-id",
-            description: null,
-            displayName: "Agent A",
-            sound: null,
-            avatarUrl: null,
-            permissionPolicies: null,
-            customSkills: [],
-          });
-        }
-        return respond(200, {
-          agentId: "uuid-b",
-          ownerId: "test-owner-id",
-          description: null,
-          displayName: "Agent B",
-          sound: null,
-          avatarUrl: null,
-          permissionPolicies: null,
-          customSkills: [],
-        });
-      }),
-      mockApi(zeroUserConnectorsContract.get, ({ params, respond }) => {
-        if (params.id === "uuid-a" || params.id === "agent-a") {
-          return respond(200, { enabledTypes: ["github"] });
-        }
-        return respond(200, { enabledTypes: ["slack"] });
-      }),
-    );
-
-    await setupPage({
+describe("connectors — strictFeatureFlag", () => {
+  it("hides zapier when ZapierConnector feature switch is disabled", async () => {
+    detachedSetupPage({
       context,
-      path: "/agents/agent-a",
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.ZapierConnector]: false },
       withoutRender: true,
     });
 
-    // Agent A should have github as seeded connector
-    const initialConnectors = await context.store.get(zeroAddedConnectors$);
-    expect(initialConnectors).toStrictEqual(["github"]);
+    const connectorTypes = await context.store.get(allConnectorTypes$);
+    const zapier = connectorTypes.find((c) => {
+      return c.type === "zapier";
+    });
 
-    // Switch to agent B by updating the pathname
-    context.store.set(updateTestPathname$, "/agents/agent-b");
+    expect(zapier).toBeUndefined();
+  });
 
-    // Agent B's seeded connectors should show
-    const agentBConnectors = await context.store.get(zeroAddedConnectors$);
-    expect(agentBConnectors).toStrictEqual(["slack"]);
+  it("shows zapier when ZapierConnector feature switch is enabled", async () => {
+    detachedSetupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.ZapierConnector]: true },
+      withoutRender: true,
+    });
+
+    const connectorTypes = await context.store.get(allConnectorTypes$);
+    const zapier = connectorTypes.find((c) => {
+      return c.type === "zapier";
+    });
+
+    expect(zapier).toBeDefined();
+    expect(zapier?.availableAuthMethods).toContain("api-token");
+  });
+
+  it("shows mercury (api-token, no strictFeatureFlag) even when its flag is disabled", async () => {
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+    });
+
+    const connectorTypes = await context.store.get(allConnectorTypes$);
+    const mercury = connectorTypes.find((c) => {
+      return c.type === "mercury";
+    });
+
+    // mercury has api-token auth and no strictFeatureFlag, so it is always visible
+    expect(mercury).toBeDefined();
+    expect(mercury?.availableAuthMethods).toContain("api-token");
   });
 });

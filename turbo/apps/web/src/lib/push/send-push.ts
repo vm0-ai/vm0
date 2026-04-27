@@ -2,7 +2,7 @@ import "server-only";
 import webpush, { WebPushError } from "web-push";
 import { eq } from "drizzle-orm";
 import { env } from "../../env";
-import { pushSubscriptions } from "../../db/schema/push-subscription";
+import { pushSubscriptions } from "@vm0/db/schema/push-subscription";
 import { logger } from "../shared/logger";
 
 const log = logger("push");

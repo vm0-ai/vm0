@@ -1,4 +1,5 @@
-import { getInstructionsFilename, getInstructionsStorageName } from "@vm0/core";
+import { getInstructionsFilename } from "@vm0/core/frameworks";
+import { getInstructionsStorageName } from "@vm0/core/storage-names";
 import { uploadStorageServerSide } from "./upload-storage";
 import { logger } from "../../shared/logger";
 

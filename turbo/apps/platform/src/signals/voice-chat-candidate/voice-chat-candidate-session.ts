@@ -1,10 +1,15 @@
 import { command, computed, state } from "ccstate";
 import {
-  zeroVoiceChatCandidateContract,
-  type VoiceChatCandidateItemRole,
-  type VoiceChatCandidateTask,
-} from "@vm0/core";
-import { resetSignal, throwIfAbort, onDomEventFn } from "../utils.ts";
+  zeroVoiceChatContract,
+  type VoiceChatItemRole,
+  type VoiceChatTask,
+} from "@vm0/api-contracts/contracts/zero-voice-chat";
+import {
+  jsonParseOr,
+  resetSignal,
+  throwIfAbort,
+  onDomEventFn,
+} from "../utils.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
@@ -19,6 +24,7 @@ type ConnectionStatus =
   | "connected"
   | "disconnected"
   | "error";
+type BargeInMode = "speech_started" | "transcript_confirmed";
 
 // Model used for the SDP exchange URL. Session config (tools / VAD / etc.) is
 // preset server-side in createEphemeralToken — keep this file free of it.
@@ -35,6 +41,7 @@ const TALKER_TOOL_NAMES = [
   "want_to_apologize",
 ] as const;
 type TalkerToolName = (typeof TALKER_TOOL_NAMES)[number];
+type TalkerToolArgs = { prompt?: unknown };
 
 function shortPrompt(prompt: string, max = 60): string {
   const trimmed = prompt.trim();
@@ -48,6 +55,10 @@ function ablyTopic(sessionId: string): string {
   return `voice-chat-candidate:${sessionId}`;
 }
 
+function parseTalkerToolArgs(argsJson: string): TalkerToolArgs | null {
+  return jsonParseOr<TalkerToolArgs | null>(argsJson, null);
+}
+
 const internalStatus$ = state<ConnectionStatus>("idle");
 const internalSessionId$ = state<string | null>(null);
 const internalError$ = state<string | null>(null);
@@ -59,7 +70,7 @@ const internalLastAssistantMessage$ = state<string>("");
 // to refetch server-side state depend on this counter.
 const vccReload$ = state<number>(0);
 
-const internalMuted$ = state<boolean>(false);
+const internalBargeInMode$ = state<BargeInMode>("speech_started");
 
 const internalPc$ = state<RTCPeerConnection | null>(null);
 const internalDc$ = state<RTCDataChannel | null>(null);
@@ -94,26 +105,24 @@ export const vccSessionId$ = computed((get) => {
  * Active + recently-finished task feed for the Trinity sidebar. Refetches on
  * every Ably tick (via vccReload$). Returns [] until a session is live.
  */
-export const vccTaskFeed$ = computed(
-  async (get): Promise<VoiceChatCandidateTask[]> => {
-    get(vccReload$);
-    const sid = get(internalSessionId$);
-    if (!sid) {
-      return [];
-    }
-    const createClient = get(zeroClient$);
-    const client = createClient(zeroVoiceChatCandidateContract);
-    const res = await accept(
-      client.listTasks({ params: { id: sid } }),
-      [200, 401, 404],
-      { toast: false },
-    );
-    if (res.status !== 200) {
-      return [];
-    }
-    return res.body.tasks;
-  },
-);
+export const vccTaskFeed$ = computed(async (get): Promise<VoiceChatTask[]> => {
+  get(vccReload$);
+  const sid = get(internalSessionId$);
+  if (!sid) {
+    return [];
+  }
+  const createClient = get(zeroClient$);
+  const client = createClient(zeroVoiceChatContract);
+  const res = await accept(
+    client.listTasks({ params: { id: sid } }),
+    [200, 401, 404],
+    { toast: false },
+  );
+  if (res.status !== 200) {
+    return [];
+  }
+  return res.body.tasks;
+});
 
 export const vccLastUserMessage$ = computed((get) => {
   return get(internalLastUserMessage$);
@@ -130,7 +139,7 @@ export const vccLastAssistantMessage$ = computed((get) => {
 const appendItem$ = command(
   async (
     { get, set },
-    role: VoiceChatCandidateItemRole,
+    role: VoiceChatItemRole,
     content: string,
     realtimeItemId: string,
     signal: AbortSignal,
@@ -140,11 +149,12 @@ const appendItem$ = command(
       return;
     }
     const createClient = get(zeroClient$);
-    const client = createClient(zeroVoiceChatCandidateContract);
+    const client = createClient(zeroVoiceChatContract);
     const res = await accept(
       client.appendItem({
         params: { id: sid },
         body: { role, content, realtimeItemId },
+        fetchOptions: { signal },
       }),
       [200, 400, 401, 404],
       { toast: false },
@@ -183,11 +193,8 @@ const handleTalkerToolCall$ = command(
       return;
     }
 
-    let parsed: { prompt?: unknown };
-    try {
-      parsed = JSON.parse(argsJson) as { prompt?: unknown };
-    } catch (error) {
-      throwIfAbort(error);
+    const parsed = parseTalkerToolArgs(argsJson);
+    if (!parsed) {
       L.warn("Failed to parse tool args", { toolName, callId, argsJson });
       sendFunctionOutput(dc, callId, "Inform failed: invalid args.");
       return;
@@ -200,11 +207,12 @@ const handleTalkerToolCall$ = command(
     }
 
     const createClient = get(zeroClient$);
-    const client = createClient(zeroVoiceChatCandidateContract);
+    const client = createClient(zeroVoiceChatContract);
     const res = await accept(
       client.createTask({
         params: { id: sid },
         body: { prompt, callId },
+        fetchOptions: { signal },
       }),
       [200, 400, 401, 404],
       { toast: false },
@@ -262,6 +270,10 @@ type RealtimeDCEvent = {
   arguments?: string;
 };
 
+function parseRealtimeDCEvent(data: string): RealtimeDCEvent | null {
+  return jsonParseOr<RealtimeDCEvent | null>(data, null);
+}
+
 const handleAudioTranscriptDone$ = command(
   async ({ get, set }, event: RealtimeDCEvent, signal: AbortSignal) => {
     const finalText = event.transcript ?? "";
@@ -277,8 +289,14 @@ const handleAudioTranscriptDone$ = command(
 );
 
 const handleInputAudioTranscriptionCompleted$ = command(
-  async ({ set }, event: RealtimeDCEvent, signal: AbortSignal) => {
+  async ({ get, set }, event: RealtimeDCEvent, signal: AbortSignal) => {
     if (event.transcript && event.item_id) {
+      if (
+        get(internalBargeInMode$) === "transcript_confirmed" &&
+        event.transcript.trim()
+      ) {
+        await set(truncateCurrentAssistantAudio$, signal);
+      }
       await set(appendItem$, "user", event.transcript, event.item_id, signal);
     }
   },
@@ -336,7 +354,6 @@ const truncateCurrentAssistantAudio$ = command(
       currentAudioPositionMs(audioEl) - current.startedAtMs,
     );
 
-    audioEl.pause();
     dc.send(
       JSON.stringify({
         type: "conversation.item.truncate",
@@ -363,8 +380,12 @@ const truncateCurrentAssistantAudio$ = command(
 );
 
 const handleDCMessage$ = command(
-  async ({ set }, data: string, signal: AbortSignal) => {
-    const event = JSON.parse(data) as RealtimeDCEvent;
+  async ({ get, set }, data: string, signal: AbortSignal) => {
+    const event = parseRealtimeDCEvent(data);
+    if (!event) {
+      L.warn("Failed to parse realtime data channel event", { data });
+      return;
+    }
 
     switch (event.type) {
       case "conversation.item.created": {
@@ -380,7 +401,9 @@ const handleDCMessage$ = command(
         break;
       }
       case "input_audio_buffer.speech_started": {
-        await set(truncateCurrentAssistantAudio$, signal);
+        if (get(internalBargeInMode$) === "speech_started") {
+          await set(truncateCurrentAssistantAudio$, signal);
+        }
         break;
       }
       case "response.audio_transcript.done": {
@@ -485,6 +508,7 @@ const setupWebRTC$ = command(
           "Content-Type": "application/sdp",
         },
         body: offer.sdp,
+        signal,
       },
     );
     signal.throwIfAborted();
@@ -521,9 +545,9 @@ const syncTalkerInstructions$ = command(
       return;
     }
     const createClient = get(zeroClient$);
-    const client = createClient(zeroVoiceChatCandidateContract);
+    const client = createClient(zeroVoiceChatContract);
     const res = await accept(
-      client.getSession({ params: { id: sid } }),
+      client.getSession({ params: { id: sid }, fetchOptions: { signal } }),
       [200, 401, 404],
       { toast: false },
     );
@@ -547,7 +571,8 @@ const syncTalkerInstructions$ = command(
 const startAblyLoop$ = command(
   async ({ set }, sessionId: string, signal: AbortSignal) => {
     const pollBody$ = command(async ({ get, set }, loopSignal: AbortSignal) => {
-      if (!get(internalSessionId$)) {
+      const sid = get(internalSessionId$);
+      if (!sid) {
         return true;
       }
       // One signal drives two things: bump the counter so async computeds
@@ -560,6 +585,12 @@ const startAblyLoop$ = command(
       return false;
     });
 
+    // Prime once before subscribing so instructions reach the live DC session
+    // immediately. `setAblyLoop$` no longer primes its subscribers.
+    const done = await set(pollBody$, signal);
+    if (done) {
+      return;
+    }
     await set(setAblyLoop$, ablyTopic(sessionId), pollBody$, signal);
   },
 );
@@ -643,6 +674,137 @@ const releaseWakeLock$ = command(({ get, set }) => {
 });
 
 // ---------------------------------------------------------------------------
+// Microphone recovery (re-acquire tracks after any OS audio interruption)
+// ---------------------------------------------------------------------------
+
+const recoverMicrophone$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    const pc = get(internalPc$);
+    if (!pc || pc.connectionState === "closed") {
+      return;
+    }
+    let newStream: MediaStream;
+    try {
+      const audioConfig = await resolveAudioConfig();
+      signal.throwIfAborted();
+      newStream = await navigator.mediaDevices.getUserMedia({
+        audio: audioConfig.constraints,
+      });
+    } catch (error) {
+      throwIfAbort(error);
+      set(internalError$, "Microphone access lost. Please reconnect.");
+      set(internalStatus$, "error");
+      return;
+    }
+    signal.throwIfAborted();
+    const newTrack = newStream.getAudioTracks()[0];
+    if (!newTrack) {
+      for (const t of newStream.getTracks()) {
+        t.stop();
+      }
+      return;
+    }
+    const sender = pc.getSenders().find((s) => {
+      return s.track?.kind === "audio";
+    });
+    if (sender) {
+      try {
+        await sender.replaceTrack(newTrack);
+      } catch (error) {
+        throwIfAbort(error);
+        for (const t of newStream.getTracks()) {
+          t.stop();
+        }
+        set(internalError$, "Microphone access lost. Please reconnect.");
+        set(internalStatus$, "error");
+        return;
+      }
+    }
+    signal.throwIfAborted();
+    const oldStream = get(internalStream$);
+    if (oldStream) {
+      for (const t of oldStream.getTracks()) {
+        t.stop();
+      }
+    }
+    set(internalStream$, newStream);
+    L.info("microphone recovered after audio interruption");
+  },
+);
+
+const monitorMicrophoneRecovery$ = command(
+  ({ get, set }, signal: AbortSignal): void => {
+    let recovering = false;
+
+    // Forward-declare so triggerRecovery can reference it before the assignment.
+    let watchCurrentTracks: () => void = () => {
+      return undefined;
+    };
+
+    const triggerRecovery = async (): Promise<void> => {
+      if (signal.aborted || recovering) {
+        return;
+      }
+      recovering = true;
+      try {
+        await set(recoverMicrophone$, signal);
+      } finally {
+        recovering = false;
+      }
+      watchCurrentTracks();
+    };
+
+    // Attach "ended" listeners to the current stream's audio tracks so any OS
+    // audio interruption (notification center pull-down, screen auto-dim) fires
+    // recovery immediately without waiting for a visibility change.
+    watchCurrentTracks = (): void => {
+      const stream = get(internalStream$);
+      if (!stream) {
+        return;
+      }
+      for (const track of stream.getAudioTracks()) {
+        if (track.readyState === "ended") {
+          continue;
+        }
+        track.addEventListener("ended", onDomEventFn(triggerRecovery), {
+          once: true,
+        });
+      }
+    };
+
+    watchCurrentTracks();
+
+    // Visibility-change fallback: handles screen-lock resume and any gap
+    // where the track ended before the listener was attached.
+    const onVisibilityChange = onDomEventFn(() => {
+      if (document.visibilityState !== "visible" || signal.aborted) {
+        return;
+      }
+      const stream = get(internalStream$);
+      if (!stream) {
+        return;
+      }
+      const tracks = stream.getAudioTracks();
+      const isDead =
+        tracks.length > 0 &&
+        tracks.every((t) => {
+          return t.readyState === "ended";
+        });
+      if (!isDead) {
+        // Re-attach listeners to current tracks (covers fresh tracks post-recovery).
+        watchCurrentTracks();
+        return;
+      }
+      return triggerRecovery();
+    });
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    signal.addEventListener("abort", () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    });
+  },
+);
+
+// ---------------------------------------------------------------------------
 // Public commands
 // ---------------------------------------------------------------------------
 
@@ -657,7 +819,7 @@ export const startVoiceChatCandidate$ = command(
     set(internalError$, null);
     set(internalLastUserMessage$, "");
     set(internalLastAssistantMessage$, "");
-    set(internalMuted$, false);
+    set(internalBargeInMode$, "speech_started");
     set(internalCurrentAssistantAudioItem$, null);
     set(internalSessionId$, null);
     set(vccReload$, (n) => {
@@ -667,12 +829,15 @@ export const startVoiceChatCandidate$ = command(
     const sessionSignal = set(resetSessionSignal$, signal);
 
     const createClient = get(zeroClient$);
-    const client = createClient(zeroVoiceChatCandidateContract);
+    const client = createClient(zeroVoiceChatContract);
 
     // createSession is get-or-create on the server side: same (userId,
     // agentId) returns the existing session row, so this doubles as resume.
     const res = await accept(
-      client.createSession({ body: { agentId } }),
+      client.createSession({
+        body: { agentId },
+        fetchOptions: { signal },
+      }),
       [200, 400, 401, 403],
       { toast: false },
     );
@@ -694,9 +859,11 @@ export const startVoiceChatCandidate$ = command(
     // per connection so plugging in headphones between calls takes effect.
     const audioConfig = await resolveAudioConfig();
     signal.throwIfAborted();
+    set(internalBargeInMode$, audioConfig.bargeInMode);
 
     const tokenRes = await accept(
       client.token({
+        fetchOptions: { signal },
         body: {
           sessionId: session.id,
           noiseReduction: audioConfig.noiseReduction,
@@ -746,6 +913,8 @@ export const startVoiceChatCandidate$ = command(
     await set(acquireWakeLock$, sessionSignal);
     signal.throwIfAborted();
 
+    set(monitorMicrophoneRecovery$, sessionSignal);
+
     await set(startAblyLoop$, session.id, sessionSignal);
   },
 );
@@ -790,6 +959,7 @@ export const endVoiceChatCandidate$ = command(({ get, set }) => {
   set(internalSessionId$, null);
   set(internalLastUserMessage$, "");
   set(internalLastAssistantMessage$, "");
+  set(internalBargeInMode$, "speech_started");
   set(internalCurrentAssistantAudioItem$, null);
   set(internalStatus$, "idle");
   // Bump so vccTaskFeed$ re-resolves to [] after sessionId is cleared.
