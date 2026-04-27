@@ -130,6 +130,186 @@ impl Drop for LeakCleaner {
     }
 }
 
+#[async_trait]
+trait CreateRollbackCleanup {
+    async fn release_network(&self, network: PooledNetns);
+    async fn remove_dir(&self, kind: &'static str, path: PathBuf);
+    fn destroy_slot(&self, slot: crate::cow_pool::PrewarmedSlot);
+}
+
+struct FactoryCreateRollbackCleanup<'a> {
+    id: &'a str,
+    netns_pool: &'a std::sync::Arc<tokio::sync::Mutex<NetnsPool>>,
+}
+
+#[async_trait]
+impl CreateRollbackCleanup for FactoryCreateRollbackCleanup<'_> {
+    async fn release_network(&self, network: PooledNetns) {
+        let mut netns_pool = self.netns_pool.lock().await;
+        if let Err(e) = netns_pool.release(network).await {
+            warn!(id = %self.id, error = %e, "failed to release netns during rollback");
+        }
+    }
+
+    async fn remove_dir(&self, kind: &'static str, path: PathBuf) {
+        match tokio::fs::remove_dir_all(&path).await {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => {
+                warn!(
+                    id = %self.id,
+                    error = %e,
+                    path = %path.display(),
+                    kind,
+                    "failed to delete create-rollback directory"
+                );
+            }
+        }
+    }
+
+    fn destroy_slot(&self, slot: crate::cow_pool::PrewarmedSlot) {
+        crate::cow_pool::destroy_slot(slot);
+    }
+}
+
+struct SandboxCreateResources {
+    sandbox_paths: SandboxPaths,
+    sock_paths: SockPaths,
+    network: PooledNetns,
+}
+
+struct SandboxCreateTransaction {
+    id: String,
+    slot: Option<crate::cow_pool::PrewarmedSlot>,
+    workspace: Option<PathBuf>,
+    sock_dir: Option<PathBuf>,
+    network: Option<PooledNetns>,
+}
+
+impl SandboxCreateTransaction {
+    fn new(id: String) -> Self {
+        Self {
+            id,
+            slot: None,
+            workspace: None,
+            sock_dir: None,
+            network: None,
+        }
+    }
+
+    fn track_slot(&mut self, slot: crate::cow_pool::PrewarmedSlot) {
+        self.slot = Some(slot);
+    }
+
+    fn slot_workspace(&self) -> sandbox::Result<PathBuf> {
+        self.slot
+            .as_ref()
+            .map(|slot| slot.workspace.clone())
+            .ok_or_else(|| create_transaction_invalid_state("missing COW slot before rename"))
+    }
+
+    fn slot_renamed_to(&mut self, workspace: PathBuf) {
+        self.slot.take();
+        self.workspace = Some(workspace);
+    }
+
+    fn track_sock_dir(&mut self, sock_dir: PathBuf) {
+        self.sock_dir = Some(sock_dir);
+    }
+
+    fn track_network(&mut self, network: PooledNetns) {
+        self.network = Some(network);
+    }
+
+    fn commit(&mut self) -> sandbox::Result<SandboxCreateResources> {
+        let workspace = self
+            .workspace
+            .take()
+            .ok_or_else(|| create_transaction_invalid_state("missing workspace at commit"))?;
+        let sock_dir = self
+            .sock_dir
+            .take()
+            .ok_or_else(|| create_transaction_invalid_state("missing sock dir at commit"))?;
+        let network = self
+            .network
+            .take()
+            .ok_or_else(|| create_transaction_invalid_state("missing netns at commit"))?;
+        self.slot.take();
+
+        Ok(SandboxCreateResources {
+            sandbox_paths: SandboxPaths::new(workspace),
+            sock_paths: SockPaths::new(sock_dir),
+            network,
+        })
+    }
+
+    async fn rollback<C>(&mut self, cleanup: &C)
+    where
+        C: CreateRollbackCleanup + Sync,
+    {
+        if let Some(network) = self.network.take() {
+            cleanup.release_network(network).await;
+        }
+        if let Some(sock_dir) = self.sock_dir.take() {
+            cleanup.remove_dir("sock", sock_dir).await;
+        }
+        if let Some(workspace) = self.workspace.take() {
+            cleanup.remove_dir("workspace", workspace).await;
+        }
+        if let Some(slot) = self.slot.take() {
+            cleanup.destroy_slot(slot);
+        }
+    }
+
+    fn has_resources(&self) -> bool {
+        self.slot.is_some()
+            || self.workspace.is_some()
+            || self.sock_dir.is_some()
+            || self.network.is_some()
+    }
+}
+
+impl Drop for SandboxCreateTransaction {
+    fn drop(&mut self) {
+        if !self.has_resources() {
+            return;
+        }
+
+        warn!(
+            id = %self.id,
+            has_slot = self.slot.is_some(),
+            has_workspace = self.workspace.is_some(),
+            has_sock_dir = self.sock_dir.is_some(),
+            has_network = self.network.is_some(),
+            "sandbox create transaction dropped without explicit commit or rollback"
+        );
+
+        if let Some(slot) = self.slot.take() {
+            crate::cow_pool::destroy_slot(slot);
+        }
+        if let Some(sock_dir) = self.sock_dir.take() {
+            let _ = std::fs::remove_dir_all(sock_dir);
+        }
+        if let Some(workspace) = self.workspace.take() {
+            let _ = std::fs::remove_dir_all(workspace);
+        }
+        if self.network.is_some() {
+            warn!(
+                id = %self.id,
+                "netns acquired during create requires async rollback and may need runner gc"
+            );
+        }
+    }
+}
+
+fn create_transaction_invalid_state(message: &str) -> SandboxError {
+    SandboxError::InvalidState {
+        context: SandboxInvalidStateContext::Factory,
+        state: "create transaction invalid".into(),
+        message: message.into(),
+    }
+}
+
 /// Background task that receives leaked sandbox resources from `Drop`
 /// impls and releases them asynchronously (pool indices, namespaces, dirs).
 async fn drain_leaked_resources(
@@ -477,102 +657,109 @@ impl SandboxFactory for FirecrackerFactory {
         }
 
         let id = config.id.to_string();
-        let sock_paths = SockPaths::new(self.runtime_paths.sock_dir(&id));
+        let rollback_cleanup = FactoryCreateRollbackCleanup {
+            id: &id,
+            netns_pool: self.netns_pool(),
+        };
+        let mut tx = SandboxCreateTransaction::new(id.clone());
 
-        // Acquire a pre-warmed COW slot from the pool.
-        // The slot provides: workspace dir (already created) and cow file.
-        let slot = self.cow_pool().lock().await.acquire().await.map_err(|e| {
-            SandboxError::Initialization {
-                phase: SandboxInitializationPhase::SandboxAllocation,
-                message: format!("acquire COW slot: {e}"),
+        let create_result: sandbox::Result<(SandboxCreateResources, NbdCowDevice)> = async {
+            // Acquire a pre-warmed COW slot from the pool.
+            // The slot provides: workspace dir (already created) and cow file.
+            let slot = self.cow_pool().lock().await.acquire().await.map_err(|e| {
+                SandboxError::Initialization {
+                    phase: SandboxInitializationPhase::SandboxAllocation,
+                    message: format!("acquire COW slot: {e}"),
+                }
+            })?;
+            tx.track_slot(slot);
+
+            // The slot workspace is {workspaces_dir}/{slot_uuid}/.
+            // Rename to {workspaces_dir}/{sandbox_id}/ for doctor correlation.
+            let target_workspace = self.factory_paths.workspace(&id);
+            if target_workspace.exists()
+                && let Err(e) = tokio::fs::remove_dir_all(&target_workspace).await
+            {
+                warn!(id = %id, error = %e, "failed to clean stale workspace dir");
             }
-        })?;
-
-        // The slot workspace is {workspaces_dir}/{slot_uuid}/.
-        // Rename to {workspaces_dir}/{sandbox_id}/ for doctor correlation.
-        let target_workspace = self.factory_paths.workspace(&id);
-        if target_workspace.exists()
-            && let Err(e) = tokio::fs::remove_dir_all(&target_workspace).await
-        {
-            warn!(id = %id, error = %e, "failed to clean stale workspace dir");
-        }
-        if let Err(e) = tokio::fs::rename(&slot.workspace, &target_workspace).await {
-            // Rollback: remove the slot workspace and COW file.
-            crate::cow_pool::destroy_slot(slot);
-            return Err(SandboxError::Initialization {
-                phase: SandboxInitializationPhase::SandboxAllocation,
-                message: format!("rename workspace: {e}"),
-            });
-        }
-
-        let sandbox_paths = SandboxPaths::new(target_workspace);
-        // Recompute cow_file path after rename (slot.cow_file points to the old location).
-        let cow_file = sandbox_paths.workspace().join("cow.img");
-
-        // Clean stale sock dir and create vsock directory.
-        if sock_paths.dir().exists()
-            && let Err(e) = tokio::fs::remove_dir_all(sock_paths.dir()).await
-        {
-            warn!(id = %id, error = %e, "failed to clean stale sock dir");
-        }
-        if let Err(e) = tokio::fs::create_dir_all(sock_paths.vsock_dir()).await {
-            let ws = sandbox_paths.workspace().to_owned();
-            let sd = sock_paths.dir().to_owned();
-            let _ = tokio::fs::remove_dir_all(&ws).await;
-            let _ = tokio::fs::remove_dir_all(&sd).await;
-            return Err(SandboxError::Initialization {
-                phase: SandboxInitializationPhase::SandboxAllocation,
-                message: format!("mkdir vsock dir: {e}"),
-            });
-        }
-
-        // Acquire a network namespace from the pool.
-        let network = match self.netns_pool().lock().await.acquire().await {
-            Ok(n) => n,
-            Err(e) => {
-                let ws = sandbox_paths.workspace().to_owned();
-                let sd = sock_paths.dir().to_owned();
-                let _ = tokio::fs::remove_dir_all(&ws).await;
-                let _ = tokio::fs::remove_dir_all(&sd).await;
+            let slot_workspace = tx.slot_workspace()?;
+            if let Err(e) = tokio::fs::rename(&slot_workspace, &target_workspace).await {
                 return Err(SandboxError::Initialization {
+                    phase: SandboxInitializationPhase::SandboxAllocation,
+                    message: format!("rename workspace: {e}"),
+                });
+            }
+            tx.slot_renamed_to(target_workspace.clone());
+
+            // Recompute cow_file path after rename (the slot path no longer exists).
+            let cow_file = target_workspace.join("cow.img");
+
+            // Clean stale sock dir and create vsock directory.
+            let sock_paths = SockPaths::new(self.runtime_paths.sock_dir(&id));
+            if sock_paths.dir().exists()
+                && let Err(e) = tokio::fs::remove_dir_all(sock_paths.dir()).await
+            {
+                warn!(id = %id, error = %e, "failed to clean stale sock dir");
+            }
+            tx.track_sock_dir(sock_paths.dir().to_owned());
+            if let Err(e) = tokio::fs::create_dir_all(sock_paths.vsock_dir()).await {
+                return Err(SandboxError::Initialization {
+                    phase: SandboxInitializationPhase::SandboxAllocation,
+                    message: format!("mkdir vsock dir: {e}"),
+                });
+            }
+
+            // Acquire a network namespace from the pool.
+            let network = self
+                .netns_pool()
+                .lock()
+                .await
+                .acquire()
+                .await
+                .map_err(|e| SandboxError::Initialization {
                     phase: SandboxInitializationPhase::SandboxAllocation,
                     message: format!("acquire netns: {e}"),
-                });
-            }
-        };
-
-        // Create NBD COW device (~15ms via netlink, no subprocess).
-        let base_image =
-            self.base_image_path
-                .as_ref()
-                .ok_or_else(|| SandboxError::InvalidState {
-                    context: SandboxInvalidStateContext::Factory,
-                    state: "started without base image".into(),
-                    message: "factory base image path missing".into(),
                 })?;
-        let cow_device = match NbdCowDevice::create(
-            base_image,
-            &cow_file,
-            self.base_image_size,
-            &self.device_pool,
-        )
-        .await
-        {
-            Ok(d) => d,
+            tx.track_network(network);
+
+            // Create NBD COW device (~15ms via netlink, no subprocess).
+            let base_image =
+                self.base_image_path
+                    .as_ref()
+                    .ok_or_else(|| SandboxError::InvalidState {
+                        context: SandboxInvalidStateContext::Factory,
+                        state: "started without base image".into(),
+                        message: "factory base image path missing".into(),
+                    })?;
+            let cow_device = NbdCowDevice::create(
+                base_image,
+                &cow_file,
+                self.base_image_size,
+                &self.device_pool,
+            )
+            .await
+            .map_err(|e| SandboxError::Initialization {
+                phase: SandboxInitializationPhase::SandboxAllocation,
+                message: format!("create NBD COW device: {e}"),
+            })?;
+
+            let resources = tx.commit()?;
+            Ok((resources, cow_device))
+        }
+        .await;
+
+        let (resources, cow_device) = match create_result {
+            Ok(resources) => resources,
             Err(e) => {
-                // Roll back: return netns to pool and clean up directories.
-                let mut netns_pool = self.netns_pool().lock().await;
-                if let Err(rel_err) = netns_pool.release(network).await {
-                    warn!(error = %rel_err, "failed to release netns during rollback");
-                }
-                let _ = tokio::fs::remove_dir_all(sandbox_paths.workspace()).await;
-                let _ = tokio::fs::remove_dir_all(sock_paths.dir()).await;
-                return Err(SandboxError::Initialization {
-                    phase: SandboxInitializationPhase::SandboxAllocation,
-                    message: format!("create NBD COW device: {e}"),
-                });
+                tx.rollback(&rollback_cleanup).await;
+                return Err(e);
             }
         };
+        let SandboxCreateResources {
+            sandbox_paths,
+            sock_paths,
+            network,
+        } = resources;
 
         info!(id = %id, device = %cow_device.device_path().display(), "sandbox created");
 
@@ -710,7 +897,7 @@ impl Drop for FirecrackerFactory {
 mod tests {
     use super::*;
     use std::sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicBool, Ordering},
     };
 
@@ -764,6 +951,49 @@ mod tests {
             name: "test-ns".into(),
             host_device: "test-ve".into(),
             peer_ip: "10.200.0.2".into(),
+        }
+    }
+
+    #[derive(Default)]
+    struct RecordingCreateRollbackCleanup {
+        events: Arc<Mutex<Vec<String>>>,
+    }
+
+    impl RecordingCreateRollbackCleanup {
+        fn events(&self) -> Vec<String> {
+            self.events.lock().unwrap().clone()
+        }
+
+        fn record(&self, event: String) {
+            self.events.lock().unwrap().push(event);
+        }
+    }
+
+    #[async_trait]
+    impl CreateRollbackCleanup for RecordingCreateRollbackCleanup {
+        async fn release_network(&self, network: PooledNetns) {
+            self.record(format!("release_network:{}", network.name));
+        }
+
+        async fn remove_dir(&self, kind: &'static str, path: PathBuf) {
+            let name = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("<unknown>");
+            self.record(format!("remove_dir:{kind}:{name}"));
+            let _ = tokio::fs::remove_dir_all(path).await;
+        }
+
+        fn destroy_slot(&self, slot: crate::cow_pool::PrewarmedSlot) {
+            self.record(format!("destroy_slot:{}", slot.id));
+            crate::cow_pool::destroy_slot(slot);
+        }
+    }
+
+    fn test_slot(id: &str, workspace: PathBuf) -> crate::cow_pool::PrewarmedSlot {
+        crate::cow_pool::PrewarmedSlot {
+            id: id.into(),
+            workspace,
         }
     }
 
@@ -852,6 +1082,130 @@ mod tests {
         };
 
         assert_factory_invalid_state(err, "not started", "factory not started");
+    }
+
+    #[tokio::test]
+    async fn create_transaction_rollback_before_rename_destroys_slot_workspace() {
+        let tmp = tempfile::tempdir().unwrap();
+        let slot_workspace = tmp.path().join("slot-workspace");
+        tokio::fs::create_dir_all(&slot_workspace).await.unwrap();
+        tokio::fs::write(slot_workspace.join("cow.img"), b"cow")
+            .await
+            .unwrap();
+
+        let mut tx = SandboxCreateTransaction::new("sandbox".into());
+        tx.track_slot(test_slot("slot", slot_workspace.clone()));
+        let cleanup = RecordingCreateRollbackCleanup::default();
+
+        tx.rollback(&cleanup).await;
+
+        assert!(!slot_workspace.exists());
+        assert_eq!(cleanup.events(), vec!["destroy_slot:slot"]);
+    }
+
+    #[tokio::test]
+    async fn create_transaction_rollback_after_rename_removes_target_workspace() {
+        let tmp = tempfile::tempdir().unwrap();
+        let slot_workspace = tmp.path().join("slot-workspace");
+        let target_workspace = tmp.path().join("sandbox-workspace");
+        tokio::fs::create_dir_all(&slot_workspace).await.unwrap();
+        tokio::fs::write(slot_workspace.join("cow.img"), b"cow")
+            .await
+            .unwrap();
+
+        let mut tx = SandboxCreateTransaction::new("sandbox".into());
+        tx.track_slot(test_slot("slot", slot_workspace.clone()));
+        let tracked_slot_workspace = tx.slot_workspace().unwrap();
+        tokio::fs::rename(&tracked_slot_workspace, &target_workspace)
+            .await
+            .unwrap();
+        tx.slot_renamed_to(target_workspace.clone());
+        let cleanup = RecordingCreateRollbackCleanup::default();
+
+        tx.rollback(&cleanup).await;
+
+        assert!(!slot_workspace.exists());
+        assert!(!target_workspace.exists());
+        assert_eq!(
+            cleanup.events(),
+            vec!["remove_dir:workspace:sandbox-workspace"]
+        );
+    }
+
+    #[tokio::test]
+    async fn create_transaction_rollback_after_sock_dir_removes_sock_then_workspace() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().join("workspace");
+        let sock_dir = tmp.path().join("sock");
+        tokio::fs::create_dir_all(&workspace).await.unwrap();
+        tokio::fs::create_dir_all(sock_dir.join("vsock"))
+            .await
+            .unwrap();
+
+        let mut tx = SandboxCreateTransaction::new("sandbox".into());
+        tx.slot_renamed_to(workspace.clone());
+        tx.track_sock_dir(sock_dir.clone());
+        let cleanup = RecordingCreateRollbackCleanup::default();
+
+        tx.rollback(&cleanup).await;
+
+        assert!(!workspace.exists());
+        assert!(!sock_dir.exists());
+        assert_eq!(
+            cleanup.events(),
+            vec!["remove_dir:sock:sock", "remove_dir:workspace:workspace"]
+        );
+    }
+
+    #[tokio::test]
+    async fn create_transaction_rollback_releases_network_before_dirs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().join("workspace");
+        let sock_dir = tmp.path().join("sock");
+        tokio::fs::create_dir_all(&workspace).await.unwrap();
+        tokio::fs::create_dir_all(&sock_dir).await.unwrap();
+
+        let mut tx = SandboxCreateTransaction::new("sandbox".into());
+        tx.slot_renamed_to(workspace.clone());
+        tx.track_sock_dir(sock_dir.clone());
+        tx.track_network(test_network());
+        let cleanup = RecordingCreateRollbackCleanup::default();
+
+        tx.rollback(&cleanup).await;
+
+        assert!(!workspace.exists());
+        assert!(!sock_dir.exists());
+        assert_eq!(
+            cleanup.events(),
+            vec![
+                "release_network:test-ns",
+                "remove_dir:sock:sock",
+                "remove_dir:workspace:workspace"
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn create_transaction_commit_disarms_rollback() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().join("workspace");
+        let sock_dir = tmp.path().join("sock");
+        tokio::fs::create_dir_all(&workspace).await.unwrap();
+        tokio::fs::create_dir_all(&sock_dir).await.unwrap();
+
+        let mut tx = SandboxCreateTransaction::new("sandbox".into());
+        tx.slot_renamed_to(workspace.clone());
+        tx.track_sock_dir(sock_dir.clone());
+        tx.track_network(test_network());
+
+        let resources = tx.commit().unwrap();
+        drop(tx);
+
+        assert_eq!(resources.sandbox_paths.workspace(), workspace.as_path());
+        assert_eq!(resources.sock_paths.dir(), sock_dir.as_path());
+        assert_eq!(resources.network.name, "test-ns");
+        assert!(workspace.exists());
+        assert!(sock_dir.exists());
     }
 
     #[tokio::test]
