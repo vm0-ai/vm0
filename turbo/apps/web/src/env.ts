@@ -33,6 +33,7 @@ function initEnv() {
       CLERK_SECRET_KEY: z.string().min(1),
       E2B_API_KEY: z.string().min(1).optional(),
       VM0_API_URL: z.url().optional(),
+      VM0_API_BACKEND_URL: z.url().optional(),
       VERCEL_ENV: z.enum(["production", "preview", "development"]).optional(),
       R2_ACCOUNT_ID: z.string().min(1),
       R2_ACCESS_KEY_ID: z.string().min(1),
@@ -275,6 +276,13 @@ function initEnv() {
         (process.env.VERCEL_URL
           ? `https://${process.env.VERCEL_URL}`
           : undefined),
+      VM0_API_BACKEND_URL:
+        process.env.VM0_API_BACKEND_URL ??
+        (process.env.VERCEL_ENV === "production"
+          ? "https://vm0-api.vm6.ai"
+          : process.env.VERCEL_ENV === undefined
+            ? "http://localhost:3001"
+            : undefined),
       VERCEL_ENV: process.env.VERCEL_ENV,
       R2_ACCOUNT_ID: process.env.R2_ACCOUNT_ID,
       R2_ACCESS_KEY_ID: process.env.R2_ACCESS_KEY_ID,

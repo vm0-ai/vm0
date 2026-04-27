@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
-    "dev": "VM0_DEBUG=* tsx watch src/server.ts",
+    "dev": "VM0_DEBUG=* tsx watch --env-file=.env.local src/server.ts",
     "start": "tsx src/server.ts",
     "test": "vitest run",
     "test:watch": "vitest",

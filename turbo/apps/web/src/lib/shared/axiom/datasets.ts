@@ -24,6 +24,7 @@ export const DATASETS = {
   REQUEST_LOG: "request-log",
   SANDBOX_OP_LOG: "sandbox-op-log",
   RUN_CONTEXT: "run-context",
+  AUTH_SHADOW: "auth-shadow",
 } as const;
 
 /**

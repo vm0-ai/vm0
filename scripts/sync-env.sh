@@ -33,6 +33,7 @@ sync_with_1password() {
 }
 
 WEB_ENV_LOCAL="$PROJECT_ROOT/turbo/apps/web/.env.local"
+API_ENV_LOCAL="$PROJECT_ROOT/turbo/apps/api/.env.local"
 SCRIPTS_ENV_LOCAL="$PROJECT_ROOT/scripts/.env.local"
 
 # --- Computed variables ---
@@ -88,7 +89,19 @@ provision_ssh_key() {
   echo "  ✓ SSH key written to ${key_path}"
 }
 
+# Mirror web/.env.local into api/. The api app reuses the same env values
+# but does not maintain a separate template.
+mirror_api_env() {
+  if [[ ! -f "$WEB_ENV_LOCAL" ]]; then
+    echo "  ✗ API env mirror skipped (web/.env.local not found)"
+    return 0
+  fi
+  cp "$WEB_ENV_LOCAL" "$API_ENV_LOCAL"
+  echo "  ✓ Mirrored web/.env.local to api/.env.local"
+}
+
 # --- Main ---
 sync_with_1password
 configure_runner_group
+mirror_api_env
 provision_ssh_key
