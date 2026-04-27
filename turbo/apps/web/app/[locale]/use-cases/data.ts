@@ -1334,7 +1334,7 @@ export const USE_CASES: UseCase[] = [
       expression: 5,
       intensity: "m",
     },
-    roles: ["product", "ops"],
+    roles: ["marketing"],
     capability: "multi-tool",
     model: "Claude 4 Sonnet",
     connectors: [SLACK, GOOGLE_DRIVE, NOTION],
