@@ -3,6 +3,7 @@ import {
   createTestRequest,
   insertOrgMembersEntry,
   insertTestCreditUsage,
+  insertTestUsageEvent,
   updateOrgStripeFields,
 } from "../../../../../../../src/__tests__/api-test-helpers";
 import {
@@ -38,6 +39,18 @@ describe("/api/zero/org/members/credit-cap", () => {
       modelProvider: "vm0",
       creditsCharged,
       status: "processed",
+    });
+  }
+
+  async function insertProcessedUsageEvent(
+    orgId: string,
+    userId: string,
+    creditsCharged: number,
+  ): Promise<void> {
+    await insertTestUsageEvent(orgId, {
+      userId,
+      status: "processed",
+      creditsCharged,
     });
   }
 
@@ -96,6 +109,29 @@ describe("/api/zero/org/members/credit-cap", () => {
 
       // Insert processed credit usage exceeding the cap we'll set
       await insertProcessedCreditUsage(user.orgId, user.userId, 200);
+
+      const request = createTestRequest(BASE_URL, {
+        method: "PUT",
+        body: JSON.stringify({ userId: user.userId, creditCap: 100 }),
+        headers: { "content-type": "application/json" },
+      });
+      const response = await PUT(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data).toEqual({
+        userId: user.userId,
+        creditCap: 100,
+        creditEnabled: false,
+      });
+    });
+
+    it("disables member when combined credit_usage and usage_event spend exceeds cap", async () => {
+      const periodEnd = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000);
+      await updateOrgStripeFields(user.orgId, { currentPeriodEnd: periodEnd });
+
+      await insertProcessedCreditUsage(user.orgId, user.userId, 80);
+      await insertProcessedUsageEvent(user.orgId, user.userId, 40);
 
       const request = createTestRequest(BASE_URL, {
         method: "PUT",

@@ -257,9 +257,17 @@ export async function insertTestUsageEvent(
     status?: string;
     creditsCharged?: number;
     idempotencyKey?: string;
+    processedAt?: Date | null;
   },
 ): Promise<string> {
   initServices();
+  const processedAt =
+    options.processedAt !== undefined
+      ? options.processedAt
+      : options.status === "processed"
+        ? new Date()
+        : null;
+
   const [record] = await globalThis.services.db
     .insert(usageEvent)
     .values({
@@ -272,6 +280,7 @@ export async function insertTestUsageEvent(
       status: options.status ?? "pending",
       creditsCharged: options.creditsCharged ?? null,
       idempotencyKey: options.idempotencyKey ?? randomUUID(),
+      processedAt,
     })
     .returning({ id: usageEvent.id });
   return record!.id;

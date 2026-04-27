@@ -1,7 +1,18 @@
-import { eq, and, sql, gte, inArray } from "drizzle-orm";
+import { eq, and, sql, gte, lt, inArray } from "drizzle-orm";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { creditUsage } from "@vm0/db/schema/credit-usage";
+import { usageEvent } from "@vm0/db/schema/usage-event";
 import { getOrgBillingPeriod } from "../org/org-metadata-service";
+
+interface BillingPeriod {
+  start: Date;
+  end: Date;
+}
+
+interface UsageTotalRow {
+  userId: string;
+  total: number;
+}
 
 /**
  * Get a member's credit cap state.
@@ -94,7 +105,7 @@ export async function setMemberCreditCap(
 
 /**
  * Evaluate member caps for affected users after credit processing.
- * Only disables members (never re-enables). Called by processOrgCredits().
+ * Only disables members (never re-enables). Called by usage processors.
  */
 export async function evaluateMemberCaps(
   orgId: string,
@@ -130,32 +141,12 @@ export async function evaluateMemberCaps(
   });
   if (enabledCapped.length === 0) return;
 
-  // Batch: single aggregation query instead of N individual queries
-  const usageByUser = await db
-    .select({
-      userId: creditUsage.userId,
-      total: sql<number>`COALESCE(SUM(${creditUsage.creditsCharged}), 0)`,
-    })
-    .from(creditUsage)
-    .where(
-      and(
-        eq(creditUsage.orgId, orgId),
-        inArray(
-          creditUsage.userId,
-          enabledCapped.map((m) => {
-            return m.userId;
-          }),
-        ),
-        eq(creditUsage.status, "processed"),
-        gte(creditUsage.processedAt, billingPeriod.start),
-      ),
-    )
-    .groupBy(creditUsage.userId);
-
-  const usageMap = new Map(
-    usageByUser.map((u) => {
-      return [u.userId, u.total];
+  const usageMap = await getProcessedUsageTotalsByUser(
+    orgId,
+    enabledCapped.map((m) => {
+      return m.userId;
     }),
+    billingPeriod,
   );
 
   for (const member of enabledCapped) {
@@ -173,6 +164,75 @@ export async function evaluateMemberCaps(
           ),
         );
     }
+  }
+}
+
+async function getProcessedUsageTotalsByUser(
+  orgId: string,
+  userIds: string[],
+  billingPeriod: BillingPeriod,
+): Promise<Map<string, number>> {
+  const uniqueUserIds = [...new Set(userIds)];
+  const usageMap = new Map<string, number>();
+  if (uniqueUserIds.length === 0) return usageMap;
+
+  const db = globalThis.services.db;
+
+  const creditRows = await db
+    .select({
+      userId: creditUsage.userId,
+      total:
+        sql<number>`COALESCE(SUM(${creditUsage.creditsCharged}), 0)::bigint`.as(
+          "total",
+        ),
+    })
+    .from(creditUsage)
+    .where(
+      and(
+        eq(creditUsage.orgId, orgId),
+        inArray(creditUsage.userId, uniqueUserIds),
+        eq(creditUsage.status, "processed"),
+        gte(creditUsage.processedAt, billingPeriod.start),
+        lt(creditUsage.processedAt, billingPeriod.end),
+      ),
+    )
+    .groupBy(creditUsage.userId);
+
+  const eventRows = await db
+    .select({
+      userId: usageEvent.userId,
+      total:
+        sql<number>`COALESCE(SUM(${usageEvent.creditsCharged}), 0)::bigint`.as(
+          "total",
+        ),
+    })
+    .from(usageEvent)
+    .where(
+      and(
+        eq(usageEvent.orgId, orgId),
+        inArray(usageEvent.userId, uniqueUserIds),
+        eq(usageEvent.status, "processed"),
+        gte(usageEvent.processedAt, billingPeriod.start),
+        lt(usageEvent.processedAt, billingPeriod.end),
+      ),
+    )
+    .groupBy(usageEvent.userId);
+
+  addUsageRows(usageMap, creditRows);
+  addUsageRows(usageMap, eventRows);
+
+  return usageMap;
+}
+
+function addUsageRows(
+  usageMap: Map<string, number>,
+  rows: UsageTotalRow[],
+): void {
+  for (const row of rows) {
+    usageMap.set(
+      row.userId,
+      (usageMap.get(row.userId) ?? 0) + Number(row.total),
+    );
   }
 }
 
@@ -204,21 +264,10 @@ async function getMemberUsageInBillingPeriod(
   const billingPeriod = await getOrgBillingPeriod(orgId);
   if (!billingPeriod) return 0;
 
-  const db = globalThis.services.db;
+  const usageMap = await getProcessedUsageTotalsByUser(orgId, [userId], {
+    start: billingPeriod.start,
+    end: billingPeriod.end,
+  });
 
-  const [result] = await db
-    .select({
-      total: sql<number>`COALESCE(SUM(${creditUsage.creditsCharged}), 0)`,
-    })
-    .from(creditUsage)
-    .where(
-      and(
-        eq(creditUsage.orgId, orgId),
-        eq(creditUsage.userId, userId),
-        eq(creditUsage.status, "processed"),
-        gte(creditUsage.processedAt, billingPeriod.start),
-      ),
-    );
-
-  return result?.total ?? 0;
+  return usageMap.get(userId) ?? 0;
 }
