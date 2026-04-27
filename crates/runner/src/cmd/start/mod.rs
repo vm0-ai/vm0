@@ -4406,7 +4406,12 @@ mod tests {
         // Enter Draining. The Draining path drains an empty pool and waits for the
         // gated job.
         env.drain();
-        tokio::time::sleep(Duration::from_millis(50)).await;
+        wait_parking_state(
+            &idle_pool,
+            ParkingState::SoftDraining,
+            Duration::from_secs(5),
+        )
+        .await;
         assert_eq!(
             idle_pool.lock().await.len(),
             0,

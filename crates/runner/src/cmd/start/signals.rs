@@ -90,8 +90,7 @@ impl LifecycleController {
         let gate = self.parking_gate.clone();
         let mut transitioned = false;
         let _ = self.mode_tx.send_if_modified(|mode| {
-            if *mode == RunnerMode::Running {
-                gate.soft_drain();
+            if *mode == RunnerMode::Running && gate.soft_drain() {
                 *mode = RunnerMode::Draining;
                 transitioned = true;
                 true
@@ -106,8 +105,7 @@ impl LifecycleController {
         let gate = self.parking_gate.clone();
         let mut transitioned = false;
         let _ = self.mode_tx.send_if_modified(|mode| {
-            if *mode == RunnerMode::Draining {
-                gate.open_after_soft_drain();
+            if *mode == RunnerMode::Draining && gate.open_after_soft_drain() {
                 *mode = RunnerMode::Running;
                 transitioned = true;
                 true

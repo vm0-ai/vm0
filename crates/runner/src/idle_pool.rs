@@ -113,13 +113,28 @@ impl ParkingGate {
         self.state() == ParkingState::Open
     }
 
-    pub(crate) fn soft_drain(&self) {
-        self.state
-            .store(ParkingState::SoftDraining as u8, Ordering::SeqCst);
+    pub(crate) fn soft_drain(&self) -> bool {
+        match self.state.compare_exchange(
+            ParkingState::Open as u8,
+            ParkingState::SoftDraining as u8,
+            Ordering::SeqCst,
+            Ordering::SeqCst,
+        ) {
+            Ok(_) => true,
+            Err(state) => ParkingState::from_u8(state) == ParkingState::SoftDraining,
+        }
     }
 
-    pub(crate) fn open_after_soft_drain(&self) {
-        self.state.store(ParkingState::Open as u8, Ordering::SeqCst);
+    pub(crate) fn open_after_soft_drain(&self) -> bool {
+        match self.state.compare_exchange(
+            ParkingState::SoftDraining as u8,
+            ParkingState::Open as u8,
+            Ordering::SeqCst,
+            Ordering::SeqCst,
+        ) {
+            Ok(_) => true,
+            Err(state) => ParkingState::from_u8(state) == ParkingState::Open,
+        }
     }
 
     pub(crate) fn close(&self) {
