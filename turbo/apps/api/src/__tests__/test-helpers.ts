@@ -11,10 +11,7 @@ import { afterEach, expect } from "vitest";
 
 import { createApp } from "../app-factory";
 import { clearMockedEnv } from "../lib/env";
-import {
-  ROUTES,
-  type SignalRouteHandler,
-} from "../signals/route";
+import { ROUTES, type SignalRouteHandler } from "../signals/route";
 import { clearAllDetached } from "../signals/utils";
 import { getApiTestMocks, type ApiTestMocks } from "./mocks";
 
@@ -96,7 +93,7 @@ async function requestApp(
 
 function buildRoutesExtend(
   handlers: Record<string, SignalRouteHandler<unknown>>,
-  contract: Record<string, AppRouter[string]>,
+  contract: Record<string, AppRoute>,
 ): Map<AppRoute, SignalRouteHandler<unknown>> {
   const map = new Map<AppRoute, SignalRouteHandler<unknown>>();
   for (const [key, handler] of Object.entries(handlers)) {
@@ -127,7 +124,7 @@ export function setupApp<TContract extends AppRouter>({
 }: SetupAppOptions<TContract>): InitClientReturn<TContract, InitClientArgs> {
   const routesExtend = buildRoutesExtend(
     handlers as Record<string, SignalRouteHandler<unknown>>,
-    contract as Record<string, AppRouter[string]>,
+    contract as Record<string, AppRoute>,
   );
 
   return initClient(contract, {

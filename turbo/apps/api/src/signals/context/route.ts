@@ -6,8 +6,6 @@ import type { ContentfulStatusCode, StatusCode } from "hono/utils/http-status";
 import { initHono$ } from "./hono";
 import { setRootSignal$ } from "./root";
 
-export type MaybePromise<T> = T | Promise<T>;
-
 export type SignalRouteHandler<T> = Computed<T> | Command<T, [AbortSignal]>;
 
 interface RouteResult {

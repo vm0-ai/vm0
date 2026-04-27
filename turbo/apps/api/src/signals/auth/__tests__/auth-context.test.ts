@@ -98,14 +98,12 @@ function createAuthClient(result$: Computed<unknown>) {
     context,
     contract: authContextTestContract,
     handlers: {
-      get: computed(
-        async (get): Promise<AuthContextTestRouteResponse> => {
-          const result = await get(result$);
-          return isAuthErrorResponse(result)
-            ? result
-            : { status: 200 as const, body: result };
-        },
-      ),
+      get: computed(async (get): Promise<AuthContextTestRouteResponse> => {
+        const result = await get(result$);
+        return isAuthErrorResponse(result)
+          ? result
+          : { status: 200 as const, body: result };
+      }),
     },
   });
 }
