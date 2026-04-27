@@ -158,6 +158,7 @@ export {
   countTelegramUserLinkRows,
   findTestTelegramUserLinksByVm0UserId,
   findTestTelegramInstallationsByOwner,
+  getTestTelegramBotToken,
   telegramUserLinkExists,
   telegramThreadSessionExists,
 } from "./telegram";

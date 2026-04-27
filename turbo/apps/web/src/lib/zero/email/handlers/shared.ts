@@ -224,7 +224,7 @@ export function buildFromAddress(localPart: string): string {
  * Build the logs URL for a run, linking to the agent detail logs page.
  */
 export function buildLogsUrl(runId: string): string {
-  return `${getAppUrl()}/activity/${encodeURIComponent(runId)}`;
+  return `${getAppUrl()}/activities/${encodeURIComponent(runId)}`;
 }
 
 // ============================================================================

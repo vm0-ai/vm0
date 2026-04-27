@@ -21,6 +21,40 @@ interface TelegramBotInfo {
   username: string;
 }
 
+interface TelegramApiError extends Error {
+  name: "TelegramApiError";
+  method: string;
+  status: number;
+  description: string | undefined;
+}
+
+function makeTelegramApiError(
+  method: string,
+  status: number,
+  description: string | undefined,
+): TelegramApiError {
+  return Object.assign(
+    new Error(
+      `Telegram API error (${method}): ${description ?? `HTTP ${status}`}`,
+    ),
+    {
+      name: "TelegramApiError" as const,
+      method,
+      status,
+      description,
+    },
+  );
+}
+
+export function isTelegramApiError(error: unknown): error is TelegramApiError {
+  return (
+    error instanceof Error &&
+    error.name === "TelegramApiError" &&
+    "method" in error &&
+    "status" in error
+  );
+}
+
 export interface TelegramSentMessage {
   message_id: number;
   chat: { id: number };
@@ -80,9 +114,7 @@ export async function callTelegramApi<T>(
       return callTelegramApi<T>(token, method, params, _retryCount + 1);
     }
 
-    throw new Error(
-      `Telegram API error (${method}): ${data.description ?? `HTTP ${response.status}`}`,
-    );
+    throw makeTelegramApiError(method, response.status, data.description);
   }
 
   return data.result;

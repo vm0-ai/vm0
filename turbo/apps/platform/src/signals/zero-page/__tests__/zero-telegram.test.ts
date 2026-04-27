@@ -5,10 +5,10 @@ import { testContext } from "../../__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { pathname$ } from "../../route.ts";
 import {
-  disconnectTelegramBot$,
   isTelegramIntegrationEnabled$,
   registerTelegramBot$,
   telegramBots$,
+  uninstallTelegramBot$,
   updateTelegramBotAgent$,
 } from "../zero-telegram.ts";
 import {
@@ -43,6 +43,7 @@ function telegramStatus(
     agent: { id: "compose_1", name: "Default agent" },
     isOwner: true,
     isConnected: false,
+    tokenStatus: "valid",
     domainConfigured: false,
     environment: {
       requiredSecrets: [],
@@ -135,11 +136,7 @@ describe("zero telegram signals", () => {
     });
     setup({ enabled: true });
 
-    await context.store.set(
-      disconnectTelegramBot$,
-      "bot_alpha",
-      context.signal,
-    );
+    await context.store.set(uninstallTelegramBot$, "bot_alpha", context.signal);
 
     await expect(context.store.get(telegramBots$)).resolves.toMatchObject([
       { id: "bot_beta" },

@@ -12,15 +12,17 @@ import {
   lookupTelegramThreadSession,
   storeTelegramMessage,
   getWorkspaceAgent,
+  getAgentDisplayLabel,
   resolveSessionCompose,
   resolveUserLink,
   buildConnectUrl,
   buildAgentLogsUrl,
   buildLogsUrl,
+  formatTelegramConnectPrompt,
 } from "./shared";
 import { fetchTelegramContext } from "../context";
 import { runAgentForTelegram } from "./run-agent";
-import { buildTelegramErrorResponse, escapeHtml } from "../format";
+import { buildTelegramErrorResponse } from "../format";
 import { logger } from "../../../shared/logger";
 import type { TelegramHandlerUpdate } from "./types";
 
@@ -70,11 +72,7 @@ export async function handleTelegramDirectMessage(
       fromUserId,
       botToken,
     );
-    await sendMessage(
-      client,
-      chatId,
-      `🔗 Connect your account to get started:\n\n<a href="${escapeHtml(connectUrl)}">Open Platform</a>`,
-    );
+    await sendMessage(client, chatId, formatTelegramConnectPrompt(connectUrl));
     return;
   }
 
@@ -89,7 +87,7 @@ export async function handleTelegramDirectMessage(
     );
     return;
   }
-  const agentName = defaultAgent.name;
+  const agentName = getAgentDisplayLabel(defaultAgent);
 
   // 4. Send thinking placeholder message
   const thinkingMessage = await sendThinkingMessage(client, chatId, agentName);

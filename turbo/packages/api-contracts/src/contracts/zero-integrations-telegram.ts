@@ -11,12 +11,15 @@ const telegramEnvironmentSchema = z.object({
   missingVars: z.array(z.string()),
 });
 
+const telegramTokenStatusSchema = z.enum(["valid", "invalid", "unknown"]);
+
 const telegramBotSchema = z.object({
   id: z.string(),
   username: z.string().nullable(),
   agent: z.object({ id: z.string(), name: z.string() }).nullable(),
   isOwner: z.boolean(),
   isConnected: z.boolean(),
+  tokenStatus: telegramTokenStatusSchema,
 });
 
 const telegramBotStatusSchema = telegramBotSchema.extend({
@@ -33,18 +36,54 @@ const telegramUpdateBodySchema = z.object({
 });
 
 const telegramLinkStatusResponseSchema = z.discriminatedUnion("linked", [
-  z.object({ linked: z.literal(true), telegramUserId: z.string() }),
+  z.object({
+    linked: z.literal(true),
+    telegramUserId: z.string(),
+    botUsername: z.string().optional(),
+  }),
   z.object({
     linked: z.literal(false),
     installation: z
-      .object({ id: z.string(), botUsername: z.string() })
+      .object({
+        id: z.string(),
+        botUsername: z.string(),
+        domainConfigured: z.boolean().optional(),
+      })
       .optional(),
   }),
 ]);
 
+const telegramConnectSignatureSchema = z.object({
+  telegramUserId: z.string().min(1),
+  timestamp: z.number(),
+  signature: z.string().min(1),
+});
+
+const telegramAuthSchema = z.object({
+  id: z.number(),
+  first_name: z.string().optional(),
+  last_name: z.string().optional(),
+  username: z.string().optional(),
+  photo_url: z.string().optional(),
+  auth_date: z.number(),
+  hash: z.string(),
+});
+
+const telegramLinkBodySchema = z.object({
+  telegramBotId: z.string().min(1),
+  telegramAuth: telegramAuthSchema.optional(),
+  connectSignature: telegramConnectSignatureSchema.optional(),
+});
+
+const telegramLinkResponseSchema = z.object({
+  botUsername: z.string(),
+  telegramUserId: z.string(),
+});
+
 const telegramRegisterBodySchema = z.object({
   botToken: z.string().min(1),
   defaultAgentId: z.string().trim().min(1).optional(),
+  reinstallBotId: z.string().min(1).optional(),
 });
 
 /**
@@ -64,7 +103,7 @@ export const zeroIntegrationsTelegramContract = c.router({
       200: telegramListResponseSchema,
       401: apiErrorSchema,
     },
-    summary: "List Telegram bot integrations owned by the authenticated user",
+    summary: "List Telegram bot integrations in the authenticated user's org",
   },
   getBot: {
     method: "GET",
@@ -107,16 +146,47 @@ export const zeroIntegrationsTelegramContract = c.router({
     },
     summary: "Uninstall the Telegram bot",
   },
+  unlink: {
+    method: "DELETE",
+    path: "/api/integrations/telegram/link",
+    headers: authHeadersSchema,
+    body: c.noBody(),
+    query: z.object({ botId: z.string().optional() }),
+    responses: {
+      204: c.noBody(),
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Disconnect the authenticated user's Telegram account link",
+  },
   getLinkStatus: {
     method: "GET",
     path: "/api/integrations/telegram/link",
     headers: authHeadersSchema,
-    query: z.object({ botId: z.string().optional() }),
+    query: z.object({
+      botId: z.string().optional(),
+      origin: z.string().optional(),
+    }),
     responses: {
       200: telegramLinkStatusResponseSchema,
       401: apiErrorSchema,
     },
     summary: "Check if the authenticated user is linked to a Telegram bot",
+  },
+  link: {
+    method: "POST",
+    path: "/api/integrations/telegram/link",
+    headers: authHeadersSchema,
+    body: telegramLinkBodySchema,
+    responses: {
+      200: telegramLinkResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema,
+    },
+    summary: "Link the authenticated VM0 user to a Telegram user",
   },
   register: {
     method: "POST",
@@ -124,6 +194,7 @@ export const zeroIntegrationsTelegramContract = c.router({
     headers: authHeadersSchema,
     body: telegramRegisterBodySchema,
     responses: {
+      200: telegramBotStatusSchema,
       201: telegramBotStatusSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,

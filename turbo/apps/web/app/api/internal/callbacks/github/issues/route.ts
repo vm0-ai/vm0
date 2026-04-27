@@ -139,7 +139,7 @@ function formatGitHubComment(opts: {
 }): string {
   const { status, agentName, runId, output, error, triggerCommentBody } = opts;
   const appUrl = getAppUrl();
-  const logsUrl = `${appUrl}/activity/${encodeURIComponent(runId)}`;
+  const logsUrl = `${appUrl}/activities/${encodeURIComponent(runId)}`;
   const content =
     status === "completed"
       ? (output ?? "Task completed successfully.")

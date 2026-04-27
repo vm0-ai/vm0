@@ -1,15 +1,18 @@
 import { eq } from "drizzle-orm";
 import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
-import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
 import { decryptSecretValue } from "../../../shared/crypto/secrets-encryption";
 import { env } from "../../../../env";
 import { createTelegramClient, sendMessage } from "../client";
 import {
   ensureOrgAndArtifact,
+  linkTelegramUserToVm0User,
   resolveUserLink,
   buildConnectUrl,
+  formatTelegramAlreadyConnectedMessage,
+  formatTelegramCommandError,
+  formatTelegramCommandSuccess,
+  formatTelegramConnectPrompt,
 } from "./shared";
-import { escapeHtml } from "../format";
 import { logger } from "../../../shared/logger";
 import type { TelegramHandlerUpdate } from "./types";
 import crypto from "crypto";
@@ -20,6 +23,20 @@ interface LinkTokenPayload {
   vm0UserId: string;
   installationId: string;
   exp: number;
+}
+
+function telegramLinkConflictMessage(
+  reason: "telegram-user-linked" | "vm0-user-linked" | "conflict",
+): string {
+  if (reason === "telegram-user-linked") {
+    return "This Telegram account is already connected to another VM0 account for this bot. Disconnect it before connecting a different account.";
+  }
+
+  if (reason === "vm0-user-linked") {
+    return "This VM0 account is already connected to another Telegram account for this bot. Disconnect it before connecting a different Telegram account.";
+  }
+
+  return "This Telegram account link already exists. Disconnect it first and try again.";
 }
 
 /**
@@ -69,7 +86,9 @@ export async function handleStartCommand(
       await sendMessage(
         client,
         chatId,
-        "You are already connected! Send me a message to get started.",
+        formatTelegramCommandSuccess(
+          formatTelegramAlreadyConnectedMessage(installation.botUsername),
+        ),
       );
       return;
     }
@@ -78,11 +97,7 @@ export async function handleStartCommand(
       fromUserId,
       botToken,
     );
-    await sendMessage(
-      client,
-      chatId,
-      `🔗 Connect your account to get started:\n\n<a href="${escapeHtml(connectUrl)}">Open Platform</a>`,
-    );
+    await sendMessage(client, chatId, formatTelegramConnectPrompt(connectUrl));
     return;
   }
 
@@ -92,7 +107,9 @@ export async function handleStartCommand(
     await sendMessage(
       client,
       chatId,
-      "This link has expired. Please generate a new one from the platform.",
+      formatTelegramCommandError(
+        "This link has expired. Please generate a new one from the platform.",
+      ),
     );
     return;
   }
@@ -101,20 +118,29 @@ export async function handleStartCommand(
     await sendMessage(
       client,
       chatId,
-      "This link is for a different bot. Please use the correct link.",
+      formatTelegramCommandError(
+        "This link is for a different bot. Please use the correct link.",
+      ),
     );
     return;
   }
 
-  // Create user link (upsert)
-  await globalThis.services.db
-    .insert(telegramUserLinks)
-    .values({
-      telegramUserId: fromUserId,
-      installationId,
-      vm0UserId: payload.vm0UserId,
-    })
-    .onConflictDoNothing();
+  const linkResult = await linkTelegramUserToVm0User({
+    telegramUserId: fromUserId,
+    installationId,
+    vm0UserId: payload.vm0UserId,
+  });
+
+  if (!linkResult.ok) {
+    await sendMessage(
+      client,
+      chatId,
+      formatTelegramCommandError(
+        telegramLinkConflictMessage(linkResult.reason),
+      ),
+    );
+    return;
+  }
 
   // Auto-grant permission. The installation's orgId was snapshot at
   // registration and is the authoritative org for this bot.
@@ -123,7 +149,9 @@ export async function handleStartCommand(
   await sendMessage(
     client,
     chatId,
-    "Account linked! You can now chat with the agent.",
+    formatTelegramCommandSuccess(
+      "Account linked.\nSend me a message to start chatting with your agent.",
+    ),
   );
 
   log.info("Telegram user linked", {

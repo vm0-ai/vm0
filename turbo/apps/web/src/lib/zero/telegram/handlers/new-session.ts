@@ -4,8 +4,12 @@ import { telegramThreadSessions } from "@vm0/db/schema/telegram-thread-session";
 import { decryptSecretValue } from "../../../shared/crypto/secrets-encryption";
 import { env } from "../../../../env";
 import { createTelegramClient, sendMessage } from "../client";
-import { resolveUserLink, getWorkspaceAgent, buildConnectUrl } from "./shared";
-import { escapeHtml } from "../format";
+import {
+  resolveUserLink,
+  buildConnectUrl,
+  formatTelegramCommandSuccess,
+  formatTelegramConnectPrompt,
+} from "./shared";
 import { logger } from "../../../shared/logger";
 import type { TelegramHandlerUpdate } from "./types";
 
@@ -54,11 +58,7 @@ export async function handleNewSessionCommand(
       fromUserId,
       botToken,
     );
-    await sendMessage(
-      client,
-      chatId,
-      `🔗 Connect your account to get started:\n\n<a href="${escapeHtml(connectUrl)}">Open Platform</a>`,
-    );
+    await sendMessage(client, chatId, formatTelegramConnectPrompt(connectUrl));
     return;
   }
 
@@ -73,13 +73,10 @@ export async function handleNewSessionCommand(
       ),
     );
 
-  const agent = await getWorkspaceAgent(installation.defaultComposeId);
-  const agentName = agent?.name ?? "Agent";
-
   await sendMessage(
     client,
     chatId,
-    `New session started. 🤖 ${escapeHtml(agentName)} is ready.`,
+    formatTelegramCommandSuccess("New session started."),
   );
 
   log.info("DM session reset", { chatId, installationId });

@@ -40,6 +40,11 @@ export const telegramUserLinks = pgTable(
         table.telegramUserId,
         table.installationId,
       ),
+      // Each VM0 user can only link one Telegram account per bot
+      uniqueIndex("idx_telegram_user_links_vm0_installation").on(
+        table.vm0UserId,
+        table.installationId,
+      ),
     ];
   },
 );

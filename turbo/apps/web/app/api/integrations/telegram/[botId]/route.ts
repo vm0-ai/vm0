@@ -12,7 +12,6 @@ import { deleteWebhook } from "../../../../../src/lib/zero/telegram/client";
 import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
 import {
   buildTelegramBotStatus,
-  getTelegramUserLink,
   type TelegramInstallation,
 } from "../telegram-status";
 
@@ -67,22 +66,13 @@ async function loadVisibleInstallation(params: {
   }
 
   const isOwner = installation.ownerUserId === params.userId;
-  if (isOwner) {
-    return { installation, isOwner };
-  }
-
-  const userLink = await getTelegramUserLink(params.botId, params.userId);
-  if (!userLink) {
-    return null;
-  }
-
   return { installation, isOwner };
 }
 
 /**
  * GET /api/integrations/telegram/[botId]
  *
- * Returns full status for an owned or linked Telegram bot in the active org.
+ * Returns full status for a Telegram bot in the active org.
  */
 export async function GET(
   request: Request,
@@ -117,7 +107,7 @@ export async function GET(
 /**
  * PATCH /api/integrations/telegram/[botId]
  *
- * Owner-only update for the bot default agent.
+ * Owner/admin update for the bot default agent.
  */
 export async function PATCH(
   request: Request,
@@ -133,7 +123,7 @@ export async function PATCH(
   }
 
   const { botId } = await params;
-  const { org } = await resolveOrg(authCtx);
+  const { org, member } = await resolveOrg(authCtx);
   const visible = await loadVisibleInstallation({
     botId,
     orgId: org.orgId,
@@ -144,8 +134,10 @@ export async function PATCH(
     return notFoundResponse();
   }
 
-  if (!visible.isOwner) {
-    return forbiddenResponse("Only the bot owner can change the default agent");
+  if (!visible.isOwner && member.role !== "admin") {
+    return forbiddenResponse(
+      "Only the bot owner or an org admin can change the default agent",
+    );
   }
 
   const parseResult = patchBodySchema.safeParse(await request.json());
@@ -196,7 +188,7 @@ export async function PATCH(
 /**
  * DELETE /api/integrations/telegram/[botId]
  *
- * Owner-only uninstall. Removes webhook best-effort, then deletes installation.
+ * Owner/admin uninstall. Removes webhook best-effort, then deletes installation.
  */
 export async function DELETE(
   request: Request,
@@ -212,7 +204,7 @@ export async function DELETE(
   }
 
   const { botId } = await params;
-  const { org } = await resolveOrg(authCtx);
+  const { org, member } = await resolveOrg(authCtx);
   const visible = await loadVisibleInstallation({
     botId,
     orgId: org.orgId,
@@ -223,8 +215,10 @@ export async function DELETE(
     return notFoundResponse();
   }
 
-  if (!visible.isOwner) {
-    return forbiddenResponse("Only the bot owner can uninstall this bot");
+  if (!visible.isOwner && member.role !== "admin") {
+    return forbiddenResponse(
+      "Only the bot owner or an org admin can uninstall this bot",
+    );
   }
 
   const { SECRETS_ENCRYPTION_KEY } = env();

@@ -11,11 +11,13 @@ import {
   telegramUserLinkExists,
   createTelegramThreadSession,
   telegramThreadSessionExists,
+  createTestRequest,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 import { server } from "../../../../../src/mocks/server";
 import { http } from "../../../../../src/__tests__/msw";
 import { POST } from "../[telegramBotId]/route";
+import { PATCH as updateComposeMetadata } from "../../../agent/composes/[id]/metadata/route";
 import { seedTestRun } from "../../../../../src/__tests__/db-test-seeders/runs";
 
 const context = testContext();
@@ -23,6 +25,7 @@ const context = testContext();
 const TEST_BOT_TOKEN = "123456:ABC-commands-test";
 const WEBHOOK_SECRET = "webhook-secret";
 const TELEGRAM_USER_ID = 12345;
+const TEST_AGENT_DISPLAY_NAME = "Telegram Helper";
 
 function createWebhookRequest(body: Record<string, unknown>): Request {
   return new Request("http://localhost/api/telegram/webhook/test", {
@@ -81,9 +84,27 @@ function telegramEditMessageText() {
   return { ...handler, calls };
 }
 
+async function updateAgentDisplayName(
+  composeId: string,
+  displayName = TEST_AGENT_DISPLAY_NAME,
+): Promise<void> {
+  const response = await updateComposeMetadata(
+    createTestRequest(
+      `http://localhost:3000/api/agent/composes/${composeId}/metadata`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ displayName }),
+      },
+    ),
+  );
+  expect(response.status).toBe(200);
+}
+
 describe("Telegram bot commands", () => {
   let installationId: string;
   let composeId: string;
+  let composeName: string;
   let userLinkId: string;
   let userId: string;
 
@@ -93,6 +114,8 @@ describe("Telegram bot commands", () => {
     userId = user.userId;
     const compose = await createTestCompose(uniqueId("agent"));
     composeId = compose.composeId;
+    composeName = compose.name;
+    await updateAgentDisplayName(composeId);
 
     const result = await createTelegramCallbackInstallation(
       composeId,
@@ -128,7 +151,7 @@ describe("Telegram bot commands", () => {
       await context.mocks.flushAfter();
 
       expect(sendMsg.mocked).toHaveBeenCalled();
-      expect(sendMsg.calls[0]?.text).toContain("/help");
+      expect(sendMsg.calls[0]?.text).toContain("Zero Telegram Bot Help");
     });
 
     it("should ignore command targeted at a different bot", async () => {
@@ -176,7 +199,7 @@ describe("Telegram bot commands", () => {
       await context.mocks.flushAfter();
 
       expect(sendMsg.mocked).toHaveBeenCalled();
-      expect(sendMsg.calls[0]?.text).toContain("/help");
+      expect(sendMsg.calls[0]?.text).toContain("Zero Telegram Bot Help");
     });
 
     it("should handle case-insensitive @botUsername matching", async () => {
@@ -200,7 +223,7 @@ describe("Telegram bot commands", () => {
       await context.mocks.flushAfter();
 
       expect(sendMsg.mocked).toHaveBeenCalled();
-      expect(sendMsg.calls[0]?.text).toContain("/help");
+      expect(sendMsg.calls[0]?.text).toContain("Zero Telegram Bot Help");
     });
   });
 
@@ -228,8 +251,8 @@ describe("Telegram bot commands", () => {
 
       expect(sendMsg.mocked).toHaveBeenCalled();
       const text = sendMsg.calls[0]?.text ?? "";
-      // Should redirect to DM instead of exposing the connect URL
-      expect(text).toContain("private message");
+      // Should redirect to Telegram DM instead of exposing the signed connect URL
+      expect(text).toContain("connect your account");
       expect(text).toContain("?start=connect");
       // Should NOT contain the actual connect URL with telegramUserId
       expect(text).not.toContain("/telegram/connect?bot=");
@@ -258,7 +281,11 @@ describe("Telegram bot commands", () => {
       await context.mocks.flushAfter();
 
       expect(sendMsg.mocked).toHaveBeenCalled();
-      expect(sendMsg.calls[0]?.text).toContain("already connected");
+      const text = sendMsg.calls[0]?.text ?? "";
+      expect(text).toContain("already connected");
+      expect(text).toContain("start chatting with your agent");
+      expect(text).not.toContain(TEST_AGENT_DISPLAY_NAME);
+      expect(text).not.toContain(composeName);
     });
 
     it("should send platform link with bot param when user is not connected", async () => {
@@ -282,7 +309,10 @@ describe("Telegram bot commands", () => {
       await context.mocks.flushAfter();
 
       expect(sendMsg.mocked).toHaveBeenCalled();
-      expect(sendMsg.calls[0]?.text).toContain("/telegram/connect?bot=");
+      const text = sendMsg.calls[0]?.text ?? "";
+      expect(text).toContain("To use Zero in Telegram");
+      expect(text).toContain("/telegram/connect?bot=");
+      expect(text).toContain(">Connect</a>");
     });
   });
 
@@ -366,13 +396,15 @@ describe("Telegram bot commands", () => {
 
       expect(sendMsg.mocked).toHaveBeenCalled();
       const text = sendMsg.calls[0]?.text ?? "";
+      expect(text).toContain("Zero Telegram Bot Help");
       expect(text).toContain("/new_session");
       expect(text).toContain("/connect");
       expect(text).toContain("/disconnect");
-      expect(text).toContain("/help");
+      expect(text).toContain("Connect to Zero");
+      expect(text).toContain("Disconnect from Zero");
     });
 
-    it("should include admin notice for admin user", async () => {
+    it("should match Slack-style help without admin-only copy", async () => {
       const sendMsg = telegramSendMessage();
       server.use(sendMsg.handler);
 
@@ -393,7 +425,7 @@ describe("Telegram bot commands", () => {
       await context.mocks.flushAfter();
 
       expect(sendMsg.mocked).toHaveBeenCalled();
-      expect(sendMsg.calls[0]?.text).toContain("admin");
+      expect(sendMsg.calls[0]?.text).not.toContain("admin");
     });
   });
 
@@ -430,7 +462,10 @@ describe("Telegram bot commands", () => {
 
       // Verify confirmation message
       expect(sendMsg.mocked).toHaveBeenCalled();
-      expect(sendMsg.calls[0]?.text).toContain("New session started");
+      const text = sendMsg.calls[0]?.text ?? "";
+      expect(text).toContain("New session started");
+      expect(text).not.toContain(TEST_AGENT_DISPLAY_NAME);
+      expect(text).not.toContain(composeName);
 
       // Verify thread session was deleted
       const exists = await telegramThreadSessionExists({
@@ -462,7 +497,7 @@ describe("Telegram bot commands", () => {
       await context.mocks.flushAfter();
 
       expect(sendMsg.mocked).toHaveBeenCalled();
-      expect(sendMsg.calls[0]?.text).toContain("Connect your account");
+      expect(sendMsg.calls[0]?.text).toContain("connect your account");
     });
 
     it("should be ignored in group chats", async () => {
@@ -525,6 +560,12 @@ describe("Telegram bot commands", () => {
       expect(response.status).toBe(200);
       await context.mocks.flushAfter();
 
+      expect(sendMsg.calls[0]?.text).toContain(
+        `${TEST_AGENT_DISPLAY_NAME} is thinking`,
+      );
+      expect(sendMsg.calls[0]?.text).not.toContain(composeId);
+      expect(sendMsg.calls[0]?.text).not.toContain(composeName);
+
       // Queued notification edits the thinking message (not a new sendMessage)
       const queuedMsg = editMsg.calls.find((c) => {
         return c.text.includes("Run queued");
@@ -555,12 +596,47 @@ describe("Telegram bot commands", () => {
       expect(response.status).toBe(200);
       await context.mocks.flushAfter();
 
+      expect(sendMsg.calls[0]?.text).toContain(
+        `${TEST_AGENT_DISPLAY_NAME} is thinking`,
+      );
+      expect(sendMsg.calls[0]?.text).not.toContain(composeId);
+      expect(sendMsg.calls[0]?.text).not.toContain(composeName);
+
       // Queued notification edits the thinking message (not a new sendMessage)
       const queuedMsg = editMsg.calls.find((c) => {
         return c.text.includes("Run queued");
       });
       expect(queuedMsg).toBeDefined();
       expect(queuedMsg?.text).toContain("concurrency limit reached");
+    });
+  });
+
+  describe("thinking message agent label", () => {
+    beforeEach(async () => {
+      await updateAgentDisplayName(composeId, "");
+    });
+
+    it("should fall back to the agent name when displayName is blank", async () => {
+      const sendMsg = telegramSendMessage();
+      server.use(sendMsg.handler);
+
+      const request = createWebhookRequest({
+        update_id: 1,
+        message: {
+          message_id: 1,
+          chat: { id: TELEGRAM_USER_ID, type: "private" },
+          from: { id: TELEGRAM_USER_ID, username: "testuser" },
+          text: "hello bot",
+        },
+      });
+
+      const response = await POST(request, {
+        params: Promise.resolve({ telegramBotId: installationId }),
+      });
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      expect(sendMsg.calls[0]?.text).toContain(`${composeName} is thinking`);
     });
   });
 });

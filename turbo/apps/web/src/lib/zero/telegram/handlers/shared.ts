@@ -3,6 +3,7 @@ import { telegramThreadSessions } from "@vm0/db/schema/telegram-thread-session";
 import { telegramMessages } from "@vm0/db/schema/telegram-message";
 import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { getAppUrl } from "../../url";
 import { resolveAgentId } from "../../zero-compose-service";
 import { validateAgentSession } from "../../zero-run-validation";
@@ -31,6 +32,17 @@ const log = logger("telegram:shared");
  * Telegram user ID when the user sends their first message.
  */
 export const PENDING_TELEGRAM_USER_ID = "pending";
+
+export type LinkTelegramUserResult =
+  | {
+      ok: true;
+      userLink: typeof telegramUserLinks.$inferSelect;
+    }
+  | {
+      ok: false;
+      reason: "telegram-user-linked" | "vm0-user-linked" | "conflict";
+      userLink?: typeof telegramUserLinks.$inferSelect;
+    };
 
 interface ThreadSessionLookup {
   existingSessionId: string | undefined;
@@ -164,18 +176,130 @@ export async function storeTelegramMessage(
     .onConflictDoNothing();
 }
 
+async function touchTelegramUserLink(
+  userLink: typeof telegramUserLinks.$inferSelect,
+): Promise<typeof telegramUserLinks.$inferSelect> {
+  const [updated] = await globalThis.services.db
+    .update(telegramUserLinks)
+    .set({ updatedAt: new Date() })
+    .where(eq(telegramUserLinks.id, userLink.id))
+    .returning();
+  return updated ?? userLink;
+}
+
+/**
+ * Link one Telegram account to one VM0 user for a bot installation.
+ *
+ * A Telegram user can be linked to different VM0 users across different bots,
+ * but within one bot both sides are one-to-one:
+ * - (installationId, telegramUserId) is unique
+ * - (installationId, vm0UserId) is unique
+ */
+export async function linkTelegramUserToVm0User(params: {
+  installationId: string;
+  telegramUserId: string;
+  vm0UserId: string;
+}): Promise<LinkTelegramUserResult> {
+  const [existingTelegramLink] = await globalThis.services.db
+    .select()
+    .from(telegramUserLinks)
+    .where(
+      and(
+        eq(telegramUserLinks.installationId, params.installationId),
+        eq(telegramUserLinks.telegramUserId, params.telegramUserId),
+      ),
+    )
+    .limit(1);
+
+  if (existingTelegramLink) {
+    if (existingTelegramLink.vm0UserId === params.vm0UserId) {
+      return {
+        ok: true,
+        userLink: await touchTelegramUserLink(existingTelegramLink),
+      };
+    }
+
+    return {
+      ok: false,
+      reason: "telegram-user-linked",
+      userLink: existingTelegramLink,
+    };
+  }
+
+  const [existingVm0Link] = await globalThis.services.db
+    .select()
+    .from(telegramUserLinks)
+    .where(
+      and(
+        eq(telegramUserLinks.installationId, params.installationId),
+        eq(telegramUserLinks.vm0UserId, params.vm0UserId),
+      ),
+    )
+    .limit(1);
+
+  if (existingVm0Link) {
+    if (existingVm0Link.telegramUserId === params.telegramUserId) {
+      return {
+        ok: true,
+        userLink: await touchTelegramUserLink(existingVm0Link),
+      };
+    }
+
+    if (
+      existingVm0Link.telegramUserId === PENDING_TELEGRAM_USER_ID &&
+      params.telegramUserId !== PENDING_TELEGRAM_USER_ID
+    ) {
+      const [updated] = await globalThis.services.db
+        .update(telegramUserLinks)
+        .set({
+          telegramUserId: params.telegramUserId,
+          updatedAt: new Date(),
+        })
+        .where(eq(telegramUserLinks.id, existingVm0Link.id))
+        .returning();
+
+      return {
+        ok: true,
+        userLink: updated ?? existingVm0Link,
+      };
+    }
+
+    return {
+      ok: false,
+      reason: "vm0-user-linked",
+      userLink: existingVm0Link,
+    };
+  }
+
+  const [inserted] = await globalThis.services.db
+    .insert(telegramUserLinks)
+    .values({
+      telegramUserId: params.telegramUserId,
+      installationId: params.installationId,
+      vm0UserId: params.vm0UserId,
+    })
+    .onConflictDoNothing()
+    .returning();
+
+  if (inserted) {
+    return { ok: true, userLink: inserted };
+  }
+
+  return { ok: false, reason: "conflict" };
+}
+
 /**
  * Build the logs URL for a run, linking to the agent detail logs page.
  */
 export function buildLogsUrl(runId: string): string {
-  return `${getAppUrl()}/activity/${encodeURIComponent(runId)}`;
+  return `${getAppUrl()}/activities/${encodeURIComponent(runId)}`;
 }
 
 /**
  * Build the agent logs page URL (no specific run).
  */
 export function buildAgentLogsUrl(): string {
-  return `${getAppUrl()}/activity`;
+  return `${getAppUrl()}/activities`;
 }
 
 /**
@@ -222,20 +346,37 @@ async function completePendingLink(
   installationId: string,
   realTelegramUserId: string,
 ): Promise<typeof telegramUserLinks.$inferSelect | null> {
-  const [updated] = await globalThis.services.db
-    .update(telegramUserLinks)
-    .set({
-      telegramUserId: realTelegramUserId,
-      updatedAt: new Date(),
-    })
+  const [pending] = await globalThis.services.db
+    .select()
+    .from(telegramUserLinks)
     .where(
       and(
         eq(telegramUserLinks.installationId, installationId),
         eq(telegramUserLinks.telegramUserId, PENDING_TELEGRAM_USER_ID),
       ),
     )
-    .returning();
-  return updated ?? null;
+    .limit(1);
+
+  if (!pending) {
+    return null;
+  }
+
+  const result = await linkTelegramUserToVm0User({
+    installationId,
+    telegramUserId: realTelegramUserId,
+    vm0UserId: pending.vm0UserId,
+  });
+
+  if (result.ok) {
+    return result.userLink;
+  }
+
+  log.warn("Failed to auto-complete pending Telegram link", {
+    installationId,
+    telegramUserId: realTelegramUserId,
+    reason: result.reason,
+  });
+  return null;
 }
 
 /**
@@ -256,7 +397,10 @@ export async function ensureOrgAndArtifact(
  */
 export async function getWorkspaceAgent(
   composeId: string,
-): Promise<{ id: string; name: string; agentId: string } | undefined> {
+): Promise<
+  | { id: string; name: string; displayName: string | null; agentId: string }
+  | undefined
+> {
   const db = globalThis.services.db;
   const [compose] = await db
     .select({
@@ -273,11 +417,94 @@ export async function getWorkspaceAgent(
   const agentId = await resolveAgentId(compose.orgId, compose.name);
   if (!agentId) return undefined;
 
+  const [agent] = await db
+    .select({
+      name: zeroAgents.name,
+      displayName: zeroAgents.displayName,
+    })
+    .from(zeroAgents)
+    .where(eq(zeroAgents.id, agentId))
+    .limit(1);
+
   return {
     id: compose.id,
-    name: compose.name,
+    name: agent?.name ?? compose.name,
+    displayName: agent?.displayName ?? null,
     agentId,
   };
+}
+
+export function getAgentDisplayLabel(agent: {
+  name: string;
+  displayName: string | null;
+}): string {
+  const displayName = agent.displayName?.trim();
+  if (displayName) return displayName;
+
+  const name = agent.name.trim();
+  return name || "zero";
+}
+
+function normalizedBotUsername(botUsername: string | null | undefined): string {
+  return botUsername?.replace(/^@/, "").trim() ?? "";
+}
+
+export function formatTelegramConnectPrompt(connectUrl: string): string {
+  return `To use Zero in Telegram, please connect your account first.\n\n<a href="${escapeHtml(connectUrl)}">Connect</a>`;
+}
+
+export function formatTelegramPrivateConnectPrompt(
+  botUsername: string | null | undefined,
+): string {
+  const username = normalizedBotUsername(botUsername);
+  if (!username) {
+    return "To use Zero in Telegram, please connect your account first.\n\nSend me /connect in a private message.";
+  }
+
+  return `To use Zero in Telegram, please connect your account first.\n\n<a href="https://t.me/${escapeHtml(username)}?start=connect">Connect</a>`;
+}
+
+export function formatTelegramAlreadyConnectedMessage(
+  botUsername: string | null | undefined,
+): string {
+  const username = normalizedBotUsername(botUsername);
+  const target = username
+    ? `Mention @${username} in a group or send a DM`
+    : "Send a DM";
+  return `You are already connected.\n${target} to start chatting with your agent.`;
+}
+
+export function formatTelegramCommandSuccess(message: string): string {
+  return `✅ ${escapeHtml(message)}`;
+}
+
+export function formatTelegramCommandError(message: string): string {
+  return `❌ <b>Error</b>\n${escapeHtml(message)}`;
+}
+
+export function formatTelegramThinkingMessage(agentName: string): string {
+  return `<i>${escapeHtml(agentName)} is thinking...</i>`;
+}
+
+export function formatTelegramHelpMessage(
+  botUsername: string | null | undefined,
+): string {
+  const username = normalizedBotUsername(botUsername);
+  const groupUsage = username
+    ? `• <code>@${escapeHtml(username)} &lt;message&gt;</code> - Send a message to your agent\n`
+    : "";
+
+  return [
+    "<b>Zero Telegram Bot Help</b>",
+    "",
+    "<b>Commands</b>",
+    "• <code>/connect</code> - Connect to Zero",
+    "• <code>/new_session</code> - Start a new conversation",
+    "• <code>/disconnect</code> - Disconnect from Zero",
+    "",
+    "<b>Usage</b>",
+    `${groupUsage}• Send a DM to chat with your agent`,
+  ].join("\n");
 }
 
 /**
@@ -292,7 +519,7 @@ export async function resolveSessionCompose(
   if (agent) {
     return {
       composeId: sessionData.agentComposeId,
-      agentName: agent.name,
+      agentName: getAgentDisplayLabel(agent),
     };
   }
   return undefined;
@@ -324,7 +551,7 @@ export async function sendThinkingMessage(
   agentName: string,
   options?: { replyToMessageId?: number },
 ): Promise<TelegramSentMessage | undefined> {
-  const text = `<i>🤖 ${escapeHtml(agentName)} is thinking...</i>`;
+  const text = formatTelegramThinkingMessage(agentName);
   try {
     return await sendMessage(client, chatId, text, options);
   } catch (err) {

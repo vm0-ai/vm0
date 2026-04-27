@@ -8,14 +8,15 @@ import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
 import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
 import {
   ensureOrgAndArtifact,
-  getWorkspaceAgent,
+  formatTelegramCommandSuccess,
+  linkTelegramUserToVm0User,
+  type LinkTelegramUserResult,
 } from "../../../../../src/lib/zero/telegram/handlers/shared";
 import { decryptSecretValue } from "../../../../../src/lib/shared/crypto/secrets-encryption";
 import {
   createTelegramClient,
   sendMessage,
 } from "../../../../../src/lib/zero/telegram/client";
-import { escapeHtml } from "../../../../../src/lib/zero/telegram/format";
 import { logger } from "../../../../../src/lib/shared/logger";
 import {
   telegramAuthSchema,
@@ -23,8 +24,14 @@ import {
 } from "../../../../../src/lib/zero/telegram/verify-login";
 import { verifyConnectSignature } from "../../../../../src/lib/zero/telegram/connect-token";
 import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
+import { checkTelegramDomain } from "../../../../../src/lib/zero/telegram/check-domain";
 
 const log = logger("api:telegram:link");
+
+type LinkTelegramUserConflictReason = Extract<
+  LinkTelegramUserResult,
+  { ok: false }
+>["reason"];
 
 function orgMismatchResponse() {
   return NextResponse.json(
@@ -37,6 +44,55 @@ function orgMismatchResponse() {
     },
     { status: 403 },
   );
+}
+
+function resolveTelegramLoginOrigin(request: Request): string {
+  const { NEXT_PUBLIC_APP_URL } = env();
+  const url = new URL(request.url);
+  const originParam = url.searchParams.get("origin");
+  if (!originParam) {
+    return NEXT_PUBLIC_APP_URL;
+  }
+
+  try {
+    const originUrl = new URL(originParam);
+    if (originUrl.protocol === "http:" || originUrl.protocol === "https:") {
+      return originUrl.origin;
+    }
+  } catch {
+    // Fall back to the configured app URL for malformed client origins.
+  }
+
+  return NEXT_PUBLIC_APP_URL;
+}
+
+function linkConflictResponse(reason: LinkTelegramUserConflictReason) {
+  const message =
+    reason === "telegram-user-linked"
+      ? "This Telegram account is already connected to another VM0 account for this bot. Disconnect it before connecting a different account."
+      : reason === "vm0-user-linked"
+        ? "Your VM0 account is already connected to another Telegram account for this bot. Disconnect it before connecting a different Telegram account."
+        : "This Telegram account link already exists. Disconnect it first and try again.";
+
+  return NextResponse.json(
+    { error: { message, code: "CONFLICT" } },
+    { status: 409 },
+  );
+}
+
+async function linkUserOrConflict(params: {
+  installationId: string;
+  telegramUserId: string;
+  vm0UserId: string;
+  orgId: string;
+}): Promise<NextResponse | undefined> {
+  const result = await linkTelegramUserToVm0User(params);
+  if (!result.ok) {
+    return linkConflictResponse(result.reason);
+  }
+
+  await ensureOrgAndArtifact(params.vm0UserId, params.orgId);
+  return undefined;
 }
 
 /**
@@ -59,6 +115,8 @@ export async function DELETE(request: Request) {
   }
   const { org } = await resolveOrg(authCtx);
   const userId = authCtx.userId;
+  const url = new URL(request.url);
+  const botId = url.searchParams.get("botId");
 
   const db = globalThis.services.db;
 
@@ -76,6 +134,7 @@ export async function DELETE(request: Request) {
       and(
         eq(telegramUserLinks.vm0UserId, userId),
         inArray(telegramUserLinks.installationId, orgInstallations),
+        botId ? eq(telegramUserLinks.installationId, botId) : undefined,
       ),
     )
     .returning({ id: telegramUserLinks.id });
@@ -121,12 +180,18 @@ export async function GET(request: Request) {
   }
   const { org } = await resolveOrg(authCtx);
   const userId = authCtx.userId;
+  const url = new URL(request.url);
+  const botId = url.searchParams.get("botId");
+  const telegramLoginOrigin = resolveTelegramLoginOrigin(request);
 
-  // Find user's most recent Telegram link in the active org.
+  // Find user's Telegram link in the active org. When a botId is provided,
+  // scope the status to that bot so links for other bots don't short-circuit
+  // the connect page.
   const [userLink] = await globalThis.services.db
     .select({
       telegramUserId: telegramUserLinks.telegramUserId,
       installationId: telegramUserLinks.installationId,
+      botUsername: telegramInstallations.botUsername,
     })
     .from(telegramUserLinks)
     .innerJoin(
@@ -137,6 +202,7 @@ export async function GET(request: Request) {
       and(
         eq(telegramUserLinks.vm0UserId, userId),
         eq(telegramInstallations.orgId, org.orgId),
+        botId ? eq(telegramUserLinks.installationId, botId) : undefined,
       ),
     )
     .orderBy(desc(telegramUserLinks.createdAt))
@@ -146,6 +212,7 @@ export async function GET(request: Request) {
     return NextResponse.json({
       linked: true,
       telegramUserId: userLink.telegramUserId,
+      botUsername: userLink.botUsername,
     });
   }
 
@@ -153,9 +220,6 @@ export async function GET(request: Request) {
   // Returns installation info so the frontend can show a re-link UI.
   // Actual linking creates a pending user link that auto-completes on first
   // Telegram message (see resolveUserLink in shared.ts).
-  const url = new URL(request.url);
-  const botId = url.searchParams.get("botId");
-
   if (botId) {
     const [installation] = await globalThis.services.db
       .select({
@@ -171,11 +235,16 @@ export async function GET(request: Request) {
       if (installation.orgId !== org.orgId) {
         return orgMismatchResponse();
       }
+      const domainConfigured = await checkTelegramDomain(
+        installation.telegramBotId,
+        telegramLoginOrigin,
+      );
       return NextResponse.json({
         linked: false,
         installation: {
           id: installation.telegramBotId,
           botUsername: installation.botUsername,
+          domainConfigured,
         },
       });
     }
@@ -228,7 +297,6 @@ export async function POST(request: Request) {
       telegramBotId: telegramInstallations.telegramBotId,
       botUsername: telegramInstallations.botUsername,
       encryptedBotToken: telegramInstallations.encryptedBotToken,
-      defaultComposeId: telegramInstallations.defaultComposeId,
       orgId: telegramInstallations.orgId,
     })
     .from(telegramInstallations)
@@ -266,21 +334,13 @@ export async function POST(request: Request) {
 
     const telegramUserId = String(body.telegramAuth.id);
 
-    await globalThis.services.db
-      .insert(telegramUserLinks)
-      .values({
-        telegramUserId,
-        installationId: installation.telegramBotId,
-        vm0UserId: userId,
-      })
-      .onConflictDoUpdate({
-        target: [
-          telegramUserLinks.telegramUserId,
-          telegramUserLinks.installationId,
-        ],
-        set: { vm0UserId: userId, updatedAt: new Date() },
-      });
-    await ensureOrgAndArtifact(userId, org.orgId);
+    const conflictResponse = await linkUserOrConflict({
+      installationId: installation.telegramBotId,
+      telegramUserId,
+      vm0UserId: userId,
+      orgId: org.orgId,
+    });
+    if (conflictResponse) return conflictResponse;
 
     return NextResponse.json({
       botUsername: installation.botUsername,
@@ -318,30 +378,22 @@ export async function POST(request: Request) {
 
     const telegramUserId = body.connectSignature.telegramUserId;
 
-    await globalThis.services.db
-      .insert(telegramUserLinks)
-      .values({
-        telegramUserId,
-        installationId: installation.telegramBotId,
-        vm0UserId: userId,
-      })
-      .onConflictDoUpdate({
-        target: [
-          telegramUserLinks.telegramUserId,
-          telegramUserLinks.installationId,
-        ],
-        set: { vm0UserId: userId, updatedAt: new Date() },
-      });
-    await ensureOrgAndArtifact(userId, org.orgId);
+    const conflictResponse = await linkUserOrConflict({
+      installationId: installation.telegramBotId,
+      telegramUserId,
+      vm0UserId: userId,
+      orgId: org.orgId,
+    });
+    if (conflictResponse) return conflictResponse;
 
     // Send success message to user in Telegram (non-blocking)
     const client = createTelegramClient(botToken);
-    const agent = await getWorkspaceAgent(installation.defaultComposeId);
-    const agentName = agent?.name ?? "Agent";
     sendMessage(
       client,
       telegramUserId,
-      `✅ Account connected! 🤖 ${escapeHtml(agentName)} is ready.\n\nSend me a message to get started.`,
+      formatTelegramCommandSuccess(
+        "Account linked.\nSend me a message to start chatting with your agent.",
+      ),
     ).catch((err) => {
       log.warn("Failed to send connect success message", { err });
     });

@@ -14,7 +14,12 @@ const internalReload$ = state(0);
 const internalTelegramBotTokenForm$ = state("");
 const internalTelegramBotAgentForm$ = state<string | null>(null);
 const internalTelegramSavingBotId$ = state<string | null>(null);
-const internalTelegramDisconnectingBotId$ = state<string | null>(null);
+const internalTelegramUnlinkingBotId$ = state<string | null>(null);
+const internalTelegramUninstallingBotId$ = state<string | null>(null);
+const internalTelegramUninstallDialogBotId$ = state<string | null>(null);
+const internalTelegramReinstallDialogBotId$ = state<string | null>(null);
+const internalTelegramReinstallTokenForm$ = state("");
+const internalTelegramReinstallingBotId$ = state<string | null>(null);
 
 export const telegramBotTokenForm$ = computed((get) => {
   return get(internalTelegramBotTokenForm$);
@@ -28,8 +33,28 @@ export const telegramSavingBotId$ = computed((get) => {
   return get(internalTelegramSavingBotId$);
 });
 
-export const telegramDisconnectingBotId$ = computed((get) => {
-  return get(internalTelegramDisconnectingBotId$);
+export const telegramUnlinkingBotId$ = computed((get) => {
+  return get(internalTelegramUnlinkingBotId$);
+});
+
+export const telegramUninstallingBotId$ = computed((get) => {
+  return get(internalTelegramUninstallingBotId$);
+});
+
+export const telegramUninstallDialogBotId$ = computed((get) => {
+  return get(internalTelegramUninstallDialogBotId$);
+});
+
+export const telegramReinstallDialogBotId$ = computed((get) => {
+  return get(internalTelegramReinstallDialogBotId$);
+});
+
+export const telegramReinstallTokenForm$ = computed((get) => {
+  return get(internalTelegramReinstallTokenForm$);
+});
+
+export const telegramReinstallingBotId$ = computed((get) => {
+  return get(internalTelegramReinstallingBotId$);
 });
 
 export const setTelegramBotTokenForm$ = command(({ set }, value: string) => {
@@ -48,9 +73,42 @@ export const setTelegramSavingBotId$ = command(
   },
 );
 
-export const setTelegramDisconnectingBotId$ = command(
+export const setTelegramUnlinkingBotId$ = command(
   ({ set }, value: string | null) => {
-    set(internalTelegramDisconnectingBotId$, value);
+    set(internalTelegramUnlinkingBotId$, value);
+  },
+);
+
+export const setTelegramUninstallingBotId$ = command(
+  ({ set }, value: string | null) => {
+    set(internalTelegramUninstallingBotId$, value);
+  },
+);
+
+export const setTelegramUninstallDialogBotId$ = command(
+  ({ set }, value: string | null) => {
+    set(internalTelegramUninstallDialogBotId$, value);
+  },
+);
+
+export const setTelegramReinstallDialogBotId$ = command(
+  ({ set }, value: string | null) => {
+    set(internalTelegramReinstallDialogBotId$, value);
+    if (!value) {
+      set(internalTelegramReinstallTokenForm$, "");
+    }
+  },
+);
+
+export const setTelegramReinstallTokenForm$ = command(
+  ({ set }, value: string) => {
+    set(internalTelegramReinstallTokenForm$, value);
+  },
+);
+
+export const setTelegramReinstallingBotId$ = command(
+  ({ set }, value: string | null) => {
+    set(internalTelegramReinstallingBotId$, value);
   },
 );
 
@@ -58,7 +116,12 @@ export const resetTelegramSettingsUi$ = command(({ set }) => {
   set(internalTelegramBotTokenForm$, "");
   set(internalTelegramBotAgentForm$, null);
   set(internalTelegramSavingBotId$, null);
-  set(internalTelegramDisconnectingBotId$, null);
+  set(internalTelegramUnlinkingBotId$, null);
+  set(internalTelegramUninstallingBotId$, null);
+  set(internalTelegramUninstallDialogBotId$, null);
+  set(internalTelegramReinstallDialogBotId$, null);
+  set(internalTelegramReinstallTokenForm$, "");
+  set(internalTelegramReinstallingBotId$, null);
 });
 
 export const isTelegramIntegrationEnabled$ = computed(async (get) => {
@@ -103,6 +166,28 @@ export const registerTelegramBot$ = command(
   },
 );
 
+export const reinstallTelegramBot$ = command(
+  async (
+    { get, set },
+    input: { botId: string; botToken: string },
+    signal: AbortSignal,
+  ): Promise<TelegramBotStatus> => {
+    const client = get(zeroClient$)(zeroIntegrationsTelegramContract);
+    const result = await accept(
+      client.register({
+        headers: {},
+        body: { botToken: input.botToken, reinstallBotId: input.botId },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    set(reloadTelegramBots$);
+    toast.success("Telegram bot reinstalled");
+    return (result as { body: TelegramBotStatus }).body;
+  },
+);
+
 export const updateTelegramBotAgent$ = command(
   async (
     { get, set },
@@ -126,7 +211,24 @@ export const updateTelegramBotAgent$ = command(
   },
 );
 
-export const disconnectTelegramBot$ = command(
+export const disconnectTelegramAccount$ = command(
+  async ({ get, set }, botId: string, signal: AbortSignal): Promise<void> => {
+    const client = get(zeroClient$)(zeroIntegrationsTelegramContract);
+    await accept(
+      client.unlink({
+        headers: {},
+        query: { botId },
+        fetchOptions: { signal },
+      }),
+      [204],
+    );
+    signal.throwIfAborted();
+    set(reloadTelegramBots$);
+    toast.success("Telegram account disconnected");
+  },
+);
+
+export const uninstallTelegramBot$ = command(
   async ({ get, set }, botId: string, signal: AbortSignal): Promise<void> => {
     const client = get(zeroClient$)(zeroIntegrationsTelegramContract);
     await accept(
@@ -139,6 +241,6 @@ export const disconnectTelegramBot$ = command(
     );
     signal.throwIfAborted();
     set(reloadTelegramBots$);
-    toast.success("Telegram bot disconnected");
+    toast.success("Telegram bot uninstalled");
   },
 );

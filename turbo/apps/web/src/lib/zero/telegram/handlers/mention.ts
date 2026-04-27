@@ -12,14 +12,16 @@ import {
   lookupTelegramThreadSession,
   storeTelegramMessage,
   getWorkspaceAgent,
+  getAgentDisplayLabel,
   resolveSessionCompose,
   resolveUserLink,
   buildAgentLogsUrl,
   buildLogsUrl,
+  formatTelegramPrivateConnectPrompt,
 } from "./shared";
 import { fetchTelegramContext } from "../context";
 import { runAgentForTelegram } from "./run-agent";
-import { buildTelegramErrorResponse, escapeHtml } from "../format";
+import { buildTelegramErrorResponse } from "../format";
 import { logger } from "../../../shared/logger";
 import type { TelegramHandlerUpdate } from "./types";
 
@@ -75,7 +77,7 @@ export async function handleTelegramMention(
     await sendMessage(
       client,
       chatId,
-      `🔗 Please <a href="https://t.me/${escapeHtml(installation.botUsername ?? "")}?start=connect">send me /connect</a> in a private message to connect your account.`,
+      formatTelegramPrivateConnectPrompt(installation.botUsername),
       { replyToMessageId: message.message_id },
     );
     return;
@@ -93,7 +95,7 @@ export async function handleTelegramMention(
     );
     return;
   }
-  const agentName = defaultAgent.name;
+  const agentName = getAgentDisplayLabel(defaultAgent);
 
   // 4. Send thinking placeholder message (reply to user's message in groups)
   const thinkingMessage = await sendThinkingMessage(client, chatId, agentName, {

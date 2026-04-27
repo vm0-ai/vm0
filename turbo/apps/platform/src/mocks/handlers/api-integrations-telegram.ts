@@ -14,6 +14,7 @@ const defaultTelegramBots: TelegramBot[] = [
     agent: { id: "compose_1", name: "default-agent" },
     isOwner: true,
     isConnected: true,
+    tokenStatus: "valid",
   },
 ];
 
@@ -48,6 +49,7 @@ function statusToBot(status: TelegramBotStatus): TelegramBot {
     agent: status.agent,
     isOwner: status.isOwner,
     isConnected: status.isConnected,
+    tokenStatus: status.tokenStatus,
   };
 }
 
@@ -62,6 +64,17 @@ function setMockTelegramStatuses(statuses: TelegramBotStatus[]): void {
       return structuredClone(statusToBot(status));
     }),
   };
+}
+
+function updateMockBotConnection(botId: string, connected: boolean): void {
+  const status = mockTelegramStatuses[botId];
+  if (!status) {
+    return;
+  }
+  mockTelegramStatuses[botId] = { ...status, isConnected: connected };
+  mockTelegramList.bots = mockTelegramList.bots.map((bot) => {
+    return bot.id === botId ? { ...bot, isConnected: connected } : bot;
+  });
 }
 
 export function resetMockTelegramIntegration(): void {
@@ -128,6 +141,75 @@ export const apiIntegrationsTelegramHandlers = [
   ),
 
   mockApi(
+    zeroIntegrationsTelegramContract.getLinkStatus,
+    ({ query, respond }) => {
+      if (query.botId) {
+        const status = mockTelegramStatuses[query.botId];
+        if (status?.isConnected) {
+          return respond(200, {
+            linked: true,
+            telegramUserId: mockLinkStatus.linked
+              ? mockLinkStatus.telegramUserId
+              : "99002",
+            botUsername: status.username ?? undefined,
+          });
+        }
+        if (status) {
+          return respond(200, {
+            linked: false,
+            installation: {
+              id: status.id,
+              botUsername: status.username ?? "telegram_bot",
+              domainConfigured: status.domainConfigured,
+            },
+          });
+        }
+      }
+
+      if (mockLinkStatus.linked) {
+        return respond(200, {
+          ...mockLinkStatus,
+          botUsername:
+            Object.values(mockTelegramStatuses).find((status) => {
+              return status.isConnected;
+            })?.username ?? undefined,
+        });
+      }
+
+      return respond(200, mockLinkStatus);
+    },
+  ),
+
+  mockApi(zeroIntegrationsTelegramContract.link, ({ body, respond }) => {
+    const status = mockTelegramStatuses[body.telegramBotId];
+    if (!status) {
+      return respond(404, {
+        error: { message: "Installation not found", code: "NOT_FOUND" },
+      });
+    }
+    const telegramUserId =
+      body.connectSignature?.telegramUserId ?? String(body.telegramAuth?.id);
+    updateMockBotConnection(body.telegramBotId, true);
+    mockLinkStatus = { linked: true, telegramUserId };
+    return respond(200, {
+      botUsername: status.username ?? "telegram_bot",
+      telegramUserId,
+    });
+  }),
+
+  mockApi(zeroIntegrationsTelegramContract.unlink, ({ query, respond }) => {
+    if (query.botId) {
+      updateMockBotConnection(query.botId, false);
+    } else {
+      for (const botId of Object.keys(mockTelegramStatuses)) {
+        updateMockBotConnection(botId, false);
+      }
+    }
+    mockLinkStatus = { linked: false };
+    return respond(204);
+  }),
+
+  mockApi(
     zeroIntegrationsTelegramContract.disconnect,
     ({ params, respond }) => {
       delete mockTelegramStatuses[params.botId];
@@ -138,11 +220,27 @@ export const apiIntegrationsTelegramHandlers = [
     },
   ),
 
-  mockApi(zeroIntegrationsTelegramContract.getLinkStatus, ({ respond }) => {
-    return respond(200, mockLinkStatus);
-  }),
-
   mockApi(zeroIntegrationsTelegramContract.register, ({ body, respond }) => {
+    if (body.reinstallBotId) {
+      const existing = mockTelegramStatuses[body.reinstallBotId];
+      if (!existing) {
+        return respond(404, {
+          error: { message: "Telegram bot not found", code: "NOT_FOUND" },
+        });
+      }
+      const status: TelegramBotStatus = {
+        ...existing,
+        tokenStatus: "valid",
+      };
+      mockTelegramStatuses[status.id] = structuredClone(status);
+      mockTelegramList.bots = mockTelegramList.bots.map((bot) => {
+        return bot.id === status.id
+          ? structuredClone(statusToBot(status))
+          : bot;
+      });
+      return respond(200, status);
+    }
+
     mockRegisterCounter += 1;
     const id =
       mockRegisterCounter === 1
@@ -158,6 +256,7 @@ export const apiIntegrationsTelegramHandlers = [
       agent: { id: agentId, name: "default-agent" },
       isOwner: true,
       isConnected: false,
+      tokenStatus: "valid",
       domainConfigured: false,
       environment: {
         requiredSecrets: ["ANTHROPIC_API_KEY"],

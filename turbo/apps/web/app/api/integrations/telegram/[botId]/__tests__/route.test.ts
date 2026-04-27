@@ -125,6 +125,29 @@ describe("/api/integrations/telegram/[botId]", () => {
       expect(data.isConnected).toBe(true);
     });
 
+    it("returns full status for an unlinked org member", async () => {
+      const user = await context.setupUser();
+      const botId = uniqueId("bot");
+      await createTestTelegramInstallation({
+        ownerUserId: "other-owner",
+        telegramBotId: botId,
+        orgId: user.orgId,
+      });
+      mockClerk({
+        userId: user.userId,
+        orgId: user.orgId,
+        orgRole: "org:member",
+      });
+
+      const response = await GET(botRequest("GET"), routeParams(botId));
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.id).toBe(botId);
+      expect(data.isOwner).toBe(false);
+      expect(data.isConnected).toBe(false);
+    });
+
     it("returns 404 for a bot in another org", async () => {
       const user = await context.setupUser();
       const botId = uniqueId("bot");
@@ -140,7 +163,7 @@ describe("/api/integrations/telegram/[botId]", () => {
       expect(data.error.code).toBe("NOT_FOUND");
     });
 
-    it("returns 404 for a bot the user neither owns nor linked", async () => {
+    it("returns full status for a bot the user neither owns nor linked", async () => {
       const user = await context.setupUser();
       const botId = uniqueId("bot");
       await createTestTelegramInstallation({
@@ -152,8 +175,10 @@ describe("/api/integrations/telegram/[botId]", () => {
       const response = await GET(botRequest("GET"), routeParams(botId));
       const data = await response.json();
 
-      expect(response.status).toBe(404);
-      expect(data.error.code).toBe("NOT_FOUND");
+      expect(response.status).toBe(200);
+      expect(data.id).toBe(botId);
+      expect(data.isOwner).toBe(false);
+      expect(data.isConnected).toBe(false);
     });
   });
 
@@ -174,16 +199,20 @@ describe("/api/integrations/telegram/[botId]", () => {
       expect(data.error.code).toBe("BAD_REQUEST");
     });
 
-    it("returns 403 for a linked non-owner", async () => {
+    it("returns 403 for a non-admin non-owner", async () => {
       const user = await context.setupUser();
       const botId = uniqueId("bot");
       await createTestTelegramInstallation({
         ownerUserId: "other-owner",
-        vm0UserId: user.userId,
         telegramBotId: botId,
         orgId: user.orgId,
       });
       const { composeId } = await createTestCompose(uniqueId("agent"));
+      mockClerk({
+        userId: user.userId,
+        orgId: user.orgId,
+        orgRole: "org:member",
+      });
 
       const response = await PATCH(
         botRequest("PATCH", { defaultAgentId: composeId }),
@@ -193,6 +222,33 @@ describe("/api/integrations/telegram/[botId]", () => {
 
       expect(response.status).toBe(403);
       expect(data.error.code).toBe("FORBIDDEN");
+    });
+
+    it("updates the default agent for an org admin", async () => {
+      const user = await context.setupUser();
+      const botId = uniqueId("bot");
+      await createTestTelegramInstallation({
+        ownerUserId: "other-owner",
+        telegramBotId: botId,
+        orgId: user.orgId,
+      });
+      mockClerk({
+        userId: user.userId,
+        orgId: user.orgId,
+        orgRole: "org:admin",
+      });
+      const { composeId, name } = await createTestCompose(uniqueId("agent"));
+
+      const response = await PATCH(
+        botRequest("PATCH", { defaultAgentId: composeId }),
+        routeParams(botId),
+      );
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.agent).toEqual({ id: composeId, name });
+      expect(data.id).toBe(botId);
+      expect(data.isOwner).toBe(false);
     });
 
     it("updates the default agent for the owner", async () => {
@@ -263,14 +319,18 @@ describe("/api/integrations/telegram/[botId]", () => {
   });
 
   describe("DELETE", () => {
-    it("returns 403 for a linked non-owner", async () => {
+    it("returns 403 for a non-admin non-owner", async () => {
       const user = await context.setupUser();
       const botId = uniqueId("bot");
       await createTestTelegramInstallation({
         ownerUserId: "other-owner",
-        vm0UserId: user.userId,
         telegramBotId: botId,
         orgId: user.orgId,
+      });
+      mockClerk({
+        userId: user.userId,
+        orgId: user.orgId,
+        orgRole: "org:member",
       });
 
       const response = await DELETE(botRequest("DELETE"), routeParams(botId));
@@ -278,6 +338,31 @@ describe("/api/integrations/telegram/[botId]", () => {
 
       expect(response.status).toBe(403);
       expect(data.error.code).toBe("FORBIDDEN");
+    });
+
+    it("deletes installation for an org admin", async () => {
+      const user = await context.setupUser();
+      const botId = uniqueId("bot");
+      await createTestTelegramInstallation({
+        ownerUserId: "other-owner",
+        telegramBotId: botId,
+        orgId: user.orgId,
+      });
+      mockClerk({
+        userId: user.userId,
+        orgId: user.orgId,
+        orgRole: "org:admin",
+      });
+      const deleteHandler = telegramDeleteWebhook();
+      server.use(deleteHandler.handler);
+
+      const response = await DELETE(botRequest("DELETE"), routeParams(botId));
+
+      expect(response.status).toBe(204);
+      expect(deleteHandler.mocked).toHaveBeenCalledTimes(1);
+
+      const getResponse = await GET(botRequest("GET"), routeParams(botId));
+      expect(getResponse.status).toBe(404);
     });
 
     it("deletes installation and removes webhook for the owner", async () => {

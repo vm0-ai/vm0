@@ -1,45 +1,74 @@
 export interface TelegramConnectParams {
   telegramBotId: string;
-  telegramUserId: string;
-  timestamp: number;
-  signature: string;
+  connectSignature: {
+    telegramUserId: string;
+    timestamp: number;
+    signature: string;
+  } | null;
 }
 
-export interface TelegramConnectParamError {
+interface TelegramConnectParamError {
   title: string;
   message: string;
 }
 
 type SearchParamValue = string | string[] | undefined;
-type SearchParams = Record<string, SearchParamValue>;
+type SearchParams = URLSearchParams | Record<string, SearchParamValue>;
 
 type ParsedTelegramConnectParams =
   | { ok: true; params: TelegramConnectParams; returnPath: string }
   | { ok: false; error: TelegramConnectParamError; returnPath: string };
 
-function firstParam(value: SearchParamValue): string | undefined {
+function firstParam(
+  searchParams: SearchParams,
+  key: string,
+): string | undefined {
+  if (searchParams instanceof URLSearchParams) {
+    return searchParams.get(key) ?? undefined;
+  }
+  const value = searchParams[key];
   return Array.isArray(value) ? value[0] : value;
 }
 
 function encodeReturnPath(params: TelegramConnectParams): string {
-  const search = new URLSearchParams({
-    bot: params.telegramBotId,
-    tgUser: params.telegramUserId,
-    ts: String(params.timestamp),
-    sig: params.signature,
-  });
+  const search = new URLSearchParams({ bot: params.telegramBotId });
+  if (params.connectSignature) {
+    search.set("tgUser", params.connectSignature.telegramUserId);
+    search.set("ts", String(params.connectSignature.timestamp));
+    search.set("sig", params.connectSignature.signature);
+  }
   return `/telegram/connect?${search.toString()}`;
 }
 
 export function parseTelegramConnectParams(
   searchParams: SearchParams,
 ): ParsedTelegramConnectParams {
-  const bot = firstParam(searchParams.bot)?.trim();
-  const tgUser = firstParam(searchParams.tgUser)?.trim();
-  const tsRaw = firstParam(searchParams.ts)?.trim();
-  const sig = firstParam(searchParams.sig)?.trim();
+  const bot = firstParam(searchParams, "bot")?.trim();
+  const tgUser = firstParam(searchParams, "tgUser")?.trim();
+  const tsRaw = firstParam(searchParams, "ts")?.trim();
+  const sig = firstParam(searchParams, "sig")?.trim();
 
-  if (!bot || !tgUser || !tsRaw || !sig) {
+  if (!bot) {
+    return {
+      ok: false,
+      returnPath: "/telegram/connect",
+      error: {
+        title: "Connect link is incomplete",
+        message: "Open a fresh /connect link from Telegram and try again.",
+      },
+    };
+  }
+
+  if (!tgUser && !tsRaw && !sig) {
+    const params = { telegramBotId: bot, connectSignature: null };
+    return {
+      ok: true,
+      params,
+      returnPath: encodeReturnPath(params),
+    };
+  }
+
+  if (!tgUser || !tsRaw || !sig) {
     return {
       ok: false,
       returnPath: "/telegram/connect",
@@ -97,9 +126,11 @@ export function parseTelegramConnectParams(
 
   const params = {
     telegramBotId: bot,
-    telegramUserId: tgUser,
-    timestamp,
-    signature: sig,
+    connectSignature: {
+      telegramUserId: tgUser,
+      timestamp,
+      signature: sig,
+    },
   };
 
   return {

@@ -4,8 +4,16 @@ import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
 import { decryptSecretValue } from "../../../shared/crypto/secrets-encryption";
 import { env } from "../../../../env";
 import { createTelegramClient, sendMessage } from "../client";
-import { resolveUserLink, getWorkspaceAgent, buildConnectUrl } from "./shared";
-import { escapeHtml } from "../format";
+import {
+  resolveUserLink,
+  buildConnectUrl,
+  formatTelegramAlreadyConnectedMessage,
+  formatTelegramCommandError,
+  formatTelegramCommandSuccess,
+  formatTelegramConnectPrompt,
+  formatTelegramHelpMessage,
+  formatTelegramPrivateConnectPrompt,
+} from "./shared";
 import { logger } from "../../../shared/logger";
 import type { TelegramHandlerUpdate } from "./types";
 
@@ -50,12 +58,12 @@ export async function handleConnectCommand(
       : undefined;
 
   if (userLink) {
-    const agent = await getWorkspaceAgent(installation.defaultComposeId);
-    const agentName = agent?.name ?? "Agent";
     await sendMessage(
       client,
       chatId,
-      `You are already connected. 🤖 ${escapeHtml(agentName)} is ready.`,
+      formatTelegramCommandSuccess(
+        formatTelegramAlreadyConnectedMessage(installation.botUsername),
+      ),
       replyOptions,
     );
     return;
@@ -67,7 +75,7 @@ export async function handleConnectCommand(
     await sendMessage(
       client,
       chatId,
-      `🔗 Please <a href="https://t.me/${escapeHtml(installation.botUsername ?? "")}?start=connect">send me /connect</a> in a private message to connect your account.`,
+      formatTelegramPrivateConnectPrompt(installation.botUsername),
       replyOptions,
     );
     return;
@@ -78,11 +86,7 @@ export async function handleConnectCommand(
     fromUserId,
     botToken,
   );
-  await sendMessage(
-    client,
-    chatId,
-    `🔗 Connect your account to get started:\n\n<a href="${escapeHtml(connectUrl)}">Open Platform</a>`,
-  );
+  await sendMessage(client, chatId, formatTelegramConnectPrompt(connectUrl));
 }
 
 /**
@@ -123,7 +127,12 @@ export async function handleDisconnectCommand(
       : undefined;
 
   if (!userLink) {
-    await sendMessage(client, chatId, "You are not connected.", replyOptions);
+    await sendMessage(
+      client,
+      chatId,
+      formatTelegramCommandError("You are not connected."),
+      replyOptions,
+    );
     return;
   }
 
@@ -135,7 +144,9 @@ export async function handleDisconnectCommand(
   await sendMessage(
     client,
     chatId,
-    "You have been disconnected and your agent access has been revoked.",
+    formatTelegramCommandSuccess(
+      "You have been disconnected and your agent access has been revoked.",
+    ),
     replyOptions,
   );
 
@@ -158,7 +169,6 @@ export async function handleHelpCommand(
   const { SECRETS_ENCRYPTION_KEY } = env();
   const message = update.message;
   const chatId = String(message.chat.id);
-  const fromUserId = String(message.from?.id ?? 0);
 
   const [installation] = await globalThis.services.db
     .select()
@@ -176,25 +186,15 @@ export async function handleHelpCommand(
   );
   const client = createTelegramClient(botToken);
 
-  const userLink = await resolveUserLink(installationId, fromUserId);
-  const isAdmin = userLink?.vm0UserId === installation.ownerUserId;
-  const botUsername = installation.botUsername ?? "bot";
-
   const replyOptions =
     message.chat.type !== "private"
       ? { replyToMessageId: message.message_id }
       : undefined;
 
-  let helpText = `<b>Available commands:</b>\n\n`;
-  helpText += `/new_session - Start a new conversation\n`;
-  helpText += `/connect - Connect your VM0 account\n`;
-  helpText += `/disconnect - Disconnect your account\n`;
-  helpText += `/help - Show this help message\n`;
-  helpText += `\nMention @${escapeHtml(botUsername)} in a group or send a DM to chat with the agent.`;
-
-  if (isAdmin) {
-    helpText += `\n\nYou are the admin of this bot installation.`;
-  }
-
-  await sendMessage(client, chatId, helpText, replyOptions);
+  await sendMessage(
+    client,
+    chatId,
+    formatTelegramHelpMessage(installation.botUsername),
+    replyOptions,
+  );
 }

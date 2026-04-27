@@ -35,15 +35,23 @@ interface TelegramCallbackPayload {
 }
 
 function telegramSendMessage() {
-  return http.post(
+  const calls: Array<{ chat_id: string; text: string }> = [];
+  const handler = http.post(
     `https://api.telegram.org/bot${TEST_BOT_TOKEN}/sendMessage`,
-    () => {
+    async ({ request }) => {
+      const body = (await request.json()) as { chat_id: string; text: string };
+      calls.push(body);
       return HttpResponse.json({
         ok: true,
-        result: { message_id: 999, chat: { id: 123 }, text: "response" },
+        result: {
+          message_id: 999,
+          chat: { id: 123 },
+          text: body.text,
+        },
       });
     },
   );
+  return { ...handler, calls };
 }
 
 function telegramSendChatAction() {
@@ -56,15 +64,27 @@ function telegramSendChatAction() {
 }
 
 function telegramEditMessageText() {
-  return http.post(
+  const calls: Array<{
+    chat_id: string;
+    message_id: number;
+    text: string;
+  }> = [];
+  const handler = http.post(
     `https://api.telegram.org/bot${TEST_BOT_TOKEN}/editMessageText`,
-    () => {
+    async ({ request }) => {
+      const body = (await request.json()) as {
+        chat_id: string;
+        message_id: number;
+        text: string;
+      };
+      calls.push(body);
       return HttpResponse.json({
         ok: true,
-        result: { message_id: 100, chat: { id: 123 }, text: "edited" },
+        result: { message_id: 100, chat: { id: 123 }, text: body.text },
       });
     },
   );
+  return { ...handler, calls };
 }
 
 function telegramDeleteMessage() {
@@ -86,7 +106,9 @@ async function setupTelegramCallback() {
 
   // Create org + compose (with version) through API
   await createTestOrg(uniqueId("org"));
-  const { composeId } = await createTestCompose(uniqueId("telegram-agent"));
+  const { composeId, name: composeName } = await createTestCompose(
+    uniqueId("telegram-agent"),
+  );
 
   // Create installation with encrypted bot token + user link via helper
   const { installationId, userLinkId } =
@@ -119,6 +141,7 @@ async function setupTelegramCallback() {
   return {
     installationId,
     composeId,
+    composeName,
     userId,
     userLinkId,
     runId,
@@ -226,6 +249,9 @@ describe("POST /api/internal/callbacks/telegram", () => {
       // Telegram API was called
       expect(deleteMessageHandler.mocked).toHaveBeenCalledTimes(1);
       expect(sendMessageHandler.mocked).toHaveBeenCalledTimes(1);
+      const text = sendMessageHandler.calls[0]?.text ?? "";
+      expect(text).not.toContain("🤖");
+      expect(text).toContain("📋 Audit");
     });
 
     it("should return 200 and send error message on failed run", async () => {
@@ -262,7 +288,8 @@ describe("POST /api/internal/callbacks/telegram", () => {
 
   describe("Progress Callback", () => {
     it("should refresh typing indicator and return early without sending a message", async () => {
-      const { runId, payload, secret } = await setupTelegramCallback();
+      const { runId, payload, secret, composeName } =
+        await setupTelegramCallback();
 
       const chatActionHandler = telegramSendChatAction();
       const editHandler = telegramEditMessageText();
@@ -288,6 +315,10 @@ describe("POST /api/internal/callbacks/telegram", () => {
       expect(chatActionHandler.mocked).toHaveBeenCalledTimes(1);
       // Should edit thinking message back to thinking state
       expect(editHandler.mocked).toHaveBeenCalledTimes(1);
+      expect(editHandler.calls[0]?.text).toBe(
+        `<i>${composeName} is thinking...</i>`,
+      );
+      expect(editHandler.calls[0]?.text).not.toContain("🤖");
       // Should NOT send a new message
       expect(sendMessageHandler.mocked).not.toHaveBeenCalled();
     });

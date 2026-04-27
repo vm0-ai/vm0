@@ -13,12 +13,22 @@ import {
 import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
 import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
 import type { AgentComposeYaml } from "../../../../src/lib/infra/agent-compose/types";
+import { decryptSecretValue } from "../../../../src/lib/shared/crypto/secrets-encryption";
+import { logger } from "../../../../src/lib/shared/logger";
 import { listConnectors } from "../../../../src/lib/zero/connector/connector-service";
 import { listSecrets } from "../../../../src/lib/zero/secret/secret-service";
 import { checkTelegramDomain } from "../../../../src/lib/zero/telegram/check-domain";
+import {
+  getMe,
+  isTelegramApiError,
+} from "../../../../src/lib/zero/telegram/client";
 import { listVariables } from "../../../../src/lib/zero/variable/variable-service";
 
 export type TelegramInstallation = typeof telegramInstallations.$inferSelect;
+
+type TelegramTokenStatus = TelegramBot["tokenStatus"];
+
+const log = logger("api:telegram:status");
 
 type TelegramCompose = {
   id: string;
@@ -42,10 +52,7 @@ async function getDefaultCompose(
   return compose ?? null;
 }
 
-export async function getTelegramUserLink(
-  telegramBotId: string,
-  userId: string,
-) {
+async function getTelegramUserLink(telegramBotId: string, userId: string) {
   const [userLink] = await globalThis.services.db
     .select({
       id: telegramUserLinks.id,
@@ -127,13 +134,54 @@ async function getEnvironmentStatus(
   };
 }
 
+function isInvalidTelegramTokenError(error: unknown): boolean {
+  if (isTelegramApiError(error)) {
+    return (
+      error.status === 401 ||
+      /unauthorized|not found/i.test(error.description ?? "")
+    );
+  }
+
+  return false;
+}
+
+async function checkTelegramTokenStatus(
+  installation: TelegramInstallation,
+): Promise<TelegramTokenStatus> {
+  const { SECRETS_ENCRYPTION_KEY } = env();
+  const botToken = decryptSecretValue(
+    installation.encryptedBotToken,
+    SECRETS_ENCRYPTION_KEY,
+  );
+
+  try {
+    const botInfo = await getMe(botToken);
+    if (String(botInfo.id) !== installation.telegramBotId) {
+      return "invalid";
+    }
+    return "valid";
+  } catch (error) {
+    if (isInvalidTelegramTokenError(error)) {
+      return "invalid";
+    }
+
+    log.warn("Unable to verify Telegram bot token", {
+      telegramBotId: installation.telegramBotId,
+      error,
+    });
+    return "unknown";
+  }
+}
+
 export async function buildTelegramBot(
   installation: TelegramInstallation,
   userId: string,
+  tokenStatusOverride?: TelegramTokenStatus,
 ): Promise<TelegramBot> {
-  const [compose, userLink] = await Promise.all([
+  const [compose, userLink, tokenStatus] = await Promise.all([
     getDefaultCompose(installation),
     getTelegramUserLink(installation.telegramBotId, userId),
+    tokenStatusOverride ?? checkTelegramTokenStatus(installation),
   ]);
 
   return {
@@ -142,17 +190,20 @@ export async function buildTelegramBot(
     agent: compose ? { id: compose.id, name: compose.name } : null,
     isOwner: installation.ownerUserId === userId,
     isConnected: !!userLink,
+    tokenStatus,
   };
 }
 
 export async function buildTelegramBotStatus(
   installation: TelegramInstallation,
   userId: string,
+  tokenStatusOverride?: TelegramTokenStatus,
 ): Promise<TelegramBotStatus> {
   const compose = await getDefaultCompose(installation);
-  const [userLink, environment] = await Promise.all([
+  const [userLink, environment, tokenStatus] = await Promise.all([
     getTelegramUserLink(installation.telegramBotId, userId),
     getEnvironmentStatus(compose, installation.orgId, userId),
+    tokenStatusOverride ?? checkTelegramTokenStatus(installation),
   ]);
 
   const { NEXT_PUBLIC_APP_URL } = env();
@@ -167,6 +218,7 @@ export async function buildTelegramBotStatus(
     agent: compose ? { id: compose.id, name: compose.name } : null,
     isOwner: installation.ownerUserId === userId,
     isConnected: !!userLink,
+    tokenStatus,
     domainConfigured,
     environment,
   };

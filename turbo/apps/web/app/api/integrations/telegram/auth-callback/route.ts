@@ -19,6 +19,9 @@ export async function GET() {
   if (!params.get("id")) {
     params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
   }
+  var targetOrigin =
+    new URLSearchParams(window.location.search).get("targetOrigin") ||
+    window.location.origin;
   var data = {};
   ["id","first_name","last_name","username","photo_url","auth_date","hash"].forEach(function(k) {
     var v = params.get(k);
@@ -27,7 +30,7 @@ export async function GET() {
   if (window.opener && data.id) {
     window.opener.postMessage(
       { type: "telegram-auth", data: data },
-      window.location.origin
+      targetOrigin
     );
   }
   window.close();

@@ -465,12 +465,12 @@ export async function enrichMessageContent(opts: {
  * Build the logs URL for a run in the org flow.
  */
 export function buildLogsUrl(runId: string): string {
-  return `${getAppUrl()}/activity/${encodeURIComponent(runId)}`;
+  return `${getAppUrl()}/activities/${encodeURIComponent(runId)}`;
 }
 
 /**
  * Build the agent-level activity URL (no specific run).
  */
 export function buildAgentLogsUrl(): string {
-  return `${getAppUrl()}/activity`;
+  return `${getAppUrl()}/activities`;
 }
