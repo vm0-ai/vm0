@@ -10,6 +10,7 @@ emitted bucket must have a dev-seed row, etc.
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import pathlib
 import re
@@ -32,6 +33,16 @@ class TestTldSnapshot:
     def test_snapshot_has_version_and_expected_stable_entries(self):
         assert IANA_TLD_VERSION
         assert {"ai", "com", "dev", "museum", "xn--q9jyb4c"} <= IANA_TLDS
+
+    def test_snapshot_is_canonical(self):
+        addon_root = pathlib.Path(__file__).resolve().parent.parent
+        script = addon_root / "scripts" / "update-x-tlds.py"
+        spec = importlib.util.spec_from_file_location("update_x_tlds", script)
+        assert spec is not None
+        assert spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        assert module.check_generated() == 0
 
 
 class TestFirewallConsistency:

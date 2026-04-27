@@ -2344,6 +2344,8 @@ class TestReportConnectorUsage:
             "Visit go.dev",
             "Read example.museum",
             "Label:example.com",
+            "Param url=example.com",
+            "Pipe|example.com",
             "Open example.com/path/to/resource?search=foo&lang=en",
             "Open example.com:443/path",
             "Open xn--r8jz45g.xn--q9jyb4c",
