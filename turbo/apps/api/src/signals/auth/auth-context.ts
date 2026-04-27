@@ -13,7 +13,7 @@ import { ZeroCapability } from "@vm0/api-contracts";
 import { AuthContext, CliAuth, ZeroAuthContext } from "../../types/auth";
 import {
   cliTokenRecord,
-  memberRole$,
+  getMemberRoleAndUpdateCache$,
   updateCliTokenLastUsedAt$,
 } from "../services/auth.service";
 import { authorization$, cookie$ } from "../context/hono";
@@ -58,7 +58,7 @@ const cliAuth$ = command(
     waitUntil(set(updateCliTokenLastUsedAt$, cliAuth.tokenId, signal));
 
     const membership = await set(
-      memberRole$,
+      getMemberRoleAndUpdateCache$,
       resolved.orgId,
       resolved.userId,
       signal,
@@ -127,7 +127,7 @@ const zeroAuth$ = command(
     };
 
     const membership = await set(
-      memberRole$,
+      getMemberRoleAndUpdateCache$,
       zeroAuth.orgId,
       zeroAuth.userId,
       signal,
@@ -151,10 +151,12 @@ const sandboxTokenAuth$ = command(
       return null;
     }
 
-    return (
-      resolveSandboxAuth(token, options) ??
-      (await set(zeroAuth$, token, options, signal))
-    );
+    const sandboxAuth = resolveSandboxAuth(token, options);
+    if (sandboxAuth) {
+      return sandboxAuth;
+    }
+
+    return await set(zeroAuth$, token, options, signal);
   },
 );
 

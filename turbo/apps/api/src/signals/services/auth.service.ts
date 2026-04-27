@@ -66,7 +66,7 @@ const deleteMemberRoleCache$ = command(
   },
 );
 
-export const memberRole$ = command(
+export const getMemberRoleAndUpdateCache$ = command(
   async (
     { get, set },
     orgId: string,
