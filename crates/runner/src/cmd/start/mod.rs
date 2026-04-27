@@ -3831,7 +3831,9 @@ mod tests {
         assert!(matches!(result, ParkResult::Parked));
     }
 
-    async fn status_idle_sessions(status_path: &std::path::Path) -> Vec<String> {
+    async fn status_idle_sessions_and_active_runs(
+        status_path: &std::path::Path,
+    ) -> (Vec<String>, Vec<String>) {
         let raw = tokio::fs::read_to_string(status_path).await.unwrap();
         let status: serde_json::Value = serde_json::from_str(&raw).unwrap();
         let mut sessions: Vec<String> = status
@@ -3849,23 +3851,49 @@ mod tests {
             })
             .unwrap_or_default();
         sessions.sort_unstable();
-        sessions
+        let mut run_ids: Vec<String> = status["active_runs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|run| {
+                run.get("run_id")
+                    .and_then(|run_id| run_id.as_str())
+                    .map(str::to_string)
+            })
+            .collect();
+        run_ids.sort_unstable();
+        (sessions, run_ids)
     }
 
-    async fn wait_status_idle_sessions(
+    async fn status_idle_sessions(status_path: &std::path::Path) -> Vec<String> {
+        status_idle_sessions_and_active_runs(status_path).await.0
+    }
+
+    async fn publish_idle_status(pool: &SharedIdlePool, status: &StatusTracker) {
+        let snapshot = pool.lock().await.status_snapshot();
+        assert!(
+            status
+                .set_idle_info_at_revision(snapshot.revision, snapshot.idle_vms)
+                .await
+        );
+    }
+
+    async fn wait_status_idle_empty_with_active_run(
         status_path: &std::path::Path,
-        expected: Vec<String>,
+        run_id: RunId,
         timeout: Duration,
     ) {
+        let expected = run_id.to_string();
         let deadline = tokio::time::Instant::now() + timeout;
         loop {
-            let actual = status_idle_sessions(status_path).await;
-            if actual == expected {
+            let (idle_sessions, active_runs) =
+                status_idle_sessions_and_active_runs(status_path).await;
+            if idle_sessions.is_empty() && active_runs.iter().any(|id| id == &expected) {
                 return;
             }
             assert!(
                 tokio::time::Instant::now() < deadline,
-                "status idle sessions did not reach {expected:?} within {timeout:?} (actual: {actual:?})",
+                "status did not atomically clear idle_vms and add active run {expected} within {timeout:?} (idle: {idle_sessions:?}, active: {active_runs:?})",
             );
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
@@ -4127,17 +4155,7 @@ mod tests {
         );
 
         wait_idle_pool_len(&idle_pool, 0, Duration::from_secs(5)).await;
-        wait_status_idle_sessions(&status_path, Vec::new(), Duration::from_secs(5)).await;
-        let raw = tokio::fs::read_to_string(&status_path).await.unwrap();
-        let status: serde_json::Value = serde_json::from_str(&raw).unwrap();
-        let active_runs = status["active_runs"].as_array().unwrap();
-        let run_id_text = run_id.to_string();
-        assert!(
-            active_runs
-                .iter()
-                .any(|run| run["run_id"].as_str() == Some(run_id_text.as_str())),
-            "reuse status update must add active run in the same write that clears idle_vms",
-        );
+        wait_status_idle_empty_with_active_run(&status_path, run_id, Duration::from_secs(5)).await;
 
         gate.notify_one();
         let completion = env
@@ -4240,6 +4258,60 @@ mod tests {
         assert_eq!(alloc_count, 1, "only new VM should hold budget");
         assert_eq!(alloc_vcpu, 4, "new VM is vm0/large (4 vcpu)");
         assert_eq!(alloc_mem, 8192, "new VM is vm0/large (8192 MB)");
+
+        shutdown(&env, run_handle).await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn profile_mismatch_status_switches_from_idle_to_active_while_job_runs() {
+        let gate = Arc::new(tokio::sync::Notify::new());
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_exit_gate(
+            Arc::clone(&gate),
+        ));
+        let (config, env) = mock_run_config_with_overrides(two_profiles(), 16, 32768, 4, overrides);
+        let idle_pool = Arc::clone(&config.idle_pool);
+        let budget = Arc::clone(&config.budget);
+        let status = Arc::clone(&config.status);
+        let status_path = env._temp_dir.path().join("status.json");
+
+        seed_idle_pool(
+            &idle_pool,
+            &budget,
+            "sess-mm-status",
+            "vm0/default",
+            2,
+            4096,
+        )
+        .await;
+        publish_idle_status(&idle_pool, &status).await;
+        assert_eq!(
+            status_idle_sessions(&status_path).await,
+            vec!["sess-mm-status".to_string()],
+            "pre-run status should list the stale idle VM",
+        );
+
+        let run_handle = tokio::spawn(run(config));
+        let run_id = RunId::new_v4();
+        push_job(
+            &env,
+            run_id,
+            "vm0/large",
+            Some(context_with_session(run_id, "sess-mm-status")),
+        );
+
+        wait_idle_pool_len(&idle_pool, 0, Duration::from_secs(5)).await;
+        wait_status_idle_empty_with_active_run(&status_path, run_id, Duration::from_secs(5)).await;
+
+        gate.notify_one();
+        let completion = env
+            .handle
+            .wait_completion(run_id, Duration::from_secs(5))
+            .await
+            .expect("fresh-create job should still complete");
+        assert_eq!(
+            completion.reuse_result,
+            Some(SandboxReuseResult::ProfileMismatch),
+        );
 
         shutdown(&env, run_handle).await;
     }
@@ -5327,6 +5399,66 @@ mod tests {
             counter.park_call_count(),
             1,
             "expected exactly one park (the fresh-create's)"
+        );
+
+        shutdown(&env, run_handle).await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn unpark_failure_status_switches_from_idle_to_active_while_job_runs() {
+        let gate = Arc::new(tokio::sync::Notify::new());
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_exit_gate(
+            Arc::clone(&gate),
+        ));
+        let counter = Arc::clone(&overrides);
+        overrides.push_unpark_result(Err(sandbox::SandboxError::IdleTransition {
+            transition: sandbox::SandboxIdleTransition::Unpark,
+            message: "simulated unpark failure".into(),
+        }));
+        let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 16384, 4, overrides);
+        let budget = Arc::clone(&config.budget);
+        let idle_pool = Arc::clone(&config.idle_pool);
+        let status = Arc::clone(&config.status);
+        let status_path = env._temp_dir.path().join("status.json");
+
+        seed_idle_pool_with_overrides(
+            &idle_pool,
+            &budget,
+            &counter,
+            "sess-unpark-status",
+            "vm0/default",
+            2,
+            4096,
+        )
+        .await;
+        publish_idle_status(&idle_pool, &status).await;
+        assert_eq!(
+            status_idle_sessions(&status_path).await,
+            vec!["sess-unpark-status".to_string()],
+            "pre-run status should list the idle VM",
+        );
+
+        let run_handle = tokio::spawn(run(config));
+        let run_id = RunId::new_v4();
+        push_job(
+            &env,
+            run_id,
+            "vm0/default",
+            Some(context_with_session(run_id, "sess-unpark-status")),
+        );
+
+        wait_idle_pool_len(&idle_pool, 0, Duration::from_secs(5)).await;
+        wait_status_idle_empty_with_active_run(&status_path, run_id, Duration::from_secs(5)).await;
+
+        gate.notify_one();
+        let completion = env
+            .handle
+            .wait_completion(run_id, Duration::from_secs(5))
+            .await
+            .expect("fresh-create job should still complete");
+        assert_eq!(
+            completion.reuse_result,
+            Some(SandboxReuseResult::UnparkFailed),
         );
 
         shutdown(&env, run_handle).await;
