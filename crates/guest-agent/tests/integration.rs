@@ -33,6 +33,21 @@ static MOCK_SERVER: LazyLock<MockServer> = LazyLock::new(|| {
 /// Serialize all tests — they share one mock server and process-wide env vars.
 static TEST_MUTEX: Mutex<()> = Mutex::new(());
 
+struct SystemLogOverrideGuard;
+
+impl SystemLogOverrideGuard {
+    fn set(path: &str) -> Self {
+        guest_common::log::set_system_log_file(path);
+        Self
+    }
+}
+
+impl Drop for SystemLogOverrideGuard {
+    fn drop(&mut self) {
+        guest_common::log::clear_system_log_file();
+    }
+}
+
 // =========================================================================
 // Group 1: post_json core
 // =========================================================================
@@ -1076,7 +1091,7 @@ async fn final_flush_uploads_log_emitted_immediately_before_it() {
         then.status(200);
     });
 
-    guest_common::log::set_system_log_file(system_log);
+    let system_log_guard = SystemLogOverrideGuard::set(system_log);
     let masker = std::sync::Arc::new(SecretMasker::from_raw(""));
     let telemetry = guest_agent::telemetry::Telemetry::spawn(masker);
 
@@ -1087,7 +1102,7 @@ async fn final_flush_uploads_log_emitted_immediately_before_it() {
         .expect("final flush should upload just-emitted log");
 
     telemetry.shutdown().await;
-    guest_common::log::clear_system_log_file();
+    drop(system_log_guard);
 
     upload_mock.assert_calls_async(1).await;
     upload_mock.delete_async().await;
