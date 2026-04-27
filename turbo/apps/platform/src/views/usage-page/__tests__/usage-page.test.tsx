@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { resetAllMockHandlers } from "../../../mocks/handlers/index.ts";
@@ -31,7 +31,11 @@ describe("/_/usage page", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("credits")).toBeInTheDocument();
+      expect(
+        within(
+          screen.getByRole("region", { name: "Credits totals" }),
+        ).getByText("credits"),
+      ).toBeInTheDocument();
     });
 
     await waitFor(() => {

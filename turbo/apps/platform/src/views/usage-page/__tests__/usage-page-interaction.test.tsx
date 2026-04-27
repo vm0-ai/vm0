@@ -4,7 +4,7 @@
  * updated query parameters.
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { resetAllMockHandlers } from "../../../mocks/handlers/index.ts";
@@ -19,6 +19,10 @@ const context = testContext();
 beforeEach(() => {
   resetAllMockHandlers();
 });
+
+function getTotalsRegion(): HTMLElement {
+  return screen.getByRole("region", { name: "Credits totals" });
+}
 
 function emptyUsageInsight() {
   return {
@@ -59,7 +63,9 @@ describe("/_/usage page - selector interactions", () => {
 
     // Wait for initial fetch to complete
     await waitFor(() => {
-      expect(screen.getByText("credits")).toBeInTheDocument();
+      expect(
+        within(getTotalsRegion()).getByText("credits"),
+      ).toBeInTheDocument();
     });
 
     // Reset captured value and click the range selector
@@ -97,7 +103,9 @@ describe("/_/usage page - selector interactions", () => {
 
     // Wait for initial fetch to complete
     await waitFor(() => {
-      expect(screen.getByText("credits")).toBeInTheDocument();
+      expect(
+        within(getTotalsRegion()).getByText("credits"),
+      ).toBeInTheDocument();
     });
 
     // Reset captured value and click the "Agent" tab in the group-by toggle
@@ -152,7 +160,7 @@ describe("/_/usage page - bucket densification", () => {
     click(await screen.findByRole("option", { name: "Yesterday" }));
 
     await waitFor(() => {
-      expect(screen.getByText("23")).toBeInTheDocument();
+      expect(within(getTotalsRegion()).getByText("23")).toBeInTheDocument();
     });
   });
 
@@ -200,9 +208,11 @@ describe("/_/usage page - bucket densification", () => {
 
     await waitFor(() => {
       expect(capturedTz).toBe("America/Los_Angeles");
-      expect(screen.getByText("Apr 20")).toBeInTheDocument();
+      expect(within(getTotalsRegion()).getByText("Apr 20")).toBeInTheDocument();
     });
-    expect(screen.queryByText("Apr 27")).not.toBeInTheDocument();
+    expect(
+      within(getTotalsRegion()).queryByText("Apr 27"),
+    ).not.toBeInTheDocument();
   });
 });
 
@@ -268,11 +278,13 @@ describe("/_/usage page - empty state", () => {
 
     // Totals card should still show 0 credits with zero grand total
     await waitFor(() => {
-      expect(screen.getByText("credits")).toBeInTheDocument();
+      expect(
+        within(getTotalsRegion()).getByText("credits"),
+      ).toBeInTheDocument();
     });
 
-    expect(screen.getByText("0")).toBeInTheDocument();
-    expect(screen.getByText("credits")).toBeInTheDocument();
+    expect(within(getTotalsRegion()).getByText("0")).toBeInTheDocument();
+    expect(within(getTotalsRegion()).getByText("credits")).toBeInTheDocument();
   });
 });
 

@@ -576,7 +576,10 @@ export function UsageInsightBarChart({
   };
 
   return (
-    <section className="bg-gray-50 rounded-[20px] p-6 border border-border/40 break-inside-avoid relative">
+    <section
+      aria-label="Credits totals"
+      className="bg-gray-50 rounded-[20px] p-6 border border-border/40 break-inside-avoid relative"
+    >
       {buckets.length > 0 && total > 0 && (
         <div className="absolute top-6 right-6">
           <GroupByToggle groupBy={groupBy} setGroupBy={setGroupBy} />
