@@ -7,7 +7,7 @@ import { and, eq } from "drizzle-orm";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { writeDb$ } from "../../external/db";
-import { now, nowDate } from "../../external/time";
+import { now } from "../../external/time";
 import { signPatJwtForTests, signSandboxJwtForTests } from "../../auth/tokens";
 import { healthAuthProbeContract } from "../health-auth-probe";
 
@@ -28,6 +28,7 @@ function currentSecond(): number {
 interface PatFixtureOptions {
   readonly role?: "admin" | "member";
   readonly seedMembership?: boolean;
+  readonly cachedAtMs?: number;
   readonly tokenExpiresAtMs?: number;
 }
 
@@ -64,7 +65,7 @@ async function seedPatFixture(
       orgId,
       userId,
       role,
-      cachedAt: nowDate(),
+      cachedAt: new Date(options.cachedAtMs ?? now()),
     });
   }
 
@@ -280,6 +281,81 @@ describe("GET /health/auth", () => {
       );
 
       expect(response.body.error.code).toBe("UNAUTHORIZED");
+    });
+  });
+
+  describe("org membership cache", () => {
+    it("populates the cache from Clerk on cache miss and serves the next request from cache", async () => {
+      const fixture = await seedPatFixture({ seedMembership: false });
+      fixtures.push(fixture);
+      context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue(
+        {
+          data: [{ organization: { id: fixture.orgId }, role: "org:admin" }],
+        },
+      );
+
+      const client = setupApp({ context, contract: healthAuthProbeContract });
+
+      const first = await accept(
+        client.check({
+          headers: { authorization: `Bearer ${fixture.token}` },
+        }),
+        [200],
+      );
+      expect(first.body).toEqual({
+        tokenType: "pat",
+        userId: fixture.userId,
+        orgId: fixture.orgId,
+        orgRole: "admin",
+      });
+
+      const callsBefore =
+        context.mocks.clerk.users.getOrganizationMembershipList.mock.calls
+          .length;
+
+      const second = await accept(
+        client.check({
+          headers: { authorization: `Bearer ${fixture.token}` },
+        }),
+        [200],
+      );
+      expect(second.body).toEqual(first.body);
+      expect(
+        context.mocks.clerk.users.getOrganizationMembershipList.mock.calls
+          .length,
+      ).toBe(callsBefore);
+    });
+
+    it("removes a stale cache row when Clerk reports no membership", async () => {
+      const fixture = await seedPatFixture({
+        role: "admin",
+        cachedAtMs: now() - 5 * 60_000,
+      });
+      fixtures.push(fixture);
+      context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue(
+        { data: [] },
+      );
+
+      const client = setupApp({ context, contract: healthAuthProbeContract });
+      const first = await accept(
+        client.check({
+          headers: { authorization: `Bearer ${fixture.token}` },
+        }),
+        [401],
+      );
+      expect(first.body.error.code).toBe("UNAUTHORIZED");
+
+      const writeDb = store.set(writeDb$);
+      const remaining = await writeDb
+        .select({ orgId: orgMembersCache.orgId })
+        .from(orgMembersCache)
+        .where(
+          and(
+            eq(orgMembersCache.orgId, fixture.orgId),
+            eq(orgMembersCache.userId, fixture.userId),
+          ),
+        );
+      expect(remaining).toHaveLength(0);
     });
   });
 
