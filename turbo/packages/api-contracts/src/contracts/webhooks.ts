@@ -528,23 +528,38 @@ export type WebhookUsageContract = typeof webhookUsageContract;
 /**
  * Webhook usage event contract for /api/webhooks/agent/usage-event
  *
- * Receives per-event billable usage records (connector API calls, and
- * future sandbox-reported billable events) from the mitmproxy addon
- * for persistence in the `usage_event` table.
+ * Receives billable usage records from the sandbox for persistence in the
+ * `usage_event` table. The legacy single-event body remains supported for
+ * connector billing; new reporters should send `{ runId, events }` batches.
  */
+const webhookUsageEventItemSchema = z
+  .object({
+    idempotencyKey: z.uuid(),
+    kind: z.enum(["connector", "model", "image"]),
+    provider: z.string().min(1).max(100),
+    category: z.string().min(1).max(100),
+    quantity: z.number().int().min(0),
+  })
+  .strict();
+
 export const webhookUsageEventContract = c.router({
   send: {
     method: "POST",
     path: "/api/webhooks/agent/usage-event",
     headers: authHeadersSchema,
-    body: z.object({
-      runId: z.string().min(1, "runId is required"),
-      idempotencyKey: z.uuid(),
-      kind: z.enum(["connector"]),
-      provider: z.string().min(1).max(100),
-      category: z.string().min(1).max(100),
-      quantity: z.number().int().min(0),
-    }),
+    body: z.union([
+      z
+        .object({
+          runId: z.string().min(1, "runId is required"),
+          events: z.array(webhookUsageEventItemSchema).min(1).max(100),
+        })
+        .strict(),
+      webhookUsageEventItemSchema
+        .extend({
+          runId: z.string().min(1, "runId is required"),
+        })
+        .strict(),
+    ]),
     responses: {
       200: z.object({
         success: z.boolean(),

@@ -302,3 +302,31 @@ export async function findTestUsageEvent(id: string): Promise<
     .limit(1);
   return record;
 }
+
+/**
+ * Find all usage_event records by runId.
+ */
+export async function findTestUsageEventsByRunId(runId: string): Promise<
+  Array<{
+    idempotencyKey: string;
+    kind: string;
+    provider: string;
+    category: string;
+    quantity: number;
+    status: string;
+  }>
+> {
+  initServices();
+  return globalThis.services.db
+    .select({
+      idempotencyKey: usageEvent.idempotencyKey,
+      kind: usageEvent.kind,
+      provider: usageEvent.provider,
+      category: usageEvent.category,
+      quantity: usageEvent.quantity,
+      status: usageEvent.status,
+    })
+    .from(usageEvent)
+    .where(eq(usageEvent.runId, runId))
+    .orderBy(usageEvent.kind, usageEvent.provider, usageEvent.category);
+}

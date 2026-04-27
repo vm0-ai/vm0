@@ -188,6 +188,7 @@ export {
   findTestCreditUsage,
   findTestCreditUsagesByRunId,
   findTestUsageEvent,
+  findTestUsageEventsByRunId,
   findTestClientCreditUsagesByRunId,
   findUsageDaily,
   findInsightsDaily,

@@ -20,6 +20,16 @@ import usage
 from usage import create_sse_usage_extractor
 
 
+def _request_bodies_from_calls(call_args_list):
+    return [json.loads(call[0][0].data) for call in call_args_list]
+
+
+def _usage_event_events_from_calls(call_args_list):
+    return [
+        event for body in _request_bodies_from_calls(call_args_list) for event in body["events"]
+    ]
+
+
 class TestRequestHandler:
     async def test_allowed_domain_passes_through(self, registry_file, real_flow, mitm_ctx):
         flow = real_flow(with_response=False, host="api.anthropic.com")
@@ -1772,7 +1782,7 @@ class TestErrorHandler:
 
         # Connector billing webhook should have been posted to _opener.
         assert mock_opener.open.called
-        payloads = [json.loads(call[0][0].data) for call in mock_opener.open.call_args_list]
+        payloads = _usage_event_events_from_calls(mock_opener.open.call_args_list)
         by_cat = {p["category"]: p["quantity"] for p in payloads}
         assert by_cat["posts.read"] == 23
         assert by_cat["user.read"] == 5
@@ -1827,7 +1837,7 @@ class TestErrorHandler:
             usage.webhook.usage_executor.shutdown(wait=True)
 
         # 4. Billing must reflect the 2 complete tweets (partial 3rd is dropped)
-        payloads = [json.loads(call[0][0].data) for call in mock_opener.open.call_args_list]
+        payloads = _usage_event_events_from_calls(mock_opener.open.call_args_list)
         by_cat = {p["category"]: p["quantity"] for p in payloads}
         assert by_cat["posts.read"] == 2  # not 3 — partial trailing dropped
         assert by_cat["user.read"] == 1
@@ -2058,7 +2068,11 @@ class TestReportConnectorUsage:
         ):
             mock_opener.open.return_value = MagicMock()
             usage.report_connector_usage(flow, run_id)
-        return [json.loads(call[0][0].data) for call in mock_opener.open.call_args_list]
+        return [
+            event
+            for body in _request_bodies_from_calls(mock_opener.open.call_args_list)
+            for event in body["events"]
+        ]
 
     def _call_and_get_single_billing(self, flow, run_id="run-abc-123"):
         """Call report_connector_usage and return the single webhook payload."""
@@ -2114,6 +2128,73 @@ class TestReportConnectorUsage:
         payloads = self._call_and_get_billing(flow)
         by_cat = {p["category"]: p["quantity"] for p in payloads}
         assert by_cat == {"posts.read": 1, "user.read": 1, "media.read": 2}
+
+    def test_posts_usage_events_as_one_batch(self, tmp_path, real_flow):
+        """One X response with multiple categories sends one batched webhook."""
+        body = json.dumps(
+            {
+                "data": [{"id": "1", "author_id": "99"}],
+                "includes": {"users": [{"id": "99"}]},
+            }
+        ).encode()
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            query="expansions=author_id",
+            body=body,
+        )
+
+        with (
+            patch.object(
+                usage.providers.connectors.x, "get_api_url", return_value="https://app.test"
+            ),
+            patch.object(usage.webhook, "_opener") as mock_opener,
+        ):
+            mock_opener.open.return_value = MagicMock()
+            usage.report_connector_usage(flow, "run-abc-123")
+
+        mock_opener.open.assert_called_once()
+        [payload] = _request_bodies_from_calls(mock_opener.open.call_args_list)
+        assert payload["runId"] == "run-abc-123"
+        assert "idempotencyKey" not in payload
+        by_cat = {event["category"]: event for event in payload["events"]}
+        assert set(by_cat) == {"posts.read", "user.read"}
+        assert by_cat["posts.read"]["kind"] == "connector"
+        assert by_cat["posts.read"]["provider"] == "x"
+        assert by_cat["posts.read"]["quantity"] == 1
+        assert by_cat["user.read"]["quantity"] == 1
+
+    def test_splits_usage_event_batches_at_server_limit(self, tmp_path, real_flow):
+        """Large synthetic category sets are chunked to match the webhook contract."""
+        body = json.dumps(
+            {
+                "data": [],
+                "includes": {f"future_{index}": [{"id": str(index)}] for index in range(101)},
+            }
+        ).encode()
+        flow = self._make_x_flow(real_flow, tmp_path, query="expansions=future", body=body)
+
+        with (
+            patch.object(
+                usage.providers.connectors.x, "get_api_url", return_value="https://app.test"
+            ),
+            patch.object(usage.webhook, "_opener") as mock_opener,
+        ):
+            mock_opener.open.return_value = MagicMock()
+            usage.report_connector_usage(flow, "run-abc-123")
+
+        bodies = _request_bodies_from_calls(mock_opener.open.call_args_list)
+        assert [len(body["events"]) for body in bodies] == [100, 1]
+        assert {body["runId"] for body in bodies} == {"run-abc-123"}
+        assert all(
+            event["kind"] == "connector" and event["provider"] == "x"
+            for body in bodies
+            for event in body["events"]
+        )
+        categories = {event["category"] for body in bodies for event in body["events"]}
+        assert len(categories) == 101
+        assert "includes.future_0" in categories
+        assert "includes.future_100" in categories
 
     def test_empty_search_emits_no_billing(self, tmp_path, real_flow):
         """Search returning zero results emits no usage_event row."""
@@ -2780,7 +2861,7 @@ class TestReportConnectorUsage:
             usage.webhook.usage_executor.shutdown(wait=True)
 
         # 4. Verify billing payloads
-        payloads = [json.loads(call[0][0].data) for call in mock_opener.open.call_args_list]
+        payloads = _usage_event_events_from_calls(mock_opener.open.call_args_list)
         by_cat = {p["category"]: p["quantity"] for p in payloads}
         # 3 tweets primary + 0 from includes.tweets (none here) = 3
         assert by_cat["posts.read"] == 3

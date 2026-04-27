@@ -6,6 +6,7 @@ import {
   createTestRun,
   createTestSandboxToken,
   findTestConnectorBillingByRunId,
+  findTestUsageEventsByRunId,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -82,6 +83,29 @@ describe("POST /api/webhooks/agent/usage-event", () => {
       const token = await createTestSandboxToken(user.userId, missingRunId);
       const response = await POST(
         makeRequest({ ...validBody(), runId: missingRunId }, token),
+      );
+      expect(response.status).toBe(404);
+    });
+
+    it("returns 404 for a batch when the run does not exist", async () => {
+      const missingRunId = randomUUID();
+      const token = await createTestSandboxToken(user.userId, missingRunId);
+      const response = await POST(
+        makeRequest(
+          {
+            runId: missingRunId,
+            events: [
+              {
+                idempotencyKey: randomUUID(),
+                kind: "connector",
+                provider: "x",
+                category: "tweet.read",
+                quantity: 1,
+              },
+            ],
+          },
+          token,
+        ),
       );
       expect(response.status).toBe(404);
     });
@@ -162,6 +186,184 @@ describe("POST /api/webhooks/agent/usage-event", () => {
       expect(rows).toHaveLength(1);
       expect(rows[0]!.quantity).toBe(0);
     });
+
+    it("accepts a batch with model and image usage events", async () => {
+      const modelEventId = randomUUID();
+      const imageEventId = randomUUID();
+      const response = await POST(
+        makeRequest(
+          {
+            runId: testRunId,
+            events: [
+              {
+                idempotencyKey: modelEventId,
+                kind: "model",
+                provider: "claude-sonnet-4-6",
+                category: "tokens.input",
+                quantity: 123,
+              },
+              {
+                idempotencyKey: imageEventId,
+                kind: "image",
+                provider: "gpt-image-1",
+                category: "output_image",
+                quantity: 1,
+              },
+            ],
+          },
+          testToken,
+        ),
+      );
+      expect(response.status).toBe(200);
+
+      const rows = await findTestUsageEventsByRunId(testRunId);
+      expect(rows).toHaveLength(2);
+      expect(rows).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            idempotencyKey: modelEventId,
+            kind: "model",
+            provider: "claude-sonnet-4-6",
+            category: "tokens.input",
+            quantity: 123,
+            status: "pending",
+          }),
+          expect.objectContaining({
+            idempotencyKey: imageEventId,
+            kind: "image",
+            provider: "gpt-image-1",
+            category: "output_image",
+            quantity: 1,
+            status: "pending",
+          }),
+        ]),
+      );
+    });
+
+    it("deduplicates duplicate idempotency keys inside a batch", async () => {
+      const sharedKey = randomUUID();
+      const response = await POST(
+        makeRequest(
+          {
+            runId: testRunId,
+            events: [
+              {
+                idempotencyKey: sharedKey,
+                kind: "connector",
+                provider: "x",
+                category: "tweet.read",
+                quantity: 3,
+              },
+              {
+                idempotencyKey: sharedKey,
+                kind: "connector",
+                provider: "x",
+                category: "users.read",
+                quantity: 7,
+              },
+            ],
+          },
+          testToken,
+        ),
+      );
+      expect(response.status).toBe(200);
+
+      const rows = await findTestUsageEventsByRunId(testRunId);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({
+        idempotencyKey: sharedKey,
+        provider: "x",
+        category: "tweet.read",
+        quantity: 3,
+      });
+    });
+
+    it("deduplicates a retried batch by idempotencyKey", async () => {
+      const firstEventId = randomUUID();
+      const secondEventId = randomUUID();
+      const body = {
+        runId: testRunId,
+        events: [
+          {
+            idempotencyKey: firstEventId,
+            kind: "model",
+            provider: "claude-sonnet-4-6",
+            category: "tokens.input",
+            quantity: 10,
+          },
+          {
+            idempotencyKey: secondEventId,
+            kind: "model",
+            provider: "claude-sonnet-4-6",
+            category: "tokens.output",
+            quantity: 20,
+          },
+        ],
+      };
+
+      expect((await POST(makeRequest(body, testToken))).status).toBe(200);
+      expect((await POST(makeRequest(body, testToken))).status).toBe(200);
+
+      const rows = await findTestUsageEventsByRunId(testRunId);
+      expect(rows).toHaveLength(2);
+      expect(rows).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            idempotencyKey: firstEventId,
+            category: "tokens.input",
+            quantity: 10,
+          }),
+          expect.objectContaining({
+            idempotencyKey: secondEventId,
+            category: "tokens.output",
+            quantity: 20,
+          }),
+        ]),
+      );
+    });
+
+    it("accepts batches at the 100-event limit", async () => {
+      const firstEventId = randomUUID();
+      const lastEventId = randomUUID();
+      const response = await POST(
+        makeRequest(
+          {
+            runId: testRunId,
+            events: Array.from({ length: 100 }, (_, index) => {
+              return {
+                idempotencyKey:
+                  index === 0
+                    ? firstEventId
+                    : index === 99
+                      ? lastEventId
+                      : randomUUID(),
+                kind: "model",
+                provider: "claude-sonnet-4-6",
+                category: index % 2 === 0 ? "tokens.input" : "tokens.output",
+                quantity: index + 1,
+              };
+            }),
+          },
+          testToken,
+        ),
+      );
+      expect(response.status).toBe(200);
+
+      const rows = await findTestUsageEventsByRunId(testRunId);
+      expect(rows).toHaveLength(100);
+      expect(rows).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            idempotencyKey: firstEventId,
+            quantity: 1,
+          }),
+          expect.objectContaining({
+            idempotencyKey: lastEventId,
+            quantity: 100,
+          }),
+        ]),
+      );
+    });
   });
 
   // ── Validation ─────────────────────────────────────────────────────
@@ -194,6 +396,47 @@ describe("POST /api/webhooks/agent/usage-event", () => {
     it("rejects non-UUID idempotencyKey", async () => {
       const body = { ...validBody(), idempotencyKey: "not-a-uuid" };
       const response = await POST(makeRequest(body, testToken));
+      expect(response.status).toBe(400);
+    });
+
+    it("rejects empty batches", async () => {
+      const response = await POST(
+        makeRequest({ runId: testRunId, events: [] }, testToken),
+      );
+      expect(response.status).toBe(400);
+    });
+
+    it("rejects a mixed legacy and invalid batch body", async () => {
+      const response = await POST(
+        makeRequest(
+          {
+            ...validBody(),
+            events: [],
+          },
+          testToken,
+        ),
+      );
+      expect(response.status).toBe(400);
+    });
+
+    it("rejects batches with more than 100 events", async () => {
+      const response = await POST(
+        makeRequest(
+          {
+            runId: testRunId,
+            events: Array.from({ length: 101 }, (_, index) => {
+              return {
+                idempotencyKey: randomUUID(),
+                kind: "model",
+                provider: "claude-sonnet-4-6",
+                category: index % 2 === 0 ? "tokens.input" : "tokens.output",
+                quantity: index,
+              };
+            }),
+          },
+          testToken,
+        ),
+      );
       expect(response.status).toBe(400);
     });
   });

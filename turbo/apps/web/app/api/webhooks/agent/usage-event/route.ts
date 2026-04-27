@@ -16,6 +16,7 @@ const router = tsr.router(webhookUsageEventContract, {
   send: async ({ body, headers }) => {
     initServices();
 
+    const events = "events" in body ? body.events : [body];
     const auth = getSandboxAuthForRun(body.runId, headers.authorization);
     if (!auth) {
       return {
@@ -42,22 +43,26 @@ const router = tsr.router(webhookUsageEventContract, {
     try {
       await globalThis.services.db
         .insert(usageEvent)
-        .values({
-          runId: body.runId,
-          orgId,
-          userId,
-          kind: body.kind,
-          provider: body.provider,
-          category: body.category,
-          quantity: body.quantity,
-          idempotencyKey: body.idempotencyKey,
-        })
+        .values(
+          events.map((event) => {
+            return {
+              runId: body.runId,
+              orgId,
+              userId,
+              kind: event.kind,
+              provider: event.provider,
+              category: event.category,
+              quantity: event.quantity,
+              idempotencyKey: event.idempotencyKey,
+            };
+          }),
+        )
         .onConflictDoNothing({ target: [usageEvent.idempotencyKey] });
     } catch (err) {
       if (isForeignKeyViolation(err)) {
         log.info("Run not found for usage event, dropping", {
           runId: body.runId,
-          idempotencyKey: body.idempotencyKey,
+          eventCount: events.length,
         });
         return {
           status: 404 as const,
@@ -72,12 +77,9 @@ const router = tsr.router(webhookUsageEventContract, {
       throw err;
     }
 
-    log.debug("Usage event recorded", {
+    log.debug("Usage events recorded", {
       runId: body.runId,
-      kind: body.kind,
-      provider: body.provider,
-      category: body.category,
-      quantity: body.quantity,
+      eventCount: events.length,
     });
 
     return {
@@ -92,7 +94,9 @@ const router = tsr.router(webhookUsageEventContract, {
 function errorHandler(err: unknown): TsRestResponse | void {
   if (err && typeof err === "object" && "bodyError" in err) {
     const validationError = err as {
-      bodyError: { issues: Array<{ path: string[]; message: string }> } | null;
+      bodyError: {
+        issues: Array<{ path: Array<string | number>; message: string }>;
+      } | null;
     };
     if (validationError.bodyError) {
       const issue = validationError.bodyError.issues[0];
