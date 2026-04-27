@@ -2341,8 +2341,12 @@ class TestReportConnectorUsage:
             "Visit vm0.ai for details",
             "Visit vm0.ai.",
             "(vm0.ai)",
+            "Visit go.dev",
+            "Read example.museum",
             "Open example.com/path/to/resource?search=foo&lang=en",
-            "Open xn--r8jz45g.xn--zckzah",
+            "Open xn--r8jz45g.xn--q9jyb4c",
+            "IDN 例え.みんな",
+            "Accent mañana.com",
         ],
     )
     def test_tweet_create_with_url_stays_on_with_url_bucket(self, tmp_path, real_flow, text):
@@ -2373,6 +2377,10 @@ class TestReportConnectorUsage:
             "Path /twitter.com",
             "Archive long.test.tar.bz2",
             "Word abcHTTPS://example.com",
+            "Unknown example.notatld",
+            "Underscore foo_bar.example.com",
+            "Leading hyphen -bad.com",
+            "Trailing hyphen bad-.com",
         ],
     )
     def test_tweet_create_url_like_non_links_downgrade_to_content_create(

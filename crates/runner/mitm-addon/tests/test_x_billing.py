@@ -23,6 +23,15 @@ from usage.providers.connectors.x_billing import (
     _PERMISSION_TO_BUCKET,
     refine_bucket_with_body,
 )
+from usage.providers.connectors.x_tlds import IANA_TLD_VERSION, IANA_TLDS
+
+
+class TestTldSnapshot:
+    """Static invariants for the checked-in IANA TLD snapshot."""
+
+    def test_snapshot_has_version_and_expected_stable_entries(self):
+        assert IANA_TLD_VERSION
+        assert {"ai", "com", "dev", "museum", "xn--q9jyb4c"} <= IANA_TLDS
 
 
 class TestFirewallConsistency:
