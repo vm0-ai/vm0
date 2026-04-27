@@ -85,6 +85,32 @@ pub(super) fn handle_mitm_restart_result(
     }
 }
 
+/// During shutdown, preserve a restart task that has already produced a child
+/// so the normal usage-flush and proxy-stop path can still own it.
+pub(super) async fn finish_mitm_restart_before_shutdown(
+    mitm: &mut proxy::MitmProxy,
+    retry: &mut RetryState<MitmRestartHandle>,
+) {
+    let Some(handle) = retry.handle.take() else {
+        return;
+    };
+
+    info!("waiting for in-flight mitmproxy restart before shutdown");
+    match handle.await {
+        Ok(Ok(child)) => {
+            info!("mitmproxy restart completed during shutdown");
+            mitm.complete_restart(child);
+            retry.on_success();
+        }
+        Ok(Err(e)) => {
+            warn!(error = %e, "mitmproxy restart failed during shutdown");
+        }
+        Err(e) => {
+            warn!(error = %e, "mitmproxy restart task failed during shutdown");
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
@@ -186,5 +212,50 @@ mod tests {
             retry.restart_at.is_none(),
             "circuit breaker should prevent further retries"
         );
+    }
+
+    #[tokio::test]
+    async fn finish_mitm_restart_before_shutdown_captures_child() {
+        let (mut mitm, _rx, _dir) = test_mitm().await;
+        let mut retry: RetryState<MitmRestartHandle> = RetryState::new(
+            MITM_BACKOFF_INITIAL,
+            MITM_BACKOFF_MAX,
+            Some(MITM_MAX_CONSECUTIVE_FAILURES),
+        );
+
+        let child = tokio::process::Command::new("true")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        retry.handle = Some(tokio::spawn(async move { Ok(child) }));
+
+        finish_mitm_restart_before_shutdown(&mut mitm, &mut retry).await;
+
+        assert!(retry.handle.is_none());
+        assert!(
+            mitm.usage_flush_target().is_some(),
+            "completed restart child should remain owned for shutdown flush"
+        );
+        mitm.stop().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn finish_mitm_restart_before_shutdown_drops_failed_handle() {
+        let (mut mitm, _rx, _dir) = test_mitm().await;
+        let mut retry: RetryState<MitmRestartHandle> = RetryState::new(
+            MITM_BACKOFF_INITIAL,
+            MITM_BACKOFF_MAX,
+            Some(MITM_MAX_CONSECUTIVE_FAILURES),
+        );
+        retry.handle = Some(tokio::spawn(async {
+            Err(crate::error::RunnerError::Internal("spawn failed".into()))
+        }));
+
+        finish_mitm_restart_before_shutdown(&mut mitm, &mut retry).await;
+
+        assert!(retry.handle.is_none());
+        assert!(mitm.usage_flush_target().is_none());
     }
 }

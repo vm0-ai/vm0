@@ -43,7 +43,7 @@ mod signals;
 use identity::load_or_generate_runner_id;
 use mitm_restart::{
     MITM_BACKOFF_INITIAL, MITM_BACKOFF_MAX, MITM_MAX_CONSECUTIVE_FAILURES, MitmRestartHandle,
-    handle_mitm_restart_result, maybe_spawn_mitm_restart,
+    finish_mitm_restart_before_shutdown, handle_mitm_restart_result, maybe_spawn_mitm_restart,
 };
 use signals::{EarlySignals, SignalController};
 
@@ -798,9 +798,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             warn!(error = %e, "destroy task panicked during shutdown");
         }
     }
-    if let Some(h) = mitm_retry.handle {
-        h.abort();
-    }
+    finish_mitm_restart_before_shutdown(&mut mitm, &mut mitm_retry).await;
     if let Some(abort) = signal_handler_abort {
         abort.abort();
     }

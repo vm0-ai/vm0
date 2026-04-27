@@ -35,10 +35,11 @@ _pending_write_error_logged = False
 def set_pending_path(path: str, usage_state_id: str | None = None) -> None:
     """Set the path/state id for the pending-count file and write current state."""
     global _pending_path, _usage_state_id
-    _pending_path = path
-    if usage_state_id:
-        _usage_state_id = usage_state_id
-    _write_pending()
+    with _counter_lock:
+        _pending_path = path
+        if usage_state_id:
+            _usage_state_id = usage_state_id
+        _write_pending()
 
 
 def _pending_state() -> dict:
