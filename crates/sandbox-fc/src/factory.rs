@@ -1484,6 +1484,85 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn create_transaction_drop_before_rename_destroys_slot_workspace() {
+        let tmp = tempfile::tempdir().unwrap();
+        let slot_workspace = tmp.path().join("slot-workspace");
+        tokio::fs::create_dir_all(&slot_workspace).await.unwrap();
+        tokio::fs::write(slot_workspace.join("cow.img"), b"cow")
+            .await
+            .unwrap();
+
+        let mut tx = SandboxCreateTransaction::new("sandbox".into());
+        tx.track_slot(test_slot("slot", slot_workspace.clone()));
+
+        drop(tx);
+
+        assert!(!slot_workspace.exists());
+    }
+
+    #[tokio::test]
+    async fn create_transaction_drop_without_async_resources_removes_dirs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().join("workspace");
+        let sock_dir = tmp.path().join("sock");
+        tokio::fs::create_dir_all(&workspace).await.unwrap();
+        tokio::fs::create_dir_all(&sock_dir).await.unwrap();
+
+        let mut tx = SandboxCreateTransaction::new("sandbox".into());
+        tx.slot_renamed_to(workspace.clone());
+        tx.track_sock_dir(sock_dir.clone());
+
+        drop(tx);
+
+        assert!(!workspace.exists());
+        assert!(!sock_dir.exists());
+    }
+
+    #[tokio::test]
+    async fn create_transaction_drop_with_closed_leak_channel_falls_back_to_sync_dirs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().join("workspace");
+        let sock_dir = tmp.path().join("sock");
+        tokio::fs::create_dir_all(&workspace).await.unwrap();
+        tokio::fs::create_dir_all(&sock_dir).await.unwrap();
+        let (leak_tx, leak_rx) = tokio::sync::mpsc::channel(1);
+        drop(leak_rx);
+
+        let mut tx = SandboxCreateTransaction::new_with_leak_tx("sandbox".into(), Some(leak_tx));
+        tx.slot_renamed_to(workspace.clone());
+        tx.track_sock_dir(sock_dir.clone());
+        tx.track_network(test_network());
+
+        drop(tx);
+
+        assert!(!workspace.exists());
+        assert!(!sock_dir.exists());
+    }
+
+    #[tokio::test]
+    async fn create_transaction_drop_with_full_leak_channel_falls_back_to_sync_dirs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().join("workspace");
+        let sock_dir = tmp.path().join("sock");
+        tokio::fs::create_dir_all(&workspace).await.unwrap();
+        tokio::fs::create_dir_all(&sock_dir).await.unwrap();
+        let (leak_tx, mut leak_rx) = tokio::sync::mpsc::channel(1);
+        leak_tx.try_send(test_leaked_resource("queued", 7)).unwrap();
+
+        let mut tx = SandboxCreateTransaction::new_with_leak_tx("sandbox".into(), Some(leak_tx));
+        tx.slot_renamed_to(workspace.clone());
+        tx.track_sock_dir(sock_dir.clone());
+        tx.track_network(test_network());
+
+        drop(tx);
+
+        assert_eq!(leak_rx.try_recv().unwrap().sandbox_id, "queued");
+        assert!(leak_rx.try_recv().is_err());
+        assert!(!workspace.exists());
+        assert!(!sock_dir.exists());
+    }
+
+    #[tokio::test]
     async fn create_transaction_drop_sends_async_resources_to_leak_cleaner() {
         let tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().join("workspace");
