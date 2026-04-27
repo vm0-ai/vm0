@@ -2,13 +2,7 @@ import { useGet, useSet } from "ccstate-react";
 import {
   range$,
   setRange$,
-  groupBy$,
-  setGroupBy$,
-  metric$,
-  setMetric$,
   type InsightRange,
-  type InsightGroupBy,
-  type InsightMetric,
 } from "../../../signals/usage-page/usage-insight-signals.ts";
 import {
   Select,
@@ -21,10 +15,6 @@ import {
 export function UsageInsightSelectors() {
   const range = useGet(range$);
   const setRange = useSet(setRange$);
-  const groupBy = useGet(groupBy$);
-  const setGroupBy = useSet(setGroupBy$);
-  const metric = useGet(metric$);
-  const setMetric = useSet(setMetric$);
 
   return (
     <div className="flex items-center gap-2 flex-wrap">
@@ -45,34 +35,6 @@ export function UsageInsightSelectors() {
           <SelectItem value="yesterday">Yesterday</SelectItem>
           <SelectItem value="7d">Last 7 days</SelectItem>
           <SelectItem value="28d">Last 28 days</SelectItem>
-        </SelectContent>
-      </Select>
-      <Select
-        value={groupBy}
-        onValueChange={(v) => {
-          setGroupBy(v as InsightGroupBy);
-        }}
-      >
-        <SelectTrigger aria-label="Group by" className="h-8 w-[110px] text-xs">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="source">By Source</SelectItem>
-          <SelectItem value="agent">By Agent</SelectItem>
-        </SelectContent>
-      </Select>
-      <Select
-        value={metric}
-        onValueChange={(v) => {
-          setMetric(v as InsightMetric);
-        }}
-      >
-        <SelectTrigger aria-label="Metric" className="h-8 w-[100px] text-xs">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="credits">Credits</SelectItem>
-          <SelectItem value="tokens">Tokens</SelectItem>
         </SelectContent>
       </Select>
     </div>

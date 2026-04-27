@@ -36,11 +36,9 @@ export const setChartWidth$ = command(({ set }, width: number) => {
 
 export type InsightRange = "today" | "yesterday" | "7d" | "28d";
 export type InsightGroupBy = "source" | "agent";
-export type InsightMetric = "credits" | "tokens";
 
 const internalRange$ = state<InsightRange>("today");
 const internalGroupBy$ = state<InsightGroupBy>("source");
-const internalMetric$ = state<InsightMetric>("credits");
 
 export const range$ = computed((get) => {
   return get(internalRange$);
@@ -50,20 +48,12 @@ export const groupBy$ = computed((get) => {
   return get(internalGroupBy$);
 });
 
-export const metric$ = computed((get) => {
-  return get(internalMetric$);
-});
-
 export const setRange$ = command(({ set }, range: InsightRange) => {
   set(internalRange$, range);
 });
 
 export const setGroupBy$ = command(({ set }, groupBy: InsightGroupBy) => {
   set(internalGroupBy$, groupBy);
-});
-
-export const setMetric$ = command(({ set }, metric: InsightMetric) => {
-  set(internalMetric$, metric);
 });
 
 // --- Hover state (shared dim-on-hover behavior across breakdown lists) ---

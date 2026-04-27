@@ -81,15 +81,10 @@ describe("/_/usage page - selector interactions", () => {
       expect(screen.getByText("credits")).toBeInTheDocument();
     });
 
-    // Reset captured value and click the groupBy selector
+    // Reset captured value and click the "Agent" tab in the group-by toggle
     capturedGroupBy = undefined;
-    const groupBySelect = await screen.findByRole("combobox", {
-      name: "Group by",
-    });
-    click(groupBySelect);
-
-    const option = await screen.findByRole("option", { name: "By Agent" });
-    click(option);
+    const agentTab = await screen.findByText("Agent");
+    click(agentTab);
 
     await waitFor(() => {
       expect(capturedGroupBy).toBe("agent");

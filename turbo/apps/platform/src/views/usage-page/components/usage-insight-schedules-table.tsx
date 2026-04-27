@@ -3,7 +3,6 @@ import type { UsageInsightResponse } from "@vm0/api-contracts/contracts/zero-usa
 import {
   hoveredScheduleId$,
   setHoveredScheduleId$,
-  type InsightMetric,
 } from "../../../signals/usage-page/usage-insight-signals.ts";
 import { Link } from "../../router/link.tsx";
 import { getCardPalette } from "../../../lib/card-palette.ts";
@@ -20,10 +19,8 @@ function formatValue(n: number): string {
 
 export function UsageInsightSchedulesTable({
   data,
-  metric,
 }: {
   data: UsageInsightResponse;
-  metric: InsightMetric;
 }) {
   const { schedules, scheduleOtherCount, scheduleOtherCredits } = data;
   const { accent } = getCardPalette(2);
@@ -50,7 +47,7 @@ export function UsageInsightSchedulesTable({
   const maxValue = Math.max(
     1,
     ...schedules.map((s) => {
-      return metric === "credits" ? s.credits : s.tokens;
+      return s.credits;
     }),
   );
 
@@ -67,7 +64,7 @@ export function UsageInsightSchedulesTable({
       </p>
       <ul className="flex flex-col gap-2.5 mt-4">
         {schedules.map((row) => {
-          const value = metric === "credits" ? row.credits : row.tokens;
+          const value = row.credits;
           const pct = (value / maxValue) * 100;
           const isActive = hoveredId === null || hoveredId === row.scheduleId;
           return (
@@ -75,7 +72,7 @@ export function UsageInsightSchedulesTable({
               <Link
                 pathname="/schedules/:scheduleId"
                 options={{ pathParams: { scheduleId: row.scheduleId } }}
-                className={`flex items-center gap-3 -mx-1.5 px-1.5 py-1 rounded-md transition-all duration-150 ${
+                className={`grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)_3rem] items-center gap-3 -mx-1.5 px-1.5 py-1 rounded-md transition-all duration-150 ${
                   hoveredId === row.scheduleId ? "bg-foreground/5" : ""
                 } ${isActive ? "opacity-100" : "opacity-30"}`}
                 onMouseEnter={() => {
@@ -85,16 +82,16 @@ export function UsageInsightSchedulesTable({
                   setHoveredId(null);
                 }}
               >
-                <span className="text-sm font-medium flex-1 truncate decoration-dotted underline decoration-foreground/40 decoration-[1px] underline-offset-2">
+                <span className="text-sm font-medium truncate decoration-dotted underline decoration-foreground/40 decoration-[1px] underline-offset-2">
                   {row.scheduleName}
                 </span>
-                <div className="w-20 h-1.5 rounded-full bg-foreground/10 overflow-hidden shrink-0">
+                <div className="h-1.5 rounded-full bg-foreground/10 overflow-hidden">
                   <div
                     className="h-full rounded-full"
                     style={{ width: `${pct}%`, backgroundColor: accent }}
                   />
                 </div>
-                <span className="text-xs tabular-nums opacity-70 shrink-0 w-12 text-right">
+                <span className="text-xs tabular-nums opacity-70 text-right">
                   {formatValue(value)}
                 </span>
               </Link>
@@ -103,19 +100,17 @@ export function UsageInsightSchedulesTable({
         })}
         {scheduleOtherCount > 0 && (
           <li
-            className={`flex items-center gap-3 -mx-1.5 px-1.5 py-1 transition-opacity duration-150 ${
+            className={`grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)_3rem] items-center gap-3 -mx-1.5 px-1.5 py-1 transition-opacity duration-150 ${
               hoveredId === null ? "opacity-100" : "opacity-30"
             }`}
           >
-            <span className="text-sm text-muted-foreground flex-1 truncate">
+            <span className="text-sm text-muted-foreground truncate col-span-2">
               +{scheduleOtherCount} more{" "}
               {scheduleOtherCount === 1 ? "schedule" : "schedules"}
             </span>
-            {metric === "credits" && (
-              <span className="text-xs tabular-nums text-muted-foreground shrink-0">
-                {formatValue(scheduleOtherCredits)}
-              </span>
-            )}
+            <span className="text-xs tabular-nums text-muted-foreground text-right">
+              {formatValue(scheduleOtherCredits)}
+            </span>
           </li>
         )}
       </ul>

@@ -1,7 +1,6 @@
-import { useLoadable, useGet } from "ccstate-react";
+import { useLastLoadable, useGet } from "ccstate-react";
 import {
   range$,
-  metric$,
   usageInsightAsync$,
 } from "../../../signals/usage-page/usage-insight-signals.ts";
 import { UsageInsightBarChart } from "./usage-insight-bar-chart.tsx";
@@ -10,16 +9,14 @@ import { UsageInsightChatsTable } from "./usage-insight-chats-table.tsx";
 
 export function UsageInsightView() {
   const range = useGet(range$);
-  const metric = useGet(metric$);
-  const loadable = useLoadable(usageInsightAsync$);
+  const loadable = useLastLoadable(usageInsightAsync$);
 
-  const isLoading = loadable.state === "loading";
   const isError = loadable.state === "hasError";
   const data = loadable.state === "hasData" ? loadable.data : null;
 
   return (
     <div className="flex flex-col gap-3">
-      {isLoading && !data && (
+      {!data && !isError && (
         <div className="h-[280px] animate-pulse bg-muted/20 rounded-[20px]" />
       )}
       {isError && (
@@ -30,14 +27,12 @@ export function UsageInsightView() {
           Failed to load usage insights. Please try again later.
         </div>
       )}
-      {data && (
-        <UsageInsightBarChart data={data} metric={metric} range={range} />
-      )}
+      {data && <UsageInsightBarChart data={data} range={range} />}
 
       {data && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-          <UsageInsightSchedulesTable data={data} metric={metric} />
-          <UsageInsightChatsTable data={data} metric={metric} />
+          <UsageInsightSchedulesTable data={data} />
+          <UsageInsightChatsTable data={data} />
         </div>
       )}
     </div>

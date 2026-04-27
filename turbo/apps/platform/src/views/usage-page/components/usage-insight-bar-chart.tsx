@@ -3,22 +3,25 @@ import type {
   UsageInsightBucket,
   UsageInsightResponse,
 } from "@vm0/api-contracts/contracts/zero-usage-insight";
+import { Tabs, TabsList, TabsTrigger } from "@vm0/ui";
 import {
   chartTooltip$,
   chartWidth$,
+  groupBy$,
   hoveredCategory$,
   setChartTooltip$,
   setChartWidth$,
+  setGroupBy$,
   setHoveredCategory$,
   type ChartTooltipData,
-  type InsightMetric,
+  type InsightGroupBy,
   type InsightRange,
 } from "../../../signals/usage-page/usage-insight-signals.ts";
 import { getCardPalette } from "../../../lib/card-palette.ts";
 
 // --- Constants ---
 
-const CHART_PADDING = { top: 20, right: 16, bottom: 32, left: 28 } as const;
+const CHART_PADDING = { top: 20, right: 8, bottom: 32, left: 28 } as const;
 const CHART_HEIGHT = 220;
 
 // Rose-family shades from base to lightest. Largest category gets the base
@@ -108,24 +111,17 @@ function generateYTicks(max: number): number[] {
   return ticks;
 }
 
-function valueAt(
-  bucket: UsageInsightBucket,
-  metric: InsightMetric,
-  key: string,
-): number {
-  const entries = metric === "credits" ? bucket.series : bucket.tokens;
-  return entries[key] ?? 0;
+function valueAt(bucket: UsageInsightBucket, key: string): number {
+  return bucket.series[key] ?? 0;
 }
 
-function buildStackOrder(
-  buckets: UsageInsightBucket[],
-  metric: InsightMetric,
-): { stackOrder: string[]; keyTotals: Map<string, number> } {
+function buildStackOrder(buckets: UsageInsightBucket[]): {
+  stackOrder: string[];
+  keyTotals: Map<string, number>;
+} {
   const allKeys = new Set<string>();
   for (const bucket of buckets) {
-    for (const key of Object.keys(
-      metric === "credits" ? bucket.series : bucket.tokens,
-    )) {
+    for (const key of Object.keys(bucket.series)) {
       allKeys.add(key);
     }
   }
@@ -133,7 +129,7 @@ function buildStackOrder(
   for (const key of allKeys) {
     let sum = 0;
     for (const bucket of buckets) {
-      sum += valueAt(bucket, metric, key);
+      sum += valueAt(bucket, key);
     }
     keyTotals.set(key, sum);
   }
@@ -256,7 +252,6 @@ interface ChartScales {
 function buildScales(
   buckets: UsageInsightBucket[],
   stackOrder: readonly string[],
-  metric: InsightMetric,
   width: number,
 ): ChartScales {
   // Y-axis fits the largest single-category value so each line is readable
@@ -264,7 +259,7 @@ function buildScales(
   let maxValue = 1;
   for (const bucket of buckets) {
     for (const key of stackOrder) {
-      const v = valueAt(bucket, metric, key);
+      const v = valueAt(bucket, key);
       if (v > maxValue) {
         maxValue = v;
       }
@@ -274,10 +269,13 @@ function buildScales(
   const yMax = yTicks[yTicks.length - 1] ?? maxValue;
   const drawW = width - CHART_PADDING.left - CHART_PADDING.right;
   const drawH = CHART_HEIGHT - CHART_PADDING.top - CHART_PADDING.bottom;
-  const slotWidth = buckets.length > 0 ? drawW / buckets.length : drawW;
+  const spacing = buckets.length > 1 ? drawW / (buckets.length - 1) : 0;
   return {
     xScale: (i: number) => {
-      return CHART_PADDING.left + (i + 0.5) * slotWidth;
+      if (buckets.length <= 1) {
+        return CHART_PADDING.left + drawW / 2;
+      }
+      return CHART_PADDING.left + i * spacing;
     },
     yScale: (v: number) => {
       return CHART_PADDING.top + drawH - (v / yMax) * drawH;
@@ -335,12 +333,13 @@ function ChartGrid({
         if (i % labelInterval !== 0 && i !== lastIdx) {
           return null;
         }
+        const anchor = i === 0 ? "start" : i === lastIdx ? "end" : "middle";
         return (
           <text
             key={bucket.ts}
             x={xScale(i)}
             y={CHART_HEIGHT - 4}
-            textAnchor="middle"
+            textAnchor={anchor}
             className="fill-muted-foreground"
             fontSize={11}
           >
@@ -354,13 +353,11 @@ function ChartGrid({
 
 function ChartLayers({
   buckets,
-  metric,
   stackOrder,
   scales,
   hoveredKey,
 }: {
   buckets: UsageInsightBucket[];
-  metric: InsightMetric;
   stackOrder: readonly string[];
   scales: ChartScales;
   hoveredKey: string | null;
@@ -380,7 +377,7 @@ function ChartLayers({
         const lineOpacity = isHovered ? 1 : dimmed ? HOVER_DIM_OPACITY : 0.85;
         const points = buckets
           .map((b, t) => {
-            return `${xScale(t)},${yScale(valueAt(b, metric, key))}`;
+            return `${xScale(t)},${yScale(valueAt(b, key))}`;
           })
           .join(" L");
         return (
@@ -406,7 +403,7 @@ function ChartLayers({
               />
             )}
             {buckets.map((bucket, t) => {
-              const v = valueAt(bucket, metric, key);
+              const v = valueAt(bucket, key);
               if (v === 0) {
                 return null;
               }
@@ -431,7 +428,6 @@ function ChartLayers({
 
 function ChartSvg({
   buckets,
-  metric,
   stackOrder,
   width,
   range,
@@ -441,7 +437,6 @@ function ChartSvg({
   onMouseLeave,
 }: {
   buckets: UsageInsightBucket[];
-  metric: InsightMetric;
   stackOrder: readonly string[];
   width: number;
   range: string;
@@ -450,7 +445,7 @@ function ChartSvg({
   onMouseMove: (e: React.MouseEvent<SVGSVGElement>) => void;
   onMouseLeave: () => void;
 }) {
-  const scales = buildScales(buckets, stackOrder, metric, width);
+  const scales = buildScales(buckets, stackOrder, width);
   return (
     <svg
       width={width}
@@ -479,7 +474,6 @@ function ChartSvg({
       )}
       <ChartLayers
         buckets={buckets}
-        metric={metric}
         stackOrder={stackOrder}
         scales={scales}
         hoveredKey={hoveredKey}
@@ -492,11 +486,9 @@ function ChartSvg({
 
 export function UsageInsightBarChart({
   data,
-  metric,
   range,
 }: {
   data: UsageInsightResponse;
-  metric: InsightMetric;
   range: InsightRange;
 }) {
   const width = useGet(chartWidth$);
@@ -505,23 +497,26 @@ export function UsageInsightBarChart({
   const setTooltip = useSet(setChartTooltip$);
   const hoveredKey = useGet(hoveredCategory$);
   const setHoveredKey = useSet(setHoveredCategory$);
+  const groupBy = useGet(groupBy$);
+  const setGroupBy = useSet(setGroupBy$);
 
   const containerRef = useChartResizeRef(setWidth);
 
   const { accent } = getCardPalette(1);
   const { buckets } = data;
-  const total =
-    metric === "credits" ? data.grandTotalCredits : data.grandTotalTokens;
-  const totalLabel = metric === "credits" ? "credits" : "tokens";
+  const total = data.grandTotalCredits;
   const rangeLabel = RANGE_LABELS[range];
 
-  const { stackOrder, keyTotals } = buildStackOrder(buckets, metric);
+  const { stackOrder, keyTotals } = buildStackOrder(buckets);
 
   const drawW = width - CHART_PADDING.left - CHART_PADDING.right;
-  const slotWidth = buckets.length > 0 ? drawW / buckets.length : drawW;
+  const spacing = buckets.length > 1 ? drawW / (buckets.length - 1) : 0;
 
   const xScale = (i: number) => {
-    return CHART_PADDING.left + (i + 0.5) * slotWidth;
+    if (buckets.length <= 1) {
+      return CHART_PADDING.left + drawW / 2;
+    }
+    return CHART_PADDING.left + i * spacing;
   };
 
   const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
@@ -547,7 +542,7 @@ export function UsageInsightBarChart({
     const values = stackOrder.map((key, i) => {
       return {
         label: key,
-        value: valueAt(bucket, metric, key),
+        value: valueAt(bucket, key),
         color: colorFor(i),
       };
     });
@@ -560,12 +555,18 @@ export function UsageInsightBarChart({
   };
 
   return (
-    <section className="bg-gray-50 rounded-[20px] p-6 border border-border/40 break-inside-avoid">
+    <section className="bg-gray-50 rounded-[20px] p-6 border border-border/40 break-inside-avoid relative">
+      {buckets.length > 0 && total > 0 && (
+        <div className="absolute top-6 right-6">
+          <GroupByToggle groupBy={groupBy} setGroupBy={setGroupBy} />
+        </div>
+      )}
+
       <p
         className="text-xs font-semibold uppercase tracking-widest mb-3"
         style={{ color: accent }}
       >
-        {totalLabel}
+        credits
       </p>
       <p className="text-5xl font-black leading-none tabular-nums font-serif">
         {formatTotal(total)}
@@ -577,7 +578,6 @@ export function UsageInsightBarChart({
           <div ref={containerRef} className="w-full overflow-hidden">
             <ChartSvg
               buckets={buckets}
-              metric={metric}
               stackOrder={stackOrder}
               width={width}
               range={range}
@@ -606,6 +606,32 @@ export function UsageInsightBarChart({
   );
 }
 
+function GroupByToggle({
+  groupBy,
+  setGroupBy,
+}: {
+  groupBy: InsightGroupBy;
+  setGroupBy: (value: InsightGroupBy) => void;
+}) {
+  return (
+    <Tabs
+      value={groupBy}
+      onValueChange={(v) => {
+        setGroupBy(v as InsightGroupBy);
+      }}
+    >
+      <TabsList className="zero-tabs h-8 gap-1 px-1 py-1">
+        <TabsTrigger value="source" className="px-3 text-xs">
+          Source
+        </TabsTrigger>
+        <TabsTrigger value="agent" className="px-3 text-xs">
+          Agent
+        </TabsTrigger>
+      </TabsList>
+    </Tabs>
+  );
+}
+
 function BreakdownList({
   stackOrder,
   keyTotals,
@@ -629,7 +655,7 @@ function BreakdownList({
         return (
           <div
             key={key}
-            className={`flex items-center gap-3 rounded-md px-1.5 py-0.5 -mx-1.5 cursor-default transition-all duration-150 ${
+            className={`grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)_3rem] items-center gap-3 rounded-md px-1.5 py-0.5 -mx-1.5 cursor-default transition-all duration-150 ${
               hoveredKey === key ? "bg-foreground/5" : ""
             } ${isActive ? "opacity-100" : "opacity-30"}`}
             onMouseEnter={() => {
@@ -639,16 +665,16 @@ function BreakdownList({
               setHoveredKey(null);
             }}
           >
-            <span className="text-sm font-medium flex-1 truncate decoration-dotted underline decoration-foreground/40 decoration-[1px] underline-offset-2">
+            <span className="text-sm font-medium truncate decoration-dotted underline decoration-foreground/40 decoration-[1px] underline-offset-2">
               {formatCategoryLabel(key)}
             </span>
-            <div className="w-[400px] h-1.5 rounded-full bg-foreground/10 overflow-hidden shrink-0">
+            <div className="h-1.5 rounded-full bg-foreground/10 overflow-hidden">
               <div
                 className="h-full rounded-full"
                 style={{ width: `${pct}%`, backgroundColor: hue }}
               />
             </div>
-            <span className="text-xs tabular-nums opacity-70 shrink-0 w-12 text-right">
+            <span className="text-xs tabular-nums opacity-70 text-right">
               {formatValue(value)}
             </span>
           </div>
