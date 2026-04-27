@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import {
   createTestRequest,
   insertTestCreditUsageForRun,
+  insertTestUsageEvent,
   setTestCreditUsageCreatedAt,
   seedTestSchedule,
 } from "../../../../../../src/__tests__/api-test-helpers";
@@ -30,6 +31,21 @@ function makeRequest(params: Record<string, string>) {
   return createTestRequest(
     `http://localhost:3000/api/zero/usage/insight?${qs}`,
   );
+}
+
+function sumBucketSeries(
+  buckets: UsageInsightBucket[],
+): Record<string, { credits: number; tokens: number }> {
+  const totals: Record<string, { credits: number; tokens: number }> = {};
+  for (const bucket of buckets) {
+    for (const [key, credits] of Object.entries(bucket.series)) {
+      const current = totals[key] ?? { credits: 0, tokens: 0 };
+      current.credits += credits;
+      current.tokens += bucket.tokens[key] ?? 0;
+      totals[key] = current;
+    }
+  }
+  return totals;
 }
 
 describe("GET /api/zero/usage/insight", () => {
@@ -462,6 +478,7 @@ describe("GET /api/zero/usage/insight", () => {
       name: uniqueId("compose"),
       orgId,
     });
+    let eventBoostedScheduleId = "";
 
     // Seed 105 schedules in parallel, each with one run + credit usage
     await Promise.all(
@@ -485,6 +502,20 @@ describe("GET /api/zero/usage/insight", () => {
           creditsCharged: i + 1,
           status: "processed",
         });
+
+        if (i === 0) {
+          eventBoostedScheduleId = scheduleId;
+          await insertTestUsageEvent(orgId, {
+            userId,
+            runId,
+            kind: "connector",
+            provider: "x",
+            category: "tweet.read",
+            quantity: 1,
+            creditsCharged: 10_000,
+            status: "processed",
+          });
+        }
       }),
     );
 
@@ -496,6 +527,10 @@ describe("GET /api/zero/usage/insight", () => {
 
     expect(data.schedules.length).toBe(100);
     expect(data.scheduleOtherCount).toBe(5);
+    expect(data.schedules[0]).toMatchObject({
+      scheduleId: eventBoostedScheduleId,
+      credits: 10_001,
+    });
   });
 
   it("scope isolation — other user's activity in same org is invisible", async () => {
@@ -541,6 +576,16 @@ describe("GET /api/zero/usage/insight", () => {
       creditsCharged: 999,
       status: "processed",
     });
+    await insertTestUsageEvent(orgId, {
+      userId: otherUserId,
+      runId: otherRunId,
+      kind: "connector",
+      provider: "x",
+      category: "tweet.read",
+      quantity: 1,
+      creditsCharged: 999,
+      status: "processed",
+    });
 
     const response = await GET(
       makeRequest({ range: "7d", groupBy: "source", tz: "UTC" }),
@@ -550,6 +595,156 @@ describe("GET /api/zero/usage/insight", () => {
 
     // grandTotalCredits should only include the main user's 100 credits, not other user's 999
     expect(data.grandTotalCredits).toBe(100);
+  });
+
+  it("includes usage_event rows in grand totals and source buckets", async () => {
+    const { userId, orgId } = await context.user;
+    const { composeId } = await seedTestCompose({
+      userId,
+      name: uniqueId("compose"),
+      orgId,
+    });
+    const { runId } = await seedTestRun(userId, composeId, {
+      triggerSource: "web",
+      status: "completed",
+    });
+
+    await insertTestCreditUsageForRun({
+      runId,
+      orgId,
+      userId,
+      inputTokens: 100,
+      outputTokens: 50,
+      creditsCharged: 10,
+      status: "processed",
+    });
+    await insertTestUsageEvent(orgId, {
+      userId,
+      runId,
+      kind: "model",
+      provider: "claude-sonnet-4-6",
+      category: "tokens.input",
+      quantity: 30,
+      creditsCharged: 3,
+      status: "processed",
+    });
+    await insertTestUsageEvent(orgId, {
+      userId,
+      runId,
+      kind: "model",
+      provider: "claude-sonnet-4-6",
+      category: "tokens.output",
+      quantity: 20,
+      creditsCharged: 2,
+      status: "processed",
+    });
+    await insertTestUsageEvent(orgId, {
+      userId,
+      runId,
+      kind: "model",
+      provider: "claude-sonnet-4-6",
+      category: "tokens.cache_read",
+      quantity: 5,
+      creditsCharged: 1,
+      status: "processed",
+    });
+    await insertTestUsageEvent(orgId, {
+      userId,
+      runId,
+      kind: "model",
+      provider: "claude-sonnet-4-6",
+      category: "tokens.cache_creation",
+      quantity: 10,
+      creditsCharged: 4,
+      status: "processed",
+    });
+    await insertTestUsageEvent(orgId, {
+      userId,
+      kind: "connector",
+      provider: "x",
+      category: "tweet.read",
+      quantity: 1,
+      creditsCharged: 7,
+      status: "processed",
+    });
+    await insertTestUsageEvent(orgId, {
+      userId,
+      runId,
+      kind: "model",
+      provider: "claude-sonnet-4-6",
+      category: "tokens.input",
+      quantity: 999,
+      creditsCharged: 999,
+      status: "pending",
+    });
+
+    const response = await GET(
+      makeRequest({ range: "7d", groupBy: "source", tz: "UTC" }),
+    );
+    expect(response.status).toBe(200);
+    const data = (await response.json()) as UsageInsightResponse;
+    const totals = sumBucketSeries(data.buckets);
+
+    expect(data.grandTotalCredits).toBe(27);
+    expect(data.grandTotalTokens).toBe(215);
+    expect(totals["chat"]).toEqual({ credits: 20, tokens: 215 });
+    expect(totals["others"]).toEqual({ credits: 7, tokens: 0 });
+  });
+
+  it("includes run-linked usage_event rows in agent buckets and channel totals", async () => {
+    const { userId, orgId } = await context.user;
+    const agentName = uniqueId("usage-event-agent");
+    const { composeId } = await seedTestCompose({
+      userId,
+      name: agentName,
+      orgId,
+    });
+    const { runId } = await seedTestRun(userId, composeId, {
+      triggerSource: "slack",
+      status: "completed",
+    });
+
+    await insertTestUsageEvent(orgId, {
+      userId,
+      runId,
+      kind: "connector",
+      provider: "x",
+      category: "tweet.read",
+      quantity: 1,
+      creditsCharged: 40,
+      status: "processed",
+    });
+    await insertTestUsageEvent(orgId, {
+      userId,
+      runId,
+      kind: "model",
+      provider: "claude-sonnet-4-6",
+      category: "tokens.output",
+      quantity: 15,
+      creditsCharged: 5,
+      status: "processed",
+    });
+    await insertTestUsageEvent(orgId, {
+      userId,
+      kind: "connector",
+      provider: "x",
+      category: "tweet.read",
+      quantity: 1,
+      creditsCharged: 8,
+      status: "processed",
+    });
+
+    const response = await GET(
+      makeRequest({ range: "7d", groupBy: "agent", tz: "UTC" }),
+    );
+    expect(response.status).toBe(200);
+    const data = (await response.json()) as UsageInsightResponse;
+    const totals = sumBucketSeries(data.buckets);
+
+    expect(totals[agentName]).toEqual({ credits: 45, tokens: 15 });
+    expect(totals["others"]).toEqual({ credits: 8, tokens: 0 });
+    expect(data.slackCredits).toBe(45);
+    expect(data.slackTokens).toBe(15);
   });
 
   it("returns chat rows when groupBy=source and there are chat runs", async () => {
@@ -581,6 +776,16 @@ describe("GET /api/zero/usage/insight", () => {
       creditsCharged: 200,
       status: "processed",
     });
+    await insertTestUsageEvent(orgId, {
+      userId,
+      runId,
+      kind: "model",
+      provider: "claude-sonnet-4-6",
+      category: "tokens.input",
+      quantity: 12,
+      creditsCharged: 25,
+      status: "processed",
+    });
 
     const response = await GET(
       makeRequest({ range: "7d", groupBy: "source", tz: "UTC" }),
@@ -594,7 +799,8 @@ describe("GET /api/zero/usage/insight", () => {
     });
     expect(chat).toBeDefined();
     expect(chat?.threadTitle).toBe("Test Chat Thread");
-    expect(chat?.credits).toBe(200);
+    expect(chat?.credits).toBe(225);
+    expect(chat?.tokens).toBe(162);
   });
 
   it("top-100 truncation — overflow with creditsCharged=0 still reports correct otherCount", async () => {

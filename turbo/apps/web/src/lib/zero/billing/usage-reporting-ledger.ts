@@ -2,12 +2,13 @@ import { and, eq, gte, isNotNull, lt, or, sql } from "drizzle-orm";
 import { creditUsage } from "@vm0/db/schema/credit-usage";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 import type { Database } from "../../../types/global";
-
-const MODEL_USAGE_KIND = "model";
-const TOKEN_CATEGORY_INPUT = "tokens.input";
-const TOKEN_CATEGORY_OUTPUT = "tokens.output";
-const TOKEN_CATEGORY_CACHE_READ = "tokens.cache_read";
-const TOKEN_CATEGORY_CACHE_CREATION = "tokens.cache_creation";
+import {
+  MODEL_USAGE_KIND,
+  TOKEN_CATEGORY_CACHE_CREATION,
+  TOKEN_CATEGORY_CACHE_READ,
+  TOKEN_CATEGORY_INPUT,
+  TOKEN_CATEGORY_OUTPUT,
+} from "./model-usage-categories";
 
 interface UsagePeriod {
   start: Date;

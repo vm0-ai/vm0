@@ -1,14 +1,14 @@
 import type { UsageInsightResponse } from "@vm0/api-contracts/contracts/zero-usage-insight";
 import {
-  queryLegacyAgentBuckets,
-  queryLegacyChannelTotals,
-  queryLegacyGrandTotal,
-  queryLegacySourceBuckets,
-  queryLegacyTopChats,
-  queryLegacyTopSchedules,
+  queryUsageInsightAgentBuckets,
+  queryUsageInsightChannelTotals,
+  queryUsageInsightGrandTotal,
+  queryUsageInsightSourceBuckets,
+  queryUsageInsightTopChats,
+  queryUsageInsightTopSchedules,
   type UsageInsightBucketRow,
   type UsageInsightSqlParams,
-} from "./usage-insight-legacy-ledger";
+} from "./usage-insight-ledger";
 
 interface UsageInsightOptions {
   range: "today" | "yesterday" | "7d" | "28d";
@@ -212,22 +212,18 @@ export async function getUsageInsight(
 
   const bucketsResult =
     options.groupBy === "source"
-      ? await queryLegacySourceBuckets(db, p)
-      : await queryLegacyAgentBuckets(db, p);
+      ? await queryUsageInsightSourceBuckets(db, p)
+      : await queryUsageInsightAgentBuckets(db, p);
 
   const buckets = pivotBucketRows(bucketsResult.rows);
-  const { grandTotalCredits, grandTotalTokens } = await queryLegacyGrandTotal(
-    db,
-    p,
-  );
+  const { grandTotalCredits, grandTotalTokens } =
+    await queryUsageInsightGrandTotal(db, p);
   const { emailCredits, emailTokens, slackCredits, slackTokens } =
-    await queryLegacyChannelTotals(db, p);
+    await queryUsageInsightChannelTotals(db, p);
   const { schedules, scheduleOtherCount, scheduleOtherCredits } =
-    await queryLegacyTopSchedules(db, p);
-  const { chats, chatOtherCount, chatOtherCredits } = await queryLegacyTopChats(
-    db,
-    p,
-  );
+    await queryUsageInsightTopSchedules(db, p);
+  const { chats, chatOtherCount, chatOtherCredits } =
+    await queryUsageInsightTopChats(db, p);
 
   return {
     buckets,
