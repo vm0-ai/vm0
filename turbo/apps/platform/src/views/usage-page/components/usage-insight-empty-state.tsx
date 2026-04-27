@@ -11,9 +11,7 @@ export function UsageInsightEmptyState() {
         className="h-24 w-24 object-contain opacity-80"
       />
       <div className="text-center">
-        <p className="text-sm font-medium text-foreground">
-          No usage data yet
-        </p>
+        <p className="text-sm font-medium text-foreground">No usage data yet</p>
         <p className="text-xs text-muted-foreground mt-1">
           Start a chat or run a schedule to see your insights here.
         </p>
