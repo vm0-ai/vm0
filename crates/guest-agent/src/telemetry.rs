@@ -284,6 +284,10 @@ async fn run(mut rx: mpsc::Receiver<Cmd>, masker: Arc<SecretMasker>) {
     let mut interval =
         tokio::time::interval(Duration::from_secs(constants::TELEMETRY_INTERVAL_SECS));
     interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
+    // `interval`'s first tick is immediately ready. Consume it so periodic
+    // uploads start after the first full interval instead of racing explicit
+    // startup/final flushes.
+    interval.tick().await;
 
     loop {
         tokio::select! {
