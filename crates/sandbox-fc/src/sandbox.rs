@@ -1452,16 +1452,19 @@ mod tests {
             .unwrap()
     }
 
-    fn pid_exists(pid: u32) -> bool {
-        let Ok(pid) = i32::try_from(pid) else {
+    fn pid_is_running(pid: u32) -> bool {
+        let Ok(stat) = std::fs::read_to_string(format!("/proc/{pid}/stat")) else {
             return false;
         };
-        nix::sys::signal::kill(nix::unistd::Pid::from_raw(pid), None).is_ok()
+        let Some((_, after_comm)) = stat.rsplit_once(") ") else {
+            return false;
+        };
+        !after_comm.starts_with('Z')
     }
 
-    async fn wait_for_pid_exit(pid: u32) -> bool {
+    async fn wait_for_pid_not_running(pid: u32) -> bool {
         tokio::time::timeout(Duration::from_secs(1), async {
-            while pid_exists(pid) {
+            while pid_is_running(pid) {
                 tokio::time::sleep(Duration::from_millis(10)).await;
             }
         })
@@ -1805,8 +1808,8 @@ mod tests {
             .trim()
             .parse()
             .unwrap();
-        let child_exited = wait_for_pid_exit(leaked_pid).await;
-        if !child_exited {
+        let child_stopped = wait_for_pid_not_running(leaked_pid).await;
+        if !child_stopped {
             let _ = nix::sys::signal::kill(
                 nix::unistd::Pid::from_raw(i32::try_from(leaked_pid).unwrap()),
                 nix::sys::signal::Signal::SIGKILL,
@@ -1818,8 +1821,8 @@ mod tests {
             SandboxState::Crashed
         );
         assert!(
-            child_exited,
-            "unexpected parent exit should not leave process-group children alive"
+            child_stopped,
+            "unexpected parent exit should not leave process-group children running"
         );
     }
 
