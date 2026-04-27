@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
-import { githubInstallations } from "../../db/schema/github-installation";
-import { githubUserLinks } from "../../db/schema/github-user-link";
-import { githubIssueSessions } from "../../db/schema/github-issue-session";
+import { githubInstallations } from "@vm0/db/schema/github-installation";
+import { githubUserLinks } from "@vm0/db/schema/github-user-link";
+import { githubIssueSessions } from "@vm0/db/schema/github-issue-session";
 import { initServices } from "../../lib/init-services";
 import { encryptSecretValue } from "../../lib/shared/crypto/secrets-encryption";
 import { uniqueId, uniqueNumericId } from "../test-helpers";

@@ -1,8 +1,8 @@
 import { createHandler, tsr } from "../../../../../../src/lib/ts-rest-handler";
-import { webhookCheckpointsPrepareHistoryContract } from "@vm0/core/contracts/webhooks";
+import { webhookCheckpointsPrepareHistoryContract } from "@vm0/api-contracts/contracts/webhooks";
 import { initServices } from "../../../../../../src/lib/init-services";
-import { agentRuns } from "../../../../../../src/db/schema/agent-run";
-import { blobs } from "../../../../../../src/db/schema/blob";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { blobs } from "@vm0/db/schema/blob";
 import { eq, and } from "drizzle-orm";
 import { preRegisterSessionHistoryBlob } from "../../../../../../src/lib/infra/session-history";
 import { getSandboxAuthForRun } from "../../../../../../src/lib/auth/get-sandbox-auth";

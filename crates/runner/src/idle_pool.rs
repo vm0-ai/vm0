@@ -1,9 +1,15 @@
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::panic::AssertUnwindSafe;
+use std::sync::{
+    Arc,
+    atomic::{AtomicU8, Ordering},
+};
 use std::time::{Duration, Instant};
 
+use futures_util::FutureExt;
 use sandbox::{Sandbox, SandboxFactory, SandboxId};
 
+use crate::resource_budget::BudgetLease;
 use crate::status::IdleVm;
 use crate::types::StorageManifest;
 
@@ -67,6 +73,82 @@ impl Default for IdlePoolConfig {
     }
 }
 
+/// Lifecycle-owned gate for whether completed jobs may enter the idle pool.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ParkingState {
+    Open = 0,
+    SoftDraining = 1,
+    Closed = 2,
+}
+
+impl ParkingState {
+    fn from_u8(value: u8) -> Self {
+        match value {
+            0 => Self::Open,
+            1 => Self::SoftDraining,
+            2 => Self::Closed,
+            _ => Self::Closed,
+        }
+    }
+}
+
+/// Shared parking permission updated before publishing runner mode transitions.
+#[derive(Clone, Debug)]
+pub(crate) struct ParkingGate {
+    state: Arc<AtomicU8>,
+}
+
+impl ParkingGate {
+    pub(crate) fn new_open() -> Self {
+        Self {
+            state: Arc::new(AtomicU8::new(ParkingState::Open as u8)),
+        }
+    }
+
+    pub(crate) fn state(&self) -> ParkingState {
+        ParkingState::from_u8(self.state.load(Ordering::SeqCst))
+    }
+
+    pub(crate) fn is_open(&self) -> bool {
+        self.state() == ParkingState::Open
+    }
+
+    pub(crate) fn soft_drain(&self) -> bool {
+        match self.state.compare_exchange(
+            ParkingState::Open as u8,
+            ParkingState::SoftDraining as u8,
+            Ordering::SeqCst,
+            Ordering::SeqCst,
+        ) {
+            Ok(_) => true,
+            Err(state) => ParkingState::from_u8(state) == ParkingState::SoftDraining,
+        }
+    }
+
+    pub(crate) fn open_after_soft_drain(&self) -> bool {
+        match self.state.compare_exchange(
+            ParkingState::SoftDraining as u8,
+            ParkingState::Open as u8,
+            Ordering::SeqCst,
+            Ordering::SeqCst,
+        ) {
+            Ok(_) => true,
+            Err(state) => ParkingState::from_u8(state) == ParkingState::Open,
+        }
+    }
+
+    pub(crate) fn close(&self) {
+        self.state
+            .store(ParkingState::Closed as u8, Ordering::SeqCst);
+    }
+}
+
+impl Default for ParkingGate {
+    fn default() -> Self {
+        Self::new_open()
+    }
+}
+
 /// A sandbox parked in the idle pool, waiting for reuse.
 pub struct IdleEntry {
     pub sandbox: Box<dyn Sandbox>,
@@ -77,8 +159,7 @@ pub struct IdleEntry {
     /// doctor / kill / workspace-dir naming.
     pub sandbox_id: SandboxId,
     pub profile_name: String,
-    pub vcpu: u32,
-    pub memory_mb: u32,
+    pub budget_lease: BudgetLease,
     pub source_ip: String,
     pub parked_at: Instant,
     pub idle_timeout: Duration,
@@ -87,14 +168,91 @@ pub struct IdleEntry {
     pub storage_fingerprints: StorageFingerprints,
 }
 
-impl IdleEntry {
+/// Idle pool status snapshot paired with a monotonic mutation revision.
+///
+/// Status writes happen after dropping the pool lock, so an older snapshot can
+/// otherwise complete after a newer drain/evict write and reintroduce stale
+/// `idle_vms` in status.json.
+#[derive(Clone, Debug)]
+pub struct IdlePoolSnapshot {
+    pub revision: u64,
+    pub idle_vms: Vec<IdleVm>,
+}
+
+/// Reusable sandbox state handed to the executor after a successful unpark.
+///
+/// The budget lease is intentionally not part of this payload. The outer job
+/// task owns the active lease so executor panics cannot release capacity before
+/// provider completion and post-job cleanup finish.
+pub struct ReusableIdleSandbox {
+    pub sandbox: Box<dyn Sandbox>,
+    pub sandbox_id: SandboxId,
+    pub source_ip: String,
+    pub storage_fingerprints: StorageFingerprints,
+}
+
+/// Physical resources needed to destroy an idle VM, without its budget lease.
+pub struct IdleDestroyPayload {
+    sandbox: Box<dyn Sandbox>,
+    factory: Arc<Box<dyn SandboxFactory>>,
+}
+
+impl IdleDestroyPayload {
     /// Stop the sandbox and destroy it via its factory.
     pub async fn stop_and_destroy(self) {
         let mut sandbox = self.sandbox;
-        if let Err(e) = sandbox.stop().await {
-            tracing::warn!(error = %e, "failed to stop idle sandbox");
+        match AssertUnwindSafe(sandbox.stop()).catch_unwind().await {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => tracing::warn!(error = %e, "failed to stop idle sandbox"),
+            Err(_) => tracing::warn!("idle sandbox stop panicked"),
         }
-        self.factory.destroy(sandbox).await;
+        if AssertUnwindSafe(self.factory.destroy(sandbox))
+            .catch_unwind()
+            .await
+            .is_err()
+        {
+            tracing::warn!("idle sandbox destroy panicked");
+        }
+    }
+}
+
+impl IdleEntry {
+    /// Stop the sandbox and destroy it via its factory.
+    pub async fn stop_and_destroy(self) {
+        let (payload, _lease) = self.into_destroy_parts();
+        payload.stop_and_destroy().await;
+    }
+
+    pub fn into_reuse_parts(self) -> (ReusableIdleSandbox, BudgetLease) {
+        let Self {
+            sandbox,
+            sandbox_id,
+            source_ip,
+            storage_fingerprints,
+            budget_lease,
+            ..
+        } = self;
+
+        (
+            ReusableIdleSandbox {
+                sandbox,
+                sandbox_id,
+                source_ip,
+                storage_fingerprints,
+            },
+            budget_lease,
+        )
+    }
+
+    pub fn into_destroy_parts(self) -> (IdleDestroyPayload, BudgetLease) {
+        let Self {
+            sandbox,
+            factory,
+            budget_lease,
+            ..
+        } = self;
+
+        (IdleDestroyPayload { sandbox, factory }, budget_lease)
     }
 }
 
@@ -106,25 +264,33 @@ impl IdleEntry {
 pub struct IdlePool {
     entries: HashMap<String, IdleEntry>,
     config: IdlePoolConfig,
-    /// Set by `drain()` to reject park attempts after shutdown.
-    drained: bool,
+    revision: u64,
+    /// Shared lifecycle gate. The signal/main-loop lifecycle controller updates
+    /// this before publishing externally visible mode transitions.
+    parking_gate: ParkingGate,
 }
 
 impl IdlePool {
+    #[cfg(test)]
     pub fn new(config: IdlePoolConfig) -> Self {
+        Self::new_with_parking_gate(config, ParkingGate::new_open())
+    }
+
+    pub(crate) fn new_with_parking_gate(config: IdlePoolConfig, parking_gate: ParkingGate) -> Self {
         Self {
             entries: HashMap::new(),
             config,
-            drained: false,
+            revision: 0,
+            parking_gate,
         }
     }
 
     /// Park a sandbox in the pool. Returns the previously parked entry
     /// for this session if one existed (caller must destroy it).
     ///
-    /// Returns `PoolFull(entry)` if the pool is drained or at capacity.
+    /// Returns `PoolFull(entry)` if parking is closed/soft-draining or at capacity.
     pub fn park(&mut self, session_id: String, entry: IdleEntry) -> ParkResult {
-        if self.drained {
+        if !self.parking_gate.is_open() {
             return ParkResult::PoolFull(entry);
         }
         if self.config.max_idle > 0 && self.entries.len() >= self.config.max_idle {
@@ -133,16 +299,22 @@ impl IdlePool {
                 return ParkResult::PoolFull(entry);
             }
         }
-        match self.entries.insert(session_id, entry) {
+        let result = match self.entries.insert(session_id, entry) {
             Some(evicted) => ParkResult::Evicted(evicted),
             None => ParkResult::Parked,
-        }
+        };
+        self.bump_revision();
+        result
     }
 
     /// Take a sandbox from the pool for reuse. Returns `None` if no
     /// sandbox is parked for this session.
     pub fn take(&mut self, session_id: &str) -> Option<IdleEntry> {
-        self.entries.remove(session_id)
+        let entry = self.entries.remove(session_id);
+        if entry.is_some() {
+            self.bump_revision();
+        }
+        entry
     }
 
     /// Remove and return all entries that have exceeded their idle timeout.
@@ -155,10 +327,14 @@ impl IdlePool {
             .map(|(k, _)| k.clone())
             .collect();
 
-        expired_keys
+        let expired: Vec<IdleEntry> = expired_keys
             .into_iter()
             .filter_map(|k| self.entries.remove(&k))
-            .collect()
+            .collect();
+        if !expired.is_empty() {
+            self.bump_revision();
+        }
+        expired
     }
 
     /// Evict the oldest idle entry (by park time). Used for resource
@@ -169,13 +345,18 @@ impl IdlePool {
             .iter()
             .min_by_key(|(_, e)| e.parked_at)
             .map(|(k, _)| k.clone())?;
-        self.entries.remove(&oldest_key)
+        let entry = self.entries.remove(&oldest_key);
+        if entry.is_some() {
+            self.bump_revision();
+        }
+        entry
     }
 
-    /// Return a sorted-by-session_id snapshot of the idle pool suitable
-    /// for status.json. Produced in a single iteration so `session_id` and
-    /// `sandbox_id` can never drift out of pairing.
-    pub fn held_snapshot(&self) -> Vec<IdleVm> {
+    /// Return a revisioned sorted-by-session_id snapshot suitable for status.json.
+    ///
+    /// Produced in a single iteration so `session_id` and `sandbox_id` can never
+    /// drift out of pairing.
+    pub fn status_snapshot(&self) -> IdlePoolSnapshot {
         let mut vms: Vec<IdleVm> = self
             .entries
             .iter()
@@ -185,13 +366,24 @@ impl IdlePool {
             })
             .collect();
         vms.sort_unstable_by(|a, b| a.session_id.cmp(&b.session_id));
-        vms
+        IdlePoolSnapshot {
+            revision: self.revision,
+            idle_vms: vms,
+        }
+    }
+
+    /// Return a sorted-by-session_id snapshot of the idle pool suitable
+    /// for status.json. Produced in a single iteration so `session_id` and
+    /// `sandbox_id` can never drift out of pairing.
+    #[cfg(test)]
+    pub fn held_snapshot(&self) -> Vec<IdleVm> {
+        self.status_snapshot().idle_vms
     }
 
     /// Return the list of session IDs currently held in the pool, sorted
     /// lexicographically for deterministic heartbeat output.
     ///
-    /// Prefer [`held_snapshot`](Self::held_snapshot) when pairing with
+    /// Prefer [`status_snapshot`](Self::status_snapshot) when pairing with
     /// sandbox IDs — it produces both views from a single iteration.
     pub fn held_sessions(&self) -> Vec<String> {
         let mut sessions: Vec<String> = self.entries.keys().cloned().collect();
@@ -204,10 +396,16 @@ impl IdlePool {
         self.entries.len()
     }
 
-    /// Whether the pool has been drained (rejects new park calls).
+    /// Current lifecycle parking state.
     #[cfg(test)]
-    pub fn is_drained(&self) -> bool {
-        self.drained
+    pub fn parking_state(&self) -> ParkingState {
+        self.parking_gate.state()
+    }
+
+    /// Shared lifecycle parking gate.
+    #[cfg(test)]
+    pub fn parking_gate(&self) -> ParkingGate {
+        self.parking_gate.clone()
     }
 
     /// The default idle timeout.
@@ -215,13 +413,19 @@ impl IdlePool {
         self.config.default_timeout
     }
 
-    /// Drain all entries from the pool (for shutdown).
-    ///
-    /// Also disables the pool so that concurrent job tasks that still hold
-    /// a stale `mode == Running` snapshot cannot park new entries after drain.
+    /// Drain all entries from the pool. Parking permission is controlled by
+    /// [`ParkingGate`] so soft-drain resume can reopen parking before
+    /// `RunnerMode::Running` becomes visible.
     pub fn drain(&mut self) -> Vec<IdleEntry> {
-        self.drained = true;
-        self.entries.drain().map(|(_, v)| v).collect()
+        let entries: Vec<IdleEntry> = self.entries.drain().map(|(_, v)| v).collect();
+        if !entries.is_empty() {
+            self.bump_revision();
+        }
+        entries
+    }
+
+    fn bump_revision(&mut self) {
+        self.revision = self.revision.saturating_add(1);
     }
 }
 
@@ -242,7 +446,14 @@ mod tests {
 
     use std::time::Duration;
 
+    use crate::resource_budget::ResourceBudget;
+
     use sandbox_mock::{MockSandbox, MockSandboxFactory};
+
+    fn make_budget_lease(vcpu: u32, memory_mb: u32) -> BudgetLease {
+        let budget = Arc::new(ResourceBudget::new(1, 1, 1.0, 0));
+        ResourceBudget::try_reserve_lease(&budget, vcpu, memory_mb).unwrap()
+    }
 
     fn make_entry(vcpu: u32, memory_mb: u32) -> IdleEntry {
         IdleEntry {
@@ -251,8 +462,7 @@ mod tests {
             session_id: "test-session".into(),
             sandbox_id: SandboxId::new_v4(),
             profile_name: "vm0/default".into(),
-            vcpu,
-            memory_mb,
+            budget_lease: make_budget_lease(vcpu, memory_mb),
             source_ip: "10.0.0.1".into(),
             parked_at: Instant::now(),
             idle_timeout: Duration::from_secs(300),
@@ -272,8 +482,7 @@ mod tests {
             session_id: "test-session".into(),
             sandbox_id: SandboxId::new_v4(),
             profile_name: "vm0/default".into(),
-            vcpu,
-            memory_mb,
+            budget_lease: make_budget_lease(vcpu, memory_mb),
             source_ip: "10.0.0.1".into(),
             parked_at,
             idle_timeout,
@@ -298,8 +507,8 @@ mod tests {
         assert_eq!(pool.len(), 1);
 
         let entry = pool.take("session-1").unwrap();
-        assert_eq!(entry.vcpu, 2);
-        assert_eq!(entry.memory_mb, 2048);
+        assert_eq!(entry.budget_lease.vcpu(), 2);
+        assert_eq!(entry.budget_lease.memory_mb(), 2048);
         assert_eq!(pool.len(), 0);
     }
 
@@ -318,15 +527,15 @@ mod tests {
 
         match result {
             ParkResult::Evicted(evicted) => {
-                assert_eq!(evicted.vcpu, 2);
-                assert_eq!(evicted.memory_mb, 2048);
+                assert_eq!(evicted.budget_lease.vcpu(), 2);
+                assert_eq!(evicted.budget_lease.memory_mb(), 2048);
             }
             _ => panic!("expected Evicted"),
         }
 
         assert_eq!(pool.len(), 1);
         let entry = pool.take("session-1").unwrap();
-        assert_eq!(entry.vcpu, 4);
+        assert_eq!(entry.budget_lease.vcpu(), 4);
     }
 
     #[test]
@@ -394,7 +603,7 @@ mod tests {
         );
 
         let evicted = pool.evict_oldest().unwrap();
-        assert_eq!(evicted.vcpu, 2); // the old one
+        assert_eq!(evicted.budget_lease.vcpu(), 2); // the old one
         assert_eq!(pool.len(), 1);
         assert!(pool.take("new").is_some());
     }
@@ -441,6 +650,33 @@ mod tests {
     }
 
     #[test]
+    fn status_snapshot_revision_tracks_idle_vm_mutations() {
+        let mut pool = IdlePool::new(pool_config(0));
+        assert_eq!(pool.status_snapshot().revision, 0);
+
+        let _ = pool.park("s1".into(), make_entry(2, 2048));
+        assert_eq!(pool.status_snapshot().revision, 1);
+
+        assert!(pool.take("s1").is_some());
+        assert_eq!(pool.status_snapshot().revision, 2);
+
+        let drained = pool.drain();
+        assert!(drained.is_empty());
+        assert_eq!(
+            pool.status_snapshot().revision,
+            2,
+            "empty drain must not create a fake idle_vms mutation",
+        );
+
+        let _ = pool.park("s2".into(), make_entry(2, 2048));
+        assert_eq!(pool.status_snapshot().revision, 3);
+
+        let drained = pool.drain();
+        assert_eq!(drained.len(), 1);
+        assert_eq!(pool.status_snapshot().revision, 4);
+    }
+
+    #[test]
     fn drain() {
         let mut pool = IdlePool::new(pool_config(0));
         let _ = pool.park("s1".into(), make_entry(2, 2048));
@@ -449,21 +685,47 @@ mod tests {
         let drained = pool.drain();
         assert_eq!(drained.len(), 2);
         assert_eq!(pool.len(), 0);
-        // drain marks the pool as drained to prevent post-shutdown parking
-        assert!(pool.is_drained());
+        assert_eq!(pool.parking_state(), ParkingState::Open);
     }
 
     #[test]
-    fn park_after_drain_rejected() {
-        // drain() marks pool as drained — subsequent park() calls are rejected.
+    fn park_rejected_while_soft_draining() {
         let mut pool = IdlePool::new(pool_config(0));
+        let gate = pool.parking_gate();
         let _ = pool.park("s1".into(), make_entry(2, 2048));
-        pool.drain();
-        assert!(pool.is_drained());
+        gate.soft_drain();
+        assert_eq!(pool.parking_state(), ParkingState::SoftDraining);
 
         let result = pool.park("s2".into(), make_entry(4, 4096));
         assert!(matches!(result, ParkResult::PoolFull(_)));
+        assert_eq!(pool.len(), 1);
+    }
+
+    #[test]
+    fn park_rejected_when_closed() {
+        let mut pool = IdlePool::new(pool_config(0));
+        let gate = pool.parking_gate();
+        gate.close();
+
+        let result = pool.park("s1".into(), make_entry(2, 2048));
+        assert!(matches!(result, ParkResult::PoolFull(_)));
         assert_eq!(pool.len(), 0);
+    }
+
+    #[test]
+    fn soft_drain_can_reopen_parking() {
+        let mut pool = IdlePool::new(pool_config(0));
+        let gate = pool.parking_gate();
+        gate.soft_drain();
+        assert!(matches!(
+            pool.park("s1".into(), make_entry(2, 2048)),
+            ParkResult::PoolFull(_)
+        ));
+
+        gate.open_after_soft_drain();
+        let result = pool.park("s1".into(), make_entry(2, 2048));
+        assert!(matches!(result, ParkResult::Parked));
+        assert_eq!(pool.len(), 1);
     }
 
     #[test]
@@ -484,7 +746,7 @@ mod tests {
         let mut pool = IdlePool::new(pool_config(0));
         let drained = pool.drain();
         assert!(drained.is_empty());
-        assert!(pool.is_drained());
+        assert_eq!(pool.parking_state(), ParkingState::Open);
     }
 
     #[test]
@@ -545,7 +807,7 @@ mod tests {
 
         let evicted = pool.evict_expired();
         assert_eq!(evicted.len(), 1);
-        assert_eq!(evicted[0].vcpu, 2); // only the short-timeout entry
+        assert_eq!(evicted[0].budget_lease.vcpu(), 2); // only the short-timeout entry
         assert_eq!(pool.len(), 1);
         assert!(pool.take("long").is_some());
     }
@@ -567,6 +829,6 @@ mod tests {
         assert!(matches!(result, ParkResult::Evicted(_)));
         assert_eq!(pool.len(), 1);
         let entry = pool.take("s1").unwrap();
-        assert_eq!(entry.vcpu, 8);
+        assert_eq!(entry.budget_lease.vcpu(), 8);
     }
 }

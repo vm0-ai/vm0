@@ -19,7 +19,15 @@ const INJECT_CA_SCRIPT: &str = include_str!("../../scripts/inject-ca.sh");
 /// Bump to invalidate all cached rootfs images (R2 + local).
 ///
 /// Bumping orphans previous R2 objects; swept by `runner gc` after TTL.
-const ROOTFS_CACHE_VERSION: u32 = 1;
+///
+/// Bumped 1 → 2 alongside the staging-rename contract for rootfs assembly
+/// (see #11007). The old contract let a partially-applied R2 + CA-injection
+/// pipeline leave `rootfs.ext4` on disk in a corrupt state (new CA file,
+/// stale system bundle). The new code prevents that going forward, but
+/// cannot heal existing corrupt rootfs already on hosts — bumping the
+/// version forces every host to regenerate under the new contract on the
+/// next build.
+const ROOTFS_CACHE_VERSION: u32 = 2;
 
 /// Bump to invalidate all cached snapshots (local only; R2 stores rootfs only).
 const SNAPSHOT_CACHE_VERSION: u32 = 1;
@@ -229,6 +237,14 @@ pub async fn run_build(args: BuildArgs, provider: &dyn SnapshotProvider) -> Runn
         return Ok(());
     }
 
+    // Clear any `rootfs.ext4.staging` residue from a previous crashed or
+    // failed build. Holding the rootfs flock means the previous writer has
+    // already exited (kernel releases flocks on process death), so any
+    // staging file on disk is guaranteed to be stale — never a concurrent
+    // writer's work-in-progress. This is the recovery arm of the
+    // staging-rename contract; see `RootfsPaths::rootfs_staging`.
+    clear_rootfs_staging(&rootfs_paths).await;
+
     // Write scripts to a temp directory (needed for both R2 and local paths).
     let work_dir =
         tempfile::tempdir().map_err(|e| RunnerError::Internal(format!("create temp dir: {e}")))?;
@@ -269,6 +285,15 @@ pub async fn run_build(args: BuildArgs, provider: &dyn SnapshotProvider) -> Runn
                         // snapshot artifacts from an old archive format).
                         remove_all_except_rootfs(&rootfs_paths).await;
                         tracing::info!("[OK] rootfs downloaded from R2: {}", rootfs_dir.display());
+                        // Demote the downloaded image to staging before CA
+                        // injection runs. The R2-cached rootfs carries the
+                        // build host's CA; Phase 1.5 replaces it. Keeping
+                        // the file at the committed `rootfs.ext4` path
+                        // during injection would let a mid-script crash
+                        // leave a rootfs whose CA file no longer matches
+                        // its system bundle, permanently poisoning the
+                        // Fast-path reuse check.
+                        demote_to_staging(&rootfs_paths).await?;
                         rootfs_from_r2 = true;
                     } else {
                         tracing::warn!(
@@ -391,12 +416,20 @@ pub async fn run_build(args: BuildArgs, provider: &dyn SnapshotProvider) -> Runn
     }
 
     // --- Phase 1.5: Replace CA cert (R2-downloaded rootfs only) ---
+    //
+    // Operates on `rootfs.ext4.staging` (not `rootfs.ext4`). On non-zero
+    // exit we leave the staging file in place — the next build's
+    // `clear_rootfs_staging` step above deletes it. We deliberately do
+    // NOT remove `rootfs_dir`: snapshots for other snapshot_hashes (same
+    // rootfs_hash, different vcpu/memory profile) live under
+    // `<rootfs_dir>/snapshots/` and would be collateral damage.
     if rootfs_from_r2 {
-        let rootfs_str = rootfs_paths.rootfs().to_string_lossy().into_owned();
+        let staging = rootfs_paths.rootfs_staging();
+        let staging_str = staging.to_string_lossy().into_owned();
         let ca_dir_str = ca_dir.to_string_lossy().into_owned();
         let status = tokio::process::Command::new("bash")
             .arg(work_dir.path().join("inject-ca.sh"))
-            .args(["--rootfs", &rootfs_str, "--ca-dir", &ca_dir_str])
+            .args(["--rootfs", &staging_str, "--ca-dir", &ca_dir_str])
             .stdin(std::process::Stdio::null())
             .status()
             .await
@@ -407,6 +440,11 @@ pub async fn run_build(args: BuildArgs, provider: &dyn SnapshotProvider) -> Runn
                 "inject-ca.sh failed with {status}"
             )));
         }
+        // Commit the rootfs. Same-filesystem rename is POSIX-atomic, so
+        // `rootfs.ext4` only becomes visible once CA injection has fully
+        // succeeded — future `is_rootfs_present` / Fast-path checks can
+        // now trust its presence as "assembly pipeline completed".
+        commit_staging(&rootfs_paths).await?;
         tracing::info!("CA cert replaced in R2-downloaded rootfs");
     }
 
@@ -490,10 +528,111 @@ async fn remove_all_except_rootfs(rootfs: &RootfsPaths) {
 }
 
 /// Check whether rootfs.ext4 exists.
+///
+/// Under the staging-rename contract, `rootfs.ext4` only exists if the
+/// full assembly pipeline (download/build + CA injection) has committed,
+/// so `true` here implies "fully built and ready to use". A concurrent
+/// in-progress build writes to `rootfs.ext4.staging`, which this function
+/// intentionally ignores.
 async fn is_rootfs_present(rootfs: &RootfsPaths) -> RunnerResult<bool> {
     tokio::fs::try_exists(rootfs.rootfs())
         .await
         .map_err(|e| RunnerError::Internal(format!("check {}: {e}", rootfs.rootfs().display())))
+}
+
+/// Delete any `rootfs.ext4.staging` left behind by a previous build.
+///
+/// Called under the rootfs flock, after the re-check has confirmed there
+/// is no committed `rootfs.ext4` we could reuse. Because holding the
+/// flock implies the previous writer has exited (the kernel releases
+/// flocks on process death), any staging file we see here is guaranteed
+/// to be crash residue — not a live writer's in-progress file.
+///
+/// Non-existence is the common case and not logged. Removal is best
+/// effort: an error here just means the next step (writing new staging)
+/// will overwrite the file anyway.
+async fn clear_rootfs_staging(rootfs: &RootfsPaths) {
+    let staging = rootfs.rootfs_staging();
+    match tokio::fs::try_exists(&staging).await {
+        Ok(true) => {
+            tracing::warn!(
+                "removing stale rootfs staging file from a previous failed build: {}",
+                staging.display()
+            );
+            if let Err(e) = tokio::fs::remove_file(&staging).await {
+                tracing::warn!(
+                    "failed to remove stale staging file {}: {e}",
+                    staging.display()
+                );
+            }
+        }
+        Ok(false) => {}
+        Err(e) => {
+            tracing::warn!(
+                "check staging {}: {e} (continuing; any residue will be overwritten)",
+                staging.display()
+            );
+        }
+    }
+}
+
+/// Rename `rootfs.ext4 → rootfs.ext4.staging` to move an R2-downloaded
+/// image into pre-commit state before CA injection runs.
+///
+/// Fails loudly: if the rename cannot happen, proceeding would let
+/// inject-ca mutate the committed path directly, recreating the TOCTOU
+/// bug this contract exists to close. On rename failure we also
+/// best-effort delete the source — otherwise the committed `rootfs.ext4`
+/// would survive with the build host's CA still baked into its system
+/// bundle, and the next build's Fast path would reuse it without running
+/// inject-ca. Both outcomes of the cleanup (succeeded / also failed)
+/// emit a warning so an operator reading the `Err` return can tell
+/// whether the source file is still on disk.
+async fn demote_to_staging(rootfs: &RootfsPaths) -> RunnerResult<()> {
+    let from = rootfs.rootfs();
+    let to = rootfs.rootfs_staging();
+    match tokio::fs::rename(&from, &to).await {
+        Ok(()) => Ok(()),
+        Err(e) => {
+            match tokio::fs::remove_file(&from).await {
+                Ok(()) => tracing::warn!(
+                    "rename {} → {} failed: {e}; source removed to prevent \
+                     Fast-path reuse of an un-CA-injected rootfs",
+                    from.display(),
+                    to.display()
+                ),
+                Err(rm_err) => tracing::warn!(
+                    "rename {} → {} failed: {e}; cleanup remove also failed: \
+                     {rm_err}. Manual intervention may be required to remove \
+                     {}.",
+                    from.display(),
+                    to.display(),
+                    from.display()
+                ),
+            }
+            Err(RunnerError::Internal(format!(
+                "demote to staging {} → {}: {e}",
+                from.display(),
+                to.display()
+            )))
+        }
+    }
+}
+
+/// Atomic commit: rename `rootfs.ext4.staging → rootfs.ext4`.
+///
+/// Same-filesystem rename is POSIX-atomic, so this is the single step
+/// that makes the rootfs visible to future `is_rootfs_present` checks.
+async fn commit_staging(rootfs: &RootfsPaths) -> RunnerResult<()> {
+    let from = rootfs.rootfs_staging();
+    let to = rootfs.rootfs();
+    tokio::fs::rename(&from, &to).await.map_err(|e| {
+        RunnerError::Internal(format!(
+            "commit rootfs {} → {}: {e}",
+            from.display(),
+            to.display()
+        ))
+    })
 }
 
 /// Compute a rootfs-only hash for R2 image caching.
@@ -723,6 +862,172 @@ mod tests {
 
         tokio::fs::write(rootfs.rootfs(), b"").await.unwrap();
         assert!(is_rootfs_present(&rootfs).await.unwrap());
+    }
+
+    /// Staging contract: the in-progress `rootfs.ext4.staging` must not
+    /// cause `is_rootfs_present` to report the rootfs as built. If it did,
+    /// a crashed build partway through CA injection would still Fast-path
+    /// on the next run — reintroducing #11007.
+    #[tokio::test]
+    async fn is_rootfs_present_ignores_staging_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
+        let rootfs = RootfsPaths::new(&home, "staging-hash");
+        tokio::fs::create_dir_all(rootfs.dir()).await.unwrap();
+
+        // Staging alone → not present.
+        tokio::fs::write(rootfs.rootfs_staging(), b"partial")
+            .await
+            .unwrap();
+        assert!(!is_rootfs_present(&rootfs).await.unwrap());
+
+        // Committed file → present, even with lingering staging.
+        tokio::fs::write(rootfs.rootfs(), b"committed")
+            .await
+            .unwrap();
+        assert!(is_rootfs_present(&rootfs).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn clear_rootfs_staging_removes_residue() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
+        let rootfs = RootfsPaths::new(&home, "cleanup-hash");
+        tokio::fs::create_dir_all(rootfs.dir()).await.unwrap();
+
+        tokio::fs::write(rootfs.rootfs_staging(), b"crash-residue")
+            .await
+            .unwrap();
+        assert!(rootfs.rootfs_staging().exists());
+
+        clear_rootfs_staging(&rootfs).await;
+        assert!(!rootfs.rootfs_staging().exists());
+    }
+
+    #[tokio::test]
+    async fn clear_rootfs_staging_noop_when_absent() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
+        let rootfs = RootfsPaths::new(&home, "noop-hash");
+        tokio::fs::create_dir_all(rootfs.dir()).await.unwrap();
+
+        // No staging file — must not error.
+        clear_rootfs_staging(&rootfs).await;
+        assert!(!rootfs.rootfs_staging().exists());
+    }
+
+    #[tokio::test]
+    async fn clear_rootfs_staging_leaves_committed_rootfs_alone() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
+        let rootfs = RootfsPaths::new(&home, "preserve-hash");
+        tokio::fs::create_dir_all(rootfs.dir()).await.unwrap();
+
+        tokio::fs::write(rootfs.rootfs(), b"real-rootfs")
+            .await
+            .unwrap();
+        tokio::fs::write(rootfs.rootfs_staging(), b"residue")
+            .await
+            .unwrap();
+
+        clear_rootfs_staging(&rootfs).await;
+        assert!(rootfs.rootfs().exists(), "committed rootfs must survive");
+        assert!(!rootfs.rootfs_staging().exists());
+    }
+
+    #[tokio::test]
+    async fn demote_to_staging_moves_committed_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
+        let rootfs = RootfsPaths::new(&home, "demote-hash");
+        tokio::fs::create_dir_all(rootfs.dir()).await.unwrap();
+
+        tokio::fs::write(rootfs.rootfs(), b"downloaded")
+            .await
+            .unwrap();
+
+        demote_to_staging(&rootfs).await.unwrap();
+
+        assert!(
+            !rootfs.rootfs().exists(),
+            "rootfs.ext4 must not exist after demotion (otherwise Fast path \
+             would reuse an un-CA-injected image — see #11007)"
+        );
+        assert!(rootfs.rootfs_staging().exists());
+        let content = tokio::fs::read(rootfs.rootfs_staging()).await.unwrap();
+        assert_eq!(content, b"downloaded");
+    }
+
+    #[tokio::test]
+    async fn commit_staging_renames_to_final() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
+        let rootfs = RootfsPaths::new(&home, "commit-hash");
+        tokio::fs::create_dir_all(rootfs.dir()).await.unwrap();
+
+        tokio::fs::write(rootfs.rootfs_staging(), b"ca-injected")
+            .await
+            .unwrap();
+
+        commit_staging(&rootfs).await.unwrap();
+
+        assert!(!rootfs.rootfs_staging().exists());
+        assert!(rootfs.rootfs().exists());
+        let content = tokio::fs::read(rootfs.rootfs()).await.unwrap();
+        assert_eq!(content, b"ca-injected");
+    }
+
+    /// End-to-end contract simulation for the R2 + CA-injection path:
+    /// download writes `rootfs.ext4`, we demote to staging, CA injection
+    /// succeeds (modeled as a no-op mutation of the staging file), we
+    /// commit via rename. After success, only `rootfs.ext4` exists.
+    #[tokio::test]
+    async fn staging_contract_happy_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
+        let rootfs = RootfsPaths::new(&home, "happy-hash");
+        tokio::fs::create_dir_all(rootfs.dir()).await.unwrap();
+
+        // Simulate R2 download.
+        tokio::fs::write(rootfs.rootfs(), b"r2-download")
+            .await
+            .unwrap();
+
+        // Demote → inject-ca (mutate staging) → commit.
+        demote_to_staging(&rootfs).await.unwrap();
+        tokio::fs::write(rootfs.rootfs_staging(), b"ca-injected")
+            .await
+            .unwrap();
+        commit_staging(&rootfs).await.unwrap();
+
+        assert!(rootfs.rootfs().exists());
+        assert!(!rootfs.rootfs_staging().exists());
+        assert!(is_rootfs_present(&rootfs).await.unwrap());
+    }
+
+    /// Failure simulation: demote succeeded, CA injection failed, build
+    /// returned Err. The next build must see no committed rootfs (so it
+    /// redownloads) and `clear_rootfs_staging` must wipe the partial file.
+    #[tokio::test]
+    async fn staging_contract_inject_failure_leaves_recoverable_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
+        let rootfs = RootfsPaths::new(&home, "fail-hash");
+        tokio::fs::create_dir_all(rootfs.dir()).await.unwrap();
+
+        tokio::fs::write(rootfs.rootfs(), b"r2-download")
+            .await
+            .unwrap();
+        demote_to_staging(&rootfs).await.unwrap();
+        // Pretend inject-ca failed: staging persists, rootfs.ext4 absent.
+
+        assert!(!is_rootfs_present(&rootfs).await.unwrap());
+        assert!(rootfs.rootfs_staging().exists());
+
+        // Next build's cleanup step.
+        clear_rootfs_staging(&rootfs).await;
+        assert!(!rootfs.rootfs_staging().exists());
+        assert!(!is_rootfs_present(&rootfs).await.unwrap());
     }
 
     /// Guard the `[sync:ca-constants]` contract between build-rootfs.sh,

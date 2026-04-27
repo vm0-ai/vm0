@@ -1,6 +1,6 @@
 import "server-only";
 import { eq } from "drizzle-orm";
-import { zeroRuns } from "../../db/schema/zero-run";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { generateRunSummary } from "./ai/lightweight-model";
 import { logger } from "../shared/logger";
 

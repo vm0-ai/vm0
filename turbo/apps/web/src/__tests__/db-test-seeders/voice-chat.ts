@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { initServices } from "../../lib/init-services";
-import { voiceChatSessions, voiceChatTasks } from "../../db/schema/voice-chat";
+import { voiceChatSessions, voiceChatTasks } from "@vm0/db/schema/voice-chat";
 import { appendVoiceChatItem } from "../../lib/zero/voice-chat/item-service";
 import { createVoiceChatSession } from "../../lib/zero/voice-chat/session-service";
 import { uniqueId } from "../test-helpers";

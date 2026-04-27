@@ -79,11 +79,22 @@ def load(loader: Loader) -> None:
         default=str(Path(tempfile.gettempdir()) / "proxy-registry.json"),
         help="Path to proxy registry file",
     )
+    loader.add_option(
+        name="vm0_usage_state_id",
+        typespec=str,
+        default="",
+        help="Runner-generated usage-pending state id",
+    )
 
-    # Initialize the usage pending-count file so the runner can poll it
-    # before sending SIGTERM.  The file lives next to the addon script,
-    # which is written to addon_dir by the runner.
-    usage.set_pending_path(str(Path(__file__).resolve().parent / "usage-pending"))
+
+def configure(updated: set[str]) -> None:
+    if "vm0_usage_state_id" in updated:
+        # Custom --set options are deferred until after load() registers them,
+        # so initialize this file here where ctx.options has the runner value.
+        usage.set_pending_path(
+            str(Path(__file__).resolve().parent / "usage-pending"),
+            usage_state_id=ctx.options.vm0_usage_state_id or None,
+        )
 
 
 def get_api_url() -> str:
@@ -215,85 +226,122 @@ async def request(flow: http.HTTPFlow) -> None:
     # Track request start time (after early returns to avoid leaking entries)
     _request_start_times[flow.id] = time.time()
 
-    original_url = get_original_url(flow)
+    try:
+        original_url = get_original_url(flow)
 
-    # Store info for response handler
-    flow.metadata["original_url"] = original_url
-    flow.metadata["vm_run_id"] = run_id
-    flow.metadata["vm_client_ip"] = client_ip
-    flow.metadata["vm_network_log_path"] = vm_info.get("networkLogPath", "")
-    flow.metadata["vm_proxy_log_path"] = vm_info.get("proxyLogPath", "")
-    flow.metadata["capture_body"] = vm_info.get("captureNetworkBodies", False)
-    flow.metadata["vm_sandbox_token"] = vm_info.get("sandboxToken", "")
+        # Store info for response handler
+        flow.metadata["original_url"] = original_url
+        flow.metadata["vm_run_id"] = run_id
+        flow.metadata["vm_client_ip"] = client_ip
+        flow.metadata["vm_network_log_path"] = vm_info.get("networkLogPath", "")
+        flow.metadata["vm_proxy_log_path"] = vm_info.get("proxyLogPath", "")
+        flow.metadata["capture_body"] = vm_info.get("captureNetworkBodies", False)
+        flow.metadata["vm_sandbox_token"] = vm_info.get("sandboxToken", "")
 
-    # Get target hostname
-    hostname = flow.request.pretty_host.lower()
+        # Get target hostname
+        hostname = flow.request.pretty_host.lower()
 
-    # --- Step 1: Auto-allow VM0 API requests ---
-    # The agent MUST be able to communicate with the platform (heartbeat,
-    # logs, CLI auth, etc.). Exception: `/api/test/*` routes exist only to
-    # exercise the firewall pipeline itself (e.g. the test-oauth provider),
-    # so they must go through Step 2 and get their auth injected by the
-    # matching firewall — otherwise the E2E tests that back them would
-    # auto-allow past the thing they're supposed to exercise.
-    api_url = get_api_url()
-    if api_url:
-        parsed_api = urllib.parse.urlparse(api_url)
-        api_hostname = parsed_api.hostname.lower() if parsed_api.hostname else ""
-        if (
-            api_hostname
-            and (hostname == api_hostname or hostname.endswith(f".{api_hostname}"))
-            and not flow.request.path.startswith("/api/test/")
-        ):
-            flow.metadata["firewall_action"] = "ALLOW"
-            return
+        # --- Step 1: Auto-allow VM0 API requests ---
+        # The agent MUST be able to communicate with the platform (heartbeat,
+        # logs, CLI auth, etc.). Exception: `/api/test/*` routes exist only to
+        # exercise the firewall pipeline itself (e.g. the test-oauth provider),
+        # so they must go through Step 2 and get their auth injected by the
+        # matching firewall — otherwise the E2E tests that back them would
+        # auto-allow past the thing they're supposed to exercise.
+        api_url = get_api_url()
+        if api_url:
+            parsed_api = urllib.parse.urlparse(api_url)
+            api_hostname = parsed_api.hostname.lower() if parsed_api.hostname else ""
+            if (
+                api_hostname
+                and (hostname == api_hostname or hostname.endswith(f".{api_hostname}"))
+                and not flow.request.path.startswith("/api/test/")
+            ):
+                flow.metadata["firewall_action"] = "ALLOW"
+                return
 
-    # --- Step 2: Firewall match with permission check ---
-    # Match base URL, then check permission rules before injecting auth headers.
-    vm_firewalls = vm_info.get("firewalls")
-    if vm_firewalls:
-        network_policies = vm_info.get("networkPolicies") or {}
-        result = match_firewall_request(
-            original_url,
-            flow.request.method,
-            vm_firewalls,
-            network_policies,
-        )
-        if isinstance(result, FirewallBlock):
-            proxy_log_path = flow.metadata.get("vm_proxy_log_path", "")
-            log_proxy_entry(
-                proxy_log_path,
-                "warn",
-                f"Firewall {result.name}: no matching permission for {result.method} {result.path}",
-                type="firewall_block",
-                name=result.name,
+        # --- Step 2: Firewall match with permission check ---
+        # Match base URL, then check permission rules before injecting auth headers.
+        vm_firewalls = vm_info.get("firewalls")
+        if vm_firewalls:
+            network_policies = vm_info.get("networkPolicies") or {}
+            result = match_firewall_request(
+                original_url,
+                flow.request.method,
+                vm_firewalls,
+                network_policies,
             )
-            flow.metadata["firewall_action"] = "DENY"
-            flow.metadata["firewall_base"] = result.base
-            flow.metadata["firewall_name"] = result.name
-            error_body = json.dumps(
-                {
-                    "error": "permission_denied",
-                    "message": "Request blocked: no matching permission rule",
-                    "method": result.method,
-                    "path": result.path,
-                    "name": result.name,
-                    "permissions": list(result.permissions),
-                    "base": result.base,
-                }
-            )
-            flow.response = http.Response.make(
-                403,
-                error_body.encode(),
-                {"Content-Type": "application/json"},
-            )
-            return
-        if isinstance(result, FirewallAllow):
-            await handle_firewall_request(flow, result.api_entry, vm_info, result.match_info)
-            return
+            if isinstance(result, FirewallBlock):
+                proxy_log_path = flow.metadata.get("vm_proxy_log_path", "")
+                log_proxy_entry(
+                    proxy_log_path,
+                    "warn",
+                    "Firewall "
+                    f"{result.name}: no matching permission for {result.method} {result.path}",
+                    type="firewall_block",
+                    name=result.name,
+                )
+                flow.metadata["firewall_action"] = "DENY"
+                flow.metadata["firewall_base"] = result.base
+                flow.metadata["firewall_name"] = result.name
+                error_body = json.dumps(
+                    {
+                        "error": "permission_denied",
+                        "message": "Request blocked: no matching permission rule",
+                        "method": result.method,
+                        "path": result.path,
+                        "name": result.name,
+                        "permissions": list(result.permissions),
+                        "base": result.base,
+                    }
+                )
+                flow.response = http.Response.make(
+                    403,
+                    error_body.encode(),
+                    {"Content-Type": "application/json"},
+                )
+                return
+            if isinstance(result, FirewallAllow):
+                flow.metadata["firewall_billable"] = result.match_info.get("name", "") in (
+                    vm_info.get("billableFirewalls") or []
+                )
+                _maybe_track_usage_flow(flow)
+                await handle_firewall_request(flow, result.api_entry, vm_info, result.match_info)
+                if flow.response is not None and not flow.metadata.get("auth_url_rewrite"):
+                    # Local firewall/auth errors never reach a provider. They only
+                    # need pre-tracking to keep shutdown from racing while auth is
+                    # resolving, so release as soon as the local response exists.
+                    _release_tracked_usage_flow(flow)
+                else:
+                    _maybe_track_usage_flow(flow)
+                return
 
-    # No firewall match — pass through directly
-    flow.metadata["firewall_action"] = "ALLOW"
+        # No firewall match — pass through directly
+        flow.metadata["firewall_action"] = "ALLOW"
+    except Exception:
+        _request_start_times.pop(flow.id, None)
+        _release_tracked_usage_flow(flow)
+        raise
+
+
+def _maybe_track_usage_flow(flow: http.HTTPFlow) -> None:
+    """Track billable flows before provider work can outlive shutdown.
+
+    This closes the shutdown drain gap before standard upstream dispatch and
+    before auth.base URL rewrites, where the addon itself forwards upstream.
+    The response/error decorator pops the metadata flag so decrement runs
+    exactly once.
+    """
+    if flow.metadata.get("_usage_flow_tracked"):
+        return
+    if flow.metadata.get("firewall_billable", False):
+        usage.increment_flows()
+        flow.metadata["_usage_flow_tracked"] = True
+
+
+def _release_tracked_usage_flow(flow: http.HTTPFlow) -> None:
+    if flow.metadata.pop("_usage_flow_tracked", False):
+        usage.decrement_flows()
 
 
 # ============================================================================
@@ -317,9 +365,9 @@ def responseheaders(flow: http.HTTPFlow) -> None:
     buf = bytearray()
     state = {"truncated": False}
 
-    # Set up SSE usage extraction for model provider streaming responses.
-    # For non-SSE model provider responses, disable buffer truncation so the
-    # full JSON body is available for usage extraction in response().
+    # Set up usage extraction only for billable model-provider responses.
+    # For non-SSE billable model-provider responses, disable buffer truncation
+    # so the full JSON body is available for usage extraction in response().
     sse_parser = None
     sse_decompressor = None
     ndjson_parser = None
@@ -330,6 +378,7 @@ def responseheaders(flow: http.HTTPFlow) -> None:
     # via auth.handle_firewall_request.  Gates report_connector_usage (in response())
     # and the full-body response buffering that billing payload extraction needs.
     is_billable_flow = flow.metadata.get("firewall_billable", False)
+    is_billable_model_provider = is_model_provider and is_billable_flow
     # X-specific NDJSON stream classification — tied to the x firewall itself,
     # not to billing.  Kept separate so a future non-x billable connector
     # doesn't accidentally inherit X stream parsing.
@@ -356,13 +405,7 @@ def responseheaders(flow: http.HTTPFlow) -> None:
         stream_path = urllib.parse.urlparse(flow.metadata.get("original_url", "")).path
         is_x_stream = usage.x.is_stream_path(stream_path)
 
-    # Track flows that will generate webhook POSTs (usage or connector billing)
-    # so the runner can wait for them to reach response()/error() before stopping.
-    if is_model_provider or is_billable_flow:
-        usage.increment_flows()
-        flow.metadata["_usage_flow_tracked"] = True
-
-    if is_model_provider:
+    if is_billable_model_provider:
         content_type = flow.response.headers.get("content-type", "")
         if "text/event-stream" in content_type:
             parser_fn, usage_dict = usage.create_sse_usage_extractor()
@@ -378,18 +421,12 @@ def responseheaders(flow: http.HTTPFlow) -> None:
         flow.metadata["x_ndjson_state"] = ndjson_state
         ndjson_decompressor = body_utils.create_stream_decompressor(flow.response.headers)
 
-    # Buffer cap policy (coupled to billability by design — every billable
-    # connector today needs json.loads on the full body to build the webhook
-    # payload; if that ever diverges, add a separate flag):
-    # - Model providers: unbounded — need full body for non-SSE JSON usage extraction.
-    # - Billable non-stream connectors: unbounded — full body feeds json.loads.
-    # - X stream endpoints: STREAM_BUFFER_LIMIT (64 KB) — parser handles bytes
-    #   incrementally; the buffer is kept only for forensic network logging.
-    # - Everything else: STREAM_BUFFER_LIMIT (default 64 KB).
-    if is_model_provider or (is_billable_flow and not is_x_stream):
-        buf_limit = None
-    else:
-        buf_limit = body_utils.STREAM_BUFFER_LIMIT
+    # Buffer cap policy:
+    # - Billable flows keep the full body for billing extraction.
+    # - X stream endpoints are the exception: the incremental parser handles
+    #   bytes as they arrive, so the buffer is only for forensic logging.
+    # - Everything else uses STREAM_BUFFER_LIMIT (default 64 KB).
+    buf_limit = None if is_billable_flow and not is_x_stream else body_utils.STREAM_BUFFER_LIMIT
 
     def stream_and_buffer(chunk: bytes) -> bytes:
         if not state["truncated"]:
@@ -418,19 +455,17 @@ def responseheaders(flow: http.HTTPFlow) -> None:
 def _track_usage_flow(fn):
     """Decorator ensuring decrement_flows runs after response/error handlers.
 
-    Pairs with ``increment_flows()`` in ``responseheaders()``.  Uses
-    ``pop`` so that even if both ``response()`` and ``error()`` fire for
-    the same flow, the decrement only happens once.
+    Pairs with ``increment_flows()`` in ``request()``.  Uses ``pop`` so
+    that even if both ``response()`` and ``error()`` fire for the same
+    flow, the decrement only happens once.
     """
 
     @functools.wraps(fn)
     def wrapper(flow: http.HTTPFlow, *args, **kwargs):
-        tracked = flow.metadata.pop("_usage_flow_tracked", False)
         try:
             return fn(flow, *args, **kwargs)
         finally:
-            if tracked:
-                usage.decrement_flows()
+            _release_tracked_usage_flow(flow)
 
     return wrapper
 
@@ -457,7 +492,7 @@ def response(flow: http.HTTPFlow) -> None:
     firewall_action = flow.metadata.get("firewall_action", "ALLOW")
 
     # Calculate sizes
-    request_size = len(flow.request.content) if flow.request.content else 0
+    request_size = len(flow.request.raw_content or b"")
     # Use buffered body length when complete; fall back to Content-Length header.
     stream_buf = flow.metadata.get("stream_buffer")
     stream_state = flow.metadata.get("stream_buffer_state")
@@ -510,10 +545,12 @@ def response(flow: http.HTTPFlow) -> None:
 
     # Report proxy-extracted usage for model provider responses.
     # For non-streaming responses, fall back to extracting usage from the
-    # buffered JSON body (buffer is never truncated for model providers).
+    # buffered JSON body (buffer is never truncated for billable model providers).
     if not flow.metadata.get("model_provider_usage") and stream_buf:
         firewall_name = flow.metadata.get("firewall_name", "")
-        if firewall_name.startswith("model-provider:"):
+        if firewall_name.startswith("model-provider:") and flow.metadata.get(
+            "firewall_billable", False
+        ):
             json_usage = usage.extract_usage_from_json(
                 bytes(stream_buf),
                 flow.response.headers if flow.response else None,
@@ -580,7 +617,7 @@ def error(flow: http.HTTPFlow) -> None:
         host = flow.request.pretty_host
         port = flow.request.port
 
-    request_size = len(flow.request.content) if flow.request.content else 0
+    request_size = len(flow.request.raw_content or b"")
     error_msg = flow.error.msg if flow.error else "unknown error"
 
     # [NETWORK_LOG_FIELDS] — keep in sync with response() and runs.ts schema
@@ -636,9 +673,9 @@ def error(flow: http.HTTPFlow) -> None:
 def done():
     """Flush pending usage reports before mitmproxy exits.
 
-    The runner sends SIGTERM then waits 15 seconds before SIGKILL.
-    ``shutdown(wait=True)`` blocks until all submitted futures complete;
-    SIGKILL is the hard stop if any report takes too long.
+    The runner waits for pending flow/report counters before stopping the
+    proxy. ``shutdown(wait=True)`` is the final mitmproxy-side drain for
+    already-submitted futures during graceful stop.
     """
     usage.webhook.usage_executor.shutdown(wait=True)
 

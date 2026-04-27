@@ -1,29 +1,19 @@
 /**
- * Unified chat-threads sidebar behaviour (#10162).
- *
- * When the `unifyChatThreads` feature switch is ON, the sidebar:
- *  - calls `chatThreadsContract.list` WITHOUT an `agentId` query param,
- *  - renders the `"Chats"` title (no "with {agent}" suffix),
- *  - shows per-row agent avatars so threads from different agents are
- *    distinguishable at a glance.
- *
- * When the flag is OFF, the existing per-agent behaviour is preserved
- * (title `"Chats with {agent}"`, scoped request, no per-row avatar).
+ * Agent-scoped chat-threads sidebar behaviour after unified-list removal.
  */
 
-import { beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import {
-  chatThreadsContract,
   chatThreadByIdContract,
   chatThreadMessagesContract,
-} from "@vm0/core/contracts/chat-threads";
-import { zeroAgentsByIdContract } from "@vm0/core/contracts/zero-agents";
+  chatThreadsContract,
+} from "@vm0/api-contracts/contracts/chat-threads";
+import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
-import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-switches.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
@@ -36,7 +26,7 @@ interface ListQuery {
   agentId?: string;
 }
 
-function mockUnifiedThreads(observedQueries: ListQuery[]) {
+function mockThreads(observedQueries: ListQuery[]) {
   setMockTeam([
     {
       id: DEFAULT_AGENT_ID,
@@ -65,21 +55,9 @@ function mockUnifiedThreads(observedQueries: ListQuery[]) {
           {
             id: "thread-default",
             title: "Default thread",
-            agentId: DEFAULT_AGENT_ID,
             agent: { id: DEFAULT_AGENT_ID, avatarUrl: null },
             createdAt: "2026-03-10T00:00:00Z",
             updatedAt: "2026-03-10T00:00:00Z",
-            isRead: true,
-            isArchived: false,
-            running: false,
-          },
-          {
-            id: "thread-sub",
-            title: "Sub thread",
-            agentId: SUB_AGENT_ID,
-            agent: { id: SUB_AGENT_ID, avatarUrl: null },
-            createdAt: "2026-03-09T00:00:00Z",
-            updatedAt: "2026-03-09T00:00:00Z",
             isRead: true,
             isArchived: false,
             running: false,
@@ -152,61 +130,40 @@ function getSidebar(): HTMLElement {
   return screen.getByRole("navigation", { name: "Sidebar" });
 }
 
-describe("sidebar unify chat threads (#10162)", () => {
-  beforeEach(() => {
-    setMockFeatureSwitches({});
-  });
-
-  it("calls list with no agentId when unifyChatThreads is ON", async () => {
-    setMockFeatureSwitches({ unifyChatThreads: true });
+describe("sidebar chat threads (#10162)", () => {
+  it("always requests threads scoped to the current agent", async () => {
     const observed: ListQuery[] = [];
-    mockUnifiedThreads(observed);
+    mockThreads(observed);
     detachedSetupPage({ context, path: "/" });
 
     await waitFor(() => {
       expect(
         within(getSidebar()).getByText("Default thread"),
       ).toBeInTheDocument();
-      expect(within(getSidebar()).getByText("Sub thread")).toBeInTheDocument();
     });
-    // At least one call went through without agentId — the unified request shape.
+
+    expect(
+      observed.some((q) => {
+        return q.agentId === DEFAULT_AGENT_ID;
+      }),
+    ).toBeTruthy();
     expect(
       observed.some((q) => {
         return q.agentId === undefined;
       }),
-    ).toBeTruthy();
+    ).toBeFalsy();
   });
 
-  it("renders the flag-on title 'Chats' (without agent suffix)", async () => {
-    setMockFeatureSwitches({ unifyChatThreads: true });
+  it("renders the agent-scoped title 'Chats with Zero'", async () => {
     const observed: ListQuery[] = [];
-    mockUnifiedThreads(observed);
-    detachedSetupPage({ context, path: "/" });
-
-    await waitFor(() => {
-      expect(within(getSidebar()).getByText("Chats")).toBeInTheDocument();
-    });
-    expect(
-      within(getSidebar()).queryByText(/^Chats with /),
-    ).not.toBeInTheDocument();
-  });
-
-  it("renders the legacy title 'Chats with {agent}' when the flag is OFF", async () => {
-    setMockFeatureSwitches({ unifyChatThreads: false });
-    const observed: ListQuery[] = [];
-    mockUnifiedThreads(observed);
+    mockThreads(observed);
     detachedSetupPage({ context, path: "/" });
 
     await waitFor(() => {
       expect(
-        within(getSidebar()).getByText(/^Chats with /),
+        within(getSidebar()).getByText("Chats with Zero"),
       ).toBeInTheDocument();
     });
-    // Every list call must carry an agentId — no unscoped fallback.
-    expect(
-      observed.every((q) => {
-        return typeof q.agentId === "string";
-      }),
-    ).toBeTruthy();
+    expect(within(getSidebar()).queryByText(/^Chats$/)).not.toBeInTheDocument();
   });
 });

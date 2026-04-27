@@ -1,3 +1,8 @@
+//! Error and result types for `nbd-cow`.
+//!
+//! [`NbdCowError`] wraps protocol, I/O, netlink, device allocation, and bounds
+//! errors surfaced by the public APIs.
+
 use crate::protocol::ProtocolError;
 
 #[derive(Debug, thiserror::Error)]

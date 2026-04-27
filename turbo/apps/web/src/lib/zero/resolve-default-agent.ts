@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { env } from "../../env";
-import { orgMetadata } from "../../db/schema/org-metadata";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
 
 /**
  * Resolve the default zero-layer agent ID for an org.

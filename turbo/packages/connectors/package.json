@@ -1,0 +1,75 @@
+{
+  "name": "@vm0/connectors",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./src/index.ts",
+      "types": "./src/index.ts"
+    },
+    "./connector-utils": {
+      "import": "./src/connector-utils.ts",
+      "types": "./src/connector-utils.ts"
+    },
+    "./connectors": {
+      "import": "./src/connectors.ts",
+      "types": "./src/connectors.ts"
+    },
+    "./connectors/*": {
+      "import": "./src/connectors/*.ts",
+      "types": "./src/connectors/*.ts"
+    },
+    "./feature-switch-key": {
+      "import": "./src/feature-switch-key.ts",
+      "types": "./src/feature-switch-key.ts"
+    },
+    "./firewall-expander": {
+      "import": "./src/firewall-expander.ts",
+      "types": "./src/firewall-expander.ts"
+    },
+    "./firewall-loader": {
+      "import": "./src/firewall-loader.ts",
+      "types": "./src/firewall-loader.ts"
+    },
+    "./firewall-rule-matcher": {
+      "import": "./src/firewall-rule-matcher.ts",
+      "types": "./src/firewall-rule-matcher.ts"
+    },
+    "./firewall-types": {
+      "import": "./src/firewall-types.ts",
+      "types": "./src/firewall-types.ts"
+    },
+    "./firewalls": {
+      "import": "./src/firewalls/index.ts",
+      "types": "./src/firewalls/index.ts"
+    },
+    "./firewalls/*": {
+      "import": "./src/firewalls/*.ts",
+      "types": "./src/firewalls/*.ts"
+    },
+    "./github-url": {
+      "import": "./src/github-url.ts",
+      "types": "./src/github-url.ts"
+    }
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "oxlint && oxlint --type-aware -c ../../.oxlintrc.typeaware.json && eslint . --max-warnings 0",
+    "check-types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "yaml": "^2.8.1",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@vm0/eslint-config": "workspace:*",
+    "@vm0/typescript-config": "workspace:*",
+    "eslint": "^9.34.0",
+    "oxlint": "^1.57.0",
+    "oxlint-tsgolint": "0.21.1",
+    "typescript": "5.9.3",
+    "vitest": "^4.1.5"
+  }
+}

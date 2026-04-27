@@ -1,5 +1,5 @@
 import { eq, sql } from "drizzle-orm";
-import { vm0ApiKeys } from "../../../db/schema/vm0-api-key";
+import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 
 /**
  * Get a random API key from the VM0 key pool for the given vendor.

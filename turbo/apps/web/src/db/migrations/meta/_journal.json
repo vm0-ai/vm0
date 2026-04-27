@@ -2164,6 +2164,69 @@
       "when": 1776991913173,
       "tag": "0308_unify_artifact_shape",
       "breakpoints": true
+    },
+    {
+      "idx": 309,
+      "version": "7",
+      "when": 1776991913174,
+      "tag": "0309_remove_phone_imessage_integration",
+      "breakpoints": true
+    },
+    {
+      "idx": 310,
+      "version": "7",
+      "when": 1777100000000,
+      "tag": "0310_telegram_owner_org",
+      "breakpoints": true
+    },
+    {
+      "idx": 311,
+      "version": "7",
+      "when": 1777200000000,
+      "tag": "0311_backfill_session_memory_artifact",
+      "breakpoints": true
+    },
+    {
+      "idx": 312,
+      "version": "7",
+      "when": 1777200000001,
+      "tag": "0312_gorgeous_vin_gonzales",
+      "breakpoints": true
+    },
+    {
+      "idx": 313,
+      "version": "7",
+      "when": 1777200000002,
+      "tag": "0313_backfill_chat_thread_read_message",
+      "breakpoints": true
+    },
+    {
+      "idx": 314,
+      "version": "7",
+      "when": 1777263342725,
+      "tag": "0314_mixed_justice",
+      "breakpoints": true
+    },
+    {
+      "idx": 315,
+      "version": "7",
+      "when": 1777275739483,
+      "tag": "0315_aspiring_firelord",
+      "breakpoints": true
+    },
+    {
+      "idx": 316,
+      "version": "7",
+      "when": 1777281066612,
+      "tag": "0316_cleanup_telegram_user_link_vm0_installation_duplicates",
+      "breakpoints": true
+    },
+    {
+      "idx": 317,
+      "version": "7",
+      "when": 1777281075086,
+      "tag": "0317_telegram_user_link_vm0_installation_unique",
+      "breakpoints": true
     }
   ]
 }

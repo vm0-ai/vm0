@@ -1,4 +1,6 @@
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard};
+
+use tracing::error;
 
 /// Resource-budget concurrency control.
 ///
@@ -21,10 +23,68 @@ pub struct ResourceBudget {
     state: Mutex<BudgetState>,
 }
 
+/// Owned reservation against a [`ResourceBudget`].
+///
+/// The lease releases its reservation when dropped. Drop must never panic:
+/// idle VM cleanup may run while unwinding from sandbox/factory failures, and
+/// a panic here would turn a cleanup failure into a budget leak or task abort.
+#[must_use = "dropping a BudgetLease releases the reserved resources"]
+pub struct BudgetLease {
+    budget: Option<Arc<ResourceBudget>>,
+    vcpu: u32,
+    memory_mb: u32,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum BudgetReleaseError {
+    Vcpu { running: u32, release: u32 },
+    Memory { running: u32, release: u32 },
+    Count,
+}
+
 struct BudgetState {
     running_vcpu: u32,
     running_memory_mb: u32,
     running_count: usize,
+}
+
+impl BudgetLease {
+    fn new(budget: Arc<ResourceBudget>, vcpu: u32, memory_mb: u32) -> Self {
+        Self {
+            budget: Some(budget),
+            vcpu,
+            memory_mb,
+        }
+    }
+
+    pub fn vcpu(&self) -> u32 {
+        self.vcpu
+    }
+
+    pub fn memory_mb(&self) -> u32 {
+        self.memory_mb
+    }
+
+    fn release_inner(&mut self) {
+        let Some(budget) = self.budget.take() else {
+            return;
+        };
+
+        if let Err(error) = budget.release_reserved(self.vcpu, self.memory_mb) {
+            error!(
+                ?error,
+                vcpu = self.vcpu,
+                memory_mb = self.memory_mb,
+                "failed to release resource budget lease"
+            );
+        }
+    }
+}
+
+impl Drop for BudgetLease {
+    fn drop(&mut self) {
+        self.release_inner();
+    }
 }
 
 impl ResourceBudget {
@@ -84,26 +144,20 @@ impl ResourceBudget {
         true
     }
 
+    /// Try to reserve resources and return an owned lease on success.
+    pub fn try_reserve_lease(budget: &Arc<Self>, vcpu: u32, memory_mb: u32) -> Option<BudgetLease> {
+        if budget.try_reserve(vcpu, memory_mb) {
+            Some(BudgetLease::new(Arc::clone(budget), vcpu, memory_mb))
+        } else {
+            None
+        }
+    }
+
     /// Release resources after a job completes.
+    #[cfg(test)]
     pub fn release(&self, vcpu: u32, memory_mb: u32) {
-        let mut state = self.lock();
-        assert!(
-            state.running_vcpu >= vcpu,
-            "release underflow: running_vcpu ({}) < vcpu ({vcpu})",
-            state.running_vcpu,
-        );
-        assert!(
-            state.running_memory_mb >= memory_mb,
-            "release underflow: running_memory_mb ({}) < memory_mb ({memory_mb})",
-            state.running_memory_mb,
-        );
-        assert!(
-            state.running_count > 0,
-            "release underflow: running_count is 0"
-        );
-        state.running_vcpu -= vcpu;
-        state.running_memory_mb -= memory_mb;
-        state.running_count -= 1;
+        self.release_reserved(vcpu, memory_mb)
+            .expect("release underflow");
     }
 
     /// Check if there is potentially enough budget for a job with the given
@@ -148,6 +202,30 @@ impl ResourceBudget {
             Ok(guard) => guard,
             Err(poisoned) => poisoned.into_inner(),
         }
+    }
+
+    fn release_reserved(&self, vcpu: u32, memory_mb: u32) -> Result<(), BudgetReleaseError> {
+        let mut state = self.lock();
+        if state.running_vcpu < vcpu {
+            return Err(BudgetReleaseError::Vcpu {
+                running: state.running_vcpu,
+                release: vcpu,
+            });
+        }
+        if state.running_memory_mb < memory_mb {
+            return Err(BudgetReleaseError::Memory {
+                running: state.running_memory_mb,
+                release: memory_mb,
+            });
+        }
+        if state.running_count == 0 {
+            return Err(BudgetReleaseError::Count);
+        }
+
+        state.running_vcpu -= vcpu;
+        state.running_memory_mb -= memory_mb;
+        state.running_count -= 1;
+        Ok(())
     }
 }
 
@@ -203,6 +281,28 @@ mod tests {
         assert!(!budget.try_reserve(2, 2048));
         budget.release(2, 2048);
         assert!(budget.try_reserve(2, 2048)); // works after release
+    }
+
+    #[test]
+    fn lease_drop_frees_resources() {
+        let budget = Arc::new(ResourceBudget::new(4, 4096, 1.0, 0));
+        let lease = ResourceBudget::try_reserve_lease(&budget, 2, 2048).unwrap();
+        assert_eq!(budget.allocated(), (2, 2048, 1));
+
+        drop(lease);
+
+        assert_eq!(budget.allocated(), (0, 0, 0));
+    }
+
+    #[test]
+    fn lease_drop_does_not_panic_on_underflow() {
+        let budget = Arc::new(ResourceBudget::new(4, 4096, 1.0, 0));
+        let lease = ResourceBudget::try_reserve_lease(&budget, 2, 2048).unwrap();
+
+        budget.release(2, 2048);
+        drop(lease);
+
+        assert_eq!(budget.allocated(), (0, 0, 0));
     }
 
     #[test]

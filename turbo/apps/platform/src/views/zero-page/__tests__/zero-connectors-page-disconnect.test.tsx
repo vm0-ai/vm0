@@ -19,7 +19,7 @@ import { mockConnectors } from "./zero-connectors-page-test-helpers.ts";
 
 const context = testContext();
 
-test("disconnect moves a just-connected connector out of Connected (regression #10272)", async () => {
+test("disconnect moves a just-connected connector back to an available card (regression #10272)", async () => {
   // Start with Ahrefs already connected — mirrors the screenshot in #10272.
   mockConnectors([{ type: "ahrefs" }]);
 
@@ -37,17 +37,16 @@ test("disconnect moves a just-connected connector out of Connected (regression #
   detachedSetupPage({ context, path: "/connectors" });
 
   await waitFor(() => {
-    expect(screen.getByText("Connected (1)")).toBeInTheDocument();
+    expect(screen.getByLabelText("More options")).toBeInTheDocument();
   });
 
   click(screen.getByLabelText("More options"));
   click(screen.getByText("Disconnect"));
 
-  // After a successful disconnect the card must leave the Connected section
-  // regardless of whether a search filter is active.
+  // After a successful disconnect the connector must render as an available
+  // card again, even if it was marked as just connected earlier in the session.
   await waitFor(() => {
-    expect(screen.queryByText("Connected (1)")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("More options")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Connect Ahrefs")).toBeInTheDocument();
   });
-
-  expect(screen.getByLabelText("Connect Ahrefs")).toBeInTheDocument();
 });

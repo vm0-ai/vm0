@@ -3,12 +3,27 @@ use flate2::write::GzEncoder;
 use httpmock::prelude::*;
 use std::io::Write;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tempfile::TempDir;
+
+static RUN_ID_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 enum TarEntry<'a> {
     File(&'a str, &'a [u8]),
     Symlink(&'a str, &'a str),
     Hardlink(&'a str, &'a str),
+    /// Hand-crafted entry for malicious-input tests that `tar::Builder`
+    /// rejects (absolute paths, `..` components, empty linkname). Always
+    /// written after all non-Raw entries in the archive.
+    Raw {
+        path: &'a [u8],
+        /// Typeflag byte: `b'0'` regular file, `b'2'` symlink.
+        entry_type: u8,
+        /// Octal mode string like `b"0000644\0"`.
+        mode: &'a [u8; 8],
+        /// Empty = no data block appended (size stays zero).
+        content: &'a [u8],
+    },
 }
 
 /// Create a tar.gz archive in memory containing the given files.
@@ -19,7 +34,53 @@ fn create_tar_gz(files: &[(&str, &[u8])]) -> std::io::Result<Vec<u8>> {
 
 /// Create a tar.gz archive with mixed file and symlink entries.
 fn create_tar_gz_entries(entries: &[TarEntry]) -> std::io::Result<Vec<u8>> {
+    /// Strip builder-written EOF, splice hand-crafted tar headers onto the
+    /// end, and re-add EOF. Scoped as an inner fn so the indexing-slicing
+    /// allow (needed because `allow-indexing-slicing-in-tests` only matches
+    /// `#[test]` fns, not helper fns) stays off the rest of the helper.
+    #[allow(clippy::indexing_slicing)]
+    fn append_raw_entries(tar_data: &mut Vec<u8>, entries: &[TarEntry]) {
+        while tar_data.len() >= 512 && tar_data[tar_data.len() - 512..].iter().all(|&b| b == 0) {
+            tar_data.truncate(tar_data.len() - 512);
+        }
+        for entry in entries {
+            if let TarEntry::Raw {
+                path,
+                entry_type,
+                mode,
+                content,
+            } = entry
+            {
+                let mut header_block = [0u8; 512];
+                header_block[..path.len()].copy_from_slice(path);
+                header_block[100..108].copy_from_slice(*mode);
+                header_block[108..116].copy_from_slice(b"0000000\0"); // uid
+                header_block[116..124].copy_from_slice(b"0000000\0"); // gid
+                let size_str = format!("{:011o}\0", content.len());
+                header_block[124..136].copy_from_slice(size_str.as_bytes());
+                header_block[136..148].copy_from_slice(b"00000000000\0"); // mtime
+                header_block[156] = *entry_type;
+                header_block[257..263].copy_from_slice(b"ustar\0");
+                header_block[263..265].copy_from_slice(b"00");
+                // Checksum: field filled with spaces, sum all bytes, write result.
+                header_block[148..156].copy_from_slice(b"        ");
+                let cksum: u32 = header_block.iter().map(|&b| b as u32).sum();
+                let cksum_str = format!("{:06o}\0 ", cksum);
+                header_block[148..156].copy_from_slice(cksum_str.as_bytes());
+
+                tar_data.extend_from_slice(&header_block);
+                if !content.is_empty() {
+                    let mut data_block = [0u8; 512];
+                    data_block[..content.len()].copy_from_slice(content);
+                    tar_data.extend_from_slice(&data_block);
+                }
+            }
+        }
+        tar_data.extend_from_slice(&[0u8; 1024]); // EOF
+    }
+
     let mut tar_data = Vec::new();
+    let has_raw = entries.iter().any(|e| matches!(e, TarEntry::Raw { .. }));
     {
         let mut builder = tar::Builder::new(&mut tar_data);
         for entry in entries {
@@ -47,9 +108,14 @@ fn create_tar_gz_entries(entries: &[TarEntry]) -> std::io::Result<Vec<u8>> {
                     header.set_cksum();
                     builder.append_link(&mut header, path, target)?;
                 }
+                TarEntry::Raw { .. } => {} // appended after builder finishes
             }
         }
         builder.finish()?;
+    }
+
+    if has_raw {
+        append_raw_entries(&mut tar_data, entries);
     }
 
     let mut gz_data = Vec::new();
@@ -94,6 +160,136 @@ fn write_manifest(
     Ok(manifest_path)
 }
 
+fn run_guest_download(manifest_path: &str) -> bool {
+    guest_common::log::clear_system_log_file();
+    guest_download::run(manifest_path)
+}
+
+fn unique_run_id(test_name: &str) -> String {
+    format!(
+        "guest-download-{test_name}-{}-{}",
+        std::process::id(),
+        RUN_ID_COUNTER.fetch_add(1, Ordering::Relaxed)
+    )
+}
+
+struct RunFileCleanup {
+    paths: Vec<String>,
+}
+
+impl RunFileCleanup {
+    fn new(paths: Vec<String>) -> Self {
+        for path in &paths {
+            let _ = std::fs::remove_file(path);
+        }
+        Self { paths }
+    }
+}
+
+impl Drop for RunFileCleanup {
+    fn drop(&mut self) {
+        for path in &self.paths {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+}
+
+#[test]
+fn binary_writes_system_log_to_guest_common_default_path() {
+    let dir = tempfile::tempdir().unwrap();
+    let manifest_path = write_manifest(&dir, &[], None).unwrap();
+    let run_id = unique_run_id("success");
+    let system_log = format!("/tmp/vm0-system-{run_id}.log");
+    let ops_log = format!("/tmp/vm0-sandbox-ops-{run_id}.jsonl");
+    let _cleanup = RunFileCleanup::new(vec![system_log.clone(), ops_log]);
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_guest-download"))
+        .arg(&manifest_path)
+        .env("VM0_RUN_ID", &run_id)
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let content = std::fs::read_to_string(&system_log).unwrap();
+    assert!(
+        content.contains("[INFO] [sandbox:download] Download completed"),
+        "unexpected system log: {content:?}"
+    );
+    assert_eq!(content.matches("Download completed").count(), 1);
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("[INFO] [sandbox:download] Download completed"));
+}
+
+#[test]
+fn binary_writes_system_log_on_manifest_read_failure() {
+    let run_id = unique_run_id("missing-manifest");
+    let system_log = format!("/tmp/vm0-system-{run_id}.log");
+    let ops_log = format!("/tmp/vm0-sandbox-ops-{run_id}.jsonl");
+    let _cleanup = RunFileCleanup::new(vec![system_log.clone(), ops_log]);
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_guest-download"))
+        .arg("/tmp/nonexistent-guest-download-manifest.json")
+        .env("VM0_RUN_ID", &run_id)
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+
+    let content = std::fs::read_to_string(&system_log).unwrap();
+    assert!(
+        content.contains("[ERROR] [sandbox:download] Failed to read manifest"),
+        "unexpected system log: {content:?}"
+    );
+    assert!(
+        content.contains("[ERROR] [sandbox:download] Download failed"),
+        "unexpected system log: {content:?}"
+    );
+}
+
+#[test]
+fn binary_panics_without_run_id_for_default_system_log() {
+    let dir = tempfile::tempdir().unwrap();
+    let manifest_path = write_manifest(&dir, &[], None).unwrap();
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_guest-download"))
+        .arg(&manifest_path)
+        .env_remove("VM0_RUN_ID")
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("VM0_RUN_ID is required for guest system logging"),
+        "unexpected stderr: {stderr}"
+    );
+}
+
+#[test]
+fn binary_panics_with_empty_run_id_for_default_system_log() {
+    let dir = tempfile::tempdir().unwrap();
+    let manifest_path = write_manifest(&dir, &[], None).unwrap();
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_guest-download"))
+        .arg(&manifest_path)
+        .env("VM0_RUN_ID", "")
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("VM0_RUN_ID is required for guest system logging"),
+        "unexpected stderr: {stderr}"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Test 1: single storage download succeeds
 // ---------------------------------------------------------------------------
@@ -114,7 +310,7 @@ fn single_storage_download() {
     let url = server.url("/storage.tar.gz");
     let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
 
-    let result = guest_download::run(manifest.to_str().unwrap());
+    let result = run_guest_download(manifest.to_str().unwrap());
 
     assert!(result);
     assert_eq!(
@@ -161,7 +357,7 @@ fn six_storages_parallel() {
         .collect();
 
     let manifest = write_manifest(&dir, &storage_refs, None).unwrap();
-    let result = guest_download::run(manifest.to_str().unwrap());
+    let result = run_guest_download(manifest.to_str().unwrap());
 
     assert!(result);
 
@@ -233,7 +429,7 @@ fn parent_child_mount_paths_parallel() {
     ];
 
     let manifest = write_manifest(&dir, &storages, None).unwrap();
-    let result = guest_download::run(manifest.to_str().unwrap());
+    let result = run_guest_download(manifest.to_str().unwrap());
 
     assert!(result);
     m_parent.assert();
@@ -279,7 +475,7 @@ fn artifact_download_success() {
     let url = server.url("/artifact.tar.gz");
     let manifest = write_manifest(&dir, &[], Some((mount.to_str().unwrap(), Some(&url)))).unwrap();
 
-    let result = guest_download::run(manifest.to_str().unwrap());
+    let result = run_guest_download(manifest.to_str().unwrap());
 
     assert!(result);
     assert_eq!(
@@ -305,7 +501,7 @@ fn artifact_404_non_fatal() {
     let url = server.url("/artifact.tar.gz");
     let manifest = write_manifest(&dir, &[], Some((mount.to_str().unwrap(), Some(&url)))).unwrap();
 
-    let result = guest_download::run(manifest.to_str().unwrap());
+    let result = run_guest_download(manifest.to_str().unwrap());
     assert!(result);
 }
 
@@ -326,7 +522,7 @@ fn storage_404_fatal() {
     let url = server.url("/storage.tar.gz");
     let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
 
-    let result = guest_download::run(manifest.to_str().unwrap());
+    let result = run_guest_download(manifest.to_str().unwrap());
     assert!(!result);
 }
 
@@ -347,7 +543,7 @@ fn server_error_exhausts_retries() {
     let url = server.url("/storage.tar.gz");
     let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
 
-    let result = guest_download::run(manifest.to_str().unwrap());
+    let result = run_guest_download(manifest.to_str().unwrap());
 
     assert!(!result);
     mock.assert_calls(3);
@@ -370,7 +566,7 @@ fn rate_limit_exhausts_retries() {
     let url = server.url("/storage.tar.gz");
     let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
 
-    let result = guest_download::run(manifest.to_str().unwrap());
+    let result = run_guest_download(manifest.to_str().unwrap());
 
     assert!(!result);
     mock.assert_calls(3);
@@ -395,7 +591,7 @@ fn invalid_tar_gz_non_retriable() {
     let url = server.url("/storage.tar.gz");
     let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
 
-    let result = guest_download::run(manifest.to_str().unwrap());
+    let result = run_guest_download(manifest.to_str().unwrap());
 
     assert!(!result);
     mock.assert_calls(1);
@@ -420,7 +616,7 @@ fn null_and_missing_urls_skip_download() {
     )
     .unwrap();
 
-    let result = guest_download::run(manifest.to_str().unwrap());
+    let result = run_guest_download(manifest.to_str().unwrap());
     assert!(result);
 }
 
@@ -429,7 +625,7 @@ fn null_and_missing_urls_skip_download() {
 // ---------------------------------------------------------------------------
 #[test]
 fn manifest_file_not_found() {
-    let result = guest_download::run("/tmp/nonexistent-manifest-path.json");
+    let result = run_guest_download("/tmp/nonexistent-manifest-path.json");
     assert!(!result);
 }
 
@@ -442,7 +638,7 @@ fn manifest_json_invalid() {
     let manifest_path = dir.path().join("manifest.json");
     std::fs::write(&manifest_path, "{{not valid json").unwrap();
 
-    let result = guest_download::run(manifest_path.to_str().unwrap());
+    let result = run_guest_download(manifest_path.to_str().unwrap());
     assert!(!result);
 }
 
@@ -463,7 +659,7 @@ fn artifact_500_fatal() {
     let url = server.url("/artifact.tar.gz");
     let manifest = write_manifest(&dir, &[], Some((mount.to_str().unwrap(), Some(&url)))).unwrap();
 
-    let result = guest_download::run(manifest.to_str().unwrap());
+    let result = run_guest_download(manifest.to_str().unwrap());
 
     assert!(!result);
     mock.assert_calls(3); // exhausts all retries
@@ -490,7 +686,7 @@ fn retry_then_succeed() {
     let manifest_str = manifest.to_str().unwrap().to_string();
 
     // Run in background thread so we can swap the mock during RETRY_DELAY
-    let handle = std::thread::spawn(move || guest_download::run(&manifest_str));
+    let handle = std::thread::spawn(move || run_guest_download(&manifest_str));
 
     // Poll until the first request has been made, then swap mock before retry fires (RETRY_DELAY = 1s).
     // Timeout after 5s to avoid infinite loop if the spawned thread panics before making a request.
@@ -554,7 +750,7 @@ fn storages_partial_failure() {
     )
     .unwrap();
 
-    let result = guest_download::run(manifest.to_str().unwrap());
+    let result = run_guest_download(manifest.to_str().unwrap());
 
     assert!(!result);
     // The successful storage should still have extracted its file
@@ -575,12 +771,12 @@ fn artifact_null_url_skipped() {
     // archiveUrl is the string "null" — should be treated as missing
     let manifest =
         write_manifest(&dir, &[], Some((mount.to_str().unwrap(), Some("null")))).unwrap();
-    let result = guest_download::run(manifest.to_str().unwrap());
+    let result = run_guest_download(manifest.to_str().unwrap());
     assert!(result);
 
     // archiveUrl is absent entirely
     let manifest = write_manifest(&dir, &[], Some((mount.to_str().unwrap(), None))).unwrap();
-    let result = guest_download::run(manifest.to_str().unwrap());
+    let result = run_guest_download(manifest.to_str().unwrap());
     assert!(result);
 }
 
@@ -614,7 +810,7 @@ fn symlink_path_traversal_blocked() {
     let url = server.url("/storage.tar.gz");
     let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
 
-    let result = guest_download::run(manifest.to_str().unwrap());
+    let result = run_guest_download(manifest.to_str().unwrap());
 
     assert!(result);
     // Legitimate file should be extracted
@@ -651,7 +847,7 @@ fn symlink_within_target_allowed() {
     let url = server.url("/storage.tar.gz");
     let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
 
-    let result = guest_download::run(manifest.to_str().unwrap());
+    let result = run_guest_download(manifest.to_str().unwrap());
 
     assert!(result);
     assert_eq!(
@@ -676,60 +872,17 @@ fn symlink_within_target_allowed() {
 fn path_traversal_via_dotdot_blocked() {
     let server = MockServer::start();
 
-    // Build a raw tar with ../outside.txt — the tar crate builder rejects .. paths,
-    // so we construct the tar entry manually to simulate a malicious archive.
-    let tar_gz = {
-        let content = b"escaped";
-        let path_bytes = b"../outside.txt";
-
-        // Build legit entry via tar crate, then append raw malicious entry
-        let mut full_tar: Vec<u8> = Vec::new();
-        {
-            let mut builder = tar::Builder::new(&mut full_tar);
-            let mut h = tar::Header::new_gnu();
-            h.set_size(4);
-            h.set_mode(0o644);
-            h.set_cksum();
-            builder
-                .append_data(&mut h, "legit.txt", b"safe" as &[u8])
-                .unwrap();
-            builder.into_inner().unwrap();
-        }
-        // Strip EOF markers (trailing 512-byte zero blocks)
-        while full_tar.len() >= 512 && full_tar[full_tar.len() - 512..].iter().all(|&b| b == 0) {
-            full_tar.truncate(full_tar.len() - 512);
-        }
-
-        // Raw tar header for ../outside.txt
-        let mut header_block = [0u8; 512];
-        header_block[..path_bytes.len()].copy_from_slice(path_bytes);
-        header_block[100..108].copy_from_slice(b"0000644\0"); // mode
-        header_block[108..116].copy_from_slice(b"0000000\0"); // uid
-        header_block[116..124].copy_from_slice(b"0000000\0"); // gid
-        let size_str = format!("{:011o}\0", content.len());
-        header_block[124..136].copy_from_slice(size_str.as_bytes());
-        header_block[136..148].copy_from_slice(b"00000000000\0"); // mtime
-        header_block[156] = b'0'; // regular file
-        header_block[257..263].copy_from_slice(b"ustar\0");
-        header_block[263..265].copy_from_slice(b"00");
-        // Checksum (with checksum field as spaces)
-        header_block[148..156].copy_from_slice(b"        ");
-        let cksum: u32 = header_block.iter().map(|&b| b as u32).sum();
-        let cksum_str = format!("{:06o}\0 ", cksum);
-        header_block[148..156].copy_from_slice(cksum_str.as_bytes());
-
-        full_tar.extend_from_slice(&header_block);
-        let mut data_block = [0u8; 512];
-        data_block[..content.len()].copy_from_slice(content);
-        full_tar.extend_from_slice(&data_block);
-        full_tar.extend_from_slice(&[0u8; 1024]); // EOF
-
-        let mut gz_data = Vec::new();
-        let mut encoder = GzEncoder::new(&mut gz_data, Compression::fast());
-        encoder.write_all(&full_tar).unwrap();
-        encoder.finish().unwrap();
-        gz_data
-    };
+    // tar::Builder rejects `..` paths, so hand-craft the entry via TarEntry::Raw.
+    let tar_gz = create_tar_gz_entries(&[
+        TarEntry::File("legit.txt", b"safe"),
+        TarEntry::Raw {
+            path: b"../outside.txt",
+            entry_type: b'0',
+            mode: b"0000644\0",
+            content: b"escaped",
+        },
+    ])
+    .unwrap();
 
     server.mock(|when, then| {
         when.method(GET).path("/storage.tar.gz");
@@ -743,7 +896,7 @@ fn path_traversal_via_dotdot_blocked() {
     let url = server.url("/storage.tar.gz");
     let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
 
-    let result = guest_download::run(manifest.to_str().unwrap());
+    let result = run_guest_download(manifest.to_str().unwrap());
 
     assert!(result);
     // Legit file should be extracted
@@ -786,7 +939,7 @@ fn two_step_symlink_attack_blocked() {
     let url = server.url("/storage.tar.gz");
     let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
 
-    let result = guest_download::run(manifest.to_str().unwrap());
+    let result = run_guest_download(manifest.to_str().unwrap());
 
     assert!(result);
     // Safe file should be extracted
@@ -822,7 +975,7 @@ fn hardlink_escaping_target_blocked() {
     let url = server.url("/storage.tar.gz");
     let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
 
-    let result = guest_download::run(manifest.to_str().unwrap());
+    let result = run_guest_download(manifest.to_str().unwrap());
 
     assert!(result);
     assert_eq!(
@@ -863,7 +1016,7 @@ fn symlink_relative_dotdot_escape_blocked() {
     let url = server.url("/storage.tar.gz");
     let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
 
-    let result = guest_download::run(manifest.to_str().unwrap());
+    let result = run_guest_download(manifest.to_str().unwrap());
 
     assert!(result);
     assert_eq!(
@@ -905,7 +1058,7 @@ fn two_step_attack_deep_nested_blocked() {
     let url = server.url("/storage.tar.gz");
     let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
 
-    let result = guest_download::run(manifest.to_str().unwrap());
+    let result = run_guest_download(manifest.to_str().unwrap());
 
     assert!(result);
     // Payload should NOT be written to the evil target
@@ -937,7 +1090,7 @@ fn hardlink_relative_dotdot_escape_blocked() {
     let url = server.url("/storage.tar.gz");
     let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
 
-    let result = guest_download::run(manifest.to_str().unwrap());
+    let result = run_guest_download(manifest.to_str().unwrap());
 
     assert!(result);
     assert_eq!(
@@ -954,55 +1107,17 @@ fn hardlink_relative_dotdot_escape_blocked() {
 fn absolute_path_entry_blocked() {
     let server = MockServer::start();
 
-    // Build raw tar with /etc/passwd entry — tar crate builder rejects absolute paths
-    let tar_gz = {
-        let content = b"malicious";
-        let path_bytes = b"/etc/passwd";
-
-        let mut full_tar: Vec<u8> = Vec::new();
-        {
-            let mut builder = tar::Builder::new(&mut full_tar);
-            let mut h = tar::Header::new_gnu();
-            h.set_size(4);
-            h.set_mode(0o644);
-            h.set_cksum();
-            builder
-                .append_data(&mut h, "legit.txt", b"safe" as &[u8])
-                .unwrap();
-            builder.into_inner().unwrap();
-        }
-        while full_tar.len() >= 512 && full_tar[full_tar.len() - 512..].iter().all(|&b| b == 0) {
-            full_tar.truncate(full_tar.len() - 512);
-        }
-
-        let mut header_block = [0u8; 512];
-        header_block[..path_bytes.len()].copy_from_slice(path_bytes);
-        header_block[100..108].copy_from_slice(b"0000644\0");
-        header_block[108..116].copy_from_slice(b"0000000\0");
-        header_block[116..124].copy_from_slice(b"0000000\0");
-        let size_str = format!("{:011o}\0", content.len());
-        header_block[124..136].copy_from_slice(size_str.as_bytes());
-        header_block[136..148].copy_from_slice(b"00000000000\0");
-        header_block[156] = b'0';
-        header_block[257..263].copy_from_slice(b"ustar\0");
-        header_block[263..265].copy_from_slice(b"00");
-        header_block[148..156].copy_from_slice(b"        ");
-        let cksum: u32 = header_block.iter().map(|&b| b as u32).sum();
-        let cksum_str = format!("{:06o}\0 ", cksum);
-        header_block[148..156].copy_from_slice(cksum_str.as_bytes());
-
-        full_tar.extend_from_slice(&header_block);
-        let mut data_block = [0u8; 512];
-        data_block[..content.len()].copy_from_slice(content);
-        full_tar.extend_from_slice(&data_block);
-        full_tar.extend_from_slice(&[0u8; 1024]);
-
-        let mut gz_data = Vec::new();
-        let mut encoder = GzEncoder::new(&mut gz_data, Compression::fast());
-        encoder.write_all(&full_tar).unwrap();
-        encoder.finish().unwrap();
-        gz_data
-    };
+    // tar::Builder rejects absolute paths, so hand-craft the entry.
+    let tar_gz = create_tar_gz_entries(&[
+        TarEntry::File("legit.txt", b"safe"),
+        TarEntry::Raw {
+            path: b"/etc/passwd",
+            entry_type: b'0',
+            mode: b"0000644\0",
+            content: b"malicious",
+        },
+    ])
+    .unwrap();
 
     server.mock(|when, then| {
         when.method(GET).path("/storage.tar.gz");
@@ -1016,7 +1131,7 @@ fn absolute_path_entry_blocked() {
     let url = server.url("/storage.tar.gz");
     let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
 
-    let result = guest_download::run(manifest.to_str().unwrap());
+    let result = run_guest_download(manifest.to_str().unwrap());
 
     assert!(result);
     assert_eq!(
@@ -1034,51 +1149,18 @@ fn absolute_path_entry_blocked() {
 fn symlink_missing_link_target_skipped() {
     let server = MockServer::start();
 
-    // Build raw tar with a symlink entry that has no link target in the header
-    let tar_gz = {
-        let mut full_tar: Vec<u8> = Vec::new();
-        {
-            let mut builder = tar::Builder::new(&mut full_tar);
-            let mut h = tar::Header::new_gnu();
-            h.set_size(4);
-            h.set_mode(0o644);
-            h.set_cksum();
-            builder
-                .append_data(&mut h, "legit.txt", b"safe" as &[u8])
-                .unwrap();
-            builder.into_inner().unwrap();
-        }
-        while full_tar.len() >= 512 && full_tar[full_tar.len() - 512..].iter().all(|&b| b == 0) {
-            full_tar.truncate(full_tar.len() - 512);
-        }
-
-        // Symlink header with empty link target (linkname field at bytes 157-257 is all zeros)
-        let path_bytes = b"bad_symlink";
-        let mut header_block = [0u8; 512];
-        header_block[..path_bytes.len()].copy_from_slice(path_bytes);
-        header_block[100..108].copy_from_slice(b"0000777\0");
-        header_block[108..116].copy_from_slice(b"0000000\0");
-        header_block[116..124].copy_from_slice(b"0000000\0");
-        header_block[124..136].copy_from_slice(b"00000000000\0");
-        header_block[136..148].copy_from_slice(b"00000000000\0");
-        header_block[156] = b'2'; // symlink type
-        // linkname at 157..257 left as zeros (empty target)
-        header_block[257..263].copy_from_slice(b"ustar\0");
-        header_block[263..265].copy_from_slice(b"00");
-        header_block[148..156].copy_from_slice(b"        ");
-        let cksum: u32 = header_block.iter().map(|&b| b as u32).sum();
-        let cksum_str = format!("{:06o}\0 ", cksum);
-        header_block[148..156].copy_from_slice(cksum_str.as_bytes());
-
-        full_tar.extend_from_slice(&header_block);
-        full_tar.extend_from_slice(&[0u8; 1024]);
-
-        let mut gz_data = Vec::new();
-        let mut encoder = GzEncoder::new(&mut gz_data, Compression::fast());
-        encoder.write_all(&full_tar).unwrap();
-        encoder.finish().unwrap();
-        gz_data
-    };
+    // Symlink entry with empty linkname (bytes 157..257 stay zeroed). tar::Builder
+    // requires a non-empty target, so hand-craft the entry.
+    let tar_gz = create_tar_gz_entries(&[
+        TarEntry::File("legit.txt", b"safe"),
+        TarEntry::Raw {
+            path: b"bad_symlink",
+            entry_type: b'2',
+            mode: b"0000777\0",
+            content: b"",
+        },
+    ])
+    .unwrap();
 
     server.mock(|when, then| {
         when.method(GET).path("/storage.tar.gz");
@@ -1092,7 +1174,7 @@ fn symlink_missing_link_target_skipped() {
     let url = server.url("/storage.tar.gz");
     let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
 
-    let result = guest_download::run(manifest.to_str().unwrap());
+    let result = run_guest_download(manifest.to_str().unwrap());
 
     assert!(result);
     assert_eq!(
@@ -1123,7 +1205,7 @@ fn file_scheme_extraction_success() {
     let url = format!("file://{}", staged.display());
     let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
 
-    let result = guest_download::run(manifest.to_str().unwrap());
+    let result = run_guest_download(manifest.to_str().unwrap());
 
     assert!(result);
     assert_eq!(
@@ -1147,7 +1229,7 @@ fn file_scheme_missing_storage_fatal() {
     let url = format!("file://{}", missing.display());
     let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
 
-    let result = guest_download::run(manifest.to_str().unwrap());
+    let result = run_guest_download(manifest.to_str().unwrap());
     assert!(!result);
 }
 
@@ -1165,6 +1247,6 @@ fn file_scheme_missing_artifact_fatal() {
     let url = format!("file://{}", missing.display());
     let manifest = write_manifest(&dir, &[], Some((mount.to_str().unwrap(), Some(&url)))).unwrap();
 
-    let result = guest_download::run(manifest.to_str().unwrap());
+    let result = run_guest_download(manifest.to_str().unwrap());
     assert!(!result);
 }

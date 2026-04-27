@@ -1,6 +1,6 @@
 import * as Sentry from "@sentry/react";
 import { toast } from "@vm0/ui/components/ui/sonner";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ApiError, accept } from "../accept";
 
 vi.mock("@sentry/react", () => {
@@ -9,10 +9,6 @@ vi.mock("@sentry/react", () => {
 
 vi.mock("@vm0/ui/components/ui/sonner", () => {
   return { toast: { error: vi.fn() } };
-});
-
-beforeEach(() => {
-  vi.clearAllMocks();
 });
 
 describe("accept", () => {

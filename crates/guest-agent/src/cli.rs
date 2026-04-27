@@ -145,13 +145,54 @@ fn build_claude_command(use_mock: bool) -> Vec<String> {
     cmd
 }
 
+struct PreparedEvent {
+    sequence: u32,
+    payload: serde_json::Value,
+}
+
+#[derive(Default)]
+struct AckedEventPrefix {
+    next_expected: u32,
+    last_contiguous: Option<u32>,
+    prefix_broken: bool,
+}
+
+impl AckedEventPrefix {
+    fn record_success(&mut self, sequence: u32) {
+        if self.prefix_broken {
+            return;
+        }
+
+        if sequence == self.next_expected {
+            self.last_contiguous = Some(sequence);
+            self.next_expected = sequence.saturating_add(1);
+        } else if sequence > self.next_expected {
+            self.prefix_broken = true;
+        }
+    }
+
+    fn record_failure(&mut self, sequence: u32) {
+        if sequence >= self.next_expected {
+            self.prefix_broken = true;
+        }
+    }
+
+    fn last_contiguous(&self) -> Option<u32> {
+        self.last_contiguous
+    }
+}
+
+pub struct CliExecutionResult {
+    pub exit_code: i32,
+    pub stderr_lines: Vec<String>,
+    pub last_event_sequence: Option<u32>,
+}
+
 /// Execute the CLI process, streaming JSONL events and racing against heartbeat.
-///
-/// Returns `(exit_code, stderr_lines)`.
 pub async fn execute_cli(
     masker: &SecretMasker,
     mut heartbeat_handle: tokio::task::JoinHandle<Result<(), AgentError>>,
-) -> Result<(i32, Vec<String>), AgentError> {
+) -> Result<CliExecutionResult, AgentError> {
     log_info!(LOG_TAG, "Starting claude-code execution...");
 
     let cmd = build_cli_command()?;
@@ -190,7 +231,7 @@ pub async fn execute_cli(
         .ok_or_else(|| AgentError::Execution("no stderr".into()))?;
 
     // Stderr collector
-    let stderr_handle = tokio::spawn(async move {
+    let mut stderr_handle = tokio::spawn(async move {
         let mut lines = Vec::new();
         let mut reader = tokio::io::BufReader::new(stderr).lines();
         while let Ok(Some(line)) = reader.next_line().await {
@@ -254,13 +295,21 @@ pub async fn execute_cli(
     // Background event sender: HTTP POSTs happen here, never in the
     // stdout reading loop.  Unbounded channel because events are small
     // and CLI lifetime is bounded by JOB_TIMEOUT.
-    let (event_tx, mut event_rx) = tokio::sync::mpsc::unbounded_channel::<serde_json::Value>();
+    let (event_tx, mut event_rx) = tokio::sync::mpsc::unbounded_channel::<PreparedEvent>();
     let event_sender = tokio::spawn(async move {
-        while let Some(payload) = event_rx.recv().await {
-            if let Err(e) = events::post_event(&payload).await {
-                log_warn!(LOG_TAG, "Event send failed: {e}");
+        let mut acked_prefix = AckedEventPrefix::default();
+        while let Some(event) = event_rx.recv().await {
+            match events::post_event(&event.payload).await {
+                Ok(()) => {
+                    acked_prefix.record_success(event.sequence);
+                }
+                Err(e) => {
+                    acked_prefix.record_failure(event.sequence);
+                    log_warn!(LOG_TAG, "Event send failed: {e}");
+                }
             }
         }
+        acked_prefix.last_contiguous()
     });
 
     let event_result: Result<(), AgentError> = loop {
@@ -314,7 +363,12 @@ pub async fn execute_cli(
                             // Prepare event (fast: mask secrets, add seq) and enqueue
                             // for background sending.  Never blocks the reading loop.
                             if let Some(payload) = events::prepare_event(&mut event, seq, masker)
-                                && event_tx.send(payload).is_err()
+                                && event_tx
+                                    .send(PreparedEvent {
+                                        sequence: seq,
+                                        payload,
+                                    })
+                                    .is_err()
                             {
                                 log_warn!(LOG_TAG, "Event channel closed, dropping event seq={seq}");
                             }
@@ -450,12 +504,19 @@ pub async fn execute_cli(
     // On error (e.g. heartbeat failure) the server is likely unreachable,
     // so we drop unsent events to avoid stalling on retries.
     drop(event_tx);
+    let mut last_event_sequence = None;
     if event_result.is_ok() {
-        if let Err(e) = event_sender.await {
-            log_warn!(LOG_TAG, "Event sender task failed: {e}");
+        match event_sender.await {
+            Ok(sequence) => {
+                last_event_sequence = sequence;
+            }
+            Err(e) => {
+                log_warn!(LOG_TAG, "Event sender task failed: {e}");
+            }
         }
     } else {
         event_sender.abort();
+        let _ = event_sender.await;
     }
 
     let status = match cli_status {
@@ -482,35 +543,69 @@ pub async fn execute_cli(
 
     // Apply the same drain deadline to stderr — orphaned child processes
     // may hold the stderr fd open just like stdout.
-    let stderr_lines = match tokio::time::timeout(
-        Duration::from_secs(constants::STDOUT_DRAIN_DEADLINE_SECS),
-        stderr_handle,
-    )
-    .await
-    {
-        Ok(Ok(lines)) => lines,
-        Ok(Err(e)) => {
-            log_warn!(LOG_TAG, "stderr collector panicked: {e}");
-            Vec::new()
-        }
-        Err(_) => {
+    let stderr_timeout =
+        tokio::time::sleep(Duration::from_secs(constants::STDOUT_DRAIN_DEADLINE_SECS));
+    tokio::pin!(stderr_timeout);
+    let stderr_lines = tokio::select! {
+        result = &mut stderr_handle => match result {
+            Ok(lines) => lines,
+            Err(e) => {
+                log_warn!(LOG_TAG, "stderr collector panicked: {e}");
+                Vec::new()
+            }
+        },
+        () = &mut stderr_timeout => {
             log_warn!(
                 LOG_TAG,
                 "stderr drain timeout, possible orphaned child process"
             );
+            stderr_handle.abort();
+            let _ = stderr_handle.await;
             Vec::new()
-        }
+        },
     };
 
     // If event loop had an error, propagate it
     event_result?;
 
-    Ok((exit_code, stderr_lines))
+    Ok(CliExecutionResult {
+        exit_code,
+        stderr_lines,
+        last_event_sequence,
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn disable_system_log() {
+        guest_common::log::clear_system_log_file();
+    }
+
+    fn build_claude_args_for_test(
+        resume_id: &str,
+        append_system_prompt: &str,
+        disallowed_tools: &str,
+        tools: &str,
+        settings: &str,
+        prompt: &str,
+    ) -> Vec<String> {
+        disable_system_log();
+        build_claude_args(
+            resume_id,
+            append_system_prompt,
+            disallowed_tools,
+            tools,
+            settings,
+            prompt,
+        )
+    }
+
+    fn build_claude_command_for_test(use_mock: bool) -> Vec<String> {
+        disable_system_log();
+        build_claude_command(use_mock)
+    }
 
     /// Assert prompt is last and preceded by "--" separator.
     fn assert_prompt_with_separator(args: &[String], expected_prompt: &str) {
@@ -526,7 +621,7 @@ mod tests {
 
     #[test]
     fn build_claude_args_basic() {
-        let args = build_claude_args("", "", "", "", "", "hello world");
+        let args = build_claude_args_for_test("", "", "", "", "", "hello world");
         assert!(args.contains(&"--print".to_string()));
         assert!(args.contains(&"--dangerously-skip-permissions".to_string()));
         assert_prompt_with_separator(&args, "hello world");
@@ -536,7 +631,7 @@ mod tests {
 
     #[test]
     fn build_claude_args_with_append_system_prompt() {
-        let args = build_claude_args("", "Your name is Aria.", "", "", "", "analyze this");
+        let args = build_claude_args_for_test("", "Your name is Aria.", "", "", "", "analyze this");
         let asp_idx = args
             .iter()
             .position(|a| a == "--append-system-prompt")
@@ -547,13 +642,13 @@ mod tests {
 
     #[test]
     fn build_claude_args_empty_append_system_prompt_omitted() {
-        let args = build_claude_args("", "", "", "", "", "test");
+        let args = build_claude_args_for_test("", "", "", "", "", "test");
         assert!(!args.contains(&"--append-system-prompt".to_string()));
     }
 
     #[test]
     fn build_claude_args_with_resume_and_append() {
-        let args = build_claude_args("sess-123", "Be helpful.", "", "", "", "prompt");
+        let args = build_claude_args_for_test("sess-123", "Be helpful.", "", "", "", "prompt");
         assert!(args.contains(&"--resume".to_string()));
         assert!(args.contains(&"--append-system-prompt".to_string()));
         assert_prompt_with_separator(&args, "prompt");
@@ -561,7 +656,7 @@ mod tests {
 
     #[test]
     fn build_claude_command_uses_claude_binary() {
-        let cmd = build_claude_command(false);
+        let cmd = build_claude_command_for_test(false);
         assert_eq!(cmd[0], "claude");
     }
 
@@ -573,13 +668,14 @@ mod tests {
         // against the const (not the accessor) catches regressions in
         // the default path itself — the previous form compared the
         // accessor against itself and was tautological.
-        let cmd = build_claude_command(true);
+        let cmd = build_claude_command_for_test(true);
         assert_eq!(cmd[0], env::DEFAULT_MOCK_CLAUDE_PATH);
     }
 
     #[test]
     fn build_claude_args_with_disallowed_tools() {
-        let args = build_claude_args("", "", "CronCreate,CronDelete,CronList", "", "", "hello");
+        let args =
+            build_claude_args_for_test("", "", "CronCreate,CronDelete,CronList", "", "", "hello");
         let dt_idx = args.iter().position(|a| a == "--disallowed-tools").unwrap();
         assert_eq!(args[dt_idx + 1], "CronCreate");
         assert_eq!(args[dt_idx + 2], "CronDelete");
@@ -590,13 +686,13 @@ mod tests {
 
     #[test]
     fn build_claude_args_empty_disallowed_tools_omitted() {
-        let args = build_claude_args("", "", "", "", "", "test");
+        let args = build_claude_args_for_test("", "", "", "", "", "test");
         assert!(!args.contains(&"--disallowed-tools".to_string()));
     }
 
     #[test]
     fn build_claude_args_with_tools() {
-        let args = build_claude_args("", "", "", "Bash,Edit,Read", "", "hello");
+        let args = build_claude_args_for_test("", "", "", "Bash,Edit,Read", "", "hello");
         let t_idx = args.iter().position(|a| a == "--tools").unwrap();
         assert_eq!(args[t_idx + 1], "Bash");
         assert_eq!(args[t_idx + 2], "Edit");
@@ -607,13 +703,13 @@ mod tests {
 
     #[test]
     fn build_claude_args_empty_tools_omitted() {
-        let args = build_claude_args("", "", "", "", "", "test");
+        let args = build_claude_args_for_test("", "", "", "", "", "test");
         assert!(!args.contains(&"--tools".to_string()));
     }
 
     #[test]
     fn build_claude_args_with_settings() {
-        let args = build_claude_args("", "", "", "", r#"{"hooks":{}}"#, "hello");
+        let args = build_claude_args_for_test("", "", "", "", r#"{"hooks":{}}"#, "hello");
         let s_idx = args.iter().position(|a| a == "--settings").unwrap();
         assert_eq!(args[s_idx + 1], r#"{"hooks":{}}"#);
         assert_prompt_with_separator(&args, "hello");
@@ -621,13 +717,13 @@ mod tests {
 
     #[test]
     fn build_claude_args_empty_settings_omitted() {
-        let args = build_claude_args("", "", "", "", "", "test");
+        let args = build_claude_args_for_test("", "", "", "", "", "test");
         assert!(!args.contains(&"--settings".to_string()));
     }
 
     #[test]
     fn build_claude_args_all_options_combined() {
-        let args = build_claude_args(
+        let args = build_claude_args_for_test(
             "sess-abc",
             "Be concise.",
             "CronCreate,CronDelete",
@@ -656,7 +752,7 @@ mod tests {
 
     #[test]
     fn build_claude_args_disallowed_tools_whitespace_trimmed() {
-        let args = build_claude_args("", "", " CronCreate , CronDelete ", "", "", "test");
+        let args = build_claude_args_for_test("", "", " CronCreate , CronDelete ", "", "", "test");
         let dt_idx = args.iter().position(|a| a == "--disallowed-tools").unwrap();
         assert_eq!(args[dt_idx + 1], "CronCreate");
         assert_eq!(args[dt_idx + 2], "CronDelete");
@@ -664,7 +760,7 @@ mod tests {
 
     #[test]
     fn build_claude_args_tools_whitespace_trimmed() {
-        let args = build_claude_args("", "", "", " Bash , Read ", "", "test");
+        let args = build_claude_args_for_test("", "", "", " Bash , Read ", "", "test");
         let t_idx = args.iter().position(|a| a == "--tools").unwrap();
         assert_eq!(args[t_idx + 1], "Bash");
         assert_eq!(args[t_idx + 2], "Read");
@@ -673,7 +769,7 @@ mod tests {
     #[test]
     fn build_claude_args_disallowed_tools_empty_items_skipped() {
         // Trailing comma produces an empty token that should be skipped
-        let args = build_claude_args("", "", "CronCreate,,CronDelete,", "", "", "test");
+        let args = build_claude_args_for_test("", "", "CronCreate,,CronDelete,", "", "", "test");
         let dt_idx = args.iter().position(|a| a == "--disallowed-tools").unwrap();
         // Only non-empty tools should be present
         let tool_args: Vec<&str> = args[dt_idx + 1..]
@@ -686,8 +782,55 @@ mod tests {
 
     #[test]
     fn build_claude_args_prompt_always_last() {
-        let args = build_claude_args("", "", "", "", "", "my prompt");
+        let args = build_claude_args_for_test("", "", "", "", "", "my prompt");
         assert_eq!(args.last().unwrap(), "my prompt");
+    }
+
+    // -----------------------------------------------------------------
+    // AckedEventPrefix
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn acked_event_prefix_advances_on_contiguous_successes() {
+        let mut prefix = AckedEventPrefix::default();
+
+        prefix.record_success(0);
+        prefix.record_success(1);
+        prefix.record_success(2);
+
+        assert_eq!(prefix.last_contiguous(), Some(2));
+    }
+
+    #[test]
+    fn acked_event_prefix_stops_at_first_failed_event() {
+        let mut prefix = AckedEventPrefix::default();
+
+        prefix.record_success(0);
+        prefix.record_failure(1);
+        prefix.record_success(2);
+
+        assert_eq!(prefix.last_contiguous(), Some(0));
+    }
+
+    #[test]
+    fn acked_event_prefix_has_no_watermark_when_first_event_fails() {
+        let mut prefix = AckedEventPrefix::default();
+
+        prefix.record_failure(0);
+        prefix.record_success(1);
+
+        assert_eq!(prefix.last_contiguous(), None);
+    }
+
+    #[test]
+    fn acked_event_prefix_rejects_success_gap() {
+        let mut prefix = AckedEventPrefix::default();
+
+        prefix.record_success(0);
+        prefix.record_success(2);
+        prefix.record_success(3);
+
+        assert_eq!(prefix.last_contiguous(), Some(0));
     }
 
     // -----------------------------------------------------------------

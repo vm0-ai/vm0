@@ -1,5 +1,5 @@
 import { initClient } from "@ts-rest/core";
-import { zeroDeveloperSupportContract } from "@vm0/core/contracts/zero-developer-support";
+import { zeroDeveloperSupportContract } from "@vm0/api-contracts/contracts/zero-developer-support";
 import { getClientConfig, handleError } from "../core/client-factory";
 
 export async function requestDeveloperSupportConsent(body: {

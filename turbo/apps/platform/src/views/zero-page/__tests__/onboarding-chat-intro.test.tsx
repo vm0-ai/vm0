@@ -10,11 +10,12 @@ import {
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
 import { pathname } from "../../../signals/location.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
+import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 import {
   onboardingStatusContract,
   onboardingSetupContract,
   onboardingCompleteContract,
-} from "@vm0/core/contracts/onboarding";
+} from "@vm0/api-contracts/contracts/onboarding";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -105,6 +106,19 @@ async function walkToWhereStep(isMember: boolean) {
 describe("onboarding → chat page (no auto-intro)", () => {
   it("should navigate to /agents/:id/chat after admin completes onboarding", async () => {
     mockAdminOnboarding();
+    // Register the admin-created default agent in the team so the chat page
+    // setup can find it instead of treating it as missing and redirecting.
+    setMockTeam([
+      {
+        id: MOCK_AGENT_ID,
+        displayName: null,
+        description: null,
+        sound: null,
+        avatarUrl: null,
+        headVersionId: "version_1",
+        updatedAt: "2024-01-01T00:00:00Z",
+      },
+    ]);
 
     detachedSetupPage({ context, path: "/onboarding" });
     await walkToWhereStep(false);

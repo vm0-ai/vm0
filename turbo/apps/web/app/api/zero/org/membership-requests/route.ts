@@ -1,6 +1,6 @@
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
-import { zeroOrgMembershipRequestsContract } from "@vm0/core/contracts/zero-org-members";
-import { createErrorResponse } from "@vm0/core/contracts/errors";
+import { zeroOrgMembershipRequestsContract } from "@vm0/api-contracts/contracts/zero-org-members";
+import { createErrorResponse } from "@vm0/api-contracts/contracts/errors";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
   requireAuth,
@@ -11,10 +11,7 @@ import {
   acceptMembershipRequest,
   rejectMembershipRequest,
 } from "../../../../../src/lib/zero/org/org-member-service";
-import {
-  isBadRequest,
-  isForbidden,
-} from "../../../../../src/lib/shared/errors";
+import { isBadRequest, isForbidden } from "@vm0/api-services/errors";
 
 const router = tsr.router(zeroOrgMembershipRequestsContract, {
   accept: async ({ headers, body }) => {

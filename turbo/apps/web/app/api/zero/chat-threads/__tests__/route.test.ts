@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { describe, it, expect, beforeEach } from "vitest";
 import { GET, POST } from "../route";
 import {
@@ -5,7 +6,7 @@ import {
   createTestCompose,
   getOrgCacheEntry,
   insertTestChatMessage,
-  setTestChatThreadLastReadAt,
+  setTestChatThreadLastReadMessageId,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -70,6 +71,26 @@ describe("POST /api/zero/chat-threads - Create Thread", () => {
     expect(response.status).toBe(201);
     expect(data.id).toBeDefined();
     expect(data.createdAt).toBeDefined();
+  });
+
+  it("should create a chat thread with the provided clientThreadId", async () => {
+    const clientThreadId = randomUUID();
+    const request = createTestRequest(
+      "http://localhost:3000/api/zero/chat-threads",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentId: testComposeId,
+          clientThreadId,
+        }),
+      },
+    );
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(data.id).toBe(clientThreadId);
   });
 
   it("should return 404 for compose from a different org", async () => {
@@ -258,8 +279,8 @@ describe("GET /api/zero/chat-threads - List Threads", () => {
     expect(data.threads[0].isArchived).toBe(false);
   });
 
-  it("reports isRead based on last_read_at watermark", async () => {
-    // Thread with last_read_at >= last message → read
+  it("reports isRead based on last_read_message_id", async () => {
+    // Thread whose last_read_message_id matches the last message → read
     const readCreate = await POST(
       createTestRequest("http://localhost:3000/api/zero/chat-threads", {
         method: "POST",
@@ -268,16 +289,14 @@ describe("GET /api/zero/chat-threads - List Threads", () => {
       }),
     );
     const { id: readId } = await readCreate.json();
-    await insertTestChatMessage({
+    const readMessage = await insertTestChatMessage({
       chatThreadId: readId,
       role: "assistant",
       content: "hi",
     });
-    // Set last_read_at to a future time to ensure it is >= the message's
-    // DB-server createdAt regardless of any clock skew between Node.js and Postgres.
-    await setTestChatThreadLastReadAt(readId, new Date(Date.now() + 60_000));
+    await setTestChatThreadLastReadMessageId(readId, readMessage.id);
 
-    // Thread with last_read_at IS NULL → unread
+    // Thread with last_read_message_id NULL → unread
     const unreadCreate = await POST(
       createTestRequest("http://localhost:3000/api/zero/chat-threads", {
         method: "POST",
@@ -291,8 +310,7 @@ describe("GET /api/zero/chat-threads - List Threads", () => {
       role: "assistant",
       content: "hi",
     });
-    // Explicitly null out last_read_at so message is newer than cursor
-    await setTestChatThreadLastReadAt(unreadId, null);
+    await setTestChatThreadLastReadMessageId(unreadId, null);
 
     const response = await GET(
       createTestRequest(
@@ -571,6 +589,7 @@ describe("GET /api/zero/chat-threads - List Threads", () => {
     expect(response.status).toBe(200);
     expect(data.threads).toHaveLength(1);
     expect(data.threads[0].agent).toBeDefined();
+    expect(data.threads[0]).not.toHaveProperty("agentId");
     expect(data.threads[0].agent.id).toBe(testComposeId);
     expect(data.threads[0].agent).toHaveProperty("avatarUrl");
   });
@@ -697,6 +716,7 @@ describe("GET /api/zero/chat-threads - Unified list (agentId omitted)", () => {
     expect(response.status).toBe(200);
     expect(data.threads).toHaveLength(1);
     expect(data.threads[0].agent).toBeDefined();
+    expect(data.threads[0]).not.toHaveProperty("agentId");
     expect(data.threads[0].agent.id).toBe(composeAId);
     // avatarUrl defaults to null for a freshly seeded zero_agents row.
     expect(data.threads[0].agent).toHaveProperty("avatarUrl");
@@ -828,56 +848,5 @@ describe("POST /api/zero/chat-threads - Title Handling", () => {
 
     expect(response.status).toBe(201);
     expect(data.title).toBeNull();
-  });
-});
-
-describe("POST /api/zero/chat-threads - sourceScheduleRunId", () => {
-  let testComposeId: string;
-
-  beforeEach(async () => {
-    context.setupMocks();
-    await context.setupUser();
-
-    const { composeId } = await createTestCompose(uniqueId("chat-src"));
-    testComposeId = composeId;
-  });
-
-  it("accepts a UUID sourceScheduleRunId and creates the thread", async () => {
-    const sourceScheduleRunId = crypto.randomUUID();
-    const request = createTestRequest(
-      "http://localhost:3000/api/zero/chat-threads",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          agentId: testComposeId,
-          sourceScheduleRunId,
-        }),
-      },
-    );
-
-    const response = await POST(request);
-    const data = await response.json();
-
-    expect(response.status).toBe(201);
-    expect(data.id).toBeDefined();
-  });
-
-  it("rejects a non-UUID sourceScheduleRunId with 400", async () => {
-    const request = createTestRequest(
-      "http://localhost:3000/api/zero/chat-threads",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          agentId: testComposeId,
-          sourceScheduleRunId: "not-a-uuid",
-        }),
-      },
-    );
-
-    const response = await POST(request);
-
-    expect(response.status).toBe(400);
   });
 });

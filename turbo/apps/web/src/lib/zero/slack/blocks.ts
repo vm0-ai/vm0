@@ -128,18 +128,19 @@ export function buildAppHomeView(options: {
   });
 
   if (options.agentName) {
+    const settingsButton = {
+      type: "button" as const,
+      text: { type: "plain_text" as const, text: "Settings" },
+      url: `${getAppUrl()}/works`,
+      action_id: "home_environment_setup",
+    };
     const agentBlock: KnownBlock = {
       type: "section",
       text: {
         type: "mrkdwn",
         text: `AgentName: *${options.agentName}*`,
       },
-      accessory: {
-        type: "button",
-        text: { type: "plain_text", text: "Settings" },
-        url: `${getAppUrl()}/works`,
-        action_id: "home_environment_setup",
-      },
+      ...(options.canSwitch ? {} : { accessory: settingsButton }),
     };
     blocks.push(agentBlock);
     if (options.canSwitch) {
@@ -150,7 +151,9 @@ export function buildAppHomeView(options: {
             type: "button",
             text: { type: "plain_text", text: "Switch" },
             action_id: "home_switch_agent",
+            style: "primary",
           },
+          settingsButton,
         ],
       });
     }

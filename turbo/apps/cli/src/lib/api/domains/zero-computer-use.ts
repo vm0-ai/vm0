@@ -3,7 +3,7 @@ import {
   zeroComputerUseRegisterContract,
   zeroComputerUseUnregisterContract,
   zeroComputerUseHostContract,
-} from "@vm0/core/contracts/zero-computer-use";
+} from "@vm0/api-contracts/contracts/zero-computer-use";
 import { getClientConfig, handleError } from "../core/client-factory";
 
 /**

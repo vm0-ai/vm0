@@ -2,7 +2,7 @@ import { command, state } from "ccstate";
 import {
   zeroSlackChannelsContract,
   type SlackChannel,
-} from "@vm0/core/contracts/zero-slack-channels";
+} from "@vm0/api-contracts/contracts/zero-slack-channels";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 

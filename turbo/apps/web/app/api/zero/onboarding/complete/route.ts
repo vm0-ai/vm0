@@ -1,12 +1,12 @@
 import { and, eq } from "drizzle-orm";
-import { onboardingCompleteContract } from "@vm0/core/contracts/onboarding";
+import { onboardingCompleteContract } from "@vm0/api-contracts/contracts/onboarding";
 import { initServices } from "../../../../../src/lib/init-services";
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
-import { orgMembersMetadata } from "../../../../../src/db/schema/org-members-metadata";
-import { orgMetadata } from "../../../../../src/db/schema/org-metadata";
-import { userConnectors } from "../../../../../src/db/schema/user-connector";
+import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { userConnectors } from "@vm0/db/schema/user-connector";
 
 /**
  * POST /api/zero/onboarding/complete

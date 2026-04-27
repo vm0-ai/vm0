@@ -1,6 +1,6 @@
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
-import { zeroComputerConnectorContract } from "@vm0/core/contracts/zero-connectors";
-import { createErrorResponse } from "@vm0/core/contracts/errors";
+import { zeroComputerConnectorContract } from "@vm0/api-contracts/contracts/zero-connectors";
+import { createErrorResponse } from "@vm0/api-contracts/contracts/errors";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
   requireAuth,
@@ -12,11 +12,7 @@ import {
   createComputerConnector,
   deleteComputerConnector,
 } from "../../../../../src/lib/zero/computer-connector/computer-connector-service";
-import {
-  isBadRequest,
-  isConflict,
-  isNotFound,
-} from "../../../../../src/lib/shared/errors";
+import { isBadRequest, isConflict, isNotFound } from "@vm0/api-services/errors";
 
 const router = tsr.router(zeroComputerConnectorContract, {
   create: async ({ headers }) => {

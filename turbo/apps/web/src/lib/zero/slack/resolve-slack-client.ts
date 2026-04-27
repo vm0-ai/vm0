@@ -1,10 +1,10 @@
 import type { WebClient } from "@slack/web-api";
-import type { ZeroCapability } from "@vm0/core/contracts/composes";
+import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { requireAuth, isAuthError } from "../../auth/require-auth";
 import { isSandboxAuth } from "../../auth/capability-check";
 import { resolveOrg } from "../org/resolve-org";
-import { agentRuns } from "../../../db/schema/agent-run";
-import { slackOrgInstallations } from "../../../db/schema/slack-org-installation";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
 import { decryptSecretValue } from "../../shared/crypto/secrets-encryption";
 import { createSlackClient } from "./client";
 import { eq, and } from "drizzle-orm";

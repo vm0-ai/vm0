@@ -1,10 +1,10 @@
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import {
-  IconNetwork,
   IconChevronDown,
   IconChevronLeft,
   IconChevronRight,
 } from "@tabler/icons-react";
+import emptyInsightsImg from "../zero-page/assets/empty-insights.webp";
 import {
   Skeleton,
   Popover,
@@ -37,10 +37,11 @@ import { userPreferences$ } from "../../signals/zero-page/settings/user-preferen
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { user$ } from "../../signals/auth.ts";
 import { formatCredits } from "../../lib/format-credits.ts";
+import { getCardPalette } from "../../lib/card-palette.ts";
 import {
   CONNECTOR_TYPES,
   type ConnectorType,
-} from "@vm0/core/contracts/connectors";
+} from "@vm0/connectors/connectors";
 
 // ---------------------------------------------------------------------------
 // Date range filter
@@ -460,24 +461,6 @@ function SummaryCard({ day }: { day: DayInsight }) {
 }
 
 // ---------------------------------------------------------------------------
-
-interface CardPalette {
-  bg: string;
-  accent: string;
-}
-
-function getCardPalette(colorIndex: number): CardPalette {
-  const palette: CardPalette[] = [
-    { bg: "bg-[#EFC184]/20", accent: "#D4956A" }, // sandy orange — brand original
-    { bg: "bg-[#F3B8B1]/20", accent: "#E24B6A" }, // rose → brand vibrant rose
-    { bg: "bg-[#E1C43C]/15", accent: "#E1C43C" }, // mustard gold — brand original
-    { bg: "bg-gray-50", accent: "#98928B" }, // grey-50 → taupe
-    { bg: "bg-[#EC70A5]/15", accent: "#EC70A5" }, // hot pink — brand original
-    { bg: "bg-[#358A8E]/15", accent: "#358A8E" }, // teal — brand original
-    { bg: "bg-[#98928B]/15", accent: "#98928B" }, // taupe — brand original
-  ];
-  return palette[colorIndex % palette.length] ?? palette[0];
-}
 
 function Card({ children }: { children: React.ReactNode }) {
   return (
@@ -1091,42 +1074,43 @@ function InsightsContent({ data }: { data: NetworkInsightsData }) {
     <div className="h-full overflow-auto">
       <div className="mx-auto w-full max-w-[960px] px-4 sm:px-8 py-8 flex flex-col gap-10">
         {/* Header */}
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <div className="flex items-baseline gap-2">
+        <div>
+          <div className="flex items-start justify-between gap-4">
+            <div>
               <h1 className="text-xl font-semibold">Insights</h1>
-              {data.lastUpdated && (
-                <span className="text-xs text-muted-foreground">
-                  Last updated {formatAbsoluteTime(data.lastUpdated)}
-                </span>
-              )}
+              <p className="text-sm text-muted-foreground mt-1">
+                Monitor what your agents access, which permissions they use, and
+                spot anything unusual.
+              </p>
             </div>
-            <p className="text-sm text-muted-foreground mt-1">
-              Monitor what your agents access, which permissions they use, and
-              spot anything unusual.
-            </p>
+            {data.days.length > 0 && (
+              <DateRangeFilter
+                value={dateRange}
+                onChange={setRange}
+                availableDates={data.days.map((d) => {
+                  return d.date;
+                })}
+                timezone={timezone}
+              />
+            )}
           </div>
-          {data.days.length > 0 && (
-            <DateRangeFilter
-              value={dateRange}
-              onChange={setRange}
-              availableDates={data.days.map((d) => {
-                return d.date;
-              })}
-              timezone={timezone}
-            />
+          {data.lastUpdated && (
+            <div className="mt-6 flex items-center gap-4">
+              <span className="text-xs italic text-muted-foreground whitespace-nowrap">
+                Last updated — {formatAbsoluteTime(data.lastUpdated)}
+              </span>
+              <span className="flex-1 h-px bg-border" />
+            </div>
           )}
         </div>
 
         {filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-3 py-20 text-center">
-            <div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center">
-              <IconNetwork
-                size={28}
-                stroke={1}
-                className="text-muted-foreground"
-              />
-            </div>
+            <img
+              src={emptyInsightsImg}
+              alt=""
+              className="h-20 w-20 object-contain opacity-80"
+            />
             <p className="text-sm text-muted-foreground max-w-xs">
               {data.days.length === 0
                 ? "Run an agent to see insights here."

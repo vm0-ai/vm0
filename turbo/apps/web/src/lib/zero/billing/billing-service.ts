@@ -1,8 +1,8 @@
 import { eq, sql } from "drizzle-orm";
-import type { OrgTier } from "@vm0/core/contracts/orgs";
+import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
 import { getStripe } from "../stripe";
 import { env } from "../../../env";
-import { orgMetadata } from "../../../db/schema/org-metadata";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { grantOrgCredits } from "../org/org-service";
 import { handleAutoRechargeInvoicePaid } from "./auto-recharge-service";
 import { resetMemberCreditFlags } from "../credit/member-credit-cap-service";

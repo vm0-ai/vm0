@@ -1,8 +1,8 @@
 import { and, eq } from "drizzle-orm";
 import { initServices } from "../../lib/init-services";
-import { zeroAgentSchedules } from "../../db/schema/zero-agent-schedule";
-import { agentComposes } from "../../db/schema/agent-compose";
-import { zeroAgents } from "../../db/schema/zero-agent";
+import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
+import { agentComposes } from "@vm0/db/schema/agent-compose";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { uniqueId } from "../test-helpers";
 
 // ============================================================================

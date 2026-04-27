@@ -1,6 +1,9 @@
 import type { StorageManifest } from "../../../infra/storage/types";
 import type { ResumeSession } from "../types";
-import type { Firewalls, NetworkPolicies } from "@vm0/core/contracts/firewalls";
+import type {
+  Firewalls,
+  NetworkPolicies,
+} from "@vm0/connectors/firewall-types";
 
 /**
  * Prepared execution context for executors
@@ -76,6 +79,10 @@ export interface PreparedContext {
   featureFlags: Record<string, boolean> | null;
 
   billableFirewalls: string[];
+
+  // True when the run was dispatched from the org queue. Used to split
+  // api_to_executor latency in Axiom between queue-dispatch and direct-dispatch.
+  wasQueued: boolean;
 }
 
 /**

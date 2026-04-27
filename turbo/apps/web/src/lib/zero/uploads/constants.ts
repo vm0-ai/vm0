@@ -23,5 +23,6 @@ export const ALLOWED_UPLOAD_TYPES: ReadonlySet<string> = new Set([
   "text/plain",
   "text/csv",
   "text/markdown",
+  "text/html",
   "application/json",
 ]);

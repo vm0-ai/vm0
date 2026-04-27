@@ -20,6 +20,8 @@ export {
   countTestTelegramMessages,
   countTelegramUserLinkRows,
   findTestTelegramUserLinksByVm0UserId,
+  findTestTelegramInstallationsByOwner,
+  getTestTelegramBotToken,
   telegramUserLinkExists,
   telegramThreadSessionExists,
 } from "../db-test-assertions/telegram";

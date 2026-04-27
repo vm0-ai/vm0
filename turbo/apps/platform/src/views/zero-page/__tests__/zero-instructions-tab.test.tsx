@@ -5,7 +5,7 @@
  *
  * Entry point: setupPage({ context, path: "/agents/my-agent?tab=instructions" })
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -16,15 +16,11 @@ import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
   zeroAgentsByIdContract,
   zeroAgentInstructionsContract,
-} from "@vm0/core/contracts/zero-agents";
+} from "@vm0/api-contracts/contracts/zero-agents";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
-
-beforeEach(() => {
-  vi.clearAllMocks();
-});
 
 function mockAPIs(instructionsContent: string | null = null) {
   setMockTeam([

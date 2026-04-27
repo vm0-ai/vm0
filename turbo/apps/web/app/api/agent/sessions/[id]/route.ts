@@ -3,16 +3,16 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../../src/lib/ts-rest-handler";
-import { sessionsByIdContract } from "@vm0/core/contracts/sessions";
+import { sessionsByIdContract } from "@vm0/api-contracts/contracts/sessions";
 import { extractAndGroupVariables } from "@vm0/core/variable-expander";
 import { eq } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
-import { agentSessions } from "../../../../../src/db/schema/agent-session";
+import { agentSessions } from "@vm0/db/schema/agent-session";
 import {
   agentComposes,
   agentComposeVersions,
-} from "../../../../../src/db/schema/agent-compose";
+} from "@vm0/db/schema/agent-compose";
 
 const router = tsr.router(sessionsByIdContract, {
   getById: async ({ params, headers }) => {

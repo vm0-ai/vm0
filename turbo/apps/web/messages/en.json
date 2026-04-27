@@ -124,7 +124,7 @@
       "description": "Scale fast with zero friction and full flexibility.",
       "features": {
         "credits": "120,000 credits / month",
-        "concurrentRuns": "5 concurrent runs",
+        "concurrentRuns": "10 concurrent runs",
         "unlimitedAgents": "Unlimited total agents",
         "bringOwnLLM": "Bring your own LLM keys",
         "voiceInput": "Voice input",
@@ -201,13 +201,15 @@
       "runOutOfCredits": "What happens when I run out of credits?",
       "runOutOfCreditsAnswer": "When your credits are depleted, your agents will stop running. You can purchase additional credits via auto-recharge, or upgrade to a higher plan for more monthly credits.",
       "doCreditsRollOver": "Do unused credits roll over?",
-      "doCreditsRollOverAnswer": "On the Free plan, starter credits expire 1 month after signup and don't replenish. On Pro, unused credits roll over for 1 month. On Team, credits roll over for 1 month.",
+      "doCreditsRollOverAnswer": "Free starter credits (10,000) expire 1 month after signup and aren't replenished. Pro and Team monthly credits expire 1 month after the end of the billing cycle in which they were granted, so each grant is usable for the current cycle plus a 1-month grace period. Auto-recharge and top-up credits never expire. The soonest-expiring credits are always consumed first.",
       "bringOwnModel": "Can I bring my own model provider?",
       "bringOwnModelAnswer": "Yes! All plans support bringing your own LLM API keys (Anthropic, etc.). When using your own keys, no VM0 credits are consumed for model usage.",
       "howSecure": "How secure is VM0?",
       "howSecureAnswer": "Every agent run executes in an isolated Firecracker microVM with hardware-level KVM isolation. Credentials are injected at the network layer and never exposed to agent code. All agent HTTP/HTTPS traffic is logged with SHA-256 integrity per run.",
       "annualBilling": "Do you offer annual billing or discounts?",
-      "annualBillingAnswer": "Contact us to discuss volume pricing, annual billing discounts, and custom arrangements for your team."
+      "annualBillingAnswer": "Contact us to discuss volume pricing, annual billing discounts, and custom arrangements for your team.",
+      "upgradeCredits": "What happens to my credits if I upgrade?",
+      "upgradeCreditsAnswer": "Your tier changes immediately, so you get the new plan's higher concurrency, agent limits, and features right away. Existing credits stay in your account, keep their original expiration date, and are used first. The new plan's monthly credit allocation is granted at your next billing cycle, and Stripe automatically prorates the charge for the remainder of the current cycle."
     },
     "perMonth": "/month"
   },
@@ -4358,6 +4360,91 @@
           "Write action items as full sentences during the meeting. 'Casey will decide X by Friday' is clearer than 'Casey: decide X'. Zero handles either, but clean input means clean output.",
           "Separate decisions from action items. Decisions go to Document Decisions; action items go to owners. Mixing them dilutes both.",
           "Review the extracted list before the meeting ends. Thirty seconds of review catches misattributions that would otherwise live for a week."
+        ]
+      },
+      "promo-video-from-recordings": {
+        "title": "Turn raw screen recordings into polished promo videos",
+        "description": "Point Zero at a Google Drive folder with silent screen recordings. It writes the narration script, selects music, adds transitions, and exports a ready-to-share SaaS promotional short in 30–90 seconds.",
+        "timeSaved": "~2 hrs saved per video",
+        "headings": {
+          "scenario": "Why producing promo videos from screen recordings takes so long",
+          "prompt": "How to ask Zero to produce a promo video from your recordings",
+          "steps": "How Zero turns raw footage into a polished promotional short",
+          "nextActions": "Iterate on the cut, repurpose for other channels, or schedule a batch",
+          "integrations": "Required integrations: Slack, Google Drive, and Notion",
+          "tips": "Best practices for promo video production with Zero"
+        },
+        "scenario": "You just finished recording a new feature walkthrough — three silent screen captures sitting in a Google Drive folder. Now comes the hard part: writing a narration script, picking background music, timing transitions, and editing everything into a tight 60-second promo. You could spend the afternoon in a video editor, or you could hand the folder to Zero. Point it at your Google Drive recordings, tell it what the video should communicate, and it delivers a polished SaaS promo short — narration, music, transitions, and all — ready to post.",
+        "promptVariants": [
+          {
+            "label": "Full production",
+            "prompt": "@Zero pull the 3 screen recordings from the ‘Dashboard Launch’ folder in Google Drive. Produce a 60-second promo video with narration, background music, and smooth transitions. The tone should be professional and upbeat. Highlight speed and ease of use."
+          },
+          {
+            "label": "Quick cut",
+            "prompt": "@Zero grab the latest screen recording from the ‘Product Demos’ folder in Google Drive and turn it into a 30-second product teaser. Add a short narration and background music. Keep it punchy."
+          },
+          {
+            "label": "Batch production",
+            "prompt": "@Zero every Friday, check the ‘Raw Recordings’ folder in Google Drive for new files, produce a 60-second promo short with narration and music for each, and post the final cuts to #marketing-assets."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Ming",
+            "text": "@Zero grab the 3 screen recordings from the ‘Permissions UI’ folder in Google Drive and turn them into a 60-second promo video. Tone: professional, highlight security and simplicity."
+          },
+          {
+            "name": "Zero",
+            "text": "Pulled 3 recordings from Google Drive. Promo video complete — 58s runtime.\n\nNarration: 6 segments covering permission setup, role assignment, and audit logs\nMusic: Upbeat ambient track, matched to transitions\nTransitions: Smooth cross-dissolves between each screen\n\nFinal cut uploaded to Google Drive and posted here. Ready to review."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero pulls recordings from Google Drive",
+            "description": "Zero connects to your Google Drive, locates the specified folder, and ingests the raw screen recordings. It identifies key moments and UI interactions to determine the optimal sequence and pacing."
+          },
+          {
+            "title": "Zero writes the narration and selects music",
+            "description": "Based on your brief, Zero generates a narration script that highlights the product’s value propositions. It selects a background music track and maps narration segments to video timestamps."
+          },
+          {
+            "title": "Zero assembles and exports the final cut",
+            "description": "Zero adds transitions between scenes, layers the narration and music, and exports a polished promotional short (30–90s). The final video is saved back to Google Drive and shared in Slack."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Request a revision",
+            "description": "Adjust tone, pacing, or emphasis",
+            "examplePrompt": "@Zero make the narration more conversational and cut 10 seconds from the middle section."
+          },
+          {
+            "title": "Repurpose for another channel",
+            "description": "Create a shorter cut for social media",
+            "examplePrompt": "@Zero create a 15-second teaser version of this video optimized for X/Twitter."
+          },
+          {
+            "title": "Make it routine",
+            "description": "Automate promo video production for every feature release",
+            "examplePrompt": "@Zero every Friday, check ‘Raw Recordings’ in Google Drive for new files and produce a 60-second promo for each. Post to #marketing-assets."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Zero receives your brief and delivers progress updates and the final video link through Slack."
+          },
+          {
+            "description": "Zero reads raw screen recordings from Google Drive and saves the finished promo video back to the same or a specified folder."
+          },
+          {
+            "description": "Optionally, Zero saves the narration script and video brief to Notion for your content archive and future reference."
+          }
+        ],
+        "tips": [
+          "Include a clear brief with your request: target audience, key message, and desired tone. The more specific you are, the tighter the first cut.",
+          "Organize recordings in a dedicated Google Drive folder per project or feature. Zero works best when the source folder is clean and focused.",
+          "Ask for a narration script review before the full render if you want to fine-tune the messaging first."
         ]
       },
       "seo-blog-writing": {

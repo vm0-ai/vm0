@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { initServices } from "../../../../src/lib/init-services";
-import { agentRuns } from "../../../../src/db/schema/agent-run";
+import { agentRuns } from "@vm0/db/schema/agent-run";
 import { sql } from "drizzle-orm";
 import { env } from "../../../../src/env";
 

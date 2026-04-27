@@ -1,6 +1,6 @@
 import "server-only";
 import { encode } from "gpt-tokenizer/encoding/o200k_base";
-import type { voiceChatSessions } from "../../../db/schema/voice-chat";
+import type { voiceChatSessions } from "@vm0/db/schema/voice-chat";
 import {
   buildFinishedTasksCompactedText,
   buildFinishedTasksFullText,

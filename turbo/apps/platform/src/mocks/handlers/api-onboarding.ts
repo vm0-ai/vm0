@@ -3,7 +3,7 @@ import {
   onboardingSetupContract,
   onboardingCompleteContract,
   type OnboardingStatusResponse,
-} from "@vm0/core/contracts/onboarding";
+} from "@vm0/api-contracts/contracts/onboarding";
 import { mockApi } from "../msw-contract.ts";
 
 const DEFAULT_ONBOARDING_STATUS: OnboardingStatusResponse = {

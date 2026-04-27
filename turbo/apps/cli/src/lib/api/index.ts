@@ -126,6 +126,9 @@ export {
   downloadSlackFile,
 } from "./domains/integrations-slack";
 
+// Domain modules - Integrations Telegram
+export { downloadTelegramFile } from "./domains/integrations-telegram";
+
 // Domain modules - Integrations Chat
 export { sendChatMessage } from "./domains/integrations-chat";
 
@@ -177,15 +180,6 @@ export {
   unregisterComputerUseHost,
   getComputerUseHost,
 } from "./domains/zero-computer-use";
-
-// Domain modules - Phone Calls
-export {
-  createPhoneCall,
-  listPhoneCalls,
-  getPhoneCallDetail,
-  type PhoneCall,
-  type TranscriptEntry,
-} from "./domains/phone-calls";
 
 // Domain modules - Web
 export { downloadWebFile, uploadWebFile } from "./domains/web";

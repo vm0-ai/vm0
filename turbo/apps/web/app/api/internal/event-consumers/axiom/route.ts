@@ -36,12 +36,25 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   });
 
   const axiomDataset = getDatasetName(DATASETS.AGENT_RUN_EVENTS);
-  ingestToAxiom(axiomDataset, axiomEvents);
+  const ingested = ingestToAxiom(axiomDataset, axiomEvents);
+  if (!ingested) {
+    return NextResponse.json(
+      { error: "Axiom agent-run-events dataset is not configured" },
+      { status: 503 },
+    );
+  }
   // Flush explicitly: this route uses NextResponse (not ts-rest-handler), so
   // flushAxiom() is not called automatically at the response boundary.
   // Without this, the SDK buffer is never flushed during this serverless
   // function's lifetime, and the CLI sees no events when polling Axiom.
-  await flushAxiom();
+  try {
+    await flushAxiom({ throwOnError: true, client: "sessions" });
+  } catch {
+    return NextResponse.json(
+      { error: "Axiom agent-run-events flush failed" },
+      { status: 503 },
+    );
+  }
 
   return NextResponse.json({ received: events.length });
 }

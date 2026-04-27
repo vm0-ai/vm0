@@ -10,7 +10,7 @@ import {
   PLACEHOLDER,
 } from "./chat-test-helpers.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
-import { chatThreadsContract } from "@vm0/core/contracts/chat-threads";
+import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -32,7 +32,10 @@ describe("chat title refresh", () => {
               id: "thread-test-1",
               title:
                 threadListFetchCount > 1 ? "AI Generated Title" : "Old Title",
-              agentId: "c0000000-0000-4000-a000-000000000001",
+              agent: {
+                id: "c0000000-0000-4000-a000-000000000001",
+                avatarUrl: null,
+              },
               createdAt: "2026-03-10T00:00:00Z",
               updatedAt: "2026-03-10T00:00:00Z",
               isRead: false,

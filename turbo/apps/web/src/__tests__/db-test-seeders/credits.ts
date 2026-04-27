@@ -1,21 +1,20 @@
 import { eq } from "drizzle-orm";
 import { randomBytes, randomUUID } from "crypto";
 import { initServices } from "../../lib/init-services";
-import { orgMetadata } from "../../db/schema/org-metadata";
-import { creditPricing } from "../../db/schema/credit-pricing";
-import { creditExpiresRecord } from "../../db/schema/credit-expires-record";
-import { creditUsage } from "../../db/schema/credit-usage";
-import { clientCreditUsage } from "../../db/schema/client-credit-usage";
-import { usageEvent } from "../../db/schema/usage-event";
-import { usagePricing } from "../../db/schema/usage-pricing";
-import { insightsDaily } from "../../db/schema/insights-daily";
-import { orgPromoRedemption } from "../../db/schema/org-promo-redemption";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { creditPricing } from "@vm0/db/schema/credit-pricing";
+import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
+import { creditUsage } from "@vm0/db/schema/credit-usage";
+import { usageEvent } from "@vm0/db/schema/usage-event";
+import { usagePricing } from "@vm0/db/schema/usage-pricing";
+import { insightsDaily } from "@vm0/db/schema/insights-daily";
+import { orgPromoRedemption } from "@vm0/db/schema/org-promo-redemption";
 import {
   agentComposes,
   agentComposeVersions,
-} from "../../db/schema/agent-compose";
-import { agentRuns } from "../../db/schema/agent-run";
-import { zeroRuns } from "../../db/schema/zero-run";
+} from "@vm0/db/schema/agent-compose";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { ensureTestAgentSession } from "./runs";
 import { grantOrgCredits } from "../../lib/zero/org/org-service";
 import {
@@ -257,13 +256,23 @@ export async function insertTestUsageEvent(
     quantity?: number;
     status?: string;
     creditsCharged?: number;
+    runId?: string | null;
     idempotencyKey?: string;
+    processedAt?: Date | null;
   },
 ): Promise<string> {
   initServices();
+  const processedAt =
+    options.processedAt !== undefined
+      ? options.processedAt
+      : options.status === "processed"
+        ? new Date()
+        : null;
+
   const [record] = await globalThis.services.db
     .insert(usageEvent)
     .values({
+      runId: options.runId ?? null,
       orgId,
       userId: options.userId ?? "test-user",
       kind: options.kind ?? "connector",
@@ -273,6 +282,7 @@ export async function insertTestUsageEvent(
       status: options.status ?? "pending",
       creditsCharged: options.creditsCharged ?? null,
       idempotencyKey: options.idempotencyKey ?? randomUUID(),
+      processedAt,
     })
     .returning({ id: usageEvent.id });
   return record!.id;
@@ -372,91 +382,6 @@ export async function insertTestCreditUsage(
       status: options.status ?? "pending",
       creditsCharged: options.creditsCharged ?? null,
       processedAt,
-    })
-    .returning();
-
-  return record!.id;
-}
-
-/**
- * Insert a client_credit_usage record for testing.
- * Creates the required compose, version, and run records as FK dependencies
- * unless a runId is provided.
- *
- * @why-db-direct Client credit usage records are created by agent event
- * webhooks. Tests need to seed specific client-side usage data with
- * controlled FK dependencies.
- */
-export async function insertTestClientCreditUsage(
-  orgId: string,
-  options: {
-    userId?: string;
-    runId?: string;
-    resultUuid?: string;
-    model?: string;
-    modelProvider?: string;
-    inputTokens?: number;
-    outputTokens?: number;
-    cacheReadInputTokens?: number;
-    cacheCreationInputTokens?: number;
-    webSearchRequests?: number;
-    costUsd?: string;
-  },
-): Promise<string> {
-  initServices();
-  const userId = options.userId ?? "test-user";
-
-  let runId = options.runId;
-  if (!runId) {
-    const composeName = `compose-${randomBytes(4).toString("hex")}`;
-    const [compose] = await globalThis.services.db
-      .insert(agentComposes)
-      .values({ userId, orgId, name: composeName })
-      .returning();
-
-    const versionId = randomBytes(32).toString("hex");
-    await globalThis.services.db.insert(agentComposeVersions).values({
-      id: versionId,
-      composeId: compose!.id,
-      content: {},
-      createdBy: userId,
-    });
-
-    const sessionId = await ensureTestAgentSession({
-      userId,
-      orgId,
-      agentComposeId: compose!.id,
-    });
-
-    const [run] = await globalThis.services.db
-      .insert(agentRuns)
-      .values({
-        userId,
-        orgId,
-        agentComposeVersionId: versionId,
-        prompt: "test",
-        status: "completed",
-        sessionId,
-      })
-      .returning();
-    runId = run!.id;
-  }
-
-  const [record] = await globalThis.services.db
-    .insert(clientCreditUsage)
-    .values({
-      runId,
-      resultUuid: options.resultUuid ?? null,
-      orgId,
-      userId,
-      model: options.model ?? "claude-3-5-sonnet-20241022",
-      modelProvider: options.modelProvider ?? "anthropic",
-      inputTokens: options.inputTokens ?? 100,
-      outputTokens: options.outputTokens ?? 50,
-      cacheReadInputTokens: options.cacheReadInputTokens ?? 0,
-      cacheCreationInputTokens: options.cacheCreationInputTokens ?? 0,
-      webSearchRequests: options.webSearchRequests ?? 0,
-      costUsd: options.costUsd ?? null,
     })
     .returning();
 
@@ -586,13 +511,11 @@ export async function seedInsightsDaily(
 
 /**
  * Create a completed run with a specific completedAt timestamp.
- * Used by proxy usage comparison tests that need to control the time window.
+ * Used by tests that need to control the completedAt time window.
  *
- * Also inserts a `zero_runs` row so the proxy-usage-comparison cron (which
- * filters to `zero_runs.modelProvider = "vm0"`) picks the run up.  The
- * optional `modelProvider` override lets tests simulate non-vm0 runs
- * (user-paid providers) or skip the `zero_runs` row entirely (plain agent
- * runs) by passing `null`.
+ * Also inserts a `zero_runs` row with a configurable modelProvider.  The
+ * optional override lets tests simulate non-vm0 runs (user-paid providers) or
+ * skip the `zero_runs` row entirely (plain agent runs) by passing `null`.
  *
  * @why-db-direct Run lifecycle is managed by the runner. Tests need precise
  * completedAt timestamp control for time-window queries.

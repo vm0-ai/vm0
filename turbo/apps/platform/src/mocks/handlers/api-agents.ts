@@ -1,23 +1,24 @@
 import {
   zeroTeamContract,
   type TeamComposeItem,
-} from "@vm0/core/contracts/zero-team";
+} from "@vm0/api-contracts/contracts/zero-team";
 import {
   zeroComposesListContract,
   zeroComposesByIdContract,
-} from "@vm0/core/contracts/zero-composes";
-import { zeroUserConnectorsContract } from "@vm0/core/contracts/user-connectors";
+} from "@vm0/api-contracts/contracts/zero-composes";
+import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import {
   zeroAgentsByIdContract,
   zeroAgentInstructionsContract,
-} from "@vm0/core/contracts/zero-agents";
+} from "@vm0/api-contracts/contracts/zero-agents";
 import {
   chatThreadsContract,
   chatThreadByIdContract,
   chatThreadMarkReadContract,
   chatThreadMessagesContract,
-} from "@vm0/core/contracts/chat-threads";
-import type { ComposeListItem } from "@vm0/core/contracts/composes";
+  chatThreadArtifactsContract,
+} from "@vm0/api-contracts/contracts/chat-threads";
+import type { ComposeListItem } from "@vm0/api-contracts/contracts/composes";
 import { mockApi } from "../msw-contract.ts";
 
 const DEFAULT_TEAM: TeamComposeItem[] = [
@@ -143,6 +144,11 @@ export const apiAgentsHandlers = [
     return respond(200, { messages: [] });
   }),
 
+  // GET /api/zero/chat-threads/:threadId/artifacts
+  mockApi(chatThreadArtifactsContract.list, ({ respond }) => {
+    return respond(200, { runs: [] });
+  }),
+
   // GET /api/zero/chat-threads/:id (thread detail)
   mockApi(chatThreadByIdContract.get, ({ respond }) => {
     return respond(200, {
@@ -166,6 +172,6 @@ export const apiAgentsHandlers = [
 
   // POST /api/zero/chat-threads/:id/mark-read
   mockApi(chatThreadMarkReadContract.markRead, ({ respond }) => {
-    return respond(200, { lastReadAt: new Date().toISOString() });
+    return respond(200, { lastReadMessageId: null, changed: false });
   }),
 ];

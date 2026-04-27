@@ -3,9 +3,9 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../../src/lib/ts-rest-handler";
-import { webhookHeartbeatContract } from "@vm0/core/contracts/webhooks";
+import { webhookHeartbeatContract } from "@vm0/api-contracts/contracts/webhooks";
 import { initServices } from "../../../../../src/lib/init-services";
-import { agentRuns } from "../../../../../src/db/schema/agent-run";
+import { agentRuns } from "@vm0/db/schema/agent-run";
 import { eq, and } from "drizzle-orm";
 import { getSandboxAuthForRun } from "../../../../../src/lib/auth/get-sandbox-auth";
 import { dispatchProgressCallbacks } from "../../../../../src/lib/infra/callback";

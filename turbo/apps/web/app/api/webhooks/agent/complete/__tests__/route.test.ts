@@ -30,6 +30,10 @@ import { generateReplyToken } from "../../../../../../src/lib/zero/email/handler
 import { createTestZeroAgent } from "../../../../../../src/__tests__/db-test-seeders/agents";
 import { reloadEnv } from "../../../../../../src/env";
 import {
+  nextAfterCallbacks,
+  resetNextAfterHooks,
+} from "../../../../../../src/__tests__/next-after-hooks";
+import {
   testContext,
   uniqueId,
   type UserContext,
@@ -49,6 +53,8 @@ describe("POST /api/webhooks/agent/complete", () => {
   let testToken: string;
 
   beforeEach(async () => {
+    vi.stubEnv("AXIOM_TOKEN_SESSIONS", "test-sessions-token");
+    reloadEnv();
     context.setupMocks();
     user = await context.setupUser();
 
@@ -66,6 +72,35 @@ describe("POST /api/webhooks/agent/complete", () => {
     // Reset auth mock for webhook tests (which use token auth, not Clerk)
     mockClerk({ userId: null });
   });
+
+  async function createCheckpoint(runId = testRunId, token = testToken) {
+    const checkpointRequest = createTestRequest(
+      "http://localhost:3000/api/webhooks/agent/checkpoints",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          runId,
+          cliAgentType: "claude-code",
+          cliAgentSessionId: "test-session",
+          cliAgentSessionHistoryHash:
+            "ec3ac9679505be3bb8233c4ef0b39c8ee206d2c37fc8610edc19f41fbfb9661e",
+          artifactSnapshots: [
+            {
+              name: "test-artifact",
+              version: "v1",
+              mountPath: "/home/user/workspace",
+            },
+          ],
+        }),
+      },
+    );
+    const checkpointResponse = await checkpointWebhook(checkpointRequest);
+    expect(checkpointResponse.status).toBe(200);
+  }
 
   describe("Authentication", () => {
     it("should reject complete without authentication", async () => {
@@ -135,6 +170,30 @@ describe("POST /api/webhooks/agent/complete", () => {
       expect(response.status).toBe(400);
       const data = await response.json();
       expect(data.error.message).toContain("exitCode");
+    });
+
+    it("should reject negative lastEventSequence", async () => {
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/complete",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            exitCode: 0,
+            lastEventSequence: -1,
+          }),
+        },
+      );
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error.message).toContain("lastEventSequence");
     });
   });
 
@@ -214,28 +273,7 @@ describe("POST /api/webhooks/agent/complete", () => {
   describe("Success", () => {
     it("should handle successful completion (exitCode=0)", async () => {
       // Create checkpoint first (required for successful completion)
-      const checkpointRequest = createTestRequest(
-        "http://localhost:3000/api/webhooks/agent/checkpoints",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${testToken}`,
-          },
-          body: JSON.stringify({
-            runId: testRunId,
-            cliAgentType: "claude-code",
-            cliAgentSessionId: "test-session",
-            cliAgentSessionHistoryHash:
-              "ec3ac9679505be3bb8233c4ef0b39c8ee206d2c37fc8610edc19f41fbfb9661e",
-            artifactSnapshots: {
-              "test-artifact": "v1",
-            },
-          }),
-        },
-      );
-      const checkpointResponse = await checkpointWebhook(checkpointRequest);
-      expect(checkpointResponse.status).toBe(200);
+      await createCheckpoint();
 
       // Now complete the run
       const request = createTestRequest(
@@ -261,14 +299,20 @@ describe("POST /api/webhooks/agent/complete", () => {
       expect(data.status).toBe("completed");
     });
 
-    it("should surface full artifact map in result when checkpoint has artifactSnapshots", async () => {
-      const artifactSnapshots = {
-        "frontend-build": "v-frontend-1",
-        "backend-build": "v-backend-2",
-      };
+    it("should wait for the lastEventSequence prefix before successful completion", async () => {
+      await createCheckpoint();
+      context.mocks.axiom.queryAxiom
+        .mockResolvedValueOnce([
+          { _time: "2026-01-01T00:00:00.000Z", sequenceNumber: 0 },
+          { _time: "2026-01-01T00:00:00.000Z", sequenceNumber: 2 },
+        ])
+        .mockResolvedValueOnce([
+          { _time: "2026-01-01T00:00:00.000Z", sequenceNumber: 1 },
+          { _time: "2026-01-01T00:00:00.000Z", sequenceNumber: 2 },
+        ]);
 
-      const checkpointRequest = createTestRequest(
-        "http://localhost:3000/api/webhooks/agent/checkpoints",
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/complete",
         {
           method: "POST",
           headers: {
@@ -277,16 +321,55 @@ describe("POST /api/webhooks/agent/complete", () => {
           },
           body: JSON.stringify({
             runId: testRunId,
-            cliAgentType: "claude-code",
-            cliAgentSessionId: "multi-artifact-complete",
-            cliAgentSessionHistoryHash:
-              "ec3ac9679505be3bb8233c4ef0b39c8ee206d2c37fc8610edc19f41fbfb9661e",
-            artifactSnapshots,
+            exitCode: 0,
+            lastEventSequence: 2,
           }),
         },
       );
-      const checkpointResponse = await checkpointWebhook(checkpointRequest);
-      expect(checkpointResponse.status).toBe(200);
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      const run = await findTestRunRecord(testRunId);
+      expect(run!.status).toBe("completed");
+      expect(context.mocks.axiom.queryAxiom).toHaveBeenCalledTimes(2);
+      expect(context.mocks.axiom.queryAxiom).toHaveBeenCalledWith(
+        expect.stringContaining(`runId == "${testRunId}"`),
+        { maxRetries: 0 },
+      );
+    });
+
+    it("should fail open when Axiom visibility query fails", async () => {
+      await createCheckpoint();
+      context.mocks.axiom.queryAxiom.mockRejectedValueOnce(
+        new Error("axiom unavailable"),
+      );
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/complete",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            exitCode: 0,
+            lastEventSequence: 0,
+          }),
+        },
+      );
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      const run = await findTestRunRecord(testRunId);
+      expect(run!.status).toBe("completed");
+    });
+
+    it("should skip the Axiom visibility barrier when watermark is absent", async () => {
+      await createCheckpoint();
 
       const request = createTestRequest(
         "http://localhost:3000/api/webhooks/agent/complete",
@@ -304,12 +387,9 @@ describe("POST /api/webhooks/agent/complete", () => {
       );
 
       const response = await POST(request);
-      expect(response.status).toBe(200);
 
-      const run = await findTestRunRecord(testRunId);
-      expect(run!.status).toBe("completed");
-      const result = run!.result as { artifact?: Record<string, string> };
-      expect(result.artifact).toEqual(artifactSnapshots);
+      expect(response.status).toBe(200);
+      expect(context.mocks.axiom.queryAxiom).not.toHaveBeenCalled();
     });
 
     it("should project array-shape artifactSnapshots to Record in result.artifact", async () => {
@@ -447,6 +527,35 @@ describe("POST /api/webhooks/agent/complete", () => {
       const run = await findTestRunRecord(runId);
       expect(run!.error).not.toContain("Agent crashed with custom message");
       expect(run!.error).toContain(`/runs/${runId}/report-error`);
+    });
+
+    it("should not wait for Axiom visibility on failed completion", async () => {
+      const { runId } = await seedTestRun(user.userId, testComposeId, {
+        status: "running",
+        prompt: "Test prompt",
+      });
+      const token = await createTestSandboxToken(user.userId, runId);
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/complete",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            runId,
+            exitCode: 1,
+            lastEventSequence: 0,
+          }),
+        },
+      );
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      expect(context.mocks.axiom.queryAxiom).not.toHaveBeenCalled();
     });
   });
 
@@ -635,7 +744,10 @@ describe("POST /api/webhooks/agent/complete", () => {
       expect(capturedBody!.error).toContain(`/runs/${testRunId}/report-error`);
     });
 
-    it("should register only one after() callback for dispatch", async () => {
+    it("should register an after() callback for dispatch", async () => {
+      // Clear callbacks accumulated by fixture setup and earlier API helpers.
+      resetNextAfterHooks();
+
       // When a non-scheduled run completes (testRunId has no callbacks)
       const request = createTestRequest(
         "http://localhost:3000/api/webhooks/agent/complete",
@@ -655,8 +767,8 @@ describe("POST /api/webhooks/agent/complete", () => {
       const response = await POST(request);
       expect(response.status).toBe(200);
 
-      // Only one after() callback: dispatchCallbacks
-      expect(globalThis.nextAfterCallbacks).toHaveLength(1);
+      // The route registers dispatchCallbacks; ts-rest may also queue telemetry.
+      expect(nextAfterCallbacks.length).toBeGreaterThanOrEqual(1);
       await context.mocks.flushAfter();
     });
 
@@ -1083,9 +1195,13 @@ describe("POST /api/webhooks/agent/complete", () => {
               cliAgentSessionId: "recovery-session",
               cliAgentSessionHistoryHash:
                 "ec3ac9679505be3bb8233c4ef0b39c8ee206d2c37fc8610edc19f41fbfb9661e",
-              artifactSnapshots: {
-                "recovery-artifact": "v1",
-              },
+              artifactSnapshots: [
+                {
+                  name: "recovery-artifact",
+                  version: "v1",
+                  mountPath: "/home/user/workspace",
+                },
+              ],
             }),
           },
         ),

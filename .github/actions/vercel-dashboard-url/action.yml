@@ -28,7 +28,12 @@ runs:
         HOSTNAME=$(echo "$DEPLOYMENT_URL" | sed 's|https://||')
 
         # Query Vercel API to get deployment details
-        RESPONSE=$(curl -sf -H "Authorization: Bearer $VERCEL_TOKEN" \
+        RESPONSE=$(curl -sf \
+          --retry 5 \
+          --retry-delay 2 \
+          --retry-max-time 60 \
+          --retry-all-errors \
+          -H "Authorization: Bearer $VERCEL_TOKEN" \
           "https://api.vercel.com/v13/deployments/$HOSTNAME" 2>/dev/null) || true
 
         if [ -n "$RESPONSE" ]; then

@@ -2,12 +2,16 @@ import { command, computed, state } from "ccstate";
 import {
   zeroVoiceIoQuotaContract,
   type AudioInputQuotaResponse,
-} from "@vm0/core/contracts/zero-voice-io-quota";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+} from "@vm0/api-contracts/contracts/zero-voice-io-quota";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import { fetch$ } from "../fetch.ts";
 import { zeroClient$ } from "../api-client.ts";
-import { setBillingDialogOpen$ } from "../zero-page/billing.ts";
+import {
+  setActiveOrgManageTab$,
+  setBillingSubPage$,
+} from "../zero-page/settings/org-manage-tabs-state.ts";
+import { setOrgManageDialogOpen$ } from "../zero-page/settings/org-manage-dialog.ts";
 import { logger } from "../log.ts";
 import { createDeferredPromise } from "../utils.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
@@ -219,7 +223,9 @@ export const stopAndTranscribe$ = command(
           } | null;
           if (body?.error?.code === "AUDIO_INPUT_QUOTA_EXCEEDED") {
             set(refreshAudioInputQuota$);
-            set(setBillingDialogOpen$, true);
+            set(setActiveOrgManageTab$, "billing");
+            set(setBillingSubPage$, true);
+            await set(setOrgManageDialogOpen$, true, signal);
             set(resetState$);
             return "";
           }

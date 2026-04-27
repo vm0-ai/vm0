@@ -21,7 +21,9 @@ import { resetMockBilling } from "../../../mocks/handlers/api-billing.ts";
 import { pathname } from "../../../signals/location.ts";
 import { setIsScrolled$ } from "../../../signals/zero-page/zero-sidebar-state.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
-import { chatThreadsContract } from "@vm0/core/contracts/chat-threads";
+import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
+import { createDeferredPromise } from "../../../signals/utils.ts";
+import { setChatAgentId$ } from "../../../signals/agent-chat.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -36,7 +38,7 @@ function makeThread(
 ): {
   id: string;
   title: string;
-  agentId: string;
+  agent: { id: string; avatarUrl: string | null };
   createdAt: string;
   updatedAt: string;
   isRead: boolean;
@@ -46,7 +48,7 @@ function makeThread(
   return {
     id,
     title,
-    agentId: DEFAULT_AGENT_ID,
+    agent: { id: DEFAULT_AGENT_ID, avatarUrl: null },
     createdAt,
     updatedAt: createdAt,
     isRead: false,
@@ -83,7 +85,7 @@ function mockBaseAPIs(options?: {
   threads?: {
     id: string;
     title: string;
-    agentId: string;
+    agent: { id: string; avatarUrl: string | null };
     createdAt: string;
     updatedAt: string;
     isRead: boolean;
@@ -117,13 +119,16 @@ beforeEach(() => {
 });
 
 describe("zero sidebar - chat session list collapses and expands (SIDEBAR-D-011)", () => {
-  it("toggles chat thread list visibility when Chats header is clicked", async () => {
+  it("toggles chat thread list visibility when Chats with Zero header is clicked", async () => {
     mockBaseAPIs({
       threads: [
         makeThread("thread-1", "Deploy to prod", "2026-03-10T00:00:00Z"),
       ],
     });
-    detachedSetupPage({ context, path: "/" });
+    detachedSetupPage({
+      context,
+      path: "/",
+    });
 
     // Wait for thread to appear
     await waitFor(() => {
@@ -131,7 +136,7 @@ describe("zero sidebar - chat session list collapses and expands (SIDEBAR-D-011)
     });
 
     // Collapse: click the "Chats with Zero" header span
-    const chatsHeader = screen.getByText(/Chats with/);
+    const chatsHeader = screen.getByText("Chats with Zero");
     click(chatsHeader);
 
     // Thread list should be hidden
@@ -261,6 +266,53 @@ describe("zero sidebar - settings button navigates to settings (SIDEBAR-D-025)",
     await waitFor(() => {
       expect(pathname()).toBe("/settings");
     });
+  });
+});
+
+describe("zero sidebar - chat section stable during agent id reload (SIDEBAR-D-066)", () => {
+  it("keeps chat thread list visible when currentChatAgentId$ briefly re-enters loading state", async () => {
+    mockBaseAPIs({
+      threads: [
+        makeThread("thread-1", "Deploy to prod", "2026-03-10T00:00:00Z"),
+      ],
+    });
+    detachedSetupPage({ context, path: "/" });
+
+    // Wait for thread to appear in the sidebar
+    await waitFor(() => {
+      expect(
+        screen.getByRole("navigation", { name: "Sidebar" }),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Deploy to prod")).toBeInTheDocument();
+    });
+
+    // Make the chat-threads API hang so any re-mount of ChatThreadsSection
+    // (which triggers a fresh chatThreads$ fetch) would show skeleton while
+    // waiting. Resolved after assertions for clean test teardown.
+    const hangDeferred = createDeferredPromise<void>(context.signal);
+    server.use(
+      mockApi(chatThreadsContract.list, async ({ respond }) => {
+        await hangDeferred.promise;
+        return respond(200, { threads: [] });
+      }),
+    );
+
+    // Simulate what setupChatPage does: update the internal agent id, which
+    // briefly drives currentChatAgentId$ through a loading state. With
+    // useLastResolved in ChatThreadsSectionWithKey the key stays stable and
+    // ChatThreadsSection is never remounted, so the thread list must remain
+    // visible without any skeleton appearing.
+    context.store.set(setChatAgentId$, DEFAULT_AGENT_ID);
+
+    // The thread text must remain visible and no skeleton should appear.
+    await waitFor(() => {
+      const nav = screen.getByRole("navigation", { name: "Sidebar" });
+      expect(nav.querySelectorAll(".animate-pulse")).toHaveLength(0);
+      expect(screen.getByText("Deploy to prod")).toBeInTheDocument();
+    });
+
+    // Resolve so the hanging handler finishes cleanly for afterEach.
+    hangDeferred.resolve();
   });
 });
 

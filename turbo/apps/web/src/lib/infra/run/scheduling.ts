@@ -1,5 +1,5 @@
 import { and, eq, gt } from "drizzle-orm";
-import { runnerState } from "../../../db/schema/runner-state";
+import { runnerState } from "@vm0/db/schema/runner-state";
 
 const STALE_THRESHOLD_MS = 60_000;
 

@@ -1,9 +1,10 @@
 """Webhook delivery (HTTP + thread pool).
 
-Background thread pool processes usage reports in parallel; ``done()``
-flushes pending items before mitmproxy exits (SIGKILL at 15 s is the
-hard stop).  Falls back to synchronous delivery if the executor has been
-shut down (drain/shutdown race) so reports are not silently lost.
+Background thread pool processes usage reports in parallel; the runner
+first waits for the pending counters to drain, then ``done()`` flushes
+submitted futures during mitmproxy shutdown.  Falls back to synchronous
+delivery if the executor has been shut down (drain/shutdown race) so
+reports are not silently lost.
 """
 
 import json

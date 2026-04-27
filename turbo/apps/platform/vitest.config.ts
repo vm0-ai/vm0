@@ -26,8 +26,8 @@ export default defineConfig({
     globals: true,
     environment: "happy-dom",
     setupFiles: ["./src/test/setup.ts"],
+    clearMocks: true,
     restoreMocks: true,
-    maxWorkers: 4,
-    minWorkers: 1,
+    unstubGlobals: true,
   },
 });

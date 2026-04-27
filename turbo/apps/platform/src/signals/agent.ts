@@ -9,13 +9,19 @@ import { command, computed, type Computed, state } from "ccstate";
 import {
   zeroAgentsByIdContract,
   type ZeroAgentResponse,
-} from "@vm0/core/contracts/zero-agents";
-import { zeroTeamContract } from "@vm0/core/contracts/zero-team";
+} from "@vm0/api-contracts/contracts/zero-agents";
+import { zeroTeamContract } from "@vm0/api-contracts/contracts/zero-team";
 import { pathParams$ } from "./route.ts";
 import { activeRoute$ } from "./active-route.ts";
 import { zeroOnboardingStatus$ } from "./zero-page/zero-onboarding.ts";
 import { zeroClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";
+import { localStorageSignals } from "./external/local-storage.ts";
+
+const LAST_USED_AGENT_STORAGE_KEY = "zero.lastUsedAgentId";
+
+const { get$: lastUsedAgentIdRaw$, set$: setLastUsedAgentIdRaw$ } =
+  localStorageSignals(LAST_USED_AGENT_STORAGE_KEY);
 
 export const defaultAgentId$ = computed(async (get) => {
   const status = await get(zeroOnboardingStatus$);
@@ -36,7 +42,9 @@ function createAgentByIdFactory(): (
     const atom$ = computed(async (get) => {
       get(internalAgentByIdReload$);
       const client = get(zeroClient$)(zeroAgentsByIdContract);
-      const result = await accept(client.get({ params: { id } }), [200]);
+      const result = await accept(client.get({ params: { id } }), [200], {
+        toast: false,
+      });
       return result.body;
     });
     cache.set(id, atom$);
@@ -90,6 +98,15 @@ export const currentAgent$ = computed((get) => {
   return get(agentById(agentId));
 });
 
+export const lastUsedAgentId$ = computed((get) => {
+  const value = get(lastUsedAgentIdRaw$);
+  return typeof value === "string" && value.length > 0 ? value : null;
+});
+
+export const rememberLastUsedAgentId$ = command(({ set }, agentId: string) => {
+  set(setLastUsedAgentIdRaw$, agentId);
+});
+
 const internalReloadAgents$ = state(0);
 
 /** All agents in the user's org (from /api/zero/team). */
@@ -98,6 +115,24 @@ export const agents$ = computed(async (get) => {
   const zeroClient = get(zeroClient$)(zeroTeamContract);
   const result = await accept(zeroClient.list(), [200]);
   return result.body;
+});
+
+export const homeAgentId$ = computed(async (get) => {
+  const lastUsedAgentId = get(lastUsedAgentId$);
+  if (!lastUsedAgentId) {
+    return await get(defaultAgentId$);
+  }
+
+  const agents = await get(agents$);
+  if (
+    agents.some((agent) => {
+      return agent.id === lastUsedAgentId;
+    })
+  ) {
+    return lastUsedAgentId;
+  }
+
+  return await get(defaultAgentId$);
 });
 
 export const sortedAgents$ = computed(async (get) => {

@@ -10,7 +10,7 @@ import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
   chatThreadsContract,
   chatThreadByIdContract,
-} from "@vm0/core/contracts/chat-threads";
+} from "@vm0/api-contracts/contracts/chat-threads";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -46,7 +46,7 @@ function mockAgentsWithThreads() {
           {
             id: THREAD_ID,
             title: "My test conversation",
-            agentId: "agent-alpha",
+            agent: { id: "agent-alpha", avatarUrl: null },
             createdAt: "2026-03-10T00:00:00Z",
             updatedAt: "2026-03-10T00:00:00Z",
             isRead: false,

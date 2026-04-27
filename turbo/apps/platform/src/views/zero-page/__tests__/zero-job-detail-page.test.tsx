@@ -7,16 +7,17 @@ import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
   zeroAgentsByIdContract,
   zeroAgentInstructionsContract,
-} from "@vm0/core/contracts/zero-agents";
+} from "@vm0/api-contracts/contracts/zero-agents";
 import {
   zeroSchedulesByNameContract,
   zeroSchedulesEnableContract,
-} from "@vm0/core/contracts/zero-schedules";
+} from "@vm0/api-contracts/contracts/zero-schedules";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 import {
   setMockSchedules,
   createMockScheduleResponse,
 } from "../../../mocks/handlers/api-schedules.ts";
+import { pathname, search } from "../../../signals/location.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -120,7 +121,7 @@ describe("zero job detail page", () => {
     });
   });
 
-  it("should show not-found error for unknown agent", async () => {
+  it("should redirect unknown agent to the default agent", async () => {
     setMockTeam([
       {
         id: "c0000000-0000-4000-a000-000000000001",
@@ -133,17 +134,30 @@ describe("zero job detail page", () => {
       },
     ]);
     server.use(
-      mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
+      mockApi(zeroAgentsByIdContract.get, ({ params, respond }) => {
+        if (params.id === "c0000000-0000-4000-a000-000000000001") {
+          return respond(200, {
+            agentId: "c0000000-0000-4000-a000-000000000001",
+            ownerId: "test-owner-id",
+            description: null,
+            displayName: "Zero",
+            sound: null,
+            avatarUrl: null,
+            permissionPolicies: null,
+            customSkills: [],
+          });
+        }
         return respond(404, {
           error: { message: "Not found", code: "INTERNAL_SERVER_ERROR" },
         });
       }),
     );
 
-    detachedSetupPage({ context, path: "/agents/nonexistent" });
+    detachedSetupPage({ context, path: "/agents/nonexistent?tab=schedule" });
 
     await waitFor(() => {
-      expect(screen.getByText("Agent not found")).toBeInTheDocument();
+      expect(pathname()).toBe("/agents/c0000000-0000-4000-a000-000000000001");
+      expect(search()).toBe("?tab=schedule");
     });
   });
 

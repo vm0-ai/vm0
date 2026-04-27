@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
-import type { StoredExecutionContext } from "@vm0/core/contracts/runners";
+import type { StoredExecutionContext } from "@vm0/api-contracts/contracts/runners";
 import { initServices } from "../../lib/init-services";
-import { runnerJobQueue } from "../../db/schema/runner-job-queue";
+import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 
 /**
  * Find a runner job queue entry by run ID.

@@ -2,11 +2,11 @@ import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
 import {
   storagesPrepareContract,
   MAX_FILE_SIZE_BYTES,
-} from "@vm0/core/contracts/storages";
+} from "@vm0/api-contracts/contracts/storages";
 import { VOLUME_ORG_USER_ID } from "@vm0/core/storage-names";
 import { initServices } from "../../../../src/lib/init-services";
-import { agentRuns } from "../../../../src/db/schema/agent-run";
-import { storages, storageVersions } from "../../../../src/db/schema/storage";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { eq, and } from "drizzle-orm";
 import {
   requireAuth,

@@ -1,9 +1,9 @@
 import { and, eq } from "drizzle-orm";
 import { initServices } from "../../lib/init-services";
-import { secrets } from "../../db/schema/secret";
-import { connectors } from "../../db/schema/connector";
-import { userConnectors } from "../../db/schema/user-connector";
-import { userPlatformConnectors } from "../../db/schema/user-platform-connector";
+import { secrets } from "@vm0/db/schema/secret";
+import { connectors } from "@vm0/db/schema/connector";
+import { userConnectors } from "@vm0/db/schema/user-connector";
+import { userPlatformConnectors } from "@vm0/db/schema/user-platform-connector";
 import { decryptSecretValue } from "../../lib/shared/crypto/secrets-encryption";
 
 // ---------------------------------------------------------------------------

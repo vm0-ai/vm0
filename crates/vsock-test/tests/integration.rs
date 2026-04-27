@@ -291,7 +291,7 @@ async fn test_spawn_watch() {
     let h = Harness::new().await;
 
     let (pid, _stdout_rx) = h
-        .spawn_watch("echo done", 5000, &[], false, None)
+        .spawn_watch("echo done", 5000, &[], false, false, None)
         .await
         .expect("spawn_watch failed");
     assert!(pid > 0);
@@ -312,7 +312,7 @@ async fn test_spawn_watch_exit_code() {
     let h = Harness::new().await;
 
     let (pid, _stdout_rx) = h
-        .spawn_watch("exit 42", 5000, &[], false, None)
+        .spawn_watch("exit 42", 5000, &[], false, false, None)
         .await
         .expect("spawn_watch failed");
 
@@ -330,7 +330,7 @@ async fn test_spawn_watch_stderr() {
     let h = Harness::new().await;
 
     let (pid, _stdout_rx) = h
-        .spawn_watch("echo error >&2 && exit 1", 5000, &[], false, None)
+        .spawn_watch("echo error >&2 && exit 1", 5000, &[], false, false, None)
         .await
         .expect("spawn_watch failed");
 
@@ -349,7 +349,14 @@ async fn test_spawn_watch_both_stdout_stderr() {
     let h = Harness::new().await;
 
     let (pid, _stdout_rx) = h
-        .spawn_watch("echo out && echo err >&2 && exit 2", 5000, &[], false, None)
+        .spawn_watch(
+            "echo out && echo err >&2 && exit 2",
+            5000,
+            &[],
+            false,
+            false,
+            None,
+        )
         .await
         .expect("spawn_watch failed");
 
@@ -369,7 +376,7 @@ async fn test_spawn_watch_no_output() {
     let h = Harness::new().await;
 
     let (pid, _stdout_rx) = h
-        .spawn_watch("true", 5000, &[], false, None)
+        .spawn_watch("true", 5000, &[], false, false, None)
         .await
         .expect("spawn_watch failed");
 
@@ -390,11 +397,11 @@ async fn test_spawn_watch_concurrent() {
 
     // Spawn two processes — second finishes first
     let (pid1, _rx1) = h
-        .spawn_watch("sleep 0.1 && echo first", 5000, &[], false, None)
+        .spawn_watch("sleep 0.1 && echo first", 5000, &[], false, false, None)
         .await
         .expect("spawn_watch 1 failed");
     let (pid2, _rx2) = h
-        .spawn_watch("echo second", 5000, &[], false, None)
+        .spawn_watch("echo second", 5000, &[], false, false, None)
         .await
         .expect("spawn_watch 2 failed");
 
@@ -429,7 +436,7 @@ async fn test_exec_while_waiting_for_exit() {
     // Spawn a long-running process. Use `exec` to replace the shell so the
     // PID we get is the actual sleep process (same pattern as sigterm/sigkill tests).
     let (pid, _stdout_rx) = h
-        .spawn_watch("exec sleep 60", 0, &[], false, None)
+        .spawn_watch("exec sleep 60", 0, &[], false, false, None)
         .await
         .expect("spawn_watch failed");
 
@@ -471,7 +478,7 @@ async fn test_spawn_watch_timeout() {
     let h = Harness::new().await;
 
     let (pid, _stdout_rx) = h
-        .spawn_watch("sleep 10", 100, &[], false, None)
+        .spawn_watch("sleep 10", 100, &[], false, false, None)
         .await
         .expect("spawn_watch failed");
 
@@ -490,7 +497,7 @@ async fn test_spawn_watch_cached_exit() {
     let h = Harness::new().await;
 
     let (pid, _stdout_rx) = h
-        .spawn_watch("echo cached", 5000, &[], false, None)
+        .spawn_watch("echo cached", 5000, &[], false, false, None)
         .await
         .expect("spawn_watch failed");
 
@@ -516,7 +523,14 @@ async fn test_spawn_watch_multiline() {
     let h = Harness::new().await;
 
     let (pid, _stdout_rx) = h
-        .spawn_watch("printf 'line1\\nline2\\nline3\\n'", 5000, &[], false, None)
+        .spawn_watch(
+            "printf 'line1\\nline2\\nline3\\n'",
+            5000,
+            &[],
+            false,
+            false,
+            None,
+        )
         .await
         .expect("spawn_watch failed");
 
@@ -540,6 +554,7 @@ async fn test_spawn_watch_large_output() {
             5000,
             &[],
             false,
+            false,
             None,
         )
         .await
@@ -560,7 +575,7 @@ async fn test_spawn_watch_delayed_output() {
     let h = Harness::new().await;
 
     let (pid, _stdout_rx) = h
-        .spawn_watch("sleep 0.2 && echo delayed", 5000, &[], false, None)
+        .spawn_watch("sleep 0.2 && echo delayed", 5000, &[], false, false, None)
         .await
         .expect("spawn_watch failed");
 
@@ -580,7 +595,7 @@ async fn test_spawn_watch_sigterm() {
 
     // Use `exec` to replace shell so the PID we get is the actual sleep process
     let (pid, _stdout_rx) = h
-        .spawn_watch("exec sleep 60", 0, &[], false, None)
+        .spawn_watch("exec sleep 60", 0, &[], false, false, None)
         .await
         .expect("spawn_watch failed");
 
@@ -608,7 +623,7 @@ async fn test_spawn_watch_sigkill() {
     let h = Harness::new().await;
 
     let (pid, _stdout_rx) = h
-        .spawn_watch("exec sleep 60", 0, &[], false, None)
+        .spawn_watch("exec sleep 60", 0, &[], false, false, None)
         .await
         .expect("spawn_watch failed");
 
@@ -637,7 +652,7 @@ async fn test_spawn_watch_rapid_multiple() {
     let mut pids = Vec::new();
     for i in 0..5 {
         let (pid, _rx) = h
-            .spawn_watch(&format!("echo p{i}"), 5000, &[], false, None)
+            .spawn_watch(&format!("echo p{i}"), 5000, &[], false, false, None)
             .await
             .expect("spawn_watch failed");
         pids.push(pid);
@@ -664,7 +679,14 @@ async fn test_spawn_watch_nonexistent_command() {
     let h = Harness::new().await;
 
     let (pid, _stdout_rx) = h
-        .spawn_watch("nonexistent_command_12345 2>&1", 5000, &[], false, None)
+        .spawn_watch(
+            "nonexistent_command_12345 2>&1",
+            5000,
+            &[],
+            false,
+            false,
+            None,
+        )
         .await
         .expect("spawn_watch failed");
 
@@ -694,6 +716,7 @@ async fn test_spawn_watch_unicode() {
             5000,
             &[],
             false,
+            false,
             None,
         )
         .await
@@ -721,6 +744,7 @@ async fn test_spawn_watch_interleaved_output() {
             "echo out1 && echo err1 >&2 && echo out2 && echo err2 >&2",
             5000,
             &[],
+            false,
             false,
             None,
         )
@@ -913,6 +937,7 @@ async fn test_spawn_watch_with_env() {
             5000,
             &[("GREETING", "hi_from_env")],
             false,
+            false,
             None,
         )
         .await
@@ -940,7 +965,7 @@ async fn test_spawn_watch_stdout_streaming() {
     let log_path = log_file.to_string_lossy().to_string();
 
     let (pid, mut stdout_rx) = h
-        .spawn_watch("echo hello_stream", 5000, &[], false, Some(&log_path))
+        .spawn_watch("echo hello_stream", 5000, &[], false, true, Some(&log_path))
         .await
         .expect("spawn_watch failed");
 
@@ -979,6 +1004,47 @@ async fn test_spawn_watch_stdout_streaming() {
     h.finish();
 }
 
+/// Streaming can be enabled without a guest-side tee file.
+#[tokio::test]
+async fn test_spawn_watch_stdout_stream_only() {
+    let h = Harness::new().await;
+
+    let existing_guest_log = h.dir.join("stream_only_guest.log");
+    std::fs::write(&existing_guest_log, "preexisting\n").unwrap();
+
+    let (pid, mut stdout_rx) = h
+        .spawn_watch("echo stream_only", 5000, &[], false, true, None)
+        .await
+        .expect("spawn_watch failed");
+
+    let mut streamed = Vec::new();
+    let event = loop {
+        tokio::select! {
+            biased;
+            chunk = stdout_rx.recv() => {
+                match chunk {
+                    Some(data) => streamed.extend_from_slice(&data),
+                    None => break h.wait_for_exit(pid, Duration::from_secs(5)).await.expect("wait failed"),
+                }
+            }
+            event = h.wait_for_exit(pid, Duration::from_secs(5)) => {
+                while let Ok(data) = stdout_rx.try_recv() {
+                    streamed.extend_from_slice(&data);
+                }
+                break event.expect("wait failed");
+            }
+        }
+    };
+
+    assert_eq!(event.exit_code, 0);
+    assert!(event.stdout.is_empty());
+    assert_eq!(String::from_utf8_lossy(&streamed).trim(), "stream_only");
+    let log_content = std::fs::read_to_string(&existing_guest_log).unwrap();
+    assert_eq!(log_content, "preexisting\n");
+
+    h.finish();
+}
+
 /// Streaming with multiple chunks (large output).
 #[tokio::test]
 async fn test_spawn_watch_stdout_streaming_large() {
@@ -994,6 +1060,7 @@ async fn test_spawn_watch_stdout_streaming_large() {
             5000,
             &[],
             false,
+            true,
             Some(&log_path),
         )
         .await
@@ -1045,7 +1112,7 @@ async fn test_spawn_watch_stdout_log_path_not_in_env() {
     // The child prints its own env — stdout_log_path is a protocol parameter,
     // not an env var, so it should never appear in the child's environment.
     let (pid, _stdout_rx) = h
-        .spawn_watch("env", 5000, &[], false, Some(&log_path))
+        .spawn_watch("env", 5000, &[], false, true, Some(&log_path))
         .await
         .expect("spawn_watch failed");
 
@@ -1081,6 +1148,7 @@ async fn test_spawn_watch_stdout_streaming_timeout() {
             100,
             &[],
             false,
+            true,
             Some(&log_path),
         )
         .await

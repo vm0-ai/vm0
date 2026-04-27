@@ -1,6 +1,6 @@
 import "server-only";
 import { and, desc, eq, inArray } from "drizzle-orm";
-import { voiceChatTasks } from "../../../db/schema/voice-chat";
+import { voiceChatTasks } from "@vm0/db/schema/voice-chat";
 
 type TaskRow = typeof voiceChatTasks.$inferSelect;
 

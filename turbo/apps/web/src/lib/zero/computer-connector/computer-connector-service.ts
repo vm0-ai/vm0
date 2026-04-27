@@ -6,11 +6,11 @@
  */
 import { createHash, randomUUID } from "crypto";
 import { eq, and } from "drizzle-orm";
-import type { ComputerConnectorCreateResponse } from "@vm0/core/contracts/connector-schemas";
-import { connectors } from "../../../db/schema/connector";
-import { secrets } from "../../../db/schema/secret";
+import type { ComputerConnectorCreateResponse } from "@vm0/api-contracts/contracts/connector-schemas";
+import { connectors } from "@vm0/db/schema/connector";
+import { secrets } from "@vm0/db/schema/secret";
 import { decryptSecretValue } from "../../shared/crypto";
-import { badRequest, conflict, notFound } from "../../shared/errors";
+import { badRequest, conflict, notFound } from "@vm0/api-services/errors";
 import { logger } from "../../shared/logger";
 import { upsertSecretByOrg } from "../secret/secret-service";
 import {

@@ -2,21 +2,50 @@ import { command, computed, state } from "ccstate";
 import { onRef } from "../utils.ts";
 
 // ---------------------------------------------------------------------------
-// Lightbox state — tracks which image URL is open in the lightbox
+// Lightbox state — tracks which attachment is open in the global preview UI
 // ---------------------------------------------------------------------------
 
-const internalLightboxUrl$ = state<string | null>(null);
+type AttachmentLightboxState =
+  | {
+      kind: "image";
+      url: string;
+      filename?: string;
+    }
+  | {
+      kind: "markdown" | "text" | "json" | "csv" | "html" | "pdf";
+      url: string;
+      filename: string;
+    };
+
+const internalLightboxState$ = state<AttachmentLightboxState | null>(null);
 
 export const lightboxUrl$ = computed((get) => {
-  return get(internalLightboxUrl$);
+  return get(internalLightboxState$);
 });
 
-export const setLightboxUrl$ = command(({ set }, value: string | null) => {
-  set(internalLightboxUrl$, value);
+export const openImageLightbox$ = command(({ set }, url: string) => {
+  set(internalLightboxState$, { kind: "image", url });
+});
+
+export const openDocumentLightbox$ = command(
+  (
+    { set },
+    value: {
+      kind: "markdown" | "text" | "json" | "csv" | "html" | "pdf";
+      url: string;
+      filename: string;
+    },
+  ) => {
+    set(internalLightboxState$, value);
+  },
+);
+
+export const closeLightbox$ = command(({ set }) => {
+  set(internalLightboxState$, null);
 });
 
 // ---------------------------------------------------------------------------
-// Escape-key handler for ImageLightbox — closes lightbox on Escape
+// Escape-key handler for global attachment preview — closes on Escape
 // ---------------------------------------------------------------------------
 
 const closeLightboxOnEscape$ = command(
@@ -25,7 +54,7 @@ const closeLightboxOnEscape$ = command(
       "keydown",
       (e: KeyboardEvent) => {
         if (e.key === "Escape") {
-          set(internalLightboxUrl$, null);
+          set(internalLightboxState$, null);
         }
       },
       { signal },

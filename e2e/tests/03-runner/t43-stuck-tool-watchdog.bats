@@ -52,7 +52,8 @@ EOF
     assert_failure
     assert_output --partial "Run failed"
 
-    # Extract Run ID to check system logs for the tool timeout message
+    # The public CLI output intentionally hides internal execution details as
+    # a reportable unexpected error, so verify the watchdog in system logs.
     RUN_ID=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | head -1)
     [ -n "$RUN_ID" ] || {
         echo "# Failed to extract Run ID from output"

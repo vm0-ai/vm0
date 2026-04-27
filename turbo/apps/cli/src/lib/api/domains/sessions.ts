@@ -2,8 +2,8 @@ import { initClient } from "@ts-rest/core";
 import {
   sessionsByIdContract,
   checkpointsByIdContract,
-} from "@vm0/core/contracts/sessions";
-import type { ApiErrorResponse } from "@vm0/core/contracts/errors";
+} from "@vm0/api-contracts/contracts/sessions";
+import type { ApiErrorResponse } from "@vm0/api-contracts/contracts/errors";
 import { getClientConfig, handleError } from "../core/client-factory";
 import type { GetSessionResponse, GetCheckpointResponse } from "../core/types";
 

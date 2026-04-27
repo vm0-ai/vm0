@@ -9,13 +9,14 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { pathname, search } from "../../../signals/location.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
-import { zeroIntegrationsSlackContract } from "@vm0/core/contracts/zero-integrations-slack";
+import { zeroIntegrationsSlackContract } from "@vm0/api-contracts/contracts/zero-integrations-slack";
 import {
   onboardingStatusContract,
   onboardingSetupContract,
   onboardingCompleteContract,
-} from "@vm0/core/contracts/onboarding";
+} from "@vm0/api-contracts/contracts/onboarding";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
+import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -42,6 +43,19 @@ function mockAdminOnboarding() {
 }
 
 function switchToAdminComplete() {
+  // Register the newly provisioned agent in the team so the chat page setup
+  // finds it instead of redirecting to the (same) default agent.
+  setMockTeam([
+    {
+      id: MOCK_AGENT_ID,
+      displayName: null,
+      description: null,
+      sound: null,
+      avatarUrl: null,
+      headVersionId: "version_1",
+      updatedAt: "2024-01-01T00:00:00Z",
+    },
+  ]);
   server.use(
     mockApi(onboardingStatusContract.getStatus, ({ respond }) => {
       return respond(200, {

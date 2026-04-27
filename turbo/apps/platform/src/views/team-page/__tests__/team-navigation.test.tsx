@@ -4,12 +4,12 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
-import { chatThreadsContract } from "@vm0/core/contracts/chat-threads";
-import { zeroComposesMainContract } from "@vm0/core/contracts/zero-composes";
+import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
+import { zeroComposesMainContract } from "@vm0/api-contracts/contracts/zero-composes";
 import {
   zeroAgentsByIdContract,
   zeroAgentInstructionsContract,
-} from "@vm0/core/contracts/zero-agents";
+} from "@vm0/api-contracts/contracts/zero-agents";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();

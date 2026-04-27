@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import type { VoiceChatTaskResultEntry } from "@vm0/core/contracts/zero-voice-chat";
+import type { VoiceChatTaskResultEntry } from "@vm0/api-contracts/contracts/zero-voice-chat";
 import { initServices } from "../../../../../src/lib/init-services";
 import { verifyEventConsumer } from "../../../../../src/lib/infra/event-consumer";
 import type { AgentEvent } from "../../../../../src/lib/infra/event-consumer/types";

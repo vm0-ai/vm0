@@ -14,7 +14,6 @@ export {
   insertCreditExpiresRecord,
   insertOrgPromoRedemption,
   insertTestCreditUsage,
-  insertTestClientCreditUsage,
   insertTestCreditUsageForRun,
   insertTestUsagePricing,
   insertTestUsageEvent,
@@ -40,7 +39,7 @@ export {
   findTestCreditUsage,
   findTestCreditUsagesByRunId,
   findTestUsageEvent,
-  findTestClientCreditUsagesByRunId,
+  findTestUsageEventsByRunId,
   findUsageDaily,
   findInsightsDaily,
 } from "../db-test-assertions/credits";

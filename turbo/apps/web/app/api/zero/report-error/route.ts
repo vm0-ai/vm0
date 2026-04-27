@@ -3,14 +3,14 @@ import {
   createSilentErrorHandler,
   tsr,
 } from "../../../../src/lib/ts-rest-handler";
-import { zeroReportErrorContract } from "@vm0/core/contracts/zero-report-error";
+import { zeroReportErrorContract } from "@vm0/api-contracts/contracts/zero-report-error";
 import { initServices } from "../../../../src/lib/init-services";
 import {
   requireAuth,
   isAuthError,
 } from "../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../src/lib/zero/org/resolve-org";
-import { agentRuns } from "../../../../src/db/schema/agent-run";
+import { agentRuns } from "@vm0/db/schema/agent-run";
 import { eq } from "drizzle-orm";
 import { submitDiagnosticBundle } from "../../../../src/lib/zero/support/diagnostic-bundle-service";
 

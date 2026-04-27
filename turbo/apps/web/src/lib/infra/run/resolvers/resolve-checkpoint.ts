@@ -1,9 +1,9 @@
 import { eq, and } from "drizzle-orm";
-import { checkpoints } from "../../../../db/schema/checkpoint";
-import { conversations } from "../../../../db/schema/conversation";
-import { agentRuns } from "../../../../db/schema/agent-run";
-import { agentComposeVersions } from "../../../../db/schema/agent-compose";
-import { notFound, unauthorized, badRequest } from "../../../shared/errors";
+import { checkpoints } from "@vm0/db/schema/checkpoint";
+import { conversations } from "@vm0/db/schema/conversation";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { agentComposeVersions } from "@vm0/db/schema/agent-compose";
+import { notFound, unauthorized, badRequest } from "@vm0/api-services/errors";
 import { logger } from "../../../shared/logger";
 import type {
   AgentComposeSnapshot,
@@ -121,7 +121,7 @@ export async function resolveCheckpoint(
   }
   const agentCompose = version.content as AgentComposeYaml;
   const workingDir = extractWorkingDir(agentCompose);
-  const artifacts = decodeToContextArtifacts(rawArtifacts, workingDir);
+  const artifacts = decodeToContextArtifacts(rawArtifacts);
 
   return {
     conversationId: checkpoint.conversationId,

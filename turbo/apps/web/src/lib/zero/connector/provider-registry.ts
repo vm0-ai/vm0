@@ -1,5 +1,5 @@
-import type { ConnectorType } from "@vm0/core/contracts/connectors";
-import { getConnectorDefaultAuthMethod } from "@vm0/core/contracts/connector-utils";
+import type { ConnectorType } from "@vm0/connectors/connectors";
+import { getConnectorDefaultAuthMethod } from "@vm0/connectors/connector-utils";
 import { type Env } from "../../../env";
 import {
   type AuthUrlResult,
@@ -7,7 +7,6 @@ import {
   type ProviderHandler,
 } from "./provider-types";
 import { agentmailHandler } from "./providers/agentmail-handler";
-import { agentphoneHandler } from "./providers/agentphone-handler";
 import { amplitudeHandler } from "./providers/amplitude-handler";
 import { anthropicManagedAgentsHandler } from "./providers/anthropic-managed-agents-handler";
 import { ahrefsHandler } from "./providers/ahrefs-handler";
@@ -189,7 +188,6 @@ export const PROVIDER_HANDLERS: Record<
   ProviderHandler
 > = {
   agentmail: agentmailHandler,
-  agentphone: agentphoneHandler,
   amplitude: amplitudeHandler,
   "anthropic-managed-agents": anthropicManagedAgentsHandler,
   ahrefs: ahrefsHandler,

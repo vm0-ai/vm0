@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.10.6](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.10.5...vsock-guest-v0.10.6) (2026-04-27)
+
+
+### Bug Fixes
+
+* make guest-agent own system log writes ([#11238](https://github.com/vm0-ai/vm0/issues/11238)) ([5041a49](https://github.com/vm0-ai/vm0/commit/5041a49416701955915962bc13aed07e5618db3e))
+
+## [0.10.5](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.10.4...vsock-guest-v0.10.5) (2026-04-25)
+
+
+### Documentation
+
+* **vsock-guest:** fix stale 'sleep 30' reference in slow_exec test ([#11090](https://github.com/vm0-ai/vm0/issues/11090)) ([5b94af0](https://github.com/vm0-ai/vm0/commit/5b94af041c87b56829b6665c3e0b32967f569090)), closes [#11067](https://github.com/vm0-ai/vm0/issues/11067)
+
+## [0.10.4](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.10.3...vsock-guest-v0.10.4) (2026-04-25)
+
+
+### Bug Fixes
+
+* **vsock-guest:** unblock exec and buffered spawn_watch on orphan stdout ([#11085](https://github.com/vm0-ai/vm0/issues/11085)) ([f659911](https://github.com/vm0-ai/vm0/commit/f65991104b0532ee80faf0885b075d41db7f3913))
+
 ## [0.10.3](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.10.2...vsock-guest-v0.10.3) (2026-04-22)
 
 

@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.12.7](https://github.com/vm0-ai/vm0/compare/sandbox-v0.12.6...sandbox-v0.12.7) (2026-04-27)
+
+
+### Bug Fixes
+
+* make guest-agent own system log writes ([#11238](https://github.com/vm0-ai/vm0/issues/11238)) ([5041a49](https://github.com/vm0-ai/vm0/commit/5041a49416701955915962bc13aed07e5618db3e))
+
+## [0.12.6](https://github.com/vm0-ai/vm0/compare/sandbox-v0.12.5...sandbox-v0.12.6) (2026-04-27)
+
+
+### Refactoring
+
+* **sandbox:** clarify error taxonomy ([#11178](https://github.com/vm0-ai/vm0/issues/11178)) ([f766059](https://github.com/vm0-ai/vm0/commit/f7660591f6866336a78803225653fd738667c036))
+
+## [0.12.5](https://github.com/vm0-ai/vm0/compare/sandbox-v0.12.4...sandbox-v0.12.5) (2026-04-26)
+
+
+### Documentation
+
+* **sandbox:** document runtime provider contract ([#11163](https://github.com/vm0-ai/vm0/issues/11163)) ([276de81](https://github.com/vm0-ai/vm0/commit/276de8114fa99e2cf3247a6fe5b803bdf73d5028))
+* **sandbox:** document sandbox error taxonomy ([#11171](https://github.com/vm0-ai/vm0/issues/11171)) ([ebbca10](https://github.com/vm0-ai/vm0/commit/ebbca104243dc628bef3f701af6dbd1a321c4baa))
+
 ## [0.12.4](https://github.com/vm0-ai/vm0/compare/sandbox-v0.12.3...sandbox-v0.12.4) (2026-04-23)
 
 

@@ -1,20 +1,23 @@
-import { eq, and, desc, inArray, isNull, sql, or, lt } from "drizzle-orm";
-import { chatThreads } from "../../../db/schema/chat-thread";
-import { chatMessages } from "../../../db/schema/chat-message";
-import { zeroRuns } from "../../../db/schema/zero-run";
-import { agentRuns } from "../../../db/schema/agent-run";
-import { zeroAgents } from "../../../db/schema/zero-agent";
-import { notFound } from "../../shared/errors";
+import { eq, and, desc, inArray, isNull, asc, or, sql } from "drizzle-orm";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { chatMessages } from "@vm0/db/schema/chat-message";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
+import { notFound } from "@vm0/api-services/errors";
 import {
   getMessagesByThreadId,
   getLatestSessionIdForThread,
   publishThreadListChanged,
 } from "./chat-message-service";
+import { formatChatRunErrorMessage } from "./chat-run-error-message";
 import {
+  type ChatThreadArtifactRun,
   type PersistedAttachment,
   type ResolvedAttachFile,
   persistedAttachmentSchema,
-} from "@vm0/core/contracts/chat-threads";
+} from "@vm0/api-contracts/contracts/chat-threads";
 import { listS3Objects } from "../../infra/s3/s3-client";
 import { env } from "../../../env";
 import { EXT_MIMETYPE_MAP } from "../../shared/mimetype";
@@ -22,26 +25,20 @@ import { buildFileUrl } from "../uploads/file-url";
 
 /**
  * Create a new chat thread.
- *
- * `sourceScheduleRunId`, when set, marks this thread as continuing a
- * previously scheduled agent run. The chat messages route reads it once on the
- * thread's first run to seed a system prompt instructing the agent to pull the
- * original run's telemetry via `zero logs <id>`; subsequent runs inherit the
- * resulting session context and do not get the prompt again.
  */
 export async function createChatThread(
   userId: string,
   agentComposeId: string,
   title?: string | null,
-  sourceScheduleRunId?: string | null,
+  id?: string,
 ): Promise<{ id: string; createdAt: Date }> {
   const [thread] = await globalThis.services.db
     .insert(chatThreads)
     .values({
+      ...(id ? { id } : {}),
       userId,
       agentComposeId,
       title: title ?? null,
-      sourceScheduleRunId: sourceScheduleRunId ?? null,
     })
     .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
 
@@ -90,10 +87,11 @@ export async function listChatThreads(
 > {
   const lastMessage = globalThis.services.db
     .select({
+      id: chatMessages.id,
       chatThreadId: chatMessages.chatThreadId,
       createdAt: chatMessages.createdAt,
       archivedAt: chatMessages.archivedAt,
-      rn: sql<number>`ROW_NUMBER() OVER (PARTITION BY ${chatMessages.chatThreadId} ORDER BY ${chatMessages.createdAt} DESC)`.as(
+      rn: sql<number>`ROW_NUMBER() OVER (PARTITION BY ${chatMessages.chatThreadId} ORDER BY ${chatMessages.createdAt} DESC, ${chatMessages.id} DESC)`.as(
         "rn",
       ),
     })
@@ -118,9 +116,8 @@ export async function listChatThreads(
       createdAt: chatThreads.createdAt,
       updatedAt: chatThreads.updatedAt,
       isRead: sql<boolean>`CASE
-        WHEN ${lastMessage.createdAt} IS NULL THEN true
-        WHEN ${chatThreads.lastReadAt} IS NULL THEN false
-        ELSE ${chatThreads.lastReadAt} >= ${lastMessage.createdAt}
+        WHEN ${lastMessage.id} IS NULL THEN true
+        ELSE COALESCE(${chatThreads.lastReadMessageId} = ${lastMessage.id}, false)
       END`,
       lastMessageArchivedAt: lastMessage.archivedAt,
       running: sql<boolean>`EXISTS (
@@ -146,50 +143,43 @@ export async function listChatThreads(
 }
 
 /**
- * Advance the read cursor for a thread to `cursor` (default: server NOW()).
- * Forward-only: if the stored cursor is already >= cursor, it is not rewound.
- * Always returns the current `last_read_at` value after the operation.
+ * Mark a thread read up to its current latest message.
+ *
+ * Idempotent: when the stored message id already matches the latest message,
+ * no row is updated and callers should not emit realtime fanout.
  */
 export async function markThreadRead(
   userId: string,
   threadId: string,
-  cursor?: Date,
-): Promise<Date> {
-  const effectiveCursor = cursor
-    ? new Date(Math.min(cursor.getTime(), Date.now()))
-    : new Date();
-
-  const [updated] = await globalThis.services.db
-    .update(chatThreads)
-    .set({ lastReadAt: effectiveCursor })
-    .where(
-      and(
-        eq(chatThreads.id, threadId),
-        eq(chatThreads.userId, userId),
-        or(
-          isNull(chatThreads.lastReadAt),
-          lt(chatThreads.lastReadAt, effectiveCursor),
-        ),
-      ),
-    )
-    .returning({ lastReadAt: chatThreads.lastReadAt });
-
-  if (updated?.lastReadAt) {
-    return updated.lastReadAt;
-  }
-
-  // Guard rejected (cursor didn't advance) — return current value
-  const [current] = await globalThis.services.db
-    .select({ lastReadAt: chatThreads.lastReadAt })
+): Promise<{ lastReadMessageId: string | null; changed: boolean }> {
+  const [thread] = await globalThis.services.db
+    .select({ lastReadMessageId: chatThreads.lastReadMessageId })
     .from(chatThreads)
     .where(and(eq(chatThreads.id, threadId), eq(chatThreads.userId, userId)))
     .limit(1);
 
-  if (!current) {
+  if (!thread) {
     throw notFound("Chat thread not found");
   }
 
-  return current.lastReadAt ?? new Date(0);
+  const [latestMessage] = await globalThis.services.db
+    .select({ id: chatMessages.id })
+    .from(chatMessages)
+    .where(eq(chatMessages.chatThreadId, threadId))
+    .orderBy(desc(chatMessages.createdAt), desc(chatMessages.id))
+    .limit(1);
+
+  const latestMessageId = latestMessage?.id ?? null;
+  if (thread.lastReadMessageId === latestMessageId) {
+    return { lastReadMessageId: latestMessageId, changed: false };
+  }
+
+  await globalThis.services.db
+    .update(chatThreads)
+    .set({ lastReadMessageId: latestMessageId })
+    .where(and(eq(chatThreads.id, threadId), eq(chatThreads.userId, userId)));
+
+  return { lastReadMessageId: latestMessageId, changed: true };
 }
 
 /**
@@ -202,11 +192,11 @@ export async function getChatThread(
   id: string;
   title: string | null;
   agentComposeId: string;
-  sourceScheduleRunId: string | null;
   draftContent: string | null;
   draftAttachments: PersistedAttachment[] | null;
   modelProviderId: string | null;
   selectedModel: string | null;
+  lastReadMessageId: string | null;
   createdAt: Date;
   updatedAt: Date;
 }> {
@@ -224,7 +214,6 @@ export async function getChatThread(
     id: thread.id,
     title: thread.title,
     agentComposeId: thread.agentComposeId,
-    sourceScheduleRunId: thread.sourceScheduleRunId ?? null,
     draftContent: thread.draftContent ?? null,
     draftAttachments: persistedAttachmentSchema
       .array()
@@ -232,6 +221,7 @@ export async function getChatThread(
       .parse(thread.draftAttachments ?? null),
     modelProviderId: thread.modelProviderId ?? null,
     selectedModel: thread.selectedModel ?? null,
+    lastReadMessageId: thread.lastReadMessageId ?? null,
     createdAt: thread.createdAt,
     updatedAt: thread.updatedAt,
   };
@@ -336,6 +326,69 @@ export async function resolveAttachFileUrls(
   });
 }
 
+export async function getChatThreadArtifacts(
+  threadId: string,
+  userId: string,
+): Promise<ChatThreadArtifactRun[]> {
+  await getChatThread(threadId, userId);
+
+  const rows = await globalThis.services.db
+    .select({
+      runId: runUploadedFiles.runId,
+      externalId: runUploadedFiles.externalId,
+      filename: runUploadedFiles.filename,
+      contentType: runUploadedFiles.contentType,
+      sizeBytes: runUploadedFiles.sizeBytes,
+      url: runUploadedFiles.url,
+      createdAt: runUploadedFiles.createdAt,
+    })
+    .from(runUploadedFiles)
+    .innerJoin(zeroRuns, eq(zeroRuns.id, runUploadedFiles.runId))
+    .innerJoin(agentRuns, eq(agentRuns.id, runUploadedFiles.runId))
+    .where(
+      and(
+        eq(runUploadedFiles.userId, userId),
+        or(
+          eq(zeroRuns.chatThreadId, threadId),
+          sql`EXISTS (
+            SELECT 1
+            FROM ${chatMessages}
+            WHERE ${chatMessages.runId} = ${runUploadedFiles.runId}
+              AND ${chatMessages.chatThreadId} = ${threadId}
+          )`,
+        ),
+      ),
+    )
+    .orderBy(asc(agentRuns.createdAt), asc(runUploadedFiles.createdAt));
+
+  const byRun = new Map<string, ChatThreadArtifactRun>();
+
+  for (const row of rows) {
+    if (!row.url) {
+      continue;
+    }
+    const filename = row.filename ?? row.externalId;
+    const ext = filename.split(".").pop()?.toLowerCase();
+    const existing = byRun.get(row.runId) ?? { runId: row.runId, files: [] };
+    existing.files.push({
+      id: row.externalId,
+      filename,
+      contentType:
+        row.contentType ??
+        (ext ? EXT_MIMETYPE_MAP[ext] : undefined) ??
+        "application/octet-stream",
+      size: row.sizeBytes ?? 0,
+      url: row.url,
+      createdAt: row.createdAt.toISOString(),
+    });
+    byRun.set(row.runId, existing);
+  }
+
+  return Array.from(byRun.values()).filter((run) => {
+    return run.files.length > 0;
+  });
+}
+
 export async function getChatThreadMessages(
   threadId: string,
   userId: string,
@@ -357,9 +410,17 @@ export async function getChatThreadMessages(
       // falls back to agent_runs.error, covering the case where the terminal
       // callback failed to deliver and chat_messages.error was never written.
       const isPlaceholder = row.sequenceNumber === null;
-      const effectiveError = isPlaceholder
+      const rawEffectiveError = isPlaceholder
         ? (row.error ?? row.runError ?? undefined)
         : (row.error ?? undefined);
+      const effectiveError =
+        rawEffectiveError && isPlaceholder && !row.error && row.runId
+          ? await formatChatRunErrorMessage({
+              chatThreadId: threadId,
+              runId: row.runId,
+              errorMessage: rawEffectiveError,
+            })
+          : rawEffectiveError;
 
       const attachFiles =
         row.attachFiles && row.attachFiles.length > 0

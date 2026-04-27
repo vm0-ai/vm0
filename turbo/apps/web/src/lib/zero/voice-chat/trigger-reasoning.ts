@@ -1,11 +1,11 @@
 import "server-only";
 import { after } from "next/server";
 import { and, eq } from "drizzle-orm";
-import { voiceChatSessions } from "../../../db/schema/voice-chat";
+import { voiceChatSessions } from "@vm0/db/schema/voice-chat";
 import {
   agentComposes,
   agentComposeVersions,
-} from "../../../db/schema/agent-compose";
+} from "@vm0/db/schema/agent-compose";
 import { appendVoiceChatItem, readVoiceChatItems } from "./item-service";
 import { createVoiceChatTask, listSessionTasks } from "./task-service";
 import { callReasoner } from "./reasoner";
@@ -14,7 +14,7 @@ import { buildSlowBrainAppendSystemPrompt } from "./build-slow-brain-prompt";
 import { adaptVoiceChatTaskTrigger } from "./adapt-task-trigger";
 import { createZeroRun } from "../zero-run-service";
 import { publishUserSignal } from "../../infra/realtime/client";
-import { isBadRequest } from "../../shared/errors";
+import { isBadRequest } from "@vm0/api-services/errors";
 import { logger } from "../../shared/logger";
 
 const log = logger("zero:voice-chat:trigger-reasoning");

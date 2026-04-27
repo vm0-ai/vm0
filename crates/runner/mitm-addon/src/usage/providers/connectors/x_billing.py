@@ -55,6 +55,8 @@ import re
 
 from matching import match_path
 
+from .x_tlds import IANA_TLDS
+
 # Permission → default bucket.  The default matches the majority of
 # paths in the scope; outliers go in `_PATH_OVERRIDES`.  Prices are
 # defined in turbo/apps/web/scripts/dev-seed.ts.
@@ -255,11 +257,84 @@ def classify_includes_bucket(key: str) -> str | None:
     return _INCLUDES_TO_BUCKET.get(key)
 
 
-# URL detector for tweet body refinement.  Matches any http(s) scheme,
-# covering the common case; we stay on the expensive ``with_url`` bucket
-# when the text can't be inspected or when quote/media are attached
-# (both render as link previews and may be billed as "with URL" by X).
-_URL_RE = re.compile(r"https?://")
+# URL detector for tweet body refinement.  Billing needs a conservative
+# "could X auto-link this?" boolean, not link indices.  Keep protocol
+# matching case-insensitive and preserve twitter-text-style boundary
+# guards so emails, mentions, hashtags and cashtags do not look like
+# scheme-less URLs.
+_URL_PRECEDING_CHARS = r"A-Za-z0-9@\uFF20$#\uFF03"
+_URL_WITH_PROTOCOL_RE = re.compile(rf"(?<![{_URL_PRECEDING_CHARS}])https?://", re.IGNORECASE)
+_URL_FOLLOWING_CHARS = r"A-Za-z0-9@+.-"
+_DOMAIN_CODEPOINT = r"[^\W_]"
+_DOMAIN_CANDIDATE_CHAR = rf"(?:{_DOMAIN_CODEPOINT}|-)"
+_BARE_DOMAIN_CANDIDATE_RE = re.compile(
+    rf"(?<![{_URL_PRECEDING_CHARS}._/-])"
+    rf"({_DOMAIN_CANDIDATE_CHAR}+(?:\.{_DOMAIN_CANDIDATE_CHAR}+)+)"
+    rf"(?=$|[^{_URL_FOLLOWING_CHARS}]|\.(?:$|[^A-Za-z0-9]))",
+    re.IGNORECASE,
+)
+_DOMAIN_LABEL_RE = re.compile(r"^[a-z0-9-]{1,63}$")
+_MIN_DOMAIN_LABELS = 2
+_URL_TRAILING_PUNCTUATION = ".,:;!?"
+_URL_WRAPPER_CHARS = " \t\r\n<>()[]{}\"'"
+
+
+def _host_from_bare_domain_candidate(candidate: str) -> str | None:
+    candidate = candidate.strip(_URL_WRAPPER_CHARS).rstrip(_URL_TRAILING_PUNCTUATION)
+    if not candidate:
+        return None
+
+    host = candidate.split("/", maxsplit=1)[0]
+    host = host.split("?", maxsplit=1)[0]
+    host = host.split("#", maxsplit=1)[0]
+    host = host.rstrip(_URL_TRAILING_PUNCTUATION)
+    if not host:
+        return None
+
+    return host.rstrip(".")
+
+
+def _idna_domain_labels(host: str) -> tuple[str, ...] | None:
+    labels = host.split(".")
+    if len(labels) < _MIN_DOMAIN_LABELS:
+        return None
+
+    normalized_labels = []
+    for label in labels:
+        if not label:
+            return None
+        try:
+            normalized = label.encode("idna").decode("ascii").lower()
+        except UnicodeError:
+            return None
+        if (
+            _DOMAIN_LABEL_RE.fullmatch(normalized) is None
+            or normalized.startswith("-")
+            or normalized.endswith("-")
+        ):
+            return None
+        normalized_labels.append(normalized)
+
+    return tuple(normalized_labels)
+
+
+def _bare_domain_candidate_likely_contains_url(candidate: str) -> bool:
+    host = _host_from_bare_domain_candidate(candidate)
+    if host is None:
+        return False
+    labels = _idna_domain_labels(host)
+    return labels is not None and labels[-1] in IANA_TLDS
+
+
+def _tweet_text_likely_contains_url(text: str) -> bool:
+    if _URL_WITH_PROTOCOL_RE.search(text) is not None:
+        return True
+    if "." not in text:
+        return False
+    return any(
+        _bare_domain_candidate_likely_contains_url(match.group(1))
+        for match in _BARE_DOMAIN_CANDIDATE_RE.finditer(text)
+    )
 
 
 def refine_bucket_with_body(bucket: str, method: str, path: str, body: bytes | None) -> str:
@@ -299,6 +374,6 @@ def refine_bucket_with_body(bucket: str, method: str, path: str, body: bytes | N
     text = obj.get("text")
     if not isinstance(text, str):
         return bucket
-    if _URL_RE.search(text):
+    if _tweet_text_likely_contains_url(text):
         return bucket
     return "content.create"

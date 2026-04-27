@@ -1,4 +1,4 @@
-import type { ConnectorType } from "@vm0/core/contracts/connectors";
+import type { ConnectorType } from "@vm0/connectors/connectors";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
 
 export function mockConnectors(

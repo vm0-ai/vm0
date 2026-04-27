@@ -2,7 +2,7 @@ import { command } from "ccstate";
 import type {
   AttachFile,
   PagedChatMessage,
-} from "@vm0/core/contracts/chat-threads";
+} from "@vm0/api-contracts/contracts/chat-threads";
 import type {
   DraftSignals,
   ZeroChatAttachment,

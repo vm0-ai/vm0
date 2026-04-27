@@ -14,7 +14,7 @@ import {
 import { orgManageTab$, inviteMember$ } from "../org-manage-tabs-state.ts";
 import { searchParams$ } from "../../../route.ts";
 import { setMockOrg } from "../../../../mocks/handlers/api-org.ts";
-import { zeroOrgInviteContract } from "@vm0/core/contracts/zero-org-members";
+import { zeroOrgInviteContract } from "@vm0/api-contracts/contracts/zero-org-members";
 import { createMockApi } from "../../../../mocks/msw-contract.ts";
 
 const context = testContext();

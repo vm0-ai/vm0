@@ -94,23 +94,16 @@ export function markdownToTelegramHtml(markdown: string): string {
 }
 
 /**
- * Build a structured Telegram response with bot header and footer.
- *
- * Layout:
- * 1. Bot header: bold agent name
- * 2. Content: markdown converted to Telegram HTML
- * 3. Footer: logs link, visually separated
+ * Build a structured Telegram response with converted content and audit footer.
  */
 export function buildTelegramResponse(
   markdown: string,
-  agentName: string,
   logsUrl: string,
 ): string {
-  const header = `🤖 <b>${escapeHtml(agentName)}</b>`;
   const content = markdownToTelegramHtml(markdown);
   const footer = `<a href="${escapeHtml(logsUrl)}">📋 Audit</a>`;
 
-  return `${header}\n\n${content}\n\n${footer}`;
+  return `${content}\n\n${footer}`;
 }
 
 /**

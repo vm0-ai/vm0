@@ -97,7 +97,7 @@ const PLANS = [
     features: [
       "120,000 credits / month",
       "Pay as you go after that",
-      "5 concurrent runs",
+      "10 concurrent runs",
       "Unlimited total agents",
       "Bring your own LLM keys",
       "Voice input",
@@ -170,7 +170,7 @@ function PlanCard({
           src={plan.image}
           alt={plan.name}
           loading="lazy"
-          className="h-28 w-28 object-contain -mb-1"
+          className="h-20 w-20 object-contain mb-2"
         />
       )}
 

@@ -3,6 +3,7 @@ import {
   createTestRequest,
   insertOrgMembersEntry,
   insertTestCreditUsage,
+  insertTestUsageEvent,
   updateOrgStripeFields,
 } from "../../../../../../../src/__tests__/api-test-helpers";
 import {
@@ -31,6 +32,7 @@ describe("/api/zero/org/members/credit-cap", () => {
     orgId: string,
     userId: string,
     creditsCharged: number,
+    processedAt?: Date,
   ): Promise<void> {
     await insertTestCreditUsage(orgId, {
       userId,
@@ -38,6 +40,21 @@ describe("/api/zero/org/members/credit-cap", () => {
       modelProvider: "vm0",
       creditsCharged,
       status: "processed",
+      processedAt,
+    });
+  }
+
+  async function insertProcessedUsageEvent(
+    orgId: string,
+    userId: string,
+    creditsCharged: number,
+    processedAt?: Date,
+  ): Promise<void> {
+    await insertTestUsageEvent(orgId, {
+      userId,
+      status: "processed",
+      creditsCharged,
+      processedAt,
     });
   }
 
@@ -110,6 +127,80 @@ describe("/api/zero/org/members/credit-cap", () => {
         userId: user.userId,
         creditCap: 100,
         creditEnabled: false,
+      });
+    });
+
+    it("disables member when combined credit_usage and usage_event spend exceeds cap", async () => {
+      const periodEnd = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000);
+      await updateOrgStripeFields(user.orgId, { currentPeriodEnd: periodEnd });
+
+      await insertProcessedCreditUsage(user.orgId, user.userId, 80);
+      await insertProcessedUsageEvent(user.orgId, user.userId, 40);
+
+      const request = createTestRequest(BASE_URL, {
+        method: "PUT",
+        body: JSON.stringify({ userId: user.userId, creditCap: 100 }),
+        headers: { "content-type": "application/json" },
+      });
+      const response = await PUT(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data).toEqual({
+        userId: user.userId,
+        creditCap: 100,
+        creditEnabled: false,
+      });
+    });
+
+    it("disables member when combined spend exactly reaches cap", async () => {
+      const periodEnd = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000);
+      await updateOrgStripeFields(user.orgId, { currentPeriodEnd: periodEnd });
+
+      await insertProcessedCreditUsage(user.orgId, user.userId, 60);
+      await insertProcessedUsageEvent(user.orgId, user.userId, 40);
+
+      const request = createTestRequest(BASE_URL, {
+        method: "PUT",
+        body: JSON.stringify({ userId: user.userId, creditCap: 100 }),
+        headers: { "content-type": "application/json" },
+      });
+      const response = await PUT(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data).toEqual({
+        userId: user.userId,
+        creditCap: 100,
+        creditEnabled: false,
+      });
+    });
+
+    it("ignores processed usage at the billing period end boundary", async () => {
+      const periodEnd = new Date("2099-04-01T00:00:00Z");
+      await updateOrgStripeFields(user.orgId, { currentPeriodEnd: periodEnd });
+
+      await insertProcessedCreditUsage(
+        user.orgId,
+        user.userId,
+        40,
+        new Date("2099-03-15T00:00:00Z"),
+      );
+      await insertProcessedUsageEvent(user.orgId, user.userId, 80, periodEnd);
+
+      const request = createTestRequest(BASE_URL, {
+        method: "PUT",
+        body: JSON.stringify({ userId: user.userId, creditCap: 100 }),
+        headers: { "content-type": "application/json" },
+      });
+      const response = await PUT(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data).toEqual({
+        userId: user.userId,
+        creditCap: 100,
+        creditEnabled: true,
       });
     });
 

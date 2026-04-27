@@ -3,17 +3,17 @@
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { eq, sql } from "drizzle-orm";
-import { getEligibleConnectorTypes } from "@vm0/core/contracts/connector-utils";
-import { VM0_MODEL_TO_PROVIDER } from "@vm0/core/contracts/model-providers";
-import { schema } from "../src/db/db";
-import { creditPricing } from "../src/db/schema/credit-pricing";
-import { usagePricing } from "../src/db/schema/usage-pricing";
-import { vm0ApiKeys } from "../src/db/schema/vm0-api-key";
-import { skills } from "../src/db/schema/skill";
+import { getEligibleConnectorTypes } from "@vm0/connectors/connector-utils";
+import { VM0_MODEL_TO_PROVIDER } from "@vm0/api-contracts/contracts/model-providers";
+import { schema } from "@vm0/db";
+import { creditPricing } from "@vm0/db/schema/credit-pricing";
+import { usagePricing } from "@vm0/db/schema/usage-pricing";
+import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
+import { skills } from "@vm0/db/schema/skill";
 import { SEED_SKILLS, buildSeedSkillValues } from "../src/lib/zero/seed-skills";
 
 /**
- * Dev seed: populate credit_pricing, vm0_api_keys, and skills tables.
+ * Dev seed: populate credit_pricing, usage_pricing, vm0_api_keys, and skills tables.
  *
  * Pricing convention: 1 USD = 1000 credits.
  * Prices are per 1M tokens, stored as integer credits per 1M tokens.
@@ -95,59 +95,139 @@ const MODEL_PRICING: (typeof creditPricing.$inferInsert)[] = [
     cacheCreationTokenPrice: usd(0.375),
   },
   {
-    model: "deepseek-chat",
+    model: "deepseek-v4-pro",
     modelProvider: "vm0",
-    inputTokenPrice: usd(0.28),
-    outputTokenPrice: usd(0.42),
-    cacheReadTokenPrice: usd(0.028),
+    inputTokenPrice: usd(1.74),
+    outputTokenPrice: usd(3.48),
+    cacheReadTokenPrice: usd(0.145),
     cacheCreationTokenPrice: 0,
   },
   {
-    model: "deepseek-reasoner",
+    model: "deepseek-v4-flash",
     modelProvider: "vm0",
-    inputTokenPrice: usd(0.28),
-    outputTokenPrice: usd(0.42),
+    inputTokenPrice: usd(0.14),
+    outputTokenPrice: usd(0.28),
     cacheReadTokenPrice: usd(0.028),
     cacheCreationTokenPrice: 0,
   },
 ];
 
-// https://docs.x.com/x-api/getting-started/pricing
-const X_CONNECTOR_PRICING: Array<{
-  category: string;
-  unitPrice: number;
-}> = [
-  // reads — $/resource
-  { category: "posts.read", unitPrice: usd(0.005) },
-  { category: "user.read", unitPrice: usd(0.01) },
-  { category: "dm_event.read", unitPrice: usd(0.01) },
-  { category: "following_followers.read", unitPrice: usd(0.01) },
-  { category: "list.read", unitPrice: usd(0.005) },
-  { category: "space.read", unitPrice: usd(0.005) },
-  { category: "community.read", unitPrice: usd(0.005) },
-  { category: "note.read", unitPrice: usd(0.005) },
-  { category: "media.read", unitPrice: usd(0.005) },
-  { category: "analytics.read", unitPrice: usd(0.005) },
-  { category: "trend.read", unitPrice: usd(0.01) },
-  // writes — $/request
-  { category: "content.create", unitPrice: usd(0.015) },
-  { category: "content.create_with_url", unitPrice: usd(0.2) },
-  { category: "dm_interaction.create", unitPrice: usd(0.015) },
-  { category: "user_interaction.create", unitPrice: usd(0.015) },
-  { category: "interaction.delete", unitPrice: usd(0.01) },
-  { category: "content.manage", unitPrice: usd(0.005) },
-  { category: "list.create", unitPrice: usd(0.01) },
-  { category: "list.manage", unitPrice: usd(0.005) },
-  { category: "bookmark", unitPrice: usd(0.005) },
-  { category: "media_metadata", unitPrice: usd(0.005) },
-  { category: "privacy.update", unitPrice: usd(0.01) },
-  { category: "mute.delete", unitPrice: usd(0.005) },
-  { category: "counts.recent", unitPrice: usd(0.005) },
-  { category: "counts.all", unitPrice: usd(0.01) },
-  // fallback — priced at the minimum bucket rate across the table
-  // above, so an unknown includes key can never be billed at more
-  // than X charges for the cheapest known bucket.
-  { category: "__fallback__", unitPrice: usd(0.005) },
+type UsagePricingRow = [category: string, unitPrice: number, unitSize: number];
+
+function usageGroup(
+  kind: string,
+  provider: string,
+  rows: UsagePricingRow[],
+): (typeof usagePricing.$inferInsert)[] {
+  return rows.map(([category, unitPrice, unitSize]) => {
+    return { kind, provider, category, unitPrice, unitSize };
+  });
+}
+
+const USAGE_PRICING: (typeof usagePricing.$inferInsert)[] = [
+  // Model usage — mirrors MODEL_PRICING for the unified usage_event ledger.
+  // credit_pricing stays seeded during the compatibility window.
+  ...usageGroup("model", "claude-sonnet-4-6", [
+    ["tokens.input", usd(3), 1_000_000],
+    ["tokens.output", usd(15), 1_000_000],
+    ["tokens.cache_read", usd(0.3), 1_000_000],
+    ["tokens.cache_creation", usd(3.75), 1_000_000],
+  ]),
+  ...usageGroup("model", "claude-opus-4-6", [
+    ["tokens.input", usd(15), 1_000_000],
+    ["tokens.output", usd(75), 1_000_000],
+    ["tokens.cache_read", usd(1.5), 1_000_000],
+    ["tokens.cache_creation", usd(18.75), 1_000_000],
+  ]),
+  ...usageGroup("model", "claude-opus-4-7", [
+    ["tokens.input", usd(5), 1_000_000],
+    ["tokens.output", usd(25), 1_000_000],
+    ["tokens.cache_read", usd(0.5), 1_000_000],
+    ["tokens.cache_creation", usd(6.25), 1_000_000],
+  ]),
+  ...usageGroup("model", "claude-haiku-4-5", [
+    ["tokens.input", usd(1), 1_000_000],
+    ["tokens.output", usd(5), 1_000_000],
+    ["tokens.cache_read", usd(0.1), 1_000_000],
+    ["tokens.cache_creation", usd(1.25), 1_000_000],
+  ]),
+  ...usageGroup("model", "kimi-k2.6", [
+    ["tokens.input", usd(0.6), 1_000_000],
+    ["tokens.output", usd(3), 1_000_000],
+    ["tokens.cache_read", usd(0.1), 1_000_000],
+    ["tokens.cache_creation", usd(0.6), 1_000_000],
+  ]),
+  ...usageGroup("model", "kimi-k2.5", [
+    ["tokens.input", usd(0.6), 1_000_000],
+    ["tokens.output", usd(3), 1_000_000],
+    ["tokens.cache_read", usd(0.1), 1_000_000],
+    ["tokens.cache_creation", usd(0.6), 1_000_000],
+  ]),
+  ...usageGroup("model", "glm-5.1", [
+    ["tokens.input", usd(1.4), 1_000_000],
+    ["tokens.output", usd(4.4), 1_000_000],
+    ["tokens.cache_read", usd(0.26), 1_000_000],
+    ["tokens.cache_creation", usd(1.4), 1_000_000],
+  ]),
+  ...usageGroup("model", "MiniMax-M2.7", [
+    ["tokens.input", usd(0.3), 1_000_000],
+    ["tokens.output", usd(1.2), 1_000_000],
+    ["tokens.cache_read", usd(0.06), 1_000_000],
+    ["tokens.cache_creation", usd(0.375), 1_000_000],
+  ]),
+  ...usageGroup("model", "deepseek-v4-pro", [
+    ["tokens.input", usd(1.74), 1_000_000],
+    ["tokens.output", usd(3.48), 1_000_000],
+    ["tokens.cache_read", usd(0.145), 1_000_000],
+    ["tokens.cache_creation", 0, 1_000_000],
+  ]),
+  ...usageGroup("model", "deepseek-v4-flash", [
+    ["tokens.input", usd(0.14), 1_000_000],
+    ["tokens.output", usd(0.28), 1_000_000],
+    ["tokens.cache_read", usd(0.028), 1_000_000],
+    ["tokens.cache_creation", 0, 1_000_000],
+  ]),
+
+  // X connector — https://docs.x.com/x-api/getting-started/pricing
+  ...usageGroup("connector", "x", [
+    // Reads — $/resource
+    ["posts.read", usd(0.005), 1],
+    ["user.read", usd(0.01), 1],
+    ["dm_event.read", usd(0.01), 1],
+    ["following_followers.read", usd(0.01), 1],
+    ["list.read", usd(0.005), 1],
+    ["space.read", usd(0.005), 1],
+    ["community.read", usd(0.005), 1],
+    ["note.read", usd(0.005), 1],
+    ["media.read", usd(0.005), 1],
+    ["analytics.read", usd(0.005), 1],
+    ["trend.read", usd(0.01), 1],
+    // Writes — $/request
+    ["content.create", usd(0.015), 1],
+    ["content.create_with_url", usd(0.2), 1],
+    ["dm_interaction.create", usd(0.015), 1],
+    ["user_interaction.create", usd(0.015), 1],
+    ["interaction.delete", usd(0.01), 1],
+    ["content.manage", usd(0.005), 1],
+    ["list.create", usd(0.01), 1],
+    ["list.manage", usd(0.005), 1],
+    ["bookmark", usd(0.005), 1],
+    ["media_metadata", usd(0.005), 1],
+    ["privacy.update", usd(0.01), 1],
+    ["mute.delete", usd(0.005), 1],
+    ["counts.recent", usd(0.005), 1],
+    ["counts.all", usd(0.01), 1],
+    // Fallback — priced at the minimum bucket rate across the table above,
+    // so an unknown includes key can never be billed at more than X charges
+    // for the cheapest known bucket.
+    ["__fallback__", usd(0.005), 1],
+  ]),
+
+  // Gemini 2.5 Flash Image — https://cloud.google.com/vertex-ai/generative-ai/pricing
+  // $30/1M output tokens × 1290 tokens per 1024×1024 image = $0.0387/image.
+  ...usageGroup("image", "gemini-2.5-flash-image", [
+    ["output_image", usd(0.0387), 1],
+  ]),
 ];
 
 /**
@@ -210,18 +290,12 @@ async function devSeed() {
     }
     console.log(`✅ Seeded ${MODEL_PRICING.length} credit pricing entries`);
 
-    // --- usage_pricing (connector / x) ---
-    console.log("Seeding usage_pricing (connector/x)...");
-    for (const p of X_CONNECTOR_PRICING) {
+    // --- usage_pricing (batch upsert) ---
+    console.log("Seeding usage_pricing...");
+    for (const p of USAGE_PRICING) {
       await db
         .insert(usagePricing)
-        .values({
-          kind: "connector",
-          provider: "x",
-          category: p.category,
-          unitPrice: p.unitPrice,
-          unitSize: 1,
-        })
+        .values(p)
         .onConflictDoUpdate({
           target: [
             usagePricing.kind,
@@ -234,11 +308,11 @@ async function devSeed() {
             updatedAt: new Date(),
           },
         });
-      console.log(`  connector/x/${p.category}: ${p.unitPrice} credits/call`);
+      console.log(
+        `  ${p.kind}/${p.provider}/${p.category}: ${p.unitPrice} credits per ${p.unitSize}`,
+      );
     }
-    console.log(
-      `✅ Seeded ${X_CONNECTOR_PRICING.length} X connector pricing entries`,
-    );
+    console.log(`✅ Seeded ${USAGE_PRICING.length} usage pricing entries`);
 
     // --- vm0_api_keys (transactional replace) ---
     console.log("Seeding vm0_api_keys...");

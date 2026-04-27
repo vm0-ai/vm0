@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.9.6](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.9.5...vsock-host-v0.9.6) (2026-04-27)
+
+
+### Bug Fixes
+
+* make guest-agent own system log writes ([#11238](https://github.com/vm0-ai/vm0/issues/11238)) ([5041a49](https://github.com/vm0-ai/vm0/commit/5041a49416701955915962bc13aed07e5618db3e))
+
+## [0.9.5](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.9.4...vsock-host-v0.9.5) (2026-04-27)
+
+
+### Bug Fixes
+
+* **sandbox-fc:** persist backend crash state ([#11192](https://github.com/vm0-ai/vm0/issues/11192)) ([57c4222](https://github.com/vm0-ai/vm0/commit/57c4222d68327eac25a3a96f8256c8cc2275fc24))
+
 ## [0.9.4](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.9.3...vsock-host-v0.9.4) (2026-04-22)
 
 

@@ -23,7 +23,7 @@ Notes:
   - Returned URL is permanent (serves a short-lived signed redirect on access)
   - Safe to persist in chat messages or share over external channels
   - Max file size: 1 GB
-  - Allowed types: png / jpeg / gif / webp / svg / mp4 / webm / mov / pdf / txt / csv / md / json`,
+  - Allowed types: png / jpeg / gif / webp / svg / mp4 / webm / mov / pdf / txt / csv / md / html / json`,
   )
   .action(
     withErrorHandler(

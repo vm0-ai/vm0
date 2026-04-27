@@ -1,6 +1,6 @@
 import { eq, and } from "drizzle-orm";
 import { initServices } from "../../lib/init-services";
-import { usageEvent } from "../../db/schema/usage-event";
+import { usageEvent } from "@vm0/db/schema/usage-event";
 
 /** Find `usage_event` rows of kind=connector by runId. */
 export async function findTestConnectorBillingByRunId(runId: string): Promise<

@@ -1,6 +1,6 @@
 import { eq, and, gt, lte, asc, sql } from "drizzle-orm";
-import { creditExpiresRecord } from "../../../db/schema/credit-expires-record";
-import { orgMetadata } from "../../../db/schema/org-metadata";
+import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { logger } from "../../shared/logger";
 
 const log = logger("service:credit-expires");

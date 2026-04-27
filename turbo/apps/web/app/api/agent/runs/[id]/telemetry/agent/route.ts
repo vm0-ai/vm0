@@ -3,12 +3,12 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../../../../src/lib/ts-rest-handler";
-import { runAgentEventsContract } from "@vm0/core/contracts/runs";
+import { runAgentEventsContract } from "@vm0/api-contracts/contracts/runs";
 import { initServices } from "../../../../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../../../../src/lib/zero/org/resolve-org";
 import { getRunAgentEvents } from "../../../../../../../src/lib/infra/run/run-telemetry-service";
-import { isNotFound } from "../../../../../../../src/lib/shared/errors";
+import { isNotFound } from "@vm0/api-services/errors";
 
 const router = tsr.router(runAgentEventsContract, {
   getAgentEvents: async ({ params, query, headers }) => {

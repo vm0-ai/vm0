@@ -1,9 +1,9 @@
 import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
-import { storagesListContract } from "@vm0/core/contracts/storages";
+import { storagesListContract } from "@vm0/api-contracts/contracts/storages";
 import { VOLUME_ORG_USER_ID } from "@vm0/core/storage-names";
 import { initServices } from "../../../../src/lib/init-services";
-import { storages } from "../../../../src/db/schema/storage";
-import { agentRuns } from "../../../../src/db/schema/agent-run";
+import { storages } from "@vm0/db/schema/storage";
+import { agentRuns } from "@vm0/db/schema/agent-run";
 import { eq, and, desc } from "drizzle-orm";
 import {
   requireAuth,

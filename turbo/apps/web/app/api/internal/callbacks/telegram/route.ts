@@ -3,10 +3,10 @@ import { eq, and, gte, desc } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
 import { verifyCallback } from "../../../../../src/lib/infra/callback";
 import { decryptSecretValue } from "../../../../../src/lib/shared/crypto/secrets-encryption";
-import { telegramInstallations } from "../../../../../src/db/schema/telegram-installation";
-import { agentSessions } from "../../../../../src/db/schema/agent-session";
-import { agentRuns } from "../../../../../src/db/schema/agent-run";
-import { zeroAgents } from "../../../../../src/db/schema/zero-agent";
+import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
+import { agentSessions } from "@vm0/db/schema/agent-session";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import {
   createTelegramClient,
   sendMessage,
@@ -24,6 +24,8 @@ import {
   saveTelegramThreadSession,
   storeTelegramMessage,
   buildLogsUrl,
+  getAgentDisplayLabel,
+  formatTelegramThinkingMessage,
 } from "../../../../../src/lib/zero/telegram/handlers/shared";
 import { env } from "../../../../../src/env";
 import type { TelegramCallbackPayload } from "../../../../../src/lib/infra/callback/callback-payloads";
@@ -106,9 +108,10 @@ async function resolveAgentInfo(agentId: string) {
     .from(zeroAgents)
     .where(eq(zeroAgents.id, agentId))
     .limit(1);
+  const label = agentRow ? getAgentDisplayLabel(agentRow) : "zero";
   return {
-    label: agentRow?.displayName ?? agentRow?.name ?? "your agent",
-    name: agentRow?.name ?? "your agent",
+    label,
+    name: agentRow?.name ?? label,
   };
 }
 
@@ -160,7 +163,7 @@ async function handleCompletion(ctx: CompletionContext): Promise<void> {
   let responseText: string | undefined;
   if (status === "completed") {
     responseText = buildOutputText(runOutput) ?? "Task completed successfully.";
-    htmlOutput = buildTelegramResponse(responseText, agent.label, logsUrl);
+    htmlOutput = buildTelegramResponse(responseText, logsUrl);
   } else {
     const errorDetail =
       error ?? "The agent encountered an error during execution.";
@@ -243,11 +246,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // Get Telegram installation for bot token
   const [installation] = await globalThis.services.db
     .select({
-      id: telegramInstallations.id,
+      telegramBotId: telegramInstallations.telegramBotId,
       encryptedBotToken: telegramInstallations.encryptedBotToken,
     })
     .from(telegramInstallations)
-    .where(eq(telegramInstallations.id, payload.installationId))
+    .where(eq(telegramInstallations.telegramBotId, payload.installationId))
     .limit(1);
 
   if (!installation) {
@@ -268,7 +271,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     try {
       await sendChatAction(client, payload.chatId, "typing");
       if (payload.thinkingMessageId) {
-        const thinkingText = `<i>🤖 is thinking...</i>`;
+        const agent = await resolveAgentInfo(payload.agentId);
+        const thinkingText = formatTelegramThinkingMessage(agent.label);
         await editMessageText(
           client,
           payload.chatId,

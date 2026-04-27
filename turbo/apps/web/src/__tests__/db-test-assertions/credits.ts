@@ -1,13 +1,12 @@
 import { and, eq } from "drizzle-orm";
 import { initServices } from "../../lib/init-services";
-import { orgMetadata } from "../../db/schema/org-metadata";
-import { creditExpiresRecord } from "../../db/schema/credit-expires-record";
-import { creditUsage } from "../../db/schema/credit-usage";
-import { clientCreditUsage } from "../../db/schema/client-credit-usage";
-import { usageEvent } from "../../db/schema/usage-event";
-import { usageDaily } from "../../db/schema/usage-daily";
-import { insightsDaily } from "../../db/schema/insights-daily";
-import { orgPromoRedemption } from "../../db/schema/org-promo-redemption";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
+import { creditUsage } from "@vm0/db/schema/credit-usage";
+import { usageEvent } from "@vm0/db/schema/usage-event";
+import { usageDaily } from "@vm0/db/schema/usage-daily";
+import { insightsDaily } from "@vm0/db/schema/insights-daily";
+import { orgPromoRedemption } from "@vm0/db/schema/org-promo-redemption";
 
 // ---------------------------------------------------------------------------
 // Read-only assertion helpers for billing / credit test verification.
@@ -187,47 +186,6 @@ export async function findTestCreditUsagesByRunId(runId: string): Promise<
 }
 
 /**
- * Find client_credit_usage records by runId.
- */
-export async function findTestClientCreditUsagesByRunId(runId: string): Promise<
-  Array<{
-    id: string;
-    runId: string | null;
-    resultUuid: string | null;
-    orgId: string;
-    userId: string;
-    model: string;
-    modelProvider: string;
-    inputTokens: number;
-    outputTokens: number;
-    cacheReadInputTokens: number;
-    cacheCreationInputTokens: number;
-    webSearchRequests: number;
-    costUsd: string | null;
-  }>
-> {
-  initServices();
-  return globalThis.services.db
-    .select({
-      id: clientCreditUsage.id,
-      runId: clientCreditUsage.runId,
-      resultUuid: clientCreditUsage.resultUuid,
-      orgId: clientCreditUsage.orgId,
-      userId: clientCreditUsage.userId,
-      model: clientCreditUsage.model,
-      modelProvider: clientCreditUsage.modelProvider,
-      inputTokens: clientCreditUsage.inputTokens,
-      outputTokens: clientCreditUsage.outputTokens,
-      cacheReadInputTokens: clientCreditUsage.cacheReadInputTokens,
-      cacheCreationInputTokens: clientCreditUsage.cacheCreationInputTokens,
-      webSearchRequests: clientCreditUsage.webSearchRequests,
-      costUsd: clientCreditUsage.costUsd,
-    })
-    .from(clientCreditUsage)
-    .where(eq(clientCreditUsage.runId, runId));
-}
-
-/**
  * Look up a usage_daily record for verification in tests.
  */
 export async function findUsageDaily(
@@ -301,4 +259,32 @@ export async function findTestUsageEvent(id: string): Promise<
     .where(eq(usageEvent.id, id))
     .limit(1);
   return record;
+}
+
+/**
+ * Find all usage_event records by runId.
+ */
+export async function findTestUsageEventsByRunId(runId: string): Promise<
+  Array<{
+    idempotencyKey: string;
+    kind: string;
+    provider: string;
+    category: string;
+    quantity: number;
+    status: string;
+  }>
+> {
+  initServices();
+  return globalThis.services.db
+    .select({
+      idempotencyKey: usageEvent.idempotencyKey,
+      kind: usageEvent.kind,
+      provider: usageEvent.provider,
+      category: usageEvent.category,
+      quantity: usageEvent.quantity,
+      status: usageEvent.status,
+    })
+    .from(usageEvent)
+    .where(eq(usageEvent.runId, runId))
+    .orderBy(usageEvent.kind, usageEvent.provider, usageEvent.category);
 }

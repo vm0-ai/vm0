@@ -22,7 +22,7 @@ function generateTypeScript(): string {
     "// Auto-generated — do not edit.",
     "// Regenerate: cd turbo && pnpm -F @vm0/firewalls-generator generate:test-oauth",
     "",
-    'import type { FirewallConfig } from "../contracts/firewalls";',
+    'import type { FirewallConfig } from "../firewall-types";',
     "",
     "export const testOauthFirewall = {",
     '  name: "test-oauth",',

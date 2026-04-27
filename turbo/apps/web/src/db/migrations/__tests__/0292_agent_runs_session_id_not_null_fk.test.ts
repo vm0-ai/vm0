@@ -1,13 +1,13 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { eq, sql } from "drizzle-orm";
-import { testContext, uniqueId } from "../../../__tests__/test-helpers";
-import { initServices } from "../../../lib/init-services";
-import { agentRuns } from "../../schema/agent-run";
-import { agentSessions } from "../../schema/agent-session";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { agentSessions } from "@vm0/db/schema/agent-session";
 import {
   agentComposes,
   agentComposeVersions,
-} from "../../schema/agent-compose";
+} from "@vm0/db/schema/agent-compose";
+import { testContext, uniqueId } from "../../../__tests__/test-helpers";
+import { initServices } from "../../../lib/init-services";
 
 const context = testContext();
 

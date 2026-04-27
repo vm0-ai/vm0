@@ -2,7 +2,7 @@ import {
   createHandler,
   tsr,
 } from "../../../../../../../src/lib/ts-rest-handler";
-import { zeroRunAgentEventsContract } from "@vm0/core/contracts/zero-runs";
+import { zeroRunAgentEventsContract } from "@vm0/api-contracts/contracts/zero-runs";
 import { initServices } from "../../../../../../../src/lib/init-services";
 import {
   requireAuth,
@@ -10,7 +10,7 @@ import {
 } from "../../../../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../../../../src/lib/zero/org/resolve-org";
 import { getRunAgentEvents } from "../../../../../../../src/lib/infra/run/run-telemetry-service";
-import { isNotFound } from "../../../../../../../src/lib/shared/errors";
+import { isNotFound } from "@vm0/api-services/errors";
 
 const router = tsr.router(zeroRunAgentEventsContract, {
   getAgentEvents: async ({ params, query, headers }) => {

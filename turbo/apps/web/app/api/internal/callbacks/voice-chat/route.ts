@@ -2,12 +2,12 @@ import { NextRequest, NextResponse, after } from "next/server";
 import { eq } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
 import { verifyCallback } from "../../../../../src/lib/infra/callback";
-import { agentRuns } from "../../../../../src/db/schema/agent-run";
+import { agentRuns } from "@vm0/db/schema/agent-run";
 import { getRunOutputText } from "../../../../../src/lib/infra/run/extract-run-output";
 import { completeVoiceChatTask } from "../../../../../src/lib/zero/voice-chat/task-service";
 import { triggerReasoning } from "../../../../../src/lib/zero/voice-chat/trigger-reasoning";
 import { publishUserSignal } from "../../../../../src/lib/infra/realtime/client";
-import { isNotFound } from "../../../../../src/lib/shared/errors";
+import { isNotFound } from "@vm0/api-services/errors";
 import type { VoiceChatCallbackPayload } from "../../../../../src/lib/infra/callback/callback-payloads";
 import { logger } from "../../../../../src/lib/shared/logger";
 

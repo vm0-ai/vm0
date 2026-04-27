@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.2.4](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.3...guest-common-v0.2.4) (2026-04-27)
+
+
+### Refactoring
+
+* centralize guest system log path ([#11246](https://github.com/vm0-ai/vm0/issues/11246)) ([b93fc42](https://github.com/vm0-ai/vm0/commit/b93fc42833815fd843f073044b4e872505812025))
+
+## [0.2.3](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.2...guest-common-v0.2.3) (2026-04-27)
+
+
+### Bug Fixes
+
+* make guest-agent own system log writes ([#11238](https://github.com/vm0-ai/vm0/issues/11238)) ([5041a49](https://github.com/vm0-ai/vm0/commit/5041a49416701955915962bc13aed07e5618db3e))
+
+## [0.2.2](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.1...guest-common-v0.2.2) (2026-04-26)
+
+
+### Documentation
+
+* **guest-common:** update crate overview ([#11166](https://github.com/vm0-ai/vm0/issues/11166)) ([31444fa](https://github.com/vm0-ai/vm0/commit/31444fac59a4fe5d63291d6ee8a9a29d44779cbe))
+
 ## [0.2.1](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.0...guest-common-v0.2.1) (2026-04-22)
 
 

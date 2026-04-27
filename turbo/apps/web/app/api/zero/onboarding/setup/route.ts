@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import { onboardingSetupContract } from "@vm0/core/contracts/onboarding";
+import { onboardingSetupContract } from "@vm0/api-contracts/contracts/onboarding";
 import { initServices } from "../../../../../src/lib/init-services";
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
 import {
@@ -12,10 +12,10 @@ import { upsertOrgNoSecretModelProvider } from "../../../../../src/lib/zero/mode
 import { serverSideCompose } from "../../../../../src/lib/infra/compose/server-side-compose";
 import { buildComposeContent } from "../../../../../src/lib/zero/build-compose-content";
 import { SEED_INSTRUCTIONS } from "../../../../../src/lib/zero/seed-instructions";
-import { zeroAgents } from "../../../../../src/db/schema/zero-agent";
-import { orgMetadata } from "../../../../../src/db/schema/org-metadata";
-import { orgMembersMetadata } from "../../../../../src/db/schema/org-members-metadata";
-import { userConnectors } from "../../../../../src/db/schema/user-connector";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
+import { userConnectors } from "@vm0/db/schema/user-connector";
 import { ensureStarterCreditGrant } from "../../../../../src/lib/zero/credit/starter-grant-service";
 import { logger } from "../../../../../src/lib/shared/logger";
 

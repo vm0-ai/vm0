@@ -1,11 +1,11 @@
 import { and, desc, eq, like } from "drizzle-orm";
 import { initServices } from "../../lib/init-services";
-import { agentRuns } from "../../db/schema/agent-run";
-import { checkpoints } from "../../db/schema/checkpoint";
-import { zeroRuns } from "../../db/schema/zero-run";
-import { agentRunCallbacks } from "../../db/schema/agent-run-callback";
-import { agentRunQueue } from "../../db/schema/agent-run-queue";
-import { sandboxTelemetry } from "../../db/schema/sandbox-telemetry";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { checkpoints } from "@vm0/db/schema/checkpoint";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
+import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
+import { sandboxTelemetry } from "@vm0/db/schema/sandbox-telemetry";
 
 /**
  * Find agent runs matching a given userId and prompt.

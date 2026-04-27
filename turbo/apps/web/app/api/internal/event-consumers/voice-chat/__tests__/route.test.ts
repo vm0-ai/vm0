@@ -15,7 +15,7 @@ import { createVoiceChatSession } from "../../../../../../src/lib/zero/voice-cha
 // eslint-disable-next-line web/no-direct-db-in-tests -- verify DB side-effects directly
 import { createVoiceChatTask } from "../../../../../../src/lib/zero/voice-chat/task-service";
 // eslint-disable-next-line web/no-direct-db-in-tests -- verify DB side-effects directly
-import { voiceChatTasks } from "../../../../../../src/db/schema/voice-chat";
+import { voiceChatTasks } from "@vm0/db/schema/voice-chat";
 
 const SECRETS_ENCRYPTION_KEY =
   "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
@@ -77,6 +77,9 @@ async function seedSessionWithQueuedTask() {
         status: "queued",
         createdAt: new Date(),
         sessionId: session.id,
+        markResponseReady: () => {
+          return undefined;
+        },
       };
     },
   });

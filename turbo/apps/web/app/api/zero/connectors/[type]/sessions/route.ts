@@ -1,12 +1,12 @@
 import { createHandler, tsr } from "../../../../../../src/lib/ts-rest-handler";
-import { zeroConnectorSessionsContract } from "@vm0/core/contracts/zero-connectors";
-import { createErrorResponse } from "@vm0/core/contracts/errors";
+import { zeroConnectorSessionsContract } from "@vm0/api-contracts/contracts/zero-connectors";
+import { createErrorResponse } from "@vm0/api-contracts/contracts/errors";
 import { initServices } from "../../../../../../src/lib/init-services";
 import {
   requireAuth,
   isAuthError,
 } from "../../../../../../src/lib/auth/require-auth";
-import { connectorSessions } from "../../../../../../src/db/schema/connector-session";
+import { connectorSessions } from "@vm0/db/schema/connector-session";
 import { generateCode } from "../../../../../../src/lib/shared/crypto";
 
 const router = tsr.router(zeroConnectorSessionsContract, {

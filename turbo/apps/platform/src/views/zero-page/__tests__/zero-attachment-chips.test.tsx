@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { chatMessagesContract } from "@vm0/core/contracts/chat-threads";
+import { chatMessagesContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
@@ -29,7 +29,7 @@ function mockChatAPI() {
 // ---------------------------------------------------------------------------
 
 describe("chat-d-056: file type icon renders based on getFileTypeIcon", () => {
-  it("renders img icon for pdf attachment in chat message", async () => {
+  it("renders a pdf preview card for pdf attachment in chat message", async () => {
     mockChatLifecycle({
       chatMessages: [
         {
@@ -48,12 +48,7 @@ describe("chat-d-056: file type icon renders based on getFileTypeIcon", () => {
 
     await waitFor(() => {
       expect(
-        document.querySelector('a[download="document.pdf"]'),
-      ).toBeInTheDocument();
-      expect(
-        document.querySelector(
-          'a[download="document.pdf"] img[aria-hidden="true"]',
-        ),
+        screen.getByLabelText("Open pdf preview for document.pdf"),
       ).toBeInTheDocument();
     });
   });
@@ -204,9 +199,7 @@ describe("chat-i-059: image preview button opens lightbox", () => {
       ).toBeInTheDocument();
     });
 
-    const chipDiv = document.querySelector<HTMLElement>('[title="photo.png"]');
-    const chipButton = chipDiv?.querySelector("button");
-    click(chipButton!);
+    await user.click(screen.getByLabelText("Open image preview for photo.png"));
 
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
@@ -253,9 +246,7 @@ describe("chat-i-060: close button closes lightbox", () => {
       ).toBeInTheDocument();
     });
 
-    const chipDiv = document.querySelector<HTMLElement>('[title="photo.png"]');
-    const chipButton = chipDiv?.querySelector("button");
-    click(chipButton!);
+    await user.click(screen.getByLabelText("Open image preview for photo.png"));
 
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
@@ -308,9 +299,7 @@ describe("chat-i-061: backdrop click closes lightbox", () => {
       ).toBeInTheDocument();
     });
 
-    const chipDiv = document.querySelector<HTMLElement>('[title="photo.png"]');
-    const chipButton = chipDiv?.querySelector("button");
-    click(chipButton!);
+    await user.click(screen.getByLabelText("Open image preview for photo.png"));
 
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
@@ -385,9 +374,7 @@ describe("chat-i-066: lightbox download fallback uses direct download", () => {
       ).toBeInTheDocument();
     });
 
-    const chipDiv = document.querySelector<HTMLElement>('[title="photo.png"]');
-    const chipButton = chipDiv?.querySelector("button");
-    click(chipButton!);
+    await user.click(screen.getByLabelText("Open image preview for photo.png"));
 
     const downloadButton = await waitFor(() => {
       return screen.getByLabelText("Download");
@@ -451,11 +438,11 @@ describe("chat-i-062: remove button on attachment chip calls onRemove", () => {
 });
 
 // ---------------------------------------------------------------------------
-// CHAT-D-063: Download link renders for file attachments in FileAttachmentChip
+// CHAT-D-063: Preview buttons render for previewable file attachments
 // ---------------------------------------------------------------------------
 
-describe("chat-d-063: download link renders for file attachment", () => {
-  it("renders a download anchor for file attachments in sent messages", async () => {
+describe("chat-d-063: preview button renders for previewable file attachment", () => {
+  it("renders a preview button for file attachments in sent messages", async () => {
     const fileUrl = "https://example.com/report.pdf";
     const filename = "report.pdf";
 
@@ -475,15 +462,13 @@ describe("chat-d-063: download link renders for file attachment", () => {
     });
 
     await waitFor(() => {
-      const link = document.querySelector<HTMLAnchorElement>(
-        `a[download="${filename}"]`,
-      );
-      expect(link).toBeInTheDocument();
-      expect(link?.getAttribute("href")).toBe(fileUrl);
+      expect(
+        screen.getByLabelText(`Open pdf preview for ${filename}`),
+      ).toBeInTheDocument();
     });
   });
 
-  it("renders a download anchor from the structured attachFiles field", async () => {
+  it("renders a preview button from the structured attachFiles field", async () => {
     const fileUrl = "http://localhost:3000/f/user-1/file-1/spec.pdf";
     const filename = "spec.pdf";
 
@@ -512,11 +497,9 @@ describe("chat-d-063: download link renders for file attachment", () => {
     });
 
     await waitFor(() => {
-      const link = document.querySelector<HTMLAnchorElement>(
-        `a[download="${filename}"]`,
-      );
-      expect(link).toBeInTheDocument();
-      expect(link?.href).toBe(`${fileUrl}?download=1`);
+      expect(
+        screen.getByLabelText(`Open pdf preview for ${filename}`),
+      ).toBeInTheDocument();
     });
   });
 });

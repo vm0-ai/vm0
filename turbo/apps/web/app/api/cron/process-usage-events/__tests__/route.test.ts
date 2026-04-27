@@ -10,8 +10,11 @@ import {
   insertTestUsageEvent,
   findTestUsageEvent,
   getOrgCredits,
+  getOrgMembersEntry,
   insertOrgCacheEntry,
+  insertOrgMembersEntry,
   setOrgCredits,
+  updateOrgStripeFields,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { reloadEnv } from "../../../../../src/env";
 
@@ -264,8 +267,39 @@ describe("GET /api/cron/process-usage-events", () => {
     expect(r2!.status).toBe("processed");
   });
 
-  // NOTE: evaluateMemberCaps currently only aggregates `credit_usage`, not
-  // `usage_event`, so spend going through this processor can still slip
-  // past a member cap. Tracked in #10734; no regression test here to avoid
-  // pinning in the current broken behaviour.
+  it("disables capped members when processed usage_event spend reaches the cap", async () => {
+    const periodEnd = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000);
+    await updateOrgStripeFields(user.orgId, { currentPeriodEnd: periodEnd });
+    await insertOrgMembersEntry({
+      orgId: user.orgId,
+      userId: user.userId,
+      creditCap: 25,
+      creditEnabled: true,
+    });
+    await insertTestUsagePricing({
+      kind: "connector",
+      provider: "x",
+      category: "tweet.read",
+      unitPrice: 10,
+      unitSize: 1,
+    });
+
+    const eventId = await insertTestUsageEvent(user.orgId, {
+      userId: user.userId,
+      kind: "connector",
+      provider: "x",
+      category: "tweet.read",
+      quantity: 3,
+    });
+
+    const response = await GET(cronRequest("test-cron-secret"));
+    expect(response.status).toBe(200);
+
+    const event = await findTestUsageEvent(eventId);
+    expect(event!.status).toBe("processed");
+    expect(event!.creditsCharged).toBe(30);
+
+    const member = await getOrgMembersEntry(user.orgId, user.userId);
+    expect(member!.creditEnabled).toBe(false);
+  });
 });

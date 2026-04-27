@@ -1,7 +1,7 @@
 import {
   type UserPreferencesResponse,
   zeroUserPreferencesContract,
-} from "@vm0/core/contracts/zero-user-preferences";
+} from "@vm0/api-contracts/contracts/zero-user-preferences";
 import { mockApi } from "../msw-contract.ts";
 
 let mockPreferences: UserPreferencesResponse = {

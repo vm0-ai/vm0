@@ -1,6 +1,6 @@
 import "server-only";
 import { and, asc, eq, inArray } from "drizzle-orm";
-import { voiceChatTasks } from "../../../db/schema/voice-chat";
+import { voiceChatTasks } from "@vm0/db/schema/voice-chat";
 
 const ACTIVE_STATUSES = ["pending", "queued", "running"] as const;
 

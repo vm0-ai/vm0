@@ -1,12 +1,12 @@
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
-import { chatThreadV1GetContract } from "@vm0/core/contracts/chat-threads-v1";
+import { chatThreadV1GetContract } from "@vm0/api-contracts/contracts/chat-threads-v1";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
   requireApiKeyAuth,
   isAuthError,
 } from "../../../../../src/lib/auth/require-auth";
 import { getChatThread } from "../../../../../src/lib/zero/chat-thread";
-import { isNotFound } from "../../../../../src/lib/shared/errors";
+import { isNotFound } from "@vm0/api-services/errors";
 
 const router = tsr.router(chatThreadV1GetContract, {
   get: async ({ params, headers }) => {

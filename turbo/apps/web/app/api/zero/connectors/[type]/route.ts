@@ -1,6 +1,6 @@
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
-import { zeroConnectorsByTypeContract } from "@vm0/core/contracts/zero-connectors";
-import { createErrorResponse } from "@vm0/core/contracts/errors";
+import { zeroConnectorsByTypeContract } from "@vm0/api-contracts/contracts/zero-connectors";
+import { createErrorResponse } from "@vm0/api-contracts/contracts/errors";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
   requireAuth,
@@ -11,7 +11,7 @@ import {
   getConnector,
   deleteConnector,
 } from "../../../../../src/lib/zero/connector/connector-service";
-import { isNotFound } from "../../../../../src/lib/shared/errors";
+import { isNotFound } from "@vm0/api-services/errors";
 
 const router = tsr.router(zeroConnectorsByTypeContract, {
   get: async ({ params, headers }) => {

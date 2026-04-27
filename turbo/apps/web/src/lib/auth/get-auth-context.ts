@@ -1,8 +1,8 @@
 import { eq, and, gt } from "drizzle-orm";
 import { auth } from "@clerk/nextjs/server";
-import type { OrgRole } from "@vm0/core/contracts/org-members";
-import type { ZeroCapability } from "@vm0/core/contracts/composes";
-import { cliTokens } from "../../db/schema/cli-tokens";
+import type { OrgRole } from "@vm0/api-contracts/contracts/org-members";
+import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
+import { cliTokens } from "@vm0/db/schema/cli-tokens";
 import {
   isSandboxToken,
   isPatToken,
@@ -176,6 +176,7 @@ async function authenticateSandboxToken(
 function resolveSandboxAuth(
   sandboxAuth: {
     userId: string;
+    orgId: string;
     runId: string;
   },
   options: {
@@ -186,6 +187,7 @@ function resolveSandboxAuth(
   if (options.acceptAnySandboxCapability) {
     return {
       userId: sandboxAuth.userId,
+      orgId: sandboxAuth.orgId,
       runId: sandboxAuth.runId,
       tokenType: "sandbox",
     };

@@ -1,6 +1,6 @@
 import { eq, sql } from "drizzle-orm";
 import { initServices } from "../../lib/init-services";
-import { pushSubscriptions } from "../../db/schema/push-subscription";
+import { pushSubscriptions } from "@vm0/db/schema/push-subscription";
 
 /**
  * Count rows in a table where user_id matches.

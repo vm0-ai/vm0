@@ -6,6 +6,7 @@ import {
   IconCircleCheck,
   IconDotsVertical,
   IconDownload,
+  IconSettings,
 } from "@tabler/icons-react";
 import { Button } from "@vm0/ui";
 import {
@@ -29,8 +30,15 @@ import {
   showUninstallDialog$,
   setShowUninstallDialog$,
 } from "../../signals/zero-page/zero-slack.ts";
+import {
+  isTelegramIntegrationEnabled$,
+  telegramBots$,
+} from "../../signals/zero-page/zero-telegram.ts";
 import { detach, Reason } from "../../signals/utils.ts";
+import { Link } from "../router/link.tsx";
+import { ROUTES } from "../../signals/route-paths.ts";
 import slackIconImg from "./components/settings/icons/slack.svg";
+import telegramIconImg from "./components/settings/icons/telegram.svg";
 
 /** Append a cache-busting timestamp and forward ?prompt= so the OAuth flow can
  *  carry it through to the Slack DM greeting. */
@@ -264,6 +272,54 @@ function SlackCard({ displayName }: { displayName: string }) {
   );
 }
 
+function TelegramCard() {
+  const botsLoadable = useLastLoadable(telegramBots$);
+  const bots = botsLoadable.state === "hasData" ? botsLoadable.data : [];
+  const connectedCount = bots.filter((bot) => {
+    return bot.isConnected;
+  }).length;
+  const summary =
+    botsLoadable.state === "hasData"
+      ? `${bots.length} ${bots.length === 1 ? "bot" : "bots"} - ${connectedCount} connected`
+      : "Manage Telegram bots and agent routing";
+
+  return (
+    <Link
+      pathname={ROUTES.settingsTelegram}
+      className="zero-card flex flex-col text-inherit no-underline transition-colors hover:bg-muted/30"
+      aria-label="Open Telegram settings"
+    >
+      <div className="flex items-center gap-4 p-4">
+        <div className="shrink-0 inline-flex h-7 w-7 items-center justify-center overflow-hidden">
+          <img src={telegramIconImg} alt="" className="h-7 w-7" />
+        </div>
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <div className="text-sm font-medium text-foreground">Telegram</div>
+          <div className="truncate text-sm text-muted-foreground">
+            {summary}
+          </div>
+        </div>
+        <span className="shrink-0 inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-xs font-medium text-secondary-foreground">
+          <IconSettings size={14} stroke={1.5} />
+          Manage
+        </span>
+      </div>
+    </Link>
+  );
+}
+
+function TelegramCardGate() {
+  const enabledLoadable = useLoadable(isTelegramIntegrationEnabled$);
+  const enabled =
+    enabledLoadable.state === "hasData" ? enabledLoadable.data : false;
+
+  if (!enabled) {
+    return null;
+  }
+
+  return <TelegramCard />;
+}
+
 export function ZeroWorksPage() {
   const displayNameLoadable = useLoadable(currentChatAgentDisplayName$);
   const displayName =
@@ -287,6 +343,7 @@ export function ZeroWorksPage() {
       <main className="flex-1 overflow-auto px-4 sm:px-6 pt-3 pb-8">
         <div className="mx-auto max-w-[900px] flex flex-col gap-4">
           <SlackCard displayName={displayName} />
+          <TelegramCardGate />
         </div>
       </main>
     </div>

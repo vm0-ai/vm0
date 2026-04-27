@@ -8,14 +8,14 @@ import {
 } from "../../../infra/storage/storage-service";
 import type { StorageManifest } from "../../../infra/storage/types";
 import { getAllFeatureStates } from "@vm0/core/feature-switch";
-import { DEFAULT_PROFILE } from "@vm0/core/contracts/runners";
-import { badRequest } from "../../../shared/errors";
+import { DEFAULT_PROFILE } from "@vm0/api-contracts/contracts/runners";
+import { badRequest } from "@vm0/api-services/errors";
 import { logger } from "../../../shared/logger";
 import { extractWorkingDir } from "../utils/extract-working-dir";
 import {
   agentComposes,
   agentComposeVersions,
-} from "../../../../db/schema/agent-compose";
+} from "@vm0/db/schema/agent-compose";
 import { extractCliAgentType } from "../utils";
 
 const log = logger("context:preparer");
@@ -259,5 +259,7 @@ function buildPreparedContext(
     captureNetworkBodies: context.captureNetworkBodies || false,
 
     billableFirewalls: context.billableFirewalls,
+
+    wasQueued: context.wasQueued ?? false,
   };
 }

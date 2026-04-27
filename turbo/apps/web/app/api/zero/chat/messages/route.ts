@@ -1,10 +1,11 @@
 import { and, eq } from "drizzle-orm";
 import { after } from "next/server";
+import { waitUntil } from "@vercel/functions";
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
 import {
   chatMessagesContract,
   type AttachFile,
-} from "@vm0/core/contracts/chat-threads";
+} from "@vm0/api-contracts/contracts/chat-threads";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
   requireAuth,
@@ -16,15 +17,15 @@ import {
   fetchZeroAgentForRun,
 } from "../../../../../src/lib/zero/zero-run-service";
 import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
-import { modelProviders } from "../../../../../src/db/schema/model-provider";
-import { chatThreads } from "../../../../../src/db/schema/chat-thread";
+import { modelProviders } from "@vm0/db/schema/model-provider";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
 import {
   buildWebChatPrompt,
   buildWebAttachFilesPrompt,
   buildWebChatIncompleteContext,
   type WebChatIncompleteRound,
 } from "../../../../../src/lib/zero/integration-prompt";
-import { isApiError } from "../../../../../src/lib/shared/errors";
+import { isApiError } from "@vm0/api-services/errors";
 import {
   createChatThread,
   getChatThread,
@@ -35,13 +36,13 @@ import {
   getLatestSessionIdForThread,
   getLatestMessagesByThreadId,
   getIncompleteRoundsSinceLastSuccess,
-  hasAnyRunsForThread,
   publishThreadListChanged,
   PREVIOUS_CONTEXT_MESSAGES,
 } from "../../../../../src/lib/zero/chat-thread/chat-message-service";
-import { generateChatTitle } from "../../../../../src/lib/zero/ai/lightweight-model";
-import { zeroRuns } from "../../../../../src/db/schema/zero-run";
-import { zeroAgentSchedules } from "../../../../../src/db/schema/zero-agent-schedule";
+import {
+  generateChatTitle,
+  isLightweightModelConfigured,
+} from "../../../../../src/lib/zero/ai/lightweight-model";
 import {
   getApiUrl,
   generateCallbackSecret,
@@ -51,6 +52,7 @@ import { publishUserSignal } from "../../../../../src/lib/infra/realtime/client"
 import { logger } from "../../../../../src/lib/shared/logger";
 import {
   recordChatSpan,
+  recordSandboxOperation,
   type ChatSpanDimensions,
 } from "../../../../../src/lib/infra/metrics";
 import {
@@ -60,29 +62,8 @@ import {
 
 const log = logger("zero:chat-messages");
 
-/**
- * System prompt seeded on the first run of a thread that was started from a
- * previously scheduled run. The agent can pull the original run's full
- * telemetry via the `zero logs <runId>` CLI command inside its sandbox.
- */
-function buildContinueFromScheduleSystemPrompt(
-  runId: string,
-  scheduleName: string | null,
-): string {
-  const scheduleSuffix = scheduleName ? `(scheduleName: ${scheduleName})` : "";
-  return (
-    `You are continuing a previously scheduled run${scheduleSuffix}. ` +
-    `Before replying, run \`zero logs ${runId}\` inside your sandbox to ` +
-    `fetch the full record of that run, then continue the conversation with ` +
-    `the user based on that context.`
-  );
-}
-
-function buildAppendSystemPrompt(
-  continueFromSchedulePrompt: string | undefined,
-  incompleteContext: string,
-): string {
-  return [buildWebChatPrompt(), incompleteContext, continueFromSchedulePrompt]
+function buildAppendSystemPrompt(incompleteContext: string): string {
+  return [buildWebChatPrompt(), incompleteContext]
     .filter((part) => {
       return typeof part === "string" && part.length > 0;
     })
@@ -103,7 +84,6 @@ function buildFullPrompt(
 interface ResolvedThread {
   threadId: string;
   sessionId: string | undefined;
-  continueFromSchedulePrompt: string | undefined;
   incompleteContext: string;
   isNewThread: boolean;
 }
@@ -195,7 +175,7 @@ async function rejectIfThreadModelLocked(
  * Returns thread metadata needed for run creation and title generation.
  *
  * When `dims` is provided, each sub-stage (create-thread, get-thread,
- * session-id lookup, has-any-run, incomplete-rounds, continue-from resolution)
+ * session-id lookup, and incomplete-rounds)
  * emits a span to the `sandbox-op-log` Axiom dataset with
  * `source: "web-chat"`. Each parallel arm is wrapped in `timed()` so the
  * per-query duration is still captured alongside the parallel execution.
@@ -204,6 +184,7 @@ async function resolveThread(
   userId: string,
   agentId: string,
   existingThreadId: string | undefined,
+  clientThreadId: string | undefined,
   dims?: ChatSpanDimensions,
 ): Promise<ResolvedThread> {
   const emit = (op: string, ms: number): void => {
@@ -212,7 +193,7 @@ async function resolveThread(
 
   if (!existingThreadId) {
     const createT = await timed(async () => {
-      return createChatThread(userId, agentId);
+      return createChatThread(userId, agentId, null, clientThreadId);
     });
     emit(CHAT_REQUEST_OPS.resolve_thread_create_thread, createT.ms);
     const thread = createT.result;
@@ -223,20 +204,16 @@ async function resolveThread(
     return {
       threadId: thread.id,
       sessionId: undefined,
-      continueFromSchedulePrompt: undefined,
       incompleteContext: "",
       isNewThread: true,
     };
   }
 
-  // Four independent reads keyed off `(existingThreadId, userId)`. Running
+  // Three independent reads keyed off `(existingThreadId, userId)`. Running
   // them in parallel caps wall time at the slowest arm. The prior 4th arm
   // (`getLatestMessagesByThreadId`) was a ~275ms P50 read used only by the
-  // fire-and-forget title generator — now lifted off this critical path. It
-  // is replaced by the cheap `hasAnyRunsForThread` EXISTS probe so the
-  // continue-from-schedule gate keeps its first-run semantics without a
-  // 10-row scan on every send.
-  const [threadT, sessionIdT, hasAnyRunT, incompleteT] = await Promise.all([
+  // fire-and-forget title generator — now lifted off this critical path.
+  const [threadT, sessionIdT, incompleteT] = await Promise.all([
     timed(async () => {
       return getChatThread(existingThreadId, userId);
     }),
@@ -244,15 +221,11 @@ async function resolveThread(
       return getLatestSessionIdForThread(existingThreadId);
     }),
     timed(async () => {
-      return hasAnyRunsForThread(existingThreadId);
-    }),
-    timed(async () => {
       return getIncompleteRoundsSinceLastSuccess(existingThreadId);
     }),
   ]);
   emit(CHAT_REQUEST_OPS.resolve_thread_get_thread, threadT.ms);
   emit(CHAT_REQUEST_OPS.resolve_thread_session_id, sessionIdT.ms);
-  emit(CHAT_REQUEST_OPS.resolve_thread_has_any_run, hasAnyRunT.ms);
   emit(CHAT_REQUEST_OPS.resolve_thread_incomplete, incompleteT.ms);
 
   const thread = threadT.result;
@@ -267,32 +240,9 @@ async function resolveThread(
     groupIncompleteRoundsByRunId(incompleteT.result),
   );
 
-  let continueFromSchedulePrompt: string | undefined;
-  const sourceScheduleRunId = thread.sourceScheduleRunId;
-  if (sourceScheduleRunId && !hasAnyRunT.result) {
-    const continueFromT = await timed(async () => {
-      return globalThis.services.db
-        .select({ name: zeroAgentSchedules.name })
-        .from(zeroRuns)
-        .innerJoin(
-          zeroAgentSchedules,
-          eq(zeroRuns.scheduleId, zeroAgentSchedules.id),
-        )
-        .where(eq(zeroRuns.id, sourceScheduleRunId))
-        .limit(1);
-    });
-    emit(CHAT_REQUEST_OPS.resolve_thread_continue_from, continueFromT.ms);
-    const [sourceSchedule] = continueFromT.result;
-    continueFromSchedulePrompt = buildContinueFromScheduleSystemPrompt(
-      sourceScheduleRunId,
-      sourceSchedule?.name ?? null,
-    );
-  }
-
   return {
     threadId: thread.id,
     sessionId,
-    continueFromSchedulePrompt,
     incompleteContext,
     isNewThread: false,
   };
@@ -433,18 +383,14 @@ const router = tsr.router(chatMessagesContract, {
     }
 
     try {
-      const {
-        threadId,
-        sessionId,
-        continueFromSchedulePrompt,
-        incompleteContext,
-        isNewThread,
-      } = await resolveThread(
-        authCtx.userId,
-        body.agentId,
-        body.threadId,
-        dims,
-      );
+      const { threadId, sessionId, incompleteContext, isNewThread } =
+        await resolveThread(
+          authCtx.userId,
+          body.agentId,
+          body.threadId,
+          body.clientThreadId,
+          dims,
+        );
 
       const overrideT = await timed(async () => {
         return resolveRunModelOverride(
@@ -464,41 +410,42 @@ const router = tsr.router(chatMessagesContract, {
       // callback regenerates the title with the full current exchange
       // once the run completes.
       //
-      // Title context fetch lives in this fire-and-forget IIFE so the
-      // ~275ms `chat_messages` read is not on the POST response path. For
-      // brand-new threads the fetch is skipped (no prior rounds exist), so
-      // we only pay the round trip on follow-up sends.
-      if (body.hasTextContent !== false) {
-        void (async () => {
+      // Title generation is non-critical. Keep it out of the response path
+      // and do not schedule the DB context fetch when the lightweight model is
+      // unavailable (common in tests and local dev).
+      if (body.hasTextContent !== false && isLightweightModelConfigured()) {
+        after(async () => {
           let priorRounds:
             | { role: "user" | "assistant"; content: string }[]
             | undefined;
-          if (!isNewThread) {
-            const fetchT = await timed(async () => {
-              return getLatestMessagesByThreadId(
-                threadId,
-                PREVIOUS_CONTEXT_MESSAGES,
+          try {
+            if (!isNewThread) {
+              const fetchT = await timed(async () => {
+                return getLatestMessagesByThreadId(
+                  threadId,
+                  PREVIOUS_CONTEXT_MESSAGES,
+                );
+              });
+              recordChatSpan(
+                CHAT_REQUEST_OPS.title_context_fetch,
+                fetchT.ms,
+                dims,
               );
+              const mapped = fetchT.result.map((m) => {
+                return { role: m.role, content: m.content };
+              });
+              priorRounds = mapped.length > 0 ? mapped : undefined;
+            }
+            const title = await generateChatTitle({
+              currentUserMessage: body.prompt,
+              priorRounds,
             });
-            recordChatSpan(
-              CHAT_REQUEST_OPS.title_context_fetch,
-              fetchT.ms,
-              dims,
-            );
-            const mapped = fetchT.result.map((m) => {
-              return { role: m.role, content: m.content };
-            });
-            priorRounds = mapped.length > 0 ? mapped : undefined;
+            if (title) {
+              await updateChatThreadTitle(threadId, authCtx.userId, title);
+            }
+          } catch (err: unknown) {
+            log.warn("Chat title generation failed", { threadId, err });
           }
-          const title = await generateChatTitle({
-            currentUserMessage: body.prompt,
-            priorRounds,
-          });
-          if (title) {
-            await updateChatThreadTitle(threadId, authCtx.userId, title);
-          }
-        })().catch((err: unknown) => {
-          log.warn("Chat title generation failed", { threadId, err });
         });
       }
 
@@ -522,7 +469,7 @@ const router = tsr.router(chatMessagesContract, {
       const fullPrompt = buildFullPrompt(body.prompt, body.attachFiles);
 
       // Create the run. Phase 2 dispatch is deferred inside createZeroRun
-      // via after() so the response flushes before tokens/secrets/runner work.
+      // via waitUntil() so the response flushes before tokens/secrets/runner work.
       const result = await createZeroRun({
         userId: authCtx.userId,
         prompt: fullPrompt,
@@ -533,10 +480,7 @@ const router = tsr.router(chatMessagesContract, {
         modelProvider,
         modelProviderId: override.providerId ?? undefined,
         selectedModelOverride: override.selectedModel ?? undefined,
-        appendSystemPrompt: buildAppendSystemPrompt(
-          continueFromSchedulePrompt,
-          incompleteContext,
-        ),
+        appendSystemPrompt: buildAppendSystemPrompt(incompleteContext),
         callbacks: [chatCallback],
         chatThreadId: threadId,
         preloadedAgent: agent,
@@ -545,32 +489,64 @@ const router = tsr.router(chatMessagesContract, {
         userProfile: userProfileFromClaims(authCtx),
       });
 
-      // Persist user message to chat_messages.
-      // Only file IDs are stored — metadata is resolved at query time from S3.
-      // insertChatMessage also publishes chatThreadMessageCreated internally,
-      // so the paged-messages view picks up the new row.
-      // Stamp with the runId so the callback's prior-context filter can
-      // exclude this message structurally (by runId) instead of by content.
-      await insertChatMessage({
-        chatThreadId: threadId,
-        userId: authCtx.userId,
-        role: "user",
-        content: body.prompt,
-        runId: result.runId,
-        attachFiles: body.attachFiles?.map((f) => {
-          return f.id;
-        }),
-        id: body.clientMessageId,
-        spanDims: dims,
-      });
+      // Stamp response-ready for the Phase-2 instrumentation split before
+      // registering the signals waitUntil() so we can measure its closure-entry
+      // offset against the same responseReady anchor used by dispatchZeroRun.
+      const responseReadyAt = result.markResponseReady();
 
-      after(async () => {
-        await publishUserSignal(
-          [authCtx.userId],
-          `chatThreadRunCreated:${threadId}`,
-        );
-        await publishThreadListChanged(authCtx.userId);
-      });
+      // Persist user message to chat_messages in waitUntil() so the 201
+      // response flushes before the INSERT (+ internal chatThreadMessageCreated
+      // publish) runs. The response body omits the row id and the client
+      // renders optimistically via clientMessageId, so no caller blocks.
+      //
+      // Ordering: insertChatMessage MUST complete before publishUserSignal /
+      // publishThreadListChanged fire — those signals tell other devices to
+      // refetch the thread list / paged-messages view, and they must see the
+      // new row on refetch. The `await`s below preserve that ordering.
+      waitUntil(
+        (async () => {
+          const signalsEnterAt = Date.now();
+          try {
+            // Stamp with the runId so the callback's prior-context filter can
+            // exclude this message structurally (by runId) instead of by content.
+            await insertChatMessage({
+              chatThreadId: threadId,
+              userId: authCtx.userId,
+              role: "user",
+              content: body.prompt,
+              runId: result.runId,
+              attachFiles: body.attachFiles?.map((f: AttachFile) => {
+                return f.id;
+              }),
+              id: body.clientMessageId,
+              spanDims: dims,
+            });
+          } catch (err: unknown) {
+            log.error("Deferred insertChatMessage failed", {
+              runId: result.runId,
+              err,
+            });
+          }
+          await publishUserSignal(
+            [authCtx.userId],
+            `chatThreadRunCreated:${threadId}`,
+          );
+          await publishThreadListChanged(authCtx.userId);
+          // Cross-referenced with api_after_schedule_to_closure in Axiom to
+          // infer whether Vercel fires waitUntil() and after() callbacks in
+          // parallel or serial: near-equal durations imply parallel, a large
+          // gap implies serial.
+          if (responseReadyAt !== undefined) {
+            recordSandboxOperation({
+              sandboxType: "chat",
+              actionType: "api_after_signals_enter_offset",
+              durationMs: signalsEnterAt - responseReadyAt,
+              success: true,
+              runId: result.runId,
+            });
+          }
+        })(),
+      );
 
       return {
         status: 201 as const,

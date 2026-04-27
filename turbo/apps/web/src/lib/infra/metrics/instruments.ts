@@ -1,11 +1,12 @@
 import { ingestSandboxOpLog } from "../../shared/axiom";
 
 export function recordSandboxOperation(attrs: {
-  sandboxType: "runner" | "docker";
+  sandboxType: "runner" | "docker" | "chat";
   actionType: string;
   durationMs: number;
   success: boolean;
   runId: string;
+  dimensions?: Record<string, unknown>;
 }): void {
   ingestSandboxOpLog({
     source: "web",
@@ -13,6 +14,7 @@ export function recordSandboxOperation(attrs: {
     sandbox_type: attrs.sandboxType,
     duration_ms: attrs.durationMs,
     run_id: attrs.runId,
+    ...attrs.dimensions,
   });
 }
 

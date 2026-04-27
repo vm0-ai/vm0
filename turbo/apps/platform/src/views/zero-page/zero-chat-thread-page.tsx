@@ -17,17 +17,35 @@ import {
   IconCheck,
   IconPin,
   IconVolume2,
+  IconArrowBarToUp,
+  IconDownload,
+  IconEye,
+  IconFile,
+  IconFiles,
+  IconVideo,
 } from "@tabler/icons-react";
 import {
   cn,
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
   Skeleton,
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@vm0/ui";
-import { RUN_ERROR_GUIDANCE } from "@vm0/core/contracts/errors";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
+import emptyChatImg from "./assets/empty-chat.webp";
+import docCsvIcon from "./assets/doc-csv.svg";
+import docDocIcon from "./assets/doc-doc.svg";
+import docHtmlIcon from "./assets/doc-html.svg";
+import docJsonIcon from "./assets/doc-json.svg";
+import docPdfIcon from "./assets/doc-pdf.svg";
+import docTxtIcon from "./assets/doc-txt.svg";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
   ttsPlayingRunId$,
@@ -39,11 +57,21 @@ import {
   toggleAutoRead$,
 } from "../../signals/voice-io/voice-io-settings.ts";
 import { Markdown } from "../components/markdown.tsx";
-import { detach, Reason } from "../../signals/utils.ts";
-import { FileAttachmentChip, ImageLightbox } from "./zero-attachment-chips.tsx";
+import { detach, Reason, onDomEventFn } from "../../signals/utils.ts";
+import {
+  AttachmentLightbox,
+  downloadAttachmentUrl,
+  FileAttachmentChip,
+  PreviewableFileAttachmentChip,
+} from "./zero-attachment-chips.tsx";
+import {
+  AttachmentPreview,
+  classifyChatAttachment,
+  filenameFromUrl,
+} from "./zero-attachment-preview.tsx";
 import {
   lightboxUrl$ as attachmentLightboxUrl$,
-  setLightboxUrl$ as setAttachmentLightboxUrl$,
+  openImageLightbox$ as openAttachmentImageLightbox$,
 } from "../../signals/zero-page/zero-attachment-chips.ts";
 import {
   pinnedAgentIds$,
@@ -60,11 +88,11 @@ import type {
   GroupedChatMessageGroup,
   PagedChatMessage,
 } from "../../signals/chat-page/chat-message.ts";
-import {
-  currentChatThreadSignals$,
-  type ChatThreadSignals,
-} from "../../signals/chat-page/create-chat-thread.ts";
+import type { ChatThreadArtifactFile } from "@vm0/api-contracts/contracts/chat-threads";
+import type { ChatThreadSignals } from "../../signals/chat-page/create-chat-thread.ts";
+import type { ChatThread } from "../../signals/agent-chat.ts";
 import { ATTACH_ONLY_PLACEHOLDER } from "../../signals/chat-page/resolve-draft-attachments.ts";
+import type { ChatClipboardAttachment } from "../../signals/zero-page/clipboard.ts";
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
 import { orgModelProviders$ } from "../../signals/external/org-model-providers.ts";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
@@ -103,7 +131,7 @@ function HeaderAgentAvatar({ thread }: { thread: ChatThreadSignals }) {
   const agentId = useLastResolved(thread.agentId$);
 
   if (!agentId) {
-    return null;
+    return <Skeleton className="h-8 w-8 rounded-xl" />;
   }
 
   return (
@@ -176,12 +204,54 @@ function PinPillButton({ thread }: { thread: ChatThreadSignals }) {
   );
 }
 
+function ArtifactsButton({ thread }: { thread: ChatThreadSignals }) {
+  const features = useLastResolved(featureSwitch$);
+  const enabled = features?.[FeatureSwitchKey.ChatArtifactsDrawer] ?? false;
+
+  if (!enabled) {
+    return null;
+  }
+
+  return <ArtifactsButtonInner thread={thread} />;
+}
+
+function ArtifactsButtonInner({ thread }: { thread: ChatThreadSignals }) {
+  const open = useGet(thread.artifactsDrawerOpen$);
+  const setOpen = useSet(thread.setArtifactsDrawerOpen$);
+
+  return (
+    <TooltipProvider delayDuration={300}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(true);
+            }}
+            className={cn(
+              "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors duration-150",
+              open
+                ? "bg-primary/10 text-primary"
+                : "text-muted-foreground/70 hover:bg-accent hover:text-foreground",
+            )}
+            aria-label="Open artifacts"
+            aria-pressed={open}
+          >
+            <IconFiles size={17} stroke={1.5} />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">Open artifacts</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
 function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
   const displayName = useLastResolved(thread.agentDisplayName$);
-  const features = useLastResolved(featureSwitch$);
-  const audioOutputEnabled = features?.[FeatureSwitchKey.AudioOutput] ?? false;
   const autoRead = useGet(autoReadEnabled$);
   const toggleAutoReadFn = useSet(toggleAutoRead$);
+  const features = useLastResolved(featureSwitch$);
+  const audioOutputEnabled = features?.[FeatureSwitchKey.AudioOutput] ?? false;
 
   return (
     <header className="hidden sm:flex shrink-0 bg-transparent px-6 py-3 items-center justify-between">
@@ -190,9 +260,14 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
           <HeaderAgentAvatar thread={thread} />
           <PinPillButton thread={thread} />
         </div>
-        <span className="font-semibold text-foreground">{displayName}</span>
+        {displayName ? (
+          <span className="font-semibold text-foreground">{displayName}</span>
+        ) : (
+          <Skeleton className="h-5 w-32 rounded" />
+        )}
       </div>
       <div className="hidden sm:flex items-center gap-0.5">
+        <ArtifactsButton thread={thread} />
         {audioOutputEnabled && (
           <TooltipProvider delayDuration={300}>
             <Tooltip>
@@ -225,22 +300,486 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
   );
 }
 
+interface ZeroChatThreadPageProps {
+  thread: ChatThreadSignals;
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  const units = ["KB", "MB", "GB"] as const;
+  let value = bytes / 1024;
+  for (let i = 0; i < units.length; i++) {
+    const unit = units[i]!;
+    if (value < 1024 || i === units.length - 1) {
+      return `${value.toFixed(value >= 10 ? 0 : 1)} ${unit}`;
+    }
+    value = value / 1024;
+  }
+  return `${bytes} B`;
+}
+
+function formatArtifactTime(value: string): string {
+  return new Date(value).toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+type ChatArtifactItem = {
+  runId: string;
+  file: ChatThreadArtifactFile;
+};
+
+type ArtifactPreviewKind = "image" | "video" | "document" | "file";
+
+function artifactItemKey(item: ChatArtifactItem): string {
+  return `${item.runId}:${item.file.id}:${item.file.url}`;
+}
+
+function getFileExtension(filename: string): string {
+  const ext = filename.split(".").pop();
+  return ext && ext !== filename ? ext.toUpperCase() : "FILE";
+}
+
+function getArtifactPreviewKind(
+  file: ChatThreadArtifactFile,
+): ArtifactPreviewKind {
+  const contentType = file.contentType.toLowerCase();
+  const filename = file.filename.toLowerCase();
+
+  if (contentType.startsWith("image/") || isImageFilename(filename)) {
+    return "image";
+  }
+  if (contentType.startsWith("video/") || isVideoFilename(filename)) {
+    return "video";
+  }
+  if (
+    contentType === "application/pdf" ||
+    contentType === "application/json" ||
+    contentType === "text/csv" ||
+    (contentType.startsWith("text/") && contentType !== "text/html") ||
+    /\.(pdf|txt|md|csv|json|log)$/i.test(filename)
+  ) {
+    return "document";
+  }
+  return "file";
+}
+
+function flattenArtifactRuns(
+  runs: { runId: string; files: ChatThreadArtifactFile[] }[],
+): ChatArtifactItem[] {
+  return runs.flatMap((run) => {
+    return run.files.map((file) => {
+      return { runId: run.runId, file };
+    });
+  });
+}
+
+function getArtifactFileIconSrc(file: ChatThreadArtifactFile): string | null {
+  const kind = classifyChatAttachment({
+    filename: file.filename,
+    url: file.url,
+    contentType: file.contentType,
+  });
+
+  if (kind === "pdf") {
+    return docPdfIcon;
+  }
+  if (kind === "html") {
+    return docHtmlIcon;
+  }
+  if (kind === "csv") {
+    return docCsvIcon;
+  }
+  if (kind === "json") {
+    return docJsonIcon;
+  }
+  if (kind === "text") {
+    return docTxtIcon;
+  }
+  if (kind === "markdown") {
+    return docDocIcon;
+  }
+  return null;
+}
+
+function ArtifactFileIcon({
+  file,
+  className,
+}: {
+  file: ChatThreadArtifactFile;
+  className?: string;
+}) {
+  const iconSrc = getArtifactFileIconSrc(file);
+  if (iconSrc) {
+    return (
+      <img
+        alt=""
+        aria-hidden="true"
+        src={iconSrc}
+        className={cn("h-5 w-5 object-contain opacity-90", className)}
+      />
+    );
+  }
+
+  const previewKind = getArtifactPreviewKind(file);
+  if (previewKind === "image") {
+    return <IconPhoto size={18} stroke={1.5} />;
+  }
+  if (previewKind === "video") {
+    return <IconVideo size={18} stroke={1.5} />;
+  }
+  return <IconFile size={18} stroke={1.5} />;
+}
+
+function ArtifactDownloadAction({
+  file,
+  className,
+}: {
+  file: ChatThreadArtifactFile;
+  className: string;
+}) {
+  const pageSignal = useGet(pageSignal$);
+
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        detach(
+          downloadAttachmentUrl(file.url, pageSignal, file.filename),
+          Reason.DomCallback,
+          "artifact download",
+        );
+      }}
+      className={className}
+      aria-label={`Download ${file.filename}`}
+    >
+      <IconDownload size={16} stroke={1.5} />
+    </button>
+  );
+}
+
+function ArtifactPreviewFrame({ file }: { file: ChatThreadArtifactFile }) {
+  const openImageLightbox = useSet(openAttachmentImageLightbox$);
+  const previewKind = getArtifactPreviewKind(file);
+
+  if (previewKind === "image") {
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          openImageLightbox(file.url);
+        }}
+        className="group relative flex h-full w-full items-center justify-center overflow-hidden bg-muted"
+        aria-label={`Preview ${file.filename}`}
+      >
+        <img
+          src={file.url}
+          alt={`Preview ${file.filename}`}
+          className="h-full w-full object-contain"
+        />
+        <span className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-all duration-150 group-hover:bg-black/25 group-hover:opacity-100">
+          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-black/50 text-white shadow-lg">
+            <IconEye size={18} stroke={1.8} />
+          </span>
+        </span>
+      </button>
+    );
+  }
+
+  if (previewKind === "video") {
+    return (
+      <video
+        src={file.url}
+        controls
+        preload="metadata"
+        className="h-full w-full bg-black object-contain"
+      />
+    );
+  }
+
+  if (previewKind === "document") {
+    return (
+      <iframe
+        src={file.url}
+        title={`Preview ${file.filename}`}
+        className="h-full w-full bg-background"
+      />
+    );
+  }
+
+  return (
+    <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-muted/40 p-8 text-center">
+      <span className="flex h-16 w-16 items-center justify-center rounded-lg border border-border/70 bg-background text-muted-foreground shadow-sm">
+        <ArtifactFileIcon file={file} className="h-10 w-10" />
+      </span>
+      <div className="min-w-0">
+        <p className="text-xs font-medium uppercase text-muted-foreground">
+          {getFileExtension(file.filename)}
+        </p>
+        <p className="mt-1 max-w-[260px] truncate text-sm text-foreground">
+          {file.filename}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function ArtifactPreviewPanel({ item }: { item: ChatArtifactItem }) {
+  const { file } = item;
+  const actionClass =
+    "flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground";
+
+  return (
+    <div className="overflow-hidden rounded-lg border border-border/70 bg-background shadow-sm">
+      <div className="h-[260px] border-b border-border/60 bg-muted/30">
+        <ArtifactPreviewFrame file={file} />
+      </div>
+      <div className="flex items-start gap-3 px-3 py-3">
+        <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+          <ArtifactFileIcon file={file} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium text-foreground">
+            {file.filename}
+          </p>
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+            <span>{formatBytes(file.size)}</span>
+            <span aria-hidden>·</span>
+            <span>{getFileExtension(file.filename)}</span>
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          <ArtifactDownloadAction file={file} className={actionClass} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ArtifactThumbnail({
+  file,
+  selected,
+}: {
+  file: ChatThreadArtifactFile;
+  selected: boolean;
+}) {
+  const previewKind = getArtifactPreviewKind(file);
+
+  return (
+    <div
+      className={cn(
+        "relative flex h-14 w-20 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-muted/60 transition-colors",
+        selected
+          ? "border-primary/60 ring-2 ring-primary/15"
+          : "border-border/70 hover:border-foreground/25",
+      )}
+      aria-hidden="true"
+    >
+      {previewKind === "image" ? (
+        <img
+          src={file.url}
+          alt=""
+          className="h-full w-full object-cover"
+          aria-hidden="true"
+        />
+      ) : (
+        <span className="flex flex-col items-center gap-0.5 text-muted-foreground">
+          <ArtifactFileIcon file={file} />
+          <span className="max-w-14 truncate text-[10px] font-medium">
+            {getFileExtension(file.filename)}
+          </span>
+        </span>
+      )}
+    </div>
+  );
+}
+
+function ArtifactFileRow({
+  item,
+  selected,
+  onPreview,
+}: {
+  item: ChatArtifactItem;
+  selected: boolean;
+  onPreview: () => void;
+}) {
+  const { file } = item;
+  const actionClass =
+    "flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground";
+
+  return (
+    <div
+      className={cn(
+        "flex rounded-lg border transition-colors",
+        selected
+          ? "border-primary/40 bg-primary/5"
+          : "border-border/60 bg-background/70 hover:bg-muted/25",
+      )}
+    >
+      <button
+        type="button"
+        onClick={onPreview}
+        className="flex min-w-0 flex-1 items-start gap-3 rounded-l-lg px-3 py-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        aria-label={`Select ${file.filename}`}
+      >
+        <ArtifactThumbnail file={file} selected={selected} />
+        <div className="min-w-0 flex-1">
+          <span
+            className="block max-w-full truncate text-sm font-medium text-foreground"
+            title={file.filename}
+          >
+            {file.filename}
+          </span>
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+            <span>{formatBytes(file.size)}</span>
+            <span aria-hidden>·</span>
+            <span>{getFileExtension(file.filename)}</span>
+            <span aria-hidden>·</span>
+            <span>{formatArtifactTime(file.createdAt)}</span>
+          </div>
+        </div>
+      </button>
+      <div className="flex shrink-0 items-center pr-3">
+        <ArtifactDownloadAction file={file} className={actionClass} />
+      </div>
+    </div>
+  );
+}
+
+function ChatArtifactsDrawerContent({ thread }: { thread: ChatThreadSignals }) {
+  const loadable = useLastLoadable(thread.artifacts$);
+  const selectedArtifactKey = useGet(thread.artifactPreviewKey$);
+  const setSelectedArtifactKey = useSet(thread.setArtifactPreviewKey$);
+
+  if (loadable.state === "loading") {
+    return (
+      <div className="flex flex-col gap-3">
+        {Array.from({ length: 4 }, (_, i) => {
+          return <Skeleton key={i} className="h-16 rounded-lg" />;
+        })}
+      </div>
+    );
+  }
+
+  if (loadable.state === "hasError") {
+    return (
+      <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+        Failed to load artifacts
+      </div>
+    );
+  }
+
+  if (loadable.state !== "hasData") {
+    return null;
+  }
+
+  const runs = loadable.data;
+  const items = flattenArtifactRuns(runs);
+  const selectedItem =
+    items.find((item) => {
+      return artifactItemKey(item) === selectedArtifactKey;
+    }) ?? items[0];
+  const totalFiles = runs.reduce((sum, run) => {
+    return sum + run.files.length;
+  }, 0);
+
+  if (totalFiles === 0) {
+    return (
+      <div className="flex h-full items-center justify-center rounded-lg border border-dashed border-border/70 p-8 text-center text-sm text-muted-foreground">
+        No uploaded files in this chat yet.
+      </div>
+    );
+  }
+
+  const selectedKey = selectedItem ? artifactItemKey(selectedItem) : null;
+
+  return (
+    <div className="flex flex-col gap-5">
+      {selectedItem && <ArtifactPreviewPanel item={selectedItem} />}
+      <div className="flex items-center justify-between border-b border-border/60 pb-3 text-xs text-muted-foreground">
+        <span>
+          {totalFiles} file{totalFiles === 1 ? "" : "s"}
+        </span>
+      </div>
+      <div className="flex flex-col gap-2">
+        {items.map((item) => {
+          const itemKey = artifactItemKey(item);
+          return (
+            <ArtifactFileRow
+              key={itemKey}
+              item={item}
+              selected={selectedKey === itemKey}
+              onPreview={() => {
+                setSelectedArtifactKey(itemKey);
+              }}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ChatArtifactsDrawer({ thread }: { thread: ChatThreadSignals }) {
+  const open = useGet(thread.artifactsDrawerOpen$);
+  const setOpen = useSet(thread.setArtifactsDrawerOpen$);
+  const lightboxUrl = useGet(attachmentLightboxUrl$);
+
+  return (
+    <Sheet
+      open={open}
+      onOpenChange={(value) => {
+        setOpen(value);
+      }}
+    >
+      <SheetContent
+        side="right"
+        className="w-[420px] sm:max-w-[420px] flex flex-col"
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+        }}
+        onEscapeKeyDown={(event) => {
+          if (lightboxUrl) {
+            event.preventDefault();
+          }
+        }}
+        onInteractOutside={(event) => {
+          if (lightboxUrl) {
+            event.preventDefault();
+          }
+        }}
+      >
+        <SheetHeader className="shrink-0">
+          <SheetTitle>Artifacts</SheetTitle>
+          <SheetDescription>
+            Uploaded files from runs in this chat thread.
+          </SheetDescription>
+        </SheetHeader>
+        <div className="flex-1 min-h-0 overflow-y-auto -mx-6 px-6 -mb-6 pb-6">
+          {open && <ChatArtifactsDrawerContent thread={thread} />}
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // ZeroSessionChatPage — real conversation backed by agent runs
 // ---------------------------------------------------------------------------
 
-export function ZeroChatThreadPage() {
-  const thread = useGet(currentChatThreadSignals$);
+export function ZeroChatThreadPage({ thread }: ZeroChatThreadPageProps) {
   const shortcutHelpOpen = useGet(chatShortcutHelpOpen$);
   const setShortcutHelpOpen = useSet(setChatShortcutHelpOpen$);
-
-  if (!thread) {
-    return null;
-  }
 
   return (
     <>
       <ZeroChatThreadPageInner thread={thread} />
+      <ChatArtifactsDrawer thread={thread} />
       <ShortcutHelpDialog
         open={shortcutHelpOpen}
         onOpenChange={setShortcutHelpOpen}
@@ -251,6 +790,28 @@ export function ZeroChatThreadPage() {
   );
 }
 
+type LoadableValue<T> =
+  | { state: "loading" }
+  | { state: "hasData"; data: T }
+  | { state: "hasError"; error: unknown };
+
+function resolveSessionError(
+  threadDataLoadable: LoadableValue<ChatThread | null>,
+  groupsLoadable: LoadableValue<GroupedChatMessageGroup[]>,
+): string | null {
+  if (threadDataLoadable.state === "hasError") {
+    return threadDataLoadable.error instanceof Error
+      ? threadDataLoadable.error.message
+      : "Failed to load chat";
+  }
+  if (groupsLoadable.state === "hasError") {
+    return groupsLoadable.error instanceof Error
+      ? groupsLoadable.error.message
+      : "Failed to load messages";
+  }
+  return null;
+}
+
 function ZeroChatThreadPageInner({
   thread,
   autoFocus = true,
@@ -258,29 +819,32 @@ function ZeroChatThreadPageInner({
   thread: ChatThreadSignals;
   autoFocus?: boolean;
 }) {
+  const features = useLastResolved(featureSwitch$);
   const groupsLoadable = useLastLoadable(thread.groupedChatMessages$);
+  const hasOlderHistory = useLastResolved(thread.hasOlderHistory$) ?? false;
+  const [loadHistoryLoadable, loadHistory] = useLoadableSet(
+    thread.loadHistory$,
+  );
   const threadDataLoadable = useLastLoadable(thread.threadData$);
-  const sessionError =
-    threadDataLoadable.state === "hasError"
-      ? threadDataLoadable.error instanceof Error
-        ? threadDataLoadable.error.message
-        : "Failed to load chat"
-      : groupsLoadable.state === "hasError"
-        ? groupsLoadable.error instanceof Error
-          ? groupsLoadable.error.message
-          : "Failed to load messages"
-        : null;
+  const sessionError = resolveSessionError(threadDataLoadable, groupsLoadable);
   const messagesLoading = groupsLoadable.state === "loading";
   const groups = groupsLoadable.state === "hasData" ? groupsLoadable.data : [];
   const setScrollContainer = useSet(thread.setScrollContainer$);
   const skeletonVisible = useGet(thread.skeletonVisible$);
   const lightboxUrl = useGet(attachmentLightboxUrl$);
+  const manualHistoryEnabled =
+    features?.[FeatureSwitchKey.ChatManualHistory] ?? false;
+  const loadingHistory = loadHistoryLoadable.state === "loading";
+  const pageSignal = useGet(pageSignal$);
+  const onLoadHistory = onDomEventFn(() => {
+    return loadHistory(pageSignal);
+  });
 
   return (
     <div className="flex flex-1 flex-col min-h-0 bg-transparent">
       <ChatThreadHeader thread={thread} />
 
-      <div className="flex-1 min-h-0 relative">
+      <div className="flex-1 min-h-0 relative isolate">
         <div
           ref={setScrollContainer}
           data-scroll-container
@@ -292,6 +856,21 @@ function ZeroChatThreadPageInner({
               className="w-full max-w-[900px] mx-auto flex flex-col gap-6 pb-4 overflow-visible"
               style={{ visibility: skeletonVisible ? "hidden" : "visible" }}
             >
+              {!sessionError &&
+                !skeletonVisible &&
+                manualHistoryEnabled &&
+                hasOlderHistory && (
+                  <div className="flex justify-center">
+                    <button
+                      type="button"
+                      disabled={loadingHistory}
+                      onClick={onLoadHistory}
+                      className="inline-flex h-8 items-center rounded-lg border border-border bg-background px-3 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Load history
+                    </button>
+                  </div>
+                )}
               {sessionError && (
                 <div className="flex-1 flex items-center justify-center py-16">
                   <div className="flex items-center gap-2 text-destructive">
@@ -304,7 +883,14 @@ function ZeroChatThreadPageInner({
                 groups.length === 0 &&
                 !messagesLoading &&
                 !skeletonVisible && (
-                  <div className="flex-1 flex items-center justify-center py-16">
+                  <div className="flex-1 flex flex-col items-center justify-center py-16 gap-3">
+                    <img
+                      src={emptyChatImg}
+                      alt=""
+                      role="presentation"
+                      loading="lazy"
+                      className="h-24 w-24 object-contain opacity-80"
+                    />
                     <p className="text-sm text-muted-foreground">
                       Send a message to start the conversation
                     </p>
@@ -326,7 +912,7 @@ function ZeroChatThreadPageInner({
         {skeletonVisible && !sessionError && (
           <div
             data-chat-skeleton
-            className="absolute inset-0 overflow-hidden pointer-events-none"
+            className="absolute inset-0 z-10 overflow-hidden pointer-events-none bg-background"
           >
             <main className="px-4 sm:px-6 py-4 items-center @container">
               <div className="w-full max-w-[900px] mx-auto flex flex-col gap-6 pb-4">
@@ -338,7 +924,7 @@ function ZeroChatThreadPageInner({
       </div>
 
       <ChatThreadComposer thread={thread} autoFocus={autoFocus} />
-      {lightboxUrl && <ImageLightbox url={lightboxUrl} />}
+      {lightboxUrl && <AttachmentLightbox />}
     </div>
   );
 }
@@ -379,10 +965,6 @@ function ChatThreadComposer({
   // internally flips to a user-override once `setModelSelection$` is called,
   // so unsaved edits survive subsequent threadData$ reloads.
   const threadData = useLastResolved(thread.threadData$);
-  const modelFeatureEnabled =
-    useLastResolved(featureSwitch$)?.[
-      FeatureSwitchKey.ModelProviderSelection
-    ] ?? false;
   const orgProviders = useLastResolved(orgModelProviders$);
   const modelSelection = useLastResolved(thread.modelSelection$) ?? null;
   const setModelSelection = useSet(thread.setModelSelection$);
@@ -412,51 +994,51 @@ function ChatThreadComposer({
   return (
     <footer
       data-chat-composer
-      className="relative shrink-0 overflow-y-auto [scrollbar-gutter:stable] px-4 sm:px-6 pt-3 pb-2 bg-[hsl(var(--background))]"
+      className="relative shrink-0 bg-[hsl(var(--background))]"
       style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}
     >
       <div className="pointer-events-none absolute inset-x-0 -top-5 h-5 bg-gradient-to-t from-[hsl(var(--background))] to-transparent" />
-      <div className="mx-auto max-w-[900px]">
-        <ZeroChatComposer
-          className="w-full min-w-0"
-          input={input}
-          onInputChange={handleInputChange}
-          onSend={handleSend}
-          sending={sending}
-          onCancel={() => {
-            detach(cancelRun(pageSignal), Reason.DomCallback);
-          }}
-          displayName={displayName}
-          autoFocus={
-            autoFocusProp &&
-            !hasMessages &&
-            !window.matchMedia("(pointer: coarse)").matches
-          }
-          onDraftChange={handleDraftChange}
-          draft={thread.draft}
-          composerFileInput$={thread.composerFileInput$}
-          setComposerFileInput$={thread.setComposerFileInput$}
-          setInputRef={setInputRef}
-          actionsLoading={skeletonVisible}
-          modelPicker={
-            modelFeatureEnabled &&
-            orgProviders &&
-            orgProviders.modelProviders.length > 0
-              ? {
-                  providers: orgProviders.modelProviders,
-                  value: modelSelection,
-                  onChange: setModelSelection,
-                  sessionProviderType:
-                    threadData?.latestSessionProviderType ?? null,
-                  // Lock as soon as the thread has a user message — provider
-                  // must stay consistent within a session to maintain
-                  // continuity.
-                  disabled: hasUserMessages,
-                  agentDefault: agentModelDefault,
-                }
-              : undefined
-          }
-        />
+      <div className="overflow-y-auto [scrollbar-gutter:stable] px-4 sm:px-6 pt-3 pb-2">
+        <div className="mx-auto max-w-[900px]">
+          <ZeroChatComposer
+            className="w-full min-w-0"
+            input={input}
+            onInputChange={handleInputChange}
+            onSend={handleSend}
+            sending={sending}
+            onCancel={() => {
+              detach(cancelRun(pageSignal), Reason.DomCallback);
+            }}
+            displayName={displayName}
+            autoFocus={
+              autoFocusProp &&
+              !hasMessages &&
+              !window.matchMedia("(pointer: coarse)").matches
+            }
+            onDraftChange={handleDraftChange}
+            draft={thread.draft}
+            composerFileInput$={thread.composerFileInput$}
+            setComposerFileInput$={thread.setComposerFileInput$}
+            setInputRef={setInputRef}
+            actionsLoading={skeletonVisible}
+            modelPicker={
+              orgProviders && orgProviders.modelProviders.length > 0
+                ? {
+                    providers: orgProviders.modelProviders,
+                    value: modelSelection,
+                    onChange: setModelSelection,
+                    sessionProviderType:
+                      threadData?.latestSessionProviderType ?? null,
+                    // Lock as soon as the thread has a user message — provider
+                    // must stay consistent within a session to maintain
+                    // continuity.
+                    disabled: hasUserMessages,
+                    agentDefault: agentModelDefault,
+                  }
+                : undefined
+            }
+          />
+        </div>
       </div>
     </footer>
   );
@@ -607,47 +1189,6 @@ function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
   );
 }
 
-// Absolutely positioned so it contributes zero layout — the surrounding
-// message bubble's height is unchanged whether the cursor is shown or not.
-function InlineStreamingCursor({
-  thread,
-  groupBeginMessageId,
-}: {
-  thread: ChatThreadSignals;
-  groupBeginMessageId: string;
-}) {
-  const features = useLastResolved(featureSwitch$);
-  const enabled = features?.[FeatureSwitchKey.InlineThinkingDot] ?? false;
-  const allFinished = useLastResolved(thread.allFinished$) ?? false;
-  const groups = useLastResolved(thread.groupedChatMessages$) ?? [];
-  const lastGroup = groups[groups.length - 1];
-  const isLastAssistantGroup =
-    !!lastGroup &&
-    lastGroup.role === "assistant" &&
-    lastGroup.beginMessageId === groupBeginMessageId;
-
-  if (!enabled || allFinished || !isLastAssistantGroup) {
-    return null;
-  }
-
-  return (
-    <span
-      aria-hidden
-      className="pointer-events-none absolute -bottom-2 left-0 flex gap-1.5 animate-in fade-in duration-200"
-    >
-      {[0, 120, 240, 360, 480, 600, 720, 840].map((delay) => {
-        return (
-          <span
-            key={delay}
-            className="zero-dot-trail-item inline-block size-1 rounded-full bg-foreground/50"
-            style={{ animationDelay: `${delay}ms` }}
-          />
-        );
-      })}
-    </span>
-  );
-}
-
 /**
  * Parse inline attachment lines from message content.
  * Matches `[Attached file: name](url)` optionally followed by a curl line.
@@ -666,6 +1207,180 @@ function parseInlineAttachments(content: string): {
     },
   );
   return { cleanContent: cleaned.trim(), parsed };
+}
+
+type BodyRenderBlock =
+  | {
+      type: "markdown";
+      content: string;
+    }
+  | {
+      type: "preview";
+      preview: {
+        filename: string;
+        url: string;
+        kind: "markdown" | "text" | "json" | "csv" | "pdf" | "html";
+      };
+    };
+
+function parseBodyRenderBlocks(content: string): {
+  cleanContent: string;
+  blocks: BodyRenderBlock[];
+} {
+  const blocks: BodyRenderBlock[] = [];
+  const lines = content.split("\n");
+  const keptLines: string[] = [];
+  const markdownBuffer: string[] = [];
+  let openFence: {
+    marker: "`" | "~";
+    length: number;
+  } | null = null;
+
+  const flushMarkdownBuffer = () => {
+    const joined = markdownBuffer.join("\n").trim();
+    if (joined) {
+      blocks.push({ type: "markdown", content: joined });
+    }
+    markdownBuffer.length = 0;
+  };
+
+  for (const line of lines) {
+    const trimmedLine = line.trim();
+    const fenceMatch = trimmedLine.match(/^(`{3,}|~{3,})/);
+    if (fenceMatch) {
+      const fence = fenceMatch[1];
+      const marker = fence.startsWith("`") ? "`" : "~";
+      if (
+        openFence &&
+        openFence.marker === marker &&
+        fence.length >= openFence.length
+      ) {
+        openFence = null;
+      } else if (!openFence) {
+        openFence = { marker, length: fence.length };
+      }
+      markdownBuffer.push(line);
+      keptLines.push(line);
+      continue;
+    }
+
+    if (openFence) {
+      markdownBuffer.push(line);
+      keptLines.push(line);
+      continue;
+    }
+
+    const wrappers: [string, string][] = [
+      ["**", "**"],
+      ["__", "__"],
+      ["*", "*"],
+      ["_", "_"],
+      ["~~", "~~"],
+    ];
+    let candidate = trimmedLine;
+
+    for (const [prefix, suffix] of wrappers) {
+      if (candidate.startsWith(prefix) && candidate.endsWith(suffix)) {
+        candidate = candidate
+          .slice(prefix.length, candidate.length - suffix.length)
+          .trim();
+        break;
+      }
+    }
+
+    const match = candidate.match(/^\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)$/);
+    if (!match) {
+      markdownBuffer.push(line);
+      keptLines.push(line);
+      continue;
+    }
+
+    const url = match[2];
+    const filename = filenameFromUrl(url);
+    const kind = classifyChatAttachment({ filename, url });
+
+    if (
+      kind === "markdown" ||
+      kind === "text" ||
+      kind === "json" ||
+      kind === "csv" ||
+      kind === "pdf" ||
+      kind === "html"
+    ) {
+      flushMarkdownBuffer();
+      blocks.push({
+        type: "preview",
+        preview: { filename, url, kind },
+      });
+      continue;
+    }
+
+    markdownBuffer.push(line);
+    keptLines.push(line);
+  }
+
+  flushMarkdownBuffer();
+
+  return {
+    cleanContent: keptLines.join("\n").trim(),
+    blocks,
+  };
+}
+
+function BodyContentBlocks({
+  blocks,
+  openLightbox,
+  hardBreaks,
+  signal,
+}: {
+  blocks: BodyRenderBlock[];
+  openLightbox: (url: string) => void;
+  hardBreaks: boolean;
+  signal: AbortSignal;
+}) {
+  return (
+    <div className="flex flex-col gap-3">
+      {blocks.map((block) => {
+        if (block.type === "markdown") {
+          return (
+            <Markdown
+              key={`markdown-${block.content}`}
+              source={
+                hardBreaks
+                  ? block.content.replace(/\n/g, "  \n")
+                  : block.content
+              }
+              mediaPreview
+              onImageClick={openLightbox}
+            />
+          );
+        }
+
+        return (
+          <AttachmentPreview
+            key={`preview-${block.preview.url}`}
+            attachment={{
+              filename: block.preview.filename,
+              url: block.preview.url,
+              contentType:
+                block.preview.kind === "markdown"
+                  ? "text/markdown"
+                  : block.preview.kind === "text"
+                    ? "text/plain"
+                    : block.preview.kind === "json"
+                      ? "application/json"
+                      : block.preview.kind === "csv"
+                        ? "text/csv"
+                        : block.preview.kind === "pdf"
+                          ? "application/pdf"
+                          : "text/html",
+            }}
+            signal={signal}
+          />
+        );
+      })}
+    </div>
+  );
 }
 
 function isImageFilename(filename: string): boolean {
@@ -750,13 +1465,18 @@ function AssistantErrorContent({ error }: { error: string }) {
 function AssistantBubbleAvatar({ thread }: { thread: ChatThreadSignals }) {
   const agentId = useLastResolved(thread.agentId$) ?? "";
   return (
-    <div className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 shrink-0 @[900px]:mt-0.5 overflow-hidden rounded-xl">
+    <Link
+      pathname="/agents/:agentId"
+      options={{ pathParams: { agentId } }}
+      className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 shrink-0 @[900px]:mt-0.5 overflow-hidden rounded-xl transition-colors duration-150 hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      aria-label="View agent profile"
+    >
       <AgentAvatarImg
         name={agentId}
         alt=""
         className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 rounded-full object-cover object-top"
       />
-    </div>
+    </Link>
   );
 }
 
@@ -803,13 +1523,188 @@ function resolveAttachments(
       ? message.attachFiles
       : parsed;
   return source.map((f) => {
+    const contentType =
+      "contentType" in f && typeof f.contentType === "string"
+        ? f.contentType
+        : undefined;
+    const kind = classifyChatAttachment({
+      filename: f.filename,
+      url: f.url,
+      contentType,
+    });
     return {
       filename: f.filename,
       url: f.url,
-      isImage: isImageFilename(f.filename),
-      isVideo: isVideoFilename(f.filename),
+      contentType,
+      isImage: kind === "image" || isImageFilename(f.filename),
+      isVideo: kind === "video" || isVideoFilename(f.filename),
+      kind,
     };
   });
+}
+
+function attachmentIdFromUrl(url: string): string | null {
+  if (!URL.canParse(url, window.location.origin)) {
+    return null;
+  }
+  const parsed = new URL(url, window.location.origin);
+  const match = parsed.pathname.match(/^\/f\/[^/]+\/([^/]+)\/[^/]+$/);
+  return match?.[1] ?? null;
+}
+
+function inferAttachmentContentType(filename: string, kind: string): string {
+  const lower = filename.toLowerCase();
+  if (lower.endsWith(".png")) {
+    return "image/png";
+  }
+  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) {
+    return "image/jpeg";
+  }
+  if (lower.endsWith(".gif")) {
+    return "image/gif";
+  }
+  if (lower.endsWith(".webp")) {
+    return "image/webp";
+  }
+  if (lower.endsWith(".svg")) {
+    return "image/svg+xml";
+  }
+  if (lower.endsWith(".mp4")) {
+    return "video/mp4";
+  }
+  if (lower.endsWith(".webm")) {
+    return "video/webm";
+  }
+  if (lower.endsWith(".mov")) {
+    return "video/quicktime";
+  }
+  switch (kind) {
+    case "markdown": {
+      return "text/markdown";
+    }
+    case "text": {
+      return "text/plain";
+    }
+    case "json": {
+      return "application/json";
+    }
+    case "csv": {
+      return "text/csv";
+    }
+    case "pdf": {
+      return "application/pdf";
+    }
+    case "html": {
+      return "text/html";
+    }
+    default: {
+      return "application/octet-stream";
+    }
+  }
+}
+
+function clipboardAttachmentsFromMessage(
+  message: PagedChatMessage,
+  parsed: { filename: string; url: string }[],
+): ChatClipboardAttachment[] {
+  const source =
+    message.attachFiles && message.attachFiles.length > 0
+      ? message.attachFiles
+      : parsed;
+  return source.map((f) => {
+    const contentType =
+      "contentType" in f && typeof f.contentType === "string"
+        ? f.contentType
+        : undefined;
+    const kind = classifyChatAttachment({
+      filename: f.filename,
+      url: f.url,
+      contentType,
+    });
+    return {
+      id:
+        "id" in f && typeof f.id === "string"
+          ? f.id
+          : attachmentIdFromUrl(f.url),
+      filename: f.filename,
+      url: f.url,
+      contentType: contentType ?? inferAttachmentContentType(f.filename, kind),
+      size: "size" in f && typeof f.size === "number" ? f.size : 0,
+    };
+  });
+}
+
+function UserMessageAttachments({
+  attachments,
+  onImageClick,
+}: {
+  attachments: ReturnType<typeof resolveAttachments>;
+  onImageClick: (url: string) => void;
+}) {
+  if (attachments.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="border-t border-foreground/10 px-3 py-2.5 flex flex-wrap gap-2">
+      {attachments.map((a) => {
+        if (a.isImage) {
+          return (
+            <button
+              key={a.url}
+              type="button"
+              onClick={() => {
+                onImageClick(a.url);
+              }}
+              className="group relative rounded-lg overflow-hidden border border-foreground/10 hover:border-foreground/25 transition-colors"
+            >
+              <img
+                src={a.url}
+                alt={a.filename}
+                className="h-9 max-w-[72px] object-cover"
+              />
+              <span className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-colors">
+                <IconPhoto
+                  size={18}
+                  className="text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow"
+                />
+              </span>
+            </button>
+          );
+        }
+        if (a.isVideo) {
+          return (
+            <video
+              key={a.url}
+              src={a.url}
+              controls
+              className="max-h-48 max-w-full rounded-lg border border-foreground/10"
+            />
+          );
+        }
+        if (
+          a.kind === "markdown" ||
+          a.kind === "text" ||
+          a.kind === "json" ||
+          a.kind === "csv" ||
+          a.kind === "pdf" ||
+          a.kind === "html"
+        ) {
+          return (
+            <PreviewableFileAttachmentChip
+              key={a.url}
+              filename={a.filename}
+              url={a.url}
+              kind={a.kind}
+            />
+          );
+        }
+        return (
+          <FileAttachmentChip key={a.url} filename={a.filename} url={a.url} />
+        );
+      })}
+    </div>
+  );
 }
 
 function PagedUserMessage({
@@ -834,27 +1729,33 @@ function PagedUserMessage({
     cleanContent.trim() === ATTACH_ONLY_PLACEHOLDER
       ? ""
       : cleanContent;
-  const displayContent = strippedContent.replace(/\n/g, "  \n");
+  const { blocks: bodyBlocks } = parseBodyRenderBlocks(strippedContent);
   const pageSignal = useGet(pageSignal$);
-  const setLightboxUrl = useSet(setAttachmentLightboxUrl$);
+  const openImageLightbox = useSet(openAttachmentImageLightbox$);
   const openLightbox = (url: string) => {
-    setLightboxUrl(url);
+    openImageLightbox(url);
   };
   const copiedId = useGet(thread.copiedMessageId$);
   const copied = copiedId === message.id;
   const copyMessage = useSet(thread.copyMessage$);
+  const allAttachments = resolveAttachments(message, parsed);
+  const clipboardAttachments = clipboardAttachmentsFromMessage(message, parsed);
+  const copyText = strippedContent;
+  const canCopy = copyText.trim().length > 0 || clipboardAttachments.length > 0;
 
   const handleCopy = () => {
-    if (!cleanContent) {
+    if (!canCopy) {
       return;
     }
     detach(
-      copyMessage(message.id, cleanContent, pageSignal),
+      copyMessage(
+        message.id,
+        { text: copyText, attachments: clipboardAttachments },
+        pageSignal,
+      ),
       Reason.DomCallback,
     );
   };
-
-  const allAttachments = resolveAttachments(message, parsed);
 
   return (
     <div data-role="user" className="group">
@@ -862,64 +1763,22 @@ function PagedUserMessage({
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex flex-col items-end w-full">
           <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-sm leading-relaxed [overflow-wrap:anywhere] overflow-hidden">
-            {displayContent && (
+            {bodyBlocks.length > 0 && (
               <div className="px-4 py-3">
-                <Markdown
-                  source={displayContent}
-                  mediaPreview
-                  onImageClick={openLightbox}
+                <BodyContentBlocks
+                  blocks={bodyBlocks}
+                  openLightbox={openLightbox}
+                  hardBreaks
+                  signal={pageSignal}
                 />
               </div>
             )}
-            {allAttachments.length > 0 && (
-              <div className="border-t border-foreground/10 px-3 py-2.5 flex flex-wrap gap-2">
-                {allAttachments.map((a) => {
-                  if (a.isImage) {
-                    return (
-                      <button
-                        key={a.url}
-                        type="button"
-                        onClick={() => {
-                          return setLightboxUrl(a.url);
-                        }}
-                        className="group relative rounded-lg overflow-hidden border border-foreground/10 hover:border-foreground/25 transition-colors"
-                      >
-                        <img
-                          src={a.url}
-                          alt={a.filename}
-                          className="h-9 max-w-[72px] object-cover"
-                        />
-                        <span className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-colors">
-                          <IconPhoto
-                            size={18}
-                            className="text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow"
-                          />
-                        </span>
-                      </button>
-                    );
-                  }
-                  if (a.isVideo) {
-                    return (
-                      <video
-                        key={a.url}
-                        src={a.url}
-                        controls
-                        className="max-h-48 max-w-full rounded-lg border border-foreground/10"
-                      />
-                    );
-                  }
-                  return (
-                    <FileAttachmentChip
-                      key={a.url}
-                      filename={a.filename}
-                      url={a.url}
-                    />
-                  );
-                })}
-              </div>
-            )}
+            <UserMessageAttachments
+              attachments={allAttachments}
+              onImageClick={openLightbox}
+            />
           </div>
-          {cleanContent && (
+          {canCopy && (
             <div className="flex justify-end mt-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
               <button
                 type="button"
@@ -948,6 +1807,7 @@ function PagedAssistantGroup({
   group: GroupedChatMessageGroup;
   thread: ChatThreadSignals;
 }) {
+  const groupElementId = `chat-message-group-${group.beginMessageId}`;
   const fullContent = group.messages
     .map((m) => {
       return m.content;
@@ -957,6 +1817,7 @@ function PagedAssistantGroup({
 
   return (
     <div
+      id={groupElementId}
       data-role="assistant"
       className="group flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300"
     >
@@ -966,21 +1827,28 @@ function PagedAssistantGroup({
           {group.messages.map((msg) => {
             return <PagedAssistantMessageItem key={msg.id} message={msg} />;
           })}
-          <InlineStreamingCursor
-            thread={thread}
-            groupBeginMessageId={group.beginMessageId}
-          />
         </div>
       </div>
-      <PagedGroupActions group={group} content={fullContent} thread={thread} />
+      <PagedGroupActions
+        group={group}
+        content={fullContent}
+        thread={thread}
+        onScrollToMessageStart={() => {
+          document.getElementById(groupElementId)?.scrollIntoView({
+            block: "start",
+            behavior: "smooth",
+          });
+        }}
+      />
     </div>
   );
 }
 
 function PagedAssistantMessageItem({ message }: { message: PagedChatMessage }) {
-  const setLightboxUrl = useSet(setAttachmentLightboxUrl$);
+  const openImageLightbox = useSet(openAttachmentImageLightbox$);
+  const pageSignal = useGet(pageSignal$);
   const openLightbox = (url: string) => {
-    setLightboxUrl(url);
+    openImageLightbox(url);
   };
 
   if (message.error) {
@@ -992,13 +1860,17 @@ function PagedAssistantMessageItem({ message }: { message: PagedChatMessage }) {
   }
 
   if (message.content) {
+    const { blocks } = parseBodyRenderBlocks(message.content);
     return (
       <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-sm leading-relaxed min-w-0 [overflow-wrap:anywhere]">
-        <Markdown
-          source={message.content}
-          mediaPreview
-          onImageClick={openLightbox}
-        />
+        {blocks.length > 0 ? (
+          <BodyContentBlocks
+            blocks={blocks}
+            openLightbox={openLightbox}
+            hardBreaks={false}
+            signal={pageSignal}
+          />
+        ) : null}
       </div>
     );
   }
@@ -1006,14 +1878,124 @@ function PagedAssistantMessageItem({ message }: { message: PagedChatMessage }) {
   return null;
 }
 
+function PagedGroupPrimaryActions({
+  firstRunId,
+  hasContent,
+  copied,
+  audioOutputEnabled,
+  isPlayingThis,
+  onCopy,
+  onTts,
+}: {
+  firstRunId: string | undefined;
+  hasContent: boolean;
+  copied: boolean;
+  audioOutputEnabled: boolean;
+  isPlayingThis: boolean;
+  onCopy: () => void;
+  onTts: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-1">
+      {firstRunId && (
+        <TooltipProvider delayDuration={300}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Link
+                pathname="/activities/:activityRunId"
+                options={{
+                  pathParams: { activityRunId: firstRunId },
+                }}
+                className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
+                aria-label="View run logs"
+              >
+                <IconChartLine size={18} stroke={1.5} />
+              </Link>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">View activity logs</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      )}
+      {hasContent && (
+        <TooltipProvider delayDuration={300}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={onCopy}
+                className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
+                aria-label="Copy message"
+              >
+                {copied ? (
+                  <IconCheck size={18} stroke={1.5} />
+                ) : (
+                  <IconCopy size={18} stroke={1.5} />
+                )}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              {copied ? "Copied!" : "Copy message"}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      )}
+      {hasContent && firstRunId && audioOutputEnabled && (
+        <TooltipProvider delayDuration={300}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={onTts}
+                className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
+                aria-label={isPlayingThis ? "Stop reading" : "Read aloud"}
+              >
+                {isPlayingThis ? (
+                  <IconPlayerStop size={18} stroke={1.5} />
+                ) : (
+                  <IconVolume2 size={18} stroke={1.5} />
+                )}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              {isPlayingThis ? "Stop reading" : "Read aloud"}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      )}
+    </div>
+  );
+}
+
+function MessageStartButton({ onClick }: { onClick: () => void }) {
+  return (
+    <TooltipProvider delayDuration={300}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            onClick={onClick}
+            className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
+            aria-label="Scroll to message start"
+          >
+            <IconArrowBarToUp size={18} stroke={1.5} />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">Scroll to start</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
 function PagedGroupActions({
   group,
   content,
   thread,
+  onScrollToMessageStart,
 }: {
   group: GroupedChatMessageGroup;
   content: string;
   thread: ChatThreadSignals;
+  onScrollToMessageStart: () => void;
 }) {
   const pageSignal = useGet(pageSignal$);
   const copiedId = useGet(thread.copiedMessageId$);
@@ -1022,10 +2004,13 @@ function PagedGroupActions({
 
   const features = useLastResolved(featureSwitch$);
   const audioOutputEnabled = features?.[FeatureSwitchKey.AudioOutput] ?? false;
+  const messageStartButtonEnabled =
+    features?.[FeatureSwitchKey.ChatMessageStartButton] ?? false;
   const playingRunId = useGet(ttsPlayingRunId$);
   const firstRunId = group.messages.find((m) => {
     return m.runId;
   })?.runId;
+  const hasContent = content.length > 0;
   const isPlayingThis = !!firstRunId && playingRunId === firstRunId;
   const playTts = useSet(playTts$);
   const stopTts = useSet(stopTts$);
@@ -1039,7 +2024,11 @@ function PagedGroupActions({
       return;
     }
     detach(
-      copyMessage(group.beginMessageId, content, pageSignal),
+      copyMessage(
+        group.beginMessageId,
+        { text: content, attachments: [] },
+        pageSignal,
+      ),
       Reason.DomCallback,
     );
   };
@@ -1058,71 +2047,18 @@ function PagedGroupActions({
   return (
     <div className="@[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px]">
       <div className="hidden @[900px]:block" />
-      <div className="flex items-center pt-2 pb-1 gap-1 -ml-1">
-        {firstRunId && (
-          <TooltipProvider delayDuration={300}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Link
-                  pathname="/activities/:activityRunId"
-                  options={{
-                    pathParams: { activityRunId: firstRunId },
-                  }}
-                  className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
-                  aria-label="View run logs"
-                >
-                  <IconChartLine size={18} stroke={1.5} />
-                </Link>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">View activity logs</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )}
-        {content && (
-          <TooltipProvider delayDuration={300}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  onClick={handleCopy}
-                  className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
-                  aria-label="Copy message"
-                >
-                  {copied ? (
-                    <IconCheck size={18} stroke={1.5} />
-                  ) : (
-                    <IconCopy size={18} stroke={1.5} />
-                  )}
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                {copied ? "Copied!" : "Copy message"}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )}
-        {content && audioOutputEnabled && firstRunId && (
-          <TooltipProvider delayDuration={300}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  onClick={handleTts}
-                  className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
-                  aria-label={isPlayingThis ? "Stop reading" : "Read aloud"}
-                >
-                  {isPlayingThis ? (
-                    <IconPlayerStop size={18} stroke={1.5} />
-                  ) : (
-                    <IconVolume2 size={18} stroke={1.5} />
-                  )}
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                {isPlayingThis ? "Stop reading" : "Read aloud"}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+      <div className="flex items-center justify-between pt-2 pb-1 gap-2 -ml-1">
+        <PagedGroupPrimaryActions
+          firstRunId={firstRunId}
+          hasContent={hasContent}
+          copied={copied}
+          audioOutputEnabled={audioOutputEnabled}
+          isPlayingThis={isPlayingThis}
+          onCopy={handleCopy}
+          onTts={handleTts}
+        />
+        {messageStartButtonEnabled && (
+          <MessageStartButton onClick={onScrollToMessageStart} />
         )}
       </div>
     </div>

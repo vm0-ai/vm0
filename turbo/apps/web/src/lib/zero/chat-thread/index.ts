@@ -9,5 +9,6 @@ export {
   deleteChatThread,
   markThreadRead,
   resolveAttachFileUrls,
+  getChatThreadArtifacts,
 } from "./chat-thread-service";
-export { getMessagesSince } from "./chat-message-service";
+export { getPagedMessages } from "./chat-message-service";

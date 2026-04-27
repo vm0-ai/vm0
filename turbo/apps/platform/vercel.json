@@ -45,6 +45,10 @@
   ],
   "rewrites": [
     {
+      "source": "/ingest/(.*)",
+      "destination": "https://us.posthog.com/$1"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

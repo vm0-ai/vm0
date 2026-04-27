@@ -76,6 +76,7 @@ export default [
     files: ["**/__tests__/**/*.{ts,tsx}"],
     rules: {
       "ccstate/no-test-delay": "error",
+      "ccstate/no-manual-mock-cleanup": "error",
       "ccstate/no-get-by-role-name": "error",
       "ccstate/no-user-clear-tab": "error",
       "ccstate/no-raw-msw-http": "error",
@@ -145,6 +146,14 @@ export default [
     files: ["src/signals/__tests__/fetch.test.ts"],
     rules: {
       "ccstate/no-raw-msw-http": "off",
+    },
+  },
+  // Allow /api/ path prefix in browser test setup. The string literal is used
+  // as an unhandled-request matcher, not as an actual API call target.
+  {
+    files: ["src/test/browser-setup.ts"],
+    rules: {
+      "ccstate/no-non-zero-api": "off",
     },
   },
   // Allow direct localStorage in the abstraction layer only

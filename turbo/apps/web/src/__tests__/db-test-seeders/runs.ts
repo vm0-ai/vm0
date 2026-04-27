@@ -1,17 +1,21 @@
+import { randomUUID } from "crypto";
 import { and, eq, or, sql } from "drizzle-orm";
-import type { SandboxReuseResult } from "@vm0/core/contracts/webhooks";
-import { agentRuns } from "../../db/schema/agent-run";
-import { agentSessions } from "../../db/schema/agent-session";
-import { zeroRuns } from "../../db/schema/zero-run";
+import type { SandboxReuseResult } from "@vm0/api-contracts/contracts/webhooks";
+import type { ContextArtifact } from "../../lib/infra/run/types";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { agentSessions } from "@vm0/db/schema/agent-session";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { chatMessages } from "@vm0/db/schema/chat-message";
 import {
   agentComposes,
   agentComposeVersions,
-} from "../../db/schema/agent-compose";
-import { agentRunCallbacks } from "../../db/schema/agent-run-callback";
-import { agentRunQueue } from "../../db/schema/agent-run-queue";
-import { conversations } from "../../db/schema/conversation";
-import { sandboxTelemetry } from "../../db/schema/sandbox-telemetry";
-import { usageDaily } from "../../db/schema/usage-daily";
+} from "@vm0/db/schema/agent-compose";
+import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
+import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
+import { checkpoints } from "@vm0/db/schema/checkpoint";
+import { conversations } from "@vm0/db/schema/conversation";
+import { sandboxTelemetry } from "@vm0/db/schema/sandbox-telemetry";
+import { usageDaily } from "@vm0/db/schema/usage-daily";
 import { initServices } from "../../lib/init-services";
 import { enqueueRun } from "../../lib/zero/zero-run-queue-service";
 import { uniqueId } from "../test-helpers";
@@ -235,6 +239,120 @@ export async function seedTestRun(
     },
   );
   return { runId: run.id };
+}
+
+/**
+ * Bulk-seed web chat rounds directly into the run + chat message tables.
+ *
+ * @why-db-direct Tests that need many historical chat rounds should not pay
+ * the cost of one full API dispatch pipeline or compose-version update per
+ * round. This helper preserves the rows queried by web-chat context builders
+ * while keeping setup cost bounded under parallel CI load.
+ */
+export async function seedTestChatRounds(params: {
+  userId: string;
+  orgId: string;
+  agentComposeId: string;
+  chatThreadId: string;
+  prompts: string[];
+  status?: string;
+  createdAtStart?: Date;
+}): Promise<void> {
+  if (params.prompts.length === 0) return;
+  initServices();
+
+  const status = params.status ?? "cancelled";
+  const terminalStatuses = new Set([
+    "completed",
+    "failed",
+    "timeout",
+    "cancelled",
+  ]);
+  const baseTime = params.createdAtStart?.getTime() ?? Date.now();
+  const rows = params.prompts.map((prompt, index) => {
+    return {
+      runId: randomUUID(),
+      prompt,
+      createdAt: new Date(baseTime + index),
+    };
+  });
+
+  await globalThis.services.db.transaction(async (tx) => {
+    const [session] = await tx
+      .insert(agentSessions)
+      .values({
+        userId: params.userId,
+        orgId: params.orgId,
+        agentComposeId: params.agentComposeId,
+      })
+      .returning({ id: agentSessions.id });
+    if (!session) {
+      throw new Error("Failed to seed agent session");
+    }
+
+    await tx.insert(agentRuns).values(
+      rows.map((row) => {
+        return {
+          id: row.runId,
+          userId: params.userId,
+          orgId: params.orgId,
+          sessionId: session.id,
+          status,
+          prompt: row.prompt,
+          createdAt: row.createdAt,
+          ...(terminalStatuses.has(status)
+            ? { completedAt: row.createdAt }
+            : {}),
+        };
+      }),
+    );
+
+    await tx.insert(zeroRuns).values(
+      rows.map((row) => {
+        return {
+          id: row.runId,
+          triggerSource: "web",
+          chatThreadId: params.chatThreadId,
+        };
+      }),
+    );
+
+    await tx.insert(chatMessages).values(
+      rows.map((row) => {
+        return {
+          chatThreadId: params.chatThreadId,
+          runId: row.runId,
+          role: "user",
+          content: row.prompt,
+          createdAt: row.createdAt,
+        };
+      }),
+    );
+  });
+}
+
+/**
+ * Move the agent run and linked chat message to a deterministic timestamp.
+ *
+ * @why-db-direct PostgreSQL timestamps come from DB defaults in route tests.
+ * Ordering-sensitive chat context tests need to place a route-created seed
+ * round before later bulk-seeded rows.
+ */
+export async function setTestChatRoundCreatedAt(
+  runId: string,
+  createdAt: Date,
+): Promise<void> {
+  initServices();
+  await Promise.all([
+    globalThis.services.db
+      .update(agentRuns)
+      .set({ createdAt })
+      .where(eq(agentRuns.id, runId)),
+    globalThis.services.db
+      .update(chatMessages)
+      .set({ createdAt })
+      .where(eq(chatMessages.runId, runId)),
+  ]);
 }
 
 /**
@@ -724,6 +842,63 @@ export async function insertTestUsageDaily(params: {
     date: params.date,
     runCount: 5,
   });
+}
+
+/**
+ * Seed a checkpoint row directly with the given `artifact_snapshots`.
+ *
+ * @why-db-direct Migration 0311 backfill tests must stage pre-migration
+ * rows (checkpoint carrying a memory entry) that the webhook path no
+ * longer produces identically. A direct INSERT is the only way to place
+ * an arbitrary `artifact_snapshots` JSON blob on a checkpoint row with a
+ * controlled `created_at`.
+ */
+export async function seedTestCheckpointDirect(
+  runId: string,
+  artifactSnapshots: ContextArtifact[],
+  options?: { createdAt?: Date },
+): Promise<{ checkpointId: string }> {
+  initServices();
+  const [conversation] = await globalThis.services.db
+    .select({ id: conversations.id })
+    .from(conversations)
+    .where(eq(conversations.runId, runId))
+    .limit(1);
+  if (!conversation) {
+    throw new Error(
+      `No conversation for run ${runId}; call insertTestConversation first`,
+    );
+  }
+  const [row] = await globalThis.services.db
+    .insert(checkpoints)
+    .values({
+      runId,
+      conversationId: conversation.id,
+      agentComposeSnapshot: {},
+      artifactSnapshots,
+      ...(options?.createdAt ? { createdAt: options.createdAt } : {}),
+    })
+    .returning({ id: checkpoints.id });
+  return { checkpointId: row!.id };
+}
+
+/**
+ * Overwrite `agent_sessions.artifacts` JSONB for an existing session.
+ *
+ * @why-db-direct No API route sets `agent_sessions.artifacts` after
+ * creation — the column is write-once at session insert. Migration 0311
+ * idempotence tests need to seed a session whose `artifacts` already
+ * carries memory to assert the guard skips it.
+ */
+export async function setTestAgentSessionArtifacts(
+  sessionId: string,
+  artifacts: ContextArtifact[],
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .update(agentSessions)
+    .set({ artifacts })
+    .where(eq(agentSessions.id, sessionId));
 }
 
 /**

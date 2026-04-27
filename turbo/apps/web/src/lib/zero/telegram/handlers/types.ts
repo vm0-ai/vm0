@@ -16,6 +16,8 @@ interface TelegramPhotoSize {
 export interface TelegramHandlerUpdate {
   message: {
     message_id: number;
+    /** Present for messages in Telegram supergroup forum topics */
+    message_thread_id?: number;
     chat: { id: number; type: string };
     from?: {
       id: number;

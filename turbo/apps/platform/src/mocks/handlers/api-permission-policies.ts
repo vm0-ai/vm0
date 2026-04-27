@@ -4,7 +4,7 @@
  * Mock handlers for /api/zero/permission-policies endpoints.
  */
 
-import { zeroAgentPermissionPoliciesContract } from "@vm0/core/contracts/zero-agents";
+import { zeroAgentPermissionPoliciesContract } from "@vm0/api-contracts/contracts/zero-agents";
 import { mockApi } from "../msw-contract.ts";
 
 export const apiPermissionPoliciesHandlers = [

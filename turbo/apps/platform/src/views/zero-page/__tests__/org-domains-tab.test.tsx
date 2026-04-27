@@ -4,8 +4,8 @@ import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
-import { zeroOrgDomainsContract } from "@vm0/core/contracts/zero-org-domains";
-import type { OrgDomain } from "@vm0/core/contracts/org-members";
+import { zeroOrgDomainsContract } from "@vm0/api-contracts/contracts/zero-org-domains";
+import type { OrgDomain } from "@vm0/api-contracts/contracts/org-members";
 import { setMockOrg, resetMockOrg } from "../../../mocks/handlers/api-org.ts";
 import {
   setMockOrgDomains,

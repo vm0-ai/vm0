@@ -1,4 +1,6 @@
-import type { ZeroCapability } from "@vm0/core/contracts/composes";
+import { after } from "next/server";
+
+import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { getAuthContext, type AuthContext } from "./get-auth-context";
 import {
   isPatToken,
@@ -7,11 +9,26 @@ import {
   verifyZeroToken,
 } from "./sandbox-token";
 import { missingCapabilityError } from "./capability-check";
+import { shadowCompareAuth } from "./shadow-check";
 
 type AuthErrorResponse = {
   status: 401 | 403;
   body: { error: { message: string; code: string } };
 };
+
+function scheduleShadowCheck(
+  result: AuthContext | AuthErrorResponse,
+  authHeader: string | undefined,
+  cookieHeader?: string,
+): void {
+  try {
+    after(async () => {
+      await shadowCompareAuth(result, { authHeader, cookieHeader });
+    });
+  } catch {
+    // Outside a Next.js request scope (e.g. unit tests) — skip silently.
+  }
+}
 
 /**
  * Authenticate a request, distinguishing 401 (not authenticated) from 403
@@ -24,11 +41,14 @@ export async function requireAuth(
   options?: {
     requiredCapability?: ZeroCapability;
     acceptAnySandboxCapability?: boolean;
+    cookieHeader?: string;
   },
 ): Promise<AuthContext | AuthErrorResponse> {
+  const cookieHeader = options?.cookieHeader;
   const authCtx = await getAuthContext(authHeader, options);
 
   if (authCtx) {
+    scheduleShadowCheck(authCtx, authHeader, cookieHeader);
     return authCtx;
   }
 
@@ -42,33 +62,35 @@ export async function requireAuth(
       const zeroAuth = !sandboxAuth ? verifyZeroToken(token) : null;
       if (sandboxAuth || zeroAuth) {
         // Token is valid → this is a capability/access issue, not auth
-        if (options?.requiredCapability) {
-          return {
-            status: 403 as const,
-            body: missingCapabilityError(options.requiredCapability),
-          };
-        }
-        // Uncovered endpoint or acceptAnySandboxCapability without capabilities
-        return {
-          status: 403 as const,
-          body: {
-            error: {
-              message: "This endpoint is not available for sandbox tokens",
-              code: "FORBIDDEN",
-            },
-          },
-        };
+        const capabilityErr: AuthErrorResponse = options?.requiredCapability
+          ? {
+              status: 403 as const,
+              body: missingCapabilityError(options.requiredCapability),
+            }
+          : {
+              status: 403 as const,
+              body: {
+                error: {
+                  message: "This endpoint is not available for sandbox tokens",
+                  code: "FORBIDDEN",
+                },
+              },
+            };
+        scheduleShadowCheck(capabilityErr, authHeader, cookieHeader);
+        return capabilityErr;
       }
     }
   }
 
   // Genuinely not authenticated
-  return {
+  const unauthorized: AuthErrorResponse = {
     status: 401 as const,
     body: {
       error: { message: "Not authenticated", code: "UNAUTHORIZED" },
     },
   };
+  scheduleShadowCheck(unauthorized, authHeader, cookieHeader);
+  return unauthorized;
 }
 
 /**
@@ -97,6 +119,7 @@ export function isAuthError(
  */
 export async function requireApiKeyAuth(
   authHeader: string | undefined,
+  cookieHeader?: string,
 ): Promise<AuthContext | AuthErrorResponse> {
   const unauthorized: AuthErrorResponse = {
     status: 401 as const,
@@ -104,12 +127,20 @@ export async function requireApiKeyAuth(
       error: { message: "API key required", code: "UNAUTHORIZED" },
     },
   };
-  if (!authHeader?.startsWith("Bearer ")) return unauthorized;
+  if (!authHeader?.startsWith("Bearer ")) {
+    scheduleShadowCheck(unauthorized, authHeader, cookieHeader);
+    return unauthorized;
+  }
   const token = authHeader.substring(7);
-  if (!isPatToken(token)) return unauthorized;
+  if (!isPatToken(token)) {
+    scheduleShadowCheck(unauthorized, authHeader, cookieHeader);
+    return unauthorized;
+  }
   const authCtx = await getAuthContext(authHeader);
-  if (!authCtx) return unauthorized;
-  if (authCtx.tokenType !== "pat") return unauthorized;
-  if (!authCtx.orgId) return unauthorized;
+  if (!authCtx || authCtx.tokenType !== "pat" || !authCtx.orgId) {
+    scheduleShadowCheck(unauthorized, authHeader, cookieHeader);
+    return unauthorized;
+  }
+  scheduleShadowCheck(authCtx, authHeader, cookieHeader);
   return authCtx;
 }

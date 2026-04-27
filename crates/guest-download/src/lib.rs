@@ -588,6 +588,10 @@ fn download_and_extract(url: &str, target_path: &str) -> Result<(), DownloadErro
 mod tests {
     use super::*;
 
+    fn disable_system_log() {
+        guest_common::log::clear_system_log_file();
+    }
+
     // -- normalize_path tests --
 
     #[test]
@@ -733,6 +737,7 @@ mod tests {
 
     #[test]
     fn cleanup_removes_path_without_preserved_children() {
+        disable_system_log();
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("mount");
         fs::create_dir_all(&path).unwrap();
@@ -744,6 +749,7 @@ mod tests {
 
     #[test]
     fn cleanup_preserves_unchanged_children() {
+        disable_system_log();
         let dir = tempfile::tempdir().unwrap();
         let parent = dir.path().join("claude");
         let child = parent.join("skills").join("foo");
@@ -766,6 +772,7 @@ mod tests {
 
     #[test]
     fn cleanup_handles_nonexistent_path() {
+        disable_system_log();
         // Should not panic
         cleanup_stale_paths(&["/nonexistent/path/12345".into()], &[]);
     }

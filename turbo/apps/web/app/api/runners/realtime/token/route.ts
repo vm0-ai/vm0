@@ -1,6 +1,6 @@
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
-import { createErrorResponse } from "@vm0/core/contracts/errors";
-import { runnerRealtimeTokenContract } from "@vm0/core/contracts/realtime";
+import { createErrorResponse } from "@vm0/api-contracts/contracts/errors";
+import { runnerRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getRunnerAuth } from "../../../../../src/lib/auth/runner-auth";
 import { generateRunnerGroupToken } from "../../../../../src/lib/infra/realtime/client";

@@ -8,7 +8,7 @@
  * override via `server.use(mockApi(zeroVoiceIoQuotaContract.get, ...))`.
  */
 
-import { zeroVoiceIoQuotaContract } from "@vm0/core/contracts/zero-voice-io-quota";
+import { zeroVoiceIoQuotaContract } from "@vm0/api-contracts/contracts/zero-voice-io-quota";
 import { mockApi } from "../msw-contract.ts";
 
 export const apiVoiceIoHandlers = [

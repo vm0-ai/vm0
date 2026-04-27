@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -8,15 +8,11 @@ import type {
   LogsListResponse,
 } from "../../../signals/zero-page/log-types.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
-import { logsListContract } from "@vm0/core/contracts/logs";
+import { logsListContract } from "@vm0/api-contracts/contracts/logs";
 import { setMockComposesList } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
-
-beforeEach(() => {
-  vi.clearAllMocks();
-});
 
 function makeLog(overrides: Partial<LogEntry> = {}): LogEntry {
   return {

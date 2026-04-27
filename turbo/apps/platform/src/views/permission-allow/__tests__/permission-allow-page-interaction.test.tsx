@@ -22,7 +22,7 @@ import {
   permissionAccessRequestsListContract,
   permissionAccessRequestsResolveContract,
   permissionAccessRequestsCreateContract,
-} from "@vm0/core/contracts/zero-agents";
+} from "@vm0/api-contracts/contracts/zero-agents";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { setMockPermissionRequests } from "../../../mocks/handlers/api-permission-access-requests.ts";
 import { setMockOrg } from "../../../mocks/handlers/api-org.ts";

@@ -5,7 +5,7 @@ import {
   allowsCustomModel,
   getModels,
   type ModelProviderType,
-} from "@vm0/core/contracts/model-providers";
+} from "@vm0/api-contracts/contracts/model-providers";
 import { listZeroOrgModelProviders } from "../../../../lib/api";
 import { withErrorHandler } from "../../../../lib/command";
 

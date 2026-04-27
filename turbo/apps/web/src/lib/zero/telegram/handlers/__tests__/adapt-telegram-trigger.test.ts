@@ -21,6 +21,17 @@ describe("adaptTelegramTrigger", () => {
       sessionId: "sess-1",
       prompt: "hello",
       threadContext: "previous message\nanother",
+      userInfoExtras: {
+        telegramUserId: "42",
+        telegramUsername: "@alice",
+      },
+      botId: "123456789",
+      botUsername: "test_bot",
+      chatId: "chat-1",
+      chatType: "group",
+      messageId: "msg-1",
+      rootMessageId: "root-1",
+      messageThreadId: 123,
       userId: "user-1",
       callbackContext: baseCallback,
       apiStartTime: 1000,
@@ -33,6 +44,17 @@ describe("adaptTelegramTrigger", () => {
     expect(result.triggerSource).toBe("telegram");
     expect(result.apiStartTime).toBe(1000);
     expect(result.appendSystemPrompt).toContain("Telegram");
+    expect(result.appendSystemPrompt).toContain("Bot ID: 123456789");
+    expect(result.appendSystemPrompt).toContain("Bot username: @test_bot");
+    expect(result.appendSystemPrompt).toContain("Chat ID: chat-1");
+    expect(result.appendSystemPrompt).toContain("Chat type: group");
+    expect(result.appendSystemPrompt).toContain("Message ID: msg-1");
+    expect(result.appendSystemPrompt).toContain("Root message ID: root-1");
+    expect(result.appendSystemPrompt).toContain("Message thread ID: 123");
+    expect(result.userInfoExtras).toEqual({
+      telegramUserId: "42",
+      telegramUsername: "@alice",
+    });
 
     const callback = result.callbacks?.[0];
     if (!callback) {

@@ -1,11 +1,11 @@
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::sync::Notify;
+use tokio::sync::watch;
 use tracing::{debug, info, warn};
 
 use crate::api::ApiClient;
+use crate::sandbox::SandboxState;
 
 /// Keep this much memory free in the guest (MiB).
 const TARGET_FREE_MIB: i64 = 256;
@@ -35,12 +35,12 @@ const STATUS_INTERVAL_TICKS: u64 = 12;
 pub fn spawn(
     api_sock: PathBuf,
     memory_mb: u32,
-    crash_notify: Arc<Notify>,
+    state_rx: watch::Receiver<SandboxState>,
 ) -> tokio::task::JoinHandle<()> {
-    tokio::spawn(run_loop(api_sock, memory_mb, crash_notify))
+    tokio::spawn(run_loop(api_sock, memory_mb, state_rx))
 }
 
-async fn run_loop(api_sock: PathBuf, memory_mb: u32, crash_notify: Arc<Notify>) {
+async fn run_loop(api_sock: PathBuf, memory_mb: u32, mut state_rx: watch::Receiver<SandboxState>) {
     let client = ApiClient::new(&api_sock);
     let max_inflate = memory_mb.saturating_sub(MIN_GUEST_MIB);
     if max_inflate == 0 {
@@ -64,10 +64,24 @@ async fn run_loop(api_sock: PathBuf, memory_mb: u32, crash_notify: Arc<Notify>) 
                 tick(&client, max_inflate, tick_count).await;
                 tick_count += 1;
             }
-            _ = crash_notify.notified() => {
-                debug!("balloon controller exiting: VM crashed");
+            _ = wait_for_crash_or_stop(&mut state_rx) => {
+                debug!("balloon controller exiting: VM stopped or crashed");
                 return;
             }
+        }
+    }
+}
+
+async fn wait_for_crash_or_stop(state_rx: &mut watch::Receiver<SandboxState>) {
+    loop {
+        if matches!(
+            *state_rx.borrow_and_update(),
+            SandboxState::Crashed | SandboxState::Stopped
+        ) {
+            return;
+        }
+        if state_rx.changed().await.is_err() {
+            return;
         }
     }
 }

@@ -1,12 +1,15 @@
 [package]
 name = "guest-common"
-version = "0.2.1"
+version = "0.2.4"
 edition.workspace = true
 
 [dependencies]
 chrono = { workspace = true, features = ["std", "clock"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
 
 [lints]
 workspace = true

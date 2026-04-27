@@ -5,7 +5,10 @@ import type {
   ResumeSession,
 } from "../types";
 import type { AdditionalVolume } from "../../storage/types";
-import type { Firewalls, NetworkPolicies } from "@vm0/core/contracts/firewalls";
+import type {
+  Firewalls,
+  NetworkPolicies,
+} from "@vm0/connectors/firewall-types";
 
 interface BuildInfraContextParams {
   runId: string;

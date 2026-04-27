@@ -1,5 +1,54 @@
 # Changelog
 
+## [0.26.12](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.26.11...sandbox-fc-v0.26.12) (2026-04-27)
+
+## [0.26.11](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.26.10...sandbox-fc-v0.26.11) (2026-04-27)
+
+
+### Documentation
+
+* **sandbox-fc:** explain balloon tolerance scope ([#11217](https://github.com/vm0-ai/vm0/issues/11217)) ([f9f2e1b](https://github.com/vm0-ai/vm0/commit/f9f2e1b86900b3ac1bb2e7c7d0a885f3ca17f76d))
+
+
+### Refactoring
+
+* **sandbox-fc:** encapsulate leak cleanup task ([#11239](https://github.com/vm0-ai/vm0/issues/11239)) ([f1cd276](https://github.com/vm0-ai/vm0/commit/f1cd276e5e8927572acc11064e60eca896f65009))
+
+## [0.26.10](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.26.9...sandbox-fc-v0.26.10) (2026-04-27)
+
+
+### Bug Fixes
+
+* **runner:** make idle vm budget release panic-safe ([#11191](https://github.com/vm0-ai/vm0/issues/11191)) ([52e085f](https://github.com/vm0-ai/vm0/commit/52e085fb6e53623b5920fbfee58ccc71d8d760ae))
+* **sandbox-fc:** persist backend crash state ([#11192](https://github.com/vm0-ai/vm0/issues/11192)) ([57c4222](https://github.com/vm0-ai/vm0/commit/57c4222d68327eac25a3a96f8256c8cc2275fc24))
+
+
+### Refactoring
+
+* **sandbox-fc:** model prerequisites by capability ([#11180](https://github.com/vm0-ai/vm0/issues/11180)) ([a4cf47a](https://github.com/vm0-ai/vm0/commit/a4cf47a97ec8a3300e53647aacc3f0e380c03b7b))
+* **sandbox:** clarify error taxonomy ([#11178](https://github.com/vm0-ai/vm0/issues/11178)) ([f766059](https://github.com/vm0-ai/vm0/commit/f7660591f6866336a78803225653fd738667c036))
+
+## [0.26.9](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.26.8...sandbox-fc-v0.26.9) (2026-04-26)
+
+
+### Refactoring
+
+* **sandbox-fc:** remove unused prerequisite config ([#11173](https://github.com/vm0-ai/vm0/issues/11173)) ([e2acce9](https://github.com/vm0-ai/vm0/commit/e2acce90cc2d9c0d1021d7a0156c6a3d7e755218))
+
+## [0.26.8](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.26.7...sandbox-fc-v0.26.8) (2026-04-25)
+
+
+### Documentation
+
+* **sandbox-fc:** refresh reconcile comment after [#10826](https://github.com/vm0-ai/vm0/issues/10826) closed ([#11073](https://github.com/vm0-ai/vm0/issues/11073)) ([09b6a9c](https://github.com/vm0-ai/vm0/commit/09b6a9c5ef3b0d4668f12218849182a127a111e8))
+
+## [0.26.7](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.26.6...sandbox-fc-v0.26.7) (2026-04-24)
+
+
+### Refactoring
+
+* **sandbox-fc:** trim verbose panic boilerplate in api tests ([#10955](https://github.com/vm0-ai/vm0/issues/10955)) ([170ddde](https://github.com/vm0-ai/vm0/commit/170ddde1ffd2d503c679e33f8876a60f92899b4d))
+
 ## [0.26.6](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.26.5...sandbox-fc-v0.26.6) (2026-04-23)
 
 

@@ -1,0 +1,43 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oxc-project/oxlint/main/npm/oxlint/configuration_schema.json",
+  "extends": ["../../.oxlintrc.json"],
+  "overrides": [
+    {
+      "files": ["src/lib/log.ts"],
+      "rules": {
+        "no-console": "allow"
+      }
+    },
+    {
+      "files": [
+        "eslint.config.mjs",
+        "src/index.ts",
+        "vite.config.ts",
+        "vitest.config.ts"
+      ],
+      "rules": {
+        "import/no-default-export": "off"
+      }
+    }
+  ],
+  "rules": {
+    "no-console": "deny",
+    "no-restricted-imports": [
+      "deny",
+      {
+        "paths": [
+          {
+            "name": "@vercel/functions",
+            "importNames": ["waitUntil"],
+            "message": "Use waitUntil from signals/context/wait-until instead so detached promises stay tracked."
+          },
+          {
+            "name": "hono",
+            "allowTypeImports": true,
+            "message": "Only signals/context/hono.ts may import hono. Other signals files must use the wrappers from signals/context/hono."
+          }
+        ]
+      }
+    ]
+  }
+}

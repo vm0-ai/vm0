@@ -4,58 +4,93 @@ import { animationFrame } from "signal-timers";
 import { ZeroChatThreadPage } from "../../views/zero-page/zero-chat-thread-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
-import { setChatAgentId$, currentChatThreadId$ } from "../agent-chat.ts";
+import {
+  currentChatAgentId$,
+  setChatAgentId$,
+  currentChatThreadId$,
+} from "../agent-chat.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
-import {
-  currentChatThreadSignals$,
-  ensureDraft$,
-} from "./create-chat-thread.ts";
+import { detachedNavigateTo$, searchParams$ } from "../route.ts";
+import { createChatThreadSignals, ensureDraft$ } from "./create-chat-thread.ts";
 import { createRestoredAttachment } from "../zero-page/chat-draft.ts";
 import { setupChatPageKeyboard$ } from "./chat-keyboard.ts";
 import { setAblyLoop$ } from "../realtime.ts";
+import {
+  clearMatchingOptimisticChatThread$,
+  optimisticChatThread$,
+} from "./optimistic-chat-thread-page.ts";
+import {
+  captureNavigationTiming$,
+  markRouteSetupBegin$,
+} from "../../lib/posthog.ts";
 
 export const setupChatPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
+    set(markRouteSetupBegin$);
     const threadId = get(currentChatThreadId$);
     if (!threadId) {
       throw new Error("threadId is required to load chat page");
     }
+    const initialSearchParams = new URLSearchParams(get(searchParams$));
 
-    // Provision draft before rendering so currentChatThreadSignals$ is
-    // available on first render. `isNew` tells us whether the local cache
-    // was empty — if so, we will seed draft signals from server data below.
-    const { isNew } = set(ensureDraft$, threadId);
-
-    set(
-      updatePage$,
-      createElement(ZeroChatThreadPage, { key: threadId }),
-      "sidebar",
-    );
     set(updateDocumentTitle$, "Chat");
-    set(setupChatPageKeyboard$, signal);
-
-    await set(hideAppSkeleton$, signal);
 
     if (await set(onboardGuard$, signal)) {
       return;
     }
 
-    const thread = get(currentChatThreadSignals$)!;
+    const { draft, isNew } = set(ensureDraft$, threadId);
+    const thread = createChatThreadSignals(threadId, draft);
+    set(setupChatPageKeyboard$, thread, signal);
+
+    const optimisticThread = get(optimisticChatThread$);
+    const matchingOptimisticThread =
+      optimisticThread?.threadId === threadId ? optimisticThread : null;
+
+    set(
+      updatePage$,
+      createElement(ZeroChatThreadPage, {
+        key: threadId,
+        thread: matchingOptimisticThread?.pendingThread ?? thread,
+      }),
+      "sidebar",
+    );
+    await set(hideAppSkeleton$, signal);
+    set(captureNavigationTiming$);
+
+    if (matchingOptimisticThread) {
+      set(updateDocumentTitle$, "New chat");
+      await matchingOptimisticThread.settleResult;
+      signal.throwIfAborted();
+    }
+
     const threadData = await get(thread.threadData$);
     signal.throwIfAborted();
+    if (!threadData) {
+      if (matchingOptimisticThread) {
+        set(clearMatchingOptimisticChatThread$, matchingOptimisticThread);
+      }
 
-    // Use threadData for title (reliable on page refresh) instead of chatThreads$
-    const sessionTitle = threadData?.title ?? "New chat";
+      set(detachedNavigateTo$, "/", {
+        searchParams: initialSearchParams,
+        replace: true,
+      });
+
+      return;
+    }
+
+    const currentChatAgentId = await get(currentChatAgentId$);
+    signal.throwIfAborted();
+    if (currentChatAgentId !== threadData.agentId) {
+      set(setChatAgentId$, threadData.agentId);
+    }
+
+    const sessionTitle = threadData.title ?? "New chat";
     set(updateDocumentTitle$, sessionTitle);
 
-    set(setChatAgentId$, threadData?.agentId ?? null);
-
-    // Seed draft from server data on first visit (local cache was empty).
-    // Local-first: if the user already has local state, we do NOT overwrite it.
     if (
       isNew &&
-      threadData !== null &&
       (threadData.draftContent !== null ||
         (threadData.draftAttachments !== null &&
           threadData.draftAttachments.length > 0))
@@ -73,9 +108,19 @@ export const setupChatPage$ = command(
     await get(thread.groupedChatMessages$);
     signal.throwIfAborted();
 
-    // The list is mounted with visibility:hidden under the skeleton so
-    // scrollHeight is already correct; wait one frame for React to commit
-    // the message DOM, then scroll and reveal in the same tick.
+    if (matchingOptimisticThread) {
+      set(thread.hideSkeleton$);
+      set(
+        updatePage$,
+        createElement(ZeroChatThreadPage, {
+          key: threadId,
+          thread,
+        }),
+        "sidebar",
+      );
+      set(clearMatchingOptimisticChatThread$, matchingOptimisticThread);
+    }
+
     animationFrame(
       () => {
         set(thread.scrollToBottom$);
@@ -84,7 +129,6 @@ export const setupChatPage$ = command(
       { signal },
     );
 
-    // Reactive document title: update when thread data changes via Ably events
     const onThreadUpdated$ = command(async ({ get, set }, sig: AbortSignal) => {
       const data = await get(thread.threadData$);
       sig.throwIfAborted();

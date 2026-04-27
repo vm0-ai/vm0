@@ -452,38 +452,6 @@ function createChatAttachment(file: File): ZeroChatAttachment {
 
 `cancel$` omits the parent — its job is to abort the current upload when there is no next upload to start. `upload$` passes the parent because page unmount should also abort the upload.
 
-**Example 2: Message sending across page navigation** (`zero-chat.ts`)
-
-```typescript
-/**
- * The talk page navigates from /agents/:id/chat to /chats/:id on send,
- * which aborts the page-level signal. This dedicated signal lets the
- * talk page pass a cancellable AbortSignal without coupling to the page
- * lifecycle.
- */
-export const resetTalkSendSignal$ = resetSignal();
-
-// Mutual exclusion: each new message send cancels the previous one
-export const startNewZeroSession$ = command(({ get, set }) => {
-  set(resetTalkSendSignal$);
-  set(internalLocalMessages$, []);
-  set(get(talkDraft$).clear$);
-});
-```
-
-Getting the independent signal in the view layer:
-
-```typescript
-const handleSendMessage = (message: string) => {
-  startNewSession(); // internally calls set(resetTalkSendSignal$), cancels previous
-  const talkSignal = resetTalkSendSignal(); // get a fresh independent signal
-  detach(
-    sendNewThread(resolvedAgentId, message, talkSignal),
-    Reason.DomCallback,
-  );
-};
-```
-
 The parent is omitted here because the send operation needs to survive page navigation — if bound to `pageSignal$`, the route change would abort the in-flight send request.
 
 ### Common mistake: floating polling loop

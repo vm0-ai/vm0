@@ -1,11 +1,11 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
   zeroAgentsByIdContract,
   zeroAgentInstructionsContract,
-} from "@vm0/core/contracts/zero-agents";
-import { zeroUserConnectorsContract } from "@vm0/core/contracts/user-connectors";
+} from "@vm0/api-contracts/contracts/zero-agents";
+import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
@@ -13,6 +13,7 @@ import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
 import { setMockOrg } from "../../../mocks/handlers/api-org.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
+import { pathname, search } from "../../../signals/location.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -96,10 +97,6 @@ function mockAPIsWithConnectors() {
 }
 
 describe("zero job detail page - display", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
   it("should render agent header elements (AGENT-D-016, AGENT-D-017)", async () => {
     mockAPIs();
     detachedSetupPage({ context, path: "/agents/my-agent" });
@@ -145,34 +142,51 @@ describe("zero job detail page - display", () => {
     });
   });
 
-  it("should show not-found error state for unknown agent (AGENT-D-024)", async () => {
-    setMockTeam([]);
+  it("should redirect unknown agent to the default agent (AGENT-D-024)", async () => {
+    setMockTeam([
+      {
+        id: "c0000000-0000-4000-a000-000000000001",
+        displayName: "Zero",
+        description: null,
+        sound: null,
+        avatarUrl: null,
+        headVersionId: "version_1",
+        updatedAt: "2024-01-01T00:00:00Z",
+      },
+    ]);
     server.use(
-      mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
+      mockApi(zeroAgentsByIdContract.get, ({ params, respond }) => {
+        if (params.id === "c0000000-0000-4000-a000-000000000001") {
+          return respond(200, {
+            agentId: "c0000000-0000-4000-a000-000000000001",
+            ownerId: "test-owner-id",
+            description: null,
+            displayName: "Zero",
+            sound: null,
+            avatarUrl: null,
+            permissionPolicies: null,
+            customSkills: [],
+            modelProviderId: null,
+            selectedModel: null,
+          });
+        }
         return respond(404, {
           error: { message: "Not found", code: "NOT_FOUND" },
         });
       }),
     );
 
-    detachedSetupPage({ context, path: "/agents/nonexistent" });
+    detachedSetupPage({ context, path: "/agents/nonexistent?tab=profile" });
 
-    // Not-found state shows a "Back to team" link instead of the agent heading
     await waitFor(() => {
-      expect(screen.getByText("Back to team")).toBeInTheDocument();
-      expect(
-        screen.queryByRole("heading", { name: "My Agent" }),
-      ).not.toBeInTheDocument();
+      expect(pathname()).toBe("/agents/c0000000-0000-4000-a000-000000000001");
+      expect(search()).toBe("?tab=profile");
     });
   });
 });
 
 describe("zero job detail page - connector display", () => {
   const user = userEvent.setup();
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
 
   it("should show connector enabled and disabled states in permission list (AGENT-D-021)", async () => {
     mockAPIsWithConnectors();
@@ -227,10 +241,6 @@ describe("zero job detail page - connector display", () => {
 });
 
 describe("zero job detail page - tab visibility", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
   function findTab(label: RegExp) {
     return screen.getAllByRole("tab").find((el) => {
       return label.test(el.textContent ?? "");
@@ -317,10 +327,6 @@ describe("zero job detail page - tab visibility", () => {
 });
 
 describe("zero job detail page - delete dialog", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
   it("should open delete confirmation dialog (AGENT-D-026)", async () => {
     mockAPIs();
     detachedSetupPage({ context, path: "/agents/my-agent" });

@@ -18,7 +18,7 @@ import { setSelectedPlanTier$ } from "../../../signals/zero-page/billing-dialog-
 import {
   zeroBillingAutoRechargeContract,
   zeroBillingCheckoutContract,
-} from "@vm0/core/contracts/zero-billing";
+} from "@vm0/api-contracts/contracts/zero-billing";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();

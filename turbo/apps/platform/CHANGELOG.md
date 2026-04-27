@@ -1,5 +1,276 @@
 # Changelog
 
+## [0.298.1](https://github.com/vm0-ai/vm0/compare/app-v0.298.0...app-v0.298.1) (2026-04-27)
+
+
+### Bug Fixes
+
+* route PostHog SDK through Vercel reverse proxy to avoid ad-blocker data loss ([#11252](https://github.com/vm0-ai/vm0/issues/11252)) ([f09e5ad](https://github.com/vm0-ai/vm0/commit/f09e5ad3628f2633731b82e00572b4e81fbfc7e4))
+
+## [0.298.0](https://github.com/vm0-ai/vm0/compare/app-v0.297.0...app-v0.298.0) (2026-04-27)
+
+
+### Features
+
+* add chat artifacts drawer ([#11229](https://github.com/vm0-ai/vm0/issues/11229)) ([97483c5](https://github.com/vm0-ai/vm0/commit/97483c5793965372b3a5ae82ab532059e6579a98))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.239.0
+
+## [0.297.0](https://github.com/vm0-ai/vm0/compare/app-v0.296.0...app-v0.297.0) (2026-04-27)
+
+
+### Features
+
+* **platform:** add telegram settings UI ([#11196](https://github.com/vm0-ai/vm0/issues/11196)) ([7cc8d17](https://github.com/vm0-ai/vm0/commit/7cc8d17cd5bb2a26297a1774173b3b6544c715d6))
+
+
+### Bug Fixes
+
+* **org-manage:** widen workspace settings dialog to 1200px with side padding ([#11230](https://github.com/vm0-ai/vm0/issues/11230)) ([04dca28](https://github.com/vm0-ai/vm0/commit/04dca28a835b718ab3afa32d0b4c4e6c73b7b516))
+* show all connectors in chat composer dropdown ([#11223](https://github.com/vm0-ai/vm0/issues/11223)) ([a5ca553](https://github.com/vm0-ai/vm0/commit/a5ca553170985c92e43c519b565836509247ebc9))
+
+
+### Refactoring
+
+* **insights:** restructure header with caption divider ([#11222](https://github.com/vm0-ai/vm0/issues/11222)) ([faf044c](https://github.com/vm0-ai/vm0/commit/faf044c1f989aadd8d8b12d72b41cae3578fa308))
+* **platform:** redesign /_/usage page and move to account menu ([#11080](https://github.com/vm0-ai/vm0/issues/11080)) ([cacbe8e](https://github.com/vm0-ai/vm0/commit/cacbe8e64c98485e1a856a6fe1647218fc7671b7))
+
+## [0.296.0](https://github.com/vm0-ai/vm0/compare/app-v0.295.0...app-v0.296.0) (2026-04-27)
+
+
+### Features
+
+* agent profile popover on avatar click ([#10832](https://github.com/vm0-ai/vm0/issues/10832)) ([e1d3e0e](https://github.com/vm0-ai/vm0/commit/e1d3e0e5a2d61f7d7cff5c3f2481a547b5225b65))
+* bump team tier concurrency from 5 to 10 ([#11033](https://github.com/vm0-ai/vm0/issues/11033)) ([a98f50f](https://github.com/vm0-ai/vm0/commit/a98f50f155ea2b9affc00e357819dc8e81d27a7e))
+* **platform:** add telegram settings signals ([#11189](https://github.com/vm0-ai/vm0/issues/11189)) ([203e4ad](https://github.com/vm0-ai/vm0/commit/203e4ada3f80f5160677b1de041d857e905946a7))
+* **telegram:** add multi-bot integration api ([#11015](https://github.com/vm0-ai/vm0/issues/11015)) ([f4f0cb4](https://github.com/vm0-ai/vm0/commit/f4f0cb4b9d1f2887bcb92965b1be13cec5305c09))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.238.0
+
+## [0.295.0](https://github.com/vm0-ai/vm0/compare/app-v0.294.1...app-v0.295.0) (2026-04-26)
+
+
+### Features
+
+* **platform:** add PWA offline caching and fallback page ([#11151](https://github.com/vm0-ai/vm0/issues/11151)) ([ed86f3c](https://github.com/vm0-ai/vm0/commit/ed86f3c452ae4d2034a584fb0503e7518f3b0a38))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.237.0
+
+## [0.294.1](https://github.com/vm0-ai/vm0/compare/app-v0.294.0...app-v0.294.1) (2026-04-26)
+
+
+### Bug Fixes
+
+* complete posthog instrumentation ([#11147](https://github.com/vm0-ai/vm0/issues/11147)) ([5aa09dc](https://github.com/vm0-ai/vm0/commit/5aa09dc22ecd41e3949a497c375b9968804fbdbf))
+
+## [0.294.0](https://github.com/vm0-ai/vm0/compare/app-v0.293.6...app-v0.294.0) (2026-04-26)
+
+
+### Features
+
+* add PostHog frontend navigation timing ([#11131](https://github.com/vm0-ai/vm0/issues/11131)) ([5b0a9c6](https://github.com/vm0-ai/vm0/commit/5b0a9c63757caa72379bf6234dfd4d4c1b96d337))
+
+
+### CI
+
+* share web api vercel env config ([#11124](https://github.com/vm0-ai/vm0/issues/11124)) ([3aecc05](https://github.com/vm0-ai/vm0/commit/3aecc0557d3f24fb1c4bc2c0f2c33aef08a2c802))
+
+## [0.293.6](https://github.com/vm0-ai/vm0/compare/app-v0.293.5...app-v0.293.6) (2026-04-26)
+
+
+### Bug Fixes
+
+* stabilize repeated chat thread navigation ([#11098](https://github.com/vm0-ai/vm0/issues/11098)) ([6614ae4](https://github.com/vm0-ai/vm0/commit/6614ae4ed778a2c16656366892f9ec4f06973f45))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.236.1
+
+## [0.293.5](https://github.com/vm0-ai/vm0/compare/app-v0.293.4...app-v0.293.5) (2026-04-25)
+
+
+### Refactoring
+
+* split db and api contracts packages ([#11092](https://github.com/vm0-ai/vm0/issues/11092)) ([f4767d9](https://github.com/vm0-ai/vm0/commit/f4767d987af373d17d93d5ca8fb00864c18bc15b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.236.0
+
+## [0.293.4](https://github.com/vm0-ai/vm0/compare/app-v0.293.3...app-v0.293.4) (2026-04-25)
+
+
+### Performance Improvements
+
+* reduce zero bootstrap blocking ([#11088](https://github.com/vm0-ai/vm0/issues/11088)) ([b62cc20](https://github.com/vm0-ai/vm0/commit/b62cc201e980e320df31acecd3615cb4277f9ac1))
+
+## [0.293.3](https://github.com/vm0-ai/vm0/compare/app-v0.293.2...app-v0.293.3) (2026-04-25)
+
+
+### Bug Fixes
+
+* **chat:** route optimistic thread setup through chat page ([#11074](https://github.com/vm0-ai/vm0/issues/11074)) ([c9b69c9](https://github.com/vm0-ai/vm0/commit/c9b69c9538ade7bebe88db2f91a3f182eaf159e7))
+* prevent iOS native back-swipe during PWA edge gesture ([#11065](https://github.com/vm0-ai/vm0/issues/11065)) ([64a0ba7](https://github.com/vm0-ai/vm0/commit/64a0ba7ccbc06e2d91871045ded2d7e9b3533535))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.235.1
+
+## [0.293.2](https://github.com/vm0-ai/vm0/compare/app-v0.293.1...app-v0.293.2) (2026-04-25)
+
+
+### Bug Fixes
+
+* **chat:** switch to new threads optimistically ([#11050](https://github.com/vm0-ai/vm0/issues/11050)) ([4897e71](https://github.com/vm0-ai/vm0/commit/4897e716fbfdcdfa4b3edac3f928f50f75cc57a2))
+* re-add AudioOutput feature switch guards on UI and TTS route ([#11049](https://github.com/vm0-ai/vm0/issues/11049)) ([7f2e59b](https://github.com/vm0-ai/vm0/commit/7f2e59bac342ad624fea0ba7d4af336d12b92691))
+* remove chat switch cleanup regressions ([#11057](https://github.com/vm0-ai/vm0/issues/11057)) ([fb29b5b](https://github.com/vm0-ai/vm0/commit/fb29b5b0fe5ac4f9c843bb490b560ea6fe5d1e9d))
+* restrict pwa install banner to ios/ipados safari only ([#11058](https://github.com/vm0-ai/vm0/issues/11058)) ([5e53102](https://github.com/vm0-ai/vm0/commit/5e53102e5e72acb5338b010f128afae163af4815))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.235.0
+
+## [0.293.1](https://github.com/vm0-ai/vm0/compare/app-v0.293.0...app-v0.293.1) (2026-04-24)
+
+
+### Bug Fixes
+
+* **chat:** restore composer gradient clipped by overflow scroll container ([#11029](https://github.com/vm0-ai/vm0/issues/11029)) ([a03a7a7](https://github.com/vm0-ai/vm0/commit/a03a7a70f9e267ec823dad0b4184094ae10c90a2))
+
+
+### Performance Improvements
+
+* **chat:** avoid redundant startup requests ([#11039](https://github.com/vm0-ai/vm0/issues/11039)) ([549f656](https://github.com/vm0-ai/vm0/commit/549f656df8a35fc90b962d71ca1764e12d44975e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.234.1
+
+## [0.293.0](https://github.com/vm0-ai/vm0/compare/app-v0.292.1...app-v0.293.0) (2026-04-24)
+
+
+### Features
+
+* remove deprecated deepseek-chat/reasoner, add v4 credit multipliers ([#11014](https://github.com/vm0-ai/vm0/issues/11014)) ([7f4eb57](https://github.com/vm0-ai/vm0/commit/7f4eb57fcf8f8d3a4040787ec854fac5fac51ec0))
+
+
+### Bug Fixes
+
+* restore mobile spacing between mic and send button in composer ([#11020](https://github.com/vm0-ai/vm0/issues/11020)) ([54e8d10](https://github.com/vm0-ai/vm0/commit/54e8d108e3d05869b9debdcc0ad567b44e3b67fb))
+* show provider logo in compact model picker ([#11024](https://github.com/vm0-ai/vm0/issues/11024)) ([2f4d402](https://github.com/vm0-ai/vm0/commit/2f4d402fe7dc154ef147d679a93d513c92bfd0ec))
+
+
+### Refactoring
+
+* remove chat thread list item agentId ([#10998](https://github.com/vm0-ai/vm0/issues/10998)) ([2d62c16](https://github.com/vm0-ai/vm0/commit/2d62c168caa019b7e65e26d6f2bf713b798608a8))
+* remove unifyChatThreads feature flag ([#11006](https://github.com/vm0-ai/vm0/issues/11006)) ([4c5a8cf](https://github.com/vm0-ai/vm0/commit/4c5a8cfb0ee29f4d8259f01c0a2d3960d44f4e21))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.234.0
+
+## [0.292.1](https://github.com/vm0-ai/vm0/compare/app-v0.292.0...app-v0.292.1) (2026-04-24)
+
+
+### Bug Fixes
+
+* improve mobile composer controls ([#10996](https://github.com/vm0-ai/vm0/issues/10996)) ([65cd9f5](https://github.com/vm0-ai/vm0/commit/65cd9f54b089e0bf5bd33608c536191d76f2b034))
+
+## [0.292.0](https://github.com/vm0-ai/vm0/compare/app-v0.291.0...app-v0.292.0) (2026-04-24)
+
+
+### Features
+
+* add deepseek v4 models ([#10956](https://github.com/vm0-ai/vm0/issues/10956)) ([292ed24](https://github.com/vm0-ai/vm0/commit/292ed2401576ed7451962e7c3e391ea61a6b9e3b))
+
+
+### Bug Fixes
+
+* copy chat attachments with messages ([#10984](https://github.com/vm0-ai/vm0/issues/10984)) ([472280e](https://github.com/vm0-ai/vm0/commit/472280e02b3c8f5324a46f745561abaa799d3cbd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.233.0
+
+## [0.291.0](https://github.com/vm0-ai/vm0/compare/app-v0.290.0...app-v0.291.0) (2026-04-24)
+
+
+### Features
+
+* classify built-in connectors with ai-first grouping ([#10838](https://github.com/vm0-ai/vm0/issues/10838)) ([bd3e2a3](https://github.com/vm0-ai/vm0/commit/bd3e2a3d5d525bbe872723fe122fbd9ddf345a8f))
+
+
+### Bug Fixes
+
+* redirect missing agent routes to default agent ([#10942](https://github.com/vm0-ai/vm0/issues/10942)) ([9442bf0](https://github.com/vm0-ai/vm0/commit/9442bf08d0ae97a05ab5be4221f3277a7decdfe9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.232.0
+
+## [0.290.0](https://github.com/vm0-ai/vm0/compare/app-v0.289.0...app-v0.290.0) (2026-04-24)
+
+
+### Features
+
+* add browser-use connector ([#10922](https://github.com/vm0-ai/vm0/issues/10922)) ([9a4edc4](https://github.com/vm0-ai/vm0/commit/9a4edc45e87e7863d5d2bfa79d522938b4703aa8))
+* mobile header unread badge for ended threads ([#10926](https://github.com/vm0-ai/vm0/issues/10926)) ([091b3e0](https://github.com/vm0-ai/vm0/commit/091b3e05af3f662c1069bd8c44fd007c14853619))
+* **platform:** improve chat document previews ([#10940](https://github.com/vm0-ai/vm0/issues/10940)) ([fe836c8](https://github.com/vm0-ai/vm0/commit/fe836c852bafc7325eb2fd2b094371d766d97271))
+
+
+### Bug Fixes
+
+* **platform:** remember last used agent on web home ([#10846](https://github.com/vm0-ai/vm0/issues/10846)) ([e3d7908](https://github.com/vm0-ai/vm0/commit/e3d790875428ecf6d3edf84e470fe8a8a80407c3))
+* **platform:** use fallback json parsing in voice chat session ([#10907](https://github.com/vm0-ai/vm0/issues/10907)) ([3865a42](https://github.com/vm0-ai/vm0/commit/3865a420d1d01dc1b4d366cf552621ee59a516bb))
+* route voice input quota upsell to the Compare plans modal ([#10807](https://github.com/vm0-ai/vm0/issues/10807)) ([#10814](https://github.com/vm0-ai/vm0/issues/10814)) ([5cae762](https://github.com/vm0-ai/vm0/commit/5cae7625a282e0a66cb9f24a3353079991b3fbca))
+* **zero:** prevent sidebar chat section flicker when agent id reloads ([#10929](https://github.com/vm0-ai/vm0/issues/10929)) ([6185126](https://github.com/vm0-ai/vm0/commit/6185126ce8a08dddd80a3693e62664cd7c2f2331))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.231.0
+
 ## [0.289.0](https://github.com/vm0-ai/vm0/compare/app-v0.288.1...app-v0.289.0) (2026-04-23)
 
 

@@ -20,14 +20,15 @@ import { randomUUID } from "crypto";
 import { inArray } from "drizzle-orm";
 import { Axiom } from "@axiomhq/js";
 import { mockClerk, clearClerkMock } from "./clerk-mock";
+import { flushNextAsyncHooks } from "./next-after-hooks";
 import { initServices } from "../lib/init-services";
 import * as s3Client from "../lib/infra/s3/s3-client";
 import * as axiomClient from "../lib/shared/axiom/client";
-import { agentComposes } from "../db/schema/agent-compose";
-import { connectors } from "../db/schema/connector";
-import { orgCache } from "../db/schema/org-cache";
-import { orgMetadata } from "../db/schema/org-metadata";
-import { userCache } from "../db/schema/user-cache";
+import { agentComposes } from "@vm0/db/schema/agent-compose";
+import { connectors } from "@vm0/db/schema/connector";
+import { orgCache } from "@vm0/db/schema/org-cache";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { userCache } from "@vm0/db/schema/user-cache";
 
 /**
  * Generate a unique 8-character suffix for test isolation.
@@ -402,17 +403,7 @@ export function testContext(): TestContext {
       dateNow: dateNowMock,
       date: dateMocks,
       async flushAfter() {
-        // Drain iteratively so callbacks that schedule more after() calls
-        // (e.g. createZeroRun's deferred dispatch) are also executed.
-        while (globalThis.nextAfterCallbacks.length > 0) {
-          const callbacks = [...globalThis.nextAfterCallbacks];
-          globalThis.nextAfterCallbacks = [];
-          await Promise.all(
-            callbacks.map((fn) => {
-              return fn();
-            }),
-          );
-        }
+        await flushNextAsyncHooks();
       },
     };
     mockHelpers = helpers;
@@ -446,6 +437,11 @@ export function testContext(): TestContext {
 
     // Restore any stubbed globals (e.g. Date from setSystemTime) so the
     // next test's beforeEach runs with the real clock.
+    // Also restore the Date.now spy — vi.unstubAllGlobals only restores
+    // the global Date constructor, leaving Date.now() stuck at the mocked
+    // time. This breaks any code that runs in afterEach hooks (e.g.
+    // flushNextAsyncHooks calling after()-queued triggerReasoning).
+    if (mockHelpers) mockHelpers.dateNow.mockRestore();
     vi.unstubAllGlobals();
 
     // Reset mocks, cached user, and tracked IDs for next test

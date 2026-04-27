@@ -9,7 +9,7 @@ import {
   chatThreadsContract,
   chatThreadMessagesContract,
   chatThreadByIdContract,
-} from "@vm0/core/contracts/chat-threads";
+} from "@vm0/api-contracts/contracts/chat-threads";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -22,7 +22,10 @@ function mockAPIs() {
           {
             id: "thread-abc-123",
             title: "Test conversation",
-            agentId: "c0000000-0000-4000-a000-000000000001",
+            agent: {
+              id: "c0000000-0000-4000-a000-000000000001",
+              avatarUrl: null,
+            },
             createdAt: "2026-03-10T00:00:00Z",
             updatedAt: "2026-03-10T00:00:00Z",
             isRead: false,

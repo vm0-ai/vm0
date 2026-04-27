@@ -1,5 +1,304 @@
 # Changelog
 
+## [12.303.1](https://github.com/vm0-ai/vm0/compare/web-v12.303.0...web-v12.303.1) (2026-04-27)
+
+
+### Bug Fixes
+
+* **slack:** align home action buttons ([#11248](https://github.com/vm0-ai/vm0/issues/11248)) ([5e67b72](https://github.com/vm0-ai/vm0/commit/5e67b72edc69616235542fa07d06e8230f15c883))
+* **web:** preserve org id on sandbox auth context ([#11251](https://github.com/vm0-ai/vm0/issues/11251)) ([f9dc204](https://github.com/vm0-ai/vm0/commit/f9dc204ded4c48ebd018ad00452082d37a67dbb4))
+
+## [12.303.0](https://github.com/vm0-ai/vm0/compare/web-v12.302.0...web-v12.303.0) (2026-04-27)
+
+
+### Features
+
+* add chat artifacts drawer ([#11229](https://github.com/vm0-ai/vm0/issues/11229)) ([97483c5](https://github.com/vm0-ai/vm0/commit/97483c5793965372b3a5ae82ab532059e6579a98))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.239.0
+
+## [12.302.0](https://github.com/vm0-ai/vm0/compare/web-v12.301.0...web-v12.302.0) (2026-04-27)
+
+
+### Features
+
+* add telegram file download by bot id ([#11241](https://github.com/vm0-ai/vm0/issues/11241)) ([2a39346](https://github.com/vm0-ai/vm0/commit/2a39346beecbe88b2799589318181bbcbce93975))
+* associate uploaded files with runs ([#11201](https://github.com/vm0-ai/vm0/issues/11201)) ([1f62c18](https://github.com/vm0-ai/vm0/commit/1f62c18a7c4973dc1c7fc964f0e2aaae39dbcf3f))
+* **platform:** add telegram settings UI ([#11196](https://github.com/vm0-ai/vm0/issues/11196)) ([7cc8d17](https://github.com/vm0-ai/vm0/commit/7cc8d17cd5bb2a26297a1774173b3b6544c715d6))
+
+## [12.301.0](https://github.com/vm0-ai/vm0/compare/web-v12.300.8...web-v12.301.0) (2026-04-27)
+
+
+### Features
+
+* bump team tier concurrency from 5 to 10 ([#11033](https://github.com/vm0-ai/vm0/issues/11033)) ([a98f50f](https://github.com/vm0-ai/vm0/commit/a98f50f155ea2b9affc00e357819dc8e81d27a7e))
+* support batched usage event webhooks ([#11204](https://github.com/vm0-ai/vm0/issues/11204)) ([cc46707](https://github.com/vm0-ai/vm0/commit/cc467077cc79126df30c6b101543780e7bd49bc8))
+* **telegram:** add connect landing page ([#11190](https://github.com/vm0-ai/vm0/issues/11190)) ([5546f63](https://github.com/vm0-ai/vm0/commit/5546f6363d8cb2fedf49fa2b096ad483e4b23529))
+* **telegram:** add multi-bot integration api ([#11015](https://github.com/vm0-ai/vm0/issues/11015)) ([f4f0cb4](https://github.com/vm0-ai/vm0/commit/f4f0cb4b9d1f2887bcb92965b1be13cec5305c09))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.238.0
+
+## [12.300.8](https://github.com/vm0-ai/vm0/compare/web-v12.300.7...web-v12.300.8) (2026-04-26)
+
+
+### Bug Fixes
+
+* **schedule:** demote insufficient-credits skip from error to warn ([#11135](https://github.com/vm0-ai/vm0/issues/11135)) ([db8f6b7](https://github.com/vm0-ai/vm0/commit/db8f6b7a981d87c67c05ca3fd9ae288ebfcfbdca))
+* stabilize run stdout event visibility ([#11149](https://github.com/vm0-ai/vm0/issues/11149)) ([479c57e](https://github.com/vm0-ai/vm0/commit/479c57e06f22ef706e3be087a21c4a7588bbea38))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.237.0
+
+## [12.300.7](https://github.com/vm0-ai/vm0/compare/web-v12.300.6...web-v12.300.7) (2026-04-26)
+
+
+### Bug Fixes
+
+* **api-contracts:** validate run id path/body params as uuid ([#11137](https://github.com/vm0-ai/vm0/issues/11137)) ([0436e6f](https://github.com/vm0-ai/vm0/commit/0436e6f1a16cd2ffb5e5f1a945e735c4c48e4146))
+
+
+### CI
+
+* share web api vercel env config ([#11124](https://github.com/vm0-ai/vm0/issues/11124)) ([3aecc05](https://github.com/vm0-ai/vm0/commit/3aecc0557d3f24fb1c4bc2c0f2c33aef08a2c802))
+
+## [12.300.6](https://github.com/vm0-ai/vm0/compare/web-v12.300.5...web-v12.300.6) (2026-04-26)
+
+
+### Bug Fixes
+
+* isolate web async test cleanup ([#11123](https://github.com/vm0-ai/vm0/issues/11123)) ([1bbc7c9](https://github.com/vm0-ai/vm0/commit/1bbc7c9ad458d8dd8ed57d9106830ae0685fd832))
+
+
+### Refactoring
+
+* extract shared errors to @vm0/api-services package ([#11129](https://github.com/vm0-ai/vm0/issues/11129)) ([e687aef](https://github.com/vm0-ai/vm0/commit/e687aefe4bd65efbfc83b7e5167e7b5f5a6197d2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.236.1
+
+## [12.300.5](https://github.com/vm0-ai/vm0/compare/web-v12.300.4...web-v12.300.5) (2026-04-25)
+
+
+### Refactoring
+
+* split db and api contracts packages ([#11092](https://github.com/vm0-ai/vm0/issues/11092)) ([f4767d9](https://github.com/vm0-ai/vm0/commit/f4767d987af373d17d93d5ca8fb00864c18bc15b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.236.0
+
+## [12.300.4](https://github.com/vm0-ai/vm0/compare/web-v12.300.3...web-v12.300.4) (2026-04-25)
+
+
+### Performance Improvements
+
+* reduce zero bootstrap blocking ([#11088](https://github.com/vm0-ai/vm0/issues/11088)) ([b62cc20](https://github.com/vm0-ai/vm0/commit/b62cc201e980e320df31acecd3615cb4277f9ac1))
+
+## [12.300.3](https://github.com/vm0-ai/vm0/compare/web-v12.300.2...web-v12.300.3) (2026-04-25)
+
+
+### Bug Fixes
+
+* **chat:** route optimistic thread setup through chat page ([#11074](https://github.com/vm0-ai/vm0/issues/11074)) ([c9b69c9](https://github.com/vm0-ai/vm0/commit/c9b69c9538ade7bebe88db2f91a3f182eaf159e7))
+
+
+### Documentation
+
+* **pricing:** correct credit rollover and upgrade FAQ copy ([#11079](https://github.com/vm0-ai/vm0/issues/11079)) ([582736e](https://github.com/vm0-ai/vm0/commit/582736e25ca76cde9b29041fe716ee774bcc9095))
+
+
+### Performance Improvements
+
+* replace after() with waitUntil() to eliminate Vercel scheduling gap ([#11078](https://github.com/vm0-ai/vm0/issues/11078)) ([7eee7bc](https://github.com/vm0-ai/vm0/commit/7eee7bcf7d1d78f8bc7cae3b34eba022e31e98d9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.235.1
+
+## [12.300.2](https://github.com/vm0-ai/vm0/compare/web-v12.300.1...web-v12.300.2) (2026-04-25)
+
+
+### Bug Fixes
+
+* **chat:** switch to new threads optimistically ([#11050](https://github.com/vm0-ai/vm0/issues/11050)) ([4897e71](https://github.com/vm0-ai/vm0/commit/4897e716fbfdcdfa4b3edac3f928f50f75cc57a2))
+* re-add AudioOutput feature switch guards on UI and TTS route ([#11049](https://github.com/vm0-ai/vm0/issues/11049)) ([7f2e59b](https://github.com/vm0-ai/vm0/commit/7f2e59bac342ad624fea0ba7d4af336d12b92691))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.235.0
+
+## [12.300.1](https://github.com/vm0-ai/vm0/compare/web-v12.300.0...web-v12.300.1) (2026-04-24)
+
+
+### Performance Improvements
+
+* **chat:** avoid redundant startup requests ([#11039](https://github.com/vm0-ai/vm0/issues/11039)) ([549f656](https://github.com/vm0-ai/vm0/commit/549f656df8a35fc90b962d71ca1764e12d44975e))
+* **chat:** defer user message insert into after() to speed 201 response ([#11037](https://github.com/vm0-ai/vm0/issues/11037)) ([8fcf43b](https://github.com/vm0-ai/vm0/commit/8fcf43bc24c3ae5df879595705300ff9bb8829e9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.234.1
+
+## [12.300.0](https://github.com/vm0-ai/vm0/compare/web-v12.299.0...web-v12.300.0) (2026-04-24)
+
+
+### Features
+
+* **eslint:** add no-global-assignment rule banning new globals ([#11005](https://github.com/vm0-ai/vm0/issues/11005)) ([2dec8c9](https://github.com/vm0-ai/vm0/commit/2dec8c9ddd2cff2b1985806373dc3059b33e4c05))
+* remove deprecated deepseek-chat/reasoner, add v4 credit multipliers ([#11014](https://github.com/vm0-ai/vm0/issues/11014)) ([7f4eb57](https://github.com/vm0-ai/vm0/commit/7f4eb57fcf8f8d3a4040787ec854fac5fac51ec0))
+* **web:** make use-case try-it button prominent ([#10994](https://github.com/vm0-ai/vm0/issues/10994)) ([e4af2a5](https://github.com/vm0-ai/vm0/commit/e4af2a54e90dffa8a75816d068214caacc13d356))
+
+
+### Bug Fixes
+
+* fall back to agent default model in createZeroRunRecord ([#11016](https://github.com/vm0-ai/vm0/issues/11016)) ([c8e31b3](https://github.com/vm0-ai/vm0/commit/c8e31b3f18f79cf980d368951c2256e8f6d2cdfd))
+* **pricing:** render structured data server-side ([#10991](https://github.com/vm0-ai/vm0/issues/10991)) ([1b57854](https://github.com/vm0-ai/vm0/commit/1b57854488bfe90b6c3d4a708c2c50d2326c8707))
+* **zero:** seed memory artifact into agent_sessions.artifacts on new runs ([#11032](https://github.com/vm0-ai/vm0/issues/11032)) ([d4aa838](https://github.com/vm0-ai/vm0/commit/d4aa8389229ce94f3acefb589afb5489a148ac91))
+
+
+### Refactoring
+
+* remove chat thread list item agentId ([#10998](https://github.com/vm0-ai/vm0/issues/10998)) ([2d62c16](https://github.com/vm0-ai/vm0/commit/2d62c168caa019b7e65e26d6f2bf713b798608a8))
+
+
+### Performance Improvements
+
+* **guest-agent:** skip vas snapshot for unchanged artifacts (part 2 of [#10967](https://github.com/vm0-ai/vm0/issues/10967)) ([#10989](https://github.com/vm0-ai/vm0/issues/10989)) ([4d4b18e](https://github.com/vm0-ai/vm0/commit/4d4b18ede0f7f13c767cb8d50726d9ea1e69c780))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.234.0
+
+## [12.299.0](https://github.com/vm0-ai/vm0/compare/web-v12.298.0...web-v12.299.0) (2026-04-24)
+
+
+### Features
+
+* **telemetry:** add enqueue/dequeue spans to zero-run queue ([#10988](https://github.com/vm0-ai/vm0/issues/10988)) ([6e0a522](https://github.com/vm0-ai/vm0/commit/6e0a5229d59633ad8419e04ba2efca6dd2d79827))
+
+
+### Bug Fixes
+
+* adjust chat run error messaging ([#10983](https://github.com/vm0-ai/vm0/issues/10983)) ([79c9251](https://github.com/vm0-ai/vm0/commit/79c9251a1bf9fd3663e2cf415b3ba4da94ba5549))
+
+
+### Refactoring
+
+* **zero-run-policy:** decouple credit check from model-provider selection ([#10995](https://github.com/vm0-ai/vm0/issues/10995)) ([93bbe71](https://github.com/vm0-ai/vm0/commit/93bbe71197615aa827b8ad1c2c3d5261e33a5557))
+
+## [12.298.0](https://github.com/vm0-ai/vm0/compare/web-v12.297.0...web-v12.298.0) (2026-04-24)
+
+
+### Features
+
+* add deepseek v4 models ([#10956](https://github.com/vm0-ai/vm0/issues/10956)) ([292ed24](https://github.com/vm0-ai/vm0/commit/292ed2401576ed7451962e7c3e391ea61a6b9e3b))
+* add promo-video-from-recordings use case ([#10691](https://github.com/vm0-ai/vm0/issues/10691)) ([303abec](https://github.com/vm0-ai/vm0/commit/303abec703e642dd9f4910ec7dd13af5a119c95b))
+
+
+### Refactoring
+
+* **generate-image:** migrate to usage_event billing + tests + production gate ([#10979](https://github.com/vm0-ai/vm0/issues/10979)) ([72ea577](https://github.com/vm0-ai/vm0/commit/72ea577bce1b150076ea7d5e6cea155ef7e2dddf))
+* **telegram:** pivot installation PK to telegram_bot_id and add owner+org columns ([#10250](https://github.com/vm0-ai/vm0/issues/10250)) ([5fdd5b6](https://github.com/vm0-ai/vm0/commit/5fdd5b6c8d0a6f32a3a916af419d0a378e3a3de1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.233.0
+
+## [12.297.0](https://github.com/vm0-ai/vm0/compare/web-v12.296.0...web-v12.297.0) (2026-04-24)
+
+
+### Features
+
+* thread storage id from web to guest-agent (part 1 of [#10967](https://github.com/vm0-ai/vm0/issues/10967)) ([#10978](https://github.com/vm0-ai/vm0/issues/10978)) ([85f2193](https://github.com/vm0-ai/vm0/commit/85f219383d3cf7b81ca6f41358276d5388acb8c0))
+
+## [12.296.0](https://github.com/vm0-ai/vm0/compare/web-v12.295.0...web-v12.296.0) (2026-04-24)
+
+
+### Features
+
+* **slack:** graduate agent switching ([#10964](https://github.com/vm0-ai/vm0/issues/10964)) ([cf070f8](https://github.com/vm0-ai/vm0/commit/cf070f857f4ded9f16f5a6d932ba091b3d022ec5))
+
+
+### Bug Fixes
+
+* add missing pricing FAQ i18n keys for upgradeCredits ([#10925](https://github.com/vm0-ai/vm0/issues/10925)) ([c256c67](https://github.com/vm0-ai/vm0/commit/c256c67c05d921af193752eac44b1efa55d9202c))
+* redirect missing agent routes to default agent ([#10942](https://github.com/vm0-ai/vm0/issues/10942)) ([9442bf0](https://github.com/vm0-ai/vm0/commit/9442bf08d0ae97a05ab5be4221f3277a7decdfe9))
+
+
+### Performance Improvements
+
+* **db:** switch production db driver from neon websocket to pg tcp pool under fluid ([#10959](https://github.com/vm0-ai/vm0/issues/10959)) ([151c602](https://github.com/vm0-ai/vm0/commit/151c6024deac793212a68f8078cc8015c3a86937)), closes [#10953](https://github.com/vm0-ai/vm0/issues/10953)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.232.0
+
+## [12.295.0](https://github.com/vm0-ai/vm0/compare/web-v12.294.0...web-v12.295.0) (2026-04-24)
+
+
+### Features
+
+* add browser-use connector ([#10922](https://github.com/vm0-ai/vm0/issues/10922)) ([9a4edc4](https://github.com/vm0-ai/vm0/commit/9a4edc45e87e7863d5d2bfa79d522938b4703aa8))
+* integrate Gemini 2.5 Flash Image via Vertex AI + Vercel OIDC ([#10611](https://github.com/vm0-ai/vm0/issues/10611)) ([93b8ddd](https://github.com/vm0-ai/vm0/commit/93b8ddd9cc498787968d8e911195a1d46333c4df))
+* **platform:** improve chat document previews ([#10940](https://github.com/vm0-ai/vm0/issues/10940)) ([fe836c8](https://github.com/vm0-ai/vm0/commit/fe836c852bafc7325eb2fd2b094371d766d97271))
+
+
+### Bug Fixes
+
+* **web:** notify runners on org/user deletion cancel path ([#10946](https://github.com/vm0-ai/vm0/issues/10946)) ([6d8c3e4](https://github.com/vm0-ai/vm0/commit/6d8c3e4f20938a8b88c8afa6a32c2d73bb4018fb))
+
+
+### Performance Improvements
+
+* **chat-messages:** short-circuit round3 capture arm when quota is zero ([#10950](https://github.com/vm0-ai/vm0/issues/10950)) ([2f10594](https://github.com/vm0-ai/vm0/commit/2f10594218a09d57876bc7933edb0e7cf17c2379))
+* **chat:** fuse round2 user_prefs + feature_sw into single cte ([#10949](https://github.com/vm0-ai/vm0/issues/10949)) ([7e5f020](https://github.com/vm0-ai/vm0/commit/7e5f020e7cb45389fb9cb8b0a136248e5a88d818)), closes [#10943](https://github.com/vm0-ai/vm0/issues/10943)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.231.0
+
 ## [12.294.0](https://github.com/vm0-ai/vm0/compare/web-v12.293.0...web-v12.294.0) (2026-04-23)
 
 

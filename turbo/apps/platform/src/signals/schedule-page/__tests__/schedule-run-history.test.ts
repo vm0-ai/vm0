@@ -22,7 +22,7 @@ import {
   scheduleRunAvailableStatuses$,
 } from "../schedule-run-history.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
-import { logsListContract } from "@vm0/core/contracts/logs";
+import { logsListContract } from "@vm0/api-contracts/contracts/logs";
 
 const context = testContext();
 const mockApi = createMockApi(context);

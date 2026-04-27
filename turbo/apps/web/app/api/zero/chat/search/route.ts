@@ -23,16 +23,16 @@ import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
 import {
   chatSearchContract,
   type ChatSearchMessage,
-} from "@vm0/core/contracts/chat-threads";
+} from "@vm0/api-contracts/contracts/chat-threads";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
   requireAuth,
   isAuthError,
 } from "../../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
-import { chatMessages } from "../../../../../src/db/schema/chat-message";
-import { chatThreads } from "../../../../../src/db/schema/chat-thread";
-import { agentComposes } from "../../../../../src/db/schema/agent-compose";
+import { chatMessages } from "@vm0/db/schema/chat-message";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { agentComposes } from "@vm0/db/schema/agent-compose";
 
 /**
  * Escape `%`, `_`, and `\` so the user-supplied keyword cannot act as a

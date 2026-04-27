@@ -6,14 +6,13 @@ import {
   useLastResolved,
   useResolved,
 } from "ccstate-react";
-import { useLoadableSet } from "ccstate-react/experimental";
 import {
   IconMenu2,
   IconPlus,
   IconUserPlus,
   IconVolume2,
 } from "@tabler/icons-react";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type { RouteKey } from "../../signals/route-paths.ts";
 import { cn } from "@vm0/ui";
 import { ZeroSidebar } from "./zero-sidebar.tsx";
@@ -22,7 +21,10 @@ import {
   currentChatAgentId$,
   earliestUnreadEndedThread$,
 } from "../../signals/agent-chat.ts";
-import { createNewChatThread$ } from "../../signals/chat-page/chat-message.ts";
+import {
+  createNewChatThreadOptimistically$,
+  optimisticChatThread$,
+} from "../../signals/chat-page/optimistic-chat-thread-page.ts";
 import { AvatarFromUrl } from "./zero-sidebar-shared.tsx";
 import { QueueDrawer } from "../queue-page/queue-drawer.tsx";
 import {
@@ -48,6 +50,7 @@ import {
   setOrgManageDialogOpen$,
 } from "../../signals/zero-page/settings/org-manage-dialog.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
+import { rootSignal$ } from "../../signals/root-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
   autoReadEnabled$,
@@ -77,13 +80,8 @@ function AgentAvatarInTopBar() {
 }
 
 function AutoReadToggleLeaf() {
-  const features = useLastResolved(featureSwitch$);
-  const audioOutputEnabled = features?.[FeatureSwitchKey.AudioOutput] ?? false;
   const autoRead = useGet(autoReadEnabled$);
   const toggleAutoReadFn = useSet(toggleAutoRead$);
-  if (!audioOutputEnabled) {
-    return null;
-  }
   return (
     <button
       type="button"
@@ -131,11 +129,10 @@ function InviteButtonLeaf() {
 
 function NewOrUnreadChatButtonLeaf() {
   const currentChatAgentId = useResolved(currentChatAgentId$);
-  const [creatingLoadable, createNewChat] =
-    useLoadableSet(createNewChatThread$);
+  const createNewChat = useSet(createNewChatThreadOptimistically$);
   const navigateToChatFn = useSet(navigateToChat$);
-  const pageSignal = useGet(pageSignal$);
-  const creating = creatingLoadable.state === "loading";
+  const { signal: rootSignal } = useGet(rootSignal$);
+  const creating = useGet(optimisticChatThread$) !== null;
   const unreadThread = useLastResolved(earliestUnreadEndedThread$);
 
   if (unreadThread) {
@@ -158,11 +155,7 @@ function NewOrUnreadChatButtonLeaf() {
 
   const handleNewChat = () => {
     detach(
-      createNewChat(currentChatAgentId ?? null, pageSignal).then((threadId) => {
-        if (threadId) {
-          navigateToChatFn(threadId);
-        }
-      }),
+      createNewChat(currentChatAgentId ?? null, rootSignal),
       Reason.DomCallback,
     );
   };
@@ -185,9 +178,10 @@ function MobileTopBarActions({ activeId }: { activeId: RouteKey | null }) {
   const features = useLastResolved(featureSwitch$);
   const newButtonEnabled =
     features?.[FeatureSwitchKey.ChatHeaderNewButton] ?? false;
+  const audioOutputEnabled = features?.[FeatureSwitchKey.AudioOutput] ?? false;
   return (
     <>
-      {inChatRoute && <AutoReadToggleLeaf />}
+      {inChatRoute && audioOutputEnabled && <AutoReadToggleLeaf />}
       {inChatRoute &&
         (newButtonEnabled ? (
           <NewOrUnreadChatButtonLeaf />

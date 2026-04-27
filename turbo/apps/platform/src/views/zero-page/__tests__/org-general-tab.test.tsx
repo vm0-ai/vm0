@@ -19,7 +19,7 @@ import {
   zeroOrgContract,
   zeroOrgLeaveContract,
   zeroOrgDeleteContract,
-} from "@vm0/core/contracts/zero-org";
+} from "@vm0/api-contracts/contracts/zero-org";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 
 vi.mock("@vm0/ui/components/ui/sonner", async (importOriginal) => {

@@ -3,7 +3,7 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../../src/lib/ts-rest-handler";
-import { webhookCheckpointsContract } from "@vm0/core/contracts/webhooks";
+import { webhookCheckpointsContract } from "@vm0/api-contracts/contracts/webhooks";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getSandboxAuthForRun } from "../../../../../src/lib/auth/get-sandbox-auth";
 import { createCheckpoint } from "../../../../../src/lib/infra/checkpoint";

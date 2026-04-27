@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
 import { initServices } from "../../../../../src/lib/init-services";
 import { loadFeatureSwitchOverrides } from "../../../../../src/lib/zero/user/feature-switches-service";
@@ -18,7 +18,7 @@ export async function POST(request: Request): Promise<Response> {
 
   const authHeader = request.headers.get("authorization");
   const authCtx = await getAuthContext(authHeader ?? undefined);
-  if (!authCtx) {
+  if (!authCtx || !authCtx.orgId) {
     return NextResponse.json(
       { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
       { status: 401 },
@@ -36,7 +36,9 @@ export async function POST(request: Request): Promise<Response> {
   });
   if (!enabled) {
     return NextResponse.json(
-      { error: { message: "Audio output is not enabled", code: "FORBIDDEN" } },
+      {
+        error: { message: "Audio output is not enabled", code: "FORBIDDEN" },
+      },
       { status: 403 },
     );
   }
@@ -89,6 +91,7 @@ export async function POST(request: Request): Promise<Response> {
       input: text,
       response_format: "pcm",
     }),
+    signal: request.signal,
   });
 
   if (!response.ok) {

@@ -1,13 +1,13 @@
 import { createHandler, tsr } from "../../../../../../src/lib/ts-rest-handler";
-import { zeroRunRunnerContract } from "@vm0/core/contracts/zero-runs";
-import { sandboxReuseResultSchema } from "@vm0/core/contracts/webhooks";
+import { zeroRunRunnerContract } from "@vm0/api-contracts/contracts/zero-runs";
+import { sandboxReuseResultSchema } from "@vm0/api-contracts/contracts/webhooks";
 import { initServices } from "../../../../../../src/lib/init-services";
 import {
   requireAuth,
   isAuthError,
 } from "../../../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../../../src/lib/zero/org/resolve-org";
-import { agentRuns } from "../../../../../../src/db/schema/agent-run";
+import { agentRuns } from "@vm0/db/schema/agent-run";
 import { and, eq } from "drizzle-orm";
 
 const router = tsr.router(zeroRunRunnerContract, {

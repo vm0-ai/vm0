@@ -1,6 +1,6 @@
 import { createHandler, tsr } from "../../../../../../src/lib/ts-rest-handler";
-import { zeroModelProvidersUpdateModelContract } from "@vm0/core/contracts/zero-model-providers";
-import { createErrorResponse } from "@vm0/core/contracts/errors";
+import { zeroModelProvidersUpdateModelContract } from "@vm0/api-contracts/contracts/zero-model-providers";
+import { createErrorResponse } from "@vm0/api-contracts/contracts/errors";
 import { initServices } from "../../../../../../src/lib/init-services";
 import {
   requireAuth,
@@ -9,7 +9,7 @@ import {
 import { resolveOrg } from "../../../../../../src/lib/zero/org/resolve-org";
 import { updateOrgModelProviderModel } from "../../../../../../src/lib/zero/model-provider/model-provider-service";
 import { logger } from "../../../../../../src/lib/shared/logger";
-import { isNotFound } from "../../../../../../src/lib/shared/errors";
+import { isNotFound } from "@vm0/api-services/errors";
 
 const log = logger("api:zero-model-providers");
 

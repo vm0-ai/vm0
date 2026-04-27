@@ -3,16 +3,16 @@ import {
   zeroOrgContract,
   zeroOrgLeaveContract,
   zeroOrgDeleteContract,
-} from "@vm0/core/contracts/zero-org";
-import { cliAuthOrgContract } from "@vm0/core/contracts/cli-auth";
-import { zeroOrgListContract } from "@vm0/core/contracts/zero-org-list";
+} from "@vm0/api-contracts/contracts/zero-org";
+import { cliAuthOrgContract } from "@vm0/api-contracts/contracts/cli-auth";
+import { zeroOrgListContract } from "@vm0/api-contracts/contracts/zero-org-list";
 import {
   zeroOrgInviteContract,
   zeroOrgMembersContract,
-} from "@vm0/core/contracts/zero-org-members";
-import type { OrgMembersResponse } from "@vm0/core/contracts/org-members";
-import type { OrgResponse } from "@vm0/core/contracts/orgs";
-import type { OrgListResponse } from "@vm0/core/contracts/org-list";
+} from "@vm0/api-contracts/contracts/zero-org-members";
+import type { OrgMembersResponse } from "@vm0/api-contracts/contracts/org-members";
+import type { OrgResponse } from "@vm0/api-contracts/contracts/orgs";
+import type { OrgListResponse } from "@vm0/api-contracts/contracts/org-list";
 import {
   ApiRequestError,
   getClientConfig,

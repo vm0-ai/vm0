@@ -15,9 +15,9 @@ import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import {
   CONNECTOR_TYPES,
   type ConnectorType,
-} from "@vm0/core/contracts/connectors";
-import { zeroSecretsContract } from "@vm0/core/contracts/zero-secrets";
-import { zeroUserConnectorsContract } from "@vm0/core/contracts/user-connectors";
+} from "@vm0/connectors/connectors";
+import { zeroSecretsContract } from "@vm0/api-contracts/contracts/zero-secrets";
+import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
@@ -100,6 +100,20 @@ describe("directed connect page", () => {
     expect(screen.queryByText("Connect")).not.toBeInTheDocument();
   });
 
+  it("shows Reconnect button alongside Connected pill when already connected", async () => {
+    mockConnectors([{ type: "github" }]);
+
+    detachedSetupPage({ context, path: "/connectors/github/connect" });
+
+    await waitFor(() => {
+      expect(screen.getByText("GitHub connected")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Connected")).toBeInTheDocument();
+    const reconnectBtn = screen.getAllByRole("button").find((el) => {
+      return el.textContent?.trim() === "Reconnect";
+    });
+    expect(reconnectBtn).toBeDefined();
+  });
   it("reconnect button reopens OAuth flow for an already-connected OAuth connector", async () => {
     const openSpy = vi
       .spyOn(window, "open")

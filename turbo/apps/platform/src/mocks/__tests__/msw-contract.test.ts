@@ -1,12 +1,12 @@
 import { describe, it, expect, expectTypeOf } from "vitest";
 import type { ServerInferResponseBody } from "@ts-rest/core";
-import { logsListContract } from "@vm0/core/contracts/logs";
+import { logsListContract } from "@vm0/api-contracts/contracts/logs";
 import {
   zeroConnectorsByTypeContract,
   zeroConnectorsMainContract,
-} from "@vm0/core/contracts/zero-connectors";
-import { zeroFeatureSwitchesContract } from "@vm0/core/contracts/zero-feature-switches";
-import { zeroIntegrationsSlackContract } from "@vm0/core/contracts/zero-integrations-slack";
+} from "@vm0/api-contracts/contracts/zero-connectors";
+import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
+import { zeroIntegrationsSlackContract } from "@vm0/api-contracts/contracts/zero-integrations-slack";
 import { mockApi } from "../msw-contract.ts";
 import { server } from "../server.ts";
 

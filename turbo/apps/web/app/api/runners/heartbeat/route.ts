@@ -3,10 +3,10 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../src/lib/ts-rest-handler";
-import { runnersHeartbeatContract } from "@vm0/core/contracts/runners";
-import { createErrorResponse } from "@vm0/core/contracts/errors";
+import { runnersHeartbeatContract } from "@vm0/api-contracts/contracts/runners";
+import { createErrorResponse } from "@vm0/api-contracts/contracts/errors";
 import { initServices } from "../../../../src/lib/init-services";
-import { runnerState } from "../../../../src/db/schema/runner-state";
+import { runnerState } from "@vm0/db/schema/runner-state";
 import { getRunnerAuth } from "../../../../src/lib/auth/runner-auth";
 import { isOfficialRunnerGroup } from "../../../../src/lib/infra/run/runner-group";
 import { lt } from "drizzle-orm";

@@ -1,4 +1,4 @@
-import type { ModelProviderType } from "@vm0/core/contracts/model-providers";
+import type { ModelProviderType } from "@vm0/api-contracts/contracts/model-providers";
 
 import anthropicIcon from "./icons/anthropic.svg";
 import azureIcon from "./icons/azure.svg";

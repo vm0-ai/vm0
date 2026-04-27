@@ -3,20 +3,20 @@ import {
   BILLABLE_CONNECTORS,
   getConnectorFirewall,
   isFirewallConnectorType,
-} from "@vm0/core/firewalls";
-import type { ConnectorType } from "@vm0/core/contracts/connectors";
+} from "@vm0/connectors/firewalls";
+import type { ConnectorType } from "@vm0/connectors/connectors";
 import type {
   ExpandedFirewallConfig,
   FirewallPolicies,
   Firewalls,
   NetworkPolicies,
-} from "@vm0/core/contracts/firewalls";
+} from "@vm0/connectors/firewall-types";
 import {
   getModelProviderFirewall,
   type ModelProviderType,
-} from "@vm0/core/contracts/model-providers";
-import { zeroRuns } from "../../db/schema/zero-run";
-import { badRequest, notFound } from "../shared/errors";
+} from "@vm0/api-contracts/contracts/model-providers";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { badRequest, notFound } from "@vm0/api-services/errors";
 import { logger } from "../shared/logger";
 import type {
   ContextArtifact,
@@ -25,10 +25,7 @@ import type {
 } from "../infra/run/types";
 import type { ConversationResolution } from "../infra/run/resolvers";
 import type { AdditionalVolume } from "../infra/storage/types";
-import {
-  AUTO_MEMORY_ARTIFACT_NAME,
-  AUTO_MEMORY_MOUNT_PATH,
-} from "../infra/storage/types";
+import { AUTO_MEMORY_ARTIFACT_NAME, AUTO_MEMORY_MOUNT_PATH } from "./memory";
 import { expandEnvironmentFromCompose } from "../infra/run/environment";
 import { getUserPreferences } from "./user/user-preferences-service";
 import { getApiTokenConnectorTypes } from "./connector/connector-service";

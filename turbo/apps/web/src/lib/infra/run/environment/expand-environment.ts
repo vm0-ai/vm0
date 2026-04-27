@@ -1,7 +1,7 @@
 import {
   extractSecretNamesFromApis,
   type ExpandedFirewallConfig,
-} from "@vm0/core/contracts/firewalls";
+} from "@vm0/connectors/firewall-types";
 import {
   expandVariables,
   extractAndGroupVariables,

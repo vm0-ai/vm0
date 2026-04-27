@@ -7,18 +7,15 @@ import {
   runsMainContract,
   ALL_RUN_STATUSES,
   type RunStatus,
-} from "@vm0/core/contracts/runs";
-import { orgTierSchema } from "@vm0/core/contracts/orgs";
+} from "@vm0/api-contracts/contracts/runs";
+import { orgTierSchema } from "@vm0/api-contracts/contracts/orgs";
 import { initServices } from "../../../../src/lib/init-services";
 import {
   agentComposes,
   agentComposeVersions,
-} from "../../../../src/db/schema/agent-compose";
-import { agentRuns } from "../../../../src/db/schema/agent-run";
-import {
-  type AdditionalVolume,
-  AUTO_MEMORY_ARTIFACT_NAME,
-} from "../../../../src/lib/infra/storage/types";
+} from "@vm0/db/schema/agent-compose";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import type { AdditionalVolume } from "../../../../src/lib/infra/storage/types";
 import { and, eq, inArray, desc, gte, lte, sql } from "drizzle-orm";
 import {
   loadCompose,
@@ -38,7 +35,7 @@ import {
   notFound,
   badRequest,
   forbidden,
-} from "../../../../src/lib/shared/errors";
+} from "@vm0/api-services/errors";
 import { resolveOrg } from "../../../../src/lib/zero/org/resolve-org";
 import { resolveCliRunContext } from "../../../../src/lib/zero/build-zero-context";
 import { resolveStartRunCompose } from "../../../../src/lib/zero/zero-run-validation";
@@ -365,14 +362,12 @@ const router = tsr.router(runsMainContract, {
           additionalVolumes: finalAdditionalVolumes,
           resumedFromCheckpointId: body.checkpointId,
           sessionId: body.sessionId,
-          // For new runs, seed agent_sessions.artifacts from the merged
-          // list so future continues can resolve the mount set. Skip the
-          // auto-injected memory entry: it is re-appended on every run by the
-          // zero layer and should not be recorded as a user-declared artifact.
+          // Seed agent_sessions.artifacts from the merged list so future
+          // continues can resolve the mount set. resolved.artifacts already
+          // carries any memory entry from the session/checkpoint snapshot;
+          // body.artifacts (CLI --artifact) is trusted as declared.
           // For resumes, this is unused since the existing session row is reused.
-          artifacts: mergedArtifacts.filter((a) => {
-            return a.name !== AUTO_MEMORY_ARTIFACT_NAME;
-          }),
+          artifacts: mergedArtifacts,
         });
       });
       const transactionTime = Date.now();

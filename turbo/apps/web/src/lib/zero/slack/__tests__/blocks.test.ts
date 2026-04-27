@@ -222,6 +222,42 @@ describe("buildAppHomeView", () => {
     expect(blockTexts.join(" ")).toContain("MyAgent");
   });
 
+  it("should show switch and settings side by side when switching is available", () => {
+    const view = buildAppHomeView({
+      isLinked: true,
+      agentName: "MyAgent",
+      vm0UserId: "user-123",
+      canSwitch: true,
+    });
+
+    const actionsBlock = view.blocks
+      .filter((b): b is ActionsBlock => {
+        return b.type === "actions" && "elements" in b;
+      })
+      .find((block) => {
+        return block.elements.some((element) => {
+          return (
+            "action_id" in element && element.action_id === "home_switch_agent"
+          );
+        });
+      });
+
+    expect(actionsBlock).toBeDefined();
+    expect(actionsBlock!.elements).toMatchObject([
+      {
+        type: "button",
+        text: { type: "plain_text", text: "Switch" },
+        action_id: "home_switch_agent",
+        style: "primary",
+      },
+      {
+        type: "button",
+        text: { type: "plain_text", text: "Settings" },
+        action_id: "home_environment_setup",
+      },
+    ]);
+  });
+
   it("should not include agent/commands sections for not-installed state", () => {
     const view = buildAppHomeView({ isLinked: false, isInstalled: false });
 

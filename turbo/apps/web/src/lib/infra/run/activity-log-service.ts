@@ -1,4 +1,4 @@
-import type { AxiomNetworkEvent } from "@vm0/core/contracts/runs";
+import type { AxiomNetworkEvent } from "@vm0/api-contracts/contracts/runs";
 import { queryAxiom, getDatasetName, DATASETS } from "../../shared/axiom";
 import { queryRunContext } from "./run-context-service";
 import { logger } from "../../shared/logger";

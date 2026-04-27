@@ -27,6 +27,25 @@ pub struct SpawnHandle {
     pub stdout_rx: Option<tokio::sync::mpsc::UnboundedReceiver<Vec<u8>>>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SpawnOutputMode<'a> {
+    Buffered,
+    Stream { guest_log_path: Option<&'a str> },
+}
+
+impl<'a> SpawnOutputMode<'a> {
+    pub fn streams_stdout(self) -> bool {
+        matches!(self, Self::Stream { .. })
+    }
+
+    pub fn guest_log_path(self) -> Option<&'a str> {
+        match self {
+            Self::Buffered => None,
+            Self::Stream { guest_log_path } => guest_log_path,
+        }
+    }
+}
+
 pub struct ProcessExit {
     pub pid: u32,
     pub exit_code: i32,

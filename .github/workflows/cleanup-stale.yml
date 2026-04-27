@@ -51,7 +51,12 @@ jobs:
             if [ -n "$PR_NUMBER" ]; then
 
               # Check PR state via GitHub API
-              PR_STATE=$(curl -sf -H "Authorization: token $GH_TOKEN" \
+              PR_STATE=$(curl -sf \
+                --retry 5 \
+                --retry-delay 2 \
+                --retry-max-time 60 \
+                --retry-all-errors \
+                -H "Authorization: token $GH_TOKEN" \
                 "https://api.github.com/repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" | jq -r '.state')
 
               if [ "$PR_STATE" = "open" ]; then

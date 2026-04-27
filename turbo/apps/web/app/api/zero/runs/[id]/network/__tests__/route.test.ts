@@ -124,7 +124,9 @@ describe("GET /api/zero/runs/:id/network", () => {
     mockClerk({ userId: null });
 
     const response = await GET(
-      createTestRequest("http://localhost:3000/api/zero/runs/some-id/network"),
+      createTestRequest(
+        "http://localhost:3000/api/zero/runs/00000000-0000-0000-0000-000000000000/network",
+      ),
     );
     expect(response.status).toBe(401);
   });

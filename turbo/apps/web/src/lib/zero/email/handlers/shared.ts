@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import { eq } from "drizzle-orm";
-import { emailThreadSessions } from "../../../../db/schema/email-thread-session";
+import { emailThreadSessions } from "@vm0/db/schema/email-thread-session";
 import { resolveDefaultAgentId } from "../../resolve-default-agent";
 import { env } from "../../../../env";
 import { getAppUrl } from "../../url";
@@ -224,7 +224,7 @@ export function buildFromAddress(localPart: string): string {
  * Build the logs URL for a run, linking to the agent detail logs page.
  */
 export function buildLogsUrl(runId: string): string {
-  return `${getAppUrl()}/activity/${encodeURIComponent(runId)}`;
+  return `${getAppUrl()}/activities/${encodeURIComponent(runId)}`;
 }
 
 // ============================================================================

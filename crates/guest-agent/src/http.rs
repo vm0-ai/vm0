@@ -3,7 +3,7 @@
 use crate::constants;
 use crate::env;
 use crate::error::AgentError;
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
 use guest_common::log_warn;
 use http_body::{Frame, SizeHint};
 use pin_project_lite::pin_project;
@@ -15,7 +15,7 @@ use std::pin::Pin;
 use std::sync::LazyLock;
 use std::task::{Context, Poll};
 use std::time::Duration;
-use tokio::io::{AsyncRead, ReadBuf};
+use tokio::io::{AsyncRead, AsyncSeekExt, ReadBuf};
 
 const LOG_TAG: &str = "sandbox:guest-agent";
 const HTTP_TOO_MANY_REQUESTS: u16 = 429;
@@ -162,8 +162,14 @@ pub async fn put_presigned(url: &str, data: Bytes, content_type: &str) -> Result
 // Streaming file upload
 // ---------------------------------------------------------------------------
 
-/// Chunk size for streaming file reads (16 KB).
-const STREAM_CHUNK_SIZE: usize = 16384;
+/// Chunk size for streaming file reads (256 KB).
+const STREAM_CHUNK_SIZE: usize = 256 * 1024;
+
+fn next_chunk_size(remaining: u64) -> usize {
+    usize::try_from(remaining)
+        .unwrap_or(usize::MAX)
+        .min(STREAM_CHUNK_SIZE)
+}
 
 pin_project! {
     /// HTTP body backed by an async file reader with a known size.
@@ -175,6 +181,17 @@ pin_project! {
         #[pin]
         reader: tokio::fs::File,
         remaining: u64,
+        buffer: BytesMut,
+    }
+}
+
+impl SizedBody {
+    fn new(reader: tokio::fs::File, remaining: u64) -> Self {
+        Self {
+            reader,
+            remaining,
+            buffer: BytesMut::with_capacity(next_chunk_size(remaining)),
+        }
     }
 }
 
@@ -190,19 +207,40 @@ impl http_body::Body for SizedBody {
         if *this.remaining == 0 {
             return Poll::Ready(None);
         }
-        let to_read = (*this.remaining as usize).min(STREAM_CHUNK_SIZE);
-        let mut buf = vec![0u8; to_read];
-        let mut read_buf = ReadBuf::new(&mut buf);
+
+        let buffer_len = this.buffer.len();
+        let to_read = next_chunk_size(*this.remaining);
+        let spare_capacity = this.buffer.capacity() - buffer_len;
+        if spare_capacity < to_read {
+            this.buffer.reserve(to_read - spare_capacity);
+        }
+
+        let Some(spare) = this.buffer.spare_capacity_mut().get_mut(..to_read) else {
+            return Poll::Ready(Some(Err(std::io::Error::other(
+                "failed to reserve streaming upload buffer",
+            ))));
+        };
+        let mut read_buf = ReadBuf::uninit(spare);
         match this.reader.poll_read(cx, &mut read_buf) {
             Poll::Ready(Ok(())) => {
                 let n = read_buf.filled().len();
                 if n == 0 {
+                    let missing = *this.remaining;
                     *this.remaining = 0;
-                    return Poll::Ready(None);
+                    return Poll::Ready(Some(Err(std::io::Error::new(
+                        std::io::ErrorKind::UnexpectedEof,
+                        format!("streaming upload source ended {missing} bytes early"),
+                    ))));
                 }
-                buf.truncate(n);
-                *this.remaining = this.remaining.saturating_sub(n as u64);
-                Poll::Ready(Some(Ok(Frame::data(Bytes::from(buf)))))
+                // SAFETY: `poll_read` initialized exactly `n` bytes in the spare
+                // capacity exposed to `ReadBuf` above.
+                unsafe {
+                    this.buffer.set_len(buffer_len + n);
+                }
+                let frame_data = this.buffer.split_to(n).freeze();
+                debug_assert!((n as u64) <= *this.remaining);
+                *this.remaining -= n as u64;
+                Poll::Ready(Some(Ok(Frame::data(frame_data))))
             }
             Poll::Ready(Err(e)) => Poll::Ready(Some(Err(e))),
             Poll::Pending => Poll::Pending,
@@ -221,23 +259,23 @@ impl http_body::Body for SizedBody {
 /// PUT a file to a presigned S3 URL by streaming from disk.
 ///
 /// Unlike [`put_presigned`], this avoids loading the entire file into memory.
-/// A [`SizedBody`] streams 16 KB chunks and reports the file size via
+/// A [`SizedBody`] streams bounded chunks and reports the file size via
 /// `size_hint`, so hyper sets `Content-Length` automatically.
-/// On each retry the file is re-opened, producing a fresh body.
+/// On each retry the original file handle is cloned, producing a fresh body
+/// with stable file identity and length.
 pub async fn put_presigned_file(
     url: &str,
     path: &Path,
     content_type: &str,
 ) -> Result<(), AgentError> {
     let max_retries = constants::HTTP_MAX_RETRIES;
+    let source_file = tokio::fs::File::open(path).await?;
+    let file_len = source_file.metadata().await?.len();
 
     for attempt in 1..=max_retries {
-        let file = tokio::fs::File::open(path).await?;
-        let file_len = file.metadata().await?.len();
-        let body = reqwest::Body::wrap(SizedBody {
-            reader: file,
-            remaining: file_len,
-        });
+        let mut file = source_file.try_clone().await?;
+        file.seek(std::io::SeekFrom::Start(0)).await?;
+        let body = reqwest::Body::wrap(SizedBody::new(file, file_len));
 
         match HTTP_CLIENT
             .put(url)
@@ -274,4 +312,153 @@ pub async fn put_presigned_file(
     Err(AgentError::Http(format!(
         "PUT presigned failed after {max_retries} attempts"
     )))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use http_body::Body as _;
+    use std::future::poll_fn;
+
+    async fn sized_body_from_bytes(data: &[u8]) -> (tempfile::TempDir, SizedBody) {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("body.bin");
+        tokio::fs::write(&path, data).await.unwrap();
+        let file = tokio::fs::File::open(&path).await.unwrap();
+        let file_len = file.metadata().await.unwrap().len();
+        (dir, SizedBody::new(file, file_len))
+    }
+
+    async fn next_data(body: &mut SizedBody) -> Option<Bytes> {
+        let frame = poll_fn(|cx| Pin::new(&mut *body).poll_frame(cx))
+            .await
+            .transpose()
+            .unwrap()?;
+        match frame.into_data() {
+            Ok(data) => Some(data),
+            Err(_) => panic!("expected data frame"),
+        }
+    }
+
+    #[tokio::test]
+    async fn sized_body_streams_large_file_in_bounded_chunks() {
+        let data: Vec<u8> = (0..(STREAM_CHUNK_SIZE * 2 + 37))
+            .map(|i| (i % 251) as u8)
+            .collect();
+        let (_dir, mut body) = sized_body_from_bytes(&data).await;
+
+        let mut remaining = data.len() as u64;
+        assert_eq!(body.size_hint().exact(), Some(remaining));
+
+        let mut chunks = 0;
+        let mut uploaded = Vec::with_capacity(data.len());
+        while let Some(chunk) = next_data(&mut body).await {
+            assert!(chunk.len() <= STREAM_CHUNK_SIZE);
+            chunks += 1;
+            remaining = remaining.saturating_sub(chunk.len() as u64);
+            assert_eq!(body.size_hint().exact(), Some(remaining));
+            uploaded.extend_from_slice(&chunk);
+        }
+
+        assert!(chunks > 1);
+        assert_eq!(uploaded, data);
+        assert_eq!(body.size_hint().exact(), Some(0));
+    }
+
+    #[tokio::test]
+    async fn sized_body_streams_small_file_once() {
+        let data = b"streaming body";
+        let (_dir, mut body) = sized_body_from_bytes(data).await;
+
+        assert_eq!(body.size_hint().exact(), Some(data.len() as u64));
+        let chunk = next_data(&mut body).await.unwrap();
+
+        assert_eq!(&chunk[..], data);
+        assert_eq!(body.size_hint().exact(), Some(0));
+        assert!(next_data(&mut body).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn sized_body_streams_exact_chunk_once() {
+        let data = vec![0x5Au8; STREAM_CHUNK_SIZE];
+        let (_dir, mut body) = sized_body_from_bytes(&data).await;
+
+        assert_eq!(body.size_hint().exact(), Some(STREAM_CHUNK_SIZE as u64));
+        let chunk = next_data(&mut body).await.unwrap();
+
+        assert_eq!(chunk.len(), STREAM_CHUNK_SIZE);
+        assert_eq!(&chunk[..], &data[..]);
+        assert_eq!(body.size_hint().exact(), Some(0));
+        assert!(body.is_end_stream());
+        assert!(next_data(&mut body).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn sized_body_empty_file_has_no_frames() {
+        let (_dir, mut body) = sized_body_from_bytes(&[]).await;
+
+        assert_eq!(body.size_hint().exact(), Some(0));
+        assert!(next_data(&mut body).await.is_none());
+        assert!(body.is_end_stream());
+    }
+
+    #[tokio::test]
+    async fn sized_body_does_not_stream_bytes_added_after_metadata() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("body.bin");
+        tokio::fs::write(&path, b"initial").await.unwrap();
+        let file = tokio::fs::File::open(&path).await.unwrap();
+        let file_len = file.metadata().await.unwrap().len();
+        let mut body = SizedBody::new(file, file_len);
+
+        tokio::fs::write(&path, b"initial-extra").await.unwrap();
+
+        let chunk = next_data(&mut body).await.unwrap();
+        assert_eq!(&chunk[..], b"initial");
+        assert_eq!(body.size_hint().exact(), Some(0));
+        assert!(next_data(&mut body).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn sized_body_errors_when_file_is_shorter_than_metadata() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("body.bin");
+        tokio::fs::write(&path, b"initial-extra").await.unwrap();
+        let file = tokio::fs::File::open(&path).await.unwrap();
+        let file_len = file.metadata().await.unwrap().len();
+        let mut body = SizedBody::new(file, file_len);
+
+        tokio::fs::write(&path, b"initial").await.unwrap();
+
+        let chunk = next_data(&mut body).await.unwrap();
+        assert_eq!(&chunk[..], b"initial");
+        let error = poll_fn(|cx| Pin::new(&mut body).poll_frame(cx))
+            .await
+            .expect("expected a frame")
+            .expect_err("expected early EOF error");
+
+        assert_eq!(error.kind(), std::io::ErrorKind::UnexpectedEof);
+        assert_eq!(body.size_hint().exact(), Some(0));
+    }
+
+    #[tokio::test]
+    async fn sized_body_errors_when_file_is_truncated_before_first_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("body.bin");
+        tokio::fs::write(&path, b"initial").await.unwrap();
+        let file = tokio::fs::File::open(&path).await.unwrap();
+        let file_len = file.metadata().await.unwrap().len();
+        let mut body = SizedBody::new(file, file_len);
+
+        tokio::fs::write(&path, &[]).await.unwrap();
+
+        let error = poll_fn(|cx| Pin::new(&mut body).poll_frame(cx))
+            .await
+            .expect("expected a frame")
+            .expect_err("expected early EOF error");
+
+        assert_eq!(error.kind(), std::io::ErrorKind::UnexpectedEof);
+        assert_eq!(body.size_hint().exact(), Some(0));
+        assert!(body.is_end_stream());
+    }
 }

@@ -3,7 +3,7 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../../src/lib/ts-rest-handler";
-import { composesByIdContract } from "@vm0/core/contracts/composes";
+import { composesByIdContract } from "@vm0/api-contracts/contracts/composes";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
   requireAuth,
@@ -16,7 +16,7 @@ import {
   getComposeOrgId,
   deleteCompose,
 } from "../../../../../src/lib/infra/agent-compose/compose-service";
-import { isNotFound, isConflict } from "../../../../../src/lib/shared/errors";
+import { isNotFound, isConflict } from "@vm0/api-services/errors";
 
 const router = tsr.router(composesByIdContract, {
   getById: async ({ params, headers }) => {

@@ -1,6 +1,6 @@
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
-import { zeroRunsQueueContract } from "@vm0/core/contracts/zero-runs";
-import { orgTierSchema } from "@vm0/core/contracts/orgs";
+import { zeroRunsQueueContract } from "@vm0/api-contracts/contracts/zero-runs";
+import { orgTierSchema } from "@vm0/api-contracts/contracts/orgs";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
   requireAuth,

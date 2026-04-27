@@ -4,22 +4,23 @@ import { accept } from "../../../lib/accept.ts";
 import {
   CONNECTOR_TYPES,
   type ConnectorType,
-} from "@vm0/core/contracts/connectors";
-import { hasRequiredScopes } from "@vm0/core/contracts/connector-utils";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+  type ConnectorDisplayCategory,
+} from "@vm0/connectors/connectors";
+import { hasRequiredScopes } from "@vm0/connectors/connector-utils";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   zeroConnectorScopeDiffContract,
   zeroConnectorsMainContract,
   zeroPlatformConnectorContract,
-} from "@vm0/core/contracts/zero-connectors";
+} from "@vm0/api-contracts/contracts/zero-connectors";
 import {
   zeroSecretsContract,
   zeroVariablesContract,
-} from "@vm0/core/contracts/zero-secrets";
+} from "@vm0/api-contracts/contracts/zero-secrets";
 import type {
   ConnectorListResponse,
   ConnectorResponse,
-} from "@vm0/core/contracts/connector-schemas";
+} from "@vm0/api-contracts/contracts/connector-schemas";
 import { featureSwitch$ } from "../../external/feature-switch.ts";
 import {
   connectors$,
@@ -30,7 +31,7 @@ import { apiBaseForNavigation$ } from "../../fetch.ts";
 import { zeroClient$ } from "../../api-client.ts";
 import { delay } from "signal-timers";
 import { jsonParseOr, raceUnderSignal } from "../../utils.ts";
-import { awaitRealtimeReady$, setAblyLoop$ } from "../../realtime.ts";
+import { setAblyLoop$ } from "../../realtime.ts";
 import { localStorageSignals } from "../../external/local-storage.ts";
 import { resetPermissionDialog$ } from "./permission-dialog.ts";
 
@@ -50,6 +51,7 @@ export interface ConnectorTypeWithStatus {
   type: ConnectorType;
   label: string;
   helpText: string;
+  category: ConnectorDisplayCategory;
   /** Lowercase aliases/keywords used by connector search (from CONNECTOR_TYPES). */
   tags: readonly string[];
   connected: boolean;
@@ -157,6 +159,7 @@ export const allConnectorTypes$ = computed(async (get) => {
         type,
         label: isExperimental ? `[Experimental] ${config.label}` : config.label,
         helpText: config.helpText,
+        category: config.category,
         tags: config.tags ?? [],
         connected: connector !== null,
         connector,
@@ -532,7 +535,11 @@ export const connectConnector$ = command(
       },
     );
 
-    await set(awaitRealtimeReady$, signal);
+    // Prime once so `initialUpdatedAt` snapshots the current server state.
+    // `setAblyLoop$` no longer primes its subscribers, and without this the
+    // first ably event would be taken as the baseline instead of signalling
+    // completion.
+    await set(onConnectorChanged$, signal);
     signal.throwIfAborted();
 
     await raceUnderSignal(signal, (childSignal) => {

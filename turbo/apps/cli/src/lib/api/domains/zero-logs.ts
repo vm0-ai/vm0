@@ -3,9 +3,9 @@ import {
   logsListContract,
   type LogsListResponse,
   type LogStatus,
-} from "@vm0/core/contracts/logs";
-import { type LogsSearchResponse } from "@vm0/core/contracts/runs";
-import { zeroLogsSearchContract } from "@vm0/core/contracts/zero-runs";
+} from "@vm0/api-contracts/contracts/logs";
+import { type LogsSearchResponse } from "@vm0/api-contracts/contracts/runs";
+import { zeroLogsSearchContract } from "@vm0/api-contracts/contracts/zero-runs";
 import { getClientConfig, handleError } from "../core/client-factory";
 
 export async function listZeroLogs(options?: {

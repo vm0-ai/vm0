@@ -10,7 +10,7 @@ import { detachedNavigateTo$ } from "../../../signals/route.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
 import { createMockApi, createMockHttp } from "../../../mocks/msw-contract.ts";
-import { chatThreadByIdContract } from "@vm0/core/contracts/chat-threads";
+import { chatThreadByIdContract } from "@vm0/api-contracts/contracts/chat-threads";
 
 vi.mock("@vm0/ui/components/ui/sonner", async (importOriginal) => {
   const actual =

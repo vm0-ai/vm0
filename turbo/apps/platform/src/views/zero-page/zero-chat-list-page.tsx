@@ -6,7 +6,6 @@ import {
   useLastLoadable,
   useLastResolved,
 } from "ccstate-react";
-import { useLoadableSet } from "ccstate-react/experimental";
 import { IconPlus, IconSearch, IconX, IconTrash } from "@tabler/icons-react";
 import {
   Button,
@@ -18,23 +17,21 @@ import {
   DialogTitle,
   Skeleton,
 } from "@vm0/ui";
-import type { ChatThreadListItem } from "@vm0/core/contracts/chat-threads";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import type { ChatThreadListItem } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   chatThreads$,
   deleteChatThread$,
-  createNewChatThread$,
 } from "../../signals/chat-page/chat-message.ts";
+import {
+  createNewChatThreadOptimistically$,
+  optimisticChatThread$,
+} from "../../signals/chat-page/optimistic-chat-thread-page.ts";
 import { navigateToChat$ } from "../../signals/zero-page/zero-nav.ts";
 import {
   currentChatThreadId$,
   currentChatAgentId$,
 } from "../../signals/agent-chat.ts";
-import {
-  AgentAvatarImg,
-  useChatThreadsTitleLabels,
-} from "./zero-sidebar-shared.tsx";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import { useChatThreadsTitleLabels } from "./zero-sidebar-shared.tsx";
 import {
   pendingDeleteThreadId$,
   setPendingDeleteThreadId$,
@@ -42,6 +39,7 @@ import {
   setChatListQuery$,
 } from "../../signals/zero-page/zero-sidebar-state.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
+import { rootSignal$ } from "../../signals/root-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
 
@@ -60,18 +58,13 @@ export function ZeroChatListPage() {
       : null;
 
   const currentChatAgentId = useLastResolved(currentChatAgentId$);
-  const features = useLastResolved(featureSwitch$);
-  const unifyChatThreads =
-    features?.[FeatureSwitchKey.UnifyChatThreads] ?? false;
-
   const { titleLabel, searchPlaceholder } = useChatThreadsTitleLabels();
 
   const selectedRecentId = useGet(currentChatThreadId$);
   const navigateToChat = useSet(navigateToChat$);
-  const [creatingLoadable, createNewChat] =
-    useLoadableSet(createNewChatThread$);
-  const creating = creatingLoadable.state === "loading";
-  const pageSignal = useGet(pageSignal$);
+  const createNewChat = useSet(createNewChatThreadOptimistically$);
+  const creating = useGet(optimisticChatThread$) !== null;
+  const { signal: rootSignal } = useGet(rootSignal$);
 
   const searchTerm = useGet(chatListQuery$);
   const setSearchTerm = useSet(setChatListQuery$);
@@ -85,11 +78,7 @@ export function ZeroChatListPage() {
 
   const onNewChat = () => {
     detach(
-      createNewChat(currentChatAgentId ?? null, pageSignal).then((threadId) => {
-        if (threadId) {
-          navigateToChat(threadId);
-        }
-      }),
+      createNewChat(currentChatAgentId ?? null, rootSignal),
       Reason.DomCallback,
     );
   };
@@ -103,13 +92,6 @@ export function ZeroChatListPage() {
       {/* Header */}
       <div className="shrink-0 px-4 pt-4 pb-2">
         <div className="flex items-center gap-3 mb-3">
-          {!unifyChatThreads && (
-            <AgentAvatarImg
-              name={currentChatAgentId ?? ""}
-              alt=""
-              className="h-8 w-8 rounded-full object-cover object-top"
-            />
-          )}
           <h1 className="text-lg font-semibold">{titleLabel}</h1>
         </div>
 
@@ -166,7 +148,6 @@ export function ZeroChatListPage() {
           searchTerm={searchTerm}
           selectedRecentId={selectedRecentId}
           onRecentSelect={onRecentSelect}
-          showAgentAvatar={unifyChatThreads}
         />
       </div>
     </div>
@@ -180,7 +161,6 @@ function ChatList({
   searchTerm,
   selectedRecentId,
   onRecentSelect,
-  showAgentAvatar,
 }: {
   loading: boolean;
   error: string | null;
@@ -188,7 +168,6 @@ function ChatList({
   searchTerm: string;
   selectedRecentId: string | null;
   onRecentSelect: (id: string) => void;
-  showAgentAvatar: boolean;
 }) {
   const pendingDeleteThreadId = useGet(pendingDeleteThreadId$);
   const setPendingDeleteThreadId = useSet(setPendingDeleteThreadId$);
@@ -245,7 +224,6 @@ function ChatList({
               onDelete={() => {
                 return setPendingDeleteThreadId(session.id);
               }}
-              showAgentAvatar={showAgentAvatar}
             />
           );
         })}
@@ -291,13 +269,11 @@ function ChatListItem({
   isSelected,
   onSelect,
   onDelete,
-  showAgentAvatar,
 }: {
   session: ChatThreadListItem;
   isSelected: boolean;
   onSelect: (id: string) => void;
   onDelete: () => void;
-  showAgentAvatar: boolean;
 }) {
   return (
     <div className="group relative">
@@ -317,13 +293,6 @@ function ChatListItem({
             : "text-foreground hover:bg-accent/50"
         }`}
       >
-        {showAgentAvatar && (
-          <AgentAvatarImg
-            name={session.agent?.id ?? session.agentId}
-            alt=""
-            className="h-6 w-6 shrink-0 rounded-full object-cover object-top"
-          />
-        )}
         <span className="truncate min-w-0 flex-1">
           {session.title ?? "New chat"}
         </span>

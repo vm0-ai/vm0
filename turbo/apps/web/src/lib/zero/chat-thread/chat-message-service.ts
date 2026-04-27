@@ -2,10 +2,10 @@ import { eq, asc, desc, and, sql, inArray, isNotNull } from "drizzle-orm";
 import {
   chatMessages,
   type ChatMessageAttachFiles,
-} from "../../../db/schema/chat-message";
-import { chatThreads } from "../../../db/schema/chat-thread";
-import { agentRuns } from "../../../db/schema/agent-run";
-import { zeroRuns } from "../../../db/schema/zero-run";
+} from "@vm0/db/schema/chat-message";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { publishUserSignal } from "../../infra/realtime/client";
 import { hasAgentSessionId } from "../run-result";
 import { recordChatSpan, type ChatSpanDimensions } from "../../infra/metrics";
@@ -314,16 +314,19 @@ export async function getLatestMessagesByThreadId(
  *
  * - When `sinceId` is provided: returns up to `limit` messages strictly after
  *   the cursor, forward-paginating through the thread.
- * - When `sinceId` is omitted: returns the *latest* `limit` messages,
+ * - When `beforeId` is provided: returns up to `limit` messages strictly before
+ *   the cursor, re-sorted ASC for prepend-on-load-history rendering.
+ * - When neither cursor is provided: returns the *latest* `limit` messages,
  *   re-sorted ASC for rendering. This anchors the initial view at the most
  *   recent activity rather than the thread's beginning.
  */
-export async function getMessagesSince(
+export async function getPagedMessages(
   chatThreadId: string,
   sinceId: string | undefined,
+  beforeId: string | undefined,
   limit: number,
-): Promise<
-  Array<{
+): Promise<{
+  messages: Array<{
     id: string;
     role: string;
     content: string | null;
@@ -334,8 +337,9 @@ export async function getMessagesSince(
     runStatus: string | null;
     runError: string | null;
     attachFiles: ChatMessageAttachFiles | null;
-  }>
-> {
+  }>;
+  hasHistoryBefore: boolean;
+}> {
   const db = globalThis.services.db;
 
   const columns = {
@@ -351,33 +355,76 @@ export async function getMessagesSince(
     attachFiles: chatMessages.attachFiles,
   };
 
-  if (sinceId === undefined) {
+  if (sinceId !== undefined && beforeId !== undefined) {
+    throw new Error("sinceId and beforeId are mutually exclusive");
+  }
+
+  if (sinceId === undefined && beforeId === undefined) {
     const rows = await db
       .select(columns)
       .from(chatMessages)
       .leftJoin(agentRuns, eq(chatMessages.runId, agentRuns.id))
       .where(eq(chatMessages.chatThreadId, chatThreadId))
       .orderBy(desc(chatMessages.createdAt), desc(chatMessages.sequenceNumber))
-      .limit(limit);
-    return rows.reverse();
+      .limit(limit + 1);
+    const hasHistoryBefore = rows.length > limit;
+    return {
+      messages: rows.slice(0, limit).reverse(),
+      hasHistoryBefore,
+    };
   }
 
-  const cursorCondition = sql`(
+  const cursorId = sinceId ?? beforeId;
+  const cursorAfterCondition = sql`(
     ${chatMessages.createdAt},
     COALESCE(${chatMessages.sequenceNumber}, -1)
   ) > (
     SELECT ${chatMessages.createdAt}, COALESCE(${chatMessages.sequenceNumber}, -1)
     FROM ${chatMessages}
-    WHERE ${chatMessages.id} = ${sinceId}
+    WHERE ${chatMessages.id} = ${cursorId}
+  )`;
+  const cursorBeforeCondition = sql`(
+    ${chatMessages.createdAt},
+    COALESCE(${chatMessages.sequenceNumber}, -1)
+  ) < (
+    SELECT ${chatMessages.createdAt}, COALESCE(${chatMessages.sequenceNumber}, -1)
+    FROM ${chatMessages}
+    WHERE ${chatMessages.id} = ${cursorId}
   )`;
 
-  return db
+  if (sinceId !== undefined) {
+    return {
+      messages: await db
+        .select(columns)
+        .from(chatMessages)
+        .leftJoin(agentRuns, eq(chatMessages.runId, agentRuns.id))
+        .where(
+          and(
+            eq(chatMessages.chatThreadId, chatThreadId),
+            cursorAfterCondition,
+          ),
+        )
+        .orderBy(asc(chatMessages.createdAt), asc(chatMessages.sequenceNumber))
+        .limit(limit),
+      hasHistoryBefore: false,
+    };
+  }
+
+  const rows = await db
     .select(columns)
     .from(chatMessages)
     .leftJoin(agentRuns, eq(chatMessages.runId, agentRuns.id))
-    .where(and(eq(chatMessages.chatThreadId, chatThreadId), cursorCondition))
-    .orderBy(asc(chatMessages.createdAt), asc(chatMessages.sequenceNumber))
-    .limit(limit);
+    .where(
+      and(eq(chatMessages.chatThreadId, chatThreadId), cursorBeforeCondition),
+    )
+    .orderBy(desc(chatMessages.createdAt), desc(chatMessages.sequenceNumber))
+    .limit(limit + 1);
+
+  const hasHistoryBefore = rows.length > limit;
+  return {
+    messages: rows.slice(0, limit).reverse(),
+    hasHistoryBefore,
+  };
 }
 
 /**
@@ -404,27 +451,6 @@ export async function getLatestSessionIdForThread(
     }
   }
   return undefined;
-}
-
-/**
- * Cheap existence probe used by `resolveThread()` to decide whether the
- * continue-from-schedule system prompt should still be seeded on this send.
- * Replaces the prior `messages.length === 0` signal now that the
- * `getLatestMessagesByThreadId` read has moved off the POST critical path.
- *
- * Backed by `idx_zero_runs_chat_thread_id` (issue #10757): `LIMIT 1` turns
- * this into an EXISTS probe, so the query returns in single-digit
- * milliseconds even on long threads.
- */
-export async function hasAnyRunsForThread(
-  chatThreadId: string,
-): Promise<boolean> {
-  const [row] = await globalThis.services.db
-    .select({ id: zeroRuns.id })
-    .from(zeroRuns)
-    .where(eq(zeroRuns.chatThreadId, chatThreadId))
-    .limit(1);
-  return row !== undefined;
 }
 
 /**

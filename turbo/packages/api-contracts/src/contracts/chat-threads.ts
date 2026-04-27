@@ -1,0 +1,488 @@
+import { z } from "zod";
+import { authHeadersSchema, initContract } from "./base";
+import { apiErrorSchema } from "./errors";
+import { runStatusSchema } from "./runs";
+import { modelProviderTypeSchema } from "./model-providers";
+
+const c = initContract();
+
+/**
+ * File attachment metadata stored alongside user messages.
+ * The `id` is the attachment id — URLs are resolved at query time.
+ */
+const attachFileSchema = z.object({
+  id: z.string(),
+  filename: z.string(),
+  contentType: z.string(),
+  size: z.number(),
+});
+
+/**
+ * Attach file returned to the frontend with a resolved URL.
+ * `url` is the permanent `${APP_URL}/f/{userId}/{id}/{filename}` redirect
+ * served by the app — consumers may render, cache, or share it freely; the
+ * underlying short-lived presigned signature is materialized per-request
+ * inside the /f route.
+ */
+const resolvedAttachFileSchema = attachFileSchema.extend({
+  url: z.string(),
+});
+
+const chatThreadArtifactFileSchema = resolvedAttachFileSchema.extend({
+  createdAt: z.string(),
+});
+
+const chatThreadArtifactRunSchema = z.object({
+  runId: z.string(),
+  files: z.array(chatThreadArtifactFileSchema),
+});
+
+/**
+ * Attachment metadata persisted in chat_threads.draft_attachments.
+ *
+ * `url` is the permanent `/f/{userId}/{id}/{filename}` form. Historically
+ * this stored a 7-day presigned URL that could silently expire while
+ * drafts sat in the DB; the permanent redirect removes that footgun.
+ */
+const persistedAttachmentSchema = z.object({
+  id: z.string(),
+  url: z.string(),
+  filename: z.string(),
+  contentType: z.string(),
+  size: z.number(),
+});
+
+const chatThreadListItemSchema = z.object({
+  id: z.string(),
+  title: z.string().nullable(),
+  /**
+   * Owning agent snapshot emitted by the server for every list row.
+   */
+  agent: z.object({
+    id: z.string(),
+    avatarUrl: z.string().nullable(),
+  }),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  /**
+   * Read state of the thread's last message. `false` when the thread has no
+   * messages yet or the last message has not been marked read.
+   * Threads whose last message is archived are filtered out server-side.
+   */
+  isRead: z.boolean(),
+  isArchived: z.boolean(),
+  /**
+   * True when the thread has at least one non-terminal run
+   * (queued / pending / running). Drives the sidebar running indicator,
+   * which is mutually exclusive with the unread dot and shares the
+   * `ChatThreadReadIndicator` feature switch gate.
+   */
+  running: z.boolean(),
+});
+
+const toolSummaryEntrySchema = z.object({
+  kind: z.literal("tool"),
+  name: z.string(),
+  input: z.record(z.string(), z.unknown()).optional(),
+});
+
+const textSummaryEntrySchema = z.object({
+  kind: z.literal("text"),
+  text: z.string(),
+});
+
+const summaryEntrySchema = z.union([
+  z.string(),
+  toolSummaryEntrySchema,
+  textSummaryEntrySchema,
+]);
+
+const storedChatMessageSchema = z.object({
+  role: z.enum(["user", "assistant"]),
+  content: z.string().nullable(),
+  runId: z.string().optional(),
+  error: z.string().optional(),
+  status: z.string().optional(),
+  attachFiles: z.array(resolvedAttachFileSchema).optional(),
+  createdAt: z.string(),
+});
+
+const chatThreadDetailSchema = z.object({
+  id: z.string(),
+  title: z.string().nullable(),
+  agentId: z.string(),
+  chatMessages: z.array(storedChatMessageSchema),
+  latestSessionId: z.string().nullable(),
+  /**
+   * ID of the latest message this user has marked read in this thread.
+   * Null when the thread has never been explicitly marked read. Optional for
+   * back-compat with fixtures/tests that predate the read marker field.
+   */
+  lastReadMessageId: z.string().nullable().optional(),
+  /**
+   * Provider type of the latest run in this thread, if any. Used by the
+   * composer's model picker to disable options whose base URL differs from
+   * the current session — switching mid-session would break continuity.
+   * Null when the thread has no runs yet. Optional so older fixtures/tests
+   * that predate the field still validate.
+   */
+  latestSessionProviderType: modelProviderTypeSchema.nullable().optional(),
+  activeRunIds: z.array(z.string()),
+  /**
+   * Active (non-terminal) runs attached to this thread, with live status.
+   * Lets the UI distinguish queued runs from running runs without an extra
+   * API call. Optional for back-compat with fixtures that predate the field.
+   */
+  activeRuns: z
+    .array(z.object({ id: z.string(), status: z.string() }))
+    .optional(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  draftContent: z.string().nullable().optional(),
+  draftAttachments: z.array(persistedAttachmentSchema).nullable().optional(),
+  /**
+   * Per-thread model override. Both fields set together or both null.
+   * When set, the send route uses this combination (overriding the agent
+   * and org defaults) for the next run. Optional for back-compat.
+   */
+  modelProviderId: z.string().nullable().optional(),
+  selectedModel: z.string().nullable().optional(),
+});
+
+/**
+ * Per-run model selection from the composer. Both fields are required when
+ * the object is present; pass `null` to clear the thread's override and fall
+ * back to the agent/org default; omit to leave the thread's override unchanged.
+ */
+const modelSelectionRequestSchema = z.object({
+  modelProviderId: z.string().uuid(),
+  selectedModel: z.string().min(1),
+});
+
+/**
+ * Chat threads list route contract (/api/chat-threads)
+ */
+export const chatThreadsContract = c.router({
+  create: {
+    method: "POST",
+    path: "/api/zero/chat-threads",
+    headers: authHeadersSchema,
+    body: z.object({
+      agentId: z.string().min(1),
+      clientThreadId: z.string().uuid().optional(),
+      title: z.string().optional(),
+    }),
+    responses: {
+      201: z.object({
+        id: z.string(),
+        title: z.string().nullable(),
+        createdAt: z.string(),
+      }),
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Create a new chat thread",
+  },
+  list: {
+    method: "GET",
+    path: "/api/zero/chat-threads",
+    headers: authHeadersSchema,
+    query: z.object({
+      agentId: z.string().min(1).optional(),
+    }),
+    responses: {
+      200: z.object({ threads: z.array(chatThreadListItemSchema) }),
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary:
+      "List chat threads. When agentId is omitted, returns every thread the caller owns scoped by orgId.",
+  },
+});
+
+/**
+ * Chat thread by ID route contract (/api/chat-threads/[id])
+ */
+export const chatThreadByIdContract = c.router({
+  get: {
+    method: "GET",
+    path: "/api/zero/chat-threads/:id",
+    headers: authHeadersSchema,
+    pathParams: z.object({ id: z.string() }),
+    responses: {
+      200: chatThreadDetailSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Get chat thread detail with messages",
+  },
+  patch: {
+    method: "PATCH",
+    path: "/api/zero/chat-threads/:id",
+    headers: authHeadersSchema,
+    pathParams: z.object({ id: z.string() }),
+    body: z.object({
+      draftContent: z.string().nullable().optional(),
+      draftAttachments: z
+        .array(persistedAttachmentSchema)
+        .nullable()
+        .optional(),
+    }),
+    responses: {
+      204: c.noBody(),
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Update chat thread draft content and attachments",
+  },
+  delete: {
+    method: "DELETE",
+    path: "/api/zero/chat-threads/:id",
+    headers: authHeadersSchema,
+    pathParams: z.object({ id: z.string() }),
+    responses: {
+      204: c.noBody(),
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Delete a chat thread",
+    body: c.noBody(),
+  },
+});
+
+/**
+ * Mark a chat thread as read up to its current latest message.
+ * Separate contract so it can be served by its own route file.
+ */
+export const chatThreadMarkReadContract = c.router({
+  markRead: {
+    method: "POST",
+    path: "/api/zero/chat-threads/:id/mark-read",
+    headers: authHeadersSchema,
+    pathParams: z.object({ id: z.string() }),
+    body: c.noBody(),
+    responses: {
+      200: z.object({
+        lastReadMessageId: z.string().nullable(),
+        changed: z.boolean(),
+      }),
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Mark a chat thread as read up to the latest message",
+  },
+});
+
+/**
+ * Chat messages contract (/api/zero/chat/messages)
+ * Unified endpoint: create thread (if needed) + run + association in one call.
+ */
+export const chatMessagesContract = c.router({
+  send: {
+    method: "POST",
+    path: "/api/zero/chat/messages",
+    headers: authHeadersSchema,
+    body: z.object({
+      agentId: z.string().min(1),
+      prompt: z.string().min(1),
+      threadId: z.string().optional(),
+      clientThreadId: z.string().uuid().optional(),
+      modelProvider: z.string().optional(),
+      /**
+       * Per-run model override; persisted on the thread so subsequent runs
+       * inherit the same choice. `undefined` = leave current thread override
+       * untouched (backward-compat for older clients). `null` = clear the
+       * thread override and fall back to agent/org defaults.
+       */
+      modelSelection: modelSelectionRequestSchema.nullable().optional(),
+      // Optional for backward compatibility: older clients that omit this field
+      // still trigger title generation (server guards with !== false, not === true).
+      hasTextContent: z.boolean().optional(),
+      attachFiles: z.array(attachFileSchema).optional(),
+      // Client-generated UUID used as the user message's primary key.
+      // Lets the client render an optimistic row and reconcile with the
+      // server row by id — no temp-id swap, no React remount.
+      clientMessageId: z.string().uuid().optional(),
+    }),
+    responses: {
+      201: z.object({
+        runId: z.string(),
+        threadId: z.string(),
+        status: runStatusSchema,
+        createdAt: z.string().optional(),
+      }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Send a chat message (create thread + run + association)",
+  },
+});
+
+/**
+ * Single chat message in a search result.
+ * `content` is guaranteed non-null because the search route filters out
+ * placeholder rows where content is NULL.
+ */
+const chatSearchMessageSchema = z.object({
+  messageId: z.string(),
+  chatThreadId: z.string(),
+  role: z.enum(["user", "assistant"]),
+  content: z.string(),
+  createdAt: z.string(),
+  sequenceNumber: z.number().nullable(),
+  runId: z.string().nullable(),
+});
+
+const chatSearchResultSchema = z.object({
+  chatThreadId: z.string(),
+  agentName: z.string(),
+  matchedMessage: chatSearchMessageSchema,
+  contextBefore: z.array(chatSearchMessageSchema),
+  contextAfter: z.array(chatSearchMessageSchema),
+});
+
+/**
+ * `hasMore` indicates that the server truncated the result set at `limit`.
+ * There is intentionally no cursor/offset: `limit` is capped at 50 (see the
+ * query schema below) and chat-message search is a lookup tool, not a bulk
+ * export. Callers that hit `hasMore=true` should narrow the query (add
+ * `agent`, `since`, or a more specific `keyword`) rather than paginate. If
+ * genuine pagination is ever needed, introduce `nextCursor` here — the
+ * contract has no external consumers yet, so adding it later is safe.
+ */
+const chatSearchResponseSchema = z.object({
+  results: z.array(chatSearchResultSchema),
+  hasMore: z.boolean(),
+});
+
+/**
+ * Chat search contract (GET /api/zero/chat/search)
+ * Searches chat messages within the caller's own threads in the caller's org.
+ * Authorization is enforced at the DB query level via userId + orgId filters.
+ */
+export const chatSearchContract = c.router({
+  search: {
+    method: "GET",
+    path: "/api/zero/chat/search",
+    headers: authHeadersSchema,
+    query: z.object({
+      keyword: z.string().min(1),
+      agent: z.string().optional(),
+      since: z.coerce.number().optional(),
+      limit: z.coerce.number().min(1).max(50).default(20),
+      before: z.coerce.number().min(0).max(10).default(0),
+      after: z.coerce.number().min(0).max(10).default(0),
+    }),
+    responses: {
+      200: chatSearchResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+    },
+    summary: "Search chat messages within caller's org (zero proxy)",
+  },
+});
+
+/**
+ * Paginated chat messages contract (/api/zero/chat-threads/:threadId/messages)
+ * Cursor-based pagination using message UUID as sinceId / beforeId.
+ *
+ * Query params (mutually exclusive):
+ *   sinceId  — forward pagination: messages strictly after this cursor
+ *   beforeId — backward pagination: messages strictly before this cursor
+ *   (neither) — initial load anchored at the last user message
+ *
+ * Response includes `hasMore` for initial load and backward pagination so the
+ * UI knows whether to offer upward scroll loading.
+ */
+const pagedChatMessageSchema = z.object({
+  id: z.string(),
+  role: z.enum(["user", "assistant"]),
+  content: z.string().nullable(),
+  runId: z.string().optional(),
+  error: z.string().optional(),
+  status: z.string().optional(),
+  attachFiles: z.array(resolvedAttachFileSchema).optional(),
+  createdAt: z.string(),
+});
+
+export const chatThreadMessagesContract = c.router({
+  list: {
+    method: "GET",
+    path: "/api/zero/chat-threads/:threadId/messages",
+    headers: authHeadersSchema,
+    pathParams: z.object({ threadId: z.string() }),
+    query: z.object({
+      sinceId: z.string().uuid().optional(),
+      beforeId: z.string().uuid().optional(),
+      limit: z.coerce.number().min(1).max(50).default(50),
+    }),
+    responses: {
+      200: z.object({
+        messages: z.array(pagedChatMessageSchema),
+        hasHistoryBefore: z.boolean().optional(),
+      }),
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Get paginated chat messages for a thread",
+  },
+});
+
+export const chatThreadArtifactsContract = c.router({
+  list: {
+    method: "GET",
+    path: "/api/zero/chat-threads/:threadId/artifacts",
+    headers: authHeadersSchema,
+    pathParams: z.object({ threadId: z.string() }),
+    responses: {
+      200: z.object({
+        runs: z.array(chatThreadArtifactRunSchema),
+      }),
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "List uploaded files associated with every run in a chat thread",
+  },
+});
+
+export type ChatThreadsContract = typeof chatThreadsContract;
+export type ChatThreadByIdContract = typeof chatThreadByIdContract;
+export type ChatThreadMarkReadContract = typeof chatThreadMarkReadContract;
+export type ChatMessagesContract = typeof chatMessagesContract;
+export type ChatThreadMessagesContract = typeof chatThreadMessagesContract;
+export type ChatThreadArtifactsContract = typeof chatThreadArtifactsContract;
+export type ChatSearchContract = typeof chatSearchContract;
+export type ChatSearchResponse = z.infer<typeof chatSearchResponseSchema>;
+export type ChatSearchResult = z.infer<typeof chatSearchResultSchema>;
+export type ChatSearchMessage = z.infer<typeof chatSearchMessageSchema>;
+
+export {
+  chatThreadListItemSchema,
+  chatThreadDetailSchema,
+  modelSelectionRequestSchema,
+  pagedChatMessageSchema,
+  summaryEntrySchema,
+  persistedAttachmentSchema,
+  attachFileSchema,
+  resolvedAttachFileSchema,
+  chatThreadArtifactFileSchema,
+  chatThreadArtifactRunSchema,
+};
+
+export type ModelSelectionRequest = z.infer<typeof modelSelectionRequestSchema>;
+
+export type SummaryEntry = z.infer<typeof summaryEntrySchema>;
+export type ChatThreadListItem = z.infer<typeof chatThreadListItemSchema>;
+export type ChatThreadDetail = z.infer<typeof chatThreadDetailSchema>;
+export type PagedChatMessage = z.infer<typeof pagedChatMessageSchema>;
+export type PersistedAttachment = z.infer<typeof persistedAttachmentSchema>;
+export type AttachFile = z.infer<typeof attachFileSchema>;
+export type ResolvedAttachFile = z.infer<typeof resolvedAttachFileSchema>;
+export type ChatThreadArtifactFile = z.infer<
+  typeof chatThreadArtifactFileSchema
+>;
+export type ChatThreadArtifactRun = z.infer<typeof chatThreadArtifactRunSchema>;

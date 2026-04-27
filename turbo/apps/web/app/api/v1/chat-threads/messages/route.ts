@@ -1,6 +1,6 @@
 import { after } from "next/server";
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
-import { chatThreadV1SendContract } from "@vm0/core/contracts/chat-threads-v1";
+import { chatThreadV1SendContract } from "@vm0/api-contracts/contracts/chat-threads-v1";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
   requireApiKeyAuth,
@@ -10,7 +10,7 @@ import { createZeroRun } from "../../../../../src/lib/zero/zero-run-service";
 import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
 import { resolveDefaultAgentId } from "../../../../../src/lib/zero/resolve-default-agent";
 import { buildWebChatPrompt } from "../../../../../src/lib/zero/integration-prompt";
-import { isApiError, isNotFound } from "../../../../../src/lib/shared/errors";
+import { isApiError, isNotFound } from "@vm0/api-services/errors";
 import {
   createChatThread,
   getChatThread,

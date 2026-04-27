@@ -22,7 +22,7 @@
 //! | 0x04 | G→H       | exec_result       | `[4B exit_code][4B stdout_len][stdout][4B stderr_len][stderr]` |
 //! | 0x05 | H→G       | write_file        | `[2B path_len][path][1B flags][4B content_len][content]` (flags: `SUDO=0x01`, `APPEND=0x02`) |
 //! | 0x06 | G→H       | write_file_result | `[1B success][2B error_len][error]` |
-//! | 0x07 | H→G       | spawn_watch       | `[4B timeout_ms][1B flags][4B cmd_len][command]([4B env_count]([4B key_len][key][4B val_len][value])*)([2B log_path_len][log_path])` |
+//! | 0x07 | H→G       | spawn_watch       | `[4B timeout_ms][1B flags][4B cmd_len][command]([4B env_count]([4B key_len][key][4B val_len][value])*)([2B log_path_len][log_path])` (flags: `SUDO=0x01`, `STREAM_STDOUT=0x02`) |
 //! | 0x08 | G→H       | spawn_watch_result| `[4B pid]` |
 //! | 0x09 | G→H       | process_exit      | `[4B pid][4B exit_code][4B stdout_len][stdout][4B stderr_len][stderr]` |
 //! | 0x0A | H→G       | shutdown          | (empty) |
@@ -58,10 +58,16 @@ pub const MSG_ERROR: u8 = 0xFF;
 /// Default vsock port for host-guest communication.
 pub const VSOCK_PORT: u32 = 1000;
 
-/// Flag: execute with root privileges (used in exec, spawn_watch, and write_file).
-pub const FLAG_SUDO: u8 = 0x01;
-/// Flag: append to existing file instead of truncating (used in write_file).
-pub const FLAG_APPEND: u8 = 0x02;
+// Exec payload flags.
+pub const EXEC_FLAG_SUDO: u8 = 0x01;
+
+// Spawn-watch payload flags.
+pub const SPAWN_WATCH_FLAG_SUDO: u8 = 0x01;
+pub const SPAWN_WATCH_FLAG_STREAM_STDOUT: u8 = 0x02;
+
+// Write-file payload flags.
+pub const WRITE_FILE_FLAG_SUDO: u8 = 0x01;
+pub const WRITE_FILE_FLAG_APPEND: u8 = 0x02;
 
 /// Protocol error.
 #[derive(Debug, Clone)]
@@ -152,7 +158,7 @@ pub fn encode_exec(timeout_ms: u32, command: &str, env: &[(&str, &str)], sudo: b
     };
     let mut p = Vec::with_capacity(9 + cmd.len() + env_size);
     p.extend_from_slice(&timeout_ms.to_be_bytes());
-    p.push(if sudo { FLAG_SUDO } else { 0 });
+    p.push(if sudo { EXEC_FLAG_SUDO } else { 0 });
     p.extend_from_slice(&(cmd.len() as u32).to_be_bytes());
     p.extend_from_slice(cmd);
     if !env.is_empty() {
@@ -171,8 +177,9 @@ pub fn encode_exec(timeout_ms: u32, command: &str, env: &[(&str, &str)], sudo: b
 
 /// Encode spawn_watch payload: exec fields + optional `[2B log_path_len][log_path]`.
 ///
-/// When `stdout_log_path` is `Some`, the guest tees stdout to this file path
-/// AND streams chunks to the host via `MSG_STDOUT_CHUNK`.
+/// `stream_stdout` controls whether stdout is streamed to the host via
+/// `MSG_STDOUT_CHUNK`. `stdout_log_path`, when present, additionally asks
+/// the guest to tee streamed stdout to that file.
 ///
 /// Unlike `encode_exec`, this always writes the env section (even when empty)
 /// so `decode_spawn_watch` can unambiguously find the log_path boundary.
@@ -181,20 +188,37 @@ pub fn encode_spawn_watch(
     command: &str,
     env: &[(&str, &str)],
     sudo: bool,
+    stream_stdout: bool,
     stdout_log_path: Option<&str>,
-) -> Vec<u8> {
+) -> Result<Vec<u8>, ProtocolError> {
+    if !stream_stdout && stdout_log_path.is_some() {
+        return Err(ProtocolError::InvalidPayload(
+            "spawn_watch log_path requires stream flag",
+        ));
+    }
     let cmd = command.as_bytes();
     let env_size: usize = 4 + env
         .iter()
         .map(|(k, v)| 8 + k.len() + v.len())
         .sum::<usize>();
-    let log_size: usize = match stdout_log_path {
-        Some(p) => 2 + p.len().min(u16::MAX as usize),
-        None => 0,
+    let log_path = match stdout_log_path {
+        Some("") => {
+            return Err(ProtocolError::InvalidPayload("spawn_watch log_path empty"));
+        }
+        Some(path) if path.len() > u16::MAX as usize => {
+            return Err(ProtocolError::PayloadTooLarge("log_path", path.len()));
+        }
+        Some(path) => Some((path.as_bytes(), path.len() as u16)),
+        None => None,
     };
+    let log_size = log_path.map_or(0, |(_, len)| 2 + len as usize);
     let mut p = Vec::with_capacity(9 + cmd.len() + env_size + log_size);
     p.extend_from_slice(&timeout_ms.to_be_bytes());
-    p.push(if sudo { FLAG_SUDO } else { 0 });
+    let mut flags = if sudo { SPAWN_WATCH_FLAG_SUDO } else { 0 };
+    if stream_stdout {
+        flags |= SPAWN_WATCH_FLAG_STREAM_STDOUT;
+    }
+    p.push(flags);
     p.extend_from_slice(&(cmd.len() as u32).to_be_bytes());
     p.extend_from_slice(cmd);
     // Always write env_count so the decoder knows where env ends.
@@ -207,14 +231,11 @@ pub fn encode_spawn_watch(
         p.extend_from_slice(&(vb.len() as u32).to_be_bytes());
         p.extend_from_slice(vb);
     }
-    if let Some(path) = stdout_log_path {
-        let path_bytes = path.as_bytes();
-        let path_len = path_bytes.len().min(u16::MAX as usize) as u16;
+    if let Some((path_bytes, path_len)) = log_path {
         p.extend_from_slice(&path_len.to_be_bytes());
-        // path_len <= path_bytes.len() is guaranteed by .min() above
-        p.extend_from_slice(path_bytes.get(..path_len as usize).unwrap_or(path_bytes));
+        p.extend_from_slice(path_bytes);
     }
-    p
+    Ok(p)
 }
 
 /// Encode exec_result payload: `[4B exit_code][4B stdout_len][stdout][4B stderr_len][stderr]`.
@@ -245,10 +266,10 @@ pub fn encode_write_file(
     let path_len = path_bytes.len() as u16;
     let mut flags = 0u8;
     if sudo {
-        flags |= FLAG_SUDO;
+        flags |= WRITE_FILE_FLAG_SUDO;
     }
     if append {
-        flags |= FLAG_APPEND;
+        flags |= WRITE_FILE_FLAG_APPEND;
     }
     let mut p = Vec::with_capacity(7 + path_len as usize + content.len());
     p.extend_from_slice(&path_len.to_be_bytes());
@@ -319,12 +340,15 @@ pub fn encode_error(message: &str) -> Vec<u8> {
 ///
 /// The env section is optional: if the payload ends right after the command,
 /// an empty vec is returned (backward-compatible with old encoders).
-fn decode_exec_inner(payload: &[u8]) -> Result<(DecodedExec<'_>, usize), ProtocolError> {
+fn decode_exec_inner(
+    payload: &[u8],
+    sudo_flag: u8,
+) -> Result<(DecodedExec<'_>, usize), ProtocolError> {
     let timeout_ms =
         read_u32_at(payload, 0).ok_or(ProtocolError::InvalidPayload("exec payload too short"))?;
     let flags =
         read_u8_at(payload, 4).ok_or(ProtocolError::InvalidPayload("exec payload too short"))?;
-    let sudo = (flags & FLAG_SUDO) != 0;
+    let sudo = (flags & sudo_flag) != 0;
     let cmd_len = read_u32_at(payload, 5)
         .ok_or(ProtocolError::InvalidPayload("exec payload too short"))? as usize;
     let command = std::str::from_utf8(
@@ -396,35 +420,52 @@ fn decode_exec_inner(payload: &[u8]) -> Result<(DecodedExec<'_>, usize), Protoco
 
 /// Decode exec payload. Returns `(timeout_ms, command, env, sudo)`.
 pub fn decode_exec(payload: &[u8]) -> Result<DecodedExec<'_>, ProtocolError> {
-    decode_exec_inner(payload).map(|(d, _)| d)
+    decode_exec_inner(payload, EXEC_FLAG_SUDO).map(|(d, _)| d)
 }
 
-/// Decode spawn_watch payload. Extends exec fields with an optional `stdout_log_path`.
+/// Decode spawn_watch payload. Extends exec fields with streaming metadata.
 ///
 /// Wire format: `[exec fields...]([2B log_path_len][log_path])`.
 /// The log_path section is optional — if the payload ends after the exec
-/// fields, `stdout_log_path` is `None` (backward-compatible with old encoders).
+/// fields, `stdout_log_path` is `None`.
 pub fn decode_spawn_watch(payload: &[u8]) -> Result<DecodedSpawnWatch<'_>, ProtocolError> {
-    let (exec, offset) = decode_exec_inner(payload)?;
-    let stdout_log_path = if offset + 2 <= payload.len() {
+    let (exec, offset) = decode_exec_inner(payload, SPAWN_WATCH_FLAG_SUDO)?;
+    let flags =
+        read_u8_at(payload, 4).ok_or(ProtocolError::InvalidPayload("exec payload too short"))?;
+    let stream_flag = (flags & SPAWN_WATCH_FLAG_STREAM_STDOUT) != 0;
+    let stdout_log_path = if offset == payload.len() {
+        None
+    } else if offset + 2 <= payload.len() {
         let path_len = read_u16_at(payload, offset).ok_or(ProtocolError::InvalidPayload(
             "spawn_watch log_path_len truncated",
         ))? as usize;
         if path_len == 0 {
-            None
+            return Err(ProtocolError::InvalidPayload("spawn_watch log_path empty"));
         } else {
+            let path_end = offset + 2 + path_len;
+            if path_end != payload.len() {
+                return Err(ProtocolError::InvalidPayload("spawn_watch trailing bytes"));
+            }
             Some(
-                std::str::from_utf8(payload.get(offset + 2..offset + 2 + path_len).ok_or(
+                std::str::from_utf8(payload.get(offset + 2..path_end).ok_or(
                     ProtocolError::InvalidPayload("spawn_watch log_path truncated"),
                 )?)
                 .map_err(|_| ProtocolError::InvalidPayload("invalid UTF-8 in log_path"))?,
             )
         }
     } else {
-        None
+        return Err(ProtocolError::InvalidPayload(
+            "spawn_watch trailing byte after env",
+        ));
     };
+    if !stream_flag && stdout_log_path.is_some() {
+        return Err(ProtocolError::InvalidPayload(
+            "spawn_watch log_path requires stream flag",
+        ));
+    }
     Ok(DecodedSpawnWatch {
         exec,
+        stream_stdout: stream_flag,
         stdout_log_path,
     })
 }
@@ -476,8 +517,8 @@ pub fn decode_write_file(payload: &[u8]) -> Result<(&str, &[u8], bool, bool), Pr
     Ok((
         path,
         content,
-        (flags & FLAG_SUDO) != 0,
-        (flags & FLAG_APPEND) != 0,
+        (flags & WRITE_FILE_FLAG_SUDO) != 0,
+        (flags & WRITE_FILE_FLAG_APPEND) != 0,
     ))
 }
 
@@ -511,11 +552,12 @@ pub struct DecodedExec<'a> {
     pub sudo: bool,
 }
 
-/// Decoded spawn_watch fields: exec fields + optional stdout log path.
+/// Decoded spawn_watch fields: exec fields + stdout streaming options.
 pub struct DecodedSpawnWatch<'a> {
     pub exec: DecodedExec<'a>,
-    /// Guest-side file path where vsock-guest tees stdout while streaming
-    /// chunks to the host. `None` disables streaming (legacy mode).
+    /// Whether vsock-guest should stream stdout chunks to the host.
+    pub stream_stdout: bool,
+    /// Optional guest-side file path where vsock-guest also tees stdout.
     pub stdout_log_path: Option<&'a str>,
 }
 
@@ -851,34 +893,112 @@ mod tests {
             "echo hello",
             &[("FOO", "bar")],
             false,
+            true,
             Some("/tmp/vm0-system-123.log"),
-        );
+        )
+        .unwrap();
         let d = decode_spawn_watch(&payload).unwrap();
         assert_eq!(d.exec.timeout_ms, 5000);
         assert_eq!(d.exec.command, "echo hello");
         assert_eq!(d.exec.env, vec![("FOO", "bar")]);
         assert!(!d.exec.sudo);
+        assert!(d.stream_stdout);
         assert_eq!(d.stdout_log_path.unwrap(), "/tmp/vm0-system-123.log");
     }
 
     #[test]
-    fn spawn_watch_payload_roundtrip_no_log_path() {
-        let payload = encode_spawn_watch(3000, "ls", &[], true, None);
+    fn spawn_watch_payload_roundtrip_stream_only() {
+        let payload = encode_spawn_watch(3000, "ls", &[], true, true, None).unwrap();
         let d = decode_spawn_watch(&payload).unwrap();
         assert_eq!(d.exec.timeout_ms, 3000);
         assert_eq!(d.exec.command, "ls");
         assert!(d.exec.env.is_empty());
         assert!(d.exec.sudo);
+        assert!(d.stream_stdout);
         assert!(d.stdout_log_path.is_none());
     }
 
     #[test]
-    fn spawn_watch_backward_compat_old_encoder() {
-        // Old-style payload (no log_path) decoded as spawn_watch → log_path is None
-        let payload = encode_exec(1000, "cmd", &[], false);
+    fn spawn_watch_payload_roundtrip_buffered() {
+        let payload = encode_spawn_watch(1000, "cmd", &[], false, false, None).unwrap();
         let d = decode_spawn_watch(&payload).unwrap();
         assert_eq!(d.exec.command, "cmd");
+        assert!(!d.stream_stdout);
         assert!(d.stdout_log_path.is_none());
+    }
+
+    #[test]
+    fn spawn_watch_log_path_requires_streaming() {
+        let err = encode_spawn_watch(1000, "cmd", &[], false, false, Some("/tmp/log")).unwrap_err();
+        assert!(matches!(err, ProtocolError::InvalidPayload(_)));
+    }
+
+    #[test]
+    fn spawn_watch_log_path_too_long() {
+        let long_path = "x".repeat(u16::MAX as usize + 1);
+        let err = encode_spawn_watch(1000, "cmd", &[], false, true, Some(&long_path)).unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::PayloadTooLarge("log_path", size) if size == long_path.len()
+        ));
+    }
+
+    fn decode_spawn_watch_error(payload: &[u8]) -> ProtocolError {
+        match decode_spawn_watch(payload) {
+            Ok(_) => panic!("expected spawn_watch payload to be rejected"),
+            Err(e) => e,
+        }
+    }
+
+    #[test]
+    fn decode_spawn_watch_rejects_empty_log_path() {
+        let mut payload = encode_spawn_watch(1000, "cmd", &[], false, true, None).unwrap();
+        payload.extend_from_slice(&0u16.to_be_bytes());
+
+        let err = decode_spawn_watch_error(&payload);
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("spawn_watch log_path empty")
+        ));
+    }
+
+    #[test]
+    fn decode_spawn_watch_rejects_trailing_byte_after_env() {
+        let mut payload = encode_spawn_watch(1000, "cmd", &[], false, true, None).unwrap();
+        payload.push(0xFF);
+
+        let err = decode_spawn_watch_error(&payload);
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("spawn_watch trailing byte after env")
+        ));
+    }
+
+    #[test]
+    fn decode_spawn_watch_rejects_trailing_bytes_after_log_path() {
+        let mut payload =
+            encode_spawn_watch(1000, "cmd", &[], false, true, Some("/tmp/log")).unwrap();
+        payload.push(0xFF);
+
+        let err = decode_spawn_watch_error(&payload);
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("spawn_watch trailing bytes")
+        ));
+    }
+
+    #[test]
+    fn decode_spawn_watch_rejects_log_path_without_stream_flag() {
+        let mut payload = encode_spawn_watch(1000, "cmd", &[], false, false, None).unwrap();
+        let path = b"/tmp/log";
+        payload.extend_from_slice(&(path.len() as u16).to_be_bytes());
+        payload.extend_from_slice(path);
+
+        let err = decode_spawn_watch_error(&payload);
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("spawn_watch log_path requires stream flag")
+        ));
     }
 
     #[test]

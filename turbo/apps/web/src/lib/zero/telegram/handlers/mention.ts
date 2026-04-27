@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { telegramInstallations } from "../../../../db/schema/telegram-installation";
+import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
 import { decryptSecretValue } from "../../../shared/crypto/secrets-encryption";
 import { env } from "../../../../env";
 import { createTelegramClient, sendMessage, deleteMessage } from "../client";
@@ -12,14 +12,16 @@ import {
   lookupTelegramThreadSession,
   storeTelegramMessage,
   getWorkspaceAgent,
+  getAgentDisplayLabel,
   resolveSessionCompose,
   resolveUserLink,
   buildAgentLogsUrl,
   buildLogsUrl,
+  formatTelegramPrivateConnectPrompt,
 } from "./shared";
 import { fetchTelegramContext } from "../context";
 import { runAgentForTelegram } from "./run-agent";
-import { buildTelegramErrorResponse, escapeHtml } from "../format";
+import { buildTelegramErrorResponse } from "../format";
 import { logger } from "../../../shared/logger";
 import type { TelegramHandlerUpdate } from "./types";
 
@@ -54,7 +56,7 @@ export async function handleTelegramMention(
   const [installation] = await globalThis.services.db
     .select()
     .from(telegramInstallations)
-    .where(eq(telegramInstallations.id, installationId))
+    .where(eq(telegramInstallations.telegramBotId, installationId))
     .limit(1);
 
   if (!installation) {
@@ -75,7 +77,7 @@ export async function handleTelegramMention(
     await sendMessage(
       client,
       chatId,
-      `🔗 Please <a href="https://t.me/${escapeHtml(installation.botUsername ?? "")}?start=connect">send me /connect</a> in a private message to connect your account.`,
+      formatTelegramPrivateConnectPrompt(installation.botUsername),
       { replyToMessageId: message.message_id },
     );
     return;
@@ -93,7 +95,7 @@ export async function handleTelegramMention(
     );
     return;
   }
-  const agentName = defaultAgent.name;
+  const agentName = getAgentDisplayLabel(defaultAgent);
 
   // 4. Send thinking placeholder message (reply to user's message in groups)
   const thinkingMessage = await sendThinkingMessage(client, chatId, agentName, {
@@ -111,13 +113,14 @@ export async function handleTelegramMention(
   );
 
   // 6b. Enrich prompt with user info and current message's photo
-  let enrichedPrompt = enrichTelegramPrompt(messageText, message.from);
-  enrichedPrompt = await appendPhotoContext(
-    enrichedPrompt,
+  const { prompt: messageContent, userInfoExtras } = enrichTelegramPrompt(
+    messageText,
+    message.from,
+  );
+  let enrichedPrompt = appendPhotoContext(
+    messageContent,
     message,
-    client,
-    installationId,
-    chatId,
+    installation.telegramBotId,
   );
 
   // 6c. Prepend reply context if this message is a reply to another message
@@ -151,6 +154,14 @@ export async function handleTelegramMention(
     sessionId: existingSessionId,
     prompt: enrichedPrompt,
     threadContext: executionContext,
+    userInfoExtras,
+    botId: installation.telegramBotId,
+    botUsername: installation.botUsername,
+    chatId,
+    chatType: message.chat.type,
+    messageId: String(message.message_id),
+    rootMessageId: rootMessageId ?? null,
+    messageThreadId: message.message_thread_id,
     userId: userLink.vm0UserId,
     apiStartTime,
     callbackContext: {

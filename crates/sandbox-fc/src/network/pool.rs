@@ -42,6 +42,7 @@ use std::collections::VecDeque;
 use std::fs::File;
 
 use nix::fcntl::{Flock, FlockArg};
+use sandbox::SandboxError;
 use tracing::{error, info, trace, warn};
 
 use crate::command::{exec, exec_ignore_errors};
@@ -102,6 +103,19 @@ pub struct NetnsPoolConfig {
     pub proxy_port: Option<u16>,
     /// DNS proxy port for DNS query redirect (only adds redirect rules when set).
     pub dns_port: Option<u16>,
+}
+
+/// Network pool config after host network prerequisites have been validated.
+pub(crate) struct CheckedNetnsPoolConfig {
+    inner: NetnsPoolConfig,
+}
+
+impl NetnsPoolConfig {
+    /// Validate host tools required by [`NetnsPool::create`].
+    pub(crate) fn into_checked(self) -> std::result::Result<CheckedNetnsPoolConfig, SandboxError> {
+        crate::prerequisites::check_network_prerequisites()?;
+        Ok(CheckedNetnsPoolConfig { inner: self })
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -682,6 +696,14 @@ impl NetnsPool {
     /// host IP forwarding and reconciles orphaned resources from any idle
     /// pool index before creating new namespaces.
     pub async fn create(config: NetnsPoolConfig) -> Result<Self> {
+        let config = config
+            .into_checked()
+            .map_err(|e| NetworkError::Prerequisite(e.to_string()))?;
+        Self::create_checked(config).await
+    }
+
+    pub(crate) async fn create_checked(config: CheckedNetnsPoolConfig) -> Result<Self> {
+        let config = config.inner;
         let lock_paths = LockPaths::new();
         let (index, lock) = acquire_pool_lock(&lock_paths)?;
 
@@ -1239,9 +1261,14 @@ pub async fn cleanup_namespaces_by_index(index: u32) {
 async fn reconcile_orphan_namespaces(locks: &LockPaths, own_index: u32, _own_lock: &Flock<File>) {
     // Own index: critical-path cleanup. Warm-up immediately afterwards
     // starts at ns_index 0 and will collide with any surviving orphan.
-    // `cleanup_namespaces_by_index` currently swallows failures — if it
-    // fails here, the caller will hit EEXIST during warm-up. Tracked in
-    // #10826 (return `Result` and fail-fast from `create()`).
+    // `cleanup_namespaces_by_index` swallows failures by design — its
+    // only fallible step (`ip netns list`) is near-infallible on a
+    // working runner, and the inner deletes go through
+    // `exec_ignore_errors` so a per-namespace `Result` would carry no
+    // signal. If reconcile silently fails here, the EEXIST that
+    // warm-up's `ip netns add` produces is the diagnostic — chronologically
+    // paired with the `error!` at the cleanup site. See #10826 for the
+    // full analysis (closed as won't-fix).
     cleanup_namespaces_by_index(own_index).await;
 
     // Other indexes: advisory cleanup for arbitrary prior runners. Failures

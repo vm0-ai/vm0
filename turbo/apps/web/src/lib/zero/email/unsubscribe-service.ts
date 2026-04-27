@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { users } from "../../../db/schema/user";
+import { users } from "@vm0/db/schema/user";
 
 /**
  * Check if a user has unsubscribed from system-initiated emails.

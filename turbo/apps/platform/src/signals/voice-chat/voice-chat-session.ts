@@ -3,7 +3,7 @@ import {
   zeroVoiceChatContract,
   type VoiceChatItemRole,
   type VoiceChatTask,
-} from "@vm0/core/contracts/zero-voice-chat";
+} from "@vm0/api-contracts/contracts/zero-voice-chat";
 import { resetSignal, throwIfAbort, onDomEventFn } from "../utils.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { zeroClient$ } from "../api-client.ts";
@@ -497,6 +497,7 @@ const setupWebRTC$ = command(
           "Content-Type": "application/sdp",
         },
         body: offer.sdp,
+        signal,
       },
     );
     signal.throwIfAborted();
@@ -573,6 +574,12 @@ const startAblyLoop$ = command(
       return false;
     });
 
+    // Prime once before subscribing so instructions reach the live DC session
+    // immediately. `setAblyLoop$` no longer primes its subscribers.
+    const done = await set(pollBody$, signal);
+    if (done) {
+      return;
+    }
     await set(setAblyLoop$, ablyTopic(sessionId), pollBody$, signal);
   },
 );

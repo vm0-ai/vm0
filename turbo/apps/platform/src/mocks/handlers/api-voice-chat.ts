@@ -11,7 +11,7 @@ import {
   type VoiceChatSession,
   type VoiceChatItem,
   type VoiceChatTask,
-} from "@vm0/core/contracts/zero-voice-chat";
+} from "@vm0/api-contracts/contracts/zero-voice-chat";
 import { mockApi } from "../msw-contract.ts";
 
 const MOCK_ORG_ID = "mock-org";

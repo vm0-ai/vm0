@@ -2,7 +2,7 @@ import { initClient } from "@ts-rest/core";
 import {
   zeroUserPreferencesContract,
   type UserPreferencesResponse,
-} from "@vm0/core/contracts/zero-user-preferences";
+} from "@vm0/api-contracts/contracts/zero-user-preferences";
 import { getClientConfig, handleError } from "../core/client-factory";
 
 /**

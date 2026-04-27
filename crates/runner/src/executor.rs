@@ -1,9 +1,11 @@
 use std::collections::HashMap;
+use std::panic::AssertUnwindSafe;
 use std::time::{Duration, Instant};
 
-use sandbox::{ExecRequest, Sandbox, SandboxConfig, SandboxFactory, SandboxId};
+use futures_util::FutureExt;
+use sandbox::{ExecRequest, Sandbox, SandboxConfig, SandboxFactory, SandboxId, SpawnOutputMode};
 use tokio_util::sync::CancellationToken;
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 
 use crate::ids::RunId;
 
@@ -18,7 +20,7 @@ const DEFAULT_EXEC_TIMEOUT: Duration = Duration::from_secs(300);
 
 use crate::error::{RunnerError, RunnerResult};
 use crate::http::HttpClient;
-use crate::idle_pool::IdleEntry;
+use crate::idle_pool::ReusableIdleSandbox;
 use crate::kmsg_log;
 use crate::paths::{HomePaths, LogPaths, guest};
 use crate::proxy::{self, ProxyRegistryHandle};
@@ -94,19 +96,15 @@ pub async fn execute_job(
     .await
     {
         Ok(outcome) => outcome,
-        Err(e) => {
-            error!(run_id = %run_id, error = %e, "job execution failed");
-            ExecuteOutcome {
-                exit_code: 1,
-                error: Some(e.to_string()),
-                sandbox: None,
-                source_ip: String::new(),
-                guest_session_id: None,
-            }
-        }
+        Err(e) => ExecuteOutcome {
+            exit_code: 1,
+            error: Some(e.to_string()),
+            sandbox: None,
+            source_ip: String::new(),
+            guest_session_id: None,
+        },
     };
 
-    info!(run_id = %run_id, exit_code = outcome.exit_code, "job finished");
     (outcome, telemetry)
 }
 
@@ -118,7 +116,7 @@ pub async fn execute_job(
 /// flush telemetry after firing `provider.complete` (see [`execute_job`] for
 /// rationale).
 pub async fn execute_job_reuse(
-    idle_entry: IdleEntry,
+    idle_sandbox: ReusableIdleSandbox,
     context: ExecutionContext,
     config: &ExecutorConfig,
     cancel: CancellationToken,
@@ -130,9 +128,9 @@ pub async fn execute_job_reuse(
     record_reuse_result(&mut telemetry, SandboxReuseResult::Reused);
     record_api_latency("api_to_vm_start", &context, &mut telemetry);
 
-    let source_ip = idle_entry.source_ip.clone();
-    let prev_storage = idle_entry.storage_fingerprints;
-    let sandbox = idle_entry.sandbox;
+    let source_ip = idle_sandbox.source_ip;
+    let prev_storage = idle_sandbox.storage_fingerprints;
+    let sandbox = idle_sandbox.sandbox;
 
     // execute_reused_sandbox never returns Err — it always returns the sandbox
     // in the outcome so the caller can stop + destroy it on failure.
@@ -147,7 +145,6 @@ pub async fn execute_job_reuse(
     )
     .await;
 
-    info!(run_id = %run_id, exit_code = outcome.exit_code, reused = true, "job finished");
     (outcome, telemetry)
 }
 
@@ -237,7 +234,7 @@ async fn execute_new_sandbox(
     if let Err(e) = sandbox.start().await {
         telemetry.record("vm_create", t.elapsed(), false, Some(&e.to_string()));
         unregister_proxy(config, context, &source_ip).await;
-        factory.destroy(sandbox).await;
+        destroy_sandbox_panic_safe(factory, sandbox).await;
         return Err(e.into());
     }
     telemetry.record("vm_create", t.elapsed(), true, None);
@@ -284,6 +281,16 @@ async fn execute_new_sandbox(
         source_ip,
         guest_session_id,
     })
+}
+
+async fn destroy_sandbox_panic_safe(factory: &dyn SandboxFactory, sandbox: Box<dyn Sandbox>) {
+    if AssertUnwindSafe(factory.destroy(sandbox))
+        .catch_unwind()
+        .await
+        .is_err()
+    {
+        warn!("sandbox destroy panicked after start failure");
+    }
 }
 
 /// Run a job inside a reused (kept-alive) sandbox.
@@ -421,12 +428,6 @@ async fn run_in_sandbox(
     telemetry: &mut JobTelemetry,
     cancel: CancellationToken,
 ) -> RunnerResult<(i32, Option<String>)> {
-    // System log file — all guest process output goes here for telemetry upload.
-    let log_file = format!(
-        "{GUEST_SYSTEM_LOG_PREFIX}{}{GUEST_SYSTEM_LOG_SUFFIX}",
-        context.run_id
-    );
-
     // 1. Fix guest clock and reseed entropy (must happen before HTTPS calls).
     //    Needed after snapshot restore (frozen clock) and after idle reuse (drifted clock).
     if start.restore_guest_state {
@@ -464,7 +465,7 @@ async fn run_in_sandbox(
                     telemetry,
                 )
                 .await?;
-                download_storages(sandbox, context, &effective, &log_file).await
+                download_storages(sandbox, context, &effective).await
             }
             .await
         } else {
@@ -504,8 +505,8 @@ async fn run_in_sandbox(
     info!(run_id = %context.run_id, count = env_refs.len(), "passing env vars via vsock");
 
     // 6. Spawn agent — stdout streamed to host via vsock, stderr merged into stdout.
-    //    vsock-guest writes stdout to the guest log file (for telemetry) AND streams
-    //    chunks to the host where we write them to the host log file in real-time.
+    //    guest-agent owns the guest-side system log for telemetry; the runner
+    //    separately writes streamed chunks to the host log file in real time.
     let agent_cmd = format!("{} 2>&1", guest::RUN_AGENT);
     info!(run_id = %context.run_id, "spawning agent");
 
@@ -520,7 +521,9 @@ async fn run_in_sandbox(
                 env: &env_refs,
                 sudo: false,
             },
-            Some(&log_file),
+            SpawnOutputMode::Stream {
+                guest_log_path: None,
+            },
         )
         .await;
 
@@ -801,10 +804,11 @@ const GUEST_METRICS_LOG_SUFFIX: &str = ".jsonl";
 
 /// Copy guest log files to host (best-effort, post-job).
 ///
-/// The system log is also streamed to the host in real-time via vsock stdout
-/// streaming during the agent phase, but the final copy here overwrites with
-/// the complete file (includes download/restore output written before streaming
-/// started).
+/// The agent phase is streamed to the host in real time via vsock stdout
+/// chunks. The final copy here overwrites with the complete guest-side file,
+/// including setup output written before agent streaming starts. Agent stdout
+/// that is not written by guest-agent's logger is intentionally not part of
+/// the final system log.
 async fn copy_guest_logs(sandbox: &dyn Sandbox, context: &ExecutionContext, log_paths: &LogPaths) {
     let run_id = context.run_id;
     let files = [
@@ -1061,11 +1065,18 @@ fn filter_unchanged_storages(
 }
 
 /// Download storage volumes into the guest.
+fn guest_download_command() -> String {
+    format!("{} {}", guest::DOWNLOAD_BIN, guest::STORAGE_MANIFEST)
+}
+
+fn guest_download_env(run_id: &str) -> [(&'static str, &str); 1] {
+    [("VM0_RUN_ID", run_id)]
+}
+
 async fn download_storages(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
     manifest: &StorageManifest,
-    log_file: &str,
 ) -> RunnerResult<()> {
     let manifest_json = serde_json::to_vec(manifest)
         .map_err(|e| RunnerError::Internal(format!("manifest json: {e}")))?;
@@ -1073,17 +1084,15 @@ async fn download_storages(
         .write_file(guest::STORAGE_MANIFEST, &manifest_json)
         .await?;
 
-    let download_cmd = format!(
-        "{} {} >> {log_file} 2>&1",
-        guest::DOWNLOAD_BIN,
-        guest::STORAGE_MANIFEST
-    );
+    let download_cmd = guest_download_command();
+    let run_id = context.run_id.to_string();
+    let download_env = guest_download_env(&run_id);
     info!(run_id = %context.run_id, "downloading storages");
     let result = sandbox
         .exec(&ExecRequest {
             cmd: &download_cmd,
             timeout: DEFAULT_EXEC_TIMEOUT,
-            env: &[],
+            env: &download_env,
             sudo: false,
         })
         .await?;
@@ -1231,8 +1240,13 @@ fn build_env_json(
     // Artifacts config (multi-mount).
     //
     // Emit a single `VM0_ARTIFACTS` env var containing a JSON array of
-    // `{name, mountPath, versionId}` objects. Guest-agent parses this on
-    // startup and iterates the list when taking snapshots at run end.
+    // `{name, mountPath, storageId, versionId}` objects. Guest-agent
+    // parses this on startup and iterates the list when taking snapshots
+    // at run end. The shape here must stay lockstep with guest-agent's
+    // `ArtifactEnv` — the two ship as one unit via `include_bytes!`, and
+    // `ArtifactEnv` deserializes strict (no `serde(default)`), so a
+    // field drop here will panic the VM at startup instead of silently
+    // producing empty strings.
     //
     // Empty-list case: do not set the env var at all (matches the prior
     // "unset = no artifact" convention).
@@ -1246,6 +1260,7 @@ fn build_env_json(
                 serde_json::json!({
                     "name": a.vas_storage_name,
                     "mountPath": a.mount_path,
+                    "storageId": a.vas_storage_id,
                     "versionId": a.vas_version_id,
                 })
             })
@@ -1320,8 +1335,41 @@ mod tests {
     use super::*;
     use crate::ids::RunId;
     use crate::types::{ArtifactEntry, ResumeSession, StorageEntry, StorageManifest};
+    use async_trait::async_trait;
     use sandbox_mock::MockSandboxFactory;
     use std::sync::Arc;
+
+    struct DestroyPanicFactory {
+        inner: MockSandboxFactory,
+    }
+
+    #[async_trait]
+    impl SandboxFactory for DestroyPanicFactory {
+        fn name(&self) -> &str {
+            "destroy-panic"
+        }
+
+        fn config_hash(&self) -> String {
+            "destroy-panic".into()
+        }
+
+        async fn startup(&mut self) -> sandbox::Result<()> {
+            self.inner.startup().await
+        }
+
+        async fn create(&self, config: SandboxConfig) -> sandbox::Result<Box<dyn Sandbox>> {
+            self.inner.create(config).await
+        }
+
+        #[allow(clippy::panic)]
+        async fn destroy(&self, _sandbox: Box<dyn Sandbox>) {
+            panic!("simulated destroy panic");
+        }
+
+        async fn shutdown(&mut self) {
+            self.inner.shutdown().await;
+        }
+    }
 
     fn build_env_for_test(ctx: &ExecutionContext, api_url: &str) -> HashMap<String, String> {
         let sid = SandboxId::new_v4().to_string();
@@ -1428,6 +1476,7 @@ mod tests {
                 archive_url: None,
                 cached: false,
                 vas_storage_name: "my-vol".into(),
+                vas_storage_id: "sid-1".into(),
                 vas_version_id: "v1".into(),
             }],
             cleanup_paths: vec![],
@@ -1439,6 +1488,7 @@ mod tests {
         assert_eq!(parsed.len(), 1);
         assert_eq!(parsed[0]["name"], "my-vol");
         assert_eq!(parsed[0]["mountPath"], "/artifacts");
+        assert_eq!(parsed[0]["storageId"], "sid-1");
         assert_eq!(parsed[0]["versionId"], "v1");
         // Legacy singleton env vars must no longer be emitted.
         assert!(!env.contains_key("VM0_ARTIFACT_DRIVER"));
@@ -1458,6 +1508,7 @@ mod tests {
                     archive_url: None,
                     cached: false,
                     vas_storage_name: "art-a".into(),
+                    vas_storage_id: "sid-a".into(),
                     vas_version_id: "v1".into(),
                 },
                 ArtifactEntry {
@@ -1465,6 +1516,7 @@ mod tests {
                     archive_url: None,
                     cached: false,
                     vas_storage_name: "art-b".into(),
+                    vas_storage_id: "sid-b".into(),
                     vas_version_id: "v2".into(),
                 },
             ],
@@ -1477,8 +1529,10 @@ mod tests {
         assert_eq!(parsed.len(), 2);
         assert_eq!(parsed[0]["name"], "art-a");
         assert_eq!(parsed[0]["mountPath"], "/workspace");
+        assert_eq!(parsed[0]["storageId"], "sid-a");
         assert_eq!(parsed[1]["name"], "art-b");
         assert_eq!(parsed[1]["mountPath"], "/data");
+        assert_eq!(parsed[1]["storageId"], "sid-b");
     }
 
     #[test]
@@ -1969,8 +2023,34 @@ mod tests {
     // Sandbox-interacting function tests (using sandbox-mock)
     // -----------------------------------------------------------------------
 
-    use sandbox::{ExecResult, SandboxError};
+    use sandbox::{
+        ExecResult, SandboxError, SandboxInitializationPhase, SandboxOperation,
+        SandboxOperationReason,
+    };
     use sandbox_mock::MockSandbox;
+
+    fn sandbox_exec_error(message: impl Into<String>) -> SandboxError {
+        SandboxError::Operation {
+            operation: SandboxOperation::Exec,
+            reason: SandboxOperationReason::Guest,
+            message: message.into(),
+        }
+    }
+
+    fn sandbox_write_file_error(message: impl Into<String>) -> SandboxError {
+        SandboxError::Operation {
+            operation: SandboxOperation::WriteFile,
+            reason: SandboxOperationReason::Guest,
+            message: message.into(),
+        }
+    }
+
+    fn sandbox_create_error(message: impl Into<String>) -> SandboxError {
+        SandboxError::Initialization {
+            phase: SandboxInitializationPhase::SandboxAllocation,
+            message: message.into(),
+        }
+    }
 
     #[tokio::test]
     async fn fix_guest_clock_calls_date_command() {
@@ -1982,7 +2062,7 @@ mod tests {
     #[tokio::test]
     async fn fix_guest_clock_propagates_exec_error() {
         let sandbox = MockSandbox::new("test");
-        sandbox.push_exec_result(Err(SandboxError::ExecFailed("timeout".into())));
+        sandbox.push_exec_result(Err(sandbox_exec_error("timeout")));
         let result = fix_guest_clock(&sandbox).await;
         assert!(result.is_err());
     }
@@ -1998,7 +2078,7 @@ mod tests {
     async fn reseed_guest_entropy_propagates_exec_error() {
         let sandbox = MockSandbox::new("test");
         // Sandbox-level failure (vsock connection issue).
-        sandbox.push_exec_result(Err(SandboxError::ExecFailed("reseed failed".into())));
+        sandbox.push_exec_result(Err(sandbox_exec_error("reseed failed")));
         let result = reseed_guest_entropy(&sandbox).await;
         assert!(result.is_err());
     }
@@ -2033,7 +2113,7 @@ mod tests {
         let ctx = minimal_context();
         // No timezone — should skip without calling exec.
         // Push an error to detect if exec is called unexpectedly.
-        sandbox.push_exec_result(Err(SandboxError::ExecFailed("should not be called".into())));
+        sandbox.push_exec_result(Err(sandbox_exec_error("should not be called")));
         sync_guest_timezone(&sandbox, &ctx).await;
     }
 
@@ -2043,7 +2123,7 @@ mod tests {
         let mut ctx = minimal_context();
         ctx.user_timezone = Some("$(rm -rf /)".into());
         // Push an error to detect if exec is called — it should NOT be.
-        sandbox.push_exec_result(Err(SandboxError::ExecFailed("should not be called".into())));
+        sandbox.push_exec_result(Err(sandbox_exec_error("should not be called")));
         sync_guest_timezone(&sandbox, &ctx).await;
     }
 
@@ -2052,7 +2132,7 @@ mod tests {
         let sandbox = MockSandbox::new("test");
         let mut ctx = minimal_context();
         ctx.user_timezone = Some(String::new());
-        sandbox.push_exec_result(Err(SandboxError::ExecFailed("should not be called".into())));
+        sandbox.push_exec_result(Err(sandbox_exec_error("should not be called")));
         sync_guest_timezone(&sandbox, &ctx).await;
     }
 
@@ -2095,7 +2175,7 @@ mod tests {
     #[tokio::test]
     async fn read_guest_error_file_returns_none_on_exec_error() {
         let sandbox = MockSandbox::new("test");
-        sandbox.push_exec_result(Err(SandboxError::ExecFailed("vsock timeout".into())));
+        sandbox.push_exec_result(Err(sandbox_exec_error("vsock timeout")));
         let msg = read_guest_error_file(&sandbox, RunId::nil()).await;
         assert!(msg.is_none());
     }
@@ -2116,9 +2196,30 @@ mod tests {
             artifacts: vec![],
             cleanup_paths: vec![],
         };
-        download_storages(&sandbox, &ctx, &manifest, "/tmp/log")
-            .await
-            .unwrap();
+        download_storages(&sandbox, &ctx, &manifest).await.unwrap();
+    }
+
+    #[test]
+    fn guest_download_command_uses_guest_common_system_log_without_shell_redirect() {
+        let cmd = guest_download_command();
+
+        assert_eq!(
+            cmd,
+            "/usr/local/bin/guest-download /tmp/storage-manifest.json"
+        );
+        assert!(!cmd.contains(">>"));
+        assert!(!cmd.contains("2>&1"));
+        assert!(!cmd.contains("--system-log"));
+    }
+
+    #[test]
+    fn guest_download_env_includes_run_id_for_guest_common_logs() {
+        let ctx = minimal_context();
+        let run_id = ctx.run_id.to_string();
+        let env = guest_download_env(&run_id);
+
+        assert_eq!(env[0].0, "VM0_RUN_ID");
+        assert_eq!(env[0].1, run_id);
     }
 
     #[tokio::test]
@@ -2136,7 +2237,7 @@ mod tests {
             artifacts: vec![],
             cleanup_paths: vec![],
         };
-        let err = download_storages(&sandbox, &ctx, &manifest, "/tmp/log")
+        let err = download_storages(&sandbox, &ctx, &manifest)
             .await
             .unwrap_err();
         assert!(err.to_string().contains("storage download failed"));
@@ -2178,7 +2279,7 @@ mod tests {
         };
         // Should return Ok without calling exec or write_file.
         // Push an error to detect unexpected calls.
-        sandbox.push_exec_result(Err(SandboxError::ExecFailed("should not be called".into())));
+        sandbox.push_exec_result(Err(sandbox_exec_error("should not be called")));
         restore_session(&sandbox, &ctx, &session).await.unwrap();
     }
 
@@ -2206,6 +2307,7 @@ mod tests {
                 archive_url: None,
                 cached: false,
                 vas_storage_name: "memory".into(),
+                vas_storage_id: String::new(),
                 vas_version_id: "v2".into(),
             }],
             cleanup_paths: vec![],
@@ -2232,6 +2334,13 @@ mod tests {
         let sandbox = MockSandbox::new("test");
         let ctx = minimal_context();
 
+        tokio::fs::write(
+            log_paths.system_log(ctx.run_id),
+            b"transient host-streamed stdout\n",
+        )
+        .await
+        .unwrap();
+
         // Queue two exec results: system log + metrics log
         sandbox.push_exec_result(Ok(ExecResult {
             exit_code: 0,
@@ -2250,6 +2359,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(system_log, "system log line 1\nsystem log line 2\n");
+        assert!(!system_log.contains("transient host-streamed stdout"));
 
         let metrics_log = tokio::fs::read_to_string(log_paths.metrics_log(ctx.run_id))
             .await
@@ -2290,8 +2400,8 @@ mod tests {
         let sandbox = MockSandbox::new("test");
         let ctx = minimal_context();
 
-        sandbox.push_exec_result(Err(SandboxError::ExecFailed("vsock down".into())));
-        sandbox.push_exec_result(Err(SandboxError::ExecFailed("vsock down".into())));
+        sandbox.push_exec_result(Err(sandbox_exec_error("vsock down")));
+        sandbox.push_exec_result(Err(sandbox_exec_error("vsock down")));
 
         copy_guest_logs(&sandbox, &ctx, &log_paths).await;
 
@@ -2348,14 +2458,14 @@ mod tests {
     #[tokio::test]
     async fn download_storages_fails_on_write_file_error() {
         let sandbox = MockSandbox::new("test");
-        sandbox.push_write_file_result(Err(SandboxError::ExecFailed("vsock write failed".into())));
+        sandbox.push_write_file_result(Err(sandbox_write_file_error("vsock write failed")));
         let ctx = minimal_context();
         let manifest = StorageManifest {
             storages: vec![],
             artifacts: vec![],
             cleanup_paths: vec![],
         };
-        let err = download_storages(&sandbox, &ctx, &manifest, "/tmp/log")
+        let err = download_storages(&sandbox, &ctx, &manifest)
             .await
             .unwrap_err();
         assert!(err.to_string().contains("vsock write failed"), "got: {err}");
@@ -2370,7 +2480,7 @@ mod tests {
             session_history: r#"{"type":"init"}"#.into(),
         };
         // First exec (mkdir) succeeds by default, write_file fails.
-        sandbox.push_write_file_result(Err(SandboxError::ExecFailed("disk full".into())));
+        sandbox.push_write_file_result(Err(sandbox_write_file_error("disk full")));
         let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
         assert!(err.to_string().contains("disk full"), "got: {err}");
     }
@@ -2384,7 +2494,7 @@ mod tests {
             session_history: "data".into(),
         };
         // mkdir exec fails
-        sandbox.push_exec_result(Err(SandboxError::ExecFailed("vsock down".into())));
+        sandbox.push_exec_result(Err(sandbox_exec_error("vsock down")));
         let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
         assert!(err.to_string().contains("vsock down"), "got: {err}");
     }
@@ -2419,6 +2529,11 @@ mod tests {
             memory_mb: 2048,
             restore_guest_state: false,
         }
+    }
+
+    fn test_budget_lease() -> crate::resource_budget::BudgetLease {
+        let budget = Arc::new(crate::resource_budget::ResourceBudget::new(1, 1, 1.0, 0));
+        crate::resource_budget::ResourceBudget::try_reserve_lease(&budget, 2, 2048).unwrap()
     }
 
     fn test_telemetry(config: &ExecutorConfig, ctx: &ExecutionContext) -> JobTelemetry {
@@ -2466,6 +2581,27 @@ mod tests {
                 .unwrap();
         assert_eq!(exit_code, 0);
         assert!(error_msg.is_none());
+    }
+
+    #[tokio::test]
+    async fn execute_inner_launches_agent_stream_only_without_guest_log_tee() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        let mut factory = sandbox_mock::MockSandboxFactory::with_overrides(overrides.clone());
+        factory.startup().await.unwrap();
+
+        let (exit_code, error_msg) =
+            run_execute_inner(&factory, &minimal_context(), &config, &default_params())
+                .await
+                .unwrap();
+        assert_eq!(exit_code, 0);
+        assert!(error_msg.is_none());
+
+        let calls = overrides.spawn_watch_calls();
+        assert_eq!(calls.len(), 1);
+        assert!(calls[0].streams_stdout);
+        assert!(calls[0].guest_log_path.is_none());
     }
 
     #[tokio::test]
@@ -2534,7 +2670,7 @@ mod tests {
         let config = test_executor_config(dir.path()).await;
         let mut factory = MockSandboxFactory::new();
         factory.startup().await.unwrap();
-        factory.push_create_result(Err(SandboxError::CreationFailed("no free devices".into())));
+        factory.push_create_result(Err(sandbox_create_error("no free devices")));
 
         let err = run_execute_inner(&factory, &minimal_context(), &config, &default_params())
             .await
@@ -2563,6 +2699,41 @@ mod tests {
         assert_eq!(exit_code, 1);
         let error = error.unwrap();
         assert!(error.contains("wait timeout"), "got: {error}");
+    }
+
+    #[tokio::test]
+    async fn execute_inner_start_failure_destroy_panic_returns_start_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        overrides.push_start_result(Err(SandboxError::Start {
+            message: "boot failed".into(),
+        }));
+        let mut factory = DestroyPanicFactory {
+            inner: MockSandboxFactory::with_overrides(overrides),
+        };
+        factory.startup().await.unwrap();
+
+        let ctx = minimal_context();
+        let mut telemetry = test_telemetry(&config, &ctx);
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let result = execute_new_sandbox(
+            &factory,
+            &ctx,
+            NewSandboxDispatch {
+                id: SandboxId::new_v4(),
+                reuse_result: SandboxReuseResult::PoolMiss,
+            },
+            &config,
+            &default_params(),
+            &mut telemetry,
+            cancel,
+        )
+        .await;
+
+        assert!(result.is_err(), "start failure must return an error");
+        let err = result.err().unwrap();
+        assert!(err.to_string().contains("boot failed"), "got: {err}");
     }
 
     #[tokio::test]
@@ -2596,7 +2767,7 @@ mod tests {
         let config = test_executor_config(dir.path()).await;
         let mut factory = MockSandboxFactory::new();
         factory.startup().await.unwrap();
-        factory.push_create_result(Err(SandboxError::CreationFailed("boom".into())));
+        factory.push_create_result(Err(sandbox_create_error("boom")));
 
         let cancel = tokio_util::sync::CancellationToken::new();
         let (outcome, _telemetry) = execute_job(
@@ -2653,8 +2824,7 @@ mod tests {
             session_id: "test-session".into(),
             sandbox_id: SandboxId::new_v4(),
             profile_name: "vm0/default".into(),
-            vcpu: 2,
-            memory_mb: 2048,
+            budget_lease: test_budget_lease(),
             source_ip: outcome.source_ip,
             parked_at: std::time::Instant::now(),
             idle_timeout: std::time::Duration::from_secs(300),
@@ -2662,9 +2832,10 @@ mod tests {
         };
 
         // Reuse the sandbox for a second turn
+        let (idle_sandbox, _lease) = idle_entry.into_reuse_parts();
         let cancel = tokio_util::sync::CancellationToken::new();
         let (reuse_outcome, _telemetry) =
-            execute_job_reuse(idle_entry, minimal_context(), &config, cancel).await;
+            execute_job_reuse(idle_sandbox, minimal_context(), &config, cancel).await;
         assert_eq!(reuse_outcome.exit_code, 0);
         assert!(reuse_outcome.error.is_none());
         assert!(reuse_outcome.sandbox.is_some());
@@ -2710,8 +2881,7 @@ mod tests {
             session_id: "test-session".into(),
             sandbox_id: SandboxId::new_v4(),
             profile_name: "vm0/default".into(),
-            vcpu: 2,
-            memory_mb: 2048,
+            budget_lease: test_budget_lease(),
             source_ip: outcome.source_ip,
             parked_at: std::time::Instant::now(),
             idle_timeout: std::time::Duration::from_secs(300),
@@ -2729,8 +2899,9 @@ mod tests {
         });
 
         let cancel = tokio_util::sync::CancellationToken::new();
+        let (idle_sandbox, _lease) = idle_entry.into_reuse_parts();
         let (reuse_outcome, _telemetry) =
-            execute_job_reuse(idle_entry, ctx2, &config, cancel).await;
+            execute_job_reuse(idle_sandbox, ctx2, &config, cancel).await;
         assert_eq!(reuse_outcome.exit_code, 0);
         assert!(reuse_outcome.sandbox.is_some());
     }
@@ -2775,8 +2946,7 @@ mod tests {
             session_id: "test-session".into(),
             sandbox_id: SandboxId::new_v4(),
             profile_name: "vm0/default".into(),
-            vcpu: 2,
-            memory_mb: 2048,
+            budget_lease: test_budget_lease(),
             source_ip: outcome.source_ip,
             parked_at: std::time::Instant::now(),
             idle_timeout: std::time::Duration::from_secs(300),
@@ -2794,8 +2964,9 @@ mod tests {
 
         // Execute reuse
         let cancel = tokio_util::sync::CancellationToken::new();
+        let (idle_sandbox, _lease) = reuse_entry.into_reuse_parts();
         let (reuse_outcome, _telemetry) =
-            execute_job_reuse(reuse_entry, minimal_context(), &config, cancel).await;
+            execute_job_reuse(idle_sandbox, minimal_context(), &config, cancel).await;
         assert_eq!(reuse_outcome.exit_code, 0);
         assert!(reuse_outcome.sandbox.is_some());
     }
@@ -2818,8 +2989,7 @@ mod tests {
             session_id: "test-session".into(),
             sandbox_id: SandboxId::new_v4(),
             profile_name: "vm0/default".into(),
-            vcpu: 2,
-            memory_mb: 2048,
+            budget_lease: test_budget_lease(),
             source_ip: "10.0.0.1".into(),
             parked_at: std::time::Instant::now(),
             idle_timeout: std::time::Duration::from_secs(300),
@@ -2843,7 +3013,7 @@ mod tests {
 
         // Build a MockSandbox that fails on the first exec (fix_guest_clock)
         let sandbox = MockSandbox::new("reuse-clock-fail");
-        sandbox.push_exec_result(Err(SandboxError::ExecFailed("vsock broken".into())));
+        sandbox.push_exec_result(Err(sandbox_exec_error("vsock broken")));
 
         let idle_entry = crate::idle_pool::IdleEntry {
             sandbox: Box::new(sandbox),
@@ -2853,8 +3023,7 @@ mod tests {
             session_id: "sess-1".into(),
             sandbox_id: SandboxId::new_v4(),
             profile_name: "vm0/default".into(),
-            vcpu: 2,
-            memory_mb: 2048,
+            budget_lease: test_budget_lease(),
             source_ip: "10.0.0.1".into(),
             parked_at: std::time::Instant::now(),
             idle_timeout: std::time::Duration::from_secs(300),
@@ -2862,8 +3031,9 @@ mod tests {
         };
 
         let cancel = tokio_util::sync::CancellationToken::new();
+        let (idle_sandbox, _lease) = idle_entry.into_reuse_parts();
         let (outcome, _telemetry) =
-            execute_job_reuse(idle_entry, minimal_context(), &config, cancel).await;
+            execute_job_reuse(idle_sandbox, minimal_context(), &config, cancel).await;
 
         assert_eq!(outcome.exit_code, 1);
         assert!(outcome.error.unwrap().contains("vsock broken"));
@@ -2886,7 +3056,7 @@ mod tests {
             stdout: Vec::new(),
             stderr: Vec::new(),
         }));
-        sandbox.push_exec_result(Err(SandboxError::ExecFailed("reseed timeout".into())));
+        sandbox.push_exec_result(Err(sandbox_exec_error("reseed timeout")));
 
         let idle_entry = crate::idle_pool::IdleEntry {
             sandbox: Box::new(sandbox),
@@ -2896,8 +3066,7 @@ mod tests {
             session_id: "sess-1".into(),
             sandbox_id: SandboxId::new_v4(),
             profile_name: "vm0/default".into(),
-            vcpu: 2,
-            memory_mb: 2048,
+            budget_lease: test_budget_lease(),
             source_ip: "10.0.0.1".into(),
             parked_at: std::time::Instant::now(),
             idle_timeout: std::time::Duration::from_secs(300),
@@ -2905,8 +3074,9 @@ mod tests {
         };
 
         let cancel = tokio_util::sync::CancellationToken::new();
+        let (idle_sandbox, _lease) = idle_entry.into_reuse_parts();
         let (outcome, _telemetry) =
-            execute_job_reuse(idle_entry, minimal_context(), &config, cancel).await;
+            execute_job_reuse(idle_sandbox, minimal_context(), &config, cancel).await;
 
         assert_eq!(outcome.exit_code, 1);
         assert!(outcome.error.unwrap().contains("reseed timeout"));
@@ -2925,7 +3095,7 @@ mod tests {
         let sandbox = MockSandbox::new("reuse-session-fail");
         // clock fix and reseed succeed (default), then mkdir exec succeeds,
         // but write_file for session history fails.
-        sandbox.push_write_file_result(Err(SandboxError::ExecFailed("disk full".into())));
+        sandbox.push_write_file_result(Err(sandbox_write_file_error("disk full")));
 
         let mut ctx = minimal_context();
         ctx.resume_session = Some(ResumeSession {
@@ -2941,8 +3111,7 @@ mod tests {
             session_id: "sess-abc".into(),
             sandbox_id: SandboxId::new_v4(),
             profile_name: "vm0/default".into(),
-            vcpu: 2,
-            memory_mb: 2048,
+            budget_lease: test_budget_lease(),
             source_ip: "10.0.0.1".into(),
             parked_at: std::time::Instant::now(),
             idle_timeout: std::time::Duration::from_secs(300),
@@ -2950,7 +3119,8 @@ mod tests {
         };
 
         let cancel = tokio_util::sync::CancellationToken::new();
-        let (outcome, _telemetry) = execute_job_reuse(idle_entry, ctx, &config, cancel).await;
+        let (idle_sandbox, _lease) = idle_entry.into_reuse_parts();
+        let (outcome, _telemetry) = execute_job_reuse(idle_sandbox, ctx, &config, cancel).await;
 
         assert_eq!(outcome.exit_code, 1);
         assert!(outcome.error.unwrap().contains("disk full"));
@@ -2998,6 +3168,7 @@ mod tests {
             archive_url: Some(url.into()),
             cached: false,
             vas_storage_name: name.into(),
+            vas_storage_id: String::new(),
             vas_version_id: ver.into(),
         }
     }
@@ -3120,6 +3291,7 @@ mod tests {
             archive_url: Some("https://s3/a-v2".into()),
             cached: false,
             vas_storage_name: "art-a".into(),
+            vas_storage_id: String::new(),
             vas_version_id: "v2".into(),
         };
         let art_b = ArtifactEntry {
@@ -3127,6 +3299,7 @@ mod tests {
             archive_url: Some("https://s3/b-v1".into()),
             cached: false,
             vas_storage_name: "art-b".into(),
+            vas_storage_id: String::new(),
             vas_version_id: "v1".into(),
         };
         let manifest = StorageManifest {
@@ -3283,6 +3456,7 @@ mod tests {
                 archive_url: None, // API returned null
                 cached: false,
                 vas_storage_name: "my-art".into(),
+                vas_storage_id: String::new(),
                 vas_version_id: "v2".into(),
             }],
             cleanup_paths: vec![],
@@ -3441,8 +3615,7 @@ mod tests {
             session_id: "test-session".into(),
             sandbox_id: SandboxId::new_v4(),
             profile_name: "vm0/default".into(),
-            vcpu: 2,
-            memory_mb: 2048,
+            budget_lease: test_budget_lease(),
             source_ip: outcome.source_ip,
             parked_at: std::time::Instant::now(),
             idle_timeout: std::time::Duration::from_secs(300),
@@ -3450,8 +3623,9 @@ mod tests {
         };
 
         let cancel = tokio_util::sync::CancellationToken::new();
+        let (idle_sandbox, _lease) = idle_entry.into_reuse_parts();
         let (_outcome, telemetry) =
-            execute_job_reuse(idle_entry, minimal_context(), &config, cancel).await;
+            execute_job_reuse(idle_sandbox, minimal_context(), &config, cancel).await;
 
         let ops = telemetry.pending_ops_snapshot();
         let reuse_events: Vec<_> = ops

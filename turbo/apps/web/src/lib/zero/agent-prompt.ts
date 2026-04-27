@@ -75,6 +75,7 @@ function buildAgentToolsPrompt(): string {
     "- Schedule recurring tasks: `zero schedule --help`. Do NOT use /loop, cron tools (CronCreate, CronList, CronDelete), or ScheduleWakeup — they are not available.",
     "- Slack messaging, file uploads, and file downloads: `zero slack --help`. Your replies are automatically sent to the originating thread — only use these commands for different channels/threads. Never use SLACK_TOKEN directly — it's a user OAuth token.",
     "- Download a Slack file attachment to local disk: `zero slack download-file -h` for usage and how to read different file types. Use this whenever a Slack message context includes a `[Slack file]` block.",
+    "- Download a Telegram file attachment to local disk: `zero telegram download-file -h` for usage and how to read different file types. Use this whenever a Telegram message context includes a `[Telegram file]` block; pass the block's `[Bot ID]` value with `--bot-id`.",
     "- Download a web-uploaded file to local disk: `zero web download-file -h` for usage and how to read different file types. Use this whenever a web chat message includes a `[Web file]` block.",
     "- Upload a local file and get a shareable URL: `zero web upload-file -h` for usage. Outputs JSON including a 7-day presigned URL you can share with the user or include in a message.",
     "- Third-party services (GitHub, Slack, Notion, 100+ more) are accessed via connectors that expose env vars like `GH_TOKEN`. Find: `zero connector search <keyword>`. List connected: `zero connector list`. Inspect: `zero connector status <type>`.",
@@ -86,41 +87,5 @@ function buildAgentToolsPrompt(): string {
     "- Manage custom skills: `zero skill --help`.",
     "- Send a direct message to the user via web chat: `zero chat message send --help`.",
     "- Report issues to the dev team: `zero developer-support --help`. Requires a two-step consent flow: (1) call without --consent-code to get a code, (2) ask the user to type it, (3) call again with --consent-code. Never submit without the user typing the consent code.",
-  ].join("\n");
-}
-
-/**
- * Build behavioral guidance for proactive skill management.
- * Injected when the AutoSkill feature switch is enabled.
- */
-export function buildAutoSkillGuidance(): string {
-  return [
-    "# Skill Management Guidance",
-    "",
-    "You can create and maintain custom skills — reusable procedures that persist across sessions.",
-    "",
-    "## When to Create a Skill",
-    "- After completing a complex, multi-step task (5+ tool calls) that may recur",
-    "- After overcoming errors through a non-obvious workflow",
-    "- When the user asks you to remember a procedure",
-    "",
-    "## When to Update a Skill",
-    "- When using a skill and finding it outdated, incomplete, or incorrect — fix it immediately",
-    "",
-    "## When NOT to Create a Skill",
-    "- For simple one-off tasks",
-    "- For tasks that are already well-documented in existing skills",
-    "",
-    "## How to Manage Skills",
-    "- Create: `zero skill create <name> --dir <path>` (directory must contain SKILL.md)",
-    "- Update: `zero skill edit <name> --dir <path>`",
-    "- View: `zero skill view <name>`",
-    "- List: `zero skill list`",
-    "- Bind to agent: `zero agent edit $ZERO_AGENT_ID --add-skill <name>`",
-    "",
-    "## Quality Standards",
-    "Skills should include: trigger conditions, numbered steps with exact commands, common pitfalls, and verification steps.",
-    "",
-    "Always confirm with the user before creating or deleting a skill.",
   ].join("\n");
 }

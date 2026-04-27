@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { telegramInstallations } from "../../../../db/schema/telegram-installation";
+import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
 import { decryptSecretValue } from "../../../shared/crypto/secrets-encryption";
 import { env } from "../../../../env";
 import { createTelegramClient, sendMessage, deleteMessage } from "../client";
@@ -12,15 +12,17 @@ import {
   lookupTelegramThreadSession,
   storeTelegramMessage,
   getWorkspaceAgent,
+  getAgentDisplayLabel,
   resolveSessionCompose,
   resolveUserLink,
   buildConnectUrl,
   buildAgentLogsUrl,
   buildLogsUrl,
+  formatTelegramConnectPrompt,
 } from "./shared";
 import { fetchTelegramContext } from "../context";
 import { runAgentForTelegram } from "./run-agent";
-import { buildTelegramErrorResponse, escapeHtml } from "../format";
+import { buildTelegramErrorResponse } from "../format";
 import { logger } from "../../../shared/logger";
 import type { TelegramHandlerUpdate } from "./types";
 
@@ -47,7 +49,7 @@ export async function handleTelegramDirectMessage(
   const [installation] = await globalThis.services.db
     .select()
     .from(telegramInstallations)
-    .where(eq(telegramInstallations.id, installationId))
+    .where(eq(telegramInstallations.telegramBotId, installationId))
     .limit(1);
 
   if (!installation) {
@@ -66,16 +68,11 @@ export async function handleTelegramDirectMessage(
 
   if (!userLink) {
     const connectUrl = buildConnectUrl(
-      installationId,
       installation.telegramBotId,
       fromUserId,
       botToken,
     );
-    await sendMessage(
-      client,
-      chatId,
-      `🔗 Connect your account to get started:\n\n<a href="${escapeHtml(connectUrl)}">Open Platform</a>`,
-    );
+    await sendMessage(client, chatId, formatTelegramConnectPrompt(connectUrl));
     return;
   }
 
@@ -90,7 +87,7 @@ export async function handleTelegramDirectMessage(
     );
     return;
   }
-  const agentName = defaultAgent.name;
+  const agentName = getAgentDisplayLabel(defaultAgent);
 
   // 4. Send thinking placeholder message
   const thinkingMessage = await sendThinkingMessage(client, chatId, agentName);
@@ -125,30 +122,24 @@ export async function handleTelegramDirectMessage(
     }
   }
 
-  // 8. Fetch context (skip when continuing an existing session — it already has history)
-  let executionContext = "";
-  if (!existingSessionId) {
-    const ctx = await fetchTelegramContext(
-      installationId,
-      chatId,
-      lastProcessedMessageId,
-      client,
-      String(message.message_id),
-    );
-    executionContext = ctx.executionContext;
-  }
+  // 8. Fetch new conversation context; existing sessions already have older history.
+  const { executionContext } = await fetchTelegramContext(
+    installationId,
+    chatId,
+    lastProcessedMessageId,
+    client,
+    String(message.message_id),
+  );
 
   // 9. Enrich prompt with user info and current message's photo
-  let enrichedPrompt = enrichTelegramPrompt(
+  const { prompt: messageContent, userInfoExtras } = enrichTelegramPrompt(
     message.text ?? message.caption ?? "",
     message.from,
   );
-  enrichedPrompt = await appendPhotoContext(
-    enrichedPrompt,
+  let enrichedPrompt = appendPhotoContext(
+    messageContent,
     message,
-    client,
-    installationId,
-    chatId,
+    installation.telegramBotId,
   );
 
   // 9b. Prepend reply context if this message is a reply to another message
@@ -164,6 +155,14 @@ export async function handleTelegramDirectMessage(
     sessionId: existingSessionId,
     prompt: enrichedPrompt,
     threadContext: executionContext,
+    userInfoExtras,
+    botId: installation.telegramBotId,
+    botUsername: installation.botUsername,
+    chatId,
+    chatType: message.chat.type,
+    messageId: String(message.message_id),
+    rootMessageId,
+    messageThreadId: message.message_thread_id,
     userId: userLink.vm0UserId,
     apiStartTime,
     callbackContext: {

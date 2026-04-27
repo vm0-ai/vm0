@@ -1,5 +1,5 @@
 import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
-import { zeroSkillsCollectionContract } from "@vm0/core/contracts/zero-agents";
+import { zeroSkillsCollectionContract } from "@vm0/api-contracts/contracts/zero-agents";
 import { getCustomSkillStorageName } from "@vm0/core/storage-names";
 import { initServices } from "../../../../src/lib/init-services";
 import {
@@ -7,7 +7,7 @@ import {
   isAuthError,
 } from "../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../src/lib/zero/org/resolve-org";
-import { zeroSkills } from "../../../../src/db/schema/zero-skill";
+import { zeroSkills } from "@vm0/db/schema/zero-skill";
 import { eq, and } from "drizzle-orm";
 import { uploadVolumeServerSide } from "../../../../src/lib/infra/storage/volume-upload";
 import { SEED_SKILLS } from "../../../../src/lib/zero/seed-skills";

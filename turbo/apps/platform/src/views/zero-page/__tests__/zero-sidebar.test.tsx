@@ -7,10 +7,10 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { screen, waitFor } from "@testing-library/react";
 import { featureSwitch$ } from "../../../signals/external/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { chatThreadsContract } from "@vm0/core/contracts/chat-threads";
-import { zeroAgentsByIdContract } from "@vm0/core/contracts/zero-agents";
-import { zeroTeamContract } from "@vm0/core/contracts/zero-team";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
+import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
+import { zeroTeamContract } from "@vm0/api-contracts/contracts/zero-team";
 import { server } from "../../../mocks/server.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 
@@ -22,7 +22,7 @@ function mockAPIs({
     {
       id: "thread-1",
       title: "First chat",
-      agentId: "c0000000-0000-4000-a000-000000000001",
+      agent: { id: "c0000000-0000-4000-a000-000000000001", avatarUrl: null },
       createdAt: "2026-03-10T00:00:00Z",
       updatedAt: "2026-03-10T00:00:00Z",
       isRead: false,
@@ -32,7 +32,7 @@ function mockAPIs({
     {
       id: "thread-2",
       title: "Second chat",
-      agentId: "c0000000-0000-4000-a000-000000000001",
+      agent: { id: "c0000000-0000-4000-a000-000000000001", avatarUrl: null },
       createdAt: "2026-03-09T00:00:00Z",
       updatedAt: "2026-03-09T00:00:00Z",
       isRead: false,
@@ -44,7 +44,7 @@ function mockAPIs({
   threads?: {
     id: string;
     title: string;
-    agentId: string;
+    agent: { id: string; avatarUrl: string | null };
     createdAt: string;
     updatedAt: string;
     isRead: boolean;
@@ -118,12 +118,12 @@ describe("zero sidebar", () => {
     expect(features[FeatureSwitchKey.DataExport]).toBeFalsy();
   });
 
-  it("should hide Activity logs when ActivityLogList switch is off", async () => {
+  it("should hide Activity logs when ZeroDebug switch is off", async () => {
     mockAPIs();
     detachedSetupPage({
       context,
       path: "/",
-      featureSwitches: { [FeatureSwitchKey.ActivityLogList]: false },
+      featureSwitches: { [FeatureSwitchKey.ZeroDebug]: false },
     });
 
     await waitFor(() => {
@@ -132,12 +132,12 @@ describe("zero sidebar", () => {
     expect(screen.queryByText("Activity logs")).not.toBeInTheDocument();
   });
 
-  it("should show Activity logs when ActivityLogList switch is on", async () => {
+  it("should show Activity logs when ZeroDebug switch is on", async () => {
     mockAPIs();
     detachedSetupPage({
       context,
       path: "/",
-      featureSwitches: { [FeatureSwitchKey.ActivityLogList]: true },
+      featureSwitches: { [FeatureSwitchKey.ZeroDebug]: true },
     });
 
     await waitFor(() => {
@@ -148,7 +148,10 @@ describe("zero sidebar", () => {
 
   it("should filter chat sessions when searching", async () => {
     mockAPIs();
-    detachedSetupPage({ context, path: "/" });
+    detachedSetupPage({
+      context,
+      path: "/",
+    });
 
     // Wait for chat threads to render
     await waitFor(() => {
@@ -171,7 +174,10 @@ describe("zero sidebar", () => {
 
   it("should close search and reset filter", async () => {
     mockAPIs();
-    detachedSetupPage({ context, path: "/" });
+    detachedSetupPage({
+      context,
+      path: "/",
+    });
 
     // Wait for chat threads to render
     await waitFor(() => {

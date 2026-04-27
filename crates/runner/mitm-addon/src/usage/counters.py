@@ -2,35 +2,55 @@
 
 The runner reads the pending-count file before sending SIGTERM so it can
 wait until both counters reach zero (all flows processed, all reports
-delivered).  File format: ``"<flows>:<reports>"`` written atomically
-(tmp + ``Path.replace``).
+delivered).  File format is JSON written atomically (tmp + ``Path.replace``)
+so the runner can reject stale state from an old mitmproxy process.
 """
 
+import json
+import os
 import threading
+import time
+import uuid
 from pathlib import Path
 
 from mitmproxy import ctx
 
+_STATE_VERSION = 1
 _counter_lock = threading.Lock()
 _in_flight_flows = 0
 _pending_reports = 0
 _pending_path = ""
-# One-shot guard: the symptom of sustained ``_write_pending`` failure is
-# the runner always hitting its 15s SIGKILL on graceful shutdown without
-# any local signal pointing at FS trouble.  Emit one warn per addon
-# process on first failure — enough to seed the operator investigation
-# without spamming logs under persistent FS pressure.  Deliberately goes
-# through mitmproxy's own stderr logger (not ``log_proxy_entry``) because
-# the per-job proxy log shares the same filesystem we just failed to
-# write and is likely affected by the same root cause.
+_usage_state_id = str(uuid.uuid4())
+# One-shot guard: sustained ``_write_pending`` failure makes the runner
+# hit the bounded usage-drain timeout without any local signal pointing at
+# filesystem trouble.  Emit one warn per addon process on first failure —
+# enough to seed the operator investigation without spamming logs under
+# persistent FS pressure.  Deliberately goes through mitmproxy's own
+# stderr logger (not ``log_proxy_entry``) because the per-job proxy log
+# shares the same filesystem we just failed to write and is likely
+# affected by the same root cause.
 _pending_write_error_logged = False
 
 
-def set_pending_path(path: str) -> None:
-    """Set the path for the pending-count file.  Called once at addon init."""
-    global _pending_path
-    _pending_path = path
-    _write_pending()
+def set_pending_path(path: str, usage_state_id: str | None = None) -> None:
+    """Set the path/state id for the pending-count file and write current state."""
+    global _pending_path, _usage_state_id
+    with _counter_lock:
+        _pending_path = path
+        if usage_state_id:
+            _usage_state_id = usage_state_id
+        _write_pending()
+
+
+def _pending_state() -> dict:
+    return {
+        "version": _STATE_VERSION,
+        "pid": os.getpid(),
+        "usageStateId": _usage_state_id,
+        "updatedAtMs": int(time.time() * 1000),
+        "flows": _in_flight_flows,
+        "reports": _pending_reports,
+    }
 
 
 def _write_pending() -> None:
@@ -41,29 +61,29 @@ def _write_pending() -> None:
     tmp = Path(_pending_path + ".tmp")
     try:
         with tmp.open("w") as f:
-            f.write(f"{_in_flight_flows}:{_pending_reports}")
+            json.dump(_pending_state(), f, separators=(",", ":"))
         tmp.replace(_pending_path)
     except OSError as exc:
         # Best-effort: this file is observability (runner polls it to
         # wait for in-flight flows + pending reports to drain before
         # SIGTERM).  Transient write failures are upper-bounded by the
-        # runner's 15s SIGKILL hard stop — in the worst case the runner
-        # proceeds to SIGKILL with possible in-flight webhooks lost,
+        # runner's drain timeout and mitmdump stop timeout — in the worst
+        # case the runner proceeds with possible in-flight webhooks lost,
         # which is the same outcome as a genuinely stalled flow.
         if not _pending_write_error_logged:
             _pending_write_error_logged = True
             ctx.log.warn(
                 f"Failed to write pending count to {_pending_path!r}: {exc}.  "
                 "Subsequent failures in this process will be silent; runner "
-                "shutdown may hit the 15s SIGKILL hard stop."
+                "shutdown may hit the bounded proxy stop timeout."
             )
 
 
 def increment_flows() -> None:
-    """Track a new in-flight billable flow (call from responseheaders).
+    """Track a new in-flight billable flow (call from request).
 
-    Covers both model-provider flows and billable connector flows — any
-    flow that may enqueue a webhook POST before response/error runs.
+    Covers billable model-provider and connector flows — any flow that may
+    enqueue a webhook POST before response/error runs.
     """
     global _in_flight_flows
     with _counter_lock:

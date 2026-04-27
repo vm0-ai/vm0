@@ -166,7 +166,7 @@ impl HomePaths {
 
     /// Root directory for the runner-side storage archive cache.
     ///
-    /// Layout: `<storages_dir>/<vasStorageName>/<vasVersionId>/archive.tar.gz`.
+    /// Layout: `<storages_dir>/<hash(vasStorageName)>/<hash(vasVersionId)>/archive.tar.gz`.
     /// Populated by the cache writer (#10808) and reaped by `gc_storage_cache`.
     pub fn storages_dir(&self) -> PathBuf {
         self.root.join("storages")
@@ -190,6 +190,15 @@ impl HomePaths {
     /// be injective in `(name, version)` and safe to embed in a path segment.
     pub fn storage_lock(&self, name: &str, version: &str) -> PathBuf {
         let (name_hash, version_hash) = storage_key_hashes(name, version);
+        self.storage_lock_for_cache_key(&name_hash, &version_hash)
+    }
+
+    /// Per-version flock path from already-hashed cache directory components.
+    ///
+    /// This is for disk walkers such as `runner gc`, which discover
+    /// `<storages>/<name_hash>/<version_hash>/` and must use the exact same
+    /// lock as `storage_lock(name, version)`, not hash those components again.
+    pub fn storage_lock_for_cache_key(&self, name_hash: &str, version_hash: &str) -> PathBuf {
         self.locks_dir()
             .join(format!("storage-{name_hash}-{version_hash}.lock"))
     }
@@ -215,6 +224,19 @@ impl RootfsPaths {
 
     pub fn rootfs(&self) -> PathBuf {
         self.dir.join("rootfs.ext4")
+    }
+
+    /// Pre-commit staging path for the rootfs image.
+    ///
+    /// Any post-download processing (R2 path: CA injection) runs against
+    /// this path. Only after every post-processing step succeeds does
+    /// `build.rs` atomically rename `rootfs.ext4.staging → rootfs.ext4` —
+    /// so `rootfs()` exists on disk if and only if the full assembly
+    /// pipeline completed. A leftover `rootfs.ext4.staging` is always
+    /// a crash residue from a previous build and is safe to delete once
+    /// the rootfs flock is held.
+    pub fn rootfs_staging(&self) -> PathBuf {
+        self.dir.join("rootfs.ext4.staging")
     }
 
     /// All files that must exist for the rootfs to be considered complete.
@@ -393,6 +415,15 @@ mod tests {
         assert_eq!(rp.dir(), Path::new("/test/images/aaa"));
         assert_eq!(rp.rootfs(), PathBuf::from("/test/images/aaa/rootfs.ext4"));
         assert_eq!(
+            rp.rootfs_staging(),
+            PathBuf::from("/test/images/aaa/rootfs.ext4.staging")
+        );
+        assert_ne!(
+            rp.rootfs(),
+            rp.rootfs_staging(),
+            "staging and committed paths must differ"
+        );
+        assert_eq!(
             rp.snapshots_dir(),
             PathBuf::from("/test/images/aaa/snapshots")
         );
@@ -532,6 +563,16 @@ mod tests {
         assert!(a.starts_with(&locks));
         assert!(b.starts_with(&locks));
         assert!(a.to_string_lossy().ends_with(".lock"));
+
+        let cache_dir = home.storage_cache_dir("foo", "bar-v1");
+        let cache_tail: Vec<_> = cache_dir
+            .strip_prefix(home.storages_dir())
+            .unwrap()
+            .components()
+            .collect();
+        let name_hash = cache_tail[0].as_os_str().to_str().unwrap();
+        let version_hash = cache_tail[1].as_os_str().to_str().unwrap();
+        assert_eq!(a, home.storage_lock_for_cache_key(name_hash, version_hash));
     }
 
     #[test]

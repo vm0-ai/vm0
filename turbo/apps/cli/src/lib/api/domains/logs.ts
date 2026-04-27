@@ -10,7 +10,7 @@ import {
   type MetricsResponse,
   type NetworkLogsResponse,
   type SystemLogResponse,
-} from "@vm0/core/contracts/runs";
+} from "@vm0/api-contracts/contracts/runs";
 import { getClientConfig, handleError } from "../core/client-factory";
 
 // Re-export types used by consumer commands (logs/index.ts, logs/search.ts)
@@ -19,7 +19,7 @@ export type {
   TelemetryMetric,
   NetworkLogEntry,
   LogsSearchResponse,
-} from "@vm0/core/contracts/runs";
+} from "@vm0/api-contracts/contracts/runs";
 
 export async function getSystemLog(
   runId: string,

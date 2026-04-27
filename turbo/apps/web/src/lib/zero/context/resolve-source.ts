@@ -3,19 +3,19 @@ import {
   areProvidersCompatible,
   MODEL_PROVIDER_TYPES,
   type ModelProviderType,
-} from "@vm0/core/contracts/model-providers";
+} from "@vm0/api-contracts/contracts/model-providers";
 import {
   agentComposeVersions,
   agentComposes,
-} from "../../../db/schema/agent-compose";
+} from "@vm0/db/schema/agent-compose";
 import { getAgentSessionWithConversation } from "../../infra/agent-session";
-import { checkpoints } from "../../../db/schema/checkpoint";
-import { agentRuns } from "../../../db/schema/agent-run";
+import { checkpoints } from "@vm0/db/schema/checkpoint";
+import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
   badRequest,
   notFound,
   providerIncompatible,
-} from "../../shared/errors";
+} from "@vm0/api-services/errors";
 import { logger } from "../../shared/logger";
 import type { ContextArtifact, ResumeSession } from "../../infra/run/types";
 import type { AdditionalVolume } from "../../infra/storage/types";

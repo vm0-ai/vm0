@@ -128,6 +128,7 @@ export async function GET(request: NextRequest): Promise<Response> {
 
     const downloadResponse = await fetch(meta.url, {
       headers: { Authorization: `Bearer ${slackCtx.botToken}` },
+      signal: request.signal,
     });
 
     if (!downloadResponse.ok) {

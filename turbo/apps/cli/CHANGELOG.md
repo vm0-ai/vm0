@@ -1,5 +1,136 @@
 # Changelog
 
+## [9.134.0](https://github.com/vm0-ai/vm0/compare/cli-v9.133.0...cli-v9.134.0) (2026-04-27)
+
+
+### Features
+
+* add chat artifacts drawer ([#11229](https://github.com/vm0-ai/vm0/issues/11229)) ([97483c5](https://github.com/vm0-ai/vm0/commit/97483c5793965372b3a5ae82ab532059e6579a98))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.239.0
+
+## [9.133.0](https://github.com/vm0-ai/vm0/compare/cli-v9.132.11...cli-v9.133.0) (2026-04-27)
+
+
+### Features
+
+* add telegram file download by bot id ([#11241](https://github.com/vm0-ai/vm0/issues/11241)) ([2a39346](https://github.com/vm0-ai/vm0/commit/2a39346beecbe88b2799589318181bbcbce93975))
+* associate uploaded files with runs ([#11201](https://github.com/vm0-ai/vm0/issues/11201)) ([1f62c18](https://github.com/vm0-ai/vm0/commit/1f62c18a7c4973dc1c7fc964f0e2aaae39dbcf3f))
+
+## [9.132.11](https://github.com/vm0-ai/vm0/compare/cli-v9.132.10...cli-v9.132.11) (2026-04-27)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.238.0
+
+## [9.132.10](https://github.com/vm0-ai/vm0/compare/cli-v9.132.9...cli-v9.132.10) (2026-04-26)
+
+
+### Bug Fixes
+
+* stabilize run stdout event visibility ([#11149](https://github.com/vm0-ai/vm0/issues/11149)) ([479c57e](https://github.com/vm0-ai/vm0/commit/479c57e06f22ef706e3be087a21c4a7588bbea38))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.237.0
+
+## [9.132.9](https://github.com/vm0-ai/vm0/compare/cli-v9.132.8...cli-v9.132.9) (2026-04-26)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.236.1
+
+## [9.132.8](https://github.com/vm0-ai/vm0/compare/cli-v9.132.7...cli-v9.132.8) (2026-04-25)
+
+
+### Refactoring
+
+* split db and api contracts packages ([#11092](https://github.com/vm0-ai/vm0/issues/11092)) ([f4767d9](https://github.com/vm0-ai/vm0/commit/f4767d987af373d17d93d5ca8fb00864c18bc15b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.236.0
+
+## [9.132.7](https://github.com/vm0-ai/vm0/compare/cli-v9.132.6...cli-v9.132.7) (2026-04-25)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.235.1
+
+## [9.132.6](https://github.com/vm0-ai/vm0/compare/cli-v9.132.5...cli-v9.132.6) (2026-04-25)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.235.0
+
+## [9.132.5](https://github.com/vm0-ai/vm0/compare/cli-v9.132.4...cli-v9.132.5) (2026-04-24)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.234.1
+
+## [9.132.4](https://github.com/vm0-ai/vm0/compare/cli-v9.132.3...cli-v9.132.4) (2026-04-24)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.234.0
+
+## [9.132.3](https://github.com/vm0-ai/vm0/compare/cli-v9.132.2...cli-v9.132.3) (2026-04-24)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.233.0
+
+## [9.132.2](https://github.com/vm0-ai/vm0/compare/cli-v9.132.1...cli-v9.132.2) (2026-04-24)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.232.0
+
+## [9.132.1](https://github.com/vm0-ai/vm0/compare/cli-v9.132.0...cli-v9.132.1) (2026-04-24)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.231.0
+
 ## [9.132.0](https://github.com/vm0-ai/vm0/compare/cli-v9.131.5...cli-v9.132.0) (2026-04-23)
 
 

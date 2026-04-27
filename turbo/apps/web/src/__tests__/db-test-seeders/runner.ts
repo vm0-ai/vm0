@@ -1,8 +1,8 @@
-import type { StoredExecutionContext } from "@vm0/core/contracts/runners";
+import type { StoredExecutionContext } from "@vm0/api-contracts/contracts/runners";
 import { initServices } from "../../lib/init-services";
-import { runnerJobQueue } from "../../db/schema/runner-job-queue";
-import { runnerState } from "../../db/schema/runner-state";
-import { agentRuns } from "../../db/schema/agent-run";
+import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
+import { runnerState } from "@vm0/db/schema/runner-state";
+import { agentRuns } from "@vm0/db/schema/agent-run";
 import { encryptSecretsMap } from "../../lib/shared/crypto/secrets-encryption";
 import { ensureTestAgentSession, getOrgAndComposeFromVersion } from "./runs";
 

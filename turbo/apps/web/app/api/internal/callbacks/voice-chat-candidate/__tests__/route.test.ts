@@ -70,19 +70,24 @@ async function setupTaskWithCallback(options: { agentIdOnRun?: string }) {
   const taskId = taskBody.task.id;
   const runId = taskBody.task.runId;
 
+  // Task creation schedules createZeroRun() dispatch via waitUntil() and a
+  // post-response reasoner tick via after(). Drain setup-owned async work so
+  // it cannot outlive the test that uses this helper.
+  await context.mocks.flushAfter();
+
   // Set vars.ZERO_AGENT_ID so the callback's readRunAgentId can resolve it.
   // Defaults to the session's agent (happy path); tests override for mismatch.
   await setTestRunVars(runId, {
     ZERO_AGENT_ID: options.agentIdOnRun ?? agentId,
   });
 
-  const { secret } = await createTestCallback({
+  const { secret, callbackId } = await createTestCallback({
     runId,
     url: CALLBACK_URL,
     payload: { taskId },
   });
 
-  return { userId, orgId, agentId, session, runId, taskId, secret };
+  return { userId, orgId, agentId, session, runId, taskId, secret, callbackId };
 }
 
 describe("POST /api/internal/callbacks/voice-chat-candidate", () => {
@@ -93,12 +98,15 @@ describe("POST /api/internal/callbacks/voice-chat-candidate", () => {
   });
 
   it("returns 200 for progress status without touching the task", async () => {
-    const { runId, taskId, secret } = await setupTaskWithCallback({});
+    const { runId, taskId, secret, callbackId } = await setupTaskWithCallback(
+      {},
+    );
 
     const response = await POST(
       createSignedCallbackRequest(
         CALLBACK_URL,
         {
+          callbackId,
           runId,
           status: "progress",
           payload: { taskId },
@@ -113,7 +121,7 @@ describe("POST /api/internal/callbacks/voice-chat-candidate", () => {
   });
 
   it("completes the task and writes a task_result item on completed", async () => {
-    const { runId, taskId, session, userId, secret } =
+    const { runId, taskId, session, userId, secret, callbackId } =
       await setupTaskWithCallback({});
 
     context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
@@ -124,6 +132,7 @@ describe("POST /api/internal/callbacks/voice-chat-candidate", () => {
       createSignedCallbackRequest(
         CALLBACK_URL,
         {
+          callbackId,
           runId,
           status: "completed",
           payload: { taskId },
@@ -158,12 +167,14 @@ describe("POST /api/internal/callbacks/voice-chat-candidate", () => {
   });
 
   it("marks the task failed and records the error text on failed", async () => {
-    const { runId, taskId, session, secret } = await setupTaskWithCallback({});
+    const { runId, taskId, session, secret, callbackId } =
+      await setupTaskWithCallback({});
 
     const response = await POST(
       createSignedCallbackRequest(
         CALLBACK_URL,
         {
+          callbackId,
           runId,
           status: "failed",
           error: "runner crashed",
@@ -184,15 +195,20 @@ describe("POST /api/internal/callbacks/voice-chat-candidate", () => {
       return i.role === "task_result";
     });
     expect(resultItem!.content).toContain("runner crashed");
+
+    await context.mocks.flushAfter();
   });
 
   it("returns 401 on invalid signature", async () => {
-    const { runId, taskId, secret } = await setupTaskWithCallback({});
+    const { runId, taskId, secret, callbackId } = await setupTaskWithCallback(
+      {},
+    );
 
     const response = await POST(
       createSignedCallbackRequest(
         CALLBACK_URL,
         {
+          callbackId,
           runId,
           status: "completed",
           payload: { taskId },
@@ -208,12 +224,13 @@ describe("POST /api/internal/callbacks/voice-chat-candidate", () => {
   });
 
   it("returns 400 when payload is missing taskId", async () => {
-    const { runId, secret } = await setupTaskWithCallback({});
+    const { runId, secret, callbackId } = await setupTaskWithCallback({});
 
     const response = await POST(
       createSignedCallbackRequest(
         CALLBACK_URL,
         {
+          callbackId,
           runId,
           status: "completed",
           payload: {},
@@ -226,9 +243,10 @@ describe("POST /api/internal/callbacks/voice-chat-candidate", () => {
   });
 
   it("ends the session on agent mismatch (vars.ZERO_AGENT_ID differs from session.agentId)", async () => {
-    const { runId, taskId, session, secret } = await setupTaskWithCallback({
-      agentIdOnRun: "00000000-0000-0000-0000-000000000000",
-    });
+    const { runId, taskId, session, secret, callbackId } =
+      await setupTaskWithCallback({
+        agentIdOnRun: "00000000-0000-0000-0000-000000000000",
+      });
 
     context.mocks.axiom.queryAxiom.mockResolvedValueOnce([]);
 
@@ -236,6 +254,7 @@ describe("POST /api/internal/callbacks/voice-chat-candidate", () => {
       createSignedCallbackRequest(
         CALLBACK_URL,
         {
+          callbackId,
           runId,
           status: "completed",
           payload: { taskId },
@@ -258,6 +277,8 @@ describe("POST /api/internal/callbacks/voice-chat-candidate", () => {
       return i.role === "system_note";
     });
     expect(note).toBeDefined();
+
+    await context.mocks.flushAfter();
   });
 
   it("dispatches cancel side effects for in-flight runs on agent mismatch (#10762)", async () => {
@@ -269,6 +290,7 @@ describe("POST /api/internal/callbacks/voice-chat-candidate", () => {
       taskId: triggerTaskId,
       session,
       secret,
+      callbackId: triggerCallbackId,
     } = await setupTaskWithCallback({
       agentIdOnRun: "00000000-0000-0000-0000-000000000000",
     });
@@ -289,6 +311,12 @@ describe("POST /api/internal/callbacks/voice-chat-candidate", () => {
       task: { id: string; runId: string };
     };
 
+    // Drain the waitUntil() dispatch so the secondary run's deferred
+    // dispatch runs to completion (or failure) before we override status.
+    // Without this, dispatchZeroRun races with setTestRunStatus and may
+    // leave the run in "failed" instead of the expected "running".
+    await context.mocks.flushAfter();
+
     await setTestRunStatus(secondary.runId, "running");
     await setTestRunRunnerGroup(secondary.runId, "test-group");
 
@@ -299,6 +327,7 @@ describe("POST /api/internal/callbacks/voice-chat-candidate", () => {
       createSignedCallbackRequest(
         CALLBACK_URL,
         {
+          callbackId: triggerCallbackId,
           runId: triggerRunId,
           status: "completed",
           payload: { taskId: triggerTaskId },
@@ -330,12 +359,13 @@ describe("POST /api/internal/callbacks/voice-chat-candidate", () => {
   });
 
   it("returns 200 for unknown taskId (defensive per epic risk table)", async () => {
-    const { runId, secret } = await setupTaskWithCallback({});
+    const { runId, secret, callbackId } = await setupTaskWithCallback({});
 
     const response = await POST(
       createSignedCallbackRequest(
         CALLBACK_URL,
         {
+          callbackId,
           runId,
           status: "completed",
           payload: { taskId: "00000000-0000-0000-0000-000000000000" },

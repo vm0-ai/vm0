@@ -166,7 +166,13 @@ impl DevicePool {
         if !self.active {
             return;
         }
-        self.in_flight.remove(&index);
+        if !self.in_flight.remove(&index) {
+            tracing::warn!(
+                device_index = index,
+                "device release ignored because index is not in flight"
+            );
+            return;
+        }
         self.cooldown.push_back(CooldownSlot {
             index,
             released_at: Instant::now(),
@@ -295,4 +301,35 @@ fn scan_free_device(max_devices: u32, exclude: &[u32]) -> Result<u32> {
     }
 
     Err(NbdCowError::NoFreeDevice)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_pool_with_in_flight(index: u32) -> DevicePool {
+        DevicePool {
+            active: true,
+            // Keep the ready queue full so `release()` does not spawn host
+            // sysfs validation tasks in this unit test.
+            ready: VecDeque::from([0, 1, 2, 4]),
+            cooldown: VecDeque::new(),
+            pending: tokio::task::JoinSet::new(),
+            max_devices: 8,
+            config: DevicePoolConfig::default(),
+            in_flight: HashSet::from([index]),
+        }
+    }
+
+    #[test]
+    fn release_ignores_duplicate_index() {
+        let mut pool = test_pool_with_in_flight(3);
+
+        pool.release(3);
+        pool.release(3);
+
+        assert_eq!(pool.cooldown.len(), 1);
+        assert_eq!(pool.cooldown.front().map(|slot| slot.index), Some(3));
+        assert!(pool.in_flight.is_empty());
+    }
 }

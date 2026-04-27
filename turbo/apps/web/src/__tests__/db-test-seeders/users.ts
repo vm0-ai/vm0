@@ -1,7 +1,7 @@
 import { initServices } from "../../lib/init-services";
-import { users } from "../../db/schema/user";
-import { userCache } from "../../db/schema/user-cache";
-import { vm0ApiKeys } from "../../db/schema/vm0-api-key";
+import { users } from "@vm0/db/schema/user";
+import { userCache } from "@vm0/db/schema/user-cache";
+import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 
 /**
  * Insert a user row for testing.

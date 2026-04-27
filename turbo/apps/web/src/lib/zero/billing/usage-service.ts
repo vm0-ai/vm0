@@ -1,25 +1,35 @@
-import { sql, and, eq, gte, lt, inArray, desc, count } from "drizzle-orm";
+import { and, eq, gte, lt, inArray, desc, count } from "drizzle-orm";
 import {
   type MemberUsage,
   type UsageMembersResponse,
-} from "@vm0/core/contracts/zero-usage";
-import type { UsageRunsResponse } from "@vm0/core/contracts/zero-usage-daily";
+} from "@vm0/api-contracts/contracts/zero-usage";
+import type { UsageRunsResponse } from "@vm0/api-contracts/contracts/zero-usage-daily";
 import { getOrgBillingPeriod } from "../org/org-metadata-service";
-import { creditUsage } from "../../../db/schema/credit-usage";
-import { agentRuns } from "../../../db/schema/agent-run";
-import { zeroRuns } from "../../../db/schema/zero-run";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
   agentComposes,
   agentComposeVersions,
-} from "../../../db/schema/agent-compose";
-import { zeroAgents } from "../../../db/schema/zero-agent";
-import { userCache } from "../../../db/schema/user-cache";
-import { orgMembersMetadata } from "../../../db/schema/org-members-metadata";
+} from "@vm0/db/schema/agent-compose";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { userCache } from "@vm0/db/schema/user-cache";
+import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { clerkClient } from "@clerk/nextjs/server";
+import {
+  buildLegacyRunUsageTotalsSubquery,
+  buildUsageEventRunUsageTotalsSubquery,
+  getMemberUsageTotals,
+  hasRunUsageTotals,
+  mergedRunCacheTokens,
+  mergedRunCreditsCharged,
+  mergedRunInputTokens,
+  mergedRunModel,
+  mergedRunOutputTokens,
+} from "./usage-reporting-ledger";
 
 /**
  * Get per-member token usage aggregation for the current billing period.
- * Only includes credit_usage records with status = 'processed'.
+ * Includes processed credit_usage and usage_event records.
  * Free tier orgs (no billing period) get { period: null, members: [] }.
  */
 export async function getUsageMembers(
@@ -33,41 +43,7 @@ export async function getUsageMembers(
 
   const db = globalThis.services.db;
 
-  // Aggregate token usage per member for the billing period
-  const rows = await db
-    .select({
-      userId: creditUsage.userId,
-      inputTokens:
-        sql<number>`COALESCE(SUM(${creditUsage.inputTokens}), 0)::bigint`.as(
-          "input_tokens",
-        ),
-      outputTokens:
-        sql<number>`COALESCE(SUM(${creditUsage.outputTokens}), 0)::bigint`.as(
-          "output_tokens",
-        ),
-      cacheReadInputTokens:
-        sql<number>`COALESCE(SUM(${creditUsage.cacheReadInputTokens}), 0)::bigint`.as(
-          "cache_read_input_tokens",
-        ),
-      cacheCreationInputTokens:
-        sql<number>`COALESCE(SUM(${creditUsage.cacheCreationInputTokens}), 0)::bigint`.as(
-          "cache_creation_input_tokens",
-        ),
-      creditsCharged:
-        sql<number>`COALESCE(SUM(${creditUsage.creditsCharged}), 0)::bigint`.as(
-          "credits_charged",
-        ),
-    })
-    .from(creditUsage)
-    .where(
-      and(
-        eq(creditUsage.orgId, orgId),
-        eq(creditUsage.status, "processed"),
-        gte(creditUsage.createdAt, billingPeriod.start),
-        lt(creditUsage.createdAt, billingPeriod.end),
-      ),
-    )
-    .groupBy(creditUsage.userId);
+  const rows = await getMemberUsageTotals(db, orgId, billingPeriod);
 
   if (rows.length === 0) {
     return {
@@ -192,8 +168,8 @@ interface UsageRunsOptions {
 }
 
 /**
- * Get per-run credit usage records for an org with pagination and filtering.
- * Only includes runs that have processed credit_usage records.
+ * Get per-run usage records for an org with pagination and filtering.
+ * Includes runs with processed credit_usage or run-linked usage_event records.
  */
 export async function getUsageRuns(
   orgId: string,
@@ -201,35 +177,8 @@ export async function getUsageRuns(
 ): Promise<UsageRunsResponse> {
   const db = globalThis.services.db;
 
-  // Subquery: aggregate credit_usage per run_id
-  const creditSub = db
-    .select({
-      runId: creditUsage.runId,
-      inputTokens:
-        sql<number>`COALESCE(SUM(${creditUsage.inputTokens}), 0)::bigint`.as(
-          "input_tokens_sum",
-        ),
-      outputTokens:
-        sql<number>`COALESCE(SUM(${creditUsage.outputTokens}), 0)::bigint`.as(
-          "output_tokens_sum",
-        ),
-      cacheTokens:
-        sql<number>`COALESCE(SUM(${creditUsage.cacheReadInputTokens}) + SUM(${creditUsage.cacheCreationInputTokens}), 0)::bigint`.as(
-          "cache_tokens_sum",
-        ),
-      creditsCharged:
-        sql<number>`COALESCE(SUM(${creditUsage.creditsCharged}), 0)::bigint`.as(
-          "credits_sum",
-        ),
-      model: sql<string>`MAX(${creditUsage.model})`.as("model"),
-      userId: sql<string>`MAX(${creditUsage.userId})`.as("cu_user_id"),
-    })
-    .from(creditUsage)
-    .where(
-      and(eq(creditUsage.orgId, orgId), eq(creditUsage.status, "processed")),
-    )
-    .groupBy(creditUsage.runId)
-    .as("credit_sub");
+  const legacyUsage = buildLegacyRunUsageTotalsSubquery(db, orgId);
+  const eventUsage = buildUsageEventRunUsageTotalsSubquery(db, orgId);
 
   // Build filter conditions
   const conditions = [eq(agentRuns.orgId, orgId)];
@@ -251,7 +200,8 @@ export async function getUsageRuns(
   const [countResult] = await db
     .select({ total: count() })
     .from(agentRuns)
-    .innerJoin(creditSub, eq(agentRuns.id, creditSub.runId))
+    .leftJoin(legacyUsage, eq(agentRuns.id, legacyUsage.runId))
+    .leftJoin(eventUsage, eq(agentRuns.id, eventUsage.runId))
     .leftJoin(
       agentComposeVersions,
       eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
@@ -260,7 +210,7 @@ export async function getUsageRuns(
       agentComposes,
       eq(agentComposeVersions.composeId, agentComposes.id),
     )
-    .where(and(...conditions));
+    .where(and(...conditions, hasRunUsageTotals(legacyUsage, eventUsage)));
 
   const total = countResult?.total ?? 0;
 
@@ -278,14 +228,15 @@ export async function getUsageRuns(
       prompt: agentRuns.prompt,
       triggerSource: zeroRuns.triggerSource,
       agentName: zeroAgents.displayName,
-      inputTokens: creditSub.inputTokens,
-      outputTokens: creditSub.outputTokens,
-      cacheTokens: creditSub.cacheTokens,
-      creditsCharged: creditSub.creditsCharged,
-      model: creditSub.model,
+      inputTokens: mergedRunInputTokens(legacyUsage, eventUsage),
+      outputTokens: mergedRunOutputTokens(legacyUsage, eventUsage),
+      cacheTokens: mergedRunCacheTokens(legacyUsage, eventUsage),
+      creditsCharged: mergedRunCreditsCharged(legacyUsage, eventUsage),
+      model: mergedRunModel(legacyUsage, eventUsage),
     })
     .from(agentRuns)
-    .innerJoin(creditSub, eq(agentRuns.id, creditSub.runId))
+    .leftJoin(legacyUsage, eq(agentRuns.id, legacyUsage.runId))
+    .leftJoin(eventUsage, eq(agentRuns.id, eventUsage.runId))
     .leftJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))
     .leftJoin(
       agentComposeVersions,
@@ -296,7 +247,7 @@ export async function getUsageRuns(
       eq(agentComposeVersions.composeId, agentComposes.id),
     )
     .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
-    .where(and(...conditions))
+    .where(and(...conditions, hasRunUsageTotals(legacyUsage, eventUsage)))
     .orderBy(desc(agentRuns.createdAt))
     .limit(options.pageSize)
     .offset(offset);

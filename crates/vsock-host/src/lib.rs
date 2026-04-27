@@ -107,6 +107,58 @@ struct Shared {
     exit_notify: Notify,
 }
 
+struct ListenerSocketGuard {
+    path: Option<String>,
+}
+
+impl ListenerSocketGuard {
+    fn remove(&mut self) {
+        if let Some(path) = self.path.take() {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+}
+
+impl Drop for ListenerSocketGuard {
+    fn drop(&mut self) {
+        self.remove();
+    }
+}
+
+struct PendingRequestGuard {
+    shared: Arc<Shared>,
+    seq: u32,
+}
+
+impl PendingRequestGuard {
+    fn new(shared: Arc<Shared>, seq: u32) -> Self {
+        Self { shared, seq }
+    }
+}
+
+impl Drop for PendingRequestGuard {
+    fn drop(&mut self) {
+        self.shared.remove_pending(self.seq);
+    }
+}
+
+struct PendingStdoutGuard {
+    shared: Arc<Shared>,
+    seq: u32,
+}
+
+impl PendingStdoutGuard {
+    fn new(shared: Arc<Shared>, seq: u32) -> Self {
+        Self { shared, seq }
+    }
+}
+
+impl Drop for PendingStdoutGuard {
+    fn drop(&mut self) {
+        self.shared.remove_pending_stdout(self.seq);
+    }
+}
+
 impl Shared {
     /// Get next sequence number, skipping 0 (reserved for unsolicited messages).
     fn next_seq(&self) -> u32 {
@@ -160,6 +212,20 @@ impl Shared {
         if let Some(maps) = maps_to_drop {
             drop(maps);
             self.exit_notify.notify_waiters();
+        }
+    }
+
+    fn remove_pending(&self, seq: u32) {
+        let mut guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        if let ConnectionState::Connected { pending, .. } = &mut *guard {
+            pending.remove(&seq);
+        }
+    }
+
+    fn remove_pending_stdout(&self, seq: u32) {
+        let mut guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        if let ConnectionState::Connected { pending_stdout, .. } = &mut *guard {
+            pending_stdout.remove(&seq);
         }
     }
 }
@@ -313,13 +379,18 @@ impl VsockHost {
         let _ = std::fs::remove_file(&listener_path);
 
         let listener = UnixListener::bind(&listener_path)?;
+        let mut listener_socket = ListenerSocketGuard {
+            path: Some(listener_path.clone()),
+        };
         let deadline = Instant::now() + timeout;
 
         let accept_result = time::timeout_at(deadline, listener.accept()).await;
 
-        // Clean up listener socket regardless of outcome — only one connection expected
+        // Stop accepting and unlink the listener socket before the accepted
+        // stream is handed off. The guard still covers cancellation before
+        // this point.
         drop(listener);
-        let _ = std::fs::remove_file(&listener_path);
+        listener_socket.remove();
 
         let (stream, _) = accept_result.map_err(|_| {
             io::Error::new(
@@ -477,15 +548,11 @@ impl VsockHost {
                 }
             }
         }
+        let _pending_guard = PendingRequestGuard::new(Arc::clone(&self.shared), seq);
 
-        // Write to stream; clean up pending entry on failure.
-        if let Err(e) = self.shared.writer.lock().await.write_all(&data).await {
-            let mut guard = self.shared.state.lock().unwrap_or_else(|e| e.into_inner());
-            if let ConnectionState::Connected { pending, .. } = &mut *guard {
-                pending.remove(&seq);
-            }
-            return Err(e);
-        }
+        // The guard removes the pending entry on write failure, timeout, or
+        // cancellation before reader_loop dispatches a response.
+        self.shared.writer.lock().await.write_all(&data).await?;
 
         // `rx` returns `Ok(msg)` when the reader dispatches a response and
         // `Err(RecvError)` when `close()` drops the `Connected` variant. The
@@ -499,10 +566,6 @@ impl VsockHost {
                 ))
             }
             _ = tokio::time::sleep(timeout) => {
-                let mut guard = self.shared.state.lock().unwrap_or_else(|e| e.into_inner());
-                if let ConnectionState::Connected { pending, .. } = &mut *guard {
-                    pending.remove(&seq);
-                }
                 Err(io::Error::new(io::ErrorKind::TimedOut, "request timeout"))
             }
         }
@@ -573,7 +636,7 @@ impl VsockHost {
     /// Write a file on the guest.
     ///
     /// Content larger than 15 MB is automatically split into multiple
-    /// messages using the `FLAG_APPEND` protocol flag.  Chunks are written
+    /// messages using the `WRITE_FILE_FLAG_APPEND` protocol flag. Chunks are written
     /// to a temporary file and atomically renamed to the target path after
     /// the last chunk succeeds, so a partial transfer never leaves a
     /// truncated file at the destination.
@@ -671,25 +734,34 @@ impl VsockHost {
     /// Returns immediately with `(pid, stdout_rx)`. Use [`wait_for_exit`](Self::wait_for_exit)
     /// to wait for completion.
     ///
-    /// When `stdout_log_path` is `Some`, the guest tees stdout to the given
-    /// file path AND streams chunks to the host via `MSG_STDOUT_CHUNK`.
-    /// The `stdout_rx` channel is closed when the process exits or the
-    /// connection drops.
+    /// When `stream_stdout` is true, stdout chunks are streamed to the host via
+    /// `MSG_STDOUT_CHUNK`. `stdout_log_path`, when present, additionally asks
+    /// the guest to tee those chunks into the given guest-side file.
+    /// The returned `stdout_rx` channel receives streamed chunks when enabled
+    /// and is closed when the process exits or the connection drops.
     pub async fn spawn_watch(
         &self,
         command: &str,
         timeout_ms: u32,
         env: &[(&str, &str)],
         sudo: bool,
+        stream_stdout: bool,
         stdout_log_path: Option<&str>,
     ) -> io::Result<(u32, tokio::sync::mpsc::UnboundedReceiver<Vec<u8>>)> {
-        let payload =
-            vsock_proto::encode_spawn_watch(timeout_ms, command, env, sudo, stdout_log_path);
+        let payload = vsock_proto::encode_spawn_watch(
+            timeout_ms,
+            command,
+            env,
+            sudo,
+            stream_stdout,
+            stdout_log_path,
+        )
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
 
-        // Pre-create the stdout channel and register it by seq number BEFORE
-        // sending the request. reader_loop will atomically move it from
-        // pending_stdout[seq] to stdout_senders[pid] when it processes the
-        // spawn_watch_result — before any stdout_chunk for that pid.
+        // Pre-create the stdout channel. In streaming mode, register it by seq
+        // number BEFORE sending the request. reader_loop will atomically move
+        // it from pending_stdout[seq] to stdout_senders[pid] when it processes
+        // the spawn_watch_result — before any stdout_chunk for that pid.
         let (stdout_tx, stdout_rx) = mpsc::unbounded_channel();
         let seq = self.shared.next_seq();
         {
@@ -701,21 +773,14 @@ impl VsockHost {
                         "connection closed",
                     ));
                 }
-                ConnectionState::Connected { pending_stdout, .. } => {
+                ConnectionState::Connected { pending_stdout, .. } if stream_stdout => {
                     pending_stdout.insert(seq, stdout_tx);
                 }
+                ConnectionState::Connected { .. } => {}
             }
         }
-
-        // Cleanup helper: remove the pending_stdout entry if it's still there.
-        // If `close()` already ran, the map is gone and the Closed branch is a
-        // no-op; the stdout_tx inside the map was already dropped.
-        let drop_pending_stdout = || {
-            let mut guard = self.shared.state.lock().unwrap_or_else(|e| e.into_inner());
-            if let ConnectionState::Connected { pending_stdout, .. } = &mut *guard {
-                pending_stdout.remove(&seq);
-            }
-        };
+        let _pending_stdout_guard =
+            stream_stdout.then(|| PendingStdoutGuard::new(Arc::clone(&self.shared), seq));
 
         let resp = match self
             .request_raw(MSG_SPAWN_WATCH, seq, &payload, Duration::from_secs(30))
@@ -723,21 +788,18 @@ impl VsockHost {
         {
             Ok(resp) => resp,
             Err(e) => {
-                drop_pending_stdout();
                 return Err(e);
             }
         };
 
         if resp.msg_type == MSG_ERROR {
             // No pid assigned — clean up pending stdout sender.
-            drop_pending_stdout();
             let msg = vsock_proto::decode_error(&resp.payload)
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
             return Err(io::Error::other(msg));
         }
 
         if resp.msg_type != MSG_SPAWN_WATCH_RESULT {
-            drop_pending_stdout();
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 format!("unexpected response type: 0x{:02X}", resp.msg_type),
@@ -752,7 +814,6 @@ impl VsockHost {
         let pid = match vsock_proto::decode_spawn_watch_result(&resp.payload) {
             Ok(pid) => pid,
             Err(e) => {
-                drop_pending_stdout();
                 return Err(io::Error::new(io::ErrorKind::InvalidData, e.to_string()));
             }
         };
@@ -888,6 +949,52 @@ mod tests {
     async fn host_from_stream(stream: UnixStream) -> io::Result<VsockHost> {
         let deadline = Instant::now() + Duration::from_secs(5);
         VsockHost::from_stream(stream, deadline).await
+    }
+
+    fn registration_counts(host: &VsockHost) -> (usize, usize, usize) {
+        let guard = host.shared.state.lock().unwrap_or_else(|e| e.into_inner());
+        match &*guard {
+            ConnectionState::Connected {
+                pending,
+                pending_stdout,
+                stdout_senders,
+                ..
+            } => (pending.len(), pending_stdout.len(), stdout_senders.len()),
+            ConnectionState::Closed { .. } => (0, 0, 0),
+        }
+    }
+
+    #[tokio::test]
+    async fn wait_for_connection_removes_listener_socket_on_abort() {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let base =
+            std::env::temp_dir().join(format!("vsock-host-abort-{}-{unique}", std::process::id()));
+        let listener =
+            std::path::PathBuf::from(format!("{}_{}", base.display(), vsock_proto::VSOCK_PORT));
+        let base = base.display().to_string();
+
+        let handle = tokio::spawn(async move {
+            VsockHost::wait_for_connection(&base, Duration::from_secs(30)).await
+        });
+
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while !listener.exists() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+
+        handle.abort();
+        let _ = handle.await;
+
+        assert!(
+            !listener.exists(),
+            "aborted listener should remove its socket path"
+        );
     }
 
     #[tokio::test]
@@ -1223,11 +1330,15 @@ mod tests {
         });
 
         let host = host_from_stream(host_stream).await.unwrap();
-        let (pid, _stdout_rx) = host
-            .spawn_watch("sleep 1", 0, &[], false, None)
+        let (pid, mut stdout_rx) = host
+            .spawn_watch("sleep 1", 0, &[], false, false, None)
             .await
             .unwrap();
         assert_eq!(pid, 42);
+        assert!(
+            stdout_rx.recv().await.is_none(),
+            "buffered spawn_watch must not keep a stdout stream registered",
+        );
 
         let event = host
             .wait_for_exit(42, Duration::from_secs(5))
@@ -1270,7 +1381,7 @@ mod tests {
 
         let host = host_from_stream(host_stream).await.unwrap();
         let (pid, _stdout_rx) = host
-            .spawn_watch("false", 0, &[], false, None)
+            .spawn_watch("false", 0, &[], false, false, None)
             .await
             .unwrap();
         assert_eq!(pid, 99);
@@ -1284,8 +1395,8 @@ mod tests {
     }
 
     /// When a `spawn_watch` request is answered with `MSG_ERROR`, the
-    /// pre-registered `pending_stdout` entry must be removed via the
-    /// `drop_pending_stdout` closure. Assert the error surfaces with the
+    /// pre-registered `pending_stdout` entry must be removed by the
+    /// registration guard. Assert the error surfaces with the
     /// guest-provided message AND that a follow-up successful `spawn_watch`
     /// can still run — proving no stale state lingers.
     #[tokio::test]
@@ -1321,13 +1432,13 @@ mod tests {
         let host = host_from_stream(host_stream).await.unwrap();
 
         let err = host
-            .spawn_watch("bad-cmd", 0, &[], false, None)
+            .spawn_watch("bad-cmd", 0, &[], false, false, None)
             .await
             .unwrap_err();
         assert!(err.to_string().contains("no such command"));
 
         let (pid, _stdout_rx) = host
-            .spawn_watch("good-cmd", 0, &[], false, None)
+            .spawn_watch("good-cmd", 0, &[], false, false, None)
             .await
             .unwrap();
         assert_eq!(pid, 222);
@@ -1373,16 +1484,63 @@ mod tests {
         let host = host_from_stream(host_stream).await.unwrap();
 
         let err = host
-            .spawn_watch("bad-payload-cmd", 0, &[], false, None)
+            .spawn_watch("bad-payload-cmd", 0, &[], false, false, None)
             .await
             .unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::InvalidData);
 
         let (pid, _stdout_rx) = host
-            .spawn_watch("good-cmd", 0, &[], false, None)
+            .spawn_watch("good-cmd", 0, &[], false, false, None)
             .await
             .unwrap();
         assert_eq!(pid, 333);
+    }
+
+    #[tokio::test]
+    async fn test_spawn_watch_cancel_cleans_up_registrations() {
+        let (host_stream, mut guest) = make_pair();
+        let request_seen = std::sync::Arc::new(Notify::new());
+        let release_guest = std::sync::Arc::new(Notify::new());
+
+        {
+            let request_seen = std::sync::Arc::clone(&request_seen);
+            let release_guest = std::sync::Arc::clone(&release_guest);
+            tokio::spawn(async move {
+                let mut decoder = Decoder::new();
+                mock_handshake(&mut guest, &mut decoder).await;
+
+                let mut buf = [0u8; 4096];
+                let n = guest.read(&mut buf).await.unwrap();
+                let msgs = decoder.decode(&buf[..n]).unwrap();
+                assert_eq!(msgs[0].msg_type, MSG_SPAWN_WATCH);
+                request_seen.notify_one();
+
+                release_guest.notified().await;
+            });
+        }
+
+        let host = std::sync::Arc::new(host_from_stream(host_stream).await.unwrap());
+        let task_host = std::sync::Arc::clone(&host);
+        let task = tokio::spawn(async move {
+            task_host
+                .spawn_watch("long-running", 0, &[], false, true, None)
+                .await
+        });
+
+        tokio::time::timeout(Duration::from_secs(5), request_seen.notified())
+            .await
+            .expect("guest should receive spawn_watch request");
+        assert_eq!(registration_counts(&host), (1, 1, 0));
+
+        task.abort();
+        let _ = task.await;
+        assert_eq!(
+            registration_counts(&host),
+            (0, 0, 0),
+            "aborted spawn_watch future must clean pending registrations",
+        );
+
+        release_guest.notify_one();
     }
 
     #[tokio::test]
@@ -1490,7 +1648,7 @@ mod tests {
 
         let start = Instant::now();
         let err = host
-            .spawn_watch("long-running", 0, &[], false, None)
+            .spawn_watch("long-running", 0, &[], false, false, None)
             .await
             .unwrap_err();
         assert!(
@@ -1622,7 +1780,7 @@ mod tests {
 
         let host = host_from_stream(host_stream).await.unwrap();
         let (pid, _stdout_rx) = host
-            .spawn_watch("quick-exit", 0, &[], false, None)
+            .spawn_watch("quick-exit", 0, &[], false, false, None)
             .await
             .unwrap();
         assert_eq!(pid, 88);
@@ -1665,7 +1823,7 @@ mod tests {
 
         let host = host_from_stream(host_stream).await.unwrap();
         let (pid, _stdout_rx) = host
-            .spawn_watch("long-running", 0, &[], false, None)
+            .spawn_watch("long-running", 0, &[], false, false, None)
             .await
             .unwrap();
         assert_eq!(pid, 77);
@@ -1714,7 +1872,7 @@ mod tests {
 
         let host = host_from_stream(host_stream).await.unwrap();
         let (pid, _stdout_rx) = host
-            .spawn_watch("quick-exit", 0, &[], false, None)
+            .spawn_watch("quick-exit", 0, &[], false, false, None)
             .await
             .unwrap();
         assert_eq!(pid, 111);
@@ -1764,7 +1922,7 @@ mod tests {
 
         let host = host_from_stream(host_stream).await.unwrap();
         let (pid, _stdout_rx) = host
-            .spawn_watch("long-running", 0, &[], false, None)
+            .spawn_watch("long-running", 0, &[], false, false, None)
             .await
             .unwrap();
         assert_eq!(pid, 55);
@@ -1863,7 +2021,7 @@ mod tests {
 
         let host = Arc::new(host_from_stream(host_stream).await.unwrap());
         let (pid, _stdout_rx) = host
-            .spawn_watch("long-running", 0, &[], false, None)
+            .spawn_watch("long-running", 0, &[], false, false, None)
             .await
             .unwrap();
         assert_eq!(pid, 50);

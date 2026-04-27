@@ -44,9 +44,13 @@ describe("fetchTelegramContext", () => {
     const result = await fetchTelegramContext(installationId, chatId);
 
     expect(result.executionContext).toContain("First message");
-    expect(result.executionContext).toContain("SENDER_ID: alice");
+    expect(result.executionContext).toContain(
+      "SENDER: {id: 111, username: @alice}",
+    );
     expect(result.executionContext).toContain("Second message");
-    expect(result.executionContext).toContain("SENDER_ID: bob");
+    expect(result.executionContext).toContain(
+      "SENDER: {id: 222, username: @bob}",
+    );
 
     const firstIdx = result.executionContext.indexOf("First message");
     const secondIdx = result.executionContext.indexOf("Second message");
@@ -153,7 +157,30 @@ describe("fetchTelegramContext", () => {
     const result = await fetchTelegramContext(installationId, chatId);
 
     expect(result.executionContext).toContain("User message");
-    expect(result.executionContext).toContain("SENDER_ID: BOT");
+    expect(result.executionContext).toContain("SENDER: {id: BOT}");
     expect(result.executionContext).toContain("Bot reply");
+  });
+
+  it("should render Telegram photos as on-demand file references", async () => {
+    const chatId = uniqueId("chat");
+
+    await insertTelegramMessage({
+      installationId,
+      chatId,
+      messageId: "1",
+      fromUserId: "111",
+      fromUsername: "alice",
+      text: "Photo caption",
+      fileId: "tg-file-1",
+    });
+
+    const result = await fetchTelegramContext(installationId, chatId);
+
+    expect(result.executionContext).toContain(
+      "[Telegram file] photo (image/jpeg)",
+    );
+    expect(result.executionContext).toContain("[ID] tg-file-1");
+    expect(result.executionContext).toContain(`[Bot ID] ${installationId}`);
+    expect(result.executionContext).not.toContain("curl -sS");
   });
 });

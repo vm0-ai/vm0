@@ -3,11 +3,11 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../../src/lib/ts-rest-handler";
-import { checkpointsByIdContract } from "@vm0/core/contracts/sessions";
+import { checkpointsByIdContract } from "@vm0/api-contracts/contracts/sessions";
 import { eq, and } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
-import { checkpoints } from "../../../../../src/db/schema/checkpoint";
-import { agentRuns } from "../../../../../src/db/schema/agent-run";
+import { checkpoints } from "@vm0/db/schema/checkpoint";
+import { agentRuns } from "@vm0/db/schema/agent-run";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
 import { decodeToRecord } from "../../../../../src/lib/infra/checkpoint/decode-artifact-snapshots";

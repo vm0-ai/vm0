@@ -167,25 +167,15 @@ describe("GET /api/cron/sync-skills", () => {
 
   describe("Freshness check", () => {
     it("should skip sync when commit SHA is unchanged", async () => {
-      const tarball = createFullTarball([
-        EXTRA_SKILLS.alphaSkill,
-        EXTRA_SKILLS.betaSkill,
-      ]);
-      setupMswHandlers(testSha, tarball);
+      await setAllTestSkillsCommitSha(testSha);
+      setupGitRefsHandler(testSha);
 
-      // First sync — updates commitSha on all skills
-      const response1 = await GET(cronRequest(cronSecret));
-      expect(response1.status).toBe(200);
-      const data1 = await response1.json();
-      expect(data1.success).toBe(true);
-
-      // Second sync with same commit SHA — should skip
-      const response2 = await GET(cronRequest(cronSecret));
-      expect(response2.status).toBe(200);
-      const data2 = await response2.json();
-      expect(data2.synced).toBe(0);
-      expect(data2.skipped).toBe(0);
-      expect(data2.total).toBe(0);
+      const response = await GET(cronRequest(cronSecret));
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.synced).toBe(0);
+      expect(data.skipped).toBe(0);
+      expect(data.total).toBe(0);
     });
   });
 

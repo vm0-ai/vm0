@@ -14,7 +14,7 @@ import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
   zeroInsightsContract,
   type InsightsResponse,
-} from "@vm0/core/contracts/zero-insights";
+} from "@vm0/api-contracts/contracts/zero-insights";
 
 const context = testContext();
 const mockApi = createMockApi(context);

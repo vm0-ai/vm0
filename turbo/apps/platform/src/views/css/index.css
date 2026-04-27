@@ -75,22 +75,6 @@
   animation: zero-shimmer 3.5s linear infinite;
 }
 
-/* Inline streaming indicator: staggered dot-trail pulse wave */
-@keyframes zero-dot-trail {
-  0%,
-  100% {
-    opacity: 0.25;
-    transform: scale(0.75);
-  }
-  30% {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-.zero-dot-trail-item {
-  animation: zero-dot-trail 1.2s ease-in-out infinite;
-}
-
 /* Thinking indicator: 3-block loader */
 .zero-blocks {
   display: inline-grid;

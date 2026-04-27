@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
-import { slackOrgInstallations } from "../../../../../src/db/schema/slack-org-installation";
+import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
 import {
   adminConnect,
   memberConnect,

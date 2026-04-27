@@ -182,15 +182,14 @@ pub trait Sandbox: Send + Sync + Any {
     /// Spawn `request.cmd` in the guest and return a handle for later
     /// supervision via [`wait_exit`](Self::wait_exit).
     ///
-    /// If `stdout_log_path` is `Some`, guest stdout is also mirrored
-    /// into that file on the guest side; the returned handle's
-    /// `stdout_rx` receives the same stream in real time when the
-    /// backend supports streaming (see
-    /// [`SpawnHandle::stdout_rx`](crate::SpawnHandle::stdout_rx)).
+    /// `output` controls whether stdout is buffered into the final
+    /// [`ProcessExit`](crate::ProcessExit) or streamed in real time through
+    /// [`SpawnHandle::stdout_rx`](crate::SpawnHandle::stdout_rx), optionally
+    /// teeing streamed chunks into a guest-side file.
     async fn spawn_watch(
         &self,
         request: &ExecRequest<'_>,
-        stdout_log_path: Option<&str>,
+        output: crate::SpawnOutputMode<'_>,
     ) -> Result<SpawnHandle>;
     /// Wait for the process behind `handle` to exit, up to `timeout`.
     ///

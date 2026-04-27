@@ -40,7 +40,8 @@ async fn post_result_reap_stays_silent_on_clean_exit() -> Result<(), Box<dyn std
     .expect("execute_cli did not return within 15s on the happy path");
     let elapsed = started.elapsed();
 
-    let (exit_code, _stderr) = result.expect("execute_cli returned Err");
+    let result = result.expect("execute_cli returned Err");
+    let exit_code = result.exit_code;
 
     // Clean exit(0) — if this is SIGTERM_EXIT / SIGKILL_EXIT, the
     // reap fired against a healthy CLI, which is a correctness bug.

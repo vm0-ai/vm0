@@ -18,4 +18,7 @@ pub enum NetworkError {
 
     #[error("failed to open lock file: {0}")]
     LockOpen(String),
+
+    #[error("prerequisite check failed: {0}")]
+    Prerequisite(String),
 }

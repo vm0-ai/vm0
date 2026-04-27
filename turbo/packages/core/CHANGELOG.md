@@ -1,5 +1,121 @@
 # Changelog
 
+## [8.239.0](https://github.com/vm0-ai/vm0/compare/core-v8.238.0...core-v8.239.0) (2026-04-27)
+
+
+### Features
+
+* add chat artifacts drawer ([#11229](https://github.com/vm0-ai/vm0/issues/11229)) ([97483c5](https://github.com/vm0-ai/vm0/commit/97483c5793965372b3a5ae82ab532059e6579a98))
+
+## [8.238.0](https://github.com/vm0-ai/vm0/compare/core-v8.237.0...core-v8.238.0) (2026-04-27)
+
+
+### Features
+
+* **telegram:** add multi-bot integration api ([#11015](https://github.com/vm0-ai/vm0/issues/11015)) ([f4f0cb4](https://github.com/vm0-ai/vm0/commit/f4f0cb4b9d1f2887bcb92965b1be13cec5305c09))
+
+## [8.237.0](https://github.com/vm0-ai/vm0/compare/core-v8.236.1...core-v8.237.0) (2026-04-26)
+
+
+### Features
+
+* **platform:** add PWA offline caching and fallback page ([#11151](https://github.com/vm0-ai/vm0/issues/11151)) ([ed86f3c](https://github.com/vm0-ai/vm0/commit/ed86f3c452ae4d2034a584fb0503e7518f3b0a38))
+
+## [8.236.1](https://github.com/vm0-ai/vm0/compare/core-v8.236.0...core-v8.236.1) (2026-04-26)
+
+
+### Bug Fixes
+
+* add missing display names for OpenRouter-format model IDs ([#11130](https://github.com/vm0-ai/vm0/issues/11130)) ([2ab8dd0](https://github.com/vm0-ai/vm0/commit/2ab8dd0dd3441159b7de3303b15f2a4458a52cee))
+
+## [8.236.0](https://github.com/vm0-ai/vm0/compare/core-v8.235.1...core-v8.236.0) (2026-04-25)
+
+
+### Features
+
+* **chat:** add message start scroll button ([#11089](https://github.com/vm0-ai/vm0/issues/11089)) ([d3ea28d](https://github.com/vm0-ai/vm0/commit/d3ea28da71e767ad6c53d415f9e7a12e669efb14))
+
+
+### Refactoring
+
+* split db and api contracts packages ([#11092](https://github.com/vm0-ai/vm0/issues/11092)) ([f4767d9](https://github.com/vm0-ai/vm0/commit/f4767d987af373d17d93d5ca8fb00864c18bc15b))
+
+## [8.235.1](https://github.com/vm0-ai/vm0/compare/core-v8.235.0...core-v8.235.1) (2026-04-25)
+
+
+### Bug Fixes
+
+* **chat:** route optimistic thread setup through chat page ([#11074](https://github.com/vm0-ai/vm0/issues/11074)) ([c9b69c9](https://github.com/vm0-ai/vm0/commit/c9b69c9538ade7bebe88db2f91a3f182eaf159e7))
+
+
+### Performance Improvements
+
+* replace after() with waitUntil() to eliminate Vercel scheduling gap ([#11078](https://github.com/vm0-ai/vm0/issues/11078)) ([7eee7bc](https://github.com/vm0-ai/vm0/commit/7eee7bcf7d1d78f8bc7cae3b34eba022e31e98d9))
+
+## [8.235.0](https://github.com/vm0-ai/vm0/compare/core-v8.234.1...core-v8.235.0) (2026-04-25)
+
+
+### Features
+
+* add Opus 4.7, DeepSeek, Kimi, and MiniMax models to OpenRouter BYOK ([#11062](https://github.com/vm0-ai/vm0/issues/11062)) ([9090365](https://github.com/vm0-ai/vm0/commit/9090365b4d4afce11f4ca3d24784e8773bcdc4aa))
+
+
+### Bug Fixes
+
+* **chat:** switch to new threads optimistically ([#11050](https://github.com/vm0-ai/vm0/issues/11050)) ([4897e71](https://github.com/vm0-ai/vm0/commit/4897e716fbfdcdfa4b3edac3f928f50f75cc57a2))
+
+
+### Refactoring
+
+* remove modelProviderSelection feature switch ([#11048](https://github.com/vm0-ai/vm0/issues/11048)) ([6a98e7a](https://github.com/vm0-ai/vm0/commit/6a98e7afba0f8ed985832a877d76546807aa0eae))
+
+## [8.234.1](https://github.com/vm0-ai/vm0/compare/core-v8.234.0...core-v8.234.1) (2026-04-24)
+
+
+### Performance Improvements
+
+* **chat:** avoid redundant startup requests ([#11039](https://github.com/vm0-ai/vm0/issues/11039)) ([549f656](https://github.com/vm0-ai/vm0/commit/549f656df8a35fc90b962d71ca1764e12d44975e))
+
+## [8.234.0](https://github.com/vm0-ai/vm0/compare/core-v8.233.0...core-v8.234.0) (2026-04-24)
+
+
+### Features
+
+* remove deprecated deepseek-chat/reasoner, add v4 credit multipliers ([#11014](https://github.com/vm0-ai/vm0/issues/11014)) ([7f4eb57](https://github.com/vm0-ai/vm0/commit/7f4eb57fcf8f8d3a4040787ec854fac5fac51ec0))
+
+
+### Refactoring
+
+* remove chat thread list item agentId ([#10998](https://github.com/vm0-ai/vm0/issues/10998)) ([2d62c16](https://github.com/vm0-ai/vm0/commit/2d62c168caa019b7e65e26d6f2bf713b798608a8))
+* remove unifyChatThreads feature flag ([#11006](https://github.com/vm0-ai/vm0/issues/11006)) ([4c5a8cf](https://github.com/vm0-ai/vm0/commit/4c5a8cfb0ee29f4d8259f01c0a2d3960d44f4e21))
+
+## [8.233.0](https://github.com/vm0-ai/vm0/compare/core-v8.232.0...core-v8.233.0) (2026-04-24)
+
+
+### Features
+
+* add deepseek v4 models ([#10956](https://github.com/vm0-ai/vm0/issues/10956)) ([292ed24](https://github.com/vm0-ai/vm0/commit/292ed2401576ed7451962e7c3e391ea61a6b9e3b))
+
+## [8.232.0](https://github.com/vm0-ai/vm0/compare/core-v8.231.0...core-v8.232.0) (2026-04-24)
+
+
+### Features
+
+* classify built-in connectors with ai-first grouping ([#10838](https://github.com/vm0-ai/vm0/issues/10838)) ([bd3e2a3](https://github.com/vm0-ai/vm0/commit/bd3e2a3d5d525bbe872723fe122fbd9ddf345a8f))
+* **slack:** graduate agent switching ([#10964](https://github.com/vm0-ai/vm0/issues/10964)) ([cf070f8](https://github.com/vm0-ai/vm0/commit/cf070f857f4ded9f16f5a6d932ba091b3d022ec5))
+
+## [8.231.0](https://github.com/vm0-ai/vm0/compare/core-v8.230.0...core-v8.231.0) (2026-04-24)
+
+
+### Features
+
+* add browser-use connector ([#10922](https://github.com/vm0-ai/vm0/issues/10922)) ([9a4edc4](https://github.com/vm0-ai/vm0/commit/9a4edc45e87e7863d5d2bfa79d522938b4703aa8))
+
+
+### Bug Fixes
+
+* **core:** guide users to add https:// in firewall url errors ([#10958](https://github.com/vm0-ai/vm0/issues/10958)) ([9ecde92](https://github.com/vm0-ai/vm0/commit/9ecde92e4c2b3ba2cb94cf7747ed1ba37c129b94)), closes [#10923](https://github.com/vm0-ai/vm0/issues/10923)
+
 ## [8.230.0](https://github.com/vm0-ai/vm0/compare/core-v8.229.4...core-v8.230.0) (2026-04-23)
 
 

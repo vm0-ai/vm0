@@ -139,6 +139,22 @@ describe("POST /api/zero/uploads/prepare", () => {
       });
     });
 
+    it("accepts html uploads for controlled chat preview flows", async () => {
+      const response = await POST(
+        createPrepareRequest({
+          filename: "report.html",
+          contentType: "text/html",
+          size: 2048,
+        }),
+      );
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body).toMatchObject({
+        filename: "report.html",
+        contentType: "text/html",
+      });
+    });
+
     it("sanitizes filenames when building the S3 key", async () => {
       const response = await POST(
         createPrepareRequest({

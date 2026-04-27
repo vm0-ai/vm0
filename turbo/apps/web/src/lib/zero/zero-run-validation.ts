@@ -1,11 +1,11 @@
 import { eq } from "drizzle-orm";
-import { checkpoints } from "../../db/schema/checkpoint";
-import { agentRuns } from "../../db/schema/agent-run";
+import { checkpoints } from "@vm0/db/schema/checkpoint";
+import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
   agentComposeVersions,
   agentComposes,
-} from "../../db/schema/agent-compose";
-import { notFound, unauthorized, badRequest } from "../shared/errors";
+} from "@vm0/db/schema/agent-compose";
+import { notFound, unauthorized, badRequest } from "@vm0/api-services/errors";
 import { logger } from "../shared/logger";
 import type { AgentComposeSnapshot } from "../infra/checkpoint/types";
 import type { AgentComposeYaml } from "../infra/agent-compose/types";

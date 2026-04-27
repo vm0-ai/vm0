@@ -1,5 +1,6 @@
 import { command, computed, state } from "ccstate";
 import { clearSentryUser, setSentryUser } from "../lib/sentry.ts";
+import { clearPostHogUser, setPostHogUser } from "../lib/posthog.ts";
 
 const reload$ = state(0);
 const clerkVersion$ = state(0);
@@ -61,6 +62,11 @@ export const setupClerk$ = command(
     // Set initial Sentry user context
     if (clerk.user) {
       setSentryUser(clerk.user.id);
+      setPostHogUser({
+        id: clerk.user.id,
+        email: clerk.user.primaryEmailAddress?.emailAddress,
+        name: clerk.user.fullName ?? undefined,
+      });
     }
 
     // Track the user ID so we only trigger a reload on actual auth state
@@ -71,8 +77,14 @@ export const setupClerk$ = command(
       // Update Sentry user context on auth state change
       if (clerk.user) {
         setSentryUser(clerk.user.id);
+        setPostHogUser({
+          id: clerk.user.id,
+          email: clerk.user.primaryEmailAddress?.emailAddress,
+          name: clerk.user.fullName ?? undefined,
+        });
       } else {
         clearSentryUser();
+        clearPostHogUser();
       }
       // Bump on every clerk event so signals tracking mutable clerk state
       // (e.g. current org's imageUrl after reload()) re-compute and their

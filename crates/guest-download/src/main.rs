@@ -4,6 +4,8 @@ use std::time::Instant;
 const LOG_TAG: &str = "sandbox:download";
 
 fn main() {
+    guest_common::log::enable_system_log_file();
+
     let args: Vec<String> = std::env::args().collect();
     let manifest_path = match args.get(1) {
         Some(p) => p,

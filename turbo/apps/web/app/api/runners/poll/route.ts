@@ -3,11 +3,11 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../src/lib/ts-rest-handler";
-import { runnersPollContract } from "@vm0/core/contracts/runners";
-import { createErrorResponse } from "@vm0/core/contracts/errors";
+import { runnersPollContract } from "@vm0/api-contracts/contracts/runners";
+import { createErrorResponse } from "@vm0/api-contracts/contracts/errors";
 import { initServices } from "../../../../src/lib/init-services";
-import { agentRuns } from "../../../../src/db/schema/agent-run";
-import { runnerJobQueue } from "../../../../src/db/schema/runner-job-queue";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { eq, and, isNull, inArray, sql, type SQL } from "drizzle-orm";
 import { getRunnerAuth } from "../../../../src/lib/auth/runner-auth";
 import { logger } from "../../../../src/lib/shared/logger";

@@ -1,8 +1,8 @@
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { initServices } from "../../lib/init-services";
-import { slackOrgInstallations } from "../../db/schema/slack-org-installation";
-import { slackOrgThreadSessions } from "../../db/schema/slack-org-thread-session";
+import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
+import { slackOrgThreadSessions } from "@vm0/db/schema/slack-org-thread-session";
 import {
   insertSlackConnectionIfMissing,
   upsertSlackInstallation,

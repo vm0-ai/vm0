@@ -1,0 +1,67 @@
+import { describe, expect, it, vi } from "vitest";
+
+import { testContext } from "./test-helpers";
+
+const context = testContext();
+
+async function importInstrument(
+  configureEnv?: (
+    envModule: Pick<typeof import("../lib/env"), "mockEnv">,
+  ) => void,
+): Promise<void> {
+  vi.resetModules();
+  const { mockEnv } = await import("../lib/env");
+  configureEnv?.({ mockEnv });
+  await import("../instrument");
+}
+
+describe("instrument", () => {
+  it("registers OpenTelemetry with api metadata", async () => {
+    await importInstrument((envModule) => {
+      envModule.mockEnv("VERCEL_GIT_COMMIT_SHA", "abc123");
+    });
+
+    expect(context.mocks.otel.registerOTel).toHaveBeenCalledWith(
+      expect.objectContaining({
+        attributes: {
+          "service.version": "abc123",
+        },
+        serviceName: "vm0-api",
+        traceExporter: "auto",
+      }),
+    );
+  });
+
+  it("does not initialize Sentry without a DSN", async () => {
+    await importInstrument((envModule) => {
+      envModule.mockEnv("SENTRY_DSN", undefined);
+    });
+
+    expect(context.mocks.sentry.init).not.toHaveBeenCalled();
+  });
+
+  it("initializes Sentry with api metadata", async () => {
+    await importInstrument((envModule) => {
+      envModule.mockEnv(
+        "SENTRY_DSN",
+        "https://examplePublicKey@o0.ingest.sentry.io/0",
+      );
+      envModule.mockEnv("VERCEL_ENV", "production");
+      envModule.mockEnv("VERCEL_GIT_COMMIT_SHA", "abc123");
+    });
+
+    expect(context.mocks.sentry.init).toHaveBeenCalledWith({
+      dsn: "https://examplePublicKey@o0.ingest.sentry.io/0",
+      environment: "production",
+      initialScope: {
+        tags: {
+          app: "api",
+        },
+      },
+      release: "abc123",
+      sendDefaultPii: false,
+      shutdownTimeout: 500,
+      tracesSampleRate: 0,
+    });
+  });
+});

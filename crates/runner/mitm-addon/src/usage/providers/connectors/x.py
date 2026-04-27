@@ -8,6 +8,7 @@ in the ``usage_event`` table.
 import json
 import urllib.parse
 import uuid
+import zlib
 from collections.abc import Callable
 from typing import TypedDict
 
@@ -32,6 +33,7 @@ from .x_billing import (
 # ambiguity of an ``OK_MAX`` that is itself excluded from the OK range.
 _HTTP_STATUS_OK_MIN = 200
 _HTTP_STATUS_REDIRECT_MIN = 300
+_USAGE_EVENT_BATCH_SIZE = 100
 
 # X v2 NDJSON streaming endpoint paths (exact match — ``/2/tweets/search/stream/rules``
 # is a regular request/response endpoint for rules management, NOT a stream).
@@ -411,11 +413,18 @@ def report_usage(flow: http.HTTPFlow, run_id: str) -> None:
     endpoint_bucket = classify_bucket(permission, flow.request.method, request_path)
     if endpoint_bucket is None:
         return
+    try:
+        request_body = flow.request.content
+    except (zlib.error, ValueError):
+        # Bogus Content-Encoding on the request: stay on the conservative
+        # (more expensive) bucket, matching refine_bucket_with_body's own
+        # "never under-charge" rule for parse failures.
+        request_body = None
     endpoint_bucket = refine_bucket_with_body(
         endpoint_bucket,
         flow.request.method,
         request_path,
-        flow.request.content,
+        request_body,
     )
 
     req_meta = _parse_request_metadata(flow)
@@ -476,6 +485,7 @@ def report_usage(flow: http.HTTPFlow, run_id: str) -> None:
         )
         return
     url = f"{api_url}/api/webhooks/agent/usage-event"
+    events = []
     for category, qty in billable_counts.items():
         # UUIDv5 from stable inputs — retries produce the same key, so the
         # server-side UNIQUE(idempotency_key) dedups duplicate deliveries
@@ -486,16 +496,22 @@ def report_usage(flow: http.HTTPFlow, run_id: str) -> None:
                 f"{run_id}:{flow.id}:{category}",
             )
         )
-        _enqueue_webhook(
-            url,
-            sandbox_token,
+        events.append(
             {
-                "runId": run_id,
                 "idempotencyKey": idempotency_key,
                 "kind": "connector",
                 "provider": firewall_name,
                 "category": category,
                 "quantity": qty,
+            }
+        )
+    for start in range(0, len(events), _USAGE_EVENT_BATCH_SIZE):
+        _enqueue_webhook(
+            url,
+            sandbox_token,
+            {
+                "runId": run_id,
+                "events": events[start : start + _USAGE_EVENT_BATCH_SIZE],
             },
             proxy_log_path,
             "usage_event",

@@ -1,5 +1,5 @@
-import type { ConnectorType } from "@vm0/core/contracts/connectors";
-import { getConnectorOAuthConfig } from "@vm0/core/contracts/connector-utils";
+import type { ConnectorType } from "@vm0/connectors/connectors";
+import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
 

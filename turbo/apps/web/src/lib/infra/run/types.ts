@@ -1,11 +1,12 @@
 import type { AdditionalVolume } from "../storage/types";
-import type { Firewalls, NetworkPolicies } from "@vm0/core/contracts/firewalls";
+import type {
+  Firewalls,
+  NetworkPolicies,
+} from "@vm0/connectors/firewall-types";
 
 /**
- * Artifact entry on an ExecutionContext: a name, optional version ("latest"
- * when undefined), and an explicit mount path. Replaces the old split between
- * "primary" (name→version map, mount forced to working_dir) and "additional"
- * (list with explicit mount paths). Every entry now carries its own mount.
+ * Artifact entry on an ExecutionContext: a name, optional version
+ * ("latest" when undefined), and an explicit mount path.
  */
 export interface ContextArtifact {
   name: string;
@@ -125,6 +126,11 @@ export interface ExecutionContext {
   // API start time for E2E timing metrics — epoch millis captured at the route
   // handler's first line by the caller (see issue #9936).
   apiStartTime: number;
+
+  // True when the run was previously enqueued and is now being dispatched from
+  // the queue. Used only for telemetry (was_queued dimension on api_to_executor)
+  // so latency queries can separate queue-dispatch from direct-dispatch runs.
+  wasQueued?: boolean;
 }
 
 /**
@@ -136,6 +142,29 @@ export interface DispatchTimings {
   apiStart: number;
   authorize: number;
   transaction: number;
+  /**
+   * Stamped by the route handler right before returning HTTP 201, via
+   * CreateZeroRunResult.markResponseReady(). Anchors the end of Phase-1
+   * residual work (persist_run + insert_chat_message + route sync) and the
+   * start of the Next.js after() scheduling gap. Absent on non-chat triggers
+   * that don't participate in the marker protocol.
+   */
+  responseReady?: number;
+  /**
+   * Stamped as the first synchronous line of the Next.js after() closure,
+   * before dispatchZeroRun is invoked. Isolates pure platform after()
+   * scheduling (responseReady → afterEnterAt) from JS-local closure-to-
+   * dispatch overhead (afterEnterAt → dispatchStart). Absent on non-chat
+   * triggers (paired with responseReady and dispatchStart).
+   */
+  afterEnterAt?: number;
+  /**
+   * Stamped at the first synchronous line of dispatchZeroRun (inside the
+   * after() callback). Anchors the end of the after() scheduling gap and the
+   * start of Phase-2 real work (registerCallbacks + token generation).
+   * Absent on non-chat triggers (paired with responseReady).
+   */
+  dispatchStart?: number;
   token: number;
   resolveSourceDuration?: number;
   resolveSecretsDuration?: number;

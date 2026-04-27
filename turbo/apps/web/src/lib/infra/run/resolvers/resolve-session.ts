@@ -2,9 +2,9 @@ import { eq } from "drizzle-orm";
 import {
   agentComposes,
   agentComposeVersions,
-} from "../../../../db/schema/agent-compose";
-import { agentRuns } from "../../../../db/schema/agent-run";
-import { notFound, unauthorized, badRequest } from "../../../shared/errors";
+} from "@vm0/db/schema/agent-compose";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { notFound, unauthorized, badRequest } from "@vm0/api-services/errors";
 import { logger } from "../../../shared/logger";
 import { getAgentSessionWithConversation } from "../../agent-session";
 import type { ConversationResolution } from "./types";

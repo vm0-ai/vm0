@@ -3,9 +3,9 @@ import { and, eq } from "drizzle-orm";
 import {
   agentComposes,
   agentComposeVersions,
-} from "../../db/schema/agent-compose";
-import { zeroAgents } from "../../db/schema/zero-agent";
-import { orgMetadata } from "../../db/schema/org-metadata";
+} from "@vm0/db/schema/agent-compose";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { ensureStarterCreditGrant } from "../zero/credit/starter-grant-service";
 
 interface Services {

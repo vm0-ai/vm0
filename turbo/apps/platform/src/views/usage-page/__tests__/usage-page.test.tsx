@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { resetAllMockHandlers } from "../../../mocks/handlers/index.ts";
 import { server } from "../../../mocks/server.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
@@ -30,11 +30,11 @@ describe("/_/usage page", () => {
       ).toBeInTheDocument();
     });
 
-    expect(screen.getByText("Usage Insights")).toBeInTheDocument();
-
     await waitFor(() => {
       expect(
-        screen.getByRole("img", { name: /Total credits breakdown/ }),
+        within(
+          screen.getByRole("region", { name: "Credits totals" }),
+        ).getByText("credits"),
       ).toBeInTheDocument();
     });
 
@@ -46,12 +46,6 @@ describe("/_/usage page", () => {
       return /My Schedule/.test(el.textContent ?? "");
     });
     expect(scheduleLink).toBeInTheDocument();
-
-    const chatsTab = screen.getAllByRole("tab").find((el) => {
-      return /Chats/.test(el.textContent ?? "");
-    });
-    expect(chatsTab).toBeInTheDocument();
-    click(chatsTab!);
 
     await waitFor(() => {
       expect(screen.getByText("Chat with Agent")).toBeInTheDocument();

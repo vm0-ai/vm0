@@ -1,6 +1,6 @@
 import { eq, and } from "drizzle-orm";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { userFeatureSwitches } from "../../../db/schema/user-feature-switches";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 
 /**
  * Get user feature switch overrides for the given org + user.
@@ -13,7 +13,7 @@ export async function getUserFeatureSwitches(
   const db = globalThis.services.db;
 
   const [row] = await db
-    .select()
+    .select({ switches: userFeatureSwitches.switches })
     .from(userFeatureSwitches)
     .where(
       and(

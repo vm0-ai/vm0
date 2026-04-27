@@ -3,10 +3,10 @@ import { initServices } from "../../lib/init-services";
 import {
   agentComposes,
   agentComposeVersions,
-} from "../../db/schema/agent-compose";
-import { agentSessions } from "../../db/schema/agent-session";
-import { chatThreads } from "../../db/schema/chat-thread";
-import { zeroAgents } from "../../db/schema/zero-agent";
+} from "@vm0/db/schema/agent-compose";
+import { agentSessions } from "@vm0/db/schema/agent-session";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
 
 /**
  * Read the headVersionId and updatedAt of a compose record.
@@ -135,6 +135,21 @@ export async function getTestAgentSessionWithConversation(
 }
 
 /**
+ * Read the artifacts column of an agent_sessions row.
+ */
+export async function getTestAgentSessionArtifacts(
+  sessionId: string,
+): Promise<Array<{ name: string; version?: string; mountPath: string }>> {
+  initServices();
+  const [row] = await globalThis.services.db
+    .select({ artifacts: agentSessions.artifacts })
+    .from(agentSessions)
+    .where(eq(agentSessions.id, sessionId))
+    .limit(1);
+  return row?.artifacts ?? [];
+}
+
+/**
  * Read the last_read_at value for a chat thread.
  *
  * @why-db-direct No API route exposes last_read_at directly. Tests that
@@ -152,6 +167,25 @@ export async function getTestChatThreadLastReadAt(
     .limit(1);
   if (!row) return undefined;
   return row.lastReadAt;
+}
+
+/**
+ * Read the last_read_message_id value for a chat thread.
+ *
+ * @why-db-direct No API route exposes last_read_message_id directly. Tests
+ * that need to assert exact DB state after mark-read require direct access.
+ */
+export async function getTestChatThreadLastReadMessageId(
+  threadId: string,
+): Promise<string | null | undefined> {
+  initServices();
+  const [row] = await globalThis.services.db
+    .select({ lastReadMessageId: chatThreads.lastReadMessageId })
+    .from(chatThreads)
+    .where(eq(chatThreads.id, threadId))
+    .limit(1);
+  if (!row) return undefined;
+  return row.lastReadMessageId;
 }
 
 /**

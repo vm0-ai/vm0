@@ -1,16 +1,14 @@
 import { NextResponse } from "next/server";
 import { eq, and } from "drizzle-orm";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { initServices } from "../../../../../src/lib/init-services";
 import { env } from "../../../../../src/env";
 import {
   verifySlackSignature,
   getSlackSignatureHeaders,
 } from "../../../../../src/lib/zero/slack/verify";
-import { slackOrgInstallations } from "../../../../../src/db/schema/slack-org-installation";
-import { slackOrgConnections } from "../../../../../src/db/schema/slack-org-connection";
-import { zeroAgents } from "../../../../../src/db/schema/zero-agent";
+import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
+import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { decryptSecretValue } from "../../../../../src/lib/shared/crypto/secrets-encryption";
 import {
   createSlackClient,
@@ -295,16 +293,6 @@ async function handleAgentPickerSubmit(
     return new Response("", { status: 200 });
   }
 
-  // Defense in depth: if the feature is gated off for this org, close the
-  // modal without persisting. The entry points that open the modal are also
-  // gated, so reaching here with the feature off implies the flag flipped
-  // after the user opened the picker.
-  if (
-    !isFeatureEnabled(FeatureSwitchKey.SlackAgentSwitch, { orgId: ctx.orgId })
-  ) {
-    return new Response("", { status: 200 });
-  }
-
   const { SECRETS_ENCRYPTION_KEY } = env();
   const botToken = decryptSecretValue(
     ctx.installation.encryptedBotToken,
@@ -368,15 +356,6 @@ async function handleHomeSwitchAgent(
 
   const ctx = await resolveConnectionContext(payload.user.id, payload.team.id);
   if (!ctx) {
-    return;
-  }
-
-  // Feature gate: the App Home button is hidden when the feature is off, but
-  // defend the action entry point too in case a stale client still has the
-  // button visible.
-  if (
-    !isFeatureEnabled(FeatureSwitchKey.SlackAgentSwitch, { orgId: ctx.orgId })
-  ) {
     return;
   }
 

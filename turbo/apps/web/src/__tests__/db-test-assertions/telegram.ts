@@ -1,8 +1,10 @@
 import { and, eq, sql } from "drizzle-orm";
 import { initServices } from "../../lib/init-services";
-import { telegramMessages } from "../../db/schema/telegram-message";
-import { telegramUserLinks } from "../../db/schema/telegram-user-link";
-import { telegramThreadSessions } from "../../db/schema/telegram-thread-session";
+import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
+import { telegramMessages } from "@vm0/db/schema/telegram-message";
+import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
+import { telegramThreadSessions } from "@vm0/db/schema/telegram-thread-session";
+import { decryptSecretValue } from "../../lib/shared/crypto/secrets-encryption";
 
 /**
  * Count telegram messages for a specific installation.
@@ -34,6 +36,42 @@ export async function findTestTelegramUserLinksByVm0UserId(vm0UserId: string) {
     .select()
     .from(telegramUserLinks)
     .where(eq(telegramUserLinks.vm0UserId, vm0UserId));
+}
+
+/**
+ * Find telegram installations owned by a specific user.
+ */
+export async function findTestTelegramInstallationsByOwner(
+  ownerUserId: string,
+) {
+  return globalThis.services.db
+    .select()
+    .from(telegramInstallations)
+    .where(eq(telegramInstallations.ownerUserId, ownerUserId));
+}
+
+/**
+ * Read and decrypt a Telegram bot token for assertions.
+ */
+export async function getTestTelegramBotToken(
+  telegramBotId: string,
+): Promise<string | null> {
+  initServices();
+
+  const [installation] = await globalThis.services.db
+    .select({ encryptedBotToken: telegramInstallations.encryptedBotToken })
+    .from(telegramInstallations)
+    .where(eq(telegramInstallations.telegramBotId, telegramBotId))
+    .limit(1);
+
+  if (!installation) {
+    return null;
+  }
+
+  return decryptSecretValue(
+    installation.encryptedBotToken,
+    globalThis.services.env.SECRETS_ENCRYPTION_KEY,
+  );
 }
 
 /**

@@ -6,13 +6,11 @@ import {
   useLastResolved,
   useGet,
   useSet,
-  useResolved,
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   IconChartLine,
-  IconChartBar,
   IconLayoutGrid,
   IconCalendar,
   IconUsers,
@@ -21,11 +19,10 @@ import {
   IconLayoutSidebarLeftCollapse,
   IconPlug,
   IconFlask,
-  IconPhone,
   IconSparkles,
   IconMenu2,
 } from "@tabler/icons-react";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   Tooltip,
   TooltipContent,
@@ -140,15 +137,6 @@ const FOOTER_NAV = [
     featureGate: undefined,
   },
   {
-    id: "phone",
-    activeKeys: ["phone"],
-    pathname: "/phone",
-    label: "Phone",
-    icon: IconPhone as NavIcon,
-    iconImg: undefined,
-    featureGate: FeatureSwitchKey.PhoneIntegration,
-  },
-  {
     id: "lab",
     activeKeys: ["lab"],
     pathname: "/_/lab",
@@ -157,20 +145,13 @@ const FOOTER_NAV = [
     iconImg: undefined,
     featureGate: FeatureSwitchKey.Lab,
   },
-  {
-    id: "usage",
-    activeKeys: ["usage"],
-    pathname: "/_/usage",
-    label: "Usage",
-    icon: IconChartBar as NavIcon,
-    iconImg: undefined,
-    featureGate: FeatureSwitchKey.UsageAnalytics,
-  },
 ] as const satisfies readonly FooterNavItem[];
 
-// Leaf component: subscribes to currentChatAgentId$ so ZeroSidebar doesn't re-render on agent changes
+// Leaf component: subscribes to currentChatAgentId$ so ZeroSidebar doesn't re-render on agent changes.
+// useLastResolved keeps the previously-resolved agent ID during re-loads, preventing unnecessary
+// remounts of ChatThreadsSection that would cause the chat list to flash.
 function ChatThreadsSectionWithKey() {
-  const currentChatAgentId = useResolved(currentChatAgentId$);
+  const currentChatAgentId = useLastResolved(currentChatAgentId$);
   return <ChatThreadsSection key={currentChatAgentId} />;
 }
 
@@ -231,9 +212,7 @@ function SidebarNavContent() {
   const slackScopeMismatch = useLastResolved(slackOrgScopeMismatch$) ?? false;
 
   const manageNav = MANAGE_NAV.filter((item) => {
-    return (
-      item.id !== "activities" || features?.[FeatureSwitchKey.ActivityLogList]
-    );
+    return item.id !== "activities" || features?.[FeatureSwitchKey.ZeroDebug];
   });
   const footerNav = FOOTER_NAV.filter((item) => {
     return !item.featureGate || features?.[item.featureGate];

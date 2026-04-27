@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { eq, and } from "drizzle-orm";
 import * as tar from "tar";
 import { VOLUME_ORG_USER_ID } from "@vm0/core/storage-names";
-import { storages, storageVersions } from "../../../db/schema/storage";
+import { storages, storageVersions } from "@vm0/db/schema/storage";
 import {
   putS3Object,
   listS3Objects,

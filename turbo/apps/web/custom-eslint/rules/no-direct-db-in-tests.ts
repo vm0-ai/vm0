@@ -22,6 +22,10 @@
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 import { createRule } from "../utils.ts";
 
+function isMigrationTestFile(filename: string): boolean {
+  return filename.replace(/\\/g, "/").includes("/src/db/migrations/__tests__/");
+}
+
 export default createRule({
   name: "no-direct-db-in-tests",
   defaultOptions: [],
@@ -54,7 +58,10 @@ export default createRule({
         }
 
         // Check db/schema imports
-        if (/\/db\/schema\//.test(source)) {
+        if (
+          /\/db\/schema\//.test(source) &&
+          !isMigrationTestFile(context.filename)
+        ) {
           context.report({
             node,
             messageId: "noDbSchemaImport",

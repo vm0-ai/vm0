@@ -1,0 +1,282 @@
+name: "Web/API Vercel Environment"
+description: "Render the shared Web and API Vercel environment into a key=value file"
+
+outputs:
+  file:
+    description: "Path to the rendered environment file"
+    value: ${{ steps.render.outputs.file }}
+
+inputs:
+  app:
+    description: "App receiving the environment (web or api)"
+    required: true
+  environment:
+    description: "Deployment environment (preview or production)"
+    required: true
+  database-url:
+    description: "Database URL for the deployment"
+    required: false
+    default: ""
+  job-ref:
+    description: "Preview job reference, such as pr-123 or staging"
+    required: false
+    default: ""
+  web-url:
+    description: "Preview or production web URL"
+    required: false
+    default: ""
+  app-url:
+    description: "Preview or production platform app URL"
+    required: false
+    default: ""
+  api-url:
+    description: "Preview or production API URL"
+    required: false
+    default: ""
+
+runs:
+  using: "composite"
+  steps:
+    - name: Render environment file
+      id: render
+      shell: bash
+      env:
+        INPUT_APP: ${{ inputs.app }}
+        INPUT_ENVIRONMENT: ${{ inputs.environment }}
+        INPUT_DATABASE_URL: ${{ inputs.database-url }}
+        INPUT_JOB_REF: ${{ inputs.job-ref }}
+        INPUT_WEB_URL: ${{ inputs.web-url }}
+        INPUT_APP_URL: ${{ inputs.app-url }}
+        INPUT_API_URL: ${{ inputs.api-url }}
+      run: |
+        set -euo pipefail
+
+        if [[ "$INPUT_APP" != "web" && "$INPUT_APP" != "api" ]]; then
+          echo "::error::app must be web or api"
+          exit 1
+        fi
+
+        if [[ "$INPUT_ENVIRONMENT" != "preview" && "$INPUT_ENVIRONMENT" != "production" ]]; then
+          echo "::error::environment must be preview or production"
+          exit 1
+        fi
+
+        vars_json="${REPO_VARS_JSON:-}"
+        secrets_json="${REPO_SECRETS_JSON:-}"
+        if [[ -z "$vars_json" ]]; then
+          vars_json="{}"
+        fi
+        if [[ -z "$secrets_json" ]]; then
+          secrets_json="{}"
+        fi
+        env_file="${RUNNER_TEMP}/web-api-${INPUT_APP}-${INPUT_ENVIRONMENT}.env"
+        : > "$env_file"
+
+        json_get() {
+          local json="$1"
+          local key="$2"
+          jq -r --arg key "$key" '.[$key] // ""' <<< "$json"
+        }
+
+        repo_var() {
+          json_get "$vars_json" "$1"
+        }
+
+        repo_secret() {
+          json_get "$secrets_json" "$1"
+        }
+
+        first_non_empty() {
+          local value
+          for value in "$@"; do
+            if [[ -n "$value" ]]; then
+              printf '%s' "$value"
+              return
+            fi
+          done
+        }
+
+        add_env() {
+          local key="$1"
+          local value="${2:-}"
+          printf '%s=%s\n' "$key" "$value" >> "$env_file"
+        }
+
+        add_var() {
+          add_env "$1" "$(repo_var "$2")"
+        }
+
+        add_secret() {
+          add_env "$1" "$(repo_secret "$2")"
+        }
+
+        if [[ -n "$INPUT_DATABASE_URL" ]]; then
+          add_env DATABASE_URL "$INPUT_DATABASE_URL"
+        fi
+
+        if [[ "$INPUT_ENVIRONMENT" == "production" ]]; then
+          web_url="${INPUT_WEB_URL:-https://www.vm0.ai}"
+          app_url="${INPUT_APP_URL:-https://app.vm0.ai}"
+          api_url="${INPUT_API_URL:-$(repo_var VM0_API_URL)}"
+          axiom_dataset_suffix="prod"
+          runner_default_group="vm0/production"
+          concurrent_run_limit_cap="10"
+          slack_redirect_base_url="$(repo_var SLACK_REDIRECT_BASE_URL)"
+          plausible_script_url="$(first_non_empty "$(repo_var PLAUSIBLE_SCRIPT_URL_PROD)" "$(repo_var PLAUSIBLE_SCRIPT_URL)")"
+          strapi_url="$(repo_var STRAPI_URL)"
+        else
+          web_url="$INPUT_WEB_URL"
+          app_url="$INPUT_APP_URL"
+          api_url="$INPUT_API_URL"
+          axiom_dataset_suffix="dev"
+          runner_default_group="vm0/development-${INPUT_JOB_REF}"
+          concurrent_run_limit_cap="0"
+          slack_redirect_base_url="$INPUT_WEB_URL"
+          plausible_script_url="$(repo_var PLAUSIBLE_SCRIPT_URL)"
+          strapi_url=""
+        fi
+
+        add_env VM0_API_URL "$api_url"
+        add_env BLOG_BASE_URL "$web_url"
+        add_env STRAPI_URL "$strapi_url"
+        add_var CLERK_PUBLISHABLE_KEY CLERK_PUBLISHABLE_KEY
+        add_secret CLERK_SECRET_KEY CLERK_SECRET_KEY
+        add_secret E2B_API_KEY E2B_API_KEY
+        add_var R2_ACCOUNT_ID R2_ACCOUNT_ID
+        add_secret R2_ACCESS_KEY_ID R2_ACCESS_KEY_ID
+        add_secret R2_SECRET_ACCESS_KEY R2_SECRET_ACCESS_KEY
+        add_var R2_USER_STORAGES_BUCKET_NAME R2_USER_STORAGES_BUCKET_NAME
+        add_secret SECRETS_ENCRYPTION_KEY SECRETS_ENCRYPTION_KEY
+        add_secret OFFICIAL_RUNNER_SECRET OFFICIAL_RUNNER_SECRET
+        add_env RUNNER_DEFAULT_GROUP "$runner_default_group"
+        add_secret AXIOM_TOKEN_SESSIONS AXIOM_TOKEN_SESSIONS
+        add_secret AXIOM_TOKEN_TELEMETRY AXIOM_TOKEN_TELEMETRY
+        add_env AXIOM_DATASET_SUFFIX "$axiom_dataset_suffix"
+        if [[ "$INPUT_ENVIRONMENT" == "preview" ]]; then
+          add_env USE_MOCK_CLAUDE "true"
+        fi
+        add_secret CRON_SECRET CRON_SECRET
+        add_secret ABLY_API_KEY ABLY_API_KEY
+        add_secret OPENROUTER_API_KEY OPENROUTER_API_KEY
+        add_secret OPENAI_API_KEY OPENAI_API_KEY
+        add_var VAPID_PUBLIC_KEY VAPID_PUBLIC_KEY
+        add_secret VAPID_PRIVATE_KEY VAPID_PRIVATE_KEY
+        add_env CONCURRENT_RUN_LIMIT_CAP "$concurrent_run_limit_cap"
+        if [[ "$INPUT_ENVIRONMENT" == "preview" ]]; then
+          add_env VM0_DEBUG "*"
+        fi
+        add_var CLAUDE_CODE_VERSION_URL CLAUDE_CODE_VERSION_URL
+        add_var SLACK_CLIENT_ID SLACK_CLIENT_ID
+        add_secret SLACK_CLIENT_SECRET SLACK_CLIENT_SECRET
+        add_secret SLACK_SIGNING_SECRET SLACK_SIGNING_SECRET
+        add_env SLACK_REDIRECT_BASE_URL "$slack_redirect_base_url"
+        if [[ "$INPUT_ENVIRONMENT" == "preview" ]]; then
+          add_env E2E_SLACK_MOCK_ENABLED "1"
+        fi
+        add_env PLAUSIBLE_SCRIPT_URL "$plausible_script_url"
+        add_secret SENTRY_DSN_WEB SENTRY_DSN_WEB
+        if [[ "$INPUT_APP" == "api" ]]; then
+          sentry_dsn="$(first_non_empty "$(repo_secret SENTRY_DSN_API)" "$(repo_secret SENTRY_DSN_WEB)" "$(repo_secret SENTRY_DSN)")"
+          add_env SENTRY_DSN_API "$sentry_dsn"
+          add_env SENTRY_DSN "$sentry_dsn"
+          add_env SENTRY_PROJECT "$(first_non_empty "$(repo_var SENTRY_PROJECT_API)" "$(repo_var SENTRY_PROJECT_WEB)")"
+        else
+          add_var SENTRY_PROJECT SENTRY_PROJECT_WEB
+        fi
+        add_secret SENTRY_AUTH_TOKEN SENTRY_AUTH_TOKEN
+        add_var SENTRY_ORG SENTRY_ORG
+
+        add_var GH_OAUTH_CLIENT_ID GH_OAUTH_CLIENT_ID
+        add_secret GH_OAUTH_CLIENT_SECRET GH_OAUTH_CLIENT_SECRET
+        add_var NOTION_OAUTH_CLIENT_ID NOTION_OAUTH_CLIENT_ID
+        add_secret NOTION_OAUTH_CLIENT_SECRET NOTION_OAUTH_CLIENT_SECRET
+        add_var GOOGLE_OAUTH_CLIENT_ID GOOGLE_OAUTH_CLIENT_ID
+        add_secret GOOGLE_OAUTH_CLIENT_SECRET GOOGLE_OAUTH_CLIENT_SECRET
+        add_var MICROSOFT_OAUTH_CLIENT_ID MICROSOFT_OAUTH_CLIENT_ID
+        add_secret MICROSOFT_OAUTH_CLIENT_SECRET MICROSOFT_OAUTH_CLIENT_SECRET
+        add_var LINEAR_OAUTH_CLIENT_ID LINEAR_OAUTH_CLIENT_ID
+        add_secret LINEAR_OAUTH_CLIENT_SECRET LINEAR_OAUTH_CLIENT_SECRET
+        add_var FIGMA_OAUTH_CLIENT_ID FIGMA_OAUTH_CLIENT_ID
+        add_secret FIGMA_OAUTH_CLIENT_SECRET FIGMA_OAUTH_CLIENT_SECRET
+        add_var DEEL_OAUTH_CLIENT_ID DEEL_OAUTH_CLIENT_ID
+        add_secret DEEL_OAUTH_CLIENT_SECRET DEEL_OAUTH_CLIENT_SECRET
+        add_var DOCUSIGN_OAUTH_CLIENT_ID DOCUSIGN_OAUTH_CLIENT_ID
+        add_secret DOCUSIGN_OAUTH_CLIENT_SECRET DOCUSIGN_OAUTH_CLIENT_SECRET
+        add_var DROPBOX_OAUTH_CLIENT_ID DROPBOX_OAUTH_CLIENT_ID
+        add_secret DROPBOX_OAUTH_CLIENT_SECRET DROPBOX_OAUTH_CLIENT_SECRET
+        add_var NEON_OAUTH_CLIENT_ID NEON_OAUTH_CLIENT_ID
+        add_secret NEON_OAUTH_CLIENT_SECRET NEON_OAUTH_CLIENT_SECRET
+        add_var REDDIT_OAUTH_CLIENT_ID REDDIT_OAUTH_CLIENT_ID
+        add_secret REDDIT_OAUTH_CLIENT_SECRET REDDIT_OAUTH_CLIENT_SECRET
+        add_var STRAVA_OAUTH_CLIENT_ID STRAVA_OAUTH_CLIENT_ID
+        add_secret STRAVA_OAUTH_CLIENT_SECRET STRAVA_OAUTH_CLIENT_SECRET
+        add_var X_OAUTH_CLIENT_ID X_OAUTH_CLIENT_ID
+        add_secret X_OAUTH_CLIENT_SECRET X_OAUTH_CLIENT_SECRET
+        add_var VERCEL_OAUTH_CLIENT_ID VERCEL_OAUTH_CLIENT_ID
+        add_secret VERCEL_OAUTH_CLIENT_SECRET VERCEL_OAUTH_CLIENT_SECRET
+        add_var VERCEL_INTEGRATION_SLUG VERCEL_INTEGRATION_SLUG
+        add_var SENTRY_OAUTH_CLIENT_ID SENTRY_OAUTH_CLIENT_ID
+        add_secret SENTRY_OAUTH_CLIENT_SECRET SENTRY_OAUTH_CLIENT_SECRET
+        add_var INTERVALS_ICU_OAUTH_CLIENT_ID INTERVALS_ICU_OAUTH_CLIENT_ID
+        add_secret INTERVALS_ICU_OAUTH_CLIENT_SECRET INTERVALS_ICU_OAUTH_CLIENT_SECRET
+        add_var SUPABASE_OAUTH_CLIENT_ID SUPABASE_OAUTH_CLIENT_ID
+        add_secret SUPABASE_OAUTH_CLIENT_SECRET SUPABASE_OAUTH_CLIENT_SECRET
+        add_var XERO_OAUTH_CLIENT_ID XERO_OAUTH_CLIENT_ID
+        add_secret XERO_OAUTH_CLIENT_SECRET XERO_OAUTH_CLIENT_SECRET
+        add_var MONDAY_OAUTH_CLIENT_ID MONDAY_OAUTH_CLIENT_ID
+        add_secret MONDAY_OAUTH_CLIENT_SECRET MONDAY_OAUTH_CLIENT_SECRET
+        add_var MONDAY_OAUTH_APP_ID MONDAY_OAUTH_APP_ID
+        add_var WEBFLOW_OAUTH_CLIENT_ID WEBFLOW_OAUTH_CLIENT_ID
+        add_secret WEBFLOW_OAUTH_CLIENT_SECRET WEBFLOW_OAUTH_CLIENT_SECRET
+        add_var CANVA_OAUTH_CLIENT_ID CANVA_OAUTH_CLIENT_ID
+        add_secret CANVA_OAUTH_CLIENT_SECRET CANVA_OAUTH_CLIENT_SECRET
+        add_var HUBSPOT_OAUTH_CLIENT_ID HUBSPOT_OAUTH_CLIENT_ID
+        add_secret HUBSPOT_OAUTH_CLIENT_SECRET HUBSPOT_OAUTH_CLIENT_SECRET
+        add_var CLOSE_OAUTH_CLIENT_ID CLOSE_OAUTH_CLIENT_ID
+        add_secret CLOSE_OAUTH_CLIENT_SECRET CLOSE_OAUTH_CLIENT_SECRET
+        add_var META_ADS_OAUTH_CLIENT_ID META_ADS_OAUTH_CLIENT_ID
+        add_secret META_ADS_OAUTH_CLIENT_SECRET META_ADS_OAUTH_CLIENT_SECRET
+        add_var AHREFS_OAUTH_CLIENT_ID AHREFS_OAUTH_CLIENT_ID
+        add_secret AHREFS_OAUTH_CLIENT_SECRET AHREFS_OAUTH_CLIENT_SECRET
+        add_var AIRTABLE_OAUTH_CLIENT_ID AIRTABLE_OAUTH_CLIENT_ID
+        add_secret AIRTABLE_OAUTH_CLIENT_SECRET AIRTABLE_OAUTH_CLIENT_SECRET
+        add_var TODOIST_OAUTH_CLIENT_ID TODOIST_OAUTH_CLIENT_ID
+        add_secret TODOIST_OAUTH_CLIENT_SECRET TODOIST_OAUTH_CLIENT_SECRET
+        add_var ASANA_OAUTH_CLIENT_ID ASANA_OAUTH_CLIENT_ID
+        add_secret ASANA_OAUTH_CLIENT_SECRET ASANA_OAUTH_CLIENT_SECRET
+        add_var POSTHOG_OAUTH_CLIENT_ID POSTHOG_OAUTH_CLIENT_ID
+        add_secret POSTHOG_OAUTH_CLIENT_SECRET POSTHOG_OAUTH_CLIENT_SECRET
+        add_var MERCURY_OAUTH_CLIENT_ID MERCURY_OAUTH_CLIENT_ID
+        add_secret MERCURY_OAUTH_CLIENT_SECRET MERCURY_OAUTH_CLIENT_SECRET
+        add_var SPOTIFY_OAUTH_CLIENT_ID SPOTIFY_OAUTH_CLIENT_ID
+        add_secret SPOTIFY_OAUTH_CLIENT_SECRET SPOTIFY_OAUTH_CLIENT_SECRET
+        add_var STRIPE_OAUTH_CLIENT_ID STRIPE_OAUTH_CLIENT_ID
+        add_secret STRIPE_OAUTH_CLIENT_SECRET STRIPE_OAUTH_CLIENT_SECRET
+        add_secret STRIPE_SECRET_KEY STRIPE_SECRET_KEY
+        add_secret STRIPE_WEBHOOK_SECRET STRIPE_WEBHOOK_SECRET
+        add_secret CLERK_WEBHOOK_SIGNING_SECRET CLERK_WEBHOOK_SIGNING_SECRET
+        add_secret ZERO_PRICE ZERO_PRICE
+        add_var ZERO_ONE_TIME_CAMPAIGN ZERO_ONE_TIME_CAMPAIGN
+        add_secret AGENTPHONE_API_KEY AGENTPHONE_API_KEY
+        add_secret PLAIN_API_KEY PLAIN_API_KEY
+        add_secret NGROK_API_KEY NGROK_API_KEY
+        add_var NGROK_COMPUTER_CONNECTOR_DOMAIN NGROK_COMPUTER_CONNECTOR_DOMAIN
+        add_env APP_URL "$app_url"
+        add_secret RESEND_API_KEY RESEND_API_KEY
+        add_secret RESEND_WEBHOOK_SECRET RESEND_WEBHOOK_SECRET
+        add_var RESEND_FROM_DOMAIN RESEND_FROM_DOMAIN
+        add_var VM0_DEFAULT_AGENT VM0_DEFAULT_AGENT
+        add_var GITHUB_APP_SLUG VM0_GITHUB_APP_SLUG
+        add_var GITHUB_APP_ID VM0_GITHUB_APP_ID
+        add_var GITHUB_APP_CLIENT_ID VM0_GITHUB_APP_CLIENT_ID
+        add_secret GITHUB_APP_CLIENT_SECRET VM0_GITHUB_APP_CLIENT_SECRET
+        add_secret GITHUB_APP_WEBHOOK_SECRET VM0_GITHUB_APP_WEBHOOK_SECRET
+        add_secret GITHUB_APP_PRIVATE_KEY VM0_GITHUB_APP_PRIVATE_KEY
+        add_var GCP_PROJECT_ID GCP_PROJECT_ID
+        add_var GCP_PROJECT_NUMBER GCP_PROJECT_NUMBER
+        add_var GCP_SERVICE_ACCOUNT_EMAIL GCP_SERVICE_ACCOUNT_EMAIL
+        add_var GCP_WORKLOAD_IDENTITY_POOL_ID GCP_WORKLOAD_IDENTITY_POOL_ID
+        add_var GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID
+
+        echo "file=$env_file" >> "$GITHUB_OUTPUT"
+        echo "Rendered $(wc -l < "$env_file") Web/API environment variables to $env_file"

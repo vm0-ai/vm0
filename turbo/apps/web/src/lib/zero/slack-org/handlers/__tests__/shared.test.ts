@@ -47,24 +47,24 @@ describe("buildOrgConnectUrl", () => {
 });
 
 describe("buildLogsUrl", () => {
-  it("should return platform URL with activity path", () => {
+  it("should return platform URL with activities path", () => {
     const url = buildLogsUrl("run-123");
 
-    expect(url).toBe("http://localhost:3001/activity/run-123");
+    expect(url).toBe("http://localhost:3001/activities/run-123");
   });
 
   it("should encode run ID in URL", () => {
     const url = buildLogsUrl("run/with/slashes");
 
-    expect(url).toBe("http://localhost:3001/activity/run%2Fwith%2Fslashes");
+    expect(url).toBe("http://localhost:3001/activities/run%2Fwith%2Fslashes");
   });
 });
 
 describe("buildAgentLogsUrl", () => {
-  it("should return platform URL with activity path", () => {
+  it("should return platform URL with activities path", () => {
     const url = buildAgentLogsUrl();
 
-    expect(url).toBe("http://localhost:3001/activity");
+    expect(url).toBe("http://localhost:3001/activities");
   });
 });
 

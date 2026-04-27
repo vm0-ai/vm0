@@ -2,11 +2,11 @@ import { initClient } from "@ts-rest/core";
 import {
   zeroVariablesContract,
   zeroVariablesByNameContract,
-} from "@vm0/core/contracts/zero-secrets";
+} from "@vm0/api-contracts/contracts/zero-secrets";
 import type {
   VariableResponse,
   VariableListResponse,
-} from "@vm0/core/contracts/variables";
+} from "@vm0/api-contracts/contracts/variables";
 import { getClientConfig, handleError } from "../core/client-factory";
 
 /**

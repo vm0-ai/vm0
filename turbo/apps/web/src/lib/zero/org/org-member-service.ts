@@ -1,16 +1,16 @@
 import { eq, and, inArray } from "drizzle-orm";
 import { clerkClient } from "@clerk/nextjs/server";
 import { z } from "zod";
-import { badRequest, forbidden, notFound } from "../../shared/errors";
+import { badRequest, forbidden, notFound } from "@vm0/api-services/errors";
 import { logger } from "../../shared/logger";
 import type {
   OrgEnrollmentMode,
   OrgRole,
-} from "@vm0/core/contracts/org-members";
-import { slackOrgConnections } from "../../../db/schema/slack-org-connection";
-import { slackOrgInstallations } from "../../../db/schema/slack-org-installation";
-import { orgMembersCache } from "../../../db/schema/org-members-cache";
-import { orgMembersMetadata } from "../../../db/schema/org-members-metadata";
+} from "@vm0/api-contracts/contracts/org-members";
+import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
+import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
+import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
+import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 
 const log = logger("service:org-member");
 

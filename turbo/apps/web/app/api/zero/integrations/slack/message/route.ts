@@ -1,14 +1,14 @@
 import { createHandler, tsr } from "../../../../../../src/lib/ts-rest-handler";
-import { integrationsSlackMessageContract } from "@vm0/core/contracts/integrations";
+import { integrationsSlackMessageContract } from "@vm0/api-contracts/contracts/integrations";
 import { getModelDisplayName } from "@vm0/core/model-display-name";
 import { initServices } from "../../../../../../src/lib/init-services";
-import { agentComposeVersions } from "../../../../../../src/db/schema/agent-compose";
-import { agentRuns } from "../../../../../../src/db/schema/agent-run";
-import { zeroAgents } from "../../../../../../src/db/schema/zero-agent";
-import { zeroRuns } from "../../../../../../src/db/schema/zero-run";
-import { zeroAgentSchedules } from "../../../../../../src/db/schema/zero-agent-schedule";
-import { slackOrgConnections } from "../../../../../../src/db/schema/slack-org-connection";
-import { slackOrgInstallations } from "../../../../../../src/db/schema/slack-org-installation";
+import { agentComposeVersions } from "@vm0/db/schema/agent-compose";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
+import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
+import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
 import {
   isSlackPlatformError,
   openDMChannel,

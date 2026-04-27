@@ -3,13 +3,13 @@ import {
   zeroSchedulesMainContract,
   zeroSchedulesByNameContract,
   zeroSchedulesEnableContract,
-} from "@vm0/core/contracts/zero-schedules";
+} from "@vm0/api-contracts/contracts/zero-schedules";
 import { getClientConfig, handleError } from "../core/client-factory";
 import type {
   ScheduleResponse,
   ScheduleListResponse,
   DeployScheduleResponse,
-} from "@vm0/core/contracts/zero-schedules";
+} from "@vm0/api-contracts/contracts/zero-schedules";
 import { resolveCompose } from "./composes";
 
 /**
