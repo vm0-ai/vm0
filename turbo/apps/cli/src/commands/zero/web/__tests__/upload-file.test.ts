@@ -17,6 +17,7 @@ import { uploadFileCommand } from "../upload-file";
 import chalk from "chalk";
 
 const PREPARE_URL = "http://localhost:3000/api/zero/uploads/prepare";
+const COMPLETE_URL = "http://localhost:3000/api/zero/uploads/complete";
 const PUT_URL = "https://mock-r2.test/upload-target";
 
 describe("zero web upload-file command", () => {
@@ -46,7 +47,7 @@ describe("zero web upload-file command", () => {
   });
 
   describe("successful upload", () => {
-    it("should prepare + PUT and print JSON result", async () => {
+    it("should prepare + PUT + complete and print JSON result", async () => {
       const filePath = join(tmpDir, "report.pdf");
       writeFileSync(filePath, Buffer.from("%PDF-1.4 fake"));
 
@@ -60,6 +61,7 @@ describe("zero web upload-file command", () => {
       };
 
       let putReceivedContentType: string | null = null;
+      let completed = false;
 
       server.use(
         http.post(PREPARE_URL, async ({ request }) => {
@@ -83,11 +85,29 @@ describe("zero web upload-file command", () => {
           putReceivedContentType = request.headers.get("content-type");
           return new HttpResponse(null, { status: 200 });
         }),
+        http.post(COMPLETE_URL, async ({ request }) => {
+          expect(request.headers.get("authorization")).toBe(
+            "Bearer test-token",
+          );
+          expect(await request.json()).toEqual({
+            id: prepared.id,
+            contentType: prepared.contentType,
+          });
+          completed = true;
+          return HttpResponse.json({
+            id: prepared.id,
+            filename: prepared.filename,
+            contentType: prepared.contentType,
+            size: prepared.size,
+            url: prepared.url,
+          });
+        }),
       );
 
       await uploadFileCommand.parseAsync(["node", "cli", "-f", filePath]);
 
       expect(putReceivedContentType).toBe("application/pdf");
+      expect(completed).toBe(true);
       const stdout = mockConsoleLog.mock.calls.flat().join("\n");
       const parsed = JSON.parse(stdout) as Record<string, unknown>;
       expect(parsed).toMatchObject({
@@ -125,6 +145,15 @@ describe("zero web upload-file command", () => {
         http.put(PUT_URL, ({ request }) => {
           putReceivedContentType = request.headers.get("content-type");
           return new HttpResponse(null, { status: 200 });
+        }),
+        http.post(COMPLETE_URL, () => {
+          return HttpResponse.json({
+            id: "csv-uuid",
+            filename: "data.bin",
+            contentType: "text/csv",
+            size: 13,
+            url: "https://presigned.example.com/csv-uuid/data.bin?sig=xyz",
+          });
         }),
       );
 
@@ -212,6 +241,7 @@ describe("zero web upload-file command", () => {
     it("should surface failure from R2 PUT", async () => {
       const filePath = join(tmpDir, "bad.txt");
       writeFileSync(filePath, "oops");
+      let completeCalled = false;
 
       server.use(
         http.post(PREPARE_URL, () => {
@@ -230,6 +260,10 @@ describe("zero web upload-file command", () => {
         http.put(PUT_URL, () => {
           return new HttpResponse(null, { status: 500 });
         }),
+        http.post(COMPLETE_URL, () => {
+          completeCalled = true;
+          return HttpResponse.json({});
+        }),
       );
 
       await expect(async () => {
@@ -238,6 +272,50 @@ describe("zero web upload-file command", () => {
 
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("Failed to upload file to storage"),
+      );
+      expect(completeCalled).toBe(false);
+    });
+
+    it("should surface failure from complete", async () => {
+      const filePath = join(tmpDir, "complete-fails.txt");
+      writeFileSync(filePath, "done");
+
+      server.use(
+        http.post(PREPARE_URL, () => {
+          return HttpResponse.json(
+            {
+              id: "complete-id",
+              filename: "complete-fails.txt",
+              contentType: "text/plain",
+              size: 4,
+              uploadUrl: PUT_URL,
+              url: "https://presigned.example.com/complete-id/complete-fails.txt",
+            },
+            { status: 200 },
+          );
+        }),
+        http.put(PUT_URL, () => {
+          return new HttpResponse(null, { status: 200 });
+        }),
+        http.post(COMPLETE_URL, () => {
+          return HttpResponse.json(
+            {
+              error: {
+                message: "Uploaded file not found",
+                code: "NOT_FOUND",
+              },
+            },
+            { status: 404 },
+          );
+        }),
+      );
+
+      await expect(async () => {
+        await uploadFileCommand.parseAsync(["node", "cli", "-f", filePath]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Uploaded file not found"),
       );
     });
   });

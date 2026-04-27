@@ -196,6 +196,12 @@ vi.mock("@slack/web-api", () => {
       info: vi.fn().mockResolvedValue({ ok: true, user: undefined }),
     },
     files: {
+      getUploadURLExternal: vi.fn().mockResolvedValue({
+        ok: true,
+        upload_url: "https://slack.upload",
+        file_id: "F-mock",
+      }),
+      completeUploadExternal: vi.fn().mockResolvedValue({ ok: true }),
       info: vi.fn().mockResolvedValue({ ok: false, error: "file_not_found" }),
     },
     assistant: {

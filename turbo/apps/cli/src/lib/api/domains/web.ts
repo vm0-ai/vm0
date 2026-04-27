@@ -124,6 +124,14 @@ interface PrepareUploadResponse {
   url: string;
 }
 
+interface CompleteUploadResponse {
+  id: string;
+  filename: string;
+  contentType: string;
+  size: number;
+  url: string;
+}
+
 async function parseErrorBody(
   response: Response,
   fallback: string,
@@ -147,9 +155,11 @@ async function parseErrorBody(
  * GET URL. Authenticates via ZERO_TOKEN (`file:write` capability) or a CLI
  * PAT / Clerk session.
  *
- * Two-step flow:
+ * Three-step flow:
  *   1. POST /api/zero/uploads/prepare — server signs a PUT URL for R2
  *   2. PUT the file bytes directly to R2
+ *   3. POST /api/zero/uploads/complete — server verifies the object and
+ *      records any run-scoped upload association
  *
  * Step 2 never touches the Next.js runtime, which lifts the cap from
  * Vercel's ~4.5 MB body limit up to R2's 5 GB single-PUT limit.
@@ -217,11 +227,31 @@ export async function uploadWebFile(
     );
   }
 
+  const completeUrl = new URL("/api/zero/uploads/complete", baseUrl);
+  const completeRes = await fetch(completeUrl, {
+    method: "POST",
+    headers: prepareHeaders,
+    body: JSON.stringify({
+      id: prepared.id,
+      contentType: prepared.contentType,
+    }),
+  });
+
+  if (!completeRes.ok) {
+    const { message, code } = await parseErrorBody(
+      completeRes,
+      "Failed to complete upload",
+    );
+    throw new ApiRequestError(message, code, completeRes.status);
+  }
+
+  const completed = (await completeRes.json()) as CompleteUploadResponse;
+
   return {
-    id: prepared.id,
-    filename: prepared.filename,
-    contentType: prepared.contentType,
-    size: prepared.size,
-    url: prepared.url,
+    id: completed.id,
+    filename: completed.filename,
+    contentType: completed.contentType,
+    size: completed.size,
+    url: completed.url,
   };
 }

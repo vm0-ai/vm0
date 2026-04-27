@@ -50,6 +50,7 @@ import * as usagePricingSchema from "./schema/usage-pricing";
 import * as zeroAgentSchema from "./schema/zero-agent";
 import * as zeroRunSchema from "./schema/zero-run";
 import * as storageVersionLineageSchema from "./schema/storage-version-lineage";
+import * as runUploadedFileSchema from "./schema/run-uploaded-file";
 import * as vm0ApiKeySchema from "./schema/vm0-api-key";
 import * as zeroSkillSchema from "./schema/zero-skill";
 import * as computerUseHostSchema from "./schema/computer-use-host";
@@ -114,6 +115,7 @@ export const schema = {
   ...zeroAgentSchema,
   ...zeroRunSchema,
   ...storageVersionLineageSchema,
+  ...runUploadedFileSchema,
   ...vm0ApiKeySchema,
   ...zeroSkillSchema,
   ...computerUseHostSchema,
