@@ -1,40 +1,60 @@
 //! Logging utilities for VM scripts.
 
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{LazyLock, Mutex};
 
-static SYSTEM_LOG_FILE: Mutex<Option<PathBuf>> = Mutex::new(None);
+#[allow(clippy::panic)]
+static RUN_ID: LazyLock<String> = LazyLock::new(|| match std::env::var("VM0_RUN_ID") {
+    Ok(run_id) if !run_id.is_empty() => run_id,
+    _ => panic!("VM0_RUN_ID is required for guest system logging"),
+});
+static DEFAULT_SYSTEM_LOG_FILE: LazyLock<String> =
+    LazyLock::new(|| format!("/tmp/vm0-system-{}.log", &*RUN_ID));
+static SYSTEM_LOG_FILE: Mutex<SystemLogFile> = Mutex::new(SystemLogFile::Default);
+
+enum SystemLogFile {
+    Default,
+    Override(PathBuf),
+    Disabled,
+}
 
 /// Get current timestamp in RFC3339 format with milliseconds.
 pub fn timestamp() -> String {
     chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
 }
 
-/// Also append future log lines to a system log file.
+/// Guest-side system log path for the current run.
+pub fn system_log_file() -> &'static str {
+    &DEFAULT_SYSTEM_LOG_FILE
+}
+
+/// Override the system log file used by future log lines.
 ///
 /// The write is synchronous and completes before the logging macro returns.
 /// This matters for guest-agent's final telemetry upload, which reads the
 /// same file immediately after some fatal-path log lines are emitted.
 pub fn set_system_log_file(path: impl AsRef<Path>) {
     let mut guard = SYSTEM_LOG_FILE.lock().unwrap_or_else(|e| e.into_inner());
-    *guard = Some(path.as_ref().to_path_buf());
+    *guard = SystemLogFile::Override(path.as_ref().to_path_buf());
 }
 
 #[doc(hidden)]
 pub fn clear_system_log_file() {
     let mut guard = SYSTEM_LOG_FILE.lock().unwrap_or_else(|e| e.into_inner());
-    *guard = None;
+    *guard = SystemLogFile::Disabled;
 }
 
 fn append_system_log_line(line: &str) -> std::io::Result<()> {
     let guard = SYSTEM_LOG_FILE.lock().unwrap_or_else(|e| e.into_inner());
-    let Some(path) = guard.as_ref() else {
-        return Ok(());
+    let path = match &*guard {
+        SystemLogFile::Default => PathBuf::from(system_log_file()),
+        SystemLogFile::Override(path) => path.clone(),
+        SystemLogFile::Disabled => return Ok(()),
     };
     let mut file = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .open(path)
+        .open(&path)
         .map_err(|e| std::io::Error::new(e.kind(), format!("{}: {e}", path.display())))?;
     use std::io::Write;
     let mut line = line.as_bytes().to_vec();
@@ -51,8 +71,7 @@ fn write_stderr_line(line: &str) {
     let _ = stderr.flush();
 }
 
-/// Emit one formatted log line to stderr and, when configured, to the
-/// guest-side system log file.
+/// Emit one formatted log line to stderr and the guest-side system log file.
 pub fn emit(level: &str, tag: &str, args: std::fmt::Arguments<'_>) {
     let line = format!("[{}] [{level}] [{tag}] {args}", timestamp());
     if let Err(e) = append_system_log_line(&line) {

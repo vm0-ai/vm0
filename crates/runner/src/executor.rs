@@ -428,13 +428,6 @@ async fn run_in_sandbox(
     telemetry: &mut JobTelemetry,
     cancel: CancellationToken,
 ) -> RunnerResult<(i32, Option<String>)> {
-    // Guest-side system log file. Setup commands append directly here before
-    // guest-agent starts; guest-agent owns the file during the agent phase.
-    let log_file = format!(
-        "{GUEST_SYSTEM_LOG_PREFIX}{}{GUEST_SYSTEM_LOG_SUFFIX}",
-        context.run_id
-    );
-
     // 1. Fix guest clock and reseed entropy (must happen before HTTPS calls).
     //    Needed after snapshot restore (frozen clock) and after idle reuse (drifted clock).
     if start.restore_guest_state {
@@ -472,7 +465,7 @@ async fn run_in_sandbox(
                     telemetry,
                 )
                 .await?;
-                download_storages(sandbox, context, &effective, &log_file).await
+                download_storages(sandbox, context, &effective).await
             }
             .await
         } else {
@@ -1072,11 +1065,18 @@ fn filter_unchanged_storages(
 }
 
 /// Download storage volumes into the guest.
+fn guest_download_command(manifest_path: &str) -> String {
+    format!("{} {}", guest::DOWNLOAD_BIN, manifest_path)
+}
+
+fn guest_download_env(run_id: &str) -> [(&'static str, &str); 1] {
+    [("VM0_RUN_ID", run_id)]
+}
+
 async fn download_storages(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
     manifest: &StorageManifest,
-    log_file: &str,
 ) -> RunnerResult<()> {
     let manifest_json = serde_json::to_vec(manifest)
         .map_err(|e| RunnerError::Internal(format!("manifest json: {e}")))?;
@@ -1084,17 +1084,15 @@ async fn download_storages(
         .write_file(guest::STORAGE_MANIFEST, &manifest_json)
         .await?;
 
-    let download_cmd = format!(
-        "{} {} >> {log_file} 2>&1",
-        guest::DOWNLOAD_BIN,
-        guest::STORAGE_MANIFEST
-    );
+    let download_cmd = guest_download_command(guest::STORAGE_MANIFEST);
+    let run_id = context.run_id.to_string();
+    let download_env = guest_download_env(&run_id);
     info!(run_id = %context.run_id, "downloading storages");
     let result = sandbox
         .exec(&ExecRequest {
             cmd: &download_cmd,
             timeout: DEFAULT_EXEC_TIMEOUT,
-            env: &[],
+            env: &download_env,
             sudo: false,
         })
         .await?;
@@ -2198,9 +2196,30 @@ mod tests {
             artifacts: vec![],
             cleanup_paths: vec![],
         };
-        download_storages(&sandbox, &ctx, &manifest, "/tmp/log")
-            .await
-            .unwrap();
+        download_storages(&sandbox, &ctx, &manifest).await.unwrap();
+    }
+
+    #[test]
+    fn guest_download_command_uses_guest_common_system_log_without_shell_redirect() {
+        let cmd = guest_download_command("/tmp/storage-manifest.json");
+
+        assert_eq!(
+            cmd,
+            "/usr/local/bin/guest-download /tmp/storage-manifest.json"
+        );
+        assert!(!cmd.contains(">>"));
+        assert!(!cmd.contains("2>&1"));
+        assert!(!cmd.contains("--system-log"));
+    }
+
+    #[test]
+    fn guest_download_env_includes_run_id_for_guest_common_logs() {
+        let ctx = minimal_context();
+        let run_id = ctx.run_id.to_string();
+        let env = guest_download_env(&run_id);
+
+        assert_eq!(env[0].0, "VM0_RUN_ID");
+        assert_eq!(env[0].1, run_id);
     }
 
     #[tokio::test]
@@ -2218,7 +2237,7 @@ mod tests {
             artifacts: vec![],
             cleanup_paths: vec![],
         };
-        let err = download_storages(&sandbox, &ctx, &manifest, "/tmp/log")
+        let err = download_storages(&sandbox, &ctx, &manifest)
             .await
             .unwrap_err();
         assert!(err.to_string().contains("storage download failed"));
@@ -2446,7 +2465,7 @@ mod tests {
             artifacts: vec![],
             cleanup_paths: vec![],
         };
-        let err = download_storages(&sandbox, &ctx, &manifest, "/tmp/log")
+        let err = download_storages(&sandbox, &ctx, &manifest)
             .await
             .unwrap_err();
         assert!(err.to_string().contains("vsock write failed"), "got: {err}");

@@ -157,6 +157,73 @@ fn write_manifest(
     Ok(manifest_path)
 }
 
+fn run_guest_download(manifest_path: &str) -> bool {
+    guest_common::log::clear_system_log_file();
+    guest_download::run(manifest_path)
+}
+
+#[test]
+fn binary_writes_system_log_to_guest_common_default_path() {
+    let dir = tempfile::tempdir().unwrap();
+    let manifest_path = write_manifest(&dir, &[], None).unwrap();
+    let run_id = format!(
+        "guest-download-test-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    );
+    let system_log = format!("/tmp/vm0-system-{run_id}.log");
+    let ops_log = format!("/tmp/vm0-sandbox-ops-{run_id}.jsonl");
+    let _ = std::fs::remove_file(&system_log);
+    let _ = std::fs::remove_file(&ops_log);
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_guest-download"))
+        .arg(&manifest_path)
+        .env("VM0_RUN_ID", &run_id)
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let content = std::fs::read_to_string(&system_log).unwrap();
+    assert!(
+        content.contains("[INFO] [sandbox:download] Download completed"),
+        "unexpected system log: {content:?}"
+    );
+    assert_eq!(content.matches("Download completed").count(), 1);
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("[INFO] [sandbox:download] Download completed"));
+
+    let _ = std::fs::remove_file(system_log);
+    let _ = std::fs::remove_file(ops_log);
+}
+
+#[test]
+fn binary_panics_without_run_id_for_default_system_log() {
+    let dir = tempfile::tempdir().unwrap();
+    let manifest_path = write_manifest(&dir, &[], None).unwrap();
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_guest-download"))
+        .arg(&manifest_path)
+        .env_remove("VM0_RUN_ID")
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("VM0_RUN_ID is required for guest system logging"),
+        "unexpected stderr: {stderr}"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Test 1: single storage download succeeds
 // ---------------------------------------------------------------------------
@@ -177,7 +244,7 @@ fn single_storage_download() {
     let url = server.url("/storage.tar.gz");
     let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
 
-    let result = guest_download::run(manifest.to_str().unwrap());
+    let result = run_guest_download(manifest.to_str().unwrap());
 
     assert!(result);
     assert_eq!(
@@ -224,7 +291,7 @@ fn six_storages_parallel() {
         .collect();
 
     let manifest = write_manifest(&dir, &storage_refs, None).unwrap();
-    let result = guest_download::run(manifest.to_str().unwrap());
+    let result = run_guest_download(manifest.to_str().unwrap());
 
     assert!(result);
 
@@ -296,7 +363,7 @@ fn parent_child_mount_paths_parallel() {
     ];
 
     let manifest = write_manifest(&dir, &storages, None).unwrap();
-    let result = guest_download::run(manifest.to_str().unwrap());
+    let result = run_guest_download(manifest.to_str().unwrap());
 
     assert!(result);
     m_parent.assert();
@@ -342,7 +409,7 @@ fn artifact_download_success() {
     let url = server.url("/artifact.tar.gz");
     let manifest = write_manifest(&dir, &[], Some((mount.to_str().unwrap(), Some(&url)))).unwrap();
 
-    let result = guest_download::run(manifest.to_str().unwrap());
+    let result = run_guest_download(manifest.to_str().unwrap());
 
     assert!(result);
     assert_eq!(
@@ -368,7 +435,7 @@ fn artifact_404_non_fatal() {
     let url = server.url("/artifact.tar.gz");
     let manifest = write_manifest(&dir, &[], Some((mount.to_str().unwrap(), Some(&url)))).unwrap();
 
-    let result = guest_download::run(manifest.to_str().unwrap());
+    let result = run_guest_download(manifest.to_str().unwrap());
     assert!(result);
 }
 
@@ -389,7 +456,7 @@ fn storage_404_fatal() {
     let url = server.url("/storage.tar.gz");
     let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
 
-    let result = guest_download::run(manifest.to_str().unwrap());
+    let result = run_guest_download(manifest.to_str().unwrap());
     assert!(!result);
 }
 
@@ -410,7 +477,7 @@ fn server_error_exhausts_retries() {
     let url = server.url("/storage.tar.gz");
     let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
 
-    let result = guest_download::run(manifest.to_str().unwrap());
+    let result = run_guest_download(manifest.to_str().unwrap());
 
     assert!(!result);
     mock.assert_calls(3);
@@ -433,7 +500,7 @@ fn rate_limit_exhausts_retries() {
     let url = server.url("/storage.tar.gz");
     let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
 
-    let result = guest_download::run(manifest.to_str().unwrap());
+    let result = run_guest_download(manifest.to_str().unwrap());
 
     assert!(!result);
     mock.assert_calls(3);
@@ -458,7 +525,7 @@ fn invalid_tar_gz_non_retriable() {
     let url = server.url("/storage.tar.gz");
     let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
 
-    let result = guest_download::run(manifest.to_str().unwrap());
+    let result = run_guest_download(manifest.to_str().unwrap());
 
     assert!(!result);
     mock.assert_calls(1);
@@ -483,7 +550,7 @@ fn null_and_missing_urls_skip_download() {
     )
     .unwrap();
 
-    let result = guest_download::run(manifest.to_str().unwrap());
+    let result = run_guest_download(manifest.to_str().unwrap());
     assert!(result);
 }
 
@@ -492,7 +559,7 @@ fn null_and_missing_urls_skip_download() {
 // ---------------------------------------------------------------------------
 #[test]
 fn manifest_file_not_found() {
-    let result = guest_download::run("/tmp/nonexistent-manifest-path.json");
+    let result = run_guest_download("/tmp/nonexistent-manifest-path.json");
     assert!(!result);
 }
 
@@ -505,7 +572,7 @@ fn manifest_json_invalid() {
     let manifest_path = dir.path().join("manifest.json");
     std::fs::write(&manifest_path, "{{not valid json").unwrap();
 
-    let result = guest_download::run(manifest_path.to_str().unwrap());
+    let result = run_guest_download(manifest_path.to_str().unwrap());
     assert!(!result);
 }
 
@@ -526,7 +593,7 @@ fn artifact_500_fatal() {
     let url = server.url("/artifact.tar.gz");
     let manifest = write_manifest(&dir, &[], Some((mount.to_str().unwrap(), Some(&url)))).unwrap();
 
-    let result = guest_download::run(manifest.to_str().unwrap());
+    let result = run_guest_download(manifest.to_str().unwrap());
 
     assert!(!result);
     mock.assert_calls(3); // exhausts all retries
@@ -553,7 +620,7 @@ fn retry_then_succeed() {
     let manifest_str = manifest.to_str().unwrap().to_string();
 
     // Run in background thread so we can swap the mock during RETRY_DELAY
-    let handle = std::thread::spawn(move || guest_download::run(&manifest_str));
+    let handle = std::thread::spawn(move || run_guest_download(&manifest_str));
 
     // Poll until the first request has been made, then swap mock before retry fires (RETRY_DELAY = 1s).
     // Timeout after 5s to avoid infinite loop if the spawned thread panics before making a request.
@@ -617,7 +684,7 @@ fn storages_partial_failure() {
     )
     .unwrap();
 
-    let result = guest_download::run(manifest.to_str().unwrap());
+    let result = run_guest_download(manifest.to_str().unwrap());
 
     assert!(!result);
     // The successful storage should still have extracted its file
@@ -638,12 +705,12 @@ fn artifact_null_url_skipped() {
     // archiveUrl is the string "null" — should be treated as missing
     let manifest =
         write_manifest(&dir, &[], Some((mount.to_str().unwrap(), Some("null")))).unwrap();
-    let result = guest_download::run(manifest.to_str().unwrap());
+    let result = run_guest_download(manifest.to_str().unwrap());
     assert!(result);
 
     // archiveUrl is absent entirely
     let manifest = write_manifest(&dir, &[], Some((mount.to_str().unwrap(), None))).unwrap();
-    let result = guest_download::run(manifest.to_str().unwrap());
+    let result = run_guest_download(manifest.to_str().unwrap());
     assert!(result);
 }
 
@@ -677,7 +744,7 @@ fn symlink_path_traversal_blocked() {
     let url = server.url("/storage.tar.gz");
     let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
 
-    let result = guest_download::run(manifest.to_str().unwrap());
+    let result = run_guest_download(manifest.to_str().unwrap());
 
     assert!(result);
     // Legitimate file should be extracted
@@ -714,7 +781,7 @@ fn symlink_within_target_allowed() {
     let url = server.url("/storage.tar.gz");
     let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
 
-    let result = guest_download::run(manifest.to_str().unwrap());
+    let result = run_guest_download(manifest.to_str().unwrap());
 
     assert!(result);
     assert_eq!(
@@ -763,7 +830,7 @@ fn path_traversal_via_dotdot_blocked() {
     let url = server.url("/storage.tar.gz");
     let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
 
-    let result = guest_download::run(manifest.to_str().unwrap());
+    let result = run_guest_download(manifest.to_str().unwrap());
 
     assert!(result);
     // Legit file should be extracted
@@ -806,7 +873,7 @@ fn two_step_symlink_attack_blocked() {
     let url = server.url("/storage.tar.gz");
     let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
 
-    let result = guest_download::run(manifest.to_str().unwrap());
+    let result = run_guest_download(manifest.to_str().unwrap());
 
     assert!(result);
     // Safe file should be extracted
@@ -842,7 +909,7 @@ fn hardlink_escaping_target_blocked() {
     let url = server.url("/storage.tar.gz");
     let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
 
-    let result = guest_download::run(manifest.to_str().unwrap());
+    let result = run_guest_download(manifest.to_str().unwrap());
 
     assert!(result);
     assert_eq!(
@@ -883,7 +950,7 @@ fn symlink_relative_dotdot_escape_blocked() {
     let url = server.url("/storage.tar.gz");
     let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
 
-    let result = guest_download::run(manifest.to_str().unwrap());
+    let result = run_guest_download(manifest.to_str().unwrap());
 
     assert!(result);
     assert_eq!(
@@ -925,7 +992,7 @@ fn two_step_attack_deep_nested_blocked() {
     let url = server.url("/storage.tar.gz");
     let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
 
-    let result = guest_download::run(manifest.to_str().unwrap());
+    let result = run_guest_download(manifest.to_str().unwrap());
 
     assert!(result);
     // Payload should NOT be written to the evil target
@@ -957,7 +1024,7 @@ fn hardlink_relative_dotdot_escape_blocked() {
     let url = server.url("/storage.tar.gz");
     let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
 
-    let result = guest_download::run(manifest.to_str().unwrap());
+    let result = run_guest_download(manifest.to_str().unwrap());
 
     assert!(result);
     assert_eq!(
@@ -998,7 +1065,7 @@ fn absolute_path_entry_blocked() {
     let url = server.url("/storage.tar.gz");
     let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
 
-    let result = guest_download::run(manifest.to_str().unwrap());
+    let result = run_guest_download(manifest.to_str().unwrap());
 
     assert!(result);
     assert_eq!(
@@ -1041,7 +1108,7 @@ fn symlink_missing_link_target_skipped() {
     let url = server.url("/storage.tar.gz");
     let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
 
-    let result = guest_download::run(manifest.to_str().unwrap());
+    let result = run_guest_download(manifest.to_str().unwrap());
 
     assert!(result);
     assert_eq!(
@@ -1072,7 +1139,7 @@ fn file_scheme_extraction_success() {
     let url = format!("file://{}", staged.display());
     let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
 
-    let result = guest_download::run(manifest.to_str().unwrap());
+    let result = run_guest_download(manifest.to_str().unwrap());
 
     assert!(result);
     assert_eq!(
@@ -1096,7 +1163,7 @@ fn file_scheme_missing_storage_fatal() {
     let url = format!("file://{}", missing.display());
     let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
 
-    let result = guest_download::run(manifest.to_str().unwrap());
+    let result = run_guest_download(manifest.to_str().unwrap());
     assert!(!result);
 }
 
@@ -1114,6 +1181,6 @@ fn file_scheme_missing_artifact_fatal() {
     let url = format!("file://{}", missing.display());
     let manifest = write_manifest(&dir, &[], Some((mount.to_str().unwrap(), Some(&url)))).unwrap();
 
-    let result = guest_download::run(manifest.to_str().unwrap());
+    let result = run_guest_download(manifest.to_str().unwrap());
     assert!(!result);
 }
