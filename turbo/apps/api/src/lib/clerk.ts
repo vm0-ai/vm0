@@ -1,13 +1,11 @@
 import { createClerkClient } from "@clerk/backend";
 
 import { env } from "./env";
+import { lazySingleton } from "./lazy-singleton";
 
-let _client: ReturnType<typeof createClerkClient> | undefined;
-
-export function clerk(): ReturnType<typeof createClerkClient> {
-  _client ??= createClerkClient({
+export const clerk = lazySingleton((): ReturnType<typeof createClerkClient> => {
+  return createClerkClient({
     secretKey: env("CLERK_SECRET_KEY"),
     publishableKey: env("CLERK_PUBLISHABLE_KEY"),
   });
-  return _client;
-}
+});

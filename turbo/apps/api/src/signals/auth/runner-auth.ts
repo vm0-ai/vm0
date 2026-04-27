@@ -1,9 +1,14 @@
 import { timingSafeEqual } from "node:crypto";
 
-import { computed, type Computed } from "ccstate";
+import { command } from "ccstate";
 
+import { authorization$ } from "../context/hono";
+import { waitUntil } from "../context/wait-until";
 import { env } from "../external/env";
-import { authorizationHeader$, createCliTokenRecord$ } from "./auth-context";
+import {
+  cliTokenRecord,
+  updateCliTokenLastUsedAt$,
+} from "../services/auth.service";
 import { isPatToken, isSandboxToken, verifyCliToken } from "./tokens";
 
 const OFFICIAL_RUNNER_TOKEN_PREFIX = "vm0_official_";
@@ -27,9 +32,12 @@ function validateOfficialRunnerSecret(providedSecret: string): boolean {
   return timingSafeEqual(providedBuffer, expectedBuffer);
 }
 
-export const runnerAuth$: Computed<Promise<RunnerAuthContext | null>> =
-  computed(async (get): Promise<RunnerAuthContext | null> => {
-    const authHeader = get(authorizationHeader$);
+export const runnerAuth$ = command(
+  async (
+    { get, set },
+    signal: AbortSignal,
+  ): Promise<RunnerAuthContext | null> => {
+    const authHeader = get(authorization$);
     if (!authHeader?.startsWith("Bearer ")) {
       return null;
     }
@@ -42,10 +50,14 @@ export const runnerAuth$: Computed<Promise<RunnerAuthContext | null>> =
         return null;
       }
 
-      const resolved = await get(createCliTokenRecord$(cliAuth));
-      return resolved
-        ? { type: "user" as const, userId: resolved.userId }
-        : null;
+      const resolved = await get(cliTokenRecord(cliAuth));
+      if (!resolved) {
+        return null;
+      }
+
+      waitUntil(set(updateCliTokenLastUsedAt$, cliAuth.tokenId, signal));
+
+      return { type: "user" as const, userId: resolved.userId };
     }
 
     if (token.startsWith(OFFICIAL_RUNNER_TOKEN_PREFIX)) {
@@ -56,4 +68,5 @@ export const runnerAuth$: Computed<Promise<RunnerAuthContext | null>> =
     }
 
     return null;
-  });
+  },
+);

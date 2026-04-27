@@ -3,13 +3,12 @@ import { computed, type Computed } from "ccstate";
 
 import { request$ } from "../context/hono";
 import { clerk$ } from "../external/clerk";
+import { ApiOrgRole } from "../../types/auth";
 
 type SignedInSessionAuthObject = Extract<
   SessionAuthObject,
   { isAuthenticated: true }
 >;
-
-export type ApiOrgRole = "admin" | "member";
 
 type ClerkSessionAuthContext =
   | {

@@ -1,4 +1,5 @@
 import { env } from "./env";
+import { lazySingleton } from "./lazy-singleton";
 
 type LogMethod = (...args: unknown[]) => void;
 
@@ -40,7 +41,9 @@ class LoggerRegistry {
   }
 }
 
-const loggerRegistry = new LoggerRegistry();
+const loggerRegistry = lazySingleton(() => {
+  return new LoggerRegistry();
+});
 
 function getDebugPatterns(): string[] {
   const value = env("VM0_DEBUG");
@@ -144,12 +147,13 @@ function createLogger(name: string): Logger {
 }
 
 export function logger(name: string): Logger {
-  const existing = loggerRegistry.get(name);
+  const registry = loggerRegistry();
+  const existing = registry.get(name);
   if (existing) {
     return existing;
   }
 
   const loggerInstance = createLogger(name);
-  loggerRegistry.set(name, loggerInstance);
+  registry.set(name, loggerInstance);
   return loggerInstance;
 }

@@ -21,6 +21,23 @@
     }
   ],
   "rules": {
-    "no-console": "deny"
+    "no-console": "deny",
+    "no-restricted-imports": [
+      "deny",
+      {
+        "paths": [
+          {
+            "name": "@vercel/functions",
+            "importNames": ["waitUntil"],
+            "message": "Use waitUntil from signals/context/wait-until instead so detached promises stay tracked."
+          },
+          {
+            "name": "hono",
+            "allowTypeImports": true,
+            "message": "Only signals/context/hono.ts may import hono. Other signals files must use the wrappers from signals/context/hono."
+          }
+        ]
+      }
+    ]
   }
 }

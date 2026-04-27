@@ -9,7 +9,18 @@ import { apiHealth$, apiHealthAuth$ } from "./routes/health";
 
 export type { SignalRouteHandler };
 
-export const ROUTES = new Map<AppRoute, SignalRouteHandler<unknown>>([
-  [healthContract.check, apiHealth$],
-  [healthAuthContract.check, apiHealthAuth$],
-]);
+export interface RouteEntry {
+  readonly route: AppRoute;
+  readonly handler: SignalRouteHandler<unknown>;
+}
+
+export const ROUTES: readonly RouteEntry[] = [
+  {
+    route: healthContract.check,
+    handler: apiHealth$,
+  },
+  {
+    route: healthAuthContract.check,
+    handler: apiHealthAuth$,
+  },
+];
