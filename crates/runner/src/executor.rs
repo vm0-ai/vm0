@@ -2654,7 +2654,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let config = test_executor_config(dir.path()).await;
         let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
-        overrides.push_start_result(Err(SandboxError::StartFailed("boot failed".into())));
+        overrides.push_start_result(Err(SandboxError::ExecFailed("boot failed".into())));
         let mut factory = DestroyPanicFactory {
             inner: MockSandboxFactory::with_overrides(overrides),
         };
