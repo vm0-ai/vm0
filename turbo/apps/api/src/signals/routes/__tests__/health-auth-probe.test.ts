@@ -13,6 +13,7 @@ import { authRoute } from "../../auth/auth-route";
 import { writeDb$ } from "../../external/db";
 import { now } from "../../external/time";
 import { signPatJwtForTests, signSandboxJwtForTests } from "../../auth/tokens";
+import { ROUTES } from "../../route";
 import { healthAuthProbeContract } from "../health-auth-probe";
 
 interface PatFixture {
@@ -142,7 +143,7 @@ describe("GET /health/auth", () => {
         },
       });
 
-      const client = setupApp({ context, contract: healthAuthProbeContract });
+      const client = setupApp({ context })(healthAuthProbeContract);
       const response = await accept(
         client.check({ headers: { cookie: "__session=opaque" } }),
         [200],
@@ -168,7 +169,7 @@ describe("GET /health/auth", () => {
         },
       });
 
-      const client = setupApp({ context, contract: healthAuthProbeContract });
+      const client = setupApp({ context })(healthAuthProbeContract);
       const response = await accept(
         client.check({ headers: { cookie: "__session=opaque" } }),
         [200],
@@ -190,7 +191,7 @@ describe("GET /health/auth", () => {
         },
       });
 
-      const client = setupApp({ context, contract: healthAuthProbeContract });
+      const client = setupApp({ context })(healthAuthProbeContract);
       const response = await accept(
         client.check({ headers: { cookie: "__session=opaque" } }),
         [200],
@@ -207,7 +208,7 @@ describe("GET /health/auth", () => {
         isAuthenticated: false,
       });
 
-      const client = setupApp({ context, contract: healthAuthProbeContract });
+      const client = setupApp({ context })(healthAuthProbeContract);
       const response = await accept(
         client.check({ headers: { cookie: "__session=opaque" } }),
         [401],
@@ -222,7 +223,7 @@ describe("GET /health/auth", () => {
       const fixture = await seedPatFixture({ role: "admin" });
       fixtures.push(fixture);
 
-      const client = setupApp({ context, contract: healthAuthProbeContract });
+      const client = setupApp({ context })(healthAuthProbeContract);
       const response = await accept(
         client.check({
           headers: { authorization: `Bearer ${fixture.token}` },
@@ -242,7 +243,7 @@ describe("GET /health/auth", () => {
       const fixture = await seedPatFixture({ role: "member" });
       fixtures.push(fixture);
 
-      const client = setupApp({ context, contract: healthAuthProbeContract });
+      const client = setupApp({ context })(healthAuthProbeContract);
       const response = await accept(
         client.check({
           headers: { authorization: `Bearer ${fixture.token}` },
@@ -271,7 +272,7 @@ describe("GET /health/auth", () => {
         exp: nowSeconds + 60,
       });
 
-      const client = setupApp({ context, contract: healthAuthProbeContract });
+      const client = setupApp({ context })(healthAuthProbeContract);
       const response = await accept(
         client.check({ headers: { authorization: `Bearer ${token}` } }),
         [401],
@@ -286,7 +287,7 @@ describe("GET /health/auth", () => {
       });
       fixtures.push(fixture);
 
-      const client = setupApp({ context, contract: healthAuthProbeContract });
+      const client = setupApp({ context })(healthAuthProbeContract);
       const response = await accept(
         client.check({
           headers: { authorization: `Bearer ${fixture.token}` },
@@ -304,7 +305,7 @@ describe("GET /health/auth", () => {
         { data: [] },
       );
 
-      const client = setupApp({ context, contract: healthAuthProbeContract });
+      const client = setupApp({ context })(healthAuthProbeContract);
       const response = await accept(
         client.check({
           headers: { authorization: `Bearer ${fixture.token}` },
@@ -326,7 +327,7 @@ describe("GET /health/auth", () => {
         },
       );
 
-      const client = setupApp({ context, contract: healthAuthProbeContract });
+      const client = setupApp({ context })(healthAuthProbeContract);
 
       const first = await accept(
         client.check({
@@ -370,7 +371,7 @@ describe("GET /health/auth", () => {
         },
       );
 
-      const client = setupApp({ context, contract: healthAuthProbeContract });
+      const client = setupApp({ context })(healthAuthProbeContract);
       const response = await accept(
         client.check({
           headers: { authorization: `Bearer ${fixture.token}` },
@@ -410,7 +411,7 @@ describe("GET /health/auth", () => {
         { data: [] },
       );
 
-      const client = setupApp({ context, contract: healthAuthProbeContract });
+      const client = setupApp({ context })(healthAuthProbeContract);
       const first = await accept(
         client.check({
           headers: { authorization: `Bearer ${fixture.token}` },
@@ -444,7 +445,7 @@ describe("GET /health/auth", () => {
         exp: currentSecond() + 60,
       });
 
-      const client = setupApp({ context, contract: healthAuthProbeContract });
+      const client = setupApp({ context })(healthAuthProbeContract);
       const response = await accept(
         client.check({ headers: { authorization: `Bearer ${token}` } }),
         [200],
@@ -474,7 +475,7 @@ describe("GET /health/auth", () => {
         exp: nowSeconds + 60,
       });
 
-      const client = setupApp({ context, contract: healthAuthProbeContract });
+      const client = setupApp({ context })(healthAuthProbeContract);
       const response = await accept(
         client.check({ headers: { authorization: `Bearer ${token}` } }),
         [200],
@@ -504,7 +505,7 @@ describe("GET /health/auth", () => {
         exp: nowSeconds + 60,
       });
 
-      const client = setupApp({ context, contract: healthAuthProbeContract });
+      const client = setupApp({ context })(healthAuthProbeContract);
       const response = await accept(
         client.check({ headers: { authorization: `Bearer ${token}` } }),
         [200],
@@ -537,7 +538,7 @@ describe("GET /health/auth", () => {
         { data: [] },
       );
 
-      const client = setupApp({ context, contract: healthAuthProbeContract });
+      const client = setupApp({ context })(healthAuthProbeContract);
       const response = await accept(
         client.check({ headers: { authorization: `Bearer ${token}` } }),
         [200],
@@ -555,14 +556,14 @@ describe("GET /health/auth", () => {
 
   describe("rejected requests", () => {
     it("returns 401 when no credentials are presented", async () => {
-      const client = setupApp({ context, contract: healthAuthProbeContract });
+      const client = setupApp({ context })(healthAuthProbeContract);
       const response = await accept(client.check(), [401]);
 
       expect(response.body.error.code).toBe("UNAUTHORIZED");
     });
 
     it("returns 401 when the bearer token has an unknown shape", async () => {
-      const client = setupApp({ context, contract: healthAuthProbeContract });
+      const client = setupApp({ context })(healthAuthProbeContract);
       const response = await accept(
         client.check({
           headers: { authorization: "Bearer vm0_pat_not-a-real-token" },
@@ -574,7 +575,7 @@ describe("GET /health/auth", () => {
     });
 
     it("returns 401 for a non-Bearer Authorization header without cookie", async () => {
-      const client = setupApp({ context, contract: healthAuthProbeContract });
+      const client = setupApp({ context })(healthAuthProbeContract);
       const response = await accept(
         client.check({
           headers: { authorization: "Basic dXNlcjpwYXNz" },
@@ -586,7 +587,7 @@ describe("GET /health/auth", () => {
     });
 
     it("returns 401 when the bearer token has no recognized prefix", async () => {
-      const client = setupApp({ context, contract: healthAuthProbeContract });
+      const client = setupApp({ context })(healthAuthProbeContract);
       const response = await accept(
         client.check({ headers: { authorization: "Bearer foobar123" } }),
         [401],
@@ -596,7 +597,7 @@ describe("GET /health/auth", () => {
     });
 
     it("returns 401 for a sandbox-prefixed bearer with an invalid signature", async () => {
-      const client = setupApp({ context, contract: healthAuthProbeContract });
+      const client = setupApp({ context })(healthAuthProbeContract);
       const response = await accept(
         client.check({
           headers: { authorization: "Bearer vm0_sandbox_not-a-real-token" },
@@ -608,7 +609,7 @@ describe("GET /health/auth", () => {
     });
 
     it("returns 401 when the Bearer header carries an empty token", async () => {
-      const client = setupApp({ context, contract: healthAuthProbeContract });
+      const client = setupApp({ context })(healthAuthProbeContract);
       const response = await accept(
         client.check({ headers: { authorization: "Bearer " } }),
         [401],
@@ -635,9 +636,11 @@ describe("GET /health/auth", () => {
 
       const client = setupApp({
         context,
-        contract: capabilityProbeContract,
-        handlers: { check: capabilityProbe$ },
-      });
+        routes: [
+          ...ROUTES,
+          { route: capabilityProbeContract.check, handler: capabilityProbe$ },
+        ],
+      })(capabilityProbeContract);
       const response = await accept(
         client.check({ headers: { authorization: `Bearer ${token}` } }),
         [200],
@@ -669,9 +672,11 @@ describe("GET /health/auth", () => {
 
       const client = setupApp({
         context,
-        contract: capabilityProbeContract,
-        handlers: { check: capabilityProbe$ },
-      });
+        routes: [
+          ...ROUTES,
+          { route: capabilityProbeContract.check, handler: capabilityProbe$ },
+        ],
+      })(capabilityProbeContract);
       const response = await accept(
         client.check({ headers: { authorization: `Bearer ${token}` } }),
         [403],

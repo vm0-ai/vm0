@@ -8,15 +8,17 @@ import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 const context = testContext();
 
 describe("api health routes", () => {
+  const createClient = setupApp({ context });
+
   it("serves a lightweight health check", async () => {
-    const client = setupApp({ context, contract: healthContract });
+    const client = createClient(healthContract);
     const response = await accept(client.check(), [200]);
 
     expect(response.body).toEqual({ status: "ok" });
   });
 
   it("requires auth for the authenticated health check", async () => {
-    const client = setupApp({ context, contract: healthAuthContract });
+    const client = createClient(healthAuthContract);
     const response = await accept(client.check(), [401]);
 
     expect(response.body).toEqual({
