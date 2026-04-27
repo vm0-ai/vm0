@@ -48,11 +48,6 @@ use mitm_restart::{
 };
 use signals::{EarlySignals, SignalController};
 
-#[cfg(test)]
-use signals::LifecycleController;
-#[cfg(test)]
-use signals::{handle_drain_signal, handle_resume_signal, handle_stopping_signal};
-
 /// Period between routine heartbeat ticks sent to the server. First
 /// tick is deferred by one period via `interval_at` — see the comment
 /// at the interval construction in `run()`.
@@ -1719,6 +1714,9 @@ fn collect_heartbeat_state(
 
 #[cfg(test)]
 mod tests {
+    use super::signals::{
+        LifecycleController, handle_drain_signal, handle_resume_signal, handle_stopping_signal,
+    };
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
