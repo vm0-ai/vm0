@@ -37,6 +37,11 @@ import {
   chatThreads$,
   deleteChatThread$,
 } from "../../signals/chat-page/chat-message.ts";
+import { draftPresenceMap$ } from "../../signals/zero-page/chat-draft.ts";
+import {
+  SessionIndicator,
+  type SessionIndicatorState,
+} from "./session-indicator.tsx";
 import {
   createNewChatThreadOptimistically$,
   optimisticChatThread$,
@@ -63,15 +68,28 @@ function ChatThreadItem({
   isSelected,
   onSelect,
   showReadIndicator,
+  hasDraft,
 }: {
   session: ChatThreadListItem;
   isSelected: boolean;
   onSelect?: () => void;
   showReadIndicator: boolean;
+  hasDraft: boolean;
 }) {
   const setPendingDeleteThreadId = useSet(setPendingDeleteThreadId$);
   const isUnread = showReadIndicator && !session.isRead;
   const isRunning = showReadIndicator && session.running;
+
+  // Priority: running > unread > draft. Selected rows suppress unread because
+  // the selection itself signals "you are looking at this thread".
+  let indicatorState: SessionIndicatorState = "none";
+  if (isRunning) {
+    indicatorState = "running";
+  } else if (isUnread && !isSelected) {
+    indicatorState = "unread";
+  } else if (hasDraft && !isSelected) {
+    indicatorState = "draft";
+  }
 
   function handleDeleteClick(e: React.MouseEvent) {
     e.preventDefault();
@@ -100,18 +118,7 @@ function ChatThreadItem({
               : "text-sidebar-foreground hover:bg-sidebar-accent"
         }`}
       >
-        {isRunning && (
-          <span
-            className="shrink-0 h-2 w-2 rounded-full bg-sky-600 animate-pulse"
-            aria-label="Running"
-          />
-        )}
-        {!isRunning && !isSelected && isUnread && (
-          <span
-            className="shrink-0 h-2 w-2 rounded-full bg-primary"
-            aria-label="Unread"
-          />
-        )}
+        <SessionIndicator state={indicatorState} />
         <span className="truncate min-w-0 flex-1">
           {session.title ?? "New chat"}
         </span>
@@ -159,6 +166,7 @@ function ChatThreads() {
   const features = useLastResolved(featureSwitch$);
   const showReadIndicator =
     features?.[FeatureSwitchKey.ChatThreadReadIndicator] ?? false;
+  const draftPresence = useGet(draftPresenceMap$);
   const searchTerm = useGet(sidebarSearchTerm$);
   const trimmedTerm = searchTerm.trim().toLowerCase();
   const filteredChatThreads = trimmedTerm
@@ -207,6 +215,7 @@ function ChatThreads() {
             isSelected={selectedThreadId === session.id}
             onSelect={onRecentSelect}
             showReadIndicator={showReadIndicator}
+            hasDraft={draftPresence[session.id] ?? false}
           />
         );
       })}
@@ -218,6 +227,7 @@ function ChatThreads() {
             isSelected={selectedThreadId === session.id}
             onSelect={onRecentSelect}
             showReadIndicator={showReadIndicator}
+            hasDraft={draftPresence[session.id] ?? false}
           />
         );
       })}

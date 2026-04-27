@@ -343,3 +343,24 @@ export const canSendZeroChat$ = computed((get) => {
     get(zeroChatInput$).trim() !== "" || get(zeroChatAttachments$).length > 0
   );
 });
+
+/**
+ * Map of threadId → true when that thread's draft has unsent content
+ * (non-empty text or ≥1 attachment). Drives the sidebar draft indicator.
+ *
+ * Threads that the user has not opened this session simply absent from the map
+ * — sidebar treats `undefined` as "no draft". Server-persisted drafts surface
+ * here once the thread is opened and seeded into the map.
+ */
+export const draftPresenceMap$ = computed((get) => {
+  const map = get(internalDraftMap$);
+  const result: Record<string, boolean> = {};
+  for (const [threadId, draft] of Object.entries(map)) {
+    const hasText = get(draft.input$).trim() !== "";
+    const hasAttachment = get(draft.attachments$).length > 0;
+    if (hasText || hasAttachment) {
+      result[threadId] = true;
+    }
+  }
+  return result;
+});
