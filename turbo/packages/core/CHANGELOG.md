@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.238.0](https://github.com/vm0-ai/vm0/compare/core-v8.237.0...core-v8.238.0) (2026-04-27)
+
+
+### Features
+
+* **telegram:** add multi-bot integration api ([#11015](https://github.com/vm0-ai/vm0/issues/11015)) ([f4f0cb4](https://github.com/vm0-ai/vm0/commit/f4f0cb4b9d1f2887bcb92965b1be13cec5305c09))
+
 ## [8.237.0](https://github.com/vm0-ai/vm0/compare/core-v8.236.1...core-v8.237.0) (2026-04-26)
 
 

@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.26.10](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.26.9...sandbox-fc-v0.26.10) (2026-04-27)
+
+
+### Bug Fixes
+
+* **runner:** make idle vm budget release panic-safe ([#11191](https://github.com/vm0-ai/vm0/issues/11191)) ([52e085f](https://github.com/vm0-ai/vm0/commit/52e085fb6e53623b5920fbfee58ccc71d8d760ae))
+* **sandbox-fc:** persist backend crash state ([#11192](https://github.com/vm0-ai/vm0/issues/11192)) ([57c4222](https://github.com/vm0-ai/vm0/commit/57c4222d68327eac25a3a96f8256c8cc2275fc24))
+
+
+### Refactoring
+
+* **sandbox-fc:** model prerequisites by capability ([#11180](https://github.com/vm0-ai/vm0/issues/11180)) ([a4cf47a](https://github.com/vm0-ai/vm0/commit/a4cf47a97ec8a3300e53647aacc3f0e380c03b7b))
+* **sandbox:** clarify error taxonomy ([#11178](https://github.com/vm0-ai/vm0/issues/11178)) ([f766059](https://github.com/vm0-ai/vm0/commit/f7660591f6866336a78803225653fd738667c036))
+
 ## [0.26.9](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.26.8...sandbox-fc-v0.26.9) (2026-04-26)
 
 

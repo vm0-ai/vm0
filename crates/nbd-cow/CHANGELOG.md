@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.9](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.8...nbd-cow-v0.4.9) (2026-04-27)
+
+
+### Bug Fixes
+
+* **runner:** make idle vm budget release panic-safe ([#11191](https://github.com/vm0-ai/vm0/issues/11191)) ([52e085f](https://github.com/vm0-ai/vm0/commit/52e085fb6e53623b5920fbfee58ccc71d8d760ae))
+
 ## [0.4.8](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.7...nbd-cow-v0.4.8) (2026-04-26)
 
 

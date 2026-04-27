@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.96.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.95.5...runner-rs-v0.96.0) (2026-04-27)
+
+
+### Features
+
+* support batched usage event webhooks ([#11204](https://github.com/vm0-ai/vm0/issues/11204)) ([cc46707](https://github.com/vm0-ai/vm0/commit/cc467077cc79126df30c6b101543780e7bd49bc8))
+
+
+### Bug Fixes
+
+* **runner:** add active cleanup panic context ([#11212](https://github.com/vm0-ai/vm0/issues/11212)) ([d0f2804](https://github.com/vm0-ai/vm0/commit/d0f2804cc481ffc1e8164d04c23b856e3d2d6ec0)), closes [#11194](https://github.com/vm0-ai/vm0/issues/11194)
+* **runner:** make idle vm budget release panic-safe ([#11191](https://github.com/vm0-ai/vm0/issues/11191)) ([52e085f](https://github.com/vm0-ai/vm0/commit/52e085fb6e53623b5920fbfee58ccc71d8d760ae))
+
+
+### Refactoring
+
+* **mitm-addon:** validate x tweet urls with iana tlds ([#11186](https://github.com/vm0-ai/vm0/issues/11186)) ([bd13484](https://github.com/vm0-ai/vm0/commit/bd13484d5ceaa8fc9fc28cbe2efd22bc10d6d76b))
+* **sandbox:** clarify error taxonomy ([#11178](https://github.com/vm0-ai/vm0/issues/11178)) ([f766059](https://github.com/vm0-ai/vm0/commit/f7660591f6866336a78803225653fd738667c036))
+
 ## [0.95.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.95.4...runner-rs-v0.95.5) (2026-04-26)
 
 

@@ -1,5 +1,22 @@
 # Changelog
 
+## [12.301.0](https://github.com/vm0-ai/vm0/compare/web-v12.300.8...web-v12.301.0) (2026-04-27)
+
+
+### Features
+
+* bump team tier concurrency from 5 to 10 ([#11033](https://github.com/vm0-ai/vm0/issues/11033)) ([a98f50f](https://github.com/vm0-ai/vm0/commit/a98f50f155ea2b9affc00e357819dc8e81d27a7e))
+* support batched usage event webhooks ([#11204](https://github.com/vm0-ai/vm0/issues/11204)) ([cc46707](https://github.com/vm0-ai/vm0/commit/cc467077cc79126df30c6b101543780e7bd49bc8))
+* **telegram:** add connect landing page ([#11190](https://github.com/vm0-ai/vm0/issues/11190)) ([5546f63](https://github.com/vm0-ai/vm0/commit/5546f6363d8cb2fedf49fa2b096ad483e4b23529))
+* **telegram:** add multi-bot integration api ([#11015](https://github.com/vm0-ai/vm0/issues/11015)) ([f4f0cb4](https://github.com/vm0-ai/vm0/commit/f4f0cb4b9d1f2887bcb92965b1be13cec5305c09))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.238.0
+
 ## [12.300.8](https://github.com/vm0-ai/vm0/compare/web-v12.300.7...web-v12.300.8) (2026-04-26)
 
 

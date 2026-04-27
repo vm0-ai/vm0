@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.6](https://github.com/vm0-ai/vm0/compare/sandbox-v0.12.5...sandbox-v0.12.6) (2026-04-27)
+
+
+### Refactoring
+
+* **sandbox:** clarify error taxonomy ([#11178](https://github.com/vm0-ai/vm0/issues/11178)) ([f766059](https://github.com/vm0-ai/vm0/commit/f7660591f6866336a78803225653fd738667c036))
+
 ## [0.12.5](https://github.com/vm0-ai/vm0/compare/sandbox-v0.12.4...sandbox-v0.12.5) (2026-04-26)
 
 

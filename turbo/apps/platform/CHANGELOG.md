@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.296.0](https://github.com/vm0-ai/vm0/compare/app-v0.295.0...app-v0.296.0) (2026-04-27)
+
+
+### Features
+
+* agent profile popover on avatar click ([#10832](https://github.com/vm0-ai/vm0/issues/10832)) ([e1d3e0e](https://github.com/vm0-ai/vm0/commit/e1d3e0e5a2d61f7d7cff5c3f2481a547b5225b65))
+* bump team tier concurrency from 5 to 10 ([#11033](https://github.com/vm0-ai/vm0/issues/11033)) ([a98f50f](https://github.com/vm0-ai/vm0/commit/a98f50f155ea2b9affc00e357819dc8e81d27a7e))
+* **platform:** add telegram settings signals ([#11189](https://github.com/vm0-ai/vm0/issues/11189)) ([203e4ad](https://github.com/vm0-ai/vm0/commit/203e4ada3f80f5160677b1de041d857e905946a7))
+* **telegram:** add multi-bot integration api ([#11015](https://github.com/vm0-ai/vm0/issues/11015)) ([f4f0cb4](https://github.com/vm0-ai/vm0/commit/f4f0cb4b9d1f2887bcb92965b1be13cec5305c09))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.238.0
+
 ## [0.295.0](https://github.com/vm0-ai/vm0/compare/app-v0.294.1...app-v0.295.0) (2026-04-26)
 
 
