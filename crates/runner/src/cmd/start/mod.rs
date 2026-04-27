@@ -1218,7 +1218,18 @@ fn spawn_job(
                         error = %e,
                         "sandbox park failed, destroying instead of parking"
                     );
-                    stop_and_destroy_sandbox(sandbox, &**factory_for_cleanup).await;
+                    stop_and_destroy_sandbox(
+                        sandbox,
+                        &**factory_for_cleanup,
+                        ActiveCleanupContext {
+                            run_id,
+                            sandbox_id,
+                            profile_name: &profile_name,
+                            session_id: Some(session_id),
+                            reason: "park_failed",
+                        },
+                    )
+                    .await;
                     false
                 } else {
                     match active_lease.take() {
@@ -1289,14 +1300,42 @@ fn spawn_job(
                                 session_id,
                                 "active budget lease missing before parking"
                             );
-                            stop_and_destroy_sandbox(sandbox, &**factory_for_cleanup).await;
+                            stop_and_destroy_sandbox(
+                                sandbox,
+                                &**factory_for_cleanup,
+                                ActiveCleanupContext {
+                                    run_id,
+                                    sandbox_id,
+                                    profile_name: &profile_name,
+                                    session_id: Some(session_id),
+                                    reason: "missing_active_lease",
+                                },
+                            )
+                            .await;
                             false
                         }
                     }
                 }
             } else {
                 // No parkable session — stop + destroy
-                stop_and_destroy_sandbox(sandbox, &**factory_for_cleanup).await;
+                stop_and_destroy_sandbox(
+                    sandbox,
+                    &**factory_for_cleanup,
+                    ActiveCleanupContext {
+                        run_id,
+                        sandbox_id,
+                        profile_name: &profile_name,
+                        session_id: session_id.as_deref().or(guest_session_id.as_deref()),
+                        reason: active_cleanup_reason(
+                            exit_code,
+                            job_cancel.is_cancelled(),
+                            mode,
+                            session_id.as_deref(),
+                            guest_session_id.as_deref(),
+                        ),
+                    },
+                )
+                .await;
                 false
             }
         } else {
@@ -1355,6 +1394,26 @@ async fn unpark_sandbox_panic_safe(sandbox: &mut dyn Sandbox) -> Result<(), Stri
         Ok(Ok(())) => Ok(()),
         Ok(Err(e)) => Err(e.to_string()),
         Err(_) => Err("sandbox unpark panicked".into()),
+    }
+}
+
+fn active_cleanup_reason(
+    exit_code: i32,
+    cancelled: bool,
+    mode: RunnerMode,
+    context_session_id: Option<&str>,
+    guest_session_id: Option<&str>,
+) -> &'static str {
+    if cancelled {
+        "cancelled"
+    } else if exit_code != 0 {
+        "nonzero_exit"
+    } else if mode != RunnerMode::Running {
+        "runner_not_running"
+    } else if context_session_id.is_none() && guest_session_id.is_none() {
+        "no_session"
+    } else {
+        "not_parkable"
     }
 }
 
@@ -1446,19 +1505,54 @@ async fn destroy_idle_payload_and_wait(payload: IdleDestroyPayload, context: &'s
     }
 }
 
+#[derive(Clone, Copy)]
+struct ActiveCleanupContext<'a> {
+    run_id: RunId,
+    sandbox_id: SandboxId,
+    profile_name: &'a str,
+    session_id: Option<&'a str>,
+    reason: &'static str,
+}
+
 /// Stop a sandbox and destroy it via its factory.
-async fn stop_and_destroy_sandbox(mut sandbox: Box<dyn Sandbox>, factory: &dyn SandboxFactory) {
+async fn stop_and_destroy_sandbox(
+    mut sandbox: Box<dyn Sandbox>,
+    factory: &dyn SandboxFactory,
+    context: ActiveCleanupContext<'_>,
+) {
     match AssertUnwindSafe(sandbox.stop()).catch_unwind().await {
         Ok(Ok(())) => {}
-        Ok(Err(e)) => warn!(error = %e, "sandbox stop failed"),
-        Err(_) => warn!("sandbox stop panicked"),
+        Ok(Err(e)) => warn!(
+            run_id = %context.run_id,
+            sandbox_id = %context.sandbox_id,
+            profile_name = context.profile_name,
+            session_id = context.session_id.unwrap_or("<none>"),
+            reason = context.reason,
+            error = %e,
+            "sandbox stop failed during active cleanup"
+        ),
+        Err(_) => warn!(
+            run_id = %context.run_id,
+            sandbox_id = %context.sandbox_id,
+            profile_name = context.profile_name,
+            session_id = context.session_id.unwrap_or("<none>"),
+            reason = context.reason,
+            "sandbox stop panicked during active cleanup"
+        ),
     }
     if AssertUnwindSafe(factory.destroy(sandbox))
         .catch_unwind()
         .await
         .is_err()
     {
-        warn!("sandbox destroy panicked");
+        warn!(
+            run_id = %context.run_id,
+            sandbox_id = %context.sandbox_id,
+            profile_name = context.profile_name,
+            session_id = context.session_id.unwrap_or("<none>"),
+            reason = context.reason,
+            "sandbox destroy panicked during active cleanup"
+        );
     }
 }
 
