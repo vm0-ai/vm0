@@ -186,4 +186,44 @@ describe("GET /api/zero/integrations/telegram/download-file", () => {
     expect(response.status).toBe(413);
     expect(data.error.code).toBe("PAYLOAD_TOO_LARGE");
   });
+
+  it("returns 413 when download content-length exceeds the proxy limit", async () => {
+    const botId = await createTestTelegramInstallation({
+      telegramBotId: "tg-bot-huge-response",
+      orgId: user.orgId,
+      ownerUserId: user.userId,
+    });
+
+    server.use(
+      http.post("https://api.telegram.org/bottest-bot-token/getFile", () => {
+        return HttpResponse.json({
+          ok: true,
+          result: {
+            file_id: "tg-file-huge-response",
+            file_unique_id: "unique-huge-response",
+            file_path: "documents/huge-response.bin",
+          },
+        });
+      }),
+      http.get(
+        "https://api.telegram.org/file/bottest-bot-token/documents/huge-response.bin",
+        () => {
+          return new HttpResponse(Buffer.from("not actually huge"), {
+            status: 200,
+            headers: {
+              "content-type": "application/octet-stream",
+              "content-length": String(200 * 1024 * 1024),
+            },
+          });
+        },
+      ),
+    );
+
+    const request = await authedRequest("tg-file-huge-response", botId);
+    const response = await GET(request as never);
+    const data = await response.json();
+
+    expect(response.status).toBe(413);
+    expect(data.error.code).toBe("PAYLOAD_TOO_LARGE");
+  });
 });

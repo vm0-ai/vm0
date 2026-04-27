@@ -28,6 +28,13 @@ function errorResponse(
   return NextResponse.json({ error: { message, code } }, { status });
 }
 
+function parseContentLength(value: string | null): number | undefined {
+  if (!value) return undefined;
+  const size = Number(value);
+  if (!Number.isSafeInteger(size) || size < 0) return undefined;
+  return size;
+}
+
 type TelegramFileMetadata = {
   botToken: string;
   filePath: string;
@@ -167,12 +174,24 @@ export async function GET(request: NextRequest): Promise<Response> {
       );
     }
 
+    const contentLength = downloadResponse.headers.get("content-length");
+    const contentLengthBytes = parseContentLength(contentLength);
+    if (
+      contentLengthBytes !== undefined &&
+      contentLengthBytes > MAX_FILE_SIZE_BYTES
+    ) {
+      return errorResponse(
+        413,
+        `File exceeds maximum size of ${MAX_FILE_SIZE_BYTES} bytes`,
+        "PAYLOAD_TOO_LARGE",
+      );
+    }
+
     const mimetype = responseContentType || meta.mimetype;
     const headers = new Headers();
     headers.set("Content-Type", mimetype);
     headers.set("X-File-Name", encodeURIComponent(meta.fileName));
     headers.set("X-File-Mimetype", mimetype);
-    const contentLength = downloadResponse.headers.get("content-length");
     if (contentLength) {
       headers.set("Content-Length", contentLength);
     }
