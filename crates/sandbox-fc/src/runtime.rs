@@ -34,15 +34,17 @@ impl FirecrackerRuntime {
     /// resources.
     pub async fn new(config: sandbox::RuntimeConfig) -> Result<Self, SandboxError> {
         let t = std::time::Instant::now();
-        let netns_pool = NetnsPool::create(NetnsPoolConfig {
+        let netns_config = NetnsPoolConfig {
             proxy_port: config.proxy_port,
             dns_port: config.dns_port,
-        })
-        .await
-        .map_err(|e| SandboxError::Initialization {
-            phase: SandboxInitializationPhase::Runtime,
-            message: format!("netns pool: {e}"),
-        })?;
+        }
+        .into_checked()?;
+        let netns_pool = NetnsPool::create(netns_config)
+            .await
+            .map_err(|e| SandboxError::Initialization {
+                phase: SandboxInitializationPhase::Runtime,
+                message: format!("netns pool: {e}"),
+            })?;
         info!(
             elapsed_ms = t.elapsed().as_millis() as u64,
             "runtime netns pool created"

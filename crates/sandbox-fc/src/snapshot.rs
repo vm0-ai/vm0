@@ -67,7 +67,7 @@ pub async fn create_snapshot(
         binary_path: &config.binary_path,
         kernel_path: &config.kernel_path,
         rootfs_path: &config.rootfs_path,
-        snapshot: None,
+        mode: prerequisites::PrerequisiteMode::SnapshotCreate,
     })
     .await
     .map_err(|e| SnapshotError::Setup(e.to_string()))?;
@@ -136,12 +136,15 @@ pub async fn create_snapshot(
     info!(device = %cow_device.device_path().display(), "NBD COW device created");
 
     // 3. Create network namespace (pool of 1, index auto-allocated via flock).
-    let mut netns_pool = NetnsPool::create(NetnsPoolConfig {
+    let netns_config = NetnsPoolConfig {
         proxy_port: None,
         dns_port: None,
-    })
-    .await
-    .map_err(|e| SnapshotError::Setup(format!("netns pool: {e}")))?;
+    }
+    .into_checked()
+    .map_err(|e| SnapshotError::Setup(e.to_string()))?;
+    let mut netns_pool = NetnsPool::create(netns_config)
+        .await
+        .map_err(|e| SnapshotError::Setup(format!("netns pool: {e}")))?;
 
     // Guard: ensure netns cleanup on any exit path.
     let result = run_snapshot_workflow(

@@ -169,11 +169,15 @@ impl FirecrackerFactory {
         device_pool: std::sync::Arc<tokio::sync::Mutex<nbd_cow::pool::DevicePool>>,
     ) -> Result<Self, SandboxError> {
         let t = std::time::Instant::now();
+        let mode = match config.snapshot.as_ref() {
+            Some(snapshot) => prerequisites::PrerequisiteMode::FactorySnapshotRestore { snapshot },
+            None => prerequisites::PrerequisiteMode::FactoryFresh,
+        };
         prerequisites::check_prerequisites(&prerequisites::PrerequisiteConfig {
             binary_path: &config.binary_path,
             kernel_path: &config.kernel_path,
             rootfs_path: &config.rootfs_path,
-            snapshot: config.snapshot.as_ref(),
+            mode,
         })
         .await?;
         info!(
@@ -271,15 +275,17 @@ impl SandboxFactory for FirecrackerFactory {
         // Create netns pool only if not provided externally (shared pool case).
         if self.netns_pool.is_none() {
             let t = std::time::Instant::now();
-            let netns_pool = NetnsPool::create(NetnsPoolConfig {
+            let netns_config = NetnsPoolConfig {
                 proxy_port: self.config.proxy_port,
                 dns_port: self.config.dns_port,
-            })
-            .await
-            .map_err(|e| SandboxError::Initialization {
-                phase: SandboxInitializationPhase::Factory,
-                message: format!("netns pool: {e}"),
-            })?;
+            }
+            .into_checked()?;
+            let netns_pool = NetnsPool::create(netns_config)
+                .await
+                .map_err(|e| SandboxError::Initialization {
+                    phase: SandboxInitializationPhase::Factory,
+                    message: format!("netns pool: {e}"),
+                })?;
             info!(
                 elapsed_ms = t.elapsed().as_millis() as u64,
                 "netns pool created"

@@ -326,6 +326,21 @@ impl FirecrackerSandbox {
                 })?;
         }
 
+        match tokio::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&snapshot.drive_bind_path)
+            .await
+        {
+            Ok(_) => {}
+            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
+            Err(e) => {
+                return Err(SandboxError::Start {
+                    message: format!("create snapshot drive bind target: {e}"),
+                });
+            }
+        }
+
         // Verify sock dir exists before spawning — if this fails, we know
         // the directory was never created or was removed before spawn.
         let api_sock = self.sock_paths.api_sock();
@@ -347,7 +362,7 @@ impl FirecrackerSandbox {
             "spawning firecracker (snapshot restore)"
         );
 
-        // Use positional args ($1..$8) to avoid shell injection from paths.
+        // Use positional args ($1..$7) to avoid shell injection from paths.
         //
         // Bind mount targets ($2, $4) are snapshot-level paths shared by all
         // sandboxes.  Each sandbox runs inside `unshare --mount`, so bind
@@ -357,14 +372,12 @@ impl FirecrackerSandbox {
         // file is shared across all mount namespaces via the underlying
         // filesystem.  Deleting it would orphan bind mounts in other
         // namespaces (their mount is on the old dentry, but the directory
-        // now points to a new dentry from `touch`), causing Firecracker to
+        // now points to a replacement dentry), causing Firecracker to
         // see an empty file instead of the dm device → Permission denied.
         //
         // `umount` clears any stale mount inherited from the parent
         // namespace (e.g. from a crashed snapshot creation).
-        // `test -e || touch` creates the file only if missing (first use
-        // or after manual cleanup), never deleting an existing one.
-        let inner_cmd = r#"umount "$4" 2>/dev/null; test -e "$4" || touch "$4"; mount --bind "$1" "$2" && mount --bind "$3" "$4" && exec ip netns exec "$5" "$6" --api-sock "$7""#;
+        let inner_cmd = r#"umount "$4" 2>/dev/null; mount --bind "$1" "$2" && mount --bind "$3" "$4" && exec ip netns exec "$5" "$6" --api-sock "$7""#;
 
         let mut child = tokio::process::Command::new("unshare")
             .args(["--mount", "bash", "-c", inner_cmd, "_"])

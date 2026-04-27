@@ -14,12 +14,63 @@ pub(crate) struct PrerequisiteConfig<'a> {
     pub binary_path: &'a Path,
     pub kernel_path: &'a Path,
     pub rootfs_path: &'a Path,
-    pub snapshot: Option<&'a SnapshotConfig>,
+    pub mode: PrerequisiteMode<'a>,
 }
+
+/// Operation-specific prerequisite mode.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum PrerequisiteMode<'a> {
+    FactoryFresh,
+    FactorySnapshotRestore { snapshot: &'a SnapshotConfig },
+    SnapshotCreate,
+}
+
+impl<'a> PrerequisiteMode<'a> {
+    fn snapshot(self) -> Option<&'a SnapshotConfig> {
+        match self {
+            Self::FactorySnapshotRestore { snapshot } => Some(snapshot),
+            Self::FactoryFresh | Self::SnapshotCreate => None,
+        }
+    }
+
+    fn capabilities(self) -> &'static [HostCapability] {
+        match self {
+            Self::FactoryFresh => FACTORY_FRESH_CAPABILITIES,
+            Self::FactorySnapshotRestore { .. } => FACTORY_SNAPSHOT_RESTORE_CAPABILITIES,
+            Self::SnapshotCreate => SNAPSHOT_CREATE_CAPABILITIES,
+        }
+    }
+}
+
+/// Host capability groups used to derive concrete command requirements.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum HostCapability {
+    NetworkSetup,
+    SnapshotPrivateMountCreate,
+    SnapshotPrivateMountRestore,
+    SparseCopy,
+}
+
+const FACTORY_FRESH_CAPABILITIES: &[HostCapability] = &[HostCapability::NetworkSetup];
+const FACTORY_SNAPSHOT_RESTORE_CAPABILITIES: &[HostCapability] = &[
+    HostCapability::NetworkSetup,
+    HostCapability::SparseCopy,
+    HostCapability::SnapshotPrivateMountRestore,
+];
+const SNAPSHOT_CREATE_CAPABILITIES: &[HostCapability] = &[
+    HostCapability::NetworkSetup,
+    HostCapability::SnapshotPrivateMountCreate,
+];
+
+const NETWORK_COMMANDS: &[&str] = &["ip", "iptables", "iptables-save", "sysctl"];
+const SNAPSHOT_PRIVATE_MOUNT_CREATE_COMMANDS: &[&str] = &["unshare", "bash", "mount"];
+const SNAPSHOT_PRIVATE_MOUNT_RESTORE_COMMANDS: &[&str] = &["unshare", "bash", "mount", "umount"];
+const SPARSE_COPY_COMMANDS: &[&str] = &["cp"];
 
 /// Verify that all required system prerequisites are present.
 ///
-/// Checks firecracker binary, kernel, rootfs, `/dev/kvm`, and network commands.
+/// Checks firecracker binary, kernel, rootfs, `/dev/kvm`, runtime directory,
+/// snapshot artifacts when restoring, and host commands required by the mode.
 /// Collects all failures and returns them in a single `BackendUnavailable` error.
 pub(crate) async fn check_prerequisites(
     config: &PrerequisiteConfig<'_>,
@@ -30,15 +81,27 @@ pub(crate) async fn check_prerequisites(
     check_executable(config.binary_path, "firecracker binary", &mut errors);
     check_file_exists(config.kernel_path, "kernel", &mut errors);
     check_file_exists(config.rootfs_path, "rootfs", &mut errors);
-    if let Some(snapshot) = config.snapshot {
+    if let Some(snapshot) = config.mode.snapshot() {
         check_file_exists(&snapshot.snapshot_path, "snapshot state", &mut errors);
         check_file_exists(&snapshot.memory_path, "snapshot memory", &mut errors);
         check_file_exists(&snapshot.cow_path, "snapshot cow", &mut errors);
     }
     check_kvm(&mut errors);
-    check_required_commands(&mut errors);
+    let commands = required_commands(config.mode);
+    check_required_commands(&commands, &mut errors);
     ensure_runtime_dir(&mut errors);
 
+    prerequisite_result(errors)
+}
+
+/// Verify host network tools before creating network namespaces.
+pub(crate) fn check_network_prerequisites() -> Result<(), SandboxError> {
+    let mut errors = Vec::new();
+    check_required_commands(NETWORK_COMMANDS, &mut errors);
+    prerequisite_result(errors)
+}
+
+fn prerequisite_result(errors: Vec<String>) -> Result<(), SandboxError> {
     if errors.is_empty() {
         Ok(())
     } else {
@@ -71,22 +134,36 @@ fn check_kvm(errors: &mut Vec<String>) {
     }
 }
 
-fn check_required_commands(errors: &mut Vec<String>) {
-    let commands = [
-        "ip",
-        "iptables",
-        "iptables-save",
-        "sysctl",
-        "pgrep",
-        // Required by cow_pool (sparse copy for golden snapshots).
-        "cp",
-        // Required by snapshot restore (unshare --mount).
-        "unshare",
-    ];
-    for cmd in &commands {
+fn check_required_commands(commands: &[&str], errors: &mut Vec<String>) {
+    for cmd in commands {
         if which::which(cmd).is_err() {
             errors.push(format!("required command not found: {cmd}"));
         }
+    }
+}
+
+fn required_commands(mode: PrerequisiteMode<'_>) -> Vec<&'static str> {
+    required_commands_for_capabilities(mode.capabilities())
+}
+
+fn required_commands_for_capabilities(capabilities: &[HostCapability]) -> Vec<&'static str> {
+    let mut commands = Vec::new();
+    for capability in capabilities {
+        for &cmd in commands_for_capability(*capability) {
+            if !commands.contains(&cmd) {
+                commands.push(cmd);
+            }
+        }
+    }
+    commands
+}
+
+fn commands_for_capability(capability: HostCapability) -> &'static [&'static str] {
+    match capability {
+        HostCapability::NetworkSetup => NETWORK_COMMANDS,
+        HostCapability::SnapshotPrivateMountCreate => SNAPSHOT_PRIVATE_MOUNT_CREATE_COMMANDS,
+        HostCapability::SnapshotPrivateMountRestore => SNAPSHOT_PRIVATE_MOUNT_RESTORE_COMMANDS,
+        HostCapability::SparseCopy => SPARSE_COPY_COMMANDS,
     }
 }
 
@@ -98,5 +175,148 @@ fn ensure_runtime_dir(errors: &mut Vec<String>) {
     }
     if let Err(e) = std::fs::set_permissions(RUNTIME_DIR, std::fs::Permissions::from_mode(0o1777)) {
         errors.push(format!("failed to chmod {RUNTIME_DIR}: {e}"));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use super::*;
+
+    const OPTIONAL_CLEANUP_COMMANDS: &[&str] = &["conntrack"];
+
+    fn snapshot_config() -> SnapshotConfig {
+        SnapshotConfig {
+            snapshot_path: PathBuf::from("/tmp/snapshot.bin"),
+            memory_path: PathBuf::from("/tmp/memory.bin"),
+            cow_path: PathBuf::from("/tmp/cow.img"),
+            drive_bind_path: PathBuf::from("/tmp/cow-device-bind"),
+            vsock_bind_dir: PathBuf::from("/tmp/vsock"),
+        }
+    }
+
+    #[test]
+    fn factory_fresh_capabilities_are_network_only() {
+        let mode = PrerequisiteMode::FactoryFresh;
+        assert_eq!(mode.capabilities(), &[HostCapability::NetworkSetup]);
+        assert_eq!(
+            required_commands(mode),
+            vec!["ip", "iptables", "iptables-save", "sysctl"]
+        );
+    }
+
+    #[test]
+    fn snapshot_restore_capabilities_include_sparse_copy_and_private_mount_restore() {
+        let snapshot = snapshot_config();
+        let mode = PrerequisiteMode::FactorySnapshotRestore {
+            snapshot: &snapshot,
+        };
+
+        assert_eq!(
+            mode.capabilities(),
+            &[
+                HostCapability::NetworkSetup,
+                HostCapability::SparseCopy,
+                HostCapability::SnapshotPrivateMountRestore,
+            ]
+        );
+        assert_eq!(
+            required_commands(mode),
+            vec![
+                "ip",
+                "iptables",
+                "iptables-save",
+                "sysctl",
+                "cp",
+                "unshare",
+                "bash",
+                "mount",
+                "umount",
+            ]
+        );
+    }
+
+    #[test]
+    fn snapshot_create_capabilities_include_private_mount_create_without_sparse_copy() {
+        let mode = PrerequisiteMode::SnapshotCreate;
+        let commands = required_commands(mode);
+
+        assert_eq!(
+            mode.capabilities(),
+            &[
+                HostCapability::NetworkSetup,
+                HostCapability::SnapshotPrivateMountCreate,
+            ]
+        );
+        assert_eq!(
+            commands,
+            vec![
+                "ip",
+                "iptables",
+                "iptables-save",
+                "sysctl",
+                "unshare",
+                "bash",
+                "mount",
+            ]
+        );
+        assert!(!commands.contains(&"cp"));
+    }
+
+    #[test]
+    fn required_commands_do_not_include_pgrep_without_dependency() {
+        let snapshot = snapshot_config();
+        let modes = [
+            PrerequisiteMode::FactoryFresh,
+            PrerequisiteMode::FactorySnapshotRestore {
+                snapshot: &snapshot,
+            },
+            PrerequisiteMode::SnapshotCreate,
+        ];
+
+        for mode in modes {
+            let commands = required_commands(mode);
+            assert!(!commands.contains(&"pgrep"), "mode: {mode:?}");
+        }
+    }
+
+    #[test]
+    fn conntrack_is_optional_not_hard_required() {
+        assert_eq!(OPTIONAL_CLEANUP_COMMANDS, &["conntrack"]);
+
+        let snapshot = snapshot_config();
+        let modes = [
+            PrerequisiteMode::FactoryFresh,
+            PrerequisiteMode::FactorySnapshotRestore {
+                snapshot: &snapshot,
+            },
+            PrerequisiteMode::SnapshotCreate,
+        ];
+
+        for mode in modes {
+            let commands = required_commands(mode);
+            assert!(!commands.contains(&"conntrack"), "mode: {mode:?}");
+        }
+    }
+
+    #[test]
+    fn network_prerequisites_use_network_command_set() {
+        assert_eq!(
+            required_commands_for_capabilities(&[HostCapability::NetworkSetup]),
+            vec!["ip", "iptables", "iptables-save", "sysctl"]
+        );
+    }
+
+    #[test]
+    fn snapshot_artifacts_are_present_only_for_restore_mode() {
+        let snapshot = snapshot_config();
+        assert!(PrerequisiteMode::FactoryFresh.snapshot().is_none());
+        assert!(PrerequisiteMode::SnapshotCreate.snapshot().is_none());
+        let restore_snapshot = PrerequisiteMode::FactorySnapshotRestore {
+            snapshot: &snapshot,
+        }
+        .snapshot();
+        assert!(matches!(restore_snapshot, Some(s) if std::ptr::eq(s, &snapshot)));
     }
 }
