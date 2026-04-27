@@ -7,9 +7,10 @@ import {
   type InitClientArgs,
   type InitClientReturn,
 } from "@ts-rest/core";
-import { afterEach, expect } from "vitest";
+import { afterAll, afterEach, expect } from "vitest";
 
 import { createApp } from "../app-factory";
+import { closeDbPool } from "../lib/db";
 import { clearMockedEnv } from "../lib/env";
 import {
   ROUTES,
@@ -157,6 +158,10 @@ export function testContext(): TestContext {
 
     await clearAllDetached();
     clearMockedEnv();
+  });
+
+  afterAll(async () => {
+    await closeDbPool();
   });
 
   return context;
