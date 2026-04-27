@@ -27,7 +27,7 @@ use crate::control;
 use crate::factory::InvariantConfig;
 use crate::network::PooledNetns;
 use crate::paths::{SandboxPaths, SockPaths};
-use crate::process::kill_process_group;
+use crate::process::{kill_process_group, kill_process_group_by_pid};
 
 /// Timeout for waiting for the guest to connect via vsock after start.
 const VSOCK_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
@@ -807,6 +807,8 @@ fn monitor_process(
     state_tx: watch::Sender<SandboxState>,
     guest: Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>,
 ) -> ProcessMonitorHandle {
+    let process_group_pid = child.id();
+
     if let Some(stdout) = child.stdout.take() {
         let id = id.to_owned();
         tokio::spawn(async move {
@@ -875,6 +877,9 @@ fn monitor_process(
 
         match prev {
             SandboxState::Running => {
+                if let Some(pid) = process_group_pid {
+                    kill_process_group_by_pid(pid);
+                }
                 match status {
                     Ok(status) => warn!(id = %id, %status, "process exited unexpectedly"),
                     Err(error) => warn!(id = %id, %error, "process wait failed unexpectedly"),
@@ -1431,6 +1436,39 @@ mod tests {
             .unwrap()
     }
 
+    fn parent_exits_with_child_process(pid_file: &std::path::Path) -> tokio::process::Child {
+        tokio::process::Command::new("bash")
+            .args([
+                "-c",
+                "trap '' HUP; sleep 60 & echo $! > \"$1\"; exit 1",
+                "_",
+            ])
+            .arg(pid_file)
+            .process_group(0)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .unwrap()
+    }
+
+    fn pid_exists(pid: u32) -> bool {
+        let Ok(pid) = i32::try_from(pid) else {
+            return false;
+        };
+        nix::sys::signal::kill(nix::unistd::Pid::from_raw(pid), None).is_ok()
+    }
+
+    async fn wait_for_pid_exit(pid: u32) -> bool {
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while pid_exists(pid) {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .is_ok()
+    }
+
     async fn wait_for_state(state: &AtomicU8, expected: SandboxState) {
         tokio::time::timeout(Duration::from_secs(1), async {
             while SandboxState::from_u8(state.load(Ordering::Acquire)) != expected {
@@ -1738,6 +1776,50 @@ mod tests {
         assert_eq!(
             SandboxState::from_u8(state.load(Ordering::Acquire)),
             SandboxState::Stopped
+        );
+    }
+
+    #[tokio::test]
+    async fn process_monitor_kills_group_after_unexpected_parent_exit() {
+        let dir = tempfile::tempdir().unwrap();
+        let pid_file = dir.path().join("child.pid");
+        let state = Arc::new(AtomicU8::new(SandboxState::Running as u8));
+        let state_publish_lock = Arc::new(Mutex::new(()));
+        let (state_tx, _state_rx) = watch::channel(SandboxState::Running);
+        let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
+        let child = parent_exits_with_child_process(&pid_file);
+
+        let handle = monitor_process(
+            "test-sandbox",
+            child,
+            Arc::clone(&state),
+            Arc::clone(&state_publish_lock),
+            state_tx,
+            guest,
+        );
+
+        handle.wait().await;
+
+        let leaked_pid: u32 = std::fs::read_to_string(&pid_file)
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
+        let child_exited = wait_for_pid_exit(leaked_pid).await;
+        if !child_exited {
+            let _ = nix::sys::signal::kill(
+                nix::unistd::Pid::from_raw(i32::try_from(leaked_pid).unwrap()),
+                nix::sys::signal::Signal::SIGKILL,
+            );
+        }
+
+        assert_eq!(
+            SandboxState::from_u8(state.load(Ordering::Acquire)),
+            SandboxState::Crashed
+        );
+        assert!(
+            child_exited,
+            "unexpected parent exit should not leave process-group children alive"
         );
     }
 

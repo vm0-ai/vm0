@@ -108,12 +108,20 @@ struct Shared {
 }
 
 struct ListenerSocketGuard {
-    path: String,
+    path: Option<String>,
+}
+
+impl ListenerSocketGuard {
+    fn remove(&mut self) {
+        if let Some(path) = self.path.take() {
+            let _ = std::fs::remove_file(path);
+        }
+    }
 }
 
 impl Drop for ListenerSocketGuard {
     fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.path);
+        self.remove();
     }
 }
 
@@ -323,17 +331,18 @@ impl VsockHost {
         let _ = std::fs::remove_file(&listener_path);
 
         let listener = UnixListener::bind(&listener_path)?;
-        let _listener_socket = ListenerSocketGuard {
-            path: listener_path.clone(),
+        let mut listener_socket = ListenerSocketGuard {
+            path: Some(listener_path.clone()),
         };
         let deadline = Instant::now() + timeout;
 
         let accept_result = time::timeout_at(deadline, listener.accept()).await;
 
-        // Stop accepting before the accepted stream is handed off. The
-        // ListenerSocketGuard removes the path on normal return, error, or
-        // task cancellation.
+        // Stop accepting and unlink the listener socket before the accepted
+        // stream is handed off. The guard still covers cancellation before
+        // this point.
         drop(listener);
+        listener_socket.remove();
 
         let (stream, _) = accept_result.map_err(|_| {
             io::Error::new(
