@@ -24,9 +24,11 @@ import { prepareUserMessageFromDraft$ } from "./resolve-draft-attachments.ts";
 import { reloadChatThreads$, type ChatThread } from "../agent-chat.ts";
 import {
   chatMessagesContract,
+  chatThreadArtifactsContract,
   chatThreadByIdContract,
   chatThreadMarkReadContract,
   chatThreadMessagesContract,
+  type ChatThreadArtifactRun,
   type ModelSelectionRequest,
   type PersistedAttachment,
   type PagedChatMessage,
@@ -194,6 +196,12 @@ export interface ChatThreadSignals {
   rotatingPhrase$: Computed<string>;
   donePhrase$: Computed<string>;
   runPhraseLoop$: Command<Promise<void>, [AbortSignal]>;
+  // ── Artifacts drawer ─────────────────────────────────────────────────────
+  artifacts$: Computed<Promise<ChatThreadArtifactRun[]>>;
+  artifactsDrawerOpen$: Computed<boolean>;
+  setArtifactsDrawerOpen$: Command<void, [boolean]>;
+  artifactPreviewKey$: Computed<string | null>;
+  setArtifactPreviewKey$: Command<void, [string | null]>;
 }
 
 export interface LocalChatThreadSnapshot {
@@ -868,6 +876,44 @@ function createLoadHistoryCommand({
   });
 }
 
+function createArtifacts(
+  threadId: string,
+  groupedChatMessages$: Computed<Promise<GroupedChatMessageGroup[]>>,
+) {
+  const artifacts$ = computed(async (get): Promise<ChatThreadArtifactRun[]> => {
+    await get(groupedChatMessages$);
+    const client = get(zeroClient$)(chatThreadArtifactsContract);
+    const result = (await accept(client.list({ params: { threadId } }), [200], {
+      toast: false,
+    })) as { body: { runs: ChatThreadArtifactRun[] } };
+    return result.body.runs;
+  });
+
+  const internalDrawerOpen$ = state(false);
+  const artifactsDrawerOpen$ = computed((get) => {
+    return get(internalDrawerOpen$);
+  });
+  const setArtifactsDrawerOpen$ = command(({ set }, open: boolean) => {
+    set(internalDrawerOpen$, open);
+  });
+
+  const internalPreviewKey$ = state<string | null>(null);
+  const artifactPreviewKey$ = computed((get) => {
+    return get(internalPreviewKey$);
+  });
+  const setArtifactPreviewKey$ = command(({ set }, key: string | null) => {
+    set(internalPreviewKey$, key);
+  });
+
+  return {
+    artifacts$,
+    artifactsDrawerOpen$,
+    setArtifactsDrawerOpen$,
+    artifactPreviewKey$,
+    setArtifactPreviewKey$,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Draft cache
 // ---------------------------------------------------------------------------
@@ -1359,6 +1405,13 @@ export function createChatThreadSignals(
   const { setInputRef$, focusInput$ } = createInputRef();
   const { blockColors$, rotatingPhrase$, donePhrase$, runPhraseLoop$ } =
     createPhraseLoop(groupedChatMessages$, allFinished$);
+  const {
+    artifacts$,
+    artifactsDrawerOpen$,
+    setArtifactsDrawerOpen$,
+    artifactPreviewKey$,
+    setArtifactPreviewKey$,
+  } = createArtifacts(threadId, groupedChatMessages$);
 
   // Status of the currently-active run, sourced from threadData$.activeRuns.
   // `chatThreadRunUpdated` Ably events trigger reloadThread$, so this signal
@@ -1408,5 +1461,10 @@ export function createChatThreadSignals(
     rotatingPhrase$,
     donePhrase$,
     runPhraseLoop$,
+    artifacts$,
+    artifactsDrawerOpen$,
+    setArtifactsDrawerOpen$,
+    artifactPreviewKey$,
+    setArtifactPreviewKey$,
   };
 }

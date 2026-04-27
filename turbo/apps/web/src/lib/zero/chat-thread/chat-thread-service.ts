@@ -1,4 +1,13 @@
-import { eq, and, desc, inArray, isNull, sql } from "drizzle-orm";
+import {
+  eq,
+  and,
+  desc,
+  inArray,
+  isNull,
+  isNotNull,
+  asc,
+  sql,
+} from "drizzle-orm";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
@@ -12,6 +21,7 @@ import {
 } from "./chat-message-service";
 import { formatChatRunErrorMessage } from "./chat-run-error-message";
 import {
+  type ChatThreadArtifactRun,
   type PersistedAttachment,
   type ResolvedAttachFile,
   persistedAttachmentSchema,
@@ -321,6 +331,69 @@ export async function resolveAttachFileUrls(
   );
   return results.filter((r): r is ResolvedAttachFile => {
     return r !== null;
+  });
+}
+
+export async function getChatThreadArtifacts(
+  threadId: string,
+  userId: string,
+): Promise<ChatThreadArtifactRun[]> {
+  await getChatThread(threadId, userId);
+
+  const rows = await globalThis.services.db
+    .select({
+      messageId: chatMessages.id,
+      runId: chatMessages.runId,
+      attachFiles: chatMessages.attachFiles,
+      createdAt: chatMessages.createdAt,
+    })
+    .from(chatMessages)
+    .where(
+      and(
+        eq(chatMessages.chatThreadId, threadId),
+        isNotNull(chatMessages.runId),
+        isNotNull(chatMessages.attachFiles),
+      ),
+    )
+    .orderBy(asc(chatMessages.createdAt), asc(chatMessages.sequenceNumber));
+
+  const resolvedRows = await Promise.all(
+    rows.map(async (row) => {
+      if (!row.runId || !row.attachFiles || row.attachFiles.length === 0) {
+        return null;
+      }
+      const files = await resolveAttachFileUrls(userId, row.attachFiles);
+      if (files.length === 0) {
+        return null;
+      }
+      return { row, files };
+    }),
+  );
+
+  const byRun = new Map<string, ChatThreadArtifactRun>();
+
+  for (const item of resolvedRows) {
+    if (!item) {
+      continue;
+    }
+    const { row, files } = item;
+    if (row.runId) {
+      const existing = byRun.get(row.runId) ?? { runId: row.runId, files: [] };
+      existing.files.push(
+        ...files.map((file) => {
+          return {
+            ...file,
+            messageId: row.messageId,
+            createdAt: row.createdAt.toISOString(),
+          };
+        }),
+      );
+      byRun.set(row.runId, existing);
+    }
+  }
+
+  return Array.from(byRun.values()).filter((run) => {
+    return run.files.length > 0;
   });
 }
 

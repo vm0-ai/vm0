@@ -304,6 +304,7 @@ export {
   chatThreadMarkReadContract,
   chatMessagesContract,
   chatThreadMessagesContract,
+  chatThreadArtifactsContract,
   chatSearchContract,
   chatThreadListItemSchema,
   chatThreadDetailSchema,
@@ -313,6 +314,8 @@ export {
   persistedAttachmentSchema,
   attachFileSchema,
   resolvedAttachFileSchema,
+  chatThreadArtifactFileSchema,
+  chatThreadArtifactRunSchema,
   type ModelSelectionRequest,
   type SummaryEntry,
   type ChatThreadsContract,
@@ -320,6 +323,7 @@ export {
   type ChatThreadMarkReadContract,
   type ChatMessagesContract,
   type ChatThreadMessagesContract,
+  type ChatThreadArtifactsContract,
   type ChatSearchContract,
   type ChatSearchResponse,
   type ChatSearchResult,
@@ -330,6 +334,8 @@ export {
   type PersistedAttachment,
   type AttachFile,
   type ResolvedAttachFile,
+  type ChatThreadArtifactFile,
+  type ChatThreadArtifactRun,
 } from "./chat-threads";
 export {
   chatThreadV1GetContract,

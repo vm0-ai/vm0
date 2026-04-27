@@ -28,6 +28,16 @@ const resolvedAttachFileSchema = attachFileSchema.extend({
   url: z.string(),
 });
 
+const chatThreadArtifactFileSchema = resolvedAttachFileSchema.extend({
+  messageId: z.string(),
+  createdAt: z.string(),
+});
+
+const chatThreadArtifactRunSchema = z.object({
+  runId: z.string(),
+  files: z.array(chatThreadArtifactFileSchema),
+});
+
 /**
  * Attachment metadata persisted in chat_threads.draft_attachments.
  *
@@ -422,11 +432,30 @@ export const chatThreadMessagesContract = c.router({
   },
 });
 
+export const chatThreadArtifactsContract = c.router({
+  list: {
+    method: "GET",
+    path: "/api/zero/chat-threads/:threadId/artifacts",
+    headers: authHeadersSchema,
+    pathParams: z.object({ threadId: z.string() }),
+    responses: {
+      200: z.object({
+        runs: z.array(chatThreadArtifactRunSchema),
+      }),
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "List uploaded files associated with every run in a chat thread",
+  },
+});
+
 export type ChatThreadsContract = typeof chatThreadsContract;
 export type ChatThreadByIdContract = typeof chatThreadByIdContract;
 export type ChatThreadMarkReadContract = typeof chatThreadMarkReadContract;
 export type ChatMessagesContract = typeof chatMessagesContract;
 export type ChatThreadMessagesContract = typeof chatThreadMessagesContract;
+export type ChatThreadArtifactsContract = typeof chatThreadArtifactsContract;
 export type ChatSearchContract = typeof chatSearchContract;
 export type ChatSearchResponse = z.infer<typeof chatSearchResponseSchema>;
 export type ChatSearchResult = z.infer<typeof chatSearchResultSchema>;
@@ -441,6 +470,8 @@ export {
   persistedAttachmentSchema,
   attachFileSchema,
   resolvedAttachFileSchema,
+  chatThreadArtifactFileSchema,
+  chatThreadArtifactRunSchema,
 };
 
 export type ModelSelectionRequest = z.infer<typeof modelSelectionRequestSchema>;
@@ -452,3 +483,7 @@ export type PagedChatMessage = z.infer<typeof pagedChatMessageSchema>;
 export type PersistedAttachment = z.infer<typeof persistedAttachmentSchema>;
 export type AttachFile = z.infer<typeof attachFileSchema>;
 export type ResolvedAttachFile = z.infer<typeof resolvedAttachFileSchema>;
+export type ChatThreadArtifactFile = z.infer<
+  typeof chatThreadArtifactFileSchema
+>;
+export type ChatThreadArtifactRun = z.infer<typeof chatThreadArtifactRunSchema>;

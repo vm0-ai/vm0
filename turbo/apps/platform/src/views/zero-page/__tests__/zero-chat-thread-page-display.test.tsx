@@ -5,8 +5,10 @@ import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import { chatThreadArtifactsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   mockChatLifecycle,
   mockSubagentThread,
@@ -611,6 +613,97 @@ describe("zero chat thread page display - header agent avatar flicker fix", () =
       'a[aria-label="View agent profile"]',
     );
     expect(avatarLinks).toHaveLength(1);
+  });
+});
+
+describe("zero chat thread page display - artifacts drawer", () => {
+  it("opens a drawer with uploaded files grouped by run when enabled", async () => {
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "user",
+          content: "See attached",
+          runId: "run-artifacts-1",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+    server.use(
+      mockApi(chatThreadArtifactsContract.list, ({ respond }) => {
+        return respond(200, {
+          runs: [
+            {
+              runId: "run-artifacts-1",
+              files: [
+                {
+                  id: "file-1",
+                  filename: "chart.png",
+                  contentType: "image/png",
+                  size: 4096,
+                  url: "https://example.com/chart.png",
+                  messageId: "msg-1",
+                  createdAt: "2026-03-10T00:00:00Z",
+                },
+                {
+                  id: "file-2",
+                  filename: "data.csv",
+                  contentType: "text/csv",
+                  size: 2048,
+                  url: "https://example.com/data.csv",
+                  messageId: "msg-1",
+                  createdAt: "2026-03-10T00:00:00Z",
+                },
+              ],
+            },
+          ],
+        });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+      featureSwitches: { [FeatureSwitchKey.ChatArtifactsDrawer]: true },
+    });
+
+    const button = await waitFor(() => {
+      return screen.getByRole("button", { name: "Open artifacts" });
+    });
+    click(button);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Artifacts" }),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.getByRole("img", { name: "Preview chart.png" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getAllByRole("link", { name: "Download chart.png" })[0],
+    ).toHaveAttribute("href", "https://example.com/chart.png?download=1");
+    expect(screen.getAllByText("chart.png").length).toBeGreaterThan(0);
+    expect(screen.getByText("data.csv")).toBeInTheDocument();
+    expect(screen.getAllByText(/Run run-art/i).length).toBeGreaterThan(0);
+  });
+
+  it("hides the artifacts button when the feature switch is off", async () => {
+    mockChatLifecycle();
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+      featureSwitches: { [FeatureSwitchKey.ChatArtifactsDrawer]: false },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Send a message to start the conversation"),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByRole("button", { name: "Open artifacts" }),
+    ).not.toBeInTheDocument();
   });
 });
 
