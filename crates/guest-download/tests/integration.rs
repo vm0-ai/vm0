@@ -162,6 +162,27 @@ fn run_guest_download(manifest_path: &str) -> bool {
     guest_download::run(manifest_path)
 }
 
+struct RunFileCleanup {
+    paths: Vec<String>,
+}
+
+impl RunFileCleanup {
+    fn new(paths: Vec<String>) -> Self {
+        for path in &paths {
+            let _ = std::fs::remove_file(path);
+        }
+        Self { paths }
+    }
+}
+
+impl Drop for RunFileCleanup {
+    fn drop(&mut self) {
+        for path in &self.paths {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+}
+
 #[test]
 fn binary_writes_system_log_to_guest_common_default_path() {
     let dir = tempfile::tempdir().unwrap();
@@ -176,8 +197,7 @@ fn binary_writes_system_log_to_guest_common_default_path() {
     );
     let system_log = format!("/tmp/vm0-system-{run_id}.log");
     let ops_log = format!("/tmp/vm0-sandbox-ops-{run_id}.jsonl");
-    let _ = std::fs::remove_file(&system_log);
-    let _ = std::fs::remove_file(&ops_log);
+    let _cleanup = RunFileCleanup::new(vec![system_log.clone(), ops_log]);
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_guest-download"))
         .arg(&manifest_path)
@@ -200,9 +220,6 @@ fn binary_writes_system_log_to_guest_common_default_path() {
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("[INFO] [sandbox:download] Download completed"));
-
-    let _ = std::fs::remove_file(system_log);
-    let _ = std::fs::remove_file(ops_log);
 }
 
 #[test]
