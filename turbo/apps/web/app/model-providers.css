@@ -1,0 +1,478 @@
+/* ===== MODEL PROVIDERS PAGE STYLES ===== */
+/* Reuses the same design tokens as use-cases.css and landing.css. */
+
+/* ---------------------------------------------------------------------------
+   Hub: provider grid
+   --------------------------------------------------------------------------- */
+
+.mp-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+@media (max-width: 1024px) {
+  .mp-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .mp-grid {
+    grid-template-columns: 1fr;
+    padding: 0 16px;
+  }
+}
+
+.mp-card {
+  display: flex;
+  flex-direction: column;
+  padding: 24px;
+  border-radius: 20px;
+  background: hsl(var(--gray-0));
+  border: 0.7px solid hsl(var(--gray-200));
+  transition:
+    transform 0.3s ease,
+    border-color 0.3s ease;
+  text-decoration: none;
+}
+
+.mp-card:hover {
+  transform: translateY(-2px);
+  border-color: hsl(var(--gray-300));
+}
+
+.mp-empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 64px 24px;
+  color: hsl(var(--muted-foreground));
+  font-size: 16px;
+}
+
+/* ---------------------------------------------------------------------------
+   Tags
+   --------------------------------------------------------------------------- */
+
+.mp-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: 999px;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+}
+
+.mp-tag--accent {
+  background: rgba(237, 78, 1, 0.08);
+  color: #ed4e01;
+}
+
+.mp-tag--model {
+  background: hsl(var(--gray-100));
+  color: hsl(var(--muted-foreground));
+  font-family: "Fira Code", ui-monospace, monospace;
+  font-size: 11px;
+}
+
+/* ---------------------------------------------------------------------------
+   Section headings (hub)
+   --------------------------------------------------------------------------- */
+
+.mp-section-heading {
+  font-size: 28px;
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: -0.5px;
+  color: hsl(var(--foreground));
+  margin-bottom: 8px;
+}
+
+@media (min-width: 768px) {
+  .mp-section-heading {
+    font-size: 34px;
+  }
+}
+
+.mp-section-sub {
+  font-size: 16px;
+  font-weight: 300;
+  line-height: 1.6;
+  color: hsl(var(--muted-foreground));
+  margin-bottom: 32px;
+  max-width: 720px;
+}
+
+/* ---------------------------------------------------------------------------
+   Comparison matrix
+   --------------------------------------------------------------------------- */
+
+.mp-matrix-wrap {
+  background: hsl(var(--gray-0));
+  border: 0.7px solid hsl(var(--gray-200));
+  border-radius: 16px;
+  overflow-x: auto;
+}
+
+.mp-matrix {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.mp-matrix thead {
+  background: hsl(var(--gray-50));
+  border-bottom: 0.7px solid hsl(var(--gray-200));
+}
+
+.mp-matrix th {
+  padding: 14px 16px;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: hsl(var(--muted-foreground));
+}
+
+.mp-matrix td {
+  padding: 14px 16px;
+  border-top: 0.7px solid hsl(var(--gray-100));
+  vertical-align: middle;
+  color: hsl(var(--foreground));
+}
+
+.mp-matrix-row:hover {
+  background: hsl(var(--gray-50));
+}
+
+.mp-matrix-name {
+  font-weight: 500;
+  color: hsl(var(--foreground));
+  text-decoration: none;
+}
+
+.mp-matrix-name:hover {
+  color: #ed4e01;
+}
+
+.mp-matrix-mono {
+  font-family: "Fira Code", ui-monospace, monospace;
+  font-size: 13px;
+  color: hsl(var(--muted-foreground));
+}
+
+.mp-matrix-bestfor {
+  color: hsl(var(--muted-foreground));
+}
+
+/* ---------------------------------------------------------------------------
+   Methodology grid
+   --------------------------------------------------------------------------- */
+
+.mp-method-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+@media (max-width: 1024px) {
+  .mp-method-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .mp-method-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.mp-method-card {
+  padding: 24px;
+  border-radius: 16px;
+  background: hsl(var(--gray-0));
+  border: 0.7px solid hsl(var(--gray-200));
+}
+
+/* ---------------------------------------------------------------------------
+   FAQ (hub) — accordion
+   --------------------------------------------------------------------------- */
+
+.mp-faq-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.mp-faq-item {
+  border-top: 0.7px solid hsl(var(--gray-200));
+}
+
+.mp-faq-item:last-child {
+  border-bottom: 0.7px solid hsl(var(--gray-200));
+}
+
+.mp-faq-question {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 4px;
+  font-size: 16px;
+  font-weight: 500;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  color: hsl(var(--foreground));
+  transition: color 0.2s;
+}
+
+.mp-faq-question:hover {
+  color: #ed4e01;
+}
+
+.mp-faq-chev {
+  flex-shrink: 0;
+  color: hsl(var(--muted-foreground));
+  transition: transform 0.2s ease;
+}
+
+.mp-faq-chev--open {
+  transform: rotate(180deg);
+}
+
+.mp-faq-answer {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.25s ease-out;
+}
+
+.mp-faq-answer--open {
+  grid-template-rows: 1fr;
+}
+
+.mp-faq-answer > p {
+  overflow: hidden;
+  padding-bottom: 16px;
+  font-size: 15px;
+  font-weight: 300;
+  line-height: 1.6;
+  color: hsl(var(--muted-foreground));
+}
+
+/* ---------------------------------------------------------------------------
+   Detail page: model grid
+   --------------------------------------------------------------------------- */
+
+.mp-model-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+@media (max-width: 640px) {
+  .mp-model-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.mp-model-card {
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: hsl(var(--gray-50));
+  border: 0.7px solid hsl(var(--gray-200));
+}
+
+.mp-model-name {
+  font-family: "Fira Code", ui-monospace, monospace;
+  font-size: 13px;
+  color: hsl(var(--foreground));
+}
+
+/* ---------------------------------------------------------------------------
+   Detail page: bullets
+   --------------------------------------------------------------------------- */
+
+.mp-bullets {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.mp-bullet {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  font-size: 16px;
+  font-weight: 300;
+  line-height: 1.6;
+  color: hsl(var(--foreground));
+}
+
+.mp-bullet--muted {
+  color: hsl(var(--muted-foreground));
+}
+
+.mp-bullet-dot {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: #ed4e01;
+  margin-top: 10px;
+}
+
+.mp-bullet-dot--muted {
+  background: hsl(var(--gray-300));
+}
+
+/* ---------------------------------------------------------------------------
+   Detail page: evaluation cards
+   --------------------------------------------------------------------------- */
+
+.mp-eval-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.mp-eval-item {
+  padding: 18px 20px;
+  border-radius: 12px;
+  background: hsl(var(--gray-0));
+  border: 0.7px solid hsl(var(--gray-200));
+}
+
+.mp-eval-scenario {
+  font-size: 15px;
+  font-weight: 500;
+  color: hsl(var(--foreground));
+}
+
+.mp-rating {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 999px;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+
+.mp-rating--excellent {
+  background: rgba(34, 197, 94, 0.12);
+  color: #16a34a;
+}
+
+[data-theme="dark"] .mp-rating--excellent {
+  color: #4ade80;
+}
+
+.mp-rating--good {
+  background: rgba(99, 102, 241, 0.12);
+  color: #6366f1;
+}
+
+[data-theme="dark"] .mp-rating--good {
+  color: #818cf8;
+}
+
+.mp-rating--fair {
+  background: rgba(245, 158, 11, 0.12);
+  color: #d97706;
+}
+
+[data-theme="dark"] .mp-rating--fair {
+  color: #fbbf24;
+}
+
+/* ---------------------------------------------------------------------------
+   Detail page: setup steps
+   --------------------------------------------------------------------------- */
+
+.mp-setup {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  counter-reset: mp-setup;
+}
+
+.mp-setup-step {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.mp-setup-num {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(237, 78, 1, 0.1);
+  color: #ed4e01;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.mp-setup-title {
+  font-size: 16px;
+  font-weight: 500;
+  color: hsl(var(--foreground));
+  margin-bottom: 4px;
+}
+
+.mp-setup-desc {
+  font-size: 15px;
+  font-weight: 300;
+  line-height: 1.55;
+  color: hsl(var(--muted-foreground));
+}
+
+.mp-setup-desc code {
+  font-family: "Fira Code", ui-monospace, monospace;
+  font-size: 13px;
+  background: hsl(var(--gray-100));
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+/* ---------------------------------------------------------------------------
+   Detail page: FAQ (non-accordion, full content for SEO)
+   --------------------------------------------------------------------------- */
+
+.mp-detail-faq {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.mp-detail-faq-q {
+  font-size: 16px;
+  font-weight: 500;
+  color: hsl(var(--foreground));
+  margin-bottom: 8px;
+}
+
+.mp-detail-faq-a {
+  font-size: 16px;
+  font-weight: 300;
+  line-height: 1.6;
+  color: hsl(var(--muted-foreground));
+}

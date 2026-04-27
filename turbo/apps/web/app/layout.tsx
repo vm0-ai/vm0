@@ -17,6 +17,7 @@ import "./globals.css";
 import "./landing.css";
 import "./blog.css";
 import "./use-cases.css";
+import "./model-providers.css";
 
 const notoSans = Noto_Sans({
   subsets: ["latin"],
