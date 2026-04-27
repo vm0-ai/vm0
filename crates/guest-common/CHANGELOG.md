@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.4](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.3...guest-common-v0.2.4) (2026-04-27)
+
+
+### Refactoring
+
+* centralize guest system log path ([#11246](https://github.com/vm0-ai/vm0/issues/11246)) ([b93fc42](https://github.com/vm0-ai/vm0/commit/b93fc42833815fd843f073044b4e872505812025))
+
 ## [0.2.3](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.2...guest-common-v0.2.3) (2026-04-27)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.24.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.24.6...guest-agent-v0.24.7) (2026-04-27)
+
+
+### Refactoring
+
+* centralize guest system log path ([#11246](https://github.com/vm0-ai/vm0/issues/11246)) ([b93fc42](https://github.com/vm0-ai/vm0/commit/b93fc42833815fd843f073044b4e872505812025))
+
 ## [0.24.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.24.5...guest-agent-v0.24.6) (2026-04-27)
 
 ## [0.24.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.24.4...guest-agent-v0.24.5) (2026-04-27)

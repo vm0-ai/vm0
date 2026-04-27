@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.4](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.3...guest-download-v0.20.4) (2026-04-27)
+
+
+### Refactoring
+
+* centralize guest system log path ([#11246](https://github.com/vm0-ai/vm0/issues/11246)) ([b93fc42](https://github.com/vm0-ai/vm0/commit/b93fc42833815fd843f073044b4e872505812025))
+
 ## [0.20.3](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.2...guest-download-v0.20.3) (2026-04-27)
 
 ## [0.20.2](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.1...guest-download-v0.20.2) (2026-04-26)
