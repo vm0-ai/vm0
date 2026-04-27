@@ -241,6 +241,25 @@ fn binary_panics_without_run_id_for_default_system_log() {
     );
 }
 
+#[test]
+fn binary_panics_with_empty_run_id_for_default_system_log() {
+    let dir = tempfile::tempdir().unwrap();
+    let manifest_path = write_manifest(&dir, &[], None).unwrap();
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_guest-download"))
+        .arg(&manifest_path)
+        .env("VM0_RUN_ID", "")
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("VM0_RUN_ID is required for guest system logging"),
+        "unexpected stderr: {stderr}"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Test 1: single storage download succeeds
 // ---------------------------------------------------------------------------

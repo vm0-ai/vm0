@@ -147,6 +147,26 @@ mod tests {
     }
 
     #[test]
+    fn emit_does_not_write_previous_path_when_file_logging_is_disabled() {
+        let _guard = LOG_TEST_MUTEX.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("system.log");
+        set_system_log_file(&path);
+        clear_system_log_file();
+
+        emit(
+            "INFO",
+            "sandbox:guest-agent",
+            format_args!("stderr-only after clearing system log"),
+        );
+
+        assert!(
+            !path.exists(),
+            "disabled system log should not write to previous path",
+        );
+    }
+
+    #[test]
     fn emit_appends_to_configured_system_log_file() {
         let _guard = LOG_TEST_MUTEX.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
