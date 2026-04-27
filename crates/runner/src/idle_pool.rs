@@ -1,6 +1,9 @@
 use std::collections::HashMap;
 use std::panic::AssertUnwindSafe;
-use std::sync::Arc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicU8, Ordering},
+};
 use std::time::{Duration, Instant};
 
 use futures_util::FutureExt;
@@ -67,6 +70,67 @@ impl Default for IdlePoolConfig {
             default_timeout: Duration::from_secs(DEFAULT_IDLE_TIMEOUT_SECS),
             max_idle: 0,
         }
+    }
+}
+
+/// Lifecycle-owned gate for whether completed jobs may enter the idle pool.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ParkingState {
+    Open = 0,
+    SoftDraining = 1,
+    Closed = 2,
+}
+
+impl ParkingState {
+    fn from_u8(value: u8) -> Self {
+        match value {
+            0 => Self::Open,
+            1 => Self::SoftDraining,
+            2 => Self::Closed,
+            _ => Self::Closed,
+        }
+    }
+}
+
+/// Shared parking permission updated before publishing runner mode transitions.
+#[derive(Clone, Debug)]
+pub(crate) struct ParkingGate {
+    state: Arc<AtomicU8>,
+}
+
+impl ParkingGate {
+    pub(crate) fn new_open() -> Self {
+        Self {
+            state: Arc::new(AtomicU8::new(ParkingState::Open as u8)),
+        }
+    }
+
+    pub(crate) fn state(&self) -> ParkingState {
+        ParkingState::from_u8(self.state.load(Ordering::SeqCst))
+    }
+
+    pub(crate) fn is_open(&self) -> bool {
+        self.state() == ParkingState::Open
+    }
+
+    pub(crate) fn soft_drain(&self) {
+        self.state
+            .store(ParkingState::SoftDraining as u8, Ordering::SeqCst);
+    }
+
+    pub(crate) fn open_after_soft_drain(&self) {
+        self.state.store(ParkingState::Open as u8, Ordering::SeqCst);
+    }
+
+    pub(crate) fn close(&self) {
+        self.state
+            .store(ParkingState::Closed as u8, Ordering::SeqCst);
+    }
+}
+
+impl Default for ParkingGate {
+    fn default() -> Self {
+        Self::new_open()
     }
 }
 
@@ -174,25 +238,31 @@ impl IdleEntry {
 pub struct IdlePool {
     entries: HashMap<String, IdleEntry>,
     config: IdlePoolConfig,
-    /// Set by `drain()` to reject park attempts after shutdown.
-    drained: bool,
+    /// Shared lifecycle gate. The signal/main-loop lifecycle controller updates
+    /// this before publishing externally visible mode transitions.
+    parking_gate: ParkingGate,
 }
 
 impl IdlePool {
+    #[cfg(test)]
     pub fn new(config: IdlePoolConfig) -> Self {
+        Self::new_with_parking_gate(config, ParkingGate::new_open())
+    }
+
+    pub(crate) fn new_with_parking_gate(config: IdlePoolConfig, parking_gate: ParkingGate) -> Self {
         Self {
             entries: HashMap::new(),
             config,
-            drained: false,
+            parking_gate,
         }
     }
 
     /// Park a sandbox in the pool. Returns the previously parked entry
     /// for this session if one existed (caller must destroy it).
     ///
-    /// Returns `PoolFull(entry)` if the pool is drained or at capacity.
+    /// Returns `PoolFull(entry)` if parking is closed/soft-draining or at capacity.
     pub fn park(&mut self, session_id: String, entry: IdleEntry) -> ParkResult {
-        if self.drained {
+        if !self.parking_gate.is_open() {
             return ParkResult::PoolFull(entry);
         }
         if self.config.max_idle > 0 && self.entries.len() >= self.config.max_idle {
@@ -272,19 +342,16 @@ impl IdlePool {
         self.entries.len()
     }
 
-    /// Whether the pool has been drained (rejects new park calls).
+    /// Current lifecycle parking state.
     #[cfg(test)]
-    pub fn is_drained(&self) -> bool {
-        self.drained
+    pub fn parking_state(&self) -> ParkingState {
+        self.parking_gate.state()
     }
 
-    /// Re-enable parking after a resumable soft drain returns to Running.
-    ///
-    /// This is only valid for SIGUSR1 -> SIGUSR2 soft-drain resume. Hard
-    /// shutdown paths must leave the pool drained so stale job tasks cannot
-    /// park new entries while teardown is in progress.
-    pub(crate) fn resume_after_soft_drain(&mut self) {
-        self.drained = false;
+    /// Shared lifecycle parking gate.
+    #[cfg(test)]
+    pub fn parking_gate(&self) -> ParkingGate {
+        self.parking_gate.clone()
     }
 
     /// The default idle timeout.
@@ -292,12 +359,10 @@ impl IdlePool {
         self.config.default_timeout
     }
 
-    /// Drain all entries from the pool (for shutdown).
-    ///
-    /// Also disables the pool so that concurrent job tasks that still hold
-    /// a stale `mode == Running` snapshot cannot park new entries after drain.
+    /// Drain all entries from the pool. Parking permission is controlled by
+    /// [`ParkingGate`] so soft-drain resume can reopen parking before
+    /// `RunnerMode::Running` becomes visible.
     pub fn drain(&mut self) -> Vec<IdleEntry> {
-        self.drained = true;
         self.entries.drain().map(|(_, v)| v).collect()
     }
 }
@@ -531,21 +596,47 @@ mod tests {
         let drained = pool.drain();
         assert_eq!(drained.len(), 2);
         assert_eq!(pool.len(), 0);
-        // drain marks the pool as drained to prevent post-shutdown parking
-        assert!(pool.is_drained());
+        assert_eq!(pool.parking_state(), ParkingState::Open);
     }
 
     #[test]
-    fn park_after_drain_rejected() {
-        // drain() marks pool as drained — subsequent park() calls are rejected.
+    fn park_rejected_while_soft_draining() {
         let mut pool = IdlePool::new(pool_config(0));
+        let gate = pool.parking_gate();
         let _ = pool.park("s1".into(), make_entry(2, 2048));
-        pool.drain();
-        assert!(pool.is_drained());
+        gate.soft_drain();
+        assert_eq!(pool.parking_state(), ParkingState::SoftDraining);
 
         let result = pool.park("s2".into(), make_entry(4, 4096));
         assert!(matches!(result, ParkResult::PoolFull(_)));
+        assert_eq!(pool.len(), 1);
+    }
+
+    #[test]
+    fn park_rejected_when_closed() {
+        let mut pool = IdlePool::new(pool_config(0));
+        let gate = pool.parking_gate();
+        gate.close();
+
+        let result = pool.park("s1".into(), make_entry(2, 2048));
+        assert!(matches!(result, ParkResult::PoolFull(_)));
         assert_eq!(pool.len(), 0);
+    }
+
+    #[test]
+    fn soft_drain_can_reopen_parking() {
+        let mut pool = IdlePool::new(pool_config(0));
+        let gate = pool.parking_gate();
+        gate.soft_drain();
+        assert!(matches!(
+            pool.park("s1".into(), make_entry(2, 2048)),
+            ParkResult::PoolFull(_)
+        ));
+
+        gate.open_after_soft_drain();
+        let result = pool.park("s1".into(), make_entry(2, 2048));
+        assert!(matches!(result, ParkResult::Parked));
+        assert_eq!(pool.len(), 1);
     }
 
     #[test]
@@ -566,7 +657,7 @@ mod tests {
         let mut pool = IdlePool::new(pool_config(0));
         let drained = pool.drain();
         assert!(drained.is_empty());
-        assert!(pool.is_drained());
+        assert_eq!(pool.parking_state(), ParkingState::Open);
     }
 
     #[test]
