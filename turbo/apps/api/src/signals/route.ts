@@ -1,11 +1,9 @@
 import type { AppRoute } from "@ts-rest/core";
-import {
-  healthAuthContract,
-  healthContract,
-} from "@vm0/api-contracts/contracts/health";
+import { healthContract } from "@vm0/api-contracts/contracts/health";
 
 import type { SignalRouteHandler } from "./context/route";
-import { apiHealth$, apiHealthAuth$ } from "./routes/health";
+import { apiHealth$ } from "./routes/health";
+import { healthAuthProbeRoutes } from "./routes/health-auth-probe";
 
 export type { SignalRouteHandler };
 
@@ -19,8 +17,5 @@ export const ROUTES: readonly RouteEntry[] = [
     route: healthContract.check,
     handler: apiHealth$,
   },
-  {
-    route: healthAuthContract.check,
-    handler: apiHealthAuth$,
-  },
+  ...healthAuthProbeRoutes,
 ];
