@@ -9,7 +9,7 @@ export function initPostHog(): void {
   }
 
   posthog.init(POSTHOG_KEY, {
-    api_host: "https://us.posthog.com",
+    api_host: "/ingest",
     autocapture: false,
     capture_pageview: false,
     disable_session_recording: true,
