@@ -13,7 +13,10 @@ const probeRoute = c.router({
   check: {
     method: "GET" as const,
     path: "/health/auth",
-    headers: z.object({ authorization: z.string().optional() }),
+    headers: z.object({
+      authorization: z.string().optional(),
+      cookie: z.string().optional(),
+    }),
     responses: {
       200: z.unknown(),
       401: z.object({
