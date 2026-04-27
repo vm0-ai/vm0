@@ -880,8 +880,10 @@ function createArtifacts(
   threadId: string,
   groupedChatMessages$: Computed<Promise<GroupedChatMessageGroup[]>>,
 ) {
+  const internalArtifactsReload$ = state(0);
   const artifacts$ = computed(async (get): Promise<ChatThreadArtifactRun[]> => {
     await get(groupedChatMessages$);
+    get(internalArtifactsReload$);
     const client = get(zeroClient$)(chatThreadArtifactsContract);
     const result = (await accept(client.list({ params: { threadId } }), [200], {
       toast: false,
@@ -894,6 +896,11 @@ function createArtifacts(
     return get(internalDrawerOpen$);
   });
   const setArtifactsDrawerOpen$ = command(({ set }, open: boolean) => {
+    if (open) {
+      set(internalArtifactsReload$, (version) => {
+        return version + 1;
+      });
+    }
     set(internalDrawerOpen$, open);
   });
 

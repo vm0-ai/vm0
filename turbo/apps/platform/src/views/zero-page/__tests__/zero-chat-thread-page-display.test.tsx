@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { http, HttpResponse } from "msw";
@@ -618,6 +618,8 @@ describe("zero chat thread page display - header agent avatar flicker fix", () =
 
 describe("zero chat thread page display - artifacts drawer", () => {
   it("opens a drawer with uploaded files grouped by run when enabled", async () => {
+    const user = userEvent.setup();
+    let artifactsRequests = 0;
     mockChatLifecycle({
       chatMessages: [
         {
@@ -629,7 +631,18 @@ describe("zero chat thread page display - artifacts drawer", () => {
       ],
     });
     server.use(
+      http.get("https://example.com/chart.png", () => {
+        return new HttpResponse(new Blob(["img"], { type: "image/png" }), {
+          headers: { "Content-Type": "image/png" },
+        });
+      }),
+      http.get("https://example.com/data.csv", () => {
+        return new HttpResponse("label,value\nalpha,1\n", {
+          headers: { "Content-Type": "text/csv" },
+        });
+      }),
       mockApi(chatThreadArtifactsContract.list, ({ respond }) => {
+        artifactsRequests += 1;
         return respond(200, {
           runs: [
             {
@@ -641,7 +654,6 @@ describe("zero chat thread page display - artifacts drawer", () => {
                   contentType: "image/png",
                   size: 4096,
                   url: "https://example.com/chart.png",
-                  messageId: "msg-1",
                   createdAt: "2026-03-10T00:00:00Z",
                 },
                 {
@@ -650,7 +662,6 @@ describe("zero chat thread page display - artifacts drawer", () => {
                   contentType: "text/csv",
                   size: 2048,
                   url: "https://example.com/data.csv",
-                  messageId: "msg-1",
                   createdAt: "2026-03-10T00:00:00Z",
                 },
               ],
@@ -659,6 +670,13 @@ describe("zero chat thread page display - artifacts drawer", () => {
         });
       }),
     );
+    const createObjectURLSpy = vi
+      .spyOn(URL, "createObjectURL")
+      .mockReturnValue("blob:artifact-download");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    const anchorClickSpy = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(() => {});
 
     detachedSetupPage({
       context,
@@ -669,6 +687,7 @@ describe("zero chat thread page display - artifacts drawer", () => {
     const button = await waitFor(() => {
       return screen.getByRole("button", { name: "Open artifacts" });
     });
+    expect(artifactsRequests).toBe(0);
     click(button);
 
     await waitFor(() => {
@@ -676,15 +695,50 @@ describe("zero chat thread page display - artifacts drawer", () => {
         screen.getByRole("heading", { name: "Artifacts" }),
       ).toBeInTheDocument();
     });
+    expect(artifactsRequests).toBeGreaterThan(0);
     expect(
       screen.getByRole("img", { name: "Preview chart.png" }),
     ).toBeInTheDocument();
     expect(
-      screen.getAllByRole("link", { name: "Download chart.png" })[0],
-    ).toHaveAttribute("href", "https://example.com/chart.png?download=1");
+      screen.queryByRole("link", { name: "Download chart.png" }),
+    ).not.toBeInTheDocument();
+    await user.click(
+      screen.getAllByRole("button", { name: "Download chart.png" })[0]!,
+    );
+    await waitFor(() => {
+      expect(createObjectURLSpy).toHaveBeenCalledOnce();
+      expect(anchorClickSpy).toHaveBeenCalledOnce();
+    });
     expect(screen.getAllByText("chart.png").length).toBeGreaterThan(0);
     expect(screen.getByText("data.csv")).toBeInTheDocument();
-    expect(screen.getAllByText(/Run run-art/i).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/2 runs/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Run run-art/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "View run" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Show preview for chart.png" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "Open chart.png" }),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Preview chart.png" }));
+
+    const lightbox = await screen.findByTestId("attachment-lightbox");
+    await user.click(within(lightbox).getByRole("button", { name: "Close" }));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("attachment-lightbox"),
+      ).not.toBeInTheDocument();
+    });
+    expect(
+      screen.getByRole("heading", { name: "Artifacts" }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Select data.csv" }));
+    expect(screen.getByTitle("Preview data.csv")).toBeInTheDocument();
   });
 
   it("hides the artifacts button when the feature switch is off", async () => {

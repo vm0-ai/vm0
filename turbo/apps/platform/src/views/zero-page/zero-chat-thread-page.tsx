@@ -20,7 +20,6 @@ import {
   IconArrowBarToUp,
   IconDownload,
   IconEye,
-  IconExternalLink,
   IconFile,
   IconFiles,
   IconVideo,
@@ -40,6 +39,12 @@ import {
 } from "@vm0/ui";
 import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
 import emptyChatImg from "./assets/empty-chat.webp";
+import docCsvIcon from "./assets/doc-csv.svg";
+import docDocIcon from "./assets/doc-doc.svg";
+import docHtmlIcon from "./assets/doc-html.svg";
+import docJsonIcon from "./assets/doc-json.svg";
+import docPdfIcon from "./assets/doc-pdf.svg";
+import docTxtIcon from "./assets/doc-txt.svg";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
@@ -55,6 +60,7 @@ import { Markdown } from "../components/markdown.tsx";
 import { detach, Reason, onDomEventFn } from "../../signals/utils.ts";
 import {
   AttachmentLightbox,
+  downloadAttachmentUrl,
   FileAttachmentChip,
   PreviewableFileAttachmentChip,
 } from "./zero-attachment-chips.tsx";
@@ -198,16 +204,6 @@ function PinPillButton({ thread }: { thread: ChatThreadSignals }) {
   );
 }
 
-function useArtifactCount(thread: ChatThreadSignals): number | null {
-  const runs = useLastResolved(thread.artifacts$);
-  if (!runs) {
-    return null;
-  }
-  return runs.reduce((sum, run) => {
-    return sum + run.files.length;
-  }, 0);
-}
-
 function ArtifactsButton({ thread }: { thread: ChatThreadSignals }) {
   const features = useLastResolved(featureSwitch$);
   const enabled = features?.[FeatureSwitchKey.ChatArtifactsDrawer] ?? false;
@@ -222,7 +218,6 @@ function ArtifactsButton({ thread }: { thread: ChatThreadSignals }) {
 function ArtifactsButtonInner({ thread }: { thread: ChatThreadSignals }) {
   const open = useGet(thread.artifactsDrawerOpen$);
   const setOpen = useSet(thread.setArtifactsDrawerOpen$);
-  const count = useArtifactCount(thread);
 
   return (
     <TooltipProvider delayDuration={300}>
@@ -234,7 +229,7 @@ function ArtifactsButtonInner({ thread }: { thread: ChatThreadSignals }) {
               setOpen(true);
             }}
             className={cn(
-              "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md px-2.5 text-sm transition-colors duration-150",
+              "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors duration-150",
               open
                 ? "bg-primary/10 text-primary"
                 : "text-muted-foreground/70 hover:bg-accent hover:text-foreground",
@@ -243,12 +238,6 @@ function ArtifactsButtonInner({ thread }: { thread: ChatThreadSignals }) {
             aria-pressed={open}
           >
             <IconFiles size={17} stroke={1.5} />
-            <span>Artifacts</span>
-            {count !== null && count > 0 && (
-              <span className="rounded-full bg-muted px-1.5 py-0.5 text-[11px] leading-none text-muted-foreground">
-                {count}
-              </span>
-            )}
           </button>
         </TooltipTrigger>
         <TooltipContent side="bottom">Open artifacts</TooltipContent>
@@ -340,10 +329,6 @@ function formatArtifactTime(value: string): string {
   });
 }
 
-function withDownloadParam(url: string): string {
-  return `${url}${url.includes("?") ? "&" : "?"}download=1`;
-}
-
 type ChatArtifactItem = {
   runId: string;
   file: ChatThreadArtifactFile;
@@ -352,7 +337,7 @@ type ChatArtifactItem = {
 type ArtifactPreviewKind = "image" | "video" | "document" | "file";
 
 function artifactItemKey(item: ChatArtifactItem): string {
-  return `${item.runId}:${item.file.messageId}:${item.file.id}`;
+  return `${item.runId}:${item.file.id}:${item.file.url}`;
 }
 
 function getFileExtension(filename: string): string {
@@ -394,7 +379,53 @@ function flattenArtifactRuns(
   });
 }
 
-function ArtifactFileIcon({ file }: { file: ChatThreadArtifactFile }) {
+function getArtifactFileIconSrc(file: ChatThreadArtifactFile): string | null {
+  const kind = classifyChatAttachment({
+    filename: file.filename,
+    url: file.url,
+    contentType: file.contentType,
+  });
+
+  if (kind === "pdf") {
+    return docPdfIcon;
+  }
+  if (kind === "html") {
+    return docHtmlIcon;
+  }
+  if (kind === "csv") {
+    return docCsvIcon;
+  }
+  if (kind === "json") {
+    return docJsonIcon;
+  }
+  if (kind === "text") {
+    return docTxtIcon;
+  }
+  if (kind === "markdown") {
+    return docDocIcon;
+  }
+  return null;
+}
+
+function ArtifactFileIcon({
+  file,
+  className,
+}: {
+  file: ChatThreadArtifactFile;
+  className?: string;
+}) {
+  const iconSrc = getArtifactFileIconSrc(file);
+  if (iconSrc) {
+    return (
+      <img
+        alt=""
+        aria-hidden="true"
+        src={iconSrc}
+        className={cn("h-5 w-5 object-contain opacity-90", className)}
+      />
+    );
+  }
+
   const previewKind = getArtifactPreviewKind(file);
   if (previewKind === "image") {
     return <IconPhoto size={18} stroke={1.5} />;
@@ -405,44 +436,6 @@ function ArtifactFileIcon({ file }: { file: ChatThreadArtifactFile }) {
   return <IconFile size={18} stroke={1.5} />;
 }
 
-function ArtifactPreviewOpenAction({
-  file,
-  className,
-}: {
-  file: ChatThreadArtifactFile;
-  className: string;
-}) {
-  const openImageLightbox = useSet(openAttachmentImageLightbox$);
-  const previewKind = getArtifactPreviewKind(file);
-
-  if (previewKind === "image") {
-    return (
-      <button
-        type="button"
-        onClick={() => {
-          openImageLightbox(file.url);
-        }}
-        className={className}
-        aria-label={`Preview ${file.filename}`}
-      >
-        <IconEye size={16} stroke={1.5} />
-      </button>
-    );
-  }
-
-  return (
-    <a
-      href={file.url}
-      target="_blank"
-      rel="noreferrer"
-      className={className}
-      aria-label={`Preview ${file.filename}`}
-    >
-      <IconEye size={16} stroke={1.5} />
-    </a>
-  );
-}
-
 function ArtifactDownloadAction({
   file,
   className,
@@ -450,15 +443,23 @@ function ArtifactDownloadAction({
   file: ChatThreadArtifactFile;
   className: string;
 }) {
+  const pageSignal = useGet(pageSignal$);
+
   return (
-    <a
-      href={withDownloadParam(file.url)}
-      download={file.filename}
+    <button
+      type="button"
+      onClick={() => {
+        detach(
+          downloadAttachmentUrl(file.url, pageSignal, file.filename),
+          Reason.DomCallback,
+          "artifact download",
+        );
+      }}
       className={className}
       aria-label={`Download ${file.filename}`}
     >
       <IconDownload size={16} stroke={1.5} />
-    </a>
+    </button>
   );
 }
 
@@ -514,7 +515,7 @@ function ArtifactPreviewFrame({ file }: { file: ChatThreadArtifactFile }) {
   return (
     <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-muted/40 p-8 text-center">
       <span className="flex h-16 w-16 items-center justify-center rounded-lg border border-border/70 bg-background text-muted-foreground shadow-sm">
-        <IconFile size={30} stroke={1.4} />
+        <ArtifactFileIcon file={file} className="h-10 w-10" />
       </span>
       <div className="min-w-0">
         <p className="text-xs font-medium uppercase text-muted-foreground">
@@ -529,7 +530,7 @@ function ArtifactPreviewFrame({ file }: { file: ChatThreadArtifactFile }) {
 }
 
 function ArtifactPreviewPanel({ item }: { item: ChatArtifactItem }) {
-  const { file, runId } = item;
+  const { file } = item;
   const actionClass =
     "flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground";
 
@@ -550,12 +551,9 @@ function ArtifactPreviewPanel({ item }: { item: ChatArtifactItem }) {
             <span>{formatBytes(file.size)}</span>
             <span aria-hidden>·</span>
             <span>{getFileExtension(file.filename)}</span>
-            <span aria-hidden>·</span>
-            <span>Run {runId.slice(0, 8)}</span>
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          <ArtifactPreviewOpenAction file={file} className={actionClass} />
           <ArtifactDownloadAction file={file} className={actionClass} />
         </div>
       </div>
@@ -566,25 +564,21 @@ function ArtifactPreviewPanel({ item }: { item: ChatArtifactItem }) {
 function ArtifactThumbnail({
   file,
   selected,
-  onPreview,
 }: {
   file: ChatThreadArtifactFile;
   selected: boolean;
-  onPreview: () => void;
 }) {
   const previewKind = getArtifactPreviewKind(file);
 
   return (
-    <button
-      type="button"
-      onClick={onPreview}
+    <div
       className={cn(
-        "group relative flex h-14 w-20 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-muted/60 transition-colors",
+        "relative flex h-14 w-20 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-muted/60 transition-colors",
         selected
           ? "border-primary/60 ring-2 ring-primary/15"
           : "border-border/70 hover:border-foreground/25",
       )}
-      aria-label={`Show preview for ${file.filename}`}
+      aria-hidden="true"
     >
       {previewKind === "image" ? (
         <img
@@ -601,10 +595,7 @@ function ArtifactThumbnail({
           </span>
         </span>
       )}
-      <span className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-all duration-150 group-hover:bg-black/25 group-hover:opacity-100">
-        <IconEye size={17} className="text-white drop-shadow" />
-      </span>
-    </button>
+    </div>
   );
 }
 
@@ -624,52 +615,36 @@ function ArtifactFileRow({
   return (
     <div
       className={cn(
-        "flex items-start gap-3 rounded-lg border px-3 py-2.5 transition-colors",
+        "flex rounded-lg border transition-colors",
         selected
           ? "border-primary/40 bg-primary/5"
           : "border-border/60 bg-background/70 hover:bg-muted/25",
       )}
     >
-      <ArtifactThumbnail
-        file={file}
-        selected={selected}
-        onPreview={onPreview}
-      />
-      <div className="min-w-0 flex-1">
-        <button
-          type="button"
-          onClick={onPreview}
-          className="block max-w-full truncate text-left text-sm font-medium text-foreground underline-offset-2 hover:underline"
-          title={file.filename}
-        >
-          {file.filename}
-        </button>
-        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-          <span>{formatBytes(file.size)}</span>
-          <span aria-hidden>·</span>
-          <span>{getFileExtension(file.filename)}</span>
-          <span aria-hidden>·</span>
-          <span>{formatArtifactTime(file.createdAt)}</span>
+      <button
+        type="button"
+        onClick={onPreview}
+        className="flex min-w-0 flex-1 items-start gap-3 rounded-l-lg px-3 py-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        aria-label={`Select ${file.filename}`}
+      >
+        <ArtifactThumbnail file={file} selected={selected} />
+        <div className="min-w-0 flex-1">
+          <span
+            className="block max-w-full truncate text-sm font-medium text-foreground"
+            title={file.filename}
+          >
+            {file.filename}
+          </span>
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+            <span>{formatBytes(file.size)}</span>
+            <span aria-hidden>·</span>
+            <span>{getFileExtension(file.filename)}</span>
+            <span aria-hidden>·</span>
+            <span>{formatArtifactTime(file.createdAt)}</span>
+          </div>
         </div>
-      </div>
-      <div className="flex shrink-0 items-center gap-1">
-        <button
-          type="button"
-          onClick={onPreview}
-          className={actionClass}
-          aria-label={`Show preview for ${file.filename}`}
-        >
-          <IconEye size={16} stroke={1.5} />
-        </button>
-        <a
-          href={file.url}
-          target="_blank"
-          rel="noreferrer"
-          className={actionClass}
-          aria-label={`Open ${file.filename}`}
-        >
-          <IconExternalLink size={16} stroke={1.5} />
-        </a>
+      </button>
+      <div className="flex shrink-0 items-center pr-3">
         <ArtifactDownloadAction file={file} className={actionClass} />
       </div>
     </div>
@@ -730,46 +705,22 @@ function ChatArtifactsDrawerContent({ thread }: { thread: ChatThreadSignals }) {
         <span>
           {totalFiles} file{totalFiles === 1 ? "" : "s"}
         </span>
-        <span>
-          {runs.length} run{runs.length === 1 ? "" : "s"}
-        </span>
       </div>
-      {runs.map((run) => {
-        return (
-          <section key={run.runId} className="flex flex-col gap-2">
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <h3 className="truncate font-mono text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Run {run.runId.slice(0, 8)}
-                </h3>
-              </div>
-              <Link
-                pathname="/activities/:activityRunId"
-                options={{ pathParams: { activityRunId: run.runId } }}
-                className="shrink-0 text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-              >
-                View run
-              </Link>
-            </div>
-            <div className="flex flex-col gap-2">
-              {run.files.map((file) => {
-                const item = { runId: run.runId, file };
-                const itemKey = artifactItemKey(item);
-                return (
-                  <ArtifactFileRow
-                    key={itemKey}
-                    item={item}
-                    selected={selectedKey === itemKey}
-                    onPreview={() => {
-                      setSelectedArtifactKey(itemKey);
-                    }}
-                  />
-                );
-              })}
-            </div>
-          </section>
-        );
-      })}
+      <div className="flex flex-col gap-2">
+        {items.map((item) => {
+          const itemKey = artifactItemKey(item);
+          return (
+            <ArtifactFileRow
+              key={itemKey}
+              item={item}
+              selected={selectedKey === itemKey}
+              onPreview={() => {
+                setSelectedArtifactKey(itemKey);
+              }}
+            />
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -777,6 +728,7 @@ function ChatArtifactsDrawerContent({ thread }: { thread: ChatThreadSignals }) {
 function ChatArtifactsDrawer({ thread }: { thread: ChatThreadSignals }) {
   const open = useGet(thread.artifactsDrawerOpen$);
   const setOpen = useSet(thread.setArtifactsDrawerOpen$);
+  const lightboxUrl = useGet(attachmentLightboxUrl$);
 
   return (
     <Sheet
@@ -790,6 +742,16 @@ function ChatArtifactsDrawer({ thread }: { thread: ChatThreadSignals }) {
         className="w-[420px] sm:max-w-[420px] flex flex-col"
         onOpenAutoFocus={(event) => {
           event.preventDefault();
+        }}
+        onEscapeKeyDown={(event) => {
+          if (lightboxUrl) {
+            event.preventDefault();
+          }
+        }}
+        onInteractOutside={(event) => {
+          if (lightboxUrl) {
+            event.preventDefault();
+          }
         }}
       >
         <SheetHeader className="shrink-0">

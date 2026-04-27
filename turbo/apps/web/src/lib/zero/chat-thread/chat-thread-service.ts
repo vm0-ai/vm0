@@ -1,18 +1,10 @@
-import {
-  eq,
-  and,
-  desc,
-  inArray,
-  isNull,
-  isNotNull,
-  asc,
-  sql,
-} from "drizzle-orm";
+import { eq, and, desc, inArray, isNull, asc, or, sql } from "drizzle-orm";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { notFound } from "@vm0/api-services/errors";
 import {
   getMessagesByThreadId,
@@ -342,54 +334,54 @@ export async function getChatThreadArtifacts(
 
   const rows = await globalThis.services.db
     .select({
-      messageId: chatMessages.id,
-      runId: chatMessages.runId,
-      attachFiles: chatMessages.attachFiles,
-      createdAt: chatMessages.createdAt,
+      runId: runUploadedFiles.runId,
+      externalId: runUploadedFiles.externalId,
+      filename: runUploadedFiles.filename,
+      contentType: runUploadedFiles.contentType,
+      sizeBytes: runUploadedFiles.sizeBytes,
+      url: runUploadedFiles.url,
+      createdAt: runUploadedFiles.createdAt,
     })
-    .from(chatMessages)
+    .from(runUploadedFiles)
+    .innerJoin(zeroRuns, eq(zeroRuns.id, runUploadedFiles.runId))
+    .innerJoin(agentRuns, eq(agentRuns.id, runUploadedFiles.runId))
     .where(
       and(
-        eq(chatMessages.chatThreadId, threadId),
-        isNotNull(chatMessages.runId),
-        isNotNull(chatMessages.attachFiles),
+        eq(runUploadedFiles.userId, userId),
+        or(
+          eq(zeroRuns.chatThreadId, threadId),
+          sql`EXISTS (
+            SELECT 1
+            FROM ${chatMessages}
+            WHERE ${chatMessages.runId} = ${runUploadedFiles.runId}
+              AND ${chatMessages.chatThreadId} = ${threadId}
+          )`,
+        ),
       ),
     )
-    .orderBy(asc(chatMessages.createdAt), asc(chatMessages.sequenceNumber));
-
-  const resolvedRows = await Promise.all(
-    rows.map(async (row) => {
-      if (!row.runId || !row.attachFiles || row.attachFiles.length === 0) {
-        return null;
-      }
-      const files = await resolveAttachFileUrls(userId, row.attachFiles);
-      if (files.length === 0) {
-        return null;
-      }
-      return { row, files };
-    }),
-  );
+    .orderBy(asc(agentRuns.createdAt), asc(runUploadedFiles.createdAt));
 
   const byRun = new Map<string, ChatThreadArtifactRun>();
 
-  for (const item of resolvedRows) {
-    if (!item) {
+  for (const row of rows) {
+    if (!row.url) {
       continue;
     }
-    const { row, files } = item;
-    if (row.runId) {
-      const existing = byRun.get(row.runId) ?? { runId: row.runId, files: [] };
-      existing.files.push(
-        ...files.map((file) => {
-          return {
-            ...file,
-            messageId: row.messageId,
-            createdAt: row.createdAt.toISOString(),
-          };
-        }),
-      );
-      byRun.set(row.runId, existing);
-    }
+    const filename = row.filename ?? row.externalId;
+    const ext = filename.split(".").pop()?.toLowerCase();
+    const existing = byRun.get(row.runId) ?? { runId: row.runId, files: [] };
+    existing.files.push({
+      id: row.externalId,
+      filename,
+      contentType:
+        row.contentType ??
+        (ext ? EXT_MIMETYPE_MAP[ext] : undefined) ??
+        "application/octet-stream",
+      size: row.sizeBytes ?? 0,
+      url: row.url,
+      createdAt: row.createdAt.toISOString(),
+    });
+    byRun.set(row.runId, existing);
   }
 
   return Array.from(byRun.values()).filter((run) => {

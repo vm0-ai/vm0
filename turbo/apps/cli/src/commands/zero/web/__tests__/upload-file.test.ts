@@ -171,6 +171,56 @@ describe("zero web upload-file command", () => {
       const parsed = JSON.parse(stdout) as Record<string, unknown>;
       expect(parsed.contentType).toBe("text/csv");
     });
+
+    it("should infer text/html for html files", async () => {
+      const filePath = join(tmpDir, "preview.html");
+      writeFileSync(filePath, "<!doctype html><title>Preview</title>");
+
+      let putReceivedContentType: string | null = null;
+
+      server.use(
+        http.post(PREPARE_URL, async ({ request }) => {
+          const body = (await request.json()) as {
+            filename: string;
+            contentType: string;
+          };
+          expect(body.filename).toBe("preview.html");
+          expect(body.contentType).toBe("text/html");
+
+          return HttpResponse.json(
+            {
+              id: "html-uuid",
+              filename: "preview.html",
+              contentType: "text/html",
+              size: 37,
+              uploadUrl: PUT_URL,
+              url: "https://presigned.example.com/html-uuid/preview.html",
+            },
+            { status: 200 },
+          );
+        }),
+        http.put(PUT_URL, ({ request }) => {
+          putReceivedContentType = request.headers.get("content-type");
+          return new HttpResponse(null, { status: 200 });
+        }),
+        http.post(COMPLETE_URL, () => {
+          return HttpResponse.json({
+            id: "html-uuid",
+            filename: "preview.html",
+            contentType: "text/html",
+            size: 37,
+            url: "https://presigned.example.com/html-uuid/preview.html",
+          });
+        }),
+      );
+
+      await uploadFileCommand.parseAsync(["node", "cli", "-f", filePath]);
+
+      expect(putReceivedContentType).toBe("text/html");
+      const stdout = mockConsoleLog.mock.calls.flat().join("\n");
+      const parsed = JSON.parse(stdout) as Record<string, unknown>;
+      expect(parsed.contentType).toBe("text/html");
+    });
   });
 
   describe("validation errors", () => {

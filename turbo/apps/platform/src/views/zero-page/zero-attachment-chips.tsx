@@ -303,11 +303,11 @@ function fetchBlobOrOpen(
     });
 }
 
-function downloadAttachmentUrl(
+export function downloadAttachmentUrl(
   url: string,
   signal: AbortSignal,
+  filename = filenameFromUrl(url),
 ): Promise<void> {
-  const filename = filenameFromUrl(url);
   return fetchBlobOrOpen(url, signal).then((blob) => {
     if (blob !== null) {
       triggerBlobDownload(blob, filename);
@@ -330,7 +330,8 @@ function ImageLightbox({ url }: { url: string }) {
     <div
       ref={dialogRef}
       tabIndex={-1}
-      className="fixed inset-0 z-[9999] isolate flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-200 outline-none"
+      className="pointer-events-auto fixed inset-0 z-[9999] isolate flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-200 outline-none"
+      style={{ pointerEvents: "auto" }}
       onClick={handleBackdropClick}
       role="dialog"
       aria-modal="true"
@@ -398,7 +399,8 @@ export function AttachmentLightbox() {
     <div
       ref={dialogRef}
       tabIndex={-1}
-      className="fixed inset-0 z-[9999] isolate flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-200 outline-none"
+      className="pointer-events-auto fixed inset-0 z-[9999] isolate flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-200 outline-none"
+      style={{ pointerEvents: "auto" }}
       onClick={handleBackdropClick}
       role="dialog"
       aria-modal="true"

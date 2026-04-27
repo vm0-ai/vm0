@@ -14,6 +14,7 @@ import {
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
 import { seedTestRun } from "../../../../../../../src/__tests__/db-test-seeders/runs";
 import { updateUserFeatureSwitches } from "../../../../../../../src/lib/zero/user/feature-switches-service";
+import { recordRunUploadedFile } from "../../../../../../../src/lib/zero/uploads/run-uploaded-files";
 
 const context = testContext();
 
@@ -54,18 +55,10 @@ describe("GET /api/zero/chat-threads/:threadId/artifacts", () => {
     expect(response.status).toBe(403);
   });
 
-  it("returns uploaded files grouped by run", async () => {
+  it("returns run uploaded files grouped by run", async () => {
     await updateUserFeatureSwitches(testOrgId, testUserId, {
       [FeatureSwitchKey.ChatArtifactsDrawer]: true,
     });
-    context.mocks.s3.listS3Objects.mockImplementation(
-      async (_bucket, prefix) => {
-        if (prefix.endsWith("/file-1/")) {
-          return [{ key: `${prefix}data.csv`, size: 2048 }];
-        }
-        return [];
-      },
-    );
 
     const createRes = await POST(
       createTestRequest("http://localhost:3000/api/zero/chat-threads", {
@@ -78,15 +71,19 @@ describe("GET /api/zero/chat-threads/:threadId/artifacts", () => {
     const { runId } = await seedTestRun(testUserId, testComposeId, {
       status: "completed",
       prompt: "Use the attached file",
+      chatThreadId: threadId,
     });
 
-    await insertTestChatMessage({
-      chatThreadId: threadId,
-      userId: testUserId,
-      role: "user",
-      content: "Use the attached file",
+    await recordRunUploadedFile({
       runId,
-      attachFiles: ["file-1"],
+      source: "web",
+      externalId: "file-1",
+      userId: testUserId,
+      orgId: testOrgId,
+      filename: "data.csv",
+      contentType: "text/csv",
+      sizeBytes: 2048,
+      url: `http://localhost:3000/f/${testUserId}/file-1/data.csv`,
     });
 
     const response = await GET(
@@ -106,5 +103,60 @@ describe("GET /api/zero/chat-threads/:threadId/artifacts", () => {
       size: 2048,
     });
     expect(data.runs[0].files[0].url).toContain("/f/");
+  });
+
+  it("uses chat message run ownership when zero run chat thread is missing", async () => {
+    await updateUserFeatureSwitches(testOrgId, testUserId, {
+      [FeatureSwitchKey.ChatArtifactsDrawer]: true,
+    });
+
+    const createRes = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testComposeId }),
+      }),
+    );
+    const { id: threadId } = await createRes.json();
+    const { runId } = await seedTestRun(testUserId, testComposeId, {
+      status: "completed",
+      prompt: "Uploaded during the run",
+    });
+
+    await insertTestChatMessage({
+      chatThreadId: threadId,
+      userId: testUserId,
+      role: "user",
+      content: "Uploaded during the run",
+      runId,
+    });
+    await recordRunUploadedFile({
+      runId,
+      source: "web",
+      externalId: "file-fallback",
+      userId: testUserId,
+      orgId: testOrgId,
+      filename: "preview.html",
+      contentType: "text/html",
+      sizeBytes: 512,
+      url: `http://localhost:3000/f/${testUserId}/file-fallback/preview.html`,
+    });
+
+    const response = await GET(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads/${threadId}/artifacts`,
+      ),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.runs).toHaveLength(1);
+    expect(data.runs[0].runId).toBe(runId);
+    expect(data.runs[0].files[0]).toMatchObject({
+      id: "file-fallback",
+      filename: "preview.html",
+      contentType: "text/html",
+      size: 512,
+    });
   });
 });

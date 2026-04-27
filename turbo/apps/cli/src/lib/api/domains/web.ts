@@ -24,6 +24,8 @@ const MIME_BY_EXTENSION: Record<string, string> = {
   ".txt": "text/plain",
   ".csv": "text/csv",
   ".md": "text/markdown",
+  ".html": "text/html",
+  ".htm": "text/html",
   ".json": "application/json",
 };
 

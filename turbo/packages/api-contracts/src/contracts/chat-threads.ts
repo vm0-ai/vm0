@@ -29,7 +29,6 @@ const resolvedAttachFileSchema = attachFileSchema.extend({
 });
 
 const chatThreadArtifactFileSchema = resolvedAttachFileSchema.extend({
-  messageId: z.string(),
   createdAt: z.string(),
 });
 
