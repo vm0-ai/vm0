@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.298.1](https://github.com/vm0-ai/vm0/compare/app-v0.298.0...app-v0.298.1) (2026-04-27)
+
+
+### Bug Fixes
+
+* route PostHog SDK through Vercel reverse proxy to avoid ad-blocker data loss ([#11252](https://github.com/vm0-ai/vm0/issues/11252)) ([f09e5ad](https://github.com/vm0-ai/vm0/commit/f09e5ad3628f2633731b82e00572b4e81fbfc7e4))
+
 ## [0.298.0](https://github.com/vm0-ai/vm0/compare/app-v0.297.0...app-v0.298.0) (2026-04-27)
 
 

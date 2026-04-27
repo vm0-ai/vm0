@@ -1,5 +1,13 @@
 # Changelog
 
+## [12.303.1](https://github.com/vm0-ai/vm0/compare/web-v12.303.0...web-v12.303.1) (2026-04-27)
+
+
+### Bug Fixes
+
+* **slack:** align home action buttons ([#11248](https://github.com/vm0-ai/vm0/issues/11248)) ([5e67b72](https://github.com/vm0-ai/vm0/commit/5e67b72edc69616235542fa07d06e8230f15c883))
+* **web:** preserve org id on sandbox auth context ([#11251](https://github.com/vm0-ai/vm0/issues/11251)) ([f9dc204](https://github.com/vm0-ai/vm0/commit/f9dc204ded4c48ebd018ad00452082d37a67dbb4))
+
 ## [12.303.0](https://github.com/vm0-ai/vm0/compare/web-v12.302.0...web-v12.303.0) (2026-04-27)
 
 
