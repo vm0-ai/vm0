@@ -92,7 +92,9 @@ function niceStep(range: number, targetTicks: number): number {
   const normalized = rough / pow;
   const nice =
     normalized < 1.5 ? 1 : normalized < 3 ? 2 : normalized < 7 ? 5 : 10;
-  return nice * pow;
+  // Credits/tokens are integers — keep step ≥ 1 so ticks stay distinct
+  // after Math.round (otherwise small maxValues produce duplicate keys).
+  return Math.max(1, nice * pow);
 }
 
 function generateYTicks(max: number): number[] {
@@ -193,9 +195,9 @@ function ChartTooltip({
   const top = flipTop ? data.y + 12 : data.y - 8;
   const translateX = flipLeft ? "-100%" : "0";
   const translateY = flipTop ? "0" : "-100%";
-  const total = data.values.reduce((s, v) => {
-    return s + v.value;
-  }, 0);
+  // Lines are drawn per-category from y=0 (not stacked), so a synthetic Total
+  // wouldn't correspond to anything visible. List per-category values that
+  // match the dots on each line.
   const breakdown = data.values.filter((v) => {
     return v.value > 0;
   });
@@ -212,13 +214,9 @@ function ChartTooltip({
       <div className="font-medium text-foreground mb-1">
         {formatBucketLabel(data.ts, range)}
       </div>
-      <div className="flex items-center gap-2">
-        <span className="text-muted-foreground">Total:</span>
-        <span className="font-medium tabular-nums text-foreground">
-          {total.toLocaleString()}
-        </span>
-      </div>
-      {breakdown.length > 1 &&
+      {breakdown.length === 0 ? (
+        <div className="text-muted-foreground">No usage</div>
+      ) : (
         breakdown.map((v) => {
           return (
             <div key={v.label} className="flex items-center gap-2">
@@ -234,7 +232,8 @@ function ChartTooltip({
               </span>
             </div>
           );
-        })}
+        })
+      )}
     </div>
   );
 }
@@ -330,10 +329,18 @@ function ChartGrid({
         );
       })}
       {buckets.map((bucket, i) => {
-        if (i % labelInterval !== 0 && i !== lastIdx) {
-          return null;
+        const isLast = i === lastIdx;
+        if (!isLast) {
+          if (i % labelInterval !== 0) {
+            return null;
+          }
+          // Drop the regular-interval label if it would visually collide
+          // with the always-shown last label.
+          if (lastIdx - i < labelInterval) {
+            return null;
+          }
         }
-        const anchor = i === 0 ? "start" : i === lastIdx ? "end" : "middle";
+        const anchor = i === 0 ? "start" : isLast ? "end" : "middle";
         return (
           <text
             key={bucket.ts}
@@ -571,9 +578,9 @@ export function UsageInsightBarChart({
       <p className="text-5xl font-black leading-none tabular-nums font-serif">
         {formatTotal(total)}
       </p>
-      <p className="text-sm opacity-60 mt-2">{rangeLabel}</p>
+      <p className="text-sm opacity-60 mt-4">{rangeLabel}</p>
 
-      {buckets.length > 0 && (
+      {buckets.length > 0 && total > 0 && (
         <div className="relative mt-5">
           <div ref={containerRef} className="w-full overflow-hidden">
             <ChartSvg

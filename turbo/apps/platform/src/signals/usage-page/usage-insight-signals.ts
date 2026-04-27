@@ -1,5 +1,8 @@
 import { computed, state, command } from "ccstate";
-import { zeroUsageInsightContract } from "@vm0/api-contracts/contracts/zero-usage-insight";
+import {
+  zeroUsageInsightContract,
+  type UsageInsightResponse,
+} from "@vm0/api-contracts/contracts/zero-usage-insight";
 import { zeroClient$ } from "../api-client.ts";
 import { userPreferences$ } from "../zero-page/settings/user-preferences.ts";
 import { accept } from "../../lib/accept.ts";
@@ -102,5 +105,65 @@ export const usageInsightAsync$ = computed(async (get) => {
     [200],
     { toast: false },
   );
-  return result.body;
+  return {
+    ...result.body,
+    buckets: densifyBuckets(result.body.buckets, range),
+  };
 });
+
+// --- Bucket densification ---
+//
+// The API returns sparse buckets: only timestamps where credit_usage rows
+// exist. The chart positions buckets at uniform x-spacing by index, so a
+// 4-day gap (Apr 2 → Apr 6) renders the same width as a 1-day gap, which
+// makes the x-axis labels look irregular and skips dates with no usage.
+// Filling missing days/hours with zero buckets gives a uniform x-axis where
+// every expected date is represented.
+
+const HOUR_MS = 3_600_000;
+const DAY_MS = 86_400_000;
+
+function parseBucketTs(ts: string): number {
+  return new Date(ts.includes("T") ? ts : ts.replace(" ", "T") + "Z").getTime();
+}
+
+function formatBucketTs(ms: number, isHourly: boolean): string {
+  const d = new Date(ms);
+  const yyyy = d.getUTCFullYear();
+  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(d.getUTCDate()).padStart(2, "0");
+  const hh = String(d.getUTCHours()).padStart(2, "0");
+  return isHourly
+    ? `${yyyy}-${mm}-${dd}T${hh}:00:00.000Z`
+    : `${yyyy}-${mm}-${dd}T00:00:00.000Z`;
+}
+
+function densifyBuckets(
+  buckets: UsageInsightResponse["buckets"],
+  range: InsightRange,
+): UsageInsightResponse["buckets"] {
+  const isHourly = range === "today" || range === "yesterday";
+  const count = isHourly ? 24 : range === "7d" ? 7 : 28;
+  const stepMs = isHourly ? HOUR_MS : DAY_MS;
+
+  // Anchor the right edge on now (truncated to bucket boundary). For
+  // "yesterday" anchor on yesterday's last hour instead so today doesn't
+  // bleed in.
+  const nowMs = Date.now();
+  let endMs = Math.floor(nowMs / stepMs) * stepMs;
+  if (range === "yesterday") {
+    endMs -= 24 * HOUR_MS;
+  }
+
+  const byTs = new Map<string, UsageInsightResponse["buckets"][number]>();
+  for (const b of buckets) {
+    byTs.set(formatBucketTs(parseBucketTs(b.ts), isHourly), b);
+  }
+
+  const dense: UsageInsightResponse["buckets"] = [];
+  for (let i = count - 1; i >= 0; i--) {
+    const ts = formatBucketTs(endMs - i * stepMs, isHourly);
+    dense.push(byTs.get(ts) ?? { ts, series: {}, tokens: {} });
+  }
+  return dense;
+}
