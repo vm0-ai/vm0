@@ -1151,15 +1151,25 @@ impl Sandbox for FirecrackerSandbox {
     async fn spawn_watch(
         &self,
         request: &ExecRequest<'_>,
-        stdout_log_path: Option<&str>,
+        output: sandbox::SpawnOutputMode<'_>,
     ) -> sandbox::Result<SpawnHandle> {
         let operation = SandboxOperation::SpawnWatch;
         let guest = self.operation_guest(operation).await?;
 
         tokio::select! {
-            result = guest.spawn_watch(request.cmd, request.timeout_ms(), request.env, request.sudo, stdout_log_path) => {
+            result = guest.spawn_watch(
+                request.cmd,
+                request.timeout_ms(),
+                request.env,
+                request.sudo,
+                output.streams_stdout(),
+                output.guest_log_path(),
+            ) => {
                 let (pid, stdout_rx) = result.map_err(|e| Self::operation_error(operation, e, self.has_backend_crashed()))?;
-                Ok(SpawnHandle { pid, stdout_rx: Some(stdout_rx) })
+                Ok(SpawnHandle {
+                    pid,
+                    stdout_rx: output.streams_stdout().then_some(stdout_rx),
+                })
             }
             () = wait_for_backend_crash(self.state_tx.subscribe()) => {
                 Err(Self::backend_crashed_error(operation))

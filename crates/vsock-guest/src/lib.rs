@@ -702,12 +702,22 @@ fn handle_shutdown(seq: u32) -> io::Result<Vec<u8>> {
     vsock_proto::encode(MSG_SHUTDOWN_ACK, seq, &[]).map_err(to_io_error)
 }
 
+struct SpawnWatchRequest<'a> {
+    timeout_ms: u32,
+    command: &'a str,
+    env: &'a [(&'a str, &'a str)],
+    sudo: bool,
+    stream_stdout: bool,
+    stdout_log_path: Option<&'a str>,
+}
+
 /// Handle spawn_watch: spawn the child, write `MSG_SPAWN_WATCH_RESULT` over
 /// the wire, THEN start the background monitor. Returns immediately; exit is
 /// later reported via `MSG_PROCESS_EXIT`.
 ///
-/// When `stdout_log_path` is `Some`, stdout is streamed to the host via
-/// `MSG_STDOUT_CHUNK` messages AND teed to the file path inside the VM.
+/// When `stream_stdout` is true, stdout is streamed to the host via
+/// `MSG_STDOUT_CHUNK` messages. `stdout_log_path`, when present, additionally
+/// tees those chunks to a file path inside the VM.
 ///
 /// The result-before-monitor ordering is critical: the streaming monitor
 /// thread also writes to the same socket (via the shared `writer` mutex),
@@ -716,11 +726,7 @@ fn handle_shutdown(seq: u32) -> io::Result<Vec<u8>> {
 /// stdout channel when it processes the result, so earlier chunks would
 /// be dropped.
 fn handle_spawn_watch(
-    timeout_ms: u32,
-    command: &str,
-    env: &[(&str, &str)],
-    sudo: bool,
-    stdout_log_path: Option<&str>,
+    request: SpawnWatchRequest<'_>,
     seq: u32,
     writer: Arc<Mutex<UnixStream>>,
 ) -> io::Result<()> {
@@ -728,16 +734,16 @@ fn handle_spawn_watch(
         "INFO",
         &format!(
             "spawn_watch: {} (timeout={}ms, sudo={}, env_count={}, stream={})",
-            truncate_preview(command),
-            timeout_ms,
-            sudo,
-            env.len(),
-            stdout_log_path.is_some(),
+            truncate_preview(request.command),
+            request.timeout_ms,
+            request.sudo,
+            request.env.len(),
+            request.stream_stdout,
         ),
     );
-    let command = prepend_env(command, env);
+    let command = prepend_env(request.command, request.env);
 
-    let mut child = match spawn_with_pipes(&command, sudo) {
+    let mut child = match spawn_with_pipes(&command, request.sudo) {
         Ok(c) => c,
         Err(e) => {
             let payload = vsock_proto::encode_error(&format!("Failed to spawn: {e}"));
@@ -779,29 +785,30 @@ fn handle_spawn_watch(
         }
     }
 
-    if let Some(log_path) = stdout_log_path {
-        // Streaming mode: tee stdout to log file + vsock chunks.
+    if request.stream_stdout {
+        // Streaming mode: stream stdout to vsock chunks, optionally teeing to a guest file.
         // Take stdout from child so we can read it in a separate thread.
         let stdout_pipe = child.stdout.take();
         spawn_streaming_monitor(
             pid,
             child,
-            timeout_ms,
+            request.timeout_ms,
             stdout_pipe,
-            log_path.to_owned(),
+            request.stdout_log_path.map(str::to_owned),
             writer,
         );
     } else {
         // Buffered mode: stdout/stderr drained via cancellable helper, sent
         // in a single MSG_PROCESS_EXIT after wait.
-        spawn_buffered_monitor(pid, child, timeout_ms, writer);
+        spawn_buffered_monitor(pid, child, request.timeout_ms, writer);
     }
 
     Ok(())
 }
 
-/// Streaming monitor: tees stdout chunks to a log file + vsock, drains stderr
-/// into a buffer, and races both against `child.wait()`.
+/// Streaming monitor: streams stdout chunks to vsock, optionally tees stdout
+/// chunks to a guest file, drains stderr into a buffer, and races both
+/// against `child.wait()`.
 ///
 /// Architecture:
 /// - Timeout killer thread: kills process group after deadline
@@ -820,7 +827,7 @@ fn spawn_streaming_monitor(
     mut child: std::process::Child,
     timeout_ms: u32,
     stdout_pipe: Option<std::process::ChildStdout>,
-    log_path: String,
+    log_path: Option<String>,
     writer: Arc<Mutex<UnixStream>>,
 ) {
     thread::spawn(move || {
@@ -870,19 +877,22 @@ fn spawn_streaming_monitor(
             let tx = drain_done_tx.clone();
             let stdout_writer = Arc::clone(&writer);
             Some(thread::spawn(move || {
-                let log_file = std::fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(&log_path);
-                let mut log_file = match log_file {
-                    Ok(f) => Some(f),
-                    Err(e) => {
-                        log(
-                            "WARN",
-                            &format!("spawn_watch: failed to open log file {log_path}: {e}"),
-                        );
-                        None
-                    }
+                let mut log_file = match log_path.as_deref() {
+                    Some(path) => match std::fs::OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open(path)
+                    {
+                        Ok(f) => Some(f),
+                        Err(e) => {
+                            log(
+                                "WARN",
+                                &format!("spawn_watch: failed to open log file {path}: {e}"),
+                            );
+                            None
+                        }
+                    },
+                    None => None,
                 };
 
                 drain_until_eof_or_cancelled(stdout, &cancel, |chunk| {
@@ -1176,11 +1186,14 @@ pub fn handle_connection(stream: UnixStream) -> io::Result<()> {
                 // spawning the streaming thread) to prevent a race where
                 // stdout chunks could arrive at the host before the result.
                 handle_spawn_watch(
-                    d.exec.timeout_ms,
-                    d.exec.command,
-                    &d.exec.env,
-                    d.exec.sudo,
-                    d.stdout_log_path,
+                    SpawnWatchRequest {
+                        timeout_ms: d.exec.timeout_ms,
+                        command: d.exec.command,
+                        env: &d.exec.env,
+                        sudo: d.exec.sudo,
+                        stream_stdout: d.stream_stdout,
+                        stdout_log_path: d.stdout_log_path,
+                    },
                     msg.seq,
                     Arc::clone(&writer),
                 )?;
@@ -1705,11 +1718,12 @@ mod tests {
         stream: &mut impl std::io::Write,
         seq: u32,
         command: &str,
-        log_path: &str,
+        log_path: Option<&str>,
         timeout_ms: u32,
     ) {
         let payload =
-            vsock_proto::encode_spawn_watch(timeout_ms, command, &[], false, Some(log_path));
+            vsock_proto::encode_spawn_watch(timeout_ms, command, &[], false, true, log_path)
+                .unwrap();
         let msg = vsock_proto::encode(MSG_SPAWN_WATCH, seq, &payload).unwrap();
         stream.write_all(&msg).unwrap();
     }
@@ -1773,7 +1787,7 @@ mod tests {
         read_and_discard_message(&mut host_stream);
 
         let log_path = format!("/tmp/vsock-test-normal-{}.log", std::process::id());
-        send_spawn_watch(&mut host_stream, 1, "echo hello", &log_path, 5000);
+        send_spawn_watch(&mut host_stream, 1, "echo hello", Some(&log_path), 5000);
 
         host_stream
             .set_read_timeout(Some(Duration::from_secs(10)))
@@ -1788,6 +1802,40 @@ mod tests {
         let _ = std::fs::remove_file(&log_path);
         drop(host_stream);
         let _ = handle.join();
+    }
+
+    /// Stream-only mode sends stdout chunks to the host without creating a
+    /// guest-side tee file.
+    #[test]
+    fn streaming_monitor_stream_only_does_not_write_guest_log() {
+        use std::os::unix::net::UnixStream as StdUnixStream;
+
+        let (guest_stream, mut host_stream) = StdUnixStream::pair().unwrap();
+        let handle = thread::spawn(move || {
+            let _ = handle_connection(guest_stream);
+        });
+
+        // Discard MSG_READY
+        read_and_discard_message(&mut host_stream);
+
+        let log_path = format!("/tmp/vsock-test-stream-only-{}.log", std::process::id());
+        std::fs::write(&log_path, "preexisting\n").unwrap();
+        send_spawn_watch(&mut host_stream, 1, "echo stream-only", None, 5000);
+
+        host_stream
+            .set_read_timeout(Some(Duration::from_secs(10)))
+            .unwrap();
+        let (pid, stdout_data, exit_code, _stderr) = read_streaming_result(&mut host_stream, 1);
+
+        assert!(pid > 0);
+        assert_eq!(exit_code, 0);
+        assert_eq!(String::from_utf8_lossy(&stdout_data).trim(), "stream-only");
+        let log_content = std::fs::read_to_string(&log_path).unwrap();
+        assert_eq!(log_content, "preexisting\n");
+
+        drop(host_stream);
+        let _ = handle.join();
+        let _ = std::fs::remove_file(&log_path);
     }
 
     /// Regression test: if the main child exits but an orphaned background
@@ -1816,7 +1864,7 @@ mod tests {
             &mut host_stream,
             1,
             "echo orphan-test; sleep 30 &",
-            &log_path,
+            Some(&log_path),
             0, // no timeout — relies entirely on drain deadline
         );
 
@@ -1869,7 +1917,7 @@ mod tests {
             &mut host_stream,
             1,
             "echo timeout-test; sleep 60",
-            &log_path,
+            Some(&log_path),
             1000, // 1 second timeout
         );
 
@@ -1905,7 +1953,8 @@ mod tests {
         command: &str,
         timeout_ms: u32,
     ) {
-        let payload = vsock_proto::encode_spawn_watch(timeout_ms, command, &[], false, None);
+        let payload =
+            vsock_proto::encode_spawn_watch(timeout_ms, command, &[], false, false, None).unwrap();
         let msg = vsock_proto::encode(MSG_SPAWN_WATCH, seq, &payload).unwrap();
         stream.write_all(&msg).unwrap();
     }
@@ -2036,7 +2085,7 @@ mod tests {
             &mut host_stream,
             1,
             "while true; do echo tick; sleep 0.05; done",
-            &log_path,
+            Some(&log_path),
             0, // no timeout — we want SIGPIPE, not the kill watchdog, to terminate
         );
 

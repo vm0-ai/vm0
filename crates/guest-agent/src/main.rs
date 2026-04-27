@@ -22,6 +22,7 @@ const LOG_TAG: &str = "sandbox:guest-agent";
 
 #[tokio::main]
 async fn main() {
+    guest_common::log::set_system_log_file(paths::system_log_file());
     let exit_code = run().await;
     std::process::exit(exit_code);
 }

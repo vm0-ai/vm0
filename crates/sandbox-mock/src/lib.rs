@@ -50,6 +50,12 @@ pub struct ExecMatcher {
     pub stderr: Vec<u8>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SpawnWatchCall {
+    pub streams_stdout: bool,
+    pub guest_log_path: Option<String>,
+}
+
 enum LifecycleBehavior {
     Result(Result<()>),
     Panic(String),
@@ -85,6 +91,9 @@ pub struct MockSandboxOverrides {
     /// FIFO queue of unpark results consumed by every sandbox built with
     /// these overrides. Empty queue → default Ok(()).
     unpark_behaviors: Mutex<VecDeque<LifecycleBehavior>>,
+    /// Recorded spawn_watch output modes across all sandboxes built from
+    /// this override set.
+    spawn_watch_calls: Mutex<Vec<SpawnWatchCall>>,
     /// Total `park()` calls across all sandboxes built from this override set.
     park_calls: Mutex<u32>,
     /// Total `unpark()` calls across all sandboxes built from this override set.
@@ -102,6 +111,7 @@ impl MockSandboxOverrides {
             stop_behaviors: Mutex::new(VecDeque::new()),
             park_behaviors: Mutex::new(VecDeque::new()),
             unpark_behaviors: Mutex::new(VecDeque::new()),
+            spawn_watch_calls: Mutex::new(Vec::new()),
             park_calls: Mutex::new(0),
             unpark_calls: Mutex::new(0),
         }
@@ -200,6 +210,12 @@ impl MockSandboxOverrides {
     /// Total `unpark()` calls across all sandboxes built from this override set.
     pub fn unpark_call_count(&self) -> u32 {
         *self.unpark_calls.lock_ignoring_poison()
+    }
+
+    /// Recorded spawn_watch calls across all sandboxes built from this
+    /// override set, in call order.
+    pub fn spawn_watch_calls(&self) -> Vec<SpawnWatchCall> {
+        self.spawn_watch_calls.lock_ignoring_poison().clone()
     }
 }
 
@@ -384,8 +400,17 @@ impl Sandbox for MockSandbox {
     async fn spawn_watch(
         &self,
         _request: &ExecRequest<'_>,
-        _stdout_log_path: Option<&str>,
+        output: sandbox::SpawnOutputMode<'_>,
     ) -> Result<SpawnHandle> {
+        if let Some(overrides) = &self.overrides {
+            overrides
+                .spawn_watch_calls
+                .lock_ignoring_poison()
+                .push(SpawnWatchCall {
+                    streams_stdout: output.streams_stdout(),
+                    guest_log_path: output.guest_log_path().map(str::to_owned),
+                });
+        }
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
         // When simulating wait_exit error (timeout/crash), keep the sender
         // alive so the stdout channel never closes — reproducing the real bug.
@@ -398,7 +423,7 @@ impl Sandbox for MockSandbox {
         }
         Ok(SpawnHandle {
             pid: 1,
-            stdout_rx: Some(rx),
+            stdout_rx: output.streams_stdout().then_some(rx),
         })
     }
 

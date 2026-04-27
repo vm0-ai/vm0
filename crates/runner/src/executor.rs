@@ -3,7 +3,7 @@ use std::panic::AssertUnwindSafe;
 use std::time::{Duration, Instant};
 
 use futures_util::FutureExt;
-use sandbox::{ExecRequest, Sandbox, SandboxConfig, SandboxFactory, SandboxId};
+use sandbox::{ExecRequest, Sandbox, SandboxConfig, SandboxFactory, SandboxId, SpawnOutputMode};
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
@@ -428,7 +428,8 @@ async fn run_in_sandbox(
     telemetry: &mut JobTelemetry,
     cancel: CancellationToken,
 ) -> RunnerResult<(i32, Option<String>)> {
-    // System log file — all guest process output goes here for telemetry upload.
+    // Guest-side system log file. Setup commands append directly here before
+    // guest-agent starts; guest-agent owns the file during the agent phase.
     let log_file = format!(
         "{GUEST_SYSTEM_LOG_PREFIX}{}{GUEST_SYSTEM_LOG_SUFFIX}",
         context.run_id
@@ -511,8 +512,8 @@ async fn run_in_sandbox(
     info!(run_id = %context.run_id, count = env_refs.len(), "passing env vars via vsock");
 
     // 6. Spawn agent — stdout streamed to host via vsock, stderr merged into stdout.
-    //    vsock-guest writes stdout to the guest log file (for telemetry) AND streams
-    //    chunks to the host where we write them to the host log file in real-time.
+    //    guest-agent owns the guest-side system log for telemetry; the runner
+    //    separately writes streamed chunks to the host log file in real time.
     let agent_cmd = format!("{} 2>&1", guest::RUN_AGENT);
     info!(run_id = %context.run_id, "spawning agent");
 
@@ -527,7 +528,9 @@ async fn run_in_sandbox(
                 env: &env_refs,
                 sudo: false,
             },
-            Some(&log_file),
+            SpawnOutputMode::Stream {
+                guest_log_path: None,
+            },
         )
         .await;
 
@@ -808,10 +811,11 @@ const GUEST_METRICS_LOG_SUFFIX: &str = ".jsonl";
 
 /// Copy guest log files to host (best-effort, post-job).
 ///
-/// The system log is also streamed to the host in real-time via vsock stdout
-/// streaming during the agent phase, but the final copy here overwrites with
-/// the complete file (includes download/restore output written before streaming
-/// started).
+/// The agent phase is streamed to the host in real time via vsock stdout
+/// chunks. The final copy here overwrites with the complete guest-side file,
+/// including setup output written before agent streaming starts. Agent stdout
+/// that is not written by guest-agent's logger is intentionally not part of
+/// the final system log.
 async fn copy_guest_logs(sandbox: &dyn Sandbox, context: &ExecutionContext, log_paths: &LogPaths) {
     let run_id = context.run_id;
     let files = [
@@ -2311,6 +2315,13 @@ mod tests {
         let sandbox = MockSandbox::new("test");
         let ctx = minimal_context();
 
+        tokio::fs::write(
+            log_paths.system_log(ctx.run_id),
+            b"transient host-streamed stdout\n",
+        )
+        .await
+        .unwrap();
+
         // Queue two exec results: system log + metrics log
         sandbox.push_exec_result(Ok(ExecResult {
             exit_code: 0,
@@ -2329,6 +2340,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(system_log, "system log line 1\nsystem log line 2\n");
+        assert!(!system_log.contains("transient host-streamed stdout"));
 
         let metrics_log = tokio::fs::read_to_string(log_paths.metrics_log(ctx.run_id))
             .await
@@ -2550,6 +2562,27 @@ mod tests {
                 .unwrap();
         assert_eq!(exit_code, 0);
         assert!(error_msg.is_none());
+    }
+
+    #[tokio::test]
+    async fn execute_inner_launches_agent_stream_only_without_guest_log_tee() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        let mut factory = sandbox_mock::MockSandboxFactory::with_overrides(overrides.clone());
+        factory.startup().await.unwrap();
+
+        let (exit_code, error_msg) =
+            run_execute_inner(&factory, &minimal_context(), &config, &default_params())
+                .await
+                .unwrap();
+        assert_eq!(exit_code, 0);
+        assert!(error_msg.is_none());
+
+        let calls = overrides.spawn_watch_calls();
+        assert_eq!(calls.len(), 1);
+        assert!(calls[0].streams_stdout);
+        assert!(calls[0].guest_log_path.is_none());
     }
 
     #[tokio::test]

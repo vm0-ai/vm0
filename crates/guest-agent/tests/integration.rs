@@ -1058,6 +1058,43 @@ async fn flush_is_incremental_between_calls() {
     let _ = std::fs::remove_file(pos_file);
 }
 
+#[tokio::test]
+async fn final_flush_uploads_log_emitted_immediately_before_it() {
+    let _guard = TEST_MUTEX.lock().unwrap();
+    let server = &*MOCK_SERVER;
+
+    let system_log = guest_agent::paths::system_log_file();
+    let pos_file = guest_agent::paths::telemetry_system_log_pos_file();
+    let _ = std::fs::remove_file(system_log);
+    let _ = std::fs::remove_file(pos_file);
+
+    let marker = "fatal-tail-before-final-telemetry";
+    let upload_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/telemetry")
+            .body_includes(marker);
+        then.status(200);
+    });
+
+    guest_common::log::set_system_log_file(system_log);
+    let masker = std::sync::Arc::new(SecretMasker::from_raw(""));
+    let telemetry = guest_agent::telemetry::Telemetry::spawn(masker);
+
+    guest_common::log_warn!("sandbox:guest-agent", "{marker}");
+    telemetry
+        .flush(guest_agent::telemetry::UploadMode::Final)
+        .await
+        .expect("final flush should upload just-emitted log");
+
+    telemetry.shutdown().await;
+    guest_common::log::clear_system_log_file();
+
+    upload_mock.assert_calls_async(1).await;
+    upload_mock.delete_async().await;
+    let _ = std::fs::remove_file(system_log);
+    let _ = std::fs::remove_file(pos_file);
+}
+
 /// Regression for #11008. Combines two distinct guarantees that
 /// together produce the "exactly one HTTP POST" assertion:
 ///

@@ -19,4 +19,4 @@ pub use factory::SandboxFactory;
 pub use runtime::{RuntimeProvider, SandboxRuntime};
 pub use sandbox::Sandbox;
 pub use snapshot::{SnapshotCreateConfig, SnapshotError, SnapshotOutput, SnapshotProvider};
-pub use types::{ExecRequest, ExecResult, ProcessExit, SpawnHandle};
+pub use types::{ExecRequest, ExecResult, ProcessExit, SpawnHandle, SpawnOutputMode};

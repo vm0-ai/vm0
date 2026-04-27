@@ -62,22 +62,5 @@ EOF
     }
 
     echo "# Step 4: Verify system logs contain tool timeout error..."
-    local log_output=""
-    local log_status=1
-    local found=false
-    for _ in {1..15}; do
-        log_output="$($VM0_CLI logs "$RUN_ID" --system 2>&1)"
-        log_status=$?
-        if [[ "$log_status" -eq 0 && "$log_output" == *"Tool timeout"* && "$log_output" == *"WebFetch"* ]]; then
-            found=true
-            break
-        fi
-        sleep 2
-    done
-
-    if [[ "$found" != "true" ]]; then
-        echo "# Timed out waiting for system log containing: Tool timeout WebFetch"
-        echo "# Last output: $log_output"
-        return 1
-    fi
+    wait_for_log "$RUN_ID" --system -- "Tool timeout" "WebFetch"
 }

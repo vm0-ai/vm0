@@ -3,6 +3,9 @@
 use std::sync::LazyLock;
 
 use crate::constants;
+use guest_common::log_warn;
+
+const LOG_TAG: &str = "sandbox:guest-agent";
 
 fn env_or_empty(name: &str) -> String {
     std::env::var(name).unwrap_or_default()
@@ -52,7 +55,10 @@ static MOCK_CLAUDE_PATH: LazyLock<String> = LazyLock::new(|| {
 fn u64_env_or(name: &str, default: u64) -> u64 {
     match std::env::var(name) {
         Ok(v) => v.parse().unwrap_or_else(|_| {
-            eprintln!("[WARN] {name}={v:?} is not a valid u64, using default {default}s");
+            log_warn!(
+                LOG_TAG,
+                "{name}={v:?} is not a valid u64, using default {default}s"
+            );
             default
         }),
         Err(_) => default,

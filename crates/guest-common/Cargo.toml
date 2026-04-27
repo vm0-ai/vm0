@@ -8,5 +8,8 @@ chrono = { workspace = true, features = ["std", "clock"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 
+[dev-dependencies]
+tempfile.workspace = true
+
 [lints]
 workspace = true
