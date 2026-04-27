@@ -1,11 +1,10 @@
-import { sql, and, eq, gte, lt, inArray, desc, count } from "drizzle-orm";
+import { and, eq, gte, lt, inArray, desc, count } from "drizzle-orm";
 import {
   type MemberUsage,
   type UsageMembersResponse,
 } from "@vm0/api-contracts/contracts/zero-usage";
 import type { UsageRunsResponse } from "@vm0/api-contracts/contracts/zero-usage-daily";
 import { getOrgBillingPeriod } from "../org/org-metadata-service";
-import { creditUsage } from "@vm0/db/schema/credit-usage";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
@@ -16,6 +15,10 @@ import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { userCache } from "@vm0/db/schema/user-cache";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { clerkClient } from "@clerk/nextjs/server";
+import {
+  buildLegacyRunUsageTotalsSubquery,
+  getLegacyMemberUsageTotals,
+} from "./usage-reporting-ledger";
 
 /**
  * Get per-member token usage aggregation for the current billing period.
@@ -33,41 +36,7 @@ export async function getUsageMembers(
 
   const db = globalThis.services.db;
 
-  // Aggregate token usage per member for the billing period
-  const rows = await db
-    .select({
-      userId: creditUsage.userId,
-      inputTokens:
-        sql<number>`COALESCE(SUM(${creditUsage.inputTokens}), 0)::bigint`.as(
-          "input_tokens",
-        ),
-      outputTokens:
-        sql<number>`COALESCE(SUM(${creditUsage.outputTokens}), 0)::bigint`.as(
-          "output_tokens",
-        ),
-      cacheReadInputTokens:
-        sql<number>`COALESCE(SUM(${creditUsage.cacheReadInputTokens}), 0)::bigint`.as(
-          "cache_read_input_tokens",
-        ),
-      cacheCreationInputTokens:
-        sql<number>`COALESCE(SUM(${creditUsage.cacheCreationInputTokens}), 0)::bigint`.as(
-          "cache_creation_input_tokens",
-        ),
-      creditsCharged:
-        sql<number>`COALESCE(SUM(${creditUsage.creditsCharged}), 0)::bigint`.as(
-          "credits_charged",
-        ),
-    })
-    .from(creditUsage)
-    .where(
-      and(
-        eq(creditUsage.orgId, orgId),
-        eq(creditUsage.status, "processed"),
-        gte(creditUsage.createdAt, billingPeriod.start),
-        lt(creditUsage.createdAt, billingPeriod.end),
-      ),
-    )
-    .groupBy(creditUsage.userId);
+  const rows = await getLegacyMemberUsageTotals(db, orgId, billingPeriod);
 
   if (rows.length === 0) {
     return {
@@ -201,35 +170,7 @@ export async function getUsageRuns(
 ): Promise<UsageRunsResponse> {
   const db = globalThis.services.db;
 
-  // Subquery: aggregate credit_usage per run_id
-  const creditSub = db
-    .select({
-      runId: creditUsage.runId,
-      inputTokens:
-        sql<number>`COALESCE(SUM(${creditUsage.inputTokens}), 0)::bigint`.as(
-          "input_tokens_sum",
-        ),
-      outputTokens:
-        sql<number>`COALESCE(SUM(${creditUsage.outputTokens}), 0)::bigint`.as(
-          "output_tokens_sum",
-        ),
-      cacheTokens:
-        sql<number>`COALESCE(SUM(${creditUsage.cacheReadInputTokens}) + SUM(${creditUsage.cacheCreationInputTokens}), 0)::bigint`.as(
-          "cache_tokens_sum",
-        ),
-      creditsCharged:
-        sql<number>`COALESCE(SUM(${creditUsage.creditsCharged}), 0)::bigint`.as(
-          "credits_sum",
-        ),
-      model: sql<string>`MAX(${creditUsage.model})`.as("model"),
-      userId: sql<string>`MAX(${creditUsage.userId})`.as("cu_user_id"),
-    })
-    .from(creditUsage)
-    .where(
-      and(eq(creditUsage.orgId, orgId), eq(creditUsage.status, "processed")),
-    )
-    .groupBy(creditUsage.runId)
-    .as("credit_sub");
+  const creditSub = buildLegacyRunUsageTotalsSubquery(db, orgId);
 
   // Build filter conditions
   const conditions = [eq(agentRuns.orgId, orgId)];
