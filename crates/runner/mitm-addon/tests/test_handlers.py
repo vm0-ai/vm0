@@ -7,7 +7,7 @@ import os
 import time
 import urllib.error
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from mitmproxy import http
@@ -598,6 +598,105 @@ class TestRequestHandler:
             assert usage.counters._in_flight_flows == 0
             _assert_pending(pending_path, flows=0, reports=0)
         finally:
+            usage.set_pending_path("")
+
+    async def test_billable_auth_url_rewrite_flow_drains_after_response(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        """Inline auth.base responses still pair request-time tracking with response()."""
+        pending_path = tmp_path / "usage-pending"
+        usage.counters._in_flight_flows = 0
+        usage.counters._pending_reports = 0
+        usage.set_pending_path(str(pending_path), usage_state_id="test-usage-state-id")
+
+        registry = {
+            "vms": {
+                "10.200.0.5": {
+                    "runId": "run-rewrite-1",
+                    "billableFirewalls": ["webhook"],
+                    "sandboxToken": "tok-rewrite",
+                    "networkLogPath": str(tmp_path / "net.jsonl"),
+                    "proxyLogPath": str(tmp_path / "proxy.jsonl"),
+                    "firewalls": [
+                        {
+                            "name": "webhook",
+                            "apis": [
+                                {
+                                    "base": "https://placeholder.example.com",
+                                    "auth": {"base": "${{ secrets.WEBHOOK_URL }}"},
+                                    "permissions": [{"name": "send", "rules": ["POST /"]}],
+                                },
+                            ],
+                        },
+                    ],
+                    "networkPolicies": {
+                        "webhook": {
+                            "allow": ["send"],
+                            "deny": [],
+                            "ask": [],
+                            "unknownPolicy": "deny",
+                        },
+                    },
+                    "encryptedSecrets": "iv:tag:data",
+                }
+            }
+        }
+        reg_path = tmp_path / "registry.json"
+        reg_path.write_text(json.dumps(registry))
+
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="placeholder.example.com",
+            path="/",
+            method="POST",
+            request_body=b'{"ok":true}',
+        )
+        token_meta = {
+            "headers": {},
+            "base": "https://real.example.com/webhook",
+            "resolved_secrets": ["WEBHOOK_URL"],
+            "refreshed_connectors": [],
+            "refreshed_secrets": [],
+            "cache_hit": False,
+        }
+
+        try:
+            with (
+                mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+                patch.object(
+                    auth,
+                    "get_firewall_headers",
+                    AsyncMock(return_value=token_meta),
+                ),
+                patch.object(
+                    auth,
+                    "forward_request",
+                    AsyncMock(
+                        return_value=(
+                            200,
+                            b'{"delivered":true}',
+                            {"Content-Type": "application/json"},
+                        )
+                    ),
+                ),
+            ):
+                await mitm_addon.request(flow)
+
+                assert flow.response is not None
+                assert flow.metadata["auth_url_rewrite"] is True
+                assert flow.metadata["_usage_flow_tracked"] is True
+                assert usage.counters._in_flight_flows == 1
+                _assert_pending(pending_path, flows=1, reports=0)
+
+                mitm_addon.response(flow)
+
+            assert "_usage_flow_tracked" not in flow.metadata
+            assert usage.counters._in_flight_flows == 0
+            _assert_pending(pending_path, flows=0, reports=0)
+        finally:
+            if usage.counters._in_flight_flows:
+                usage.decrement_flows()
             usage.set_pending_path("")
 
     async def test_firewall_no_base_match_passes_through(
