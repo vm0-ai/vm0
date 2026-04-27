@@ -5,7 +5,6 @@ import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
 
-import { closeFixtureDbPool } from "../../../__tests__/db.fixture";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { writeDb$ } from "../../external/db";
 import { now, nowDate } from "../../external/time";
@@ -81,10 +80,6 @@ describe("GET /health/auth", () => {
         await deletePatFixture(fixture);
       }
     }
-  });
-
-  afterAll(async () => {
-    await closeFixtureDbPool();
   });
 
   it("resolves PAT bearer auth and returns the org role from cache", async () => {

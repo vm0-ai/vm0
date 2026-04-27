@@ -6,7 +6,6 @@ import { command, createStore } from "ccstate";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 
-import { closeFixtureDbPool } from "../../../__tests__/db.fixture";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { writeDb$ } from "../../external/db";
 import { now } from "../../external/time";
@@ -63,10 +62,6 @@ describe("runnerAuth$", () => {
           .where(eq(cliTokens.id, tokenId));
       }
     }
-  });
-
-  afterAll(async () => {
-    await closeFixtureDbPool();
   });
 
   it("authenticates official runner tokens", async () => {
