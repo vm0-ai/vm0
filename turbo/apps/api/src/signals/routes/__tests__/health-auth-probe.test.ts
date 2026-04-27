@@ -1,11 +1,15 @@
 import { randomUUID } from "node:crypto";
 
+import { initContract } from "@ts-rest/core";
 import { cliTokens } from "@vm0/db/schema/cli-tokens";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
-import { createStore } from "ccstate";
+import { computed, createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
+import { z } from "zod";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { authContext$ } from "../../auth/auth-context";
+import { authRoute } from "../../auth/auth-route";
 import { writeDb$ } from "../../external/db";
 import { now } from "../../external/time";
 import { signPatJwtForTests, signSandboxJwtForTests } from "../../auth/tokens";
@@ -84,6 +88,34 @@ async function deletePatFixture(fixture: PatFixture): Promise<void> {
     );
   await writeDb.delete(cliTokens).where(eq(cliTokens.id, fixture.tokenId));
 }
+
+const c = initContract();
+
+const capabilityProbeContract = c.router({
+  check: {
+    method: "GET" as const,
+    path: "/__test/cap",
+    headers: z.object({ authorization: z.string().optional() }),
+    responses: {
+      200: z.unknown(),
+      401: z.object({
+        error: z.object({ message: z.string(), code: z.string() }),
+      }),
+      403: z.object({
+        error: z.object({ message: z.string(), code: z.string() }),
+      }),
+    },
+  },
+});
+
+const capabilityProbeHandler$ = computed((get) => {
+  return { status: 200 as const, body: get(authContext$) };
+});
+
+const capabilityProbe$ = authRoute(
+  { requiredCapability: "agent:read" },
+  capabilityProbeHandler$,
+);
 
 describe("GET /health/auth", () => {
   const fixtures: PatFixture[] = [];
@@ -326,6 +358,48 @@ describe("GET /health/auth", () => {
       ).toBe(callsBefore);
     });
 
+    it("refreshes the cached role when Clerk reports a different role", async () => {
+      const fixture = await seedPatFixture({
+        role: "member",
+        cachedAtMs: now() - 5 * 60_000,
+      });
+      fixtures.push(fixture);
+      context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue(
+        {
+          data: [{ organization: { id: fixture.orgId }, role: "org:admin" }],
+        },
+      );
+
+      const client = setupApp({ context, contract: healthAuthProbeContract });
+      const response = await accept(
+        client.check({
+          headers: { authorization: `Bearer ${fixture.token}` },
+        }),
+        [200],
+      );
+      expect(response.body).toEqual({
+        tokenType: "pat",
+        userId: fixture.userId,
+        orgId: fixture.orgId,
+        orgRole: "admin",
+      });
+
+      const writeDb = store.set(writeDb$);
+      const [cached] = await writeDb
+        .select({
+          role: orgMembersCache.role,
+          cachedAt: orgMembersCache.cachedAt,
+        })
+        .from(orgMembersCache)
+        .where(
+          and(
+            eq(orgMembersCache.orgId, fixture.orgId),
+            eq(orgMembersCache.userId, fixture.userId),
+          ),
+        );
+      expect(cached?.role).toBe("admin");
+    });
+
     it("removes a stale cache row when Clerk reports no membership", async () => {
       const fixture = await seedPatFixture({
         role: "admin",
@@ -509,6 +583,101 @@ describe("GET /health/auth", () => {
       );
 
       expect(response.body.error.code).toBe("UNAUTHORIZED");
+    });
+
+    it("returns 401 when the bearer token has no recognized prefix", async () => {
+      const client = setupApp({ context, contract: healthAuthProbeContract });
+      const response = await accept(
+        client.check({ headers: { authorization: "Bearer foobar123" } }),
+        [401],
+      );
+
+      expect(response.body.error.code).toBe("UNAUTHORIZED");
+    });
+
+    it("returns 401 for a sandbox-prefixed bearer with an invalid signature", async () => {
+      const client = setupApp({ context, contract: healthAuthProbeContract });
+      const response = await accept(
+        client.check({
+          headers: { authorization: "Bearer vm0_sandbox_not-a-real-token" },
+        }),
+        [401],
+      );
+
+      expect(response.body.error.code).toBe("UNAUTHORIZED");
+    });
+
+    it("returns 401 when the Bearer header carries an empty token", async () => {
+      const client = setupApp({ context, contract: healthAuthProbeContract });
+      const response = await accept(
+        client.check({ headers: { authorization: "Bearer " } }),
+        [401],
+      );
+
+      expect(response.body.error.code).toBe("UNAUTHORIZED");
+    });
+  });
+
+  describe("zero capability check", () => {
+    it("accepts a zero token whose capabilities include the required one", async () => {
+      const fixture = await seedPatFixture({ role: "admin" });
+      fixtures.push(fixture);
+      const nowSeconds = currentSecond();
+      const token = signSandboxJwtForTests({
+        scope: "zero",
+        userId: fixture.userId,
+        orgId: fixture.orgId,
+        runId: "run_zero",
+        capabilities: ["agent:read"],
+        iat: nowSeconds,
+        exp: nowSeconds + 60,
+      });
+
+      const client = setupApp({
+        context,
+        contract: capabilityProbeContract,
+        handlers: { check: capabilityProbe$ },
+      });
+      const response = await accept(
+        client.check({ headers: { authorization: `Bearer ${token}` } }),
+        [200],
+      );
+
+      expect(response.body).toEqual({
+        tokenType: "zero",
+        userId: fixture.userId,
+        orgId: fixture.orgId,
+        orgRole: "admin",
+        runId: "run_zero",
+        capabilities: ["agent:read"],
+      });
+    });
+
+    it("rejects a zero token whose capabilities omit the required one", async () => {
+      const fixture = await seedPatFixture({ role: "admin" });
+      fixtures.push(fixture);
+      const nowSeconds = currentSecond();
+      const token = signSandboxJwtForTests({
+        scope: "zero",
+        userId: fixture.userId,
+        orgId: fixture.orgId,
+        runId: "run_zero",
+        capabilities: ["agent:write"],
+        iat: nowSeconds,
+        exp: nowSeconds + 60,
+      });
+
+      const client = setupApp({
+        context,
+        contract: capabilityProbeContract,
+        handlers: { check: capabilityProbe$ },
+      });
+      const response = await accept(
+        client.check({ headers: { authorization: `Bearer ${token}` } }),
+        [403],
+      );
+
+      expect(response.body.error.code).toBe("FORBIDDEN");
     });
   });
 });
