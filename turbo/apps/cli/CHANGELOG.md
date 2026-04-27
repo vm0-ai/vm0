@@ -1,5 +1,13 @@
 # Changelog
 
+## [9.133.0](https://github.com/vm0-ai/vm0/compare/cli-v9.132.11...cli-v9.133.0) (2026-04-27)
+
+
+### Features
+
+* add telegram file download by bot id ([#11241](https://github.com/vm0-ai/vm0/issues/11241)) ([2a39346](https://github.com/vm0-ai/vm0/commit/2a39346beecbe88b2799589318181bbcbce93975))
+* associate uploaded files with runs ([#11201](https://github.com/vm0-ai/vm0/issues/11201)) ([1f62c18](https://github.com/vm0-ai/vm0/commit/1f62c18a7c4973dc1c7fc964f0e2aaae39dbcf3f))
+
 ## [9.132.11](https://github.com/vm0-ai/vm0/compare/cli-v9.132.10...cli-v9.132.11) (2026-04-27)
 
 

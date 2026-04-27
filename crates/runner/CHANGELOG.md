@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.96.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.96.0...runner-rs-v0.96.1) (2026-04-27)
+
+
+### Bug Fixes
+
+* **mitm-addon:** harden static firewall host matching ([#11231](https://github.com/vm0-ai/vm0/issues/11231)) ([36eb7d1](https://github.com/vm0-ai/vm0/commit/36eb7d14959328ec8beca105a12685290b6e4f63))
+
+
+### Documentation
+
+* **runner:** clarify benchmark profile lookup ([#11237](https://github.com/vm0-ai/vm0/issues/11237)) ([c159474](https://github.com/vm0-ai/vm0/commit/c159474be7cddaa47f19f9300d571f890fbf9d2a))
+
 ## [0.96.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.95.5...runner-rs-v0.96.0) (2026-04-27)
 
 

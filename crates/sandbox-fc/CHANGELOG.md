@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.26.11](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.26.10...sandbox-fc-v0.26.11) (2026-04-27)
+
+
+### Documentation
+
+* **sandbox-fc:** explain balloon tolerance scope ([#11217](https://github.com/vm0-ai/vm0/issues/11217)) ([f9f2e1b](https://github.com/vm0-ai/vm0/commit/f9f2e1b86900b3ac1bb2e7c7d0a885f3ca17f76d))
+
+
+### Refactoring
+
+* **sandbox-fc:** encapsulate leak cleanup task ([#11239](https://github.com/vm0-ai/vm0/issues/11239)) ([f1cd276](https://github.com/vm0-ai/vm0/commit/f1cd276e5e8927572acc11064e60eca896f65009))
+
 ## [0.26.10](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.26.9...sandbox-fc-v0.26.10) (2026-04-27)
 
 

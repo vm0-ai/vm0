@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.297.0](https://github.com/vm0-ai/vm0/compare/app-v0.296.0...app-v0.297.0) (2026-04-27)
+
+
+### Features
+
+* **platform:** add telegram settings UI ([#11196](https://github.com/vm0-ai/vm0/issues/11196)) ([7cc8d17](https://github.com/vm0-ai/vm0/commit/7cc8d17cd5bb2a26297a1774173b3b6544c715d6))
+
+
+### Bug Fixes
+
+* **org-manage:** widen workspace settings dialog to 1200px with side padding ([#11230](https://github.com/vm0-ai/vm0/issues/11230)) ([04dca28](https://github.com/vm0-ai/vm0/commit/04dca28a835b718ab3afa32d0b4c4e6c73b7b516))
+* show all connectors in chat composer dropdown ([#11223](https://github.com/vm0-ai/vm0/issues/11223)) ([a5ca553](https://github.com/vm0-ai/vm0/commit/a5ca553170985c92e43c519b565836509247ebc9))
+
+
+### Refactoring
+
+* **insights:** restructure header with caption divider ([#11222](https://github.com/vm0-ai/vm0/issues/11222)) ([faf044c](https://github.com/vm0-ai/vm0/commit/faf044c1f989aadd8d8b12d72b41cae3578fa308))
+* **platform:** redesign /_/usage page and move to account menu ([#11080](https://github.com/vm0-ai/vm0/issues/11080)) ([cacbe8e](https://github.com/vm0-ai/vm0/commit/cacbe8e64c98485e1a856a6fe1647218fc7671b7))
+
 ## [0.296.0](https://github.com/vm0-ai/vm0/compare/app-v0.295.0...app-v0.296.0) (2026-04-27)
 
 

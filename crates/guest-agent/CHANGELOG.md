@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.24.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.24.4...guest-agent-v0.24.5) (2026-04-27)
+
+
+### Bug Fixes
+
+* **guest-agent:** build artifact archives in-process ([#11216](https://github.com/vm0-ai/vm0/issues/11216)) ([d84a024](https://github.com/vm0-ai/vm0/commit/d84a0246d700a713c508ae5bee995131054127f9))
+* **guest-agent:** delay initial telemetry tick ([#11235](https://github.com/vm0-ai/vm0/issues/11235)) ([fb8c855](https://github.com/vm0-ai/vm0/commit/fb8c855026c6fb160604f52846af7453db5f85f5))
+
 ## [0.24.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.24.3...guest-agent-v0.24.4) (2026-04-26)
 
 

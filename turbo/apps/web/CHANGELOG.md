@@ -1,5 +1,14 @@
 # Changelog
 
+## [12.302.0](https://github.com/vm0-ai/vm0/compare/web-v12.301.0...web-v12.302.0) (2026-04-27)
+
+
+### Features
+
+* add telegram file download by bot id ([#11241](https://github.com/vm0-ai/vm0/issues/11241)) ([2a39346](https://github.com/vm0-ai/vm0/commit/2a39346beecbe88b2799589318181bbcbce93975))
+* associate uploaded files with runs ([#11201](https://github.com/vm0-ai/vm0/issues/11201)) ([1f62c18](https://github.com/vm0-ai/vm0/commit/1f62c18a7c4973dc1c7fc964f0e2aaae39dbcf3f))
+* **platform:** add telegram settings UI ([#11196](https://github.com/vm0-ai/vm0/issues/11196)) ([7cc8d17](https://github.com/vm0-ai/vm0/commit/7cc8d17cd5bb2a26297a1774173b3b6544c715d6))
+
 ## [12.301.0](https://github.com/vm0-ai/vm0/compare/web-v12.300.8...web-v12.301.0) (2026-04-27)
 
 
