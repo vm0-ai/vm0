@@ -161,15 +161,16 @@ describe("/_/usage page - empty state", () => {
       ).toBeInTheDocument();
     });
 
-    // Totals bar should show 0 credits with zero grand total
+    // Empty state illustration replaces the totals bar when there's no usage
     await waitFor(() => {
-      expect(
-        screen.getByRole("img", { name: /Total credits breakdown/ }),
-      ).toBeInTheDocument();
+      expect(screen.getByText("No usage data yet")).toBeInTheDocument();
     });
 
-    expect(screen.getByText("0")).toBeInTheDocument();
-    expect(screen.getByText("credits")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Start a chat or run a schedule to see your insights here.",
+      ),
+    ).toBeInTheDocument();
   });
 });
 
