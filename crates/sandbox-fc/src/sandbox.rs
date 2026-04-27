@@ -1203,53 +1203,80 @@ impl Sandbox for FirecrackerSandbox {
 const BALLOON_SETTLE_TIMEOUT: Duration = Duration::from_secs(10);
 /// Poll interval while waiting for balloon inflation.
 const BALLOON_SETTLE_POLL: Duration = Duration::from_millis(500);
+/// Accept small residual differences between requested and reported balloon size.
+const BALLOON_SETTLE_TOLERANCE_MIB: u32 = 64;
 
-/// Wait until the guest balloon driver inflates to `target_mib`.
+/// Wait until the guest balloon driver inflates close enough to `target_mib`.
 ///
 /// The guest needs running vCPUs to inflate, so this must be called
-/// **before** pausing. Returns when `actual_mib >= target_mib`, or
-/// after [`BALLOON_SETTLE_TIMEOUT`] (partial inflation is better than
-/// none). Errors from stats fetching are non-fatal — we log and
+/// **before** pausing. Returns when `actual_mib >= target_mib`, when
+/// the remaining deficit is within [`BALLOON_SETTLE_TOLERANCE_MIB`],
+/// or after [`BALLOON_SETTLE_TIMEOUT`] (partial inflation is better
+/// than none). Errors from stats fetching are non-fatal — we log and
 /// proceed to pause.
 async fn wait_for_balloon(client: &ApiClient<'_>, target_mib: u32, log_id: &str) {
     let deadline = tokio::time::Instant::now() + BALLOON_SETTLE_TIMEOUT;
     let mut last_actual: Option<u32> = None;
     loop {
         match client.get_balloon_statistics().await {
-            Ok(stats) if stats.actual_mib >= target_mib => {
-                info!(
-                    id = %log_id,
-                    actual = stats.actual_mib,
-                    target = target_mib,
-                    "balloon fully inflated, proceeding to pause"
-                );
-                return;
-            }
             Ok(stats) => {
+                let deficit_mib = target_mib.saturating_sub(stats.actual_mib);
+                if deficit_mib == 0 {
+                    info!(
+                        id = %log_id,
+                        actual = stats.actual_mib,
+                        target = target_mib,
+                        deficit_mib,
+                        tolerance_mib = BALLOON_SETTLE_TOLERANCE_MIB,
+                        "balloon fully inflated, proceeding to pause"
+                    );
+                    return;
+                }
+
+                if deficit_mib <= BALLOON_SETTLE_TOLERANCE_MIB {
+                    info!(
+                        id = %log_id,
+                        actual = stats.actual_mib,
+                        target = target_mib,
+                        deficit_mib,
+                        tolerance_mib = BALLOON_SETTLE_TOLERANCE_MIB,
+                        "balloon inflated within tolerance, proceeding to pause"
+                    );
+                    return;
+                }
+
                 last_actual = Some(stats.actual_mib);
                 trace!(
                     id = %log_id,
                     actual = stats.actual_mib,
                     target = target_mib,
+                    deficit_mib,
+                    tolerance_mib = BALLOON_SETTLE_TOLERANCE_MIB,
                     "waiting for balloon"
                 );
             }
             Err(e) => {
+                let deficit_mib = last_actual.map(|actual| target_mib.saturating_sub(actual));
                 warn!(
                     id = %log_id,
-                    %e,
                     actual = ?last_actual,
                     target = target_mib,
+                    deficit_mib = ?deficit_mib,
+                    tolerance_mib = BALLOON_SETTLE_TOLERANCE_MIB,
+                    %e,
                     "balloon stats unavailable, proceeding to pause"
                 );
                 return;
             }
         }
         if tokio::time::Instant::now() >= deadline {
+            let deficit_mib = last_actual.map(|actual| target_mib.saturating_sub(actual));
             warn!(
                 id = %log_id,
                 actual = ?last_actual,
                 target = target_mib,
+                deficit_mib = ?deficit_mib,
+                tolerance_mib = BALLOON_SETTLE_TOLERANCE_MIB,
                 "balloon inflate incomplete after {}s, pausing anyway",
                 BALLOON_SETTLE_TIMEOUT.as_secs()
             );
@@ -2808,6 +2835,88 @@ mod tests {
         // Verify PATCH ordering: balloon inflate, then vm pause.
         let ps = patches(&reqs);
         assert_eq!(ps.len(), 2);
+        assert_eq!(ps[0].path, "/balloon");
+        assert_eq!(ps[1].path, "/vm");
+        assert!(ps[1].body.contains("Paused"));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn park_pauses_when_balloon_is_within_settle_tolerance() {
+        // Production samples have shown 4 GiB VMs reaching 3545-3555 MiB
+        // against a 3584 MiB target. That is close enough to park without
+        // waiting for the full 10s timeout and emitting a WARN.
+        let balloon_actual = Arc::new(AtomicU32::new(3545));
+        let (sock, reqs, _dir) = spawn_mock_fc_api(
+            std::collections::VecDeque::new(),
+            Some(Arc::clone(&balloon_actual)),
+        )
+        .await;
+
+        let mut controller: Option<tokio::task::JoinHandle<()>> = Some(tokio::spawn(async {
+            tokio::time::sleep(Duration::from_secs(3600)).await
+        }));
+        let mut is_parked = false;
+
+        park_inner(&mut is_parked, 4096, &mut controller, &sock, "near-test")
+            .await
+            .unwrap();
+
+        assert!(is_parked);
+        let reqs = reqs.lock().await;
+        let stats_gets = reqs
+            .iter()
+            .filter(|r| r.method == "GET" && r.path == "/balloon/statistics")
+            .count();
+        assert_eq!(
+            stats_gets, 1,
+            "near-target balloon should settle on the first stats poll"
+        );
+
+        let ps = patches(&reqs);
+        assert_eq!(ps.len(), 2, "expected balloon inflate + vm pause");
+        assert_eq!(ps[0].path, "/balloon");
+        assert_eq!(ps[1].path, "/vm");
+        assert!(ps[1].body.contains("Paused"));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn park_pauses_when_balloon_deficit_equals_settle_tolerance() {
+        let target_mib = 4096 - balloon::MIN_GUEST_MIB;
+        let balloon_actual = Arc::new(AtomicU32::new(target_mib - BALLOON_SETTLE_TOLERANCE_MIB));
+        let (sock, reqs, _dir) = spawn_mock_fc_api(
+            std::collections::VecDeque::new(),
+            Some(Arc::clone(&balloon_actual)),
+        )
+        .await;
+
+        let mut controller: Option<tokio::task::JoinHandle<()>> = Some(tokio::spawn(async {
+            tokio::time::sleep(Duration::from_secs(3600)).await
+        }));
+        let mut is_parked = false;
+
+        park_inner(
+            &mut is_parked,
+            4096,
+            &mut controller,
+            &sock,
+            "tolerance-edge",
+        )
+        .await
+        .unwrap();
+
+        assert!(is_parked);
+        let reqs = reqs.lock().await;
+        let stats_gets = reqs
+            .iter()
+            .filter(|r| r.method == "GET" && r.path == "/balloon/statistics")
+            .count();
+        assert_eq!(
+            stats_gets, 1,
+            "exact tolerance boundary should settle on the first stats poll"
+        );
+
+        let ps = patches(&reqs);
+        assert_eq!(ps.len(), 2, "expected balloon inflate + vm pause");
         assert_eq!(ps[0].path, "/balloon");
         assert_eq!(ps[1].path, "/vm");
         assert!(ps[1].body.contains("Paused"));
