@@ -11,9 +11,6 @@ import { isAbortError } from "./signals/utils";
 const L = logger("App");
 
 function shouldCaptureError(error: Error): boolean {
-  if (isAbortError(error)) {
-    return false;
-  }
   return !(error instanceof HTTPException) || error.status >= 500;
 }
 
@@ -24,6 +21,10 @@ function captureError(error: Error): void {
 }
 
 function handleError(error: Error, context: Context): Response {
+  if (isAbortError(error)) {
+    return context.json({ error: "Internal server error" }, 500);
+  }
+
   captureError(error);
 
   if (error instanceof HTTPException) {
