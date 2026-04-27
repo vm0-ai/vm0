@@ -799,6 +799,7 @@ mod tests {
     use std::os::unix::ffi::OsStrExt;
     use std::os::unix::fs as unix_fs;
     use std::os::unix::fs::{MetadataExt, PermissionsExt};
+    use std::sync::LazyLock;
 
     fn extract_archive(tar_path: &Path, extract_dir: &Path) -> io::Result<()> {
         let file = File::open(tar_path)?;
@@ -817,6 +818,14 @@ mod tests {
             Err(io::Error::last_os_error())
         }
     }
+
+    static SNAPSHOT_MOCK_SERVER: LazyLock<httpmock::MockServer> = LazyLock::new(|| {
+        let server = httpmock::MockServer::start();
+        unsafe {
+            std::env::set_var("VM0_API_URL", server.base_url());
+        }
+        server
+    });
 
     #[test]
     fn walk_dir_skips_symlinks() {
@@ -850,6 +859,25 @@ mod tests {
         assert!(!paths.contains(&"dangling"));
 
         // link_dir contents should NOT appear (symlink dir skipped, not followed)
+        assert!(!paths.iter().any(|p| p.starts_with("link_dir/")));
+    }
+
+    #[test]
+    fn walk_dir_does_not_follow_directory_symlink() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("root");
+        let outside = dir.path().join("outside");
+        std::fs::create_dir(&root).unwrap();
+        std::fs::create_dir(&outside).unwrap();
+        std::fs::write(root.join("real.txt"), "real").unwrap();
+        std::fs::write(outside.join("secret.txt"), "secret").unwrap();
+        unix_fs::symlink(&outside, root.join("link_dir")).unwrap();
+
+        let files = collect_file_metadata(root.to_str().unwrap());
+        let paths: Vec<&str> = files.iter().map(|f| f.path.as_str()).collect();
+
+        assert!(paths.contains(&"real.txt"));
+        assert!(!paths.contains(&"link_dir/secret.txt"));
         assert!(!paths.iter().any(|p| p.starts_with("link_dir/")));
     }
 
@@ -1059,6 +1087,159 @@ mod tests {
 
         assert_eq!(archived, b"abc");
         assert!(err.to_string().contains("file grew"), "got: {err}");
+    }
+
+    #[test]
+    fn validate_archive_inputs_fails_if_listed_file_content_changes() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        std::fs::write(root.join("target.txt"), "before").unwrap();
+        let files = collect_file_metadata(root.to_str().unwrap());
+        std::fs::write(root.join("target.txt"), "after!").unwrap();
+
+        let err = validate_archive_inputs(root.to_str().unwrap(), &files).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("target.txt"), "got: {msg}");
+        assert!(msg.contains("content changed"), "got: {msg}");
+    }
+
+    #[test]
+    fn validate_archive_inputs_fails_if_listed_file_becomes_symlink() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        std::fs::write(root.join("target.txt"), "before").unwrap();
+        std::fs::write(root.join("outside.txt"), "outside").unwrap();
+        let files = collect_file_metadata(root.to_str().unwrap());
+        let archive_files: Vec<FileEntry> = files
+            .iter()
+            .filter(|f| f.path == "target.txt")
+            .cloned()
+            .collect();
+
+        std::fs::remove_file(root.join("target.txt")).unwrap();
+        unix_fs::symlink(root.join("outside.txt"), root.join("target.txt")).unwrap();
+
+        let err = validate_archive_inputs(root.to_str().unwrap(), &archive_files).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("target.txt"), "got: {msg}");
+        assert!(msg.contains("not a regular file"), "got: {msg}");
+    }
+
+    #[test]
+    fn validate_archive_inputs_fails_if_listed_file_becomes_fifo() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        std::fs::write(root.join("target.txt"), "before").unwrap();
+        let files = collect_file_metadata(root.to_str().unwrap());
+        let archive_files: Vec<FileEntry> = files
+            .iter()
+            .filter(|f| f.path == "target.txt")
+            .cloned()
+            .collect();
+
+        std::fs::remove_file(root.join("target.txt")).unwrap();
+        make_fifo(&root.join("target.txt")).unwrap();
+
+        let err = validate_archive_inputs(root.to_str().unwrap(), &archive_files).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("target.txt"), "got: {msg}");
+        assert!(msg.contains("not a regular file"), "got: {msg}");
+    }
+
+    #[test]
+    fn archive_rejects_invalid_manifest_paths() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let tar_path = root.join("archive.tar.gz");
+
+        for path in [
+            "",
+            "/absolute.txt",
+            ".",
+            "./relative.txt",
+            "dir/../file.txt",
+        ] {
+            let files = vec![FileEntry {
+                path: path.to_string(),
+                hash: "unused".to_string(),
+                size: 0,
+            }];
+            let err = create_archive(root.to_str().unwrap(), &tar_path, &files).unwrap_err();
+            assert!(
+                err.to_string().contains("invalid archive path"),
+                "path {path:?} produced: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn archive_rejects_manifest_path_with_nul() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        std::fs::write(root.join("bad"), "data").unwrap();
+        let tar_path = root.join("archive.tar.gz");
+        let files = vec![FileEntry {
+            path: "bad\0name".to_string(),
+            hash: "unused".to_string(),
+            size: 0,
+        }];
+
+        let err = create_archive(root.to_str().unwrap(), &tar_path, &files).unwrap_err();
+
+        assert!(
+            err.to_string().to_ascii_lowercase().contains("nul"),
+            "got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn dedup_snapshot_validation_failure_does_not_commit() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        std::fs::write(root.join("target.txt"), "before").unwrap();
+        let files = collect_file_metadata(root.to_str().unwrap());
+        std::fs::write(root.join("target.txt"), "after!").unwrap();
+
+        let server = &*SNAPSHOT_MOCK_SERVER;
+
+        let prepare = server.mock(|when, then| {
+            when.method(httpmock::Method::POST)
+                .path("/api/webhooks/agent/storages/prepare");
+            then.status(200).json_body(serde_json::json!({
+                "versionId": "v-existing",
+                "existing": true
+            }));
+        });
+        let commit = server.mock(|when, then| {
+            when.method(httpmock::Method::POST)
+                .path("/api/webhooks/agent/storages/commit");
+            then.status(200)
+                .json_body(serde_json::json!({ "success": true }));
+        });
+
+        let result = create_snapshot(
+            root.to_str().unwrap(),
+            files,
+            "storage",
+            "artifact",
+            "run-id",
+            "message",
+            "",
+        )
+        .await;
+
+        let Err(err) = result else {
+            panic!("create_snapshot unexpectedly succeeded");
+        };
+        assert!(
+            err.to_string()
+                .contains("Failed to validate archive inputs")
+        );
+        prepare.assert_calls(1);
+        commit.assert_calls(0);
     }
 
     #[test]
