@@ -424,11 +424,13 @@ jobs:
       - build-e2b-template-production
       - sbom
       - resolve-image-cache
-    # Intentionally uses only !cancelled() (not !failure()) so this job runs even
-    # when upstream build jobs fail. The jq step below performs the actual failure
-    # check and exits 1, making the barrier explicit. Adding !failure() here would
-    # cause this job to be skipped on build failure, hiding the reason for the block.
-    if: ${{ !cancelled() && needs.release-please.outputs.releases_created == 'true' }}
+    # Use always() so this job runs even when upstream build jobs are skipped.
+    # !cancelled() is insufficient — it still propagates "skipped" from needs
+    # dependencies, which causes builds-complete (and transitively
+    # migrate-production) to be skipped whenever any build job is skipped.
+    # The jq step below performs the actual failure check and exits 1, making
+    # the barrier explicit.
+    if: ${{ always() && needs.release-please.outputs.releases_created == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Verify no build failed
