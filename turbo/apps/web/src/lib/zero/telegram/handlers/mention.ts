@@ -18,6 +18,7 @@ import {
   resolveTelegramAuditLogsUrl,
   buildTelegramPrivateConnectReplyMarkup,
   formatTelegramPrivateConnectPrompt,
+  getWorkspaceAgentDisplayLabel,
 } from "./shared";
 import { fetchTelegramContext } from "../context";
 import { runAgentForTelegram } from "./run-agent";
@@ -74,10 +75,13 @@ export async function handleTelegramMention(
   const userLink = await resolveUserLink(installationId, fromUserId);
 
   if (!userLink) {
+    const agentName = await getWorkspaceAgentDisplayLabel(
+      installation.defaultComposeId,
+    );
     await sendMessage(
       client,
       chatId,
-      formatTelegramPrivateConnectPrompt(installation.botUsername),
+      formatTelegramPrivateConnectPrompt(installation.botUsername, agentName),
       {
         replyToMessageId: message.message_id,
         replyMarkup: buildTelegramPrivateConnectReplyMarkup(

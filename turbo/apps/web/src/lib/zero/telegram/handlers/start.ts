@@ -13,6 +13,7 @@ import {
   formatTelegramCommandError,
   formatTelegramCommandSuccess,
   formatTelegramConnectPrompt,
+  getWorkspaceAgentDisplayLabel,
 } from "./shared";
 import { logger } from "../../../shared/logger";
 import type { TelegramHandlerUpdate } from "./types";
@@ -84,11 +85,17 @@ export async function handleStartCommand(
     // No token or deep link from group chat (/start connect) → prompt login
     const userLink = await resolveUserLink(installationId, fromUserId);
     if (userLink) {
+      const agentName = await getWorkspaceAgentDisplayLabel(
+        installation.defaultComposeId,
+      );
       await sendMessage(
         client,
         chatId,
         formatTelegramCommandSuccess(
-          formatTelegramAlreadyConnectedMessage(installation.botUsername),
+          formatTelegramAlreadyConnectedMessage(
+            installation.botUsername,
+            agentName,
+          ),
         ),
       );
       return;
@@ -98,7 +105,10 @@ export async function handleStartCommand(
       fromUserId,
       botToken,
     );
-    await sendMessage(client, chatId, formatTelegramConnectPrompt(), {
+    const agentName = await getWorkspaceAgentDisplayLabel(
+      installation.defaultComposeId,
+    );
+    await sendMessage(client, chatId, formatTelegramConnectPrompt(agentName), {
       replyMarkup: buildTelegramConnectReplyMarkup(connectUrl),
     });
     return;
@@ -148,12 +158,15 @@ export async function handleStartCommand(
   // Auto-grant permission. The installation's orgId was snapshot at
   // registration and is the authoritative org for this bot.
   await ensureOrgAndArtifact(payload.vm0UserId, installation.orgId);
+  const agentName = await getWorkspaceAgentDisplayLabel(
+    installation.defaultComposeId,
+  );
 
   await sendMessage(
     client,
     chatId,
     formatTelegramCommandSuccess(
-      "Account linked.\nSend me a message to start chatting with your agent.",
+      `Account linked.\nSend me a message to start chatting with ${agentName}.`,
     ),
   );
 
