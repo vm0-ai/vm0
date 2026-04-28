@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.24.8](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.24.7...guest-agent-v0.24.8) (2026-04-28)
+
+
+### Refactoring
+
+* deduplicate guest-agent http retries ([#11368](https://github.com/vm0-ai/vm0/issues/11368)) ([8c230e1](https://github.com/vm0-ai/vm0/commit/8c230e15592fd65892932a8b1bbffcc67562dfa1))
+
 ## [0.24.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.24.6...guest-agent-v0.24.7) (2026-04-27)
 
 

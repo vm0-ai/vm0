@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.241.0](https://github.com/vm0-ai/vm0/compare/core-v8.240.0...core-v8.241.0) (2026-04-28)
+
+
+### Features
+
+* **sidebar:** unified chat session indicator with draft + hover-swap delete ([#11226](https://github.com/vm0-ai/vm0/issues/11226)) ([58008a6](https://github.com/vm0-ai/vm0/commit/58008a6ca50f8883906a5b472081dddc3e16f0d6))
+
 ## [8.240.0](https://github.com/vm0-ai/vm0/compare/core-v8.239.1...core-v8.240.0) (2026-04-28)
 
 

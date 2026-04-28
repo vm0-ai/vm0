@@ -1,5 +1,24 @@
 # Changelog
 
+## [12.312.0](https://github.com/vm0-ai/vm0/compare/web-v12.311.0...web-v12.312.0) (2026-04-28)
+
+
+### Features
+
+* **sidebar:** unified chat session indicator with draft + hover-swap delete ([#11226](https://github.com/vm0-ai/vm0/issues/11226)) ([58008a6](https://github.com/vm0-ai/vm0/commit/58008a6ca50f8883906a5b472081dddc3e16f0d6))
+
+
+### Bug Fixes
+
+* thread auth options through shadow probe to eliminate false mismatch ([#11378](https://github.com/vm0-ai/vm0/issues/11378)) ([4c433f2](https://github.com/vm0-ai/vm0/commit/4c433f268530641f23e2b9d62d352bdfc8469519))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.241.0
+
 ## [12.311.0](https://github.com/vm0-ai/vm0/compare/web-v12.310.0...web-v12.311.0) (2026-04-28)
 
 

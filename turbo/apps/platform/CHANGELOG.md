@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.303.0](https://github.com/vm0-ai/vm0/compare/app-v0.302.0...app-v0.303.0) (2026-04-28)
+
+
+### Features
+
+* **sidebar:** unified chat session indicator with draft + hover-swap delete ([#11226](https://github.com/vm0-ai/vm0/issues/11226)) ([58008a6](https://github.com/vm0-ai/vm0/commit/58008a6ca50f8883906a5b472081dddc3e16f0d6))
+
+
+### Bug Fixes
+
+* remove telegram route label ([#11379](https://github.com/vm0-ai/vm0/issues/11379)) ([28b6b2b](https://github.com/vm0-ai/vm0/commit/28b6b2bff02951648af9014a368a7873dfce8d10))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.241.0
+
 ## [0.302.0](https://github.com/vm0-ai/vm0/compare/app-v0.301.0...app-v0.302.0) (2026-04-28)
 
 
