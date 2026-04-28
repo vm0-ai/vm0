@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
 import type { NextRequest } from "next/server";
 import { describe, it, expect, beforeEach } from "vitest";
-import { sql } from "drizzle-orm";
 import { POST } from "../route";
 import {
   createTestCompose,
   createTestRequest,
+  insertTestChatThread,
   insertOrgMembersCacheEntry,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
@@ -35,23 +35,6 @@ describe("POST /api/zero/uploads/complete", () => {
     user = await context.setupUser();
   });
 
-  async function insertUploadTestChatThread(
-    userId: string,
-    agentComposeId: string,
-  ): Promise<string> {
-    // eslint-disable-next-line web/no-direct-db-in-tests -- Keep this test independent of chat_threads columns not needed by the upload path.
-    const result = await globalThis.services.db.execute<{ id: string }>(sql`
-      INSERT INTO chat_threads (user_id, agent_compose_id, title)
-      VALUES (${userId}, ${agentComposeId}::uuid, 'Artifacts')
-      RETURNING id
-    `);
-    const threadId = result.rows[0]?.id;
-    if (!threadId) {
-      throw new Error("Failed to seed upload chat thread");
-    }
-    return threadId;
-  }
-
   async function zeroTokenWithRun(options?: {
     withChatThread?: boolean;
   }): Promise<{
@@ -61,7 +44,7 @@ describe("POST /api/zero/uploads/complete", () => {
   }> {
     const { composeId } = await createTestCompose(uniqueId("agent"));
     const threadId = options?.withChatThread
-      ? await insertUploadTestChatThread(user.userId, composeId)
+      ? await insertTestChatThread(user.userId, composeId, "Artifacts")
       : undefined;
     const { runId } = await seedTestRun(
       user.userId,

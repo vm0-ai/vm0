@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type { RawPermissionPolicies } from "@vm0/connectors/firewall-types";
 import { initServices } from "../../lib/init-services";
 import {
@@ -418,11 +418,16 @@ export async function insertTestChatThread(
   title: string,
 ): Promise<string> {
   initServices();
-  const [thread] = await globalThis.services.db
-    .insert(chatThreads)
-    .values({ userId, agentComposeId, title })
-    .returning({ id: chatThreads.id });
-  return thread!.id;
+  const result = await globalThis.services.db.execute<{ id: string }>(sql`
+    INSERT INTO ${chatThreads} (user_id, agent_compose_id, title)
+    VALUES (${userId}, ${agentComposeId}::uuid, ${title})
+    RETURNING id
+  `);
+  const threadId = result.rows[0]?.id;
+  if (!threadId) {
+    throw new Error("Failed to seed chat thread");
+  }
+  return threadId;
 }
 
 // ---------------------------------------------------------------------------
