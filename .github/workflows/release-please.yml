@@ -72,7 +72,13 @@ jobs:
   # downtime: builds stage first, then migrate, then promote traffic.)
   migrate-production:
     needs: [release-please, builds-complete]
-    if: ${{ needs.release-please.outputs.releases_created == 'true' }}
+    # always() prevents GitHub Actions from propagating "skipped" when upstream
+    # build jobs (build-runner-production, etc.) are skipped. The explicit
+    # builds-complete.result check gates on actual build success.
+    if: >-
+      always() &&
+      needs.release-please.outputs.releases_created == 'true' &&
+      needs.builds-complete.result == 'success'
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260419
