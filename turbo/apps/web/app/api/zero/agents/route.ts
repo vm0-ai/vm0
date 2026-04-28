@@ -30,18 +30,6 @@ const router = tsr.router(zeroAgentsMainContract, {
 
     const { org } = await resolveOrg(authCtx);
 
-    // Enforce maximum 7 agents per organization
-    const [{ value: agentCount }] = await globalThis.services.db
-      .select({ value: count() })
-      .from(zeroAgents)
-      .where(eq(zeroAgents.orgId, org.orgId));
-    if (agentCount >= 7) {
-      return createErrorResponse(
-        "CONFLICT",
-        "This organization has reached the maximum number of agents (7). Delete an existing agent before creating a new one.",
-      );
-    }
-
     // Generate UUID agent name
     const agentName = crypto.randomUUID();
 
@@ -87,23 +75,47 @@ const router = tsr.router(zeroAgentsMainContract, {
       selectedModel: body.selectedModel ?? null,
     };
 
-    // Write metadata to zero_agents (PK = composeId)
-    await globalThis.services.db
-      .insert(zeroAgents)
-      .values({
-        id: result.composeId,
-        orgId: org.orgId,
-        name: result.composeName,
-        owner: userId,
-        ...metadata,
-      })
-      .onConflictDoUpdate({
-        target: [zeroAgents.orgId, zeroAgents.name],
-        set: {
+    // Enforce maximum 7 agents per organization.
+    // FOR UPDATE serializes concurrent creates for the same org so the
+    // count check and insert are atomic.
+    const txResult = await globalThis.services.db.transaction(async (tx) => {
+      const [{ value: agentCount }] = await tx
+        .select({ value: count() })
+        .from(zeroAgents)
+        .where(eq(zeroAgents.orgId, org.orgId))
+        .for("update");
+
+      if (agentCount >= 7) {
+        return { blocked: true as const };
+      }
+
+      // Write metadata to zero_agents (PK = composeId)
+      await tx
+        .insert(zeroAgents)
+        .values({
+          id: result.composeId,
+          orgId: org.orgId,
+          name: result.composeName,
+          owner: userId,
           ...metadata,
-          updatedAt: new Date(),
-        },
-      });
+        })
+        .onConflictDoUpdate({
+          target: [zeroAgents.orgId, zeroAgents.name],
+          set: {
+            ...metadata,
+            updatedAt: new Date(),
+          },
+        });
+
+      return { blocked: false as const };
+    });
+
+    if (txResult.blocked) {
+      return createErrorResponse(
+        "CONFLICT",
+        "This organization has reached the maximum number of agents (7). Delete an existing agent before creating a new one.",
+      );
+    }
 
     log.info(`Created zero agent: ${result.composeName}`);
 
