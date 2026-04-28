@@ -163,7 +163,7 @@ pub(crate) fn should_ingest(metadata: &Metadata<'_>) -> bool {
     *metadata.level() <= tracing::Level::WARN && metadata.target() != INTERNAL_TARGET
 }
 
-pub(crate) fn ingest_filter() -> FilterFn<fn(&Metadata<'_>) -> bool> {
+fn ingest_filter() -> FilterFn<fn(&Metadata<'_>) -> bool> {
     filter::filter_fn(should_ingest as fn(&Metadata<'_>) -> bool)
 }
 
