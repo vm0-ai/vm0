@@ -15,7 +15,12 @@ import { readBehaviorCount } from "../../../../../../src/__tests__/db-test-seede
 import {
   AUDIO_INPUT_BEHAVIOR_KEY,
   AUDIO_INPUT_FREE_QUOTA,
+  DAILY_RATE_LIMITS,
+  DAILY_DURATION_LIMITS,
+  dailyRateKey,
+  dailyDurationKey,
 } from "../../../../../../src/lib/zero/voice-io/audio-input-policy";
+import { seedBehaviorCount } from "../../../../../../src/__tests__/db-test-seeders/behavior";
 
 vi.mock("@vm0/core/feature-switch", async (importOriginal) => {
   const actual =
@@ -25,6 +30,13 @@ vi.mock("@vm0/core/feature-switch", async (importOriginal) => {
     isFeatureEnabled: vi.fn().mockReturnValue(true),
   };
 });
+
+vi.mock(
+  "../../../../../../src/lib/zero/voice-io/audio-duration",
+  async () => ({
+    getAudioDuration: vi.fn().mockResolvedValue(null),
+  }),
+);
 
 const { isFeatureEnabled } = await import("@vm0/core/feature-switch");
 const mockIsFeatureEnabled = isFeatureEnabled as ReturnType<typeof vi.fn>;
@@ -276,6 +288,119 @@ describe("POST /api/zero/voice-io/stt", () => {
         AUDIO_INPUT_BEHAVIOR_KEY,
       );
       expect(count).toBe(0);
+    });
+  });
+
+  describe("daily rate limit", () => {
+    it("should return 429 when daily rate limit exceeded", async () => {
+      const userId = uniqueId("stt-daily-rate");
+      const { orgId } = await setupOrg(userId);
+      await updateOrgTier(orgId, "pro");
+      const limit = DAILY_RATE_LIMITS["pro"]!;
+
+      await seedBehaviorCount(orgId, userId, dailyRateKey(), limit);
+
+      server.use(
+        http.post("https://api.openai.com/v1/audio/transcriptions", () => {
+          return HttpResponse.json({ text: "should not reach" });
+        }),
+      );
+
+      const response = await POST(createSttRequest(createAudioFile()));
+      expect(response.status).toBe(429);
+      expect((await response.json()).error.code).toBe(
+        "DAILY_RATE_LIMIT_EXCEEDED",
+      );
+    });
+
+    it("should return 429 when daily duration limit exceeded", async () => {
+      const userId = uniqueId("stt-daily-dur");
+      const { orgId } = await setupOrg(userId);
+      await updateOrgTier(orgId, "pro");
+      const { getAudioDuration } = await import(
+        "../../../../../../src/lib/zero/voice-io/audio-duration"
+      );
+      (getAudioDuration as ReturnType<typeof vi.fn>).mockResolvedValue(60);
+
+      const limit = DAILY_DURATION_LIMITS["pro"]!;
+      await seedBehaviorCount(orgId, userId, dailyDurationKey(), limit);
+
+      server.use(
+        http.post("https://api.openai.com/v1/audio/transcriptions", () => {
+          return HttpResponse.json({ text: "should not reach" });
+        }),
+      );
+
+      const response = await POST(createSttRequest(createAudioFile()));
+      expect(response.status).toBe(429);
+      expect((await response.json()).error.code).toBe(
+        "DAILY_DURATION_LIMIT_EXCEEDED",
+      );
+    });
+  });
+
+  describe("daily rate and duration recording", () => {
+    it("should increment daily rate and duration counters on success", async () => {
+      const userId = uniqueId("stt-daily-ok");
+      const { orgId } = await setupOrg(userId);
+      await updateOrgTier(orgId, "pro");
+
+      const { getAudioDuration } = await import(
+        "../../../../../../src/lib/zero/voice-io/audio-duration"
+      );
+      (getAudioDuration as ReturnType<typeof vi.fn>).mockResolvedValue(30);
+
+      server.use(
+        http.post("https://api.openai.com/v1/audio/transcriptions", () => {
+          return HttpResponse.json({ text: "daily tracking test" });
+        }),
+      );
+
+      const response = await POST(createSttRequest(createAudioFile()));
+      expect(response.status).toBe(200);
+
+      const rateCount = await readBehaviorCount(
+        orgId,
+        userId,
+        dailyRateKey(),
+      );
+      expect(rateCount).toBe(1);
+
+      const durCount = await readBehaviorCount(
+        orgId,
+        userId,
+        dailyDurationKey(),
+      );
+      expect(durCount).toBe(30);
+    });
+
+    it("should not increment daily counters on OpenAI failure", async () => {
+      const userId = uniqueId("stt-daily-fail");
+      const { orgId } = await setupOrg(userId);
+      await updateOrgTier(orgId, "pro");
+
+      server.use(
+        http.post("https://api.openai.com/v1/audio/transcriptions", () => {
+          return HttpResponse.json({ error: { message: "boom" } }, { status: 500 });
+        }),
+      );
+
+      const response = await POST(createSttRequest(createAudioFile()));
+      expect(response.status).toBe(500);
+
+      const rateCount = await readBehaviorCount(
+        orgId,
+        userId,
+        dailyRateKey(),
+      );
+      expect(rateCount).toBe(0);
+
+      const durCount = await readBehaviorCount(
+        orgId,
+        userId,
+        dailyDurationKey(),
+      );
+      expect(durCount).toBe(0);
     });
   });
 });
