@@ -322,7 +322,9 @@ describe("mobile top bar - org switcher pill shown when redesign on (MOBILE-TOP-
     await waitFor(() => {
       expect(screen.getByTestId("mobile-org-switcher")).toBeInTheDocument();
     });
-    expect(screen.getByTestId("mobile-org-switcher")).toHaveTextContent("vm0-ai");
+    expect(screen.getByTestId("mobile-org-switcher")).toHaveTextContent(
+      "vm0-ai",
+    );
   });
 });
 
