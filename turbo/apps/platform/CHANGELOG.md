@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.298.2](https://github.com/vm0-ai/vm0/compare/app-v0.298.1...app-v0.298.2) (2026-04-28)
+
+
+### Bug Fixes
+
+* restore artifact previews and upload files migration ([#11287](https://github.com/vm0-ai/vm0/issues/11287)) ([d616d86](https://github.com/vm0-ai/vm0/commit/d616d86029dbf9612311d1e9dd22231b7ab215fd))
+
 ## [0.298.1](https://github.com/vm0-ai/vm0/compare/app-v0.298.0...app-v0.298.1) (2026-04-27)
 
 

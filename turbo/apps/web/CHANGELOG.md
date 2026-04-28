@@ -1,5 +1,18 @@
 # Changelog
 
+## [12.305.0](https://github.com/vm0-ai/vm0/compare/web-v12.304.0...web-v12.305.0) (2026-04-28)
+
+
+### Features
+
+* align daily insights with processed usage ledger ([#11281](https://github.com/vm0-ai/vm0/issues/11281)) ([116bc9d](https://github.com/vm0-ai/vm0/commit/116bc9d835cea21f33fe07459fa233ae2cad0f14))
+* **voice-io:** add daily rate limit and duration cap to STT endpoint ([#11282](https://github.com/vm0-ai/vm0/issues/11282)) ([9bdcd1c](https://github.com/vm0-ai/vm0/commit/9bdcd1c5cc0d74e8d46946da9bcfc99c55c68967))
+
+
+### Bug Fixes
+
+* restore artifact previews and upload files migration ([#11287](https://github.com/vm0-ai/vm0/issues/11287)) ([d616d86](https://github.com/vm0-ai/vm0/commit/d616d86029dbf9612311d1e9dd22231b7ab215fd))
+
 ## [12.304.0](https://github.com/vm0-ai/vm0/compare/web-v12.303.1...web-v12.304.0) (2026-04-28)
 
 
