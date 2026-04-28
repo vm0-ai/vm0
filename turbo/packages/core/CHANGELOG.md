@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.242.1](https://github.com/vm0-ai/vm0/compare/core-v8.242.0...core-v8.242.1) (2026-04-28)
+
+
+### Refactoring
+
+* remove fully-enabled feature switches (AudioInput, ChatArtifactsDrawer, TelegramIntegration) ([#11409](https://github.com/vm0-ai/vm0/issues/11409)) ([1e647d4](https://github.com/vm0-ai/vm0/commit/1e647d4086c02df77c0d3daf372fc53b8f45d14e))
+
 ## [8.242.0](https://github.com/vm0-ai/vm0/compare/core-v8.241.0...core-v8.242.0) (2026-04-28)
 
 
