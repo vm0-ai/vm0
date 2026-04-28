@@ -22,7 +22,6 @@ import {
   IconEye,
   IconFile,
   IconFileMusic,
-  IconFiles,
   IconLoader2,
   IconPackage,
   IconVideo,
@@ -543,10 +542,7 @@ class ChatImagePreviewButton extends Component<
     const { overlayIcon = "photo" } = this.props;
 
     return (
-      <span
-        data-testid="chat-image-preview-hover"
-        className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-all duration-150 group-hover/image-preview:bg-black/30 group-hover/image-preview:opacity-100"
-      >
+      <span className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-all duration-150 group-hover/image-preview:bg-black/30 group-hover/image-preview:opacity-100">
         {overlayIcon === "eye" ? (
           <span className="flex h-9 w-9 items-center justify-center rounded-full bg-black/50 text-white shadow-lg">
             <IconEye size={18} stroke={1.8} />

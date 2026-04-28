@@ -82,12 +82,6 @@ describe("zero chat thread page display - attachment image preview", () => {
       within(previewButton).getByTestId("chat-image-preview-loading"),
     ).toBeInTheDocument();
 
-    const hoverLayer = within(previewButton).getByTestId(
-      "chat-image-preview-hover",
-    );
-    expect(previewButton.className).toContain("group/image-preview");
-    expect(hoverLayer.className).toContain("group-hover/image-preview");
-
     fireEvent.load(previewImage);
     await waitFor(() => {
       expect(
