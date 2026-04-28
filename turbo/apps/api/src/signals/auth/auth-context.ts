@@ -113,7 +113,7 @@ const zeroAuth$ = command(
       return null;
     }
 
-    if (!options.acceptAnySandboxCapability) {
+    if (!options.acceptAnySandboxCapability && options.requiredCapability) {
       const hasCapability = zeroAuth.capabilities.some((capability) => {
         return capability === options.requiredCapability;
       });
