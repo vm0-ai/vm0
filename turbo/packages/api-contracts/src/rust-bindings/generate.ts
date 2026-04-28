@@ -307,7 +307,7 @@ function compareRouteBindings(
   left: NormalizedRouteBinding,
   right: NormalizedRouteBinding,
 ): number {
-  return rustRouteName(left).localeCompare(rustRouteName(right));
+  return compareAscii(rustRouteName(left), rustRouteName(right));
 }
 
 function rustRouteName(binding: NormalizedRouteBinding): string {
@@ -347,7 +347,7 @@ function renderModuleNode(node: ModuleNode, indent: string): string[] {
   const routes = [...node.routes].sort(compareRouteBindings);
   const children = [...node.children.entries()].sort(
     ([leftName], [rightName]) => {
-      return leftName.localeCompare(rightName);
+      return compareAscii(leftName, rightName);
     },
   );
 
@@ -425,6 +425,16 @@ function renderParameterizedPath(
 
 function escapeRustFormatString(value: string): string {
   return value.replace(/\{/g, "{{").replace(/\}/g, "}}");
+}
+
+function compareAscii(left: string, right: string): number {
+  if (left < right) {
+    return -1;
+  }
+  if (left > right) {
+    return 1;
+  }
+  return 0;
 }
 
 function appendBlankLineIfNeeded(lines: string[]): void {
