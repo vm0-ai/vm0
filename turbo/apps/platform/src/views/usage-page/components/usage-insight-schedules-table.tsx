@@ -6,6 +6,12 @@ import {
 } from "../../../signals/usage-page/usage-insight-signals.ts";
 import { Link } from "../../router/link.tsx";
 import { getCardPalette } from "../../../lib/card-palette.ts";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@vm0/ui";
 
 function formatValue(n: number): string {
   if (n >= 1_000_000) {
@@ -62,29 +68,39 @@ export function UsageInsightSchedulesTable({
       <p className="text-5xl font-black leading-none tabular-nums font-serif">
         {totalCount}
       </p>
-      <ul className="flex flex-col gap-2.5 mt-4">
-        {schedules.map((row) => {
-          const value = row.credits;
-          const pct = (value / maxValue) * 100;
-          const isActive = hoveredId === null || hoveredId === row.scheduleId;
-          return (
-            <li key={row.scheduleId}>
-              <Link
-                pathname="/schedules/:scheduleId"
-                options={{ pathParams: { scheduleId: row.scheduleId } }}
-                className={`grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)_3rem] items-center gap-3 -mx-1.5 px-1.5 py-1 rounded-md transition-all duration-150 ${
-                  hoveredId === row.scheduleId ? "bg-foreground/5" : ""
-                } ${isActive ? "opacity-100" : "opacity-30"}`}
-                onMouseEnter={() => {
-                  setHoveredId(row.scheduleId);
-                }}
-                onMouseLeave={() => {
-                  setHoveredId(null);
-                }}
-              >
-                <span className="text-sm font-medium truncate decoration-dotted underline decoration-foreground/40 decoration-[1px] underline-offset-2">
-                  {row.scheduleDescription?.trim() || row.scheduleName}
-                </span>
+      <TooltipProvider delayDuration={300}>
+        <ul className="flex flex-col gap-2.5 mt-4">
+          {schedules.map((row) => {
+            const value = row.credits;
+            const pct = (value / maxValue) * 100;
+            const isActive = hoveredId === null || hoveredId === row.scheduleId;
+            const fullName = row.scheduleDescription?.trim() || row.scheduleName;
+            return (
+              <li key={row.scheduleId}>
+                <Link
+                  pathname="/schedules/:scheduleId"
+                  options={{ pathParams: { scheduleId: row.scheduleId } }}
+                  className={`grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)_3rem] items-center gap-3 -mx-1.5 px-1.5 py-1 rounded-md transition-all duration-150 ${
+                    hoveredId === row.scheduleId ? "bg-foreground/5" : ""
+                  } ${isActive ? "opacity-100" : "opacity-30"}`}
+                  onMouseEnter={() => {
+                    setHoveredId(row.scheduleId);
+                  }}
+                  onMouseLeave={() => {
+                    setHoveredId(null);
+                  }}
+                >
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="text-sm font-medium truncate decoration-dotted underline decoration-foreground/40 decoration-[1px] underline-offset-2">
+                        {fullName}
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" sideOffset={4}>
+                      <p className="text-xs">{fullName}</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">Click to open schedule</p>
+                    </TooltipContent>
+                  </Tooltip>
                 <div className="h-1.5 rounded-full bg-foreground/10 overflow-hidden">
                   <div
                     className="h-full rounded-full"
@@ -113,7 +129,8 @@ export function UsageInsightSchedulesTable({
             </span>
           </li>
         )}
-      </ul>
+        </ul>
+      </TooltipProvider>
     </section>
   );
 }
