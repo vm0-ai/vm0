@@ -387,8 +387,12 @@ describe("mobile chat agent switcher - shown when redesign on (CHAT-LIST-MOBILE-
         screen.getByTestId("mobile-chat-agent-switcher"),
       ).toBeInTheDocument();
     });
-    expect(screen.getByTestId(`mobile-chat-agent-${DEFAULT_AGENT}`)).toBeInTheDocument();
-    expect(screen.getByTestId(`mobile-chat-agent-${PINNED_EXTRA}`)).toBeInTheDocument();
+    expect(
+      screen.getByTestId(`mobile-chat-agent-${DEFAULT_AGENT}`),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId(`mobile-chat-agent-${PINNED_EXTRA}`),
+    ).toBeInTheDocument();
   });
 });
 
