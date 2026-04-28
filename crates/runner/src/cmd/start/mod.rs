@@ -1301,7 +1301,7 @@ fn spawn_job(
                                     true
                                 }
                                 ParkResult::Rejected(rejected) => {
-                                    info!(run_id = %run_id, session_id, "idle pool full, destroying VM");
+                                    info!(run_id = %run_id, session_id, "idle parking rejected, destroying VM");
                                     drop(pool);
                                     // Pool unchanged (park rejected) — no status
                                     // update needed. The rejected sandbox was just

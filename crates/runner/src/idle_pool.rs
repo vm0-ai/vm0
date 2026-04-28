@@ -689,7 +689,7 @@ pub enum ParkResult {
     Parked,
     /// Successfully parked; the returned job destroys the replaced idle VM.
     Replaced(IdleDestroyJob),
-    /// Pool is at max capacity or disabled; the entry could not be parked.
+    /// Parking is closed/soft-draining or at capacity; the entry could not be parked.
     Rejected(RejectedParkCandidate),
 }
 
