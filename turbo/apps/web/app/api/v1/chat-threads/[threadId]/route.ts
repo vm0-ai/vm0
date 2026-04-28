@@ -42,6 +42,7 @@ const router = tsr.router(chatThreadV1GetContract, {
 
 const handler = createHandler(chatThreadV1GetContract, router, {
   routeName: "v1.chat-threads.byId",
+  shadowCompareApi: true,
 });
 
 export { handler as GET };
