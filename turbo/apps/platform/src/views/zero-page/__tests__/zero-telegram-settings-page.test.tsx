@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import type { TelegramBotStatus } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -113,12 +113,21 @@ describe("telegram settings page", () => {
     await waitFor(() => {
       expect(screen.getByText("No Telegram bots yet")).toBeInTheDocument();
     });
+
+    click(screen.getByText("Add bot"));
+    const dialog = await screen.findByRole("dialog");
+
+    expect(within(dialog).getByText("/newbot")).toBeInTheDocument();
+    expect(within(dialog).getByText("/setprivacy")).toBeInTheDocument();
+    expect(within(dialog).getByText("/setdomain")).toBeInTheDocument();
+    expect(within(dialog).getByText(location.hostname)).toBeInTheDocument();
+
     await waitFor(() => {
       expect(screen.getByLabelText("Default agent")).toHaveTextContent("Zero");
     });
 
     await fill(screen.getByLabelText("Bot token"), "123:token");
-    click(screen.getByText("Add bot"));
+    click(within(dialog).getByText("Add bot"));
 
     await waitFor(() => {
       expect(

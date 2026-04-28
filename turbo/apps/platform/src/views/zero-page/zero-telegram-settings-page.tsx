@@ -19,6 +19,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 } from "@vm0/ui/components/ui/dialog";
 import { Input } from "@vm0/ui/components/ui/input";
 import {
@@ -46,6 +47,7 @@ import {
   disconnectTelegramAccount$,
   registerTelegramBot$,
   reinstallTelegramBot$,
+  setTelegramAddDialogOpen$,
   setTelegramReinstallDialogBotId$,
   setTelegramReinstallingBotId$,
   setTelegramReinstallTokenForm$,
@@ -55,6 +57,7 @@ import {
   setTelegramUninstallDialogBotId$,
   setTelegramUninstallingBotId$,
   setTelegramUnlinkingBotId$,
+  telegramAddDialogOpen$,
   telegramBotAgentForm$,
   telegramBots$,
   telegramBotTokenForm$,
@@ -77,6 +80,9 @@ interface DefaultAgentLabel {
   id: string | null;
   displayName: string | null;
 }
+
+const TELEGRAM_COMMAND_CLASS =
+  "rounded border border-border bg-background px-1 py-0.5 font-mono text-xs";
 
 function agentLabel(
   agent: TeamComposeItem | { id: string; name: string },
@@ -178,7 +184,123 @@ function TelegramStatusBadge({ bot }: { bot: TelegramBot }) {
   );
 }
 
-function AddTelegramBotForm({
+function getTelegramLoginDomain(): string {
+  if (typeof location === "undefined" || !location.hostname) {
+    return "your app domain";
+  }
+  return location.hostname;
+}
+
+function TelegramCommand({ command }: { command: string }) {
+  return <code className={TELEGRAM_COMMAND_CLASS}>{command}</code>;
+}
+
+function AddTelegramBotInstructions({ domain }: { domain: string }) {
+  return (
+    <div className="rounded-lg border border-border bg-muted/30 p-4">
+      <ol className="list-decimal space-y-3 pl-4 text-sm leading-relaxed text-muted-foreground">
+        <li>
+          Open{" "}
+          <a
+            href="https://t.me/BotFather"
+            target="_blank"
+            rel="noreferrer"
+            className="font-medium text-foreground underline-offset-4 hover:underline"
+          >
+            @BotFather
+          </a>
+          , send <TelegramCommand command="/newbot" />, choose a name and
+          username, then copy the bot token.
+        </li>
+        <li>
+          If the bot should respond to normal group chat messages, send{" "}
+          <TelegramCommand command="/setprivacy" />, choose the bot, and disable
+          privacy mode. With privacy enabled, Telegram only sends commands,
+          replies, and mentions from groups.
+        </li>
+        <li>
+          For Telegram web login, send <TelegramCommand command="/setdomain" />,
+          choose the bot, and set the domain to{" "}
+          <code className={TELEGRAM_COMMAND_CLASS}>{domain}</code>.
+        </li>
+      </ol>
+    </div>
+  );
+}
+
+function AddTelegramBotFields({
+  agents,
+  defaultAgent,
+  agentId,
+  botToken,
+  selectedAgentLabel,
+  disabled,
+  adding,
+  onBotTokenChange,
+  onAgentChange,
+}: {
+  agents: TeamComposeItem[];
+  defaultAgent: DefaultAgentLabel;
+  agentId: string | undefined;
+  botToken: string;
+  selectedAgentLabel: string;
+  disabled: boolean;
+  adding: boolean;
+  onBotTokenChange: (value: string) => void;
+  onAgentChange: (value: string) => void;
+}) {
+  return (
+    <div className="grid gap-4 sm:grid-cols-[1fr_16rem]">
+      <div className="min-w-0">
+        <label
+          htmlFor="telegram-bot-token"
+          className="mb-2 block text-sm font-medium text-foreground"
+        >
+          Bot token
+        </label>
+        <Input
+          id="telegram-bot-token"
+          type="password"
+          value={botToken}
+          disabled={disabled || adding}
+          autoComplete="off"
+          placeholder="123456:ABC-DEF"
+          onChange={(event) => {
+            onBotTokenChange(event.target.value);
+          }}
+        />
+      </div>
+      <div className="min-w-0">
+        <label
+          htmlFor="telegram-new-bot-agent"
+          className="mb-2 block text-sm font-medium text-foreground"
+        >
+          Default agent
+        </label>
+        <Select
+          value={agentId ?? ""}
+          disabled={disabled || adding || agents.length === 0}
+          onValueChange={onAgentChange}
+        >
+          <SelectTrigger id="telegram-new-bot-agent">
+            <SelectValue placeholder={selectedAgentLabel} />
+          </SelectTrigger>
+          <SelectContent>
+            {agents.map((agent) => {
+              return (
+                <SelectItem key={agent.id} value={agent.id}>
+                  {agentLabel(agent, defaultAgent)}
+                </SelectItem>
+              );
+            })}
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
+  );
+}
+
+function AddTelegramBotDialog({
   agents,
   defaultAgent,
   disabled,
@@ -188,7 +310,9 @@ function AddTelegramBotForm({
   disabled: boolean;
 }) {
   const botToken = useGet(telegramBotTokenForm$);
+  const open = useGet(telegramAddDialogOpen$);
   const selectedAgentId = useGet(telegramBotAgentForm$);
+  const domain = getTelegramLoginDomain();
   const preferredAgentId = selectedAgentId ?? defaultAgent.id ?? agents[0]?.id;
   const selectedAgent =
     agents.find((agent) => {
@@ -200,6 +324,7 @@ function AddTelegramBotForm({
     : (defaultAgent.displayName ?? "Select agent");
   const setBotToken = useSet(setTelegramBotTokenForm$);
   const setAgentId = useSet(setTelegramBotAgentForm$);
+  const setOpen = useSet(setTelegramAddDialogOpen$);
   const navigate = useSet(detachedNavigateTo$);
   const pageSignal = useGet(pageSignal$);
   const [registerLoadable, registerBot] = useLoadableSet(registerTelegramBot$);
@@ -207,95 +332,96 @@ function AddTelegramBotForm({
   const canSubmit = botToken.trim().length > 0 && !disabled && !adding;
 
   return (
-    <form
-      className="zero-card p-4 sm:p-5"
-      aria-label="Add Telegram bot"
-      onSubmit={(event) => {
-        event.preventDefault();
-        if (!canSubmit) {
-          return;
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!adding) {
+          setOpen(nextOpen);
         }
-
-        detach(
-          registerBot(
-            {
-              botToken: botToken.trim(),
-              ...(agentId ? { defaultAgentId: agentId } : {}),
-            },
-            pageSignal,
-          ).then((bot) => {
-            setBotToken("");
-            setAgentId(null);
-            navigate(ROUTES.telegramConnect, {
-              searchParams: new URLSearchParams({ bot: bot.id }),
-            });
-          }),
-          Reason.DomCallback,
-        );
       }}
     >
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
-        <div className="min-w-0 flex-1">
-          <label
-            htmlFor="telegram-bot-token"
-            className="mb-2 block text-sm font-medium text-foreground"
+      <div className="flex justify-end">
+        <DialogTrigger asChild>
+          <Button
+            type="button"
+            disabled={disabled}
+            className="h-10 shrink-0 gap-2"
           >
-            Bot token
-          </label>
-          <Input
-            id="telegram-bot-token"
-            type="password"
-            value={botToken}
-            disabled={disabled || adding}
-            autoComplete="off"
-            placeholder="123456:ABC-DEF"
-            onChange={(event) => {
-              setBotToken(event.target.value);
-            }}
-          />
-        </div>
-        <div className="min-w-0 sm:w-64">
-          <label
-            htmlFor="telegram-new-bot-agent"
-            className="mb-2 block text-sm font-medium text-foreground"
-          >
-            Default agent
-          </label>
-          <Select
-            value={agentId ?? ""}
-            disabled={disabled || adding || agents.length === 0}
-            onValueChange={(value) => {
-              setAgentId(value);
-            }}
-          >
-            <SelectTrigger id="telegram-new-bot-agent">
-              <SelectValue placeholder={selectedAgentLabel} />
-            </SelectTrigger>
-            <SelectContent>
-              {agents.map((agent) => {
-                return (
-                  <SelectItem key={agent.id} value={agent.id}>
-                    {agentLabel(agent, defaultAgent)}
-                  </SelectItem>
-                );
-              })}
-            </SelectContent>
-          </Select>
-        </div>
-        <Button
-          type="submit"
-          disabled={!canSubmit}
-          className="h-10 shrink-0 gap-2"
-        >
-          {adding ? (
-            <IconLoader2 size={16} className="animate-spin" />
-          ) : (
             <IconPlus size={16} />
-          )}
-          {adding ? "Adding..." : "Add bot"}
-        </Button>
+            Add bot
+          </Button>
+        </DialogTrigger>
       </div>
-    </form>
+      <DialogContent className="sm:max-w-[560px]">
+        <DialogHeader>
+          <DialogTitle>Add Telegram bot</DialogTitle>
+          <DialogDescription>
+            Create the bot in BotFather, then register its token here.
+          </DialogDescription>
+        </DialogHeader>
+        <AddTelegramBotInstructions domain={domain} />
+        <form
+          className="flex flex-col gap-4"
+          aria-label="Register Telegram bot"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!canSubmit) {
+              return;
+            }
+
+            detach(
+              registerBot(
+                {
+                  botToken: botToken.trim(),
+                  ...(agentId ? { defaultAgentId: agentId } : {}),
+                },
+                pageSignal,
+              ).then((bot) => {
+                setBotToken("");
+                setAgentId(null);
+                setOpen(false);
+                navigate(ROUTES.telegramConnect, {
+                  searchParams: new URLSearchParams({ bot: bot.id }),
+                });
+              }),
+              Reason.DomCallback,
+            );
+          }}
+        >
+          <AddTelegramBotFields
+            agents={agents}
+            defaultAgent={defaultAgent}
+            agentId={agentId}
+            botToken={botToken}
+            selectedAgentLabel={selectedAgentLabel}
+            disabled={disabled}
+            adding={adding}
+            onBotTokenChange={setBotToken}
+            onAgentChange={setAgentId}
+          />
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={adding}
+              onClick={() => {
+                setOpen(false);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={!canSubmit} className="gap-2">
+              {adding ? (
+                <IconLoader2 size={16} className="animate-spin" />
+              ) : (
+                <IconPlus size={16} />
+              )}
+              {adding ? "Adding..." : "Add bot"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -862,7 +988,7 @@ export function ZeroTelegramSettingsPage() {
             <TelegramSettingsSkeleton />
           ) : (
             <>
-              <AddTelegramBotForm
+              <AddTelegramBotDialog
                 agents={agents}
                 defaultAgent={defaultAgent}
                 disabled={agentsLoading}

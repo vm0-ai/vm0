@@ -11,6 +11,7 @@ import { featureSwitch$ } from "../external/feature-switch.ts";
 import { accept } from "../../lib/accept.ts";
 
 const internalReload$ = state(0);
+const internalTelegramAddDialogOpen$ = state(false);
 const internalTelegramBotTokenForm$ = state("");
 const internalTelegramBotAgentForm$ = state<string | null>(null);
 const internalTelegramSavingBotId$ = state<string | null>(null);
@@ -23,6 +24,10 @@ const internalTelegramReinstallingBotId$ = state<string | null>(null);
 
 export const telegramBotTokenForm$ = computed((get) => {
   return get(internalTelegramBotTokenForm$);
+});
+
+export const telegramAddDialogOpen$ = computed((get) => {
+  return get(internalTelegramAddDialogOpen$);
 });
 
 export const telegramBotAgentForm$ = computed((get) => {
@@ -59,6 +64,14 @@ export const telegramReinstallingBotId$ = computed((get) => {
 
 export const setTelegramBotTokenForm$ = command(({ set }, value: string) => {
   set(internalTelegramBotTokenForm$, value);
+});
+
+export const setTelegramAddDialogOpen$ = command(({ set }, open: boolean) => {
+  set(internalTelegramAddDialogOpen$, open);
+  if (!open) {
+    set(internalTelegramBotTokenForm$, "");
+    set(internalTelegramBotAgentForm$, null);
+  }
 });
 
 export const setTelegramBotAgentForm$ = command(
@@ -113,6 +126,7 @@ export const setTelegramReinstallingBotId$ = command(
 );
 
 export const resetTelegramSettingsUi$ = command(({ set }) => {
+  set(internalTelegramAddDialogOpen$, false);
   set(internalTelegramBotTokenForm$, "");
   set(internalTelegramBotAgentForm$, null);
   set(internalTelegramSavingBotId$, null);
