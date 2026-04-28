@@ -41,7 +41,7 @@ export const sttTranscribing$ = computed((get) => {
   return get(internalTranscribing$);
 });
 
-export const audioInputAvailable$ = computed(async () => {
+export const audioInputAvailable$ = computed(() => {
   const hasMic =
     typeof navigator !== "undefined" && !!navigator.mediaDevices?.getUserMedia;
   return hasMic;
