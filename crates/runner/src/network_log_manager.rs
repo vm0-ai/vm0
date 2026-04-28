@@ -4,6 +4,8 @@ use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+#[cfg(test)]
+use tokio::sync::Semaphore;
 use tokio::sync::{Mutex, Notify};
 use tracing::{debug, warn};
 
@@ -47,7 +49,7 @@ impl PathState {
 #[derive(Clone)]
 struct WriteGate {
     started: Arc<Notify>,
-    release: Arc<Notify>,
+    release: Arc<Semaphore>,
 }
 
 impl NetworkLogManager {
@@ -56,7 +58,7 @@ impl NetworkLogManager {
     }
 
     #[cfg(test)]
-    pub(crate) fn new_with_write_gate(started: Arc<Notify>, release: Arc<Notify>) -> Self {
+    pub(crate) fn new_with_write_gate(started: Arc<Notify>, release: Arc<Semaphore>) -> Self {
         Self {
             inner: Arc::new(Inner {
                 state: Mutex::new(State::default()),
@@ -132,7 +134,7 @@ impl NetworkLogManager {
             #[cfg(test)]
             if let Some(gate) = write_gate {
                 gate.started.notify_one();
-                gate.release.notified().await;
+                let _permit = gate.release.acquire().await.expect("write gate closed");
             }
 
             let write_path = path.clone();
@@ -235,7 +237,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("network.jsonl");
         let started = Arc::new(Notify::new());
-        let release = Arc::new(Notify::new());
+        let release = Arc::new(Semaphore::new(0));
         let manager = NetworkLogManager::new_with_write_gate(started.clone(), release.clone());
 
         manager.register_source_ip("10.200.0.2", path.clone()).await;
@@ -257,12 +259,78 @@ mod tests {
             "flush should wait while the accepted write is pending"
         );
 
-        release.notify_one();
+        release.add_permits(1);
         flush.await;
 
         let lines = read_json_lines(&path);
         assert_eq!(lines.len(), 1);
         assert_eq!(lines[0]["host"], "held.test");
+    }
+
+    #[tokio::test]
+    async fn flush_path_waits_for_all_pending_writes_for_same_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("network.jsonl");
+        let started = Arc::new(Notify::new());
+        let release = Arc::new(Semaphore::new(0));
+        let manager = NetworkLogManager::new_with_write_gate(started.clone(), release.clone());
+
+        manager.register_source_ip("10.200.0.2", path.clone()).await;
+        manager.register_source_ip("10.200.0.3", path.clone()).await;
+
+        let first_started = started.notified();
+        assert!(
+            manager
+                .append_for_ip("10.200.0.2", json!({"type":"dns","host":"first.test"}))
+                .await
+        );
+        first_started.await;
+
+        let second_started = started.notified();
+        assert!(
+            manager
+                .append_for_ip("10.200.0.3", json!({"type":"dns","host":"second.test"}))
+                .await
+        );
+        second_started.await;
+
+        let mut flush = std::pin::pin!(manager.flush_path(&path));
+        let pending = poll_fn(|cx| match flush.as_mut().poll(cx) {
+            Poll::Ready(()) => Poll::Ready(false),
+            Poll::Pending => Poll::Ready(true),
+        })
+        .await;
+        assert!(
+            pending,
+            "flush should wait while both accepted writes are pending"
+        );
+
+        release.add_permits(1);
+        let still_pending = poll_fn(|cx| match flush.as_mut().poll(cx) {
+            Poll::Ready(()) => Poll::Ready(false),
+            Poll::Pending => Poll::Ready(true),
+        })
+        .await;
+        assert!(
+            still_pending,
+            "flush should still wait after only one pending write is released"
+        );
+
+        release.add_permits(1);
+        flush.await;
+
+        let lines = read_json_lines(&path);
+        let hosts: std::collections::HashSet<String> = lines
+            .iter()
+            .map(|line| line["host"].as_str().unwrap().to_string())
+            .collect();
+        assert_eq!(
+            hosts,
+            ["first.test", "second.test"]
+                .into_iter()
+                .map(str::to_string)
+                .collect()
+        );
     }
 
     #[tokio::test]
@@ -306,7 +374,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("network.jsonl");
         let started = Arc::new(Notify::new());
-        let release = Arc::new(Notify::new());
+        let release = Arc::new(Semaphore::new(0));
         let manager = NetworkLogManager::new_with_write_gate(started.clone(), release.clone());
 
         manager.register_source_ip("10.200.0.2", path.clone()).await;
@@ -318,12 +386,57 @@ mod tests {
         started.notified().await;
 
         manager.unregister_source_ip("10.200.0.2").await;
-        release.notify_one();
+        release.add_permits(1);
         manager.flush_path(&path).await;
 
         let lines = read_json_lines(&path);
         assert_eq!(lines.len(), 1);
         assert_eq!(lines[0]["host"], "accepted.test");
+    }
+
+    #[tokio::test]
+    async fn pending_old_write_stays_on_old_path_after_reregister() {
+        let dir = tempfile::tempdir().unwrap();
+        let old_path = dir.path().join("old.jsonl");
+        let new_path = dir.path().join("new.jsonl");
+        let started = Arc::new(Notify::new());
+        let release = Arc::new(Semaphore::new(0));
+        let manager = NetworkLogManager::new_with_write_gate(started.clone(), release.clone());
+
+        manager
+            .register_source_ip("10.200.0.2", old_path.clone())
+            .await;
+        let old_started = started.notified();
+        assert!(
+            manager
+                .append_for_ip("10.200.0.2", json!({"type":"dns","host":"old.test"}))
+                .await
+        );
+        old_started.await;
+
+        manager.unregister_source_ip("10.200.0.2").await;
+        manager
+            .register_source_ip("10.200.0.2", new_path.clone())
+            .await;
+        let new_started = started.notified();
+        assert!(
+            manager
+                .append_for_ip("10.200.0.2", json!({"type":"dns","host":"new.test"}))
+                .await
+        );
+        new_started.await;
+
+        release.add_permits(2);
+        manager.flush_path(&old_path).await;
+        manager.flush_path(&new_path).await;
+
+        let old_lines = read_json_lines(&old_path);
+        assert_eq!(old_lines.len(), 1);
+        assert_eq!(old_lines[0]["host"], "old.test");
+
+        let new_lines = read_json_lines(&new_path);
+        assert_eq!(new_lines.len(), 1);
+        assert_eq!(new_lines[0]["host"], "new.test");
     }
 
     #[tokio::test]

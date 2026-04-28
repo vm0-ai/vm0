@@ -2459,7 +2459,7 @@ mod tests {
         let (mut config, env) =
             mock_run_config_with_api_url(test_profiles(), 8, 32768, 4, &server.base_url());
         let write_started = Arc::new(tokio::sync::Notify::new());
-        let release_write = Arc::new(tokio::sync::Notify::new());
+        let release_write = Arc::new(tokio::sync::Semaphore::new(0));
         let network_log_manager =
             NetworkLogManager::new_with_write_gate(write_started.clone(), release_write.clone());
         Arc::get_mut(&mut config.exec_config)
@@ -2506,7 +2506,7 @@ mod tests {
             .wait_completion(run_id, Duration::from_secs(5))
             .await;
         assert!(completion.is_some(), "job should complete");
-        release_write.notify_one();
+        release_write.add_permits(1);
 
         // Drain shutdown — must block on each `spawn_job` closure's deferred
         // `tokio::join!(flush, upload)` via the outer `jobs` JoinSet.
