@@ -373,7 +373,7 @@ const agentEventsResponseSchema = z.object({
 });
 
 /**
- * Network log entry schema (MITM proxy)
+ * Network log entry schema.
  * [NETWORK_LOG_FIELDS] — keep in sync with all network log schemas
  */
 const networkLogEntrySchema = z.object({
@@ -388,6 +388,10 @@ const networkLogEntrySchema = z.object({
   latency_ms: z.number().optional(),
   request_size: z.number().optional(),
   response_size: z.number().optional(),
+  dns_event: z.string().optional(),
+  dns_query_type: z.string().optional(),
+  dns_result: z.string().optional(),
+  dns_serial: z.string().optional(),
   firewall_base: z.string().optional(),
   firewall_name: z.string().optional(),
   firewall_permission: z.string().optional(),
@@ -750,7 +754,7 @@ export type AgentEventsResponse = z.infer<typeof agentEventsResponseSchema>;
 export type NetworkLogEntry = z.infer<typeof networkLogEntrySchema>;
 export type NetworkLogsResponse = z.infer<typeof networkLogsResponseSchema>;
 /**
- * Axiom raw network event — the shape returned by `queryAxiom` for MITM logs.
+ * Axiom raw network event — the shape returned by `queryAxiom` for network logs.
  * Uses `_time` (Axiom's timestamp field) instead of `timestamp`, and includes
  * `runId`/`userId` used for Axiom filtering.
  */

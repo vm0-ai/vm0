@@ -864,6 +864,37 @@ describe("logs command", () => {
       expect(logCalls).toContain("connection reset by peer");
     });
 
+    it("should display DNS result logs", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/network",
+          () => {
+            return HttpResponse.json({
+              networkLogs: [
+                {
+                  timestamp: "2024-01-15T10:30:00Z",
+                  type: "dns",
+                  host: "api.github.com",
+                  port: 53,
+                  dns_event: "reply",
+                  dns_result: "140.82.121.4",
+                  dns_serial: "42",
+                },
+              ],
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--network"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("DNS");
+      expect(logCalls).toContain("api.github.com:53");
+      expect(logCalls).toContain("140.82.121.4");
+    });
+
     it("should handle empty network logs", async () => {
       server.use(
         http.get(

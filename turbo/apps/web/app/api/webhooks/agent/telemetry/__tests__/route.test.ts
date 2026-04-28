@@ -264,6 +264,15 @@ describe("POST /api/webhooks/agent/telemetry", () => {
           request_size: 0,
           response_size: 1024,
         },
+        {
+          timestamp: "2025-12-09T10:00:00.001Z",
+          type: "dns",
+          host: "api.github.com",
+          port: 53,
+          dns_event: "reply",
+          dns_result: "140.82.121.4",
+          dns_serial: "42",
+        },
       ];
 
       const request = new NextRequest(
@@ -299,6 +308,16 @@ describe("POST /api/webhooks/agent/telemetry", () => {
             latency_ms: 150,
             request_size: 0,
             response_size: 1024,
+          }),
+          expect.objectContaining({
+            runId,
+            userId: user.userId,
+            type: "dns",
+            host: "api.github.com",
+            port: 53,
+            dns_event: "reply",
+            dns_result: "140.82.121.4",
+            dns_serial: "42",
           }),
         ]),
       );
